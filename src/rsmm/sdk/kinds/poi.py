@@ -187,7 +187,7 @@ from functools import cache as _memo
 from functools import lru_cache
 from pathlib import Path
 
-from ...engine import corpus_cache
+from ...engine import corpus, corpus_cache
 from ...engine import entity_components as EC
 from ...engine import level_placements as LP
 from ...engine import map_pool as MP
@@ -264,9 +264,14 @@ RESTAMP_ENTITY_GUIDS = True
 #: honest re-test rather than being inherited as fact.
 PLACES_OWN_PROP = "@prop"
 
+#: The mirror, used ONLY as a corpus-cache key and for the few derived files
+#: (texture PNGs) that have no install twin. Every vanilla READ goes through
+#: `engine.corpus`, which falls back to the game install — a player's machine
+#: has no mirror.
 _UNCOOKED = DATA_DIR / "uncooked"
-_TILES_DIR = _UNCOOKED / "Definitions" / "Tiles"
-_MAPS_DIR = _UNCOOKED / "Definitions" / "Maps"
+#: Decoded directories of the retail tile / map defs.
+_TILES_DIR = "Definitions/Tiles"
+_MAPS_DIR = "Definitions/Maps"
 
 _TILE_ASSET_SUBDIR = "Definitions/Tiles"
 _MAP_ASSET_SUBDIR = "Definitions/Maps"
@@ -462,18 +467,19 @@ ICON_DIR = "MiniMap\\Icons"
 
 def known_tiles() -> list[str]:
     """Every clonable tile as ``<Biome>/<Name>``."""
-    if not _TILES_DIR.is_dir():
-        return []
+    prefix = _TILES_DIR + "/"
     out = []
-    for p in _TILES_DIR.rglob("*" + TC.GEN_SUFFIX):
-        out.append(f"{p.parent.name}/{p.name[: -len(TC.GEN_SUFFIX)]}")
+    for r in corpus.rels(prefix, TC.GEN_SUFFIX):
+        biome_name = r[len(prefix):].removesuffix(TC.GEN_SUFFIX)
+        if biome_name.count("/") == 1:
+            out.append(biome_name)
     return sorted(out)
 
 
-def _tile_path(base: str) -> Path:
-    return _TILES_DIR / Path(*base.split("/")).with_name(
-        Path(base).name + TC.GEN_SUFFIX
-    )
+def _tile_path(base: str) -> corpus.CorpusFile:
+    """The shipped tiledef for ``<Biome>/<Name>`` (``.is_file()``,
+    ``.read_bytes()``), read from the mirror or the install."""
+    return corpus.CorpusFile(f"{_TILES_DIR}/{base}{TC.GEN_SUFFIX}")
 
 
 def kind_pool_counts(chapter: str) -> dict[str, int]:
@@ -488,21 +494,21 @@ def kind_pool_counts(chapter: str) -> dict[str, int]:
     stem = CHAPTERS.get(chapter)
     if not stem:
         return {}
-    gen = _MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}"
-    if not gen.is_file():
+    gen = corpus.read(f"{_MAPS_DIR}/{stem}{MP.GEN_SUFFIX}")
+    if gen is None:
         return {}
     counts: dict[str, int] = {}
-    for path in MP.read_pool(gen.read_bytes()) or []:
+    for path in MP.read_pool(gen) or []:
         # "Tiles\\<Biome>\\<Name>.tiledef.ot" -> data/uncooked path
         parts = path.replace("\\", "/").split("/")
         if len(parts) < 3:
             continue
         stem_name = parts[-1].removesuffix(".tiledef.ot")
-        p = _TILES_DIR / parts[-2] / f"{stem_name}{TC.GEN_SUFFIX}"
-        if not p.is_file():
+        raw = corpus.read(f"{_TILES_DIR}/{parts[-2]}/{stem_name}{TC.GEN_SUFFIX}")
+        if raw is None:
             continue
         try:
-            kinds = TC.read(p.read_bytes()).kinds
+            kinds = TC.read(raw).kinds
         except TC.TileCookError:
             continue
         for k in kinds:
@@ -750,11 +756,12 @@ def kind_footprints(kind: str) -> set[tuple[int, int]]:
     block) or the kind is unknown (the vocabulary check already covers that).
     """
     out: set[tuple[int, int]] = set()
-    if not _TILES_DIR.is_dir():
-        return out
-    for p in _TILES_DIR.rglob("*" + TC.GEN_SUFFIX):
+    for rel in corpus.rels(_TILES_DIR + "/", TC.GEN_SUFFIX):
+        raw = corpus.read(rel)
+        if raw is None:
+            continue
         try:
-            td = TC.read(p.read_bytes())
+            td = TC.read(raw)
         except TC.TileCookError:
             continue
         if kind in td.kinds:
@@ -887,14 +894,14 @@ def _emit_custom_icon(mod_id: str, defn: ContentDef, out_dir: Path,
 
 
 def _corpus(decoded: str, defn_id: str, what: str) -> bytes:
-    """Read a cooked asset out of the mirrored corpus, or explain what's missing."""
-    p = _UNCOOKED / Path(*decoded.split("/"))
-    if not p.is_file():
+    """Read a shipped cooked asset (mirror or install), or explain what's missing."""
+    raw = corpus.read(decoded)
+    if raw is None:
         raise SchemaNotMined(
-            f"poi {defn_id}: {what} not found at {p} — pass a path that exists "
-            f"in the vanilla corpus, or run `python scripts/extract_uncooked.py`."
+            f"poi {defn_id}: {what} not found ({decoded}) — pass a path the game "
+            f"ships; the game install (or data/uncooked) must be readable."
         )
-    return p.read_bytes()
+    return raw
 
 
 def _mod_source(out_dir: Path, rel: str, defn_id: str, field: str) -> Path:
@@ -932,9 +939,9 @@ def _donor_geometry(mesh_ref: str, defn_id: str) -> bytes:
     from ...engine import geometry_cook as GC
 
     cooked_rel = PC.art_cooked_path(mesh_ref)
-    cooked_p = _UNCOOKED / Path(*cooked_rel.split("/"))
-    if cooked_p.is_file():
-        return cooked_p.read_bytes()
+    cooked = corpus.read(cooked_rel)       # the mirror rarely has it; the install always
+    if cooked is not None:
+        return cooked
 
     glb_p = _UNCOOKED / Path(*f"3D/{mesh_ref.replace(chr(92), '/')}.glb".split("/"))
     if glb_p.is_file():
@@ -947,8 +954,8 @@ def _donor_geometry(mesh_ref: str, defn_id: str) -> bytes:
                 f"`python scripts/extract_uncooked.py`."
             ) from e
     raise SchemaNotMined(
-        f"poi {defn_id}: donor mesh {mesh_ref!r} not in the corpus (looked for "
-        f"{cooked_p} and {glb_p}) — run `python scripts/extract_uncooked.py`."
+        f"poi {defn_id}: donor mesh {mesh_ref!r} is not a shipped mesh ({cooked_rel}) "
+        f"— or no game install / data/uncooked mirror is readable."
     )
 
 
@@ -1018,6 +1025,22 @@ def _emitted_assets(out_dir: Path, written: list[Path]) -> list[str]:
     return out
 
 
+def _mesh_glb(mesh_ref: str) -> bytes | None:
+    """A shipped mesh as GLB: the mirror's copy, else decoded from the cooked
+    `.Geometry.gen` in the install (the same decoder that built the mirror)."""
+    path = _UNCOOKED / "3D" / (mesh_ref.replace("\\", "/") + ".glb")
+    if path.is_file():
+        return path.read_bytes()
+    raw = corpus.read(PC.art_cooked_path(mesh_ref))
+    if raw is None:
+        return None
+    from ...engine.cooked_schemas.geometry import decode_cooked_to_glb
+    try:
+        return decode_cooked_to_glb(raw)
+    except (ValueError, KeyError, IndexError, struct.error):
+        return None
+
+
 @lru_cache(maxsize=512)
 def _mesh_y_range(mesh_ref: str) -> tuple[float, float] | None:
     """``(ymin, ymax)`` of a shipped mesh in its own object space, or None.
@@ -1028,12 +1051,12 @@ def _mesh_y_range(mesh_ref: str) -> tuple[float, float] | None:
     """
     from ...engine import geometry_cook as GC
 
-    path = _UNCOOKED / "3D" / (mesh_ref.replace("\\", "/") + ".glb")
-    if not path.is_file():
+    glb = _mesh_glb(mesh_ref)
+    if glb is None:
         return None
     try:
         lo, hi = 1e18, -1e18
-        for sm in GC.glb_to_submeshes(path.read_bytes()):
+        for sm in GC.glb_to_submeshes(glb):
             for pos in sm.positions:
                 lo = min(lo, pos[1])
                 hi = max(hi, pos[1])
@@ -1444,16 +1467,19 @@ def _placeable_entities() -> frozenset[str]:
 
     def build() -> list[str]:
         out: set[str] = set()
-        for lp in sorted((_UNCOOKED / "Ot").rglob("*.level.ot.GameStream.gen")):
+        for rel in corpus.rels("Ot/", ".level.ot.GameStream.gen"):
+            raw = corpus.read(rel)
+            if raw is None:
+                continue
             try:
-                out |= {s for _sec, _off, s in ES.list_strings(lp.read_bytes())
+                out |= {s for _sec, _off, s in ES.list_strings(raw)
                         if s.lower().endswith(".entity.ot")}
-            except (OSError, ValueError):
+            except ValueError:
                 continue    # a level this codec cannot frame is not evidence
         return sorted(out)
 
     return frozenset(corpus_cache.load_or_build(
-        "placeable_entities", _UNCOOKED, build))
+        "placeable_entities", corpus.root(), build))
 
 
 @lru_cache(maxsize=1)
@@ -1473,22 +1499,22 @@ def _tile_cache_by_placed_entity() -> dict[str, str]:
 
     def build() -> dict[str, str]:
         out: dict[str, str] = {}
-        for tp in sorted((_UNCOOKED / "Definitions" / "Tiles").rglob(f"*{TC.GEN_SUFFIX}")):
-            rel = tp.relative_to(_UNCOOKED / "Definitions" / "Tiles")
-            base = str(rel).replace(TC.GEN_SUFFIX, "")
+        prefix = _TILES_DIR + "/"
+        for tile_rel in corpus.rels(prefix, TC.GEN_SUFFIX):
+            base = tile_rel[len(prefix):].replace(TC.GEN_SUFFIX, "")
             try:
-                td = TC.read(tp.read_bytes())
+                td = TC.read(corpus.CorpusFile(tile_rel).read_bytes())
                 prefab = td.entity_ref[1] if td.entity_ref else None
                 if not prefab:
                     continue
-                ep = _UNCOOKED / "EntitySettings" / (
-                    prefab.replace("\\", "/") + ".EntitySettingsResource.gen")
-                lv = [s for _sec, _off, s in ES.list_strings(ep.read_bytes())
+                ent = corpus.CorpusFile("EntitySettings/" + prefab.replace("\\", "/")
+                                        + ".EntitySettingsResource.gen")
+                lv = [s for _sec, _off, s in ES.list_strings(ent.read_bytes())
                       if s.lower().endswith(".level.ot")]
                 if not lv:
                     continue
-                lp = _UNCOOKED / "Ot" / (lv[0].replace("\\", "/") + ".GameStream.gen")
-                placed = {s for _sec, _off, s in ES.list_strings(lp.read_bytes())
+                lvl = corpus.CorpusFile("Ot/" + lv[0].replace("\\", "/") + ".GameStream.gen")
+                placed = {s for _sec, _off, s in ES.list_strings(lvl.read_bytes())
                           if s.lower().endswith(".entity.ot")}
             except (OSError, ValueError, KeyError, IndexError):
                 continue
@@ -1498,7 +1524,7 @@ def _tile_cache_by_placed_entity() -> dict[str, str]:
         return out
 
     return corpus_cache.load_or_build(
-        "tile_cache_by_placed_entity", _UNCOOKED, build)
+        "tile_cache_by_placed_entity", corpus.root(), build)
 
 
 #: Cook suffixes by engine class, for the few classes that NAME other resources.
@@ -1525,12 +1551,11 @@ def _cache_refs(root: str, path: str, cls: str, out_dir: Path) -> list[str]:
         return []
     rel = Path(root) / Path(*f"{path}{suffix}".split("\\"))
     f = out_dir / rel
-    if not f.is_file():
-        f = _UNCOOKED / rel
-    if not f.is_file():
+    raw = f.read_bytes() if f.is_file() else corpus.read(rel.as_posix())
+    if raw is None:
         return []
     try:
-        return [r for r in AR._decode(f.read_bytes(), cls)["asset_refs"]
+        return [r for r in AR._decode(raw, cls)["asset_refs"]
                 if not r.startswith("[")]
     except (ValueError, KeyError, IndexError, struct.error) as e:
         # Say so. Returning no references keeps this entry but stops the walk
@@ -1564,10 +1589,15 @@ def _texture_root_index() -> dict[str, str]:
     """
     def build() -> dict[str, str]:
         out: dict[str, str] = {}
-        for cp in sorted((_UNCOOKED / "Definitions").rglob("*.UsedRscCache.ot")):
+        # Caches are in no manifest, so the install cannot LIST them — but every
+        # one sits beside the definition it belongs to, which can be listed.
+        for def_rel in corpus.rels("Definitions/", ".gen"):
+            raw = corpus.read(RC.cache_path_for(def_rel))
+            if raw is None:
+                continue
             try:
-                lines = RC.parse(cp.read_bytes())
-            except (OSError, ValueError):
+                lines = RC.parse(raw)
+            except ValueError:
                 continue
             for line in lines:
                 parts = line.split("|")
@@ -1575,7 +1605,7 @@ def _texture_root_index() -> dict[str, str]:
                     out.setdefault(parts[1], parts[0])
         return out
 
-    return corpus_cache.load_or_build("texture_root_index", _UNCOOKED, build)
+    return corpus_cache.load_or_build("texture_root_index", corpus.root(), build)
 
 
 @_memo
@@ -1586,8 +1616,9 @@ def _texture_cooked_path(path: str) -> str | None:
     # exists in the game install, never in `data/uncooked/`.
     rel = Path(*path.split("\\"))
     for root in _TEXTURE_ROOTS:
-        if (_UNCOOKED / root / rel).is_file():
-            return f"{root}/{path.replace(chr(92), '/')}.Texture.dxt"
+        cooked = f"{root}/{path.replace(chr(92), '/')}.Texture.dxt"
+        if (_UNCOOKED / root / rel).is_file() or corpus.install_path(cooked):
+            return cooked
     # Not mirrored — `FX` in particular is absent from `data/uncooked/` while
     # being the commonest texture root of all. The game's own 575 shipped
     # caches are the authoritative answer for where a resource is filed, so ask
@@ -1642,7 +1673,7 @@ def _reachable(seeds: Iterable[str], lines: list[str],
             # through and surface as an access violation at level build.
             cooked_rel = entity_cooked_path(path)
             if not (out_dir / Path(*cooked_rel.split("/"))).is_file() \
-                    and not (_UNCOOKED / Path(*cooked_rel.split("/"))).is_file():
+                    and not corpus.exists(cooked_rel):
                 _log.warning(
                     "poi: %s is referenced but exists in neither this mod nor "
                     "the corpus — left out of the preload cache rather than "
@@ -2014,19 +2045,17 @@ def _defs_preloading(cooked_ref: str, chapters: tuple[str, ...]) -> tuple[str, .
     biomes = {CHAPTERS[c].split("_")[0] for c in chapters if c in CHAPTERS}
     needle = cooked_ref.replace("/", "\\").encode()
     out: list[str] = []
-    for root in (_UNCOOKED / "Definitions" / "Tiles",
-                 _UNCOOKED / "Definitions" / "Maps"):
-        if not root.is_dir():
-            continue
-        for cache in sorted(root.rglob("*.UsedRscCache.ot")):
-            if biomes and not any(b.lower() in str(cache).lower() for b in biomes):
+    for directory in (_TILES_DIR, _MAPS_DIR):
+        # Caches are listed through the definitions they sit beside: they are
+        # in no manifest, so the install cannot enumerate them on their own.
+        for def_rel in corpus.rels(directory + "/", ".gen"):
+            cache_rel = RC.cache_path_for(def_rel)
+            if biomes and not any(b.lower() in cache_rel.lower() for b in biomes):
                 continue
-            try:
-                if needle in cache.read_bytes():
-                    out.append(cache.name.split(".")[0])
-            except OSError:
-                continue
-    return tuple(out)
+            raw = corpus.read(cache_rel)
+            if raw is not None and needle in raw:
+                out.append(cache_rel.rsplit("/", 1)[-1].split(".")[0])
+    return tuple(sorted(out))
 
 
 def chapters_of(defn: ContentDef) -> tuple[str, ...]:
@@ -2425,7 +2454,11 @@ def _prop_placements() -> dict[str, frozenset[str]]:
 
     def build() -> dict[str, list[str]]:
         tiles = collections.defaultdict(set)
-        for lvl in sorted(_UNCOOKED.glob("Ot/*/Tiles/*.level.ot.GameStream.gen")):
+        for rel in corpus.rels("Ot/", ".level.ot.GameStream.gen"):
+            parts = rel.split("/")
+            if len(parts) != 4 or parts[2] != "Tiles":     # Ot/<Biome>/Tiles/<lvl>
+                continue
+            lvl = corpus.CorpusFile(rel)
             try:
                 refs = {s for _s, _o, s in ES.list_strings(lvl.read_bytes())
                         if s.lower().endswith(".entity.ot")}
@@ -2435,7 +2468,7 @@ def _prop_placements() -> dict[str, frozenset[str]]:
                 tiles[r].add(lvl.name)
         return {k: sorted(v) for k, v in tiles.items()}
 
-    raw = corpus_cache.load_or_build("prop_placements", _UNCOOKED, build)
+    raw = corpus_cache.load_or_build("prop_placements", corpus.root(), build)
     return {k: frozenset(v) for k, v in raw.items()}
 
 
@@ -2448,8 +2481,8 @@ def _art_users() -> dict[str, frozenset[str]]:
 
     def build() -> dict[str, list[str]]:
         users = collections.defaultdict(set)
-        for p in _UNCOOKED.glob(
-                "EntitySettings/**/*.entity.ot.EntitySettingsResource.gen"):
+        for rel in corpus.rels("EntitySettings/", ".entity.ot.EntitySettingsResource.gen"):
+            p = corpus.CorpusFile(rel)
             try:
                 strings = {s for _s, _o, s in ES.list_strings(p.read_bytes())}
             except (OSError, ValueError):
@@ -2459,7 +2492,7 @@ def _art_users() -> dict[str, frozenset[str]]:
                     users[a].add(p.name.split(".entity.ot")[0])
         return {k: sorted(v) for k, v in users.items()}
 
-    raw = corpus_cache.load_or_build("art_users", _UNCOOKED, build)
+    raw = corpus_cache.load_or_build("art_users", corpus.root(), build)
     return {k: frozenset(v) for k, v in raw.items()}
 
 
@@ -2999,13 +3032,13 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         if map_dest.is_file():
             base_bytes = map_dest.read_bytes()
         else:
-            map_gen = _MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}"
-            if not map_gen.is_file():
+            map_rel = f"{_MAPS_DIR}/{stem}{MP.GEN_SUFFIX}"
+            base_bytes = corpus.read(map_rel)
+            if base_bytes is None:
                 raise SchemaNotMined(
-                    f"poi {defn.id}: mapdef for {ch} not found at {map_gen} — "
-                    f"run `python scripts/extract_uncooked.py` to mirror the corpus."
+                    f"poi {defn.id}: mapdef for {ch} not found ({map_rel}) — "
+                    f"the game install (or data/uncooked) must be readable."
                 )
-            base_bytes = map_gen.read_bytes()
 
         map_dest.parent.mkdir(parents=True, exist_ok=True)
         map_dest.write_bytes(MP.add_to_pool(base_bytes, pool_refs))

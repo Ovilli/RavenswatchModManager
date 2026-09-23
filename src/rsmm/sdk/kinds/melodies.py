@@ -48,15 +48,17 @@ import logging
 import struct
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine.cooked_schemas.definitions import _SPECS, DefinitionHandler
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_MELODY_DIR = DATA_DIR / "uncooked" / "Definitions" / "Melodies"
-_MODIFIER_DIR = DATA_DIR / "uncooked" / "Definitions" / "GameModifiers"
+#: Decoded directories of the retail defs (read through `engine.corpus`).
+_MELODY_DIR = "Definitions/Melodies"
+_MODIFIER_DIR = "Definitions/GameModifiers"
+_MODIFIER_SUFFIX = ".gamemodifierdef.ot.meModifierDefinition.gen"
 _ASSET_SUBDIR = "Definitions/Melodies"
 GEN_SUFFIX = ".melodydef.ot.lodyDefinition.gen"
 
@@ -77,15 +79,11 @@ def _entity_ref(stem: str) -> list[str]:
 
 
 def known_melodies() -> list[str]:
-    if not _MELODY_DIR.is_dir():
-        return []
-    return sorted(p.name[: -len(GEN_SUFFIX)] for p in _MELODY_DIR.glob(f"*{GEN_SUFFIX}"))
+    return corpus.stems(_MELODY_DIR, GEN_SUFFIX)
 
 
 def known_modifiers() -> list[str]:
-    if not _MODIFIER_DIR.is_dir():
-        return []
-    return sorted({p.name.split(".", 1)[0] for p in _MODIFIER_DIR.iterdir() if p.is_file()})
+    return corpus.stems(_MODIFIER_DIR, _MODIFIER_SUFFIX)
 
 
 def split_exclusions(tail: bytes) -> tuple[bytes, list[str], bytes]:
@@ -154,11 +152,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f'e.g. base="Fully_Heal". See docs/_re/kinds/melodies.md.'
         )
 
-    base_gen = _MELODY_DIR / f"{base}{GEN_SUFFIX}"
-    if not base_gen.is_file():
+    base_bytes = corpus.read(f"{_MELODY_DIR}/{base}{GEN_SUFFIX}")
+    if base_bytes is None:
         raise SchemaNotMined(
-            f"melody {defn.id}: base {base!r} not found under {_MELODY_DIR} — "
-            f"pass a retail melodydef stem whose cooked def is present. "
+            f"melody {defn.id}: base {base!r} is not a shipped melodydef. "
             f"Known: {', '.join(known_melodies()) or '(corpus absent)'}."
         )
 
@@ -172,7 +169,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if effect is not None:
         if not isinstance(effect, str) or not effect:
             raise ContentError(f"melody {defn.id}: 'effect' must be a melody stem, got {effect!r}")
-        if not (_MELODY_DIR / f"{effect}{GEN_SUFFIX}").is_file():
+        if not corpus.exists(f"{_MELODY_DIR}/{effect}{GEN_SUFFIX}"):
             raise ContentError(
                 f"melody {defn.id}: effect {effect!r} is not a retail melody. "
                 f"Known: {', '.join(known_melodies()) or '(corpus absent)'}."
@@ -183,7 +180,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         )
 
     h = handler()
-    doc = json.loads(h.decode_cooked(base_gen.read_bytes()))
+    doc = json.loads(h.decode_cooked(base_bytes))
     if effect is not None:
         doc["entity_ref"] = _entity_ref(effect)
     if exclude is not None:

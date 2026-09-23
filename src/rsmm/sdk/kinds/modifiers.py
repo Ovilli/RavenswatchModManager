@@ -35,17 +35,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import game_modifier_cook as GMC
 from ...engine import text_patches as TP
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_MODIFIER_DIR = DATA_DIR / "uncooked" / "Definitions" / "GameModifiers"
+#: Decoded directory of the retail modifier defs (read through `engine.corpus`).
+_MODIFIER_DIR = "Definitions/GameModifiers"
 _ASSET_SUBDIR = "Definitions/GameModifiers"
-_TEXT_BANK_GEN = DATA_DIR / "uncooked" / "Text" / "ChallengesAndGameModifiers~GAM.xls.LocalText.gen"
+_TEXT_BANK_NAME = "ChallengesAndGameModifiers~GAM.xls.LocalText.gen"
 _TEXT_BANK_DECODED = "Text/ChallengesAndGameModifiers~GAM.xls.LocalText.gen"
 
 #: Modifier / difficulty behaviours selectable via ``effect``. The keys are the
@@ -114,11 +115,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f'e.g. base="NoMinimap". See docs/_re/kinds/game-modifiers.md.'
         )
 
-    base_gen = _MODIFIER_DIR / f"{base}{GMC.GEN_SUFFIX}"
-    if not base_gen.is_file():
+    base_bytes = corpus.read(f"{_MODIFIER_DIR}/{base}{GMC.GEN_SUFFIX}")
+    if base_bytes is None:
         raise SchemaNotMined(
-            f"modifier {defn.id}: base {base!r} not found under {_MODIFIER_DIR} — "
-            f"pass a vanilla modifier id whose cooked def is present."
+            f"modifier {defn.id}: base {base!r} is not a shipped game modifier — "
+            f"pass a vanilla modifier id (the game install, or data/uncooked, must "
+            f"be readable)."
         )
 
     effect = defn.fields.get("effect")
@@ -137,7 +139,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     try:
         new_cooked, base_key = GMC.clone(
-            base_gen.read_bytes(), base, defn.id,
+            base_bytes, base, defn.id,
             effect_key=effect_key, relabel_text=relabel,
         )
     except GMC.GameModifierCookError as e:
@@ -153,7 +155,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         bank = _install_bank()
         if bank is None:
             raise SchemaNotMined(
-                f"modifier {defn.id}: text bank {_TEXT_BANK_GEN.name} not found in "
+                f"modifier {defn.id}: text bank {_TEXT_BANK_NAME} not found in "
                 f"the game install, so the display name/description can't be set "
                 f"— drop 'name'/'description' to emit the def alone."
             )

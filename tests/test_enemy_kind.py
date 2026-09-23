@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.engine import cooked
+from rsmm.engine import cooked, corpus
 from rsmm.engine.cooked_schemas import definitions as D
 from rsmm.sdk.content import ContentDef, ContentError
 from rsmm.sdk.kinds import enemies
 
 _BASE = "Gnoll_Shielded"
-_BASE_GEN = enemies._ENEMY_DIR / f"{_BASE}{enemies._ENEMY_GEN_SUFFIX}"
+_BASE_GEN = corpus.CorpusFile(f"{enemies._ENEMY_DIR}/{_BASE}{enemies._ENEMY_GEN_SUFFIX}")
 
 
 def _require_corpus():
@@ -31,7 +31,8 @@ def _require_corpus():
 
 def _decode(path) -> dict:
     spec = D._SPECS["oCDtEnemyDefinition"]
-    return spec.decode_body(cooked.parse(Path(path).read_bytes()).sections[-1].payload)
+    src = path if hasattr(path, "read_bytes") else Path(path)   # CorpusFile or Path
+    return spec.decode_body(cooked.parse(src.read_bytes()).sections[-1].payload)
 
 
 def _emit(tmp_path: Path, *, id: str = "Clone", **fields) -> list[Path]:

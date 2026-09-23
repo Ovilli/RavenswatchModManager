@@ -71,35 +71,44 @@ byte-edited entity copy). See ``docs/MOD_AUTHORING.md`` and the
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import entity_append as EA
 from ...engine import talent_values as TV
 from ...engine.entity_edit import EntityEdit
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
 #: Where vanilla hero entity files live in-repo (one subdir per hero).
-_HEROES_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
-_GEN_GLOB = "*.entity.ot.EntitySettingsResource.gen"
+_HEROES_DIR = "EntitySettings/Heroes"
+_GEN_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 #: Decoded asset-path prefix (forward-slash) the patched override is written at.
 _ASSET_PREFIX = "EntitySettings/Heroes"
 
 
-def _resolve_hero_dir(hero: str) -> Path | None:
+@dataclass(frozen=True)
+class _HeroDir:
+    """A shipped ``EntitySettings/Heroes/Hero_<hero>`` directory, read from the
+    mirror or the install (`engine.corpus`)."""
+
+    name: str
+
+    def entity_files(self) -> list[corpus.CorpusFile]:
+        return corpus.files(f"{_HEROES_DIR}/{self.name}", _GEN_SUFFIX)
+
+
+def _resolve_hero_dir(hero: str) -> _HeroDir | None:
     """Return the ``Hero_<hero>`` dir for a hero name, case-insensitively."""
-    if not _HEROES_DIR.is_dir():
-        return None
     low = hero.lower()
-    for d in _HEROES_DIR.glob("Hero_*"):
-        if not d.is_dir():
+    for name in corpus.subdirs(_HEROES_DIR):
+        if not name.startswith("Hero_"):
             continue
-        stem = d.name[len("Hero_"):]
-        if stem.lower() == low or d.name.lower() == low:
-            return d
+        if name[len("Hero_"):].lower() == low or name.lower() == low:
+            return _HeroDir(name)
     return None
 
 
@@ -157,7 +166,7 @@ def _modifier_stat_from(hero: str, node: str) -> bytes:
     if hero_dir is None:
         raise ContentError(f"modifier_stat: no vanilla hero dir for {hero!r}")
     found = []
-    for p in sorted(hero_dir.glob(_GEN_GLOB)):
+    for p in hero_dir.entity_files():
         blob = p.read_bytes()
         if node.encode("ascii") not in blob:
             continue
@@ -287,7 +296,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if hero_dir is None:
         raise ContentError(
             f"talent {defn.id}: no vanilla hero dir for {hero!r} under "
-            f"EntitySettings/Heroes (is data/uncooked present?)")
+            f"EntitySettings/Heroes — is the game install readable?")
 
     file_filter = defn.fields.get("file")
     file_filter = str(file_filter).lower() if file_filter else None
@@ -302,7 +311,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"clone_nodes or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
-    candidates = [p for p in sorted(hero_dir.glob(_GEN_GLOB))
+    candidates = [p for p in hero_dir.entity_files()
                   if file_filter is None or file_filter in p.name.lower()]
     if not candidates:
         raise ContentError(
@@ -315,7 +324,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Another talent block in this mod may already have written the same entity
     # during this emit (the previous emit's files are removed before any block
     # runs). Start from that copy, or this block silently discards its edits.
-    edited: dict[Path, bytes] = {}
+    edited: dict[corpus.CorpusFile, bytes] = {}
     for p in candidates:
         earlier = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
         if earlier.is_file():

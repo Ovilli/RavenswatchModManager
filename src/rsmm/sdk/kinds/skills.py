@@ -50,23 +50,22 @@ import logging
 import struct
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import text_patches as TP
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_HERODEF_DIR = DATA_DIR / "uncooked" / "Definitions" / "Heroes"
+#: Decoded directories read through `engine.corpus` (mirror or install).
+_HERODEF_DIR = "Definitions/Heroes"
+_HERODEF_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 
 
 def _hero_token(hero: str) -> str | None:
     """Canonical herodef stem for a hero name (e.g. ``Snow_Queen``)."""
-    if not _HERODEF_DIR.is_dir():
-        return None
     low = hero.lower().replace(" ", "_")
-    for p in _HERODEF_DIR.glob("*.herodef.ot.DtHeroDefinition.gen"):
-        stem = p.name.split(".", 1)[0]
+    for stem in corpus.stems(_HERODEF_DIR, _HERODEF_SUFFIX):
         if stem.lower() == low:
             return stem
     return None
@@ -209,8 +208,7 @@ def _require_bank(hero_token: str) -> tuple[Path, str]:
     return bank
 
 
-_ENTITY_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
-_UI_MIRROR = DATA_DIR / "uncooked"
+_ENTITY_DIR = "EntitySettings/Heroes"
 
 
 def _slot_icon_texture(hero_token: str, controller: str) -> str:
@@ -230,9 +228,11 @@ def _slot_icon_texture(hero_token: str, controller: str) -> str:
         name = f"Skill Controller {name}"
     pat = struct.pack("<I", len(name)) + name.encode("ascii")
     low = hero_token.lower()
-    dirs = [d for d in _ENTITY_DIR.glob("Hero_*") if d.name[5:].lower() == low]
+    dirs = [d for d in corpus.subdirs(_ENTITY_DIR)
+            if d.startswith("Hero_") and d[5:].lower() == low]
     for d in dirs:
-        for gen in sorted(d.glob("*.entity.ot.EntitySettingsResource.gen")):
+        for gen in corpus.files(f"{_ENTITY_DIR}/{d}",
+                                ".entity.ot.EntitySettingsResource.gen"):
             blob = gen.read_bytes()
             at = blob.find(pat)
             if at < 0:
@@ -286,11 +286,15 @@ def _emit_icon(hero_token: str, controller: str, icon: str,
     decoded = _slot_icon_texture(hero_token, controller)
     png = src.read_bytes()
     w, h, rgba = IMG.decode_png(png)
-    # Match the vanilla texture's size when the mirror has it, so the cooked
-    # icon occupies the same memory and layout as the one it replaces.
-    mirror = _UI_MIRROR / decoded.removesuffix(".Texture.dxt")
-    if mirror.is_file():
-        vw, vh, _ = IMG.decode_png(mirror.read_bytes())
+    # Match the vanilla texture's size, so the cooked icon occupies the same
+    # memory and layout as the one it replaces. Read from the cooked header:
+    # the install has no decoded PNG, only the mirror does.
+    from ...engine.cooked_schemas.texture import cooked_dimensions
+
+    vanilla = corpus.read(decoded)
+    dims = cooked_dimensions(vanilla) if vanilla else None
+    if dims is not None:
+        vw, vh = dims
         if (vw, vh) != (w, h):
             rgba, w, h = _scale_rgba(w, h, rgba, vw, vh), vw, vh
             png = IMG.encode_png(w, h, rgba)
@@ -314,8 +318,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     hero_token = _hero_token(hero)
     if hero_token is None:
         raise ContentError(
-            f"skill {defn.id}: no herodef for {hero!r} under Definitions/Heroes "
-            f"(is data/uncooked present?)")
+            f"skill {defn.id}: no herodef for {hero!r} under Definitions/Heroes — "
+            f"is the game install readable?")
 
     mode = (defn.fields.get("mode") or "relabel").lower()
     # Only RELABEL is emitted. The two herodef modes are refused, each for a

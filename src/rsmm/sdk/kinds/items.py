@@ -34,8 +34,8 @@ import logging
 import struct
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import magic_item_cook as cook
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 from .item import schema as item_schema
@@ -44,7 +44,9 @@ from .item.builder import build_manifest
 _log = logging.getLogger(__name__)
 
 #: Where the vanilla magical-object entities + text bank live in-repo.
-_MO_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Objects" / "Magical_Objects"
+#: Decoded directory of the retail magical objects (read through `engine.corpus`).
+_MO_DIR = "EntitySettings/Objects/Magical_Objects"
+_MO_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 _RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
 PENDING_ITEMS_SUBDIR = "_pending_items"
@@ -62,13 +64,12 @@ def _find_base(base_id: str) -> tuple[bytes, str] | None:
     of cooking a real clone.
     """
     want_rarity, _, stem = str(base_id).replace("\\", "/").rpartition("/")
-    leaf = f"{stem}.entity.ot.EntitySettingsResource.gen"
     for rarity in _RARITIES:
         if want_rarity and rarity.lower() != want_rarity.lower():
             continue
-        p = _MO_DIR / rarity / leaf
-        if p.is_file():
-            return p.read_bytes(), rarity
+        raw = corpus.read(f"{_MO_DIR}/{rarity}/{stem}{_MO_SUFFIX}")
+        if raw is not None:
+            return raw, rarity
     return None
 
 
@@ -165,16 +166,13 @@ _BAN_FIELDS = ("mode", "items")
 def _vanilla_item_ids() -> set[str]:
     """Every vanilla magical-object id present in the in-repo corpus.
 
-    Empty when ``data/uncooked`` is absent (a frozen build, a fresh checkout),
-    in which case ban ids simply go unvalidated here and are checked again at
-    apply time against the install's own versiondef vector.
+    Read from the game install or the mirror (`engine.corpus`). Empty only
+    when neither is readable, in which case ban ids go unvalidated here and
+    are checked again at apply time against the install's versiondef vector.
     """
     out: set[str] = set()
     for rarity in _RARITIES:
-        d = _MO_DIR / rarity
-        if not d.is_dir():
-            continue
-        for f in d.glob("*.entity.ot.EntitySettingsResource.gen"):
+        for f in corpus.files(f"{_MO_DIR}/{rarity}", _MO_SUFFIX):
             out.add(f.name.split(".entity.ot", 1)[0])
     return out
 
@@ -359,8 +357,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     found = _find_base(base)
     if found is None:
-        # Base isn't a known vanilla magical object (or data/uncooked is
-        # absent): fall back to the legacy manifest so registration/tagging
+        # Base isn't a known vanilla magical object (or no game install is
+        # readable): fall back to the legacy manifest so registration/tagging
         # still works. Real cooked output requires a real base id.
         return _emit_legacy_manifest(mod_id, defn, out_dir)
 

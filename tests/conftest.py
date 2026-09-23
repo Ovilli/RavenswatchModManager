@@ -184,3 +184,22 @@ def _guard_real_mods_dir(request):
         "monkeypatch.setenv('RSMM_MODS_DIR', str(tmp_path)).",
         pytrace=False,
     )
+
+
+@pytest.fixture
+def install_only(monkeypatch):
+    """Hide the `data/uncooked` mirror so every corpus read falls through to
+    the game install — the only store a player's machine has. Skips without
+    an install. See `rsmm.engine.corpus`."""
+    from rsmm.engine import corpus
+    from rsmm.engine import enemy_pools as EP
+
+    if corpus.cooking_dir() is None:
+        pytest.skip("no game install to read the cooked corpus from")
+    missing = Path("/nonexistent/uncooked")
+    monkeypatch.setattr(corpus, "UNCOOKED", missing)
+    monkeypatch.setattr(EP, "UNCOOKED", missing)
+    monkeypatch.setattr(EP, "OT_DIR", missing / "Ot")
+    monkeypatch.setattr(EP, "ENEMY_DIR", missing / "Definitions" / "Enemies")
+    assert corpus.source() == "install"
+    yield

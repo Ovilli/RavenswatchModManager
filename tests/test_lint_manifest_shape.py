@@ -98,3 +98,26 @@ def test_unknown_mod_key_only_warns(tmp_path, capsys):
     out = _out(capsys)
     assert errs == 0 and warns >= 1, out
     assert "unknown key 'licence' (did you mean 'license'?)" in out
+
+
+def test_unknown_base_is_an_error(tmp_path, capsys, monkeypatch):
+    """An unknown `base` used to surface only at `rsmm apply`, as a skipped
+    block. The ids come from `rsmm schema`'s lists, stubbed here."""
+    from rsmm.cli import cmd_schema
+    monkeypatch.setattr(lint, "_BASE_IDS", {})
+    monkeypatch.setitem(cmd_schema.SOURCES, "melody", lambda: ["Fully_Heal", "Swift"])
+    errs = _lint(tmp_path, '[[content]]\nkind = "melody"\nid = "m"\n'
+                           'base = "Fully_Hael"\neffect = "Swift"\n')
+    out = _out(capsys)
+    assert errs >= 1 and "base 'Fully_Hael' is not a shipped melody" in out, out
+    assert "did you mean 'Fully_Heal'?" in out
+
+
+def test_base_check_is_skipped_without_a_corpus(tmp_path, capsys, monkeypatch):
+    from rsmm.cli import cmd_schema
+    monkeypatch.setattr(lint, "_BASE_IDS", {})
+    monkeypatch.setitem(cmd_schema.SOURCES, "melody", lambda: [])
+    errs = _lint(tmp_path, '[[content]]\nkind = "melody"\nid = "m"\n'
+                           'base = "Anything"\neffect = "Swift"\n')
+    assert "is not a shipped" not in _out(capsys)
+    assert errs == 1    # only the experimental gate: melody is rated 'guess'

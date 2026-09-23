@@ -616,3 +616,22 @@ class TextureHandler(SchemaHandler):
 
 
 register(TextureHandler())
+
+
+def cooked_dimensions(raw: bytes) -> tuple[int, int] | None:
+    """``(width, height)`` of a cooked oCTexture container, or None when it is
+    not one. Reads the header only — the install carries no decoded PNG to ask."""
+    from .. import cooked
+
+    try:
+        cf = cooked.parse(raw)
+    except Exception:  # noqa: BLE001 — not a cooked container
+        return None
+    for s in cf.sections:
+        try:
+            sc = _decode_payload(s.payload)
+        except (ValueError, struct.error):
+            continue
+        if sc.width and sc.height:
+            return sc.width, sc.height
+    return None

@@ -33,14 +33,15 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import game_mode_cook as GMC
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_GAMEMODE_DIR = DATA_DIR / "uncooked" / "Definitions" / "GameModes"
+#: Decoded directory of the retail game-mode defs (read through `engine.corpus`).
+_GAMEMODE_DIR = "Definitions/GameModes"
 _ASSET_SUBDIR = "Definitions/GameModes"
 _DEFAULT_BASE = "All_Chapters"
 
@@ -67,14 +68,17 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"appears more than once. The list names the SAME chapter object twice, "
             f"and the game skips the repeat (tested 2026-09-19: [0, 0, 1] went "
             f"Dark Hills -> Storm Island). Each chapter may appear once.")
-    base_gen = _GAMEMODE_DIR / f"{base}{GMC.GEN_SUFFIX}"
-    if not base_gen.is_file():
+    base_bytes = corpus.read(f"{_GAMEMODE_DIR}/{base}{GMC.GEN_SUFFIX}")
+    if base_bytes is None:
+        known = corpus.stems(_GAMEMODE_DIR, GMC.GEN_SUFFIX)
         raise SchemaNotMined(
-            f"game_mode {defn.id}: base {base!r} not found under {_GAMEMODE_DIR}."
+            f"game_mode {defn.id}: base {base!r} is not a shipped game mode"
+            + (f" (known: {', '.join(known)})." if known else
+               " — and no game install or data/uncooked mirror was found to read.")
         )
 
     try:
-        new_cooked = GMC.set_chapter_sequence(base_gen.read_bytes(), list(chapters))
+        new_cooked = GMC.set_chapter_sequence(base_bytes, list(chapters))
     except GMC.GameModeCookError as e:
         raise ContentError(f"game_mode {defn.id}: {e}") from e
 

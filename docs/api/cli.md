@@ -48,7 +48,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm run` | `rsmm.cli.run` | rsmm run — launch Ravenswatch via Steam, ensuring the WINEDLLOVERRIDES |
 | `rsmm safe-mode` | `rsmm.cli.safe_mode` | `rsmm safe-mode` — drive the SDK health quarantine. |
 | `rsmm save` | `rsmm.cli.cmd_save` | `rsmm save` — inspect Ravenswatch profile saves. |
-| `rsmm schema` | `rsmm.cli.cmd_schema` | rsmm schema — list cloneable vanilla content ids. |
+| `rsmm schema` | `rsmm.cli.cmd_schema` | rsmm schema — list the vanilla ids a content kind's ``base`` accepts. |
 | `rsmm sdk-doctor` | `rsmm.cli.sdk_doctor` | `rsmm sdk-doctor` — SDK v3 self-check. |
 | `rsmm sign` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm symbols` | `rsmm.cli.cmd_symbols` | ``rsmm symbols`` — the engine symbol map (Minecraft-style mappings). |

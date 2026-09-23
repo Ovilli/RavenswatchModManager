@@ -25,21 +25,18 @@ import argparse
 import sys
 from pathlib import Path
 
+from rsmm.engine import corpus
 from rsmm.engine import magic_item_cook as cook
-from rsmm.engine.paths import DATA_DIR
 
-_MO_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Objects" / "Magical_Objects"
-_ICON_DIR = DATA_DIR / "uncooked" / "Ui" / "Objects"
 _RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
 
 def _iter_items():
-    """Yield (id, rarity, cooked_path) for every vanilla magical object."""
+    """Yield (id, rarity, file) for every vanilla magical object; ``file`` has
+    ``.name`` / ``.read_bytes()`` and reads the mirror or the game install."""
     for rarity in _RARITIES:
-        d = _MO_DIR / rarity
-        if not d.is_dir():
-            continue
-        for p in sorted(d.glob("*.entity.ot.EntitySettingsResource.gen")):
+        for p in corpus.files(f"EntitySettings/Objects/Magical_Objects/{rarity}",
+                              ".entity.ot.EntitySettingsResource.gen"):
             yield p.name.split(".entity.ot.", 1)[0], rarity, p
 
 
@@ -65,11 +62,15 @@ def _find_item(item_id: str):
 
 
 def _icon_stems(grep: str | None) -> list[str]:
-    if not _ICON_DIR.is_dir():
-        return []
+    # The mirror holds decoded `.png`s, the install cooked `.png.Texture.dxt`
+    # files; `corpus.rels` lists whichever store is present, and the stem is
+    # the same either way.
     out = set()
-    for p in _ICON_DIR.glob("UI_Object_*.png*"):
-        stem = p.name[len("UI_Object_"):].split(".png", 1)[0]
+    for rel in corpus.rels("Ui/Objects/"):
+        name = rel.rsplit("/", 1)[-1]
+        if not name.startswith("UI_Object_") or ".png" not in name:
+            continue
+        stem = name[len("UI_Object_"):].split(".png", 1)[0]
         if grep is None or grep.lower() in stem.lower():
             out.add(stem)
     return sorted(out)
@@ -85,7 +86,8 @@ def _cmd_list(args) -> int:
         icon = cook.find_icon(p.read_bytes()) or ""
         rows.append((rarity, iid, icon))
     if not rows:
-        print("(no items found — does data/uncooked/ exist?)", file=sys.stderr)
+        print("(no items found — is the game install readable? set RSMM_GAME_DIR)",
+              file=sys.stderr)
         return 1
     for rarity, iid, icon in rows:
         icon_stem = icon.split("UI_Object_", 1)[-1].split(".png", 1)[0] if icon else "-"

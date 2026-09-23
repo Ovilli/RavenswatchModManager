@@ -446,6 +446,46 @@ def _has_ban_picker(mod_root: Path | None) -> bool:
     return has_picker(mod_root.name, mod_root.parent)
 
 
+_BASE_IDS: dict[str, list[str]] = {}
+
+
+def _check_base(mod_s: str, where: str, kind: str, base) -> int:
+    """Is ``base`` a shipped id this kind accepts? The same lists `rsmm schema`
+    prints, read from the game install (or the mirror). Returns 1 on a miss.
+
+    Skipped when nothing is readable: an unknown base is also refused at
+    `apply`, so a machine without an install loses the early warning, not the
+    check. `item` keeps its own validator — an unknown item base deliberately
+    falls back to the legacy manifest path.
+    """
+    from rsmm.cli import cmd_schema
+
+    if kind == "item" or kind not in cmd_schema.SOURCES or not isinstance(base, str):
+        return 0
+    if kind not in _BASE_IDS:
+        try:
+            _BASE_IDS[kind] = cmd_schema.ids_for(kind)
+        except Exception:  # noqa: BLE001 — an unreadable corpus is not the mod's fault
+            _BASE_IDS[kind] = []
+    ids = _BASE_IDS[kind]
+    if kind == "enemy":
+        # A clone may start from any shipped enemy definition, bosses included;
+        # `rsmm schema enemy` lists only non-bosses for readability.
+        if "boss" not in _BASE_IDS:
+            try:
+                _BASE_IDS["boss"] = cmd_schema.ids_for("boss")
+            except Exception:  # noqa: BLE001
+                _BASE_IDS["boss"] = []
+        ids = ids + _BASE_IDS["boss"]
+    if not ids or base in ids:
+        return 0
+    near = MS.unknown_keys({base}, ids)[0][1]
+    hint = f" (did you mean {near!r}?)" if near else ""
+    print(f"  {_T_FAIL} {mod_s}: {where}: base {_ST.accent(repr(base))} is not a "
+          f"shipped {kind}{hint} {_ST.dim(f'— list them with `rsmm schema {kind}`')}")
+    return 1
+
+
 def _lint_content(modname: str, blocks: list[dict],
                   *, experimental: bool = False,
                   mod_root: Path | None = None) -> tuple[int, int]:
@@ -483,6 +523,7 @@ def _lint_content(modname: str, blocks: list[dict],
             errs += 1
             continue
         errs += _report_unknown(mod_s, where, c, allowed)
+        errs += _check_base(mod_s, where, str(kind), c.get("base"))
         conf = kind_confidence(str(kind))
         if conf == "confirmed":
             continue

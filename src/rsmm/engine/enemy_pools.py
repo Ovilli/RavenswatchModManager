@@ -33,7 +33,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Final
 
-from . import cooked, corpus_cache
+from . import cooked, corpus, corpus_cache
 from .cooked_schemas import definitions as _defs
 from .paths import DATA_DIR
 
@@ -74,112 +74,14 @@ def cooked_rel_for(enemy_id: str) -> str:
     return f"{ENEMY_ASSET_SUBDIR}/{enemy_id}{GEN_SUFFIX}"
 
 
-# --------------------------------------------------------------------------- #
-# Corpus source. Two places hold the same cooked bytes, and only one of them
-# exists on a player's machine.
-#
-# `data/uncooked/` is the authoring mirror: 7.3 GB, gitignored, built by
-# `scripts/extract_uncooked.py` from an install. It is NOT bundled into the
-# PyInstaller sidecar and never will be, so for every downloaded copy of the
-# app it simply is not there — which used to mean the `enemy` kind raised
-# `SchemaNotMined` and emitted nothing on exactly the machines the mod is for.
-#
-# The install has the same bytes. `extract_uncooked` COPIES non-texture cooked
-# files verbatim, so `data/uncooked/<decoded>` is byte-identical to
-# `<install>/DarkTalesResources/_Cooking/<encoded>` (verified per file below by
-# construction: same bytes, different name). `data/asset_map.json` IS bundled,
-# so the decoded -> encoded direction is available everywhere.
-#
-# Two rules this indirection has to hold, both of which are silent when broken:
-#
-# 1. **Read the pristine copy.** `apply` overwrites cooked files in place and
-#    leaves `<file>.rsmm.bak` beside them. This module answers "what does the
-#    game ship", so a `.bak` — when one exists — IS the answer; reading the
-#    live file would make an already-applied override look like vanilla and
-#    compound edit on top of edit at the next apply.
-# 2. **Never write here.** Everything below opens the install read-only. The
-#    only writer of the game directory is the apply pipeline.
-# --------------------------------------------------------------------------- #
-
-def _cooking_dir() -> Path | None:
-    """``<install>/DarkTalesResources/_Cooking``, or None without an install."""
-    from ..cli.apply_mods import find_game_dir
-    from .paths import COOKING_SUBDIR
-
-    game = find_game_dir()
-    if game is None:
-        return None
-    d = Path(game) / COOKING_SUBDIR
-    return d if d.is_dir() else None
-
-
-def _install_path(rel: str) -> Path | None:
-    """Where a decoded cooked path lives in the install, pristine copy first."""
-    from ..cli.apply_mods import resolve_special
-    from .asset_map import decoded_to_encoded
-
-    cooking = _cooking_dir()
-    if cooking is None:
-        return None
-    dec2enc = decoded_to_encoded()
-    enc = dec2enc.get(rel) or resolve_special(rel, dec2enc)
-    if not enc:
-        return None
-    p = cooking / enc.replace("\\", "/")
-    bak = p.with_name(p.name + ".rsmm.bak")
-    if bak.is_file():
-        return bak
-    return p if p.is_file() else None
-
-
-def corpus_source() -> str:
-    """Which store is answering: ``"mirror"``, ``"install"`` or ``"none"``."""
-    if ENEMY_DIR.is_dir():
-        return "mirror"
-    return "install" if _cooking_dir() is not None else "none"
-
-
-def corpus_root() -> Path:
-    """Directory whose fingerprint decides whether a cached sweep is stale."""
-    if ENEMY_DIR.is_dir():
-        return UNCOOKED
-    return _cooking_dir() or UNCOOKED
-
-
-def corpus_read(rel: str) -> bytes | None:
-    """Cooked bytes for a decoded path, from the mirror or from the install."""
-    p = UNCOOKED / Path(*rel.split("/"))
-    if p.is_file():
-        return p.read_bytes()
-    src = _install_path(rel)
-    try:
-        return src.read_bytes() if src is not None else None
-    except OSError:
-        return None
-
-
-def corpus_rels(prefix: str = "", suffix: str = "") -> list[str]:
-    """Every decoded cooked path in the corpus under ``prefix`` ending in
-    ``suffix``.
-
-    From the mirror's own tree when it exists, otherwise from the shipped
-    `asset_map` — which is derived from `UsedRscList.ot` and therefore lists
-    every asset the engine can load. Caches (`*.UsedRscCache.ot`) are the one
-    family absent from it; they are read by name, never listed.
-    """
-    if ENEMY_DIR.is_dir() or UNCOOKED.is_dir():
-        base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
-        if base.is_dir():
-            return sorted(
-                p.relative_to(UNCOOKED).as_posix()
-                for p in base.rglob(f"*{suffix}") if p.is_file()
-            )
-    from .asset_map import decoded_to_encoded
-
-    if _cooking_dir() is None:
-        return []
-    return sorted(k for k in decoded_to_encoded()
-                  if k.startswith(prefix) and k.endswith(suffix))
+# Corpus access lives in `rsmm.engine.corpus`; these names are kept because the
+# enemy/boss/map kinds and their tests import them from here.
+corpus_read = corpus.read
+corpus_rels = corpus.rels
+corpus_source = corpus.source
+corpus_root = corpus.root
+_cooking_dir = corpus.cooking_dir
+_install_path = corpus.install_path
 
 
 def pool_files() -> list[tuple[str, Path]]:

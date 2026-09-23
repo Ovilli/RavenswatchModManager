@@ -47,11 +47,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from ...engine import cooked
+from ...engine import cooked, corpus
 from ...engine import enemy_pools as EP
 from ...engine import rsc_cache as RC
 from ...engine.cooked_schemas import definitions as _defs
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
@@ -59,7 +58,7 @@ _log = logging.getLogger(__name__)
 
 #: Where the vanilla enemy definitions live in-repo (one cooked `.gen` per
 #: enemy id). The clone source for a custom enemy.
-_ENEMY_DIR = DATA_DIR / "uncooked" / "Definitions" / "Enemies"
+_ENEMY_DIR = "Definitions/Enemies"
 _ENEMY_GEN_SUFFIX = ".enemydef.ot.DtEnemyDefinition.gen"
 #: Decoded asset path (forward-slash) the apply pipeline registers in
 #: UsedRscList. The stem is the enemy's library identity.
@@ -68,7 +67,8 @@ _ENEMY_ASSET_SUBDIR = "Definitions/Enemies"
 #: Where the vanilla tribe definitions live in-repo — the set a custom enemy's
 #: ``tribe`` must name, or the runtime roster won't resolve it (it would load
 #: but never spawn). See :func:`_known_tribes`.
-_TRIBE_DIR = DATA_DIR / "uncooked" / "Definitions" / "EnemyTribes"
+_TRIBE_DIR = "Definitions/EnemyTribes"
+_TRIBE_SUFFIX = ".enemytribedef.ot.DtEnemyTribeDefinition.gen"
 
 #: ``spawn_weight`` guardrails. The weighted camp-roster selection overflowed
 #: and crashed the game at weight ``9999`` (enemy-spawn-model note). Vanilla
@@ -80,11 +80,9 @@ SPAWN_WEIGHT_WARN: Final[float] = 100.0
 
 def _known_tribes() -> set[str]:
     """The vanilla tribe names a custom enemy may join (stems under
-    ``data/uncooked/Definitions/EnemyTribes``). Empty if the corpus is absent
-    (frozen builds that don't bundle it) — callers skip the check then."""
-    if not _TRIBE_DIR.is_dir():
-        return set()
-    return {p.name.split(".", 1)[0] for p in _TRIBE_DIR.glob("*.enemytribedef.*")}
+    ``Definitions/EnemyTribes``, read from the install or the mirror). Empty
+    only when neither is readable — callers skip the check then."""
+    return set(corpus.stems(_TRIBE_DIR, _TRIBE_SUFFIX))
 
 
 def _tribe_of_ref(ref_path: str) -> str | None:
@@ -256,9 +254,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     base_cooked = _load_base_cooked(base)
     if base_cooked is None:
         raise SchemaNotMined(
-            f"enemy {defn.id}: base {base!r} not found under "
-            f"{_ENEMY_DIR} — pass a vanilla enemy id whose cooked def is "
-            f"bundled (run `rsmm enemies` to list bases)."
+            f"enemy {defn.id}: base {base!r} is not a shipped enemy "
+            f"({_ENEMY_DIR}) — list them with `rsmm schema enemy`."
         )
 
     spec = _defs._SPECS[_enemy_class()]

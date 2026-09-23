@@ -685,14 +685,14 @@ def test_testkit_conflicts(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _has_uncooked() -> bool:
-    from rsmm.cli import cmd_schema
-    return cmd_schema._UNCOOKED.is_dir()
+def _has_corpus() -> bool:
+    from rsmm.engine import corpus
+    return corpus.source() != "none"
 
 
-# Uncooked game assets are gitignored (not on CI runners) — skip when absent.
+# Needs the game install or the (gitignored) mirror — neither is on CI runners.
 _needs_uncooked = pytest.mark.skipif(
-    not _has_uncooked(), reason="data/uncooked not present (run `rsmm uncook`)")
+    not _has_corpus(), reason="no game install or data/uncooked mirror")
 
 
 @_needs_uncooked
@@ -702,9 +702,19 @@ def test_schema_lists_known_bases():
     assert "Aladdin" in heroes and "Melusine" in heroes
     bosses = cmd_schema.ids_for("boss")
     enemies = cmd_schema.ids_for("enemy")
-    assert all("Boss" in b for b in bosses)        # boss = enemies w/ 'Boss'
-    assert all("Boss" not in e for e in enemies)   # enemy = the rest
+    assert "Boss_Crab" in bosses
+    assert not set(bosses) & set(enemies)          # boss = flagged Boss; enemy = the rest
     assert cmd_schema.ids_for("item")              # non-empty
+    assert "Dark_Hills/6x6_Crystal_01" in cmd_schema.ids_for("poi")
+
+
+@_needs_uncooked
+def test_schema_answers_the_same_without_the_mirror(install_only):
+    """A player's machine has no mirror; the listing must not depend on it."""
+    from rsmm.cli import cmd_schema
+    assert "Aladdin" in cmd_schema.ids_for("hero")
+    assert "Fully_Heal" in cmd_schema.ids_for("melody")
+    assert "Camp_Rewards_Dark_Hills_Update5" in cmd_schema.ids_for("reward")
 
 
 @_needs_uncooked
@@ -719,9 +729,11 @@ def test_schema_cli_summary_and_grep(capsys):
 
 
 def test_schema_missing_uncooked_returns_error(tmp_path, monkeypatch):
-    """With no uncooked data, the command exits non-zero with guidance."""
+    """With neither a game install nor the mirror, it exits non-zero with
+    guidance instead of printing empty lists."""
     from rsmm.cli import cmd_schema
-    monkeypatch.setattr(cmd_schema, "_UNCOOKED", tmp_path / "nope")
+    from rsmm.engine import corpus
+    monkeypatch.setattr(corpus, "source", lambda: "none")
     assert cmd_schema.main([]) == 1
 
 
