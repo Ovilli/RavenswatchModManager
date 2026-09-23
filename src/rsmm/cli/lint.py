@@ -206,12 +206,6 @@ def lint_one(entry: Path) -> tuple[int, int]:
                 print(f"  {_T_FAIL} {mod_s}: ot patch file must be a relative path "
                       f"inside the install: {_ST.accent(repr(f))}")
                 errs += 1
-        elif kind == "url":
-            for k in ("field", "value"):
-                if k not in p:
-                    print(f"  {_T_FAIL} {mod_s}: url patch missing {_ST.accent(repr(k))}")
-                    errs += 1
-                    break
         elif kind == "composite":
             # Accept any; backing impl may be a no-op today.
             pass

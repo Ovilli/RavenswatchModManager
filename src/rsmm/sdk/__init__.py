@@ -5,7 +5,6 @@ Mod authors do:
     from rsmm import sdk
     with sdk.Mod("MyMod") as m:
         m.stat(...)               # legacy v1 surface (delegated to cli.stat)
-        m.text(...)               # legacy v1 surface (delegated to cli.text)
         m.config({"damage": {"type": "float", "default": 1.0}})
         m.i18n("EN", {"hello": "Hi"})
         # Typed registry builders return a ContentRef handle (Forge
@@ -137,9 +136,6 @@ class Mod:
 
     def stat(self, *args, **kwargs):
         return self._b.stat(*args, **kwargs)
-
-    def text(self, *args, **kwargs):
-        return self._b.text(*args, **kwargs)
 
     # --- v3 surface ----------------------------------------------------
 

@@ -286,18 +286,6 @@ bytes verbatim as section payload, giving a byte-level edit path today.
 ./rsmm cook --from ref.yqz model.gltf -o out.yqz
 ```
 
-### `rsmm texture`
-
-Swap a texture by donor reference.
-
-```sh
-./rsmm texture --list                              # List all textures
-./rsmm texture --list --grep Hero_Romeo           # Search
-./rsmm texture --mod-id MyMod                      \
-    'Ui/path/to/target.dxt=Ui/path/to/donor.dxt'  # Assign
-./rsmm apply                                       # Apply
-```
-
 ### `rsmm map-editor`
 
 Edit a chapter's map-generation recipe in the browser: how many of each tile
@@ -323,69 +311,19 @@ change what generates.
 The server answers only loopback hosts, and every write needs a token that
 exists only in the page it served.
 
-### `rsmm stat`
+### Numeric values and texture swaps
 
-Edit numeric game values (globals, modifiers, camp difficulty).
-
-```sh
-./rsmm stat --list                                 # List all stats (143 globals + 19 modifiers + 6 camp bands)
-./rsmm stat --list --grep Bleed                   # Search
-./rsmm stat --mod-id LongerStatusEffects           \
-    Bleed_Duration_Value=10                        \
-    Ignite_Duration_Value=11                       \
-    Easy:min=5 Easy:max=10                         # Assign
-./rsmm apply                                       # Apply
-```
-
-Syntax: `<short_name>[:field]=<value>`. Multi-field classes use the `:field` suffix.
-
-### `rsmm text`
-
-Override translation strings.
+There is no dedicated command for these. A mod declares them as `[[patch]]`
+blocks in its manifest (or with `m.stat(...)` from the SDK), and `rsmm apply`
+merges every enabled mod's patches — see
+[Numeric balance](/guides/modding/#numeric-balance--modifier--camp-difficulty)
+and [Texture swap](/guides/modding/#texture-swap-donor-reference). Find the
+names with `rsmm assets search`:
 
 ```sh
-./rsmm text --list Common --lang EN                # List keys
-./rsmm text --list Common --grep Menu_            # Search
-./rsmm text --mod-id Relabel                       \
-    'Common~EN:Menu_Discord=Mods'                  # Assign
-./rsmm apply                                       # Apply
-```
-
-Languages: `EN`, `JA`, `KO`, `RU`, `ES`, `DE`, `PL`, `FR`, `IT`, `PT-BR`, `ZH-S`, `ZH-T`, `RO`.
-
-### `rsmm url`
-
-Redirect main-menu URLs.
-
-```sh
-./rsmm url --list                                  # List all URLs
-./rsmm url --mod-id MyHub                          \
-    DiscordUrl=https://my-mods-site.example/       # Assign
-./rsmm apply                                       # Apply
-```
-
-### `rsmm menu-button`
-
-Add a "Mods" entry to the title menu.
-
-```sh
-./rsmm menu-button
-```
-
-### `rsmm social-tab`
-
-Add a Mods tab to the in-game Social book.
-
-```sh
-./rsmm social-tab
-```
-
-### `rsmm mods-list`
-
-Ship a Mods_List cooked entity for the social tab.
-
-```sh
-./rsmm mods-list
+./rsmm assets search globalvalue Bleed     # a global value: Bleed_Duration_Value
+./rsmm assets search enemycampdifficultydef  # camp difficulty bands (Easy, …)
+./rsmm assets search Heroes Portrait png   # texture paths
 ```
 
 ---

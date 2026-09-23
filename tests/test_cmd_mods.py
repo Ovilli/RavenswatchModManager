@@ -175,3 +175,23 @@ def test_cancelling_the_picker_changes_nothing(mods_dir, monkeypatch):
     rc = _run("disable", "--no-apply", "--mods-dir", str(mods_dir))
     assert rc == 1
     assert _enabled(mods_dir, "A")
+
+
+def test_set_mod_enabled_flips_existing_flag(mods_dir):
+    _write_manifest(mods_dir, "M", enabled=True)
+    assert CM.set_mod_enabled(mods_dir, "M", False) == "ok"
+    text = (mods_dir / "M" / "manifest.toml").read_text(encoding="utf-8")
+    assert "enabled = false" in text and "enabled = true" not in text
+    # idempotent
+    assert CM.set_mod_enabled(mods_dir, "M", False) == "unchanged"
+
+
+def test_set_mod_enabled_inserts_when_missing(mods_dir):
+    root = mods_dir / "M"
+    root.mkdir()
+    (root / "manifest.toml").write_text(
+        '[mod]\nid = "M"\nname = "T"\nversion = "0.1.0"\n', encoding="utf-8")
+    assert CM.set_mod_enabled(mods_dir, "M", False) == "ok"
+    text = (root / "manifest.toml").read_text(encoding="utf-8")
+    assert text.splitlines()[0] == "[mod]"
+    assert "enabled = false" in text

@@ -28,64 +28,14 @@ Historical entries mention `tools/<script>.py`; those scripts now live under
 | **Pattern resolver + `rsmm.call`** | 53,427 byte-pattern signatures in `data/function_patterns.json` (99.50% self-validate). Lua mods can call any of ~53k game functions by name, plus memory read/write. See [Calling game functions](/reverse-engineering/calling-game-functions/). |
 | **Seed surface mapped** | The built-in *Forced seed* option (`oe::UIntGameOption`, id `0x1949b098`) located with its enable bool. `ExampleSeedPin` pins a run's RNG for speedruns. See [Seed + mapgen](/reverse-engineering/seed-mapgen/). |
 
-## In-game "Mods" UI
+## In-game "Mods" UI <Badge text="Abandoned" variant="danger" />
 
-Giving the mod manager a presence *inside* Ravenswatch's own menus. This is the
-deepest RE thread, split into three stages.
-
-### Slot redirect — own entity in the Social book <Badge text="Shipped" variant="success" />
-
-A live loader hook (`hook_engine.cpp`) intercepts the engine's entity-path
-lookup, detects a fake path (`…\Social\Mods_List.entity.ot`), and returns the
-cached handle of a chosen substitute entity instead of a path-miss. Verified
-in-game: slot 7 renders a distinct, fully interactive entity.
-
-**What it proved:** we can render a slot-sized page we control inside the Social
-book, and clicks in that slot already translate to disk writes that toggle a
-mod's `enabled` flag.
-
-<Aside type="caution" title="Why a substitute isn't enough">
-Vanilla page entities are templates whose rows are populated at runtime (Steam
-friends, the magical-object registry, the hero list…). Their row text never
-passes through the string hook, the layout is tuned for a different parent, and
-the back button's listener doesn't exist in our slot's tree. Real mod names +
-working controls need a **custom** entity — next stage.
-</Aside>
-
-### Custom `Mods_List.entity.ot` <Badge text="In progress" variant="caution" />
-
-A byte-clone of a vanilla list is on disk at the encoded path, registered in
-`asset_map.json`, and the loader now resolves it to a real handle. Remaining
-work is the entity binary schema so we can place rows we own:
-
-- `oCEntitySettings` tree (base) + the UI component classes for a minimal
-  static-button list: `WindowUiSettings` (panel), `ButtonUiSettings` (row),
-  `LabelUiSettings` (text), picture/label descs, navigable zone, and a picker
-  that binds a label to a text-bank key.
-- Section markers (`1111bbaa` BEGIN / `2222bbaa` END) — already parsed/emitted
-  reliably by the `.ot` decoder.
-- A fresh 16-byte entity GUID and the cooked-encoded output path.
-
-<Steps>
-1. Decode a minimal single-button entity (e.g. `Option_ApplyButton.entity.ot`) to map each component class's byte layout.
-2. Extend the `.ot` re-encoder for `ButtonUiSettings` + `LabelUiSettings`.
-3. Emit `Mods_List.entity.ot` with N rows, each bound to a key like `RSMM_Mod_Slot_0`.
-4. Write those keys with mod names from `mods/*/manifest.toml`.
-5. Drop the cooked file at the encoded path; the live hook resolves it directly.
-</Steps>
-
-### Real "Mods" menu button <Badge text="In progress" variant="caution" />
-
-A structural patch (`make_real_menu_button_mod.py`) already clones the Discord
-button so the main menu carries 12 picker entries (was 10) and 68 sections (was
-66), and it round-trips cleanly through the decoder. Awaiting in-game checks:
-is the button visible, does it collide with Discord's position, and what label
-does it inherit. Follow-up: pin down the position field in
-`oCEntityCpntEntitySpawnerSettings` and offset the clone.
-
-**Acceptance criteria:** a new visible main-menu button (own label from a text
-bank we control), click opens our UI or a controlled engine event, fully
-reversible via `./rsmm restore --all` with zero trace.
+Giving the mod manager a presence inside Ravenswatch's own menus (a Social-book
+tab, a title-menu button, a book-page mod list) was dropped. Mods are managed
+from the desktop app and the CLI. The tooling (`rsmm menu`, `rsmm intents`,
+`rsmm url`, `rsmm social-tab`, `rsmm menu-button`, `rsmm mods-list`) has been
+removed; what was learned about the game's UI is kept in
+[UI & the book menu](/reverse-engineering/ui-menus/).
 
 ## Hook API (`rsmm.hook`) <Badge text="Blocked" variant="danger" />
 

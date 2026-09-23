@@ -65,14 +65,11 @@ def test_builder_patch_blocks(tmp_path, monkeypatch):
     monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
     b = ModBuilder("PatchMod", version="1.0.0", author="t", name="Patch")
     b.stat("Health", value=100, min=0, max=200)
-    b.text("UI/title", "Hello")
     b.commit()
     mf = (tmp_path / "PatchMod" / "manifest.toml").read_text()
     assert "[[patch]]" in mf
     assert 'kind = "stat"' in mf
-    assert 'kind = "text"' in mf
     assert "Health" in mf
-    assert "Hello" in mf
 
 
 def test_builder_texture_asset(tmp_path, monkeypatch):

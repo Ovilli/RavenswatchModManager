@@ -1359,11 +1359,6 @@ def cmd_conflicts() -> int:
         elif p.kind == "texture":
             key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
             by_key.setdefault(key, {})[p.mod_id] = p.data.get("donor")
-        elif p.kind in {"url", "text"}:
-            key = (p.kind,) + tuple(
-                str(p.data.get(k, "")) for k in
-                (["field"] if p.kind == "url" else ["bank", "lang", "key"]))
-            by_key.setdefault(key, {})[p.mod_id] = p.data.get("value")
     for key, owners in by_key.items():
         if len({repr(v) for v in owners.values()}) > 1:
             kind = key[0]

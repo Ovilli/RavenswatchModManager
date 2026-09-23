@@ -16,11 +16,6 @@ Supported patch kinds today:
     [[patch]] kind="texture"  target=<decoded_path>  donor=<decoded_path>
     [[patch]] kind="ot"       selector=<label> field=<name> value=<v>
                               [file=<game-relative .ot>] [selector_field=<name>]
-
-`text` and `url` patches are passed through to dedicated single-mod
-files (no merge) until their writers are factored out. Conflicts
-between text/url edits across mods still produce a last-wins warning
-at apply time.
 """
 
 from __future__ import annotations

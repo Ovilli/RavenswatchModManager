@@ -66,10 +66,7 @@ BUILTIN = {
     "save":              "rsmm.cli.cmd_save",
     # The module already declares prog="rsmm cmd"; it was simply never routed.
     "cmd":               "rsmm.cli.console_cmd",
-    # `menu` is the in-game mod menu; `home` is this CLI's own home screen.
-    "menu":              "rsmm.cli.cmd_menu",
     "home":              "rsmm.cli.cmd_shell",
-    "intents":           "rsmm.cli.cmd_intents",
     "assets":            "rsmm.cli.cmd_assets",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
@@ -161,8 +158,6 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("overlay",  "[<mod>] [--watch]",          "live HUD data a mod publishes"),
         ("exp",      "[<mod>] [--json]",           "hypotheses a mod answered during a playtest"),
         ("cmd",      "['/command'] [--tail]",      "send /commands to the in-game console"),
-        ("menu",     "",                           "drive the in-game mod menu"),
-        ("intents",  "",                           "apply queued in-game menu intents"),
         ("save",     "[path]... [--classes]",      "inspect profile saves (read-only)"),
     )),
     ("assets & engine", (

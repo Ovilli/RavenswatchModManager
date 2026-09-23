@@ -1,13 +1,16 @@
 ---
 title: UI & the book menu
-description: The game's entity-component UI, the fixed five-tab book, the button-press choke point, and how the in-game mod menu is built out of data plus one detour.
+description: The game's entity-component UI, the fixed five-tab book, the button-press choke point, and the abandoned attempt to build an in-game mod menu out of data plus one detour.
 ---
 
-:::note
-Status: phases 1–5 shipped (in-game mod list, intent protocol, cloned page
-buttons). A genuinely new 6th tab remains blocked on loader-side controller
-surgery. The goal is a **native** menu built the way the game builds its own — not
-an injected ImGui overlay.
+:::caution
+**Abandoned, and the tooling is removed (2026-09-23).** The in-game mod menu was
+dropped; mods are managed from the desktop app and the CLI. `rsmm menu`,
+`rsmm intents`, `R.mods.request` and the menu builders (`mod_menu`, `mods_tab`,
+`mods_modal`, `entity_inspect`) no longer exist. This page is kept as a record of
+how the game's UI works and what was tried. What survived is generic:
+`entity_strings`, `entity_append`, and the class-table helpers now in
+`entity_components`.
 :::
 
 ## What the game's UI actually is
@@ -110,9 +113,9 @@ ranges — and this is why all page-state guarding now lives in the one
    an intent file the host CLI consumes (the game runs under Proton, the CLI lives
    on the host, so it can't shell out in process).
 
-### Shipped pieces
+### Pieces that were built (removed 2026-09-23 unless noted)
 
-- `engine/entity_strings.py` — lstr surgery (scan/replace length-prefixed strings
+- `engine/entity_strings.py` (kept) — lstr surgery (scan/replace length-prefixed strings
   in section payloads; byte-stable, reversible, typo-guarded). The generic
   clone-and-retarget primitive for all entity work.
 - `engine/mod_menu.py` + `rsmm menu build|remove` — repurposes `Tuto_Page_1` as an
@@ -129,7 +132,7 @@ ranges — and this is why all page-state guarding now lives in the one
   the host gets `rsmm intents list|apply|clear`, which re-validates (the file is
   user-writable, so untrusted), applies last-intent-per-mod, and re-runs
   `rsmm apply`. `rsmm watch` auto-consumes.
-- **Component-append primitive** (`engine/entity_append.py`) — entity cooked layout
+- **Component-append primitive** (`engine/entity_append.py`, kept) — entity cooked layout
   is section 0 = directory (`u32 count` + count × u32 class index), sections
   1..count = one self-framed component record each (first u32 = class index,
   16-byte instance GUID after the first inner END), last section = trailer.

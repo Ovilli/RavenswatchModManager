@@ -777,11 +777,6 @@ def check_patch_conflicts() -> list[Result]:
         elif p.kind == "texture":
             key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
             by_key.setdefault(key, {})[p.mod_id] = p.data.get("donor")
-        elif p.kind in {"url", "text"}:
-            key = (p.kind,) + tuple(
-                str(p.data.get(k, "")) for k in
-                (["field"] if p.kind == "url" else ["bank", "lang", "key"]))
-            by_key.setdefault(key, {})[p.mod_id] = p.data.get("value")
     n_total = sum(1 for v in by_key.values() if len({repr(x) for x in v.values()}) > 1)
     if n_total == 0:
         out.append(Result("OK", f"{len(patches)} [[patch]] block(s), no same-field conflicts"))

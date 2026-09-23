@@ -3,6 +3,10 @@
 > 📖 Prose version on the docs site: **https://docs.rsmm.me/reverse-engineering/ui-menus/** (`apps/docs/src/content/docs/reverse-engineering/ui-menus.md`).
 > This file stays as the raw RE field notes.
 
+> ⚠ **ABANDONED — tooling removed 2026-09-23.** `rsmm menu`, `rsmm intents`,
+> `R.mods.request` / `_internal.intent_write` and `engine/{mod_menu,mods_tab,mods_modal,entity_inspect}.py`
+> are gone. Kept as field notes only; do not re-open.
+
 
 Goal: a **native** mod menu (enable/disable/uninstall mods in-game) built the same
 way the game builds its own menus — NOT an injected ImGui overlay (a Vulkan ImGui

@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**53 commands.**
+**51 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -34,7 +34,6 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `rsmm` opens in a terminal. |
 | `rsmm install` | `rsmm.cli.cmd_install` | rsmm install — fetch, verify, and unpack a packed mod. |
 | `rsmm install-loader` | `rsmm.cli.install_loader` | rsmm install-loader — copy winhttp.dll + SDK lib into the game install. |
-| `rsmm intents` | `rsmm.cli.cmd_intents` | `rsmm intents` — consume in-game mod-menu intents written by the loader. |
 | `rsmm items` | `rsmm.cli.cmd_items` | `rsmm items` — discover vanilla magical objects for item modding. |
 | `rsmm json` | `rsmm.cli.json_bridge` | rsmm json — machine-readable bridge for the desktop / web UI. |
 | `rsmm keygen` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
@@ -42,7 +41,6 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm list` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm log` | `rsmm.cli.cmd_log` | rsmm log — read the loader log from the game install directory. |
 | `rsmm map-editor` | `rsmm.cli.cmd_map_editor` | `rsmm map-editor` — edit a chapter's map-generation recipe in the browser. |
-| `rsmm menu` | `rsmm.cli.cmd_menu` | `rsmm menu` — generate and inspect the in-game mod-list page (native book UI). |
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
 | `rsmm overlay` | `rsmm.cli.cmd_overlay` | rsmm overlay — read the live HUD data a mod publishes. |

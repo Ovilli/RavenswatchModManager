@@ -5,9 +5,8 @@
     rsmm disable <id>... [--no-apply] [--mods-dir DIR]
     rsmm disable --all   [--no-apply] [--mods-dir DIR]
 
-Flips `enabled` in each mod's `manifest.toml` (same edit the in-game mod
-menu performs via `rsmm intents apply`), then re-runs `rsmm apply` so the
-game install reflects the change. `--no-apply` skips that final step.
+Flips `enabled` in each mod's `manifest.toml`, then re-runs `rsmm apply` so
+the game install reflects the change. `--no-apply` skips that final step.
 
 `rsmm enable <id> --only` is the "test exactly this mod" shortcut: it
 enables the listed mods and disables every other mod in one pass.
@@ -25,7 +24,6 @@ from pathlib import Path
 
 from ..engine import paths as P
 from . import _keys, _term
-from .cmd_intents import set_mod_enabled
 
 _ST = _term.Style()
 
@@ -36,6 +34,28 @@ _DOT = "·"        # ·
 #: Manifests are written with the value aligned (`enabled     = true`), so a
 #: naive `"enabled = true" in text` check reports every mod as disabled.
 _ENABLED_TRUE = re.compile(r"^\s*enabled\s*=\s*true\s*$", re.MULTILINE)
+
+
+def set_mod_enabled(mods_dir: Path, mod_id: str, enabled: bool) -> str:
+    """Flip `enabled` in mods/<id>/manifest.toml. Returns a status word."""
+    manifest = mods_dir / mod_id / "manifest.toml"
+    if not manifest.is_file():
+        return "missing"
+    text = manifest.read_text(encoding="utf-8")
+    want = f"enabled = {'true' if enabled else 'false'}"
+    # Replace an existing top-level `enabled` assignment (any spacing)…
+    new, n = re.subn(r"(?m)^(enabled\s*=\s*)(true|false)\s*$",
+                     lambda m: m.group(1) + ("true" if enabled else "false"),
+                     text, count=1)
+    if n == 0:
+        # …or insert one right after the [mod] header.
+        new, n = re.subn(r"(?m)^\[mod\]\s*$", "[mod]\n" + want, text, count=1)
+        if n == 0:
+            return "no-mod-table"
+    if new == text:
+        return "unchanged"
+    manifest.write_text(new, encoding="utf-8")
+    return "ok"
 
 
 def _all_mod_ids(mods_dir: Path) -> list[str]:

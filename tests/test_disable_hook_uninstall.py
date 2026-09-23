@@ -187,19 +187,3 @@ def test_apply_does_not_count_a_broken_hook_as_run(install, capsys):
     assert ran == []
     assert missing == ["seedy"]
     assert "exited 4" in capsys.readouterr().err
-
-
-def test_intents_uninstall_runs_the_hook_before_deleting(install):
-    """The in-game menu's uninstall is the same deletion, same requirement."""
-    from rsmm.cli import cmd_intents
-
-    game_dir, cooking, mod_root = install
-    state = apply_mods.State(cooking)
-    state.set_enabled_mods(["seedy"])
-    # This path re-reads state from disk (apply is what persists it), so the
-    # "was it ever enabled" gate only sees a saved file.
-    state.save()
-
-    assert cmd_intents.uninstall_mod(mod_root.parent, "seedy", game_dir) == "ok"
-    assert not mod_root.exists()
-    assert (game_dir / "hook-ran.txt").is_file()

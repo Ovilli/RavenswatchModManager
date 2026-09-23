@@ -142,10 +142,8 @@ from rsmm import sdk
 with sdk.Mod("MyMod", author="me", load_order=50) as m:
     m.stat("Bleed_Duration_Value", value=10)
     m.stat("Easy", min=5, max=10)
-    m.text("Common", lang="EN", key="Menu_Discord", value="Mods")
-    m.url("DiscordUrl", "https://example.com")
-    m.texture("hero.romeo.portrait_active",
-              donor="hero.sunwukong.portrait_active")
+    m.texture("Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png",
+              "art/romeo.png")   # PNG/DDS/TGA, auto-cooked
     m.ot("Merlin DMG Zone", "m_eComputerType", 0)
 ```
 
@@ -481,14 +479,19 @@ cp /path/to/donor.dxt \
 
 ### Texture swap (donor reference)
 
-```sh
-./rsmm texture --list --grep Hero_Romeo
-./rsmm texture --mod-id RomeoIsMonkey \
-    'Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt=Ui/BookMenu/Heroes/UI_HeroPortrait_SunWukong_Active.png.Texture.dxt'
-./rsmm apply
+Point one shipped texture at another shipped texture, with no image file of
+your own. There is no SDK method for this; declare it in the manifest:
+
+```toml
+[[patch]]
+kind   = "texture"
+target = "Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt"
+donor  = "Ui/BookMenu/Heroes/UI_HeroPortrait_SunWukong_Active.png.Texture.dxt"
 ```
 
-Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container RE'd (see [Roadmap](/project/roadmap/)).
+Both are decoded paths — find them with `./rsmm assets search Heroes Portrait png`.
+`rsmm apply` copies the donor's pristine bytes to the target. To use your own
+image instead, call `m.texture(path, "art/my.png")`.
 
 ### Custom 3D mesh (`.glb`)
 
@@ -559,15 +562,31 @@ animates is the supported path.
 
 ### Numeric balance / modifier / camp difficulty
 
-```sh
-./rsmm stat --list                    # See all available stats
-./rsmm stat --list --grep Bleed       # Search
-./rsmm stat --mod-id LongerStatusEffects \
-    Bleed_Duration_Value=10 \
-    Ignite_Duration_Value=11 \
-    Easy:min=5 Easy:max=10
-./rsmm apply
+Three families of numeric values are editable by name: global values
+(`*.globalvalue.ot`, e.g. `Bleed_Duration_Value`), game-modifier definitions,
+and enemy-camp difficulty bands (`Easy`, …). The name is the asset's file name
+without extensions — `./rsmm assets search globalvalue Bleed` lists them.
+
+```python
+with sdk.Mod("LongerStatusEffects") as m:
+    m.stat("Bleed_Duration_Value", value=10)
+    m.stat("Ignite_Duration_Value", value=11)
+    m.stat("Easy", min=5, max=10)      # multi-field: one keyword per field
 ```
+
+or directly in `manifest.toml`:
+
+```toml
+[[patch]]
+kind  = "stat"
+name  = "Bleed_Duration_Value"
+value = 10
+```
+
+`rsmm apply` merges every enabled mod's `stat` patches into one file per value:
+two mods changing different fields both take effect, and two mods changing the
+same field log a conflict (the later mod by `load_order` wins). An unknown name
+is reported and skipped.
 
 ### Randomise or replace a monster population (`kind="enemy"`, `mode="override"`)
 
@@ -902,33 +921,6 @@ inline float is a silent no-op. `rsmm items show` / `rsmm talents` tag these
 `clear_override = true`. Clearing the override makes the inline number
 authoritative but unbinds the selector — e.g. per-card-stack scaling becomes a
 flat value. That trade-off is intentional; pick the flat number you want.
-
-### Translation strings
-
-```sh
-./rsmm text --list Common --lang EN
-./rsmm text --list Common --grep Menu_
-./rsmm text --mod-id Relabel 'Common~EN:Menu_Discord=Mods'
-./rsmm apply
-```
-
-Languages: `EN JA KO RU ES DE PL FR IT PT-BR ZH-S ZH-T RO`.
-
-### Main-menu URLs
-
-```sh
-./rsmm url --list
-./rsmm url --mod-id MyHub DiscordUrl=https://my-mods-site.example/
-./rsmm apply
-```
-
-### In-game UI tweaks
-
-```sh
-./rsmm menu-button        # Add a "Mods" entry to the title menu
-./rsmm social-tab         # Add a Mods tab to the in-game Social book
-./rsmm mods-list          # Ship a Mods_List entity for the social tab
-```
 
 ### Lua-scripted mod
 

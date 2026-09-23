@@ -72,9 +72,6 @@ class ModBuilder:
     def stat(self, name: str, **fields) -> None:
         self._patch_blocks.append({"kind": "stat", "name": name, **fields})
 
-    def text(self, target: str, value: str, **fields) -> None:
-        self._patch_blocks.append({"kind": "text", "target": target, "value": value, **fields})
-
     @sdk_export("Mod.ot")
     def ot(self, selector: str, field: str, value, *,
            file: str | None = None, selector_field: str | None = None) -> None:

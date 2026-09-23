@@ -1,8 +1,8 @@
 """
 Text-bank primitives: parse/write Ravenswatch cooked text files.
 
-Library used by `rsmm.cli.merge` and `rsmm.engine.heroes`. Not user-facing;
-mod authors call the SDK (`m.text(bank, lang, key, value)`).
+Library used by the text-bank merge in `rsmm.cli.apply_mods` and by the
+content cookers. Not user-facing.
 
 Format (both base `.LocalText.gen` and per-language `.Ggzy<XX>` sibling):
 
