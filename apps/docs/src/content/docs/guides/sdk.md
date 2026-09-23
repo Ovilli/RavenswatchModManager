@@ -18,8 +18,8 @@ bottom for what is still empirical.
 
 1. **Add new content** — items, enemies, bosses, maps, heroes — declared from a
    mod, materialized as cooked-asset writes by RSMM.
-2. **Edit existing content** — every kind above, plus stats, text, URLs, menu
-   buttons. Reuse the existing `[[patch]]` merge pipeline.
+2. **Edit existing content** — every kind above, plus numeric values, texture
+   swaps and plaintext `.ot` fields. Reuse the existing `[[patch]]` merge pipeline.
 3. **Open extensibility** — third parties contribute new content kinds, CLI
    subcommands, or runtime services as Python entry-point plugins. Core stays
    stable; ecosystem grows out of tree.

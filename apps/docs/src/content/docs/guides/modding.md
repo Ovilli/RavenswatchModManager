@@ -18,12 +18,13 @@ flowchart LR
     P --> U["upload via Registry"]
 ```
 
-> **One output, two ways to produce it.** Every mod ships the *same* thing: a
-> declarative `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets. You can
-> hand-write that TOML, **or** generate it with the typed Python SDK
-> (`with sdk.Mod(...)`) — the SDK is an author-time *generator* that emits the
-> manifest for you (validated, with handles/tags/an offline testkit). Your
-> `build.py` is a tool you run; it is **not** shipped inside the mod. See
+> **Write the manifest.** Every mod ships the same thing: a declarative
+> `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets, and writing that
+> file by hand is the normal way to make a mod. `rsmm new` scaffolds it, the
+> editor schema autocompletes it, and `rsmm lint` checks it. The Python SDK
+> (`with sdk.Mod(...)`) is an optional *generator* for the same file, useful
+> when a mod has many similar entries to produce. Your `build.py` is a tool you
+> run; it is **not** shipped inside the mod. See
 > [Authoring with the Python SDK](#authoring-with-the-python-sdk) below.
 
 > **A mod is data, not code.** The shipped artifact is `manifest.toml` + assets
@@ -127,13 +128,33 @@ Mirror decoded paths under `assets/`. Full control, byte-for-byte. One mod owns 
 
 ### 2. Compose `[[patch]]` blocks (recommended)
 
-Write declarative blocks in `manifest.toml` for stats, text, URLs, textures, and
-plaintext `.ot` fields. The applier composes every mod's patches into a single
+Write declarative blocks in `manifest.toml` for numeric values (`stat`), texture
+swaps (`texture`), and plaintext `.ot` fields (`ot`). The applier composes every mod's patches into a single
 cooked file per target. Two mods touching *different* fields of the same file
 both take effect; conflicts on the *same* field resolve by `load_order` (lower =
 applies first; later wins on overlap).
 
-Example using the Python SDK:
+```toml
+[[patch]]
+kind  = "stat"
+name  = "Bleed_Duration_Value"
+value = 10
+
+[[patch]]
+kind = "stat"
+name = "Easy"
+min  = 5
+max  = 10
+
+[[patch]]
+kind     = "ot"
+selector = "Merlin DMG Zone"
+field    = "m_eComputerType"
+value    = 0
+```
+
+The same blocks from the optional Python SDK — `python3 mods/MyMod/build.py`
+writes the manifest above:
 
 ```python
 # mods/MyMod/build.py
@@ -142,12 +163,8 @@ from rsmm import sdk
 with sdk.Mod("MyMod", author="me", load_order=50) as m:
     m.stat("Bleed_Duration_Value", value=10)
     m.stat("Easy", min=5, max=10)
-    m.texture("Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png",
-              "art/romeo.png")   # PNG/DDS/TGA, auto-cooked
     m.ot("Merlin DMG Zone", "m_eComputerType", 0)
 ```
-
-Run `python3 mods/MyMod/build.py` to emit `manifest.toml`. Friendly aliases (`hero.<name>.portrait_<state>`) hide the cooked-path lookups.
 
 #### Editing a plaintext `.ot` (`kind = "ot"`)
 
@@ -277,10 +294,17 @@ Toggle: edit `mods/ConsoleRuntime/manifest.toml`, set `dev_mode = true`, then `.
 
 ## Authoring with the Python SDK
 
-The recommended way to *produce* a mod's `manifest.toml`. You describe the mod
-in Python; `rsmm.sdk` writes the `mods/<id>/` tree atomically. Typed builders,
-cross-mod handles/tags, and an offline testkit make it harder to ship a broken
-manifest by hand. Design rationale: [SDK_V3.md](/guides/sdk/).
+**Optional.** The manifest is the main way to write a mod; the Python SDK
+*generates* one. Reach for it when a mod has many similar entries — fifty stat
+tweaks, a table of item variants — that are easier to produce in a loop than to
+type out. You describe the mod in Python and `rsmm.sdk` writes the
+`mods/<id>/` tree atomically. It applies the same checks as `rsmm lint`: an
+unknown field is refused, with the nearest valid name.
+
+Every content kind is reachable with one call, `m.content(kind, id=..., **fields)`,
+whose fields are exactly the manifest's. Five kinds also have a named shortcut
+(`m.item`, `m.enemy`, `m.boss`, `m.map`, `m.hero`); the rest use `m.content`.
+Design rationale: [SDK_V3.md](/guides/sdk/).
 
 ### First mod
 
@@ -303,8 +327,9 @@ rsmm apply                       # install into the game
 
 ### Typed content + handles
 
-`m.item / m.enemy / m.boss / m.map / m.hero` clone a vanilla **base** and return
-a `ContentRef` (like Forge's `RegistryObject`). Pass a handle anywhere another
+`m.content(kind, id=..., **fields)` registers any kind; `m.item / m.enemy /
+m.boss / m.map / m.hero` are shortcuts for five of them. Each returns a
+`ContentRef` (like Forge's `RegistryObject`). Pass a handle anywhere another
 content id is expected — it resolves to the raw id automatically. Find valid
 bases with `rsmm schema [kind] [--grep T]`.
 
@@ -314,6 +339,9 @@ with sdk.Mod("FrostPack", version="1.0.0", author="you",
     blade = m.item("FrostBlade", base="Orb_Grants_Strength", name="Frost Blade")
     m.enemy("FrostGhoul", base="Sling_Ghoul", add_flags=["Elite"])
     m.boss("CrabDen", base="Boss_Marsh_Ghoul", becomes="Boss_Crab")
+    # every other kind: the same fields as its [[content]] block
+    m.content("reward", id="MoreChests", base="Camp_Rewards_Dark_Hills_Update5",
+              counts={"2": [3, 3]})
 ```
 
 > Kinds below `confirmed` need `experimental=True`. Which ones those are is
@@ -468,7 +496,8 @@ def test_no_clashes():
 
 | Goal | Call / command |
 |------|----------------|
-| New content (handle) | `m.item/enemy/boss/map/hero(id, base=…)` |
+| New content (handle), any kind | `m.content(kind, id=…, **fields)` |
+| Shortcut for five kinds | `m.item/enemy/boss/map/hero(id, base=…)` |
 | Find base ids | `rsmm schema [kind] [--grep T]` |
 | Group content | `m.tag(id, [refs…])` |
 | Override asset | `m.texture/model/asset(decoded, src)` |

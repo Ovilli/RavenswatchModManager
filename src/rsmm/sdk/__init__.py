@@ -1,18 +1,27 @@
-"""RSMM SDK v3 — Python-side public surface.
+"""RSMM SDK v3 — an optional Python generator for a mod's `manifest.toml`.
 
-Mod authors do:
+The manifest is the main way to write a mod: `rsmm new` scaffolds it, the
+editor schema autocompletes it, `rsmm lint` checks it. This SDK writes the same
+file from Python, which pays off when a mod has many similar entries to
+produce. It applies the same field checks as lint (`manifest_spec`).
+
+Usage:
 
     from rsmm import sdk
     with sdk.Mod("MyMod") as m:
         m.stat("Easy", min=5, max=10)  # numeric value, merged across mods
         m.config({"damage": {"type": "float", "default": 1.0}})
         m.i18n("EN", {"hello": "Hi"})
-        # Typed registry builders return a ContentRef handle (Forge
-        # RegistryObject analog) you can reference in other defs:
+        # Any content kind, with exactly its [[content]] fields; returns a
+        # ContentRef handle (Forge RegistryObject analog) usable in other defs:
+        chest = m.content("reward", id="MoreChests",
+                          base="Camp_Rewards_Dark_Hills_Update5",
+                          counts={"2": [3, 3]})
+        # item/enemy/boss/map/hero also have shortcuts. No more are planned:
+        # m.content reaches every kind, so a shortcut is only a spelling.
         blade = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
         m.tag("daggers", [blade])  # cross-mod-extensible group
         print(m.summary())         # preview everything staged, no disk write
-        # m.content("item", id=...) is the low-level form if you need it.
 
 Everything below is a thin facade over the submodules so the mental
 model is one import. See `docs/SDK_V3.md` for the full design.
@@ -148,6 +157,9 @@ class Mod:
         self._b.i18n(locale, strings)
 
     def content(self, kind: str, **fields):
+        """Register one def of any content ``kind`` (``id=`` plus the same
+        fields its ``[[content]]`` block takes) and return its ContentRef.
+        The general form; the named methods below are shortcuts for it."""
         return self._b.content(kind, **fields)
 
     def item(self, id: str, *, base: str, name: str | None = None, **fields):
