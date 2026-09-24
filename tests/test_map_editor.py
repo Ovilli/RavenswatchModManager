@@ -319,7 +319,8 @@ def test_fill_edit_empties_a_group_and_survives_a_write():
     level, changes = ME.build_level(ch, {"fill": {"40x40": [], "64x64": []}})
     assert changes == ["fill 40x40: ['Camp'] -> nothing", "fill 64x64: ['Camp'] -> nothing"]
     tg = TG.read(level)
-    fills = {n: tg.sizes[i].filter.required for n, i in zip(tg.size_names, tg.spawner.size_ids, strict=True)}
+    fills = {n: tg.sizes[i].filter.required
+             for n, i in zip(tg.size_names, tg.spawner.size_ids, strict=True)}
     assert fills == {"3x3": ["Blocker"], "6x6": ["Blocker"], "40x40": [], "64x64": []}
     with pytest.raises(ME.MapEditError, match="no footprint group"):
         ME.build_level(ch, {"fill": {"99x99": []}})
