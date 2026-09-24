@@ -6,3 +6,9 @@ include = ["mods/*/manifest.toml"]
 
 [rule.schema]
 path = "./apps/docs/public/manifest.schema.json"
+
+[[rule]]
+include = ["mods/*/pois/*/poi.toml"]
+
+[rule.schema]
+path = "./apps/docs/public/poi.schema.json"

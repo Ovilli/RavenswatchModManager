@@ -71,6 +71,14 @@ def _fingerprint(root: Path) -> str:
     return f"{_SCHEMA}:{n}:{size}:{newest}"
 
 
+#: In-process results, keyed by (name, root). The fingerprint walk is ~0.2s,
+#: and `enemy_index()` alone is called once per enemy an override emits — 200
+#: walks for one `kind="enemy"` block before this existed. The corpus is not
+#: expected to change under a running process; a different root (the
+#: `install_only` fixture, a mirror appearing) is a different key.
+_memo: dict[tuple[str, str], Any] = {}
+
+
 def load_or_build(name: str, root: Path, build: Callable[[], Any]) -> Any:
     """Return the cached sweep `name`, rebuilding it if the corpus moved.
 
@@ -80,6 +88,14 @@ def load_or_build(name: str, root: Path, build: Callable[[], Any]) -> Any:
     """
     if not root.is_dir():
         return build()
+    mkey = (name, str(root))
+    if mkey in _memo:
+        return _memo[mkey]
+    _memo[mkey] = value = _load_or_build(name, root, build)
+    return value
+
+
+def _load_or_build(name: str, root: Path, build: Callable[[], Any]) -> Any:
     key = _fingerprint(root)
     cache_dir = _cache_dir()
     path = cache_dir / f"{name}.json"

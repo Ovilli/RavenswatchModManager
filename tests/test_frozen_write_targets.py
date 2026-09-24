@@ -81,3 +81,14 @@ def test_corpus_cache_escapes_the_bundle(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     from rsmm.engine import corpus_cache
     assert corpus_cache._cache_dir() == tmp_path / "userdata" / ".corpus_cache"
+
+
+def test_corpus_cache_walks_a_root_once_per_process(monkeypatch, tmp_path):
+    from rsmm.engine import corpus_cache
+    monkeypatch.setattr(corpus_cache, "_memo", {})
+    monkeypatch.setattr(corpus_cache, "_cache_dir", lambda: tmp_path / "c")
+    walks = []
+    monkeypatch.setattr(corpus_cache, "_fingerprint", lambda r: walks.append(r) or "k")
+    for _ in range(3):
+        assert corpus_cache.load_or_build("x", tmp_path, lambda: [1]) == [1]
+    assert len(walks) == 1

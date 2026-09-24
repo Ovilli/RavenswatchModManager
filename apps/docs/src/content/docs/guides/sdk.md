@@ -201,8 +201,10 @@ type    = "bool"
 default = true
 ```
 
-`mods/<id>/config.toml` is generated/written by the user via the web UI or
-`rsmm config <id> set damage_mult 2.5`. SDK API:
+`mods/<id>/config.toml` is written by the user through the desktop app's
+config panel, or from a shell with
+`rsmm json config set <id> '{"damage_mult": 2.5}'` (replaces the stored
+values; `rsmm json config get <id>` reads them). SDK API:
 
 ```lua
 local cfg = R.config              -- bound to the calling mod

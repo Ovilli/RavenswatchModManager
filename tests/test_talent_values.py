@@ -212,6 +212,7 @@ def test_clear_override_then_set_takes_effect():
 
     with pytest.raises(ValueError, match="not overridden"):
         clear_value_override(cleared, "Damage Value")
+@pytest.mark.slow   # whole-corpus scan
 
 
 def test_shipped_hero_values_all_resolve_to_a_typed_node():

@@ -748,6 +748,71 @@ def discover(mod_root: Path) -> list[dict]:
     return blocks
 
 
+POI_SCHEMA_URL = "https://docs.rsmm.me/poi.schema.json"
+
+
+def poi_json_schema() -> dict:
+    """JSON Schema (draft-07) for ``pois/<name>/poi.toml``, for TOML editor
+    support. Mirrors what :func:`discover` accepts; unknown keys are rejected
+    here as they are there. `rsmm docs-gen` writes it to the docs site."""
+    s, b, num = {"type": "string"}, {"type": "boolean"}, {"type": "number"}
+    entity = {"type": "string", "pattern": r"(?i)\.entity\.ot$"}
+    return {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": POI_SCHEMA_URL,
+        "title": "RSMM poi.toml",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["chapters"],
+        "properties": {
+            "preset": {"enum": sorted(PRESETS), "default": DEFAULT_PRESET},
+            "id": s,
+            "base": {**s, "description": "<Chapter>/<tile> the clone starts from"},
+            "chapters": {"type": "array", "minItems": 1, "uniqueItems": True,
+                         "items": {"enum": sorted(CHAPTERS)}},
+            "kinds": {"type": "array", "items": s},
+            "weight": {**num, "minimum": 0},
+            "copies": {"type": "integer", "minimum": 0, "maximum": 16},
+            "replace_base": b,
+            "own_level": b,
+            "swaps": {"type": "object", "minProperties": 1,
+                      "additionalProperties": entity},
+            "places": {"type": "array", "minItems": 1, "items": {
+                "type": "object", "required": ["entity"],
+                "additionalProperties": False,
+                "properties": {
+                    "entity": {"anyOf": [{"const": PLACES_OWN_PROP}, entity]},
+                    "pos": {"type": "array", "items": num,
+                            "minItems": 3, "maxItems": 3},
+                    "scale": num, "yaw": num}}},
+            "icon": s,
+            "replaces": entity,
+            "entity_base": entity,
+            "material_base": s,
+            "material": s,
+            "allow_shared_art": b,
+            "interactive": b,
+            "components": {"type": "array", "items": s},
+            "transform": {"type": "object", "additionalProperties": False,
+                          "properties": {
+                              "fit": {"enum": ["height", "none", "rig"]},
+                              "scale": num,
+                              "rotate_deg": {"type": "array", "items": num,
+                                             "minItems": 3, "maxItems": 3},
+                              "skin": {"enum": ["transfer", "rigid", "gltf"]},
+                              "submeshes": {"enum": ["merge", "map"]},
+                              "bones": {"type": "object",
+                                        "additionalProperties": s},
+                              "drop_bones": {"type": "array", "items": s}}},
+            "slots": {"type": "object", "additionalProperties": False,
+                      "properties": {r: s for r in TEXTURE_ROLES}},
+            "marker": {"type": "object", "additionalProperties": False,
+                       "properties": {"icon": s, "icon_high": s,
+                                      "reveal_radius": num, "donor": s}},
+        },
+    }
+
+
 def kind_footprints(kind: str) -> set[tuple[int, int]]:
     """Tile footprints the shipped corpus uses for ``kind``.
 

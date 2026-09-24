@@ -334,21 +334,18 @@ names with `rsmm assets search`:
 
 See [Core commands](#core-commands).
 
-### `rsmm trace <id>`
+### `rsmm apply --dry-run`
 
-Run a specific mod with `RSMM_TRACE=1` and surface the log output inline.
-
-```sh
-./rsmm trace MyMod
-```
-
-### `rsmm diff <id>`
-
-Show which cooked files a mod would change (dry-run).
+Show which cooked files the enabled mods would change, touching nothing.
+See [`rsmm apply`](#rsmm-apply).
 
 ```sh
-./rsmm diff MyMod
+./rsmm apply --dry-run
 ```
+
+### Reading the loader log
+
+Read the loader log of the last game launch. See [`rsmm log`](#rsmm-log).
 
 ### `rsmm decode <file>`
 

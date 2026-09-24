@@ -3,9 +3,9 @@
 
 Writes plain Markdown to `docs/api/` (CI `--check`s it) and the same pages with
 Starlight frontmatter to `apps/docs/src/content/docs/reference/sdk-api/` so they
-render on the docs site. Also writes the `manifest.toml` JSON Schema
-(`rsmm.sdk.manifest_spec`) to the docs site's public root, so editors can load
-it from https://docs.rsmm.me/manifest.schema.json.
+render on the docs site. Also writes the `manifest.toml` and `poi.toml` JSON
+Schemas (`rsmm.sdk.manifest_spec`, `rsmm.sdk.kinds.poi`) to the docs site's
+public root, so editors can load them from https://docs.rsmm.me/.
 """
 
 from __future__ import annotations
@@ -21,12 +21,15 @@ from rsmm.engine.paths import REPO_ROOT
 from rsmm.sdk.docs_gen import generate
 
 SITE_OUT = REPO_ROOT / "apps" / "docs" / "src" / "content" / "docs" / "reference" / "sdk-api"
-SCHEMA_OUT = REPO_ROOT / "apps" / "docs" / "public" / "manifest.schema.json"
+_PUBLIC = REPO_ROOT / "apps" / "docs" / "public"
 
 
-def _schema_text() -> str:
+def _schemas() -> dict[Path, str]:
+    from rsmm.sdk.kinds.poi import poi_json_schema
     from rsmm.sdk.manifest_spec import json_schema
-    return json.dumps(json_schema(), indent=2, ensure_ascii=False) + "\n"
+    return {_PUBLIC / name: json.dumps(fn(), indent=2, ensure_ascii=False) + "\n"
+            for name, fn in (("manifest.schema.json", json_schema),
+                             ("poi.schema.json", poi_json_schema))}
 
 
 def _check_dir(out: Path, site: bool) -> list[str]:
@@ -52,10 +55,11 @@ def _check_dir(out: Path, site: bool) -> list[str]:
 
 def _check(out: Path) -> int:
     problems = _check_dir(out, site=False) + _check_dir(SITE_OUT, site=True)
-    if not SCHEMA_OUT.is_file():
-        problems.append(f"  missing:   {SCHEMA_OUT}")
-    elif SCHEMA_OUT.read_text(encoding="utf-8") != _schema_text():
-        problems.append(f"  stale:     {SCHEMA_OUT}")
+    for path, text in _schemas().items():
+        if not path.is_file():
+            problems.append(f"  missing:   {path}")
+        elif path.read_text(encoding="utf-8") != text:
+            problems.append(f"  stale:     {path}")
     if not problems:
         print(f"docs up to date ({out} + {SITE_OUT})")
         return 0
@@ -78,8 +82,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         return _check(args.out)
     written = generate(args.out, site_out=SITE_OUT)
-    SCHEMA_OUT.write_text(_schema_text(), encoding="utf-8")
-    written.append(SCHEMA_OUT)
+    for path, text in _schemas().items():
+        path.write_text(text, encoding="utf-8")
+        written.append(path)
     # Both output dirs are wholly generated, so a page this run did not write
     # belongs to a module that no longer exists. `--check` already calls those
     # "orphaned"; delete them here so a plain regen leaves nothing to clean up.

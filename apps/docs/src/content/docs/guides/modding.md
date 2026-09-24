@@ -105,8 +105,12 @@ five engine paths. A `poi.toml` usually only has to say which chapters it
 appears in:
 
 ```toml
+#:schema https://docs.rsmm.me/poi.schema.json
 chapters = ["Dark_Hills", "Avalon", "Storm_Island"]
 ```
+
+The `#:schema` line gives Taplo / Even Better TOML completion and flags a
+misspelled key before `apply` does.
 
 Everything else — which tile it stands in, which object it takes the place of,
 which prop and material it inherits structure from, its kind and spawn weight —
