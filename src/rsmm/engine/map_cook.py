@@ -59,19 +59,24 @@ def read_mapdef(cooked_bytes: bytes) -> dict:
     return _defs._SPECS[MAP_CLASS].decode_body(cf.sections[-1].payload)
 
 
-def clone_mapdef(base: bytes, *, tribe: str | None = None) -> bytes:
-    """``base`` re-emitted, optionally with ``tribe_ref`` repointed.
+def clone_mapdef(base: bytes, *, tribe: str | None = None,
+                 level: str | None = None) -> bytes:
+    """``base`` re-emitted, optionally with ``tribe_ref`` and/or ``level_ref``
+    repointed (``level`` is an ``Ot`` path such as ``DarkHills\\X.level.ot``).
 
     Without edits the result is byte-identical to ``base``; the new identity is
     the file name the caller writes it under.
     """
-    if tribe is None:
+    if tribe is None and level is None:
         return base
     cf = cooked.parse(base)
     spec = _defs._SPECS[MAP_CLASS]
     body = spec.decode_body(cf.sections[-1].payload)
-    kind = (body.get("tribe_ref") or ["Definitions", ""])[0] or "Definitions"
-    body["tribe_ref"] = [kind, f"EnemyTribes\\{tribe}.enemytribedef.ot"]
+    if tribe is not None:
+        kind = (body.get("tribe_ref") or ["Definitions", ""])[0] or "Definitions"
+        body["tribe_ref"] = [kind, f"EnemyTribes\\{tribe}.enemytribedef.ot"]
+    if level is not None:
+        body["level_ref"] = [body["level_ref"][0], level]
     cf.sections[-1] = cooked.Section(payload=spec.encode_body(body))
     return cooked.emit(cf)
 
