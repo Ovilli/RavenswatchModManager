@@ -48,7 +48,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # foreign-chapter creatures). mode="clone" PROVEN 2026-09-24: a
                               # Gnoll clone with a Mud Crab body spawned in Storm Island gnoll
                               # camps once its `power` (cost) stayed within the camp budget.
-    "hero": "experimental",   # clones, but roster detour + library unproven
+    "hero": "experimental",   # ROSTER PROVEN IN GAME 2026-09-24: a Piper clone (herodef + own
+                              # cache + versiondef hero-vector entry) showed as a 13th hero on
+                              # the select screen. Not yet proven: playing a run AS the clone
+                              # (index 12 has no unlock bit or per-hero save data).
     "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
                               # resolved to the clone and the run started in it); the clone
                               # still generates from the base's pool (tilegen backref) and

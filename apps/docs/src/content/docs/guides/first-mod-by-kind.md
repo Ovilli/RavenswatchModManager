@@ -519,37 +519,36 @@ global — every run fights the new boss there.
 
 ---
 
-## `hero` — stage a new playable hero
+## `hero` — add a hero to the roster
 
-**What the player sees.** Nothing yet — the hardest kind in the SDK.
+**What the player sees.** A new portrait on the hero-select screen: for now an
+exact copy of its base hero (same model, abilities and name).
 
 ```toml
 [mod]
-id           = "Kintaro"
-name         = "Kintaro"
+id           = "MoreHeroes"
+name         = "More Heroes"
 version      = "0.1.0"
 author       = "you"
-description  = "Staged hero manifest."
+description  = "A second Piper."
 experimental = true
 
 [[content]]
-kind      = "hero"
-id        = "Kintaro"
-base      = "Juliet"
-name      = "Kintaro"
-abilities = [
-  { name = "Oni Cleave", description = "A wide axe swing." },
-  { name = "Bear Rush",  description = "Charge through the line." },
-]
+kind = "hero"
+id   = "Zz_Piper_Clone"
+base = "Piper"
 ```
 
-**Prove it.** `mods/<id>/assets/_pending_heros/Kintaro/` gets `hero.json`,
-`skillprofile.json` and `i18n.json`.
+**Prove it.** Open the hero-select screen: one more portrait than before. From
+Lua, `#R.defs.instances("oCDtHeroDefinition")` goes from 12 to 13.
 
-**Trap.** `oCDtHeroDefinition` has no registered class UID and is created by its
-parent record's deserializer, so a new hero needs the library singleton and a
-roster detour that do not exist yet. **Reskinning an existing hero works
-today** — that is `mesh` plus a texture override, both proven.
+**Trap.** The roster is every hero the game has **loaded**, and heroes load only
+through the LiveOps versiondef's hero list, which `apply` appends to. Dropping a
+herodef file in without that loads nothing. The new hero takes the next index,
+which no save has unlocked, so test with the `unlock-heroes` mod. Paid DLC
+heroes (Carmilla, Merlin) cannot be a `base`. Renaming the clone and giving it
+new abilities are not built yet. **Reskinning an existing hero works today**:
+that's `mesh` plus a texture override, both proven.
 
 ---
 

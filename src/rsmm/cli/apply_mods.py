@@ -2339,6 +2339,78 @@ def _find_mo_vector(b: bytes) -> tuple[int, int, int] | None:
     return None
 
 
+def _hero_versiondef_path(decoded: str) -> str | None:
+    """``Definitions/Heroes/<id>.herodef.ot.DtHeroDefinition.gen`` ->
+    ``Heroes\\<id>.herodef.ot``, or None for anything else."""
+    d = decoded.replace("\\", "/")
+    pre, suf = "Definitions/Heroes/", ".herodef.ot.DtHeroDefinition.gen"
+    if not (d.startswith(pre) and d.endswith(suf)) or "/" in d[len(pre):]:
+        return None
+    return "Heroes\\" + d[len(pre):-len(suf)] + ".herodef.ot"
+
+
+def _find_hero_vector(b: bytes) -> tuple[int, int, int] | None:
+    """Locate the versiondef's hero ``vector<TResourcePtr>`` (12 shipped).
+
+    The hero roster screen lists every REGISTERED herodef, and a herodef is
+    only loaded through this vector: a clone registered in UsedRscList alone
+    loaded nothing (2026-09-24, 12 defs live). Same structural search as
+    :func:`_find_mo_vector` — every entry's path ends in ``.herodef.ot``.
+    """
+    N = len(b)
+    needle = b".herodef.ot"
+    first = b.find(needle)
+    while first >= 0:
+        # Walk back to the u32 count in front of the first ("Definitions", path)
+        # pair: path lstr starts len(path)+4 before its end; type lstr before it.
+        for co in range(max(0, first - 400), first):
+            cnt = struct.unpack_from("<I", b, co)[0] if co + 4 <= N else 0
+            if not 1 <= cnt <= 256:
+                continue
+            o, ok = co + 4, True
+            for _ in range(cnt):
+                for want_hero in (False, True):
+                    if o + 4 > N:
+                        ok = False
+                        break
+                    ln = struct.unpack_from("<I", b, o)[0]
+                    if not 0 < ln <= 300 or o + 4 + ln > N:
+                        ok = False
+                        break
+                    s = b[o + 4:o + 4 + ln]
+                    if want_hero and not s.endswith(needle):
+                        ok = False
+                        break
+                    o += 4 + ln
+                if not ok:
+                    break
+            if ok:
+                return co, o, cnt
+        first = b.find(needle, first + 1)
+    return None
+
+
+def _patch_versiondef_heroes(pristine: bytes, paths: list[str]) -> bytes | None:
+    """Append each herodef in ``paths`` to the hero vector. None if not found."""
+    loc = _find_hero_vector(pristine)
+    if loc is None:
+        return None
+    co, vec_end, cnt = loc
+    have = {e[2] for e in _mo_vector_entries(pristine, co, cnt)}
+    add = b""
+    for path in paths:
+        if path in have:
+            continue
+        pb = path.encode("latin1")
+        add += struct.pack("<I", len(b"Definitions")) + b"Definitions"
+        add += struct.pack("<I", len(pb)) + pb
+    if not add:
+        return pristine
+    added = sum(1 for p in paths if p not in have)
+    return (pristine[:co] + struct.pack("<I", cnt + added)
+            + pristine[co + 4:vec_end] + add + pristine[vec_end:])
+
+
 def _mo_vector_entries(b: bytes, co: int, cnt: int) -> list[tuple[int, int, str]]:
     """Split the MO vector into ``(start, end, path)`` per entry.
 
@@ -2521,6 +2593,9 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     mo_paths = sorted(
         {p for d in registrations.values() if (p := _mo_versiondef_path(d))}
     )
+    hero_paths = sorted(
+        {p for d in registrations.values() if (p := _hero_versiondef_path(d))}
+    )
     gen = _locate_cooked_by_leaf(game_dir, VERSIONDEF_GEN_LEAF)
     cache = _locate_cooked_by_leaf(game_dir, VERSIONDEF_CACHE_LEAF)
 
@@ -2528,7 +2603,7 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     # --- .gen vector ---
     if gen is not None:
         bak = gen.with_name(gen.name + BACKUP_SUFFIX)
-        if not mo_paths and not bans:
+        if not mo_paths and not bans and not hero_paths:
             if bak.exists() and not dry_run:
                 shutil.copy2(bak, gen)
                 bak.unlink()
@@ -2541,6 +2616,13 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
             _warn_unmatched_bans(pristine, bans)
             bans = _clamp_bans(pristine, bans)
             patched = _patch_versiondef_gen(pristine, mo_paths, bans)
+            if patched is not None and hero_paths:
+                with_heroes = _patch_versiondef_heroes(patched, hero_paths)
+                if with_heroes is None:
+                    print("  [warn] could not locate the hero vector in "
+                          f"{gen.name}; new heroes won't load", file=sys.stderr)
+                else:
+                    patched = with_heroes
             if patched is None:
                 print("  [warn] could not locate magical-object vector in "
                       f"{gen.name}; new item won't spawn", file=sys.stderr)
@@ -2548,21 +2630,24 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                 what = []
                 if mo_paths:
                     what.append(f"registering {len(mo_paths)} item(s)")
+                if hero_paths:
+                    what.append(f"registering {len(hero_paths)} hero(es)")
                 if bans:
                     what.append(f"banning {len(bans)} item(s)")
                 print(f"  [versiondef] {' + '.join(what)} in LiveOps manifest")
                 if not dry_run:
                     gen.write_bytes(patched)
                 changed += 1
-    elif mo_paths:
-        print("  [warn] LiveOps versiondef .gen not found; new magical object "
-              "won't enter the pool", file=sys.stderr)
+    elif mo_paths or hero_paths:
+        print("  [warn] LiveOps versiondef .gen not found; new magical objects "
+              "and heroes won't load", file=sys.stderr)
 
     # --- UsedRscCache text ---
     if cache is not None:
         bak = cache.with_name(cache.name + BACKUP_SUFFIX)
         lines = [f"EntitySettings|{p}|oCEntitySettingsResource" for p in mo_paths]
-        if not mo_paths:
+        lines += [f"Definitions|{p}|oCDtHeroDefinition" for p in hero_paths]
+        if not lines:
             if bak.exists() and not dry_run:
                 shutil.copy2(bak, cache)
                 bak.unlink()

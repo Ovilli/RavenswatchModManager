@@ -58,7 +58,7 @@ _BLOCKS = [
                           "rarity": "Epic"}),
     ("item", "NoArmor", {"mode": "ban", "items": ["Armor_Per_Object"]}),
     ("enemy", "FrostGhoul", {"base": "Sling_Ghoul", "add_flags": ["Elite"]}),
-    ("hero", "IceHero", {"base": "Aladdin", "name": "Ice Hero"}),
+    ("hero", "IceHero", {"base": "Aladdin"}),
     ("map", "DarkRemix", {"base": "Dark_Hills", "chapter": 0}),
     ("boss", "CrabDen", {"base": "Boss_Marsh_Ghoul", "becomes": "Boss_Crab"}),
     ("modifier", "MoreXp2", {"base": "MoreExperience", "name": "More XP",

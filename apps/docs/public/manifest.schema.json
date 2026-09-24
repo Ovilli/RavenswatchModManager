@@ -229,12 +229,9 @@
             },
             "then": {
               "properties": {
-                "abilities": {},
                 "base": {},
-                "display_name": {},
                 "id": {},
                 "kind": {},
-                "name": {},
                 "schema_version": {}
               },
               "additionalProperties": false

@@ -51,7 +51,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     }),
     "boss": frozenset({"base", "becomes", "name"}),
     "map": frozenset({"base", "chapter", "tribe"}),
-    "hero": frozenset({"base", "name", "display_name", "abilities"}),
+    "hero": frozenset({"base"}),
     "talent": frozenset({
         "hero", "file", "value_patches", "int_patches", "union_patches",
         "rewires", "clone_nodes",
