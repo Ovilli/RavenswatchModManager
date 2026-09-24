@@ -202,7 +202,8 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
            name: str = "character", clip_targets: dict[str, str] | None = None,
            textures: bool = True, materials: list[dict] | None = None,
            attachments: list[dict] | None = None,
-           extra_skinned: list[dict] | None = None) -> bytes:
+           extra_skinned: list[dict] | None = None,
+           own_rig: list[dict] | None = None) -> bytes:
     """Build the rigged .glb.
 
     ``clips`` maps clip name -> cooked oCAnimation file bytes. ``materials``
@@ -213,6 +214,9 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
     as a child of that bone's joint, the way the game parents a weapon.
     ``extra_skinned`` are more meshes bound to the same rig (a skin's cloak or
     hat): ``[{"name", "geometry": cooked bytes, "slots": [per-submesh slots]}]``.
+    ``own_rig`` are pieces on a skeleton of their OWN (the Combat cloak's
+    5-bone chain), same shape as ``extra_skinned``: each becomes a second
+    armature at its own origin with its own skin, for the artist to place.
     """
     cf = cooked.parse(geometry_cooked)
     bones = read_skeleton(cf)
@@ -238,7 +242,7 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
 
     prim_slots: list[dict] = []
 
-    def skinned_prims(gcf, what):
+    def skinned_prims(gcf, what, index=index):
         target = next((si for si, sec in enumerate(gcf.sections)
                        if GC._find_records(sec.payload)), None)
         if target is None:
@@ -253,6 +257,8 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
             raise CharacterExportError(
                 f"{what}: weights name bones the skeleton lacks: {missing[:6]}")
         return _skinned(subs, src["records"]["skinning#0"], [index[n] for n in palette])
+
+    skins = [skin]
 
     def _skinned(subs, recs, joint_of):
         prims, off = [], 0
@@ -311,6 +317,39 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
                               ({"ALB": erefs[k]} if k < len(erefs) and erefs[k] else {}))
         meshes.append({"name": extra.get("name", "extra"), "primitives": eprims})
         nodes.append({"name": extra.get("name", "extra"), "mesh": len(meshes) - 1, "skin": 0})
+        roots.append(len(nodes) - 1)
+
+    # Pieces on their own skeleton: a second armature each, at its own origin.
+    for piece in own_rig or []:
+        pcf = cooked.parse(piece["geometry"])
+        pbones = read_skeleton(pcf)
+        if not pbones:
+            continue
+        base_node = len(nodes)
+        # JOINTS_0 indexes the SKIN's joint list (0..n-1), not the node table.
+        pindex = {b["name"]: i for i, b in enumerate(pbones)}
+        for b in pbones:
+            t, q, sc = decompose(b["local_bind"])
+            nodes.append({"name": b["name"], "translation": t, "rotation": q, "scale": sc})
+        for i, b in enumerate(pbones):
+            if b["parent"] < 0:
+                roots.append(base_node + i)
+            else:
+                nodes[base_node + b["parent"]].setdefault("children", []).append(base_node + i)
+        pibm = buf.add("f", [v for b in pbones for v in b["inverse_bind"]], len(pbones),
+                       "MAT4", 5126)
+        skins.append({"name": f"{piece.get('name', 'piece')}_skin",
+                      "joints": [base_node + i for i in range(len(pbones))],
+                      "inverseBindMatrices": pibm})
+        pprims = skinned_prims(pcf, piece.get("name", "piece"), pindex)
+        prefs = submesh_albedo_refs(pcf) if textures else []
+        slots = piece.get("slots") or []
+        for k in range(len(pprims)):
+            prim_slots.append(slots[k] if k < len(slots) and slots[k] else
+                              ({"ALB": prefs[k]} if k < len(prefs) and prefs[k] else {}))
+        meshes.append({"name": piece.get("name", "piece"), "primitives": pprims})
+        nodes.append({"name": piece.get("name", "piece"), "mesh": len(meshes) - 1,
+                      "skin": len(skins) - 1})
         roots.append(len(nodes) - 1)
 
     # Rigid attachments (weapons, props) under their bone's joint.
@@ -422,7 +461,7 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
         "asset": {"version": "2.0", "generator": "rsmm character export"},
         "extras": {"rsmm": {"kind": "character", "clip_targets": clip_targets or {}}},
         "scene": 0, "scenes": [{"nodes": roots + [mesh_node]}],
-        "nodes": nodes, "skins": [skin],
+        "nodes": nodes, "skins": skins,
         "meshes": meshes,
         "materials": gl_materials,
         "buffers": [{"byteLength": 0}], "bufferViews": buf.views, "accessors": buf.accs,

@@ -246,3 +246,65 @@ def embedded_template(glb: bytes) -> bytes | None:
         return A._extract_raw_payload_from_glb(glb)
     except ValueError:
         return None
+
+
+# --------------------------------------------------------------------------
+# comparison
+# --------------------------------------------------------------------------
+
+def _curve(times, vals, duration, dec):
+    """A stream decoded once: ``(seconds, values)``, or None when it has no keys."""
+    return (A._decode_times(times, duration), [dec(v) for v in vals]) if times else None
+
+
+def _sample(curve, t, quat):
+    if curve is None:
+        return None
+    import bisect
+    secs, decoded = curve
+    i = bisect.bisect_left(secs, t)
+    if i == 0:
+        return decoded[0]
+    if i == len(secs):
+        return decoded[-1]
+    a = (t - secs[i - 1]) / ((secs[i] - secs[i - 1]) or 1.0)
+    x, y = decoded[i - 1], decoded[i]
+    if quat and sum(p * q for p, q in zip(x, y, strict=True)) < 0:
+        y = tuple(-c for c in y)
+    v = tuple(p + (q - p) * a for p, q in zip(x, y, strict=True))
+    if quat:
+        n = sum(c * c for c in v) ** 0.5 or 1.0
+        v = tuple(c / n for c in v)
+    return v
+
+
+def pose_difference(payload_a: bytes, payload_b: bytes, fps: int = 60) -> tuple[float, float]:
+    """``(max rotation difference in degrees, max translation difference in metres)``
+    between two clips, sampled at ``fps`` over the longer one; a bone missing from
+    either side, or a length change, counts as a large difference."""
+    import math
+    a, b = A.parse_payload(payload_a), A.parse_payload(payload_b)
+    if abs(a.duration - b.duration) > 1e-3:
+        return 180.0, float("inf")
+    tb = {t.name: t for t in b.tracks}
+    if set(tb) != {t.name for t in a.tracks}:
+        return 180.0, float("inf")
+    n = max(2, int(max(a.duration, b.duration) * fps) + 1)
+    worst_rot = worst_t = 0.0
+    for tr in a.tracks:
+        o = tb[tr.name]
+        curves = [(_curve(x.r_times, x.r_values, x.duration, A._decode_quat),
+                   _curve(x.t_times, x.t_values, x.duration, A._decode_trans_scale),
+                   _curve(x.s_times, x.s_values, x.duration, A._decode_trans_scale))
+                  for x in (tr, o)]
+        for k in range(n):
+            t = a.duration * k / (n - 1)
+            qa, qb = _sample(curves[0][0], t, True), _sample(curves[1][0], t, True)
+            if qa and qb:
+                dot = min(1.0, abs(sum(x * y for x, y in zip(qa, qb, strict=True))))
+                worst_rot = max(worst_rot, math.degrees(2 * math.acos(dot)))
+            for c in (1, 2):
+                va, vb = _sample(curves[0][c], t, False), _sample(curves[1][c], t, False)
+                if va and vb:
+                    worst_t = max(worst_t, max(abs(x - y) for x, y in zip(va, vb, strict=True)))
+    return worst_rot, worst_t

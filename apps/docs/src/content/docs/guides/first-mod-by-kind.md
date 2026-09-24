@@ -159,20 +159,27 @@ source = "anims/piper_dash.glb"
 the skinned body with its full materials (colour, normal and
 metal/roughness/AO maps), the weapon or prop on the bone that carries it, and
 every clip that fits that rig. `--skin Combat` exports a skin's look instead:
-its materials, its body and its weapon (`--list-skins` names them). Pieces on
-a skeleton of their own, like the Combat cloak, are reported and left out. It imports as a posable,
-animated character. Two settings matter:
+its materials, its body and its weapon (`--list-skins` names them). A piece
+on a skeleton of its own, like the Combat cloak, comes in as a second armature
+at its own origin: the entity does not say where it hangs, so place it by hand.
+It imports as a posable, animated character. Two settings matter:
 
 1. **Set the scene frame rate to 60 *before* importing.** Clips mix a 30 fps
    grid with 60 fps keys where something snaps (Piper's weapon flips in half a
    frame). At 24 or 30 fps Blender drops those keys. At 60, all 45 of Piper's
    clips came back within 0.3 degrees after an import and export.
-2. Export glTF with animations, and point `source` at it with `clip` set to
-   the action's name. The command prints each clip's `target`.
+2. Export glTF with animations, keeping the action names.
 
-The body comes back the same way through `kind = "mesh"` with
-`transform = { skin = "gltf", submeshes = "map" }`. Weights bind by bone
-name, and each submesh keeps its own material so the split survives Blender.
+Then `rsmm import-character edited.glb --mod my-piper` (add `--skin Combat` if
+you exported a skin) writes the mod for you. It cooks every action, compares
+its sampled poses with the shipped clip of the same name, and keeps only the
+ones that moved more than `--threshold` degrees (default 1; an untouched round
+trip stays under 0.5). The body is kept when its vertices no longer match the
+shipped body. Each kept clip becomes a block like the one above, the body a
+`kind = "mesh"` block with `transform = { skin = "gltf", submeshes = "map" }`
+(weights bind by bone name, each submesh keeps its own material), and the
+`.glb` is copied into the mod. It never overwrites an existing mod without
+`--force`.
 
 **Trap.** Bones are matched by **name**, and the target clip is the template:
 it decides which bones exist. A bone your file does not animate is held at the

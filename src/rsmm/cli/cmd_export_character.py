@@ -267,7 +267,9 @@ def main(argv: list[str] | None = None) -> int:
         pal = GC._record_palettes(ecf.sections[t].payload) if t is not None else None
         label = e["mesh"].rsplit("\\", 1)[-1].removesuffix(".fbx")
         if pal is None or not {n for pl in pal for n in pl} <= bones:
-            own_rig.append(label)           # e.g. a cloak on its own small skeleton
+            if CE.read_skeleton(ecf):       # e.g. a cloak on its own small skeleton
+                own_rig.append({"name": label, "geometry": g,
+                                "slots": [CE.material_slots(m) for m in e["mats"]]})
             continue
         extra.append({"name": label, "geometry": g,
                       "slots": [CE.material_slots(m) for m in e["mats"]]})
@@ -291,14 +293,15 @@ def main(argv: list[str] | None = None) -> int:
         clips[name], targets[name] = raw, CE.clip_target(rel)
 
     glb = CE.export(geo, clips, name=args.hero, clip_targets=targets, materials=materials,
-                    attachments=attachments, extra_skinned=extra)
+                    attachments=attachments, extra_skinned=extra, own_rig=own_rig)
     out = args.output or Path(f"{args.hero}{'_' + args.skin if args.skin else ''}.glb")
     out.write_bytes(glb)
     print(f"{out}: {Path(geo_rel).name.split('.fbx')[0]} ({n_bones} bones), "
-          f"{len(attachments)} attachment(s), {len(extra)} extra mesh(es), "
+          f"{len(attachments)} attachment(s), {len(extra) + len(own_rig)} extra mesh(es), "
           f"{len(clips)} clips ({skipped} skipped: other rigs), {len(glb) // 1024} KB")
-    for label in own_rig:
-        print(f"  skipped {label}: it has its own skeleton (not bound to {args.hero}'s rig)")
+    for piece in own_rig:
+        print(f"  {piece['name']}: its own skeleton, exported as a separate armature at "
+              f"its origin (the game does not say where it hangs; place it in Blender)")
     for name in sorted(targets):
         print(f"  {name:48} target = {targets[name]!r}")
     return 0
