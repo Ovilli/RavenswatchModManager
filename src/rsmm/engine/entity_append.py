@@ -36,7 +36,6 @@ sees two components with one identity.
 from __future__ import annotations
 
 import hashlib
-import os
 import struct
 
 from . import cooked
@@ -155,14 +154,20 @@ def replace_blob_strings(blob: bytes, swaps: dict[str, str]) -> bytes:
     return out
 
 
-def remint_guid(blob: bytes) -> bytes:
+def remint_guid(blob: bytes, salt: bytes) -> bytes:
     """Replace the record's 16-byte instance GUID (right after the first
-    inner END marker) with fresh random bytes."""
+    inner END marker) with one derived from the old GUID + ``salt``.
+
+    Deterministic so the same mod builds the same bytes every time (stable
+    backups, reproducible releases). Callers salt with the host entity's bytes
+    as they stand before the append, which differ per host and per append.
+    """
     pos = blob.find(_END)
     if pos < 0 or pos + 4 + 16 > len(blob):
         raise EntityAppendError("no inner END marker — not a component record?")
     g = pos + 4
-    return blob[:g] + os.urandom(16) + blob[g + 16:]
+    new = hashlib.sha256(salt + blob[g:g + 16]).digest()[:16]
+    return blob[:g] + new + blob[g + 16:]
 
 
 def _lstr(text: str) -> bytes:

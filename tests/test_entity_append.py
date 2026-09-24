@@ -132,7 +132,9 @@ def test_remint_guid_changes_identity_only():
     # so this record intentionally carries one followed by a 16-byte GUID.
     rec = (struct.pack("<I", 0) + _lstr("Alpha") + cooked.MARK_END
            + b"\x11" * 16 + b"\x00\x00\x00\x00")
-    out = EA.remint_guid(rec)
+    out = EA.remint_guid(rec, b"host")
+    assert out == EA.remint_guid(rec, b"host")          # reproducible
+    assert out != EA.remint_guid(rec, b"other host")    # distinct per host
     assert len(out) == len(rec)
     pos = rec.find(cooked.MARK_END) + 4
     assert out[pos:pos + 16] != rec[pos:pos + 16]      # guid changed

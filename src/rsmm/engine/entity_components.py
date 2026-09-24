@@ -497,7 +497,7 @@ def _splice(host_bytes: bytes, donor_cf, records: list[bytes],
             here = {k: v for k, v in string_swaps.items() if k.encode() in remapped}
             if here:
                 remapped = EA.replace_blob_strings(remapped, here)
-        remapped = EA.remint_guid(remapped)
+        remapped = EA.remint_guid(remapped, out)
         out = EA.append_components(cooked.emit(host_cf), [remapped])
         EA.validate_layout(cooked.parse(out))
     return out
@@ -672,7 +672,7 @@ def add_components(host_bytes: bytes, names: list[str], *,
         remapped = _remap_class_tags(record, donor_cf, host_cf)
         # Fresh instance GUID: the donor's identity must not be duplicated, or
         # the engine sees two components claiming to be the same one.
-        remapped = EA.remint_guid(remapped)
+        remapped = EA.remint_guid(remapped, out)
         out = EA.append_components(cooked.emit(host_cf), [remapped])
         EA.validate_layout(cooked.parse(out))
     return out
