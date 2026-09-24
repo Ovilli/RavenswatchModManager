@@ -515,6 +515,7 @@
             "then": {
               "properties": {
                 "chapter": {},
+                "fill": {},
                 "id": {},
                 "kind": {},
                 "kinds": {},

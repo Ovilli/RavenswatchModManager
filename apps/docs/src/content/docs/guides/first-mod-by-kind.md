@@ -291,24 +291,38 @@ id           = "BusyHills"
 name         = "Busy Dark Hills"
 version      = "0.1.0"
 author       = "you"
-description  = "More camps, more wishing wells."
-experimental = true
+description  = "Fewer, hand-placed-feeling camps."
 
 [[content]]
 kind    = "tilegen"
 id      = "camps"
 chapter = "DarkHills"
 [content.kinds.Camp]
-count = 8
-[content.quotas]
-Wishing_Well = 2
+count = 2                 # camps placed by the kind pass
+[content.fill]
+"40x40" = []              # leftover big slots stay empty instead of
+"64x64" = []              # becoming camps
 ```
+
+**Where tiles come from.** Generation runs in two passes, and tiles can pull
+in more tiles:
+
+1. **Kind pass.** Each kind places up to its `count`.
+2. **Fill pass.** Every footprint group then fills each slot still empty with a
+   tile carrying the group's flags. Dark Hills fills 40x40/64x64 with `Camp`,
+   which is why an unedited map shows 8-9 camps against a Camp count of 5.
+   `fill = { "<WxH>" = [] }` turns it off for that group.
+3. **Tile constraints.** A placed tile can require others nearby. `Start` places
+   one `Story` tile, and the Wood House story tile then places 3 Treant camps.
+   The recipe doesn't control these.
+
+Flag `quotas` are **caps** (at most N), so raising one never adds tiles.
 
 **Prove it.** Start a run in that chapter and count what generated.
 `R.poi.on_generated` + `R.poi.placed` hand you every placed tile by name, so the
-count can come from the spawner itself instead of the minimap. Compare against
-a LOW count: an unedited Storm Island (recipe 5) has generated 8 camps, so "more
-than usual" is not evidence on its own.
+count can come from the spawner itself instead of the minimap. Count camps by
+source: Treant camps next to the Wood House come from its constraint, not the
+recipe.
 
 **Trap.** Edits are keyed by **name** and re-applied to the shipped recipe every
 time, so a name the recipe no longer has fails the emit rather than landing on

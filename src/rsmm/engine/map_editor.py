@@ -401,7 +401,7 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
     """
     if not isinstance(edits, dict):
         raise MapEditError("edits must be a table")
-    unknown = set(edits) - {"kinds", "quotas", "slots"}
+    unknown = set(edits) - {"kinds", "quotas", "slots", "fill"}
     if unknown:
         raise MapEditError(f"unknown edit section(s): {', '.join(sorted(unknown))}")
 
@@ -492,6 +492,23 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
                 plan.append((lambda s=s, ki=ki, on=on: s.kinds.__setitem__(ki, 1 if on else 0),
                              f"slot {sid}: {kname} {'allowed' if on else 'removed'}"))
 
+    # The FILL pass (TileSpawn_PlaceTiles, after the per-kind loop): every
+    # footprint group whose flag filter is non-empty fills each slot still EMPTY
+    # with a pool tile carrying those flags. Dark Hills' 40x40/64x64 groups fill
+    # with "Camp", which is why a map has 8-9 camps whatever the Camp kind's
+    # count says — the count only decides how many land before the fill.
+    # An empty list leaves the group's leftover slots empty.
+    groups = {n: tg.sizes[i] for n, i in zip(group_names, tg.spawner.size_ids, strict=True)}
+    for gname, flags in (edits.get("fill") or {}).items():
+        if gname not in groups:
+            raise MapEditError(f"fill: no footprint group {gname!r}; have {group_names}")
+        if not (isinstance(flags, list) and all(isinstance(f, str) and f for f in flags)):
+            raise MapEditError(f"fill.{gname}: expected a list of flag names, [] for no fill")
+        g = groups[gname]
+        if list(flags) != g.filter.required:
+            plan.append((lambda g=g, flags=list(flags): setattr(g.filter, "required", flags),
+                         f"fill {gname}: {g.filter.required} -> {list(flags) or 'nothing'}"))
+
     for fn, _ in plan:
         fn()
     TG.validate(tg)
@@ -568,9 +585,6 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict) -> str:
         'sdk_version = ">=3.0,<4"',
         'license     = "MIT"',
         'tags        = ["maps", "generation"]',
-        "# The tilegen kind is rated experimental: an edited recipe has not yet",
-        "# been shown to change what generates.",
-        "experimental = true",
         "# The host generates the map, so only the host's copy decides the layout.",
         'multiplayer_scope = "host-authoritative"',
         "",
@@ -590,6 +604,9 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict) -> str:
     if edits.get("quotas"):
         lines += ["", "[content.quotas]"]
         lines += [f"{_q(k)} = {_val(v)}" for k, v in sorted(edits["quotas"].items())]
+    if edits.get("fill"):
+        lines += ["", "[content.fill]"]
+        lines += [f"{_q(g)} = {_val(v)}" for g, v in sorted(edits["fill"].items())]
     for sid, se in sorted((edits.get("slots") or {}).items(), key=lambda kv: int(kv[0])):
         lines += ["", f"[content.slots.{_q(str(sid))}]"]
         if "pos" in se:

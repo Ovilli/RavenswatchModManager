@@ -21,6 +21,13 @@ Fields:
                                  allow = { "<Kind>" = bool } } }`` — ``pos`` is
                                  checked against the recipe so an edit made
                                  against one build cannot silently move.
+    ``fill``    (table)          ``{ "<WxH>" = ["<Flag>", ...] }`` — what a
+                                 footprint group fills its still-empty slots
+                                 with after the kinds are placed; ``[]`` = no
+                                 fill. Dark Hills fills 40x40/64x64 with
+                                 ``Camp``, which is where most camps come from:
+                                 a kind's ``count`` only covers the placements
+                                 made before this pass.
 """
 
 from __future__ import annotations
@@ -41,9 +48,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise SchemaNotMined(
             f"tilegen {defn.id}: needs a 'chapter' (one of "
             + ", ".join(c.key for c in ME.chapters()) + ")")
-    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "slots") if k in defn.fields}
+    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "slots", "fill")
+             if k in defn.fields}
     if not edits:
-        raise ContentError(f"tilegen {defn.id}: no kinds, quotas or slots to change")
+        raise ContentError(f"tilegen {defn.id}: no kinds, quotas, slots or fill to change")
     try:
         ch = ME.find_chapter(chapter)
         level, changes = ME.build_level(ch, edits)

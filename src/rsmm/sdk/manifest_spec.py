@@ -69,7 +69,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "own_level", "places", "prop", "replace_base", "swaps", "weight",
     }),
     "mesh": frozenset({"target", "model", "transform"}),
-    "tilegen": frozenset({"chapter", "kinds", "quotas", "slots"}),
+    "tilegen": frozenset({"chapter", "kinds", "quotas", "slots", "fill"}),
     "shop": frozenset({"prices", "price_scale", "offers", "slots", "config"}),
 }
 

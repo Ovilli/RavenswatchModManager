@@ -119,11 +119,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # four), and this works on a `SceneryObjects_*` host, so the
                               # "scenery is never interactive" corpus rule describes shipped
                               # content rather than an engine gate.
-    "tilegen": "experimental",  # 2026-09-19: Dark Hills with Camp 5 -> 8 generated 7-8 camps,
-                              # BUT an unedited Storm Island (recipe 5) generated 8 in the same
-                              # session, so a high count proves nothing. Re-testing with a LOW
-                              # count (2). The codec round-trips all 494 shipped tilegen objects
-                              # byte-exactly and validate() enforces every cross-dimension.
+    "tilegen": "confirmed",   # PROVEN IN GAME 2026-09-24: Camp count 2 + no 40x40/64x64 fill
+                              # gave exactly 2 recipe camps (was 8-9) and left the spare slots
+                              # empty. Camps have THREE sources (TileSpawn_PlaceTiles): the kind
+                              # pass (count), the footprint-group FILL pass, and tile distance
+                              # constraints (a story tile like Wood_House forces 3 Treant camps).
+                              # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit

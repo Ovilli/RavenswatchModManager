@@ -161,7 +161,7 @@ def test_manifest_reads_back_as_exactly_its_edits():
     import tomllib
 
     mod = tomllib.loads(text)["mod"]
-    assert mod["experimental"] is True and mod["multiplayer_scope"] == "host-authoritative"
+    assert "experimental" not in mod and mod["multiplayer_scope"] == "host-authoritative"
     with pytest.raises(ME.MapEditError, match="mod id"):
         ME.manifest_toml("Bad Id", "", ch, edits)
 
@@ -251,7 +251,7 @@ def test_tilegen_kind_cooks_only_the_named_changes():
 
     from rsmm.sdk.content import KIND_CONFIDENCE, ContentDef, ContentError, _load_kind
 
-    assert KIND_CONFIDENCE["tilegen"] == "experimental"
+    assert KIND_CONFIDENCE["tilegen"] == "confirmed"
     kind = _load_kind("tilegen")
     out = Path(tempfile.mkdtemp())
     ch = ME.find_chapter("DarkHills")
@@ -308,3 +308,18 @@ def test_save_through_the_server_writes_a_mod_that_lints_and_reopens(editor, tmp
                                  "edits": edits}, token=srv.token)
     assert code == 409
     assert (hand / "manifest.toml").read_text() == '[mod]\nid = "handmade"\n'
+
+
+@needs_corpus
+def test_fill_edit_empties_a_group_and_survives_a_write():
+    """The fill pass (not a kind's count) is where most camps come from: the
+    40x40/64x64 groups fill every leftover slot with "Camp". `fill = []` turns
+    that off, and the recipe must still round-trip through the writer."""
+    ch = ME.find_chapter("DarkHills")
+    level, changes = ME.build_level(ch, {"fill": {"40x40": [], "64x64": []}})
+    assert changes == ["fill 40x40: ['Camp'] -> nothing", "fill 64x64: ['Camp'] -> nothing"]
+    tg = TG.read(level)
+    fills = {n: tg.sizes[i].filter.required for n, i in zip(tg.size_names, tg.spawner.size_ids, strict=True)}
+    assert fills == {"3x3": ["Blocker"], "6x6": ["Blocker"], "40x40": [], "64x64": []}
+    with pytest.raises(ME.MapEditError, match="no footprint group"):
+        ME.build_level(ch, {"fill": {"99x99": []}})
