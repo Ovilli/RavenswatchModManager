@@ -33,8 +33,9 @@ clone (a fifth oCDtMapDefinition, not the vanilla pointer), and the run started
 in it. ⚠ The TILE POOL still comes from the base: generation follows the reused
 tile-generation level's own backref to the ORIGINAL mapdef (a POI added to the
 vanilla pool still appeared). So a clone now carries its own
-tilegen level with that backref repointed (``_clone_levels``); ⚠ NOT yet
-proven in game.
+tilegen level with that backref repointed (``_clone_levels``). PROVEN IN GAME
+2026-09-24: with runestone-shrine in the vanilla Dark Hills pool, the clone
+chapter generated 140 tiles and none of them the shrine (was 6).
 """
 from __future__ import annotations
 
