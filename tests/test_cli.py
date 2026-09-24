@@ -109,7 +109,7 @@ def test_cmd_new_experimental_kind_opts_in(tmp_path, monkeypatch):
     rejected)."""
     from rsmm.cli.cmd_new import main
     monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
-    for kind in ("hero", "map"):
+    for kind in ("map",):
         assert main([f"Mod_{kind}", "--kind", kind]) == 0
         text = (tmp_path / "mods" / f"Mod_{kind}" / "manifest.toml").read_text("utf-8")
         assert "experimental = true" in text

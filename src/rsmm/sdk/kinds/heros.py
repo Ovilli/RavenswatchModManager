@@ -21,11 +21,10 @@ names itself (its strings are memoir text keys, codex art, entity refs), so a
 byte copy under a new file name is a distinct definition, the same identity
 rule as an enemy or map clone.
 
-⚠ NOT YET PROVEN IN GAME. The open risks are the things sized for the 12
-shipped heroes: the save's ``UnlockedHeroFlag`` bitfield (one bit per index),
-per-hero progression, and whatever else indexes by hero position. A clone
-takes the next index, which no save has unlocked, so test with
-``R.hero.unlock_progression()`` (the ``unlock-heroes`` mod).
+PROVEN IN GAME 2026-09-24: a Piper clone appeared as a 13th hero, was picked,
+and a run started as it with no crash; the save the game wrote checks out. A
+clone takes the next index, which no save has unlocked, so it may need
+``R.hero.unlock_progression()`` (the ``unlock-heroes`` mod) to be selectable.
 
 Fields:
     ``base``  (str, required)  a shipped hero to clone, e.g. ``Piper``. Paid

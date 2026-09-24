@@ -6,7 +6,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**15 kinds** — 11 confirmed, 3 experimental, 1 guess.
+**15 kinds** — 12 confirmed, 2 experimental, 1 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -14,7 +14,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `enemy` | ✅ confirmed | `rsmm.sdk.kinds.enemies` | Enemy content builder — two modes. |
 | `boss` | ✅ confirmed | `rsmm.sdk.kinds.bosses` | Boss content builder — make a boss arena fight a different boss. |
 | `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder: clone a shipped mapdef and point a chapter at it. |
-| `hero` | ⚠️ experimental | `rsmm.sdk.kinds.heros` | Hero content builder: clone a shipped hero into a new roster entry. |
+| `hero` | ✅ confirmed | `rsmm.sdk.kinds.heros` | Hero content builder: clone a shipped hero into a new roster entry. |
 | `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | Talent (in-game "Skill") value content builder. |
 | `skill` | ✅ confirmed | `rsmm.sdk.kinds.skills` | Hero **skill** (talent) content builder. |
 | `modifier` | ⚠️ experimental | `rsmm.sdk.kinds.modifiers` | Custom **game modifier** ("negative mode") content builder. |

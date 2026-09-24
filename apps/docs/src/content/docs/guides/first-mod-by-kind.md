@@ -531,7 +531,6 @@ name         = "More Heroes"
 version      = "0.1.0"
 author       = "you"
 description  = "A second Piper."
-experimental = true
 
 [[content]]
 kind = "hero"

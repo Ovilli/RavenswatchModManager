@@ -551,24 +551,24 @@ def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
 
 
 def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
-    """Non-confirmed kinds (hero/map) raise unless the mod opts
+    """Non-confirmed kinds (e.g. map) raise unless the mod opts
     into experimental — so nobody ships speculative content unknowingly."""
     from rsmm.sdk.content import ContentError, kind_confidence
     m = _builder(tmp_path, monkeypatch)
     assert kind_confidence("item") == "confirmed"
-    assert kind_confidence("hero") == "experimental"
+    assert kind_confidence("map") == "experimental"
     with pytest.raises(ContentError, match="experimental"):
-        m.hero("IceLord", base="Aladdin")
+        m.map("DarkRemix", base="Dark_Hills")
     # confirmed kinds never need the opt-in.
     m.item("Sword", base="Knife")
 
 
 def test_unverified_kind_allowed_with_optin(tmp_path: Path, monkeypatch):
     m = _builder(tmp_path, monkeypatch, experimental=True)
-    ref = m.hero("IceLord", base="Aladdin")
-    assert ref.id == "IceLord"
+    ref = m.map("DarkRemix", base="Dark_Hills")
+    assert ref.id == "DarkRemix"
     assert m.summary()["experimental"] is True
-    assert m.summary()["content_confidence"]["hero"] == "experimental"
+    assert m.summary()["content_confidence"]["map"] == "experimental"
 
 
 def test_duplicate_content_id_rejected(tmp_path: Path, monkeypatch):
