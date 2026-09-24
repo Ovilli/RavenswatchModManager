@@ -43,10 +43,11 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # confirmed because downgrading it would newly require
                               # experimental=true from every working clone mod.
     "talent": "confirmed",    # plain in-place magnitude override, tested
-    "enemy": "experimental",  # mode="override" is PROVEN in-game 2026-08-28 (entity_ref is
-                              # what the camp instantiates; cross_biome pool repoint places
-                              # foreign-chapter creatures). mode="clone" — adding a NEW def —
-                              # is still unproven, and the rating covers the whole kind.
+    "enemy": "confirmed",     # mode="override" PROVEN in game 2026-08-28 (entity_ref is what
+                              # the camp instantiates; cross_biome pool repoint places
+                              # foreign-chapter creatures). mode="clone" PROVEN 2026-09-24: a
+                              # Gnoll clone with a Mud Crab body spawned in Storm Island gnoll
+                              # camps once its `power` (cost) stayed within the camp budget.
     "hero": "experimental",   # clones, but roster detour + library unproven
     "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
                               # resolved to the clone and the run started in it); the clone

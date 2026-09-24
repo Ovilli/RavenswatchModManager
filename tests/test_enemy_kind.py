@@ -48,8 +48,8 @@ def test_weight_only_clone_is_byte_identical_except_weight(tmp_path):
     clone = _decode(_emit(tmp_path, weight=20.0)[0])
     for k in ("tribe_ref", "entity_ref", "flags", "base_flags", "_tail_hex"):
         assert clone[k] == base[k], f"{k} changed unexpectedly"
-    assert clone["spawn_weight"] == 20.0
-    assert base["spawn_weight"] != 20.0  # the one field we did change
+    assert clone["power"] == 20.0
+    assert base["power"] != 20.0  # the one field we did change
 
 
 def test_unknown_tribe_rejected(tmp_path):
@@ -67,7 +67,7 @@ def test_known_tribe_accepted(tmp_path):
 
 def test_extreme_weight_rejected(tmp_path):
     _require_corpus()
-    with pytest.raises(ContentError, match="exceeds the safe ceiling"):
+    with pytest.raises(ContentError, match="exceeds 1000"):
         _emit(tmp_path, weight=9999)  # the value that crashed the game
 
 

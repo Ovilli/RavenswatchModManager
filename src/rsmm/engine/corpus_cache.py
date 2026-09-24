@@ -38,7 +38,7 @@ from .paths import DATA_DIR, user_data_dir
 
 #: Bumped when a cached value's SHAPE changes, so an old file is ignored
 #: rather than deserialized into the wrong structure.
-_SCHEMA = 1
+_SCHEMA = 2
 
 
 def _cache_dir() -> Path:

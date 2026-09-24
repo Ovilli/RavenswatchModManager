@@ -6,26 +6,26 @@ description: Clone, restat, and (eventually) spawn your own enemies and bosses.
 import { Aside, Badge, Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
 Custom enemies are a **clone-and-patch** kind: you start from a vanilla enemy,
-change its stats/assets, and register it as a new definition. <Badge text="Experimental" variant="caution" />
+change its stats/assets, and register it as a new definition. <Badge text="Confirmed" variant="success" />
 
-<Aside type="caution" title="What works today">
-The data half is solid — the enemy codecs round-trip vanilla definitions
-**100%**, and the SDK emits a valid custom `oCDtEnemyDefinition`. The missing
-piece is the **apply step that makes the game spawn it**: an enemy only appears
-in a run if a *camp spawn selector* picks it (see [the spawn model](#how-enemies-spawn)).
-Until that lands, a custom enemy is registered but won't show up in-game on its
-own. Restatting an existing enemy in place works now.
+<Aside type="tip" title="Proven in game (2026-09-24)">
+A clone spawns in real camps: a Gnolls-tribe clone wearing a Mud Crab body
+appeared in Storm Island gnoll camps. The def joins its tribe's roster when it
+loads, and camps pick from that roster. Keep the clone's **tribe** set to one
+the target biome's camps use. Keep its **body** (`entity`) to a creature that
+biome streams. Leave **`power`** near vanilla: it is the enemy's cost against
+the camp's power budget, not its spawn odds, and a clone priced above the budget
+is never picked.
 </Aside>
 
 ## Author one
 
-The enemy kind is experimental, so the mod must opt in with
-`Mod(experimental=True)` (lint enforces this for non-confirmed kinds).
+The enemy kind is confirmed, so no `experimental` opt-in is needed.
 
 ```python title="build.py"
 from rsmm import sdk
 
-with sdk.Mod("MyEnemies", experimental=True) as mod:
+with sdk.Mod("MyEnemies") as mod:
     mod.enemy(
         "Frost_Goblin",
         base="Goblins/Goblin_Warrior",   # vanilla donor to clone
@@ -39,7 +39,6 @@ Equivalent declarative form:
 ```toml title="mods/MyEnemies/manifest.toml"
 [mod]
 id = "MyEnemies"
-experimental = true
 
 [[content]]
 kind = "enemy"

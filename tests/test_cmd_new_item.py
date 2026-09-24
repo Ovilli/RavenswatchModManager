@@ -110,9 +110,8 @@ def test_folder_kinds_scaffold_a_content_dir_not_a_manifest_block(scaffold):
     assert [(b["kind"], b["id"], b["base"]) for b in blocks] == [
         ("enemy", "demo_enemy_1", "Gnoll_Shielded")]
 
-    # Non-confirmed kinds ship opted-in and disabled.
-    assert doc["mod"]["experimental"] is True
-    assert doc["mod"]["enabled"] is False
+    # enemy is confirmed (2026-09-24), so no experimental opt-in.
+    assert "experimental" not in doc["mod"]
 
 
 def test_apostrophe_in_text_stays_parseable(scaffold):

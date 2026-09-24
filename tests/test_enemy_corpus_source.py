@@ -30,7 +30,7 @@ def _emit(out: Path, defn_id: str) -> list[Path]:
     defn = ContentDef(kind="enemy", id=defn_id,
                       fields={"mode": "override", "cross_biome": True,
                               "repoint_pools": False, "mix": "shuffle",
-                              "seed": 1337, "weight": 5.0})
+                              "seed": 1337, "power": 5.0})
     return enemies.emit("TestCorpusSourceMod", defn, out)
 
 

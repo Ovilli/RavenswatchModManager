@@ -655,8 +655,14 @@ cross_biome = true     # draw from every creature in the game, and repoint each
                        # biome's EntityPooling asset so they are streamed there
 mix         = "shuffle"  # each biome gets as many distinct creatures as it has
 seed        = 1337       # pool slots, each used once ("random" draws with
-weight      = 5.0        # replacement and leaves ~a third of the slots unused)
+                         # replacement and leaves ~a third of the slots unused)
 ```
+
+`power` (optional) sets one power **cost** for every overridden enemy. It is
+not spawn odds: a camp spends a power budget, so raising it makes each camp
+field fewer, pricier enemies, and a cost above the budget means the enemy is
+never picked. Vanilla camp enemies cost 0.1-20. `weight` is its old,
+misleading name and still works with a warning.
 
 **`cross_biome` is the load-bearing flag.** Without it a swap must stay inside
 the biome's own entity pool, so the randomiser can only permute the cast that
@@ -1368,10 +1374,13 @@ kind's rating is the weakest mode it ships, so read these alongside it:
   `cross_biome` placed chapter-2/3 creatures in an earlier chapter. What's still
   unknown is an imported creature's projectiles and attack zones (see the
   caution above).
-- `kind="enemy"`, `mode="clone"`: the codec round-trips and the def
-  self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe
-  roster), so `UsedRscList` registration is the whole contract. Nobody has seen
-  a clone spawn in-game yet. This mode is what holds `enemy` at experimental.
+- `kind="enemy"`, `mode="clone"`: proven in-game 2026-09-24. A Gnolls-tribe
+  clone with a Mud Crab body spawned in Storm Island gnoll camps. The def
+  self-registers onto its tribe's roster at load, so `UsedRscList` registration
+  is the whole contract. The trap: `power` (formerly `weight`) is the clone's
+  **cost** against the camp's power budget. At 20, the first attempt was priced
+  out of every gnoll camp and never appeared. Leave it unset to keep the base's
+  cost.
 - `kind="item"`, `mode="ban"`: the exact inverse of the proven catalog write. It
   drops entries from the same LiveOps MO vector. It hasn't been confirmed
   in-game yet.
@@ -1396,8 +1405,8 @@ otherwise the SDK raises and `rsmm lint` fails. This is deliberate — a ⚠️/
 kind is a known guess, not a finished feature.
 
 ```python
-with sdk.Mod("MyEnemyMod", experimental=True) as m:   # required for any non-confirmed kind
-    m.enemy("Dreadgnoll", base="Gnoll_Shielded", tribe="Gnolls")
+with sdk.Mod("MyMapMod", experimental=True) as m:   # required for any non-confirmed kind
+    m.map("Twilight_Hills", base="Dark_Hills")
 ```
 
 See [docs/INTERNALS.md](/architecture/internals/) for the engine notes that ground all of the above, and [docs/ROADMAP.md](/project/roadmap/) for open work.

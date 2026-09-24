@@ -44,7 +44,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "enemy": frozenset({
         # mode = "clone"
         "base", "name", "display_name", "tribe", "flags", "add_flags",
-        "weight", "entity",
+        "power", "weight", "entity",
         # mode = "override"
         "mode", "pools", "enemies", "exclude", "mix", "seed", "cross_biome",
         "imports", "repoint_pools", "casts",

@@ -201,7 +201,6 @@ name         = "Treantfall"
 version      = "0.1.0"
 author       = "you"
 description  = "Dark Hills is a forest, and it has opinions."
-experimental = true
 
 [[content]]
 kind   = "enemy"
@@ -214,9 +213,10 @@ entity = "Enemies\\Treant\\Standard_Root_Treant.entity.ot"
 **Prove it.** Load the chapter and fight the first camp: every creature in it
 is a treant. List a biome's creatures with `./rsmm enemies pool Dark_Hills`.
 
-**Trap.** `mode = "override"` is the proven half — it repoints what an existing
-population *is*. `mode = "clone"` adds a NET-NEW definition, and that half has
-not been seen spawning. Imported creatures can also bring projectiles and attack
+**Trap.** `power` (old name `weight`) is a creature's **cost** against the
+camp's power budget, not its spawn odds. A `mode = "clone"` enemy set to 20 was
+priced out of every gnoll camp and never appeared. Leave it unset to keep the
+base's cost. Imported creatures can also bring projectiles and attack
 zones the destination chapter never loads; see
 [Custom enemies](/guides/custom-enemies/).
 

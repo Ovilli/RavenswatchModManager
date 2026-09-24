@@ -68,7 +68,7 @@ def _cmd_list(args) -> int:
             continue
         if args.grep and args.grep.lower() not in eid.lower():
             continue
-        rows.append((tribe, eid, body.get("spawn_weight", 0.0)))
+        rows.append((tribe, eid, body.get("power", 0.0)))
     if not rows:
         print("(no enemies found — is the game install readable? set RSMM_GAME_DIR)",
               file=sys.stderr)
@@ -89,7 +89,7 @@ def _cmd_show(args) -> int:
     print(f"  tribe       : {_tribe_name(body.get('tribe_ref'))}")
     print(f"  entity_ref  : {(body.get('entity_ref') or ['', ''])[1]}")
     print(f"  flags       : {', '.join(body.get('flags') or []) or '-'}")
-    print(f"  spawn_weight: {body.get('spawn_weight', 0.0):g}")
+    print(f"  power:        {body.get('power', 0.0):g}   (cost against a camp's budget)")
     print(f'\n  e.g.  [[content]] kind="enemy" id="My_{eid}" base="{eid}"')
     return 0
 

@@ -159,7 +159,7 @@ def pool_of_entity() -> dict[str, str]:
 
 
 def enemy_index() -> dict[str, dict[str, Any]]:
-    """``enemy id -> {entity, tribe, weight, biome}`` over the whole corpus.
+    """``enemy id -> {entity, tribe, power, biome}`` over the whole corpus.
 
     ``biome`` is the pool holding the enemy's ``entity_ref``, or ``None`` for
     the definitions no pool streams — bosses, summons and quest enemies, which
@@ -193,7 +193,7 @@ def enemy_index() -> dict[str, dict[str, Any]]:
             out[enemy_id] = {
                 "entity": entity,
                 "tribe": tribe,
-                "weight": body.get("spawn_weight"),
+                "power": body.get("power"),
                 "biome": by_entity.get(entity.lower()),
             }
         return out
