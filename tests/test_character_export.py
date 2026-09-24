@@ -76,3 +76,43 @@ def test_quaternion_keys_are_sign_continuous():
 def test_clip_names_and_targets():
     assert CE.clip_name(DASH) == "Piper_Dash_Default"
     assert CE.clip_target(DASH) == "Characters\\Heroes\\Piper\\Animations\\Piper_Dash_Default.fbx"
+
+
+@needs
+def test_skins_resolve_from_the_hero_entities():
+    from rsmm.cli import cmd_export_character as X
+    paths = X._asset_paths()
+    base = X.resolve_setup("Piper", None, paths)
+    assert {"Albino", "Combat", "Poison"} <= set(base["skins"])
+    assert not any("Pet" in s or s == "FX" for s in base["skins"])        # other objects
+    assert base["body"].endswith("Piper_GEO.fbx")
+    assert base["attachments"]["Weapon In Left Hand Mesh"] == {
+        "bone": "DEF.Weapon.R", "mesh": "Characters\\Heroes\\Piper\\Piper_Flute.fbx"}
+    assert base["mats"]["Character Mesh"].endswith("M_Piper.mat.ot")
+    albino = X.resolve_setup("Piper", "Albino", paths)
+    assert albino["mats"]["Character Mesh"].endswith("M_PiperAlbino.mat.ot")
+    combat = X.resolve_setup("Piper", "Combat", paths)
+    assert combat["body"].endswith("Piper_Combat_GEO.fbx")
+    assert combat["attachments"]["Weapon In Left Hand Mesh"]["mesh"].endswith(
+        "Piper_Flute_Combat_GEO.fbx")
+
+
+@needs
+def test_full_materials_and_the_weapon_on_its_bone():
+    slots = CE.material_slots("Characters\\Heroes\\Piper\\Textures\\M_Piper.mat.ot")
+    assert set(slots) == {"ALB", "MRA", "NRM"}
+    flute = corpus.read("3D/Characters/Heroes/Piper/Piper_Flute.fbx.Geometry.gen")
+    glb = CE.export(corpus.read(GEO), {}, name="Piper", materials=[slots, slots],
+                    attachments=[{"name": "Flute", "bone": "DEF.Weapon.R", "geometry": flute,
+                                  "slots": {}}])
+    doc, _ = AC._read_glb(glb)
+    body = doc["materials"][0]
+    assert "normalTexture" in body and "occlusionTexture" in body
+    assert "metallicRoughnessTexture" in body["pbrMetallicRoughness"]
+    weapon_joint = next(n for n in doc["nodes"] if n["name"] == "DEF.Weapon.R")
+    assert any(doc["nodes"][c]["name"] == "Flute" for c in weapon_joint["children"])
+
+
+def test_skinning_layer_versions_10_and_13_are_read():
+    from rsmm.engine import geometry_cook as GC
+    assert {10, 13} <= set(GC._LAYER_VERS)

@@ -156,8 +156,11 @@ source = "anims/piper_dash.glb"
 
 **Authoring in Blender or Maya.** `rsmm export-character Piper` writes one
 `.glb` with the real armature (the game's bone names, hierarchy and bind pose),
-the skinned, textured body (each submesh's albedo embedded) and every clip that
-fits that rig. It imports as a posable,
+the skinned body with its full materials (colour, normal and
+metal/roughness/AO maps), the weapon or prop on the bone that carries it, and
+every clip that fits that rig. `--skin Combat` exports a skin's look instead:
+its materials, its body and its weapon (`--list-skins` names them). Pieces on
+a skeleton of their own, like the Combat cloak, are reported and left out. It imports as a posable,
 animated character. Two settings matter:
 
 1. **Set the scene frame rate to 60 *before* importing.** Clips mix a 30 fps

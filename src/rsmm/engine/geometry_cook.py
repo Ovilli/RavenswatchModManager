@@ -504,7 +504,10 @@ def _swap_section(main: bytes, placed: list[_geo.SubMesh | None],
 # first block is bones 1-4, the second 5-8, which is why anything written to
 # both blocks double-weights the vertex.
 
-_LAYER_VERS = (9, 11, 12)
+#: 10 and 13 were missing until 2026-09-24: 40 shipped character skinning layers
+#: use them (Piper's Combat skin among them) with the identical layout, so those
+#: meshes could neither be re-skinned nor exported.
+_LAYER_VERS = (9, 10, 11, 12, 13)
 
 #: Whether a per-vertex layer carries a comp_mode byte after its name is a
 #: property of the LAYER, not of the version — measured over 400 shipped cooked

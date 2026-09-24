@@ -115,22 +115,58 @@ def submesh_albedo_refs(cf: cooked.CookedFile) -> list[str | None]:
     return out
 
 
-def albedo_png(ref: str | None) -> bytes | None:
-    """PNG of the texture ``ref`` names, or None when unreadable/undecodable."""
+def texture_png(ref: str | None, mode: str = "color") -> bytes | None:
+    """PNG of the texture ``ref`` names, or None when unreadable/undecodable.
+
+    ``mode="orm"`` converts the game's MRA map (R metal, G roughness, B AO) to
+    glTF's occlusion/roughness/metallic order (R AO, G roughness, B metal) by
+    swapping R and B. Normal maps (BC5, two channels) come back from the
+    decoder with Z already reconstructed.
+    """
     if not ref:
         return None
     from . import corpus, dds, image
     from .cooked_schemas import texture as T
-    raw = corpus.read("3D/" + ref.replace("\\", "/") + ".Texture.dxt")
+    # Normal maps cook as `.Texture.nrm`; everything else as `.Texture.dxt`.
+    base = "3D/" + ref.replace("\\", "/")
+    raw = corpus.read(base + ".Texture.dxt") or corpus.read(base + ".Texture.nrm")
     if raw is None:
         return None
     try:
         tcf = cooked.parse(raw)
         schema = T._decode_payload(tcf.sections[-1].payload)
         w, h, rgba = image.decode_dds_to_rgba(dds.read(T.schema_to_dds(schema)))
-        return image.encode_png(w, h, rgba)
     except (NotImplementedError, ValueError, struct.error):
         return None
+    if mode == "orm":
+        px = bytearray(rgba)
+        px[0::4], px[2::4] = rgba[2::4], rgba[0::4]
+        rgba = bytes(px)
+    return image.encode_png(w, h, rgba)
+
+
+def albedo_png(ref: str | None) -> bytes | None:
+    return texture_png(ref, "color")
+
+
+def material_slots(mat_ref: str | None) -> dict[str, str]:
+    """``{"ALB"|"MRA"|"NRM": texture ref}`` from a ``.mat.ot`` (``u_ALB`` ...)."""
+    if not mat_ref:
+        return {}
+    from . import corpus
+    from . import entity_strings as ES
+    raw = corpus.read("3D/" + mat_ref.replace("\\", "/") + ".Material.gen")
+    if raw is None:
+        return {}
+    texts = [t for _sec, _off, t in ES.list_strings(raw)]
+    out: dict[str, str] = {}
+    for i, t in enumerate(texts):
+        if t in ("u_ALB", "u_MRA", "u_NRM"):
+            ref = next((x for x in texts[i + 1:i + 4]
+                        if x.lower().endswith((".tga", ".png", ".dds"))), None)
+            if ref and "Characters" in ref:
+                out[t[2:]] = ref
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -164,8 +200,20 @@ class _Buf:
 
 def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
            name: str = "character", clip_targets: dict[str, str] | None = None,
-           textures: bool = True) -> bytes:
-    """Build the rigged .glb. ``clips`` maps clip name -> cooked oCAnimation file bytes."""
+           textures: bool = True, materials: list[dict] | None = None,
+           attachments: list[dict] | None = None,
+           extra_skinned: list[dict] | None = None) -> bytes:
+    """Build the rigged .glb.
+
+    ``clips`` maps clip name -> cooked oCAnimation file bytes. ``materials``
+    gives each body submesh its full slot set (``{"ALB", "MRA", "NRM"}`` texture
+    refs, from :func:`material_slots`); without it each submesh wears the albedo
+    its own geometry names. ``attachments`` are rigid meshes carried by a bone —
+    ``[{"name", "bone", "geometry": cooked bytes, "slots": {...}}]`` — exported
+    as a child of that bone's joint, the way the game parents a weapon.
+    ``extra_skinned`` are more meshes bound to the same rig (a skin's cloak or
+    hat): ``[{"name", "geometry": cooked bytes, "slots": [per-submesh slots]}]``.
+    """
     cf = cooked.parse(geometry_cooked)
     bones = read_skeleton(cf)
     if not bones:
@@ -188,53 +236,118 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
     skin = {"name": f"{name}_skin", "joints": list(range(len(bones))),
             "inverseBindMatrices": ibm, "skeleton": roots[0]}
 
-    # Skinned mesh.
-    target = next((si for si, sec in enumerate(cf.sections) if GC._find_records(sec.payload)),
-                  None)
-    if target is None:
-        raise CharacterExportError("geometry has no meshbuffers")
-    subs = _geo._parse_meshbuffers(cf.sections[target].payload)
-    src = GC._gather_source(cf, target, subs)
-    if not src or not src.get("palette") or "skinning#0" not in src["records"]:
-        raise CharacterExportError("could not read the mesh's bone weights")
-    palette = src["palette"]
-    missing = sorted(set(palette) - set(index))
-    if missing:
-        raise CharacterExportError(f"mesh weights name bones the skeleton lacks: {missing[:6]}")
-    joint_of = [index[n] for n in palette]
-    recs = src["records"]["skinning#0"]
-    prims, off = [], 0
-    for sm in subs:
-        c = len(sm.positions)
-        if not c:
-            continue
-        joints, weights = [], []
-        for rec in recs[off:off + c]:
-            idx, w = GC._decode_skin(rec)
-            tot = sum(w) or 1.0
-            joints.extend(joint_of[i] if wt > 0 else 0 for i, wt in zip(idx, w, strict=True))
-            weights.extend(wt / tot for wt in w)
-        off += c
-        attrs = {"POSITION": buf.add("f", [v for p in sm.positions for v in p], c, "VEC3",
-                                     5126, 34962, minmax=True),
-                 "JOINTS_0": buf.add("H", joints, c, "VEC4", 5123, 34962),
-                 "WEIGHTS_0": buf.add("f", weights, c, "VEC4", 5126, 34962)}
-        if sm.normals:
-            attrs["NORMAL"] = buf.add("f", [v for n in sm.normals for v in n], c, "VEC3",
-                                      5126, 34962)
-        if sm.uvs:
-            attrs["TEXCOORD_0"] = buf.add("f", [v for u in sm.uvs for v in u], c, "VEC2",
+    prim_slots: list[dict] = []
+
+    def skinned_prims(gcf, what):
+        target = next((si for si, sec in enumerate(gcf.sections)
+                       if GC._find_records(sec.payload)), None)
+        if target is None:
+            raise CharacterExportError(f"{what}: geometry has no meshbuffers")
+        subs = _geo._parse_meshbuffers(gcf.sections[target].payload)
+        src = GC._gather_source(gcf, target, subs)
+        if not src or not src.get("palette") or "skinning#0" not in src["records"]:
+            raise CharacterExportError(f"{what}: could not read the mesh's bone weights")
+        palette = src["palette"]
+        missing = sorted(set(palette) - set(index))
+        if missing:
+            raise CharacterExportError(
+                f"{what}: weights name bones the skeleton lacks: {missing[:6]}")
+        return _skinned(subs, src["records"]["skinning#0"], [index[n] for n in palette])
+
+    def _skinned(subs, recs, joint_of):
+        prims, off = [], 0
+        for sm in subs:
+            c = len(sm.positions)
+            if not c:
+                continue
+            joints, weights = [], []
+            for rec in recs[off:off + c]:
+                idx, w = GC._decode_skin(rec)
+                tot = sum(w) or 1.0
+                joints.extend(joint_of[i] if wt > 0 else 0 for i, wt in zip(idx, w, strict=True))
+                weights.extend(wt / tot for wt in w)
+            off += c
+            attrs = {"POSITION": buf.add("f", [v for p in sm.positions for v in p], c, "VEC3",
+                                         5126, 34962, minmax=True),
+                     "JOINTS_0": buf.add("H", joints, c, "VEC4", 5123, 34962),
+                     "WEIGHTS_0": buf.add("f", weights, c, "VEC4", 5126, 34962)}
+            if sm.normals:
+                attrs["NORMAL"] = buf.add("f", [v for n in sm.normals for v in n], c, "VEC3",
                                           5126, 34962)
-        # One material per submesh: Blender merges primitives that share a
-        # material into one on export, which loses the submesh split that
-        # `kind="mesh"` + `transform.submeshes="map"` needs to come back.
-        prim = {"attributes": attrs, "mode": 4, "material": len(prims)}
-        if sm.indices:
-            prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
-                                      5125, 34963)
-        prims.append(prim)
+            if sm.uvs:
+                attrs["TEXCOORD_0"] = buf.add("f", [v for u in sm.uvs for v in u], c, "VEC2",
+                                              5126, 34962)
+            # One material per submesh: Blender merges primitives that share a
+            # material into one on export, which loses the submesh split that
+            # `kind="mesh"` + `transform.submeshes="map"` needs to come back.
+            prim = {"attributes": attrs, "mode": 4, "material": len(prim_slots) + len(prims)}
+            if sm.indices:
+                prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
+                                          5125, 34963)
+            prims.append(prim)
+        return prims
+
+    prims = skinned_prims(cf, name)
     nodes.append({"name": f"{name}_mesh", "mesh": 0, "skin": 0})
     mesh_node = len(nodes) - 1
+    meshes = [{"name": f"{name}_mesh", "primitives": prims}]
+
+    # Per-primitive slot sets, body first then each attachment's submeshes.
+    refs = submesh_albedo_refs(cf) if textures else []
+    for i in range(len(prims)):
+        if materials and i < len(materials) and materials[i]:
+            prim_slots.append(materials[i])
+        else:
+            prim_slots.append({"ALB": refs[i]} if i < len(refs) and refs[i] else {})
+
+    # More meshes on the same rig (a skin's cloak, hat), sharing the skin.
+    for extra in extra_skinned or []:
+        ecf = cooked.parse(extra["geometry"])
+        eprims = skinned_prims(ecf, extra.get("name", "extra"))
+        erefs = submesh_albedo_refs(ecf) if textures else []
+        slots = extra.get("slots") or []
+        for k in range(len(eprims)):
+            prim_slots.append(slots[k] if k < len(slots) and slots[k] else
+                              ({"ALB": erefs[k]} if k < len(erefs) and erefs[k] else {}))
+        meshes.append({"name": extra.get("name", "extra"), "primitives": eprims})
+        nodes.append({"name": extra.get("name", "extra"), "mesh": len(meshes) - 1, "skin": 0})
+        roots.append(len(nodes) - 1)
+
+    # Rigid attachments (weapons, props) under their bone's joint.
+    for att in attachments or []:
+        bone = index.get(att.get("bone", ""))
+        if bone is None:
+            continue
+        acf = cooked.parse(att["geometry"])
+        at = next((si for si, sec in enumerate(acf.sections)
+                   if GC._find_records(sec.payload)), None)
+        if at is None:
+            continue
+        aprims = []
+        arefs = submesh_albedo_refs(acf) if textures else []
+        for k, sm in enumerate(_geo._parse_meshbuffers(acf.sections[at].payload)):
+            c = len(sm.positions)
+            if not c:
+                continue
+            attrs = {"POSITION": buf.add("f", [v for q in sm.positions for v in q], c, "VEC3",
+                                         5126, 34962, minmax=True)}
+            if sm.normals:
+                attrs["NORMAL"] = buf.add("f", [v for n in sm.normals for v in n], c,
+                                          "VEC3", 5126, 34962)
+            if sm.uvs:
+                attrs["TEXCOORD_0"] = buf.add("f", [v for u in sm.uvs for v in u], c,
+                                              "VEC2", 5126, 34962)
+            prim = {"attributes": attrs, "mode": 4, "material": len(prim_slots)}
+            if sm.indices:
+                prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
+                                          5125, 34963)
+            aprims.append(prim)
+            prim_slots.append(att.get("slots") or
+                              ({"ALB": arefs[k]} if k < len(arefs) and arefs[k] else {}))
+        if aprims:
+            meshes.append({"name": att.get("name", "attachment"), "primitives": aprims})
+            nodes.append({"name": att.get("name", "attachment"), "mesh": len(meshes) - 1})
+            nodes[bone].setdefault("children", []).append(len(nodes) - 1)
 
     # Animations on the joints.
     animations = []
@@ -264,39 +377,54 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
         animations.append({"name": clip_name, "samplers": samplers, "channels": channels,
                            "extras": {"rsmm": {"duration": an.duration}}})
 
-    # Materials: one per submesh, wearing that submesh's own albedo.
-    refs = submesh_albedo_refs(cf) if textures else []
-    materials, images, gl_textures, png_cache = [], [], [], {}
-    for i in range(len(prims)):
-        ref = refs[i] if i < len(refs) else None
+    # Materials: one per primitive (Blender keeps the split), full PBR set.
+    gl_materials, images, gl_textures, tex_cache = [], [], [], {}
+
+    def tex(ref, mode):
+        if not textures or not ref:
+            return None
+        key = (ref, mode)
+        if key not in tex_cache:
+            png = texture_png(ref, mode)
+            tex_cache[key] = None
+            if png:
+                buf.bin.extend(b"\0" * (-len(buf.bin) % 4))
+                buf.views.append({"buffer": 0, "byteOffset": len(buf.bin),
+                                  "byteLength": len(png)})
+                buf.bin.extend(png)
+                images.append({"name": ref.rsplit("\\", 1)[-1] + ("" if mode == "color"
+                                                                   else f" ({mode})"),
+                               "bufferView": len(buf.views) - 1, "mimeType": "image/png"})
+                gl_textures.append({"source": len(images) - 1, "sampler": 0})
+                tex_cache[key] = len(gl_textures) - 1
+        return tex_cache[key]
+
+    for i, slots in enumerate(prim_slots):
         pbr: dict = {"baseColorFactor": [0.8, 0.8, 0.8, 1.0], "metallicFactor": 0.0,
                      "roughnessFactor": 1.0}
-        if ref:
-            if ref not in png_cache:
-                png = albedo_png(ref)
-                png_cache[ref] = None
-                if png:
-                    buf.bin.extend(b"\0" * (-len(buf.bin) % 4))
-                    buf.views.append({"buffer": 0, "byteOffset": len(buf.bin),
-                                      "byteLength": len(png)})
-                    buf.bin.extend(png)
-                    images.append({"name": ref.rsplit("\\", 1)[-1],
-                                   "bufferView": len(buf.views) - 1, "mimeType": "image/png"})
-                    gl_textures.append({"source": len(images) - 1, "sampler": 0})
-                    png_cache[ref] = len(gl_textures) - 1
-            if png_cache[ref] is not None:
-                pbr["baseColorTexture"] = {"index": png_cache[ref]}
-                pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
-        materials.append({"name": f"{name}_submesh_{i}", "doubleSided": True,
-                          "pbrMetallicRoughness": pbr})
+        mat: dict = {"name": f"{name}_submesh_{i}", "doubleSided": True,
+                     "pbrMetallicRoughness": pbr}
+        alb = tex(slots.get("ALB"), "color")
+        if alb is not None:
+            pbr["baseColorTexture"] = {"index": alb}
+            pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
+        orm = tex(slots.get("MRA"), "orm")
+        if orm is not None:
+            pbr["metallicRoughnessTexture"] = {"index": orm}
+            pbr["metallicFactor"] = 1.0
+            mat["occlusionTexture"] = {"index": orm}
+        nrm = tex(slots.get("NRM"), "normal")
+        if nrm is not None:
+            mat["normalTexture"] = {"index": nrm}
+        gl_materials.append(mat)
 
     doc = {
         "asset": {"version": "2.0", "generator": "rsmm character export"},
         "extras": {"rsmm": {"kind": "character", "clip_targets": clip_targets or {}}},
         "scene": 0, "scenes": [{"nodes": roots + [mesh_node]}],
         "nodes": nodes, "skins": [skin],
-        "meshes": [{"name": f"{name}_mesh", "primitives": prims}],
-        "materials": materials,
+        "meshes": meshes,
+        "materials": gl_materials,
         "buffers": [{"byteLength": 0}], "bufferViews": buf.views, "accessors": buf.accs,
     }
     if images:
