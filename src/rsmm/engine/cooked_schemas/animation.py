@@ -4,32 +4,16 @@ Full schema reversed from `oCAnimation::Serialize` (VA 0x1405b35a0) and
 `oCAnimationTrack::Serialize` (VA 0x140639d30). See "oCAnimation (final
 schema)" in `docs/RE_NOTES.md` for the field-by-field layout.
 
-Round-trip strategy
--------------------
-The on-disk format quantizes per-keyframe values into 6 bytes (3 x i16 for
-T/S, smallest-three 48-bit packing for R) using engine-side scaling
-constants. Re-quantizing from a freshly-edited glTF would be lossy and
-risk byte-divergence. To guarantee byte-stable round-trip — and to keep
-the "viewer-loadable glTF" promise — the decoder emits a binary glTF
-(.glb) whose JSON `extras.rsmm` block carries:
-
-- `raw_payload_b64` — base64 of the original cooked-section payload
-  (sections 0+1 concatenated, exactly what `encode()` returns)
-- `schema_version` — bump if the embedded layout changes
-- `decoded` — the parsed header (name, bone-track names, durations) so
-  external tools can preview without re-decoding the binary
-
-`encode()` simply decodes the base64 and returns those bytes. Byte
-stability holds as long as the .glb was produced by `decode()` on the
-same payload (the documented contract; intentionally not a re-quantizer).
-
-For viewer-loadable previews the decoder also emits real glTF samplers
-+ channels per bone (timestamps decoded f32 seconds, T/S as vec3 with
-*approximate* dequantization from the per-anim AABB, R as identity-quat
-when the smallest-three constants can't be resolved). These are
-read-only — edits in Blender don't round-trip. The intent is so a mod
-author can confirm "this is the run-cycle, not the death anim" before
-swapping bytes.
+Round trip
+----------
+`decode()` emits a binary glTF (.glb) with one animated node per bone (exact
+dequantized local translation / rotation / scale, times in seconds) and an
+`extras.rsmm` block carrying the original payload (`raw_payload_b64`) and the
+clip's real duration. `encode()` COOKS FROM THE glTF CHANNELS onto that
+original (:func:`rsmm.engine.anim_cook.cook`), so edits made in Blender are
+kept; an unedited export cooks back byte-identically — proven on all 2240
+shipped clips (2026-09-24). Until then `encode()` replayed the embedded bytes
+and silently discarded every edit.
 """
 
 from __future__ import annotations
@@ -363,6 +347,23 @@ _TS_DIVISOR = 1024.0
 _QUAT_SCALE = 2.0 ** 0.5 * 16383.0
 
 
+def continuous_quats(quats: list[tuple]) -> list[tuple]:
+    """Flip signs so each key is in the same hemisphere as the previous one.
+
+    The format stores the largest component positive, so neighbouring keys of
+    one rotation can come out as q and -q. The engine does not care; Blender
+    and Maya interpolate quaternions component-wise, and blending q into -q
+    swings through garbage (measured: 68 deg of error on Piper's dash after a
+    Blender round trip). Same rotations, safe interpolation.
+    """
+    out: list[tuple] = []
+    for q in quats:
+        if out and sum(a * b for a, b in zip(out[-1], q, strict=True)) < 0:
+            q = tuple(-c for c in q)
+        out.append(q)
+    return out
+
+
 def _decode_times(times: list[int], duration: float) -> list[float]:
     """u16 timestamps map linearly to [0, duration] seconds."""
     if duration <= 0:
@@ -530,7 +531,7 @@ def _build_glb_preview(anim: Animation, raw_payload: bytes) -> bytes:
         # Rotation channel.
         if tr.r_times:
             times = _decode_times(tr.r_times, tr.duration)
-            values = [_decode_quat(b) for b in tr.r_values]
+            values = continuous_quats([_decode_quat(b) for b in tr.r_values])
             t_acc = push_scalar_f32(times)
             v_acc = push_vec4_f32(values)
             samplers.append({"input": t_acc, "output": v_acc, "interpolation": "LINEAR"})
@@ -686,7 +687,11 @@ class AnimationHandler(SchemaHandler):
         return _build_glb_preview(anim, payload)
 
     def encode(self, source: bytes) -> bytes:
-        return _extract_raw_payload_from_glb(source)
+        # Cook FROM THE glTF CHANNELS onto the embedded original. This used to
+        # return the embedded bytes, so every edit made in Blender was silently
+        # dropped. An unedited export still round-trips byte-identically.
+        from ..anim_cook import cook
+        return cook(source, _extract_raw_payload_from_glb(source))[0]
 
 
 register(AnimationHandler())

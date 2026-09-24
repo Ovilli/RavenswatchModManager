@@ -133,6 +133,52 @@ it replaces, and shreds a differently-shaped body on the first animation frame.
 
 ---
 
+## `animation` — replace a clip with your own motion
+
+**What the player sees.** A shipped animation, such as Piper's dash, playing your motion.
+
+```toml
+[mod]
+id           = "PiperSpin"
+name         = "Piper Spin Dash"
+version      = "0.1.0"
+author       = "you"
+description  = "Piper spins through her dash."
+
+[[content]]
+kind   = "animation"
+id     = "piper_dash"
+target = "Characters\\Heroes\\Piper\\Animations\\Piper_Dash_Default.fbx"
+source = "anims/piper_dash.glb"
+```
+
+**Prove it.** Dash in a run: the move plays your keys.
+
+**Authoring in Blender or Maya.** `rsmm export-character Piper` writes one
+`.glb` with the real armature (the game's bone names, hierarchy and bind pose),
+the skinned, textured body (each submesh's albedo embedded) and every clip that
+fits that rig. It imports as a posable,
+animated character. Two settings matter:
+
+1. **Set the scene frame rate to 60 *before* importing.** Clips mix a 30 fps
+   grid with 60 fps keys where something snaps (Piper's weapon flips in half a
+   frame). At 24 or 30 fps Blender drops those keys. At 60, all 45 of Piper's
+   clips came back within 0.3 degrees after an import and export.
+2. Export glTF with animations, and point `source` at it with `clip` set to
+   the action's name. The command prints each clip's `target`.
+
+The body comes back the same way through `kind = "mesh"` with
+`transform = { skin = "gltf", submeshes = "map" }`. Weights bind by bone
+name, and each submesh keeps its own material so the split survives Blender.
+
+**Trap.** Bones are matched by **name**, and the target clip is the template:
+it decides which bones exist. A bone your file does not animate is held at the
+target's first pose (`strict = true` makes that an error). A bone the target
+lacks is refused. Like `mesh`, the override is global: everything that plays
+that clip plays yours.
+
+---
+
 ## `poi` — a structure in a chapter
 
 **What the player sees.** A shrine / cauldron / camp appearing on a map that

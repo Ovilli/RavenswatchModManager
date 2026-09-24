@@ -104,6 +104,7 @@
         "properties": {
           "kind": {
             "enum": [
+              "animation",
               "boss",
               "enemy",
               "game_mode",
@@ -132,6 +133,30 @@
           "id"
         ],
         "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "animation"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "clip": {},
+                "id": {},
+                "kind": {},
+                "schema_version": {},
+                "source": {},
+                "strict": {},
+                "target": {}
+              },
+              "additionalProperties": false
+            }
+          },
           {
             "if": {
               "properties": {

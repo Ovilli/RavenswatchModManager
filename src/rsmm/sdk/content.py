@@ -18,7 +18,7 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop")
+         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -80,6 +80,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # 2026-07-12 "ban unreliable" result edited the plain
                               # Camp_Rewards_<Biome> defs too, which nothing references; emit now
                               # refuses those and names the _Update5 def the game rolls from.
+    "animation": "confirmed",  # PROVEN IN GAME 2026-09-24: a generated clip (Piper's spine
+                              # spinning through her dash) played in place of the shipped dash.
+                              # export->cook is byte-identical on all 2240 shipped clips.
     "mesh": "confirmed",      # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
                               # PROVEN IN-GAME TWICE, by both routes the cook has:
@@ -293,6 +296,7 @@ _KIND_MODULES = {
     "game_mode": "game_modes",
     "melody": "melodies",
     "mesh": "meshes",
+    "animation": "animations",
     "poi": "poi",
     "tilegen": "tilegen",
     "shop": "shops",
