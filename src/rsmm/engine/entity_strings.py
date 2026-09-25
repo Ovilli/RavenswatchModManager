@@ -84,6 +84,27 @@ def list_strings(cooked_bytes: bytes) -> list[tuple[int, int, str]]:
     return out
 
 
+def rewrite_strings(cooked_bytes: bytes, fn) -> tuple[bytes, int]:
+    """Pass every lstr through ``fn(str) -> str`` and re-emit; returns the new
+    bytes and how many strings changed. ``fn`` returns its input to leave a
+    string alone, so a heuristic false-positive site is only touched when ``fn``
+    chooses to rewrite what it spells."""
+    cf = cooked.parse(cooked_bytes)
+    changed = 0
+    for sec in cf.sections:
+        payload = sec.payload
+        for off, s in reversed(_scan_payload(payload)):
+            new = fn(s)
+            if new == s:
+                continue
+            enc = new.encode("ascii")
+            tail = off + 4 + len(s)
+            payload = payload[:off] + struct.pack("<I", len(enc)) + enc + payload[tail:]
+            changed += 1
+        sec.payload = payload
+    return cooked.emit(cf), changed
+
+
 def replace_strings(cooked_bytes: bytes, mapping: dict[str, str],
                     *, require_all: bool = True) -> bytes:
     """Replace whole lstrs per ``mapping`` (exact match) and re-emit.

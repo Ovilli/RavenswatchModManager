@@ -73,3 +73,119 @@ def test_apply_appends_a_new_hero_to_the_versiondef_hero_vector():
         e[2] for e in A._mo_vector_entries(vd, co, cnt)]
     assert A._patch_versiondef_heroes(out, [rel]) == out      # idempotent
     cooked.parse(out)
+
+
+def _install():
+    from rsmm.cli.apply_mods import find_game_dir
+    try:
+        return find_game_dir()
+    except Exception:  # noqa: BLE001 — no install reachable
+        return None
+
+
+needs_install = pytest.mark.skipif(_install() is None, reason="no game install")
+
+
+@needs_corpus
+@needs_install
+def test_a_named_hero_points_its_herodef_at_its_own_text_keys(tmp_path):
+    from rsmm.engine import entity_strings as ES
+    files = _emit(tmp_path, id="Nyx", name="Nyx", description="Test.")
+    names = {p.name for p in files}
+    assert "Nyx.herodef.ot.DtHeroDefinition.gen" in names
+    assert any(n.endswith(".LangEN") for n in names)          # values, or the game crashes
+    gen = next(p for p in files if p.name.startswith("Nyx.herodef"))
+    ts = [t for _s, _o, t in ES.list_strings(gen.read_bytes())]
+    assert "Hero_Nyx_Name" in ts and "Hero_Nyx_Desc" in ts and "Hero_Name" not in ts
+    # Name only: no entity family, no alias; the base's skins stay.
+    assert "Heroes\\Hero_Piper\\Hero_Piper_Default.entity.ot" in ts
+    assert not any("ApplicationSettings" in str(p) for p in files)
+
+
+@needs_corpus
+@needs_install
+def test_an_own_entity_hero_clones_the_family_and_adds_an_alias(tmp_path):
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import hero_cook as H
+    files = _emit(tmp_path, id="Nyx", own_entity=True)
+    ents = [p for p in files if p.name.endswith(H.ENTITY_SUFFIX)]
+    assert ents and all(p.name.startswith("Hero_Nyx") for p in ents)
+    app = next(p for p in files if p.name == "ApplicationSettings.ot").read_text()
+    alias = H.aliases(app)[-1]
+    assert alias.name == "Hero_Nyx" and alias.stream == "Heroes\\Hero_Piper\\Hero_Nyx.entity.ot"
+    default = next(p for p in ents if p.name.startswith("Hero_Nyx_Default.entity"))
+    assert H._alias_guid_of(default.read_bytes()) == alias.guid
+    gen = next(p for p in files if p.name.startswith("Nyx.herodef"))
+    ts = [t for _s, _o, t in ES.list_strings(gen.read_bytes())]
+    assert "Heroes\\Hero_Piper\\Hero_Nyx_Default.entity.ot" in ts
+    cache = RC.parse(next(p for p in files if p.name == "Nyx.herodef.UsedRscCache.ot")
+                     .read_bytes())
+    assert "EntitySettings|Heroes\\Hero_Piper\\Hero_Nyx.entity.ot|oCEntitySettingsResource" \
+        in cache
+
+
+@needs_corpus
+def test_a_custom_hero_id_must_be_a_plain_name(tmp_path):
+    with pytest.raises(ContentError, match="letters and digits|reserved"):
+        _emit(tmp_path, id="Kintaro", name="X")
+
+
+@needs_corpus
+@needs_install
+def test_outfits_fill_the_skin_slots_after_default(tmp_path):
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import image
+    png = image.encode_png(4, 4, bytes([0, 200, 200, 255]) * 16)
+    (tmp_path / "c.png").write_bytes(png)
+    files = heros.emit("m", ContentDef(kind="hero", id="Nyx", fields={
+        "base": "Piper", "outfits": [{"name": "Frost", "albedo": "c.png"}]}),
+        tmp_path / "assets")
+    gen = next(p for p in files if p.name.startswith("Nyx.herodef.ot"))
+    ts = [t for _s, _o, t in ES.list_strings(gen.read_bytes())]
+    skins = [t for t in ts if t.endswith(".entity.ot") and "LowRes" not in t
+             and t.startswith("Heroes\\")]
+    assert skins[:2] == ["Heroes\\Hero_Piper\\Hero_Nyx_Default.entity.ot",
+                         "Heroes\\Hero_Piper\\Hero_Nyx_Outfit1.entity.ot"]
+    assert "Hero_Nyx_Outfit1_Title" in ts
+    outfit = next(p for p in files if p.name.startswith("Hero_Nyx_Outfit1.entity.ot"))
+    assert "Characters\\Heroes\\Piper\\Textures\\M_Nyx_Outfit1.mat.ot" in [
+        t for _s, _o, t in ES.list_strings(outfit.read_bytes())]
+
+
+@needs_corpus
+@needs_install
+def test_references_swap_inside_the_heros_own_files_and_borrow_their_preloads(tmp_path):
+    from rsmm.engine import entity_strings as ES
+    old = "Settings\\Heroes\\Hero_Piper_FX\\Piper_Note_Day_01.vfx.ot"
+    new = "Settings\\Heroes\\Hero_Juliet_FX\\Juliet_Basic_Bullet_Trail_01.vfx.ot"
+    files = _emit(tmp_path, id="Nyx", references={old: new})
+    proj = next(p for p in files if p.name.startswith("Hero_Nyx_Projectile.entity.ot"))
+    ts = [t for _s, _o, t in ES.list_strings(proj.read_bytes())]
+    assert new in ts and old not in ts
+    cache = RC.parse(next(p for p in files if p.name == "Nyx.herodef.UsedRscCache.ot")
+                     .read_bytes())
+    assert any(ln.split("|")[1] == new for ln in cache)       # or a null at load
+    with pytest.raises(ContentError, match="never use"):
+        _emit(tmp_path / "x", id="Nyx", references={"No\\Such.vfx.ot": new})
+
+
+@needs_corpus
+@needs_install
+def test_the_clone_owns_its_component_identities_and_keeps_its_internal_links(tmp_path):
+    """Measured in game 2026-09-25: a family clone carrying the base's component
+    GUIDs spawned a body-less, light-less hero with no health, and the pause
+    menu crashed on it. The links between members (and the herodef's 22) are
+    GUIDs too, so they must follow the same mapping."""
+    from rsmm.engine import corpus
+    from rsmm.engine import hero_cook as H
+    from rsmm.engine import prop_cook as PC
+    files = _emit(tmp_path, id="Nyx", own_entity=True)
+    base = [corpus.read(r) for r in corpus.rels("EntitySettings/Heroes/Hero_Piper/",
+                                                H.ENTITY_SUFFIX)]
+    piper = {g for raw in base for g in PC.component_guids(raw)}
+    ours = [p.read_bytes() for p in files if p.name.endswith(H.ENTITY_SUFFIX)]
+    owned = {g for raw in ours for g in PC.component_guids(raw)}
+    assert owned and owned.isdisjoint(piper)
+    assert not any(g in raw for raw in ours for g in piper)          # no stale link
+    herodef = next(p for p in files if p.name == "Nyx.herodef.ot.DtHeroDefinition.gen")
+    assert sum(g in herodef.read_bytes() for g in owned) >= 20

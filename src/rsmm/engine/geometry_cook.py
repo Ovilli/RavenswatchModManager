@@ -1012,6 +1012,16 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             "extras.rsmm.cooked_b64, not in glTF skinning. Rig the mesh to "
             "the game's skeleton in Blender and export with the armature, or "
             "use skin='transfer'.")
+    if skin_mode == "gltf" and not all(skins):
+        # A weapon or prop left in the file (export-character puts the flute on
+        # its bone) has no skin to bind by. It is a separate object in game, so
+        # it is not part of this body; keeping it pinned every vertex to one bone.
+        kept = [(s, k) for s, k in zip(submeshes, skins, strict=True) if k]
+        _log.info("skin='gltf': ignoring %d unskinned mesh(es), %d vertices",
+                  len(submeshes) - len(kept),
+                  sum(len(s.positions) for s, k in zip(submeshes, skins, strict=True)
+                      if not k))
+        submeshes, skins = [s for s, _k in kept], [k for _s, k in kept]
     if drop_bones:
         if skin_mode != "gltf":
             raise ValueError(

@@ -722,9 +722,20 @@ def build_usedrsc_record(decoded: str, pristine_lines: list[str],
         triple = pristine_lines[idx - 2: idx + 1]
         enc_old = cipher.encode(old_id)
         enc_new = cipher.encode(new_id)
-        # Line 1 (type root) carries no id; lines 2/3 carry the encoded id.
-        return [line.replace(enc_old, enc_new) for line in triple]
+        # Line 1 (type root) carries no id; lines 2/3 carry the encoded id —
+        # in their LAST component only. A blanket replace also rewrote the
+        # FOLDER whenever the sibling's id is the folder's name
+        # (`Heroes\Hero_Piper\Hero_Piper.entity.ot`), registering the new asset
+        # under a directory that does not exist: the file installed, the engine
+        # looked elsewhere, and a custom hero spawned as a dark, empty shell.
+        return [_swap_last_component(line, enc_old, enc_new) for line in triple]
     return None
+
+
+def _swap_last_component(line: str, old: str, new: str) -> str:
+    """Replace ``old`` with ``new`` only after the final ``\\`` or ``!``."""
+    cut = max(line.rfind("\\"), line.rfind("!")) + 1
+    return line[:cut] + line[cut:].replace(old, new)
 
 
 def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
@@ -1045,6 +1056,36 @@ def _merge_text_bank(enc: str, srcs: list[Path],
     return out_path
 
 
+def is_app_settings(decoded: str) -> bool:
+    """True for `_root/DarkTalesResources/ApplicationSettings.ot`, which every
+    custom-hero mod extends with an alias (and `ot` patches edit)."""
+    return decoded == "_root/DarkTalesResources/ApplicationSettings.ot"
+
+
+def _merge_app_settings(enc: str, srcs: list[Path],
+                        vanilla: Path | None) -> Path | None:
+    """Every mod's hero aliases in one ApplicationSettings.ot.
+
+    Each custom hero emits the game's file plus its own `AliasDesc`, and the
+    `ot` patch merge emits the game's file plus field edits. Last-writer-wins
+    would drop every hero but one, and a hero whose alias is missing has skins
+    that bind to nothing. `merge_app_settings` keeps the copy with the fewest
+    aliases (the one carrying non-alias edits) and adds everyone's aliases.
+    """
+    from rsmm.engine import hero_cook
+    try:
+        texts = [src.read_text(encoding="utf-8", errors="surrogateescape")
+                 for src in srcs]
+        merged = hero_cook.merge_app_settings(texts)
+    except (OSError, hero_cook.HeroCookError):
+        return None
+    out_dir = _text_merge_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / enc.replace("\\", "__").replace("/", "__")
+    out_path.write_text(merged, encoding="utf-8", errors="surrogateescape")
+    return out_path
+
+
 #: Cooked suffix of a chapter's map definition (see `rsmm.engine.map_pool`).
 _MAPDEF_GEN_SUFFIX = ".mapdef.ot.DtMapDefinition.gen"
 
@@ -1296,6 +1337,7 @@ def plan_apply(mods: list[Mod],
             (is_text_bank,  _merge_text_bank,  "text bank"),
             (is_map_def,    _merge_map_pool,   "tile pool"),
             (is_rsc_cache,  _merge_rsc_cache,  "resource cache"),
+            (is_app_settings, _merge_app_settings, "alias table"),
         )
         merger = next(((fn, label) for pred, fn, label in mergers if pred(decoded)),
                       None)

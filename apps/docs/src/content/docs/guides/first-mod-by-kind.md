@@ -577,8 +577,9 @@ global — every run fights the new boss there.
 
 ## `hero` — add a hero to the roster
 
-**What the player sees.** A new portrait on the hero-select screen: for now an
-exact copy of its base hero (same model, abilities and name).
+**What the player sees.** A new portrait on the hero-select screen. With only
+a `base` it is an exact copy of that hero; the fields under "A hero of its own"
+give it its own name, body, textures, portrait and gameplay entity.
 
 ```toml
 [mod]
@@ -601,9 +602,110 @@ Lua, `#R.defs.instances("oCDtHeroDefinition")` goes from 12 to 13.
 through the LiveOps versiondef's hero list, which `apply` appends to. Dropping a
 herodef file in without that loads nothing. The new hero takes the next index,
 which no save has unlocked, so test with the `unlock-heroes` mod. Paid DLC
-heroes (Carmilla, Merlin) cannot be a `base`. Renaming the clone and giving it
-new abilities are not built yet. **Reskinning an existing hero works today**:
-that's `mesh` plus a texture override, both proven.
+heroes (Carmilla, Merlin) cannot be a `base`.
+
+### A hero of its own
+
+Everything past `base` turns the copy into a hero of its own. The fields below
+are **not yet proven in game**. Only the plain copy above is.
+
+```toml
+[[content]]
+kind        = "hero"
+id          = "Nyx"                       # letters and digits: it names Hero_Nyx
+base        = "Piper"                     # whose moves she has
+name        = "Nyx"
+description = "Piper's moves, her own look."
+model       = "art/nyx.glb"               # body, rigged to Piper's skeleton
+albedo      = "art/nyx_albedo.png"        # also: mra, normal
+portrait    = "art/nyx_portrait.png"      # select screen + in-run
+
+# A weapon of her own. The key is the base's graphic object; `rsmm
+# export-character Piper` lists it as an attachment.
+[content.weapons."Weapon In Left Hand Mesh"]
+model  = "art/nyx_flute.glb"
+albedo = "art/nyx_flute.png"
+
+# Her own moves: a clip of Nyx's alone, the base keeps its own.
+[content.animations.Piper_Dash_Default]
+source = "art/nyx_moves.glb"
+clip   = "Piper_Dash_Default"             # the action's name in the .glb
+
+# Outfits fill the skin slots after Default, in order.
+[[content.outfits]]
+name   = "Frost"
+albedo = "art/nyx_frost.png"
+
+[[content.outfits]]
+name   = "Mercenary"
+model  = "art/nyx_mercenary.glb"      # a body of its own
+albedo = "art/nyx_mercenary.png"
+
+# Her numbers. `rsmm export-character Piper --list-values` lists them.
+[content.values]
+"Ultimate Power 2 Cooldown Max" = 30
+"Trait Ability Pets Per Spawn Default Amount" = 3
+"Hero_Piper_Projectile/Lifetime Duration" = 0.8   # one entity only
+
+# What her abilities use: a VFX, a sound, a mesh, anything her entities name.
+[content.references]
+"Settings\\Heroes\\Hero_Piper_FX\\Piper_Note_Day_01.vfx.ot" = "Settings\\Heroes\\Hero_Juliet_FX\\Juliet_Basic_Bullet_Trail_01.vfx.ot"
+```
+
+- **`name` / `description`** are added to the base's text bank as
+  `Hero_<id>_Name` / `Hero_<id>_Desc` in every language (English text for all
+  of them), and the new herodef points at them.
+- **`model`** is the body. Start from `rsmm export-character Piper`, edit the
+  mesh in Blender on Piper's skeleton, and export. Bones are matched by name,
+  and a weapon left in the file is ignored (it is a separate object in game).
+  Every skin slot shows this body.
+- **`albedo` / `mra` / `normal`** replace the maps of the body material. A map
+  you leave out keeps the base's.
+- **`portrait`** replaces the select-screen and in-run portraits. It is the
+  riskiest field: a UI texture under a new name once hung level load (a POI
+  minimap icon), so try it separately.
+- **`weapons`** gives a weapon its own mesh (`model`, a static mesh) and/or
+  maps (`albedo`, `mra`, `normal`). Only this hero carries it; the base keeps
+  its own.
+- **`animations`** cooks each clip under a new name (`Nyx_Piper_Dash_Default`)
+  and points only this hero's entities at it. The `animation` kind replaces a
+  clip for everyone who plays it; this does not. Keys are the base's clip
+  names, as `rsmm export-character` prints them. A `.glb` path alone means the
+  action carries the clip's own name.
+- **`outfits`** are more skins, each with its own `name` on the skin page.
+  An outfit is the Default look wearing its own body maps, and with `model` it
+  gets a body of its own too, rigged like `model` (to the base's skeleton).
+  Outfits take the skin slots after Default in order, and the slots after them
+  show Default. They may show as locked: the base's skin unlocks do not carry
+  over to a new hero.
+- **`values`** sets the hero's numbers: cooldowns, durations, radii, damage
+  multipliers, pet counts, projectile lifetimes.
+  `rsmm export-character <Base> --list-values` lists what can be set and in
+  which entity. A bare label sets it everywhere; `<Entity>/<Label>` sets it in
+  one entity only. A misspelt label fails the build.
+- **`references`** swaps anything the hero's own entities name: another VFX, a
+  sound event, a mesh, a clip. Each new resource's preloads are borrowed from a
+  shipped cache that already loads it. A resource no shipped cache lists is
+  refused, because an unlisted preload crashes the game at load.
+- **What is not possible: new ability logic.** An ability is a graph of
+  components inside the hero's entity, and a projectile reads its owner's
+  values under its own hero's name. So pointing Nyx at Juliet's projectile
+  entity gives a bullet that finds none of its numbers. Change what an ability
+  looks and sounds like (`references`, `animations`, `weapons`) and how strong
+  or fast it is (`values`); its behaviour stays the base's.
+- **`own_entity = true`** is implied by every field above except `name`,
+  `description` and `portrait`. The hero gets
+  its own gameplay entity: every `Hero_<Base>*` entity (the hero, FX, pets,
+  projectiles, skins) is cloned as `Hero_<id>*` with its paths and scopes
+  renamed, and a new alias in `ApplicationSettings.ot` binds the skins to it.
+  The whole family has to move together, because a pet or a projectile reads
+  its owner's values by the owner's template name. With its own entity, the
+  hero's abilities and values are its own to change later.
+
+**Prove it.** A portrait named after your hero, your body and texture when you
+pick it, and the base's abilities (Piper's rats and notes) working in a run.
+How the pieces connect is written up in `docs/_re/kinds/heroes.md` under "How a
+hero is assembled from data".
 
 ---
 

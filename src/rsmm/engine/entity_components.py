@@ -61,17 +61,26 @@ def extend_class_table(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile,
     """Add any ``needed`` classes missing from ``host_cf``, copied by name from
     ``donor_cf``.  Their parent classes must already exist in the host (every
     entity carries the ``oIEntityCpntSettings`` / ``oISerializable`` bases)."""
-    for name in sorted(needed):
+    def add(name: str) -> None:
         if _class_index_of(host_cf, name) is not None:
-            continue
+            return
         donor = donor_cf.classes[_class_index_of(donor_cf, name)]
         if not any(c.class_id == donor.parent_id for c in host_cf.classes):
-            raise EntityComponentError(
-                f"cannot add {name!r}: its parent {donor.parent_id} is absent "
-                f"from the host")
+            # A skin that only sets values has no 3D-object base classes; bring
+            # the donor's chain over, parents first.
+            parent = next((c for c in donor_cf.classes if c.class_id == donor.parent_id),
+                          None)
+            if parent is None:
+                raise EntityComponentError(
+                    f"cannot add {name!r}: its parent {donor.parent_id} is absent "
+                    f"from the host and the donor")
+            add(parent.name)
         host_cf.classes.append(cooked.ClassDef(
             donor.name, donor.class_id, donor.version_major,
             donor.version_minor, donor.parent_id))
+
+    for name in sorted(needed):
+        add(name)
 
 
 def _remap_class_tags(record: bytes, donor_cf: cooked.CookedFile,

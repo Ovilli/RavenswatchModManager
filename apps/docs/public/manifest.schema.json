@@ -254,10 +254,24 @@
             },
             "then": {
               "properties": {
+                "albedo": {},
+                "animations": {},
                 "base": {},
+                "description": {},
                 "id": {},
                 "kind": {},
-                "schema_version": {}
+                "model": {},
+                "mra": {},
+                "name": {},
+                "normal": {},
+                "outfits": {},
+                "own_entity": {},
+                "portrait": {},
+                "references": {},
+                "schema_version": {},
+                "transform": {},
+                "values": {},
+                "weapons": {}
               },
               "additionalProperties": false
             }

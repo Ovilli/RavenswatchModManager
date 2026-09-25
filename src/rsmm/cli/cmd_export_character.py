@@ -280,6 +280,30 @@ def submesh_materials(geo: bytes, by_albedo: dict[str, str],
     return out
 
 
+def _list_values(hero: str) -> int:
+    """Every labelled number in the hero's entity family, for `values = {...}`."""
+    from rsmm.engine import corpus
+    from rsmm.engine import hero_cook as H
+
+    def norm(x: str) -> str:
+        return x.replace("_", "").lower()
+    folders = sorted({r.split("/")[2] for r in corpus.rels("EntitySettings/Heroes/Hero_")})
+    folder = next((f for f in folders if norm(f) == "hero" + norm(hero)), None) \
+        or next((f for f in folders if norm(hero) in norm(f)), None)
+    if folder is None:
+        print(f"no entity folder for {hero!r}", file=sys.stderr)
+        return 1
+    files = {r.rsplit("/", 1)[-1][:-len(H.ENTITY_SUFFIX)]: corpus.read(r)
+             for r in corpus.rels(f"EntitySettings/Heroes/{folder}/", H.ENTITY_SUFFIX)
+             if r.rsplit("/", 1)[-1].startswith(folder)}
+    for label, where in sorted(H.list_values(files).items()):
+        vals = sorted({v for _f, v, _i in where})
+        kind = "int" if where[0][2] else "number"
+        shown = ", ".join(f"{v:g}" for v in vals)
+        print(f"{label:60} {kind:6} {shown:14} in {', '.join(sorted({f for f, _v, _i in where}))}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm export-character",
                                  description=__doc__.split("\n\n")[0])
@@ -291,6 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skin", help="export a skin's look (materials, body, weapon)")
     ap.add_argument("--list", action="store_true", help="list exportable heroes")
     ap.add_argument("--list-skins", action="store_true", help="list the hero's skins")
+    ap.add_argument("--list-values", action="store_true",
+                    help="list the numbers a custom hero based on this one can set "
+                         "(hero kind `values`)")
     args = ap.parse_args(argv)
 
     from rsmm.engine import character_export as CE
@@ -302,6 +329,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list or not args.hero:
         print("\n".join(heroes(paths)))
         return 0 if args.list else 2
+    if args.list_values:
+        return _list_values(args.hero)
     setup = {} if args.mesh else resolve_setup(args.hero, args.skin, paths)
     if args.list_skins:
         print("\n".join(setup.get("skins") or []))
