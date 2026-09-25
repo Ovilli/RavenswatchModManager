@@ -11,7 +11,7 @@ import pytest
 
 from rsmm.engine import corpus
 from rsmm.engine import entity_check as CK
-from rsmm.engine import entity_edit as EE
+from rsmm.engine import entity_graph_edit as EE
 
 PIPER = "EntitySettings/Heroes/Hero_Piper/Hero_Piper.entity.ot.EntitySettingsResource.gen"
 JULIET = "EntitySettings/Heroes/Hero_Juliet/Hero_Juliet.entity.ot.EntitySettingsResource.gen"

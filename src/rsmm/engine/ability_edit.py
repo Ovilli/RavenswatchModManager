@@ -37,7 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import entity_check as CK
-from .entity_edit import EntityEditError, EntityFile
+from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link")
 

@@ -1,521 +1,397 @@
-"""Edit an entity-settings file as a graph: the ability editor's primitives.
+"""Variable-length editing of cooked entity files (the "re-emit cooker").
 
-``EntityFile`` holds a cooked entity as its objects and lets you:
+Cooked ``oCEntitySettingsResource`` files are a header + class table + a list of
+BEGIN/END bracketed *sections*. The component-value tree is split arbitrarily
+across sections (a node name can straddle a boundary), so all editing happens on
+the **concatenation** of section payloads; on re-emit the concat is re-split by
+the (adjusted) section lengths and the container is rebuilt.
 
-* ``clone``     copy components (from this file or another entity) under new
-                names, with their own GUIDs, their links among themselves
-                rewired to the copies, and every sub-object they own copied too;
-* ``set_value`` change a field's literal (a value picker's union, or a raw
-                bool / u32 / f32);
-* ``set_ref``   point a reference field at another component (or at nothing);
-* ``add_ref`` / ``remove_ref``   grow or shrink a reference list (a State's
-                ``activates`` and friends).
+Crucially, the container has **no per-block byte-size fields** that depend on
+string content — only the section lengths, which we recompute. So a string can
+be renamed to a different length and the file stays valid, as long as each
+edit's length delta is added back to the section that contained it. This is the
+same mechanism :mod:`rsmm.engine.cooked_schemas.entity_settings` uses to edit
+``entity_path``; this module generalises it to arbitrary concat edits (renames,
+value writes, ref swaps).
 
-Fields are addressed by the names ``entity_fields`` gives them.
+Typical use::
 
-Invariants every edit keeps (``to_bytes`` re-checks them):
+    ed = EntityEdit(cooked_bytes)
+    ed.replace_lstring("Damage Value", "Attack Speed Value")   # variable length
+    ed.set_value_before_end("Crit Chance Value", 0.15)          # length-preserving
+    out = ed.emit()
 
-* the object table (section 0) lists every object with its class;
-* new components are appended to the trailer's component vector, or they are
-  orphans the engine never instantiates (see entity_append);
-* component GUIDs are unique in the file;
-* a class a copied record names exists in the class table.
-
-Sub-objects (RE 2026-09-25). A file's objects are its components (the
-trailer's vector; ids ``0..k-1`` in every shipped file) and SUB-OBJECTS a component owns: a
-Tester's conditions, an Fx's setups, a spawner's retrievers. 1615 of 4700
-shipped entities have them (Piper: 468). An owner points at one with a
-poly-pointer, which in a cooked file is the sub-object's u32 id: either a
-vector (``u32 count, count * u32 id``) or a single ``u32 id``. Ids are not
-allocated in any order a clone could rely on, so ownership is READ: every
-vector whose ids are all sub-object ids, and every single u32 equal to a
-sub-object id that occurs exactly once in the file outside strings, pickers and
-value unions. A sub-object whose pointer cannot be pinned down that way is
-AMBIGUOUS, and cloning anything that might own it is refused rather than
-guessed: a clone that shares a sub-object with its original, or remaps a
-number that was not a pointer, would load and misbehave with nothing logged.
+All edits are queued against the *original* concat offsets and applied together
+on :meth:`emit`, so queueing order does not matter (overlaps raise).
 """
 
 from __future__ import annotations
 
 import struct
-import uuid
-from collections import defaultdict
-from dataclasses import dataclass
-from functools import cache, lru_cache
 
 from . import cooked
-from . import entity_fields as EF
-from . import entity_graph as EG
-from .entity_append import (
-    EntityAppendError,
-    _Accessors,
-    _directory,
-    component_vector,
-    fix_accessor,
-    fix_format_slot,
-    validate_layout,
-)
-from .entity_components import _remap_class_tags, class_closure, extend_class_table
 
-_B, _E = cooked.MARK_BEGIN, cooked.MARK_END
-_NS = uuid.UUID("5f0c6a2e-4a55-4f0e-9d0a-6c1b1f5e7a11")
+_BEGIN = b"\x11\x11\xbb\xaa"
+_END = b"\x22\x22\xbb\xaa"
 
 
-class EntityEditError(ValueError):
-    pass
+class EntityEdit:
+    """Mutable view of a cooked entity for variable-length edits."""
 
+    def __init__(self, cooked_bytes: bytes) -> None:
+        self._cf = cooked.parse(cooked_bytes)
+        self._section_lens = [len(s.payload) for s in self._cf.sections]
+        self.concat = b"".join(s.payload for s in self._cf.sections)
+        # queued edits: (offset, old_len, replacement) on the original concat
+        self._edits: list[tuple[int, int, bytes]] = []
 
-@dataclass
-class Pointer:
-    owner: int          # object id, or len(objects) for the trailer
-    offset: int         # of the u32 id within the owner's payload
+    # -- low-level -----------------------------------------------------------
 
+    def queue(self, offset: int, old_len: int, replacement: bytes) -> None:
+        """Queue a raw byte edit on the original concat. ``old_len`` may differ
+        from ``len(replacement)`` (that delta is absorbed on emit)."""
+        if offset < 0 or offset + old_len > len(self.concat):
+            raise ValueError(f"edit {offset}+{old_len} out of range")
+        self._edits.append((offset, old_len, replacement))
 
-def _lstr(s: str) -> bytes:
-    b = s.encode("latin-1")
-    return struct.pack("<I", len(b)) + b
+    def find_lstrings(self, text: str) -> list[int]:
+        """Offsets in the concat of every ``<u32 len><text>`` length-prefixed
+        occurrence of ``text``."""
+        pat = struct.pack("<I", len(text)) + text.encode("utf-8")
+        out, i = [], 0
+        while True:
+            j = self.concat.find(pat, i)
+            if j < 0:
+                return out
+            out.append(j)
+            i = j + 1
 
+    def find_lstrings_containing(self, substr: str) -> list[tuple[int, str]]:
+        """Every length-prefixed string whose text *contains* ``substr``.
 
-class EntityFile:
-    def __init__(self, raw: bytes, name: str = ""):
-        self.cf = cooked.parse(raw)
-        validate_layout(self.cf)
-        self.objects = [bytearray(s.payload) for s in self.cf.sections[1:-1]]
-        self.trailer = bytearray(self.cf.sections[-1].payload)
-        self.name = name
-
-    # ---- reading ---------------------------------------------------------
-
-    @property
-    def component_ids(self) -> list[int]:
-        return component_vector(bytes(self.trailer))[1]
-
-    def to_bytes(self) -> bytes:
-        n = len(self.objects)
-        classes = [struct.unpack_from("<I", o, 0)[0] for o in self.objects]
-        directory = struct.pack(f"<I{n}I", n, *classes)
-        self.cf.sections = ([cooked.Section(directory)]
-                            + [cooked.Section(bytes(o)) for o in self.objects]
-                            + [cooked.Section(bytes(self.trailer))])
-        out = cooked.emit(self.cf)
-        self._check(out)
+        Returns ``(offset, full_text)`` pairs (offset points at the u32 length
+        prefix). Used to locate a component by a node-name fragment when the
+        full cooked label carries a variable ``[State]/[Value Operation]/…``
+        path prefix."""
+        out: list[tuple[int, str]] = []
+        needle = substr.encode("utf-8")
+        i = 0
+        c = self.concat
+        n = len(c)
+        while i + 4 <= n:
+            ln = struct.unpack_from("<I", c, i)[0]
+            if 0 < ln < 4096 and i + 4 + ln <= n:
+                blob = c[i + 4:i + 4 + ln]
+                if needle in blob:
+                    try:
+                        out.append((i, blob.decode("utf-8")))
+                    except UnicodeDecodeError:
+                        pass
+            i += 1
         return out
 
-    def graph(self) -> EG.EntityGraph:
-        return EG.parse(self.to_bytes(), self.name)
+    # -- high-level edits ----------------------------------------------------
 
-    def component(self, name: str) -> EG.Component:
-        """The unique component called ``name`` (or ``Group\\Name``)."""
-        hits = [c for c in self.graph().components if name in (c.name, c.path)]
-        if len(hits) != 1:
-            raise EntityEditError(f"{len(hits)} components named {name!r}")
-        return hits[0]
+    def _picker_classid(self) -> int | None:
+        """Class-table index of ``oCEntityCpntPicker`` in THIS file.
 
-    def _class(self, obj: int) -> str:
-        return self.cf.classes[struct.unpack_from("<I", self.objects[obj], 0)[0]].name
+        The u32 after a BEGIN marker indexes the file's own class table, so the
+        picker is 0x42 in Red and Piper but 0x40 in Snow Queen. Hardcoding one
+        of those rejects a perfectly good rewire on the other heroes.
+        """
+        names = [c.name for c in self._cf.classes]
+        return (names.index("oCEntityCpntPicker")
+                if "oCEntityCpntPicker" in names else None)
 
-    def _payload(self, obj: int) -> bytearray:
-        return self.trailer if obj == len(self.objects) else self.objects[obj]
+    def _node_guid(self, name: str) -> bytes | None:
+        """Identity GUID of the one node DEFINED as ``name`` (its record opens
+        with ``END, 16B GUID, lstr name``), or None when not exactly one."""
+        hits = [o for o in self.find_lstrings(name)
+                if o >= 20 and self.concat[o - 20:o - 16] == _END]
+        return self.concat[hits[0] - 16:hits[0]] if len(hits) == 1 else None
 
-    # ---- sub-object ownership --------------------------------------------
+    def _subtest_ranges(self, tester: str) -> list[tuple[int, int]]:
+        """Concat ranges of every sub-test the tester node ``tester`` evaluates.
 
-    def pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
-        """``(owned, ambiguous)``: each sub-object id's pointer, and the
-        candidates for those whose pointer could not be pinned down."""
-        n = len(self.objects)
-        comps = set(self.component_ids)
-        is_sub = [x not in comps for x in range(n)]
-        names = [c.name for c in self.cf.classes]
-        special = {names.index(x) for x in ("oCEntityCpntPicker", "oCEntityValueUnion")
-                   if x in names}
-        vec: dict[int, list[Pointer]] = defaultdict(list)
-        single: dict[int, list[Pointer]] = defaultdict(list)
-        for o in range(n + 1):
-            p = self._payload(o)
-            start = 4
-            if o == n:
-                voff, ids = component_vector(bytes(p))
-                start = voff + 4 + 4 * len(ids)
-            for a, b in _raw_spans(p, special):
-                i = max(a, start)
-                while i + 4 <= b:
-                    c = struct.unpack_from("<I", p, i)[0]
-                    if 1 <= c <= 4096 and i + 4 + 4 * c <= b:
-                        ids = struct.unpack_from(f"<{c}I", p, i + 4)
-                        if all(x < n and is_sub[x] for x in ids):
-                            for j, x in enumerate(ids):
-                                vec[x].append(Pointer(o, i + 4 + 4 * j))
-                            i += 4 + 4 * c
-                            continue
-                    if c < n and is_sub[c]:
-                        single[c].append(Pointer(o, i))
-                    i += 1
-        owned: dict[int, Pointer] = {}
-        ambiguous: dict[int, list[Pointer]] = {}
-        for x in (x for x in range(n) if is_sub[x]):
-            if len(vec[x]) == 1:
-                owned[x] = vec[x][0]
-            elif not vec[x] and len(single[x]) == 1:
-                owned[x] = single[x][0]
-            else:
-                ambiguous[x] = vec[x] + single[x]
-        # A class owns the same kinds of sub-object throughout a file (a
-        # Tester its conditions, an Fx its setups), so pairs read off the
-        # unambiguous pointers narrow a candidate list whose id also occurs as
-        # plain data (0x400 and 0x500 are common numbers).
-        pairs = {(self._owner_class(p.owner), self._class(x)) for x, p in owned.items()}
-        for x, cands in list(ambiguous.items()):
-            fit = [p for p in cands if (self._owner_class(p.owner), self._class(x)) in pairs]
-            if len(fit) == 1 and not (vec[x] and fit[0] not in vec[x]):
-                owned[x] = fit[0]
-                del ambiguous[x]
-        return owned, ambiguous
+        A tester keeps its conditions out of line: an inline
+        ``oCCombinerCpntTestSettings`` holds ``u8, u8 op, u32 n, n * u32``
+        sub-object ids, and sub-object id ``i`` is section ``1 + i``. A sub-test
+        that is itself a combiner (a section opening with that class index)
+        contributes its own sub-tests, recursively. Raises rather than guessing
+        when the tester or its combiner cannot be found.
+        """
+        names = [c.name for c in self._cf.classes]
+        if "oCCombinerCpntTestSettings" not in names:
+            raise ValueError("this file has no combiner test class")
+        comb = names.index("oCCombinerCpntTestSettings")
+        pat = struct.pack("<I", len(tester)) + tester.encode("utf-8")
+        defs = [o for o in self.find_lstrings(tester)
+                if o >= 20 and self.concat[o - 20:o - 16] == _END]
+        if len(defs) != 1:
+            raise ValueError(f"subtest_of: expected one node named {tester!r}, "
+                             f"found {len(defs)}")
+        bounds, lo = [], 0
+        for n in self._section_lens:
+            bounds.append((lo, lo + n))
+            lo += n
+        sec = next(i for i, (a, b) in enumerate(bounds) if a <= defs[0] < b)
+        a, b = bounds[sec]
+        payload = self.concat[a:b]
+        at = payload.find(_BEGIN + struct.pack("<I", comb), defs[0] - a + len(pat))
+        if at < 0:
+            raise ValueError(f"subtest_of: {tester!r} has no combiner")
 
-    def _owner_class(self, obj: int) -> str:
-        return "(entity)" if obj == len(self.objects) else self._class(obj)
+        def ids_at(buf: bytes, off: int) -> list[int]:
+            n = struct.unpack_from("<I", buf, off + 2)[0]
+            if n > 64 or off + 6 + 4 * n > len(buf):
+                raise ValueError(f"subtest_of: {tester!r} combiner is not readable")
+            return list(struct.unpack_from(f"<{n}I", buf, off + 6))
 
-    def subtree(self, objs: set[int]) -> list[int]:
-        """Every sub-object ``objs`` own, transitively. Fails closed when one
-        of them might own an ambiguous sub-object."""
-        owned, ambiguous = self.pointers()
-        for x, cands in ambiguous.items():
-            if any(p.owner in objs for p in cands):
-                raise EntityEditError(
-                    f"cannot tell whether sub-object #{x} ({self._class(x)}) belongs to "
-                    f"what is being copied ({len(cands)} candidate pointers)")
-        out: list[int] = []
-        todo = sorted(objs)
-        seen = set(objs)
+        out: list[tuple[int, int]] = []
+        todo = ids_at(payload, at + 8)
+        seen: set[int] = set()
         while todo:
-            o = todo.pop(0)
-            for x, p in sorted(owned.items()):
-                if p.owner == o and x not in seen:
-                    seen.add(x)
-                    out.append(x)
-                    todo.append(x)
+            sid = todo.pop()
+            if sid in seen or not 0 <= sid < len(bounds) - 2:
+                continue
+            seen.add(sid)
+            a, b = bounds[1 + sid]
+            body = self.concat[a:b]
+            if struct.unpack_from("<I", body, 0)[0] == comb:
+                todo += ids_at(body, 4)
+            else:
+                out.append((a, b))
+        if not out:
+            raise ValueError(f"subtest_of: {tester!r} evaluates no sub-tests")
         return out
 
-    # ---- clone -------------------------------------------------------------
+    def rewire_ref(self, from_label: str, to_label: str,
+                   *, expect_classid: int | None = None,
+                   count: int | None = 1, exact: bool = False,
+                   within: str | None = None, within_span: int = 2048,
+                   subtest_of: str | None = None) -> int:
+        """Repoint a component reference ("picker") at a different target node.
 
-    def clone(self, names: list[str], *, rename: dict[str, str] | None = None,
-              group: dict[str, str] | None = None, seed: str = "",
-              source: EntityFile | None = None) -> dict[str, str]:
-        """Copy the named components (and everything they own) into this file.
+        Cross-references inside a cooked entity are 16-byte GUID handles, not
+        string keys: a picker record is ``1111bbaa`` + ``u32 classid`` (66 =
+        ``0x42`` for ``oCEntityCpntPicker``) + ``16B GUID`` + a redundant
+        length-prefixed ``"[State] Path\\Name"`` label, so the GUID sits exactly
+        16 bytes before its label. The target node is referenced elsewhere by
+        the SAME GUID, so we read it from any picker that already points at
+        ``to_label`` and write it into the picker that points at ``from_label``.
+        Name-based and length-preserving — no hard-coded GUIDs or offsets, and
+        it survives game updates that shift the file layout.
 
-        ``rename`` maps old component names to new ones; ``group`` maps old
-        group names to new ones. Links among the copied components point at
-        the copies; links out of the set are left alone. ``source`` copies from
-        another entity (the class table is extended as needed). Returns
-        ``{old path: new path}``. Every copy gets a fresh GUID derived from
-        ``seed`` (keep it stable to rebuild byte-identically)."""
-        src = source or self
-        rename, group = rename or {}, group or {}
-        g = src.graph()
-        by_name = {}
-        for want in names:
-            hits = [c for c in g.components if want in (c.name, c.path)]
-            if len(hits) != 1:
-                raise EntityEditError(f"{len(hits)} components named {want!r}")
-            by_name[hits[0].index - 1] = hits[0]
-        comps = sorted(by_name)
-        subs = src.subtree(set(comps))
-        owned, _amb = src.pointers()
+        Both labels are matched as substrings against the ``[State]`` picker
+        labels (e.g. ``"Event Trait Ability Spawn Pets"``). ``expect_classid``
+        guards the record's class; it defaults to whatever index
+        ``oCEntityCpntPicker`` has in THIS file (0x42 in Red, 0x40 in Snow
+        Queen). ``count`` limits how many matching references are repointed
+        (``None`` = all — a tier-gated selector carries one per rarity).
+        Returns the number rewritten.
 
-        base = len(self.objects)
-        new_id = {old: base + i for i, old in enumerate(comps + subs)}
-        guid = {c.guid: _mint(seed, c.guid) for c in by_name.values()}
-        taken = {c.guid for c in self.graph().components}
-        if any(v in taken for v in guid.values()):
-            raise EntityEditError("a minted GUID collides; change the seed")
-        paths: dict[str, str] = {}
-        for c in by_name.values():
-            ng, nn = group.get(c.group, c.group), rename.get(c.name, c.name)
-            paths[c.path] = f"{ng}\\{nn}" if ng else nn
+        ``exact`` matches a whole label instead of a substring, and ``within``
+        restricts the SOURCE side to references in the ``within_span`` bytes
+        after the first node named ``within``. Both exist because substring
+        matching once picked the wrong record: repointing a talent controller's
+        ``[State] ...Skill Secondary Quick Bombs`` hit ``[Modifier] ...Skill
+        Secondary Quick Bombs CD Reduction Modifier`` first, which contains the
+        same text and sits earlier in the file.
+        """
+        want = expect_classid if expect_classid is not None else self._picker_classid()
 
-        payloads: list[bytearray] = []
-        for old in comps + subs:
-            p = bytearray(src.objects[old])
-            for x, ptr in owned.items():              # re-point owned sub-objects
-                if ptr.owner == old and x in new_id:
-                    struct.pack_into("<I", p, ptr.offset, new_id[x])
-            payloads.append(p)
-        for i, old in enumerate(comps + subs):
-            p = payloads[i]
-            for a, b in guid.items():                 # own GUID + links to copies
-                p[:] = p.replace(a, b)
-            p[:] = _rewrite_ref_paths(bytes(p), src.cf, paths, set(guid.values()))
-            if old in by_name:
-                c = by_name[old]
-                p[:] = _rewrite_header(bytes(p), rename.get(c.name, c.name),
-                                       group.get(c.group, c.group))
-            if src is not self:
-                extend_class_table(self.cf, src.cf, class_closure(bytes(p), src.cf))
-                p[:] = _remap_class_tags(bytes(p), src.cf, self.cf)
-        self.objects.extend(payloads)
-        voff, ids = component_vector(bytes(self.trailer))
-        ids = ids + [new_id[o] for o in comps]
-        self.trailer[voff:voff + 4 + 4 * (len(ids) - len(comps))] = (
-            struct.pack("<I", len(ids)) + struct.pack(f"<{len(ids)}I", *ids))
-        self.to_bytes()
-        return paths
+        scope: list[tuple[int, int]] | None = None
+        if within is not None:
+            anchors = self.find_lstrings(within)
+            if not anchors:
+                raise ValueError(f"rewire scope {within!r} not found")
+            scope = [(anchors[0], anchors[0] + within_span)]
+        if subtest_of is not None:
+            ranges = self._subtest_ranges(subtest_of)
+            scope = ranges if scope is None else [
+                (max(a, c), min(b, d)) for a, b in scope for c, d in ranges
+                if max(a, c) < min(b, d)]
 
-    # ---- fields ------------------------------------------------------------
+        def _picker_guid_offs(substr: str, scoped: bool = False) -> list[int]:
+            hits = [(o, t) for (o, t) in self.find_lstrings_containing(substr)
+                    if t.startswith("[")  # picker refs carry a [Type] prefix
+                    and (not exact or t == substr)
+                    and (not scoped or scope is None
+                         or any(lo <= o < hi for lo, hi in scope))]
+            if not hits:
+                raise ValueError(f"no picker reference matching {substr!r}")
+            offs = []
+            for lstr_off, _t in hits:
+                guid_off = lstr_off - 16
+                if guid_off < 4:
+                    continue
+                classid = struct.unpack_from("<I", self.concat, guid_off - 4)[0]
+                if want is not None and classid != want:
+                    continue
+                offs.append(guid_off)
+            if not offs:
+                raise ValueError(
+                    f"picker {substr!r}: no reference record with classid "
+                    f"{want:#x}" if want is not None else
+                    f"picker {substr!r}: no reference record found")
+            return offs
 
-    def _field(self, comp: str, field: str) -> tuple[EG.Component, EF.Field, int]:
-        c = self.component(comp)
-        fs = {f.name: f for f in EF.fields(c)}
-        base, _, idx = field.partition("[")
-        if base not in fs:
-            raise EntityEditError(f"{c.name!r} has no field {base!r}; have {', '.join(fs)}")
-        f = fs[base]
-        if idx:
-            f = f.items[int(idx.rstrip("]"))]
-        return c, f, len(self.objects[c.index - 1]) - len(c.body)
-
-    def set_value(self, comp: str, field: str, value) -> None:
-        """Set a literal: a raw bool/u32/f32 field, or the union inside a value
-        field (keeping its type; ints and floats convert)."""
-        c, f, at = self._field(comp, field)
-        p = self.objects[c.index - 1]
-        if f.kind in EF._PRIM:
-            struct.pack_into({"bool": "<?", "u32": "<I", "f32": "<f"}[f.kind], p,
-                             at + f.offset, _as(f.kind, value))
-            return
-        if f.kind != "value":
-            raise EntityEditError(f"{field!r} is a {f.kind}, not a literal")
-        sub = EG.Component(0, c.cls, "", "", b"", None,
-                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
-        u = next((t for t in EG.tokens(sub) if t.kind == "value"), None)
-        if u is None:
-            raise EntityEditError(f"{field!r} holds no literal")
-        kind = u.text.split()[0]
-        fmt = {"f32": "<f", "int": "<i", "bool": "<?", "vec2": "<2f", "vec3": "<3f",
-               "vec4": "<4f"}.get(kind)
-        if fmt is None:
-            raise EntityEditError(f"{field!r} is a {kind}; only numbers and vectors are set")
-        vals = value if isinstance(value, (list, tuple)) else [value]
-        conv = {"f32": float, "int": int, "bool": bool}.get(kind, float)
-        struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *[conv(v) for v in vals])
-
-    def set_ref(self, comp: str, field: str, target: str | None) -> None:
-        """Point a reference (``ref`` field, list element ``name[i]``, or the
-        reference inside a value field) at component ``target`` or at nothing."""
-        c, f, at = self._field(comp, field)
-        a, b = self._picker_span(c, f)
-        obj = c.index - 1
-        old = bytes(self.objects[obj][at + a:at + b])
-        new = self._picker(target)
-        self.objects[obj][at + a:at + b] = new
-        # A reference inside a value picker is followed by the ACCESSOR the
-        # target is read with, which depends on the target's class and value
-        # type; a stale one reads the new target with the wrong method and
-        # returns garbage (entity_append.fix_accessor has the RE).
-        label_end = at + a + len(new) - 4
-        p = bytes(self.objects[obj])
+        # All refs to one node share its GUID, so any of the target's is fine.
+        # A node nothing references yet (one added by `clone_nodes`) has no
+        # such label, so fall back to its own definition: END, GUID, name.
         try:
-            acc = _Accessors(cooked.parse(self.to_bytes()))
-            p = fix_accessor(p, label_end, old[8:24], new[8:24], acc,
-                             _picker_path(old), _picker_path(new))
-            p = fix_format_slot(p, at + a, label_end, new[8:24], acc)
-        except (EntityAppendError, EntityEditError) as e:
-            self.objects[obj][at + a:at + a + len(new)] = old      # leave the file as it was
-            raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
-        self.objects[obj][:] = p
-
-    def add_ref(self, comp: str, field: str, target: str) -> None:
-        c, f, at = self._field(comp, field)
-        if f.kind != "ref[]":
-            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
-        p = self.objects[c.index - 1]
-        n = struct.unpack_from("<I", p, at + f.offset)[0]
-        end = at + f.offset + f.size
-        p[end:end] = self._picker(target)
-        struct.pack_into("<I", p, at + f.offset, n + 1)
-
-    def remove_ref(self, comp: str, field: str, index: int) -> None:
-        c, f, at = self._field(comp, field)
-        if f.kind != "ref[]":
-            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
-        e = f.items[index]
-        p = self.objects[c.index - 1]
-        del p[at + e.offset:at + e.offset + e.size]
-        struct.pack_into("<I", p, at + f.offset, len(f.items) - 1)
-
-    def _picker_span(self, c: EG.Component, f: EF.Field) -> tuple[int, int]:
-        """``(start, end)`` in the body of the oCEntityCpntPicker ``f`` is or holds."""
-        if f.kind == "ref":
-            return f.offset, f.offset + f.size
-        if f.kind == "value":
-            sub = EG.Component(0, c.cls, "", "", b"", None,
-                               body=c.body[f.offset:f.offset + f.size], classes=c.classes)
-            r = next((t for t in EG.tokens(sub) if t.kind == "ref"), None)
-            if r is None:
-                raise EntityEditError(
-                    f"{f.name!r} holds a literal, not a reference; a value field only "
-                    "re-points a reference it already has")
-            return f.offset + r.offset, f.offset + r.offset + r.size
-        raise EntityEditError(f"{f.name!r} is a {f.kind}, not a reference")
-
-    def _picker(self, target: str | None) -> bytes:
-        names = [x.name for x in self.cf.classes]
-        head = _B + struct.pack("<I", names.index("oCEntityCpntPicker"))
-        if target is None:
-            return head + bytes(16) + _lstr("") + _E
-        t = self.component(target)
-        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{t.path}") + _E
-
-    def _label(self, cls: str) -> str:
-        """The ``[Kind]`` label for ``cls``: from this file's own references
-        when one names such a component, else learned from the corpus."""
-        g = self.graph()
-        idx = g.by_guid()
-        for c in g.components:
-            for r in c.refs:
-                t = idx.get(r.guid)
-                if t is not None and t.cls == cls and r.kind:
-                    return r.kind
-        return kind_label(cls)
-
-    def _scope(self) -> str:
-        """The scope this file's own references use (``Hero_Piper``)."""
-        g = self.graph()
-        mine = g.by_guid()
-        for c in g.components:
-            for r in c.refs:
-                if r.guid in mine and r.scope:
-                    return r.scope
-        if self.name:
-            return self.name
-        raise EntityEditError("cannot tell this entity's scope; pass name=")
-
-    def _splice(self, c: EG.Component, a: int, b: int, new: bytes) -> None:
-        self.objects[c.index - 1][a:b] = new
-
-    # ---- invariants --------------------------------------------------------
-
-    def _check(self, raw: bytes) -> None:
-        cf = cooked.parse(raw)
-        validate_layout(cf)
-        g = EG.parse(raw)
-        k = len(component_vector(cf.sections[-1].payload)[1])
-        if len(g.components) != k:
-            raise EntityEditError(f"{len(g.components)} components parse, vector has {k}")
-        guids = [c.guid for c in g.components]
-        if len(set(guids)) != len(guids):
-            raise EntityEditError("two components share a GUID")
-        n, _idx = _directory(cf)
-        if n != len(self.objects):
-            raise EntityEditError("object table and objects disagree")
-
-
-# --------------------------------------------------------------------------
-
-
-def _picker_path(picker: bytes) -> str:
-    n = struct.unpack_from("<I", picker, 24)[0]
-    return picker[28:28 + n].decode("latin-1")
-
-
-def _mint(seed: str, guid: bytes) -> bytes:
-    return uuid.uuid5(_NS, f"{seed}:{guid.hex()}").bytes
-
-
-def _as(kind: str, value):
-    return {"bool": bool, "u32": int, "f32": float}[kind](value)
-
-
-def _raw_spans(p: bytes, special: set[int]) -> list[tuple[int, int]]:
-    """Spans of ``p`` outside markers, lstrings, pickers and value unions —
-    where a poly-pointer id can sit."""
-    spans: list[tuple[int, int]] = []
-    i = start = 0
-    n = len(p)
-    while i < n:
-        mark = p[i:i + 4]
-        if mark in (_B, _E):
-            if i > start:
-                spans.append((start, i))
-            if mark == _B and i + 8 <= n and struct.unpack_from("<I", p, i + 4)[0] in special:
-                j = p.find(_E, i + 8)
-                i = j + 4 if j >= 0 else n
-            else:
-                i += 8 if mark == _B else 4
-            start = i
-            continue
-        if i + 4 <= n:
-            m = struct.unpack_from("<I", p, i)[0]
-            s = p[i + 4:i + 4 + m]
-            if 2 <= m <= 512 and len(s) == m and all(32 <= x < 127 for x in s):
-                if i > start:
-                    spans.append((start, i))
-                i += 4 + m
-                start = i
+            target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
+        except ValueError:
+            target_guid = self._node_guid(to_label.rsplit("\\", 1)[-1])
+            if target_guid is None:
+                raise
+        dsts = _picker_guid_offs(from_label, scoped=True)
+        if count is not None:
+            dsts = dsts[:count]
+        todo = [o for o in dsts if self.concat[o:o + 16] != target_guid]
+        if not todo:
+            raise ValueError(
+                f"rewire {from_label!r} -> {to_label!r}: already points there")
+        # A picker inside a value picker is read through an accessor that depends
+        # on the target's class and value type (see entity_append's accessor
+        # notes); repointing across either without updating it reads garbage.
+        from . import entity_append as EA
+        accessors = EA._Accessors(self._cf)
+        for o in todo:
+            self.queue(o, 16, target_guid)
+            n = struct.unpack_from("<I", self.concat, o + 16)[0]
+            label_end = o + 20 + n
+            off = EA._accessor_off(self.concat, label_end, accessors.union)
+            if off is None:
                 continue
-        i += 1
-    if start < n:
-        spans.append((start, n))
-    return spans
+            try:
+                old_label = self.concat[o + 20:label_end].decode("utf-8", "replace")
+                fixed = EA.fix_accessor(self.concat, label_end, self.concat[o:o + 16],
+                                        target_guid, accessors, old_label, to_label)
+            except EA.EntityAppendError as e:
+                raise ValueError(f"rewire {from_label!r} -> {to_label!r}: {e}") from e
+            fixed = EA.fix_format_slot(fixed, o - 8, label_end, target_guid, accessors)
+            if fixed[off:off + 16] != self.concat[off:off + 16]:
+                self.queue(off, 16, fixed[off:off + 16])
+            if fixed[off + 32:off + 36] != self.concat[off + 32:off + 36]:
+                self.queue(off + 32, 4, fixed[off + 32:off + 36])
+            entry = EA.format_slot_at(self.concat, o - 8, accessors)
+            fmt = slice(entry + 8, entry + 12) if entry is not None else None
+            if fmt is not None and fixed[fmt] != self.concat[fmt]:
+                self.queue(entry + 8, 4, fixed[fmt])
+        return len(todo)
+
+    def set_int_before_nth_end(self, label: str, end_index: int, new: int,
+                               *, expect: int | None = None) -> int:
+        """Length-preserving write of the int32 sitting just before the
+        ``end_index``-th END marker (0-based) after the node named ``label``.
+
+        Selector / value-union entries (``oCEntityCpntValueUnionSettings``
+        type=1) store one int32 each immediately before their END marker, so a
+        node holding several tiers exposes them as successive END markers. The
+        flat ``set_value_before_end`` only reaches the first; this targets a
+        specific entry by its END ordinal (discover ordinals with the entity
+        decode). Returns the concat offset written. ``expect`` asserts the
+        current value so a drifted layout fails loudly instead of corrupting a
+        neighbour."""
+        pat = struct.pack("<I", len(label)) + label.encode("utf-8")
+        base = self.concat.find(pat)
+        if base < 0:
+            raise ValueError(f"node label {label!r} not found")
+        o = base + len(pat)
+        end = -1
+        for _ in range(end_index + 1):
+            end = self.concat.find(_END, o)
+            if end < 0:
+                raise ValueError(
+                    f"{label!r}: fewer than {end_index + 1} END markers")
+            o = end + 4
+        cur = struct.unpack_from("<i", self.concat, end - 4)[0]
+        if expect is not None and cur != expect:
+            raise ValueError(
+                f"{label!r} END#{end_index}: expected int {expect}, found {cur} "
+                f"(at {end - 4:#x}) — layout drifted")
+        self.queue(end - 4, 4, struct.pack("<i", int(new)))
+        return end - 4
 
 
-def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
-                       new_guids: set[bytes]) -> bytes:
-    """Rename the ``Group\\Name`` tail of every picker that targets a copy."""
-    names = [x.name for x in cf.classes]
-    if "oCEntityCpntPicker" not in names:
-        return p
-    out, last = bytearray(), 0
-    for off, ref in EG._pickers(p, names.index("oCEntityCpntPicker")):
-        if ref.guid not in new_guids:
-            continue
-        m = EG._PATH.match(ref.path)
-        if not m or m["rest"] not in paths:
-            continue
-        new = f"[{m['kind']}] {m['scope']}\\{paths[m['rest']]}"
-        s = off + 8 + 16                              # BEGIN, class, GUID
-        n = struct.unpack_from("<I", p, s)[0]
-        out += p[last:s] + _lstr(new)
-        last = s + 4 + n
-    return bytes(out + p[last:])
+    def replace_lstring(self, old: str, new: str, *, count: int | None = None) -> int:
+        """Rename every length-prefixed ``old`` string to ``new`` (variable
+        length). Returns how many were replaced; raises if none. ``count`` caps
+        the number replaced."""
+        offs = self.find_lstrings(old)
+        if not offs:
+            raise ValueError(f"lstring {old!r} not found")
+        if count is not None:
+            offs = offs[:count]
+        repl = struct.pack("<I", len(new)) + new.encode("utf-8")
+        for o in offs:
+            self.queue(o, 4 + len(old.encode("utf-8")), repl)
+        return len(offs)
 
+    def set_value_before_end(self, label: str, new_value: float,
+                             *, as_int: bool = False) -> None:
+        """Length-preserving write of the f32/int32 value sitting just before
+        the END marker of the node named ``label`` (the talent/entity value
+        layout). For pure value edits prefer
+        :func:`rsmm.engine.talent_values.set_talent_value`; this is here so a
+        single :class:`EntityEdit` can mix value writes with renames."""
+        pat = struct.pack("<I", len(label)) + label.encode("utf-8")
+        o = self.concat.find(pat)
+        if o < 0:
+            raise ValueError(f"value label {label!r} not found")
+        end = self.concat.find(_END, o + len(pat))
+        if end < 0:
+            raise ValueError(f"no END marker after {label!r}")
+        packed = (struct.pack("<i", int(round(new_value))) if as_int
+                  else struct.pack("<f", new_value))
+        self.queue(end - 4, 4, packed)
 
-def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
-    """``p`` with the record header's name and group replaced."""
-    pk = EG._pickers(p, struct.unpack_from("<I", p, 8)[0])
-    first = pk[0][1] if pk and pk[0][0] == 4 else None
-    if first is None:
-        raise EntityEditError("record has no header picker")
-    at = 4 + 8 + 16 + 4 + len(first.path.encode("latin-1")) + 4 + 16
-    head = EG._header_strings(p, at)
-    if head is None:
-        raise EntityEditError("record header does not parse")
-    _old_name, _old_group, body = head
-    flags_at = at + 4 + struct.unpack_from("<I", p, at)[0]
-    return (p[:at] + _lstr(name) + p[flags_at:flags_at + 4] + _lstr(group) + p[body:])
+    def swap_refs(self, off_a: int, off_b: int, size: int = 16) -> None:
+        """Swap two equal-size fields (e.g. 16-byte GUID refs) in place."""
+        a = self.concat[off_a:off_a + size]
+        b = self.concat[off_b:off_b + size]
+        self.queue(off_a, size, b)
+        self.queue(off_b, size, a)
 
+    # -- emit ----------------------------------------------------------------
 
-@cache
-def _kind_labels() -> dict[str, str]:
-    """Component class -> the ``[Kind]`` label references to it carry, learned
-    from the shipped corpus (the label is the editor's display name for the
-    class, which the exe does not hold)."""
-    from . import corpus
-    votes: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for rel in corpus.rels("EntitySettings/"):
-        if not rel.endswith(".EntitySettingsResource.gen"):
-            continue
-        g = EG.parse(corpus.read(rel))
-        idx = g.by_guid()
-        for c in g.components:
-            for r in c.refs:
-                t = idx.get(r.guid)
-                if t is not None and r.kind:
-                    votes[t.cls][r.kind] += 1
-    return {cls: max(v, key=v.get) for cls, v in votes.items()}
+    def emit(self) -> bytes:
+        """Apply all queued edits and rebuild the cooked container, absorbing
+        each edit's length delta into the section that contained it."""
+        edits = sorted(self._edits)
+        # validate non-overlapping
+        for (o1, l1, _), (o2, _, _) in zip(edits, edits[1:], strict=False):
+            if o1 + l1 > o2:
+                raise ValueError(f"overlapping edits at {o1} and {o2}")
 
+        starts, acc = [], 0
+        for sl in self._section_lens:
+            starts.append(acc)
+            acc += sl
+        deltas = [0] * len(self._section_lens)
 
-def kind_label(cls: str) -> str:
-    got = _kind_labels().get(cls)
-    if got is None:
-        raise EntityEditError(f"no reference in the game names a {cls}; cannot label one")
-    return got
+        out = bytearray()
+        cur = 0
+        for off, old_len, rep in edits:
+            out += self.concat[cur:off]
+            out += rep
+            cur = off + old_len
+            sidx = max(i for i, s in enumerate(starts) if s <= off)
+            deltas[sidx] += len(rep) - old_len
+        out += self.concat[cur:]
+        new_concat = bytes(out)
+
+        new_lens = [sl + deltas[i] for i, sl in enumerate(self._section_lens)]
+        assert sum(new_lens) == len(new_concat), "section length bookkeeping off"
+
+        sections, o = [], 0
+        for sl in new_lens:
+            sections.append(cooked.Section(payload=new_concat[o:o + sl]))
+            o += sl
+        cf = cooked.CookedFile(
+            variant=self._cf.variant, hdr_a=self._cf.hdr_a, flags=self._cf.flags,
+            extra=self._cf.extra, type_tag=self._cf.type_tag,
+            classes=self._cf.classes, sections=sections,
+        )
+        return cooked.emit(cf)

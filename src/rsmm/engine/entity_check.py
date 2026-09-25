@@ -42,7 +42,7 @@ from functools import cache
 from . import cooked, rsc_cache
 from . import entity_graph as EG
 from . import entity_strings as ES
-from .entity_edit import EntityEditError, EntityFile
+from .entity_graph_edit import EntityEditError, EntityFile
 
 #: entity reference (``Heroes\\Hero_Piper\\Hero_Piper_FX.entity.ot``) -> bytes
 Reader = Callable[[str], bytes | None]
