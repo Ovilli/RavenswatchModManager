@@ -3,6 +3,7 @@
     rsmm entity-graph Piper                          groups and their sizes
     rsmm entity-graph Piper --group "Ability Primary"      one group, with links
     rsmm entity-graph Piper --closure "Ability Primary"    everything it pulls in
+    rsmm entity-graph Piper --show "Ability Secondary Active Timer"   one component's body
     rsmm entity-graph Piper --json piper.json              the whole graph
 
 An argument is a hero name (Piper, Juliet, ...) or an entity reference
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("entity", help="hero name or entity reference")
     ap.add_argument("--group", help="list one group's components with their links")
     ap.add_argument("--closure", help="list everything a group transitively pulls in")
+    ap.add_argument("--show", help="one component's body as typed tokens (refs, values, ...)")
     ap.add_argument("--json", type=Path, help="write the whole graph as JSON")
     args = ap.parse_args(argv)
 
@@ -71,6 +73,17 @@ def main(argv: list[str] | None = None) -> int:
                       for r in c.refs],
              "literals": c.literals} for c in g.components]}, indent=1), encoding="utf-8")
         print(f"{args.json}: {len(g.components)} components")
+        return 0
+
+    if args.show:
+        hits = [c for c in g.components if c.name == args.show]
+        if not hits:
+            print(f"no component named {args.show!r}", file=sys.stderr)
+            return 1
+        for c in hits:
+            print(f"{c.group}\\{c.name}  ({c.cls})")
+            for t in EG.tokens(c):
+                print(f"  +{t.offset:<5} {t.kind:7} {t.text}")
         return 0
 
     for flag in (args.group, args.closure):

@@ -58,6 +58,8 @@ class Component:
     override: Ref | None        # set when this record overrides an ancestor's component
     refs: list[Ref] = field(default_factory=list)
     literals: list[str] = field(default_factory=list)   # other strings: events, resources
+    body: bytes = b""           # class-specific bytes after the group name
+    classes: list[str] = field(default_factory=list, repr=False)
 
     @property
     def path(self) -> str:
@@ -138,5 +140,87 @@ def parse(raw: bytes, name: str = "") -> EntityGraph:
         ref_paths = {r.path for r in refs}
         literals = [s for o, s in strs[2:] if s not in ref_paths]
         override = first if first.path else None
-        comps.append(Component(si, classes[ci], cname, group, own, override, refs, literals))
+        body = p[body_from + 4 + len(group.encode("ascii")):]
+        comps.append(Component(si, classes[ci], cname, group, own, override, refs, literals,
+                               body, classes))
     return EntityGraph(name, comps)
+
+
+# --------------------------------------------------------------------------
+# the body, as typed tokens
+# --------------------------------------------------------------------------
+
+#: oCEntityValueUnion payload: u32 type, u32 (unused), 4-byte value.
+_UNION_TYPES = {0: "f32", 1: "int", 2: "bool"}
+
+
+@dataclass
+class Token:
+    offset: int                 # within the component body
+    kind: str                   # ref | value | string | object | end | bytes
+    text: str
+    size: int
+
+
+def tokens(c: Component) -> list[Token]:
+    """``c.body`` split into typed tokens: every reference (picker), every
+    typed value (value union), every string, every nested object opening, and
+    the raw bytes between them. Works for all component classes without a
+    per-class layout; offsets are what an edit addresses."""
+    b, cls = c.body, c.classes
+    out: list[Token] = []
+    i = raw_from = 0
+
+    def flush(upto: int) -> None:
+        if upto > raw_from:
+            out.append(Token(raw_from, "bytes", b[raw_from:upto].hex(" "), upto - raw_from))
+
+    while i < len(b):
+        if b[i:i + 4] == _BEGIN and i + 8 <= len(b):
+            flush(i)
+            ci = struct.unpack_from("<I", b, i + 4)[0]
+            name = cls[ci] if ci < len(cls) else f"#{ci}"
+            if name == "oCEntityCpntPicker" and i + 28 <= len(b):
+                n = struct.unpack_from("<I", b, i + 24)[0]
+                path = b[i + 28:i + 28 + n].decode("ascii", "replace")
+                size = 8 + 16 + 4 + n + 4
+                out.append(Token(i, "ref", path or "(none)", size))
+                i += size
+            elif name == "oCEntityValueUnion" and i + 21 <= len(b):
+                t = struct.unpack_from("<I", b, i + 8)[0]
+                kind = _UNION_TYPES.get(t, f"type{t}")
+                # A bool stores ONE byte; f32/int four. Then the union's END.
+                width = 1 if kind == "bool" else 4
+                raw = b[i + 16:i + 16 + width]
+                if kind == "f32":
+                    text = f"f32 {struct.unpack('<f', raw)[0]:g}"
+                elif kind == "bool":
+                    text = f"bool {bool(raw[0])}"
+                else:
+                    text = f"{kind} {struct.unpack('<i', raw)[0]}"
+                size = 16 + width + 4
+                out.append(Token(i, "value", text, size))
+                i += size
+            else:
+                out.append(Token(i, "object", name, 8))
+                i += 8
+            raw_from = i
+            continue
+        if b[i:i + 4] == _END:
+            flush(i)
+            out.append(Token(i, "end", "", 4))
+            i += 4
+            raw_from = i
+            continue
+        if i + 4 <= len(b):
+            n = struct.unpack_from("<I", b, i)[0]
+            s = b[i + 4:i + 4 + n]
+            if 2 <= n <= 512 and len(s) == n and all(0x20 <= x < 0x7F for x in s):
+                flush(i)
+                out.append(Token(i, "string", s.decode("ascii"), 4 + n))
+                i += 4 + n
+                raw_from = i
+                continue
+        i += 1
+    flush(len(b))
+    return out
