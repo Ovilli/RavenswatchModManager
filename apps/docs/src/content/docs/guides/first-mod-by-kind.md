@@ -666,7 +666,10 @@ albedo = "art/nyx_mercenary.png"
   minimap icon), so try it separately.
 - **`weapons`** gives a weapon its own mesh (`model`, a static mesh) and/or
   maps (`albedo`, `mra`, `normal`). Only this hero carries it; the base keeps
-  its own.
+  its own. The mesh is used exactly as authored, in the weapon's own space:
+  export it ON ITS OWN with its object transform cleared, not while it is
+  parented to the hand bone of an `export-character` file (the cooker bakes
+  object transforms, so a weapon exported in the hand ends up offset).
 - **`animations`** cooks each clip under a new name (`Nyx_Piper_Dash_Default`)
   and points only this hero's entities at it. The `animation` kind replaces a
   clip for everyone who plays it; this does not. Keys are the base's clip

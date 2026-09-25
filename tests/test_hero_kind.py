@@ -189,3 +189,30 @@ def test_the_clone_owns_its_component_identities_and_keeps_its_internal_links(tm
     assert not any(g in raw for raw in ours for g in piper)          # no stale link
     herodef = next(p for p in files if p.name == "Nyx.herodef.ot.DtHeroDefinition.gen")
     assert sum(g in herodef.read_bytes() for g in owned) >= 20
+
+
+@needs_corpus
+@needs_install
+def test_a_weapon_keeps_its_authored_shape(tmp_path):
+    """In game 2026-09-25 the prop fit's auto-upright turned Piper's flute on end
+    and squeezed it to a sliver: no flute in the hero's hand."""
+    from rsmm.engine import cooked, corpus
+    from rsmm.engine import geometry_cook as GC
+    from rsmm.engine.cooked_schemas import geometry as G
+    from rsmm.sdk.kinds.poi import _mesh_glb
+    ref = "Characters\\Heroes\\Piper\\Piper_Flute.fbx"
+    glb = _mesh_glb(ref)
+    if glb is None:
+        pytest.skip("flute not in the corpus")
+    (tmp_path / "flute.glb").write_bytes(glb)
+    files = heros.emit("m", ContentDef(kind="hero", id="Nyx", fields={
+        "base": "Piper", "weapons": {"Weapon In Left Hand Mesh": "flute.glb"}}),
+        tmp_path / "assets")
+
+    def verts(raw):
+        cf = cooked.parse(raw)
+        t = next(i for i, s in enumerate(cf.sections) if GC._find_records(s.payload))
+        return [p for s in G._parse_meshbuffers(cf.sections[t].payload) for p in s.positions]
+    ours = next(p for p in files if p.name.startswith("Nyx_Weapon1_GEO"))
+    shipped = corpus.read("3D/Characters/Heroes/Piper/Piper_Flute.fbx.Geometry.gen")
+    assert verts(ours.read_bytes()) == pytest.approx(verts(shipped), abs=1e-5)

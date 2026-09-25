@@ -284,7 +284,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             tag = f"{hid}_Weapon{n}"
             if spec.get("model"):
                 swaps[att[label]["mesh"]] = mesh(att[label]["mesh"], spec["model"], tag,
-                                                 f"weapons.{label}", spec.get("transform"))
+                                                 f"weapons.{label}",
+                                                 # A weapon keeps its authored shape: the
+                                                 # prop fit's auto-upright turned the
+                                                 # flute on end and squeezed it to a
+                                                 # sliver (in game 2026-09-25).
+                                                 spec.get("transform") or {"fit": "rig"})
             wmat = mats.get(label) or mats.get(label.removesuffix(" Mesh"))
             if any(spec.get(k) for k in _TEXTURE_FIELDS):
                 if not wmat:
