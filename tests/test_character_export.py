@@ -149,3 +149,53 @@ def test_material_by_name_needs_every_distinctive_word_in_the_mesh_name():
     # The Combat cloak's real material is an FX shader: no PBR candidate may claim it.
     piper = [t + "M_PiperCombatFlute.mat.ot", t + "M_PiperRat.mat.ot"]
     assert material_by_name("X\\PiperCombat_Cloak_GEO.fbx", piper, "Piper") is None
+
+
+@needs
+def test_a_character_recook_computes_a_real_tangent_frame():
+    """skin='gltf' has no nearest-vertex table, and the side layers used to fall
+    back to ONE vertex's tangent/binormal on every vertex: the normal map shaded
+    the whole body wrong (a custom hero read as glitchy in game, 2026-09-25).
+    The computed frame must reproduce the shipped one."""
+    import struct as _st
+
+    from rsmm.engine import geometry_cook as GC
+    from rsmm.engine import prop_cook as PC
+    tpl = corpus.read(GEO)
+    glb = CE.export(tpl, name="Piper")
+    out = cooked.parse(PC.cook_model(glb, tpl, transform={"skin": "gltf", "submeshes": "map"}))
+    ref = cooked.parse(tpl)
+    for si, sec in enumerate(ref.sections):
+        name = GC._layer_name(sec.payload) if GC._layer_vertex_count(sec.payload) else None
+        if name not in ("tangent", "tangentSign"):
+            continue
+        a = GC._layer_blocks(sec.payload)[1][0][1]
+        b = GC._layer_blocks(out.sections[si].payload)[1][0][1]
+        if name == "tangentSign":
+            assert sum(x == y for x, y in zip(a, b, strict=True)) / len(a) > 0.99
+        else:
+            assert len(set(b)) > len(b) // 2                   # not one record repeated
+            cos = [sum(p * q for p, q in zip(_st.unpack("<3f", x), _st.unpack("<3f", y),
+                                             strict=True)) for x, y in zip(a, b, strict=True)]
+            assert sum(cos) / len(cos) > 0.99
+
+
+@needs
+def test_a_character_recook_keeps_one_bone_palette_per_submesh():
+    """The skin records are built against the template's MERGED palette (Piper:
+    42 + 63 -> 84 bones), and writing that into every submesh put 84 bones on a
+    draw the game skins with at most 63: vertices on the far bones flew off as
+    long stray lines (a custom hero in game, 2026-09-25)."""
+    from rsmm.engine import geometry_cook as GC
+    from rsmm.engine import prop_cook as PC
+    tpl = corpus.read(GEO)
+    out = PC.cook_model(CE.export(tpl, name="Piper"), tpl,
+                        transform={"skin": "gltf", "submeshes": "map"})
+
+    def palettes(raw):
+        cf = cooked.parse(raw)
+        t = next(i for i, s in enumerate(cf.sections) if GC._find_records(s.payload))
+        return GC._record_palettes(cf.sections[t].payload)
+    got = palettes(out)
+    assert got == palettes(tpl)
+    assert all(len(p) <= GC.MAX_RECORD_PALETTE for p in got)

@@ -451,8 +451,51 @@ def _record_palettes(main: bytes) -> list[list[str]] | None:
     return out or None
 
 
+#: The most bones one record's palette ever carries in the shipped corpus (419
+#: character palettes, max 63 on BabaYaga_GEO): the per-draw skinning limit.
+MAX_RECORD_PALETTE = 63
+
+
+def _per_record_palettes(main: bytes, blended: list[list[bytes] | None],
+                         placed: list, merged: list[str]) -> list[list[str] | None]:
+    """Each record's own palette, with its skin records re-indexed IN PLACE.
+
+    A record keeps the template's own palette when that covers every bone its
+    vertices use (an unedited model then cooks byte-identical); otherwise it
+    gets the template's order filtered to what is used, plus the new bones.
+    """
+    tpl = _record_palettes(main) or []
+    out: list[list[str] | None] = []
+    for ri, recs in enumerate(blended):
+        if recs is None or ri >= len(placed) or placed[ri] is None:
+            out.append(None)
+            continue
+        used: set[str] = set()
+        for rec in recs:
+            idx, w = _decode_skin(rec)
+            used.update(merged[b] for b, x in zip(idx, w, strict=True) if x > 0.0)
+        own = tpl[ri] if ri < len(tpl) else []
+        if used <= set(own):
+            pal = list(own)
+        else:
+            pal = [n for n in own if n in used] + sorted(used - set(own), key=merged.index)
+        if len(pal) > MAX_RECORD_PALETTE:
+            raise NotReversedError(
+                "oCGeometry",
+                f"submesh {ri} is weighted to {len(pal)} bones; the game skins at most "
+                f"{MAX_RECORD_PALETTE} per submesh. Split it into more objects (one "
+                f"per material) or reduce the bones that move it.")
+        where = {n: i for i, n in enumerate(pal)}
+        for vi, rec in enumerate(recs):
+            idx, w = _decode_skin(rec)
+            recs[vi] = _encode_skin(
+                [where[merged[b]] if x > 0.0 else 0 for b, x in zip(idx, w, strict=True)], w)
+        out.append(pal)
+    return out
+
+
 def _swap_section(main: bytes, placed: list[_geo.SubMesh | None],
-                  palette: list[str] | None = None) -> bytes:
+                  palette: list[list[str] | None] | None = None) -> bytes:
     """Rewrite a section's meshbuffer blobs with the custom geometry.
 
     `placed[i]` is the mesh for template record `i`; None degenerates that
@@ -473,10 +516,11 @@ def _swap_section(main: bytes, placed: list[_geo.SubMesh | None],
         out += main[cursor:mut_start]
         out += _encode_record(sm if sm is not None else _DEGENERATE, flag)
         cursor = end
-        if sm is not None and palette is not None:
+        pal = palette[ri] if palette is not None and ri < len(palette) else None
+        if sm is not None and pal is not None:
             got = _parse_palette(main, end)
             if got is not None:
-                out += _encode_palette(palette)
+                out += _encode_palette(pal)
                 cursor = got[1]
     out += main[cursor:]
     return bytes(out)
@@ -1221,12 +1265,23 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
     if palette is not None:
         _check_palette(blended, palette)
 
+    # Back to ONE PALETTE PER RECORD. The weights above are indexed against the
+    # template's merged palette (Piper: 42 + 63 bones -> 84), and writing that
+    # into every record put 84 bones on a submesh: past the 63 the game never
+    # exceeds in 419 shipped character palettes, so the vertices on the far
+    # bones read garbage matrices and flew off as long stray lines (a custom
+    # hero, in game, 2026-09-25).
+    rec_palettes = (_per_record_palettes(cf.sections[target].payload, blended,
+                                         placed, palette)
+                    if palette is not None else None)
+
     cf.sections[target] = cooked.Section(
-        payload=_swap_section(cf.sections[target].payload, placed, palette))
+        payload=_swap_section(cf.sections[target].payload, placed, rec_palettes))
 
     # Which template record each per-vertex side layer belongs to, by the
     # vertex count it was sized for.
     rec_of_count: dict[int, int] = {}
+    frames: dict[int, dict[str, list[bytes]] | None] = {}
     for ri, c in enumerate(old_counts):
         rec_of_count.setdefault(c, ri)
 
@@ -1238,10 +1293,13 @@ def swap_geometry(template_cooked: bytes, glb_bytes: bytes,
             continue
         ri = rec_of_count[vc]
         sm = placed[ri]
+        if sm is not None and ri not in frames:
+            frames[ri] = tangent_frame(sm)
         cf.sections[si] = cooked.Section(payload=_rebuild_layer(
             sec.payload, len(sm.positions) if sm is not None else 1,
             knn[ri] if sm is not None else None,
-            src, blended[ri] if sm is not None else None))
+            src, blended[ri] if sm is not None else None,
+            frames.get(ri) if sm is not None else None))
 
     new_positions = [p for s in placed if s is not None for p in s.positions]
     _rewrite_aabb(cf, _bbox6(old_positions), _bbox6(new_positions))
@@ -1681,9 +1739,69 @@ def bind_pose_gap(knn: list[list[tuple[int, float]]], src: dict) -> float | None
     return median / diag
 
 
+def tangent_frame(sm: _geo.SubMesh) -> dict[str, list[bytes]] | None:
+    """Per-vertex ``tangent`` / ``binormal`` (vec3 f32) and ``tangentSign`` (f32)
+    records for ``sm``, computed from its positions, normals, UVs and triangles.
+
+    Accumulated per triangle (Lengyel), Gram-Schmidt against the normal, with
+    the UV V axis flipped: that convention reproduces Piper's shipped layers
+    (tangent cos 0.999, binormal 0.992, sign 99.6% over 12428 vertices). Without
+    it a swapped mesh with no transfer correspondence (skin="gltf"/"rigid")
+    carried ONE vertex's frame on every vertex, and the normal map shaded the
+    whole body wrong (a custom hero read as "glitchy" in game, 2026-09-25).
+    """
+    import math
+    P, N, U = sm.positions, sm.normals, sm.uvs
+    idx = list(sm.indices or [])
+    if not (P and N and U) or len(N) != len(P) or len(U) != len(P) or not idx:
+        return None
+    tan = [[0.0, 0.0, 0.0] for _ in P]
+    bit = [[0.0, 0.0, 0.0] for _ in P]
+    for k in range(0, len(idx) - 2, 3):
+        i0, i1, i2 = idx[k], idx[k + 1], idx[k + 2]
+        p0, p1, p2 = P[i0], P[i1], P[i2]
+        e1 = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+        e2 = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
+        s1, t1 = U[i1][0] - U[i0][0], -(U[i1][1] - U[i0][1])
+        s2, t2 = U[i2][0] - U[i0][0], -(U[i2][1] - U[i0][1])
+        det = s1 * t2 - s2 * t1
+        if abs(det) < 1e-12:
+            continue
+        r = 1.0 / det
+        sd = [(t2 * e1[c] - t1 * e2[c]) * r for c in range(3)]
+        td = [(s1 * e2[c] - s2 * e1[c]) * r for c in range(3)]
+        for i in (i0, i1, i2):
+            for c in range(3):
+                tan[i][c] += sd[c]
+                bit[i][c] += td[c]
+
+    def unit(v, fallback):
+        n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+        return (v[0] / n, v[1] / n, v[2] / n) if n > 1e-12 else fallback
+
+    out: dict[str, list[bytes]] = {"tangent": [], "binormal": [], "tangentSign": []}
+    for v in range(len(P)):
+        n = unit(N[v], (0.0, 1.0, 0.0))
+        t = tan[v]
+        d = n[0] * t[0] + n[1] * t[1] + n[2] * t[2]
+        # Any direction perpendicular to n when the UVs gave none.
+        alt = (1.0, 0.0, 0.0) if abs(n[0]) < 0.9 else (0.0, 0.0, 1.0)
+        t = unit((t[0] - n[0] * d, t[1] - n[1] * d, t[2] - n[2] * d),
+                 unit((alt[1] * n[2] - alt[2] * n[1], alt[2] * n[0] - alt[0] * n[2],
+                       alt[0] * n[1] - alt[1] * n[0]), (1.0, 0.0, 0.0)))
+        c = (n[1] * t[2] - n[2] * t[1], n[2] * t[0] - n[0] * t[2], n[0] * t[1] - n[1] * t[0])
+        b = bit[v]
+        sign = -1.0 if c[0] * b[0] + c[1] * b[1] + c[2] * b[2] < 0 else 1.0
+        out["tangent"].append(struct.pack("<3f", *t))
+        out["binormal"].append(struct.pack("<3f", *(x * sign for x in c)))
+        out["tangentSign"].append(struct.pack("<f", sign))
+    return out
+
+
 def _rebuild_layer(payload: bytes, count: int,
                    knn: list[list[tuple[int, float]]] | None,
-                   src: dict | None, blended_skin: list[bytes] | None) -> bytes:
+                   src: dict | None, blended_skin: list[bytes] | None,
+                   frame: dict[str, list[bytes]] | None = None) -> bytes:
     """Rebuild one per-vertex side layer for whatever now occupies its record.
 
     The `skinning` layer takes `blended_skin` when there is one — the
@@ -1710,7 +1828,10 @@ def _rebuild_layer(payload: bytes, count: int,
             new_blocks.append((stride, list(blended_skin)))
             continue
         srcrecs = src["records"].get(f"{name}#{bi}") if src else None
-        if srcrecs is None or knn is None:
+        if knn is None and frame is not None and name in frame \
+                and len(frame[name]) == count and len(frame[name][0]) == stride:
+            new_blocks.append((stride, frame[name]))
+        elif srcrecs is None or knn is None:
             new_blocks.append((stride, [recs[0]] * count))
         else:
             new_blocks.append(

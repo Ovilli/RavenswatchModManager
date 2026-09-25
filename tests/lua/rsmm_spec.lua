@@ -941,6 +941,14 @@ do
     check(hooks[ctor_va] ~= nil,
           "setup arms the ctor hook without anything having read xp")
     check(hooks[ctor_va].sig == "pp", "armed with the void*(void*) signature")
+    -- Second capture point (2026-09-25: the ctor hook never went in on the
+    -- live build): the gain-experience handler's first argument IS the level
+    -- component, so the first XP the game hands out captures it.
+    local gain_va = I.resolve("Hero_GainExperience")
+    check(gain_va and hooks[gain_va] ~= nil, "setup also hooks Hero_GainExperience")
+    check(hooks[gain_va] and hooks[gain_va].sig == "vpp", "as void(comp, gain)")
+    check(type(R.xp.arm) == "function" and R.xp.arm() == true,
+          "R.xp.arm() is callable from init.lua and idempotent")
 end
 
 -- 8. R.xp: level / xp read + grant -----------------------------------------

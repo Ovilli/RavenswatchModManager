@@ -1021,7 +1021,13 @@ end
 -- abort require"rsmm" for every mod, which is why the other hooks are lazy.
 local function _arm_group_level_capture()
     if _gl_armed then return end
-    if not R.hook or not I.resolve then return end
+    if not R.hook or not I.resolve then
+        -- Said out loud: a silent return here is how R.xp stayed dead on the
+        -- 2026-09-25 build with nothing in the log to say why.
+        R.log(string.format("[rsmm.xp] cannot arm level capture yet (hook=%s resolve=%s)",
+            tostring(R.hook ~= nil), tostring(I.resolve ~= nil)))
+        return
+    end
     _gl_armed = true
     -- nil when the symbol is unverified for this build — fail closed rather
     -- than hooking a stale VA (a mid-function detour corrupts the stream).
@@ -1058,10 +1064,50 @@ local function _arm_group_level_capture()
     -- that is a success — reporting it as "level/xp unavailable" once per extra
     -- mod is how a working four-mod install came to look like three broken ones.
     if ok and slot == nil and why == "already-hooked" then return end
-    if not ok or slot == nil then
-        R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook; "
-            .. "level/xp unavailable this run")
+    if ok and slot ~= nil then
+        R.log("[rsmm.xp] level capture armed (GroupLevelComponent_Ctor hooked)")
     end
+    if not ok or slot == nil then
+        -- Not armed after all: let a later call (setup, or the next R.xp use)
+        -- try again instead of one early failure disabling it for the session.
+        _gl_armed = false
+        R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook ("
+            .. tostring(ok and why or slot) .. "); will retry")
+        return
+    end
+
+    -- Second capture point: the engine's own gain-experience handler takes the
+    -- level component as its FIRST argument, so the first XP the game hands
+    -- out (a kill) captures it even if the constructor ran before this hook
+    -- was live (a late arm, a component built at the main menu). Stash only,
+    -- same as the ctor: the original must run exactly once.
+    local gva = I.resolve("Hero_GainExperience")
+    if gva and gva ~= 0 then
+        local gok, gslot, gwhy = pcall(R.hook, gva, "vpp", function(comp, _gain)
+            if comp and comp ~= 0 and _gl_seen[1] ~= comp then
+                for i = #_gl_seen, 1, -1 do
+                    if _gl_seen[i] == comp then table.remove(_gl_seen, i) end
+                end
+                table.insert(_gl_seen, 1, comp)
+                for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
+            end
+            return nil
+        end)
+        if gok and gslot ~= nil then
+            R.log("[rsmm.xp] level capture also on Hero_GainExperience")
+        elseif not (gok and gwhy == "already-hooked") then
+            R.log("[rsmm.xp] could not hook Hero_GainExperience: " .. tostring(gwhy or gslot))
+        end
+    end
+end
+
+--- Arm the level/XP capture now. Mods that grant XP call this from init.lua:
+-- the capture must be live before the run builds the level component, and a
+-- mod's init runs before any run. (It is also armed at `setup`.)
+function R.xp.arm()
+    local ok, err = pcall(_arm_group_level_capture)
+    if not ok then R.log("[rsmm.xp] arming level capture failed: " .. tostring(err)) end
+    return ok
 end
 
 --- The live party-wide level/XP component, or nil.
@@ -1108,7 +1154,10 @@ end
 -- Arm at `setup` so the hook is live before the run builds the component.
 -- Subscribing cannot fail the way hooking can, and the arm itself is
 -- pcall-guarded internally, so this cannot abort require"rsmm".
-native.on_event("setup", function() pcall(_arm_group_level_capture) end)
+native.on_event("setup", function()
+    local ok, err = pcall(_arm_group_level_capture)
+    if not ok then R.log("[rsmm.xp] arming level capture failed: " .. tostring(err)) end
+end)
 
 -- Locate the hero's XpComponent. `allow_engine` (MAIN THREAD ONLY — the
 -- engine walk calls each component's virtual IsKindOf) uses the engine's own
