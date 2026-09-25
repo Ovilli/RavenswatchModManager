@@ -381,7 +381,10 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
                 prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
                                           5125, 34963)
             aprims.append(prim)
-            prim_slots.append(att.get("slots") or
+            slots = att.get("slots") or {}
+            if isinstance(slots, list):     # one per submesh, the last one repeated
+                slots = slots[min(k, len(slots) - 1)] if slots else {}
+            prim_slots.append(slots or
                               ({"ALB": arefs[k]} if k < len(arefs) and arefs[k] else {}))
         if aprims:
             meshes.append({"name": att.get("name", "attachment"), "primitives": aprims})

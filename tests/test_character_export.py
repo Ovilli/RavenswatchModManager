@@ -116,3 +116,36 @@ def test_full_materials_and_the_weapon_on_its_bone():
 def test_skinning_layer_versions_10_and_13_are_read():
     from rsmm.engine import geometry_cook as GC
     assert {10, 13} <= set(GC._LAYER_VERS)
+
+
+@pytest.mark.skipif(corpus.read("3D/Characters/Heroes/Juliet/Juliet_GEO.fbx.Geometry.gen") is None,
+                    reason="no Juliet/Geppetto geometry")
+def test_other_heroes_get_their_own_materials_per_submesh(tmp_path):
+    from rsmm.cli.cmd_export_character import main
+    # Juliet's gun and flask name no texture; the entity pairs them with a .mat inline.
+    # Geppetto's body has two materials (body + Acc) that one "Character Mesh" key hid.
+    for hero in ("Juliet", "Geppetto"):
+        out = tmp_path / f"{hero}.glb"
+        assert main([hero, "--clips", "", "-o", str(out)]) == 0
+        doc, _ = AC._read_glb(out.read_bytes())
+        mats = doc["materials"]
+        for m in doc["meshes"]:
+            for p in m["primitives"]:
+                assert "baseColorTexture" in mats[p["material"]]["pbrMetallicRoughness"], \
+                    (hero, m["name"])
+        if hero == "Geppetto":
+            body = doc["meshes"][0]["primitives"]
+            assert len({mats[p["material"]]["pbrMetallicRoughness"]["baseColorTexture"]["index"]
+                        for p in body}) == 2
+
+
+def test_material_by_name_needs_every_distinctive_word_in_the_mesh_name():
+    from rsmm.cli.cmd_export_character import material_by_name
+    t = "Characters\\Heroes\\X\\Textures\\"
+    merlin = [t + "M_Merlin_Crystal.mat.ot", t + "M_Merlin_Staff_Crystal.mat.ot"]
+    assert material_by_name("X\\Merlin_Staff_Crystal_GEO.fbx", merlin, "Merlin") == merlin[1]
+    red = [t + "M_Red_WolfCult.mat.ot", t + "M_Red_Wolf_WolfCult.mat.ot"]
+    assert material_by_name("X\\Wolf_WolfCult_Skin_GEO.fbx", red, "RED") in red
+    # The Combat cloak's real material is an FX shader: no PBR candidate may claim it.
+    piper = [t + "M_PiperCombatFlute.mat.ot", t + "M_PiperRat.mat.ot"]
+    assert material_by_name("X\\PiperCombat_Cloak_GEO.fbx", piper, "Piper") is None
