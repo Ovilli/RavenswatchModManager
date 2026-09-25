@@ -52,10 +52,11 @@ def _family(hero: str) -> dict[str, bytes]:
     return out
 
 
-def _field_targets(c, f, picker_cls: int) -> list[str]:
+def _field_targets(c, f, picker_cls: int) -> list[tuple[str, str]]:
+    """``(target GUID hex, target path)`` for every link in field ``f``."""
     from rsmm.engine import entity_graph as EG
     body = c.body[f.offset:f.offset + f.size]
-    return [r.guid.hex() for _o, r in EG._pickers(body, picker_cls) if r.path]
+    return [(r.guid.hex(), r.path) for _o, r in EG._pickers(body, picker_cls) if r.path]
 
 
 def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
@@ -85,10 +86,11 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     for c in g.components:
         fields = []
         for f in EF.fields(c):
+            links = (_field_targets(c, f, picker) if f.kind in ("ref", "ref[]", "value")
+                     else [])
             fields.append({
                 "name": f.name, "kind": f.kind, "text": f.text,
-                "targets": _field_targets(c, f, picker) if f.kind in ("ref", "ref[]", "value")
-                else [],
+                "targets": [g for g, _p in links], "paths": [p for _g, p in links],
                 "items": len(f.items),
             })
         comps.append({"id": c.guid.hex(), "name": c.name, "group": c.group,

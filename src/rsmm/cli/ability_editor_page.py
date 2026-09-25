@@ -7,6 +7,11 @@ editor's page. The graph is plain SVG with a layered layout; nothing
 game-derived is embedded: every part, field and link comes from
 ``/api/graph``, which reads the user's own install at request time.
 
+Written for people new to modding: plain-language names and a line of help
+for every part type and field, technical fields folded under "Advanced", the
+steps listed as sentences, and every view control on a button or a key (a
+scroll wheel is optional).
+
 ``__RSMM_TOKEN__`` is replaced per launch; every POST must echo it.
 """
 
@@ -18,207 +23,459 @@ PAGE = r"""<!doctype html>
 <title>Ability Editor</title>
 <style>
 :root {
-  --bg: #f4f3ef; --panel: #fff; --ink: #1d1d1f; --muted: #66666c; --line: #deddd8;
-  --accent: #7a3cff; --ok: #1f9d55; --warn: #c77700; --bad: #c0392b; --chip: #efeee9;
-  --node: #fff; --ext: #ecebe6; --edge: #9b9aa0; --sel: #7a3cff;
+  --bg: #f4f3ef; --panel: #fff; --ink: #1d1d1f; --muted: #6a6a70; --line: #deddd8;
+  --accent: #6d35e8; --ok: #1f8a4c; --okbg: #e3f5ea; --bad: #b8322a; --badbg: #fbe7e5;
+  --warn: #9a6200; --warnbg: #fff3d6; --chip: #efeee9; --node: #fff; --ext: #ecebe6; --edge: #9b9aa0;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #9c9ca3; --line: #34343a;
-          --chip: #2a2a2f; --node: #26262b; --ext: #1b1b1e; --edge: #6d6d75; }
+  :root { --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
+          --chip: #2a2a2f; --node: #26262b; --ext: #1b1b1e; --edge: #6d6d75;
+          --okbg: #13301f; --badbg: #3a1614; --warnbg: #33270c; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--ink);
-       display: grid; grid-template: "top top top" auto "left mid right" 1fr "left steps right" auto / 240px 1fr 360px; height: 100vh; }
-header { grid-area: top; display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
-header h1 { font-size: 15px; margin: 0 12px 0 0; }
-select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
-button { cursor: pointer; } button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-#left { grid-area: left; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 8px; }
-#left input { width: 100%; margin-bottom: 6px; }
-.grp { display: flex; justify-content: space-between; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink);
+       display: grid; grid-template: "top top top" auto "left mid right" 1fr "left steps right" auto / 250px 1fr 380px; height: 100vh; }
+header { grid-area: top; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
+button { cursor: pointer; } button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.small { padding: 1px 8px; font-size: 12px; }
+.muted { color: var(--muted); } .tiny { font-size: 12px; }
+#left { grid-area: left; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 10px; }
+#left h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 4px 4px; }
+#left input { width: 100%; }
+.grp { display: flex; justify-content: space-between; gap: 6px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
 .grp:hover { background: var(--chip); } .grp.on { background: var(--accent); color: #fff; }
-.grp span { opacity: .7; }
+.grp span { opacity: .7; font-size: 12px; }
 #mid { grid-area: mid; position: relative; overflow: hidden; }
-#mid svg { width: 100%; height: 100%; cursor: grab; }
-#hint { position: absolute; left: 10px; bottom: 8px; color: var(--muted); font-size: 12px; }
-#right { grid-area: right; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 10px; }
-#right h2 { font-size: 14px; margin: 0 0 2px; } .cls { color: var(--muted); margin-bottom: 8px; }
-.f { border-top: 1px solid var(--line); padding: 6px 0; }
-.f .n { font-weight: 600; } .f .k { color: var(--muted); font-size: 11px; margin-left: 4px; }
-.f .t { word-break: break-word; color: var(--muted); margin: 2px 0 4px; }
-.f .row { display: flex; gap: 4px; } .f .row > :first-child { flex: 1; min-width: 0; }
-.item { display: flex; justify-content: space-between; gap: 4px; font-size: 12px; }
-#steps { grid-area: steps; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-height: 38vh; }
-#steps ol { margin: 0; padding-left: 20px; overflow: auto; }
-#steps li { margin: 2px 0; } #steps li button { padding: 0 6px; margin-left: 6px; }
-#toml { width: 100%; height: 100%; min-height: 120px; font: 12px ui-monospace, monospace; resize: none; }
-#status { margin-top: 6px; white-space: pre-wrap; font-size: 12px; }
-.bad { color: var(--bad); } .ok { color: var(--ok); } .warn { color: var(--warn); }
-g.node rect { fill: var(--node); stroke: var(--line); } g.node.ext rect { fill: var(--ext); stroke-dasharray: 3 3; }
-g.node.sel rect { stroke: var(--sel); stroke-width: 2; } g.node text { fill: var(--ink); font-size: 12px; }
-g.node .c { fill: var(--muted); font-size: 10px; } g.node { cursor: pointer; }
-path.e { fill: none; stroke: var(--edge); stroke-width: 1.2; } text.el { fill: var(--muted); font-size: 10px; }
+#mid svg { width: 100%; height: 100%; cursor: grab; display: block; }
+#nav { position: absolute; right: 12px; top: 12px; display: grid; grid-template-columns: repeat(3, 38px); gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
+#nav button { padding: 4px 0; font-size: 16px; } #nav .wide { grid-column: span 3; font-size: 13px; }
+#legend { position: absolute; left: 12px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 70%; }
+.lg { display: flex; align-items: center; gap: 4px; font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1px 8px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+#intro { position: absolute; left: 12px; top: 12px; max-width: 460px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: 0 4px 18px #0002; }
+#intro h2 { font-size: 15px; margin: 0 0 6px; } #intro ol { margin: 6px 0; padding-left: 20px; }
+#right { grid-area: right; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 12px; }
+#right h2 { font-size: 16px; margin: 0 0 4px; }
+.badge { display: inline-block; color: #fff; border-radius: 10px; padding: 0 8px; font-size: 12px; margin-right: 6px; }
+.explain { background: var(--chip); border-radius: 8px; padding: 6px 9px; margin: 6px 0 10px; font-size: 13px; }
+.f { border-top: 1px solid var(--line); padding: 8px 0; }
+.f .n { font-weight: 600; } .f .h { color: var(--muted); font-size: 12px; }
+.f .t { word-break: break-word; margin: 3px 0 6px; font-size: 13px; }
+.f .row { display: flex; flex-wrap: wrap; gap: 6px; } .f .row > :first-child { flex: 1; min-width: 0; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13px; padding: 2px 0; }
+details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 12px; }
+#steps { grid-area: steps; border-top: 1px solid var(--line); background: var(--panel); padding: 10px 14px; max-height: 42vh; overflow: auto; }
+#steps .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#list { margin: 6px 0; padding-left: 22px; } #list li { margin: 3px 0; }
+#status { border-radius: 8px; padding: 7px 10px; margin: 6px 0; white-space: pre-wrap; font-size: 13px; }
+#status.ok { background: var(--okbg); color: var(--ok); } #status.bad { background: var(--badbg); color: var(--bad); }
+#status.warn { background: var(--warnbg); color: var(--warn); } #status.idle { background: var(--chip); color: var(--muted); }
+#toml { width: 100%; min-height: 140px; font: 12px ui-monospace, monospace; resize: vertical; margin-top: 6px; }
+g.node rect.box { fill: var(--node); stroke: var(--line); } g.node.ext rect.box { fill: var(--ext); stroke-dasharray: 4 3; }
+g.node.sel rect.box { stroke: var(--accent); stroke-width: 3; } g.node.hit rect.box { stroke: var(--warn); stroke-width: 3; }
+g.node text { fill: var(--ink); font-size: 12px; } g.node .c { fill: var(--muted); font-size: 10.5px; } g.node { cursor: pointer; }
+path.e { fill: none; stroke: var(--edge); stroke-width: 1.2; opacity: .75; } path.e.hi { stroke: var(--accent); stroke-width: 2.2; opacity: 1; }
+text.el { fill: var(--muted); font-size: 11px; } text.el.hi { fill: var(--accent); font-weight: 600; }
 </style>
 </head>
 <body>
 <header>
   <h1>Ability Editor</h1>
-  <label>Hero <select id="hero"></select></label>
-  <label>Entity <select id="entity"></select></label>
-  <span id="busy" class="warn"></span>
+  <label>Hero <select id="hero" title="The shipped hero whose abilities you are looking at. Your custom hero uses this one as its base."></select></label>
+  <label class="tiny">File <select id="entity" title="A hero is several files: the hero itself, its effects (FX), pets, projectiles, skins. Most abilities live in the first one."></select></label>
+  <input id="find" placeholder="Find a part by name…" style="min-width:220px" title="Type part of a name, then Enter to jump to it">
+  <button id="helpBtn" class="small">How does this work?</button>
+  <span id="busy" class="muted tiny"></span>
 </header>
-<nav id="left"><input id="filter" placeholder="filter groups"><div id="groups"></div></nav>
-<main id="mid"><svg id="svg"><g id="view"></g></svg><div id="hint">drag to pan, wheel to zoom, click a part to inspect it</div></main>
-<aside id="right"><div id="insp" class="cls">Pick a group, then a part.</div></aside>
+<nav id="left">
+  <label class="tiny"><input type="checkbox" id="showAll" style="width:auto"> show every group (not only abilities and talents)</label>
+  <input id="filter" placeholder="Filter groups" style="margin-top:6px">
+  <div id="groups"></div>
+</nav>
+<main id="mid">
+  <svg id="svg"><g id="view"></g></svg>
+  <div id="nav" title="Move and zoom the picture (keys: arrows, + and -, 0 to fit)">
+    <span></span><button id="up" title="Move up (↑)">↑</button><span></span>
+    <button id="left_" title="Move left (←)">←</button><button id="fit" title="Fit to screen (0)">⤢</button><button id="right_" title="Move right (→)">→</button>
+    <span></span><button id="down" title="Move down (↓)">↓</button><span></span>
+    <button id="zin" title="Zoom in (+)">+</button><span class="tiny muted" id="zoom" style="text-align:center;align-self:center">100%</span><button id="zout" title="Zoom out (−)">−</button>
+  </div>
+  <div id="legend"></div>
+  <div id="intro">
+    <h2>How this works</h2>
+    A hero's ability is made of small <b>parts</b> (a timer, a number, a check, something that spawns…) connected by <b>links</b>. The picture shows one ability: each box is a part, each arrow a link, labelled with what it does.
+    <ol>
+      <li><b>Pick an ability</b> on the left (e.g. <i>Ability Secondary</i>).</li>
+      <li><b>Click a part</b> to see what it does and what you can change.</li>
+      <li><b>Change something</b>: a number, where a link points, or copy the whole ability. Every change becomes a <b>step</b> at the bottom and is checked straight away.</li>
+      <li>When the banner says <b>Ready to build</b>, open <i>Show manifest code</i>, copy it into your custom hero's <code>manifest.toml</code>, and run <code>rsmm apply</code>.</li>
+    </ol>
+    Nothing here touches your game until you apply.
+    <div style="margin-top:8px"><button class="primary small" id="introOk">Got it</button></div>
+  </div>
+</main>
+<aside id="right"></aside>
 <section id="steps">
-  <div><b>Steps</b> <button id="clear">clear</button><ol id="list"></ol><div id="status"></div></div>
-  <div><b>Manifest</b> <button id="copy">copy</button><textarea id="toml" readonly></textarea></div>
+  <div class="head"><b>Your changes</b>
+    <button id="undo" class="small" title="Remove the last change">Undo last</button>
+    <button id="clear" class="small" title="Remove every change">Start over</button></div>
+  <div id="status" class="idle">No changes yet. Click a part in the picture to change it.</div>
+  <ol id="list"></ol>
+  <details id="code"><summary>Show manifest code (copy this into your custom hero)</summary>
+    <div class="tiny muted" style="margin-top:6px">Paste under your hero's <code>[[content]]</code> block (<code>kind = "hero"</code>, <code>base = "<span id="baseName"></span>"</code>) in <code>manifest.toml</code>, then run <code>rsmm apply</code>.</div>
+    <button id="copy" class="small" style="margin-top:6px">Copy</button>
+    <textarea id="toml" readonly></textarea>
+  </details>
 </section>
 <script>
 const TOKEN = "__RSMM_TOKEN__";
 const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
 const el = (tag, attrs = {}, ...kids) => {
-  const e = document.createElementNS(tag === "svg" || ["g","rect","text","path","defs"].includes(tag) ? "http://www.w3.org/2000/svg" : "http://www.w3.org/1999/xhtml", tag);
-  for (const [k, v] of Object.entries(attrs)) k === "text" ? e.textContent = v : k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
-  for (const k of kids) if (k) e.append(k);
+  const e = ["svg","g","rect","text","path","defs","marker","title","circle"].includes(tag) ? document.createElementNS(SVGNS, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null) continue;
+    if (k === "text") e.textContent = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k !== null && k !== undefined) e.append(k);
   return e;
 };
-let S = { hero: "", entity: "", steps: [], data: null, group: "", sel: null, tf: { x: 40, y: 40, k: 1 } };
+
+// Plain-language names for part types (by class) and fields (by name).
+const TYPES = {
+  State: ["Phase", "#6d35e8", "A phase the hero or ability can be in. While it is active it switches other parts on; events are phases that last an instant."],
+  Timer: ["Timer", "#d9822b", "Waits a while, then does something (once or several times)."],
+  Value: ["Number", "#1f8a8a", "A number (or yes/no) other parts read: a damage, a duration, a count."],
+  ValueSelector: ["Number by rarity", "#1f8a8a", "A number that changes with the talent's rarity or another setting."],
+  ValueOperations: ["Math", "#2f8fb0", "Adds or multiplies numbers together."],
+  ValueOperation: ["Math", "#2f8fb0", "Combines two numbers."],
+  Tester: ["Check", "#c0392b", "An if/else: when its condition is true it runs one part, otherwise another."],
+  EntitySpawner: ["Spawner", "#7c9a2f", "Creates something in the world: a projectile, a zone, a pet."],
+  SpawnerValue: ["Spawn setting", "#7c9a2f", "Passes a number to the thing a spawner creates."],
+  ZoneAttack: ["Area attack", "#b54a8c", "Hits everything inside an area."],
+  Damage: ["Damage", "#b54a8c", "How much damage a hit does and of what kind."],
+  Modifier: ["Buff / debuff", "#8a6fd1", "Changes a stat for a while (shield, burn, speed…)."],
+  NamedEventSender: ["Send signal", "#4f86c6", "Broadcasts a named game event other parts can listen to."],
+  NamedEventListener: ["Receive signal", "#4f86c6", "Waits for a named game event, then starts a phase."],
+  Fx: ["Visual effect", "#e0a100", "Plays a particle effect."],
+  FModEvent: ["Sound", "#999", "Plays a sound."],
+  Animatic: ["Animation", "#aa7744", "Plays an animation on the hero."],
+  AnimClip: ["Animation clip", "#aa7744", "An animation file the hero can play."],
+  TwoSpeedAnimatic: ["Animation", "#aa7744", "Plays an animation at one of two speeds."],
+  GetValue: ["Read number", "#1f8a8a", "Reads a number from another entity."],
+  SmoothValue: ["Smooth number", "#1f8a8a", "Moves a number gradually toward a target."],
+  RangedRandom: ["Random number", "#1f8a8a", "Picks a random number between two limits."],
+  Selector: ["Chooser", "#666", "Picks one of several parts."],
+  SkillController: ["Talent", "#6d35e8", "Controls one talent (its rarity and whether the hero has it)."],
+  AbilityController: ["Ability slot", "#6d35e8", "Controls one ability slot: cooldown and activation."],
+  Counter: ["Counter", "#2f8fb0", "Counts up and down."],
+  StringFormatValue: ["Card text", "#999", "Text shown on a talent card, with numbers filled in."],
+  "3dGraphicObject": ["3D model", "#777", "A mesh shown in the world."],
+  "3dNode": ["Position", "#777", "A point attached to the hero (hand, head…)."],
+};
+const FIELDS = {
+  duration: "How long it lasts, or how long a timer waits (seconds).",
+  count: "How many times the timer fires.",
+  "bias?": "An extra delay or offset (meaning not certain).",
+  on_tick: "What the timer starts every time it fires.",
+  on_end: "What the timer starts when it is done.",
+  state: "The phase this runs in: it only works while that phase is active.",
+  "paused?": "When yes, the timer is paused (meaning not certain).",
+  activates: "What this phase switches on when it starts.",
+  while_active: "What stays on only while this phase is active.",
+  "on_enter?": "What starts when this phase begins (meaning not certain).",
+  "on_exit?": "What starts when this phase ends (meaning not certain).",
+  "deactivates?": "What this phase switches off (meaning not certain).",
+  "disables_while_active?": "What is switched off while this phase is active (meaning not certain).",
+  value: "The number itself.",
+  on_true: "What runs when the check is true.",
+  on_false: "What runs when the check is false.",
+  test: "The condition that is checked.",
+  template: "What gets created (a projectile, zone or pet file).",
+  position: "Where it is created.",
+  "speed?": "How fast it moves (meaning not certain).",
+  event: "The name of the signal.",
+  on_event: "What starts when the signal arrives.",
+  payload: "A number sent along with the signal.",
+  min: "Lowest possible number.", max: "Highest possible number.",
+  amount: "How strong the change is.",
+  default: "The number used when no other entry applies.",
+  entries: "One number per case (e.g. per rarity).",
+  a: "First number.", b: "Second number.",
+};
+const ADVANCED = /^(flag|_|mode$|mode_|ref_|value_|bytes_|list_|obj_|epsilon|int_mode|op_type|flag_)/;
+const typeOf = (cls) => TYPES[cls] || [cls.replace(/([a-z])([A-Z])/g, "$1 $2"), "#888", "A part of type " + cls + "."];
+
+let S = { hero: "", entity: "", steps: [], data: null, group: "", sel: null, tf: { x: 40, y: 40, k: 1 }, bounds: null, flash: null };
 
 async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-RSMM-Token": TOKEN }, body: JSON.stringify(body) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
 async function refresh() {
-  $("busy").textContent = "working…";
-  try {
-    S.data = await post("/api/graph", { hero: S.hero, entity: S.entity, steps: S.steps });
-    S.entity = S.data.entity;
-  } catch (e) { $("status").className = "bad"; $("status").textContent = e.message; $("busy").textContent = ""; return; }
+  $("busy").textContent = "checking…";
+  try { S.data = await post("/api/graph", { hero: S.hero, entity: S.entity, steps: S.steps }); S.entity = S.data.entity; }
+  catch (e) { setStatus("bad", e.message); $("busy").textContent = ""; return; }
   $("busy").textContent = "";
-  const es = $("entity"); es.replaceChildren(...S.data.entities.map(n => el("option", { value: n, text: n })));
-  es.value = S.entity;
-  drawGroups(); drawSteps();
-  if (!groupsOf().has(S.group)) S.group = [...groupsOf().keys()].find(g => g.startsWith("Ability")) || [...groupsOf().keys()][0] || "";
-  drawGraph(); inspect(S.sel && byId(S.sel.id) ? S.sel.id : null);
+  $("baseName").textContent = S.hero;
+  $("entity").replaceChildren(...S.data.entities.map(n => el("option", { value: n, text: n === "Hero_" + S.hero ? n + " (the hero)" : n })));
+  $("entity").value = S.entity;
+  const gs = [...groupsOf().keys()];
+  const firstGroup = S.group && gs.includes(S.group);
+  if (!firstGroup) S.group = gs.find(g => g === "Ability Primary") || gs.find(g => g.startsWith("Ability")) || gs[0] || "";
+  drawGroups(); drawSteps(); drawGraph(!firstGroup);
+  inspect(S.sel && byId(S.sel.id) ? S.sel.id : null);
+  drawLegend();
 }
 const byId = (id) => S.data.components.find(c => c.id === id);
 const groupsOf = () => { const m = new Map(); for (const c of S.data.components) m.set(c.group, (m.get(c.group) || 0) + 1); return new Map([...m].sort()); };
+const kindOfGroup = (g) => g.startsWith("Ability") ? "Abilities" : g.startsWith("Skill") ? "Talents" : "Other";
 
 function drawGroups() {
-  const f = $("filter").value.toLowerCase();
-  $("groups").replaceChildren(...[...groupsOf()].filter(([g]) => g.toLowerCase().includes(f)).map(([g, n]) =>
-    el("div", { class: "grp" + (g === S.group ? " on" : ""), onclick: () => { S.group = g; S.sel = null; S.tf = { x: 40, y: 40, k: 1 }; drawGroups(); drawGraph(); inspect(null); } },
-      el("div", { text: g || "(no group)" }), el("span", { text: n }))));
+  const f = $("filter").value.toLowerCase(), all = $("showAll").checked, out = [];
+  for (const sect of ["Abilities", "Talents", "Other"]) {
+    if (sect === "Other" && !all) continue;
+    const rows = [...groupsOf()].filter(([g]) => kindOfGroup(g) === sect && g.toLowerCase().includes(f));
+    if (!rows.length) continue;
+    out.push(el("h3", { text: sect }));
+    for (const [g, n] of rows) out.push(el("div", { class: "grp" + (g === S.group ? " on" : ""), title: `${n} parts`,
+      onclick: () => { S.group = g; S.sel = null; drawGroups(); drawGraph(true); inspect(null); } },
+      el("div", { text: g || "(no group)" }), el("span", { text: n })));
+  }
+  if (!all) out.push(el("div", { class: "tiny muted", style: "margin:10px 4px", text: "Movement, animation and other groups are hidden. Tick the box above to see them." }));
+  $("groups").replaceChildren(...out);
 }
 
-function drawGraph() {
+function drawGraph(fitAfter) {
   const view = $("view"); view.replaceChildren();
   const inGroup = S.data.components.filter(c => c.group === S.group);
   const ids = new Set(inGroup.map(c => c.id));
   const edges = [], ext = new Map();
-  for (const c of inGroup) for (const f of c.fields) for (const t of f.targets) {
-    edges.push({ from: c.id, to: t, label: f.name });
-    if (!ids.has(t)) { const tc = byId(t); ext.set(t, tc ? tc : { id: t, name: "(outside this entity)", group: "", cls: "", ext: true }); }
-  }
-  // Layered layout: a part sits one column right of the deepest part linking to it.
+  for (const c of inGroup) for (const f of c.fields) f.targets.forEach((t, i) => {
+    edges.push({ from: c.id, to: t, label: f.name.replace(/\?$/, "") });
+    if (!ids.has(t)) ext.set(t, byId(t) || outside(t, f.paths[i]));
+  });
   const nodes = [...inGroup, ...ext.values()], depth = new Map(nodes.map(n => [n.id, 0]));
-  for (let i = 0; i < nodes.length; i++) for (const e of edges) if (e.from !== e.to && depth.get(e.to) < depth.get(e.from) + 1 && depth.get(e.from) < 12) depth.set(e.to, depth.get(e.from) + 1);
-  const cols = new Map(); for (const n of nodes) { const d = ids.has(n.id) ? depth.get(n.id) : Math.max(depth.get(n.id), 1); (cols.get(d) || cols.set(d, []).get(d)).push(n); }
-  const W = 230, H = 44, pos = new Map();
-  for (const [d, list] of [...cols].sort((a, b) => a[0] - b[0])) list.forEach((n, i) => pos.set(n.id, { x: d * (W + 90), y: i * (H + 22) }));
+  for (let i = 0; i < Math.min(nodes.length, 30); i++) for (const e of edges)
+    if (e.from !== e.to && depth.get(e.to) < depth.get(e.from) + 1 && depth.get(e.from) < 10) depth.set(e.to, depth.get(e.from) + 1);
+  const cols = new Map();
+  for (const n of nodes) { const d = ids.has(n.id) ? depth.get(n.id) : Math.max(depth.get(n.id), 1); if (!cols.has(d)) cols.set(d, []); cols.get(d).push(n); }
+  const W = 240, H = 50, pos = new Map();
+  for (const [d, list] of [...cols].sort((a, b) => a[0] - b[0])) list.forEach((n, i) => pos.set(n.id, { x: d * (W + 100), y: i * (H + 24) }));
+  let maxX = 0, maxY = 0;
+  for (const p of pos.values()) { maxX = Math.max(maxX, p.x + W); maxY = Math.max(maxY, p.y + H); }
+  S.bounds = { w: maxX, h: maxY };
+  const stack = {};
   for (const e of edges) {
     const a = pos.get(e.from), b = pos.get(e.to); if (!a || !b) continue;
     const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
-    const d = e.from === e.to ? `M${x1},${y1} C${x1 + 40},${y1 - 40} ${x1 - 40},${y1 - 40} ${x1 - 20},${a.y}` : `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
-    view.append(el("path", { class: "e", d, "marker-end": "url(#arrow)" }), el("text", { class: "el", x: mx - 20, y: (y1 + y2) / 2 - 3, text: e.label }));
+    const d = e.from === e.to ? `M${x1},${y1} C${x1 + 50},${y1 - 50} ${x1 - 50},${y1 - 50} ${x1 - 20},${a.y}` : `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+    // Only the selected part's links are labelled (and drawn strong): labels
+    // on every arrow pile up where many links leave one part.
+    const hi = S.sel && (e.from === S.sel.id || e.to === S.sel.id);
+    view.append(el("path", { class: "e" + (hi ? " hi" : ""), d, "marker-end": "url(#arrow)" }, el("title", { text: e.label })));
+    if (hi) {
+      const out = e.from === S.sel.id, key = out ? "o" + e.from : "i" + e.to;
+      const nth = stack[key] = (stack[key] || 0) + 1;       // stack labels leaving/entering one point
+      view.append(el("text", { class: "el hi", x: out ? x1 + 8 : x2 - 8 - e.label.length * 6, y: (out ? y1 : y2) - 5 - (nth - 1) * 12, text: e.label }));
+    }
   }
   for (const n of nodes) {
-    const p = pos.get(n.id), isExt = !ids.has(n.id);
-    view.append(el("g", { class: "node" + (isExt ? " ext" : "") + (S.sel && S.sel.id === n.id ? " sel" : ""), transform: `translate(${p.x},${p.y})`,
-        onclick: (ev) => { ev.stopPropagation(); if (isExt && n.group !== undefined && byId(n.id)) { S.group = n.group; drawGroups(); drawGraph(); } inspect(n.id); } },
-      el("rect", { width: W, height: H, rx: 8 }),
-      el("text", { x: 10, y: 18, text: trim(n.name, 32) }),
-      el("text", { class: "c", x: 10, y: 34, text: isExt ? (n.group ? "in " + n.group : "outside") : n.cls })));
+    const p = pos.get(n.id), isExt = !ids.has(n.id), [label, color] = n.cls ? typeOf(n.cls) : ["", "#aaa"];
+    const g = el("g", { class: "node" + (isExt ? " ext" : "") + (S.sel && S.sel.id === n.id ? " sel" : "") + (S.flash === n.id ? " hit" : ""), transform: `translate(${p.x},${p.y})`,
+      onclick: (ev) => { ev.stopPropagation(); if (isExt && byId(n.id)) { S.group = n.group; drawGroups(); drawGraph(true); } inspect(n.id); } },
+      el("title", { text: isExt ? (n.shared ? `${n.name}: a part of ${n.shared}, shared by many heroes. It can be linked to but not changed here.` : `${n.name} (in the group "${n.group}"; click to go there)`) : `${n.name}\n${label}: ${typeOf(n.cls)[2]}` }),
+      el("rect", { class: "box", width: W, height: H, rx: 9 }),
+      el("rect", { width: 6, height: H, rx: 3, fill: color }),
+      el("text", { x: 14, y: 20, text: trim(n.name, 32) }),
+      el("text", { class: "c", x: 14, y: 38, text: isExt ? (n.shared ? "shared: " + trim(n.shared, 26) : "→ in " + trim(n.group || "?", 26)) : label }));
+    view.append(g);
   }
-  applyTf();
+  if (fitAfter) fit(); else applyTf();
 }
 const trim = (s, n) => s.length > n ? s.slice(0, n - 1) + "…" : s;
-function applyTf() { $("view").setAttribute("transform", `translate(${S.tf.x},${S.tf.y}) scale(${S.tf.k})`); }
-
-function inspect(id) {
-  const box = $("right"); box.replaceChildren();
-  const groupBtn = el("div", { class: "f" }, el("div", { class: "n", text: "Copy this ability" }),
-    el("div", { class: "row" }, el("input", { id: "cloneAs", placeholder: "new group name, e.g. Echo" }),
-      el("button", { text: "copy", onclick: () => { const as = $("cloneAs").value.trim(); if (as) addStep({ clone: S.group, as }); } })));
-  if (!id) { box.append(el("div", { class: "cls", text: S.group ? "Group: " + S.group : "" }), groupBtn); return; }
-  const c = byId(id); S.sel = c;
-  if (!c) { box.append(el("div", { class: "cls", text: "That part is not in this entity (inherited or in another entity)." })); return; }
-  box.append(el("h2", { text: c.name }), el("div", { class: "cls", text: c.cls + (c.group ? " · " + c.group : "") }));
-  const partNames = S.data.components.map(x => x.name).sort();
-  for (const f of c.fields) {
-    const row = el("div", { class: "f" }, el("div", {}, el("span", { class: "n", text: f.name }), el("span", { class: "k", text: f.kind })),
-      el("div", { class: "t", text: f.text }));
-    const addr = `${c.name}.${f.name}`;
-    const lit = literal(f);
-    if (lit) {
-      const inp = el("input", { value: lit.value });
-      row.append(el("div", { class: "row" }, inp, el("button", { text: "set", onclick: () => { const v = lit.parse(inp.value); if (v !== undefined) addStep({ set: addr, value: v }); } })));
-    }
-    if (f.kind === "ref" || (f.kind === "value" && f.targets.length)) row.append(linkRow(partNames, (to) => addStep({ link: addr, to }), true));
-    if (f.kind === "ref[]") {
-      f.text.split("  |  ").forEach((t, i) => { if (f.items) row.append(el("div", { class: "item" }, el("span", { text: t.replace(/^<- /, "") }), el("button", { text: "remove", onclick: () => addStep({ remove_link: `${addr}[${i}]` }) }))); });
-      row.append(linkRow(partNames, (to) => addStep({ add_link: addr, to }), false));
-    }
-    box.append(row);
-  }
-  box.append(groupBtn);
-  drawGraph();
-}
-function linkRow(names, act, allowNone) {
-  const sel = el("select", {}, ...(allowNone ? [el("option", { value: "", text: "(nothing)" })] : []), ...names.map(n => el("option", { value: n, text: n })));
-  return el("div", { class: "row" }, sel, el("button", { text: allowNone ? "link" : "add", onclick: () => act(sel.value) }));
-}
-function literal(f) {
-  if (["bool", "u32", "f32"].includes(f.kind)) return { value: f.text, parse: (s) => f.kind === "bool" ? /^(1|true|yes)$/i.test(s) : Number(s) };
-  if (f.kind !== "value" || f.targets.length) return null;
-  const m = f.text.match(/^(f32|int|bool|vec2|vec3|vec4) (.*)$/); if (!m) return null;
-  if (m[1] === "bool") return { value: m[2], parse: (s) => /^(1|true|yes)$/i.test(s.trim()) };
-  if (m[1].startsWith("vec")) return { value: m[2].split(" ").join(", "), parse: (s) => s.split(/[ ,]+/).filter(Boolean).map(Number) };
-  return { value: m[2], parse: (s) => { const n = Number(s); return Number.isFinite(n) ? n : undefined; } };
-}
-function addStep(step) {
-  if (S.entity && S.entity !== "Hero_" + S.hero) step.entity = S.entity;
-  S.steps.push(step); refresh();
-}
-function drawSteps() {
-  $("list").replaceChildren(...S.steps.map((s, i) => el("li", {}, el("span", { text: Object.entries(s).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("  ") }),
-    el("button", { text: "×", onclick: () => { S.steps.splice(i, 1); refresh(); } }))));
-  $("toml").value = S.data.toml || "";
-  const st = $("status");
-  if (S.data.error) { st.className = "bad"; st.textContent = S.data.error; }
-  else if (S.data.warnings.length) { st.className = "warn"; st.textContent = S.data.warnings.join("\n"); }
-  else { st.className = "ok"; st.textContent = S.steps.length ? "All checks pass: this would build." : ""; }
+function drawLegend() {
+  const seen = [...new Set(S.data.components.filter(c => c.group === S.group).map(c => c.cls))].slice(0, 10);
+  $("legend").replaceChildren(...seen.map(c => { const [l, col, h] = typeOf(c); return el("span", { class: "lg", title: h }, el("span", { class: "dot", style: `background:${col}` }), l); }));
 }
 
-// pan + zoom
+// ---- view controls: buttons and keys (a scroll wheel is optional) ----------
+function applyTf() { $("view").setAttribute("transform", `translate(${S.tf.x},${S.tf.y}) scale(${S.tf.k})`); $("zoom").textContent = Math.round(S.tf.k * 100) + "%"; }
+function zoomBy(f, cx, cy) {
+  const r = $("svg").getBoundingClientRect(); if (cx === undefined) cx = r.width / 2; if (cy === undefined) cy = r.height / 2;
+  const k = Math.min(3, Math.max(0.15, S.tf.k * f));
+  S.tf.x = cx - (cx - S.tf.x) * k / S.tf.k; S.tf.y = cy - (cy - S.tf.y) * k / S.tf.k; S.tf.k = k; applyTf();
+}
+function pan(dx, dy) { S.tf.x += dx; S.tf.y += dy; applyTf(); }
+function fit() {
+  const r = $("svg").getBoundingClientRect(); if (!S.bounds || !r.width) return;
+  // Never shrink below a size whose text is readable; a big ability starts at
+  // its top-left corner instead, and the arrow buttons move around it.
+  const k = Math.min(1.1, Math.max(0.6, Math.min((r.width - 150) / S.bounds.w, (r.height - 60) / S.bounds.h)));
+  const fitsW = S.bounds.w * k <= r.width - 150, fitsH = S.bounds.h * k <= r.height - 60;
+  S.tf = { k, x: fitsW ? (r.width - 130 - S.bounds.w * k) / 2 : 24, y: fitsH ? (r.height - S.bounds.h * k) / 2 : 24 }; applyTf();
+}
+const STEP = 120;
+$("zin").onclick = () => zoomBy(1.25); $("zout").onclick = () => zoomBy(0.8); $("fit").onclick = fit;
+$("up").onclick = () => pan(0, STEP); $("down").onclick = () => pan(0, -STEP);
+$("left_").onclick = () => pan(STEP, 0); $("right_").onclick = () => pan(-STEP, 0);
+window.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  const k = { ArrowUp: () => pan(0, STEP), ArrowDown: () => pan(0, -STEP), ArrowLeft: () => pan(STEP, 0), ArrowRight: () => pan(-STEP, 0),
+              "+": () => zoomBy(1.25), "=": () => zoomBy(1.25), "-": () => zoomBy(0.8), "0": fit }[e.key];
+  if (k) { e.preventDefault(); k(); }
+});
 let drag = null;
 $("svg").addEventListener("mousedown", (e) => { drag = { x: e.clientX - S.tf.x, y: e.clientY - S.tf.y }; });
 window.addEventListener("mousemove", (e) => { if (drag) { S.tf.x = e.clientX - drag.x; S.tf.y = e.clientY - drag.y; applyTf(); } });
 window.addEventListener("mouseup", () => drag = null);
-$("svg").addEventListener("wheel", (e) => { e.preventDefault(); const k = Math.min(3, Math.max(0.2, S.tf.k * (e.deltaY < 0 ? 1.1 : 0.9))); S.tf.x = e.offsetX - (e.offsetX - S.tf.x) * k / S.tf.k; S.tf.y = e.offsetY - (e.offsetY - S.tf.y) * k / S.tf.k; S.tf.k = k; applyTf(); }, { passive: false });
-$("svg").prepend(el("defs", {}, (() => { const m = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-  for (const [k, v] of Object.entries({ id: "arrow", viewBox: "0 0 10 10", refX: 10, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" })) m.setAttribute(k, v);
-  const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", "M0,0 L10,5 L0,10 z"); p.setAttribute("fill", "currentColor"); m.append(p); return m; })()));
+$("svg").addEventListener("wheel", (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.1 : 0.9, e.offsetX, e.offsetY); }, { passive: false });
+window.addEventListener("resize", () => fit());
+$("svg").prepend(el("defs", {}, (() => { const m = el("marker", { id: "arrow", viewBox: "0 0 10 10", refX: 10, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
+  m.append(el("path", { d: "M0,0 L10,5 L0,10 z", fill: "#9b9aa0" })); return m; })()));
+
+// ---- the inspector ------------------------------------------------------------
+function inspect(id) {
+  const box = $("right"); box.replaceChildren();
+  const copyCard = el("div", { class: "card" },
+    el("div", { class: "n", style: "font-weight:600", text: "Make a copy of this whole ability" }),
+    el("div", { class: "tiny muted", text: "The copy gets its own parts (their names end with the new name). It does nothing until something links to it, so link one of your parts to it afterwards." }),
+    el("div", { class: "row", style: "display:flex;gap:6px;margin-top:6px" }, el("input", { id: "cloneAs", placeholder: "New name, e.g. Echo", style: "flex:1" }),
+      el("button", { class: "primary", text: "Copy", onclick: () => { const as = $("cloneAs").value.trim(); if (as) addStep({ clone: S.group, as }); else $("cloneAs").focus(); } })));
+  if (!id) {
+    box.append(el("h2", { text: S.group || "Pick an ability" }),
+      el("div", { class: "explain", text: "Click a box in the picture to see what that part does and what you can change." }), copyCard);
+    return;
+  }
+  const c = byId(id); S.sel = c ? { id } : null;
+  if (!c) { box.append(el("div", { class: "explain", text: "That part lives in another file of the game (shared by several heroes), so it cannot be changed here." })); return; }
+  const [label, color, help] = typeOf(c.cls);
+  box.append(el("h2", { text: c.name }), el("div", {}, el("span", { class: "badge", style: `background:${color}`, text: label }), el("span", { class: "tiny muted", text: c.group })),
+    el("div", { class: "explain", text: help }));
+  const partNames = S.data.components.map(x => x.name);
+  const simple = [], adv = [];
+  for (const f of c.fields) (ADVANCED.test(f.name) ? adv : simple).push(fieldRow(c, f, partNames));
+  box.append(...(simple.length ? simple : [el("div", { class: "tiny muted", text: "This part has no settings with a known meaning; see Advanced." })]));
+  if (adv.length) box.append(el("details", {}, el("summary", { text: `Advanced (${adv.length} technical settings)` }), ...adv));
+  box.append(copyCard);
+  drawGraph(false);
+}
+function fieldRow(c, f, partNames) {
+  const nice = f.name.replace(/\?$/, "").replace(/_/g, " ");
+  const row = el("div", { class: "f" }, el("div", { class: "n", text: nice }),
+    FIELDS[f.name] ? el("div", { class: "h", text: FIELDS[f.name] }) : null,
+    literal(f) ? null : el("div", { class: "t", text: pretty(f) }));
+  const addr = `${c.name}.${f.name}`, lit = literal(f);
+  if (lit) {
+    const inp = el("input", { value: lit.value, title: lit.hint });
+    row.append(el("div", { class: "row" }, inp, el("button", { text: "Change", onclick: () => { const v = lit.parse(inp.value); if (v === undefined) { inp.style.borderColor = "var(--bad)"; return; } addStep({ set: addr, value: v }); } })));
+  }
+  if (f.kind === "ref" || (f.kind === "value" && f.targets.length))
+    row.append(linkRow(partNames, (to) => addStep({ link: addr, to }), true, "Point to", currentName(f)));
+  if (f.kind === "ref[]") {
+    const items = f.items ? f.text.split("  |  ") : [];
+    items.forEach((t, i) => row.append(el("div", { class: "item" }, el("span", { text: "• " + t.replace(/^<- /, "").split("\\").pop() }),
+      el("button", { class: "small", text: "Remove", onclick: () => addStep({ remove_link: `${addr}[${i}]` }) }))));
+    row.append(linkRow(partNames, (to) => addStep({ add_link: addr, to }), false, "Add"));
+  }
+  return row;
+}
+function pretty(f) {
+  if (f.kind === "ref[]") return f.items ? `${f.items} link(s):` : "(nothing)";
+  const t = f.text.replace(/<- \[[^\]]+\] /g, "→ ").replace(/Hero_[A-Za-z_]+\\/g, "");
+  return t === "(none)" ? "(nothing)" : t;
+}
+function currentName(f) {
+  if (!f.targets.length) return "";
+  const t = byId(f.targets[0]); return t ? t.name : null;
+}
+function outside(id, path) {
+  const m = /^\[[^\]]+\] ([^\\]+)\\(?:(.*)\\)?([^\\]+)$/.exec(path || "");
+  if (!m) return { id, name: "(outside this file)", group: "", cls: "", shared: "another file" };
+  return { id, name: m[3], group: m[2] || "", cls: "", shared: m[1] === "Hero_" + S.hero ? "" : m[1] };
+}
+function linkRow(names, act, allowNone, verb, current) {
+  const inGroup = S.data.components.filter(c => c.group === S.group).map(c => c.name);
+  const sel = el("select", { title: "Pick the part to link to" },
+    ...(allowNone ? [el("option", { value: "", text: "(nothing)" })] : []),
+    el("optgroup", { label: "In this ability" }, ...[...inGroup].sort().map(n => el("option", { value: n, text: n }))),
+    el("optgroup", { label: "Everything else" }, ...names.filter(n => !inGroup.includes(n)).sort().map(n => el("option", { value: n, text: n }))));
+  if (current) sel.value = current;
+  const wrap = el("div", { class: "row" }, sel, el("button", { text: verb, onclick: () => {
+    if (current !== undefined && sel.value === (current || "")) { sel.style.borderColor = "var(--warn)"; return; }
+    act(sel.value); } }));
+  if (current === null) wrap.prepend(el("div", { class: "tiny muted", style: "flex-basis:100%", text: "Now points to a shared part outside this file." }));
+  return wrap;
+}
+function literal(f) {
+  if (["bool", "u32", "f32"].includes(f.kind)) return f.kind === "bool" ? { value: f.text === "True" ? "yes" : "no", hint: "yes or no", parse: yesNo } : { value: f.text, hint: "a number", parse: num };
+  if (f.kind !== "value" || f.targets.length) return null;
+  const m = f.text.match(/^(f32|int|bool|vec2|vec3|vec4) (.*)$/); if (!m) return null;
+  if (m[1] === "bool") return { value: m[2] === "True" ? "yes" : "no", hint: "yes or no", parse: yesNo };
+  if (m[1].startsWith("vec")) return { value: m[2].split(" ").join(", "), hint: "numbers separated by commas", parse: (s) => { const v = s.split(/[ ,]+/).filter(Boolean).map(Number); return v.every(Number.isFinite) ? v : undefined; } };
+  return { value: m[2], hint: m[1] === "int" ? "a whole number" : "a number", parse: m[1] === "int" ? (s) => { const n = num(s); return Number.isInteger(n) ? n : undefined; } : num };
+}
+const num = (s) => { const n = Number(String(s).trim()); return s.trim() !== "" && Number.isFinite(n) ? n : undefined; };
+const yesNo = (s) => { s = s.trim().toLowerCase(); return ["yes", "true", "1", "on"].includes(s) ? true : ["no", "false", "0", "off"].includes(s) ? false : undefined; };
+
+// ---- steps ----------------------------------------------------------------------
+function addStep(step) {
+  if (S.entity && S.entity !== "Hero_" + S.hero) step.entity = S.entity;
+  S.steps.push(step); refresh();
+}
+function sentence(s) {
+  const where = s.entity ? ` (in ${s.entity})` : "";
+  const split = (a) => { const i = a.lastIndexOf("."); return [a.slice(0, i), a.slice(i + 1).replace(/\?$/, "").replace(/_/g, " ")]; };
+  if (s.clone) return `Copy the ability “${s.clone}” as “${s.as}”${s.from ? " from " + s.from : ""}${where}`;
+  if (s.set) { const [part, fld] = split(s.set); return `Set ${fld} of “${part}” to ${JSON.stringify(s.value)}${where}`; }
+  if (s.link) { const [part, fld] = split(s.link); return `Point ${fld} of “${part}” to ${s.to ? "“" + s.to + "”" : "nothing"}${where}`; }
+  if (s.add_link) { const [part, fld] = split(s.add_link); return `Add “${s.to}” to ${fld} of “${part}”${where}`; }
+  if (s.remove_link) { const [part, fld] = split(s.remove_link); return `Remove link ${fld} of “${part}”${where}`; }
+  return JSON.stringify(s);
+}
+function setStatus(cls, text) { const st = $("status"); st.className = cls; st.textContent = text; }
+function drawSteps() {
+  $("list").replaceChildren(...S.steps.map((s, i) => el("li", {}, el("span", { text: sentence(s) + " " }),
+    el("button", { class: "small", text: "Remove", onclick: () => { S.steps.splice(i, 1); refresh(); } }))));
+  $("toml").value = S.data.toml || "";
+  if (!S.steps.length) setStatus("idle", "No changes yet. Click a part in the picture to change it.");
+  else if (S.data.error) setStatus("bad", "✗ This would not build. The last change is the likely cause; remove it or fix the link.\n\n" + S.data.error.replace(/^ability step \d+ \((\w+)\): /, ""));
+  else if (S.data.warnings.length) setStatus("warn", "✓ Ready to build, with notes:\n" + S.data.warnings.map(w => "• " + w.replace(/^[^:]+: \[warning\] /, "")).join("\n"));
+  else setStatus("ok", `✓ Ready to build. ${S.steps.length} change(s). Open “Show manifest code” below to copy them.`);
+}
+
+// ---- find, pickers, buttons ------------------------------------------------------
+$("find").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const q = $("find").value.trim().toLowerCase(); if (!q) return;
+  const hit = S.data.components.find(c => c.name.toLowerCase() === q) || S.data.components.find(c => c.name.toLowerCase().includes(q));
+  if (!hit) { $("find").style.borderColor = "var(--bad)"; return; }
+  $("find").style.borderColor = "";
+  if (kindOfGroup(hit.group) === "Other") $("showAll").checked = true;
+  S.group = hit.group; S.flash = hit.id; drawGroups(); drawGraph(true); inspect(hit.id);
+});
 $("filter").addEventListener("input", drawGroups);
-$("hero").addEventListener("change", () => { S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; refresh(); });
+$("showAll").addEventListener("change", drawGroups);
+$("hero").addEventListener("change", () => {
+  if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) { $("hero").value = S.hero; return; }
+  S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; refresh();
+});
 $("entity").addEventListener("change", () => { S.entity = $("entity").value; S.group = ""; S.sel = null; refresh(); });
-$("clear").addEventListener("click", () => { S.steps = []; refresh(); });
-$("copy").addEventListener("click", () => { navigator.clipboard.writeText($("toml").value); $("copy").textContent = "copied"; setTimeout(() => $("copy").textContent = "copy", 1200); });
+$("undo").addEventListener("click", () => { if (S.steps.length) { S.steps.pop(); refresh(); } });
+$("clear").addEventListener("click", () => { if (S.steps.length && confirm("Remove all your changes?")) { S.steps = []; refresh(); } });
+$("copy").addEventListener("click", () => { navigator.clipboard.writeText($("toml").value); $("copy").textContent = "Copied!"; setTimeout(() => $("copy").textContent = "Copy", 1400); });
+const hideIntro = () => { $("intro").style.display = "none"; try { localStorage.setItem("ae-intro", "1"); } catch (e) {} };
+$("introOk").onclick = hideIntro;
+$("helpBtn").onclick = () => { $("intro").style.display = $("intro").style.display === "none" ? "" : "none"; };
+try { if (localStorage.getItem("ae-intro")) $("intro").style.display = "none"; } catch (e) {}
 
 (async () => {
   const r = await fetch("/api/heroes"); const { heroes } = await r.json();
-  $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h })));
+  $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
   S.hero = heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
   refresh();
 })();
