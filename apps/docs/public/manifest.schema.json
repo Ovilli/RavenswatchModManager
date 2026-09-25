@@ -254,6 +254,7 @@
             },
             "then": {
               "properties": {
+                "abilities": {},
                 "albedo": {},
                 "animations": {},
                 "base": {},

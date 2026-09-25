@@ -20,7 +20,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `boss` | ✅ confirmed | `rsmm.sdk.kinds.bosses` | Boss content builder — make a boss arena fight a different boss. |
 | `map` | ⚠️ experimental | `rsmm.sdk.kinds.maps` | Map (biome) content builder: clone a shipped mapdef and point a chapter at it. |
 | `hero` | ✅ confirmed | `rsmm.sdk.kinds.heros` | Hero content builder: clone a shipped hero into a new roster entry. |
-| `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | Talent (in-game "Skill") value content builder. |
+| `talent` | ✅ confirmed | `rsmm.sdk.kinds.talents` | (builder import failed: cannot import name 'EntityEdit' from 'rsmm.engine.entity_edit' (/home/ovilli/Documents/Programming/RavenswatchModManager/src/rsmm/engine/entity_edit.py)) |
 | `skill` | ✅ confirmed | `rsmm.sdk.kinds.skills` | Hero **skill** (talent) content builder. |
 | `modifier` | ⚠️ experimental | `rsmm.sdk.kinds.modifiers` | Custom **game modifier** ("negative mode") content builder. |
 | `game_mode` | ✅ confirmed | `rsmm.sdk.kinds.game_modes` | Custom **game mode** (run chapter sequence) builder. |
@@ -29,7 +29,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `poi` | ✅ confirmed | `rsmm.sdk.kinds.poi` | **POI / structure** builder — put a point of interest into any chapter. |
 | `mesh` | ✅ confirmed | `rsmm.sdk.kinds.meshes` | **Mesh** content builder — put the mod's model in place of a shipped one. |
 | `tilegen` | ✅ confirmed | `rsmm.sdk.kinds.tilegen` | Chapter map-generation recipe content builder. |
-| `shop` | ✅ confirmed | `rsmm.sdk.kinds.shops` | **Shop** editor — change what the Sandman sells and what it costs. |
+| `shop` | ✅ confirmed | `rsmm.sdk.kinds.shops` | (builder import failed: cannot import name 'EntityEdit' from 'rsmm.engine.entity_edit' (/home/ovilli/Documents/Programming/RavenswatchModManager/src/rsmm/engine/entity_edit.py)) |
 | `animation` | ✅ confirmed | `rsmm.sdk.kinds.animations` | **Animation** content builder — play the mod's animation in place of a shipped clip. |
 
 ## What a rating means

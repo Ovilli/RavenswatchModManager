@@ -60,6 +60,11 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         of their own), in the skin slots after Default.
     ``values`` (table)  ``{"<label>" | "<Entity>/<label>" = number}``: the
         hero's numbers (``rsmm export-character <Base> --list-values``).
+    ``abilities`` (list)  ``[[content.abilities]]`` steps that copy, set and
+        rewire the base's ability parts (``clone`` / ``set`` / ``link`` /
+        ``add_link`` / ``remove_link``; see ``engine/ability_edit.py`` and
+        ``rsmm entity-graph <Base>``). Checked before apply: an edit that
+        leaves a link bound to nothing is refused.
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
         entities name (a VFX, a sound, a mesh), swapped in them only; a new
         resource's preloads are borrowed from a shipped cache.
@@ -76,6 +81,7 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -95,7 +101,7 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
-                     "animations", "outfits", "values", "references"})
+                     "animations", "outfits", "values", "references", "abilities"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -223,8 +229,11 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         raise ContentError(f"hero {hid}: 'outfits' is a list of tables")
     values = _table(f.get("values"), "values", hid)
     references = _table(f.get("references"), "references", hid)
+    abilities = f.get("abilities") or []
+    if not isinstance(abilities, list):
+        raise ContentError(f"hero {hid}: 'abilities' is a list of tables")
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
-               or animations or outfits or values or references)
+               or animations or outfits or values or references or abilities)
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
 
@@ -356,6 +365,18 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                                           {str(k): float(v) for k, v in values.items()})
             except (H.HeroCookError, TypeError, ValueError) as e:
                 raise ContentError(f"hero {hid}: {e}") from e
+        if abilities:
+            # Wiring after numbers, on the same base names; checked before
+            # anything is written (engine/ability_edit.py).
+            from ...engine import ability_edit as AE
+            try:
+                res = AE.apply(base_bytes, abilities, main=b.stem, seed=f"{mod_id}:{hid}")
+            except AE.AbilityEditError as e:
+                raise ContentError(f"hero {hid}: {e}") from e
+            base_bytes = res.files
+            for w in res.warnings:
+                print(f"warning: hero {hid}: {w}", file=sys.stderr)
+            art.extend(_borrow_closure(sorted(res.resources), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
                   R.cooked(base_bytes[stem_of[ref]], b.alias.guid, guid)
                   for ref in b.family}

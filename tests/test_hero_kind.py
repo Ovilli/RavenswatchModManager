@@ -216,3 +216,55 @@ def test_a_weapon_keeps_its_authored_shape(tmp_path):
     ours = next(p for p in files if p.name.startswith("Nyx_Weapon1_GEO"))
     shipped = corpus.read("3D/Characters/Heroes/Piper/Piper_Flute.fbx.Geometry.gen")
     assert verts(ours.read_bytes()) == pytest.approx(verts(shipped), abs=1e-5)
+
+
+_ECHO = [
+    {"clone": "Ability Secondary", "as": "Echo"},
+    {"set": "Primary Ability Shots Delay.value", "value": 0.2},
+    {"link": "Primary Ability Shoot Timer.on_end", "to": "State Secondary Ability Echo"},
+]
+
+
+@needs_corpus
+@needs_install
+def test_ability_edits_land_in_the_heros_own_entity_under_its_names(tmp_path):
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import prop_cook as PC
+    files = _emit(tmp_path, id="Nyx", abilities=_ECHO)
+    main = next(p for p in files if p.name == "Hero_Nyx.entity.ot.EntitySettingsResource.gen")
+    g = EG.parse(main.read_bytes(), "Hero_Nyx")
+    echo = g.groups()["Echo"]
+    piper = corpus.read("EntitySettings/Heroes/Hero_Piper/Hero_Piper.entity.ot"
+                        ".EntitySettingsResource.gen")
+    assert len(echo) == len(EG.parse(piper).groups()["Ability Secondary"])
+    timer = next(c for c in g.components if c.name == "Primary Ability Shoot Timer")
+    on_end = next(f for f in EF.fields(timer) if f.name == "on_end")
+    assert on_end.text.endswith("Hero_Nyx\\Echo\\State Secondary Ability Echo")
+    delay = next(c for c in g.components if c.name == "Primary Ability Shots Delay")
+    assert next(f for f in EF.fields(delay) if f.name == "value").text == "f32 0.2"
+    assert not set(PC.component_guids(main.read_bytes())) & set(PC.component_guids(piper))
+
+
+@needs_corpus
+@needs_install
+def test_an_ability_edit_that_binds_to_nothing_is_refused(tmp_path):
+    """Juliet's secondary links into Hero_Romeo_Juliet_Common, which a hero
+    built on Piper does not carry: installed, it would do nothing."""
+    with pytest.raises(ContentError, match="Hero_Romeo_Juliet_Common"):
+        _emit(tmp_path, id="Nyx", abilities=[
+            {"clone": "Ability Secondary", "as": "Kiss", "from": "Juliet"}])
+
+
+@needs_corpus
+@needs_install
+@pytest.mark.parametrize("step,msg", [
+    ({"clone": "Ability Secondary"}, "needs 'as'"),
+    ({"set": "Primary Ability Shots Delay.value"}, "needs a value"),
+    ({"set": "No Such Part.value", "value": 1}, "0 components named"),
+    ({"link": "x", "to": "y", "set": "z"}, "exactly one of"),
+])
+def test_malformed_ability_steps_are_refused(tmp_path, step, msg):
+    with pytest.raises(ContentError, match=msg):
+        _emit(tmp_path, id="Nyx", abilities=[step])

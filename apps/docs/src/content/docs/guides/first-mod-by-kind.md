@@ -650,6 +650,20 @@ albedo = "art/nyx_mercenary.png"
 # What her abilities use: a VFX, a sound, a mesh, anything her entities name.
 [content.references]
 "Settings\\Heroes\\Hero_Piper_FX\\Piper_Note_Day_01.vfx.ot" = "Settings\\Heroes\\Hero_Juliet_FX\\Juliet_Basic_Bullet_Trail_01.vfx.ot"
+
+# How her abilities are wired: copy, set and rewire parts, by the names
+# `rsmm entity-graph Piper` shows. Applied in order.
+[[content.abilities]]
+clone = "Ability Secondary"          # a group, or a list of parts
+as    = "Echo"                       # new group; each part gets " Echo"
+
+[[content.abilities]]
+set   = "Primary Ability Shots Delay.value"
+value = 0.2
+
+[[content.abilities]]
+link  = "Primary Ability Shoot Timer.on_end"
+to    = "State Secondary Ability Echo"
 ```
 
 - **`name` / `description`** are added to the base's text bank as
@@ -690,12 +704,27 @@ albedo = "art/nyx_mercenary.png"
   sound event, a mesh, a clip. Each new resource's preloads are borrowed from a
   shipped cache that already loads it. A resource no shipped cache lists is
   refused, because an unlisted preload crashes the game at load.
-- **What is not possible: new ability logic.** An ability is a graph of
-  components inside the hero's entity, and a projectile reads its owner's
-  values under its own hero's name. So pointing Nyx at Juliet's projectile
-  entity gives a bullet that finds none of its numbers. Change what an ability
-  looks and sounds like (`references`, `animations`, `weapons`) and how strong
-  or fast it is (`values`); its behaviour stays the base's.
+- **`abilities`** edits how her abilities are wired. An ability is a graph of
+  parts (states, timers, tests, spawners, values) inside the hero's entity;
+  `rsmm entity-graph Piper --group "Ability Secondary"` lists one ability's
+  parts and links, and `--show "<part>"` shows a part's fields by name. Each
+  step is one of:
+  - `clone = "<group>"` + `as = "<new group>"` (or `clone = ["part", ...]`):
+    copy the parts under new names (`suffix`, default `" " + as`). Links among
+    the copies point at the copies; everything they own is copied too.
+    `from = "Juliet"` copies from another hero.
+  - `set = "Part.field"` + `value`: a number, a bool, or `[x, y, z]`.
+  - `link = "Part.field"` + `to = "Other Part"` (`""` for nothing); a list
+    element is `"Part.list[0]"`.
+  - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
+  Add `entity = "FX"` to a step to edit another entity of the family.
+  Every edit is checked before anything is written, and the build fails
+  rather than install an ability that cannot work: a link into an entity the
+  hero does not carry (copying Juliet's secondary drags links into
+  `Hero_Romeo_Juliet_Common`, which a hero built on Piper does not have), a
+  part left owning nothing, a number re-pointed at a value of another type.
+  The check proves the wiring is sound, not that the ability plays the way
+  you meant: that is still a playtest.
 - **`own_entity = true`** is implied by every field above except `name`,
   `description` and `portrait`. The hero gets
   its own gameplay entity: every `Hero_<Base>*` entity (the hero, FX, pets,
