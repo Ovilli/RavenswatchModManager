@@ -6,7 +6,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**53 commands.**
+**54 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -25,6 +25,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm doctor` | `rsmm.cli.doctor` | rsmm doctor — system health check, and the repair path for what it finds. |
 | `rsmm enable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm enemies` | `rsmm.cli.cmd_enemies` | `rsmm enemies` — discover vanilla enemies for enemy modding. |
+| `rsmm entity-graph` | `rsmm.cli.cmd_entity_graph` | `rsmm entity-graph` — read an entity's components and their links. |
 | `rsmm exp` | `rsmm.cli.cmd_exp` | rsmm exp — read back the hypotheses a mod answered during a playtest. |
 | `rsmm export-character` | `rsmm.cli.cmd_export_character` | `rsmm export-character` — a hero as one rigged glTF for Blender / Maya. |
 | `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `rsmm` opens in a terminal. |
