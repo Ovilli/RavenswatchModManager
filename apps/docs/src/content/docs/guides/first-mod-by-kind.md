@@ -718,6 +718,10 @@ to    = "State Secondary Ability Echo"
     element is `"Part.list[0]"`.
   - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
   Add `entity = "FX"` to a step to edit another entity of the family.
+  `rsmm ability-editor` opens a local page that draws each ability as a graph,
+  shows every part's fields, and builds these steps as you click (set a
+  value, re-point a link, copy a group), re-checking them on every change;
+  copy its TOML into the manifest.
   Every edit is checked before anything is written, and the build fails
   rather than install an ability that cannot work: a link into an entity the
   hero does not carry (copying Juliet's secondary drags links into
