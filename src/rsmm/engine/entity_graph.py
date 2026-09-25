@@ -111,6 +111,22 @@ def _pickers(payload: bytes, picker_cls: int) -> list[tuple[int, Ref]]:
     return out
 
 
+def _header_strings(p: bytes, at: int) -> tuple[str, str, int] | None:
+    """``(name, group, body offset)`` from ``lstr name, u32 flags, lstr group``."""
+    out = []
+    for skip in (0, 4):
+        at += skip
+        if at + 4 > len(p):
+            return None
+        n = struct.unpack_from("<I", p, at)[0]
+        s = p[at + 4:at + 4 + n]
+        if n > 4096 or len(s) != n:
+            return None
+        out.append(s.decode("latin-1"))
+        at += 4 + n
+    return out[0], out[1], at
+
+
 def parse(raw: bytes, name: str = "") -> EntityGraph:
     """Components of a cooked entity-settings file, with their edges."""
     cf = cooked.parse(raw)
@@ -131,16 +147,17 @@ def parse(raw: bytes, name: str = "") -> EntityGraph:
         # Header picker is fixed-size when empty (16 + 4); its END follows the path.
         after = 4 + 8 + 16 + 4 + len(first.path.encode("ascii")) + 4
         own = p[after:after + 16]
-        strs = [(o, s) for o, s in ES._scan_payload(p) if o >= after + 16]
-        if len(own) != 16 or len(strs) < 2:
+        # lstr name, u32 flags, lstr group — read by position: the group is
+        # EMPTY in many override records, which a string scan cannot see.
+        head = _header_strings(p, after + 16)
+        if len(own) != 16 or head is None:
             continue
-        cname, group = strs[0][1], strs[1][1]
-        body_from = strs[1][0]
-        refs = [r for off, r in pickers[1:] if off > body_from and r.path]
+        cname, group, body_from = head
+        refs = [r for off, r in pickers[1:] if off >= body_from and r.path]
         ref_paths = {r.path for r in refs}
-        literals = [s for o, s in strs[2:] if s not in ref_paths]
+        literals = [s for o, s in ES._scan_payload(p) if o >= body_from and s not in ref_paths]
         override = first if first.path else None
-        body = p[body_from + 4 + len(group.encode("ascii")):]
+        body = p[body_from:]
         comps.append(Component(si, classes[ci], cname, group, own, override, refs, literals,
                                body, classes))
     return EntityGraph(name, comps)
@@ -150,8 +167,28 @@ def parse(raw: bytes, name: str = "") -> EntityGraph:
 # the body, as typed tokens
 # --------------------------------------------------------------------------
 
-#: oCEntityValueUnion payload: u32 type, u32 (unused), 4-byte value.
-_UNION_TYPES = {0: "f32", 1: "int", 2: "bool"}
+#: oCEntityValueUnion payload: u32 type, u32 (unused), then the value, whose
+#: width depends on the type. 5 (text), 6 and 9 (two lstrs: resource kind +
+#: path) are variable: they run to the union's END.
+_UNION_TYPES = {0: "f32", 1: "int", 2: "bool", 3: "vec3", 4: "vec4", 5: "text", 6: "texture",
+                7: "vec2", 9: "resource"}
+_UNION_WIDTH = {0: 4, 1: 4, 2: 1, 3: 12, 4: 16, 7: 8}
+
+
+def _union_text(t: int, raw: bytes) -> str:
+    kind = _UNION_TYPES.get(t, f"type{t}")
+    if t == 0:
+        return f"f32 {struct.unpack('<f', raw)[0]:g}"
+    if t == 1:
+        return f"int {struct.unpack('<i', raw)[0]}"
+    if t == 2:
+        return f"bool {bool(raw[0])}"
+    if t in (3, 4, 7):
+        return kind + " " + " ".join(f"{v:g}" for v in struct.unpack(f"<{len(raw) // 4}f", raw))
+    if t in (5, 6, 9):
+        words = [s for _o, s in ES._scan_payload(raw)]
+        return f"{kind} " + (" ".join(repr(w) for w in words) if words else raw.hex(" "))
+    return f"{kind} {raw.hex(' ')}"
 
 
 @dataclass
@@ -188,18 +225,12 @@ def tokens(c: Component) -> list[Token]:
                 i += size
             elif name == "oCEntityValueUnion" and i + 21 <= len(b):
                 t = struct.unpack_from("<I", b, i + 8)[0]
-                kind = _UNION_TYPES.get(t, f"type{t}")
-                # A bool stores ONE byte; f32/int four. Then the union's END.
-                width = 1 if kind == "bool" else 4
+                width = _UNION_WIDTH.get(t)
+                if width is None:
+                    width = max(b.find(_END, i + 16) - (i + 16), 0)
                 raw = b[i + 16:i + 16 + width]
-                if kind == "f32":
-                    text = f"f32 {struct.unpack('<f', raw)[0]:g}"
-                elif kind == "bool":
-                    text = f"bool {bool(raw[0])}"
-                else:
-                    text = f"{kind} {struct.unpack('<i', raw)[0]}"
                 size = 16 + width + 4
-                out.append(Token(i, "value", text, size))
+                out.append(Token(i, "value", _union_text(t, raw), size))
                 i += size
             else:
                 out.append(Token(i, "object", name, 8))
