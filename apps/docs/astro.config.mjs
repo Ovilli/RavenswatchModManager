@@ -52,9 +52,9 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
       },
-      social: {
-        github: 'https://github.com/Ovilli/RavenswatchModManager',
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/Ovilli/RavenswatchModManager' },
+      ],
       plugins: [starlightLinksValidator({ errorOnRelativeLinks: false })],
       sidebar: [
         {
@@ -112,7 +112,7 @@ export default defineConfig({
             {
               label: 'SDK API (generated)',
               collapsed: true,
-              autogenerate: { directory: 'reference/sdk-api' },
+              items: [{ autogenerate: { directory: 'reference/sdk-api' } }],
             },
           ],
         },
