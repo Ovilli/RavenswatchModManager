@@ -370,3 +370,53 @@ def _primitive_to_dict(p: Primitive) -> dict:
     if p.material is not None:
         out["material"] = p.material
     return out
+
+
+# --- GLB container read / write -------------------------------------------
+#
+# The one reader and writer of the container itself. It used to be written out
+# by hand in several modules; one of those copies assumed the JSON chunk at a
+# fixed offset and wrote a header with a total length of 0.
+
+GLB_MAGIC = 0x46546C67
+CHUNK_JSON = 0x4E4F534A
+CHUNK_BIN = 0x004E4942
+
+
+def read_glb(data: bytes) -> tuple[dict, bytes]:
+    """Split a .glb into ``(json_document, bin_chunk)``. Raises ValueError on
+    anything that is not a glTF 2 binary with a JSON chunk."""
+    if len(data) < 12:
+        raise ValueError("not a glTF binary (too short)")
+    magic, version, _total = struct.unpack_from("<III", data, 0)
+    if magic != GLB_MAGIC:
+        raise ValueError("not a glTF binary (bad magic)")
+    if version != 2:
+        raise ValueError(f"unsupported glb version {version}")
+    off, doc, binary = 12, None, b""
+    while off + 8 <= len(data):
+        clen, ctype = struct.unpack_from("<II", data, off)
+        body = data[off + 8:off + 8 + clen]
+        off += 8 + clen
+        if ctype == CHUNK_JSON:
+            # Padded to 4 bytes with spaces per the spec; some writers use NULs.
+            doc = json.loads(body.rstrip(b" \0"))
+        elif ctype == CHUNK_BIN:
+            binary = body
+    if doc is None:
+        raise ValueError("glb has no JSON chunk")
+    return doc, binary
+
+
+def write_glb(doc: dict, binary: bytes = b"") -> bytes:
+    """A .glb from a JSON document and an optional BIN chunk, both padded to
+    4 bytes and the header's total length filled in."""
+    js = json.dumps(doc, separators=(",", ":")).encode("utf-8")
+    js += b" " * ((-len(js)) % 4)
+    bin_payload = binary + b"\0" * ((-len(binary)) % 4)
+    total = 12 + 8 + len(js) + (8 + len(bin_payload) if bin_payload else 0)
+    out = bytearray(struct.pack("<III", GLB_MAGIC, 2, total))
+    out += struct.pack("<II", len(js), CHUNK_JSON) + js
+    if bin_payload:
+        out += struct.pack("<II", len(bin_payload), CHUNK_BIN) + bin_payload
+    return bytes(out)

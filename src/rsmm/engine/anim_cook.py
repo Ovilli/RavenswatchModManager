@@ -80,20 +80,11 @@ _NCOMP = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}
 
 
 def _read_glb(glb: bytes) -> tuple[dict, bytes]:
-    if glb[:4] != b"glTF" or struct.unpack_from("<I", glb, 4)[0] != 2:
-        raise AnimCookError("not a glTF 2 binary (.glb)")
-    pos, doc, binc = 12, None, b""
-    while pos + 8 <= len(glb):
-        ln, kind = struct.unpack_from("<I4s", glb, pos)
-        chunk = glb[pos + 8:pos + 8 + ln]
-        if kind == b"JSON":
-            doc = json.loads(chunk.rstrip(b" \0"))
-        elif kind == b"BIN\0":
-            binc = chunk
-        pos += 8 + ln
-    if doc is None:
-        raise AnimCookError("glb has no JSON chunk")
-    return doc, binc
+    from .gltf import read_glb
+    try:
+        return read_glb(glb)
+    except ValueError as e:              # the cooker reports its own error type
+        raise AnimCookError(str(e)) from e
 
 
 def _accessor(doc: dict, binc: bytes, i: int) -> list:

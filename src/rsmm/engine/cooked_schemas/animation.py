@@ -625,25 +625,8 @@ def _extract_raw_payload_from_glb(glb_bytes: bytes) -> bytes:
     `_build_glb_preview`. Raises if the marker isn't present (refuse to
     cook a glb that wasn't authored from a real animation).
     """
-    if len(glb_bytes) < 20 or glb_bytes[:4] != b"glTF":
-        raise ValueError("not a glTF binary container (missing 'glTF' magic)")
-    version = struct.unpack_from("<I", glb_bytes, 4)[0]
-    if version != 2:
-        raise ValueError(f"glTF version {version} not supported (need 2)")
-    total = struct.unpack_from("<I", glb_bytes, 8)[0]
-    if total > len(glb_bytes):
-        raise ValueError("glb header claims more bytes than file holds")
-
-    pos = 12
-    chunk_len = struct.unpack_from("<I", glb_bytes, pos)[0]
-    chunk_type = glb_bytes[pos + 4:pos + 8]
-    if chunk_type != b"JSON":
-        raise ValueError(f"first chunk is not JSON, got {chunk_type!r}")
-    json_bytes = glb_bytes[pos + 8:pos + 8 + chunk_len]
-    try:
-        doc = json.loads(json_bytes.rstrip(b" "))
-    except json.JSONDecodeError as e:
-        raise ValueError(f"invalid glTF JSON: {e}") from e
+    from ..gltf import read_glb
+    doc, _bin = read_glb(glb_bytes)          # ValueError on a non-glb
 
     extras = doc.get("extras") or {}
     rsmm = extras.get("rsmm") or {}

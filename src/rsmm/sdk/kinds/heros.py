@@ -967,11 +967,11 @@ def _shrunk_glb(glb: bytes, factor: float = 1e-3) -> bytes:
     bone, so once the bones move the collapsed points scatter back out along
     them. One bone for every vertex keeps it a speck in any pose. 1e-3, not
     0: the cooker drops zero-area triangles; at 1e-4 it dropped 168."""
-    import json
     import struct
-    n = struct.unpack_from("<I", glb, 12)[0]
-    gltf = json.loads(glb[20:20 + n])
-    binary = bytearray(glb[20 + n + 8:])
+
+    from ...engine.gltf import read_glb, write_glb
+    gltf, raw_bin = read_glb(glb)
+    binary = bytearray(raw_bin)
 
     def view_of(acc: dict, size: int) -> tuple[int, int]:
         v = gltf["bufferViews"][acc["bufferView"]]
@@ -1037,11 +1037,7 @@ def _shrunk_glb(glb: bytes, factor: float = 1e-3) -> bytes:
             for i in range(count):
                 struct.pack_into(jfmt, binary, jat + i * jstride, anchor, anchor, anchor, anchor)
                 struct.pack_into("<4f", binary, wat + i * wstride, 1.0, 0.0, 0.0, 0.0)
-    js = json.dumps(gltf).encode()
-    js += b" " * (-len(js) % 4)
-    out = (struct.pack("<III", 0x46546C67, 2, 0) + struct.pack("<II", len(js), 0x4E4F534A)
-           + js + struct.pack("<II", len(binary), 0x004E4942) + bytes(binary))
-    return out[:8] + struct.pack("<I", len(out)) + out[12:]
+    return write_glb(gltf, bytes(binary))
 
 
 #: The placeholder colour: an effect still showing the base's look is pink.

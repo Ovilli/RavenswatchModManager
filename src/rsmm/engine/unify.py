@@ -28,35 +28,13 @@ import json
 import struct
 from pathlib import Path
 
-_GLB_MAGIC = 0x46546C67
-_CHUNK_JSON = 0x4E4F534A
-_CHUNK_BIN = 0x004E4942
-
+from . import gltf as _gltf
 
 # --- GLB container read / write -----------------------------------------
 
 def read_glb(data: bytes) -> tuple[dict, bytes]:
-    """Split a .glb blob into (json_document, bin_chunk)."""
-    magic, version, _total = struct.unpack_from("<III", data, 0)
-    if magic != _GLB_MAGIC:
-        raise ValueError("not a glb (bad magic)")
-    if version != 2:
-        raise ValueError(f"unsupported glb version {version}")
-    off = 12
-    gltf: dict | None = None
-    binary = b""
-    while off < len(data):
-        clen, ctype = struct.unpack_from("<II", data, off)
-        off += 8
-        body = data[off:off + clen]
-        off += clen
-        if ctype == _CHUNK_JSON:
-            gltf = json.loads(body)
-        elif ctype == _CHUNK_BIN:
-            binary = body
-    if gltf is None:
-        raise ValueError("glb has no JSON chunk")
-    return gltf, binary
+    """Split a .glb blob into (json_document, bin_chunk). See gltf.read_glb."""
+    return _gltf.read_glb(data)
 
 
 def write_glb(gltf: dict, binary: bytes,
@@ -64,23 +42,7 @@ def write_glb(gltf: dict, binary: bytes,
     gltf = dict(gltf)
     gltf.setdefault("asset", {})
     gltf["asset"] = {**gltf["asset"], "version": "2.0", "generator": generator}
-
-    bin_pad = (-len(binary)) % 4
-    bin_payload = binary + b"\0" * bin_pad
-
-    json_bytes = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
-    json_pad = (-len(json_bytes)) % 4
-    json_bytes += b" " * json_pad
-
-    total = 12 + 8 + len(json_bytes) + (8 + len(bin_payload) if bin_payload else 0)
-    out = bytearray()
-    out += struct.pack("<III", _GLB_MAGIC, 2, total)
-    out += struct.pack("<II", len(json_bytes), _CHUNK_JSON)
-    out += json_bytes
-    if bin_payload:
-        out += struct.pack("<II", len(bin_payload), _CHUNK_BIN)
-        out += bin_payload
-    return bytes(out)
+    return _gltf.write_glb(gltf, binary)
 
 
 # --- Base-colour texture embedding --------------------------------------
