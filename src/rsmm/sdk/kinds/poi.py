@@ -14,7 +14,7 @@ Two assets come out of one def:
 * an **override of each target mapdef**, with the new tile appended to its pool
   (:mod:`rsmm.engine.map_pool`). The edit is purely additive — vanilla entries
   keep their order — and multiple ``poi`` mods targeting the same chapter are
-  merged rather than fighting (see ``apply_mods._merge_map_pool``).
+  merged rather than fighting (see ``engine/content_merge._merge_map_pool``).
 
 The short way: a POI is a folder
 --------------------------------
