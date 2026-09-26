@@ -94,8 +94,9 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         textures, recoloured to the tint at their own brightness (shapes and
         transparency kept): colour textures (never masks, noise or surface
         data), the materials' colour uniforms, and the effect's own colour
-        ramps and constants, which are what make fire orange. ``"*"`` tints them all; an effect named
-        by itself (``Beowulf_Shockwave_Front_01``) wins. With ``placeholder``,
+        ramps and constants, which are what make fire orange. ``"*"`` tints
+        them all; an effect named by itself (``Beowulf_Shockwave_Front_01``)
+        wins. With ``placeholder``,
         effects given no tint are pink. Effects shared with other heroes
         (``Common_FX``) are never touched.
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
