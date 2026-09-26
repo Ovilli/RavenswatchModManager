@@ -969,6 +969,28 @@ local _gl_seen, _gl_comp = {}, nil
 local _gl_armed = false
 local GL_SEEN_MAX = 8
 
+-- A hook belongs to the ONE Lua state that installed it: a second mod calling
+-- R.xp.arm() gets "already-hooked" and its own `_gl_seen` stays empty forever
+-- (2026-09-26: Gretel's grant said "XP component not found" in the same second
+-- Nyx's state captured it). So the capturing state publishes the pointer in a
+-- process-wide Lua-publisher slot and every state reads it back, validating
+-- it like its own. Needs a loader with Lua-writable slots 20..23; on an older
+-- DLL the write raises, pcall swallows it, and R.xp behaves as before.
+local GROUP_LEVEL_SLOT = 20
+local function _gl_publish(p, only_if_empty)
+    if not I.shared_set or not p or p == 0 then return end
+    if only_if_empty and I.shared_get then
+        local ok, cur = pcall(I.shared_get, GROUP_LEVEL_SLOT)
+        if ok and type(cur) == "number" and cur ~= 0 then return end
+    end
+    pcall(I.shared_set, GROUP_LEVEL_SLOT, p)
+end
+local function _gl_shared()
+    if not I.shared_get then return nil end
+    local ok, p = pcall(I.shared_get, GROUP_LEVEL_SLOT)
+    return (ok and type(p) == "number" and p ~= 0) and p or nil
+end
+
 --- Pure-memory (tick-thread-safe) probe: does this component have a level
 -- curve the engine would actually honor? Mirrors what XpForLevel/GetMaxLevel
 -- read: curve table at *(comp+0x10)+0x1d8 (enable flag +0x1d0, count +0x1e0)
@@ -1056,13 +1078,18 @@ local function _arm_group_level_capture()
             end
             table.insert(_gl_seen, 1, self)
             for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
+            -- Raw memory until the original runs; readers validate lazily.
+            -- Only into an EMPTY slot: menu/template instances are built too.
+            _gl_publish(self, true)
         end
         return nil
     end)
     -- (nil, "already-hooked") means another mod's state armed the same ctor
-    -- hook first. The hook is live and its captures land in this state too, so
-    -- that is a success — reporting it as "level/xp unavailable" once per extra
-    -- mod is how a working four-mod install came to look like three broken ones.
+    -- hook first. The hook is live but its callback fills THAT state's list,
+    -- not this one: this state sees the capture through GROUP_LEVEL_SLOT
+    -- (_gl_shared). Still a success, not "level/xp unavailable" — reporting it
+    -- that way once per extra mod made a working four-mod install look like
+    -- three broken ones.
     if ok and slot == nil and why == "already-hooked" then return end
     if ok and slot ~= nil then
         R.log("[rsmm.xp] level capture armed (GroupLevelComponent_Ctor hooked)")
@@ -1091,6 +1118,8 @@ local function _arm_group_level_capture()
                 table.insert(_gl_seen, 1, comp)
                 for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
             end
+            -- XP flowing into it: this is the live one, for every mod.
+            if comp and comp ~= 0 then _gl_publish(comp, false) end
             return nil
         end)
         if gok and gslot ~= nil then
@@ -1123,11 +1152,20 @@ local function _group_level()
     end
     _arm_group_level_capture()
     local fallback = nil
-    for _, p in ipairs(_gl_seen) do
+    -- This state's own captures, then whatever the capturing state published.
+    local cands = { table.unpack(_gl_seen) }
+    local shared = _gl_shared()
+    if shared then
+        local dup = false
+        for _, q in ipairs(cands) do if q == shared then dup = true end end
+        if not dup then cands[#cands + 1] = shared end
+    end
+    for _, p in ipairs(cands) do
         if _gl_valid(p) then
             if _gl_curve_usable(p) then
                 if _gl_comp ~= p then
                     _gl_comp = p
+                    _gl_publish(p, false)
                     R.log(string.format("[rsmm.xp] group-level component "
                         .. "captured @0x%x (level %d, curve present)", p,
                         I.read_u32(I.read_u64(p + XP_PROGRESS_OFF)) or 0))

@@ -1775,6 +1775,31 @@ function R.hero.is(who)
     return n ~= nil and who ~= nil and n:lower() == tostring(who):lower()
 end
 
+-- The live hero's own entity name ("Hero_Gretel_Default"), read off the
+-- template it was built from: hero controller +0x08 = the oCEntity, whose
+-- +0x28 template names its resource (the hop R.interact.name proved on the
+-- hero in game, "Hero_Aladdin_Guardian"). Unlike R.hero.name(), which infers
+-- the hero from the events it fires, this tells a custom hero from its base:
+-- Gretel fires Beowulf's events, but every one of her entities is
+-- Hero_Gretel*. nil until a hero is captured.
+function R.hero.entity()
+    local ctrl = R.entity and R.entity.hero and R.entity.hero()
+    if type(ctrl) ~= "number" or ctrl == 0 or not R.ptr.has_vtable(ctrl) then return nil end
+    local e = I.read_u64(ctrl + 0x08)
+    if not e or e == 0 or R.rtti.name(e) ~= "oCEntity" then return nil end
+    local name = R.interact.name(e)
+    return type(name) == "string" and name or nil
+end
+
+-- True when the live hero's entity is `stem` or one of its skins
+-- ("Hero_Gretel" matches Hero_Gretel_Default, never Hero_Beowulf).
+function R.hero.entity_is(stem)
+    local n = R.hero.entity()
+    if not n or type(stem) ~= "string" then return false end
+    n = (n:match("([^\\/]+)$") or n):gsub("%.entity%.ot$", "")
+    return n == stem or n:sub(1, #stem + 1) == stem .. "_"
+end
+
 -- Dump the distinctive (non-generic) events seen for the current hero this
 -- session — the raw material for seeding _HERO_SIGNATURES. Play one hero, fire
 -- its abilities, then call this; the hero-exclusive lines become its signature.

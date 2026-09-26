@@ -1695,17 +1695,25 @@ int lua_shared_get(lua_State* L) {
 // of the session, with nothing in the log connecting the two. Read-only from
 // Lua, enforced here rather than by convention.
 constexpr int kSharedRingFirst = 8;
-constexpr int kSharedRingLast = 15;   // 16+ are native publishers, also read-only
+constexpr int kSharedRingLast = 15;   // 16..19 are native publishers, also read-only
+// 20..23 are LUA publishers: a handle one mod's capture hook finds, published
+// for every other mod's state. 0..7 were full; the rule above (grow, never
+// borrow a ring slot) is why this is a range of its own. First user: the XP
+// level component (progression.lua GROUP_LEVEL_SLOT) — a second mod calling
+// R.xp.arm() gets "already-hooked" and, without this, never saw a capture.
+constexpr int kSharedLuaFirst = 20;
 
 int lua_shared_set(lua_State* L) {
     auto slot = static_cast<int>(luaL_checkinteger(L, 1));
     if (slot < 0 || slot >= kSharedCount)
         return luaL_error(L, "rsmm.shared_set: slot must be 0..%d", kSharedCount - 1);
-    if (slot >= kSharedRingFirst)
-        return luaL_error(L, "rsmm.shared_set: slots %d+ are written by the "
+    if (slot >= kSharedRingFirst && slot < kSharedLuaFirst)
+        return luaL_error(L, "rsmm.shared_set: slots %d..%d are written by the "
                              "loader (the hero candidate ring at %d..%d, then "
-                             "native publishers) and are read-only from Lua",
-                          kSharedRingFirst, kSharedRingFirst, kSharedRingLast);
+                             "native publishers) and are read-only from Lua; "
+                             "Lua publishers use %d..%d",
+                          kSharedRingFirst, kSharedLuaFirst - 1, kSharedRingFirst,
+                          kSharedRingLast, kSharedLuaFirst, kSharedCount - 1);
     shared_set(slot, static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     return 0;
 }

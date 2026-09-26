@@ -357,9 +357,10 @@ function I.shared_get(slot) return shared[slot] end
 -- slot 9 passed 628 assertions here and then silently evicted hero spawn
 -- candidates in-game — `hero CAPTURED` simply stopped happening, with nothing
 -- in the log tying it to the probe.
+-- 20..23 are the Lua-publisher range (script_lua.cpp kSharedLuaFirst).
 function I.shared_set(slot, v)
-    assert(slot < 8, ("rsmm.shared_set: slot %d is the native hero ring (8..15) "
-        .. "and is read-only from Lua"):format(slot))
+    assert(slot < 8 or (slot >= 20 and slot < 24), ("rsmm.shared_set: slot %d is "
+        .. "written by the loader (8..19) and is read-only from Lua"):format(slot))
     shared[slot] = v
 end
 function I.list_mods() return {} end
@@ -1081,6 +1082,30 @@ do
     I.write_u32(GL_LIVE_CFG + 0x1e0, 20)
     check(R.xp.level() == 4, "instance WITH a curve beats a newer curve-less one")
     check(R.xp.xp() == 250, "xp reads through the curve-bearing instance")
+
+    -- 8e. A hook belongs to the one Lua state that installed it; a second
+    -- mod's R.xp.arm() gets "already-hooked" and its own capture list stays
+    -- empty (2026-09-26: Gretel's grant found nothing while Nyx's state had
+    -- the component). The capture is published in Lua-publisher slot 20.
+    shared[20] = 0                                   -- a fresh session
+    hooks[ctor_va].cb(GL_LIVE)
+    check(shared[20] == GL_LIVE, "the first construction is published for every mod")
+    check(hooks[ctor_va].cb(GL_TMPL) == nil and shared[20] == GL_LIVE,
+          "a later construction does not overwrite a published one")
+    local gain_va = I.resolve("Hero_GainExperience")
+    local GL_GAIN, GL_GAIN_PROG, GL_GAIN_CFG = 0x21800000, 0x22800000, 0x23800000
+    hooks[gain_va].cb(GL_GAIN, 10)
+    check(shared[20] == GL_GAIN, "the component XP flows into is published over it")
+    -- As another mod sees it: none of its own captures validate, only the
+    -- published one does.
+    for _, p in ipairs({GL_LIVE, GL_TMPL, GLCOMP}) do I.write_u64(p, 0) end
+    I.write_u64(GL_GAIN, XP_VFTABLE_VA)
+    I.write_u64(GL_GAIN + XP_PROGRESS_OFF, GL_GAIN_PROG)
+    I.write_u64(GL_GAIN + 0x10, GL_GAIN_CFG)
+    I.write_u8(GL_GAIN_CFG + 0x1d0, 1)
+    I.write_u32(GL_GAIN_CFG + 0x1e0, 20)
+    I.write_u32(GL_GAIN_PROG + 0, 9)
+    check(R.xp.level() == 9, "a mod reads the component another mod's hook captured")
 
     shared[0] = HERO                                    -- restore for later sections
 end
