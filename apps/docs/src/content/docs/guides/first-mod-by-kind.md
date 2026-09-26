@@ -719,6 +719,16 @@ to    = "State Secondary Ability Echo"
   is still pink in game is what is left to make. `albedo`, `weapons` and
   `portrait` win over it. Story pages the hero does not write itself read as
   pages still to write.
+- **`effects`** gives the hero particle effects of its own. Every effect in
+  the base's own FX folder (Beowulf has 99) is copied under the hero's name
+  with its own materials and textures, recoloured to a tint at each colour's
+  own brightness, so shapes and transparency stay. The recolour reaches the
+  colour textures (never masks or surface data), the materials' colours and
+  the effect's own colour ramps, which are what make fire orange:
+  `[content.effects."*"]` `tint = "#7ad0ff"` for all of them, or
+  `[content.effects.Beowulf_Shockwave_Front_01]` for one. With `placeholder`,
+  effects given no tint turn pink. Effects shared with every hero
+  (`Common_FX`) are never touched.
 - **`memoirs`** is the book's story pages, in order: `[[content.memoirs]]`
   tables with `title` and `text` (Beowulf has 7). A page left out keeps the
   base hero's story, or shows a placeholder when `placeholder` is set. The

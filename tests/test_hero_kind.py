@@ -363,3 +363,81 @@ def test_story_pages_of_its_own_and_placeholders_for_the_rest(tmp_path):
         k = key.encode()
         at = blob.find(struct.pack("<I", len(k)) + k)
         assert struct.unpack_from("<I", blob, at - 4)[0] == keys.index(key), key
+    # The pages' voice-over is named after the hero (Voice_<lang>.bank holds
+    # Piper_Memoir<n>_Desc): Piper must not read her story over Nyx's pages.
+    assert "Nyx/Nyx_Memoir{}_Desc" in strings
+    assert not any(t.endswith("_Memoir{}_Desc") and not t.startswith("Nyx/") for t in strings)
+    # Skin slots no outfit takes read as skins still to design.
+    skins = next(p for p in files if p.name.endswith("_Skins~GAM.xls.LocalText.gen"))
+    skins_en = next(p for p in files if p.name.endswith("_Skins~GAM.xls.LocalText.gen.LangEN"))
+    stext = dict(zip(TP.parse_text_file(skins).entries,
+                     TP.parse_text_file(skins_en).entries, strict=True))
+    assert stext["Hero_Nyx_Skin1_Title"] == "[Skin 1: to be designed]"
+    assert "Hero_Nyx_Skin1_Title" in strings
+
+
+@needs_corpus
+@needs_install
+def test_effects_of_its_own_recoloured_and_pink_under_a_placeholder(tmp_path):
+    """Every effect in the base's own FX folder is copied under the hero's
+    name with its own materials and textures; the hero's entities play only the
+    copies; textures keep their alpha, recoloured (pink = still the base's)."""
+    from rsmm.engine import cooked, icon_decode, image
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine.cooked_schemas.texture import TextureHandler
+    (tmp_path / "pink.png").write_bytes(image.encode_png(4, 4, bytes([255, 0, 255, 255]) * 16))
+    files = _emit(tmp_path, id="Nyx", placeholder="pink.png",
+                  effects={"Piper_Note_Day_01": {"tint": "#00ff00"}})
+    names = {p.name for p in files}
+    ents = [p for p in files if p.name.endswith(".entity.ot.EntitySettingsResource.gen")]
+    played = {t for p in ents for _s, _o, t in ES.list_strings(p.read_bytes())
+              if t.endswith(".vfx.ot")}
+    own = {t for t in played if "\\Hero_Piper_FX\\" in t}
+    assert own and all(t.rsplit("\\", 1)[-1].startswith("Nyx_") for t in own), sorted(own)[:3]
+    assert any(t.startswith("Settings\\FX\\Common_FX\\") for t in played)   # shared: kept
+    assert "Nyx_Piper_Note_Day_01.vfx.ot.ScheduledVfxSettings.gen" in names
+
+    def colour(name):
+        raw = next(p for p in files if p.name == name).read_bytes()
+        s = TextureHandler.parse_payload(cooked.parse(raw).sections[-1].payload)
+        px = icon_decode.decode_to_rgba(s.pixels, s.width, s.height, s.format_name)
+        lit = [px[i:i + 4] for i in range(0, len(px), 4) if px[i + 3] and max(px[i:i + 3]) > 60]
+        return lit[len(lit) // 2], any(px[i] < 255 for i in range(3, len(px), 4))
+
+    fx_tex = [p.name for p in files if "/FX/" in p.as_posix() and p.name.endswith(".Texture.dxt")]
+    pink = next(n for n in fx_tex if n.startswith("Nyx_") and not n.startswith("Nyx_00ff00_"))
+    (r, g, b, _a), has_alpha = colour(pink)
+    assert r > 3 * g and b > 3 * g and has_alpha                         # pink, alpha kept
+    green = next(n for n in fx_tex if n.startswith("Nyx_00ff00_"))
+    (r, g, b, _a), _ = colour(green)
+    assert g > 3 * r and g > 3 * b                                        # the named tint wins
+
+
+@needs_corpus
+@needs_install
+def test_effect_colour_ramps_take_the_tint_at_their_own_brightness(tmp_path):
+    """Fire is orange through the effect's colour ramps (HDR multipliers on
+    the texture), not only the texture: a recolour must reach them too."""
+    import struct
+
+    from rsmm.engine import cooked, corpus
+    from rsmm.sdk.kinds.heros import _RAMP_TAILS, _recolour_effect
+    rel = "FX/Settings/Heroes/Hero_Piper_FX/"
+    raw = next(corpus.read(r) for r in corpus.rels(rel, ".ScheduledVfxSettings.gen")
+               if b"oC3dParticleEffectorColorRampSettings" in corpus.read(r))
+    out, skipped = _recolour_effect(raw, (1.0, 0.0, 1.0))
+    assert skipped == 0
+    before, after = cooked.parse(raw), cooked.parse(out)
+    names = [c.name for c in after.classes]
+    ci = names.index("oC3dParticleEffectorColorRampSettings")
+    keys = 0
+    for s0, s1 in zip(before.sections[1:], after.sections[1:], strict=True):
+        if struct.unpack_from("<I", s1.payload, 0)[0] != ci:
+            assert s0.payload == s1.payload          # nothing else moves
+            continue
+        for k in range(struct.unpack_from("<I", s1.payload, 17)[0]):
+            r0, g0, b0, a0 = struct.unpack_from("<4f", s0.payload, 25 + 20 * k)
+            r1, g1, b1, a1 = struct.unpack_from("<4f", s1.payload, 25 + 20 * k)
+            assert (r1, g1, b1, a1) == pytest.approx((max(r0, g0, b0), 0.0, max(r0, g0, b0), a0))
+            keys += 1
+    assert keys and "oC3dTrailEffectorColorRampSettings" in _RAMP_TAILS

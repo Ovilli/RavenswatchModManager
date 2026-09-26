@@ -79,13 +79,25 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         ability/talent icon and HUD image, and the book's portraits, skin icons
         and codex pictures, each under a name of the hero's own. Whatever is
         still pink in game is what is left to replace (story pages the
-        ``memoirs`` field leaves out read as pages still to write); ``albedo``,
+        ``memoirs`` field leaves out, and skin slots no outfit takes, read as
+        still to write/design); ``albedo``,
         ``weapons`` and ``portrait`` take precedence. ⚠ Many UI images under
         new names: a new-name UI texture hung level load once (a POI icon).
     ``memoirs`` (list)  ``[{title, text}]``: the book's story pages, in
         order (Beowulf has 7). A page left out keeps the base's story, or
-        reads as a page still to write when ``placeholder`` is set. The
-        narration audio stays the base's.
+        reads as a page still to write when ``placeholder`` is set. Once any
+        page is the hero's own, the pages lose the base's voice-over (the
+        recordings are named after the base) and are silent.
+    ``effects`` (table)  ``{"<effect>" | "*" = {tint = "#RRGGBB"}}``: particle
+        effects of the hero's own. Every effect in the base's own FX folder
+        (Beowulf: 99) is copied under ``<id>_<name>`` with its own materials and
+        textures, recoloured to the tint at their own brightness (shapes and
+        transparency kept): colour textures (never masks, noise or surface
+        data), the materials' colour uniforms, and the effect's own colour
+        ramps and constants, which are what make fire orange. ``"*"`` tints them all; an effect named
+        by itself (``Beowulf_Shockwave_Front_01``) wins. With ``placeholder``,
+        effects given no tint are pink. Effects shared with other heroes
+        (``Common_FX``) are never touched.
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
         entities name (a VFX, a sound, a mesh), swapped in them only; a new
         resource's preloads are borrowed from a shipped cache.
@@ -123,7 +135,7 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
-                     "skills", "placeholder", "memoirs"})
+                     "skills", "placeholder", "memoirs", "effects"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -257,7 +269,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     skills = _table(f.get("skills"), "skills", hid)
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
                or animations or outfits or values or references or abilities or skills
-               or f.get("placeholder"))
+               or f.get("placeholder") or f.get("effects"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
 
@@ -439,6 +451,18 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             art.append(f"Ui|{new}|oCTexture")
             swaps[t] = new
 
+    # Effects of the hero's own: every particle effect in the base's own FX
+    # folder is copied under this hero's name with its own materials and
+    # textures, recoloured by `effects` tints, or pink under a placeholder.
+    effects = _table(f.get("effects"), "effects", hid)
+    if placeholder or effects:
+        fx_swaps, fx_art, fx_notes = _own_effects(b, hid, effects, bool(placeholder), put)
+        for k, v in fx_swaps.items():
+            swaps.setdefault(k, v)
+        art.extend(fx_art)
+        for n in fx_notes:
+            print(f"warning: hero {hid}: {n}", file=sys.stderr)
+
     # 2. The gameplay family, renamed, reached through an alias of its own.
     R = H.Renamer(b, f"Hero_{hid}", swaps) if own else None
     default = R.entity_ref(b.default_skin) if R is not None else None
@@ -553,6 +577,13 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                 mem_pairs[hswap[key]] = str(page[fld])
                 mem_bank = bank
     if mem_pairs:
+        # The pages' voice-over: `<Hero>/<Hero>_Memoir{}_Desc` names the
+        # recordings in Voice_<lang>.bank (Beowulf_Memoir1_Desc ...), so the
+        # base's pages would still be READ ALOUD over the new text. A name of
+        # the hero's own has no recordings: its pages are silent.
+        for t in (t for _s, _o, t in ES.list_strings(herodef)):
+            if re.fullmatch(r"[^\\/]+/[^\\/]+_Memoir\{\}_Desc", t):
+                hswap[t] = f"{hid}/{hid}_Memoir{{}}_Desc"
         text_rows[mem_bank] = TP.appended_rows(_install_bank(game, mem_bank), mem_pairs)
         banks = TP.append_bank_keys(_install_bank(game, mem_bank), mem_pairs)
         dec = f"Text/{mem_bank}.LocalText.gen"
@@ -608,6 +639,26 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                         skins_bank_pairs[key] = oname
             elif f.get("model"):
                 slot_of[path] = default
+            if n > len(outfit_refs) and placeholder:
+                # A slot still showing the base's skin: its name and blurb read
+                # as a skin still to design, like the pink art.
+                for k in range(1, len(ss)):
+                    t = ss[k]
+                    if not ss[k - 1].endswith("~GAM.xls") or t in hswap:
+                        continue
+                    part = ("Title" if t.endswith("_Title") else
+                            "Description" if t.endswith("_Description") else None)
+                    if part is None:
+                        continue
+                    skins_bank = skins_bank or ss[k - 1]
+                    if ss[k - 1] != skins_bank:
+                        continue
+                    key = f"Hero_{hid}_Skin{n}_{part}"
+                    hswap[t] = key
+                    skins_bank_pairs[key] = (
+                        f"[Skin {n}: to be designed]" if part == "Title" else
+                        f"PLACEHOLDER: {f.get('name') or hid}'s skin {n} is still "
+                        f"to be designed.")
         if skins_bank_pairs:
             text_rows[skins_bank] = TP.appended_rows(_install_bank(game, skins_bank),
                                                      skins_bank_pairs)
@@ -816,6 +867,252 @@ def _table(v, what: str, hid: str) -> dict:
     if not isinstance(v, dict):
         raise ContentError(f"hero {hid}: {what!r} is a table (name = file or {{...}})")
     return v
+
+
+#: The placeholder colour: an effect still showing the base's look is pink.
+PLACEHOLDER_TINT = (1.0, 0.0, 1.0)
+
+
+def _tint(value, hid: str, what: str) -> tuple[float, float, float]:
+    """``"#7ad0ff"`` or ``[0.48, 0.82, 1.0]`` -> an (r, g, b) in 0..1."""
+    if isinstance(value, str) and re.fullmatch(r"#?[0-9A-Fa-f]{6}", value):
+        h = value.lstrip("#")
+        return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    if isinstance(value, (list, tuple)) and len(value) in (3, 4) and all(
+            isinstance(x, (int, float)) and 0 <= x <= 1 for x in value[:3]):
+        return tuple(float(x) for x in value[:3])
+    raise ContentError(f"hero {hid}: {what}: tint is \"#RRGGBB\" or [r, g, b] in 0..1")
+
+
+def _tinted_texture(cooked_raw: bytes, rgb, max_edge: int = 512) -> bytes | None:
+    """A recoloured copy of a cooked texture: every pixel becomes ``rgb`` at
+    its own brightness, alpha untouched, so an effect keeps its shapes (rings,
+    sparks, masks) in the new colour. None when the format cannot be decoded."""
+    from ...engine import cooked, icon_decode
+    from ...engine import prop_cook as PC
+    from ...engine.cooked_schemas.texture import TextureHandler
+    try:
+        sch = TextureHandler.parse_payload(cooked.parse(cooked_raw).sections[-1].payload)
+        px = icon_decode.decode_to_rgba(sch.pixels, sch.width, sch.height, sch.format_name)
+    except (ValueError, KeyError, IndexError):
+        return None
+    px, w, h = icon_decode.resize_to_max(px, sch.width, sch.height, max_edge)
+    r, g, b = rgb
+    out = bytearray(len(px))
+    for i in range(0, len(px), 4):
+        lum = max(px[i], px[i + 1], px[i + 2]) / 255
+        out[i] = int(r * lum * 255)
+        out[i + 1] = int(g * lum * 255)
+        out[i + 2] = int(b * lum * 255)
+        out[i + 3] = px[i + 3]
+    return PC.cook_texture(icon_decode.rgba_to_png(bytes(out), w, h))
+
+
+#: Colour classes inside an effect, by the verified layout of their section
+#: (all 6859 in the shipped game, 2026-09-26): u32 class, u32, u8, f32 t0,
+#: f32 t1, u32 n, n x {f32 time, f32 r, g, b, a}, then an optional u32 tail.
+_RAMP_TAILS = {"oC3dParticleEffectorColorRampSettings": (4,),
+               "oC3dTrailEffectorColorRampSettings": (0, 4),
+               "oC3dBeamEffectorColorRampSetting": (0, 4)}
+#: Material texture slots that hold COLOUR. Masks, noise that distorts, and
+#: surface data (MRA, normals) are data a shader reads channel by channel: a
+#: recolour would break shapes or lighting, so they are never touched.
+_COLOUR_SLOTS = frozenset({"u_texture", "u_Texture_A", "u_Texture_B", "u_ALB", "u_EMI"})
+#: Material colour uniforms: lstr name, u32 hash, f32 r, g, b, a, MARK_END.
+_COLOUR_UNIFORMS = ("u_color", "u_color_a", "u_color_b", "u_fresnel_color")
+
+
+def _texture_slots(mat_raw: bytes) -> dict[str, str]:
+    """Texture path -> the uniform it is bound to (``u_Texture_Mask``...): a
+    material lists ``<uniform>, <root>, <path>``."""
+    from ...engine import entity_strings as ES
+    ss = [t for _s, _o, t in ES.list_strings(mat_raw)]
+    return {t: ss[i - 2] for i, t in enumerate(ss)
+            if i >= 2 and t.lower().endswith((".png", ".tga"))}
+
+
+def _recolour_uniforms(mat_raw: bytes, rgb) -> bytes:
+    """Recolour a material's colour uniforms to ``rgb`` at their brightness,
+    alpha kept. Only a uniform whose value is followed by the section end
+    marker (a 4-float colour, as laid out in the shipped materials) is touched."""
+    import struct
+    out = bytearray(mat_raw)
+    for name in _COLOUR_UNIFORMS:
+        n = name.encode()
+        tag = struct.pack("<I", len(n)) + n
+        at = out.find(tag)
+        while at != -1:
+            v = at + len(tag) + 4
+            if out[v + 16:v + 20] == b"\x22\x22\xbb\xaa":
+                r0, g0, b0 = struct.unpack_from("<3f", out, v)
+                m = max(r0, g0, b0)
+                struct.pack_into("<3f", out, v, rgb[0] * m, rgb[1] * m, rgb[2] * m)
+            at = out.find(tag, at + 1)
+    return bytes(out)
+
+
+#: A single colour: u32 class, u8, f32 r, g, b, a, u32 (25 bytes).
+_COLOUR_CONST = "oC3dParticleEffectorColorConstantSettings"
+
+
+def _recolour_effect(raw: bytes, rgb) -> tuple[bytes, int]:
+    """Recolour an effect's own colour keys (particle, trail and beam colour
+    ramps, constant colours) to ``rgb`` at each key's brightness. They are
+    what makes fire orange whatever the texture: HDR multipliers (Beowulf's
+    are up to ~4.0) on top of it. Alpha is kept. Section 0 is the file's
+    class-index table and is never a colour. Returns the bytes and how many
+    colour-class sections did not match the layout (left untouched)."""
+    import struct
+
+    from ...engine import cooked
+    cf = cooked.parse(raw)
+    names = [c.name for c in cf.classes]
+    ids = {names.index(n): n for n in (*_RAMP_TAILS, _COLOUR_CONST) if n in names}
+    skipped = 0
+
+    def paint(p: bytearray, at: int) -> None:
+        r0, g0, b0 = struct.unpack_from("<3f", p, at)
+        m = max(r0, g0, b0)
+        struct.pack_into("<3f", p, at, rgb[0] * m, rgb[1] * m, rgb[2] * m)
+
+    for i, sec in enumerate(cf.sections):
+        p = sec.payload
+        if i == 0 or len(p) < 4 or struct.unpack_from("<I", p, 0)[0] not in ids:
+            continue
+        name = ids[struct.unpack_from("<I", p, 0)[0]]
+        out = bytearray(p)
+        if name == _COLOUR_CONST:
+            if len(p) != 25:
+                skipped += 1
+                continue
+            paint(out, 5)
+        else:
+            n = struct.unpack_from("<I", p, 17)[0] if len(p) >= 21 else -1
+            if not (0 <= n < 64 and any(len(p) == 21 + 20 * n + t for t in _RAMP_TAILS[name])):
+                skipped += 1
+                continue
+            for k in range(n):
+                paint(out, 21 + 20 * k + 4)
+        cf.sections[i] = cooked.Section(payload=bytes(out))
+    return cooked.emit(cf), skipped
+
+
+def _own_effects(b, hid: str, effects: dict, placeholder: bool, put):
+    """``(swaps, preload lines, notes)`` giving the hero its own copies of the
+    base's own particle effects (``Settings\\Heroes\\<Base>_FX\\*.vfx.ot``).
+
+    An effect file names no path of its own and reaches its look only through
+    its materials (``Materials\\X.mat.ot``), which reach textures; so each
+    effect is copied under ``<id>_<name>`` in the same folder (a new cooked path
+    needs a shipped sibling), its materials likewise, and each texture replaced
+    by a copy recoloured by the effect's tint (``effects."<name>"`` or
+    ``effects."*"``, else pink under a placeholder, else untouched). Shared
+    effects (``Common_FX``, other heroes') are left alone: other heroes play
+    them too.
+    """
+    from ...engine import corpus
+    from ...engine import entity_strings as ES
+    from ...engine import hero_cook as H
+
+    folder = f"Settings\\Heroes\\{b.stem}_FX\\"
+    own = sorted({t for ref in b.family
+                  for _s, _o, t in ES.list_strings(corpus.read(H.entity_rel(ref)))
+                  if t.startswith(folder) and t.endswith(".vfx.ot")})
+    known = {v.rsplit("\\", 1)[-1][:-len(".vfx.ot")] for v in own}
+    unknown = sorted(set(effects) - known - {"*"})
+    if unknown:
+        raise ContentError(f"hero {hid}: 'effects' names effects {b.stem} does not play: "
+                           f"{', '.join(map(repr, unknown))}")
+
+    def spec_of(name: str):
+        spec = effects.get(name, effects.get("*"))
+        if isinstance(spec, dict):
+            bad = sorted(set(spec) - {"tint"})
+            if bad:
+                raise ContentError(f"hero {hid}: effect {name!r}: unsupported field(s) "
+                                   f"{bad}; known: ['tint']")
+            spec = spec.get("tint")
+        if spec is not None:
+            return _tint(spec, hid, f"effect {name!r}")
+        return PLACEHOLDER_TINT if placeholder else None
+
+    def cooked_path(root: str, ref: str, cls: str) -> str:
+        return f"{root}/{ref.replace(chr(92), '/')}.{cls}"
+
+    def roots(raw: bytes) -> dict[str, str]:
+        """Every path in a cooked file -> the root written just before it
+        (``FX``, ``3D``, ...). Effect textures are not all under FX: Volcanic
+        Rage's rocks borrow a level's ``3D`` rock atlas (2026-09-26)."""
+        ss = [t for _s, _o, t in ES.list_strings(raw)]
+        return {t: ss[i - 1] for i, t in enumerate(ss) if i and "." in t}
+
+    def renamed(ref: str, tag: str) -> str:
+        folder_, _, name = ref.rpartition("\\")
+        name = f"{hid}_{name}" if tag == "ff00ff" else f"{hid}_{tag}_{name}"
+        return f"{folder_}\\{name}" if folder_ else name
+
+    swaps: dict[str, str] = {}
+    lines: list[str] = []
+    notes: list[str] = []
+    done_tex: dict[tuple, str | None] = {}
+    done_mat: dict[tuple, str] = {}
+
+    def texture(t: str, root: str, rgb, tag: str) -> str:
+        if (t, tag) not in done_tex:
+            traw = corpus.read(cooked_path(root, t, "Texture.dxt"))
+            blob = _tinted_texture(traw, rgb) if traw else None
+            if blob is None:
+                notes.append(f"texture {root}\\{t} could not be recoloured; kept as is")
+                done_tex[(t, tag)] = None
+            else:
+                new = renamed(t, tag)
+                put(cooked_path(root, new, "Texture.dxt"), blob)
+                lines.append(f"{root}|{new}|oCTexture")
+                done_tex[(t, tag)] = new
+        return done_tex[(t, tag)] or t
+
+    def material(m: str, root: str, rgb, tag: str) -> str:
+        if (m, tag) in done_mat:
+            return done_mat[(m, tag)]
+        mraw = corpus.read(cooked_path(root, m, "Material.gen"))
+        if mraw is None:
+            notes.append(f"material {root}\\{m} is not in the game files; kept as is")
+            done_mat[(m, tag)] = m
+            return m
+        where = roots(mraw)
+        slot = _texture_slots(mraw)
+        new_raw, _n = ES.rewrite_strings(
+            mraw, lambda s: texture(s, where.get(s, "FX"), rgb, tag)
+            if s.lower().endswith((".png", ".tga")) and slot.get(s) in _COLOUR_SLOTS else s)
+        new_raw = _recolour_uniforms(new_raw, rgb)
+        new_m = renamed(m, tag)
+        put(cooked_path(root, new_m, "Material.gen"), new_raw)
+        lines.append(f"{root}|{new_m}|oCMaterial")
+        done_mat[(m, tag)] = new_m
+        return new_m
+
+    for vfx in own:
+        rgb = spec_of(vfx.rsplit("\\", 1)[-1][:-len(".vfx.ot")])
+        if rgb is None:
+            continue
+        raw = corpus.read(cooked_path("FX", vfx, "ScheduledVfxSettings.gen"))
+        if raw is None:
+            notes.append(f"effect {vfx} is not in the game files; left as the base's")
+            continue
+        tag = "".join(f"{int(x * 255):02x}" for x in rgb)
+        where = roots(raw)
+        new_raw, _n = ES.rewrite_strings(
+            raw, lambda s, rgb=rgb, tag=tag, where=where: material(s, where.get(s, "FX"), rgb, tag)
+            if s.endswith(".mat.ot") else s)
+        new_raw, skipped = _recolour_effect(new_raw, rgb)
+        if skipped:
+            notes.append(f"effect {vfx}: {skipped} colour section(s) of an unknown "
+                         f"layout kept as is")
+        new_vfx = f"{vfx.rsplit(chr(92), 1)[0]}\\{hid}_{vfx.rsplit(chr(92), 1)[1]}"
+        put(cooked_path("FX", new_vfx, "ScheduledVfxSettings.gen"), new_raw)
+        lines.append(f"FX|{new_vfx}|oCScheduledVfxSettings")
+        swaps[vfx] = new_vfx
+    return swaps, lines, notes
 
 
 def _memoir_keys(herodef: bytes) -> list[tuple[str, str, str]]:
