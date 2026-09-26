@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { getApiUrl } from '../lib/api-url';
+import { PAGE_UPDATED, latest } from '../lib/page-dates';
+import { getLatestRelease } from '../lib/releases';
 
 const BASE = 'https://rsmm.me';
 const apiUrl = getApiUrl();
@@ -40,45 +42,43 @@ async function fetchEntries(basePath: string): Promise<Entry[]> {
 // Content-bearing public routes only — app/auth/account screens are excluded
 // (they hold no publisher content and must not be tied to ad serving).
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const staticRoutes = [
-    '',
-    '/download',
-    '/registry',
-    '/c',
-    '/guides',
-    '/modding',
-    '/about',
-    '/contact',
-    '/privacy',
-    '/legal',
-    '/dmca',
-  ].map((path) => ({
+  const [mods, collections, guides, release] = await Promise.all([
+    fetchEntries('/api/mods'),
+    fetchEntries('/api/collections'),
+    fetchEntries('/api/guides'),
+    getLatestRelease(),
+  ]);
+
+  // A static route's lastmod is its own copy's date (PAGE_UPDATED), or — for a
+  // page that lists data — the newest entry it shows, whichever is later. Both
+  // only move when the page really changes, unlike `now`, which Google learns
+  // to ignore.
+  const listed = mods.filter((m) => m.summary?.trim());
+  const shows: Record<string, (string | undefined | null)[]> = {
+    '': listed.map((m) => m.updatedAt),
+    '/registry': listed.map((m) => m.updatedAt),
+    '/c': collections.map((c) => c.updatedAt),
+    '/guides': guides.map((g) => g.updatedAt),
+    '/download': [release.publishedAt],
+  };
+  const staticRoutes = Object.entries(PAGE_UPDATED).map(([path, { date }]) => ({
     url: `${BASE}${path}`,
-    // No lastModified: stamping `now` on every request is a date that always
-    // changes, and Google learns to ignore a sitemap's lastmod once it does.
+    lastModified: latest(new Date(date), shows[path] ?? []),
     changeFrequency: (path === '' || path === '/registry' || path === '/c' ? 'daily' : 'monthly') as
       | 'daily'
       | 'monthly',
     priority: path === '' ? 1 : 0.7,
   }));
 
-  const [mods, collections, guides] = await Promise.all([
-    fetchEntries('/api/mods'),
-    fetchEntries('/api/collections'),
-    fetchEntries('/api/guides'),
-  ]);
-
   // Mods without an author-written summary are noindexed as thin content
   // (registry/[slug]/layout.tsx) — listing them in the sitemap would send
   // Google a mixed "index this / don't index this" signal, so leave them out.
-  const modRoutes = mods
-    .filter((m) => m.summary?.trim())
-    .map((m) => ({
-      url: `${BASE}/registry/${m.slug}`,
-      lastModified: m.updatedAt ? new Date(m.updatedAt) : undefined,
-      changeFrequency: 'weekly' as const,
-      priority: 0.6,
-    }));
+  const modRoutes = listed.map((m) => ({
+    url: `${BASE}/registry/${m.slug}`,
+    lastModified: m.updatedAt ? new Date(m.updatedAt) : undefined,
+    changeFrequency: 'weekly' as const,
+    priority: 0.6,
+  }));
 
   const collectionRoutes = collections.map((c) => ({
     url: `${BASE}/c/${c.slug}`,
