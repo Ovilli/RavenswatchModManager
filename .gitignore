@@ -102,3 +102,10 @@ docs/_re/out_new/candidates2/
 # RE / pattern-db scratch backups
 *.bak_*
 *.rsmm.bak
+
+# Coverage output (pytest --cov)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+coverage.json
