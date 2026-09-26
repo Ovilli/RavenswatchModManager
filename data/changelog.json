@@ -3,6 +3,15 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 23,
+      "date": "2026-09-26",
+      "summary": "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter.",
+      "highlights": [
+        "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter."
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 22,
       "date": "2026-09-26",
       "summary": "…",
