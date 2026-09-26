@@ -6,22 +6,28 @@ import { PAGE_UPDATED } from '../lib/page-dates';
 
 const APP = join(__dirname);
 
-/** Last commit date touching a segment's own page/layout, or null without git history. */
+function git(args: string[]): string | null {
+  try {
+    return execFileSync('git', args, { cwd: APP, encoding: 'utf8' }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// CI checks out depth 1, where every file's "last commit" is the checkout
+// commit itself — so the answer is not missing, it is WRONG (every page reads
+// as edited today). Only a full history can say when a page last changed.
+const HISTORY = git(['rev-parse', '--is-shallow-repository']) === 'false';
+
+/** Last commit date touching a segment's own page/layout, or null without full history. */
 function gitDate(dir: string): string | null {
+  if (!HISTORY) return null;
   const files = ['page.tsx', 'layout.tsx']
     .map((f) => join(APP, dir, f))
     .filter((f) => existsSync(f))
     // The root layout wraps every page; only the home page's own file counts.
     .filter((f) => dir !== '.' || f.endsWith('page.tsx'));
-  try {
-    const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', ...files], {
-      cwd: APP,
-      encoding: 'utf8',
-    }).trim();
-    return out || null;
-  } catch {
-    return null;
-  }
+  return git(['log', '-1', '--format=%cs', '--', ...files]);
 }
 
 describe('PAGE_UPDATED', () => {
@@ -29,7 +35,7 @@ describe('PAGE_UPDATED', () => {
     it(`${path || '/'} is current`, () => {
       expect(existsSync(join(APP, dir, 'page.tsx')), `${dir}/page.tsx`).toBe(true);
       const committed = gitDate(dir);
-      // A shallow clone may not reach the commit; the full-history run catches it.
+      // No full history (CI's shallow clone): a local run catches a stale date.
       if (!committed) return;
       expect(
         date >= committed,
