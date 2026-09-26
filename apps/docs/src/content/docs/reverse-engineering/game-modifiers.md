@@ -83,16 +83,32 @@ identity + `Difficulty`, register via `UsedRscList`. No versioned-reader wall
 
 ## Lua API (shipped)
 
-`R.modifier` reads modifier/difficulty state by name through the entity-value
-store (`R.entity.value(key)` → `EntityValue_Get(hero+0x2f8, out, key)`, inline f32):
+`R.modifier` reads modifier/difficulty state by name. The values live in the
+**global scene context** (the "New Game Plus" group of the entity-value
+registry), not on the hero — read from the hero's store every one of them came
+back `0.0` in game. So `R.modifier` goes through `R.game`:
 
 ```lua
 R.modifier.active("No minimap")        -- true if the toggle is on this run
-R.modifier.value("Game Difficulty")    -- numeric value (or nil)
+R.modifier.value("Game Difficulty")    -- numeric value, or nil
+R.modifier.why()                       -- why the last read was nil
 R.modifier.names()                     -- known modifier/scalar names
 ```
 
-Read-only — it lets a mod gate custom logic on modifier state.
+`SceneContextValue_Find(ctx, key)` returns the map entry's **record**, not a
+value union. Read off the engine's own setter (`FUN_1402091a0` →
+`FUN_140716470` → `FUN_140706660`) and named by RTTI:
+
+| Offset | Field |
+|--------|-------|
+| `+0x00` | `oCGlobalEntityValueSettings*` |
+| `+0x08` | `EntityCpntValueSignal<oCEntityValueUnion const&>` (change signal) |
+| `+0x30` | `oCEntityValueUnion` — `+0x08` inline tag (`4`), `+0x10` value, `+0x18` type byte (`0` = f32, `1` = int, `10` = unset) |
+
+The decode follows the union's own type byte. The write side
+(`R.modifier.set`) still targets the hero store and is experimental: writing the
+global context means calling the engine's setter, which fires the change signal
+and may replicate to peers.
 
 ## SDK kind (shipped)
 

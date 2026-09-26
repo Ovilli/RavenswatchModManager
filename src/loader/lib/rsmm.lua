@@ -1184,9 +1184,11 @@ end
 --   R.modifier.active("No minimap")      -- true if the toggle is on this run
 --   R.modifier.names()                   -- known modifier/scalar names (sorted)
 --
--- NOTE: read-only and pending in-game verification that the modifier state lives
--- on the hero's value store (vs a global game entity); a wrong store just makes
--- every read return 0/nil, never faults.
+-- These live in the GLOBAL scene context ("New Game Plus" group), not on the
+-- hero: read from the hero store, every one of them came back 0.0 in game
+-- (2026-09-19). So they go through R.game, and when that context is not
+-- reachable the answer is nil (R.modifier.why() says why) — never the hero
+-- store's confident, wrong 0.
 R.modifier = {}
 
 local _MODIFIER_KEYS = {
@@ -1219,8 +1221,11 @@ function R.modifier.value(name)
         R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
         return nil
     end
-    return R.entity.value(key)
+    return R.game.get_key(key)
 end
+
+-- Why the last R.modifier read returned nil (R.game's reason), or nil.
+function R.modifier.why() return R.game.why() end
 
 -- True if a toggle modifier is active this run (value present and non-zero).
 function R.modifier.active(name)
@@ -1237,7 +1242,7 @@ function R.modifier.names()
 end
 
 -- Read a raw entity-value key the name table doesn't cover (forward-compat).
-function R.modifier.value_by_key(key) return R.entity.value(key) end
+function R.modifier.value_by_key(key) return R.game.get_key(key) end
 
 -- HOW MANY MODIFIERS CAN ACTUALLY BE SELECTED — the cap probe.
 --
@@ -1443,9 +1448,13 @@ end
 --
 -- Three honest caveats, none of which this code can check for you:
 --
---  1. WHICH STORE. R.modifier.value already reads the HERO's store, and whether
---     run modifiers actually live there (rather than on a global game entity)
---     has never been proven in-game — a wrong store reads 0 and writes nowhere.
+--  1. WRONG STORE, KNOWN. This writes the HERO's store, and the run modifiers
+--     do not live there: they are in the global scene context (read 0.0 from
+--     the hero in game 2026-09-19; the engine's own setter FUN_1402091a0 writes
+--     the global one, 2026-09-26). R.modifier.value now reads the global
+--     context, so it will NOT see a value written here. Writing the global one
+--     means calling that setter, which fires the value's change signal and may
+--     replicate to peers -- not done until that is decided on purpose.
 --  2. WHEN IT IS READ. Only a modifier the engine reads LIVE can be turned on
 --     mid-run. "One chapter", "Day only" and "Random hero at map start" are
 --     consumed at map generation, so setting them after a run has begun changes

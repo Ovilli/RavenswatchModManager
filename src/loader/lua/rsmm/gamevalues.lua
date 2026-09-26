@@ -86,8 +86,24 @@ local SC_EXTENT_OFF = 0xb0
 -- An extent far past this is not a hash map, it is a mis-read: the whole
 -- registry is ~117 values, and the shipped contexts run to a few hundred.
 local SC_EXTENT_MAX = 0x1000000
-local EV_UNION_INLINE_OFF = 0x08   -- on the union the reader RETURNS
+-- SceneContextValue_Find does NOT return a union. It returns the map entry's
+-- RECORD, and the union is embedded in it at +0x30. Read off the engine's own
+-- setter (2026-09-26, static): FUN_1402091a0 builds a union and hands it to
+-- FUN_140716470 -> FUN_140706660 with the pointer its lookup FUN_1401c9670
+-- returned -- a byte-for-byte twin of SceneContextValue_Find -- and that code
+-- compares/copies the value at record+0x30 and fires the signal at record+8.
+-- RTTI names both fields a 2026-09-19 dump saw:
+--   record+0x00  oCGlobalEntityValueSettings*          (vftable 0x140f11150)
+--   record+0x08  EntityCpntValueSignal<oCEntityValueUnion const&> (0x140f10f48)
+--   record+0x30  oCEntityValueUnion: +0x08 inline tag (4), +0x10 value,
+--                +0x18 u8 TYPE (0 = f32, 1 = int; 10 = unset, per the setters)
+-- Reading the tag at record+0x08 -- inside the signal -- is why every value,
+-- "Current chapter" included, reported "did not come back inline".
+local EV_RECORD_UNION_OFF = 0x30
+local EV_UNION_INLINE_OFF = 0x08
 local EV_UNION_VALUE_OFF  = 0x10
+local EV_UNION_TYPE_OFF   = 0x18
+local EV_TYPE_F32, EV_TYPE_INT = 0, 1
 
 local M = {}
 
@@ -296,18 +312,14 @@ function R.game.why() return _why end
 --- Read one registered value by slug. Returns a number (or boolean for an
 --- `is_`/`can_` value), or nil when the context is unavailable or the value is
 --- not held inline. Never raises.
-function R.game.get(name)
-    local spec = R.game.keys[name]
-    if not spec then
-        R.log("[rsmm.game] unknown value: " .. tostring(name))
-        return nil
-    end
+-- One read by raw key. `label` only names the value in why().
+local function _read_key(key, label)
     local p = _ctx()
     if not p then return nil end
-    -- Returns the union POINTER, or 0 when this context does not hold the key.
-    -- No out-buffer: that is the other shape's reader, and using it here is the
-    -- crash this file exists to not repeat.
-    local ok, u = pcall(R.engine.call, "SceneContextValue_Find", p, spec.key)
+    -- Returns the entry RECORD pointer, or 0 when this context does not hold
+    -- the key. No out-buffer: that is the other shape's reader, and using it
+    -- here is the crash this file exists to not repeat.
+    local ok, u = pcall(R.engine.call, "SceneContextValue_Find", p, key)
     if not ok then
         -- Two different causes, and saying only one of them sent the last
         -- debugging session down the wrong path: the symbol may not resolve on
@@ -315,20 +327,52 @@ function R.game.get(name)
         _why = string.format(
             "the engine read for %q failed — SceneContextValue_Find either does "
             .. "not resolve on this build or refused the call: %s",
-            name, tostring(u))
+            label, tostring(u))
         return nil
     end
     if type(u) ~= "number" or u == 0 or not _ptr_plausible(u) then
-        _why = string.format("%q is not held by this scene context", name)
+        _why = string.format("%q is not held by this scene context", label)
         return nil
     end
-    if I.read_u32(u + EV_UNION_INLINE_OFF) ~= EV_INLINE then
-        _why = string.format("%q did not come back inline", name)
+    local v = u + EV_RECORD_UNION_OFF
+    if I.read_u64(v + EV_UNION_INLINE_OFF) ~= EV_INLINE then
+        _why = string.format("%q did not come back inline", label)
+        return nil
+    end
+    -- The union says what it holds, so the harvested `kind` is not consulted.
+    local t = I.read_u8(v + EV_UNION_TYPE_OFF)
+    if t == EV_TYPE_F32 then
+        _why = nil
+        return I.read_f32(v + EV_UNION_VALUE_OFF)
+    elseif t ~= EV_TYPE_INT then
+        _why = string.format("%q holds union type %s, not int/f32", label, tostring(t))
+        return nil
+    end
+    local n = I.read_u32(v + EV_UNION_VALUE_OFF)
+    if n == nil then
+        _why = string.format("%q: value word unreadable", label)
         return nil
     end
     _why = nil
-    return (spec.kind == "int") and I.read_u32(u + EV_UNION_VALUE_OFF)
-                                 or I.read_f32(u + EV_UNION_VALUE_OFF)
+    return (n >= 0x80000000) and (n - 0x100000000) or n   -- signed int32
+end
+
+--- Read one registered value by slug. Returns a number, or nil when the
+--- context is unavailable or the value is not held inline (R.game.why() says
+--- which). Never raises.
+function R.game.get(name)
+    local spec = R.game.keys[name]
+    if not spec then
+        R.log("[rsmm.game] unknown value: " .. tostring(name))
+        return nil
+    end
+    return _read_key(spec.key, name)
+end
+
+--- Read by raw 32-bit key, for a key the slug table does not cover.
+function R.game.get_key(key)
+    if type(key) ~= "number" then return nil end
+    return _read_key(key, string.format("0x%08x", key))
 end
 
 --- Same as get, but returns a boolean. For the many `Is ...` / `Can ...`
@@ -373,15 +417,8 @@ function R.game.raw(name)
         return nil
     end
     if R.debug and R.debug.dump then
-        R.debug.dump(u - 0x08, 0x30, "game." .. name)
-        -- 2026-09-19: on this build the word at u+0 is a pointer to an object
-        -- (vftable 0x140f11150) for EVERY key read, including "Current
-        -- chapter", and u+8 is not the inline sentinel. The value is expected
-        -- inside that object, so dump it too.
-        local obj = I.read_u64(u)
-        if obj and _ptr_plausible(obj) then
-            R.debug.dump(obj, 0x40, "game." .. name .. " *u")
-        end
+        -- The whole record: settings ptr, signal, and the union at +0x30.
+        R.debug.dump(u, 0x50, "game." .. name)
     end
     return u
 end

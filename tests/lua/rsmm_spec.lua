@@ -747,7 +747,11 @@ do
     R.stat.set("attack_power", 500)
 end
 
--- 4c. R.modifier writes ride the same store, under their own names ---------
+-- 4c. R.modifier writes ride the hero store, under their own names ---------
+--
+-- ⚠ Reads now go to the GLOBAL scene context (R.game), which is where the run
+-- modifiers really live, so this block reads its own writes back from the hero
+-- store it wrote -- R.stat.get("modifier:<name>") -- not via R.modifier.value.
 --
 -- A run modifier is a CRC-keyed entry in the very store R.stat writes, so the
 -- write path is R.stat.stick and the only new thing is the name registration.
@@ -756,13 +760,12 @@ end
 do
     check(R.modifier.set("Not A Modifier", 1) == false, "unknown modifier must fail")
     check(R.modifier.set("No minimap", 1) == true, "a known toggle should apply")
-    check(R.modifier.value("No minimap") == 1, "...and read back through R.modifier")
-    check(R.modifier.active("No minimap") == true, "an applied toggle reads active")
+    check(R.stat.get("modifier:No minimap") == 1, "...and read back from the hero store")
 
     -- Scalars are f32 and toggles int; writing a ratio through an int field is
     -- how 1.5 becomes 1, so the kind is listed per modifier rather than guessed.
     check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a scalar should apply")
-    check(about(R.modifier.value("Global Xp Modifier"), 1.5),
+    check(about(R.stat.get("modifier:Global Xp Modifier"), 1.5),
           "a scalar keeps its fraction")
 
     -- set() is stick(), so a recompute clobber is re-asserted on the next
@@ -771,9 +774,9 @@ do
     local e = ovr_entry(0x99f27eac)              -- "No minimap"
     assert(e, "expected an override entry for the modifier")
     I.write_u32(e + 0x08 + 0x10, 0)              -- clobber -> off
-    check(R.modifier.value("No minimap") == 0, "clobber should be visible")
+    check(R.stat.get("modifier:No minimap") == 0, "clobber should be visible")
     fire("*", { source = "gameplay" })
-    check(R.modifier.value("No minimap") == 1, "modifier must re-assert after clobber")
+    check(R.stat.get("modifier:No minimap") == 1, "modifier must re-assert after clobber")
 
     check(R.modifier.clear("No minimap") == true, "clear should report it was pinned")
     check(R.modifier.clear("Not A Modifier") == false, "clearing an unknown name fails")
@@ -9082,16 +9085,51 @@ do
     wint(CTX + SC_MAP, MAP, 8)
     wint(CTX + SC_BASE, 0x1ff, 8)
     for i = 0, 0x200, 8 do wint(MAP + i, 0, 8) end   -- readable through the extent
-    wint(UNION + 0x08, 4, 4)              -- inline sentinel
-    wint(UNION + 0x10, 1, 4)              -- the value
+    -- The engine returns the map entry's RECORD, not a union (read off its
+    -- own setter 2026-09-26): settings ptr at +0, signal at +8, union at
+    -- +0x30 with the tag at +0x08, value at +0x10, type byte at +0x18. The
+    -- first two words carry the live values a 2026-09-19 dump showed, so a
+    -- reader that looks for the tag at +0x08 fails here exactly as it did in
+    -- game.
+    local REC = UNION
+    for i = 0, 0x58, 8 do wint(REC + i, 0, 8) end
+    wint(REC + 0x00, 0x64000000, 8)       -- oCGlobalEntityValueSettings*
+    wint(REC + 0x08, 0x140f10f48, 8)      -- signal vftable, NOT the tag
+    wint(REC + 0x38, 4, 8)                -- union: inline tag
+    wint(REC + 0x40, 1, 4)                -- union: value
+    wint(REC + 0x48, 1, 1)                -- union: type 1 = int
     shared[17] = CTX
     check(R.game.flag("is_in_overtime") == true,
           "a scene context reads through the matching reader, why: "
           .. tostring(R.game.why()))
     check(asked == 0x1cd79255, "...with the engine's own key for that value")
 
+    -- The union's own type decides the decode, not the harvested table:
+    -- is_in_overtime is listed as int, but a float union reads as a float.
+    wint(REC + 0x48, 0, 1)                -- type 0 = f32
+    I.write_f32(REC + 0x40, 1.5)
+    check(R.game.get("is_in_overtime") == 1.5, "a float union decodes as a float")
+    -- A negative int comes back signed.
+    wint(REC + 0x48, 1, 1)
+    wint(REC + 0x40, 0xffffffff, 4)
+    check(R.game.get("is_in_overtime") == -1, "an int union decodes signed")
+    -- An unset union (type 10, what the engine's ctor writes) is not a zero.
+    wint(REC + 0x48, 10, 1)
+    check(R.game.get("is_in_overtime") == nil, "an unset union reads nil")
+    check((R.game.why() or ""):find("union type 10", 1, true) ~= nil,
+          "...and why() names the type: " .. tostring(R.game.why()))
+    wint(REC + 0x48, 1, 1)
+    wint(REC + 0x40, 1, 4)
+
     -- A key this context does not hold comes back nil, not a wrong number.
     check(R.game.get("reroll_count") == nil, "an unheld key reads nil")
+
+    -- R.modifier reads THIS context by raw key (run modifiers are global, not
+    -- on the hero), and a modifier it does not hold is nil -- not the hero
+    -- store's 0.0, which read as "off" for every modifier in game.
+    check(R.game.get_key(0x1cd79255) == 1, "get_key reads the same record by raw key")
+    check(R.modifier.value("No minimap") == nil, "an unheld modifier reads nil, not 0")
+    check(R.modifier.why() ~= nil, "...and R.modifier.why() says why")
 
     shared[17] = nil
     engine["SceneContextValue_Find"] = nil
