@@ -113,9 +113,7 @@ def analyze() -> CompatReport:
             return False
         if not by_id[mid].enabled:
             return False
-        if mid in rep.auto_disabled:
-            return False
-        return True
+        return mid not in rep.auto_disabled
 
     # 2. Hard conflicts: pair both ways or one-sided.
     for s in rep.summaries:
@@ -158,7 +156,7 @@ def analyze() -> CompatReport:
                 graph[s.id].append(name)
 
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[str, int] = {k: WHITE for k in graph}
+    color: dict[str, int] = dict.fromkeys(graph, WHITE)
     stack: list[str] = []
 
     def dfs(node: str) -> None:
@@ -168,7 +166,7 @@ def analyze() -> CompatReport:
             if color.get(nxt, WHITE) == GRAY:
                 # Cycle: extract from stack
                 i = stack.index(nxt)
-                rep.cycles.append(stack[i:] + [nxt])
+                rep.cycles.append([*stack[i:], nxt])
             elif color.get(nxt, WHITE) == WHITE:
                 dfs(nxt)
         color[node] = BLACK

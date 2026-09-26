@@ -102,7 +102,7 @@ def test_clone_adds_one_row_keeping_source_identity(blob):
 
 def test_clone_remint_gives_unique_identity(blob):
     src = SC.find_skill(blob, "Attack Dive")
-    out, guid = SC.clone_skill(blob, "Attack Dive", "Repro", remint=True)
+    _out, guid = SC.clone_skill(blob, "Attack Dive", "Repro", remint=True)
     assert guid != blob[src.guid1_off:src.guid1_off + 16]
     # deterministic mint from the new name
     _, g2 = SC.clone_skill(blob, "Attack Dive", "Repro", remint=True)

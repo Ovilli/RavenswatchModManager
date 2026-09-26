@@ -80,7 +80,7 @@ def test_replace_lstr_unanchored_substring_not_matched():
 
 
 def test_find_lstrings():
-    found = dict((t, off) for off, t in C.find_lstrings(_blob()))
+    found = {t: off for off, t in C.find_lstrings(_blob())}
     assert "Green_Armor" in found
     assert "Objects\\UI_Object_GreenArmor.png" in found
     icons = C.find_lstrings(_blob(), contains="png")

@@ -83,7 +83,7 @@ def test_registry_rejects_an_unknown_field_with_a_suggestion():
 def test_registry_accepts_every_declared_field():
     cr = C.ContentRegistry(mod_id="M", experimental=True)
     for kind, fields in S.CONTENT_FIELDS.items():
-        cr.register(kind, id=f"{kind}_all", **{k: None for k in fields})
+        cr.register(kind, id=f"{kind}_all", **dict.fromkeys(fields))
 
 
 def test_unknown_keys_suggests_the_nearest_name():

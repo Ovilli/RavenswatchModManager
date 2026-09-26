@@ -198,7 +198,7 @@ def main() -> int:
         print(f"   anchors: {', '.join(hits)}")
         print("   " + ", ".join(sorted(names)[:12]) + (" ..." if len(names) > 12 else ""))
 
-    found = {n for n in used.values()}
+    found = set(used.values())
     missing = [k for k in KNOWN if k not in found]
     print(f"\nknown-name check: {len(KNOWN) - len(missing)}/{len(KNOWN)} found")
     for k in missing:

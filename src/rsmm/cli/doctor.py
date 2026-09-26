@@ -205,8 +205,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
         else:
             out.append(Result("OK", "asset_map.json covers the game's manifest"))
         return out
-    else:
-        out.append(Result("OK", "asset_map.json is fresh"))
+    out.append(Result("OK", "asset_map.json is fresh"))
     return out
 
 
@@ -964,7 +963,7 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
         try:
             _bh, base = _read_usedrsclist(bak)
         except (OSError, ValueError) as e:
-            return out + [Result("WARN", "UsedRscList.ot backup unreadable", str(e))]
+            return [*out, Result("WARN", "UsedRscList.ot backup unreadable", str(e))]
         extra = len(lines) - len(base)
         if extra < 0:
             out.append(Result("WARN",

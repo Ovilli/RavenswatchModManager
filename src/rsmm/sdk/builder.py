@@ -617,7 +617,7 @@ class ModBuilder:
                 elif isinstance(v, (int, float)):
                     out.append(f"{k} = {v}")
                 elif isinstance(v, list):
-                    rendered = ", ".join(f'"{str(x)}"' for x in v)
+                    rendered = ", ".join(f'"{x!s}"' for x in v)
                     out.append(f"{k} = [{rendered}]")
                 else:
                     out.append(f'{k} = "{v}"')

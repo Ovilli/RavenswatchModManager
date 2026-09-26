@@ -108,7 +108,7 @@ def resolve_class(pe: pefile.PE, raw: bytes, ib: int, class_name: str) -> dict |
             body = pe.get_data(col_rva, 0x18)
         except Exception:
             continue
-        sig, this_off, cd_off, ptd, pcd, pself = struct.unpack("<IIIIII", body)
+        _sig, this_off, _cd_off, ptd, _pcd, pself = struct.unpack("<IIIIII", body)
         if pself == col_rva and ptd == td_rva:
             cols.append((col_rva, this_off))
     if not cols:

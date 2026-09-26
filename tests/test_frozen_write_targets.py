@@ -62,7 +62,7 @@ def test_pack_output_escapes_the_bundle(frozen, tmp_path):
 
 def test_bundled_loader_dll_still_reads_from_the_bundle(frozen):
     """The other direction: DIST_DIR is a READ path and must not move."""
-    paths, mei = frozen
+    paths, _mei = frozen
     assert (paths.DIST_DIR / "winhttp.dll").read_bytes() == b"bundled loader"
 
 

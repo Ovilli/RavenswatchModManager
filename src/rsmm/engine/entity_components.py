@@ -240,7 +240,7 @@ def set_f32(record: bytes, old: float, new: float) -> bytes:
     layout is not what was measured, and several means the edit would be a
     guess about which one matters.
     """
-    hits = [o for o in range(0, len(record) - 3)
+    hits = [o for o in range(len(record) - 3)
             if abs(struct.unpack_from("<f", record, o)[0] - old) < 1e-4]
     if len(hits) != 1:
         raise EntityComponentError(
@@ -583,7 +583,7 @@ def resource_refs(entity_bytes: bytes) -> list[str]:
     for sec in cooked.parse(entity_bytes).sections[1:-1]:
         for _off, text in ES._scan_payload(sec.payload):
             low = text.lower()
-            if (low.endswith(".entity.ot") or low.endswith(".png")) and text not in out:
+            if (low.endswith((".entity.ot", ".png"))) and text not in out:
                 out.append(text)
     return out
 

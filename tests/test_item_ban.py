@@ -63,7 +63,7 @@ def test_ban_removes_entry_and_decrements_count():
     blob = _versiondef(IDS)
     out = A._patch_versiondef_gen(blob, [], {"Item_07"})
     assert out is not None
-    co, _end, cnt = A._find_mo_vector(out)
+    _co, _end, cnt = A._find_mo_vector(out)
     assert cnt == len(IDS) - 1
     assert "Item_07" not in _stems(out)
 
@@ -105,7 +105,7 @@ def test_add_and_ban_in_one_pass_keep_count_consistent():
     blob = _versiondef(IDS)
     new = "Objects\\Magical_Objects\\Epic\\Custom_Thing.entity.ot"
     out = A._patch_versiondef_gen(blob, [new], {"Item_02", "Item_11"})
-    co, _end, cnt = A._find_mo_vector(out)
+    _co, _end, cnt = A._find_mo_vector(out)
     stems = _stems(out)
     assert cnt == len(stems) == len(IDS) - 2 + 1
     assert "Custom_Thing" in stems

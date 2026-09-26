@@ -124,7 +124,7 @@ def replace_strings(cooked_bytes: bytes, mapping: dict[str, str],
                 f"must stay ASCII") from None
 
     cf = cooked.parse(cooked_bytes)
-    hits = {old: 0 for old in mapping}
+    hits = dict.fromkeys(mapping, 0)
     for sec in cf.sections:
         payload = sec.payload
         sites = _scan_payload(payload)

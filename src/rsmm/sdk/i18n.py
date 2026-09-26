@@ -75,7 +75,7 @@ class I18nBundle:
 
     def all_keys(self) -> set[str]:
         keys: set[str] = set()
-        for _loc, table in self.by_locale.items():
+        for table in self.by_locale.values():
             keys.update(table.keys())
         return keys
 

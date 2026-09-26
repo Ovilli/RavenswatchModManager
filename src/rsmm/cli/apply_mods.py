@@ -432,9 +432,7 @@ def is_skippable_asset(decoded: str) -> bool:
         return True
     # Cook sidecars (orientation transforms) travel next to a custom mesh but
     # are consumed by the cooker, not installed into the game.
-    if decoded.endswith(".rsmmcook"):
-        return True
-    return False
+    return decoded.endswith(".rsmmcook")
 
 
 #: FMOD sound banks live under `Audio/` as opaque containers. Unlike every
@@ -2356,7 +2354,7 @@ def _find_mo_vector(b: bytes) -> tuple[int, int, int] | None:
             return None
         return s, o + 4 + ln
 
-    for co in range(0, N - 4):
+    for co in range(N - 4):
         cnt = struct.unpack_from("<I", b, co)[0]
         if not (20 <= cnt <= 2000):
             continue

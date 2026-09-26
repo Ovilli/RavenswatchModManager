@@ -21,7 +21,7 @@ _MOD_ADDED = ["Ngum_Adllv!xrn-idlq", "Qdlqv!xrn-idlq", "3N!xrn"]
 
 
 def _manifest(path, lines):
-    path.write_text("\n".join([str(len(lines))] + lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join([str(len(lines)), *lines]) + "\n", encoding="utf-8")
 
 
 def _rebuild(tmp_path, monkeypatch, live_lines, pristine_lines):

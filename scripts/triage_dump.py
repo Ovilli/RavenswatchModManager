@@ -156,7 +156,7 @@ class Minidump:
         # MINIDUMP_EXCEPTION_STREAM: ThreadId u32, __align u32, then
         # MINIDUMP_EXCEPTION record at +8.
         er = rva + 8
-        code, flags, _rec, addr, nparams = struct.unpack_from("<IIQQI", self.buf, er)
+        code, _flags, _rec, addr, nparams = struct.unpack_from("<IIQQI", self.buf, er)
         params = struct.unpack_from("<15Q", self.buf, er + 8 + 8 + 8 + 4 + 4)
         # ThreadContext location descriptor follows the 152-byte exception record.
         ctx_off = er + 152

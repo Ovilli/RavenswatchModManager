@@ -350,7 +350,7 @@ def test_clone_prop_entity_repoints_every_lod_mesh():
     raw = (UNCOOKED / ENT_DONOR).read_bytes()
     meshes = {s for _a, _b, s in ES.list_strings(raw) if s.lower().endswith(".fbx")}
     assert len(meshes) >= 2, "donor should have a LOD chain to exercise"
-    out = PC.clone_prop_entity(raw, {m: "Scenery\\DarkHills\\Mine.fbx" for m in meshes})
+    out = PC.clone_prop_entity(raw, dict.fromkeys(meshes, "Scenery\\DarkHills\\Mine.fbx"))
     after = {s for _a, _b, s in ES.list_strings(out) if s.lower().endswith(".fbx")}
     assert after == {"Scenery\\DarkHills\\Mine.fbx"}, \
         "a LOD left pointing at the donor pops back to the wall block at range"

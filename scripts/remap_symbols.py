@@ -212,7 +212,7 @@ def main() -> int:
             corpus = fp.load_corpus(NEW_CORPUS)
             # addr2name for the NEW build from what passes 1-2 already mapped.
             addr2name: dict[int, str] = {}
-            for _old, v in mapping.items():
+            for v in mapping.values():
                 na = int(v["new_addr"], 16)
                 for nm in v["symbols"]:
                     addr2name.setdefault(na, nm)

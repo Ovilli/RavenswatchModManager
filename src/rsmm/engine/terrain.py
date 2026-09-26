@@ -114,7 +114,7 @@ def _grid_offset(p: bytes, start: int) -> int:
 def _box(p: bytes) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """The world box: six floats, min < max on every axis, square in X/Z."""
     hits = []
-    for off in range(0, len(p) - 23):
+    for off in range(len(p) - 23):
         v = struct.unpack_from("<6f", p, off)
         if not all(math.isfinite(x) and abs(x) <= _BOX_LIMIT for x in v):
             continue

@@ -43,7 +43,7 @@ def _scan(roots: list[Path]) -> dict[str, float]:
             if p.is_file():
                 # Skip applier state + merged output (causes feedback loop).
                 rel = str(p)
-                if rel.endswith(".rsmm.bak") or rel.endswith(".rsmm_state.json"):
+                if rel.endswith((".rsmm.bak", ".rsmm_state.json")):
                     continue
                 if "/_merged/" in rel.replace("\\", "/"):
                     continue

@@ -157,7 +157,7 @@ def sign_file(path: Path, private_key_path: Path) -> str:
             "Signing requires the 'cryptography' package "
             "(`pip install cryptography`). Or ship unsigned + accept the warning."
         )
-    Ed25519PrivateKey, _Pub, ser = crypto
+    Ed25519PrivateKey, _Pub, _ser = crypto
     key_bytes = base64.b64decode(private_key_path.read_text(encoding="utf-8").strip())
     key = Ed25519PrivateKey.from_private_bytes(key_bytes)
     digest_hex = sha256_file(path)
@@ -201,7 +201,7 @@ def verify_file(path: Path, sig_b64: str, public_key_path: Path) -> bool:
             return ed25519_verify(key_bytes, message, signature)
         except MinisignError:
             return False
-    _Priv, Ed25519PublicKey, ser = crypto
+    _Priv, Ed25519PublicKey, _ser = crypto
     try:
         Ed25519PublicKey.from_public_bytes(key_bytes).verify(signature, message)
         return True

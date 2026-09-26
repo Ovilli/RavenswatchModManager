@@ -463,7 +463,7 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
     doc = {
         "asset": {"version": "2.0", "generator": "rsmm character export"},
         "extras": {"rsmm": {"kind": "character", "clip_targets": clip_targets or {}}},
-        "scene": 0, "scenes": [{"nodes": roots + [mesh_node]}],
+        "scene": 0, "scenes": [{"nodes": [*roots, mesh_node]}],
         "nodes": nodes, "skins": skins,
         "meshes": meshes,
         "materials": gl_materials,

@@ -286,7 +286,7 @@ def main() -> int:
 
     img = Image(args.exe)
     targets = sorted(n for n in img.vfts
-                     if n.endswith("@Stormancer@@") or n.endswith("@RakNet@@"))
+                     if n.endswith(("@Stormancer@@", "@RakNet@@")))
 
     named, skew, unplanned, failures = {}, [], [], []
     for raw in targets:

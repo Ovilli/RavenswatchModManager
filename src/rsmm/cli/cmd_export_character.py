@@ -170,7 +170,7 @@ def resolve_setup(hero: str, skin: str | None, paths: list[str]) -> dict:
     objs = [o for p in base for o in _graphic_objects(p)]
     mats = _material_values(_entity_strings(default))
     # Inline mesh -> material pairs (the gun, the flask); the default look wins.
-    mesh_mats = {m: g for p in base + [default]
+    mesh_mats = {m: g for p in [*base, default]
                  for m, g in _mesh_groups(_entity_strings(p), hero) if g}
     setup = {"body": next((m for n, b, m in objs if n == "Character Mesh"), None),
              "attachments": {n: {"bone": b, "mesh": m} for n, b, m in objs

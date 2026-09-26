@@ -602,7 +602,7 @@ def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
     # pool, and each swap makes exactly one slot foreign on each side.
     if imports is not None:
         cast = {b: [index[i]["entity"] for i in ids] for b, ids in groups.items()}
-        movable = {b: [e for e in ents] for b, ents in cast.items()}
+        movable = {b: list(ents) for b, ents in cast.items()}
         biomes = [b for b in sorted(cast) if movable[b]]
         if len(biomes) >= 2 and imports > 0:
             rng = _rng(seed, "swap")

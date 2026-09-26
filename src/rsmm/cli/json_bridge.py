@@ -856,7 +856,7 @@ def put_bytes(path: str, url: str) -> dict[str, Any]:
     # A presigned URL's query string IS a credential for that object, so error
     # messages carry the scheme, host and path only.
     shown = url.split("?", 1)[0]
-    if not (url.startswith("https://") or url.startswith("http://")):
+    if not (url.startswith(("https://", "http://"))):
         return {"ok": False, "error": f"refusing to PUT to non-http(s) URL: {shown}"}
     if not _upload_url_allowed(url):
         return {"ok": False, "error": f"refusing to PUT to non-allowlisted host: {shown}"}

@@ -37,7 +37,7 @@ def test_unknown_event_warns(tmp_path):
 
 def test_unknown_engine_symbol_warns(tmp_path):
     d = _mod(tmp_path, 'R.engine.resolve("Not_A_Real_Function")\n')
-    errs, warns = lint._lint_lua_api("LuaMod", d)
+    _errs, warns = lint._lint_lua_api("LuaMod", d)
     assert warns == 1
 
 
@@ -54,7 +54,7 @@ def test_single_quotes_and_subdir_lua(tmp_path):
     d = _mod(tmp_path, "")
     (d / "sub").mkdir()
     (d / "sub" / "extra.lua").write_text("R.on('bogus_event', function() end)\n")
-    errs, warns = lint._lint_lua_api("LuaMod", d)
+    _errs, warns = lint._lint_lua_api("LuaMod", d)
     assert warns == 1
 
 

@@ -249,7 +249,7 @@ def read(data: bytes) -> DdsImage:
     if data[:4] != DDS_MAGIC:
         raise ValueError(f"not a DDS file (magic {data[:4]!r} != 'DDS ')")
 
-    dw_size, dw_flags, height, width, _pitch, _depth, mip_count = struct.unpack_from(
+    dw_size, _dw_flags, height, width, _pitch, _depth, mip_count = struct.unpack_from(
         "<7I", data, 4
     )
     if dw_size != 124:

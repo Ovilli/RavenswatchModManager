@@ -116,7 +116,7 @@ def test_unknown_base_is_an_error(tmp_path, capsys, monkeypatch):
 def test_base_check_is_skipped_without_a_corpus(tmp_path, capsys, monkeypatch):
     from rsmm.cli import cmd_schema
     monkeypatch.setattr(lint, "_BASE_IDS", {})
-    monkeypatch.setitem(cmd_schema.SOURCES, "melody", lambda: [])
+    monkeypatch.setitem(cmd_schema.SOURCES, "melody", list)
     errs = _lint(tmp_path, '[[content]]\nkind = "melody"\nid = "m"\n'
                            'base = "Anything"\neffect = "Swift"\n')
     assert "is not a shipped" not in _out(capsys)

@@ -193,7 +193,7 @@ _ASSETREFS_CLASSES = {
 
 def decoded_to_assetrefs_path(decoded: str) -> str | None:
     low = decoded.lower()
-    for _cls, (suf, ext) in _ASSETREFS_CLASSES.items():
+    for (suf, ext) in _ASSETREFS_CLASSES.values():
         if low.endswith(suf):
             base = decoded[:-len(suf)]
             if base.lower().endswith(".ot"):
@@ -351,7 +351,7 @@ def process_one(args):
             raw_out.parent.mkdir(parents=True, exist_ok=True)
             raw_out.write_bytes(raw)
             return ("raw-tex", decoded, rel(raw_out))
-        img, w, h, fmt = result
+        img, w, _h, _fmt = result
         img.save(out, "PNG", optimize=False)
         return ("png", decoded, rel(out))
 

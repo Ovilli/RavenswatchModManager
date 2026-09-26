@@ -100,7 +100,7 @@ def check(edited: bytes, original: bytes | None, *, name: str = "",
 def _class_tags(ef: EntityFile) -> list[Issue]:
     n = len(ef.cf.classes)
     bad = []
-    for i, p in enumerate(ef.objects + [ef.trailer]):
+    for i, p in enumerate([*ef.objects, ef.trailer]):
         at = p.find(cooked.MARK_BEGIN)
         while at >= 0:
             if at + 8 <= len(p) and struct.unpack_from("<I", p, at + 4)[0] >= n:
@@ -112,7 +112,7 @@ def _class_tags(ef: EntityFile) -> list[Issue]:
 
 
 def _ownership(ef: EntityFile, before: EntityFile | None) -> list[Issue]:
-    owned, ambiguous = ef.pointers()
+    _owned, ambiguous = ef.pointers()
     was = set(before.pointers()[1]) if before else set()
     out = []
     for x, cands in ambiguous.items():

@@ -112,7 +112,7 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
     for stem, ef in edits.items():
         edited = ef.to_bytes()
         issues = CK.check(edited, files[stem], name=stem, read=read)
-        errs = [i for i in CK.errors(issues)]
+        errs = list(CK.errors(issues))
         if errs:
             raise AbilityEditError(
                 f"the ability edits to {stem} do not hold together:\n  "

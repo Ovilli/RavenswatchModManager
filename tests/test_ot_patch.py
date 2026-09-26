@@ -93,7 +93,7 @@ def test_the_files_type_prefix_decides_how_a_value_is_written():
     assert "f|_GrabFloatValue()=0.25" in inner
     # `%.9g`, which is what the shipped file uses: enough to round-trip a
     # float32, with no trailing zeros.
-    whole, edit = set_field(SAMPLE, selector="0", selector_field="u16Type",
+    _whole, edit = set_field(SAMPLE, selector="0", selector_field="u16Type",
                             field="_GrabFloatValue()", value=1)
     assert edit.new == "1"
 

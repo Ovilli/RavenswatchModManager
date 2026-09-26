@@ -59,9 +59,7 @@ def _is_special_decoded(p: str) -> bool:
     # `_pending_text_overrides/`, etc.) — intermediate JSON consumed by
     # the apply pipeline, never a cooked asset. Matches the filter in
     # `rsmm.cli.apply_mods.Mod.files()` so lint stays consistent.
-    if p.split("/", 1)[0].startswith("_pending_"):
-        return True
-    return False
+    return p.split("/", 1)[0].startswith("_pending_")
 
 
 def _stat_fields() -> dict[str, tuple[str, frozenset[str]]]:
@@ -757,7 +755,7 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             # these must not warn.
             # "ui:press" is the native-UI button bridge (hook_ui.cpp,
             # RSMM_ENABLE_UI_HOOK) — loader-emitted, not in the symbol map.
-            if ev == "*" or ev.startswith("gameplay:") or ev.startswith("ui:"):
+            if ev == "*" or ev.startswith(("gameplay:", "ui:")):
                 continue
             if ev not in events:
                 hint = (f"— unknown event (known: {', '.join(sorted(events))}); "

@@ -60,7 +60,11 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I", "UP", "B", "BLE"]
+select = ["F", "E", "W", "I", "UP", "B", "BLE",
+          # Gates, not a style sweep: each had a handful of findings when
+          # enabled (2026-09-26) and all were fixed, so new ones fail CI.
+          "C4", "PIE", "RET", "PERF102", "PERF402", "SIM103", "SIM108",
+          "RUF005", "RUF010", "RUF015", "RUF059", "RUF100"]
 ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 
 # Bare `except Exception:` swallows programmer errors and makes the CLI

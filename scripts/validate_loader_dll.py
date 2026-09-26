@@ -64,7 +64,7 @@ def parse_exports(data: bytes) -> set[str]:
         raise ValidationError("not a PE image (missing PE signature)")
 
     coff = e_lfanew + 4
-    machine, n_sections = struct.unpack_from("<HH", data, coff)
+    _machine, n_sections = struct.unpack_from("<HH", data, coff)
     characteristics = struct.unpack_from("<H", data, coff + 18)[0]
     if not characteristics & 0x2000:  # IMAGE_FILE_DLL
         raise ValidationError("PE is not marked as a DLL")
@@ -76,7 +76,7 @@ def parse_exports(data: bytes) -> set[str]:
 
     # Data directories start at offset 112 in the PE32+ optional header;
     # entry 0 is the export table (RVA, size).
-    exp_rva, exp_size = struct.unpack_from("<II", data, opt + 112)
+    exp_rva, _exp_size = struct.unpack_from("<II", data, opt + 112)
     if exp_rva == 0:
         raise ValidationError("no export directory (DLL exports nothing)")
 

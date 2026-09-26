@@ -805,7 +805,7 @@ def poi_json_schema() -> dict:
                                         "additionalProperties": s},
                               "drop_bones": {"type": "array", "items": s}}},
             "slots": {"type": "object", "additionalProperties": False,
-                      "properties": {r: s for r in TEXTURE_ROLES}},
+                      "properties": dict.fromkeys(TEXTURE_ROLES, s)},
             "marker": {"type": "object", "additionalProperties": False,
                        "properties": {"icon": s, "icon_high": s,
                                       "reveal_radius": num, "donor": s}},
@@ -2036,7 +2036,7 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     # 3. Material: donor's shader wiring, the mod's maps. Skipped entirely when
     #    the def ships no textures — the prop then keeps `material_base`, so no
     #    material or texture of ours is cooked at all.
-    swaps = {s: model_ref for s in donor_meshes} if model_ref else {}
+    swaps = dict.fromkeys(donor_meshes, model_ref) if model_ref else {}
     if tex_refs:
         mat_ref = f"{art_dir}/M_{tag}.mat.ot".replace("/", "\\")
         _write(out_dir, PC.art_cooked_path(mat_ref),

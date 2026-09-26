@@ -38,11 +38,10 @@ def detect_platform() -> str:
     system = platform.system().lower()
     if system == "linux":
         return "linux"
-    elif system in ("windows", "msys", "cygwin"):
+    if system in ("windows", "msys", "cygwin"):
         return "windows"
-    else:
-        print(f"Unsupported platform: {system} (RSMM targets Windows + Linux only)")
-        sys.exit(1)
+    print(f"Unsupported platform: {system} (RSMM targets Windows + Linux only)")
+    sys.exit(1)
 
 
 def build_sidecar(target: str) -> None:
