@@ -34,8 +34,12 @@ list(FILTER LUA_SRC EXCLUDE REGEX ".*/luac\\.c$")
 list(FILTER LUA_SRC EXCLUDE REGEX ".*/ltests\\.c$")
 list(FILTER LUA_SRC EXCLUDE REGEX ".*/onelua\\.c$")
 add_library(lua54 STATIC ${LUA_SRC})
-target_include_directories(lua54 PUBLIC ${TP}/lua)
-target_compile_definitions(lua54 PUBLIC LUA_USE_WINDOWS=1)
+# SYSTEM: its headers' own warnings (luaconf.h) are upstream's, not ours, and
+# would otherwise surface inside every loader file that includes lua.h.
+target_include_directories(lua54 SYSTEM PUBLIC ${TP}/lua)
+# No LUA_USE_WINDOWS here: luaconf.h defines it itself whenever _WIN32 is set
+# (MinGW and MSVC both set it), and a second definition with a value is a
+# redefinition warning in every file that includes lua.h.
 
 # --- Loader DLL ----------------------------------------------------------
 # In-game UI (hook_vk + hook_win32 + ImGui) removed: surface was never
@@ -71,10 +75,16 @@ add_library(winhttp SHARED
     ${LOADER_SRC}
     exports/winhttp.def)
 
-target_include_directories(winhttp PRIVATE
-    include
+target_include_directories(winhttp PRIVATE include)
+target_include_directories(winhttp SYSTEM PRIVATE
     ${TP}/nlohmann
     ${TP}/tomlplusplus)
+
+# Stricter than the vendored code gets: the loader's own C++ builds clean under
+# these (2026-09-26), so a new warning here is a new problem, not noise.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(winhttp PRIVATE -Wextra -Wshadow)
+endif()
 
 if(MSVC)
   target_link_libraries(winhttp PRIVATE
