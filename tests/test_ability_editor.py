@@ -35,6 +35,15 @@ def test_steps_are_applied_and_checked_before_the_graph_is_drawn():
     assert "Hero_Romeo_Juliet_Common" in bad["error"]
 
 
+@needs
+def test_a_changed_field_carries_the_value_it_replaced():
+    d = AE.graph_payload("Piper", [{"set": "Primary Ability Shots Delay.value", "value": 0.2}])
+    part = next(c for c in d["components"] if c["name"] == "Primary Ability Shots Delay")
+    f = next(f for f in part["fields"] if f["name"] == "value")
+    assert f["text"] == "f32 0.2" and f["was"] == "f32 0.05"
+    assert all(g["was"] is None for c in d["components"] if c is not part for g in c["fields"])
+
+
 def test_steps_render_as_manifest_toml():
     import tomllib
     steps = [{"set": "A.value", "value": 0.2}, {"link": "B.on_end", "to": ""}]

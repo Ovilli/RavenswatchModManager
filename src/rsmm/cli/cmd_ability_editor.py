@@ -3,10 +3,11 @@
     rsmm ability-editor              open the page (hero picker)
     rsmm ability-editor --port 9000
 
-A local page (127.0.0.1 only) that draws each ability of a shipped hero as a
-graph of parts and the links between them, shows every part's fields by name,
-and builds ``[[content.abilities]]`` steps as you set values, re-point links
-and copy groups. Every change re-runs the steps and the pre-apply checks on
+A local page (127.0.0.1 only) for one ability of a shipped hero at a time: a
+Numbers tab listing every literal it uses as a plain form, and a Diagram tab
+drawing its parts and the links between them. It builds
+``[[content.abilities]]`` steps as you set values, re-point links and copy
+groups. Every change re-runs the steps and the pre-apply checks on
 the server, so the page shows the edited graph and anything the build would
 refuse. The page never writes a mod: copy the TOML into a custom hero's
 manifest (``kind = "hero"``) and run ``rsmm apply``.
@@ -72,6 +73,11 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     stem = entity or main
     if stem not in files:
         raise ValueError(f"no entity {stem!r} in {hero}'s family")
+    # The unedited values, so the page can show what a change replaced. Keyed
+    # by position: a part can carry two fields of one name (a selector's `mode`).
+    was = {(c.guid.hex(), i): f.text
+           for c in EG.parse(files[stem], stem).components
+           for i, f in enumerate(EF.fields(c))}
     error, warnings = "", []
     if steps:
         try:
@@ -85,13 +91,15 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     comps = []
     for c in g.components:
         fields = []
-        for f in EF.fields(c):
+        for i, f in enumerate(EF.fields(c)):
             links = (_field_targets(c, f, picker) if f.kind in ("ref", "ref[]", "value")
                      else [])
+            old = was.get((c.guid.hex(), i))
             fields.append({
                 "name": f.name, "kind": f.kind, "text": f.text,
                 "targets": [g for g, _p in links], "paths": [p for _g, p in links],
                 "items": len(f.items),
+                "was": old if old is not None and old != f.text else None,
             })
         comps.append({"id": c.guid.hex(), "name": c.name, "group": c.group,
                       "cls": c.cls.removeprefix("oCEntityCpnt").removeprefix("oCDtEntityCpnt")
