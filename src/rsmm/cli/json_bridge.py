@@ -1326,6 +1326,19 @@ def cmd_conflicts() -> int:
     """
     conflicts: list[dict[str, object]] = []
 
+    # A file two mods both ship is only a conflict if apply lets one of them
+    # win. It merges text banks, the hero-alias table, tile pools and resource
+    # caches instead (plan_apply's mergers), and never installs staging files:
+    # reporting those made two custom heroes look like they conflicted.
+    from rsmm.cli.apply_mods import is_skippable_asset
+    from rsmm.engine.content_merge import (
+        is_app_settings,
+        is_map_def,
+        is_rsc_cache,
+        is_text_bank,
+    )
+    merged = (is_text_bank, is_map_def, is_rsc_cache, is_app_settings)
+
     tracked_paths: dict[str, list[str]] = {}
     try:
         if MODS_DIR.is_dir():
@@ -1344,6 +1357,8 @@ def cmd_conflicts() -> int:
                     for f in assets_dir.rglob("*"):
                         if f.is_file():
                             rel = f.relative_to(assets_dir).as_posix()
+                            if is_skippable_asset(rel) or any(m(rel) for m in merged):
+                                continue
                             tracked_paths.setdefault(rel, []).append(mod_id)
     except (OSError, PermissionError):
         pass
