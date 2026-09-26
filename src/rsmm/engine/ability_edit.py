@@ -16,6 +16,9 @@ One step per table::
     set = "Primary Ability Shots Delay.value"
     value = 0.2                           a number, bool or [x, y, z]
 
+    set = "My Spawner.position[8]"        the n-th number inside an object
+    value = 1.5708                        field (the spawn's yaw, radians)
+
     link = "Primary Ability Shoot Timer.on_end"
     to = "State Secondary Ability"        "" points it at nothing
 

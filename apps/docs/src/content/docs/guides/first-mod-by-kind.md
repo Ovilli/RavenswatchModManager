@@ -748,8 +748,23 @@ to    = "State Secondary Ability Echo"
     the copies point at the copies; everything they own is copied too.
     `from = "Juliet"` copies from another hero.
   - `set = "Part.field"` + `value`: a number, a bool, or `[x, y, z]`.
+    `"Part.field[n]"` sets the n-th number (or `[x, y, z]`) inside an object
+    field, as `--show` prints them; with a text `value` it replaces the n-th
+    string instead, e.g. `set = "My Spawner.template[1]"` with
+    `value = "Heroes\\Hero_Beowulf\\Hero_Beowulf_Shockwave.entity.ot"` makes
+    a spawner spawn something else.
   - `link = "Part.field"` + `to = "Other Part"` (`""` for nothing); a list
-    element is `"Part.list[0]"`.
+    element is `"Part.list[0]"`, and `"Part.obj[n]"` is the n-th reference
+    inside an object field (`--tokens` lists them, empty ones included).
+
+    **Turning a spawn.** A spawner's own yaw fields (`position[8]`,
+    `transform[5]`) are ignored for a hero's ability spawn: four shockwaves
+    turned that way all went the way the hero faced. The game turns a spawn
+    the way Piper fans her notes: the spawner reads a 3D node, whose Y angle
+    (radians) comes from a value. Copy a spawner together with its node
+    (`clone = ["Attack Shoot Projectile Spawner 02", "Attack Shoot 3d Node 02"]`)
+    and point the node's angle at a value of your own
+    (`link = "Attack Shoot 3d Node 02 Copy.obj_4[5]"`).
   - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
   Add `entity = "FX"` to a step to edit another entity of the family.
   `rsmm ability-editor` opens a local page that builds these steps for you.

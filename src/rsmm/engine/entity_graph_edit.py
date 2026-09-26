@@ -274,8 +274,20 @@ class EntityFile:
         return c, f, len(self.objects[c.index - 1]) - len(c.body)
 
     def set_value(self, comp: str, field: str, value) -> None:
-        """Set a literal: a raw bool/u32/f32 field, or the union inside a value
-        field (keeping its type; ints and floats convert)."""
+        """Set a literal: a raw bool/u32/f32 field, the union inside a value
+        field (keeping its type; ints and floats convert), or ``obj[n]``: the
+        n-th scalar literal inside an object field, e.g. a spawner's
+        ``position[8]`` (the spawn's yaw; see ``_set_obj_literal``)."""
+        base, _, idx = field.partition("[")
+        if idx:
+            c = self.component(comp)
+            f = next((x for x in EF.fields(c) if x.name == base), None)
+            if f is not None and f.kind == "obj" and not f.items:
+                if isinstance(value, str):
+                    self._set_obj_string(c, f, int(idx.rstrip("]")), value, field)
+                else:
+                    self._set_obj_literal(c, f, int(idx.rstrip("]")), value, field)
+                return
         c, f, at = self._field(comp, field)
         p = self.objects[c.index - 1]
         if f.kind in EF._PRIM:
@@ -298,11 +310,85 @@ class EntityFile:
         conv = {"f32": float, "int": int, "bool": bool}.get(kind, float)
         struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *[conv(v) for v in vals])
 
+    def _obj_token_span(self, c: EG.Component, f: EF.Field, kind: str, n: int,
+                        label: str) -> tuple[int, int]:
+        """``(start, end)`` in ``c.body`` of the n-th ``kind`` token inside object
+        field ``f`` (a reference's span is its whole picker, a string's its
+        length-prefixed text)."""
+        sub = EG.Component(0, c.cls, "", "", b"", None,
+                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+        toks = [t for t in EG.tokens(sub) if t.kind == kind]
+        if not 0 <= n < len(toks):
+            raise EntityEditError(f"{label!r}: {f.name} holds {len(toks)} {kind}s, no index {n}")
+        t = toks[n]
+        return f.offset + t.offset, f.offset + t.offset + t.size
+
+    def _set_obj_string(self, c: EG.Component, f: EF.Field, n: int, text: str,
+                        label: str) -> None:
+        """Replace the n-th string inside an object field, e.g. a spawner's
+        ``template[1]`` (the entity it spawns). The payload may change length;
+        ``to_bytes`` re-frames it, as a clone's renamed paths already do."""
+        a, b = self._obj_token_span(c, f, "string", n, label)
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        old = bytes(p)
+        p[at + a:at + b] = _lstr(text)
+        try:
+            self._check(self.to_bytes())
+        except EntityEditError:
+            p[:] = old
+            raise
+
+    def _set_obj_literal(self, c: EG.Component, f: EF.Field, n: int, value, label: str) -> None:
+        """The n-th literal inside an object field, counted as ``--show`` prints
+        them. A spawner carries two transform-shaped blocks. ``position``:
+        vec3, vec3 (0 0 1), f32 x4 (offset in 3-5), vec3, rotation in
+        radians (7-9, yaw = 8), vec3, scale (11-13) -- the rotation is what
+        the shipped scrap spawners set (1.5708). ``transform``: offset (0-2),
+        vec3, rotation (4-6, yaw = 5), vec3, scale (8-10) -- 18 shipped
+        spawners set one; a hero ability spawn IGNORES its yaw (four
+        shockwaves turned by it all went the way the hero faced, 2026-09-26).
+        Every literal's data starts 16 bytes into its token, as in a value
+        field: a scalar there, a vecN's floats packed from there (read off
+        ``position``'s ``vec3 0 0 1``: its 1.0 sits at +24)."""
+        sub = EG.Component(0, c.cls, "", "", b"", None,
+                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+        lits = [t for t in EG.tokens(sub) if t.kind == "value"]
+        if not 0 <= n < len(lits):
+            raise EntityEditError(f"{label!r}: {f.name} holds {len(lits)} literals, "
+                                  f"no index {n}")
+        u = lits[n]
+        kind = u.text.split()[0]
+        fmt = {"f32": "<f", "int": "<i", "bool": "<?",
+               "vec2": "<2f", "vec3": "<3f", "vec4": "<4f"}.get(kind)
+        if fmt is None:
+            raise EntityEditError(f"{label!r} is a {kind} inside an object; only "
+                                  f"f32/int/bool/vecN literals there can be set")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        if kind.startswith("vec"):
+            vals = list(value) if isinstance(value, (list, tuple)) else []
+            if len(vals) != int(kind[3]):
+                raise EntityEditError(f"{label!r} is a {kind}; give {kind[3]} numbers")
+            struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *map(float, vals))
+            return
+        conv = {"f32": float, "int": int, "bool": bool}[kind]
+        struct.pack_into(fmt, p, at + f.offset + u.offset + 16, conv(value))
+
     def set_ref(self, comp: str, field: str, target: str | None) -> None:
-        """Point a reference (``ref`` field, list element ``name[i]``, or the
-        reference inside a value field) at component ``target`` or at nothing."""
-        c, f, at = self._field(comp, field)
-        a, b = self._picker_span(c, f)
+        """Point a reference (``ref`` field, list element ``name[i]``, the
+        reference inside a value field, or ``obj[n]``: the n-th reference
+        inside an object field, counting the empty ones ``--tokens`` shows) at
+        component ``target`` or at nothing."""
+        base, _, idx = field.partition("[")
+        c = self.component(comp)
+        fo = next((x for x in EF.fields(c) if x.name == base), None)
+        if idx and fo is not None and fo.kind == "obj" and not fo.items:
+            f, at = fo, len(self.objects[c.index - 1]) - len(c.body)
+            a, b = self._obj_token_span(c, f, "ref", int(idx.rstrip("]")), field)
+        else:
+            c, f, at = self._field(comp, field)
+            a, b = self._picker_span(c, f)
         obj = c.index - 1
         old = bytes(self.objects[obj][at + a:at + b])
         new = self._picker(target)

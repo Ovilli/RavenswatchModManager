@@ -93,6 +93,56 @@ def test_a_value_repoint_that_would_misread_its_target_is_refused_and_undone():
     assert ef.to_bytes() == raw
 
 
+BEOWULF = "EntitySettings/Heroes/Hero_Beowulf/Hero_Beowulf.entity.ot.EntitySettingsResource.gen"
+
+
+@pytest.mark.skipif(corpus.read(BEOWULF) is None, reason="no Beowulf")
+def test_a_scalar_inside_an_object_field_is_set_by_index():
+    # A spawner's transform: position (0-2), a vec3, rotation in radians
+    # (4-6, yaw = 5), a vec3, scale (8-10). Turning the shockwave sideways is
+    # its yaw, and nothing else in the file may move.
+    raw = corpus.read(BEOWULF)
+    ef = EE.EntityFile(raw, "Hero_Beowulf")
+    spawner = "Primary Ability Effect Spawner"
+    ef.set_value(spawner, "transform[5]", 1.5707964)
+    lits = _field(ef, spawner, "transform").text.split("  ")
+    assert lits[5] == "f32 1.5708"
+    assert lits[4] == "f32 0" and lits[6] == "f32 0" and lits[8] == "f32 1"
+    out = ef.to_bytes()
+    assert len(out) == len(raw)
+    assert sum(a != b for a, b in zip(out, raw, strict=True)) <= 4   # one f32
+    ef = EE.EntityFile(raw, "Hero_Beowulf")
+    # The yaw a hero's ability spawn honours is the one in `position`.
+    ef.set_value(spawner, "position[8]", -1.5707964)
+    pos = _field(ef, spawner, "position").text.split("  ")
+    assert pos[8] == "f32 -1.5708" and pos[7] == "f32 0" and pos[9] == "f32 0"
+    # A vector inside an object: position's `vec3 0 0 1` (its local forward).
+    ef.set_value(spawner, "position[1]", [1, 0, 0])
+    assert _field(ef, spawner, "position").text.split("  ")[1] == "vec3 1 0 0"
+    with pytest.raises(EE.EntityEditError, match="give 3 numbers"):
+        ef.set_value(spawner, "position[1]", 1.0)
+    with pytest.raises(EE.EntityEditError, match="no index 11"):
+        ef.set_value(spawner, "transform[11]", 1.0)
+
+
+@needs
+def test_a_reference_and_a_string_inside_an_object_field_are_edited_by_index():
+    # How a spawn is turned in the shipped data: the spawner reads a 3D node
+    # whose Y angle comes from a value (reference 5 inside obj_4), and the
+    # spawner's template says what it spawns (string 1).
+    ef = _piper()
+    node, spawner = "Attack Shoot 3d Node 02", "Attack Shoot Projectile Spawner 02"
+    ef.set_ref(node, "obj_4[5]", "Primary Ability Shots Delay")
+    assert _field(ef, node, "obj_4").text.endswith("\\Primary Ability Shots Delay")
+    shock = "Heroes\\Hero_Beowulf\\Hero_Beowulf_Shockwave.entity.ot"
+    ef.set_value(spawner, "template[1]", shock)
+    assert repr(shock) in _field(ef, spawner, "template").text
+    again = EE.EntityFile(ef.to_bytes(), "Hero_Piper")      # re-framed file parses
+    assert repr(shock) in _field(again, spawner, "template").text
+    with pytest.raises(EE.EntityEditError, match="no index 9"):
+        ef.set_ref(node, "obj_4[9]", "Primary Ability Shots Delay")
+
+
 @needs
 @pytest.mark.skipif(corpus.read(JULIET) is None, reason="no Juliet")
 def test_components_copy_across_entities_with_the_classes_they_need():
