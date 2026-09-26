@@ -13,7 +13,7 @@ import os
 import sys
 
 from .cipher import decode as decrypt_char
-from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON
+from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON, BACKUP_SUFFIX
 
 # DEFAULT_GAME_DIR is resolved lazily inside main() to avoid triggering
 # the disk scan at import time (which crashes if no Steam install exists).
@@ -21,11 +21,6 @@ from .paths import ASSET_MAP_CSV, ASSET_MAP_JSON
 
 def decrypt_string(s: str) -> str:
     return ''.join(decrypt_char(ch) for ch in s)
-
-
-#: Suffix `apply` gives the untouched original it stores beside every file
-#: it overwrites (mirrors rsmm.cli.apply_mods.BACKUP_SUFFIX).
-BACKUP_SUFFIX = ".rsmm.bak"
 
 
 def main(path: str | None = None) -> int:

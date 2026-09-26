@@ -78,11 +78,8 @@ def _install_bank_gen() -> Path | None:
     in the game install, so name/description can be appended to the real bank
     (with its language siblings). None when no install is reachable."""
     try:
-        from rsmm.cli.apply_mods import (
-            COOKING_REL,
-            find_game_dir,
-            load_asset_map,
-        )
+        from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+        from rsmm.engine.paths import COOKING_REL
         game = find_game_dir()
         if game is None:
             return None
@@ -187,14 +184,14 @@ def _catalog_item_ids() -> set[str] | None:
     no-op that a corpus-only check would happily accept.
     """
     try:
-        from rsmm.cli.apply_mods import (
-            BACKUP_SUFFIX,
+        from rsmm.cli.apply_mods import find_game_dir
+        from rsmm.engine.paths import BACKUP_SUFFIX
+        from rsmm.engine.versiondef import (
             VERSIONDEF_GEN_LEAF,
             _find_mo_vector,
             _locate_cooked_by_leaf,
             _mo_entry_stem,
             _mo_vector_entries,
-            find_game_dir,
         )
         game = find_game_dir()
         if game is None:

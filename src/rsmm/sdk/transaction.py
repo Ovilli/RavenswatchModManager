@@ -22,6 +22,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.engine.paths import BACKUP_SUFFIX
 from rsmm.engine.safeio import atomic_copy, atomic_write_text
 from rsmm.logging import get_logger
 
@@ -29,7 +30,6 @@ logger = get_logger(__name__)
 
 STAGE_DIR_NAME = ".rsmm_stage"
 COMMIT_MARKER_NAME = ".rsmm_stage.COMMIT"
-BACKUP_SUFFIX = ".rsmm.bak"
 
 
 @dataclass

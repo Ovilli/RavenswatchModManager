@@ -60,7 +60,7 @@ def _cooked_path(game_dir: Path, asset_map: dict[str, str], decoded: str) -> Pat
     enc = asset_map.get(decoded)
     if not enc:
         return None
-    from rsmm.cli.apply_mods import COOKING_REL
+    from rsmm.engine.paths import COOKING_REL
     p = game_dir / COOKING_REL / Path(*enc.split("\\"))
     return p if p.is_file() else None
 
@@ -136,29 +136,30 @@ def catalog(game_dir: Path | None = None, *, lang: str = "EN") -> list[ItemInfo]
     """
     from rsmm.cli import apply_mods as A
     from rsmm.engine import magic_item_cook as cook
+    from rsmm.engine import versiondef as VD
 
     game_dir = game_dir or A.find_game_dir()
     if game_dir is None:
         return []
-    gen = A._locate_cooked_by_leaf(game_dir, A.VERSIONDEF_GEN_LEAF)
+    gen = VD._locate_cooked_by_leaf(game_dir, VD.VERSIONDEF_GEN_LEAF)
     if gen is None:
         return []
     # The pristine backup when one exists: the live file may already carry a
     # ban, and a picker that hides what you banned cannot un-ban it.
     bak = gen.with_name(gen.name + A.BACKUP_SUFFIX)
     blob = (bak if bak.exists() else gen).read_bytes()
-    loc = A._find_mo_vector(blob)
+    loc = VD._find_mo_vector(blob)
     if loc is None:
         return []
     co, _end, cnt = loc
-    entries = A._mo_vector_entries(blob, co, cnt)
+    entries = VD._mo_vector_entries(blob, co, cnt)
 
     asset_map = A.load_asset_map()
     text = _text_values(game_dir, asset_map, lang)
 
     out: list[ItemInfo] = []
     for _s, _e, ref in entries:
-        item_id = A._mo_entry_stem(ref)
+        item_id = VD._mo_entry_stem(ref)
         parts = ref.replace("/", "\\").split("\\")
         rarity = parts[-2] if len(parts) >= 2 else "Unknown"
         p = _cooked_path(game_dir, asset_map, _entity_decoded(ref))

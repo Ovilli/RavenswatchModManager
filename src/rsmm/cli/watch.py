@@ -18,13 +18,14 @@ import time
 from pathlib import Path
 
 from rsmm.engine.paths import (
-    DEFAULT_GAME_DIR as DEFAULT_GAME,
-)
-from rsmm.engine.paths import (
+    BACKUP_SUFFIX,
     DIST_DIR,
     MODS_DIR,
     REPO_ROOT,
     self_cmd,
+)
+from rsmm.engine.paths import (
+    DEFAULT_GAME_DIR as DEFAULT_GAME,
 )
 
 _SIGINT = getattr(signal, "SIGINT", None)
@@ -43,7 +44,7 @@ def _scan(roots: list[Path]) -> dict[str, float]:
             if p.is_file():
                 # Skip applier state + merged output (causes feedback loop).
                 rel = str(p)
-                if rel.endswith((".rsmm.bak", ".rsmm_state.json")):
+                if rel.endswith((BACKUP_SUFFIX, ".rsmm_state.json")):
                     continue
                 if "/_merged/" in rel.replace("\\", "/"):
                     continue

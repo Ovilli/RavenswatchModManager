@@ -32,6 +32,7 @@ import json
 import sys
 
 from rsmm.cli import _term
+from rsmm.engine.paths import BACKUP_SUFFIX
 
 _LIMIT_DEFAULT = 40
 
@@ -136,7 +137,7 @@ def _cmd_show(args) -> int:
         print(st.dim("  install   not found — nothing to check against"))
         return 0
     p = Path(game) / COOKING_SUBDIR / enc.replace("\\", "/")
-    bak = p.with_name(p.name + ".rsmm.bak")
+    bak = p.with_name(p.name + BACKUP_SUFFIX)
     if not p.is_file():
         print(f"  {st.bold('install')}  {st.warn('absent')}")
         return 0

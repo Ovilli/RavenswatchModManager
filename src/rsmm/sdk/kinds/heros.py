@@ -12,7 +12,7 @@ How the roster works (static RE, 2026-09-24):
   registered in ``UsedRscList.ot`` alone never loaded (12 defs live, measured
   in game 2026-09-24). Heroes load through the LiveOps versiondef's hero
   vector, so ``apply`` appends each new herodef there
-  (``apply_mods._patch_versiondef_heroes``), the same way new magic items join
+  (``engine/versiondef._patch_versiondef_heroes``), the same way new magic items join
   the versiondef's MO vector.
 
 So a new hero is a new ``.herodef`` file, its resource cache and one
@@ -228,7 +228,8 @@ def _game_dir() -> Path:
 
 
 def _install_bank(game: Path, bank: str) -> Path:
-    from rsmm.cli.apply_mods import COOKING_REL, load_asset_map
+    from rsmm.cli.apply_mods import load_asset_map
+    from rsmm.engine.paths import COOKING_REL
     enc = load_asset_map().get(f"Text/{bank}.LocalText.gen")
     p = game / COOKING_REL / Path(*enc.split("\\")) if enc else None
     if p is None or not p.exists():

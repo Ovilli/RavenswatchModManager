@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from rsmm.engine.paths import BACKUP_SUFFIX
+
 from .paths import DATA_DIR
 
 UNCOOKED: Final = DATA_DIR / "uncooked"
@@ -68,7 +70,7 @@ def install_path(rel: str) -> Path | None:
     if not enc:
         return None
     p = cooking / enc.replace("\\", "/")
-    bak = p.with_name(p.name + ".rsmm.bak")
+    bak = p.with_name(p.name + BACKUP_SUFFIX)
     if bak.is_file():
         return bak
     return p if p.is_file() else None

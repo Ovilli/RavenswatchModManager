@@ -123,7 +123,8 @@ def _install_bank(hero_token: str):
     """Return ``(install_base_gen, decoded_path)`` for a hero's Common text bank
     in the live game install, or ``None`` when no install is reachable."""
     try:
-        from rsmm.cli.apply_mods import COOKING_REL, find_game_dir, load_asset_map
+        from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+        from rsmm.engine.paths import COOKING_REL
     except ImportError:
         return None
     game = find_game_dir()

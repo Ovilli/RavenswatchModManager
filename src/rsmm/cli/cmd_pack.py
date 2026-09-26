@@ -10,6 +10,7 @@ from pathlib import Path
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
+    BACKUP_SUFFIX,
     COOKING_SUBDIR,
     DATA_DIR,
     DEFAULT_GAME_DIR,
@@ -153,7 +154,7 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
             encoded = enc_map.get(rel)
             if encoded:
                 orig = cooking / encoded.replace("\\", "/")
-                bak = orig.with_suffix(orig.suffix + ".rsmm.bak")
+                bak = orig.with_suffix(orig.suffix + BACKUP_SUFFIX)
                 src = bak if bak.exists() else orig
                 if src.exists() and sha256(src) == mod_hash:
                     offenders.append((f"assets/{rel}", "matches original cooked asset"))

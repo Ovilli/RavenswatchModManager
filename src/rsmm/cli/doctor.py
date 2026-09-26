@@ -47,6 +47,7 @@ from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
+    BACKUP_SUFFIX,
     COOKING_SUBDIR,
     DATA_DIR,
     DIST_DIR,
@@ -182,7 +183,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
     # first registration, which is the thing whose age actually answers "did the
     # game update". Same source `find_iyg` and `game_fingerprint` already prefer.
     used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
-    pristine = used.with_name(used.name + ".rsmm.bak")
+    pristine = used.with_name(used.name + BACKUP_SUFFIX)
     probe = pristine if pristine.exists() else used
     # An mtime is only a TRIGGER, never the verdict. A Steam verify touches every
     # game file without changing a byte, so the timestamp alone reported a stale
@@ -939,7 +940,8 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
     desync (e.g. a partial write or hand-edit) hard-crashes the game at boot.
     Also reports how many custom record lines rsmm has registered on top of
     the pristine backup, and flags drift that rsmm did not produce."""
-    from rsmm.cli.apply_mods import BACKUP_SUFFIX, USEDRSCLIST_REL, _read_usedrsclist
+    from rsmm.engine.paths import USEDRSCLIST_REL
+    from rsmm.engine.usedrsclist import _read_usedrsclist
     path = game_dir / USEDRSCLIST_REL
     if not path.exists():
         return [Result("WARN", f"UsedRscList.ot not found: {path}",

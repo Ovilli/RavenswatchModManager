@@ -50,6 +50,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from rsmm.engine.paths import BACKUP_SUFFIX
+
 from . import terrain as TR
 from . import tilegen as TG
 from .paths import DATA_DIR
@@ -116,7 +118,7 @@ def _shipped(decoded: str) -> bytes | None:
         enc = decoded_to_encoded().get(decoded)
         if enc:
             p = default_game_dir() / COOKING_SUBDIR / Path(*enc.split("\\"))
-            bak = p.with_name(p.name + ".rsmm.bak")
+            bak = p.with_name(p.name + BACKUP_SUFFIX)
             for cand in (bak, p):
                 if cand.is_file():
                     return cand.read_bytes()

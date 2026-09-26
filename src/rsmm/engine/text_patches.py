@@ -25,6 +25,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
+from rsmm.engine.paths import BACKUP_SUFFIX
+
 HEADER_SIZE = 0x14
 
 
@@ -119,7 +121,7 @@ def lang_path_for(base: Path, lang_decoded: str) -> Path:
 def _pristine(path: Path) -> Path:
     """Return the vanilla copy of a bank file: its ``.rsmm.bak`` sibling when a
     prior apply backed it up, otherwise the file itself."""
-    bak = path.with_name(path.name + ".rsmm.bak")
+    bak = path.with_name(path.name + BACKUP_SUFFIX)
     return bak if bak.exists() else path
 
 

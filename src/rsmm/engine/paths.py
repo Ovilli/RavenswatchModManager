@@ -77,6 +77,13 @@ def _find_repo_root() -> Path:
 
 
 COOKING_SUBDIR: str = "DarkTalesResources/_Cooking"
+#: The same, as a Path relative to the install dir.
+COOKING_REL = Path(COOKING_SUBDIR)
+#: The engine's manifest of loadable cooked paths, under the install dir.
+USEDRSCLIST_REL = Path("DarkTalesResources/UsedRscList.ot")
+#: Suffix `apply` gives the untouched original it keeps beside every file it
+#: overwrites (and every reader of "the pristine copy" looks for).
+BACKUP_SUFFIX = ".rsmm.bak"
 
 _RAVENSWATCH_SUBPATH = Path("steamapps/common/Ravenswatch")
 _VDF_PATH_RE = re.compile(r'"path"\s*"([^"]+)"', re.IGNORECASE)
@@ -403,7 +410,7 @@ def game_fingerprint(game_dir: Path) -> str:
     # sibling. Hash that pristine copy when present so our own managed
     # edits are never mistaken for a game update (which would wipe state
     # and backups on the next apply).
-    used_pristine = used.with_name(used.name + ".rsmm.bak")
+    used_pristine = used.with_name(used.name + BACKUP_SUFFIX)
     src = used_pristine if used_pristine.exists() else used
     if src.exists():
         _hash_head(h, "UsedRscList.ot", src)

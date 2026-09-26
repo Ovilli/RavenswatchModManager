@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli.apply_mods import find_game_dir
-from rsmm.engine.paths import DIST_DIR, REPO_ROOT, self_cmd
+from rsmm.engine.paths import BACKUP_SUFFIX, DIST_DIR, REPO_ROOT, self_cmd
 
 RAVENSWATCH_APP_ID = "2071280"
 REQUIRED_OVERRIDE = "winhttp=n,b"            # what we want to see
@@ -269,7 +269,7 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
         new_body = f'\n{indent}"LaunchOptions"\t\t"{escaped}"' + body
     new_text = (text[:open_brace] + '{' + new_body + '}' + text[body_end + 1:])
 
-    bak = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.bak")
+    bak = vdf_path.with_suffix(vdf_path.suffix + BACKUP_SUFFIX)
     if not bak.exists():
         bak.write_text(text, errors="replace")
     # Atomic write: a Steam crash mid-write was previously enough to

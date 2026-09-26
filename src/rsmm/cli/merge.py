@@ -30,6 +30,7 @@ from pathlib import Path
 from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
 from rsmm.engine.ot_patch import OtPatchError, apply_edits
 from rsmm.engine.paths import (
+    BACKUP_SUFFIX,
     COOKING_SUBDIR,
     MODS_DIR,
 )
@@ -221,7 +222,7 @@ def _texture_patches(patches: list[_Patch], cooking: Path, out_assets: Path,
         # pristine donor and is what a texture patch means by "the game's own
         # asset". Without this, enabling two texture mods could chain one into
         # the other, and re-applying could propagate a previous result.
-        pristine = src.parent / (src.name + ".rsmm.bak")
+        pristine = src.parent / (src.name + BACKUP_SUFFIX)
         if pristine.exists():
             src = pristine
         if not src.exists():
@@ -272,7 +273,7 @@ def _ot_patches(patches: list[_Patch], game_dir: Path, out_assets: Path,
         # an apply has installed a previous result, `src` is that result, and
         # composing on top of it would make the outcome depend on how many
         # times apply has run.
-        pristine = src.parent / (src.name + ".rsmm.bak")
+        pristine = src.parent / (src.name + BACKUP_SUFFIX)
         if pristine.exists():
             src = pristine
         if not src.exists():

@@ -27,6 +27,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rsmm.engine.paths import BACKUP_SUFFIX
+
 from . import cooked, corpus
 from . import entity_strings as ES
 from . import rsc_cache as RC
@@ -104,7 +106,7 @@ def merge_app_settings(texts: list[str]) -> str:
 
 def pristine_app_settings(game_dir: Path) -> str | None:
     p = game_dir / APP_SETTINGS
-    bak = p.parent / (p.name + ".rsmm.bak")
+    bak = p.parent / (p.name + BACKUP_SUFFIX)
     src = bak if bak.exists() else p
     return src.read_text(encoding="utf-8", errors="surrogateescape") if src.exists() else None
 

@@ -40,6 +40,8 @@ import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
+from rsmm.engine.paths import BACKUP_SUFFIX
+
 HEADER_SIZE = 0x10
 CRC_OFFSET = 0x0C
 MAGIC_OFFSET = 0x10
@@ -152,7 +154,7 @@ def write(save: Save, path: str | Path | None = None, *, backup: bool = True) ->
     out = Path(path) if path is not None else save.path
     resign(save)
     if backup and out.exists():
-        shutil.copy2(out, out.with_suffix(out.suffix + ".rsmm.bak"))
+        shutil.copy2(out, out.with_suffix(out.suffix + BACKUP_SUFFIX))
     out.write_bytes(bytes(save.data))
     return out
 
