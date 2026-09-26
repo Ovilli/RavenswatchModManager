@@ -1206,6 +1206,9 @@ do
     -- learned the liveness check judges by the CURRENT hero, which is alive:
     -- 2026-09-26 a second-run R.stat.modify dispatched ADD_MODIFIER into the
     -- previous run's dispatcher and crashed the game, twice.
+    -- run:end / NEXT_CHAPTER also retire R.entity's hero capture; put it back
+    -- for the later sections, as a fresh spawn would.
+    local saved_capture = { shared[0], shared[1], shared[3] }
     for _, b in ipairs({ { "run:end", "derived" }, { "run:start", "derived" },
                          { "gameplay:GAME_END_NEXT_CHAPTER", "gameplay" } }) do
         fire("gameplay:ABILITY_EXIT", { source = "gameplay",
@@ -1217,6 +1220,7 @@ do
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
                                     dispatcher = string.format("0x%x", DISP) })
     check(R.give.ready(), "the next hero-anchored event re-captures it")
+    shared[0], shared[1], shared[3] = saved_capture[1], saved_capture[2], saved_capture[3]
 end
 
 -- 10. fail-closed guards: the safety net that makes engine writes acceptable --
