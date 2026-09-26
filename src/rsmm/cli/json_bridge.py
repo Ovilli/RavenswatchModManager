@@ -997,6 +997,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
     tmp = tempfile.NamedTemporaryFile(prefix="rsmm-download-", suffix=".zip", delete=False)
     tmp_path = Path(tmp.name)
     dl_url = ""
+    handed_over = False     # only a verified archive leaves; the caller deletes it
     try:
         # Inside the try: `_api_url` resolves RSMM_INDEX_URL, which is checked,
         # so a bad override must surface as an error payload rather than a
@@ -1019,6 +1020,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
                 "ok": False,
                 "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}",
             }
+        handed_over = True
         return {"ok": True, "sizeBytes": size, "tmp_path": tmp_path}
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"download failed: HTTP {e.code} {e.reason}"}
@@ -1027,6 +1029,12 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
     finally:
         with contextlib.suppress(Exception):
             tmp.close()
+        # A rejected or partial download is not returned to anyone, so it is
+        # deleted here; before, every tampered or failed download left a
+        # (possibly hundreds-of-MB) zip in the temp dir.
+        if not handed_over:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
 
 
 def cmd_install_mod(slug: str) -> int:
