@@ -780,6 +780,31 @@ to    = "State Secondary Ability Echo"
   part left owning nothing, a number re-pointed at a value of another type.
   The check proves the wiring is sound, not that the ability plays the way
   you meant: that is still a playtest.
+- **`[[content.attacks]]`**: an attack of the hero's own that replaces an
+  ability slot, declared instead of wired step by step:
+
+  ```toml
+  [[content.attacks]]
+  id        = "Crescent"             # its entity is Hero_<hero>_Crescent
+  slot      = "special"
+  model     = "art/crescent.glb"     # static mesh, glTF +Y = direction of flight
+  albedo    = "art/crescent_alb.png" # mra / normal optional
+  speed     = 16
+  lifetime  = 0.9                    # seconds
+  beats     = [[0, 180], [90, -90]]  # each beat's angles, 0 = where the hero faces
+  delay     = 0.4                    # seconds between beats
+  animation = "art/cast.glb"         # replaces the slot's clip (`clip` = its name)
+  ```
+
+  The projectile is a new entity of the hero's own on the engine's generic
+  hero projectile (physics, hits, piercing, damage and despawn come from
+  it), with the mod's mesh and maps, the hero's own trail and impact effects
+  (tinted by `effects`) and the base's projectile sounds. Each angle fires
+  from a copy of the base's projectile spawner and 3D node, turned by the
+  node's angle (see *Turning a spawn* above). Beat 0 fires when the slot is
+  used and each later beat on a timer inside the slot's state, so the
+  slot's animation must last until the last beat. Damage is the generic
+  projectile's for now. Supported bases so far: Piper (`slot = "special"`).
 - **`own_entity = true`** is implied by every field above except `name`,
   `description` and `portrait`. The hero gets
   its own gameplay entity: every `Hero_<Base>*` entity (the hero, FX, pets,

@@ -88,6 +88,12 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         reads as a page still to write when ``placeholder`` is set. Once any
         page is the hero's own, the pages lose the base's voice-over (the
         recordings are named after the base) and are silent.
+    ``attacks`` (list)  ``[[content.attacks]]``: attacks of the hero's own,
+        each replacing an ability slot: a projectile entity of its own
+        (``Hero_<id>_<attack>``, on the engine's generic hero projectile) with
+        the mod's mesh and maps, fired at ``beats`` of angles ``delay`` apart,
+        with the slot's animation replaced. Fields and how it is built:
+        ``engine/attack_build.py``.
     ``effects`` (table)  ``{"<effect>" | "*" = {tint = "#RRGGBB"}}``: particle
         effects of the hero's own. Every effect in the base's own FX folder
         (Beowulf: 99) is copied under ``<id>_<name>`` with its own materials and
@@ -143,7 +149,7 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
-                     "skills", "placeholder", "memoirs", "effects", "hide"})
+                     "skills", "placeholder", "memoirs", "effects", "hide", "attacks"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -275,9 +281,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     if not isinstance(abilities, list):
         raise ContentError(f"hero {hid}: 'abilities' is a list of tables")
     skills = _table(f.get("skills"), "skills", hid)
+    attacks = f.get("attacks") or []
+    if not isinstance(attacks, list) or not all(isinstance(a, dict) for a in attacks):
+        raise ContentError(f"hero {hid}: 'attacks' is a list of tables")
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
                or animations or outfits or values or references or abilities or skills
-               or f.get("placeholder") or f.get("effects") or f.get("hide"))
+               or attacks or f.get("placeholder") or f.get("effects") or f.get("hide"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
 
@@ -348,6 +357,35 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                 if not wmat:
                     raise ContentError(f"hero {hid}: {label}'s material was not found")
                 swaps[wmat] = material(wmat, spec, tag, f"weapons.{label}")
+
+    # Attacks of the hero's own (engine/attack_build.py): each one a projectile
+    # entity of its own, the steps that fire it, and its slot's animation.
+    # Built here so its clip joins `animations` and its steps join
+    # `abilities`; its entity is written with the family, once every swap
+    # (its trail and impact are the hero's recoloured effects) is known.
+    attack_entities: list = []
+    if attacks:
+        from ...engine import attack_build as AB
+        main_ref = next(r for r in b.family
+                        if r.rsplit("\\", 1)[-1] == f"{b.stem}.entity.ot")
+        base_main = corpus.read(H.entity_rel(main_ref))
+        abilities = list(abilities)
+        animations = dict(animations)
+        for spec in attacks:
+            try:
+                built = AB.build(spec, hero=hid, base=base, base_main=base_main,
+                                 mesh=mesh, material=material)
+            except AB.AttackError as e:
+                raise ContentError(f"hero {hid}: attack: {e}") from e
+            abilities += built.steps
+            if built.animation:
+                clip, anim = built.animation
+                if clip in animations:
+                    raise ContentError(f"hero {hid}: attack {spec.get('id')} and "
+                                       f"'animations' both set clip {clip}")
+                animations[clip] = anim
+            art.append(f"EntitySettings|{built.entity_ref}|oCEntitySettingsResource")
+            attack_entities.append(built)
 
     # Animations: a clip of this hero's own, under a new name, so the base
     # keeps its moves (the `animation` kind overrides a clip for everyone).
@@ -527,7 +565,11 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             base_bytes = res.files
             for w in res.warnings:
                 print(f"warning: hero {hid}: {w}", file=sys.stderr)
-            art.extend(_borrow_closure(sorted(res.resources), out_dir, hid))
+            # An attack's own projectile is preloaded by the lines its build
+            # recorded (the entity, its mesh, maps and effects); no shipped
+            # cache can list it, so it is not borrowed.
+            own_refs = {a.entity_ref for a in attack_entities}
+            art.extend(_borrow_closure(sorted(res.resources - own_refs), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
                   R.cooked(base_bytes[stem_of[ref]], b.alias.guid, guid)
                   for ref in b.family}
@@ -538,6 +580,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             ecache = corpus.read(RC.cache_path_for(rel))
             if ecache is not None:
                 put(RC.cache_path_for(new_rel), R.cache(ecache, tuple(art)))
+        for built in attack_entities:
+            # Its trail/impact name the base's effects; the swaps turn them
+            # into this hero's recoloured copies (and leave anything else).
+            blob = ES.replace_strings(built.entity, swaps, require_all=False)
+            # Fresh part ids: it must not share the template projectile's.
+            put(built.entity_rel, PC.restamp_entity_guids(blob, built.entity_rel))
         put(H.APP_SETTINGS_DECODED, H.add_alias(
             app, H.Alias(guid, f"Hero_{hid}", R.entity_ref(b.alias.stream))).encode(
                 "utf-8", errors="surrogateescape"))
