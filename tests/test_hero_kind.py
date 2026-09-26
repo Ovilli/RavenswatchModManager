@@ -7,6 +7,8 @@ contract — the same self-registration the enemy clone proved in game.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from rsmm.engine import enemy_pools as EP
@@ -334,3 +336,30 @@ def test_a_placeholder_paints_every_borrowed_image_and_material(tmp_path):
                     left.add(t)
     assert not left, sorted(left)[:5]
     assert any(p.name.startswith("Nyx_Skill") and p.name.endswith(".Texture.dxt") for p in files)
+
+
+@needs_corpus
+@needs_install
+def test_story_pages_of_its_own_and_placeholders_for_the_rest(tmp_path):
+    import struct
+
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import image
+    from rsmm.engine import text_patches as TP
+    (tmp_path / "pink.png").write_bytes(image.encode_png(4, 4, bytes([255, 0, 255, 255]) * 16))
+    files = _emit(tmp_path, id="Nyx", name="Nyx", placeholder="pink.png",
+                  memoirs=[{"title": "The Flute", "text": "Nyx found a flute."}])
+    herodef = next(p for p in files if p.name == "Nyx.herodef.ot.DtHeroDefinition.gen")
+    blob = herodef.read_bytes()
+    strings = [t for _s, _o, t in ES.list_strings(blob)]
+    assert not any(re.fullmatch(r"Piper_Memoir\d_(Title|Desc)", t) for t in strings)
+    bank = next(p for p in files if p.name == "Hero_Piper_Memoirs~GAM.xls.LocalText.gen")
+    en = next(p for p in files if p.name == "Hero_Piper_Memoirs~GAM.xls.LocalText.gen.LangEN")
+    keys = TP.parse_text_file(bank).entries
+    text = dict(zip(keys, TP.parse_text_file(en).entries, strict=True))
+    assert text["Hero_Nyx_Memoir1_Title"] == "The Flute"
+    assert text["Hero_Nyx_Memoir2_Desc"].startswith("PLACEHOLDER: Nyx's story, page 2")
+    for key in ("Hero_Nyx_Memoir1_Desc", "Hero_Nyx_Memoir3_Title"):
+        k = key.encode()
+        at = blob.find(struct.pack("<I", len(k)) + k)
+        assert struct.unpack_from("<I", blob, at - 4)[0] == keys.index(key), key

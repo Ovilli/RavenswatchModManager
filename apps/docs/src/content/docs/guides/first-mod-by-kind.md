@@ -717,7 +717,12 @@ to    = "State Secondary Ability Echo"
   gear, companion, every skin), every ability and talent icon, the HUD
   images, and the book's portraits, skin icons and codex pictures. Whatever
   is still pink in game is what is left to make. `albedo`, `weapons` and
-  `portrait` win over it.
+  `portrait` win over it. Story pages the hero does not write itself read as
+  pages still to write.
+- **`memoirs`** is the book's story pages, in order: `[[content.memoirs]]`
+  tables with `title` and `text` (Beowulf has 7). A page left out keeps the
+  base hero's story, or shows a placeholder when `placeholder` is set. The
+  narration audio stays the base's.
 - **`abilities`** edits how her abilities are wired. An ability is a graph of
   parts (states, timers, tests, spawners, values) inside the hero's entity;
   `rsmm entity-graph Piper --group "Ability Secondary"` lists one ability's

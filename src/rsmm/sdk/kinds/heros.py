@@ -78,9 +78,14 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         character material's albedo (body, gear, companion, every skin), every
         ability/talent icon and HUD image, and the book's portraits, skin icons
         and codex pictures, each under a name of the hero's own. Whatever is
-        still pink in game is what is left to replace; ``albedo``,
+        still pink in game is what is left to replace (story pages the
+        ``memoirs`` field leaves out read as pages still to write); ``albedo``,
         ``weapons`` and ``portrait`` take precedence. ⚠ Many UI images under
         new names: a new-name UI texture hung level load once (a POI icon).
+    ``memoirs`` (list)  ``[{title, text}]``: the book's story pages, in
+        order (Beowulf has 7). A page left out keeps the base's story, or
+        reads as a page still to write when ``placeholder`` is set. The
+        narration audio stays the base's.
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
         entities name (a VFX, a sound, a mesh), swapped in them only; a new
         resource's preloads are borrowed from a shipped cache.
@@ -118,7 +123,7 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
-                     "skills", "placeholder"})
+                     "skills", "placeholder", "memoirs"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -518,6 +523,41 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         dec = f"Text/{b.text_bank}.LocalText.gen"
         for tok, blob in banks.items():
             put(dec if tok == "__base__" else dec + tok, blob)
+
+    # The book's story pages (memoirs): each page's title and text keys in the
+    # base's memoirs bank, re-pointed at keys of the hero's own. A page the
+    # manifest leaves out keeps the base's story, unless a placeholder is set:
+    # then it reads as a page still to write, like the pink art.
+    memoirs = f.get("memoirs") or []
+    if not isinstance(memoirs, list) or not all(isinstance(m, dict) for m in memoirs):
+        raise ContentError(f"hero {hid}: 'memoirs' is a list of tables ({{title, text}})")
+    pages = _memoir_keys(herodef)
+    if len(memoirs) > len(pages):
+        raise ContentError(f"hero {hid}: {base} has {len(pages)} story pages; "
+                           f"'memoirs' lists {len(memoirs)}")
+    mem_pairs: dict[str, str] = {}
+    mem_bank = None
+    for n, (bank, title_key, desc_key) in enumerate(pages, 1):
+        page = memoirs[n - 1] if n <= len(memoirs) else {}
+        unknown = sorted(set(page) - {"title", "text"})
+        if unknown:
+            raise ContentError(f"hero {hid}: memoir {n}: unsupported field(s) {unknown}; "
+                               f"known: ['text', 'title']")
+        if not page and placeholder:
+            page = {"title": f"[Story page {n}: to be written]",
+                    "text": f"PLACEHOLDER: {f.get('name') or hid}'s story, page {n}, "
+                            f"is still to be written."}
+        for fld, key in (("title", title_key), ("text", desc_key)):
+            if page.get(fld):
+                hswap[key] = f"Hero_{hid}_Memoir{n}_{key.rsplit('_', 1)[1]}"
+                mem_pairs[hswap[key]] = str(page[fld])
+                mem_bank = bank
+    if mem_pairs:
+        text_rows[mem_bank] = TP.appended_rows(_install_bank(game, mem_bank), mem_pairs)
+        banks = TP.append_bank_keys(_install_bank(game, mem_bank), mem_pairs)
+        dec = f"Text/{mem_bank}.LocalText.gen"
+        for tok, blob in banks.items():
+            put(dec if tok == "__base__" else dec + tok, blob)
     portrait_lines: list[str] = []
     if f.get("portrait"):
         png = _mod_source(out_dir, f["portrait"], hid, "portrait").read_bytes()
@@ -776,6 +816,20 @@ def _table(v, what: str, hid: str) -> dict:
     if not isinstance(v, dict):
         raise ContentError(f"hero {hid}: {what!r} is a table (name = file or {{...}})")
     return v
+
+
+def _memoir_keys(herodef: bytes) -> list[tuple[str, str, str]]:
+    """``(bank, title key, text key)`` for each story page of a herodef, in
+    page order (``Beowulf_Memoir1_Title`` ... in ``Hero_<X>_Memoirs~GAM.xls``)."""
+    from ...engine import entity_strings as ES
+    ss = [t for _s, _o, t in ES.list_strings(herodef)]
+    pages: dict[int, dict] = {}
+    for i, t in enumerate(ss):
+        m = re.fullmatch(r".+_Memoir(\d+)_(Title|Desc)", t)
+        if m and i and ss[i - 1].endswith("Memoirs~GAM.xls"):
+            pages.setdefault(int(m.group(1)), {"bank": ss[i - 1]})[m.group(2)] = t
+    return [(p["bank"], p.get("Title", ""), p.get("Desc", ""))
+            for _n, p in sorted(pages.items()) if p.get("Title") and p.get("Desc")]
 
 
 def _placeholder_ref(ref: str, hid: str) -> str:
