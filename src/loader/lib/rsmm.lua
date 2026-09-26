@@ -1224,8 +1224,13 @@ function R.modifier.value(name)
     return R.game.get_key(key)
 end
 
--- Why the last R.modifier read returned nil (R.game's reason), or nil.
-function R.modifier.why() return R.game.why() end
+-- Declared here, above every reader (why() below and set/clear further down):
+-- a local declared after a function that reads it is a GLOBAL inside it.
+local _modifier_write_why = nil
+
+-- Why the last R.modifier call failed: a refused set/clear, else the last
+-- read's reason (R.game's). nil when the last call worked.
+function R.modifier.why() return _modifier_write_why or R.game.why() end
 
 -- True if a toggle modifier is active this run (value present and non-zero).
 function R.modifier.active(name)
@@ -1441,64 +1446,70 @@ end
 
 -- WRITE side (EXPERIMENTAL, unproven in-game) ---------------------------
 --
--- A modifier is a CRC-keyed entry in the SAME entity-value store R.stat writes,
--- so setting one is R.stat.stick under a different name — no second write path,
--- no second set of guards. Registering the keys into R.stat.keys is what makes
--- that reuse legal: R.stat.set refuses a name it does not know.
+-- Writes go to the GLOBAL scene context the run modifiers live in, through the
+-- engine's own setter (SceneContextValue_SetInt / _SetFloat), so the value's
+-- change signal fires like any engine write. See R.game._write_key for the
+-- guards. Until 2026-09-26 this wrote the HERO's store, which the game never
+-- reads for these values -- every write "succeeded" and did nothing.
 --
--- Three honest caveats, none of which this code can check for you:
+-- Caveats this code cannot check for you:
 --
---  1. WRONG STORE, KNOWN. This writes the HERO's store, and the run modifiers
---     do not live there: they are in the global scene context (read 0.0 from
---     the hero in game 2026-09-19; the engine's own setter FUN_1402091a0 writes
---     the global one, 2026-09-26). R.modifier.value now reads the global
---     context, so it will NOT see a value written here. Writing the global one
---     means calling that setter, which fires the value's change signal and may
---     replicate to peers -- not done until that is decided on purpose.
+--  1. LOCAL-ONLY. A value the engine replicates to peers is written only when
+--     the run is provably solo (Hero Count == 1); in co-op the write is
+--     refused. The engine would anyway refuse a client, silently.
 --  2. WHEN IT IS READ. Only a modifier the engine reads LIVE can be turned on
 --     mid-run. "One chapter", "Day only" and "Random hero at map start" are
 --     consumed at map generation, so setting them after a run has begun changes
 --     nothing; they have to be ticked in the Custom Mode screen.
---  3. NOT THE UI. This flips the state key the behaviour is gated on. The
+--  3. NOT THE UI. This sets the state value the behaviour is gated on. The
 --     challenge-select screen still shows nothing selected.
---
--- EVERY modifier is written as f32, toggles included, because that is how they
--- are READ: R.entity.value decodes the union's inline slot as a float for every
--- key, so an int-written toggle reads back as ~0 and R.modifier.active answers
--- no to a modifier it just set. Read and write have to agree before either can
--- be right. If a modifier turns out to be int-typed in the engine, BOTH sides
--- are wrong together and R.entity.value is the one place to fix it.
-local _modifier_keys_registered = false
-local function _register_modifier_keys()
-    if _modifier_keys_registered then return end
-    _modifier_keys_registered = true
-    for name, key in pairs(_MODIFIER_KEYS) do
-        R.stat.keys["modifier:" .. name] = { key = key, kind = "f32" }
-    end
-end
+--  4. NOT PINNED. The engine may re-seed these at a run start; a mod that wants
+--     a value for the whole run sets it again on "run:start" (next_main).
+
+-- key -> the value before this SDK first wrote it, for clear().
+local _modifier_orig = {}
 
 -- Opt in to modifier writes. Same consent flag as R.stat.enable_writes — this
 -- IS that flag, so enabling either enables both.
 function R.modifier.enable_writes() return R.stat.enable_writes() end
 
--- Set a named modifier and KEEP it set (R.stat.stick re-asserts after the
--- engine's next recompute wipes the override cache). MAIN THREAD only.
--- Returns the immediate-apply result; false when the name is unknown, writes
--- are off, or no value store is reachable.
+-- Set a named modifier in the global context. MAIN THREAD only (wrap in
+-- R.schedule.next_main). Returns true when the value reads back as written;
+-- false otherwise, with the reason in R.modifier.why().
 function R.modifier.set(name, value)
-    if not _MODIFIER_KEYS[name] then
-        R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
+    local key = _MODIFIER_KEYS[name]
+    if not key then
+        _modifier_write_why = "unknown modifier name: " .. tostring(name)
+        R.log("[rsmm.modifier] " .. _modifier_write_why)
         return false
     end
-    _register_modifier_keys()
-    return R.stat.stick("modifier:" .. name, value or 1)
+    if not (R.stat.writes_enabled and R.stat.writes_enabled()) then
+        _modifier_write_why = "writes are off — call R.modifier.enable_writes() first"
+        R.log("[rsmm.modifier] " .. _modifier_write_why)
+        return false
+    end
+    if _modifier_orig[key] == nil then
+        _modifier_orig[key] = R.game.get_key(key)     -- nil if unreadable
+    end
+    local ok, why = R.game._write_key(key, value or 1)
+    _modifier_write_why = why
+    if not ok then
+        R.log(("[rsmm.modifier] set %s REFUSED: %s"):format(name, tostring(why)))
+    end
+    return ok
 end
 
--- Stop pinning a modifier. The engine's next recompute restores its own value.
+-- Put a modifier back to the value it had before this SDK first wrote it.
+-- False for an unknown name, or one this SDK never changed.
 function R.modifier.clear(name)
-    if not _MODIFIER_KEYS[name] then return false end
-    _register_modifier_keys()
-    return R.stat.unstick("modifier:" .. name)
+    local key = _MODIFIER_KEYS[name]
+    if not key then return false end
+    local orig = _modifier_orig[key]
+    if orig == nil then return false end
+    local ok, why = R.game._write_key(key, orig)
+    _modifier_write_why = why
+    if ok then _modifier_orig[key] = nil end
+    return ok
 end
 
 -- Names this SDK can WRITE, sorted. Same set as R.modifier.names() today; kept

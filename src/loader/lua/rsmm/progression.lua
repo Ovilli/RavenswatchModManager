@@ -389,6 +389,10 @@ function R.stat.enable_writes()
     return true
 end
 
+-- Whether the write opt-in is on. R.modifier's global-context writes live in
+-- another module and share this one consent flag, so they need to read it.
+function R.stat.writes_enabled() return _stat_writes_enabled end
+
 -- Find the override entry for `key` in the store (entry addr, or nil).
 local function _stat_find_entry(store, key)
     local data  = I.read_u64(store + OVR_DATA_OFF)

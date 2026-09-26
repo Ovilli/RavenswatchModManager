@@ -198,6 +198,12 @@ constexpr std::uintptr_t EntityValueRegistry_RegisterAll = 0x1401da350ull;
 constexpr const char* EntityValueRegistry_RegisterAll_Pattern = "EntityValueRegistry_RegisterAll";
 constexpr std::uintptr_t SceneContextValue_Find = 0x1401c9600ull;
 constexpr const char* SceneContextValue_Find_Pattern = "SceneContextValue_Find";
+constexpr std::uintptr_t SceneContextValue_SetBool = 0x140209010ull;
+constexpr const char* SceneContextValue_SetBool_Pattern = "SceneContextValue_SetBool";
+constexpr std::uintptr_t SceneContextValue_SetFloat = 0x14020a580ull;
+constexpr const char* SceneContextValue_SetFloat_Pattern = "SceneContextValue_SetFloat";
+constexpr std::uintptr_t SceneContextValue_SetInt = 0x1402091a0ull;
+constexpr const char* SceneContextValue_SetInt_Pattern = "SceneContextValue_SetInt";
 constexpr std::uintptr_t g_GlobalEntityValueSceneContext_Tester_vftable = 0x140f09e68ull;
 
 // --- event ---

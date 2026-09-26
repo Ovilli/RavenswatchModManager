@@ -103,12 +103,52 @@ value union. Read off the engine's own setter (`FUN_1402091a0` →
 |--------|-------|
 | `+0x00` | `oCGlobalEntityValueSettings*` |
 | `+0x08` | `EntityCpntValueSignal<oCEntityValueUnion const&>` (change signal) |
-| `+0x30` | `oCEntityValueUnion` — `+0x08` inline tag (`4`), `+0x10` value, `+0x18` type byte (`0` = f32, `1` = int, `10` = unset) |
+| `+0x30` | `oCEntityValueUnion` — `+0x08` storage tag, `+0x10` inline data, `+0x18` type byte |
 
-The decode follows the union's own type byte. The write side
-(`R.modifier.set`) still targets the hero store and is experimental: writing the
-global context means calling the engine's setter, which fires the change signal
-and may replicate to peers.
+Storage: tag `4` means the data is **inline** at `union+0x10`; any other
+non-zero tag is the data's **address** with bit 0 used as a flag (`tag & ~1`).
+The type byte, from `EntityValueUnion_InitAsType`'s jump table:
+
+| Type | Value | Size / align | Stored |
+|------|-------|--------------|--------|
+| `0` | f32 | 4 / 4 | inline |
+| `1` | int32 (first dword of the slot) | 16 / 8 | always out of line |
+| `2` | bool | 1 / 1 | inline — the modifier **toggles** |
+| `10` | unset | — | — |
+
+The decode follows the union's own type byte. Measured in game at a run start:
+`Global Xp Modifier` 0.25, `Difficulty Xp Modifier` 1.25, `Current chapter` 0.
+
+### Writing (experimental, local-only)
+
+```lua
+R.schedule.next_main(function()          -- engine-mutating: main thread only
+  R.modifier.enable_writes()             -- opt-in, shared with R.stat
+  R.modifier.set("Global Xp Modifier", 1.5)   -- true when it reads back
+  R.modifier.clear("Global Xp Modifier")      -- restores the pre-write value
+end)
+```
+
+`R.modifier.set` calls the engine's own setter — `SceneContextValue_SetFloat`
+(`FUN_14020a580`), `SceneContextValue_SetInt` (`FUN_1402091a0`) or
+`SceneContextValue_SetBool` (`FUN_140209010`), picked by the value's type byte —
+so the change signal fires like any engine write. **Proven in game:** setting
+`No minimap` to 1 mid-run removed the minimap immediately. Both land in `FUN_140706660`, which is the replication
+gate: `settings+0xbe` marks a value as **replicated**, a client's write to one is
+dropped silently, and a host's is queued for peers. So:
+
+- a **replicated** value is written only when the run is provably solo
+  (`Hero Count` reads exactly 1) — refused in co-op and when the count is
+  unreadable. ⚠ `Hero Count` read **0** at the start of a solo run, so this gate
+  currently refuses replicated values even solo; the two values tested so far
+  are not replicated;
+- every write is **read back**, because the engine's refusal returns normally;
+- a key the context does not hold is refused (the setter never creates one);
+- `R.modifier.why()` gives the reason for any `false`.
+
+Modifiers consumed at map generation ("One chapter", "Day only", "Random hero
+at map start") change nothing when set mid-run, and the challenge screen does
+not show a value set this way.
 
 ## SDK kind (shipped)
 

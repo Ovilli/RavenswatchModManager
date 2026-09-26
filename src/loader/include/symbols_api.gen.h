@@ -577,6 +577,27 @@ inline SceneContextValue_Find_fn SceneContextValue_Find() {
     return reinterpret_cast<SceneContextValue_Find_fn>(rsmm::fn_resolve(Sym::SceneContextValue_Find_Pattern));
 }
 
+// SceneContextValue_SetBool  (SceneContextValue_SetBool)
+//   void(void* sceneContext, uint32_t crcKey, bool value)
+using SceneContextValue_SetBool_fn = void(*)(void*, uint32_t, bool);
+inline SceneContextValue_SetBool_fn SceneContextValue_SetBool() {
+    return reinterpret_cast<SceneContextValue_SetBool_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetBool_Pattern));
+}
+
+// SceneContextValue_SetFloat  (SceneContextValue_SetFloat)
+//   void(void* sceneContext, uint32_t crcKey, float value)
+using SceneContextValue_SetFloat_fn = void(*)(void*, uint32_t, float);
+inline SceneContextValue_SetFloat_fn SceneContextValue_SetFloat() {
+    return reinterpret_cast<SceneContextValue_SetFloat_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetFloat_Pattern));
+}
+
+// SceneContextValue_SetInt  (SceneContextValue_SetInt)
+//   void(void* sceneContext, uint32_t crcKey, int32_t value)
+using SceneContextValue_SetInt_fn = void(*)(void*, uint32_t, int);
+inline SceneContextValue_SetInt_fn SceneContextValue_SetInt() {
+    return reinterpret_cast<SceneContextValue_SetInt_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetInt_Pattern));
+}
+
 // SharedRef_Release  (SharedRef_Release)
 //   void(void*)
 using SharedRef_Release_fn = void(*)(void*);

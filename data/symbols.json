@@ -4120,6 +4120,57 @@
    }
   },
   {
+   "name": "SceneContextValue_SetInt",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_1402091a0",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, int32_t value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "int"
+    ]
+   },
+   "note": "Write an INT entity value into a SCENE CONTEXT by key - the write half of SceneContextValue_Find, and the engine's own setter (not a raw poke of record+0x30, which would skip the change signal every listener hangs off).\n\nWHAT IT DOES (read 2026-09-26, static): stack-builds an oCEntityValueUnion of the right type (EntityValueUnion_InitAsType: 1 = int, 0 = f32), writes the value inline, and hands it with the key to FUN_1407065d0. That looks the key up with FUN_1401c9670 (a byte twin of SceneContextValue_Find, returning the same RECORD) and, when the key is held, calls FUN_140716470 -> FUN_140706660(ctx, record, union). A key the context does not hold is a silent no-op: nothing is created.\n\nFUN_140706660 IS THE REPLICATION GATE, and it is why R.modifier writes are local-only: settings = *record (oCGlobalEntityValueSettings). If ctx+0xe0 is set, its vt[0x78]() is true, its vt[0xd8]() is false AND settings+0xbe != 0, the write is REFUSED without a word (a client may not set a replicated value). Otherwise, when the new union differs (EntityValueUnion_Compare), it is copied into record+0x30, the change signal at record+8 fires, and if ctx+0x78 is set and settings+0xbe != 0, ctx+0x78->vt[0x30](.., 1, 0) marks it for replication. So settings+0xbe is the value's REPLICATED flag. vt[0x78]/vt[0xd8] are unnamed (probably is-networked / is-authority) - not relied on.\n\nCallers: the engine's own gameplay code, e.g. the escape menu's 'Is game menu open' (UI controller activation). The SDK reaches it only through R.modifier.set, which refuses a replicated value unless the run is provably solo."
+  },
+  {
+   "name": "SceneContextValue_SetFloat",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_14020a580",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, float value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "float"
+    ]
+   },
+   "note": "Write an F32 entity value into a SCENE CONTEXT by key; the float twin of SceneContextValue_SetInt (value arrives in xmm2, `movaps xmm6, xmm2`, union type 0).\n\nWHAT IT DOES (read 2026-09-26, static): stack-builds an oCEntityValueUnion of the right type (EntityValueUnion_InitAsType: 1 = int, 0 = f32), writes the value inline, and hands it with the key to FUN_1407065d0. That looks the key up with FUN_1401c9670 (a byte twin of SceneContextValue_Find, returning the same RECORD) and, when the key is held, calls FUN_140716470 -> FUN_140706660(ctx, record, union). A key the context does not hold is a silent no-op: nothing is created.\n\nFUN_140706660 IS THE REPLICATION GATE, and it is why R.modifier writes are local-only: settings = *record (oCGlobalEntityValueSettings). If ctx+0xe0 is set, its vt[0x78]() is true, its vt[0xd8]() is false AND settings+0xbe != 0, the write is REFUSED without a word (a client may not set a replicated value). Otherwise, when the new union differs (EntityValueUnion_Compare), it is copied into record+0x30, the change signal at record+8 fires, and if ctx+0x78 is set and settings+0xbe != 0, ctx+0x78->vt[0x30](.., 1, 0) marks it for replication. So settings+0xbe is the value's REPLICATED flag. vt[0x78]/vt[0xd8] are unnamed (probably is-networked / is-authority) - not relied on.\n\nCallers: the engine's own gameplay code, e.g. the escape menu's 'Is game menu open' (UI controller activation). The SDK reaches it only through R.modifier.set, which refuses a replicated value unless the run is provably solo."
+  },
+  {
+   "name": "SceneContextValue_SetBool",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_140209010",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, bool value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "bool"
+    ]
+   },
+   "note": "Write a BOOL entity value into a SCENE CONTEXT by key; the bool twin of SceneContextValue_SetInt (`movzx ebx, r8b`, EntityValueUnion_InitAsType(2), `mov byte [data], bl`, then FUN_1407065d0). Found 2026-09-26 as the only caller of that shared set path that builds a type-2 union, after a playtest showed the run-modifier TOGGLES (e.g. 'No minimap', 0x99f27eac) are type 2, which the int/float setters cannot write. Same replication gate as SceneContextValue_SetInt (see its note).\n\nUNION TYPE TABLE (EntityValueUnion_InitAsType jump table, {size, align} per case): 0 = f32 {4,4}; 1 = int {0x10,8}; 2 = bool {1,1}; 3 = {0xc,4}. Storage: tag at union+8 == 4 means the value is INLINE at union+0x10; any other non-zero tag is the storage ADDRESS with bit 0 as a flag (`and rax, ~1`). A 16-byte int never fits inline, so every int value is out of line - which is why 'Current chapter' and 'Hero Count' first read as 'did not come back inline'."
+  },
+  {
    "name": "Serializer_GetClassVersion",
    "kind": "function",
    "category": "engine-core",

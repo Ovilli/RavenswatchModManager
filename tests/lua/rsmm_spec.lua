@@ -747,41 +747,17 @@ do
     R.stat.set("attack_power", 500)
 end
 
--- 4c. R.modifier writes ride the hero store, under their own names ---------
+-- 4c. R.modifier name checks ----------------------------------------------
 --
--- ⚠ Reads now go to the GLOBAL scene context (R.game), which is where the run
--- modifiers really live, so this block reads its own writes back from the hero
--- store it wrote -- R.stat.get("modifier:<name>") -- not via R.modifier.value.
---
--- A run modifier is a CRC-keyed entry in the very store R.stat writes, so the
--- write path is R.stat.stick and the only new thing is the name registration.
--- That registration is what this pins: without it R.stat.set refuses the name
--- and every modifier write silently returns false.
+-- The write itself goes to the GLOBAL scene context through the engine's own
+-- setter and is exercised with that context in the R.game block below. Here:
+-- the name table, which is what refuses a typo before anything is touched.
 do
     check(R.modifier.set("Not A Modifier", 1) == false, "unknown modifier must fail")
-    check(R.modifier.set("No minimap", 1) == true, "a known toggle should apply")
-    check(R.stat.get("modifier:No minimap") == 1, "...and read back from the hero store")
-
-    -- Scalars are f32 and toggles int; writing a ratio through an int field is
-    -- how 1.5 becomes 1, so the kind is listed per modifier rather than guessed.
-    check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a scalar should apply")
-    check(about(R.stat.get("modifier:Global Xp Modifier"), 1.5),
-          "a scalar keeps its fraction")
-
-    -- set() is stick(), so a recompute clobber is re-asserted on the next
-    -- gameplay event — a modifier that lasted until the first item pickup
-    -- would be worse than one that never applied.
-    local e = ovr_entry(0x99f27eac)              -- "No minimap"
-    assert(e, "expected an override entry for the modifier")
-    I.write_u32(e + 0x08 + 0x10, 0)              -- clobber -> off
-    check(R.stat.get("modifier:No minimap") == 0, "clobber should be visible")
-    fire("*", { source = "gameplay" })
-    check(R.stat.get("modifier:No minimap") == 1, "modifier must re-assert after clobber")
-
-    check(R.modifier.clear("No minimap") == true, "clear should report it was pinned")
+    check((R.modifier.why() or ""):find("unknown modifier", 1, true) ~= nil,
+          "...and why() names it")
     check(R.modifier.clear("Not A Modifier") == false, "clearing an unknown name fails")
-    R.modifier.clear("Global Xp Modifier")
-
+    check(R.modifier.clear("No minimap") == false, "clearing a never-written modifier fails")
     local w = {}
     for _, n in ipairs(R.modifier.writable()) do w[n] = true end
     check(w["No boss timer"] and w["Dream Shard Costs Modifier"],
@@ -9131,6 +9107,117 @@ do
     check(R.modifier.value("No minimap") == nil, "an unheld modifier reads nil, not 0")
     check(R.modifier.why() ~= nil, "...and R.modifier.why() says why")
 
+    -- WRITES, through a setter faithful to FUN_1402091a0/FUN_14020a580 ->
+    -- FUN_140706660: an unheld key is a silent no-op, a CLIENT's write to a
+    -- replicated value (settings+0xbe) is refused silently, otherwise the
+    -- value is written by type into record+0x30.
+    local records = { [0x1cd79255] = REC }
+    local next_rec = 0x65000000
+    local function record(key, settings, typ, val)
+        local r = next_rec
+        next_rec = next_rec + 0x100
+        for i = 0, 0x58, 8 do wint(r + i, 0, 8) end
+        wint(r + 0x00, settings, 8)
+        wint(r + 0x48, typ, 1)
+        if typ == 1 then
+            -- A 16-byte int never fits inline: the tag IS the data's address,
+            -- with bit 0 set as the engine's flag bit may be.
+            local slot = r + 0x80
+            wint(slot, val, 4); wint(slot + 8, 0, 8)
+            wint(r + 0x38, slot | 1, 8)
+        else
+            wint(r + 0x38, 4, 8)
+            if typ == 0 then I.write_f32(r + 0x40, val) else wint(r + 0x40, val, 1) end
+        end
+        records[key] = r
+        return r
+    end
+    -- Where a record's data lives, as the engine resolves it.
+    local function data_of(r)
+        local tag = rint(r + 0x38, 8)
+        if tag == 4 then return r + 0x40 end
+        return tag & ~1
+    end
+    local SET_REP, SET_LOCAL = 0x66000000, 0x66001000
+    for i = 0, 0x100, 8 do wint(SET_REP + i, 0, 8); wint(SET_LOCAL + i, 0, 8) end
+    wint(SET_REP + 0xbe, 1, 1)                       -- replicated
+    wint(REC + 0x00, SET_LOCAL, 8)                   -- is_in_overtime: local
+    local HERO_COUNT = record(0x1599ae4c, SET_LOCAL, 1, 1)     -- int: out of line
+    local NO_MINIMAP = record(0x99f27eac, SET_REP, 2, 0)       -- bool toggle
+    local XP_MOD     = record(0x187afd1d, SET_REP, 0, 1.0)     -- f32 scalar
+    engine["SceneContextValue_Find"] = function(ctx, key)
+        if rint(ctx + SC_MAP, 8) ~= MAP then
+            error(string.format("SceneContextValue_Find: 0x%x is not a scene context", ctx))
+        end
+        asked = key
+        return records[key] or 0
+    end
+    local is_client, set_calls = false, 0
+    local function setter(kind)
+        return function(ctx, key, v)
+            set_calls = set_calls + 1
+            if rint(ctx + SC_MAP, 8) ~= MAP then error("setter: not a scene context") end
+            local r = records[key]
+            if not r then return end                              -- never creates
+            local settings = rint(r, 8)
+            if is_client and rint(settings + 0xbe, 1) ~= 0 then return end  -- silent refusal
+            local d = data_of(r)
+            if kind == "f32" then I.write_f32(d, v)
+            elseif kind == "bool" then wint(d, (v ~= 0 and v ~= false) and 1 or 0, 1)
+            else wint(d, v, 4) end
+        end
+    end
+    engine["SceneContextValue_SetInt"] = setter("int")
+    engine["SceneContextValue_SetFloat"] = setter("f32")
+    engine["SceneContextValue_SetBool"] = setter("bool")
+
+    R.stat.enable_writes()
+    check(R.modifier.set("No minimap", 1) == true,
+          "solo: a replicated toggle is written, why: " .. tostring(R.modifier.why()))
+    check(R.modifier.active("No minimap") == true, "...and reads back active from the global context")
+    check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a float scalar is written")
+    check(R.modifier.value("Global Xp Modifier") == 1.5, "...keeping its fraction (SetFloat, not SetInt)")
+    check(R.modifier.set("No minimap", 0.5) == false, "a bool takes 0 or 1 only")
+    -- Ints live OUT OF LINE (the tag is their address): hero_count reads
+    -- through the pointer, which is what "Current chapter" needed in game.
+    check(R.game.get("hero_count") == 1, "an out-of-line int reads through the tag pointer")
+    wint(data_of(HERO_COUNT), 0xfffffffe, 4)
+    check(R.game.get("hero_count") == -2, "...signed")
+    wint(data_of(HERO_COUNT), 1, 4)
+
+    -- Co-op: a replicated value is not written at all.
+    wint(data_of(HERO_COUNT), 2, 4)
+    local calls = set_calls
+    check(R.modifier.set("No minimap", 0) == false, "co-op: a replicated value is refused")
+    check(set_calls == calls, "...before the engine is called")
+    check((R.modifier.why() or ""):find("not provably solo", 1, true) ~= nil,
+          "...and why() says so: " .. tostring(R.modifier.why()))
+    -- An unreadable hero count is not solo either.
+    records[0x1599ae4c] = nil
+    check(R.modifier.set("No minimap", 0) == false, "unknown player count: refused")
+    records[0x1599ae4c] = HERO_COUNT
+    wint(data_of(HERO_COUNT), 1, 4)
+
+    -- The engine's own silent refusal is caught by the read-back.
+    is_client = true
+    check(R.modifier.set("No minimap", 0) == false, "a write the engine silently dropped reports false")
+    check((R.modifier.why() or ""):find("reads", 1, true) ~= nil,
+          "...and why() gives the read-back: " .. tostring(R.modifier.why()))
+    is_client = false
+
+    -- A key the context does not hold is refused, not "written".
+    check(R.modifier.set("No boss timer", 1) == false, "an unheld modifier is refused")
+
+    -- clear() restores the value from before the SDK's first write.
+    check(R.modifier.clear("No minimap") == true, "clear restores the original")
+    check(R.modifier.value("No minimap") == 0, "...which was 0")
+    check(R.modifier.clear("No minimap") == false, "a second clear has nothing to restore")
+    check(R.modifier.clear("Global Xp Modifier") == true and R.modifier.value("Global Xp Modifier") == 1.0,
+          "a scalar clears back to 1.0")
+
+    engine["SceneContextValue_SetInt"] = nil
+    engine["SceneContextValue_SetFloat"] = nil
+    engine["SceneContextValue_SetBool"] = nil
     shared[17] = nil
     engine["SceneContextValue_Find"] = nil
     package.loaded["rsmm.gamevalues"] = nil

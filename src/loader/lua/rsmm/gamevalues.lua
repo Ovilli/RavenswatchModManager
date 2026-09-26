@@ -67,8 +67,6 @@ local _ptr_plausible = env._ptr_plausible
 -- than absent.
 local GLOBAL_CTX_SLOT = 17
 
-local EV_INLINE_OFF = 0x08
-local EV_VALUE_OFF  = 0x10
 local EV_INLINE     = 4
 -- The positive signature of a scene context. The engine's own reader does
 -- `lea rbx,[self+0x98]` and then reads [rbx] and [rbx+0x18], so the keyed map
@@ -95,15 +93,36 @@ local SC_EXTENT_MAX = 0x1000000
 -- RTTI names both fields a 2026-09-19 dump saw:
 --   record+0x00  oCGlobalEntityValueSettings*          (vftable 0x140f11150)
 --   record+0x08  EntityCpntValueSignal<oCEntityValueUnion const&> (0x140f10f48)
---   record+0x30  oCEntityValueUnion: +0x08 inline tag (4), +0x10 value,
---                +0x18 u8 TYPE (0 = f32, 1 = int; 10 = unset, per the setters)
--- Reading the tag at record+0x08 -- inside the signal -- is why every value,
--- "Current chapter" included, reported "did not come back inline".
+--   record+0x30  oCEntityValueUnion: +0x08 storage tag, +0x10 inline data,
+--                +0x18 u8 TYPE
+-- Reading the tag at record+0x08 -- inside the signal -- is why every value
+-- reported "did not come back inline".
+--
+-- STORAGE. Tag 4 = the data is INLINE at union+0x10. Any other non-zero tag
+-- is the data's ADDRESS, with bit 0 a flag (every setter does `and rax, ~1`).
+-- TYPE, from EntityValueUnion_InitAsType's jump table ({size, align} each):
+--   0 = f32  {4,4}   inline
+--   1 = int  {16,8}  never fits inline: the int32 is the first dword of a
+--                    16-byte slot the tag points at (so every int, "Current
+--                    chapter" and "Hero Count" included, is out of line --
+--                    measured in game 2026-09-26 before this was followed)
+--   2 = bool {1,1}   inline; the run-modifier TOGGLES are this type
+--   10 = unset (what the setters' union ctor writes)
 local EV_RECORD_UNION_OFF = 0x30
-local EV_UNION_INLINE_OFF = 0x08
-local EV_UNION_VALUE_OFF  = 0x10
+local EV_UNION_TAG_OFF    = 0x08
+local EV_UNION_INLINE_OFF = 0x10
 local EV_UNION_TYPE_OFF   = 0x18
-local EV_TYPE_F32, EV_TYPE_INT = 0, 1
+local EV_TYPE_F32, EV_TYPE_INT, EV_TYPE_BOOL = 0, 1, 2
+
+-- Address of a union's data (inline or out of line), or nil.
+local function _union_data(v)
+    local tag = I.read_u64(v + EV_UNION_TAG_OFF)
+    if tag == nil or tag == 0 then return nil end
+    if tag == EV_INLINE then return v + EV_UNION_INLINE_OFF end
+    local p = tag & ~1
+    if not _ptr_plausible(p) then return nil end
+    return p
+end
 
 local M = {}
 
@@ -335,26 +354,34 @@ local function _read_key(key, label)
         return nil
     end
     local v = u + EV_RECORD_UNION_OFF
-    if I.read_u64(v + EV_UNION_INLINE_OFF) ~= EV_INLINE then
-        _why = string.format("%q did not come back inline", label)
+    local data = _union_data(v)
+    if not data then
+        _why = string.format("%q holds no value (storage tag 0x%x)", label,
+                             I.read_u64(v + EV_UNION_TAG_OFF) or 0)
         return nil
     end
     -- The union says what it holds, so the harvested `kind` is not consulted.
+    -- A bool comes back as 0/1 so every value stays a number.
     local t = I.read_u8(v + EV_UNION_TYPE_OFF)
+    local out
     if t == EV_TYPE_F32 then
-        _why = nil
-        return I.read_f32(v + EV_UNION_VALUE_OFF)
-    elseif t ~= EV_TYPE_INT then
-        _why = string.format("%q holds union type %s, not int/f32", label, tostring(t))
+        out = I.read_f32(data)
+    elseif t == EV_TYPE_BOOL then
+        local b = I.read_u8(data)
+        out = b and ((b ~= 0) and 1 or 0)
+    elseif t == EV_TYPE_INT then
+        local n = I.read_u32(data)
+        out = n and ((n >= 0x80000000) and (n - 0x100000000) or n)   -- signed int32
+    else
+        _why = string.format("%q holds union type %s, not f32/int/bool", label, tostring(t))
         return nil
     end
-    local n = I.read_u32(v + EV_UNION_VALUE_OFF)
-    if n == nil then
-        _why = string.format("%q: value word unreadable", label)
+    if out == nil then
+        _why = string.format("%q: value unreadable at 0x%x", label, data)
         return nil
     end
     _why = nil
-    return (n >= 0x80000000) and (n - 0x100000000) or n   -- signed int32
+    return out
 end
 
 --- Read one registered value by slug. Returns a number, or nil when the
@@ -421,6 +448,89 @@ function R.game.raw(name)
         R.debug.dump(u, 0x50, "game." .. name)
     end
     return u
+end
+
+-- WRITE, through the engine's own setter -----------------------------------
+--
+-- Internal: R.modifier.set is the only caller, and it adds the consent and
+-- name checks. Not a public R.game.set on purpose -- this context also holds
+-- "Is in pause", "Is in loading screen" and the session state, and a mod
+-- flipping those is how you wedge the game.
+--
+-- Why the SETTER and not a poke of record+0x30: the setter copies the union
+-- AND fires the change signal at record+8, which is what every listener of the
+-- value hangs off. A poke changes the number and tells nobody.
+--
+-- LOCAL-ONLY. FUN_140706660 (under both setters) marks a value for
+-- replication when its settings byte +0xbe is set, and silently refuses a
+-- client's write to such a value. So a replicated value is written only when
+-- the run is provably solo -- "Hero Count" reads exactly 1 -- and never
+-- otherwise, including when that cannot be read. A value that is not
+-- replicated is this machine's alone and needs no such proof.
+local SETTINGS_REPLICATED_OFF = 0xbe
+local HERO_COUNT_KEY = 0x1599ae4c
+
+local function _solo()
+    local n = _read_key(HERO_COUNT_KEY, "hero_count")
+    if n == 1 then return true end
+    return false, ("the run is not provably solo (Hero Count = %s)"):format(tostring(n))
+end
+
+-- Returns ok, why. On success `why` is nil and the value reads back as written.
+function R.game._write_key(key, value)
+    if type(key) ~= "number" or type(value) ~= "number" then
+        return false, "key and value must be numbers"
+    end
+    local p = _ctx()
+    if not p then return false, _why end
+    local ok, rec = pcall(R.engine.call, "SceneContextValue_Find", p, key)
+    if not (ok and type(rec) == "number" and rec ~= 0 and _ptr_plausible(rec)) then
+        -- The setter would silently do nothing: it never creates a key.
+        return false, ("0x%08x is not held by this scene context"):format(key)
+    end
+    local settings = I.read_u64(rec)
+    if not (settings and _ptr_plausible(settings)) then
+        return false, ("0x%08x: record has no settings object"):format(key)
+    end
+    local replicated = I.read_u8(settings + SETTINGS_REPLICATED_OFF)
+    if replicated == nil then
+        return false, ("0x%08x: replication flag unreadable"):format(key)
+    end
+    if replicated ~= 0 then
+        local solo, why = _solo()
+        if not solo then
+            return false, ("0x%08x is replicated to peers and %s -- refusing"):format(key, why)
+        end
+    end
+    local t = I.read_u8(rec + EV_RECORD_UNION_OFF + EV_UNION_TYPE_OFF)
+    local fn
+    if t == EV_TYPE_INT then
+        if value ~= math.floor(value) then
+            return false, ("0x%08x is an int value; %s is not an integer"):format(key, value)
+        end
+        fn = "SceneContextValue_SetInt"
+    elseif t == EV_TYPE_F32 then
+        fn = "SceneContextValue_SetFloat"
+    elseif t == EV_TYPE_BOOL then
+        if value ~= 0 and value ~= 1 then
+            return false, ("0x%08x is a bool value; use 0 or 1, not %s"):format(key, value)
+        end
+        fn = "SceneContextValue_SetBool"
+    else
+        return false, ("0x%08x holds union type %s, not f32/int/bool"):format(key, tostring(t))
+    end
+    local called, err = pcall(R.engine.call, fn, p, key, value)
+    if not called then
+        return false, ("%s failed: %s"):format(fn, tostring(err))
+    end
+    -- Read it back: the replication gate refuses WITHOUT a word, so a call
+    -- that returned is not a write that landed.
+    local got = _read_key(key, ("0x%08x"):format(key))
+    if got == nil or math.abs(got - value) > 1e-4 then
+        return false, ("%s returned but 0x%08x reads %s, not %s"):format(
+            fn, key, tostring(got), tostring(value))
+    end
+    return true
 end
 
 return M

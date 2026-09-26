@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **294** symbols across 24 categories.
+Total: **297** symbols across 24 categories.
 
 ## analytics
 
@@ -139,6 +139,9 @@ Total: **294** symbols across 24 categories.
 |------|---------|--------|----------|------------------|
 | `EntityValueRegistry_RegisterAll` | `0x1401da350` | ✅ ok |  | void(void) |
 | `SceneContextValue_Find` | `0x1401c9600` | ✅ ok | ✔ | oCEntityValueUnion*(void* sceneContext, uint32_t crcKey) |
+| `SceneContextValue_SetBool` | `0x140209010` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, bool value) |
+| `SceneContextValue_SetFloat` | `0x14020a580` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, float value) |
+| `SceneContextValue_SetInt` | `0x1402091a0` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, int32_t value) |
 | `g_GlobalEntityValueSceneContext_Tester_vftable` | `0x140f09e68` | 📍 va |  | Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, re… |
 
 ## event
