@@ -729,6 +729,11 @@ to    = "State Secondary Ability Echo"
   `[content.effects.Beowulf_Shockwave_Front_01]` for one. With `placeholder`,
   effects given no tint turn pink. Effects shared with every hero
   (`Common_FX`) are never touched.
+- **`hide`** lists meshes the hero does not have, by name (`"Wyrm_GEO"`,
+  Beowulf's dragon) or full path. Each is swapped, in this hero's entities
+  only, for an invisible copy: the same mesh on the same skeleton, shrunk to
+  about a thousandth. Everything attached to its bones keeps working, so the
+  dragon's fire still comes, just from nowhere visible. Its sounds stay.
 - **`memoirs`** is the book's story pages, in order: `[[content.memoirs]]`
   tables with `title` and `text` (Beowulf has 7). A page left out keeps the
   base hero's story, or shows a placeholder when `placeholder` is set. The

@@ -99,6 +99,13 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         wins. With ``placeholder``,
         effects given no tint are pink. Effects shared with other heroes
         (``Common_FX``) are never touched.
+    ``hide`` (list)  meshes the hero does not have, by name (``"Wyrm_GEO"``,
+        Beowulf's dragon) or full path: each is replaced, in this hero's
+        entities only, by an invisible copy (the same mesh and skeleton shrunk
+        to nothing), so everything attached to its bones (a breath's origin at
+        the head) still works. The logic stays: the dragon's fire still comes.
+        Every vertex rides ONE bone: a skinned mesh merely shrunk toward the
+        origin scatters back out once its bones move.
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
         entities name (a VFX, a sound, a mesh), swapped in them only; a new
         resource's preloads are borrowed from a shipped cache.
@@ -136,7 +143,7 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
-                     "skills", "placeholder", "memoirs", "effects"})
+                     "skills", "placeholder", "memoirs", "effects", "hide"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -270,7 +277,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     skills = _table(f.get("skills"), "skills", hid)
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
                or animations or outfits or values or references or abilities or skills
-               or f.get("placeholder") or f.get("effects"))
+               or f.get("placeholder") or f.get("effects") or f.get("hide"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
 
@@ -451,6 +458,36 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt", ph_png)
             art.append(f"Ui|{new}|oCTexture")
             swaps[t] = new
+
+    # Meshes the hero does not have (a companion, a prop): an invisible copy,
+    # the same mesh on the same skeleton shrunk to nothing, so every bone the
+    # game logic attaches to (a breath's origin at the head) is still there.
+    hide = f.get("hide") or []
+    if not isinstance(hide, list) or not all(isinstance(x, str) for x in hide):
+        raise ContentError(f"hero {hid}: 'hide' is a list of mesh names")
+    if hide:
+        meshes = sorted({t for ref in b.family
+                         for _s, _o, t in ES.list_strings(corpus.read(H.entity_rel(ref)))
+                         if t.lower().endswith(".fbx") and "\\Animations\\" not in t})
+        for n, want in enumerate(hide, 1):
+            stem = want.rsplit("\\", 1)[-1].removesuffix(".fbx").lower()
+            hits = [t for t in meshes if t == want
+                    or t.rsplit("\\", 1)[-1].removesuffix(".fbx").lower() == stem]
+            if len(hits) != 1:
+                raise ContentError(
+                    f"hero {hid}: 'hide' names {want!r}, which is "
+                    f"{'ambiguous' if hits else 'not a mesh'} in {base}'s entities; "
+                    f"have: {', '.join(t.rsplit(chr(92), 1)[-1] for t in meshes)}")
+            ref = hits[0]
+            donor = corpus.read(PC.art_cooked_path(ref))
+            if donor is None:
+                raise ContentError(f"hero {hid}: mesh {ref} is not in the game files")
+            new = f"{ref.rsplit(chr(92), 1)[0]}\\{hid}_Hidden{n}_GEO.fbx"
+            put(PC.art_cooked_path(new), PC.cook_model(
+                _shrunk_glb(CE.export(donor, textures=False)), donor,
+                transform={"skin": "gltf", "submeshes": "map"}))
+            art.append(f"3D|{new}|oCGeometry")
+            swaps[ref] = new
 
     # Effects of the hero's own: every particle effect in the base's own FX
     # folder is copied under this hero's name with its own materials and
@@ -868,6 +905,95 @@ def _table(v, what: str, hid: str) -> dict:
     if not isinstance(v, dict):
         raise ContentError(f"hero {hid}: {what!r} is a table (name = file or {{...}})")
     return v
+
+
+def _shrunk_glb(glb: bytes, factor: float = 1e-3) -> bytes:
+    """``glb`` made invisible: every vertex bound rigidly to ONE joint (the
+    one carrying the most weight in the mesh, so it is in the mesh's own bone
+    palette; the root often is not) and shrunk by ``factor`` onto that joint's
+    rest position. The skeleton is untouched, so every bone the game attaches to (a
+    breath's origin at the head) still moves.
+
+    Shrinking toward the model's origin alone is NOT enough on a skinned mesh
+    (in game 2026-09-26: the dragon still showed): each vertex follows its own
+    bone, so once the bones move the collapsed points scatter back out along
+    them. One bone for every vertex keeps it a speck in any pose. 1e-3, not
+    0: the cooker drops zero-area triangles; at 1e-4 it dropped 168."""
+    import json
+    import struct
+    n = struct.unpack_from("<I", glb, 12)[0]
+    gltf = json.loads(glb[20:20 + n])
+    binary = bytearray(glb[20 + n + 8:])
+
+    def view_of(acc: dict, size: int) -> tuple[int, int]:
+        v = gltf["bufferViews"][acc["bufferView"]]
+        return v.get("byteOffset", 0) + acc.get("byteOffset", 0), v.get("byteStride", size)
+
+    def rest_position(skin: dict, joint: int) -> tuple[float, float, float]:
+        """A joint's rest position: the translation of its inverse bind matrix
+        inverted (column-major 4x4, affine)."""
+        acc = gltf["accessors"][skin["inverseBindMatrices"]]
+        at, stride = view_of(acc, 64)
+        m = struct.unpack_from("<16f", binary, at + joint * stride)
+        r = [[m[0], m[4], m[8]], [m[1], m[5], m[9]], [m[2], m[6], m[10]]]
+        t = (m[12], m[13], m[14])
+        det = (r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1])
+               - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0])
+               + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0]))
+        if abs(det) < 1e-12:
+            return (0.0, 0.0, 0.0)
+        inv = [[(r[(j + 1) % 3][(i + 1) % 3] * r[(j + 2) % 3][(i + 2) % 3]
+                 - r[(j + 1) % 3][(i + 2) % 3] * r[(j + 2) % 3][(i + 1) % 3]) / det
+                for j in range(3)] for i in range(3)]
+        return tuple(-sum(inv[i][k] * t[k] for k in range(3)) for i in range(3))
+
+    def skin_views(attrs: dict):
+        ja = gltf["accessors"][attrs["JOINTS_0"]]
+        wa = gltf["accessors"][attrs["WEIGHTS_0"]]
+        jfmt = {5121: "<4B", 5123: "<4H"}[ja["componentType"]]
+        jat, jstride = view_of(ja, struct.calcsize(jfmt))
+        wat, wstride = view_of(wa, 16)
+        return ja["count"], jfmt, jat, jstride, wat, wstride
+
+    skin = (gltf.get("skins") or [None])[0]
+    prims = [p for m in gltf.get("meshes", []) for p in m.get("primitives", [])]
+    anchor, origin = 0, (0.0, 0.0, 0.0)
+    if skin and "inverseBindMatrices" in skin:
+        load: dict[int, float] = {}
+        for prim in prims:
+            if "JOINTS_0" in prim["attributes"] and "WEIGHTS_0" in prim["attributes"]:
+                count, jfmt, jat, jstride, wat, wstride = skin_views(prim["attributes"])
+                for i in range(count):
+                    js = struct.unpack_from(jfmt, binary, jat + i * jstride)
+                    ws = struct.unpack_from("<4f", binary, wat + i * wstride)
+                    for jj, ww in zip(js, ws, strict=True):
+                        load[jj] = load.get(jj, 0.0) + ww
+        if load:
+            anchor = max(load, key=load.get)
+        origin = rest_position(skin, anchor)
+    for prim in prims:
+        attrs = prim["attributes"]
+        acc = gltf["accessors"][attrs["POSITION"]]
+        at, stride = view_of(acc, 12)
+        lo, hi = [1e30] * 3, [-1e30] * 3
+        for i in range(acc["count"]):
+            v = struct.unpack_from("<3f", binary, at + i * stride)
+            w = [origin[k] + v[k] * factor for k in range(3)]
+            struct.pack_into("<3f", binary, at + i * stride, *w)
+            lo = [min(lo[k], w[k]) for k in range(3)]
+            hi = [max(hi[k], w[k]) for k in range(3)]
+        if acc["count"]:
+            acc["min"], acc["max"] = lo, hi
+        if skin and "JOINTS_0" in attrs and "WEIGHTS_0" in attrs:
+            count, jfmt, jat, jstride, wat, wstride = skin_views(attrs)
+            for i in range(count):
+                struct.pack_into(jfmt, binary, jat + i * jstride, anchor, anchor, anchor, anchor)
+                struct.pack_into("<4f", binary, wat + i * wstride, 1.0, 0.0, 0.0, 0.0)
+    js = json.dumps(gltf).encode()
+    js += b" " * (-len(js) % 4)
+    out = (struct.pack("<III", 0x46546C67, 2, 0) + struct.pack("<II", len(js), 0x4E4F534A)
+           + js + struct.pack("<II", len(binary), 0x004E4942) + bytes(binary))
+    return out[:8] + struct.pack("<I", len(out)) + out[12:]
 
 
 #: The placeholder colour: an effect still showing the base's look is pink.

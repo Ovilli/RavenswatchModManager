@@ -441,3 +441,44 @@ def test_effect_colour_ramps_take_the_tint_at_their_own_brightness(tmp_path):
             assert (r1, g1, b1, a1) == pytest.approx((max(r0, g0, b0), 0.0, max(r0, g0, b0), a0))
             keys += 1
     assert keys and "oC3dTrailEffectorColorRampSettings" in _RAMP_TAILS
+
+
+@needs_corpus
+@needs_install
+def test_a_hidden_mesh_is_an_invisible_copy_on_the_same_skeleton(tmp_path):
+    """Gretel has no dragon: `hide` swaps the mesh, in her entities only, for
+    the same mesh shrunk to nothing, so its bones (the breath's origin) stay."""
+    import json
+    import struct
+
+    from rsmm.engine import character_export as CE
+    from rsmm.engine import entity_strings as ES
+    files = _emit(tmp_path, id="Nyx", base="Beowulf", hide=["Wyrm_GEO"])
+    geo = next(p for p in files if p.name == "Nyx_Hidden1_GEO.fbx.Geometry.gen")
+    used = {t for p in files if p.name.endswith(".entity.ot.EntitySettingsResource.gen")
+            for _s, _o, t in ES.list_strings(p.read_bytes())}
+    assert "Characters\\Heroes\\Beowulf\\Nyx_Hidden1_GEO.fbx" in used
+    assert "Characters\\Heroes\\Beowulf\\Wyrm_GEO.fbx" not in used
+    glb = CE.export(geo.read_bytes(), textures=False)
+    n = struct.unpack_from("<I", glb, 12)[0]
+    gltf, binary = json.loads(glb[20:20 + n]), glb[20 + n + 8:]
+    joints = gltf["skins"][0]["joints"]
+    assert any(gltf["nodes"][j].get("name") == "DEF.HeadDragon" for j in joints)
+    bound = set()
+    for prim in (p for m in gltf["meshes"] for p in m["primitives"]):
+        pos = gltf["accessors"][prim["attributes"]["POSITION"]]
+        assert max(hi - lo for hi, lo in zip(pos["max"], pos["min"], strict=True)) < 0.01
+        # Every vertex rides ONE bone: a skinned mesh merely shrunk toward
+        # the origin scattered back out in game once the bones moved.
+        ja = gltf["accessors"][prim["attributes"]["JOINTS_0"]]
+        wa = gltf["accessors"][prim["attributes"]["WEIGHTS_0"]]
+        jv, wv = gltf["bufferViews"][ja["bufferView"]], gltf["bufferViews"][wa["bufferView"]]
+        for i in range(ja["count"]):
+            js = struct.unpack_from("<4H", binary, jv.get("byteOffset", 0)
+                                    + ja.get("byteOffset", 0) + 8 * i)
+            ws = struct.unpack_from("<4f", binary, wv.get("byteOffset", 0)
+                                    + wa.get("byteOffset", 0) + 16 * i)
+            bound |= {j for j, w in zip(js, ws, strict=True) if w > 1e-3}
+    assert len(bound) == 1
+    with pytest.raises(ContentError, match="not a mesh"):
+        _emit(tmp_path, id="Nyx", base="Beowulf", hide=["No_Such_GEO"])
