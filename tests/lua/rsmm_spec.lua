@@ -1200,6 +1200,23 @@ do
     I.write_u64(HERO, 0x140f00000)
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
                                     dispatcher = string.format("0x%x", DISP) })
+
+    -- A run boundary destroys the hero entity the dispatcher lives in. Kept
+    -- across one it pointed into freed memory, and while the offset is not
+    -- learned the liveness check judges by the CURRENT hero, which is alive:
+    -- 2026-09-26 a second-run R.stat.modify dispatched ADD_MODIFIER into the
+    -- previous run's dispatcher and crashed the game, twice.
+    for _, b in ipairs({ { "run:end", "derived" }, { "run:start", "derived" },
+                         { "gameplay:GAME_END_NEXT_CHAPTER", "gameplay" } }) do
+        fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                        dispatcher = string.format("0x%x", DISP) })
+        check(R.give.ready(), "captured before " .. b[1])
+        fire(b[1], { source = b[2] })
+        check(not R.give.ready(), b[1] .. " drops the hero dispatcher")
+    end
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", DISP) })
+    check(R.give.ready(), "the next hero-anchored event re-captures it")
 end
 
 -- 10. fail-closed guards: the safety net that makes engine writes acceptable --

@@ -852,6 +852,19 @@ R.on("*", function(ev, name)
     end
 end)
 
+-- The dispatcher lives INSIDE the hero entity, and a new run, a run end and a
+-- chapter change destroy that entity. Kept across one, it points into freed
+-- memory the engine soon reuses — and the liveness check cannot catch it until
+-- this state has learned the dispatcher->entity offset (it then judges by the
+-- CURRENT hero, which is alive). 2026-09-26: a mod's R.stat.modify on the
+-- second run of a session dispatched ADD_MODIFIER into the previous run's
+-- dispatcher, which by then held animation data -> NamedEvent_Dispatch read a
+-- garbage pool pointer and the game crashed, twice. Drop it at every boundary;
+-- the next hero-anchored event re-captures it, as on a first run.
+R.on("run:start", function() _give_hero = nil end)
+R.on("run:end", function() _give_hero = nil end)
+R.on("gameplay:GAME_END_NEXT_CHAPTER", function() _give_hero = nil end)
+
 -- True once a hero dispatcher has been seen (i.e. give will work). Until the
 -- hero acts at least once in a run, grants are deferred.
 function R.give.ready() return _give_hero ~= nil end
