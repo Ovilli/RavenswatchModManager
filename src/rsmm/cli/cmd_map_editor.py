@@ -113,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- GET --------------------------------------------------------------------
 
-    def do_GET(self):  # noqa: N802 (http.server naming)
+    def do_GET(self):
         if not self._host_ok():
             return self._fail(403, "wrong host")
         url = urlparse(self.path)
@@ -193,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- POST -------------------------------------------------------------------
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         if not self._host_ok():
             return self._fail(403, "wrong host")
         if not secrets.compare_digest(self.headers.get("X-RSMM-Token", ""), self.server.token):

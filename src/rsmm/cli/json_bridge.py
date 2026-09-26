@@ -927,7 +927,7 @@ def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         "User-Agent",
         "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         # Capped: an index that streams forever otherwise OOMs the sidecar
         # before anything gets a chance to reject the response.
         raw = net.read_capped(resp, url, limit=net.MAX_METADATA_BYTES)
@@ -1007,7 +1007,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
             "User-Agent",
             "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
         )
-        with urllib.request.urlopen(req, timeout=600) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=600) as resp:
             with tmp as fh:
                 # Capped: the digest can only be checked once the whole archive
                 # has landed, so without a ceiling a hostile index fills the
@@ -1396,7 +1396,7 @@ def cmd_conflicts() -> int:
                     "type": "manifest",
                     "modIds": [a, b],
                 })
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort panel, logged below
         # Best-effort: a malformed manifest shouldn't blank the whole
         # conflict panel, but the UI must not silently under-report either.
         logger.warning("conflict analysis incomplete: %s", e)

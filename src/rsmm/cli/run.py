@@ -426,7 +426,7 @@ def main() -> int:
             try:
                 if _write_launch_options(vdf, args.app_id, ""):
                     changed += 1
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"Failed to clear launch options in {vdf}: {e}", file=sys.stderr)
         print(f"cleared launch options in {changed}/{len(vdfs)} Steam user config(s)")
         return _open_steam_url(url)
@@ -483,7 +483,7 @@ def main() -> int:
                 else:
                     print("could not write launch options; loader may not load.",
                           file=sys.stderr)
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"failed to write launch options: {e}; loader may not load.",
                       file=sys.stderr)
         return _open_steam_url(url)

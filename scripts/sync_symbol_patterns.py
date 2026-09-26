@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Also the package: this script is shelled out with a bare interpreter, which
 # is not necessarily the one an editable install put `rsmm` on.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 DB_PATH = REPO / "data/function_patterns.json"

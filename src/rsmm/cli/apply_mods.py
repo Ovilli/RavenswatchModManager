@@ -78,7 +78,7 @@ from rsmm.engine.safeio import (
     install_lock,
     sweep_temp_files,
 )
-from rsmm.sdk.transaction import ApplyTransaction  # noqa: E402 — see module docstring
+from rsmm.sdk.transaction import ApplyTransaction
 
 
 def parse_toml(p: Path) -> dict:

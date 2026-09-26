@@ -104,7 +104,7 @@ def lint_one(entry: Path) -> tuple[int, int]:
         return 1, 0
     try:
         t = _toml_load(mf)
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"  {_T_FAIL} {mod_s}: manifest parse: {_ST.dim(str(e))}")
         return 1, 0
 
@@ -710,8 +710,12 @@ def _engine_vocab() -> tuple[set[str], set[str]]:
         # events_gen.lua's `analytics` group, so the two cannot drift.
         events |= {n for e in smap.event_catalog if (n := e.get("name"))}
         callables = {s.name for s in smap.callable_symbols}
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001 - lint must still run; say why it is partial
+        # Without the map every mod's R.on/R.engine names are checked against
+        # the built-ins alone, so valid handlers warn "never fires". Say so,
+        # rather than let those warnings look like the mod's fault.
+        print(f"note: symbol map unreadable ({type(e).__name__}: {e}); event and "
+              f"R.engine names are checked against built-ins only", file=sys.stderr)
     return events, callables
 
 

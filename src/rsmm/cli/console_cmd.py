@@ -252,7 +252,7 @@ def _collect_clones() -> list[dict]:
     [[content]] kind=\"item\" entries."""
     try:
         from rsmm.cli.merge import _toml_load
-    except Exception:
+    except ImportError:
         return []
     out: list[dict] = []
     if not MODS_DIR.is_dir():
@@ -267,7 +267,7 @@ def _collect_clones() -> list[dict]:
             continue
         try:
             t = _toml_load(mf)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug("skipping %s: manifest unreadable (%s)", mf, e)
             continue
         if not t.get("mod", {}).get("enabled", True):

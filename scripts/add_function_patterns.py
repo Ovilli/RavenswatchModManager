@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # type: ignore  # noqa: E402
+import gen_function_patterns as gen  # type: ignore
 
 
 def pattern_to_regex(pat: str) -> "re.Pattern[bytes]":

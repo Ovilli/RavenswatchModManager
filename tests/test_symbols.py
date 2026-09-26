@@ -209,7 +209,7 @@ def test_audit_flags_null_and_nonprologue(tmp_path, capsys):
     assert ok_names[0] in err and "NULL" in err.upper()
     # The non-prologue check needs capstone; only assert it when available.
     try:
-        import capstone  # noqa: F401
+        import capstone
         assert ok_names[1] in err
     except ImportError:
         pass

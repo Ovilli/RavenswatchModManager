@@ -38,7 +38,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 OLD_TEXT_BIN = REPO / "docs/_re/out/text_section.bin"

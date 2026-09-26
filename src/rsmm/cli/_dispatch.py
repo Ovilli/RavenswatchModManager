@@ -14,7 +14,7 @@ if sys.version_info < (3, 11):  # noqa: UP036
         "Upgrade Python and reinstall rsmm."
     )
 
-import rsmm.engine.paths  # noqa: E402 — ensures package is importable
+import rsmm.engine.paths
 
 # Replaced by the entrypoint script (./rsmm) at import time so `--help`
 # shows the rich top-level overview, not this dispatch module's docstring.

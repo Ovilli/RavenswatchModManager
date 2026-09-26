@@ -42,14 +42,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from rsmm.engine import geometry_cook as GC  # noqa: E402
-from rsmm.engine import gltf  # noqa: E402
-from rsmm.engine import image as IMG  # noqa: E402
-from rsmm.engine.cooked_schemas.texture import TextureHandler  # noqa: E402
-from rsmm.engine.paths import DATA_DIR, REPO_ROOT  # noqa: E402
+from rsmm.engine import geometry_cook as GC
+from rsmm.engine import gltf
+from rsmm.engine import image as IMG
+from rsmm.engine.cooked_schemas.texture import TextureHandler
+from rsmm.engine.paths import DATA_DIR, REPO_ROOT
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import authoring_art as art  # noqa: E402
+import authoring_art as art
 
 #: Uncooked GLB whose embedded cooked bytes are used as the graft template.
 #: A small static scenery prop: 1 submesh, 90 verts, no skeleton — the simplest

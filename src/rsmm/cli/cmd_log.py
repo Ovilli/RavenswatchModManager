@@ -306,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         try:
             f.close()
-        except Exception:
+        except OSError:
             pass
 
 

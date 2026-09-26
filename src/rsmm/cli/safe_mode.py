@@ -116,7 +116,7 @@ def _bisect_step(h: Health) -> int:
                 if mid in quarantined:
                     continue
                 candidates.append(mid)
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logger.debug("skipping %s during bisect: %s", mf, e)
                 continue
     if not candidates:

@@ -35,7 +35,7 @@ import capstone  # type: ignore
 # Without this the import dies and the caller reports it as a symbol failure.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from rsmm.engine.paths import default_game_dir  # noqa: E402
+from rsmm.engine.paths import default_game_dir
 
 # Cross-platform game-dir resolver (honors RSMM_GAME_DIR + Steam autodetect
 # on Windows/Linux); no user-specific path baked in.

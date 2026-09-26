@@ -38,8 +38,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-import capstone  # noqa: E402
-import gen_function_patterns as gen  # noqa: E402
+import capstone
+import gen_function_patterns as gen
 
 # Three registration shapes, all seen in these functions:
 #   A  Register_A(list, key, &name, desc)       key in edx, name staged for r8
@@ -250,7 +250,7 @@ def main(argv=None) -> int:
     exe = args.exe
     if exe is None:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-        from rsmm.engine.paths import default_game_dir  # noqa: E402
+        from rsmm.engine.paths import default_game_dir
 
         exe = str(Path(default_game_dir()) / "Ravenswatch.exe")
 

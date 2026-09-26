@@ -37,10 +37,10 @@ except ImportError:
 
 # Repo importable (rsmm.engine.cooked_schemas) — script lives in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from rsmm.engine import cipher as _cipher  # noqa: E402
-from rsmm.engine import cooked as _cooked  # noqa: E402
-from rsmm.engine import cooked_schemas as _schemas  # noqa: E402
-from rsmm.engine.cooked_schemas import (  # noqa: E402
+from rsmm.engine import cipher as _cipher
+from rsmm.engine import cooked as _cooked
+from rsmm.engine import cooked_schemas as _schemas
+from rsmm.engine.cooked_schemas import (
     animation as _anim_schema,
 )
 from rsmm.engine.cooked_schemas import (

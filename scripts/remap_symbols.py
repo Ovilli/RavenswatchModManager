@@ -33,12 +33,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 try:
-    import mine_fingerprints as fp  # noqa: E402
+    import mine_fingerprints as fp
 except ImportError:
     fp = None
 OLD_TEXT_BIN = REPO / "docs/_re/out/text_section.bin"

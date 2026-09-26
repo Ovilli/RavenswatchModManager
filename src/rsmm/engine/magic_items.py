@@ -119,7 +119,7 @@ def registry() -> dict[str, MagicItem]:
     for item_id, rarity, strs in _sources():
         try:
             out[item_id] = _scan_strings(item_id, rarity, strs)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - best-effort registry, logged
             # Best-effort; a broken entity just gets skipped, but log so a
             # missing item in the registry is diagnosable.
             logger.debug("skipping unscannable magic item %s: %s", item_id, e)

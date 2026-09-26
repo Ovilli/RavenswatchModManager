@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             b = I18nBundle.load(entry.name, entry)
             problems.extend(b.coverage_warnings())
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any failure is reported as a problem
             problems.append(f"i18n: {e}")
         if problems:
             print(f"  ! {entry.name}")

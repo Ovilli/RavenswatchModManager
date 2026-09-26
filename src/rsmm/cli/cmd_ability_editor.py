@@ -154,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code: int, obj) -> None:
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         if not self._host_ok():
             return self._json(403, {"error": "wrong host"})
         path = urlparse(self.path).path
@@ -168,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(204, b"", "image/x-icon")
         return self._json(404, {"error": "not found"})
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         if not self._host_ok():
             return self._json(403, {"error": "wrong host"})
         if self.headers.get("X-RSMM-Token") != self.server.token:

@@ -39,7 +39,7 @@ def _load_plan(build_py: Path) -> list[dict]:
     captured: list[list[dict]] = []
     orig_exit = sdk.Mod.__exit__
 
-    def patched_exit(self, exc_type, exc, tb):  # noqa: ANN001
+    def patched_exit(self, exc_type, exc, tb):
         captured.append(self.plan())
         self.dry_run = True   # avoid writing manifest in test mode
         return orig_exit(self, exc_type, exc, tb)
@@ -71,7 +71,7 @@ def _test_one(mod_dir: Path, record: bool, log) -> bool:
         return True
     try:
         plan = _load_plan(build)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - a mod's build.py can raise anything
         log(f"FAIL {name}: build.py raised {type(e).__name__}: {e}")
         return False
     fix = _fixture_path(mod_dir)

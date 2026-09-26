@@ -32,7 +32,7 @@ EXIT_CANNOT_RUN = 3
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
-    import gen_function_patterns as gen  # noqa: E402
+    import gen_function_patterns as gen
 except ImportError as e:  # pragma: no cover — environment-dependent
     print(f"verify_symbol_resolve: cannot run ({e}); skipping resolve gate",
           file=sys.stderr)

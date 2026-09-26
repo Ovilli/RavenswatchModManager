@@ -69,7 +69,7 @@ def _summarize(entry: Path) -> ModSummary | None:
         return None
     try:
         t = _toml_load(mf)
-    except Exception:
+    except (OSError, ValueError):   # unreadable, or malformed TOML
         return None
     m = t.get("mod", {})
     return ModSummary(

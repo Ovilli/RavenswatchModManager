@@ -59,7 +59,7 @@ def _fetch(url: str, timeout: float = 30.0) -> bytes:
     # No `file://` here: `update` only ever talks to a configured remote repo.
     try:
         net.require_safe_url(url)
-        with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=timeout) as r:
             return net.read_capped(r, url)
     except (net.UnsafeURL, net.TooLarge) as e:
         raise RepoError(str(e)) from None

@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from symbol_locate import Build, mine_anchors, resolve_locator  # noqa: E402
+from symbol_locate import Build, mine_anchors, resolve_locator
 
 REPO = Path(__file__).resolve().parent.parent
 SYM = REPO / "data" / "symbols.json"
