@@ -704,6 +704,20 @@ to    = "State Secondary Ability Echo"
   sound event, a mesh, a clip. Each new resource's preloads are borrowed from a
   shipped cache that already loads it. A resource no shipped cache lists is
   refused, because an unlisted preload crashes the game at load.
+- **`skills`** gives the hero talent and ability cards of her own:
+  `[content.skills."Dash Trap"]` (a talent, as its `Skill Controller` names
+  it) or `[content.skills."Ability Power"]` (an ability slot), each with
+  `name` and/or `description`. The base hero keeps his cards. The number of
+  talents is fixed, so this relabels a slot; change what the talent does with
+  `abilities` (its parts are the `Skill <talent>` group). Keep the card's
+  `{N}` placeholders and `#…@` keywords: the numbers come from the card's own
+  String Format.
+- **`placeholder`** (a PNG, a flat pink by convention) paints every piece of
+  art the hero still borrows from its base: each character material (body,
+  gear, companion, every skin), every ability and talent icon, the HUD
+  images, and the book's portraits, skin icons and codex pictures. Whatever
+  is still pink in game is what is left to make. `albedo`, `weapons` and
+  `portrait` win over it.
 - **`abilities`** edits how her abilities are wired. An ability is a graph of
   parts (states, timers, tests, spawners, values) inside the hero's entity;
   `rsmm entity-graph Piper --group "Ability Secondary"` lists one ability's
@@ -718,10 +732,12 @@ to    = "State Secondary Ability Echo"
     element is `"Part.list[0]"`.
   - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
   Add `entity = "FX"` to a step to edit another entity of the family.
-  `rsmm ability-editor` opens a local page that draws each ability as a graph,
-  shows every part's fields, and builds these steps as you click (set a
-  value, re-point a link, copy a group), re-checking them on every change;
-  copy its TOML into the manifest.
+  `rsmm ability-editor` opens a local page that builds these steps for you.
+  It opens on **Numbers**: every number the chosen ability uses, by name
+  (type a value, press Enter; ↺ resets it). The **Diagram** tab draws the
+  ability as a graph of parts for re-pointing links and copying groups. Every
+  change is re-checked straight away; press *Copy manifest code* and paste it
+  into the manifest.
   Every edit is checked before anything is written, and the build fails
   rather than install an ability that cannot work: a link into an entity the
   hero does not carry (copying Juliet's secondary drags links into

@@ -176,6 +176,39 @@ def override_bank_values(base_gen: Path, overrides: dict[str, str],
     return out
 
 
+def appended_rows(base_gen: Path, new_keys) -> dict[str, int]:
+    """The row each key of ``new_keys`` takes when :func:`append_bank_keys`
+    appends them (in order) to the pristine bank."""
+    n = len(parse_text_file(_pristine(base_gen)).entries)
+    return {k: n + i for i, k in enumerate(new_keys)}
+
+
+def repoint_text_rows(blob: bytes, bank: str, rows: dict[str, int]) -> bytes:
+    """Point every cooked text reference to ``bank``/``key`` at ``rows[key]``.
+
+    A cooked text reference is ``lstr "Text" | lstr <bank> | u32 row | lstr
+    <key>``: the row is the key's index in the bank, cached at cook time. Some
+    readers look text up by key (the level-up cards) and others by the cached
+    row (the hero book and the HUD), so a reference re-pointed at an appended
+    key but left on the old row shows the OLD text there (2026-09-26: Gretel's
+    ability names read Beowulf's in the book and HUD, her talents read hers on
+    the cards). Same length in and out; nothing else moves.
+    """
+    out = bytearray(blob)
+    b = bank.encode("utf-8")
+    head = b"\x04\x00\x00\x00Text" + struct.pack("<I", len(b)) + b
+    for key, row in rows.items():
+        k = key.encode("utf-8")
+        tail = struct.pack("<I", len(k)) + k
+        at = out.find(head)
+        while at != -1:
+            r = at + len(head)
+            if out[r + 4:r + 4 + len(tail)] == tail:
+                struct.pack_into("<I", out, r, row)
+            at = out.find(head, at + 1)
+    return bytes(out)
+
+
 def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, bytes]:
     """Append new key/value text entries to a `~GAM.xls.LocalText` bank.
 

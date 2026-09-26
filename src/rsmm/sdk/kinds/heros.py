@@ -65,6 +65,22 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         ``add_link`` / ``remove_link``; see ``engine/ability_edit.py`` and
         ``rsmm entity-graph <Base>``). Checked before apply: an edit that
         leaves a link bound to nothing is refused.
+    ``skills`` (table)  ``{"<card>" = {name, description}}``: talent and
+        ability cards of the hero's own: a talent as its skill controller
+        names it (``"Dash Trap"`` for ``Skill Controller Dash Trap``) or an
+        ability slot (``"Ability Power"``, ``"Ability Ultimate 1"``). The base
+        keeps its cards. The count of talents is fixed, so
+        this relabels a slot; change what the talent DOES with ``abilities``
+        (its parts are the ``Skill <talent>`` group). Keep the card's ``{N}``
+        placeholders: the numbers come from the talent's String Format.
+    ``placeholder`` (str)  one PNG (a flat pink is the convention) painted over
+        every piece of art the hero still borrows from the base: each
+        character material's albedo (body, gear, companion, every skin), every
+        ability/talent icon and HUD image, and the book's portraits, skin icons
+        and codex pictures, each under a name of the hero's own. Whatever is
+        still pink in game is what is left to replace; ``albedo``,
+        ``weapons`` and ``portrait`` take precedence. ⚠ Many UI images under
+        new names: a new-name UI texture hung level load once (a POI icon).
     ``references`` (table)  ``{"<old>" = "<new>"}``: any string the hero's
         entities name (a VFX, a sound, a mesh), swapped in them only; a new
         resource's preloads are borrowed from a shipped cache.
@@ -101,7 +117,8 @@ DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
 
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
-                     "animations", "outfits", "values", "references", "abilities"})
+                     "animations", "outfits", "values", "references", "abilities",
+                     "skills", "placeholder"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -232,8 +249,10 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     abilities = f.get("abilities") or []
     if not isinstance(abilities, list):
         raise ContentError(f"hero {hid}: 'abilities' is a list of tables")
+    skills = _table(f.get("skills"), "skills", hid)
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
-               or animations or outfits or values or references or abilities)
+               or animations or outfits or values or references or abilities or skills
+               or f.get("placeholder"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
 
@@ -350,6 +369,71 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         art.extend(_borrow_closure([str(v) for v in references.values()
                                     if "\\" in str(v) and "." in str(v)], out_dir, hid))
 
+    # Talent cards of the hero's own. A card's text is read by the key its
+    # skill controller names (the herodef row is not what is shown, 2026-09-12),
+    # so the controller in THIS hero's entities is pointed at new keys and the
+    # base keeps its cards. The keys are appended with the name (one append:
+    # two would each write the whole bank).
+    bank_pairs: dict[str, str] = {}
+    # Cards format the hero's own name in ("{0} dash forward", "{0} can act at
+    # the same time"): in this hero's entities that argument is its name.
+    for fld, key in (("name", "Hero_Name"), ("description", "Hero_Desc")):
+        if f.get(fld):
+            swaps[key] = f"Hero_{hid}_{key.split('_')[1]}"
+    if skills:
+        keys = _skill_keys(b, H, corpus)
+        for talent, spec in sorted(skills.items()):
+            spec = spec if isinstance(spec, dict) else {"name": spec}
+            want = str(talent)
+            if not want.startswith("Ability "):
+                want = want.removeprefix("Skill Controller ").removeprefix("Skill ")
+            if want not in keys:
+                raise ContentError(f"hero {hid}: {base} has no talent {talent!r}; have: "
+                                   f"{', '.join(sorted(keys))}")
+            bank, name_key, desc_key = keys[want]
+            if bank != b.text_bank:
+                raise ContentError(f"hero {hid}: talent {talent!r} reads its text from "
+                                   f"{bank}, not {b.text_bank}")
+            unknown = sorted(set(spec) - {"name", "description"})
+            if unknown:
+                raise ContentError(f"hero {hid}: talent {talent!r}: unsupported field(s) "
+                                   f"{unknown}; known: ['description', 'name']")
+            for fld, key in (("name", name_key), ("description", desc_key)):
+                if spec.get(fld) and key:
+                    swaps[key] = f"Hero_{hid}_{key}"
+                    bank_pairs[swaps[key]] = str(spec[fld])
+                elif spec.get(fld):
+                    raise ContentError(f"hero {hid}: talent {talent!r} has no {fld} key")
+
+    # A placeholder look: every piece of art the hero still borrows from the
+    # base (character materials, ability/talent icons, HUD art; the book art
+    # further down) painted with ONE image, so what is left to replace shows
+    # at a glance. Anything given explicitly (albedo, weapons, portrait) wins.
+    placeholder = f.get("placeholder")
+    ph_png = None
+    if placeholder:
+        ph_png = PC.cook_texture(
+            _mod_source(out_dir, placeholder, hid, "placeholder").read_bytes())
+        mats: set[str] = set()
+        ui: set[str] = set()
+        for ref in b.family:
+            for _s, _o, t in ES.list_strings(corpus.read(H.entity_rel(ref))):
+                if t.endswith(".mat.ot") and t.startswith(b.art_dir + "\\"):
+                    mats.add(t)
+                elif t.lower().endswith(".png"):
+                    ui.add(t)
+        for m in sorted(mats - set(swaps)):
+            tag = f"{hid}_PH_{m.rsplit(chr(92), 1)[-1][:-len('.mat.ot')]}"
+            try:
+                swaps[m] = material(m, {"albedo": placeholder}, tag, "placeholder")
+            except ContentError:
+                continue                    # a material with no albedo map
+        for t in sorted(ui - set(swaps)):
+            new = _placeholder_ref(t, hid)
+            put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt", ph_png)
+            art.append(f"Ui|{new}|oCTexture")
+            swaps[t] = new
+
     # 2. The gameplay family, renamed, reached through an alias of its own.
     R = H.Renamer(b, f"Hero_{hid}", swaps) if own else None
     default = R.entity_ref(b.default_skin) if R is not None else None
@@ -420,12 +504,16 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
 
     # 3. The herodef: its skins, its name, its portraits.
     hswap: dict[str, str] = {}
-    pairs: dict[str, str] = {}
+    pairs: dict[str, str] = dict(bank_pairs)
     for fld, key in (("name", "Hero_Name"), ("description", "Hero_Desc")):
         if f.get(fld):
             hswap[key] = f"Hero_{hid}_{key.split('_')[1]}"
             pairs[hswap[key]] = str(f[fld])
+    # Rows the appended keys take, per bank: every reference to them is
+    # re-pointed at its row once everything is written (repoint_text_rows).
+    text_rows: dict[str, dict[str, int]] = {}
     if pairs:
+        text_rows[b.text_bank] = TP.appended_rows(_install_bank(game, b.text_bank), pairs)
         banks = TP.append_bank_keys(_install_bank(game, b.text_bank), pairs)
         dec = f"Text/{b.text_bank}.LocalText.gen"
         for tok, blob in banks.items():
@@ -442,6 +530,14 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                 hswap[s] = new
                 put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt", cooked_png)
                 portrait_lines.append(f"Ui|{new}|oCTexture")
+    if ph_png is not None:
+        # The book's art: portraits, skin icons, codex pictures.
+        for s in sorted({t for _s, _o, t in ES.list_strings(herodef)
+                         if t.lower().endswith(".png")} - set(hswap)):
+            new = _placeholder_ref(s, hid)
+            hswap[s] = new
+            put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt", ph_png)
+            portrait_lines.append(f"Ui|{new}|oCTexture")
 
     # Skin slots in herodef order: slot 0 is Default, outfits take 1..n, and
     # with a body of its own every other slot shows Default too (the base's
@@ -473,6 +569,8 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             elif f.get("model"):
                 slot_of[path] = default
         if skins_bank_pairs:
+            text_rows[skins_bank] = TP.appended_rows(_install_bank(game, skins_bank),
+                                                     skins_bank_pairs)
             banks = TP.append_bank_keys(_install_bank(game, skins_bank), skins_bank_pairs)
             dec = f"Text/{skins_bank}.LocalText.gen"
             for tok, blob in banks.items():
@@ -511,7 +609,73 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                     # A copy of Default: without this it shares Default's.
                     blob = PC.restamp_entity_guids(blob, rel)
                 path.write_bytes(blob)
+
+    # 5. Text references to appended keys still carry the base key's cached
+    #    row, which the book and the HUD read instead of the key.
+    for path in written:
+        rel = path.relative_to(out_dir).as_posix()
+        if text_rows and (rel.endswith(H.ENTITY_SUFFIX) or rel == _rel(hid)):
+            blob = path.read_bytes()
+            for bank, rows in text_rows.items():
+                blob = TP.repoint_text_rows(blob, bank, rows)
+            path.write_bytes(blob)
     return written
+
+
+def _skill_keys(b, H, corpus) -> dict[str, tuple[str, str, str]]:
+    """Card -> ``(bank, name key, description key)``: each talent from its skill
+    controller (``Skill Controller Dash Trap`` -> ``Dash Trap``; the name key
+    sits in the controller, the description key in the String Format it links)
+    and each ability slot from its ability controller (``Ability_Power_Name``
+    -> ``Ability Power``, description ``Ability_Power_Desc``)."""
+    from ...engine import entity_fields as EF
+    from ...engine import entity_graph as EG
+    from ...engine import entity_strings as ES
+
+    text = re.compile(r"'([^']+~GAM\.xls)' '([^']+)'")
+    out: dict[str, tuple[str, str, str]] = {}
+    for ref in b.family:
+        raw = corpus.read(H.entity_rel(ref))
+        if raw is None:
+            continue
+        g = EG.parse(raw, ref)
+        by_guid = {c.guid: c for c in g.components}
+        by_name = {c.name: c for c in g.components}
+        strings = {t for _s, _o, t in ES.list_strings(raw)}
+        for c in g.components:
+            if c.cls == "oCDtEntityCpntAbilityControllerSettings":
+                for f in EF.fields(c):
+                    for bk, k in (m.groups() for m in text.finditer(f.text)):
+                        if k.startswith("Ability_") and k.endswith("_Name"):
+                            d = k[:-5] + "_Desc"
+                            out.setdefault("Ability " + k[8:-5].replace("_", " "),
+                                           (bk, k, d if d in strings else ""))
+                continue
+            if not c.name.startswith("Skill Controller ") or c.name[17:] in out:
+                continue
+            found = [m.groups() for f in EF.fields(c) for m in text.finditer(f.text)]
+            name = next(((bk, k) for bk, k in found if k.endswith("_Name")), None)
+            desc = ""
+            # A linked String Format's OWN key is its first text; later ones
+            # are arguments (Special Sends Power formats Ability_Power_Name
+            # in), never the card's. The ultimates name themselves this way.
+            for _o, r in EG._pickers(c.body, c.classes.index("oCEntityCpntPicker")
+                                     if "oCEntityCpntPicker" in c.classes else -1):
+                # Override records carry another GUID than the one a picker
+                # names, so fall back on the path the picker also carries.
+                t = by_guid.get(r.guid) or by_name.get(r.path.rsplit("\\", 1)[-1])
+                if t is None or t.cls != "oCEntityCpntStringFormatValueSettings":
+                    continue
+                own = next((m.groups() for f in EF.fields(t)
+                            for m in text.finditer(f.text)), None)
+                if own and own[1].endswith("_Name") and name is None:
+                    name = own
+                elif own and own[1].endswith("_Desc") and not desc:
+                    desc = own[1]
+            if name is None:
+                continue
+            out[c.name[17:]] = (name[0], name[1], desc)
+    return out
 
 
 def _outfit_body(b, R, outfit: bytes, o: dict, i: int, hid: str, omat: str, mesh) -> bytes:
@@ -612,6 +776,14 @@ def _table(v, what: str, hid: str) -> dict:
     if not isinstance(v, dict):
         raise ContentError(f"hero {hid}: {what!r} is a table (name = file or {{...}})")
     return v
+
+
+def _placeholder_ref(ref: str, hid: str) -> str:
+    """``Heroes\\Beowulf\\Skill Dash Attack.png`` ->
+    ``Heroes\\Beowulf\\<id>_Skill Dash Attack.png`` (same folder: a new cooked
+    path needs a shipped sibling)."""
+    folder, name = ref.rsplit("\\", 1)
+    return f"{folder}\\{hid}_{name}"
 
 
 def _portrait_ref(ref: str, hid: str) -> str:

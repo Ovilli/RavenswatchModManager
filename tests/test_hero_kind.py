@@ -268,3 +268,69 @@ def test_an_ability_edit_that_binds_to_nothing_is_refused(tmp_path):
 def test_malformed_ability_steps_are_refused(tmp_path, step, msg):
     with pytest.raises(ContentError, match=msg):
         _emit(tmp_path, id="Nyx", abilities=[step])
+
+
+@needs_corpus
+@needs_install
+def test_cards_of_its_own_repoint_its_controllers_and_leave_the_base_alone(tmp_path):
+    """A card's text is read by the key its controller names: the hero's copy
+    is pointed at Hero_<id>_ keys, appended to the bank with the name (one
+    append; two would each write the whole bank and the second would win)."""
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import text_patches as TP
+    files = _emit(tmp_path, id="Nyx", name="Nyx", skills={
+        "Dash Trap": {"name": "Echo Step", "description": "• #DASH@ sends &{0}~ notes"},
+        "Ability Power": {"name": "Solo"}})
+    main = next(p for p in files if p.name == "Hero_Nyx.entity.ot.EntitySettingsResource.gen")
+    strings = {t for _s, _o, t in ES.list_strings(main.read_bytes())}
+    assert {"Hero_Nyx_Skill_Dash_Trap_Name", "Hero_Nyx_Skill_Dash_Trap_Desc",
+            "Hero_Nyx_Ability_Power_Name"} <= strings
+    assert not {"Skill_Dash_Trap_Name", "Skill_Dash_Trap_Desc", "Ability_Power_Name"} & strings
+    assert "Ability_Power_Desc" in strings                  # not asked for: kept
+    bank = next(p for p in files if p.name == "Hero_Piper_Common~GAM.xls.LocalText.gen")
+    en = next(p for p in files if p.name.endswith(".LocalText.gen.LangEN"))
+    text = dict(zip(TP.parse_text_file(bank).entries, TP.parse_text_file(en).entries, strict=True))
+    assert text["Hero_Nyx_Skill_Dash_Trap_Name"] == "Echo Step"
+    assert text["Hero_Nyx_Ability_Power_Name"] == "Solo"
+    assert text["Hero_Nyx_Name"] == "Nyx"
+    assert text["Skill_Dash_Trap_Name"] == "Music of the Spheres"   # Piper's card
+    # The book and the HUD read the row cached in front of the key, not the
+    # key: every new key must carry ITS row, or those show Piper's text.
+    import struct
+    row = {k: i for i, k in enumerate(TP.parse_text_file(bank).entries)}
+    herodef = next(p for p in files if p.name == "Nyx.herodef.ot.DtHeroDefinition.gen")
+    for blob, key in ((main.read_bytes(), "Hero_Nyx_Skill_Dash_Trap_Name"),
+                      (main.read_bytes(), "Hero_Nyx_Ability_Power_Name"),
+                      (herodef.read_bytes(), "Hero_Nyx_Name")):
+        k = key.encode()
+        at = blob.find(struct.pack("<I", len(k)) + k)
+        assert at != -1 and struct.unpack_from("<I", blob, at - 4)[0] == row[key], key
+
+
+@needs_corpus
+@needs_install
+def test_a_card_the_base_does_not_have_is_refused(tmp_path):
+    with pytest.raises(ContentError, match="no talent 'Fireball'"):
+        _emit(tmp_path, id="Nyx", skills={"Fireball": {"name": "x"}})
+
+
+@needs_corpus
+@needs_install
+def test_a_placeholder_paints_every_borrowed_image_and_material(tmp_path):
+    """Whatever the hero still borrows from its base (character materials,
+    icons, book art) is swapped for its own copy of ONE image, so what is left
+    to replace is visible; nothing of the base's own art stays referenced."""
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import image
+    (tmp_path / "pink.png").write_bytes(image.encode_png(4, 4, bytes([255, 0, 255, 255]) * 16))
+    files = _emit(tmp_path, id="Nyx", placeholder="pink.png")
+    left = set()
+    for p in files:
+        if p.name.endswith((".entity.ot.EntitySettingsResource.gen", ".DtHeroDefinition.gen")):
+            for _s, _o, t in ES.list_strings(p.read_bytes()):
+                if (t.lower().endswith(".png") and "Nyx_" not in t) or (
+                        t.endswith(".mat.ot") and t.startswith("Characters\\Heroes\\Piper\\")
+                        and "Nyx" not in t):
+                    left.add(t)
+    assert not left, sorted(left)[:5]
+    assert any(p.name.startswith("Nyx_Skill") and p.name.endswith(".Texture.dxt") for p in files)
