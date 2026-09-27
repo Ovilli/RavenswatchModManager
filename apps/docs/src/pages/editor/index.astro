@@ -7,6 +7,13 @@
 // a frame whose `fetch` goes to the worker instead of a server: see
 // `rsmm.cli.editor.bridge` for the Python side. Nothing is uploaded, and
 // the site hosts no game data: the engine reads the player's own files.
+// The worker's code is built into this page and started from a Blob, not
+// loaded from a URL: content blockers hold a script named like a worker that
+// then pulls megabytes of WebAssembly (it looks like a cryptominer), and the
+// engine then never starts. As JSON, with "</" escaped so it cannot end the tag.
+import workerSource from './_worker.js?raw';
+
+const workerJson = JSON.stringify(workerSource).replaceAll('</', '<\\/');
 const title = 'Web editor · RSMM';
 const description =
   'Build item, talent, ability and map mods for Ravenswatch in your browser. Runs locally on your own game files.';
@@ -111,6 +118,7 @@ const description =
 </main>
 <div id="toast" hidden></div>
 
+<script type="application/json" id="rsmm-worker" set:html={workerJson}></script>
 <script is:inline>
 "use strict";
 const TABS = {
@@ -125,18 +133,37 @@ $("folder").webkitdirectory = true;
 const appRoot = new URL("app/", location.href);     // mount paths live under /editor/app/
 
 // ---- worker -------------------------------------------------------------------
-const worker = new Worker(new URL("worker.js", location.href), { type: "module" });
+const worker = new Worker(
+  URL.createObjectURL(new Blob([JSON.parse($("rsmm-worker").textContent)], { type: "text/javascript" })),
+  { type: "module" },
+);
 let seq = 0;
 const pending = new Map();
 worker.onmessage = (e) => {
   const m = e.data;
   if (m.progress) { setProgress(m.progress); return; }
+  if (m.fatal) { stopped(m.fatal); return; }
   const p = pending.get(m.id);
   if (!p) return;
   pending.delete(m.id);
   m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
 };
-worker.onerror = (e) => fail("The editor engine stopped: " + (e.message || "unknown error"));
+// An error event without a message is what a browser gives for a worker that
+// could not load or start, so say that rather than "unknown error".
+worker.onerror = (e) => {
+  e.preventDefault();
+  stopped(e.message || (e.filename ? `${e.filename}:${e.lineno}` : "its worker could not start"));
+};
+worker.onmessageerror = () => stopped("a reply from the engine could not be read");
+// The engine is gone or broken: nothing pending will ever be answered.
+function stopped(why) {
+  console.error("[rsmm editor] engine stopped:", why);
+  for (const p of pending.values()) p.reject(new Error(why));
+  pending.clear();
+  const where = $("start").hidden ? "Reload the page to start again." : "";
+  fail(`The editor engine stopped: ${why}. ${where} Your browser: ${navigator.userAgent}`);
+  if ($("start").hidden) toast(`The editor engine stopped: ${why}. Reload the page to start again.`);
+}
 function call(op, args, transfer) {
   const id = ++seq;
   return new Promise((resolve, reject) => {

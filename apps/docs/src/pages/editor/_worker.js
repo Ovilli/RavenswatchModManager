@@ -115,6 +115,16 @@ function zip({ mod }) {
 
 const OPS = { init, mount, request, zip };
 
+// Anything that escapes a request (an error thrown later by Pyodide, a
+// rejected promise nobody awaited) would otherwise reach the page as an error
+// event with no message. Say what it was instead.
+self.addEventListener('error', (e) => {
+  send({ fatal: e.message || String(e.error || 'error in the engine') });
+});
+self.addEventListener('unhandledrejection', (e) => {
+  send({ fatal: String(e.reason?.message || e.reason || 'unhandled rejection') });
+});
+
 self.onmessage = async (e) => {
   const { id, op, ...args } = e.data;
   try {
