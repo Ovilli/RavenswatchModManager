@@ -128,6 +128,21 @@ def _hero_versiondef_path(decoded: str) -> str | None:
     return "Heroes\\" + d[len(pre):-len(suf)] + ".herodef.ot"
 
 
+def _mo_icon_cache_ref(decoded: str) -> str | None:
+    """``Ui/Objects/UI_Object_<id>.png.Texture.dxt`` -> ``Objects\\UI_Object_<id>.png``
+    (the form the resource cache and the item entity both use), or None.
+
+    The versiondef cache is the ONLY one of the 599 shipped caches that lists
+    an item icon (all 94 of them), so a mod item's own icon has no other
+    preloader: without this line it is registered but never preloaded.
+    """
+    d = decoded.replace("\\", "/")
+    pre, suf = "Ui/Objects/", ".png.Texture.dxt"
+    if not (d.startswith(pre) and d.endswith(suf)) or "/" in d[len(pre):]:
+        return None
+    return "Objects\\" + d[len(pre):-len(".Texture.dxt")]
+
+
 def _find_hero_vector(b: bytes) -> tuple[int, int, int] | None:
     """Locate the versiondef's hero ``vector<TResourcePtr>`` (12 shipped).
 
@@ -375,8 +390,11 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     hero_paths = sorted(
         {p for d in registrations.values() if (p := _hero_versiondef_path(d))}
     )
+    icon_paths = sorted(
+        {p for d in registrations.values() if (p := _mo_icon_cache_ref(d))}
+    )
     gen = _locate_cooked_by_leaf(game_dir, VERSIONDEF_GEN_LEAF)
-    cache = _locate_cooked_by_leaf(game_dir, VERSIONDEF_CACHE_LEAF)
+    cache =_locate_cooked_by_leaf(game_dir, VERSIONDEF_CACHE_LEAF)
 
     changed = 0
     # --- .gen vector ---
@@ -426,6 +444,7 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
         bak = cache.with_name(cache.name + BACKUP_SUFFIX)
         lines = [f"EntitySettings|{p}|oCEntitySettingsResource" for p in mo_paths]
         lines += [f"Definitions|{p}|oCDtHeroDefinition" for p in hero_paths]
+        lines += [f"Ui|{p}|oCTexture" for p in icon_paths]
         if not lines:
             if bak.exists() and not dry_run:
                 shutil.copy2(bak, cache)
