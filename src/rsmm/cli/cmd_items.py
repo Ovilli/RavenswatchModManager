@@ -123,6 +123,17 @@ def _cmd_show(args) -> int:
     else:
         msg = "  (no value_patches fields via the standard scanner"
         print(msg + (")" if args.raw else "; try --raw)"))
+    from rsmm.engine import item_modifier as IM
+    mods = IM.list_modifiers(data)
+    if mods:
+        print("\n  stats targets (effect -> the stat it gives):")
+        for m in mods:
+            where = "super effect" if m.super_effect else "effect"
+            print(f"      {where:<12}  {m.name!r} -> {m.stat or f'0x{m.key:08x} (unnamed)'}")
+        print(f'\n  e.g.  stats = {{ "{mods[-1].name}" = "Crit damage" }}')
+    sup = IM.super_text_key(data)
+    if sup:
+        print(f"  super effect text key: {sup}  (replace with super_description)")
     if args.raw:
         # Broader before-END scan (also picks up int32 counts + stat nodes the
         # after-label value_patches scanner misses). Useful for items that show

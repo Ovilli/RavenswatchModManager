@@ -980,6 +980,41 @@ inline float is a silent no-op. `rsmm items show` / `rsmm talents` tag these
 authoritative but unbinds the selector — e.g. per-card-stack scaling becomes a
 flat value. That trade-off is intentional; pick the flat number you want.
 
+### Which stat an item's effect gives (`stats`)
+
+Each effect of a magical object (its always-on effect and its super effect)
+changes one stat. `stats` points an effect at a different one, by the effect's
+name. `rsmm items show <base>` lists the effects, the stat each one gives, and
+whether it is the super effect:
+
+```toml
+[[content]]
+kind = "item"
+id   = "Damage_Per_Vitalitz"
+base = "Damage_Per_Vitality"
+name = "Ogre Crit"
+stats = { "Super Effect Modifier" = "Crit damage" }
+value_patches = [["Super Effect Crit Chance Value", 0.2, 0.3]]
+super_description = "#Crit Damage@ &+{0}%~"
+```
+
+- **Stat names** are the engine's own (`Attack power`, `Crit chance`,
+  `Crit damage`, `Armour`, `Vitality`, `Move Speed Ratio`, …); the full list is
+  `data/stat_keys.json`. A few stats have no name yet; give those by key
+  (`"0x58e0a5c"`), as `rsmm items show` prints them.
+- **The amount keeps its old unit.** 0.2 crit chance becomes 0.2 of the new
+  stat, so change the number with `value_patches` too.
+- **`super_description`** gives the copy super-effect text of its own (the base's
+  text still names the old stat). Items without a super effect (cursed,
+  legendary, power-ups) refuse it.
+- **Some stats need more than the stat.** Plain numbers (attack power, armour,
+  crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
+  the instant-kill thresholds only do something with the components the item
+  that ships them carries.
+
+The **Items** tab of `rsmm editor` and the [web editor](/guides/web-editor/)
+show the same thing as a stat picker per effect.
+
 ### Lua-scripted mod
 
 The loader DLL (`dist/winhttp.dll`) runs `init.lua` once per launch in a sandboxed `lua_State` per mod.

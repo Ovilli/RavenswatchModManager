@@ -303,7 +303,7 @@ same editors also run in the browser with no install:
 
 | Tab | What it builds |
 |---|---|
-| **Items** | a copy of a shipped magical item with its own id, name, text, rarity, icon and values (`kind = "item"`) |
+| **Items** | a copy of a shipped magical item with its own id, name, text, rarity, icon, values and the stat each effect gives (`kind = "item"`) |
 | **Talents** | changed talent values (`kind = "talent"`, one block per entity file) and renamed talent cards (`kind = "skill"`) |
 | **Abilities** | `[[content.abilities]]` steps for a custom hero: every number an ability uses, plus a graph for re-pointing links and copying parts |
 | **Map** | a chapter's map-generation recipe (`kind = "tilegen"`) on a 3D view of its terrain |

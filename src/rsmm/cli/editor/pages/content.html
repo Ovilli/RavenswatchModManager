@@ -55,6 +55,9 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; }
 .tag.shadow { background: var(--warnbg); color: var(--warn); }
 .tag.type { background: var(--chip); color: var(--muted); }
+.tag.super { background: var(--accentbg); color: var(--accent); }
+.row.stat { grid-template-columns: 1fr 150px 220px; }
+.row.stat select { width: 100%; }
 details.file { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--bg); }
 details.file > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
 details.file > summary span { font-weight: 400; }
@@ -151,9 +154,9 @@ function fmt(v) { return typeof v === "number" ? String(Math.round(v * 10000) / 
 // ---- state ------------------------------------------------------------------
 const S = {
   tab: START_TAB === "talents" ? "talents" : "items",
-  items: [], icons: [], heroes: [], mods: [],
+  items: [], icons: [], stats: [], heroes: [], mods: [],
   item: null,     // detail of the chosen base
-  itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}
+  itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
   hero: null, talents: null,
   talentEdit: { prefix: "", values: {}, cards: {} },   // values key: file + "\u0000" + label
 };
@@ -193,7 +196,7 @@ async function pickItem(id) {
   try {
     S.item = await get("api/item?id=" + encodeURIComponent(id));
   } catch (e) { status(e.message, "st-bad"); return; }
-  S.itemEdit = { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {} };
+  S.itemEdit = { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {}, stats: {}, superDescription: "" };
   renderList(); renderView(); refresh();
 }
 function suggestId(base) {
@@ -204,7 +207,7 @@ function suggestId(base) {
 
 function itemView() {
   const it = S.item, E = S.itemEdit, v = el("div");
-  v.append(el("div", { class: "help", text: "Copy a shipped item into a new one. Give it its own id, then change any of the name, text, rarity, icon or values. Only what you change is written." }));
+  v.append(el("div", { class: "help", text: "Copy a shipped item into a new one. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
   if (!it) { v.append(el("div", { class: "empty", text: "Pick a base item on the left." })); return v; }
   v.append(el("div", { class: "head" }, iconImg(E.icon || it.icon),
     el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity }))));
@@ -250,7 +253,41 @@ function itemView() {
   for (const r of it.values) rows.append(valueRow(r.label, r.value, "float", r.shadowed, E.values[r.label],
     nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); }));
   v.append(rows);
+
+  v.append(el("div", { class: "sect", text: `Effects (${it.modifiers.length})` }));
+  if (!it.modifiers.length) v.append(el("div", { class: "muted", text: "This item has no stat effects." }));
+  else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives. The amount keeps its old unit (5% crit chance becomes 0.05 of the new stat), so change the value above as well." }));
+  const stats = el("div");
+  for (const m of it.modifiers) stats.append(statRow(m));
+  v.append(stats);
+  if (it.superKey) {
+    v.append(el("div", { class: "sect", text: "Super effect text" }));
+    const sup = el("textarea", { placeholder: it.superText || it.superKey });
+    sup.value = E.superDescription;
+    sup.oninput = () => { E.superDescription = sup.value; refresh(); };
+    v.append(sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." }));
+  }
   return v;
+}
+
+// One effect: which stat it changes.
+function statRow(m) {
+  const E = S.itemEdit, cur = E.stats[m.name];
+  const row = el("div", { class: "row stat" + (cur !== undefined ? " changed" : "") });
+  const lbl = el("div", { class: "lbl", text: m.name });
+  lbl.append(el("span", { class: "tag " + (m.super ? "super" : "type"), text: m.super ? "super effect" : "effect" }));
+  const sel = el("select", {});
+  // An unnamed stat has no catalog entry, so it is offered by its key.
+  const names = m.named ? S.stats : [m.stat, ...S.stats];
+  for (const n of names) sel.append(el("option", { value: n, text: n === m.stat && !m.named ? "unnamed (" + n + ")" : n }));
+  sel.value = cur !== undefined ? cur : m.stat;
+  sel.onchange = () => {
+    const same = sel.value === m.stat;
+    if (same) delete E.stats[m.name]; else E.stats[m.name] = sel.value;
+    row.classList.toggle("changed", !same); refresh();
+  };
+  row.append(lbl, el("div", { class: "was", text: "was " + (m.named ? m.stat : "unnamed") }), sel);
+  return row;
 }
 
 // One editable value. `onset(undefined)` means "back to the original".
@@ -363,6 +400,7 @@ function editPayload() {
     if (!S.item) return null;
     const E = S.itemEdit;
     return { base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon,
+      stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })) };
   }
@@ -434,8 +472,8 @@ $("#save").onclick = async () => {
 // ---- boot --------------------------------------------------------------------------
 (async () => {
   try {
-    const [it, ic, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/heroes"), get("api/mods")]);
-    S.items = it.items; S.icons = ic.icons; S.heroes = he.heroes; S.mods = mo.mods;
+    const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
+    S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
   for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
   renderMods();

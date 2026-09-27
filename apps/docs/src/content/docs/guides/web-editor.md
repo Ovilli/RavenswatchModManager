@@ -28,7 +28,7 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 
 | Tab | In the browser |
 |---|---|
-| **Items** | everything: pick a base, change name, text, rarity, icon and values, *Check*, save |
+| **Items** | everything: pick a base, change name, text, rarity, icon, values and the stat each effect gives, *Check*, save |
 | **Talents** | everything: every value of a hero, card names and texts, *Check*, save |
 | **Abilities** | everything: numbers, the graph, *Copy manifest code* |
 | **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |

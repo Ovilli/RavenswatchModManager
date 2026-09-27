@@ -441,6 +441,8 @@ def build_magic_item(
     icon: str | None = None,
     bank_base_gen: Path | None = None,
     remint_identity: bool = False,
+    modifier_stats: dict[str, str | int] | None = None,
+    super_description: str | None = None,
 ) -> dict[str, bytes]:
     """Produce every file a new, distinct, named magical object needs.
 
@@ -455,9 +457,14 @@ def build_magic_item(
       inline float is overridden by a selector/reference) raises unless
       ``clear_override`` is truthy, in which case the override is disabled first
       so the inline edit takes effect (this unbinds the selector/curve);
-    * when ``name`` is given and ``bank_base_gen`` points at the live text
-      bank, the bank + every language sibling with ``<new_id>_Name`` /
-      ``_Description`` appended.
+    * ``modifier_stats`` maps a modifier's name to the stat it should change
+      instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
+      :mod:`rsmm.engine.item_modifier`;
+    * when ``name`` or ``super_description`` is given and ``bank_base_gen``
+      points at the live text bank, the bank + every language sibling with
+      ``<new_id>_Name`` / ``_Description`` / ``_SuperEffect`` appended. The
+      super-effect text is repointed at ``<new_id>_SuperEffect`` only when
+      ``super_description`` is given; otherwise the copy keeps the base's key.
 
     ``new_id`` may be any length — :func:`rename_id` re-emits the container
     when it differs from ``base_id``.
@@ -465,6 +472,27 @@ def build_magic_item(
     ent = ItemEdit(
         base_id=base_id, new_id=new_id, corpus=corpus, remint_identity=remint_identity
     ).apply(base_cooked)
+    from . import item_modifier as IM
+    # A super key that embeds the base id (`Defense_To_Damage_SuperEffect`) was
+    # renamed with it, to a key no bank holds, which shows blank text. Put the
+    # base's key back unless the copy gets super text of its own.
+    base_super = IM.super_text_key(base_cooked)
+    if base_super is not None and super_description is None:
+        cur = IM.super_text_key(ent)
+        if cur is not None and cur != base_super:
+            ent = IM.set_super_text_key(ent, base_super)
+    super_key = f"{new_id}_SuperEffect"
+    if super_description is not None:
+        if base_super is None:
+            raise ValueError(
+                f"{base_id} has no super effect text, so super_description has "
+                f"nothing to replace")
+        ent = IM.set_super_text_key(ent, super_key)
+    for modifier, stat in (modifier_stats or {}).items():
+        # A modifier name that embeds the base id was renamed with the item.
+        names = {m.name for m in IM.list_modifiers(ent)}
+        target = modifier if modifier in names else modifier.replace(base_id, new_id)
+        ent = IM.set_modifier_stat(ent, target, stat)
     from .talent_values import clear_value_override, is_label_overridden
     for vp in (value_patches or []):
         label, old, new = vp[0], vp[1], vp[2]
@@ -491,11 +519,15 @@ def build_magic_item(
         f"{new_id}.entity.ot.EntitySettingsResource.gen": ent
     }
 
-    if name is not None and bank_base_gen is not None:
+    if (name is not None or super_description is not None) and bank_base_gen is not None:
         from . import text_patches as T
-        pairs = {f"{new_id}_Name": name}
+        pairs = {}
+        if name is not None:
+            pairs[f"{new_id}_Name"] = name
         if description is not None:
             pairs[f"{new_id}_Description"] = description
+        if super_description is not None:
+            pairs[super_key] = super_description
         banks = T.append_bank_keys(bank_base_gen, pairs)
         files[MAGIC_TEXT_BANK] = banks.pop("__base__")
         for lang_tok, blob in banks.items():

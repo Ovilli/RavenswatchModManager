@@ -1,8 +1,9 @@
 """The Items and Talents tabs: shipped content in, manifest blocks out.
 
 * **Items** — pick a shipped magical object as the base, give the copy an id,
-  name, description, rarity and icon, and change any of its values. Emits one
-  ``kind = "item"`` block.
+  name, description, rarity and icon, change any of its values, and switch
+  which stat each effect / super effect changes (with super effect text to
+  match). Emits one ``kind = "item"`` block.
 * **Talents** — pick a hero, change any talent value in any of its entity
   files, and rename or re-describe its talent cards. Emits one
   ``kind = "talent"`` block per edited file and one ``kind = "skill"`` block
@@ -77,8 +78,11 @@ def item_detail(item_id: str) -> dict:
         raise EditorError(f"no shipped item {item_id!r}")
     _id, rarity, p = found
     data = p.read_bytes()
+    from rsmm.engine import item_modifier as IM
+
     shadowed = {tv.label for tv in list_talent_values(data) if tv.is_overridden}
     meta = next((i for i in items() if i["id"] == _id), {})
+    super_key = IM.super_text_key(data)
     return {
         "id": _id, "rarity": rarity,
         "name": meta.get("name") or _id, "description": meta.get("description") or "",
@@ -86,7 +90,32 @@ def item_detail(item_id: str) -> dict:
         "idBytes": len(_id.encode("utf-8")),
         "values": [{"label": label, "value": value, "shadowed": label in shadowed}
                    for label, value in cook.list_value_fields(data)],
+        "modifiers": [{"name": m.name, "stat": m.stat or _hex(m.key), "named": m.stat is not None,
+                       "super": m.super_effect} for m in IM.list_modifiers(data)],
+        "superKey": super_key,
+        "superText": (_text_values().get(super_key) or "") if super_key else "",
     }
+
+
+def _hex(key: int) -> str:
+    return f"0x{key:08x}"
+
+
+@cache
+def _text_values() -> dict[str, str]:
+    """The install's magical-object text bank, key -> English text."""
+    from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+    from rsmm.engine import item_catalog
+    game = find_game_dir()
+    if game is None:
+        return {}
+    return item_catalog._text_values(game, load_asset_map())
+
+
+def stats() -> list[str]:
+    """Every stat a modifier can change, by the engine's own display name."""
+    from rsmm.engine.item_modifier import stat_catalog
+    return sorted(stat_catalog(), key=str.lower)
 
 
 @cache
@@ -227,6 +256,8 @@ def _toml(value) -> str:
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, list):
         return "[" + ", ".join(_toml(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{ " + ", ".join(f"{_toml(str(k))} = {_toml(v)}" for k, v in value.items()) + " }"
     raise TypeError(f"no TOML form for {value!r}")
 
 
@@ -253,7 +284,8 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     """``(kind, id, fields)`` for an item request, validated.
 
     ``req``: ``id``, ``base``, optional ``name``/``description``/``rarity``/
-    ``icon``, and ``values`` = ``[{label, old, new, shadowed}]`` (changed only).
+    ``icon``, ``values`` = ``[{label, old, new, shadowed}]`` (changed only),
+    ``stats`` = ``[{modifier, stat}]`` (changed only) and ``superDescription``.
     """
     base, new_id = str(req.get("base") or ""), str(req.get("id") or "")
     if not base:
@@ -288,6 +320,22 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
                                                         else [])])
     if patches:
         fields["value_patches"] = patches
+    from rsmm.engine.item_modifier import ItemModifierError, resolve_stat
+    swaps = {}
+    for row in req.get("stats") or []:
+        modifier, stat = str(row.get("modifier") or ""), str(row.get("stat") or "")
+        if not modifier or not stat:
+            continue
+        try:
+            resolve_stat(stat)
+        except ItemModifierError as e:
+            raise EditorError(f"{modifier}: {e}") from None
+        swaps[modifier] = stat
+    if swaps:
+        fields["stats"] = swaps
+    sup = req.get("superDescription")
+    if isinstance(sup, str) and sup.strip():
+        fields["super_description"] = sup
     return [("item", new_id, fields)]
 
 
@@ -484,6 +532,7 @@ ROUTES = {
     ("GET", "/api/items"): lambda req: {"items": items()},
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},
+    ("GET", "/api/stats"): lambda req: {"stats": stats()},
     ("GET", "/api/icon"): _icon,
     ("GET", "/api/heroes"): lambda req: {"heroes": heroes()},
     ("GET", "/api/talents"): lambda req: {"hero": req.arg("hero"),

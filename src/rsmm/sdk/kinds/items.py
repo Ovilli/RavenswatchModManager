@@ -127,6 +127,27 @@ def _coerce_icon(raw) -> str | None:
     return f"Objects\\UI_Object_{s}.png"
 
 
+def _coerce_stats(item_id: str, raw) -> dict[str, str | int]:
+    """Normalise ``stats`` into ``{modifier name: stat}``; the stat itself is
+    checked against the catalog here so a typo fails before any cooking."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ContentError(
+            f"item {item_id}: stats must be a table of modifier name -> stat, got {raw!r}")
+    from ...engine.item_modifier import ItemModifierError, resolve_stat
+    out: dict[str, str | int] = {}
+    for modifier, stat in raw.items():
+        if not isinstance(stat, str | int) or isinstance(stat, bool):
+            raise ContentError(f"item {item_id}: stats[{modifier!r}] = {stat!r} is not a stat")
+        try:
+            resolve_stat(stat)
+        except ItemModifierError as e:
+            raise ContentError(f"item {item_id}: stats[{modifier!r}]: {e}") from e
+        out[str(modifier)] = stat
+    return out
+
+
 def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
     """Normalise ``value_patches`` into ``(label, old, new, clear_override)``.
 
@@ -343,6 +364,14 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         ``value_patches``           list of ``(label, old, new)`` (or dicts) —
                                     f32 effect edits, e.g.
                                     ``["Armor per Object Value", 2.0, 50.0]``.
+        ``stats`` (table)           modifier name -> the stat it changes instead,
+                                    e.g. ``{ "Super Effect Modifier" =
+                                    "Crit damage" }``. Stat names come from
+                                    ``data/stat_keys.json``; a ``0x`` key also
+                                    works. The amount keeps its old unit, so
+                                    pair it with a ``value_patches`` entry.
+        ``super_description`` (str) super effect card text
+                                    (-> ``<id>_SuperEffect``).
     """
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
@@ -366,6 +395,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
     value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
+    stats = _coerce_stats(defn.id, defn.fields.get("stats"))
+    super_description = defn.fields.get("super_description")
+    super_description = str(super_description) if super_description is not None else None
     # Custom PNG icon shipped in the mod is cooked into a new texture;
     # otherwise the icon field repoints to a vanilla icon.
     custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"), defn.id)
@@ -374,8 +406,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     else:
         icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
-    bank_gen = _install_bank_gen() if name is not None else None
-    if name is not None and bank_gen is None:
+    wants_text = name is not None or super_description is not None
+    bank_gen = _install_bank_gen() if wants_text else None
+    if wants_text and bank_gen is None:
         _log.warning(
             "item %s/%s: no install text bank reachable; entity will be "
             "nameless in-game. Run apply against a Ravenswatch install.",
@@ -407,6 +440,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             name=name,
             description=description,
             value_patches=value_patches,
+            modifier_stats=stats,
+            super_description=super_description,
             icon=icon,
             bank_base_gen=bank_gen,
         )

@@ -43,7 +43,25 @@ def test_an_icon_is_written_as_its_full_path():
     assert fields["icon"] == "Objects\\Icon_Object_Dreamcatcher.png"
 
 
+def test_an_items_stats_and_super_text_are_carried():
+    [(_k, _i, fields)] = _item(
+        stats=[{"modifier": "Crit Chance Modifier", "stat": "Armour"},
+               {"modifier": "Crit Chance Damage Modifier", "stat": "0x15c7d482"},
+               {"modifier": "Untouched", "stat": ""}],
+        superDescription="Gain #armour@.")
+    assert fields["stats"] == {"Crit Chance Modifier": "Armour",
+                               "Crit Chance Damage Modifier": "0x15c7d482"}
+    assert fields["super_description"] == "Gain #armour@."
+
+
+def test_stats_are_written_as_an_inline_table_that_parses_back():
+    defs = _item(stats=[{"modifier": "Crit Chance Modifier", "stat": "Crit damage"}])
+    parsed = tomllib.loads(E.to_toml(defs))["content"][0]
+    assert parsed["stats"] == {"Crit Chance Modifier": "Crit damage"}
+
+
 @pytest.mark.parametrize("kw, message", [
+    ({"stats": [{"modifier": "M", "stat": "Not a stat"}]}, "unknown stat"),
     ({"id": "short"}, "exactly as long"),
     ({"id": "Dash_Crit_Chance"}, "id of its own"),
     ({"id": "Dash Crit Chan M"}, "letters, digits"),

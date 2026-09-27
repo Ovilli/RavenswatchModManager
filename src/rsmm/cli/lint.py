@@ -590,6 +590,24 @@ def _lint_content(modname: str, blocks: list[dict],
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                       f"value_patch {_ST.accent(repr(label))}: {_ST.dim(str(e))}")
                 errs += 1
+        from rsmm.engine import item_modifier as IM
+        stats = c.get("stats") or {}
+        if not isinstance(stats, dict):
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"stats must be a table of modifier name -> stat")
+            errs += 1
+            stats = {}
+        for modifier, stat in stats.items():
+            try:
+                IM.set_modifier_stat(data, str(modifier), stat)
+            except (ValueError, TypeError) as e:
+                print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                      f"stats {_ST.accent(repr(modifier))}: {_ST.dim(str(e))}")
+                errs += 1
+        if c.get("super_description") is not None and IM.super_text_key(data) is None:
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"super_description: {_ST.dim(f'{base} has no super effect text')}")
+            errs += 1
         icon = c.get("icon")
         if icon and "\\" not in str(icon) and "/" not in str(icon) \
                 and not str(icon).lower().endswith(".png"):

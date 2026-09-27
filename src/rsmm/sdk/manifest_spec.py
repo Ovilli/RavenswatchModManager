@@ -37,7 +37,7 @@ CONTENT_COMMON: frozenset[str] = frozenset({"kind", "id", "schema_version"})
 CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "item": frozenset({
         "mode", "base", "name", "display_name", "description", "rarity", "icon",
-        "value_patches", "unique_identity",
+        "value_patches", "unique_identity", "stats", "super_description",
         "items",                                # mode = "ban"
         "tags", "drop_weight", "level",         # legacy manifest fallback
     }),
