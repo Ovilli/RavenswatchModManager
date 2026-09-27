@@ -31,7 +31,7 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 | **Items** | everything: pick a base, change name, text, rarity, icon and values, *Check*, save |
 | **Talents** | everything: every value of a hero, card names and texts, *Check*, save |
 | **Abilities** | everything: numbers, the graph, *Copy manifest code* |
-| **Map** | the recipe, the spots and the 3D terrain. The buildings' 3D models are not drawn, as in the desktop editor on a normal install |
+| **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |
 
 It cannot read or change the mods you already have. Each mod you save here
 starts empty in the page and exists only until you close the tab, so download it

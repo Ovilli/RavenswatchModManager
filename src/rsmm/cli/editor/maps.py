@@ -17,14 +17,14 @@ from pathlib import Path
 
 from rsmm.cli.editor.app import Fail, Raw, Request, asset_dir
 from rsmm.engine import map_editor as ME
-from rsmm.engine.paths import DATA_DIR
+from rsmm.engine import map_scene as MS
 
 MOUNT = "map"
 PAGE = "map.html"
 
 #: three.js, vendored so the page works offline (and in the web editor).
 STATIC_FILES = {"three.module.min.js": "text/javascript; charset=utf-8"}
-#: What /api/file serves: locally extracted meshes and textures, nothing else.
+#: What /api/file serves: meshes and textures under 3D/, nothing else.
 FILE_ROOT = "3D"
 FILE_TYPES = {".glb": "model/gltf-binary", ".png": "image/png"}
 NEXT_STEP = "rsmm restore --all && rsmm apply"
@@ -71,18 +71,22 @@ def _static(req: Request) -> Raw:
 
 
 def _file(req: Request) -> Raw:
-    """A locally extracted mesh or texture under data/uncooked/3D, or 404."""
+    """A mesh (``.glb``) or texture (``.png``) under ``3D/``, or 404.
+
+    Served from the dev mirror when a checkout has one, else converted from the
+    cooked file in the user's own install (:func:`map_scene.asset_bytes`) —
+    which is the only source on a player's machine and in the web editor.
+    """
     rel = req.arg("path")
     parts = rel.split("/")
     ctype = FILE_TYPES.get(Path(rel).suffix.lower())
     if (not ctype or parts[0] != FILE_ROOT or len(parts) < 2 or "\\" in rel
             or any(s in ("", ".", "..") for s in parts)):
         raise Fail(404, "not found")
-    base = (DATA_DIR / "uncooked" / FILE_ROOT).resolve()
-    f = (DATA_DIR / "uncooked").joinpath(*parts).resolve()
-    if not f.is_relative_to(base) or not f.is_file():
+    data = MS.asset_bytes(rel)
+    if data is None:
         raise Fail(404, "not found")
-    return Raw(f.read_bytes(), ctype, cache=True)
+    return Raw(data, ctype, cache=True)
 
 
 def _drawn(what):

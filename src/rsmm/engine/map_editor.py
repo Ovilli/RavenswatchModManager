@@ -302,8 +302,8 @@ def scenery_levels(chapter: Chapter) -> list[str]:
 
 def _need_meshes(what: str) -> MapEditError:
     return MapEditError(
-        f"{what}: no models to draw — the editor draws meshes from data/uncooked "
-        "(run scripts/extract_uncooked.py once)")
+        f"{what}: no models to draw — none of the chapter's scenery levels could be "
+        "read from the game install")
 
 
 @functools.lru_cache(maxsize=4)

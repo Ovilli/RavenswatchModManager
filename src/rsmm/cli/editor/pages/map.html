@@ -118,7 +118,7 @@ svg .scale { stroke: var(--ink); stroke-width: 3; }
         <button id="v2d" aria-pressed="false">Top-down</button>
       </div>
       <button id="recenter" class="small" title="Reset the camera">Reset view</button>
-      <label class="inline" title="Draw the chapter's scenery and tiles with the game's own models (read from data/uncooked)"><input type="checkbox" id="models" checked> Models</label>
+      <label class="inline" title="Draw the chapter's scenery and tiles with the game's own models (read from your game install)"><input type="checkbox" id="models" checked> Models</label>
       <label class="inline"><input type="checkbox" id="spots" checked> Spots</label>
       <button id="sample" class="small" title="Fill the spots with tiles from this chapter's pool, roughly the way a run would">Sample layout</button>
       <button id="clearlayout" class="small" hidden>Clear tiles</button>
@@ -462,7 +462,7 @@ function buildSlots() {
 }
 
 // ---- models -----------------------------------------------------------------
-// A glb from data/uncooked holds one or more submeshes (POSITION, NORMAL,
+// A glb (the mirror's, or converted from the install on request) holds one or more submeshes (POSITION, NORMAL,
 // TEXCOORD_0, indices) plus an "AABB" helper node, which is skipped.
 function parseGlb(buf) {
   const dv = new DataView(buf), jsonLen = dv.getUint32(12, true);
@@ -760,9 +760,7 @@ function renderLegend() {
   if (S.view === "3d" && S.models) {
     const nt = Object.keys(S.layout).length;
     if (S.sceneInfo) h += `<span class="muted">Scenery: ${esc(S.sceneInfo)}</span>`;
-    else if (S.modelsError) h += window.RSMM_HOSTED
-      ? `<span class="muted" title="${esc(S.modelsError)}">Building models are not shown on the web</span>`
-      : `<span class="warn" title="${esc(S.modelsError)}">No models: run scripts/extract_uncooked.py</span>`;
+    else if (S.modelsError) h += `<span class="warn" title="${esc(S.modelsError)}">No models: the chapter's scenery could not be read from the game files</span>`;
     if (nt) h += `<span class="muted">Tiles shown on ${nt} spots${S.layoutSample ? " (sample, approximate)" : ""}</span>`;
   }
   $("legend").innerHTML = h;

@@ -120,3 +120,51 @@ def test_scene_and_tile_endpoints(server):
     mesh = scene["parts"][0]["mesh"]
     code, _headers, body = server("/api/file?path=" + urllib.parse.quote(mesh))
     assert code == 200 and body[:4] == b"glTF"
+
+
+def test_skip_blocks_keeps_every_nth_block(monkeypatch):
+    monkeypatch.setattr(MS, "TEXTURE_EDGE", 8)
+    # 16x16 BC1 = 4x4 blocks of 8 bytes, block (x, y) filled with byte 4*y + x.
+    px = b"".join(bytes([4 * y + x]) * 8 for y in range(4) for x in range(4))
+    out, w, h = MS._skip_blocks(px, 16, 16, "BC1")
+    assert (w, h) == (8, 8)
+    assert [out[i] for i in range(0, len(out), 8)] == [0, 2, 8, 10]
+    assert MS._skip_blocks(px, 16, 16, "RGBA8") == (px, 16, 16)   # not block-compressed
+    assert MS._skip_blocks(px, 8, 8, "BC1") == (px, 8, 8)         # already small
+
+
+@pytest.fixture
+def no_mirror(install_only, monkeypatch, tmp_path):
+    """The map editor with only the game install, as on a player's machine."""
+    from rsmm.engine import map_editor as ME
+
+    monkeypatch.setattr(MS, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(ME, "DATA_DIR", tmp_path)
+    cached = (MS.entity_parts, MS.level_parts, MS.material_albedo, MS.asset_bytes,
+              ME.scene_json, ME.tile_json, ME.tile_pool_json)
+    for f in cached:
+        f.cache_clear()
+    yield ME
+    for f in cached:
+        f.cache_clear()
+
+
+def test_models_and_textures_come_from_the_install_alone(no_mirror):
+    import io
+
+    scene = no_mirror.scene_json(no_mirror.find_chapter("DarkHills"))
+    parts = scene["parts"]
+    meshes = {p["mesh"] for p in parts}
+    textures = {p["texture"] for p in parts if p["texture"]}
+    assert len(meshes) > 100 and len(textures) > 20
+    # Decoded from the install, so already in true colour order.
+    assert not any(p["swap_rb"] for p in parts)
+
+    assert MS.asset_bytes(sorted(meshes)[0])[:4] == b"glTF"
+    png = MS.asset_bytes(sorted(textures)[0])
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    w, h = struct.unpack(">II", io.BytesIO(png).getbuffer()[16:24])
+    assert 0 < max(w, h) <= MS.TEXTURE_EDGE
+
+    assert MS.asset_bytes("3D/Scenery/Nope.fbx.glb") is None
+    assert MS.asset_bytes("3D/../../asset_map.json.glb") is None
