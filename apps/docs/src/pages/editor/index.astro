@@ -130,7 +130,11 @@ const TABS = {
 const $ = (id) => document.getElementById(id);
 // Set here, not in the markup: Astro's HTML types do not know the attribute.
 $("folder").webkitdirectory = true;
-const appRoot = new URL("app/", location.href);     // mount paths live under /editor/app/
+// Fixed paths, never relative to the address: the page is reachable as both
+// /editor/ and /editor, and from /editor a relative "rsmm.bundle" resolves to
+// /rsmm.bundle, which 404s.
+const editorRoot = new URL("/editor/", location.origin);
+const appRoot = new URL("app/", editorRoot);          // mount paths live under /editor/app/
 
 // ---- worker -------------------------------------------------------------------
 const worker = new Worker(
@@ -181,7 +185,7 @@ function setProgress(text, cls) {
 function fail(text) { setProgress(text, "bad"); $("pickLabel").setAttribute("aria-disabled", "false"); }
 
 let ready = null;
-ready = call("init", { bundle: new URL("rsmm.bundle", location.href).href })
+ready = call("init", { bundle: new URL("rsmm.bundle", editorRoot).href })
   .then(() => {
     setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
     $("pickLabel").setAttribute("aria-disabled", "false");
