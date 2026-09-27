@@ -481,6 +481,13 @@ def build_magic_item(
         cur = IM.super_text_key(ent)
         if cur is not None and cur != base_super:
             ent = IM.set_super_text_key(ent, base_super)
+    # The same holds for the name and description keys (`Damage_Per_Vitality_Name`):
+    # a copy with no text of its own reads the base's, not a key nothing holds.
+    for suffix, own in (("Name", name), ("Description", description)):
+        renamed, base_key = f"{new_id}_{suffix}", f"{base_id}_{suffix}"
+        if own is None and renamed != base_key and struct.pack("<I", len(renamed)) \
+                + renamed.encode() in ent:
+            ent = replace_lstr_any(ent, renamed, base_key)
     super_key = f"{new_id}_SuperEffect"
     if super_description is not None:
         if base_super is None:
@@ -519,7 +526,8 @@ def build_magic_item(
         f"{new_id}.entity.ot.EntitySettingsResource.gen": ent
     }
 
-    if (name is not None or super_description is not None) and bank_base_gen is not None:
+    if (name is not None or description is not None or super_description is not None) \
+            and bank_base_gen is not None:
         from . import text_patches as T
         pairs = {}
         if name is not None:

@@ -186,3 +186,15 @@ def test_data_values_from_the_install_join_the_stat_list():
     assert IM.stat_name(IM.resolve_stat("Attack power")) == "Attack power"
     mods = IM.list_modifiers(_item("Rare", "Damage_Attack"))
     assert {m.name: m.stat for m in mods}["Super Effect Modifier"] == "Basic Attack Speed"
+
+
+def test_a_copy_without_its_own_text_reads_the_bases_keys():
+    """The id rename turns `Damage_Per_Vitality_Name` into a key no bank holds,
+    which the game shows as blank; a copy with no name/description keeps the
+    base's keys, and one with its own text points at its own."""
+    def keys(**kw):
+        ent = _copy("Common", "Damage_Per_Vitality", "Damage_Per_Vitalitz", **kw)
+        return {s for _o, s in C.find_lstrings(ent) if s.endswith(("_Name", "_Description"))}
+    assert keys() == {"Damage_Per_Vitality_Description", "Damage_Per_Vitality_Name"}
+    assert keys(name="X") == {"Damage_Per_Vitality_Description", "Damage_Per_Vitalitz_Name"}
+    assert keys(description="D") == {"Damage_Per_Vitalitz_Description", "Damage_Per_Vitality_Name"}

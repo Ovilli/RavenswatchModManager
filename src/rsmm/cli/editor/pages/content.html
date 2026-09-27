@@ -202,6 +202,7 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
 .pchip .x { color: var(--muted); font-size: 14px; line-height: 1; }
 .pchip .x:hover { color: var(--bad); }
 .errs div { color: var(--bad); font-size: 12px; }
+.row.stat .statnote { grid-column: 1 / -1; margin: 2px 0 0; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
 #bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
 #bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
@@ -463,7 +464,8 @@ async function pickItem(id) {
   renderList(); renderView(); refresh();
 }
 function freshItemEdit() {
-  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "" };
+  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
+    autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
@@ -586,7 +588,7 @@ function itemView() {
   const card = it.card || {};
   const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
-  f.append(textLabel("Description", descIn, v => { E.description = v; }), el("div", {}, descIn,
+  f.append(textLabel("Description", descIn, v => { E.description = v; E.autoDesc = false; }), el("div", {}, descIn,
     el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number, $word* marks a drawback. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
   const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
   for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
@@ -620,10 +622,14 @@ function itemView() {
   else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives. The amount keeps its old unit (5% crit chance becomes 0.05 of the new stat), so change the value above as well." }));
   const stats = el("div");
   for (const m of it.modifiers) {
-    stats.append(statRow(m, E.stats[m.name], val => {
+    const row = statRow(m, E.stats[m.name], val => {
       if (val === undefined) delete E.stats[m.name]; else E.stats[m.name] = val;
-      refresh();
-    }));
+      applyStatText();
+      renderView(); refresh();
+    });
+    const miss = (E.textMiss || []).includes(m.name);
+    if (miss) row.append(el("div", { class: "hint bad statnote", text: "The card text does not name this stat in a way the editor can swap. Write the new wording in the " + (m.super ? "super effect text" : "description") + " below." }));
+    stats.append(row);
   }
   v.append(stats);
   if (it.superKey) {
@@ -631,7 +637,7 @@ function itemView() {
     const sup = el("textarea", { placeholder: it.superText || it.superKey });
     sup.value = E.superDescription;
     const f2 = el("div", { class: "form" });
-    f2.append(textLabel("Text", sup, val => { E.superDescription = val; }),
+    f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
       el("div", {}, sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
     v.append(f2);
   }
@@ -649,6 +655,48 @@ function textLabel(text, input, set) {
   return el("label", {}, text, btn);
 }
 
+// ---- card text that follows the stats ------------------------------------------------
+// How shipped cards name a stat: the word between #…@ on the card. Alternatives
+// are what shipped cards also use (Crit damage reads "Critical Hits"); one that
+// holds "@" also takes the words after the mark (Ace of Spades: "#ATTACK@ speed").
+const STAT_WORDS = {
+  "Attack power": ["DMG"], "Armour": ["ARMOR"], "Vitality": ["VITALITY"],
+  "Crit chance": ["Crit Chance"], "Crit damage": ["Crit Damage", "Critical Hits"],
+  "Move Speed Ratio": ["Move Speed"], "Shield": ["SHIELD"], "Strength": ["STRENGTH"],
+  "Basic Attack Speed": ["Attack Speed", "ATTACK@ speed"], "Regeneration": ["REGENERATION"],
+  "Healing effect": ["Healing"], "Life steal": ["Life Steal"],
+  "Attack power primary": ["POWER"], "Attack power secondary": ["SPECIAL"],
+  "Attack power defensive": ["DEFENSE"], "Attack power ultimate": ["ULTIMATE"],
+  "Crit chance primary": ["Crit Chance"], "Crit chance secondary": ["Crit Chance"],
+};
+function statWords(stat) { return STAT_WORDS[stat] || [stat]; }
+// Rewrite the shipped card text for every changed stat: the old stat's #word@
+// becomes the new one's. Only a text you have not written yourself follows; a
+// stat whose word is not on the card is listed in E.textMiss for a note.
+function applyStatText() {
+  const it = S.item, E = S.itemEdit, card = it.card || {};
+  E.textMiss = [];
+  for (const [part, field, auto] of [["description", "description", "autoDesc"], ["super", "superDescription", "autoSuper"]]) {
+    if (!card[part]) continue;
+    const mine = E[field] && !E[auto];
+    if (mine) continue;
+    let text = card[part].text, changed = false;
+    for (const m of it.modifiers.filter(m => (part === "super") === m.super)) {
+      const to = E.stats[m.name];
+      if (!to) continue;
+      let hit = false;
+      for (const word of statWords(m.stat)) {
+        const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("#" + esc + (word.includes("@") ? "" : "@"), "i");
+        if (re.test(text)) { text = text.replace(re, "#" + statWords(to)[0] + "@"); hit = changed = true; break; }
+      }
+      if (!hit) E.textMiss.push(m.name);
+    }
+    E[field] = changed ? text : "";
+    E[auto] = changed;
+  }
+}
+
 // The icon the new item will have: an uploaded one, a picked one, or the base's.
 function itemIcon(E, it, cls) {
   return E.iconUpload ? uploadImg(E.iconUpload, cls) : iconImg(E.icon || it.icon, cls);
@@ -663,20 +711,41 @@ function currentValue(label) {
   if (!r) return undefined;
   return E.values[label] !== undefined ? E.values[label] : r.value;
 }
-function entryFill(entries) {
-  return (n, next) => {
-    const e = entries && entries[n];
-    const chip = el("span", { class: "ph" });
-    if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
-    const v = e.kind === "Value" ? currentValue(e.node) : undefined;
-    // The game stores a percent as a fraction (0.2 = 20%, a 4.0 damage
-    // multiplier = 400%); across every shipped card a number before "%" reads
-    // that way. The legend keeps the raw number.
-    const pct = v !== undefined && next === "%";
-    chip.textContent = v === undefined ? "{" + n + "}" : fmt(pct ? v * 100 : v);
-    chip.title = "{" + n + "}: " + e.node + (pct ? " (" + fmt(v) + " shown as a percent)" : "");
+// What one {N} shows. A plain value is its (edited) number. A computed one
+// (a "Multi values operations" node) is worked out in game from the values it
+// reads, times the item's amount -- 1 for a single copy -- so the first value
+// it reads is the number the card shows: Dash Crit Chance's "+{0}% Crit Chance"
+// is Crit Chance Value 0.15, i.e. +15%. The tooltip says it is an estimate.
+// A "currently …" selector only says something during a run: it shows nothing.
+function placeholder(n, next, e, valueOf) {
+  const chip = el("span", { class: "ph" });
+  if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
+  if (e.kind === "Value Selector" && /description|desc/i.test(e.node)) {
+    chip.title = "{" + n + "}: " + e.node + " (shown in a run only)";
     return chip;
-  };
+  }
+  let v, from = "";
+  if (e.kind === "Value") v = valueOf(e.node);
+  else if (e.kind !== "Value Selector" && e.sources) {
+    const src = e.sources.find(x => typeof valueOf(x) === "number");
+    if (src !== undefined) { v = valueOf(src); from = src; }
+  }
+  if (typeof v !== "number") {
+    chip.textContent = "{" + n + "}";
+    chip.title = "{" + n + "}: " + e.node + " (worked out in game)";
+    return chip;
+  }
+  // The game stores a percent as a fraction (0.2 = 20%, a 4.0 damage
+  // multiplier = 400%); across every shipped card a number before "%" reads
+  // that way. The legend keeps the raw number.
+  const pct = next === "%";
+  chip.textContent = fmt(pct ? v * 100 : v);
+  chip.title = "{" + n + "}: " + e.node + (from ? ", estimated from " + from + " = " + fmt(v) : "")
+    + (pct ? " (shown as a percent)" : "");
+  return chip;
+}
+function entryFill(entries) {
+  return (n, next) => placeholder(n, next, entries && entries[n], currentValue);
 }
 function legend(entries) {
   const box = el("div", { class: "legend" });
@@ -1006,16 +1075,18 @@ function talentFill(c) {
   const rarity = S.talentEdit.rarity || "Common";
   return (n, next) => {
     const e = c.entries[n];
-    const chip = el("span", { class: "ph", text: "{" + n + "}" });
-    chip.title = "{" + n + "}: " + (e ? e.node : "set inside the talent");
-    let v;
-    if (e && e.tiers) v = tierCurrent(c.file, e, rarity);
-    else if (e && e.kind === "Value") v = talentCurrent(c.file, e.node);
-    if (v !== undefined && typeof v === "number") {
-      const pct = next === "%";
-      chip.textContent = fmt(pct ? v * 100 : v);
+    if (e && e.tiers) {
+      const v = tierCurrent(c.file, e, rarity), chip = el("span", { class: "ph" });
+      chip.textContent = typeof v === "number" ? fmt(next === "%" ? v * 100 : v) : "{" + n + "}";
+      chip.title = "{" + n + "}: " + e.node + " (" + rarity + ")";
+      return chip;
     }
-    return chip;
+    if (!e) {
+      const chip = el("span", { class: "ph", text: "{" + n + "}" });
+      chip.title = "{" + n + "}: set inside the talent";
+      return chip;
+    }
+    return placeholder(n, next, e, label => talentCurrent(c.file, label));
   };
 }
 // A talent card's icon: the one you uploaded for it, else its own.

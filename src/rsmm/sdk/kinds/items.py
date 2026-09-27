@@ -406,7 +406,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     else:
         icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
-    wants_text = name is not None or super_description is not None
+    wants_text = name is not None or description is not None or super_description is not None
     bank_gen = _install_bank_gen() if wants_text else None
     if wants_text and bank_gen is None:
         _log.warning(
