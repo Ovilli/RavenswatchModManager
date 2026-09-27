@@ -100,6 +100,22 @@ def _key_base_candidates(source: str) -> list[str]:
     return out
 
 
+#: Suffixes a card's NAME key carries, in the order tried. Most banks say
+#: ``_Name``; Juliet's says ``_Title`` (and once ``_Tilte``), Snow Queen's once
+#: ``_Names``. Writing ``_Name`` into a bank that has ``_Title`` failed the
+#: relabel outright, so the key is looked up, never composed.
+_NAME_SUFFIXES = ("_Name", "_Title", "_Tilte", "_Names")
+_DESC_SUFFIXES = ("_Desc", "_desc")
+
+
+def card_keys(key_base: str, bank_keys) -> tuple[str | None, str | None]:
+    """``(name key, description key)`` the bank really holds for ``key_base``."""
+    keys = set(bank_keys)
+    name = next((key_base + s for s in _NAME_SUFFIXES if key_base + s in keys), None)
+    desc = next((key_base + s for s in _DESC_SUFFIXES if key_base + s in keys), None)
+    return name, desc
+
+
 def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
     """``Attack Dive`` -> ``Skill_Attack_Dive``; ``Primary Bleed`` ->
     ``Skill_Power_Bleed`` when the bank says so.
@@ -111,7 +127,7 @@ def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
     if bank_keys is None:
         return cands[0]
     for c in cands:
-        if f"{c}_Name" in bank_keys or f"{c}_Desc" in bank_keys:
+        if any(k is not None for k in card_keys(c, bank_keys)):
             return c
     raise ContentError(
         f"skill: no text key for {source!r} — tried "
@@ -180,12 +196,14 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
     if display_name is None and description is None:
         return []
     base_gen, decoded_bank = _require_bank(hero_token)
-    key_base = _text_key_base(source, TP.parse_text_file(base_gen).entries)
+    bank_keys = TP.parse_text_file(base_gen).entries
+    key_base = _text_key_base(source, bank_keys)
+    name_key, desc_key = card_keys(key_base, bank_keys)
     overrides: dict[str, str] = {}
     if display_name is not None:
-        overrides[f"{key_base}_Name"] = str(display_name)
+        overrides[name_key or f"{key_base}_Name"] = str(display_name)
     if description is not None:
-        overrides[f"{key_base}_Desc"] = str(description)
+        overrides[desc_key or f"{key_base}_Desc"] = str(description)
     # Another relabel in this mod may already have written this bank during the
     # same emit (the previous emit's files are removed before any block runs);
     # build on it, or the later block silently erases the earlier one's text.
