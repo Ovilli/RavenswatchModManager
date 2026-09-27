@@ -162,3 +162,27 @@ def test_every_shipped_card_text_parses():
         for f in corpus.files(f"{_MO}/{rarity}", _SUFFIX):
             for fmt in IM.card_formats(f.read_bytes()).values():
                 assert len(fmt.entries) <= 64, (f, fmt.key)
+
+
+# --- data-defined stats -----------------------------------------------------------
+
+@pytest.mark.parametrize("label, key", [
+    ("Basic Attack Speed", 0x058E0A5C),     # Ace of Spades' super effect
+    ("Has Excalibur", 0x4F045BBB),
+    ("Has Holy Grail", 0x41D55285),
+])
+def test_a_data_value_is_keyed_by_its_label(label, key):
+    """No game files needed: the key is the engine's name hash of the label."""
+    assert IM.data_value_key(label) == key
+
+
+def test_data_values_from_the_install_join_the_stat_list():
+    IM.data_value_names.cache_clear()
+    if not IM.data_value_names():
+        pytest.skip("no readable install (ApplicationSettings.ot)")
+    assert IM.resolve_stat("basic attack speed") == 0x058E0A5C
+    assert IM.stat_name(0x058E0A5C) == "Basic Attack Speed"
+    # The engine's own names win where both exist.
+    assert IM.stat_name(IM.resolve_stat("Attack power")) == "Attack power"
+    mods = IM.list_modifiers(_item("Rare", "Damage_Attack"))
+    assert {m.name: m.stat for m in mods}["Super Effect Modifier"] == "Basic Attack Speed"

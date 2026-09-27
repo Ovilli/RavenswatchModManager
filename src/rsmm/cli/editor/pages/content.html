@@ -870,7 +870,9 @@ function statPicker(value, unnamed, onpick) {
   function options(q) {
     q = q.toLowerCase();
     const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
-    const hit = all.filter(o => !q || o.name.toLowerCase().includes(q) || (o.unnamed && "unnamed".includes(q)));
+    // A stat is found by its name or its key (0x058e0a5c), as a manifest may name either.
+    const hit = all.filter(o => !q || o.name.toLowerCase().includes(q) || (o.key && o.key.includes(q))
+      || (o.unnamed && "unnamed".includes(q)));
     const used = hit.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
     const rest = hit.filter(o => o.used === 0);
     return { used, rest };

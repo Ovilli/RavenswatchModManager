@@ -23,6 +23,8 @@ from it as a generic GUID-swap primitive.
 
 from __future__ import annotations
 
+import binascii
+import functools
 import re
 import struct
 from dataclasses import dataclass
@@ -123,9 +125,65 @@ class Modifier:
 
 
 def stat_catalog() -> dict[str, int]:
-    """Stat display name -> key (generated from ``data/stat_keys.json``)."""
+    """Stat display name -> key: the engine's registered values (generated from
+    ``data/stat_keys.json``) plus the game's data-defined ones, read from the
+    player's install (:func:`data_value_names`)."""
     from ._stat_keys_gen import STAT_KEYS
-    return STAT_KEYS
+    extra = {n: k for n, k in data_value_names().items()
+             if n not in STAT_KEYS and k not in STAT_KEYS.values()}
+    return {**STAT_KEYS, **extra} if extra else STAT_KEYS
+
+
+def data_value_key(label: str) -> int:
+    """The key of a data-defined entity value, from its label.
+
+    ``ApplicationSettings.ot`` declares ~50 values beyond the engine's own
+    registry (``Basic Attack Speed``, ``Has Excalibur``, the ability-charge
+    counters, …), which is why 36 modifier keys had no name in
+    ``stat_keys.json``. The engine keys each by name: ``c = CRC32(label)``,
+    then CRC32 again over ``0, c0, 0, c1, 0, c2, 0, c3`` (FUN_14051f090 called
+    as ``(0, c)``; the table is the standard CRC32 one, FUN_14051ef30).
+    Checked against three shipped modifiers: Ace of Spades' super effect
+    (``0x058e0a5c``) is ``Basic Attack Speed``."""
+    c = binascii.crc32(label.encode("utf-8")) & 0xFFFFFFFF
+    mixed = bytes(b for i in range(4) for b in (0, (c >> (8 * i)) & 0xFF))
+    return binascii.crc32(mixed) & 0xFFFFFFFF
+
+
+_VALUE_DESC = "oSModifierValueDesc"
+
+
+@functools.lru_cache(maxsize=1)
+def data_value_names() -> dict[str, int]:
+    """Label -> key of every data-defined entity value in the install's
+    ``ApplicationSettings.ot`` (its pristine copy when a mod replaced it).
+    Empty when no install is readable: the labels are game data, so they are
+    read from the player's files rather than kept in the repo."""
+    from .hero_cook import pristine_app_settings
+    try:
+        from rsmm.cli.apply_mods import find_game_dir
+        game = find_game_dir()
+        text = pristine_app_settings(game) if game else None
+    except (OSError, ImportError):
+        text = None
+    if not text:
+        return {}
+    cls = next((m.group(1) for m in re.finditer(r"^\*Class(\d+)=(\w+)\[", text, re.M)
+                if m.group(2) == _VALUE_DESC), None)
+    if cls is None:
+        return {}
+    out: dict[str, int] = {}
+    current = None
+    for line in text.splitlines():
+        m = re.match(r"^SingleObject\d+=C(\d+)$", line)
+        if m:
+            current = m.group(1)
+        elif current == cls and line.startswith("s|m_sLabel="):
+            label = line.split("=", 1)[1].strip()
+            if label:
+                out.setdefault(label, data_value_key(label))
+            current = None
+    return out
 
 
 def stat_name(key: int) -> str | None:

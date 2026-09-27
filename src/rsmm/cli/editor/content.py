@@ -152,7 +152,7 @@ def stats() -> list[dict]:
                 used[m.key] = used.get(m.key, 0) + 1
         except (OSError, ValueError):
             continue
-    return [{"name": n, "used": used.get(k, 0)}
+    return [{"name": n, "used": used.get(k, 0), "key": _hex(k)}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
 
 
