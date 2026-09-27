@@ -21,7 +21,14 @@ Install all enabled mods into the game directory. Backs up originals, applies pa
 ```sh
 ./rsmm apply
 ./rsmm apply --game-dir /custom/path
+./rsmm apply --verbose        # list every file installed, restored or registered
 ```
+
+By default it prints one line per mod (`+ nyx  installed 359 file(s), 345 new`)
+plus any warnings, merges and errors, with a live counter while it works on a
+terminal. `-v` / `--verbose` (or `RSMM_VERBOSE=1`) lists every file instead;
+`restore --all` follows the same rule. Warnings raised while a mod's content is
+built name that mod (`[warn] custom-hero-test: custom mesh does not overlap…`).
 
 Rollback: `./rsmm restore --all`
 

@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -650,6 +651,62 @@ _WARN_TOK = "!"
 #: piping `rsmm apply` into a file still yields clean text.
 _ST = _term.Style()
 
+# --- output ------------------------------------------------------------------
+#
+# A mod with a custom hero installs hundreds of files, and one line each buried
+# the few lines that matter (warnings, merges, the summary). Per-file lines now
+# print only with --verbose (or RSMM_VERBOSE=1, e.g. from the desktop); the
+# default is one summary line per mod, and a live counter on a terminal.
+_VERBOSE = os.environ.get("RSMM_VERBOSE", "") not in ("", "0")
+
+
+def _detail(msg: str) -> None:
+    """A per-file line: printed only with --verbose."""
+    if _VERBOSE:
+        print(msg)
+
+
+class _Progress:
+    """One self-overwriting counter line, only on an interactive terminal and
+    only when per-file lines are off (they would interleave with it)."""
+
+    def __init__(self, label: str, total: int):
+        self.label, self.total, self.n = label, total, 0
+        self.live = total > 1 and not _VERBOSE and sys.stdout.isatty()
+
+    def step(self) -> None:
+        self.n += 1
+        if self.live:
+            frac = self.n / self.total
+            line = f"  {self.label} {_term.bar(frac, 24, _ST)} {self.n}/{self.total}"
+            print("\r" + _term.truncate(line, _term.width() - 1), end="", flush=True)
+
+    def done(self) -> None:
+        if self.live:
+            print("\r" + " " * (_term.width() - 1) + "\r", end="", flush=True)
+
+
+#: The mod whose content is being built, so a cooker warning can name it.
+_CURRENT_MOD: list[str | None] = [None]
+
+
+class _ModWarnings(logging.Handler):
+    """Engine warnings (a mesh that will tear, a bone the rig lacks) were
+    printed bare by Python's last-resort handler, naming no mod or file.
+    This prints them as `[warn] <mod>: <message>`, like apply's own."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        mod = _CURRENT_MOD[0]
+        where = f"{mod}: " if mod else ""
+        print(f"  {_ST.warn('[warn]')} {where}{record.getMessage()}", file=sys.stderr)
+
+
+def _install_warning_handler() -> None:
+    log = logging.getLogger("rsmm")
+    if not any(isinstance(h, _ModWarnings) for h in log.handlers):
+        h = _ModWarnings(level=logging.WARNING)
+        log.addHandler(h)
+
 ROOT_PREFIX = "_root\\"
 
 # `*.UsedRscCache.ot` files are found by convention, never listed in
@@ -825,6 +882,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         return 0
     total = 0
     for m in mods:
+        _CURRENT_MOD[0] = m.id
         if not m.enabled or not m.content_blocks:
             # A mod that USED to emit content still has to be cleaned up:
             # dropping its last `[[content]]` block (or disabling the mod)
@@ -901,7 +959,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             )
             gone = sorted(set(prev if isinstance(prev, list) else []) - set(new_rel))
             for rel in gone:
-                print(f"  [content] {m.id}: removed stale {rel}")
+                _detail(f"  [content] {m.id}: removed stale {rel}")
             try:
                 marker.write_text(json.dumps(new_rel, indent=2), encoding="utf-8")
             except OSError:
@@ -974,6 +1032,7 @@ def plan_apply(mods: list[Mod],
     registrations: dict[str, str] = {}        # encoded -> decoded
     synthesized: set[str] = set()             # encoded paths the game does not ship
     for m in mods:
+        _CURRENT_MOD[0] = m.id
         if not m.enabled:
             continue
         for src, decoded in m.files():
@@ -997,11 +1056,11 @@ def plan_apply(mods: list[Mod],
                     # UsedRscList — none of the 575 shipped caches has a record
                     # there. Registering one would append a 3-line group cloned
                     # from a sibling that isn't in the manifest either.
-                    print(f"  [new] {m.id}: new resource cache '{decoded}' "
-                          f"(convention-loaded, not registered)")
+                    _detail(f"  [new] {m.id}: new resource cache '{decoded}' "
+                            f"(convention-loaded, not registered)")
                 else:
                     registrations[enc] = decoded
-                    print(f"  [new] {m.id}: registering new asset '{decoded}'")
+                    _detail(f"  [new] {m.id}: registering new asset '{decoded}'")
             collected.setdefault(enc, []).append((src, m.id, decoded))
 
     wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
@@ -1260,7 +1319,7 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
                 bak.unlink()
         elif not bak.exists():
             orig_sha = sha256(dest)
-            print(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
+            _detail(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
             if not dry_run:
                 # Atomic: a torn backup is worse than no backup — restore
                 # would put truncated bytes back over a working install.
@@ -1293,9 +1352,9 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
         # Genuinely new asset (custom item, enemy, texture) — nothing here to
         # back up, and dropping it on restore is the correct behaviour.
         orig_sha = ""
-        print(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
+        _detail(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
 
-    print(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
+    _detail(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
     src_sha = sha256(src)
     if not dry_run:
         # Journal BEFORE anything is written: if we die between here and the
@@ -1348,8 +1407,8 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     # this only widens the delete path to files the map says are not the
     # game's.
     if not orig_sha and not is_vanilla_encoded(enc) and _CACHE_ENC_TOKEN not in enc:
-        print(f"  {_ST.accent(_DEL)} drop    {enc}  "
-              + _ST.dim("(mod-added -> removed with its rollback copy)"))
+        _detail(f"  {_ST.accent(_DEL)} drop    {enc}  "
+                + _ST.dim("(mod-added -> removed with its rollback copy)"))
         if not dry_run:
             try:
                 if dest.exists():
@@ -1363,7 +1422,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
         return True
 
     if bak.exists():
-        print(f"  {_ST.accent(_DEL)} restore {enc}")
+        _detail(f"  {_ST.accent(_DEL)} restore {enc}")
         if not dry_run:
             # Two-phase: copy then remove — a crash mid-copy preserves the
             # backup, and the copy itself is atomic so `dest` is never a
@@ -1390,7 +1449,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
             print(f"  [WARN] {enc}: backup missing (orig_sha1 recorded); "
                   f"keeping destination", file=sys.stderr)
         else:
-            print(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
+            _detail(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
             state.active.pop(enc, None)
         return True
 
@@ -1411,7 +1470,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
         return True
 
     # No backup, no orig_sha1 → mod added this file. Safe to remove.
-    print(f"  {_ST.accent(_DEL)} drop    {enc}  {_ST.dim('(no backup -> added file removed)')}")
+    _detail(f"  {_ST.accent(_DEL)} drop    {enc}  {_ST.dim('(no backup -> added file removed)')}")
     if not dry_run and dest.exists():
         try:
             dest.unlink()
@@ -2009,6 +2068,29 @@ def _install_lock_or_fail(cooking: Path, operation: str):
         yield False
 
 
+def _print_apply_summary(additions, removals, synthesized, blocked: int,
+                         dry_run: bool) -> None:
+    """One line per mod instead of one per file (`--verbose` has those)."""
+    per_mod: dict[str, list[int]] = {}               # mod -> [files, new]
+    for enc, _src, _dest, mod_id in additions:
+        n = per_mod.setdefault(mod_id, [0, 0])
+        n[0] += 1
+        n[1] += enc in synthesized
+    width = max((len(m) for m in per_mod), default=0)
+    verb = "would install" if dry_run else "installed"
+    for mod_id in sorted(per_mod):
+        files, new = per_mod[mod_id]
+        extra = _ST.dim(f", {new} new") if new else ""
+        print(f"  {_ST.ok(_ADD)} {mod_id:<{width}}  {verb} {files} file(s){extra}")
+    if removals:
+        what = "would restore" if dry_run else "restored"
+        print(f"  {_ST.accent(_DEL)} {what} {len(removals)} original file(s)")
+    if blocked:
+        return                                        # the caller reports these
+    if not _VERBOSE and (additions or removals):
+        print(_ST.dim("  (--verbose lists every file)"))
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
     dec2enc = load_asset_map(repo)
@@ -2084,9 +2166,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
             ensure_free_space(cooking, need)
         failed_removals = 0
+        prog = _Progress("restoring", len(removals))
         for enc in removals:
             if not restore_one(enc, cooking, game_dir, state, args.dry_run):
                 failed_removals += 1
+            prog.step()
+        prog.done()
         if failed_removals:
             print(f"  [WARN] {failed_removals} removal(s) failed; "
                   f"state entries preserved for retry", file=sys.stderr)
@@ -2097,7 +2182,9 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         # instead of half-modded. Dry runs stage nothing.
         tx = None if args.dry_run else ApplyTransaction(cooking)
         staged: list[tuple[str, str, Path, str]] = []   # enc, mod_id, dest, src_sha
+        prog = _Progress("installing", len(additions))
         for enc, src, dest, mod_id in additions:
+            prog.step()
             try:
                 apply_one(enc, src, dest, mod_id, state, args.dry_run,
                           force=bool(getattr(args, "force", False)),
@@ -2112,6 +2199,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 # safe direction (the override simply isn't installed).
                 blocked += 1
                 print(f"  {_ST.err(_WARN_TOK)} {e}", file=sys.stderr)
+        prog.done()
+        _print_apply_summary(additions, removals, synthesized, blocked, args.dry_run)
         if blocked:
             print(f"  {_ST.err(_WARN_TOK)} "
                   f"{_ST.err(f'{blocked} file(s) NOT applied')} — the vanilla "
@@ -2202,7 +2291,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             if enc_key in state.active:
                 continue
             dest = bak.with_name(bak.name[: -len(BACKUP_SUFFIX)])
-            print(f"  - restore {dest.relative_to(cooking)} (stale backup)")
+            _detail(f"  - restore {dest.relative_to(cooking)} (stale backup)")
             if not args.dry_run:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 try:
@@ -2222,10 +2311,13 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         if state.active:
             print(f"Restoring {len(state.active)} overrides...")
             failed: list[str] = []
+            prog = _Progress("restoring", len(state.active))
             for enc in list(state.active):
                 ok = restore_one(enc, cooking, game_dir, state, args.dry_run)
                 if not ok:
                     failed.append(enc)
+                prog.step()
+            prog.done()
             if failed and not args.dry_run:
                 print(f"  [WARN] {len(failed)} file(s) could not be restored; "
                       f"their state entries are preserved for retry.",
@@ -2263,7 +2355,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
 
                 if bak.exists():
-                    print(f"  - restore {enc}  (residue via source hash + backup)")
+                    _detail(f"  - restore {enc}  (residue via source hash + backup)")
                     if not args.dry_run:
                         try:
                             shutil.copy2(bak, dest)
@@ -2284,7 +2376,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     # gone. Observed on the three Dark Hills / Avalon caches.
                     if is_vanilla_encoded(enc):
                         continue
-                    print(f"  - drop    {enc}  (residue via source hash)")
+                    _detail(f"  - drop    {enc}  (residue via source hash)")
                     if not args.dry_run:
                         try:
                             dest.unlink()
@@ -2309,7 +2401,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                         continue
                     bak = dest.parent / (dest.name + BACKUP_SUFFIX)
                     if bak.exists():
-                        print(f"  - restore {enc}  (aggressive purge + backup)")
+                        _detail(f"  - restore {enc}  (aggressive purge + backup)")
                         if not args.dry_run:
                             try:
                                 shutil.copy2(bak, dest)
@@ -2328,7 +2420,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                         continue
                     try:
                         if src.exists() and sha256(dest) == sha256(src):
-                            print(f"  - drop    {enc}  (aggressive purge + source hash)")
+                            _detail(f"  - drop    {enc}  (aggressive purge + source hash)")
                             if not args.dry_run:
                                 dest.unlink()
                             purged_known += 1
@@ -2511,6 +2603,9 @@ def main() -> int:
                     help="Ravenswatch install dir (autodetected if omitted)")
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would happen; touch nothing")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="list every file installed, restored or registered "
+                         "(default: one summary line per mod)")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--restore-all", action="store_true",
                    help="restore every active override and clear state")
@@ -2532,6 +2627,9 @@ def main() -> int:
                          "(otherwise prompts interactively; set "
                          "RSMM_NONINTERACTIVE=1 to require --yes)")
     args = ap.parse_args()
+    global _VERBOSE
+    _VERBOSE = _VERBOSE or args.verbose
+    _install_warning_handler()
 
     repo = REPO_DIR
     game_dir = args.game_dir or find_game_dir()
