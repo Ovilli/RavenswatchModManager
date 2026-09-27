@@ -57,15 +57,15 @@ def test_flat_colour_materials():
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
-    from rsmm.cli import cmd_map_editor as CM
+    from rsmm.cli.editor import server as CM
 
-    srv = CM.serve(0, tmp_path / "mods")
+    srv = CM.serve(0, mods=tmp_path / "mods")
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]
 
     def get(path):
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=60) as r:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/map{path}", timeout=60) as r:
                 return r.status, r.headers, r.read()
         except urllib.error.HTTPError as e:
             return e.code, e.headers, e.read()
@@ -85,7 +85,7 @@ def test_three_js_is_vendored_and_served(server):
     code, headers, body = server("/static/three.module.min.js")
     assert code == 200 and headers["Content-Type"].startswith("text/javascript")
     assert b"SPDX-License-Identifier: MIT" in body[:400]
-    assert server("/static/../cmd_map_editor.py")[0] == 404
+    assert server("/static/../maps.py")[0] == 404
     assert server("/static/other.js")[0] == 404
 
 

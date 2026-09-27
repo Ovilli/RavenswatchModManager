@@ -226,7 +226,8 @@ jobs:
             --add-data "${ROOT}/src/rsmm/cli/install_loader.sh${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
             --add-data "${ROOT}/src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/map_editor_static${SEP}src/rsmm/cli/map_editor_static"
+            --add-data "${ROOT}/src/rsmm/cli/editor/pages${SEP}src/rsmm/cli/editor/pages"
+            --add-data "${ROOT}/src/rsmm/cli/editor/static${SEP}src/rsmm/cli/editor/static"
             --add-data "${ROOT}/src/loader/lua${SEP}src/loader/lua"
             --add-data "${ROOT}/src/loader/lib${SEP}src/loader/lib"
           )

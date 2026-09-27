@@ -97,9 +97,11 @@ def build_sidecar(target: str) -> None:
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.sh", "src/rsmm/cli")
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.ps1", "src/rsmm/cli")
     add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "install_loader.bat", "src/rsmm/cli")
-    # three.js for `rsmm map-editor`'s 3D view (served from this folder).
-    add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "map_editor_static",
-                          "src/rsmm/cli/map_editor_static")
+    # `rsmm editor`: its pages (.html + common.css/js) and three.js for the
+    # map's 3D view. editor.app.asset_dir finds them here in a frozen build.
+    for sub in ("pages", "static"):
+        add_data_args += _add(REPO_ROOT / "src" / "rsmm" / "cli" / "editor" / sub,
+                              f"src/rsmm/cli/editor/{sub}")
     add_data_args += _add(REPO_ROOT / "src" / "loader" / "lua", "src/loader/lua")
     # The canonical SDK entrypoint (full rsmm.lua) + generated engine_gen.lua
     # live in lib/. install_loader.{sh,ps1} overwrite the stripped lua/ stub

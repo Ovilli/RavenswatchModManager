@@ -1,0 +1,309 @@
+---
+// /editor/ — the rsmm editors, running in the browser.
+//
+// The same four editors `rsmm editor` serves locally (items, talents,
+// abilities, maps), driven by the real Python engine in a worker (Pyodide).
+// The player picks their Ravenswatch folder, and each editor page is shown in
+// a frame whose `fetch` goes to the worker instead of a server: see
+// `rsmm.cli.editor.bridge` for the Python side. Nothing is uploaded, and
+// the site hosts no game data: the engine reads the player's own files.
+const title = 'Web editor · RSMM';
+const description =
+  'Build item, talent, ability and map mods for Ravenswatch in your browser. Runs locally on your own game files.';
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content="https://docs.rsmm.me/og.png" />
+<link rel="icon" href="/favicon.png" />
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs" crossorigin />
+<style is:global>
+  :root {
+    --bg: hsl(350, 13%, 9%); --panel: hsl(350, 10%, 13%); --ink: #efe9ea; --muted: #a99fa1;
+    --line: hsl(350, 8%, 22%); --accent: hsl(352, 78%, 48%); --accent-ink: #fff;
+    --ok: #4cc27f; --bad: #ff7b72; --chip: hsl(350, 8%, 18%);
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f3f3; --panel: #fff; --ink: #1d1a1b; --muted: #6b6264; --line: #e2dcdd;
+            --chip: #efe9ea; --ok: #1f8a4c; --bad: #b8322a; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--ink);
+         display: flex; flex-direction: column; }
+  a { color: inherit; }
+  nav { display: flex; align-items: flex-end; gap: 4px; padding: 8px 16px 0; background: var(--panel);
+        border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; }
+  nav .brand { display: flex; align-items: center; gap: 8px; margin: 0 18px 10px 0; font-weight: 650;
+               text-decoration: none; }
+  nav .brand img { width: 24px; height: 24px; }
+  nav .tab { color: var(--muted); text-decoration: none; padding: 6px 14px 9px;
+             border-bottom: 3px solid transparent; }
+  nav .tab:hover { color: var(--ink); }
+  nav .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center; padding-bottom: 10px;
+               font-size: 13px; color: var(--muted); }
+  main { flex: 1; min-height: 0; position: relative; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+  #start { height: 100%; overflow: auto; padding: 40px 16px; }
+  .card { max-width: 680px; margin: 0 auto; }
+  .card h1 { font-size: 28px; line-height: 1.2; margin: 0 0 10px; }
+  .lead { color: var(--muted); font-size: 16px; margin: 0 0 24px; }
+  ol.steps { padding-left: 22px; margin: 0 0 24px; }
+  ol.steps li { margin-bottom: 8px; }
+  code { background: var(--chip); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+  .pick { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: var(--accent-ink);
+          border: 0; border-radius: 9px; padding: 11px 20px; font: inherit; font-weight: 600; cursor: pointer; }
+  .pick:hover { filter: brightness(1.1); }
+  .pick[aria-disabled="true"] { opacity: .5; cursor: progress; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
+  #progress { margin-top: 22px; padding: 12px 14px; border-radius: 9px; background: var(--panel);
+              border: 1px solid var(--line); font-size: 14px; }
+  #progress.bad { border-color: var(--bad); color: var(--bad); }
+  #progress.ok { border-color: var(--ok); }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted);
+          border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;
+          vertical-align: -1px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #toast { position: fixed; right: 16px; bottom: 16px; max-width: 420px; padding: 12px 14px; border-radius: 9px;
+           background: var(--panel); border: 1px solid var(--ok); box-shadow: 0 6px 24px rgba(0,0,0,.3);
+           font-size: 14px; z-index: 5; }
+  @media (max-width: 640px) { .card h1 { font-size: 23px; } #start { padding: 24px 16px; } }
+</style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/"><img src="/favicon.png" alt="" />RSMM Web Editor</a>
+  <span id="tabs" hidden></span>
+  <span class="right"><span id="where"></span><a href="/guides/web-editor/">Help</a><a href="/">Docs</a></span>
+</nav>
+<main id="main">
+  <section id="start">
+    <div class="card">
+      <h1>Make Ravenswatch mods in your browser</h1>
+      <p class="lead">Copy and change magical items, retune and rename talents, edit hero abilities
+        and reshape chapter maps. Everything runs on this page, reading your own game files. Nothing is
+        uploaded.</p>
+      <ol class="steps">
+        <li>Find your game folder: in Steam, right-click <b>Ravenswatch</b> → <b>Manage</b> →
+          <b>Browse local files</b>.</li>
+        <li>Choose that folder below. Your browser will ask whether to "upload" it: that is its
+          standard wording for letting a page read a folder. The files stay on your computer.</li>
+        <li>Make your changes, then save them as a mod. You get a <code>.zip</code>: unzip it into your
+          mods folder and apply it with the desktop app or <code>rsmm apply</code>.</li>
+      </ol>
+      <label class="pick" id="pickLabel" aria-disabled="true">
+        Choose Ravenswatch folder
+        <input id="folder" type="file" webkitdirectory multiple hidden />
+      </label>
+      <div id="progress"><span class="spin"></span><span id="progressText">Starting…</span></div>
+      <p class="note">The first visit downloads the Python runtime (about 12 MB) from jsDelivr; later
+        visits use your browser's cache. Works in current Chrome, Edge, Firefox and Safari on a computer.</p>
+    </div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+
+<script is:inline>
+"use strict";
+const TABS = {
+  items: ["Items", "content", "content/?tab=items"],
+  talents: ["Talents", "content", "content/?tab=talents"],
+  abilities: ["Abilities", "abilities", "abilities/"],
+  map: ["Map", "map", "map/"],
+};
+const $ = (id) => document.getElementById(id);
+const appRoot = new URL("app/", location.href);     // mount paths live under /editor/app/
+
+// ---- worker -------------------------------------------------------------------
+const worker = new Worker(new URL("worker.js", location.href), { type: "module" });
+let seq = 0;
+const pending = new Map();
+worker.onmessage = (e) => {
+  const m = e.data;
+  if (m.progress) { setProgress(m.progress); return; }
+  const p = pending.get(m.id);
+  if (!p) return;
+  pending.delete(m.id);
+  m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
+};
+worker.onerror = (e) => fail("The editor engine stopped: " + (e.message || "unknown error"));
+function call(op, args, transfer) {
+  const id = ++seq;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ id, op, ...args }, transfer || []);
+  });
+}
+
+function setProgress(text, cls) {
+  $("progress").className = cls || "";
+  $("progress").hidden = false;
+  $("progressText").textContent = text;
+  $("progress").querySelector(".spin")?.toggleAttribute("hidden", !!cls);
+}
+function fail(text) { setProgress(text, "bad"); $("pickLabel").setAttribute("aria-disabled", "false"); }
+
+let ready = null;
+ready = call("init", { bundle: new URL("rsmm.bundle", location.href).href })
+  .then(() => {
+    setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
+    $("pickLabel").setAttribute("aria-disabled", "false");
+  })
+  .catch((err) => fail("Could not load the editor engine: " + err.message));
+
+// ---- the folder ------------------------------------------------------------------
+// The picked folder may be the install (holding DarkTalesResources) or
+// DarkTalesResources itself; only that subtree is mounted.
+function gameFiles(list) {
+  const files = [], paths = [];
+  for (const f of list) {
+    const rel = "/" + (f.webkitRelativePath || f.name);
+    const at = rel.indexOf("/DarkTalesResources/");
+    if (at < 0) continue;
+    files.push(f);
+    paths.push(rel.slice(at + "/DarkTalesResources/".length));
+  }
+  return { files, paths };
+}
+
+$("pickLabel").addEventListener("click", (e) => {
+  if ($("pickLabel").getAttribute("aria-disabled") === "true") e.preventDefault();
+});
+$("folder").addEventListener("change", async () => {
+  const list = $("folder").files;
+  if (!list || !list.length) return;
+  const { files, paths } = gameFiles(list);
+  $("folder").value = "";
+  if (!paths.includes("UsedRscList.ot")) {
+    fail("That folder is not a Ravenswatch install: it has no DarkTalesResources/UsedRscList.ot. "
+      + "Pick the folder that holds Ravenswatch.exe.");
+    return;
+  }
+  $("pickLabel").setAttribute("aria-disabled", "true");
+  try {
+    await ready;
+    const info = await call("mount", { files, paths });
+    $("where").textContent = `${info.items} items · ${info.heroes} heroes`;
+    open();
+  } catch (err) {
+    fail(err.message);
+  }
+});
+
+// ---- editor frames ------------------------------------------------------------------
+// Each editor page is the one `rsmm editor` serves, fetched from the engine and
+// shown through srcdoc. Its <base> makes its relative `api/...` URLs land under
+// /editor/app/<mount>/, and its fetch is routed to the engine by rsmmFetch.
+const frames = {};
+let three = null;
+
+async function engineFetch(path, init) {
+  const method = (init.method || "GET").toUpperCase();
+  const headers = {};
+  new Headers(init.headers || {}).forEach((v, k) => { headers[k] = v; });
+  const body = init.body == null ? new Uint8Array()
+    : typeof init.body === "string" ? new TextEncoder().encode(init.body)
+    : new Uint8Array(await new Response(init.body).arrayBuffer());
+  const text = method === "POST" ? new TextDecoder().decode(body) : "";
+  const r = await call("request", { method, path, headers, body }, [body.buffer]);
+  if (method === "POST" && r.status === 200 && /\/api\/save$/.test(path.split("?")[0])) {
+    afterSave(new TextDecoder().decode(r.body), text);
+  }
+  const empty = r.status === 204 || r.status === 304;
+  return new Response(empty ? null : r.body, { status: r.status, headers: r.headers });
+}
+
+window.rsmmFetch = (input, init = {}, baseURI) => {
+  const url = new URL(typeof input === "string" ? input : input.url, baseURI || location.href);
+  if (url.origin !== location.origin || !url.pathname.startsWith(appRoot.pathname)) {
+    return fetch(input, init);
+  }
+  return engineFetch("/" + url.pathname.slice(appRoot.pathname.length) + url.search, init);
+};
+
+// A saved mod exists only in this page's memory, so hand it over as a zip.
+async function afterSave(responseText) {
+  let saved = "";
+  try { const j = JSON.parse(responseText); saved = j.saved || j.path || ""; } catch { return; }
+  const m = /mods\/([^/]+)\/manifest\.toml$/.exec(saved.replace(/\\/g, "/"));
+  if (!m) return;
+  try {
+    const data = await call("zip", { mod: m[1] });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: "application/zip" }));
+    a.download = m[1] + ".zip";
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast(`Downloaded ${m[1]}.zip. Unzip it into your mods folder, then apply it with the desktop app or rsmm apply.`);
+  } catch (err) {
+    toast("Could not build the download: " + err.message);
+  }
+}
+
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text; t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.hidden = true; }, 9000);
+}
+
+async function pageFor(key) {
+  const [, mount, path] = TABS[key];
+  const tab = new URLSearchParams(path.split("?")[1] || "").get("tab") || "";
+  const r = await engineFetch("/" + path, {});
+  let html = await r.text();
+  const base = new URL(mount + "/", appRoot).href;
+  const shim = `<base href="${base}"><script>window.RSMM_HOSTED = true;`
+    + `window.RSMM_TAB = ${JSON.stringify(tab)};`
+    + `window.fetch = (u, o) => parent.rsmmFetch(u, o, document.baseURI);<\/script>`;
+  html = html.replace("<head>", "<head>" + shim);
+  if (mount === "map") {
+    // three.js is a module import, which fetch cannot serve: give it a blob URL.
+    if (!three) {
+      const js = await (await engineFetch("/map/static/three.module.min.js", {})).blob();
+      three = URL.createObjectURL(new Blob([js], { type: "text/javascript" }));
+    }
+    html = html.replace('import("./static/three.module.min.js")', `import(${JSON.stringify(three)})`);
+  }
+  return html;
+}
+
+async function show(key) {
+  if (!(key in TABS)) key = "items";
+  if (!frames[key]) {
+    const f = document.createElement("iframe");
+    f.title = TABS[key][0];
+    frames[key] = f;
+    $("main").append(f);
+    try { f.srcdoc = await pageFor(key); }
+    catch (err) { f.srcdoc = "<p style='font:15px system-ui;padding:20px'>Could not open this editor: "
+      + String(err.message).replace(/</g, "&lt;") + "</p>"; }
+  }
+  for (const [k, f] of Object.entries(frames)) f.hidden = k !== key;
+  for (const a of document.querySelectorAll("nav .tab")) a.classList.toggle("on", a.dataset.tab === key);
+  document.title = TABS[key][0] + " · RSMM Web Editor";
+}
+
+function open() {
+  $("start").hidden = true;
+  const tabs = $("tabs");
+  for (const [key, [label]] of Object.entries(TABS)) {
+    const a = document.createElement("a");
+    a.className = "tab"; a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
+    tabs.append(a);
+  }
+  tabs.hidden = false;
+  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  show(location.hash.slice(1) || "items");
+}
+</script>
+</body>
+</html>

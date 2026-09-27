@@ -47,6 +47,12 @@ LEGACY = {
     "compat":        ("rsmm.cli.compat",                     []),
     "lint":          ("rsmm.cli.lint",                       []),
     "test":          ("rsmm.cli.test",                       []),
+    # The four editors became tabs of one `rsmm editor`; their old names open it
+    # on their tab.
+    "item-editor":    ("rsmm.cli.cmd_editor",                ["--tab", "items"]),
+    "talent-editor":  ("rsmm.cli.cmd_editor",                ["--tab", "talents"]),
+    "ability-editor": ("rsmm.cli.cmd_editor",                ["--tab", "abilities"]),
+    "map-editor":     ("rsmm.cli.cmd_editor",                ["--tab", "map"]),
 }
 
 BUILTIN = {
@@ -54,7 +60,7 @@ BUILTIN = {
     "items":             "rsmm.cli.cmd_items",
     "enemies":           "rsmm.cli.cmd_enemies",
     "talents":           "rsmm.cli.cmd_talents",
-    "map-editor":        "rsmm.cli.cmd_map_editor",
+    "editor":            "rsmm.cli.cmd_editor",
     "poi":               "rsmm.cli.cmd_poi",
     "schema":            "rsmm.cli.cmd_schema",
     "install":           "rsmm.cli.cmd_install",
@@ -76,7 +82,6 @@ BUILTIN = {
     "export-character":  "rsmm.cli.cmd_export_character",
     "import-character":  "rsmm.cli.cmd_import_character",
     "entity-graph":      "rsmm.cli.cmd_entity_graph",
-    "ability-editor":    "rsmm.cli.cmd_ability_editor",
     "unify":             "rsmm.cli.unify",
     "symbols":           "rsmm.cli.cmd_symbols",
     "update-data":       "rsmm.cli.cmd_update_data",
@@ -153,7 +158,11 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("enemies",  "",                           "browse the enemy corpus"),
         ("talents",  "",                           "browse the talent corpus"),
         ("poi",      "[list|kinds|show]",          "browse map tiles / POIs"),
-        ("map-editor", "[--port N]",               "edit a chapter's map generation"),
+        ("editor",   "[--tab T] [--port N]",       "edit items, talents, abilities, maps"),
+        ("item-editor", "",                        "= editor --tab items"),
+        ("talent-editor", "",                      "= editor --tab talents"),
+        ("ability-editor", "",                     "= editor --tab abilities"),
+        ("map-editor", "",                         "= editor --tab map"),
     )),
     ("game", (
         ("run",      "[--set-launch-options]",     "launch Ravenswatch via Steam"),
@@ -171,7 +180,6 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("export-character", "<hero> [-o out.glb]", "rigged mesh + animations for Blender"),
         ("import-character", "<edited.glb> --mod <id>", "edited clips + body back into a mod"),
         ("entity-graph", "<hero|entity> [--group G]", "an entity's components and links"),
-        ("ability-editor", "[--port N]",            "see abilities as graphs, build edits"),
         ("unify",    "",                           "normalize an asset tree"),
         ("decode",   "<cooked-file>",              "dump oCTextSaver structure"),
         ("symbols",  "<gen|list|audit|events|…>",  "the engine symbol map"),

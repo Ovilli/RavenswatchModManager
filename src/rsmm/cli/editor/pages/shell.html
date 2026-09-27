@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSMM Editor</title>
+<style>{{common.css}}</style>
+<style>
+html, body { height: 100%; margin: 0; }
+body { font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
+nav { display: flex; align-items: flex-end; gap: 4px; padding: 6px 14px 0; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+nav h1 { font-size: 16px; margin: 0 18px 8px 0; }
+nav a { color: var(--muted); text-decoration: none; padding: 6px 14px 8px; border-bottom: 3px solid transparent; }
+nav a:hover { color: var(--ink); }
+nav a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+main { flex: 1; min-height: 0; position: relative; }
+iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+iframe[hidden] { display: none; }
+</style>
+</head>
+<body>
+<nav id="nav"><h1>RSMM Editor</h1></nav>
+<main id="main"></main>
+<script>
+"use strict";
+const TABS = __RSMM_TABS__;
+const frames = {};
+const nav = document.getElementById("nav"), main = document.getElementById("main");
+for (const [key, [label]] of Object.entries(TABS)) {
+  const a = document.createElement("a");
+  a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
+  nav.append(a);
+}
+// A frame is made on first visit and then kept, so switching tabs never loses
+// unsaved work in another editor.
+function show(key) {
+  if (!(key in TABS)) key = "__RSMM_TAB__";
+  if (!frames[key]) {
+    const f = document.createElement("iframe");
+    f.src = TABS[key][1]; f.title = TABS[key][0];
+    main.append(f); frames[key] = f;
+  }
+  for (const [k, f] of Object.entries(frames)) f.hidden = k !== key;
+  for (const a of nav.querySelectorAll("a")) a.classList.toggle("on", a.dataset.tab === key);
+  document.title = TABS[key][0] + " · RSMM Editor";
+}
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+show(location.hash.slice(1) || "__RSMM_TAB__");
+</script>
+</body>
+</html>

@@ -82,12 +82,12 @@ def test_terrain_endpoint_serves_quantised_layers(tmp_path, monkeypatch):
     import urllib.request
 
     monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
-    from rsmm.cli import cmd_map_editor as CM
+    from rsmm.cli.editor import server as CM
 
-    srv = CM.serve(0, tmp_path / "mods")
+    srv = CM.serve(0, mods=tmp_path / "mods")
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        url = f"http://127.0.0.1:{srv.server_address[1]}/api/terrain?chapter=DarkHills"
+        url = f"http://127.0.0.1:{srv.server_address[1]}/map/api/terrain?chapter=DarkHills"
         with urllib.request.urlopen(url, timeout=30) as r:
             t = json.loads(r.read())
     finally:

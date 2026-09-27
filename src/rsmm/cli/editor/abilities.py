@@ -1,30 +1,23 @@
-"""`rsmm ability-editor` — see a hero's abilities as graphs and build edits.
+"""The Abilities tab: one shipped hero's abilities as numbers and a graph.
 
-    rsmm ability-editor              open the page (hero picker)
-    rsmm ability-editor --port 9000
-
-A local page (127.0.0.1 only) for one ability of a shipped hero at a time: a
-Numbers tab listing every literal it uses as a plain form, and a Diagram tab
-drawing its parts and the links between them. It builds
+A Numbers view lists every literal an ability uses as a plain form, and a
+Diagram view draws its parts and the links between them. The page builds
 ``[[content.abilities]]`` steps as you set values, re-point links and copy
-groups. Every change re-runs the steps and the pre-apply checks on
-the server, so the page shows the edited graph and anything the build would
-refuse. The page never writes a mod: copy the TOML into a custom hero's
-manifest (``kind = "hero"``) and run ``rsmm apply``.
+groups. Every change re-runs the steps and the pre-apply checks here, so the
+page shows the edited graph and anything the build would refuse. Nothing is
+written: the steps are copied into a custom hero's manifest (``kind = "hero"``)
+and ``rsmm apply`` builds them. The page is ``pages/abilities.html``.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import secrets
-import struct
-import sys
-import threading
-import webbrowser
 from functools import cache
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+
+from rsmm.cli.editor.app import Request
+
+MOUNT = "abilities"
+PAGE = "abilities.html"
 
 
 @cache
@@ -120,110 +113,18 @@ def steps_toml(steps: list[dict]) -> str:
     return "\n".join(out)
 
 
-class EditorServer(ThreadingHTTPServer):
-    daemon_threads = True
+# --- routes ---------------------------------------------------------------------
 
-    def __init__(self, addr, token: str):
-        super().__init__(addr, Handler)
-        self.token = token
-
-
-class Handler(BaseHTTPRequestHandler):
-    server: EditorServer
-
-    def log_message(self, fmt, *args):
-        pass
-
-    def _host_ok(self) -> bool:
-        # Refuse DNS-rebinding: only loopback names reach this server.
-        port = self.server.server_address[1]
-        return self.headers.get("Host", "") in {f"127.0.0.1:{port}", f"localhost:{port}"}
-
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy",
-                         "default-src 'none'; script-src 'unsafe-inline'; "
-                         "style-src 'unsafe-inline'; connect-src 'self'")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _json(self, code: int, obj) -> None:
-        self._send(code, json.dumps(obj).encode("utf-8"), "application/json")
-
-    def do_GET(self):
-        if not self._host_ok():
-            return self._json(403, {"error": "wrong host"})
-        path = urlparse(self.path).path
-        if path == "/":
-            from rsmm.cli.ability_editor_page import PAGE
-            page = PAGE.replace("__RSMM_TOKEN__", self.server.token)
-            return self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
-        if path == "/api/heroes":
-            return self._json(200, {"heroes": _heroes()})
-        if path == "/favicon.ico":
-            return self._send(204, b"", "image/x-icon")
-        return self._json(404, {"error": "not found"})
-
-    def do_POST(self):
-        if not self._host_ok():
-            return self._json(403, {"error": "wrong host"})
-        if self.headers.get("X-RSMM-Token") != self.server.token:
-            return self._json(403, {"error": "bad token"})
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if n > 1 << 20:
-                return self._json(413, {"error": "too large"})
-            body = json.loads(self.rfile.read(n) or b"{}")
-            steps = body.get("steps") or []
-            if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
-                return self._json(400, {"error": "steps is a list of tables"})
-            path = urlparse(self.path).path
-            if path == "/api/graph":
-                out = graph_payload(str(body.get("hero", "")), steps,
-                                    str(body.get("entity") or ""))
-                out["toml"] = steps_toml(steps)
-                return self._json(200, out)
-            return self._json(404, {"error": "not found"})
-        except (ValueError, KeyError, struct.error) as e:
-            return self._json(400, {"error": str(e)})
+def _graph(req: Request) -> dict:
+    steps = req.body.get("steps") or []
+    if not isinstance(steps, list) or not all(isinstance(x, dict) for x in steps):
+        raise ValueError("steps is a list of tables")
+    out = graph_payload(str(req.body.get("hero", "")), steps, str(req.body.get("entity") or ""))
+    out["toml"] = steps_toml(steps)
+    return out
 
 
-def serve(port: int) -> EditorServer:
-    return EditorServer(("127.0.0.1", port), token=secrets.token_urlsafe(24))
-
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="rsmm ability-editor",
-                                 description="see a hero's abilities as graphs and build edits")
-    ap.add_argument("--port", type=int, default=8766, help="port on 127.0.0.1 (default 8766)")
-    ap.add_argument("--no-browser", action="store_true", help="do not open a browser")
-    args = ap.parse_args(argv if argv is not None else sys.argv[1:])
-    if not _heroes():
-        print("ability-editor: no hero entities in the corpus or the game install",
-              file=sys.stderr)
-        return 1
-    try:
-        srv = serve(args.port)
-    except OSError:
-        srv = serve(0)
-    url = f"http://127.0.0.1:{srv.server_address[1]}/"
-    print(f"ability editor: {url}")
-    print("copy the steps into a custom hero's manifest, then: rsmm apply")
-    print("Ctrl+C to stop.")
-    if not args.no_browser:
-        threading.Timer(0.3, lambda: webbrowser.open(url)).start()
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        srv.server_close()
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+ROUTES = {
+    ("GET", "/api/heroes"): lambda req: {"heroes": _heroes()},
+    ("POST", "/api/graph"): _graph,
+}

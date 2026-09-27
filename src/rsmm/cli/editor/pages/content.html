@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Item &amp; Talent Editor</title>
+<style>{{common.css}}</style>
+<style>
+html.embedded .tab { display: none; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink);
+       display: grid; grid-template: "top top" auto "left main" 1fr "left bar" auto / 280px 1fr; height: 100vh; }
+header { grid-area: top; display: flex; gap: 14px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0 10px 0 0; }
+select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
+textarea { width: 100%; resize: vertical; min-height: 58px; }
+button { cursor: pointer; } button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+.tab { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); }
+.tab.on { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+.muted { color: var(--muted); } .tiny { font-size: 12px; }
+code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
+#left { grid-area: left; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
+#left .filters { padding: 10px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+#left .filters input, #left .filters select { width: 100%; }
+#list { overflow: auto; padding: 6px; flex: 1; }
+.pick { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+.pick:hover { background: var(--chip); } .pick.on { background: var(--accent); color: #fff; }
+.pick .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .sub { font-size: 12px; opacity: .7; margin-left: auto; flex: none; }
+.pick img, .ico { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.ico { border-radius: 6px; background: var(--chip); }
+#main { grid-area: main; overflow: auto; padding: 16px 22px 30px; min-width: 0; }
+.wrap { max-width: 900px; }
+.help { background: var(--accentbg); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.head img { width: 64px; height: 64px; object-fit: contain; }
+.head h2 { margin: 0; font-size: 20px; }
+.sect { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 0 8px; }
+.form { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: start; }
+.form label { padding-top: 6px; font-weight: 600; }
+.form input, .form select { width: 100%; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.hint.bad { color: var(--bad); }
+.icons { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.icons button { padding: 2px; border-radius: 6px; }
+.icons button.on { border-color: var(--accent); background: var(--accentbg); }
+.icons img { width: 40px; height: 40px; display: block; }
+.row { display: grid; grid-template-columns: 1fr 110px 130px; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; }
+.row:nth-child(odd) { background: var(--panel); }
+.row.changed { border-color: var(--accent); background: var(--accentbg); }
+.row .lbl { font-weight: 600; word-break: break-word; }
+.row .was { font-size: 12px; color: var(--muted); text-align: right; }
+.row input[type=number] { width: 100%; }
+.tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; }
+.tag.shadow { background: var(--warnbg); color: var(--warn); }
+.tag.type { background: var(--chip); color: var(--muted); }
+details.file { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--bg); }
+details.file > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
+details.file > summary span { font-weight: 400; }
+details.file .rows { padding: 0 6px 8px; }
+.cardbox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel); }
+.cardbox.changed { border-color: var(--accent); }
+.cardbox .src { font-size: 12px; color: var(--muted); }
+.cardbox input { width: 100%; margin: 6px 0; font-weight: 600; }
+#bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
+#bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
+#bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
+#bar .acts .line { display: flex; gap: 6px; }
+#bar .acts .line > * { flex: 1; }
+#status { grid-column: 1 / -1; font-size: 13px; }
+.st-ok { color: var(--ok); } .st-bad { color: var(--bad); } .st-warn { color: var(--warn); }
+.results div { padding: 2px 0; }
+.empty { padding: 30px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Item &amp; Talent Editor</h1>
+  <button class="tab" data-tab="items">Items</button>
+  <button class="tab" data-tab="talents">Talents</button>
+  <span class="muted tiny" style="margin-left:auto">Nothing is written to the game here. Add the blocks to a mod, then run <code>rsmm apply</code>.</span>
+</header>
+
+<aside id="left">
+  <div class="filters">
+    <input id="q" type="search" placeholder="Search">
+    <select id="rarity"><option value="">All rarities</option></select>
+  </div>
+  <div id="list"></div>
+</aside>
+
+<main id="main"><div class="wrap" id="view"><div class="empty">Loading…</div></div></main>
+
+<section id="bar">
+  <pre id="toml" class="muted">Pick something on the left to start.</pre>
+  <div class="acts">
+    <div class="line"><button id="check">Check</button><button id="copy">Copy</button></div>
+    <select id="mod"></select>
+    <div class="line" id="newmod" hidden><input id="newid" placeholder="new mod id"></div>
+    <button id="save" class="primary">Add to mod</button>
+  </div>
+  <div id="status" class="muted"></div>
+</section>
+
+<script>{{common.js}}</script>
+<script>
+"use strict";
+// The tab to open on: named by the web editor's host (a srcdoc frame has no
+// query), else by ?tab= in `rsmm editor`, else Items.
+const START_TAB = window.RSMM_TAB || new URLSearchParams(location.search).get("tab") || "items";
+const $ = s => document.querySelector(s);
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "text") e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+const get = (url) => api(url);
+const post = (url, body) => api(url, body);
+// Icons are fetched rather than linked, so they reach the API the same way
+// every other request does: over HTTP locally, through the in-browser engine
+// on the docs site. Each is fetched once.
+const iconUrls = new Map();
+function iconUrl(stem) {
+  if (!iconUrls.has(stem)) {
+    iconUrls.set(stem, fetch("api/icon?stem=" + encodeURIComponent(stem))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null));
+  }
+  return iconUrls.get(stem);
+}
+function iconImg(stem, cls) {
+  const hole = el("span", { class: "ico" });
+  if (!stem) return hole;
+  iconUrl(stem).then(url => {
+    if (!url) return;
+    const img = el("img", { src: url, alt: "" });
+    if (cls) img.className = cls;
+    hole.replaceWith(img);
+  });
+  return hole;
+}
+function status(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "muted"; }
+function fmt(v) { return typeof v === "number" ? String(Math.round(v * 10000) / 10000) : String(v); }
+
+// ---- state ------------------------------------------------------------------
+const S = {
+  tab: START_TAB === "talents" ? "talents" : "items",
+  items: [], icons: [], heroes: [], mods: [],
+  item: null,     // detail of the chosen base
+  itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}
+  hero: null, talents: null,
+  talentEdit: { prefix: "", values: {}, cards: {} },   // values key: file + "\u0000" + label
+};
+
+// ---- tabs + left list ----------------------------------------------------------
+function setTab(t) {
+  S.tab = t;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("#rarity").hidden = t !== "items";
+  $("#q").value = "";
+  renderList(); renderView(); refresh();
+}
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+$("#q").oninput = renderList;
+$("#rarity").onchange = renderList;
+
+function renderList() {
+  const list = $("#list"); list.textContent = "";
+  const q = $("#q").value.toLowerCase();
+  if (S.tab === "items") {
+    const r = $("#rarity").value;
+    const rows = S.items.filter(i => (!r || i.rarity === r) && (!q || (i.name + " " + i.id).toLowerCase().includes(q)));
+    if (!rows.length) list.append(el("div", { class: "empty", text: S.items.length ? "No match." : "No items found. Is the game install readable?" }));
+    for (const i of rows) {
+      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
+        iconImg(i.icon), el("span", { class: "nm", text: i.name }), el("span", { class: "sub", text: i.rarity })));
+    }
+  } else {
+    for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
+      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) }, el("span", { text: h.replace(/_/g, " ") })));
+    }
+  }
+}
+
+// ---- items ------------------------------------------------------------------------
+async function pickItem(id) {
+  try {
+    S.item = await get("api/item?id=" + encodeURIComponent(id));
+  } catch (e) { status(e.message, "st-bad"); return; }
+  S.itemEdit = { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {} };
+  renderList(); renderView(); refresh();
+}
+function suggestId(base) {
+  // Same length as the base, and different from it.
+  const tail = base.slice(-2) === "_M" ? "_N" : "_M";
+  return base.length > 2 ? base.slice(0, -2) + tail : base;
+}
+
+function itemView() {
+  const it = S.item, E = S.itemEdit, v = el("div");
+  v.append(el("div", { class: "help", text: "Copy a shipped item into a new one. Give it its own id, then change any of the name, text, rarity, icon or values. Only what you change is written." }));
+  if (!it) { v.append(el("div", { class: "empty", text: "Pick a base item on the left." })); return v; }
+  v.append(el("div", { class: "head" }, iconImg(E.icon || it.icon),
+    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity }))));
+  if (it.description) v.append(el("div", { class: "muted", text: it.description }));
+
+  v.append(el("div", { class: "sect", text: "The new item" }));
+  const f = el("div", { class: "form" });
+  const idHint = el("div", { class: "hint" });
+  const idIn = el("input", { value: E.id, spellcheck: "false" });
+  const checkId = () => {
+    const n = idIn.value.length, want = it.id.length;
+    idHint.textContent = n === want ? `${n} / ${want} characters` : `${n} / ${want} characters. The id must be exactly as long as the base's.`;
+    idHint.className = "hint" + (n === want && idIn.value !== it.id ? "" : " bad");
+  };
+  idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
+  checkId();
+  f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
+  const nameIn = el("input", { placeholder: it.name, value: E.name });
+  nameIn.oninput = () => { E.name = nameIn.value; refresh(); };
+  f.append(el("label", { text: "Name" }), nameIn);
+  const descIn = el("textarea", { placeholder: it.description });
+  descIn.value = E.description;
+  descIn.oninput = () => { E.description = descIn.value; refresh(); };
+  f.append(el("label", { text: "Description" }), el("div", {}, descIn,
+    el("div", { class: "hint", text: "{0}, {1}… show the item's values in order." })));
+  const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
+  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
+  rar.value = E.rarity;
+  rar.onchange = () => { E.rarity = rar.value; refresh(); };
+  f.append(el("label", { text: "Rarity" }), rar);
+  const icons = el("div", { class: "icons" });
+  for (const s of S.icons) {
+    const b = el("button", { class: (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
+      E.icon = s === it.icon ? "" : s; renderView(); refresh(); } }, iconImg(s));
+    icons.append(b);
+  }
+  f.append(el("label", { text: "Icon" }), icons);
+  v.append(f);
+
+  v.append(el("div", { class: "sect", text: `Values (${it.values.length})` }));
+  if (!it.values.length) v.append(el("div", { class: "muted", text: "This item has no editable values." }));
+  const rows = el("div");
+  for (const r of it.values) rows.append(valueRow(r.label, r.value, "float", r.shadowed, E.values[r.label],
+    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); }));
+  v.append(rows);
+  return v;
+}
+
+// One editable value. `onset(undefined)` means "back to the original".
+function valueRow(label, value, type, shadowed, cur, onset) {
+  const row = el("div", { class: "row" + (cur !== undefined ? " changed" : "") });
+  const lbl = el("div", { class: "lbl", text: label });
+  if (type !== "float") lbl.append(el("span", { class: "tag type", text: type }));
+  if (shadowed) lbl.append(el("span", { class: "tag shadow", title: "Another part overrides this value in game. Changing it also clears that override, so your value takes effect.", text: "overridden" }));
+  let input;
+  if (type === "bool") {
+    input = el("input", { type: "checkbox" });
+    input.checked = cur !== undefined ? cur : !!value;
+    input.onchange = () => { const nv = input.checked; row.classList.toggle("changed", nv !== !!value); onset(nv === !!value ? undefined : nv); };
+  } else {
+    input = el("input", { type: "number", step: type === "int" ? "1" : "any", value: fmt(cur !== undefined ? cur : value) });
+    input.oninput = () => {
+      const nv = input.value === "" ? NaN : Number(input.value);
+      const same = Number.isNaN(nv) || nv === value;
+      row.classList.toggle("changed", !same);
+      onset(same ? undefined : nv);
+    };
+  }
+  row.append(lbl, el("div", { class: "was", text: "was " + fmt(type === "bool" ? !!value : value) }), input);
+  return row;
+}
+
+// ---- talents ----------------------------------------------------------------------
+async function pickHero(h) {
+  status("Reading " + h + "…");
+  try { S.talents = await get("api/talents?hero=" + encodeURIComponent(h)); }
+  catch (e) { status(e.message, "st-bad"); return; }
+  S.hero = h;
+  S.talentEdit = { prefix: h.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents", values: {}, cards: {} };
+  status("");
+  renderList(); renderView(); refresh();
+}
+
+function talentView() {
+  const T = S.talents, E = S.talentEdit, v = el("div");
+  v.append(el("div", { class: "help", text: "Rename a hero's talent cards and change the numbers behind them. A hero's number of talents is fixed, so you edit existing ones rather than add new ones." }));
+  if (!T) { v.append(el("div", { class: "empty", text: "Pick a hero on the left." })); return v; }
+  v.append(el("div", { class: "head" }, el("h2", { text: S.hero.replace(/_/g, " ") })));
+  const f = el("div", { class: "form" });
+  const pre = el("input", { value: E.prefix, spellcheck: "false" });
+  pre.oninput = () => { E.prefix = pre.value; refresh(); };
+  f.append(el("label", { text: "Block id" }), el("div", {}, pre, el("div", { class: "hint", text: "The start of each block's id in the manifest." })));
+  v.append(f);
+
+  v.append(el("div", { class: "sect", text: `Talent cards (${T.cards.length})` }));
+  if (!T.cards.length) v.append(el("div", { class: "muted", text: "No card text found. Card text needs a readable game install." }));
+  for (const c of T.cards) {
+    const cur = E.cards[c.source] || {};
+    const box = el("div", { class: "cardbox" + (cur.name || cur.description ? " changed" : "") });
+    const upd = () => {
+      const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
+      const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
+      if (n || d) E.cards[c.source] = { name: n, description: d }; else delete E.cards[c.source];
+      box.classList.toggle("changed", !!(n || d)); refresh();
+    };
+    const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
+    if (!c.hasName) nameIn.disabled = true;
+    nameIn.oninput = upd;
+    const descIn = el("textarea", {});
+    descIn.value = cur.description || c.description;
+    if (!c.hasDescription) descIn.disabled = true;
+    descIn.oninput = upd;
+    box.append(el("div", { class: "src", text: c.source }), nameIn, descIn);
+    v.append(box);
+  }
+  v.append(el("div", { class: "hint", text: "Card text markup: {0} is a value, &{0}~ scales with rarity, #WORD@ is a keyword. Keep the placeholders the card already uses." }));
+
+  const total = T.files.reduce((n, f) => n + f.values.length, 0);
+  v.append(el("div", { class: "sect", text: `Values (${total})` }));
+  const q = el("input", { type: "search", placeholder: "Filter values, e.g. damage", style: "width:100%;margin-bottom:8px" });
+  const box = el("div");
+  const draw = () => {
+    box.textContent = "";
+    const needle = q.value.toLowerCase();
+    for (const file of T.files) {
+      const rows = file.values.filter(r => !needle || r.label.toLowerCase().includes(needle));
+      if (!rows.length) continue;
+      const nChanged = file.values.filter(r => (file.file + "\u0000" + r.label) in E.values).length;
+      const d = el("details", { class: "file" }, el("summary", {}, file.file, el("span", { class: "muted", text: `  ${file.values.length} values` + (nChanged ? `, ${nChanged} changed` : "") })));
+      if (needle || nChanged || file.file === "Hero_" + S.hero) d.open = true;
+      const inner = el("div", { class: "rows" });
+      for (const r of rows) {
+        const key = file.file + "\u0000" + r.label;
+        inner.append(valueRow(r.label, r.value, r.type, r.shadowed, E.values[key] ? E.values[key].new : undefined, nv => {
+          if (nv === undefined) delete E.values[key];
+          else E.values[key] = { file: file.file, label: r.label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
+          refresh();
+        }));
+      }
+      d.append(inner); box.append(d);
+    }
+  };
+  q.oninput = draw; draw();
+  v.append(q, box);
+  return v;
+}
+
+function renderView() {
+  const view = $("#view"); view.textContent = "";
+  view.append(S.tab === "items" ? itemView() : talentView());
+}
+
+// ---- the blocks ----------------------------------------------------------------------
+function editPayload() {
+  if (S.tab === "items") {
+    if (!S.item) return null;
+    const E = S.itemEdit;
+    return { base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon,
+      values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
+        shadowed: S.item.values.find(r => r.label === label).shadowed })) };
+  }
+  if (!S.talents) return null;
+  const E = S.talentEdit;
+  return { hero: S.hero, prefix: E.prefix, values: Object.values(E.values),
+    cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })) };
+}
+
+let lastToml = "", tick = 0;
+async function refresh() {
+  const edit = editPayload(), me = ++tick;
+  $("#check").disabled = $("#save").disabled = $("#copy").disabled = true;
+  if (!edit) { $("#toml").textContent = "Pick something on the left to start."; $("#toml").className = "muted"; lastToml = ""; return; }
+  await new Promise(r => setTimeout(r, 150));
+  if (me !== tick) return;
+  try {
+    const j = await post("api/toml", { tab: S.tab, edit });
+    if (me !== tick) return;
+    lastToml = j.toml; $("#toml").textContent = j.toml; $("#toml").className = "";
+    $("#check").disabled = $("#save").disabled = $("#copy").disabled = false;
+    status("");
+  } catch (e) {
+    if (me !== tick) return;
+    lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
+  }
+}
+
+$("#copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(lastToml); status("Copied. Paste it at the end of a mod's manifest.toml.", "st-ok"); }
+  catch { status("The browser blocked the clipboard. Select the text and copy it.", "st-warn"); }
+};
+
+$("#check").onclick = async () => {
+  status("Building with the real kinds…");
+  $("#check").disabled = true;
+  try {
+    const j = await post("api/check", { tab: S.tab, edit: editPayload() });
+    const box = el("div", { class: "results" });
+    const bad = j.results.filter(r => !r.ok);
+    for (const r of j.results) box.append(el("div", { class: r.ok ? "st-ok" : "st-bad",
+      text: (r.ok ? "✓ " : "✗ ") + r.kind + " " + r.id + (r.ok ? ` builds (${r.files} file${r.files === 1 ? "" : "s"})` : ": " + r.error) }));
+    const s = $("#status"); s.textContent = ""; s.className = "";
+    s.append(el("div", { class: bad.length ? "st-bad" : "st-ok", text: bad.length ? `${bad.length} block(s) would fail in rsmm apply:` : "Everything builds. rsmm apply will accept these blocks." }), box);
+  } catch (e) { status(e.message, "st-bad"); }
+  $("#check").disabled = false;
+};
+
+function renderMods() {
+  const sel = $("#mod"); sel.textContent = "";
+  sel.append(el("option", { value: "__new__", text: "New mod…" }));
+  for (const m of S.mods) sel.append(el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` }));
+  sel.onchange = () => { $("#newmod").hidden = sel.value !== "__new__"; };
+  $("#newmod").hidden = sel.value !== "__new__";
+}
+$("#save").onclick = async () => {
+  const create = $("#mod").value === "__new__";
+  const mod = create ? $("#newid").value.trim() : $("#mod").value;
+  if (!mod) { status("Name the new mod first.", "st-warn"); return; }
+  try {
+    const j = await post("api/save", { tab: S.tab, edit: editPayload(), mod, create });
+    status(window.RSMM_HOSTED
+      ? `Added ${j.blocks} block(s) to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
+      : `Added ${j.blocks} block(s) to ${j.saved}. Now run: rsmm apply`, "st-ok");
+    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); $("#mod").value = mod; $("#newmod").hidden = true; }
+  } catch (e) { status(e.message, "st-bad"); }
+};
+
+// ---- boot --------------------------------------------------------------------------
+(async () => {
+  try {
+    const [it, ic, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/heroes"), get("api/mods")]);
+    S.items = it.items; S.icons = ic.icons; S.heroes = he.heroes; S.mods = mo.mods;
+  } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
+  for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
+  renderMods();
+  // A deep link opens a pick: #item=<id> or #hero=<name>.
+  const link = new URLSearchParams(location.hash.slice(1));
+  if (link.get("hero")) S.tab = "talents";
+  if (link.get("item")) S.tab = "items";
+  setTab(S.tab);
+  if (link.get("item")) pickItem(link.get("item"));
+  if (link.get("hero")) pickHero(link.get("hero"));
+})();
+</script>
+</body>
+</html>

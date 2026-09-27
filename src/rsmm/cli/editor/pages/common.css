@@ -1,0 +1,20 @@
+/* Shared by every editor page: one palette, the reset, and embedded mode.
+   Inlined into each page where the page names it, so a page is one
+   request both locally and in the web editor's frames. Layout and controls
+   stay in each page: the map's checkbox-heavy panels need their own. */
+:root {
+  --bg: #f4f3ef; --panel: #fff; --ink: #1d1d1f; --muted: #6a6a70; --line: #deddd8;
+  --accent: #6d35e8; --accentbg: #efe8fd; --ok: #1f8a4c; --okbg: #e3f5ea;
+  --bad: #b8322a; --badbg: #fbe7e5; --warn: #9a6200; --warnbg: #fff3d6; --chip: #efeee9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
+    --accent: #8b5cff; --accentbg: #2a2140; --ok: #3ccb7f; --okbg: #13301f;
+    --bad: #ff6b5e; --badbg: #3a1614; --warn: #f0a63c; --warnbg: #33270c; --chip: #2a2a2f;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* Inside `rsmm editor` or the web editor the tab bar names the editor. */
+html.embedded header h1 { display: none; }

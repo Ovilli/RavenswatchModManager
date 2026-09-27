@@ -293,30 +293,54 @@ bytes verbatim as section payload, giving a byte-level edit path today.
 ./rsmm cook --from ref.yqz model.gltf -o out.yqz
 ```
 
-### `rsmm map-editor`
+### `rsmm editor`
 
-Edit a chapter's map-generation recipe in the browser: how many of each tile
-kind the generator places, their minimum spacing, which footprints each kind
-fits, the per-flag quotas, and which kinds each slot may hold. Spots are drawn
-on a 3D (or top-down) view of the chapter's painted terrain — height, design
-paths, blocked ground and water — coloured by whether the selected tile can land
-there in the selected scenario. The terrain is read from your own install (or a
-local `data/uncooked` mirror) when the page asks for it; nothing from the game is
-bundled with the editor.
+One local page with four editors, each on its own tab. Each one reads your own
+install when the page asks for something, and each saves an ordinary mod that
+`rsmm apply` installs. Nothing from the game is bundled with the editor. The
+same editors also run in the browser with no install:
+[the web editor](/guides/web-editor/).
+
+| Tab | What it builds |
+|---|---|
+| **Items** | a copy of a shipped magical item with its own id, name, text, rarity, icon and values (`kind = "item"`) |
+| **Talents** | changed talent values (`kind = "talent"`, one block per entity file) and renamed talent cards (`kind = "skill"`) |
+| **Abilities** | `[[content.abilities]]` steps for a custom hero: every number an ability uses, plus a graph for re-pointing links and copying parts |
+| **Map** | a chapter's map-generation recipe (`kind = "tilegen"`) on a 3D view of its terrain |
 
 ```sh
-./rsmm map-editor                  # serve on 127.0.0.1:8765 and open a browser
-./rsmm map-editor --port 9000      # pick the port (falls back to a free one)
-./rsmm map-editor --no-browser     # just print the URL
+./rsmm editor                      # serve on 127.0.0.1:8765 and open a browser
+./rsmm editor --tab map            # open on another tab: items, talents, abilities, map
+./rsmm editor --port 9000          # pick the port (falls back to a free one)
+./rsmm editor --no-browser         # just print the URL
 ./rsmm restore --all && ./rsmm apply   # install what you saved
 ```
 
-Saving writes `mods/<id>/manifest.toml` with one `tilegen` declaration, which
-reopens in the editor. The `tilegen` kind is ⚠️ experimental: the recipe
-round-trips byte-identically, but an edited recipe has not yet been shown to
-change what generates.
+`item-editor`, `talent-editor`, `ability-editor` and `map-editor` still work:
+each opens this editor on its tab.
+
+**Items and Talents.** *Check* builds the blocks with the real kind builders,
+so it reports exactly what `rsmm apply` would refuse. *Add to mod* appends them
+to a mod's `manifest.toml`, or creates the mod. An item copy's id must be as
+long as its base's: the copy keeps every byte offset. A hero's number of
+talents is fixed, so the Talents tab edits existing talents rather than adding
+new ones.
+
+**Abilities.** The page never writes a mod: press *Copy manifest code* and paste
+the steps under your custom hero's `[[content]]` block (`kind = "hero"`).
+
+**Map.** The page shows every tile slot of a chapter on a 3D (or top-down) view of
+its painted terrain: height, design paths, blocked ground and water. Each slot
+is coloured by whether the selected tile can land there in the selected
+scenario. You can change how many of each tile kind the generator places,
+their minimum spacing, which footprints each kind fits, the per-flag quotas,
+and which kinds each slot may hold. Saving writes `mods/<id>/manifest.toml` with
+one `tilegen` declaration, which reopens in the editor. The `tilegen` kind is
+⚠️ experimental: the recipe round-trips byte-identically, but an edited recipe
+has not yet been shown to change what generates.
+
 The server answers only loopback hosts, and every write needs a token that
-exists only in the page it served.
+exists only in the pages it served.
 
 ### Numeric values and texture swaps
 

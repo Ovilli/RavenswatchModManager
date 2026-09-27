@@ -81,6 +81,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
+            { label: 'Web editor (in your browser)', slug: 'guides/web-editor' },
             { label: 'Build a mod with an AI assistant', slug: 'guides/ai-assistant' },
             { label: 'Example mods', slug: 'guides/examples' },
             { label: 'Custom items', slug: 'guides/custom-items' },

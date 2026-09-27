@@ -9,7 +9,8 @@ import urllib.request
 
 import pytest
 
-from rsmm.cli import cmd_ability_editor as AE
+from rsmm.cli.editor import abilities as AE
+from rsmm.cli.editor import server as S
 from rsmm.engine import corpus
 
 needs = pytest.mark.skipif(
@@ -51,9 +52,9 @@ def test_steps_render_as_manifest_toml():
 
 
 def test_writes_need_the_token_and_every_request_a_loopback_host():
-    srv = AE.serve(0)
+    srv = S.serve(0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    base = f"http://127.0.0.1:{srv.server_address[1]}/abilities"
     try:
         req = urllib.request.Request(base + "/api/graph", data=b"{}", method="POST")
         with pytest.raises(urllib.error.HTTPError) as e:

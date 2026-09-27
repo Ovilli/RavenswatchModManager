@@ -173,15 +173,15 @@ def test_manifest_reads_back_as_exactly_its_edits():
 @pytest.fixture
 def editor(tmp_path, monkeypatch):
     monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
-    from rsmm.cli import cmd_map_editor as CM
+    from rsmm.cli.editor import server as CM
 
-    srv = CM.serve(0, tmp_path / "mods")
+    srv = CM.serve(0, mods=tmp_path / "mods")
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]
 
     def call(path, body=None, token=None, host=None, ctype="application/json"):
         req = urllib.request.Request(
-            f"http://127.0.0.1:{port}{path}",
+            f"http://127.0.0.1:{port}/map{path}",
             data=None if body is None else json.dumps(body).encode(),
             method="GET" if body is None else "POST")
         if body is not None:
@@ -203,7 +203,7 @@ def editor(tmp_path, monkeypatch):
 
 def test_page_embeds_a_token_and_writes_demand_it(editor):
     call, _port, srv = editor
-    code, page = call("/")
+    code, page = call("/")                     # the map page, at /map/
     assert code == 200
     token = re.search(rb'const TOKEN = "([^"]+)"', page).group(1).decode()
     assert token == srv.token and token != "__RSMM_TOKEN__"

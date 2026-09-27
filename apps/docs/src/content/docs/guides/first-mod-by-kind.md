@@ -40,6 +40,9 @@ you should expect to work at the end.
 **What the player sees.** A brand-new item in the compendium that drops, is
 offered by chests, and works.
 
+**Or build it on a page.** The **Items** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/), writes this block from a picked base item.
+
 ```toml
 [mod]
 id          = "SwiftAttacks"
@@ -73,6 +76,10 @@ items from the catalog instead — the multiplayer-correct way to disable one.
 ## `talent` — retune a talent
 
 **What the player sees.** The same talent card, different numbers.
+
+**Or build it on a page.** The **Talents** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/), lists every value a hero has and writes this
+block (and `skill` blocks for renamed cards).
 
 ```toml
 [mod]
@@ -382,8 +389,8 @@ recipe.
 
 **Trap.** Edits are keyed by **name** and re-applied to the shipped recipe every
 time, so a name the recipe no longer has fails the emit rather than landing on
-whatever now sits at that index. `./rsmm map-editor` writes these blocks for you
-from a 3D view of the chapter.
+whatever now sits at that index. The **Map** tab of `./rsmm editor` writes these
+blocks for you from a 3D view of the chapter.
 
 ---
 
@@ -767,7 +774,7 @@ to    = "State Secondary Ability Echo"
     (`link = "Attack Shoot 3d Node 02 Copy.obj_4[5]"`).
   - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
   Add `entity = "FX"` to a step to edit another entity of the family.
-  `rsmm ability-editor` opens a local page that builds these steps for you.
+  The **Abilities** tab of `rsmm editor` builds these steps for you.
   It opens on **Numbers**: every number the chosen ability uses, by name
   (type a value, press Enter; ↺ resets it). The **Diagram** tab draws the
   ability as a graph of parts for re-pointing links and copying groups. Every
