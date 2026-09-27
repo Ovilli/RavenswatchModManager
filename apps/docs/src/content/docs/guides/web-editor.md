@@ -3,14 +3,14 @@ title: Web editor
 description: Build item, talent, ability and map mods in your browser, from your own game files, with nothing to install.
 ---
 
-The [web editor](https://docs.rsmm.me/editor/) is `rsmm editor` running in
+The [web editor](/editor/) is `rsmm editor` running in
 your browser. It has the same four tabs (Items, Talents, Abilities, Map) and
 the same checks, and it saves the same mods. You need no Python, no CLI and no
 desktop app to use it. Installing the mod it gives you still takes one of those.
 
 ## Using it
 
-1. Open [docs.rsmm.me/editor](https://docs.rsmm.me/editor/). The first visit
+1. Open [docs.rsmm.me/editor](/editor/). The first visit
    downloads the Python runtime (about 12 MB); later visits use your browser's
    cache.
 2. Choose your Ravenswatch folder. In Steam: right-click **Ravenswatch** →

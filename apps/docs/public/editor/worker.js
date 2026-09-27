@@ -13,7 +13,7 @@
 // lazily with FileReaderSync when Python opens it, so a 7 GB install costs
 // only the few megabytes the editors actually read. Nothing leaves the page.
 
-const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
+const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/';
 
 let py = null;
 
@@ -21,31 +21,32 @@ const send = (msg, transfer) => self.postMessage(msg, transfer || []);
 const progress = (text) => send({ progress: text });
 
 async function init({ bundle }) {
-  progress("Downloading the Python runtime (about 12 MB, cached after the first visit)…");
-  const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
+  progress('Downloading the Python runtime (about 12 MB, cached after the first visit)…');
+  const { loadPyodide } = await import(`${PYODIDE}pyodide.mjs`);
   py = await loadPyodide({
     indexURL: PYODIDE,
     env: {
-      HOME: "/home/pyodide",
-      RSMM_REPO_ROOT: "/rsmm",
-      RSMM_GAME_DIR: "/game",
-      RSMM_MODS_DIR: "/mods",
+      HOME: '/home/pyodide',
+      RSMM_REPO_ROOT: '/rsmm',
+      RSMM_GAME_DIR: '/game',
+      RSMM_MODS_DIR: '/mods',
     },
     stdout: () => {},
-    stderr: (line) => console.warn("[rsmm]", line),
+    stderr: (line) => console.warn('[rsmm]', line),
   });
-  progress("Loading the rsmm engine…");
+  progress('Loading the rsmm engine…');
   const tar = await fetch(bundle).then((r) => {
     if (!r.ok) throw new Error(`rsmm bundle: HTTP ${r.status}`);
     return r.arrayBuffer();
   });
-  for (const d of ["/rsmm/src", "/rsmm/data", "/game/DarkTalesResources", "/mods"]) py.FS.mkdirTree(d);
+  for (const d of ['/rsmm/src', '/rsmm/data', '/game/DarkTalesResources', '/mods'])
+    py.FS.mkdirTree(d);
   // Gzip unless something between here and the server already unzipped it.
   const head = new Uint8Array(tar, 0, 2);
-  const format = head[0] === 0x1f && head[1] === 0x8b ? "gztar" : "tar";
-  py.unpackArchive(tar, format, { extractDir: "/rsmm/src" });
+  const format = head[0] === 0x1f && head[1] === 0x8b ? 'gztar' : 'tar';
+  py.unpackArchive(tar, format, { extractDir: '/rsmm/src' });
   // paths.py finds the repo by its asset map; the real one is built at mount.
-  py.FS.writeFile("/rsmm/data/asset_map.json", "{}");
+  py.FS.writeFile('/rsmm/data/asset_map.json', '{}');
   py.runPython(`
 import sys
 sys.path.insert(0, "/rsmm/src")
@@ -54,12 +55,12 @@ sys.path.insert(0, "/rsmm/src")
 }
 
 async function mount({ files, paths }) {
-  if (!py) throw new Error("the engine is not loaded");
+  if (!py) throw new Error('the engine is not loaded');
   progress(`Opening your game folder (${files.length.toLocaleString()} files)…`);
   py.FS.mount(
     py.FS.filesystems.WORKERFS,
     { blobs: files.map((data, i) => ({ name: paths[i], data })) },
-    "/game/DarkTalesResources",
+    '/game/DarkTalesResources',
   );
   progress("Reading the game's asset list…");
   const out = py.runPython(`
@@ -90,7 +91,7 @@ json.dumps({"items": len(content.items()), "heroes": len(content.heroes())})
 }
 
 function request({ method, path, headers, body }) {
-  const fn = py.globals.get("rsmm_request");
+  const fn = py.globals.get('rsmm_request');
   const r = fn(method, path, body, JSON.stringify(headers || {}));
   try {
     const [status, headersJson, data] = r.toJs();
@@ -102,7 +103,7 @@ function request({ method, path, headers, body }) {
 }
 
 function zip({ mod }) {
-  const fn = py.runPython("bridge.zip_mod");
+  const fn = py.runPython('bridge.zip_mod');
   const r = fn(mod);
   try {
     return r.toJs();
@@ -118,14 +119,17 @@ self.onmessage = async (e) => {
   const { id, op, ...args } = e.data;
   try {
     const result = await OPS[op](args);
-    const transfer = result?.body?.buffer ? [result.body.buffer]
-      : result instanceof Uint8Array ? [result.buffer] : [];
+    const transfer = result?.body?.buffer
+      ? [result.body.buffer]
+      : result instanceof Uint8Array
+        ? [result.buffer]
+        : [];
     send({ id, ok: true, result }, transfer);
   } catch (err) {
     // A Python exception reaches here as a PythonError whose message is the
     // whole traceback; its last line is the part a person can act on.
     const text = String(err?.message || err);
-    const last = text.trim().split("\n").pop();
+    const last = text.trim().split('\n').pop();
     console.error(text);
     send({ id, ok: false, error: last || text });
   }

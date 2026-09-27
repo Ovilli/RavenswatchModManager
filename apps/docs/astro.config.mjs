@@ -1,6 +1,6 @@
 import starlight from '@astrojs/starlight';
-import { defineConfig, passthroughImageService } from 'astro/config';
 import mermaid from 'astro-mermaid';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
 
 export default defineConfig({
@@ -45,17 +45,41 @@ export default defineConfig({
         // AI-assistant ingestion (https://llmstxt.org/). `llms-mods.txt` is
         // advertised alongside the index because it, not the full corpus, is
         // what an assistant building a mod should actually pull.
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-mods.txt', href: '/llms-mods.txt' } },
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-full.txt', href: '/llms-full.txt' } },
+        {
+          tag: 'link',
+          attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'text/plain',
+            title: 'llms-mods.txt',
+            href: '/llms-mods.txt',
+          },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'text/plain',
+            title: 'llms-full.txt',
+            href: '/llms-full.txt',
+          },
+        },
       ],
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
       },
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/Ovilli/RavenswatchModManager' },
+        {
+          icon: 'github',
+          label: 'GitHub',
+          href: 'https://github.com/Ovilli/RavenswatchModManager',
+        },
       ],
-      plugins: [starlightLinksValidator({ errorOnRelativeLinks: false })],
+      // /editor/ is a standalone Astro page (the web editor), not a Starlight doc.
+      plugins: [starlightLinksValidator({ errorOnRelativeLinks: false, exclude: ['/editor/'] })],
       sidebar: [
         {
           label: 'Getting started',

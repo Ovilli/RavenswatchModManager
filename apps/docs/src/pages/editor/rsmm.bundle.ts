@@ -23,7 +23,7 @@ function packageDir(): string {
     const candidate = join(dir, 'src', 'rsmm');
     if (existsSync(join(candidate, '__init__.py'))) return candidate;
     const up = dirname(dir);
-    if (up === dir) throw new Error('web editor: src/rsmm not found above ' + process.cwd());
+    if (up === dir) throw new Error(`web editor: src/rsmm not found above ${process.cwd()}`);
     dir = up;
   }
 }
@@ -43,16 +43,18 @@ function files(root: string): string[] {
 }
 
 /** One ustar header block. Names over 100 bytes go through the prefix field. */
-function header(name: string, size: number): Buffer {
+function header(path: string, size: number): Buffer {
   const h = Buffer.alloc(512);
+  let name = path;
   let prefix = '';
-  if (Buffer.byteLength(name) > 100) {
-    const cut = name.lastIndexOf('/', 155);
-    prefix = name.slice(0, cut);
-    name = name.slice(cut + 1);
+  if (Buffer.byteLength(path) > 100) {
+    const cut = path.lastIndexOf('/', 155);
+    prefix = path.slice(0, cut);
+    name = path.slice(cut + 1);
   }
   const put = (off: number, len: number, text: string) => h.write(text, off, len, 'utf8');
-  const oct = (off: number, len: number, n: number) => put(off, len, n.toString(8).padStart(len - 1, '0') + '\0');
+  const oct = (off: number, len: number, n: number) =>
+    put(off, len, `${n.toString(8).padStart(len - 1, '0')}\0`);
   put(0, 100, name);
   oct(100, 8, 0o644);
   oct(108, 8, 0);
@@ -66,7 +68,7 @@ function header(name: string, size: number): Buffer {
   put(345, 155, prefix);
   let sum = 0;
   for (const b of h) sum += b;
-  put(148, 8, sum.toString(8).padStart(6, '0') + '\0 ');
+  put(148, 8, `${sum.toString(8).padStart(6, '0')}\0 `);
   return h;
 }
 
@@ -85,4 +87,6 @@ export function packRsmm(): Buffer {
 }
 
 export const GET: APIRoute = () =>
-  new Response(new Uint8Array(packRsmm()), { headers: { 'Content-Type': 'application/octet-stream' } });
+  new Response(new Uint8Array(packRsmm()), {
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });

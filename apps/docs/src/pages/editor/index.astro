@@ -101,7 +101,7 @@ const description =
       </ol>
       <label class="pick" id="pickLabel" aria-disabled="true">
         Choose Ravenswatch folder
-        <input id="folder" type="file" webkitdirectory multiple hidden />
+        <input id="folder" type="file" multiple hidden />
       </label>
       <div id="progress"><span class="spin"></span><span id="progressText">Starting…</span></div>
       <p class="note">The first visit downloads the Python runtime (about 12 MB) from jsDelivr; later
@@ -120,6 +120,8 @@ const TABS = {
   map: ["Map", "map", "map/"],
 };
 const $ = (id) => document.getElementById(id);
+// Set here, not in the markup: Astro's HTML types do not know the attribute.
+$("folder").webkitdirectory = true;
 const appRoot = new URL("app/", location.href);     // mount paths live under /editor/app/
 
 // ---- worker -------------------------------------------------------------------
