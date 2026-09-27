@@ -1,16 +1,25 @@
 /* Shared by every editor page: one palette, the reset, and embedded mode.
    Inlined into each page where the page names it, so a page is one
    request both locally and in the web editor's frames. Layout and controls
-   stay in each page: the map's checkbox-heavy panels need their own. */
+   stay in each page: the map's checkbox-heavy panels need their own.
+
+   The accent is RSMM's red (the docs site's accent, crimson on rsmm.me), and
+   highlighted rows get a warm neutral wash rather than a tint of it, so the
+   page never reads pink. --accentink is the accent as text, --accentline as a
+   border, --onaccent text on an accent fill, --gilt the "this one" marker. */
 :root {
   --bg: #f4f3ef; --panel: #fff; --ink: #1d1d1f; --muted: #6a6a70; --line: #deddd8;
-  --accent: #6d35e8; --accentbg: #efe8fd; --ok: #1f8a4c; --okbg: #e3f5ea;
+  --accent: #b3122c; --accentink: #b3122c; --accentline: #b3122c; --onaccent: #fff;
+  --accentbg: #f2ede4; --gilt: #b07a1e;
+  --ok: #1f8a4c; --okbg: #e3f5ea;
   --bad: #b8322a; --badbg: #fbe7e5; --warn: #9a6200; --warnbg: #fff3d6; --chip: #efeee9;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #151517; --panel: #1f1f22; --ink: #ececef; --muted: #a0a0a8; --line: #34343a;
-    --accent: #8b5cff; --accentbg: #2a2140; --ok: #3ccb7f; --okbg: #13301f;
+    --accent: #c8243c; --accentink: #ef6b7c; --accentline: #d9344b; --onaccent: #fff;
+    --accentbg: #2b2724; --gilt: #d6ac5c;
+    --ok: #3ccb7f; --okbg: #13301f;
     --bad: #ff6b5e; --badbg: #3a1614; --warn: #f0a63c; --warnbg: #33270c; --chip: #2a2a2f;
   }
 }

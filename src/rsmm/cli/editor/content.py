@@ -17,6 +17,8 @@ mod). The page is ``pages/content.html``; routing is ``editor.app``.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 import tempfile
@@ -219,13 +221,15 @@ def talent_values(hero: str) -> list[dict]:
     A label that appears twice in one file is listed once, because a patch
     names a label and lands on its first occurrence."""
     from rsmm.engine import corpus
+    from rsmm.engine import item_modifier as IM
     from rsmm.engine.talent_values import TYPE_BOOL, list_talent_values
 
     files = []
     for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
+        data = p.read_bytes()
         seen: set[str] = set()
         rows = []
-        for v in list_talent_values(p.read_bytes()):
+        for v in list_talent_values(data):
             if v.is_spawner or v.label in seen:
                 continue
             seen.add(v.label)
@@ -234,8 +238,11 @@ def talent_values(hero: str) -> list[dict]:
                 else v.value
             rows.append({"label": v.label, "value": value, "type": kind,
                          "shadowed": v.is_overridden})
-        if rows:
-            files.append({"file": p.name.split(".entity.ot.", 1)[0], "values": rows})
+        mods = [{"name": m.name, "stat": m.stat or _hex(m.key), "named": m.stat is not None,
+                 "super": False} for m in IM.list_modifiers(data)]
+        if rows or mods:
+            files.append({"file": p.name.split(".entity.ot.", 1)[0], "values": rows,
+                          "modifiers": mods})
     return files
 
 
@@ -263,6 +270,8 @@ def talent_cards(hero: str) -> list[dict]:
     except (OSError, ValueError):
         vals = []
     text = dict(zip(keys, vals, strict=False))
+    formats = _hero_formats(hero)
+    labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out = []
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
@@ -271,11 +280,119 @@ def talent_cards(hero: str) -> list[dict]:
         except ContentError:
             continue
         name_key, desc_key = S.card_keys(base, keys)
+        file, fmt = formats.get(desc_key, (None, None))
+        entries = [] if fmt is None else [
+            None if e is None else {"node": e.node, "kind": e.kind, "sources": list(e.sources),
+                                    **_tiers(hero, file, e)}
+            for e in fmt.entries]
+        # The values behind the card's {N}: a plain node itself, or what a
+        # computed one is worked out from. Looked up in the text's own file.
+        refs = []
+        for e in entries:
+            for label in ([e["node"]] if e and e["kind"] == "Value" else e["sources"] if e else []):
+                if (file, label) in labels and {"file": file, "label": label} not in refs:
+                    refs.append({"file": file, "label": label})
+        icon = _card_icon(hero, source)
         out.append({"source": source,
                     "name": (text.get(name_key) or "").strip() if name_key else "",
                     "description": text.get(desc_key) or "" if desc_key else "",
-                    "hasName": name_key is not None, "hasDescription": desc_key is not None})
+                    "hasName": name_key is not None, "hasDescription": desc_key is not None,
+                    "entries": entries, "file": file, "values": refs, "icon": icon})
     return out
+
+
+def _tiers(hero: str, file: str, entry) -> dict:
+    """``{"tiers": {tier: {index, value}}}`` when the placeholder is a per-rarity
+    selector (most talent numbers are), else nothing."""
+    if entry.kind != "Value Selector":
+        return {}
+    from rsmm.engine.talent_values import tier_values
+    data = _hero_file(hero, file)
+    tiers = tier_values(data, entry.node) if data else {}
+    if not tiers:
+        return {}
+    return {"tiers": {t: {"index": i, "value": v} for t, (i, v, _tc) in tiers.items()}}
+
+
+@cache
+def _hero_file(hero: str, file: str) -> bytes | None:
+    from rsmm.engine import corpus
+    return corpus.read(f"{_HEROES_DIR}/{_hero_dir(hero)}/{file}{_GEN_SUFFIX}")
+
+
+@cache
+def _card_icon(hero: str, source: str) -> str | None:
+    """The icon a talent card draws, as ``Heroes\\<Hero>\\<file>.png``.
+
+    Found the way the skill kind finds the texture its ``icon`` overwrites (the
+    first ``.png`` after the card's controller in the hero's entities), so the
+    preview shows exactly what a replacement would replace. Guessing
+    ``Skill <source>.png`` missed 33 of 278 cards: file names do not follow the
+    controller names (Red's ``Secondary Quick Bombs`` draws ``Skill Special
+    Quick Bombs``, Beowulf's ``Passive Ignite Explosion`` ``Skill_Crimson Fire``)."""
+    from rsmm.sdk.content import ContentError
+    from rsmm.sdk.kinds import skills as S
+    try:
+        decoded = S._slot_icon_texture(_herodefs()[hero], source)
+    except (ContentError, KeyError):
+        return None
+    rel = decoded.removeprefix("Ui/").removesuffix(".Texture.dxt")
+    return rel.replace("/", "\\")
+
+
+def _hero_main(hero: str) -> bytes | None:
+    from rsmm.engine import corpus
+    folder = _hero_dir(hero)
+    return corpus.read(f"{_HEROES_DIR}/{folder}/{folder}{_GEN_SUFFIX}")
+
+
+@cache
+def _hero_formats(hero: str) -> dict:
+    """Text key -> ``(file, format)`` for every String Format of the hero that
+    reads its ``Hero_<X>_Common~GAM.xls`` bank (the talent cards' bank)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import item_modifier as IM
+    main = _hero_main(hero) or b""
+    m = re.search(rb"(Hero_[A-Za-z_]+_Common~GAM\.xls)", main)
+    if m is None:
+        return {}
+    bank = m.group(1).decode()
+    out: dict = {}
+    for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
+        file = p.name.split(".entity.ot.", 1)[0]
+        for key, fmt in IM.formats_by_key(p.read_bytes(), bank).items():
+            out.setdefault(key, (file, fmt))
+    return out
+
+
+@cache
+def _hero_pngs(hero: str) -> tuple[str, ...]:
+    """Every ``Heroes\\...png`` texture the hero's main entity names: its talent
+    icons (``Skill Attack Dive.png``) and portrait. The icon route serves only
+    these."""
+    main = _hero_main(hero) or b""
+    return tuple(sorted({m.group().decode() for m in
+                         re.finditer(rb"Heroes\\[A-Za-z0-9_ \\]+\.png", main)}))
+
+
+def hero_portrait(hero: str) -> str | None:
+    return next((p for p in _hero_pngs(hero) if "\\Portrait_" in p), None)
+
+
+@cache
+def hero_png(hero: str, path: str) -> bytes | None:
+    """A texture the hero's main entity names, decoded to PNG."""
+    from rsmm.engine import corpus, icon_decode
+    cards = {c["icon"] for c in talent_cards(hero) if c["icon"]}
+    if path not in _hero_pngs(hero) and path not in cards:
+        return None
+    raw = corpus.read("Ui/" + path.replace("\\", "/") + ".Texture.dxt")
+    if raw is None:
+        return None
+    try:
+        return icon_decode.texture_to_png(raw, max_edge=256)
+    except (ValueError, KeyError, IndexError):
+        return None
 
 
 # --- manifest blocks ----------------------------------------------------------
@@ -298,6 +415,7 @@ def _toml(value) -> str:
 
 
 def _block(fields: dict) -> str:
+    fields = {k: v for k, v in fields.items() if not k.startswith("_")}
     width = max(len(k) for k in fields)
     lines = ["[[content]]"]
     for k, v in fields.items():
@@ -308,6 +426,35 @@ def _block(fields: dict) -> str:
         else:
             lines.append(f"{k:<{width}} = {_toml(v)}")
     return "\n".join(lines)
+
+
+#: A block's own files ride along in its fields under this key: relative path in
+#: the mod -> bytes. Never written to the manifest; check() and save() put them
+#: in the mod folder beside it (the PNG a custom icon is cooked from).
+FILES = "_files"
+_UPLOAD_MAX = 2 * 1024 * 1024
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _upload_png(data, what: str) -> bytes:
+    """A PNG the page uploaded (base64, optionally a ``data:`` URL), checked."""
+    if not isinstance(data, str) or not data:
+        raise EditorError(f"{what}: no image")
+    if data.startswith("data:"):
+        data = data.split(",", 1)[-1]
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError):
+        raise EditorError(f"{what}: the image did not arrive intact") from None
+    if len(raw) > _UPLOAD_MAX:
+        raise EditorError(f"{what}: the image is over 2 MB")
+    if not raw.startswith(_PNG_MAGIC):
+        raise EditorError(f"{what}: the icon must be a PNG")
+    return raw
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", text).strip("_") or "icon"
 
 
 def _num(v, what: str) -> float:
@@ -340,7 +487,14 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
         if isinstance(v, str) and v.strip():
             fields[key] = v.strip() if key != "description" else v
     icon = req.get("icon")
-    if isinstance(icon, str) and icon.strip():
+    upload = req.get("iconUpload")
+    if upload:
+        # Your own PNG: shipped in the mod, cooked by the item kind into a new
+        # texture named after the item (Ui/Objects/UI_Object_<id>).
+        rel = f"icons/{new_id}.png"
+        fields["icon"] = rel
+        fields[FILES] = {rel: _upload_png(upload, "icon")}
+    elif isinstance(icon, str) and icon.strip():
         icon = icon.strip()
         if not _STEM_RE.match(icon):
             raise EditorError(f"no icon {icon!r}")
@@ -380,7 +534,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
 
     ``req``: ``hero``, ``prefix`` (the block-id stem), ``values`` =
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
-    ``[{source, name?, description?}]``; only changed rows are sent."""
+    ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
+    stat}]``; only changed rows are sent."""
     hero = str(req.get("hero") or "")
     prefix = str(req.get("prefix") or "")
     if not hero:
@@ -406,12 +561,40 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             continue
         by_file.setdefault(file, []).append(
             [label, old, new, *([True] if row.get("shadowed") else [])])
+    from rsmm.engine.item_modifier import ItemModifierError, resolve_stat
+    stats_by_file: dict[str, dict] = {}
+    for row in req.get("stats") or []:
+        file, modifier, stat = (str(row.get(k) or "") for k in ("file", "modifier", "stat"))
+        if not file or not modifier or not stat:
+            continue
+        try:
+            resolve_stat(stat)
+        except ItemModifierError as e:
+            raise EditorError(f"{modifier}: {e}") from None
+        stats_by_file.setdefault(file, {})[modifier] = stat
+    # Per-rarity numbers of a tier selector: union_patches by index.
+    unions_by_file: dict[str, list] = {}
+    for row in req.get("tiers") or []:
+        file, label = str(row.get("file") or ""), str(row.get("label") or "")
+        index = row.get("index")
+        if not file or not label or not isinstance(index, int) or isinstance(index, bool):
+            raise EditorError("a tier row needs its file, label and index")
+        old, new = float(_num(row.get("old"), label)), float(_num(row.get("new"), label))
+        if old != new:
+            unions_by_file.setdefault(file, []).append(
+                {"label": label, "index": index, "old": old, "new": new})
     out: list[tuple[str, str, dict]] = []
-    for file, patches in by_file.items():
+    for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
         tid = f"{prefix}{slug}" if slug else prefix
-        out.append(("talent", tid, {"kind": "talent", "id": tid, "hero": hero,
-                                    "file": f"{file}.entity", "value_patches": patches}))
+        fields = {"kind": "talent", "id": tid, "hero": hero, "file": f"{file}.entity"}
+        if by_file.get(file):
+            fields["value_patches"] = by_file[file]
+        if unions_by_file.get(file):
+            fields["union_patches"] = unions_by_file[file]
+        if stats_by_file.get(file):
+            fields["stats"] = stats_by_file[file]
+        out.append(("talent", tid, fields))
     for card in req.get("cards") or []:
         source = str(card.get("source") or "")
         if not source:
@@ -421,9 +604,14 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             v = card.get(key)
             if isinstance(v, str) and v.strip():
                 fields[key] = v
+        sid = f"{prefix}_{re.sub(r'[^A-Za-z0-9_]', '_', source)}"
+        if card.get("iconUpload"):
+            # Cooked by the skill kind OVER this card's own icon texture.
+            rel = f"icons/{_slug(hero)}_{_slug(source)}.png"
+            fields["icon"] = rel
+            fields[FILES] = {rel: _upload_png(card["iconUpload"], f"{source} icon")}
         if not fields:
             continue
-        sid = f"{prefix}_{re.sub(r'[^A-Za-z0-9_]', '_', source)}"
         # The skill kind names a hero by its herodef (``Sun_Wukong``), the
         # talent kind by its folder (``SunWukong``).
         out.append(("skill", sid, {"kind": "skill", "id": sid,
@@ -460,7 +648,9 @@ def check(defs: list[tuple[str, str, dict]]) -> list[dict]:
         for i, (kind, cid, fields) in enumerate(defs):
             assets = Path(tmp) / str(i) / "assets"
             assets.mkdir(parents=True)
-            body = {k: v for k, v in fields.items() if k not in ("kind", "id")}
+            _write_files(assets.parent, fields)
+            body = {k: v for k, v in fields.items()
+                    if k not in ("kind", "id") and not k.startswith("_")}
             try:
                 written = builders[kind]("editor_check", ContentDef(kind, cid, body), assets)
             except (ValueError, KeyError, NotImplementedError, OSError) as e:
@@ -537,8 +727,21 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
         tomllib.loads(new)
     except tomllib.TOMLDecodeError as e:          # pragma: no cover - _toml is strict
         raise EditorError(f"the result would not parse: {e}") from e
+    for _k, _i, fields in defs:
+        _write_files(target, fields)
     manifest.write_text(new, encoding="utf-8")
     return manifest
+
+
+def _write_files(mod_root: Path, fields: dict) -> None:
+    """Write a block's own files (see FILES) under ``mod_root``. The paths are
+    ones this module made (``icons/<slug>.png``), checked again here anyway."""
+    for rel, data in (fields.get(FILES) or {}).items():
+        if not re.fullmatch(r"icons/[A-Za-z0-9_]+\.png", rel):
+            raise EditorError(f"refusing to write {rel!r} into a mod")
+        dest = mod_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
 
 
 # --- routes ---------------------------------------------------------------------
@@ -557,6 +760,102 @@ def _icon(req: Request) -> Raw:
     return Raw(png, "image/png", cache=True)
 
 
+# --- the compendium card's own assets ---------------------------------------
+
+_RARITY_FRAME = {"Common": "01_Common", "Rare": "02_Rare", "Epic": "03_Epic",
+                 "Legendary": "04_Legendary", "Cursed": "05_Cursed", "Powerups": "00_Power_Up"}
+
+#: The textures the compendium's item card is drawn with, by the names the page
+#: asks for. Read from GameUis/Items/Item_Description_Model (card, rarity plate,
+#: super effect) and Item_Miniature_Model (the icon diamond). An allowlist, so the
+#: route cannot be pointed at any other file.
+CARD_TEXTURES: dict[str, str] = {
+    "back": "Ui/Description/Description_Frame_Back.png",
+    "super_bg": "Ui/Description/Description_SuperEffect_Bg.png",
+    "super_border": "Ui/Description/Description_SuperEffect_border.png",
+    "icon_bg": "Ui/Objects/Icon_Object_BackGround.png",
+    "powerup_bg": "Ui/Objects/Icon_PowerUp_BackGround.png",
+    **{f"frame_{r}": f"Ui/Description/Description_Frame_{r}.png"
+       for r in ("Common", "Rare", "Epic", "Legendary", "Cursed")},
+    **{f"plate_{r}": f"Ui/Description/Item_Rarity_Frame_{r}.png"
+       for r in ("Common", "Rare", "Epic", "Legendary", "Cursed")},
+    **{f"diamond_{r}": f"Ui/HUD/Object_Frame_{n}.png" for r, n in _RARITY_FRAME.items()},
+    # A talent card's icon frame (GameUis/Items/Skill_Miniature).
+    **{f"skill_{r}": f"Ui/HUD/HUD_Skill_Frame_{n}_Large.png"
+       for r, n in (("Common", "01_Common"), ("Rare", "02_Rare"), ("Epic", "03_Epic"),
+                    ("Legendary", "04_Legendary"), ("Ultimate", "05_Ultimate"))},
+    "skill_slot": "Ui/HUD/HUD_Skill_Frame_Slot_Large.png",
+}
+
+#: The card's two fonts: the name is Germania One, every other line Fontin Sans.
+CARD_FONTS: dict[str, str] = {
+    "title": "Fonts/Germania One/Germania_One~GAM.fnt.Font.fnb",
+    "body": "Fonts/Fontin Sans/Fontin_Sans_RG~GAM.fnt.Font.fnb",
+}
+
+
+@cache
+def card_texture(name: str) -> bytes | None:
+    """One card texture (or font page) decoded to PNG, from the install."""
+    from rsmm.engine import corpus, icon_decode
+    rel = CARD_TEXTURES.get(name)
+    if rel is None and name.startswith("font_") and name[5:] in CARD_FONTS:
+        font = card_font(name[5:])
+        if font is None:
+            return None
+        rel = CARD_FONTS[name[5:]].rsplit("/", 1)[0] + "/" + font["page"]
+    if rel is None:
+        return None
+    raw = corpus.read(rel + ".Texture.dxt")
+    if raw is None:
+        return None
+    try:
+        return icon_decode.texture_to_png(raw, max_edge=1024)
+    except (ValueError, KeyError, IndexError):
+        return None
+
+
+@cache
+def card_font(name: str) -> dict | None:
+    """A card font's metrics and glyphs, as the page draws them."""
+    from rsmm.engine import corpus, game_font
+    rel = CARD_FONTS.get(name)
+    raw = corpus.read(rel) if rel else None
+    if raw is None:
+        return None
+    try:
+        f = game_font.parse(raw)
+    except ValueError:
+        return None
+    return {"page": f.page, "pageW": f.page_w, "pageH": f.page_h,
+            "lineHeight": f.line_height, "size": f.size,
+            "glyphs": {str(cp): list(g) for cp, g in f.glyphs.items()}}
+
+
+def _card_texture(req: Request) -> Raw:
+    png = card_texture(req.arg("name"))
+    if png is None:
+        raise Fail(404, "no such card texture")
+    return Raw(png, "image/png", cache=True)
+
+
+def _hero_png(req: Request) -> Raw:
+    hero = req.arg("hero")
+    if hero not in heroes():
+        raise Fail(404, "no such hero")
+    png = hero_png(hero, req.arg("path"))
+    if png is None:
+        raise Fail(404, "no such hero texture")
+    return Raw(png, "image/png", cache=True)
+
+
+def _card_font(req: Request) -> dict:
+    font = card_font(req.arg("name"))
+    if font is None:
+        raise Fail(404, "no such card font")
+    return font
+
+
 def _save(req: Request) -> dict:
     defs = _defs(req)
     where = save(defs, str(req.body.get("mod") or ""), req.ctx.mods_dir,
@@ -569,11 +868,17 @@ ROUTES = {
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},
     ("GET", "/api/stats"): lambda req: {"stats": stats()},
+    ("GET", "/api/cardtex"): _card_texture,
+    ("GET", "/api/cardfont"): _card_font,
     ("GET", "/api/icon"): _icon,
     ("GET", "/api/heroes"): lambda req: {"heroes": heroes()},
     ("GET", "/api/talents"): lambda req: {"hero": req.arg("hero"),
                                           "files": talent_values(req.arg("hero")),
-                                          "cards": talent_cards(req.arg("hero"))},
+                                          "cards": talent_cards(req.arg("hero")),
+                                          "portrait": hero_portrait(req.arg("hero"))},
+    ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
+                                                                 for h in heroes()}},
+    ("GET", "/api/heropng"): _hero_png,
     ("GET", "/api/mods"): lambda req: {"mods": list_mods(req.ctx.mods_dir)},
     ("POST", "/api/toml"): lambda req: {"toml": to_toml(_defs(req))},
     ("POST", "/api/check"): lambda req: {"toml": to_toml(d := _defs(req)), "results": check(d)},

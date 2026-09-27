@@ -13,11 +13,11 @@ header { grid-area: top; display: flex; gap: 14px; align-items: center; padding:
 header h1 { font-size: 16px; margin: 0 10px 0 0; }
 select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
 textarea { width: 100%; resize: vertical; min-height: 58px; }
-button { cursor: pointer; } button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button { cursor: pointer; } button:hover { border-color: var(--accentline); }
+button.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
 .tab { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); }
-.tab.on { border-bottom-color: var(--accent); color: var(--ink); font-weight: 600; }
+.tab.on { border-bottom-color: var(--accentline); color: var(--ink); font-weight: 600; }
 .muted { color: var(--muted); } .tiny { font-size: 12px; }
 code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 #left { grid-area: left; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
@@ -25,7 +25,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 #left .filters input, #left .filters select { width: 100%; }
 #list { overflow: auto; padding: 6px; flex: 1; }
 .pick { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
-.pick:hover { background: var(--chip); } .pick.on { background: var(--accent); color: #fff; }
+.pick:hover { background: var(--chip); } .pick.on { background: var(--accent); color: var(--onaccent); }
 .pick .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick .sub { font-size: 12px; opacity: .7; margin-left: auto; flex: none; }
 .pick img, .ico { width: 28px; height: 28px; object-fit: contain; flex: none; }
@@ -46,24 +46,30 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .form input, .form select { width: 100%; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .hint.bad { color: var(--bad); }
+.own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.own .ownimg { width: 48px; height: 48px; object-fit: contain; border-radius: 6px; background: var(--chip); }
+.own span { font-size: 12px; color: var(--muted); max-width: 360px; }
+.tsrc .own { margin: 0 6px 0 0; }
+.upbtn { display: inline-block; cursor: pointer; border: 1px dashed var(--line); border-radius: 7px; padding: 4px 10px; font-size: 13px; background: var(--panel); }
+.upbtn:hover, .upbtn:focus-visible { border-color: var(--accentline); color: var(--accentink); }
 .icons { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .icons button { padding: 2px; border-radius: 6px; }
-.icons button.on { border-color: var(--accent); background: var(--accentbg); }
+.icons button.on { border-color: var(--accentline); background: var(--accentbg); }
 .icons img { width: 40px; height: 40px; display: block; }
 .row { display: grid; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; }
 .row:nth-child(odd) { background: var(--panel); }
-.row.changed { border-color: var(--accent); background: var(--accentbg); }
+.row.changed { border-color: var(--accentline); background: var(--accentbg); }
 .row .lbl { font-weight: 600; word-break: break-word; }
 .row .was { font-size: 12px; color: var(--muted); text-align: right; }
 .row input[type=number] { width: 100%; }
 .tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
 .tag.shadow { background: var(--warnbg); color: var(--warn); }
 .tag.type { background: var(--chip); color: var(--muted); }
-.tag.super { background: var(--accentbg); color: var(--accent); }
+.tag.super { background: var(--accentbg); color: var(--accentink); }
 .row { grid-template-columns: 1fr 110px 130px 26px; }
 .row.stat { grid-template-columns: 1fr 150px 240px 26px; }
 .reset { visibility: hidden; border: none; background: none; padding: 0 4px; color: var(--muted); font-size: 15px; line-height: 1; }
-.reset:hover { color: var(--accent); }
+.reset:hover { color: var(--accentink); }
 .changed > .reset, .changed .reset.own, label .reset.on { visibility: visible; }
 .form label { display: flex; align-items: center; gap: 2px; }
 .pickbox { position: relative; }
@@ -74,20 +80,83 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .picklist .opt .n { margin-left: auto; font-size: 11px; color: var(--muted); }
 .picklist .opt.on, .picklist .opt:hover { background: var(--accentbg); }
 .picklist .none { padding: 6px 8px; color: var(--muted); }
-.card { background: #1d1a24; color: #e9e4f2; border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; max-width: 520px; box-sizing: border-box; }
+.card { background: #1c1b1a; color: #ecebe6; border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; max-width: 520px; box-sizing: border-box; }
 .card .ci img, .card .ci .ico { width: 56px; height: 56px; }
 .card .ct { font-weight: 700; font-size: 16px; }
 .card .cr { font-size: 12px; opacity: .6; }
 .card .cd, .card .cs { grid-column: 1 / -1; white-space: pre-wrap; }
 .card .cs { border-top: 1px solid rgba(255,255,255,.12); padding-top: 6px; margin-top: 4px; }
-.card .cs .sl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #c9a7ff; display: block; }
+.card .cs .sl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #f2c14e; display: block; }
 .kw { color: #f2c14e; font-weight: 600; }
 .val { color: #7ee08a; font-weight: 600; }
+.neg { color: #ff7a7a; font-weight: 600; }
 .ph { border-bottom: 1px dotted currentColor; cursor: help; }
 .legend { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 520px; }
 .legend div { padding: 1px 0; }
 .legend b { color: var(--ink); font-weight: 600; }
-.mini { background: #1d1a24; color: #e9e4f2; border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: pre-wrap; }
+/* The compendium card, drawn with the game's own textures and bitmap fonts.
+   Colours are the ones Item_Description_Model sets: text #ede9c1, the markup
+   palette (#f9f6c4 keyword, #1cd92a number, #ff5e5e drawback), one name
+   colour per rarity. */
+.gcard { position: relative; color: #ede9c1; padding: 20px 22px 18px; background: var(--back) center / cover no-repeat; max-width: 520px; box-sizing: border-box; }
+.gcard::after { content: ""; position: absolute; inset: 0; pointer-events: none; border: 20px solid transparent; border-image: var(--frame) 40 / 20px stretch; }
+.gcard .kw { color: #f9f6c4; font-weight: normal; }
+.gcard .val { color: #1cd92a; font-weight: normal; }
+.gcard .neg { color: #ff5e5e; font-weight: normal; }
+.gc-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.gc-icon { position: relative; width: 66px; height: 66px; flex: none; }
+.gc-icon > * { position: absolute; }
+.gc-icon .bg { inset: 11%; width: 78%; height: 78%; }
+.gc-icon .it, .gc-icon .ico { inset: 12%; width: 76%; height: 76%; }
+.gc-icon .fr { inset: 0; width: 100%; height: 100%; }
+.gc-name { color: var(--rarity); }
+.gc-plate { display: inline-block; margin-top: 3px; padding: 3px 14px 1px; background: var(--plate) center / 100% 100% no-repeat; color: var(--rarity); }
+.gc-super { position: relative; margin-top: 10px; padding: 9px 12px 8px; background: var(--sbg) center / 100% 100% no-repeat; }
+.gc-super::before, .gc-super::after { content: ""; position: absolute; width: 60%; height: 100%; background: var(--sborder) left top / 100% 100% no-repeat; pointer-events: none; }
+.gc-super::before { left: 0; top: 0; }
+.gc-super::after { right: 0; bottom: 0; transform: rotate(180deg); }
+.gc-slabel { display: block; color: #f9f6c4; margin-bottom: 2px; }
+.gw { display: inline-block; white-space: nowrap; }
+.g { display: inline-block; position: relative; vertical-align: top; }
+.g > i { position: absolute; background: currentColor; -webkit-mask: var(--atlas) no-repeat; mask: var(--atlas) no-repeat; -webkit-mask-size: var(--msize); mask-size: var(--msize); }
+.wrap:has(.tpage) { max-width: 1320px; }
+.gc-icon.sq .bg { inset: 6%; width: 88%; height: 88%; }
+.gc-icon.sq .it, .gc-icon.sq .ico { inset: 14%; width: 72%; height: 72%; }
+.thead { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.thead .portrait, .thead > .ico { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; background: var(--chip); flex: none; }
+.thead h2 { margin: 0; font-size: 22px; }
+.tname { flex: 1; min-width: 0; }
+.tprefix { display: flex; flex-direction: column; gap: 2px; }
+.tprefix input { width: 190px; }
+.ttools { position: sticky; top: -16px; z-index: 5; display: flex; gap: 10px; align-items: center; padding: 8px 0; background: var(--bg); margin-bottom: 6px; }
+.ttools input[type=search] { flex: 1; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: #1c1b1a; color: var(--rc); font-weight: 600; }
+.tgrid { display: grid; gap: 12px; }
+.tcard { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel); align-items: start; }
+.tcard.changed { border-color: var(--accentline); }
+.tside { display: grid; gap: 6px; min-width: 0; }
+.tside input, .tside textarea { width: 100%; box-sizing: border-box; }
+.tside .sect { margin: 8px 0 2px; }
+.tsrc { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+.tsrc span { flex: 1; }
+.tnums { display: grid; gap: 4px; }
+.tnums .row { padding: 4px 8px; }
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) repeat(4, 76px) 26px; gap: 6px; align-items: end; padding: 4px 8px; border-radius: 8px; background: var(--bg); }
+.trow .lbl { font-weight: 600; word-break: break-word; align-self: center; }
+.tier { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 1px; }
+.tier input { width: 100%; box-sizing: border-box; padding: 3px 6px; }
+.tier input.on { box-shadow: 0 0 0 2px var(--gilt); }
+.tier input.ed { background: var(--accentbg); }
+.trow .reset.on { visibility: visible; }
+.tnote { font-size: 12px; color: var(--muted); padding: 2px 8px; }
+.phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
+details.allv { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
+details.allv > summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 1150px) { .tcard { grid-template-columns: minmax(0, 1fr); } .trow { grid-template-columns: minmax(0, 1fr) repeat(4, 64px) 26px; } }
+.mini { background: #1c1b1a; color: #ecebe6; border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: pre-wrap; }
 .mini .t { font-weight: 700; display: block; }
 .draft { display: flex; gap: 10px; align-items: center; background: var(--warnbg); color: var(--warn); border-radius: 10px; padding: 6px 12px; margin-bottom: 10px; font-size: 13px; }
 .draft button { padding: 2px 8px; font-size: 12px; }
@@ -98,7 +167,7 @@ details.file > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
 details.file > summary span { font-weight: 400; }
 details.file .rows { padding: 0 6px 8px; }
 .cardbox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel); }
-.cardbox.changed { border-color: var(--accent); }
+.cardbox.changed { border-color: var(--accentline); }
 .cardbox .src { font-size: 12px; color: var(--muted); }
 .cardbox input { width: 100%; margin: 6px 0; font-weight: 600; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
@@ -117,7 +186,6 @@ details.file .rows { padding: 0 6px 8px; }
   <h1>Item &amp; Talent Editor</h1>
   <button class="tab" data-tab="items">Items</button>
   <button class="tab" data-tab="talents">Talents</button>
-  <span class="muted tiny" style="margin-left:auto">Nothing is written to the game here. Add the blocks to a mod, then run <code>rsmm apply</code>.</span>
 </header>
 
 <aside id="left">
@@ -137,6 +205,7 @@ details.file .rows { padding: 0 6px 8px; }
     <select id="mod"></select>
     <div class="line" id="newmod" hidden><input id="newid" placeholder="new mod id"></div>
     <button id="save" class="primary">Add to mod</button>
+    <div class="tiny muted">Nothing touches the game until you run <code>rsmm apply</code>.</div>
   </div>
   <div id="status" class="muted"></div>
 </section>
@@ -197,20 +266,27 @@ const store = {
 const DRAFT = { items: "rsmm.editor.draft.item.", talents: "rsmm.editor.draft.talent." };
 
 // The game's card markup: #word@ is a highlighted keyword, &value~ a number
-// (it scales with rarity), {N} a value the game fills in. `fill(n, next)` renders
+// (it scales with rarity), $word* a drawback, {N} a value the game fills in. `fill(n, next)` renders
 // {N}; `next` is the character after it, so a fraction before "%" can show as one.
+// Opening mark -> [closing mark, class]: the game's three text styles.
+const MARKUP = { "#": ["@", "kw"], "&": ["~", "val"], "$": ["*", "neg"] };
+// "{}" with no number takes the next value in order, as in "cooldown by &{}%~".
 function markup(text, fill) {
+  let next = 0;
+  return markupRuns(text.replace(/\{\}/g, () => "{" + next++ + "}"), fill);
+}
+function markupRuns(text, fill) {
   const frag = document.createDocumentFragment();
   let i = 0, plain = "";
   const flush = () => { if (plain) { frag.append(plain); plain = ""; } };
   while (i < text.length) {
     const c = text[i];
-    if (c === "#" || c === "&") {
-      const close = text.indexOf(c === "#" ? "@" : "~", i + 1);
+    if (MARKUP[c]) {
+      const close = text.indexOf(MARKUP[c][0], i + 1);
       if (close > i) {
         flush();
-        const span = el("span", { class: c === "#" ? "kw" : "val" });
-        span.append(markup(text.slice(i + 1, close), fill));
+        const span = el("span", { class: MARKUP[c][1] });
+        span.append(markupRuns(text.slice(i + 1, close), fill));
         frag.append(span); i = close + 1; continue;
       }
     }
@@ -223,6 +299,47 @@ function markup(text, fill) {
   flush();
   return frag;
 }
+// Your own icon: any image the browser can read, scaled to `size` square
+// (transparent margins keep its shape) and kept as a PNG data URL, which is
+// what the page sends and what a draft stores.
+function readIcon(file, size) {
+  return new Promise((ok, bad) => {
+    if (!file || !/^image\//.test(file.type)) { bad(new Error("pick an image file (PNG works best)")); return; }
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = c.height = size;
+      const k = Math.min(size / img.width, size / img.height), w = img.width * k, h = img.height * k;
+      c.getContext("2d").drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      URL.revokeObjectURL(url); ok(c.toDataURL("image/png"));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("that file is not an image this browser can read")); };
+    img.src = url;
+  });
+}
+// The page may show images from blob: URLs only, so an uploaded icon is shown
+// through one made from its data URL (once per upload).
+const uploadUrls = new Map();
+function uploadUrl(dataUrl) {
+  if (!uploadUrls.has(dataUrl)) {
+    const bin = atob(dataUrl.split(",", 2)[1] || ""), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    uploadUrls.set(dataUrl, URL.createObjectURL(new Blob([bytes], { type: "image/png" })));
+  }
+  return uploadUrls.get(dataUrl);
+}
+function uploadImg(dataUrl, cls) { return el("img", { class: cls || "", alt: "", src: uploadUrl(dataUrl) }); }
+// "Upload your own" as a button: a hidden file input behind a label.
+function uploadButton(text, size, onicon) {
+  const inp = el("input", { type: "file", accept: "image/png,image/*", hidden: "" });
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0];
+    inp.value = "";
+    if (!file) return;
+    try { onicon(await readIcon(file, size)); status(""); }
+    catch (e) { status(e.message, "st-bad"); }
+  };
+  return el("label", { class: "upbtn", tabindex: "0", onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); inp.click(); } } }, text, inp);
+}
 function resetBtn(onclick, title) {
   return el("button", { class: "reset", type: "button", title: title || "Undo this change", onclick }, "↺");
 }
@@ -230,7 +347,7 @@ function resetBtn(onclick, title) {
 // ---- state ------------------------------------------------------------------
 const S = {
   tab: START_TAB === "talents" ? "talents" : "items",
-  items: [], icons: [], stats: [], heroes: [], mods: [],
+  items: [], icons: [], stats: [], heroes: [], mods: [], portraits: {},
   drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
   restored: "",      // the tab whose open edit came from a draft
   item: null,     // detail of the chosen base
@@ -266,7 +383,8 @@ function renderList() {
     }
   } else {
     for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
-      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) }, el("span", { class: "nm", text: h.replace(/_/g, " ") }),
+      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) },
+        heroImg(h, S.portraits[h]), el("span", { class: "nm", text: h.replace(/_/g, " ") }),
         S.drafts.talents.has(h) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null));
     }
   }
@@ -283,13 +401,16 @@ async function pickItem(id) {
   renderList(); renderView(); refresh();
 }
 function freshItemEdit() {
-  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {}, stats: {}, superDescription: "" };
+  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "" };
 }
 function itemChanged(E) {
-  return !!(E.name || E.description || E.rarity || E.icon || E.superDescription
+  return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
     || Object.keys(E.values).length || Object.keys(E.stats).length);
 }
-function talentChanged(E) { return !!(Object.keys(E.values).length || Object.keys(E.cards).length); }
+function talentChanged(E) {
+  return !!(Object.keys(E.values).length || Object.keys(E.cards).length
+    || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length);
+}
 // Keep (or drop) the open edit's draft; called on every change.
 function saveDraft() {
   const items = S.tab === "items";
@@ -319,7 +440,7 @@ function itemView() {
   const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
-  v.append(el("div", { class: "head" }, iconImg(E.icon || it.icon),
+  v.append(el("div", { class: "head" }, itemIcon(E, it),
     el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
     el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item", onclick: resetAll }, "Reset all"))));
 
@@ -342,7 +463,7 @@ function itemView() {
   const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
   f.append(textLabel("Description", descIn, v => { E.description = v; }), el("div", {}, descIn,
-    el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
+    el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number, $word* marks a drawback. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
   const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
   for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
   rar.value = E.rarity;
@@ -350,11 +471,17 @@ function itemView() {
   f.append(el("label", { text: "Rarity" }), rar);
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
-    const b = el("button", { class: (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
-      E.icon = s === it.icon ? "" : s; renderView(); refresh(); } }, iconImg(s));
+    const b = el("button", { class: !E.iconUpload && (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
+      E.icon = s === it.icon ? "" : s; E.iconUpload = ""; renderView(); refresh(); } }, iconImg(s));
     icons.append(b);
   }
-  f.append(el("label", { text: "Icon" }), icons);
+  const own = el("div", { class: "own" });
+  if (E.iconUpload) {
+    own.append(uploadImg(E.iconUpload, "ownimg"), el("span", { text: "Your own icon (192×192). It becomes a new texture named after the item." }),
+      el("button", { type: "button", onclick: () => { E.iconUpload = ""; renderView(); refresh(); } }, "Remove"));
+  }
+  own.append(uploadButton(E.iconUpload ? "Replace…" : "Upload your own icon…", 192, d => { E.iconUpload = d; E.icon = ""; renderView(); refresh(); }));
+  f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
   v.append(f);
 
   v.append(el("div", { class: "sect", text: `Values (${it.values.length})` }));
@@ -368,7 +495,12 @@ function itemView() {
   if (!it.modifiers.length) v.append(el("div", { class: "muted", text: "This item has no stat effects." }));
   else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives. The amount keeps its old unit (5% crit chance becomes 0.05 of the new stat), so change the value above as well." }));
   const stats = el("div");
-  for (const m of it.modifiers) stats.append(statRow(m));
+  for (const m of it.modifiers) {
+    stats.append(statRow(m, E.stats[m.name], val => {
+      if (val === undefined) delete E.stats[m.name]; else E.stats[m.name] = val;
+      refresh();
+    }));
+  }
   v.append(stats);
   if (it.superKey) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
@@ -393,6 +525,11 @@ function textLabel(text, input, set) {
   return el("label", {}, text, btn);
 }
 
+// The icon the new item will have: an uploaded one, a picked one, or the base's.
+function itemIcon(E, it, cls) {
+  return E.iconUpload ? uploadImg(E.iconUpload, cls) : iconImg(E.icon || it.icon, cls);
+}
+
 // ---- card preview ---------------------------------------------------------------
 // What fills {N}: a plain value is shown as its (edited) number, a computed one
 // by what it is worked out from. The game may still scale a raw number (0.2 can
@@ -408,8 +545,10 @@ function entryFill(entries) {
     const chip = el("span", { class: "ph" });
     if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
     const v = e.kind === "Value" ? currentValue(e.node) : undefined;
-    // Items store percents as fractions (0.2 = 20%); a best guess, the legend has the raw number.
-    const pct = v !== undefined && next === "%" && Math.abs(v) <= 1;
+    // The game stores a percent as a fraction (0.2 = 20%, a 4.0 damage
+    // multiplier = 400%); across every shipped card a number before "%" reads
+    // that way. The legend keeps the raw number.
+    const pct = v !== undefined && next === "%";
     chip.textContent = v === undefined ? "{" + n + "}" : fmt(pct ? v * 100 : v);
     chip.title = "{" + n + "}: " + e.node + (pct ? " (" + fmt(v) + " shown as a percent)" : "");
     return chip;
@@ -422,7 +561,7 @@ function legend(entries) {
     if (!e) what = "a value set inside the item";
     else if (e.kind === "Value") {
       const v = currentValue(e.node);
-      what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; the game may show it as a percent)" : "");
+      what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; before a % it shows ×100)" : "");
     } else {
       const src = e.sources.filter(x => currentValue(x) !== undefined).map(x => x + " = " + fmt(currentValue(x)));
       what = e.node + (src.length ? " — worked out from " + src.join(", ") : " — worked out in game");
@@ -431,20 +570,130 @@ function legend(entries) {
   });
   return box;
 }
+// ---- the game's card assets ------------------------------------------------------
+// Textures and the two bitmap fonts come from the player's install; until they
+// load (or when there is no install) the preview is drawn with plain CSS.
+const CARD = { fonts: {}, ready: null, ok: false };
+const cardTexUrls = new Map();
+function cardTex(name) {
+  if (!cardTexUrls.has(name)) {
+    cardTexUrls.set(name, fetch("api/cardtex?name=" + encodeURIComponent(name))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null));
+  }
+  return cardTexUrls.get(name);
+}
+const CARD_TEX = ["back", "super_bg", "super_border", "icon_bg", "powerup_bg",
+  ...["Common", "Rare", "Epic", "Legendary", "Cursed"].flatMap(r => ["frame_" + r, "plate_" + r]),
+  ...["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"].map(r => "diamond_" + r),
+  ...["Common", "Rare", "Epic", "Legendary", "Ultimate"].map(r => "skill_" + r), "skill_slot"];
+function cardAssets() {
+  if (!CARD.ready) {
+    const fonts = ["title", "body"].map(n => get("api/cardfont?name=" + n)
+      .then(f => cardTex("font_" + n).then(url => { if (url) { f.url = url; CARD.fonts[n] = f; } }))
+      .catch(() => {}));
+    CARD.ready = Promise.all([...fonts, ...CARD_TEX.map(cardTex)]).then(async () => {
+      CARD.tex = {};
+      for (const n of CARD_TEX) CARD.tex[n] = await cardTex(n);
+      CARD.ok = !!(CARD.fonts.title && CARD.fonts.body && CARD.tex.back && CARD.tex.frame_Common);
+      return CARD.ok;
+    });
+  }
+  return CARD.ready;
+}
+// Swap every text node under `root` for glyphs of `font`, `px` tall per line.
+// Each glyph is a slice of the font page used as a mask over currentColor, so
+// .kw/.val colours apply; words stay whole and wrap at spaces like text does.
+function glyphify(root, font, px) {
+  const s = px / font.lineHeight;
+  // The font page and its drawn size are the same for every glyph of this
+  // block, so they are set once here and read through CSS variables.
+  root.style.setProperty("--atlas", "url(" + font.url + ")");
+  root.style.setProperty("--msize", font.pageW * s + "px " + font.pageH * s + "px");
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const holder = document.createElement("span");
+  for (const t of nodes) {
+    let html = "", word = "";
+    const flush = () => { if (word) { html += '<span class="gw">' + word + "</span>"; word = ""; } };
+    for (const ch of t.data) {
+      if (ch === "\n") { flush(); html += "<br>"; continue; }
+      if (ch === " ") { flush(); html += glyphHtml(font, px, s, 32, ch) + "<wbr>"; continue; }
+      word += glyphHtml(font, px, s, ch.codePointAt(0), ch);
+    }
+    flush();
+    holder.innerHTML = html;
+    t.replaceWith(...holder.childNodes);
+  }
+  return root;
+}
+// One glyph as HTML, memoised per font, size and character: a card redraw
+// then costs one string join and one parse instead of thousands of style writes.
+const glyphCache = new Map();
+function glyphHtml(font, px, s, cp, ch) {
+  const key = font.url + "|" + px + "|" + cp;
+  let html = glyphCache.get(key);
+  if (html !== undefined) return html;
+  const g = font.glyphs[cp];
+  if (!g) {
+    html = ch.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  } else {
+    const [x, y, w, h, xo, yo, adv] = g, r = v => Math.round(v * s * 100) / 100 + "px";
+    const blank = cp === 32 || !w || !h;
+    html = '<span class="g" style="width:' + r(adv) + ";height:" + px + 'px">' + (blank ? "" :
+      '<i style="left:' + r(xo) + ";top:" + r(yo) + ";width:" + r(w) + ";height:" + r(h)
+      + ";-webkit-mask-position:" + r(-x) + " " + r(-y) + ";mask-position:" + r(-x) + " " + r(-y) + '"></i>') + "</span>";
+  }
+  glyphCache.set(key, html);
+  return html;
+}
+// Name colour per rarity (Item_Description_Model's rarity colour table). Cursed
+// is not in that table; the markup palette's red stands in for it.
+const RARITY_COLOUR = { Common: "#edeac2", Rare: "#9accf3", Epic: "#cab3ff", Legendary: "#ffe187", Cursed: "#ff5e5e", Powerups: "#edeac2" };
+// The card frame every compendium card shares: back, rarity frame, icon, name
+// and rarity plate. `rarity` picks colours and textures; `icon` is the icon box.
+function cardFrame(rarity, icon, nameText, plateText) {
+  const tier = RARITY_COLOUR[rarity] && rarity !== "Powerups" ? rarity : "Common";
+  const T = CARD.tex, F = CARD.fonts;
+  const box = el("div", { class: "gcard" });
+  box.style.setProperty("--back", "url(" + T.back + ")");
+  box.style.setProperty("--frame", "url(" + (T["frame_" + tier] || T.frame_Common) + ")");
+  box.style.setProperty("--plate", "url(" + (T["plate_" + tier] || T.plate_Common) + ")");
+  box.style.setProperty("--sbg", "url(" + T.super_bg + ")");
+  box.style.setProperty("--sborder", "url(" + T.super_border + ")");
+  box.style.setProperty("--rarity", RARITY_COLOUR[rarity] || RARITY_COLOUR.Common);
+  const name = glyphify(el("div", { class: "gc-name" }, nameText), F.title, 30);
+  const plate = glyphify(el("div", { class: "gc-plate" }, plateText), F.body, 15);
+  box.append(el("div", { class: "gc-head" }, icon, el("div", {}, name, el("div", {}, plate))));
+  return box;
+}
+function gameCard(it, E, card) {
+  const rarity = E.rarity || it.rarity, T = CARD.tex, F = CARD.fonts;
+  const iconBox = el("div", { class: "gc-icon" },
+    el("img", { class: "bg", alt: "", src: rarity === "Powerups" ? T.powerup_bg : T.icon_bg }),
+    itemIcon(E, it, "it"),
+    el("img", { class: "fr", alt: "", src: T["diamond_" + rarity] || T.diamond_Common }));
+  const box = cardFrame(rarity, iconBox, E.name || it.name, rarity === "Powerups" ? "Power-up" : rarity);
+  const d = card.description, sp = card.super;
+  const descText = E.description || (d && d.text) || it.description || "";
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(d && d.entries))), F.body, 19));
+  const supText = E.superDescription || (sp && sp.text) || "";
+  if (supText) {
+    box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
+      markup(supText, entryFill(sp && sp.entries))), F.body, 18));
+  }
+  return box;
+}
+
 function renderPreview() {
   const host = document.getElementById("preview");
   if (!host || S.tab !== "items" || !S.item) return;
   const it = S.item, E = S.itemEdit, card = it.card || {};
+  if (!CARD.ready) cardAssets().then(ok => { if (ok) renderPreview(); });
   host.textContent = "";
   const d = card.description, sp = card.super;
-  const box = el("div", { class: "card" },
-    el("div", { class: "ci" }, iconImg(E.icon || it.icon)),
-    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
-  const descText = E.description || (d && d.text) || it.description || "";
-  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
-  const supText = E.superDescription || (sp && sp.text) || "";
-  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
-  host.append(box);
+  if (CARD.ok) host.append(gameCard(it, E, card));
+  else host.append(cssCard(it, E, card));
   const parts = [];
   if (d && d.entries.length) parts.push(["Description", d.entries]);
   if (sp && sp.entries.length) parts.push(["Super effect", sp.entries]);
@@ -453,17 +702,29 @@ function renderPreview() {
   }
   if (!card.description) host.append(el("div", { class: "legend", text: "Card text needs a readable game install." }));
 }
+// The same card in plain CSS, for when the game's textures are not readable.
+function cssCard(it, E, card) {
+  const d = card.description, sp = card.super;
+  const box = el("div", { class: "card" },
+    el("div", { class: "ci" }, itemIcon(E, it)),
+    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
+  const descText = E.description || (d && d.text) || it.description || "";
+  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
+  const supText = E.superDescription || (sp && sp.text) || "";
+  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
+  return box;
+}
 
 // One effect: which stat it changes.
-function statRow(m) {
-  const E = S.itemEdit, cur = E.stats[m.name];
+// One effect: which stat it changes. `onset(undefined)` means "back to the original".
+function statRow(m, cur, onset) {
   const row = el("div", { class: "row stat" + (cur !== undefined ? " changed" : "") });
   const lbl = el("div", { class: "lbl", text: m.name });
   lbl.append(el("span", { class: "tag " + (m.super ? "super" : "type"), text: m.super ? "super effect" : "effect" }));
   const set = val => {
     const same = val === m.stat;
-    if (same) delete E.stats[m.name]; else E.stats[m.name] = val;
-    row.classList.toggle("changed", !same); refresh();
+    onset(same ? undefined : val);
+    row.classList.toggle("changed", !same);
   };
   const picker = statPicker(cur !== undefined ? cur : m.stat, m.named ? null : m.stat, set);
   row.append(lbl, el("div", { class: "was", text: "was " + (m.named ? m.stat : "unnamed") }), picker.el,
@@ -558,6 +819,7 @@ function valueRow(label, value, type, shadowed, cur, onset) {
 }
 
 // ---- talents ----------------------------------------------------------------------
+const TIERS = ["Common", "Rare", "Epic", "Legendary"];
 async function pickHero(h) {
   status("Reading " + h + "…");
   try { S.talents = await get("api/talents?hero=" + encodeURIComponent(h)); }
@@ -571,69 +833,311 @@ async function pickHero(h) {
 }
 
 function freshTalentEdit() {
-  return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents", values: {}, cards: {} };
+  return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents",
+    values: {}, cards: {}, tiers: {}, stats: {}, rarity: "Common", q: "" };
+}
+
+// A texture the hero's own entity names (talent icons, the portrait).
+const heroPngUrls = new Map();
+function heroPng(hero, path) {
+  const key = hero + "\u0000" + path;
+  if (!heroPngUrls.has(key)) {
+    // A failed load is forgotten, so the next draw asks again instead of
+    // showing a blank for the rest of the session.
+    const p = fetch("api/heropng?hero=" + encodeURIComponent(hero) + "&path=" + encodeURIComponent(path))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null);
+    heroPngUrls.set(key, p);
+    p.then(url => { if (!url && heroPngUrls.get(key) === p) heroPngUrls.delete(key); });
+  }
+  return heroPngUrls.get(key);
+}
+function heroImg(hero, path, cls) {
+  const hole = el("span", { class: "ico " + (cls || "") });
+  if (!path) return hole;
+  heroPng(hero, path).then(url => { if (url) hole.replaceWith(el("img", { class: cls || "", alt: "", src: url })); });
+  return hole;
+}
+
+// The value row behind a label in one of the hero's files, and its edited value.
+function talentValue(file, label) {
+  const f = S.talents.files.find(x => x.file === file);
+  return f && f.values.find(r => r.label === label);
+}
+function talentCurrent(file, label) {
+  const r = talentValue(file, label), e = S.talentEdit.values[file + "\u0000" + label];
+  return e ? e.new : r ? r.value : undefined;
+}
+function tierKey(file, label, index) { return file + "\u0000" + label + "\u0000" + index; }
+function tierCurrent(file, e, tier) {
+  const t = e.tiers[tier];
+  if (!t) return undefined;
+  const ed = S.talentEdit.tiers[tierKey(file, e.node, t.index)];
+  return ed ? ed.new : t.value;
+}
+function talentFill(c) {
+  const rarity = S.talentEdit.rarity || "Common";
+  return (n, next) => {
+    const e = c.entries[n];
+    const chip = el("span", { class: "ph", text: "{" + n + "}" });
+    chip.title = "{" + n + "}: " + (e ? e.node : "set inside the talent");
+    let v;
+    if (e && e.tiers) v = tierCurrent(c.file, e, rarity);
+    else if (e && e.kind === "Value") v = talentCurrent(c.file, e.node);
+    if (v !== undefined && typeof v === "number") {
+      const pct = next === "%";
+      chip.textContent = fmt(pct ? v * 100 : v);
+    }
+    return chip;
+  };
+}
+// A talent card's icon: the one you uploaded for it, else its own.
+function cardIcon(c, cls) {
+  const up = (S.talentEdit.cards[c.source] || {}).iconUpload;
+  return up ? uploadImg(up, cls) : heroImg(S.hero, c.icon, cls);
+}
+function talentCard(c, nameText, descText) {
+  const rarity = S.talentEdit.rarity || "Common";
+  if (!CARD.ok) {
+    const box = el("div", { class: "card" }, el("div", { class: "ci" }, cardIcon(c)),
+      el("div", {}, el("div", { class: "ct", text: nameText }), el("div", { class: "cr", text: rarity })));
+    if (descText) box.append(el("div", { class: "cd" }, markup(descText, talentFill(c))));
+    return box;
+  }
+  const T = CARD.tex;
+  const icon = el("div", { class: "gc-icon sq" }, el("img", { class: "bg", alt: "", src: T.skill_slot }),
+    cardIcon(c, "it"), el("img", { class: "fr", alt: "", src: T["skill_" + rarity] || T.skill_Common }));
+  const box = cardFrame(rarity, icon, nameText || c.source, rarity);
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, talentFill(c))), CARD.fonts.body, 19));
+  return box;
+}
+
+// "Skill Attack Dive Damage Multiplier Selector" on the Attack Dive card is
+// just "Damage Multiplier": the card already says which talent it is.
+function shortLabel(label, source) {
+  let out = label;
+  const pre = ("Skill " + source + " ").toLowerCase();
+  if (out.toLowerCase().startsWith(pre)) out = out.slice(pre.length);
+  out = out.replace(/ (Selector|Value)$/, "");
+  return out || label;
+}
+
+// The numbers behind a card's {N}, each where it can be edited.
+function talentNumbers(c, redraw) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  c.entries.forEach((e, n) => {
+    const tag = el("span", { class: "phn", text: "{" + n + "}" });
+    if (!e) { box.append(el("div", { class: "tnote" }, tag, "set inside the talent, not editable here")); return; }
+    if (e.tiers) {
+      const row = el("div", { class: "trow" }, el("div", { class: "lbl", title: e.node }, tag, " " + shortLabel(e.node, c.source)));
+      const keys = TIERS.filter(t => e.tiers[t]).map(t => tierKey(c.file, e.node, e.tiers[t].index));
+      const undo = resetBtn(() => { for (const k of keys) delete E.tiers[k]; renderView(); refresh(); });
+      undo.classList.add("own");
+      const sync = () => undo.classList.toggle("on", keys.some(k => E.tiers[k]));
+      for (const tier of TIERS) {
+        const t = e.tiers[tier];
+        if (!t) { row.append(el("span")); continue; }
+        const k = tierKey(c.file, e.node, t.index), cur = E.tiers[k];
+        const inp = el("input", { type: "number", step: "any", value: fmt(cur ? cur.new : t.value), title: tier + " (was " + fmt(t.value) + ")", "data-tier": tier });
+        inp.oninput = () => {
+          const nv = inp.value === "" ? NaN : Number(inp.value);
+          if (Number.isNaN(nv) || nv === t.value) delete E.tiers[k];
+          else E.tiers[k] = { file: c.file, label: e.node, index: t.index, old: t.value, new: nv };
+          inp.classList.toggle("ed", !!E.tiers[k]); sync(); redraw(); refresh();
+        };
+        inp.classList.toggle("ed", !!cur);
+        inp.classList.toggle("on", tier === (E.rarity || "Common"));
+        row.append(el("label", { class: "tier" }, el("span", { text: tier }), inp));
+      }
+      sync();
+      row.append(undo);
+      box.append(row);
+      return;
+    }
+    const labels = e.kind === "Value" ? [e.node] : e.sources;
+    const rows = labels.map(l => [l, talentValue(c.file, l)]).filter(([, r]) => r);
+    if (!rows.length) { box.append(el("div", { class: "tnote" }, tag, e.node + " — worked out in game")); return; }
+    for (const [label, r] of rows) {
+      const key = c.file + "\u0000" + label;
+      const vr = valueRow((e.kind === "Value" ? "" : "from ") + shortLabel(label, c.source), r.value, r.type, r.shadowed,
+        E.values[key] ? E.values[key].new : undefined, nv => {
+          if (nv === undefined) delete E.values[key];
+          else E.values[key] = { file: c.file, label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
+          redraw(); refresh();
+        });
+      vr.querySelector(".lbl").prepend(tag.cloneNode(true), " ");
+      box.append(vr);
+    }
+  });
+  return box;
 }
 
 function talentView() {
-  const T = S.talents, E = S.talentEdit, v = el("div");
-  v.append(el("div", { class: "help", text: "Rename a hero's talent cards and change the numbers behind them. A hero's number of talents is fixed, so you edit existing ones rather than add new ones." }));
-  if (!T) { v.append(el("div", { class: "empty", text: "Pick a hero on the left." })); return v; }
+  const T = S.talents, v = el("div", { class: "tpage" });
+  if (!CARD.ready) cardAssets().then(ok => { if (ok && S.tab === "talents") renderView(); });
+  if (!T) {
+    v.append(el("div", { class: "help", text: "Pick a hero on the left to rename their talent cards and change the numbers behind them." }));
+    return v;
+  }
+  const E = S.talentEdit;
   const resetAll = () => { S.talentEdit = freshTalentEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
-  v.append(el("div", { class: "head" }, el("h2", { text: S.hero.replace(/_/g, " ") }),
-    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this hero", onclick: resetAll }, "Reset all"))));
-  const f = el("div", { class: "form" });
-  const pre = el("input", { value: E.prefix, spellcheck: "false" });
+
+  // Head: portrait, name, block id, reset.
+  const pre = el("input", { value: E.prefix, spellcheck: "false", class: "prefix", title: "The start of each block's id in the manifest" });
   pre.oninput = () => { E.prefix = pre.value; refresh(); };
-  f.append(el("label", { text: "Block id" }), el("div", {}, pre, el("div", { class: "hint", text: "The start of each block's id in the manifest." })));
-  v.append(f);
+  v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
+    el("div", { class: "tname" }, el("h2", { text: S.hero.replace(/_/g, " ") }),
+      el("div", { class: "muted tiny", text: `${T.cards.length} talent cards · a hero's number of talents is fixed, so you change the ones there are` })),
+    el("label", { class: "tiny muted tprefix" }, "Block id", pre),
+    el("button", { type: "button", title: "Undo every change to this hero", onclick: resetAll }, "Reset all")));
 
-  v.append(el("div", { class: "sect", text: `Talent cards (${T.cards.length})` }));
-  if (!T.cards.length) v.append(el("div", { class: "muted", text: "No card text found. Card text needs a readable game install." }));
-  for (const c of T.cards) {
-    const cur = E.cards[c.source] || {};
-    const box = el("div", { class: "cardbox" + (cur.name || cur.description ? " changed" : "") });
-    const mini = el("div", { class: "mini" });
-    const drawMini = () => {
-      mini.textContent = "";
-      const chip = n => el("span", { class: "ph", title: "{" + n + "}: filled in by the game", text: "{" + n + "}" });
-      mini.append(el("span", { class: "t" }, markup(nameIn.value || c.name || "", chip)), markup(descIn.value || "", chip));
-    };
-    const upd = () => {
-      const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
-      const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
-      if (n || d) E.cards[c.source] = { name: n, description: d }; else delete E.cards[c.source];
-      box.classList.toggle("changed", !!(n || d)); drawMini(); refresh();
-    };
-    const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
-    if (!c.hasName) nameIn.disabled = true;
-    nameIn.oninput = upd;
-    const descIn = el("textarea", {});
-    descIn.value = cur.description || c.description;
-    if (!c.hasDescription) descIn.disabled = true;
-    descIn.oninput = upd;
-    const undo = resetBtn(() => { nameIn.value = c.name; descIn.value = c.description; upd(); }, "Undo the changes to this card");
-    undo.classList.add("own");
-    box.append(el("div", { class: "src", style: "display:flex" }, el("span", { text: c.source, style: "flex:1" }), undo), nameIn, descIn, mini);
-    drawMini();
-    v.append(box);
+  // Toolbar: search, preview rarity.
+  const q = el("input", { type: "search", placeholder: "Find a card, e.g. dash", value: E.q || "" });
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Preview rarity" });
+  for (const tier of TIERS) {
+    const b = el("button", { type: "button", class: (E.rarity || "Common") === tier ? "on" : "", onclick: () => setTalentRarity(tier, seg) }, tier);
+    b.style.setProperty("--rc", RARITY_COLOUR[tier]);
+    seg.append(b);
   }
-  v.append(el("div", { class: "hint", text: "Card text markup: {0} is a value, &{0}~ scales with rarity, #WORD@ is a keyword. Keep the placeholders the card already uses." }));
+  v.append(el("div", { class: "ttools" }, q, el("span", { class: "tiny muted", text: "Show cards as" }), seg));
 
-  const total = T.files.reduce((n, f) => n + f.values.length, 0);
-  v.append(el("div", { class: "sect", text: `Values (${total})` }));
-  const q = el("input", { type: "search", placeholder: "Filter values, e.g. damage", style: "width:100%;margin-bottom:8px" });
+  const list = el("div", { class: "tgrid" });
+  const draw = () => {
+    TPREV.reset();
+    list.textContent = "";
+    const needle = q.value.toLowerCase();
+    const cards = T.cards.filter(c => !needle || (c.source + " " + c.name + " " + c.description).toLowerCase().includes(needle));
+    if (!cards.length) list.append(el("div", { class: "empty", text: T.cards.length ? "No card matches." : "No card text found. Card text needs a readable game install." }));
+    for (const c of cards) list.append(talentRow(c));
+  };
+  q.oninput = () => { E.q = q.value; draw(); };
+  draw();
+  v.append(list);
+  v.append(el("div", { class: "hint", text: "Card text markup: #WORD@ highlights, &{0}~ is a number that scales with rarity, $word* marks a drawback. Keep the placeholders the card already uses." }));
+  v.append(allValues());
+  return v;
+}
+
+// One talent: its card as the game draws it, and everything that changes it.
+function talentRow(c) {
+  const E = S.talentEdit, cur = E.cards[c.source] || {};
+  const tierEdited = () => c.entries.some(e => e && e.tiers && Object.values(e.tiers).some(t => E.tiers[tierKey(c.file, e.node, t.index)]));
+  const row = el("div", { class: "tcard" });
+  const preview = el("div", { class: "tprev" });
+  const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
+  const descIn = el("textarea", { rows: "3" });
+  descIn.value = cur.description || c.description;
+  if (!c.hasName) nameIn.disabled = true;
+  if (!c.hasDescription) descIn.disabled = true;
+  const paint = () => {
+    preview.textContent = "";
+    preview.append(talentCard(c, nameIn.value || c.name, descIn.value || c.description));
+  };
+  const redraw = () => {
+    TPREV.redraw(preview, paint);
+    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited()));
+  };
+  const upd = () => {
+    const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
+    const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
+    const icon = (E.cards[c.source] || {}).iconUpload || "";
+    if (n || d || icon) E.cards[c.source] = { name: n, description: d, ...(icon ? { iconUpload: icon } : {}) };
+    else delete E.cards[c.source];
+    redraw(); refresh();
+  };
+  nameIn.oninput = upd; descIn.oninput = upd;
+  const setIcon = d => {
+    const cur = E.cards[c.source] || { name: "", description: "" };
+    if (d) cur.iconUpload = d; else delete cur.iconUpload;
+    E.cards[c.source] = cur;
+    upd(); drawIconCtl();
+  };
+  const iconCtl = el("div", { class: "own" });
+  const drawIconCtl = () => {
+    iconCtl.textContent = "";
+    const up = (E.cards[c.source] || {}).iconUpload;
+    if (up) iconCtl.append(el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again"));
+    if (c.icon) iconCtl.append(uploadButton(up ? "Replace icon…" : "Replace icon…", 128, setIcon));
+    else iconCtl.append(el("span", { class: "tiny muted", text: "No icon found for this card." }));
+  };
+  drawIconCtl();
+  const undo = resetBtn(() => { nameIn.value = c.name; descIn.value = c.description; setIcon(""); }, "Undo the text and icon changes to this card");
+  undo.classList.add("own");
+  const side = el("div", { class: "tside" },
+    el("div", { class: "tsrc" }, el("span", { text: c.source }), iconCtl, undo),
+    nameIn, descIn);
+  if (c.entries.length) side.append(el("div", { class: "sect", text: "Numbers" }), talentNumbers(c, redraw));
+  row.append(preview, side);
+  TPREV.add(preview, paint);
+  row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited()));
+  return row;
+}
+
+// Card previews are the expensive part of the Talents tab (every letter is a
+// glyph), so a preview is drawn only while it is on screen; one scrolled away
+// is marked stale and drawn when it comes back.
+const TPREV = {
+  paints: new Map(), stale: new Set(), seen: new Set(), obs: null,
+  reset() {
+    if (this.obs) this.obs.disconnect();
+    this.paints.clear(); this.stale.clear(); this.seen.clear();
+    this.obs = "IntersectionObserver" in window ? new IntersectionObserver(es => {
+      for (const e of es) {
+        if (e.isIntersecting) {
+          this.seen.add(e.target);
+          if (this.stale.delete(e.target)) this.paints.get(e.target)();
+        } else this.seen.delete(e.target);
+      }
+    }, { root: document.getElementById("main"), rootMargin: "300px 0px" }) : null;
+  },
+  add(el, paint) {
+    this.paints.set(el, paint);
+    if (this.obs) { this.stale.add(el); el.style.minHeight = "170px"; this.obs.observe(el); } else paint();
+  },
+  redraw(el, paint) {
+    if (!this.obs || this.seen.has(el)) paint(); else this.stale.add(el);
+  },
+  // Every preview is out of date (the rarity changed): draw the visible ones now.
+  all() {
+    for (const [el, paint] of this.paints) this.redraw(el, paint);
+  },
+};
+
+// Switch the preview rarity: restyle the switch and the highlighted tier boxes
+// in place and redraw the cards, without rebuilding the page.
+function setTalentRarity(tier, seg) {
+  const E = S.talentEdit;
+  if ((E.rarity || "Common") === tier) return;
+  E.rarity = tier;
+  for (const b of seg.children) b.classList.toggle("on", b.textContent === tier);
+  for (const inp of document.querySelectorAll(".tier input[data-tier]")) inp.classList.toggle("on", inp.dataset.tier === tier);
+  TPREV.all();
+  saveDraft();
+}
+
+// Every value and effect of the hero, by file, for what the cards do not show.
+function allValues() {
+  const T = S.talents, E = S.talentEdit;
+  const nVals = T.files.reduce((n, f) => n + f.values.length, 0);
+  const nMods = T.files.reduce((n, f) => n + f.modifiers.length, 0);
+  const d = el("details", { class: "allv" }, el("summary", {}, `All values and effects (${nVals} values, ${nMods} effects)`));
+  const changed = Object.keys(E.values).length + Object.keys(E.stats).length;
+  if (changed) d.open = true;
+  const q = el("input", { type: "search", placeholder: "Filter, e.g. damage", style: "width:100%;margin:8px 0" });
   const box = el("div");
   const draw = () => {
     box.textContent = "";
     const needle = q.value.toLowerCase();
     for (const file of T.files) {
       const rows = file.values.filter(r => !needle || r.label.toLowerCase().includes(needle));
-      if (!rows.length) continue;
-      const nChanged = file.values.filter(r => (file.file + "\u0000" + r.label) in E.values).length;
-      const d = el("details", { class: "file" }, el("summary", {}, file.file, el("span", { class: "muted", text: `  ${file.values.length} values` + (nChanged ? `, ${nChanged} changed` : "") })));
-      if (needle || nChanged || file.file === "Hero_" + S.hero) d.open = true;
+      const mods = file.modifiers.filter(m => !needle || (m.name + " " + m.stat).toLowerCase().includes(needle));
+      if (!rows.length && !mods.length) continue;
+      const nChanged = file.values.filter(r => (file.file + "\u0000" + r.label) in E.values).length
+        + file.modifiers.filter(m => (file.file + "\u0000" + m.name) in E.stats).length;
+      const fd = el("details", { class: "file" }, el("summary", {}, file.file,
+        el("span", { class: "muted", text: `  ${file.values.length} values, ${file.modifiers.length} effects` + (nChanged ? `, ${nChanged} changed` : "") })));
+      if (needle || nChanged) fd.open = true;
       const inner = el("div", { class: "rows" });
       for (const r of rows) {
         const key = file.file + "\u0000" + r.label;
@@ -643,12 +1147,21 @@ function talentView() {
           refresh();
         }));
       }
-      d.append(inner); box.append(d);
+      for (const m of mods) {
+        const key = file.file + "\u0000" + m.name;
+        inner.append(statRow(m, E.stats[key], val => {
+          if (val === undefined) delete E.stats[key]; else E.stats[key] = val;
+          refresh();
+        }));
+      }
+      fd.append(inner); box.append(fd);
     }
   };
-  q.oninput = draw; draw();
-  v.append(q, box);
-  return v;
+  q.oninput = draw;
+  d.addEventListener("toggle", () => { if (d.open && !box.childNodes.length) draw(); });
+  if (d.open) draw();
+  d.append(q, box);
+  return d;
 }
 
 function renderView() {
@@ -661,14 +1174,15 @@ function editPayload() {
   if (S.tab === "items") {
     if (!S.item) return null;
     const E = S.itemEdit;
-    return { base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon,
+    return { base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;
-  return { hero: S.hero, prefix: E.prefix, values: Object.values(E.values),
+  return { hero: S.hero, prefix: E.prefix, values: Object.values(E.values), tiers: Object.values(E.tiers),
+    stats: Object.entries(E.stats).map(([k, stat]) => { const [file, modifier] = k.split("\u0000"); return { file, modifier, stat }; }),
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })) };
 }
 
@@ -741,6 +1255,7 @@ $("#save").onclick = async () => {
   try {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
+    get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
   for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) S.drafts[t].add(k.slice(DRAFT[t].length));
   for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));

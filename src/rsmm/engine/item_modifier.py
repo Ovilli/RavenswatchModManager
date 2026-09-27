@@ -234,10 +234,10 @@ def set_modifier_stat(cooked_bytes: bytes, modifier: str, stat: str | int) -> by
 
 # --- super-effect text -------------------------------------------------------
 
-def _format_key(payload: bytes) -> str | None:
+def _format_key(payload: bytes, bank_name: str = _TEXT_BANK) -> str | None:
     """The text key a String Format component shows: ``"Text"``, the bank,
     a u32 row index, then the key."""
-    bank = struct.pack("<I", len(_TEXT_BANK)) + _TEXT_BANK.encode()
+    bank = struct.pack("<I", len(bank_name)) + bank_name.encode()
     i = payload.find(bank)
     if i < 0:
         return None
@@ -281,6 +281,7 @@ def set_super_text_key(cooked_bytes: bytes, new_key: str) -> bytes:
 _REF_LABEL = re.compile(rb"([\x05-\xff])\x00\x00\x00(\[[A-Za-z ]+\] [ -~]+)")
 _FORMAT_TAIL = b'""\xbb\xaa""\xbb\xaa'
 _FORMAT_CLASS = "oCEntityCpntStringFormatValueSettings"
+_ENTRY_CLASS = "oCStringFormatEntryPicker"
 
 
 def _labels(payload: bytes, start: int = 0) -> list[str]:
@@ -306,7 +307,48 @@ class CardFormat:
 def card_formats(cooked_bytes: bytes) -> dict[str, CardFormat]:
     """Every String Format of an item that reads the magical-object text bank,
     by the format's own name (``Descripton Format``, ``Super Effect Descripton
-    Format``, ...).
+    Format``, ...). See :func:`text_formats`."""
+    return dict(text_formats(cooked_bytes, _TEXT_BANK))
+
+
+def _entry_labels(payload: bytes, start: int, count: int,
+                  names: list[str]) -> list[str | None]:
+    """The reference label of each of a format's ``count`` entries, None for
+    an entry holding an inline value. Each entry is one
+    ``oCStringFormatEntryPicker`` object, so the payload is split at those; when
+    they cannot be found the labels must line up one-for-one, or all are None."""
+    from .cooked import MARK_BEGIN
+    if count == 0:
+        return []
+    if _ENTRY_CLASS in names:
+        mark = MARK_BEGIN + struct.pack("<I", names.index(_ENTRY_CLASS))
+        starts, i = [], payload.find(mark, start)
+        while i >= 0 and len(starts) < count:
+            starts.append(i)
+            i = payload.find(mark, i + len(mark))
+        if len(starts) == count:
+            ends = [*starts[1:], len(payload)]
+            out = []
+            for a, b in zip(starts, ends, strict=True):
+                found = _labels(payload[a:b])
+                out.append(found[0] if found else None)
+            return out
+    labels = _labels(payload, start)
+    return list(labels) if len(labels) == count else [None] * count
+
+
+def formats_by_key(cooked_bytes: bytes, bank_name: str) -> dict[str, CardFormat]:
+    """Every String Format that reads ``bank_name``, by the text key it shows
+    (the first format wins when two show the same key). A hero's talent cards
+    are found this way: their keys are known, the formats' names are not."""
+    out: dict[str, CardFormat] = {}
+    for _name, fmt in text_formats(cooked_bytes, bank_name):
+        out.setdefault(fmt.key, fmt)
+    return out
+
+
+def text_formats(cooked_bytes: bytes, bank_name: str) -> list[tuple[str, CardFormat]]:
+    """``(format name, format)`` for every String Format reading ``bank_name``.
 
     After the key a format stores ``u32 count`` and one picker per ``{N}``, in
     order. A picker that points at a node carries that node's ``[Kind] path``
@@ -315,36 +357,38 @@ def card_formats(cooked_bytes: bytes) -> dict[str, CardFormat]:
     guessed (9 of the 143 shipped formats).
     """
     from . import cooked
+    bank = struct.pack("<I", len(bank_name)) + bank_name.encode()
+    if bank not in cooked_bytes:
+        return []
     cf = cooked.parse(cooked_bytes)
     names = [c.name for c in cf.classes]
-    bank = struct.pack("<I", len(_TEXT_BANK)) + _TEXT_BANK.encode()
     own = {}
     for sec in cf.sections[1:-1]:
         name = _own_name(sec.payload)
         if name:
             own.setdefault(name, sec.payload)
-    out: dict[str, CardFormat] = {}
+    out: list[tuple[str, CardFormat]] = []
     for sec in cf.sections[1:-1]:
         p = sec.payload
         name = _own_name(p)
-        key = _format_key(p)
+        key = _format_key(p, bank_name)
         if not name or key is None or _class_of(p, names) != _FORMAT_CLASS:
             continue
         end = p.find(bank) + len(bank) + 4 + 4 + len(key)
         tail = p[end:end + 12]
         if len(tail) < 12 or tail[:8] != _FORMAT_TAIL:
-            out[name] = CardFormat(key=key, entries=())
+            out.append((name, CardFormat(key=key, entries=())))
             continue
         count = struct.unpack_from("<I", tail, 8)[0]
-        labels = _labels(p, end + 12)
         if count > 64:
-            out[name] = CardFormat(key=key, entries=())
+            out.append((name, CardFormat(key=key, entries=())))
             continue
-        if len(labels) != count:
-            out[name] = CardFormat(key=key, entries=(None,) * count)
-            continue
+        labels = _entry_labels(p, end + 12, count, names)
         entries = []
         for label in labels:
+            if label is None:
+                entries.append(None)
+                continue
             kind = label[1:label.index("]")]
             node = label.rsplit("\\", 1)[-1]
             sources: tuple[str, ...] = ()
@@ -353,5 +397,5 @@ def card_formats(cooked_bytes: bytes) -> dict[str, CardFormat]:
                     lab.rsplit("\\", 1)[-1] for lab in _labels(own[node])
                     if lab.startswith("[Value] ")))
             entries.append(Placeholder(node=node, kind=kind, sources=sources))
-        out[name] = CardFormat(key=key, entries=tuple(entries))
+        out.append((name, CardFormat(key=key, entries=tuple(entries))))
     return out

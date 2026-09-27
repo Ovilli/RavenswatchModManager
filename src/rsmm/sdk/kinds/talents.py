@@ -57,6 +57,10 @@ Fields:
                                Nothing uses the copy until a ``rewires`` entry
                                points an existing reference at it (``action`` =
                                the new name). Needs ``file``.
+    ``stats``                  table of modifier name -> the stat it changes
+                               instead (a ``data/stat_keys.json`` name or a
+                               ``0x`` key), as the item kind's ``stats``. The
+                               amount keeps its old unit. Needs ``file``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -305,10 +309,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     int_patches = _coerce_int_patches(defn.fields.get("int_patches"))
     union_patches = _coerce_union_patches(defn.fields.get("union_patches"))
     clone_nodes = _coerce_clone_nodes(defn.fields.get("clone_nodes"))
-    if not (patches or rewires or int_patches or union_patches or clone_nodes):
+    from .items import _coerce_stats
+    stats = _coerce_stats(defn.id, defn.fields.get("stats"))
+    if not (patches or rewires or int_patches or union_patches or clone_nodes or stats):
         raise ContentError(
             f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes or int_patches given")
+            f"clone_nodes, stats or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in hero_dir.entity_files()
@@ -346,6 +352,23 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 key = _modifier_stat_from(*stat) if stat else None
                 cur = EA.clone_component(cur, source, name, retarget, rename, key)
         except EA.EntityAppendError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+        edited[p] = cur
+    # Which stat a modifier changes: 4 bytes inside the modifier, so any order
+    # works; it is pinned to one file because modifier names repeat across them.
+    if stats:
+        if len(candidates) != 1:
+            raise ContentError(
+                f"talent {defn.id}: stats need `file` to select exactly one "
+                f"entity file (matched {len(candidates)}: "
+                f"{[p.name for p in candidates]})")
+        from ...engine import item_modifier as IM
+        p = candidates[0]
+        cur = edited.get(p) or p.read_bytes()
+        try:
+            for modifier, stat in stats.items():
+                cur = IM.set_modifier_stat(cur, modifier, stat)
+        except IM.ItemModifierError as e:
             raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
         edited[p] = cur
     for label, old, new, clear in patches:

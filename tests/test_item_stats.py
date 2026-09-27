@@ -147,10 +147,12 @@ def test_a_card_text_names_what_fills_each_placeholder():
     assert [e.node for e in sup.entries] == ["Super Effect Crit Chance Value"]
 
 
-def test_placeholders_that_do_not_line_up_are_left_unnamed():
-    """Copy_Card's heal line holds inline values, not named nodes."""
+def test_an_inline_placeholder_is_unnamed_and_its_neighbours_still_are():
+    """Copy_Card's heal line mixes a node with an inline value; each entry is
+    read on its own, so only the inline one is left unnamed."""
     formats = IM.card_formats(_item("Epic", "Copy_Card"))
-    assert formats["Current Heal Desc Format"].entries == (None, None)
+    first, second = formats["Current Heal Desc Format"].entries
+    assert first.node == "Scalable Heal operations" and second is None
     # Only String Format components count: selectors that name a key are not texts.
     assert "Description Selector" not in formats
 

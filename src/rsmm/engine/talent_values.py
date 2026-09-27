@@ -447,3 +447,47 @@ def clear_value_override(data: bytes, label: str) -> bytes:
         raise ValueError(f"{label!r} is not overridden (nothing to clear)")
     ed.queue(p1 + 8, len(payload), b"\x00")  # collapse to the disabled form
     return ed.emit()
+
+
+#: The skill controller's per-tier flags, as a value selector entry reads them
+#: (the picker accessor after a ``[Dt Skill Controller]`` condition). The
+#: controller's accessor table (FUN_1402ed160) maps them to +0x120/+0x140/
+#: +0x160/+0x180, the tier bools in rarity order.
+TIER_KEYS: dict[int, str] = {0x15FC6BEB: "Common", 0x15FC6BF7: "Rare",
+                             0x15FC6BF1: "Epic", 0x15FC6BF9: "Legendary"}
+TIERS = ("Common", "Rare", "Epic", "Legendary")
+
+
+def tier_values(data: bytes, label: str) -> dict[str, tuple[int, float, int]]:
+    """A talent's per-rarity numbers: ``tier -> (union index, value, type)``.
+
+    A tier selector holds one entry per rarity it names -- a condition on the
+    card's own controller, an enabled bool, the number -- and then its default,
+    which is what a card of any other rarity (in practice Common) reads. The
+    index is the one :func:`set_union_value` (and ``union_patches``) takes.
+    Empty for a node that is not a tier selector.
+    """
+    try:
+        unions = list_union_values(data, label)
+    except ValueError:
+        return {}
+    keys = {struct.pack("<I", k): name for k, name in TIER_KEYS.items()}
+    prev = data.find(struct.pack("<I", len(label)) + label.encode("ascii"))
+    out: dict[str, tuple[int, float, int]] = {}
+    default = None
+    for index, (off, value, type_code) in enumerate(unions):
+        if type_code == TYPE_BOOL:
+            continue
+        seg = data[prev:off]
+        prev = off
+        found = [(seg.rfind(k), name) for k, name in keys.items() if k in seg]
+        if found:
+            out.setdefault(max(found)[1], (index, value, type_code))
+        elif default is None:
+            default = (index, value, type_code)
+    if not out:
+        return {}
+    if default is not None:
+        for tier in TIERS:
+            out.setdefault(tier, default)
+    return out

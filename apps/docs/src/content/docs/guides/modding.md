@@ -1012,8 +1012,21 @@ super_description = "#Crit Damage@ &+{0}%~"
   the instant-kill thresholds only do something with the components the item
   that ships them carries.
 
-The **Items** tab of `rsmm editor` and the [web editor](/guides/web-editor/)
-show the same thing as a stat picker per effect.
+A **talent** takes the same `stats` table, next to its `file` (effect names
+repeat across a hero's files):
+
+```toml
+[[content]]
+kind  = "talent"
+id    = "aladdin_wish_armour"
+hero  = "Aladdin"
+file  = "Hero_Aladdin.entity"
+stats = { "Ability Trait Wish 3 Shield Gain Modifier" = "Armour" }
+```
+
+The **Items** and **Talents** tabs of `rsmm editor` and the
+[web editor](/guides/web-editor/) show the same thing as a stat picker per
+effect.
 
 ### Lua-scripted mod
 

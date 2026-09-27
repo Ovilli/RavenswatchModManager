@@ -64,9 +64,11 @@ _HERODEF_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 
 def _hero_token(hero: str) -> str | None:
     """Canonical herodef stem for a hero name (e.g. ``Snow_Queen``)."""
-    low = hero.lower().replace(" ", "_")
+    # `Sun_Wukong`, `Sun Wukong` and the folder spelling `SunWukong` are all
+    # the same hero.
+    low = hero.lower().replace(" ", "").replace("_", "")
     for stem in corpus.stems(_HERODEF_DIR, _HERODEF_SUFFIX):
-        if stem.lower() == low:
+        if stem.lower().replace("_", "") == low:
             return stem
     return None
 
@@ -246,9 +248,11 @@ def _slot_icon_texture(hero_token: str, controller: str) -> str:
     if not name.lower().startswith("skill controller "):
         name = f"Skill Controller {name}"
     pat = struct.pack("<I", len(name)) + name.encode("ascii")
-    low = hero_token.lower()
+    # The herodef token and the entity folder can spell a hero differently
+    # (herodef `Sun_Wukong`, folder `Hero_SunWukong`), so compare without `_`.
+    low = hero_token.replace("_", "").lower()
     dirs = [d for d in corpus.subdirs(_ENTITY_DIR)
-            if d.startswith("Hero_") and d[5:].lower() == low]
+            if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low]
     for d in dirs:
         for gen in corpus.files(f"{_ENTITY_DIR}/{d}",
                                 ".entity.ot.EntitySettingsResource.gen"):

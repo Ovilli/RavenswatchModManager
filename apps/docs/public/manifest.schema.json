@@ -540,6 +540,7 @@
                 "kind": {},
                 "rewires": {},
                 "schema_version": {},
+                "stats": {},
                 "union_patches": {},
                 "value_patches": {}
               },

@@ -29,7 +29,7 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 | Tab | In the browser |
 |---|---|
 | **Items** | everything: pick a base, change name, text, rarity, icon, values and the stat each effect gives, *Check*, save |
-| **Talents** | everything: every value of a hero, card names and texts, *Check*, save |
+| **Talents** | everything: card names and texts, each card's numbers per rarity, every value and the stat each effect gives, *Check*, save |
 | **Abilities** | everything: numbers, the graph, *Copy manifest code* |
 | **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |
 
@@ -38,8 +38,19 @@ starts empty in the page and exists only until you close the tab, so download it
 before you leave. To add blocks to an existing mod, press *Copy* and paste them
 at the end of that mod's `manifest.toml`.
 
-The Items and Talents tabs show each card the way the game will: highlighted
-words, numbers, and the value behind every `{0}`, updated as you type. Each
+The Items and Talents tabs show each card the way the game will, drawn with the
+compendium's own frames and fonts read from your install: highlighted words,
+numbers, and the value behind every `{0}`, updated as you type. On the Talents
+tab each card sits beside its text and numbers; a number that changes with the
+card's rarity has one box per rarity, and *Show cards as* switches the previews
+between Common, Rare, Epic and Legendary.
+
+Both tabs take your own icon. On the Items tab, *Upload your own icon* gives the
+new item a picture of its own (scaled to 192×192 and cooked into a new texture
+named after the item). On the Talents tab, *Replace icon* swaps a card's picture
+(scaled to 128×128 and cooked over that card's icon), which is how a replacement
+talent gets a look to match its new name and text. The PNG is saved in the mod's
+`icons/` folder next to `manifest.toml`. Each
 change has an undo button (↺), *Reset all* drops every change to the open item
 or hero, and an unfinished edit is kept in your browser until you add it to a
 mod (a dot marks it in the list). Private windows and some browsers do not keep

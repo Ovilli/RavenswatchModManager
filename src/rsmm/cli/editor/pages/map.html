@@ -29,13 +29,13 @@ select, input[type=text], input[type=number], input[type=search] {
 input[type=number] { width: 70px; }
 button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
   border-radius: 6px; padding: 5px 12px; cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--onaccent); }
 button.small { padding: 1px 7px; font-size: 12px; }
 button.undo { border: none; background: none; color: var(--warn); padding: 0 4px; font-size: 15px; line-height: 1; }
 button:disabled { opacity: .5; cursor: default; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 4px 10px; }
-.seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--onaccent); }
 #status { margin-left: auto; color: var(--muted); max-width: 52ch; }
 #status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
 main { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 12px;
@@ -64,10 +64,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 12px;
   color: var(--muted); padding: 24px; text-align: center; }
 .tabs { display: flex; gap: 2px; flex-wrap: wrap; }
 .tabs button { border: none; background: none; padding: 6px 10px; border-radius: 6px; }
-.tabs button[aria-selected=true] { background: var(--bg); color: var(--accent); font-weight: 600; }
+.tabs button[aria-selected=true] { background: var(--bg); color: var(--accentink); font-weight: 600; }
 .tabs .num { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px;
   background: var(--chip); color: var(--muted); font-size: 11px; text-align: center; margin-right: 5px; }
-.tabs button[aria-selected=true] .num { background: var(--accent); color: #fff; }
+.tabs button[aria-selected=true] .num { background: var(--accent); color: var(--onaccent); }
 .body { overflow: auto; padding: 10px 12px; flex: 1; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 4px 6px; vertical-align: middle; }
@@ -77,7 +77,7 @@ tbody.kind tr:last-child td { border-bottom: 1px solid var(--line); padding-bott
 tbody.kind.sel td { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 td.changed, label.changed { background: var(--changed); border-radius: 4px; }
 .kname { cursor: pointer; font-weight: 560; }
-.kname:hover { color: var(--accent); }
+.kname:hover { color: var(--accentink); }
 .badge { display: inline-block; padding: 0 7px; border-radius: 9px; background: var(--chip); font-size: 12px; cursor: pointer; }
 .badge.warn { color: #fff; background: var(--warn); }
 .fp { display: flex; gap: 4px 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); align-items: center; }

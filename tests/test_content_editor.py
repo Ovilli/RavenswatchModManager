@@ -196,3 +196,82 @@ def test_the_stat_list_puts_numbers_on_the_stats_items_give():
     stats = {s["name"]: s["used"] for s in E.stats()}
     assert stats["Attack power"] > 0 and stats["Armour"] > 0
     assert len(stats) > 200
+
+
+def test_card_textures_are_an_allowlist():
+    """The texture route serves the card's own files and nothing else."""
+    assert E.card_texture("../../Ravenswatch.exe") is None
+    assert E.card_texture("Ui/Description/Description_Frame_Back.png") is None
+    assert E.card_font("nope") is None
+    assert set(E.CARD_FONTS) == {"title", "body"}
+    assert all(p.startswith(("Ui/", "Fonts/")) for p in E.CARD_TEXTURES.values())
+
+
+def test_tier_numbers_and_effect_stats_join_their_files_block():
+    defs = E.talent_defs({"hero": "Aladdin", "prefix": "t", "tiers": [
+        {"file": "Hero_Aladdin", "label": "Dive Selector", "index": 1, "old": 7, "new": 9},
+        {"file": "Hero_Aladdin", "label": "Dive Selector", "index": 3, "old": 6, "new": 6}],
+        "stats": [{"file": "Hero_Aladdin", "modifier": "Shield Modifier", "stat": "Armour"}]})
+    [(kind, tid, fields)] = defs
+    assert (kind, tid) == ("talent", "t")
+    assert fields["union_patches"] == [
+        {"label": "Dive Selector", "index": 1, "old": 7.0, "new": 9.0}]
+    assert fields["stats"] == {"Shield Modifier": "Armour"}
+    parsed = tomllib.loads(E.to_toml(defs))["content"][0]
+    assert parsed["union_patches"][0]["new"] == 9.0
+
+
+def test_a_hero_texture_must_be_one_the_hero_names():
+    hero = (E.heroes() or [None])[0]
+    if hero is None:
+        pytest.skip("shipped heroes not available")
+    assert E.hero_png(hero, "..\\\\..\\\\Ravenswatch.exe") is None
+    assert E.hero_png(hero, "Heroes\\\\Nobody\\\\Skill X.png") is None
+
+
+# --- your own icons -------------------------------------------------------------
+
+def _png_b64() -> str:
+    import base64
+
+    from rsmm.engine.image import encode_png
+    return "data:image/png;base64," + base64.b64encode(
+        encode_png(4, 4, bytes([200, 30, 30, 255]) * 16)).decode()
+
+
+def test_an_uploaded_item_icon_ships_in_the_mod_beside_the_block():
+    [(_k, _i, fields)] = _item(iconUpload=_png_b64(), icon="GreenArmor")
+    assert fields["icon"] == "icons/Dash_Crit_Chan_M.png"          # the upload wins
+    assert fields[E.FILES]["icons/Dash_Crit_Chan_M.png"].startswith(b"\x89PNG")
+    toml = E.to_toml([("item", "Dash_Crit_Chan_M", fields)])
+    assert "_files" not in toml and 'icon = "icons/Dash_Crit_Chan_M.png"' in toml
+
+
+def test_a_talent_card_icon_alone_is_a_skill_block():
+    defs = E.talent_defs({"hero": "Aladdin", "prefix": "t",
+                          "cards": [{"source": "Attack Dive", "iconUpload": _png_b64()}]})
+    [(kind, _sid, fields)] = defs
+    assert kind == "skill" and fields["icon"] == "icons/Aladdin_Attack_Dive.png"
+    assert "name" not in fields and "description" not in fields
+
+
+@pytest.mark.parametrize("upload, message", [
+    ("data:image/png;base64,!!!", "intact"),
+    ("data:image/png;base64,R0lGODlhAQABAAAAACw=", "must be a PNG"),
+])
+def test_a_bad_upload_is_refused(upload, message):
+    with pytest.raises(E.EditorError, match=message):
+        _item(iconUpload=upload)
+
+
+def test_saving_writes_the_icon_into_the_mod(tmp_path):
+    defs = _item(iconUpload=_png_b64())
+    E.save(defs, "icons_mod", tmp_path, create=True)
+    mod = tmp_path / "icons_mod"
+    assert (mod / "icons" / "Dash_Crit_Chan_M.png").read_bytes()[:4] == b"\x89PNG"
+    assert 'icon = "icons/Dash_Crit_Chan_M.png"' in (mod / "manifest.toml").read_text()
+
+
+def test_only_icon_paths_are_written_into_a_mod(tmp_path):
+    with pytest.raises(E.EditorError, match="refusing"):
+        E._write_files(tmp_path, {E.FILES: {"../escape.png": b"x"}})
