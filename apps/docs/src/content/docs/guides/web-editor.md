@@ -38,6 +38,13 @@ starts empty in the page and exists only until you close the tab, so download it
 before you leave. To add blocks to an existing mod, press *Copy* and paste them
 at the end of that mod's `manifest.toml`.
 
+The Items and Talents tabs show each card the way the game will: highlighted
+words, numbers, and the value behind every `{0}`, updated as you type. Each
+change has an undo button (↺), *Reset all* drops every change to the open item
+or hero, and an unfinished edit is kept in your browser until you add it to a
+mod (a dot marks it in the list). Private windows and some browsers do not keep
+it.
+
 It works in current Chrome, Edge, Firefox and Safari on a computer. Phones
 cannot choose a folder.
 

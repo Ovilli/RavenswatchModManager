@@ -94,7 +94,31 @@ def item_detail(item_id: str) -> dict:
                        "super": m.super_effect} for m in IM.list_modifiers(data)],
         "superKey": super_key,
         "superText": (_text_values().get(super_key) or "") if super_key else "",
+        "card": _card(data),
     }
+
+
+# The two texts a card shows under its name, by the String Format that holds them.
+_CARD_FORMATS = {"description": "Descripton Format", "super": "Super Effect Descripton Format"}
+
+
+def _card(data: bytes) -> dict:
+    """The raw card texts (markup kept) and what fills each ``{N}`` of them."""
+    from rsmm.engine import item_modifier as IM
+    formats = IM.card_formats(data)
+    text = _text_values()
+    out = {}
+    for part, fmt_name in _CARD_FORMATS.items():
+        fmt = formats.get(fmt_name)
+        if fmt is None:
+            continue
+        out[part] = {
+            "key": fmt.key, "text": text.get(fmt.key) or "",
+            "entries": [None if e is None else
+                        {"node": e.node, "kind": e.kind, "sources": list(e.sources)}
+                        for e in fmt.entries],
+        }
+    return out
 
 
 def _hex(key: int) -> str:
@@ -112,10 +136,22 @@ def _text_values() -> dict[str, str]:
     return item_catalog._text_values(game, load_asset_map())
 
 
-def stats() -> list[str]:
-    """Every stat a modifier can change, by the engine's own display name."""
-    from rsmm.engine.item_modifier import stat_catalog
-    return sorted(stat_catalog(), key=str.lower)
+@cache
+def stats() -> list[dict]:
+    """Every stat a modifier can change, by the engine's own display name, with
+    how many shipped item effects give it (the picker lists those first)."""
+    from rsmm.cli.cmd_items import _iter_items
+    from rsmm.engine import item_modifier as IM
+
+    used: dict[int, int] = {}
+    for _id, _rarity, p in _iter_items():
+        try:
+            for m in IM.list_modifiers(p.read_bytes()):
+                used[m.key] = used.get(m.key, 0) + 1
+        except (OSError, ValueError):
+            continue
+    return [{"name": n, "used": used.get(k, 0)}
+            for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
 
 
 @cache

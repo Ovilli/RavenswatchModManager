@@ -186,3 +186,13 @@ def test_list_mods_skips_folders_without_a_readable_manifest(tmp_path):
     (tmp_path / "_log").mkdir()
     assert E.list_mods(tmp_path) == []
     assert E.list_mods(tmp_path / "missing") == []
+
+
+def test_the_stat_list_puts_numbers_on_the_stats_items_give():
+    from rsmm.engine import corpus
+    if not corpus.files("EntitySettings/Objects/Magical_Objects/Common",
+                        ".entity.ot.EntitySettingsResource.gen"):
+        pytest.skip("shipped items not available")
+    stats = {s["name"]: s["used"] for s in E.stats()}
+    assert stats["Attack power"] > 0 and stats["Armour"] > 0
+    assert len(stats) > 200

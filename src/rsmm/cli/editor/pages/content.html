@@ -32,6 +32,10 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .ico { border-radius: 6px; background: var(--chip); }
 #main { grid-area: main; overflow: auto; padding: 16px 22px 30px; min-width: 0; }
 .wrap { max-width: 900px; }
+.wrap:has(.split) { max-width: 1320px; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start; }
+.split > aside { position: sticky; top: 0; }
+@media (max-width: 1280px) { .split { grid-template-columns: minmax(0, 1fr); } .split > aside { position: static; order: -1; } }
 .help { background: var(--accentbg); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
 .head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
 .head img { width: 64px; height: 64px; object-fit: contain; }
@@ -46,18 +50,49 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .icons button { padding: 2px; border-radius: 6px; }
 .icons button.on { border-color: var(--accent); background: var(--accentbg); }
 .icons img { width: 40px; height: 40px; display: block; }
-.row { display: grid; grid-template-columns: 1fr 110px 130px; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; }
+.row { display: grid; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; }
 .row:nth-child(odd) { background: var(--panel); }
 .row.changed { border-color: var(--accent); background: var(--accentbg); }
 .row .lbl { font-weight: 600; word-break: break-word; }
 .row .was { font-size: 12px; color: var(--muted); text-align: right; }
 .row input[type=number] { width: 100%; }
-.tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; }
+.tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
 .tag.shadow { background: var(--warnbg); color: var(--warn); }
 .tag.type { background: var(--chip); color: var(--muted); }
 .tag.super { background: var(--accentbg); color: var(--accent); }
-.row.stat { grid-template-columns: 1fr 150px 220px; }
-.row.stat select { width: 100%; }
+.row { grid-template-columns: 1fr 110px 130px 26px; }
+.row.stat { grid-template-columns: 1fr 150px 240px 26px; }
+.reset { visibility: hidden; border: none; background: none; padding: 0 4px; color: var(--muted); font-size: 15px; line-height: 1; }
+.reset:hover { color: var(--accent); }
+.changed > .reset, .changed .reset.own, label .reset.on { visibility: visible; }
+.form label { display: flex; align-items: center; gap: 2px; }
+.pickbox { position: relative; }
+.pickbox input { width: 100%; }
+.picklist { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 2px); max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 4px; }
+.picklist .grp { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px 2px; }
+.picklist .opt { padding: 4px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; }
+.picklist .opt .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.picklist .opt.on, .picklist .opt:hover { background: var(--accentbg); }
+.picklist .none { padding: 6px 8px; color: var(--muted); }
+.card { background: #1d1a24; color: #e9e4f2; border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; max-width: 520px; box-sizing: border-box; }
+.card .ci img, .card .ci .ico { width: 56px; height: 56px; }
+.card .ct { font-weight: 700; font-size: 16px; }
+.card .cr { font-size: 12px; opacity: .6; }
+.card .cd, .card .cs { grid-column: 1 / -1; white-space: pre-wrap; }
+.card .cs { border-top: 1px solid rgba(255,255,255,.12); padding-top: 6px; margin-top: 4px; }
+.card .cs .sl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #c9a7ff; display: block; }
+.kw { color: #f2c14e; font-weight: 600; }
+.val { color: #7ee08a; font-weight: 600; }
+.ph { border-bottom: 1px dotted currentColor; cursor: help; }
+.legend { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 520px; }
+.legend div { padding: 1px 0; }
+.legend b { color: var(--ink); font-weight: 600; }
+.mini { background: #1d1a24; color: #e9e4f2; border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: pre-wrap; }
+.mini .t { font-weight: 700; display: block; }
+.draft { display: flex; gap: 10px; align-items: center; background: var(--warnbg); color: var(--warn); border-radius: 10px; padding: 6px 12px; margin-bottom: 10px; font-size: 13px; }
+.draft button { padding: 2px 8px; font-size: 12px; }
+.headacts { margin-left: auto; }
+.pick .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
 details.file { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--bg); }
 details.file > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
 details.file > summary span { font-weight: 400; }
@@ -151,10 +186,53 @@ function iconImg(stem, cls) {
 function status(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "muted"; }
 function fmt(v) { return typeof v === "number" ? String(Math.round(v * 10000) / 10000) : String(v); }
 
+// Per-viewer drafts. Storage can be missing or throw (a private window, a
+// sandboxed frame), and the page must work the same without it.
+const store = {
+  get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* no storage */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* no storage */ } },
+  keys(prefix) { try { return Object.keys(localStorage).filter(k => k.startsWith(prefix)); } catch { return []; } },
+};
+const DRAFT = { items: "rsmm.editor.draft.item.", talents: "rsmm.editor.draft.talent." };
+
+// The game's card markup: #word@ is a highlighted keyword, &value~ a number
+// (it scales with rarity), {N} a value the game fills in. `fill(n, next)` renders
+// {N}; `next` is the character after it, so a fraction before "%" can show as one.
+function markup(text, fill) {
+  const frag = document.createDocumentFragment();
+  let i = 0, plain = "";
+  const flush = () => { if (plain) { frag.append(plain); plain = ""; } };
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "#" || c === "&") {
+      const close = text.indexOf(c === "#" ? "@" : "~", i + 1);
+      if (close > i) {
+        flush();
+        const span = el("span", { class: c === "#" ? "kw" : "val" });
+        span.append(markup(text.slice(i + 1, close), fill));
+        frag.append(span); i = close + 1; continue;
+      }
+    }
+    if (c === "{") {
+      const m = /^\{(\d+)\}/.exec(text.slice(i));
+      if (m) { flush(); frag.append(fill(Number(m[1]), text[i + m[0].length] || "")); i += m[0].length; continue; }
+    }
+    plain += c; i++;
+  }
+  flush();
+  return frag;
+}
+function resetBtn(onclick, title) {
+  return el("button", { class: "reset", type: "button", title: title || "Undo this change", onclick }, "↺");
+}
+
 // ---- state ------------------------------------------------------------------
 const S = {
   tab: START_TAB === "talents" ? "talents" : "items",
   items: [], icons: [], stats: [], heroes: [], mods: [],
+  drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
+  restored: "",      // the tab whose open edit came from a draft
   item: null,     // detail of the chosen base
   itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
   hero: null, talents: null,
@@ -182,11 +260,14 @@ function renderList() {
     if (!rows.length) list.append(el("div", { class: "empty", text: S.items.length ? "No match." : "No items found. Is the game install readable?" }));
     for (const i of rows) {
       list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
-        iconImg(i.icon), el("span", { class: "nm", text: i.name }), el("span", { class: "sub", text: i.rarity })));
+        iconImg(i.icon), el("span", { class: "nm", text: i.name }),
+        S.drafts.items.has(i.id) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null,
+        el("span", { class: "sub", text: i.rarity })));
     }
   } else {
     for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
-      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) }, el("span", { text: h.replace(/_/g, " ") })));
+      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) }, el("span", { class: "nm", text: h.replace(/_/g, " ") }),
+        S.drafts.talents.has(h) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null));
     }
   }
 }
@@ -196,8 +277,34 @@ async function pickItem(id) {
   try {
     S.item = await get("api/item?id=" + encodeURIComponent(id));
   } catch (e) { status(e.message, "st-bad"); return; }
-  S.itemEdit = { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {}, stats: {}, superDescription: "" };
+  const draft = store.get(DRAFT.items + id);
+  S.restored = draft ? "items" : "";
+  S.itemEdit = Object.assign(freshItemEdit(), draft || {});
   renderList(); renderView(); refresh();
+}
+function freshItemEdit() {
+  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", values: {}, stats: {}, superDescription: "" };
+}
+function itemChanged(E) {
+  return !!(E.name || E.description || E.rarity || E.icon || E.superDescription
+    || Object.keys(E.values).length || Object.keys(E.stats).length);
+}
+function talentChanged(E) { return !!(Object.keys(E.values).length || Object.keys(E.cards).length); }
+// Keep (or drop) the open edit's draft; called on every change.
+function saveDraft() {
+  const items = S.tab === "items";
+  const id = items ? S.item && S.item.id : S.hero;
+  if (!id) return;
+  const E = items ? S.itemEdit : S.talentEdit, set = S.drafts[S.tab];
+  const had = set.has(id);
+  if (items ? itemChanged(E) : talentChanged(E)) { store.set(DRAFT[S.tab] + id, E); set.add(id); }
+  else { store.del(DRAFT[S.tab] + id); set.delete(id); }
+  if (had !== set.has(id)) renderList();
+}
+function draftBanner(onDiscard) {
+  if (S.restored !== S.tab) return null;
+  return el("div", { class: "draft" }, el("span", { text: "Picked up your unfinished edit from last time." }),
+    el("button", { type: "button", onclick: onDiscard }, "Start over"));
 }
 function suggestId(base) {
   // Same length as the base, and different from it.
@@ -209,9 +316,13 @@ function itemView() {
   const it = S.item, E = S.itemEdit, v = el("div");
   v.append(el("div", { class: "help", text: "Copy a shipped item into a new one. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
   if (!it) { v.append(el("div", { class: "empty", text: "Pick a base item on the left." })); return v; }
+  const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
+  const banner = draftBanner(resetAll);
+  if (banner) v.append(banner);
   v.append(el("div", { class: "head" }, iconImg(E.icon || it.icon),
-    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity }))));
-  if (it.description) v.append(el("div", { class: "muted", text: it.description }));
+    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
+    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item", onclick: resetAll }, "Reset all"))));
+
 
   v.append(el("div", { class: "sect", text: "The new item" }));
   const f = el("div", { class: "form" });
@@ -226,13 +337,12 @@ function itemView() {
   checkId();
   f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
   const nameIn = el("input", { placeholder: it.name, value: E.name });
-  nameIn.oninput = () => { E.name = nameIn.value; refresh(); };
-  f.append(el("label", { text: "Name" }), nameIn);
-  const descIn = el("textarea", { placeholder: it.description });
+  f.append(textLabel("Name", nameIn, v => { E.name = v; }), nameIn);
+  const card = it.card || {};
+  const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
-  descIn.oninput = () => { E.description = descIn.value; refresh(); };
-  f.append(el("label", { text: "Description" }), el("div", {}, descIn,
-    el("div", { class: "hint", text: "{0}, {1}… show the item's values in order." })));
+  f.append(textLabel("Description", descIn, v => { E.description = v; }), el("div", {}, descIn,
+    el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
   const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
   for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
   rar.value = E.rarity;
@@ -264,10 +374,84 @@ function itemView() {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
     const sup = el("textarea", { placeholder: it.superText || it.superKey });
     sup.value = E.superDescription;
-    sup.oninput = () => { E.superDescription = sup.value; refresh(); };
-    v.append(sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." }));
+    const f2 = el("div", { class: "form" });
+    f2.append(textLabel("Text", sup, val => { E.superDescription = val; }),
+      el("div", {}, sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
+    v.append(f2);
   }
-  return v;
+  // The preview stays in view beside the form while values change below.
+  const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
+  return el("div", { class: "split" }, v, aside);
+}
+
+// A form label with an undo button for a free-text field.
+function textLabel(text, input, set) {
+  const btn = resetBtn(() => { input.value = ""; set(""); btn.classList.remove("on"); refresh(); });
+  const sync = () => btn.classList.toggle("on", input.value !== "");
+  input.addEventListener("input", () => { set(input.value); sync(); refresh(); });
+  sync();
+  return el("label", {}, text, btn);
+}
+
+// ---- card preview ---------------------------------------------------------------
+// What fills {N}: a plain value is shown as its (edited) number, a computed one
+// by what it is worked out from. The game may still scale a raw number (0.2 can
+// show as 20%), so the legend says which is which.
+function currentValue(label) {
+  const E = S.itemEdit, r = S.item.values.find(x => x.label === label);
+  if (!r) return undefined;
+  return E.values[label] !== undefined ? E.values[label] : r.value;
+}
+function entryFill(entries) {
+  return (n, next) => {
+    const e = entries && entries[n];
+    const chip = el("span", { class: "ph" });
+    if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
+    const v = e.kind === "Value" ? currentValue(e.node) : undefined;
+    // Items store percents as fractions (0.2 = 20%); a best guess, the legend has the raw number.
+    const pct = v !== undefined && next === "%" && Math.abs(v) <= 1;
+    chip.textContent = v === undefined ? "{" + n + "}" : fmt(pct ? v * 100 : v);
+    chip.title = "{" + n + "}: " + e.node + (pct ? " (" + fmt(v) + " shown as a percent)" : "");
+    return chip;
+  };
+}
+function legend(entries) {
+  const box = el("div", { class: "legend" });
+  (entries || []).forEach((e, n) => {
+    let what;
+    if (!e) what = "a value set inside the item";
+    else if (e.kind === "Value") {
+      const v = currentValue(e.node);
+      what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; the game may show it as a percent)" : "");
+    } else {
+      const src = e.sources.filter(x => currentValue(x) !== undefined).map(x => x + " = " + fmt(currentValue(x)));
+      what = e.node + (src.length ? " — worked out from " + src.join(", ") : " — worked out in game");
+    }
+    box.append(el("div", {}, el("b", { text: "{" + n + "} " }), what));
+  });
+  return box;
+}
+function renderPreview() {
+  const host = document.getElementById("preview");
+  if (!host || S.tab !== "items" || !S.item) return;
+  const it = S.item, E = S.itemEdit, card = it.card || {};
+  host.textContent = "";
+  const d = card.description, sp = card.super;
+  const box = el("div", { class: "card" },
+    el("div", { class: "ci" }, iconImg(E.icon || it.icon)),
+    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
+  const descText = E.description || (d && d.text) || it.description || "";
+  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
+  const supText = E.superDescription || (sp && sp.text) || "";
+  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
+  host.append(box);
+  const parts = [];
+  if (d && d.entries.length) parts.push(["Description", d.entries]);
+  if (sp && sp.entries.length) parts.push(["Super effect", sp.entries]);
+  for (const [name, entries] of parts) {
+    host.append(el("div", { class: "legend" }, el("b", { text: name + ":" })), legend(entries));
+  }
+  if (!card.description) host.append(el("div", { class: "legend", text: "Card text needs a readable game install." }));
 }
 
 // One effect: which stat it changes.
@@ -276,18 +460,73 @@ function statRow(m) {
   const row = el("div", { class: "row stat" + (cur !== undefined ? " changed" : "") });
   const lbl = el("div", { class: "lbl", text: m.name });
   lbl.append(el("span", { class: "tag " + (m.super ? "super" : "type"), text: m.super ? "super effect" : "effect" }));
-  const sel = el("select", {});
-  // An unnamed stat has no catalog entry, so it is offered by its key.
-  const names = m.named ? S.stats : [m.stat, ...S.stats];
-  for (const n of names) sel.append(el("option", { value: n, text: n === m.stat && !m.named ? "unnamed (" + n + ")" : n }));
-  sel.value = cur !== undefined ? cur : m.stat;
-  sel.onchange = () => {
-    const same = sel.value === m.stat;
-    if (same) delete E.stats[m.name]; else E.stats[m.name] = sel.value;
+  const set = val => {
+    const same = val === m.stat;
+    if (same) delete E.stats[m.name]; else E.stats[m.name] = val;
     row.classList.toggle("changed", !same); refresh();
   };
-  row.append(lbl, el("div", { class: "was", text: "was " + (m.named ? m.stat : "unnamed") }), sel);
+  const picker = statPicker(cur !== undefined ? cur : m.stat, m.named ? null : m.stat, set);
+  row.append(lbl, el("div", { class: "was", text: "was " + (m.named ? m.stat : "unnamed") }), picker.el,
+    resetBtn(() => { picker.set(m.stat); set(m.stat); }));
   return row;
+}
+
+// Type to find a stat. The stats shipped items give are listed first, with how
+// many effects use each; `unnamed` is an extra key offered as itself.
+function statPicker(value, unnamed, onpick) {
+  let cur = value, open = false, hi = 0, shown = [];
+  const input = el("input", { value: label(cur), spellcheck: "false", "aria-label": "Stat" });
+  const list = el("div", { class: "picklist", role: "listbox" });
+  list.hidden = true;
+  const box = el("div", { class: "pickbox" }, input, list);
+  function label(v) { return v === unnamed ? "unnamed (" + v + ")" : v; }
+  function options(q) {
+    q = q.toLowerCase();
+    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
+    const hit = all.filter(o => !q || o.name.toLowerCase().includes(q) || (o.unnamed && "unnamed".includes(q)));
+    const used = hit.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
+    const rest = hit.filter(o => o.used === 0);
+    return { used, rest };
+  }
+  function draw() {
+    list.textContent = "";
+    const q = input.value === label(cur) ? "" : input.value;
+    const { used, rest } = options(q);
+    shown = [...used, ...rest];
+    hi = Math.max(0, Math.min(hi, shown.length - 1));
+    if (!shown.length) { list.append(el("div", { class: "none", text: "No stat matches." })); return; }
+    let k = 0;
+    const add = (title, opts) => {
+      if (!opts.length) return;
+      list.append(el("div", { class: "grp", text: title }));
+      for (const o of opts) {
+        const idx = k++;
+        const row = el("div", { class: "opt" + (idx === hi ? " on" : ""), role: "option",
+          onmousedown: ev => { ev.preventDefault(); pick(o.name); } },
+          el("span", { text: label(o.name) }), o.used && !o.unnamed ? el("span", { class: "n", text: o.used + "×" }) : null);
+        list.append(row);
+      }
+    };
+    add("Given by shipped items", used);
+    add("Every other stat", rest);
+    const on = list.querySelector(".opt.on");
+    if (on) on.scrollIntoView({ block: "nearest" });
+  }
+  function show() { open = true; list.hidden = false; draw(); }
+  function hide() { open = false; list.hidden = true; input.value = label(cur); }
+  function pick(name) { cur = name; hide(); onpick(name); }
+  input.onfocus = () => { input.select(); hi = 0; show(); };
+  input.oninput = () => { hi = 0; show(); };
+  input.onblur = () => hide();
+  input.onkeydown = ev => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      if (!open) show();
+      hi += ev.key === "ArrowDown" ? 1 : -1; draw(); ev.preventDefault();
+    } else if (ev.key === "Enter") {
+      if (open && shown[hi]) pick(shown[hi].name); ev.preventDefault();
+    } else if (ev.key === "Escape") { hide(); input.blur(); }
+  };
+  return { el: box, set(v) { cur = v; input.value = label(v); } };
 }
 
 // One editable value. `onset(undefined)` means "back to the original".
@@ -310,7 +549,11 @@ function valueRow(label, value, type, shadowed, cur, onset) {
       onset(same ? undefined : nv);
     };
   }
-  row.append(lbl, el("div", { class: "was", text: "was " + fmt(type === "bool" ? !!value : value) }), input);
+  const undo = resetBtn(() => {
+    if (type === "bool") input.checked = !!value; else input.value = fmt(value);
+    row.classList.remove("changed"); onset(undefined);
+  });
+  row.append(lbl, el("div", { class: "was", text: "was " + fmt(type === "bool" ? !!value : value) }), input, undo);
   return row;
 }
 
@@ -320,16 +563,26 @@ async function pickHero(h) {
   try { S.talents = await get("api/talents?hero=" + encodeURIComponent(h)); }
   catch (e) { status(e.message, "st-bad"); return; }
   S.hero = h;
-  S.talentEdit = { prefix: h.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents", values: {}, cards: {} };
+  const draft = store.get(DRAFT.talents + h);
+  S.restored = draft ? "talents" : "";
+  S.talentEdit = Object.assign(freshTalentEdit(), draft || {});
   status("");
   renderList(); renderView(); refresh();
+}
+
+function freshTalentEdit() {
+  return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents", values: {}, cards: {} };
 }
 
 function talentView() {
   const T = S.talents, E = S.talentEdit, v = el("div");
   v.append(el("div", { class: "help", text: "Rename a hero's talent cards and change the numbers behind them. A hero's number of talents is fixed, so you edit existing ones rather than add new ones." }));
   if (!T) { v.append(el("div", { class: "empty", text: "Pick a hero on the left." })); return v; }
-  v.append(el("div", { class: "head" }, el("h2", { text: S.hero.replace(/_/g, " ") })));
+  const resetAll = () => { S.talentEdit = freshTalentEdit(); S.restored = ""; renderView(); refresh(); };
+  const banner = draftBanner(resetAll);
+  if (banner) v.append(banner);
+  v.append(el("div", { class: "head" }, el("h2", { text: S.hero.replace(/_/g, " ") }),
+    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this hero", onclick: resetAll }, "Reset all"))));
   const f = el("div", { class: "form" });
   const pre = el("input", { value: E.prefix, spellcheck: "false" });
   pre.oninput = () => { E.prefix = pre.value; refresh(); };
@@ -341,11 +594,17 @@ function talentView() {
   for (const c of T.cards) {
     const cur = E.cards[c.source] || {};
     const box = el("div", { class: "cardbox" + (cur.name || cur.description ? " changed" : "") });
+    const mini = el("div", { class: "mini" });
+    const drawMini = () => {
+      mini.textContent = "";
+      const chip = n => el("span", { class: "ph", title: "{" + n + "}: filled in by the game", text: "{" + n + "}" });
+      mini.append(el("span", { class: "t" }, markup(nameIn.value || c.name || "", chip)), markup(descIn.value || "", chip));
+    };
     const upd = () => {
       const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
       const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
       if (n || d) E.cards[c.source] = { name: n, description: d }; else delete E.cards[c.source];
-      box.classList.toggle("changed", !!(n || d)); refresh();
+      box.classList.toggle("changed", !!(n || d)); drawMini(); refresh();
     };
     const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
     if (!c.hasName) nameIn.disabled = true;
@@ -354,7 +613,10 @@ function talentView() {
     descIn.value = cur.description || c.description;
     if (!c.hasDescription) descIn.disabled = true;
     descIn.oninput = upd;
-    box.append(el("div", { class: "src", text: c.source }), nameIn, descIn);
+    const undo = resetBtn(() => { nameIn.value = c.name; descIn.value = c.description; upd(); }, "Undo the changes to this card");
+    undo.classList.add("own");
+    box.append(el("div", { class: "src", style: "display:flex" }, el("span", { text: c.source, style: "flex:1" }), undo), nameIn, descIn, mini);
+    drawMini();
     v.append(box);
   }
   v.append(el("div", { class: "hint", text: "Card text markup: {0} is a value, &{0}~ scales with rarity, #WORD@ is a keyword. Keep the placeholders the card already uses." }));
@@ -412,11 +674,13 @@ function editPayload() {
 
 let lastToml = "", tick = 0;
 async function refresh() {
+  renderPreview();
   const edit = editPayload(), me = ++tick;
   $("#check").disabled = $("#save").disabled = $("#copy").disabled = true;
   if (!edit) { $("#toml").textContent = "Pick something on the left to start."; $("#toml").className = "muted"; lastToml = ""; return; }
   await new Promise(r => setTimeout(r, 150));
   if (me !== tick) return;
+  saveDraft();
   try {
     const j = await post("api/toml", { tab: S.tab, edit });
     if (me !== tick) return;
@@ -466,6 +730,9 @@ $("#save").onclick = async () => {
       ? `Added ${j.blocks} block(s) to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
       : `Added ${j.blocks} block(s) to ${j.saved}. Now run: rsmm apply`, "st-ok");
     if (create) { S.mods = (await get("api/mods")).mods; renderMods(); $("#mod").value = mod; $("#newmod").hidden = true; }
+    // Saved into a mod, so it is no longer unfinished.
+    const id = S.tab === "items" ? S.item && S.item.id : S.hero;
+    if (id) { store.del(DRAFT[S.tab] + id); S.drafts[S.tab].delete(id); S.restored = ""; renderList(); }
   } catch (e) { status(e.message, "st-bad"); }
 };
 
@@ -475,6 +742,7 @@ $("#save").onclick = async () => {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
+  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) S.drafts[t].add(k.slice(DRAFT[t].length));
   for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
   renderMods();
   // A deep link opens a pick: #item=<id> or #hero=<name>.

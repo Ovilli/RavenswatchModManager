@@ -23,6 +23,7 @@ from it as a generic GUID-swap primitive.
 
 from __future__ import annotations
 
+import re
 import struct
 from dataclasses import dataclass
 
@@ -273,3 +274,84 @@ def set_super_text_key(cooked_bytes: bytes, new_key: str) -> bytes:
     if old is None:
         raise ItemModifierError("this item has no super effect text")
     return replace_lstr_any(cooked_bytes, old, new_key)
+
+
+# --- card text placeholders --------------------------------------------------
+
+_REF_LABEL = re.compile(rb"([\x05-\xff])\x00\x00\x00(\[[A-Za-z ]+\] [ -~]+)")
+_FORMAT_TAIL = b'""\xbb\xaa""\xbb\xaa'
+_FORMAT_CLASS = "oCEntityCpntStringFormatValueSettings"
+
+
+def _labels(payload: bytes, start: int = 0) -> list[str]:
+    """Every ``[Kind] path`` reference label from ``start``, in order."""
+    return [payload[m.start(2):m.start(2) + m.group(1)[0]].decode("utf-8", "replace")
+            for m in _REF_LABEL.finditer(payload, start)]
+
+
+@dataclass(frozen=True)
+class Placeholder:
+    """What fills one ``{N}`` of a card text."""
+    node: str            # the node's own name, e.g. ``Vitality Step Value``
+    kind: str            # its bracket kind: ``Value``, ``Multi values operations``, ...
+    sources: tuple[str, ...] = ()   # the [Value] nodes a computed node reads
+
+
+@dataclass(frozen=True)
+class CardFormat:
+    key: str                                  # the text-bank key
+    entries: tuple[Placeholder | None, ...]   # {0}, {1}, ...; None = not a named node
+
+
+def card_formats(cooked_bytes: bytes) -> dict[str, CardFormat]:
+    """Every String Format of an item that reads the magical-object text bank,
+    by the format's own name (``Descripton Format``, ``Super Effect Descripton
+    Format``, ...).
+
+    After the key a format stores ``u32 count`` and one picker per ``{N}``, in
+    order. A picker that points at a node carries that node's ``[Kind] path``
+    label; one holding an inline value carries none, and when the labels do not
+    line up one-for-one with ``count`` the whole mapping is dropped rather than
+    guessed (9 of the 143 shipped formats).
+    """
+    from . import cooked
+    cf = cooked.parse(cooked_bytes)
+    names = [c.name for c in cf.classes]
+    bank = struct.pack("<I", len(_TEXT_BANK)) + _TEXT_BANK.encode()
+    own = {}
+    for sec in cf.sections[1:-1]:
+        name = _own_name(sec.payload)
+        if name:
+            own.setdefault(name, sec.payload)
+    out: dict[str, CardFormat] = {}
+    for sec in cf.sections[1:-1]:
+        p = sec.payload
+        name = _own_name(p)
+        key = _format_key(p)
+        if not name or key is None or _class_of(p, names) != _FORMAT_CLASS:
+            continue
+        end = p.find(bank) + len(bank) + 4 + 4 + len(key)
+        tail = p[end:end + 12]
+        if len(tail) < 12 or tail[:8] != _FORMAT_TAIL:
+            out[name] = CardFormat(key=key, entries=())
+            continue
+        count = struct.unpack_from("<I", tail, 8)[0]
+        labels = _labels(p, end + 12)
+        if count > 64:
+            out[name] = CardFormat(key=key, entries=())
+            continue
+        if len(labels) != count:
+            out[name] = CardFormat(key=key, entries=(None,) * count)
+            continue
+        entries = []
+        for label in labels:
+            kind = label[1:label.index("]")]
+            node = label.rsplit("\\", 1)[-1]
+            sources: tuple[str, ...] = ()
+            if kind != "Value" and node in own:
+                sources = tuple(dict.fromkeys(
+                    lab.rsplit("\\", 1)[-1] for lab in _labels(own[node])
+                    if lab.startswith("[Value] ")))
+            entries.append(Placeholder(node=node, kind=kind, sources=sources))
+        out[name] = CardFormat(key=key, entries=tuple(entries))
+    return out

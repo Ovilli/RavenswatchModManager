@@ -127,3 +127,36 @@ def test_a_copy_with_super_text_reads_its_own_key():
 def test_super_text_on_an_item_without_a_super_effect_is_refused():
     with pytest.raises(ValueError, match="no super effect text"):
         _copy("Powerups", "Power_Up_Damage", "Power_Up_Damag2", super_description="x")
+
+
+# --- card text placeholders -----------------------------------------------------------
+
+def test_a_card_text_names_what_fills_each_placeholder():
+    formats = IM.card_formats(_item("Common", "Damage_Per_Vitality"))
+    desc = formats["Descripton Format"]
+    assert desc.key == "Damage_Per_Vitality_Description"
+    assert [(e.node, e.kind) for e in desc.entries] == [
+        ("Damage Value Desc Operation", "Multi values operations"),
+        ("Vitality Step Value", "Value"),
+        ("Current Value Description Selector", "Value Selector"),
+    ]
+    # A computed placeholder says which plain values it is worked out from.
+    assert desc.entries[0].sources == ("Damage Value",)
+    sup = formats["Super Effect Descripton Format"]
+    assert sup.key == "Crit_Chance_SuperEffect"
+    assert [e.node for e in sup.entries] == ["Super Effect Crit Chance Value"]
+
+
+def test_placeholders_that_do_not_line_up_are_left_unnamed():
+    """Copy_Card's heal line holds inline values, not named nodes."""
+    formats = IM.card_formats(_item("Epic", "Copy_Card"))
+    assert formats["Current Heal Desc Format"].entries == (None, None)
+    # Only String Format components count: selectors that name a key are not texts.
+    assert "Description Selector" not in formats
+
+
+def test_every_shipped_card_text_parses():
+    for rarity in ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"):
+        for f in corpus.files(f"{_MO}/{rarity}", _SUFFIX):
+            for fmt in IM.card_formats(f.read_bytes()).values():
+                assert len(fmt.entries) <= 64, (f, fmt.key)
