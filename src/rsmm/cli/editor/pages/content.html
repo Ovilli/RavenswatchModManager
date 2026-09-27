@@ -7,6 +7,9 @@
 <style>{{common.css}}</style>
 <style>
 html.embedded .tab { display: none; }
+/* Inside `rsmm editor` or the web editor the host's own bar names the tab,
+   and this page's header would be an empty strip. */
+html.embedded body > header { display: none; }
 body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink);
        display: grid; grid-template: "top top" auto "left main" 1fr "left bar" auto / 280px 1fr; height: 100vh; }
 header { grid-area: top; display: flex; gap: 14px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -170,6 +173,35 @@ details.file .rows { padding: 0 6px 8px; }
 .cardbox.changed { border-color: var(--accentline); }
 .cardbox .src { font-size: 12px; color: var(--muted); }
 .cardbox input { width: 100%; margin: 6px 0; font-weight: 600; }
+dialog#newmoddlg { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px 20px; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
+#newmoddlg h3 { margin: 0 0 4px; }
+.nmgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 12px 0; }
+.nmgrid label, .nmgrid > div { display: flex; flex-direction: column; gap: 3px; font-weight: 600; font-size: 13px; }
+.nmgrid .wide { grid-column: 1 / -1; }
+.nmgrid input, .nmgrid select, .nmgrid textarea { font-weight: 400; width: 100%; }
+.nmgrid .hint { font-weight: 400; }
+.nmlabel { font-weight: 600; }
+.nmtags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-weight: 400; }
+.nmtags label { flex-direction: row; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-weight: 400; cursor: pointer; }
+.nmtags label:has(input:checked) { border-color: var(--accentline); background: var(--accentbg); }
+.nmtags input { width: auto; margin: 0; }
+.nmacts { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 560px) { .nmgrid { grid-template-columns: 1fr; } }
+.loading { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 40px 20px; color: var(--muted); }
+.loading.small { padding: 20px; justify-content: flex-start; }
+.spin { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#bar .left { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+#pending { display: flex; flex-wrap: wrap; gap: 6px; }
+#pending:empty { display: none; }
+.pchip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; padding: 0 2px 0 10px; }
+.pchip.open { border-color: var(--accentline); }
+.pchip.bad { border-color: var(--bad); color: var(--bad); }
+.pchip button { border: none; background: none; padding: 2px 6px; font-size: 12px; }
+.pchip .x { color: var(--muted); font-size: 14px; line-height: 1; }
+.pchip .x:hover { color: var(--bad); }
+.errs div { color: var(--bad); font-size: 12px; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
 #bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
 #bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
@@ -199,16 +231,44 @@ details.file .rows { padding: 0 6px 8px; }
 <main id="main"><div class="wrap" id="view"><div class="empty">Loading…</div></div></main>
 
 <section id="bar">
-  <pre id="toml" class="muted">Pick something on the left to start.</pre>
+  <div class="left">
+    <div id="pending" aria-label="Everything changed so far"></div>
+    <pre id="toml" class="muted">Pick something on the left to start.</pre>
+  </div>
   <div class="acts">
     <div class="line"><button id="check">Check</button><button id="copy">Copy</button></div>
     <select id="mod"></select>
-    <div class="line" id="newmod" hidden><input id="newid" placeholder="new mod id"></div>
     <button id="save" class="primary">Add to mod</button>
     <div class="tiny muted">Nothing touches the game until you run <code>rsmm apply</code>.</div>
   </div>
   <div id="status" class="muted"></div>
 </section>
+
+<dialog id="newmoddlg" aria-labelledby="nm-title">
+  <form method="dialog" id="nmform">
+    <h3 id="nm-title">New mod</h3>
+    <p class="muted tiny">What people see about your mod in the desktop app and on the store. You can change all of it later in <code>manifest.toml</code>.</p>
+    <div class="nmgrid">
+      <label>Mod id<input id="nm-id" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]*" placeholder="stronger-items" spellcheck="false"><span class="hint">The folder name. Letters, digits, - and _.</span></label>
+      <label>Name<input id="nm-name" placeholder="Stronger Items"></label>
+      <label>Author<input id="nm-author" placeholder="Your name or handle"></label>
+      <label>Version<input id="nm-version" value="0.1.0" pattern="\d+\.\d+\.\d+.*"></label>
+      <label class="wide">Summary<input id="nm-summary" maxlength="512" placeholder="One line: what the mod does"></label>
+      <label class="wide">Description<textarea id="nm-desc" rows="4" maxlength="8192" placeholder="What changes, how to use it, anything players should know"></textarea></label>
+      <div class="wide"><span class="nmlabel">Tags</span><div id="nm-tags" class="nmtags"></div>
+        <input id="nm-moretags" placeholder="Other tags, separated by commas"></div>
+      <label>Licence<select id="nm-license">
+        <option value="">Choose…</option>
+        <option>MIT</option><option>CC-BY-4.0</option><option>CC-BY-NC-4.0</option><option>CC0-1.0</option>
+        <option>GPL-3.0-or-later</option><option value="All rights reserved">All rights reserved</option>
+      </select><span class="hint">Whether others may share or change your mod.</span></label>
+      <label>Homepage<input id="nm-home" type="url" placeholder="https://…"></label>
+      <label class="wide">Source code<input id="nm-repo" type="url" placeholder="https://github.com/…"></label>
+    </div>
+    <div id="nm-error" class="st-bad tiny"></div>
+    <div class="nmacts"><button value="cancel" formnovalidate>Cancel</button><button id="nm-ok" class="primary" value="ok">Create mod and add</button></div>
+  </form>
+</dialog>
 
 <script>{{common.js}}</script>
 <script>
@@ -347,7 +407,7 @@ function resetBtn(onclick, title) {
 // ---- state ------------------------------------------------------------------
 const S = {
   tab: START_TAB === "talents" ? "talents" : "items",
-  items: [], icons: [], stats: [], heroes: [], mods: [], portraits: {},
+  items: [], icons: [], stats: [], heroes: [], mods: [], modTags: [], portraits: {},
   drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
   restored: "",      // the tab whose open edit came from a draft
   item: null,     // detail of the chosen base
@@ -392,9 +452,11 @@ function renderList() {
 
 // ---- items ------------------------------------------------------------------------
 async function pickItem(id) {
+  const meta = S.items.find(i => i.id === id);
+  $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
   try {
     S.item = await get("api/item?id=" + encodeURIComponent(id));
-  } catch (e) { status(e.message, "st-bad"); return; }
+  } catch (e) { status(e.message, "st-bad"); renderView(); return; }
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
   S.itemEdit = Object.assign(freshItemEdit(), draft || {});
@@ -418,10 +480,72 @@ function saveDraft() {
   if (!id) return;
   const E = items ? S.itemEdit : S.talentEdit, set = S.drafts[S.tab];
   const had = set.has(id);
-  if (items ? itemChanged(E) : talentChanged(E)) { store.set(DRAFT[S.tab] + id, E); set.add(id); }
-  else { store.del(DRAFT[S.tab] + id); set.delete(id); }
+  if (items ? itemChanged(E) : talentChanged(E)) {
+    const payload = editPayload();
+    store.set(DRAFT[S.tab] + id, Object.assign({}, E, { payload }));
+    S.pending[S.tab].set(id, payload); set.add(id);
+  } else { store.del(DRAFT[S.tab] + id); S.pending[S.tab].delete(id); set.delete(id); }
   if (had !== set.has(id)) renderList();
 }
+function loadingView(text, small) {
+  return el("div", { class: "loading" + (small ? " small" : ""), role: "status" }, el("span", { class: "spin" }), el("span", { text }));
+}
+
+// ---- every pending change -----------------------------------------------------------
+// Each changed item and hero is kept with the payload it sends, so the bar shows
+// and saves all of them together, not only the one that is open. Kept in memory
+// always and in the browser as a draft where it can be.
+S.pending = { items: new Map(), talents: new Map() };
+function pendingName(tab, id) {
+  if (tab === "items") return (S.items.find(i => i.id === id) || {}).name || id;
+  return id.replace(/_/g, " ") + " talents";
+}
+function pendingEdits() {
+  const out = [];
+  for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
+    out.push({ tab, id, edit, name: pendingName(tab, id) });
+  }
+  // The open item shows before it has a change: its block alone makes the copy.
+  if (S.tab === "items" && S.item && !S.pending.items.has(S.item.id)) {
+    out.unshift({ tab: "items", id: S.item.id, edit: editPayload(), name: pendingName("items", S.item.id) });
+  }
+  return out;
+}
+function isOpen(tab, id) { return tab === S.tab && id === (tab === "items" ? S.item && S.item.id : S.hero); }
+function dropPending(tab, id) {
+  store.del(DRAFT[tab] + id); S.pending[tab].delete(id); S.drafts[tab].delete(id);
+  if (isOpen(tab, id)) {
+    if (tab === "items") S.itemEdit = freshItemEdit(); else S.talentEdit = freshTalentEdit();
+    S.restored = ""; renderView();
+  }
+  renderList(); refresh();
+}
+async function openPending(tab, id) {
+  if (tab !== S.tab) setTab(tab);
+  if (tab === "items") await pickItem(id); else await pickHero(id);
+}
+function renderPending(edits, errors) {
+  const box = $("#pending"); box.textContent = "";
+  const bad = new Set((errors || []).map(e => e.name));
+  if (edits.length < 2 && !bad.size) return;
+  for (const e of edits) {
+    const chip = el("span", { class: "pchip" + (isOpen(e.tab, e.id) ? " open" : "") + (bad.has(e.name) ? " bad" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => openPending(e.tab, e.id) }, e.name));
+    if (S.pending[e.tab].has(e.id)) {
+      chip.append(el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop " + e.name, onclick: () => dropPending(e.tab, e.id) }, "×"));
+    }
+    box.append(chip);
+  }
+}
+
+// A message that answers a button press goes away by itself; any edit clears it too.
+let statusTimer = 0;
+function flash(text, cls, ms) {
+  status(text, cls);
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => status(""), ms || 5000);
+}
+
 function draftBanner(onDiscard) {
   if (S.restored !== S.tab) return null;
   return el("div", { class: "draft" }, el("span", { text: "Picked up your unfinished edit from last time." }),
@@ -595,8 +719,9 @@ function cardAssets() {
       CARD.tex = {};
       for (const n of CARD_TEX) CARD.tex[n] = await cardTex(n);
       CARD.ok = !!(CARD.fonts.title && CARD.fonts.body && CARD.tex.back && CARD.tex.frame_Common);
+      CARD.done = true;
       return CARD.ok;
-    });
+    }).catch(() => { CARD.done = true; return false; });
   }
   return CARD.ready;
 }
@@ -689,10 +814,11 @@ function renderPreview() {
   const host = document.getElementById("preview");
   if (!host || S.tab !== "items" || !S.item) return;
   const it = S.item, E = S.itemEdit, card = it.card || {};
-  if (!CARD.ready) cardAssets().then(ok => { if (ok) renderPreview(); });
+  if (!CARD.ready) cardAssets().then(() => renderPreview());
   host.textContent = "";
   const d = card.description, sp = card.super;
   if (CARD.ok) host.append(gameCard(it, E, card));
+  else if (!CARD.done) host.append(loadingView("Loading the game's card art…", true));
   else host.append(cssCard(it, E, card));
   const parts = [];
   if (d && d.entries.length) parts.push(["Description", d.entries]);
@@ -821,9 +947,9 @@ function valueRow(label, value, type, shadowed, cur, onset) {
 // ---- talents ----------------------------------------------------------------------
 const TIERS = ["Common", "Rare", "Epic", "Legendary"];
 async function pickHero(h) {
-  status("Reading " + h + "…");
+  $("#view").replaceChildren(loadingView("Loading " + h.replace(/_/g, " ") + "'s talents…"));
   try { S.talents = await get("api/talents?hero=" + encodeURIComponent(h)); }
-  catch (e) { status(e.message, "st-bad"); return; }
+  catch (e) { status(e.message, "st-bad"); renderView(); return; }
   S.hero = h;
   const draft = store.get(DRAFT.talents + h);
   S.restored = draft ? "talents" : "";
@@ -897,6 +1023,7 @@ function cardIcon(c, cls) {
 }
 function talentCard(c, nameText, descText) {
   const rarity = S.talentEdit.rarity || "Common";
+  if (!CARD.ok && !CARD.done) return loadingView("Loading the game's card art…", true);
   if (!CARD.ok) {
     const box = el("div", { class: "card" }, el("div", { class: "ci" }, cardIcon(c)),
       el("div", {}, el("div", { class: "ct", text: nameText }), el("div", { class: "cr", text: rarity })));
@@ -973,7 +1100,7 @@ function talentNumbers(c, redraw) {
 
 function talentView() {
   const T = S.talents, v = el("div", { class: "tpage" });
-  if (!CARD.ready) cardAssets().then(ok => { if (ok && S.tab === "talents") renderView(); });
+  if (!CARD.ready) cardAssets().then(() => { if (S.tab === "talents" && S.talents) TPREV.all(); });
   if (!T) {
     v.append(el("div", { class: "help", text: "Pick a hero on the left to rename their talent cards and change the numbers behind them." }));
     return v;
@@ -1186,21 +1313,35 @@ function editPayload() {
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })) };
 }
 
-let lastToml = "", tick = 0;
+let lastToml = "", lastEdits = [], tick = 0;
+function editsBody(edits) { return { edits: edits.map(e => ({ tab: e.tab, edit: e.edit, name: e.name })) }; }
 async function refresh() {
   renderPreview();
-  const edit = editPayload(), me = ++tick;
+  const me = ++tick;
+  clearTimeout(statusTimer); status("");        // an edit makes the last check's verdict stale
   $("#check").disabled = $("#save").disabled = $("#copy").disabled = true;
-  if (!edit) { $("#toml").textContent = "Pick something on the left to start."; $("#toml").className = "muted"; lastToml = ""; return; }
   await new Promise(r => setTimeout(r, 150));
   if (me !== tick) return;
   saveDraft();
+  const edits = pendingEdits();
+  lastEdits = edits;
+  renderPending(edits, []);
+  if (!edits.length) {
+    $("#toml").textContent = "Nothing changed yet. Pick an item or a hero on the left.";
+    $("#toml").className = "muted"; lastToml = ""; return;
+  }
   try {
-    const j = await post("api/toml", { tab: S.tab, edit });
+    const j = await post("api/toml", editsBody(edits));
     if (me !== tick) return;
-    lastToml = j.toml; $("#toml").textContent = j.toml; $("#toml").className = "";
-    $("#check").disabled = $("#save").disabled = $("#copy").disabled = false;
-    status("");
+    renderPending(edits, j.errors);
+    lastToml = j.toml;
+    const pre = $("#toml"); pre.textContent = ""; pre.className = j.toml ? "" : "muted";
+    if (j.errors.length) {
+      pre.append(el("div", { class: "errs" }, ...j.errors.map(e => el("div", { text: "✗ " + (e.name ? e.name + ": " : "") + e.error }))));
+    }
+    pre.append(j.toml || (j.errors.length ? "" : "Nothing changed yet."));
+    $("#copy").disabled = !j.toml;
+    $("#check").disabled = $("#save").disabled = !j.blocks || j.errors.length > 0;
   } catch (e) {
     if (me !== tick) return;
     lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
@@ -1208,21 +1349,26 @@ async function refresh() {
 }
 
 $("#copy").onclick = async () => {
-  try { await navigator.clipboard.writeText(lastToml); status("Copied. Paste it at the end of a mod's manifest.toml.", "st-ok"); }
-  catch { status("The browser blocked the clipboard. Select the text and copy it.", "st-warn"); }
+  try { await navigator.clipboard.writeText(lastToml); flash("Copied. Paste it at the end of a mod's manifest.toml.", "st-ok", 3500); }
+  catch { flash("The browser blocked the clipboard. Select the text and copy it.", "st-warn", 6000); }
 };
 
 $("#check").onclick = async () => {
+  clearTimeout(statusTimer);
   status("Building with the real kinds…");
   $("#check").disabled = true;
   try {
-    const j = await post("api/check", { tab: S.tab, edit: editPayload() });
-    const box = el("div", { class: "results" });
+    const j = await post("api/check", editsBody(lastEdits));
     const bad = j.results.filter(r => !r.ok);
-    for (const r of j.results) box.append(el("div", { class: r.ok ? "st-ok" : "st-bad",
-      text: (r.ok ? "✓ " : "✗ ") + r.kind + " " + r.id + (r.ok ? ` builds (${r.files} file${r.files === 1 ? "" : "s"})` : ": " + r.error) }));
-    const s = $("#status"); s.textContent = ""; s.className = "";
-    s.append(el("div", { class: bad.length ? "st-bad" : "st-ok", text: bad.length ? `${bad.length} block(s) would fail in rsmm apply:` : "Everything builds. rsmm apply will accept these blocks." }), box);
+    if (!bad.length) {
+      flash(`Everything builds (${j.results.length} block${j.results.length === 1 ? "" : "s"}). rsmm apply will accept them.`, "st-ok", 4000);
+    } else {
+      // A failure stays until the next edit: it is the thing to fix.
+      const box = el("div", { class: "results" });
+      for (const r of bad) box.append(el("div", { class: "st-bad", text: "✗ " + r.kind + " " + r.id + ": " + r.error }));
+      const st = $("#status"); st.textContent = ""; st.className = "";
+      st.append(el("div", { class: "st-bad", text: `${bad.length} of ${j.results.length} block(s) would fail in rsmm apply:` }), box);
+    }
   } catch (e) { status(e.message, "st-bad"); }
   $("#check").disabled = false;
 };
@@ -1231,33 +1377,78 @@ function renderMods() {
   const sel = $("#mod"); sel.textContent = "";
   sel.append(el("option", { value: "__new__", text: "New mod…" }));
   for (const m of S.mods) sel.append(el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` }));
-  sel.onchange = () => { $("#newmod").hidden = sel.value !== "__new__"; };
-  $("#newmod").hidden = sel.value !== "__new__";
+  sel.onchange = () => { $("#save").textContent = sel.value === "__new__" ? "Create mod…" : "Add to mod"; };
+  sel.onchange();
 }
-$("#save").onclick = async () => {
+
+// The details of a new mod, asked when it is created. The author is kept for
+// next time (a per-viewer convenience; the page works the same without it).
+const AUTHOR_KEY = "rsmm.editor.author";
+// `error` reopens the form after a refusal, answers kept, with the reason.
+function askNewMod(error) {
+  const dlg = $("#newmoddlg"), tags = $("#nm-tags");
+  if (!tags.childElementCount) {
+    for (const t of S.modTags) tags.append(el("label", {}, el("input", { type: "checkbox", value: t }), t));
+  }
+  if (!$("#nm-author").value) $("#nm-author").value = store.get(AUTHOR_KEY) || "";
+  $("#nm-error").textContent = error || "";
+  return new Promise(resolve => {
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "ok") { resolve(null); return; }
+      const picked = [...tags.querySelectorAll("input:checked")].map(i => i.value);
+      const more = $("#nm-moretags").value.split(",").map(t => t.trim()).filter(Boolean);
+      resolve({ id: $("#nm-id").value.trim(), meta: {
+        name: $("#nm-name").value, author: $("#nm-author").value, version: $("#nm-version").value,
+        summary: $("#nm-summary").value, description: $("#nm-desc").value, tags: [...picked, ...more],
+        license: $("#nm-license").value, homepage_url: $("#nm-home").value, repo_url: $("#nm-repo").value } });
+    };
+    dlg.returnValue = "";
+    dlg.showModal();
+    $("#nm-id").focus();
+  });
+}
+$("#save").onclick = () => saveAll();
+async function saveAll(error) {
   const create = $("#mod").value === "__new__";
-  const mod = create ? $("#newid").value.trim() : $("#mod").value;
-  if (!mod) { status("Name the new mod first.", "st-warn"); return; }
+  let mod = $("#mod").value, meta = null;
+  if (create) {
+    const got = await askNewMod(error);
+    if (!got) return;
+    ({ id: mod, meta } = got);
+    if (meta.author.trim()) store.set(AUTHOR_KEY, meta.author.trim());
+  }
+  const edits = lastEdits;
   try {
-    const j = await post("api/save", { tab: S.tab, edit: editPayload(), mod, create });
-    status(window.RSMM_HOSTED
+    const j = await post("api/save", Object.assign(editsBody(edits), { mod, create }, meta ? { meta } : {}));
+    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); $("#mod").value = mod; $("#mod").onchange(); }
+    // Everything saved is in the mod now: none of it is unfinished any more.
+    for (const e of edits) { store.del(DRAFT[e.tab] + e.id); S.pending[e.tab].delete(e.id); S.drafts[e.tab].delete(e.id); }
+    if (S.item) S.itemEdit = freshItemEdit();
+    if (S.hero) S.talentEdit = freshTalentEdit();
+    S.restored = "";
+    renderList(); renderView(); await refresh();
+    flash(window.RSMM_HOSTED
       ? `Added ${j.blocks} block(s) to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
-      : `Added ${j.blocks} block(s) to ${j.saved}. Now run: rsmm apply`, "st-ok");
-    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); $("#mod").value = mod; $("#newmod").hidden = true; }
-    // Saved into a mod, so it is no longer unfinished.
-    const id = S.tab === "items" ? S.item && S.item.id : S.hero;
-    if (id) { store.del(DRAFT[S.tab] + id); S.drafts[S.tab].delete(id); S.restored = ""; renderList(); }
-  } catch (e) { status(e.message, "st-bad"); }
-};
+      : `Added ${j.blocks} block(s) to ${j.saved}. Now run: rsmm apply`, "st-ok", 9000);
+  } catch (e) {
+    // A refused new mod (a taken id, a bad version) asks again, with the reason.
+    if (create) saveAll(e.message); else status(e.message, "st-bad");
+  }
+}
 
 // ---- boot --------------------------------------------------------------------------
 (async () => {
   try {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
+    S.modTags = mo.tags || [];
     get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
-  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) S.drafts[t].add(k.slice(DRAFT[t].length));
+  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) {
+    const id = k.slice(DRAFT[t].length), d = store.get(k);
+    S.drafts[t].add(id);
+    if (d && d.payload) S.pending[t].set(id, d.payload);    // older drafts join once reopened
+  }
   for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
   renderMods();
   // A deep link opens a pick: #item=<id> or #hero=<name>.

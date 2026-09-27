@@ -432,6 +432,7 @@ def _block(fields: dict) -> str:
 #: the mod -> bytes. Never written to the manifest; check() and save() put them
 #: in the mod folder beside it (the PNG a custom icon is cooked from).
 FILES = "_files"
+_NOTHING = "nothing changed yet"
 _UPLOAD_MAX = 2 * 1024 * 1024
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -618,7 +619,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
                                    "hero": _herodefs().get(hero, hero),
                                    "source": source, **fields}))
     if not out:
-        raise EditorError("nothing changed yet")
+        raise EditorError(_NOTHING)
     return out
 
 
@@ -678,24 +679,73 @@ def list_mods(root: Path) -> list[dict]:
     return out
 
 
-def _new_manifest(mod_id: str, name: str) -> str:
+#: The store's categories (packages/schemas `modCategorySchema`), offered as
+#: tags. Other tags are allowed; these are the ones the store filters by.
+STORE_TAGS = ("gameplay", "balance", "cosmetic", "qol", "audio", "difficulty",
+              "speedrun", "utility")
+_SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][\w.]+)?$")
+_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+_URL_RE = re.compile(r"^https?://\S+$")
+
+
+def mod_meta(raw: dict | None, mod_id: str) -> dict:
+    """The ``[mod]`` details of a new mod, checked against the limits the store
+    and ``rsmm lint`` hold them to (manifest_spec.MOD_FIELDS)."""
+    raw = raw or {}
+
+    def text(key: str, limit: int, default: str = "") -> str:
+        v = raw.get(key, default)
+        if not isinstance(v, str):
+            raise EditorError(f"{key} must be text")
+        v = v.strip() if key != "description" else v.strip("\n")
+        if len(v) > limit:
+            raise EditorError(f"{key} is over {limit} characters")
+        return v
+
+    meta = {"name": text("name", 80) or mod_id,
+            "version": text("version", 32) or "0.1.0",
+            "author": text("author", 80),
+            "summary": text("summary", 512),
+            "description": text("description", 8192),
+            "license": text("license", 64)}
+    if not _SEMVER_RE.match(meta["version"]):
+        raise EditorError(f"version {meta['version']!r} is not like 1.0.0")
+    for key in ("homepage_url", "repo_url"):
+        v = text(key, 300)
+        if v and not _URL_RE.match(v):
+            raise EditorError(f"{key.replace('_', ' ')} must start with http:// or https://")
+        meta[key] = v
+    tags = raw.get("tags") or []
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        raise EditorError("tags must be a list of words")
+    tags = list(dict.fromkeys(t.strip().lower() for t in tags if t.strip()))
+    bad = [t for t in tags if not _TAG_RE.match(t)]
+    if bad:
+        raise EditorError(f"tag {bad[0]!r}: letters, digits and - only, up to 32")
+    if len(tags) > 16:
+        raise EditorError("at most 16 tags")
+    meta["tags"] = tags
+    return meta
+
+
+def _new_manifest(mod_id: str, meta: dict | str | None = None) -> str:
     from rsmm.sdk.manifest_spec import SCHEMA_URL
-    return "\n".join([
-        f"#:schema {SCHEMA_URL}", "", "[mod]",
-        f"id          = {_toml(mod_id)}",
-        f"name        = {_toml(name or mod_id)}",
-        'version     = "0.1.0"',
-        'author      = "you"',
-        'description = ""',
-        "enabled     = true",
-        'sdk_version = ">=3.0,<4"',
-        "tags        = []",
-        'license     = ""',
-    ]) + "\n"
+    if not isinstance(meta, dict):
+        meta = mod_meta({"name": meta or ""}, mod_id)
+    rows = [("id", mod_id), ("name", meta["name"]), ("version", meta["version"]),
+            ("author", meta["author"]), ("summary", meta["summary"]),
+            ("description", meta["description"]), ("enabled", True),
+            ("sdk_version", ">=3.0,<4"), ("tags", meta["tags"]), ("license", meta["license"])]
+    rows += [(k, meta[k]) for k in ("homepage_url", "repo_url") if meta.get(k)]
+    # An empty summary is left out rather than written as "".
+    rows = [(k, v) for k, v in rows if not (k == "summary" and not v)]
+    width = max(len(k) for k, _v in rows)
+    return "\n".join([f"#:schema {SCHEMA_URL}", "", "[mod]",
+                      *(f"{k:<{width}} = {_toml(v)}" for k, v in rows)]) + "\n"
 
 
 def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
-         create: bool = False, name: str = "") -> Path:
+         create: bool = False, name: str = "", meta: dict | None = None) -> Path:
     """Append the blocks to ``mods/<mod_id>/manifest.toml`` (or create the mod).
 
     Refuses an id the manifest already uses for that kind, and puts the old
@@ -708,8 +758,9 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
     if create:
         if target.exists():
             raise EditorError(f"a mod named {mod_id!r} already exists")
+        details = mod_meta({**(meta or {}), **({"name": name} if name else {})}, mod_id)
         (target / "assets").mkdir(parents=True)
-        old = _new_manifest(mod_id, name)
+        old = _new_manifest(mod_id, details)
     else:
         if not manifest.is_file():
             raise EditorError(f"no mod {mod_id!r} in {root}")
@@ -746,11 +797,58 @@ def _write_files(mod_root: Path, fields: dict) -> None:
 
 # --- routes ---------------------------------------------------------------------
 
+def collect(body: dict) -> tuple[list[tuple[str, str, dict]], list[dict]]:
+    """Every pending edit's blocks, and what is wrong with the ones that fail.
+
+    ``body`` carries ``edits`` = ``[{tab, edit, name}]`` -- everything changed
+    in the page, over several items and heroes -- or one ``tab`` + ``edit``.
+    A broken edit does not hide the others: its error is reported by ``name``
+    and its blocks are left out. Two edits making the same block id is an error
+    of both."""
+    edits = body.get("edits")
+    if edits is None:
+        edits = [{"tab": body.get("tab"), "edit": body.get("edit"), "name": ""}]
+    if not isinstance(edits, list):
+        raise EditorError("'edits' must be a list")
+    defs: list[tuple[str, str, dict]] = []
+    errors: list[dict] = []
+    owner: dict[tuple[str, str], str] = {}
+    for e in edits:
+        if not isinstance(e, dict) or not isinstance(e.get("edit"), dict):
+            raise EditorError("each edit needs an 'edit' object")
+        name = str(e.get("name") or "")
+        try:
+            got = defs_for(str(e.get("tab") or ""), e["edit"])
+        except EditorError as err:
+            if str(err) != _NOTHING:            # an untouched hero is not an error
+                errors.append({"name": name, "error": str(err)})
+            continue
+        clash = [f"{k} {i!r}" for k, i, _f in got if (k, i) in owner]
+        if clash:
+            errors.append({"name": name, "error": ", ".join(clash) + " is also made by "
+                           + owner[next((k, i) for k, i, _f in got if (k, i) in owner)]
+                           + " — give one of them another id"})
+            continue
+        for k, i, _f in got:
+            owner[(k, i)] = name or i
+        defs.extend(got)
+    return defs, errors
+
+
 def _defs(req: Request) -> list[tuple[str, str, dict]]:
-    edit = req.body.get("edit")
-    if not isinstance(edit, dict):
-        raise EditorError("the request needs an 'edit' object")
-    return defs_for(str(req.body.get("tab") or ""), edit)
+    """The blocks of a check or save: refused while any edit is broken."""
+    defs, errors = collect(req.body)
+    if errors:
+        raise EditorError("; ".join(f"{e['name']}: {e['error']}" if e["name"] else e["error"]
+                                    for e in errors))
+    if not defs:
+        raise EditorError(_NOTHING)
+    return defs
+
+
+def _toml_route(req: Request) -> dict:
+    defs, errors = collect(req.body)
+    return {"toml": to_toml(defs) if defs else "", "errors": errors, "blocks": len(defs)}
 
 
 def _icon(req: Request) -> Raw:
@@ -858,8 +956,10 @@ def _card_font(req: Request) -> dict:
 
 def _save(req: Request) -> dict:
     defs = _defs(req)
+    meta = req.body.get("meta")
     where = save(defs, str(req.body.get("mod") or ""), req.ctx.mods_dir,
-                 create=bool(req.body.get("create")), name=str(req.body.get("name") or ""))
+                 create=bool(req.body.get("create")), name=str(req.body.get("name") or ""),
+                 meta=meta if isinstance(meta, dict) else None)
     return {"saved": str(where), "blocks": len(defs)}
 
 
@@ -879,8 +979,9 @@ ROUTES = {
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},
     ("GET", "/api/heropng"): _hero_png,
-    ("GET", "/api/mods"): lambda req: {"mods": list_mods(req.ctx.mods_dir)},
-    ("POST", "/api/toml"): lambda req: {"toml": to_toml(_defs(req))},
+    ("GET", "/api/mods"): lambda req: {"mods": list_mods(req.ctx.mods_dir),
+                                       "tags": list(STORE_TAGS)},
+    ("POST", "/api/toml"): _toml_route,
     ("POST", "/api/check"): lambda req: {"toml": to_toml(d := _defs(req)), "results": check(d)},
     ("POST", "/api/save"): _save,
 }

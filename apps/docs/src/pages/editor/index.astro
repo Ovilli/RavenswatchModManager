@@ -89,7 +89,7 @@ const description =
 <nav>
   <a class="brand" href="/"><img src="/favicon.png" alt="" />RSMM Web Editor</a>
   <span id="tabs" hidden></span>
-  <span class="right"><span id="where"></span><a href="/guides/web-editor/">Help</a><a href="/">Docs</a></span>
+  <span class="right"><a href="/guides/web-editor/">Help</a><a href="/">Docs</a></span>
 </nav>
 <main id="main">
   <section id="start">
@@ -223,8 +223,7 @@ $("folder").addEventListener("change", async () => {
   $("pickLabel").setAttribute("aria-disabled", "true");
   try {
     await ready;
-    const info = await call("mount", { files, paths });
-    $("where").textContent = `${info.items} items · ${info.heroes} heroes`;
+    await call("mount", { files, paths });
     open();
   } catch (err) {
     fail(err.message);

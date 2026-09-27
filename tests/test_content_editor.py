@@ -275,3 +275,78 @@ def test_saving_writes_the_icon_into_the_mod(tmp_path):
 def test_only_icon_paths_are_written_into_a_mod(tmp_path):
     with pytest.raises(E.EditorError, match="refusing"):
         E._write_files(tmp_path, {E.FILES: {"../escape.png": b"x"}})
+
+
+# --- every pending change at once ------------------------------------------------
+
+def _edit(tab, label, **edit):
+    return {"tab": tab, "name": label, "edit": edit}
+
+
+def test_edits_over_several_items_and_heroes_make_one_list_of_blocks():
+    defs, errors = E.collect({"edits": [
+        _edit("items", "Dash", base="Dash_Crit_Chance", id="Dash_Crit_Chan_M", name="A"),
+        _edit("items", "Armor", base="Armor_Per_Object", id="Armor_Per_Obje_M", name="B"),
+        _edit("talents", "Aladdin", hero="Aladdin", prefix="al",
+              values=[{"file": "Hero_Aladdin", "label": "X", "type": "float", "old": 1, "new": 2}]),
+    ]})
+    assert errors == []
+    assert [(k, i) for k, i, _f in defs] == [
+        ("item", "Dash_Crit_Chan_M"), ("item", "Armor_Per_Obje_M"), ("talent", "al")]
+
+
+def test_a_broken_edit_is_reported_by_name_and_the_rest_still_build():
+    defs, errors = E.collect({"edits": [
+        _edit("items", "Dash", base="Dash_Crit_Chance", id="short"),
+        _edit("items", "Armor", base="Armor_Per_Object", id="Armor_Per_Obje_M"),
+    ]})
+    assert [i for _k, i, _f in defs] == ["Armor_Per_Obje_M"]
+    assert errors[0]["name"] == "Dash" and "exactly as long" in errors[0]["error"]
+
+
+def test_an_untouched_hero_is_skipped_not_an_error():
+    defs, errors = E.collect({"edits": [_edit("talents", "Aladdin", hero="Aladdin", prefix="al")]})
+    assert (defs, errors) == ([], [])
+
+
+def test_two_edits_making_one_block_id_is_an_error():
+    same = {"base": "Dash_Crit_Chance", "id": "Dash_Crit_Chan_M"}
+    _defs, errors = E.collect({"edits": [_edit("items", "One", **same),
+                                         _edit("items", "Two", **same)]})
+    assert errors and errors[0]["name"] == "Two" and "also made by One" in errors[0]["error"]
+
+
+def test_the_old_single_edit_request_still_works():
+    defs, errors = E.collect({"tab": "items", "edit": {"base": "Dash_Crit_Chance",
+                                                        "id": "Dash_Crit_Chan_M"}})
+    assert len(defs) == 1 and errors == []
+
+
+# --- a new mod's details ------------------------------------------------------------
+
+def test_a_new_mod_gets_the_details_the_store_shows(tmp_path):
+    meta = {"name": "Ogre Crit", "author": "Ovilli", "version": "1.2.0",
+            "summary": "Crit damage instead.", "description": "Line one\nLine two",
+            "tags": ["gameplay", "Balance", "gameplay"], "license": "MIT",
+            "homepage_url": "https://rsmm.me", "repo_url": ""}
+    E.save(_item(), "ogre-crit", tmp_path, create=True, meta=meta)
+    mod = tomllib.loads((tmp_path / "ogre-crit" / "manifest.toml").read_text())["mod"]
+    assert mod["name"] == "Ogre Crit" and mod["author"] == "Ovilli" and mod["version"] == "1.2.0"
+    assert mod["summary"] == "Crit damage instead." and mod["description"] == "Line one\nLine two"
+    assert mod["tags"] == ["gameplay", "balance"] and mod["license"] == "MIT"
+    assert mod["homepage_url"] == "https://rsmm.me" and "repo_url" not in mod
+    from rsmm.sdk.manifest_spec import MOD_FIELDS
+    assert set(mod) <= set(MOD_FIELDS)
+
+
+@pytest.mark.parametrize("meta, message", [
+    ({"version": "one"}, "not like 1.0.0"),
+    ({"tags": ["no spaces please"]}, "letters, digits"),
+    ({"tags": [f"t{i}" for i in range(17)]}, "at most 16"),
+    ({"homepage_url": "rsmm.me"}, "http"),
+    ({"summary": "x" * 513}, "over 512"),
+])
+def test_bad_mod_details_are_refused_before_anything_is_written(tmp_path, meta, message):
+    with pytest.raises(E.EditorError, match=message):
+        E.save(_item(), "bad-mod", tmp_path, create=True, meta=meta)
+    assert not (tmp_path / "bad-mod").exists()

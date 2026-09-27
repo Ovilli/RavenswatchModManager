@@ -128,10 +128,12 @@ def test_a_write_with_the_token_goes_through(call, tmp_path):
 
 
 def test_a_domain_error_is_a_400_with_its_reason(call):
-    status, data, _ = call("POST", "/content/api/toml",
-                           {"tab": "items", "edit": {"base": "Dash_Crit_Chance", "id": "x"}},
-                           {"X-RSMM-Token": call.token})
+    bad = {"tab": "items", "edit": {"base": "Dash_Crit_Chance", "id": "x"}}
+    status, data, _ = call("POST", "/content/api/check", bad, {"X-RSMM-Token": call.token})
     assert status == 400 and "exactly as long" in json.loads(data)["error"]
+    # The preview lists a broken edit's reason next to the blocks that do build.
+    status, data, _ = call("POST", "/content/api/toml", bad, {"X-RSMM-Token": call.token})
+    assert status == 200 and "exactly as long" in json.loads(data)["errors"][0]["error"]
     status, data, _ = call("GET", "/content/api/talents?hero=Nope")
     assert status == 400 and "no shipped hero" in json.loads(data)["error"]
 
