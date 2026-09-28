@@ -382,3 +382,98 @@ def test_remint_identity_noop_when_absent():
     blob = _blob_with_identity(bytes(range(0x40, 0x50)), "Armor_Per_Object")
     # id not present -> unchanged, never raises
     assert C.remint_identity_guid(blob, "Missing_Id", salt="x") == blob
+
+
+def _text_ref(key: str, row: int) -> bytes:
+    return (_lstr("Text") + _lstr("Magical_Objects~GAM.xls") + struct.pack("<I", row)
+            + _lstr(key))
+
+
+def _named_item(item_id: str) -> bytes:
+    return (_node(_guid(0xAA), "oCEntitySettingsResource")
+            + _node(_guid(0xB4), f"[Value] {item_id}\\X")
+            + _node(_guid(0xB5), "Armor per Object Value")
+            + struct.pack("<f", 2.0) + b"\x22\x22\xbb\xaa"
+            + _text_ref(f"{item_id}_Name", 0) + _text_ref(f"{item_id}_Description", 1))
+
+
+def _install_bank(tmp_path):
+    from rsmm.engine.text_patches import lang_path_for
+    base = tmp_path / "Magical_Objects~GAM.xls.LocalText.gen"
+    _write_bank(base, ["Base_Item_Idxx_Name", "Base_Item_Idxx_Description"])
+    _write_bank(lang_path_for(base, "EN"), ["Old Name", "Old Desc"])
+    return base
+
+
+def test_a_replacement_keeps_the_id_and_rewrites_the_bases_own_text(tmp_path):
+    from rsmm.engine.text_patches import parse_text_bytes
+    bank = _install_bank(tmp_path)
+    ent = _named_item("Base_Item_Idxx")
+    files = C.build_magic_item(
+        new_id="Base_Item_Idxx", base_id="Base_Item_Idxx", base_cooked=ent, corpus=[],
+        rarity="Epic", name="New Name",
+        value_patches=[("Armor per Object Value", 2.0, 50.0)],
+        bank_base_gen=bank, replace=True)
+    out = files["EntitySettings/Objects/Magical_Objects/Epic/"
+                "Base_Item_Idxx.entity.ot.EntitySettingsResource.gen"]
+    assert out == ent.replace(struct.pack("<f", 2.0), struct.pack("<f", 50.0))
+    # No key was added, so the keys file is not rewritten; the value is, in place.
+    assert C.MAGIC_TEXT_BANK not in files
+    en = parse_text_bytes(files[C.MAGIC_TEXT_BANK + ".LangEN"], bank)
+    assert en.entries == ["New Name", "Old Desc"]
+
+
+def test_a_replacement_refuses_a_new_id():
+    with pytest.raises(ValueError, match="keeps the base"):
+        C.build_magic_item(new_id="Other_Item_Idx", base_id="Base_Item_Idxx",
+                           base_cooked=_named_item("Base_Item_Idxx"), corpus=[],
+                           replace=True)
+
+
+def test_a_second_item_builds_on_the_bank_the_first_wrote(tmp_path):
+    # Two named items in one mod each rebuilt the bank from vanilla, so the
+    # second one's file dropped the first one's name.
+    from rsmm.engine.text_patches import parse_text_bytes
+    bank = _install_bank(tmp_path)
+    first = C.build_magic_item(
+        new_id="Copy_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Copy",
+        bank_base_gen=bank)
+    prior = {"__base__": first[C.MAGIC_TEXT_BANK],
+             ".LangEN": first[C.MAGIC_TEXT_BANK + ".LangEN"]}
+    second = C.build_magic_item(
+        new_id="Base_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Changed",
+        bank_base_gen=bank, replace=True, bank_prior=prior)
+    keys = parse_text_bytes(second[C.MAGIC_TEXT_BANK], bank)
+    en = parse_text_bytes(second[C.MAGIC_TEXT_BANK + ".LangEN"], bank)
+    assert keys.entries == ["Base_Item_Idxx_Name", "Base_Item_Idxx_Description",
+                            "Copy_Item_Idxx_Name"]
+    assert en.entries == ["Changed", "Old Desc", "Copy"]
+
+
+def test_a_copys_text_rows_point_at_its_appended_keys(tmp_path):
+    bank = _install_bank(tmp_path)
+    files = C.build_magic_item(
+        new_id="Copy_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Copy",
+        bank_base_gen=bank)
+    ent = next(v for k, v in files.items() if k.endswith(".gen") and "Entity" in k)
+    assert _text_ref("Copy_Item_Idxx_Name", 2) in ent
+
+
+def test_text_keys_lists_every_key_the_item_reads():
+    assert C.text_keys(_named_item("Base_Item_Idxx")) == [
+        "Base_Item_Idxx_Name", "Base_Item_Idxx_Description"]
+
+
+def test_the_bank_merge_keeps_a_row_rewritten_in_place(tmp_path, monkeypatch):
+    from rsmm.engine import content_merge
+    from rsmm.engine.text_patches import parse_text_file
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+    vanilla, a, b = (tmp_path / n for n in ("van", "a", "b"))
+    _write_bank(vanilla, ["one", "two"])
+    _write_bank(a, ["one", "TWO"])                 # a replaced item's name
+    _write_bank(b, ["one", "two", "three"])        # a copy's appended name
+    out = content_merge._merge_text_bank("x", [a, b], vanilla)
+    assert parse_text_file(out).entries == ["one", "TWO", "three"]

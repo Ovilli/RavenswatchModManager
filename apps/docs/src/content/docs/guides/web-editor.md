@@ -28,7 +28,7 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 
 | Tab | In the browser |
 |---|---|
-| **Items** | everything: pick a base, change name, text, rarity, icon, values and the stat each effect gives, *Check*, save |
+| **Items** | everything: pick an item, choose *Replace this item* (change the shipped one) or *Make a copy* (a new item beside it), change name, text, rarity (copies only), icon, values and the stat each effect gives, *Check*, save |
 | **Talents** | everything: card names and texts, each card's numbers per rarity, every value and the stat each effect gives, *Check*, save |
 | **Abilities** | everything: numbers, the graph, *Copy manifest code* |
 | **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |
@@ -46,7 +46,7 @@ card's rarity has one box per rarity, and *Show cards as* switches the previews
 between Common, Rare, Epic and Legendary.
 
 Both tabs take your own icon. On the Items tab, *Upload your own icon* gives the
-new item a picture of its own (scaled to 192×192 and cooked into a new texture
+item a picture of its own (scaled to 192×192 and cooked into a new texture
 named after the item). On the Talents tab, *Replace icon* swaps a card's picture
 (scaled to 128×128 and cooked over that card's icon), which is how a replacement
 talent gets a look to match its new name and text. The PNG is saved in the mod's

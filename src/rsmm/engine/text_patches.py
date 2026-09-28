@@ -263,3 +263,63 @@ def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, byt
             f"keys would have no text and crash the game. Pass the bank from the "
             f"game install (its .Ggzy<XX> siblings), not the uncooked mirror.")
     return out
+
+
+def patch_bank(base_gen: Path, values: dict[str, str],
+               prior: dict[str, bytes] | None = None
+               ) -> tuple[dict[str, bytes], dict[str, int]]:
+    """Set the text of each key in ``values``: an existing key's value is
+    rewritten in place, a missing one is appended (keys file + every language).
+
+    ``prior`` is an earlier result of this function for the same bank in the
+    same emit (``{"__base__" | ".Lang<XX>": bytes}``); the patch builds on it,
+    so a second block writing the bank keeps the first one's text instead of
+    rebuilding from vanilla and dropping it.
+
+    Returns ``(files, rows)``: ``files`` as :func:`append_bank_keys` returns
+    them (``__base__`` present only when keys were appended, here or in
+    ``prior``) and ``rows`` = each key of ``values`` -> its row in the bank,
+    for :func:`repoint_text_rows`.
+    """
+    prior = prior or {}
+    if "__base__" in prior:
+        keys = parse_text_bytes(prior["__base__"], base_gen)
+    else:
+        keys = parse_text_file(_pristine(base_gen))
+    appended = "__base__" in prior
+    rows: dict[str, int] = {}
+    for key in values:
+        try:
+            rows[key] = keys.entries.index(key)
+        except ValueError:
+            rows[key] = len(keys.entries)
+            keys.entries.append(key)
+            appended = True
+
+    out: dict[str, bytes] = {"__base__": write_text_file(keys)} if appended else {}
+    for lang in ALL_LANGS:
+        sib = lang_path_for(base_gen, lang)
+        earlier = prior.get(f".Lang{lang}")
+        if earlier is not None:
+            vf = parse_text_bytes(earlier, sib)
+        elif _pristine(sib).exists():
+            vf = parse_text_file(_pristine(sib))
+        else:
+            continue
+        for key, row in rows.items():
+            if row == len(vf.entries):
+                vf.entries.append(values[key])
+            elif row < len(vf.entries):
+                vf.entries[row] = values[key]
+        if len(vf.entries) != len(keys.entries):
+            raise ValueError(
+                f"{sib.name}: {len(vf.entries)} values != {len(keys.entries)} "
+                f"keys; bank is misaligned, refusing to patch")
+        out[f".Lang{lang}"] = write_text_file(vf)
+    if not any(k.startswith(".Lang") for k in out):
+        # Same crash as append_bank_keys guards: keys with no value file.
+        raise ValueError(
+            f"{base_gen.name}: no language value file found beside it. Pass the "
+            f"bank from the game install (its .Ggzy<XX> siblings), not the "
+            f"uncooked mirror.")
+    return out, rows

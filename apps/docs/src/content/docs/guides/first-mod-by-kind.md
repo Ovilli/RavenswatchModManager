@@ -68,6 +68,22 @@ byte length. Browse bases with `./rsmm items list`, and a base's editable
 value labels with `./rsmm items show <base>` — a label marked `shadowed`
 accepts the edit and changes nothing in game.
 
+**Change the shipped item instead.** `mode = "replace"` takes the same fields
+but edits the base itself rather than adding a copy beside it: no new id, the
+base keeps its rarity, and `name`/`description` rewrite the text the item
+already shows. The shipped file is backed up and comes back when the mod is
+turned off. The editor's **Replace this item** / **Make a copy** switch picks
+between the two.
+
+```toml
+[[content]]
+kind          = "item"
+id            = "Damage_Attack"
+mode          = "replace"
+base          = "Damage_Attack"
+value_patches = [["Attack Speed Value", 0.15, 0.30]]
+```
+
 **Also does the opposite.** `mode = "ban"` with `items = [...]` removes vanilla
 items from the catalog instead — the multiplayer-correct way to disable one.
 

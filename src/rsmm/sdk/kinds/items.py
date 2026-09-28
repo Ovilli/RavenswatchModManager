@@ -4,6 +4,10 @@ Two modes, dispatched by the declaration's ``mode`` field:
 
 * ``mode="clone"`` (default) — ADD a new, distinct, droppable magical object,
   cooked from a vanilla ``base``. Described below.
+* ``mode="replace"`` — CHANGE a vanilla item in place: the same cooked
+  pipeline with no rename, written over the shipped entity (apply backs it up),
+  so the item keeps its id, its catalog slot and every save's reference to it.
+  See :func:`_emit_clone`.
 * ``mode="ban"`` — REMOVE vanilla items from the catalog so no draw can offer
   them, the multiplayer-correct lever for "disable this item". See
   :func:`_emit_ban`.
@@ -345,15 +349,33 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     mode = defn.fields.get("mode", "clone")
     if mode == "ban":
         return _emit_ban(mod_id, defn, out_dir)
-    if mode != "clone":
+    if mode not in ("clone", "replace"):
         raise ContentError(
-            f"item {defn.id}: unknown mode {mode!r}; expected 'clone' or 'ban'"
+            f"item {defn.id}: unknown mode {mode!r}; expected 'clone', 'replace' or 'ban'"
         )
-    return _emit_clone(mod_id, defn, out_dir)
+    return _emit_clone(mod_id, defn, out_dir, replace=mode == "replace")
 
 
-def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Materialize one cloned item def into the mod's ``assets/`` tree.
+def _bank_prior(out_dir: Path) -> dict[str, bytes]:
+    """The magical-objects bank an earlier block of this mod already wrote in
+    this emit, as ``{"__base__" | ".Lang<XX>": bytes}``. Each block builds on
+    it; rebuilding from vanilla dropped every earlier item's text."""
+    bank = out_dir.joinpath(*cook.MAGIC_TEXT_BANK.split("/"))
+    out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
+           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
+    if bank.is_file():
+        out["__base__"] = bank.read_bytes()
+    return out
+
+
+def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
+                replace: bool = False) -> list[Path]:
+    """Materialize one cloned (or, with ``replace``, edited-in-place) item def
+    into the mod's ``assets/`` tree.
+
+    A replacement takes the same fields except ``rarity`` (the rarity folder
+    IS the shipped file's path) and ``unique_identity``; its name and
+    description rewrite the text the base already shows.
 
     Fields:
         ``base`` (str, required)   vanilla item id to clone.
@@ -382,6 +404,10 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         )
 
     found = _find_base(base)
+    if found is None and replace:
+        raise ContentError(
+            f"item {defn.id}: mode='replace' needs a shipped item as 'base'; "
+            f"{base!r} is not one (see `rsmm items list`)")
     if found is None:
         # Base isn't a known vanilla magical object (or no game install is
         # readable): fall back to the legacy manifest so registration/tagging
@@ -389,7 +415,16 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         return _emit_legacy_manifest(mod_id, defn, out_dir)
 
     base_cooked, base_rarity = found
+    if replace:
+        for key in ("rarity", "unique_identity"):
+            if defn.fields.get(key):
+                raise ContentError(
+                    f"item {defn.id}: mode='replace' keeps the base's {key}; "
+                    f"use mode='clone' to make a new item with its own")
+        # `base` may carry its rarity folder (`Common/Armor_Per_Object`).
+        base = base.replace("\\", "/").rpartition("/")[2]
     rarity = str(defn.fields.get("rarity") or base_rarity)
+    item_id = base if replace else defn.id
     name = defn.fields.get("name") or defn.fields.get("display_name")
     name = str(name) if name is not None else None
     description = defn.fields.get("description")
@@ -400,7 +435,10 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     super_description = str(super_description) if super_description is not None else None
     # Custom PNG icon shipped in the mod is cooked into a new texture;
     # otherwise the icon field repoints to a vanilla icon.
-    custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"), defn.id)
+    # A replacement's own icon gets a name of its own too: overwriting the
+    # shipped texture would also repaint any other item that shares it.
+    custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"),
+                                       f"{base}_Custom" if replace else defn.id)
     if custom_tex is not None:
         icon, extra_files = custom_tex
     else:
@@ -417,7 +455,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     try:
         files = cook.build_magic_item(
-            new_id=defn.id,
+            new_id=item_id,
             base_id=base,
             base_cooked=base_cooked,
             # NO GUID remint (corpus=[]): reminting mints fresh GUIDs the engine
@@ -444,6 +482,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             super_description=super_description,
             icon=icon,
             bank_base_gen=bank_gen,
+            replace=replace,
+            bank_prior=_bank_prior(out_dir) if bank_gen is not None else None,
         )
     except ValueError as e:
         # e.g. a shadowed value_patches target — surface with item context.
@@ -456,8 +496,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)
         written.append(dest)
-    _log.info("item %s/%s: emitted %d cooked file(s) (rarity=%s)",
-              mod_id, defn.id, len(written), rarity)
+    _log.info("item %s/%s: emitted %d cooked file(s) (%s, rarity=%s)",
+              mod_id, defn.id, len(written), "replace" if replace else "clone", rarity)
     return written
 
 

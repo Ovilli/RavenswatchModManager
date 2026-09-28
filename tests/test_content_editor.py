@@ -32,6 +32,33 @@ def test_an_item_block_carries_only_what_changed():
                       "name": "Thorn", "value_patches": [["A Value", 0.5, 1.0]]}
 
 
+def test_a_replacement_is_a_block_for_the_shipped_item_itself():
+    [(kind, cid, fields)] = _item(mode="replace", name="Thorn", rarity="Epic", values=[
+        {"label": "A Value", "old": 0.5, "new": 1.0}])
+    assert (kind, cid) == ("item", "Dash_Crit_Chance")
+    # No id of its own and no rarity: the shipped file keeps both.
+    assert fields == {"kind": "item", "id": "Dash_Crit_Chance", "mode": "replace",
+                      "base": "Dash_Crit_Chance", "name": "Thorn",
+                      "value_patches": [["A Value", 0.5, 1.0]]}
+
+
+def test_an_unchanged_replacement_is_nothing_to_write():
+    with pytest.raises(E.EditorError, match="nothing changed"):
+        _item(mode="replace", name="", values=[])
+
+
+def test_a_replacements_uploaded_icon_is_not_named_like_the_shipped_one():
+    [(_k, _i, fields)] = _item(mode="replace", iconUpload=_png_b64())
+    assert fields["icon"] == "icons/Dash_Crit_Chance_Custom.png"
+
+
+def test_saving_a_second_replacement_of_one_item_says_so(tmp_path):
+    defs = _item(mode="replace", name="Thorn")
+    E.save(defs, "m", tmp_path, create=True)
+    with pytest.raises(E.EditorError, match="already changes Dash_Crit_Chance"):
+        E.save(defs, "m", tmp_path)
+
+
 def test_an_overridden_item_value_asks_to_clear_the_override():
     [(_k, _i, fields)] = _item(values=[{"label": "A", "old": 1, "new": 2, "shadowed": True}])
     assert fields["value_patches"] == [["A", 1.0, 2.0, True]]

@@ -467,13 +467,22 @@ def _num(v, what: str) -> float:
 def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     """``(kind, id, fields)`` for an item request, validated.
 
-    ``req``: ``id``, ``base``, optional ``name``/``description``/``rarity``/
-    ``icon``, ``values`` = ``[{label, old, new, shadowed}]`` (changed only),
-    ``stats`` = ``[{modifier, stat}]`` (changed only) and ``superDescription``.
+    ``req``: ``mode`` (``clone``, the default, or ``replace``), ``id``,
+    ``base``, optional ``name``/``description``/``rarity``/``icon``,
+    ``values`` = ``[{label, old, new, shadowed}]`` (changed only), ``stats`` =
+    ``[{modifier, stat}]`` (changed only) and ``superDescription``.
+
+    A replacement changes the shipped item itself: its block id is the base's,
+    it keeps the base's rarity, and with nothing changed it writes nothing.
     """
     base, new_id = str(req.get("base") or ""), str(req.get("id") or "")
+    mode = str(req.get("mode") or "clone")
+    if mode not in ("clone", "replace"):
+        raise EditorError(f"unknown mode {mode!r}")
     if not base:
         raise EditorError("pick a base item")
+    if mode == "replace":
+        return _replace_defs(req, base)
     if not _ID_RE.match(new_id):
         raise EditorError("the id takes letters, digits and _ only")
     if len(new_id.encode()) != len(base.encode()):
@@ -487,12 +496,34 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
         v = req.get(key)
         if isinstance(v, str) and v.strip():
             fields[key] = v.strip() if key != "description" else v
+    _item_edits(req, new_id, fields)
+    return [("item", new_id, fields)]
+
+
+def _replace_defs(req: dict, base: str) -> list[tuple[str, str, dict]]:
+    if not _ID_RE.match(base):
+        raise EditorError(f"no item {base!r}")
+    fields: dict = {"kind": "item", "id": base, "mode": "replace", "base": base}
+    for key in ("name", "description"):
+        v = req.get(key)
+        if isinstance(v, str) and v.strip():
+            fields[key] = v.strip() if key != "description" else v
+    # Named like the texture the item kind cooks a replacement's PNG into.
+    _item_edits(req, f"{base}_Custom", fields)
+    if len(fields) == 4:
+        raise EditorError(_NOTHING)
+    return [("item", base, fields)]
+
+
+def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
+    """The icon, values, stats and super text of an item request, into
+    ``fields``; an uploaded icon is kept in the mod as ``icons/<icon_name>.png``."""
     icon = req.get("icon")
     upload = req.get("iconUpload")
     if upload:
         # Your own PNG: shipped in the mod, cooked by the item kind into a new
         # texture named after the item (Ui/Objects/UI_Object_<id>).
-        rel = f"icons/{new_id}.png"
+        rel = f"icons/{icon_name}.png"
         fields["icon"] = rel
         fields[FILES] = {rel: _upload_png(upload, "icon")}
     elif isinstance(icon, str) and icon.strip():
@@ -527,7 +558,6 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     sup = req.get("superDescription")
     if isinstance(sup, str) and sup.strip():
         fields["super_description"] = sup
-    return [("item", new_id, fields)]
 
 
 def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
@@ -770,9 +800,14 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
                 for c in tomllib.loads(old).get("content", []) if isinstance(c, dict)}
     except tomllib.TOMLDecodeError as e:
         raise EditorError(f"{manifest} does not parse: {e}") from e
-    clash = [f"{k} {i!r}" for k, i, _f in defs if (k, i) in have]
+    clash = [f for k, i, f in defs if (k, i) in have]
+    if any(f.get("mode") == "replace" for f in clash):
+        f = next(f for f in clash if f.get("mode") == "replace")
+        raise EditorError(f"{mod_id} already changes {f['base']} — edit that block in its "
+                          f"manifest.toml, or save to another mod")
     if clash:
-        raise EditorError(f"{mod_id} already has " + ", ".join(clash) + " — change the id")
+        raise EditorError(f"{mod_id} already has " + ", ".join(
+            f"{f['kind']} {f['id']!r}" for f in clash) + " — change the id")
     new = old.rstrip("\n") + "\n\n" + to_toml(defs)
     try:
         tomllib.loads(new)

@@ -574,6 +574,12 @@ def _lint_content(modname: str, blocks: list[dict],
             errs += 1
             continue
         found = cmd_items._find_item(str(base))
+        if found is None and c.get("mode") == "replace":
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"mode='replace' but base {_ST.accent(repr(base))} is not a "
+                  f"shipped item")
+            errs += 1
+            continue
         if found is None:
             hint = "not a known vanilla item (falls back to legacy manifest)"
             print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "

@@ -443,6 +443,8 @@ def build_magic_item(
     remint_identity: bool = False,
     modifier_stats: dict[str, str | int] | None = None,
     super_description: str | None = None,
+    replace: bool = False,
+    bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     """Produce every file a new, distinct, named magical object needs.
 
@@ -468,10 +470,26 @@ def build_magic_item(
 
     ``new_id`` may be any length — :func:`rename_id` re-emits the container
     when it differs from ``base_id``.
+
+    ``replace=True`` edits the base IN PLACE instead: no rename, the entity is
+    written at the base's own path (so apply backs the shipped file up and
+    replaces it), and name/description rewrite the text of the keys the base
+    already reads. The super-effect key is usually shared by several items
+    (``Armor_Per_Rare_Object_SuperEffect``), so new super text still goes to a
+    key of the item's own rather than changing every item that uses it.
+
+    ``bank_prior`` is the bank this mod's earlier blocks already wrote during
+    the same emit (see :func:`rsmm.engine.text_patches.patch_bank`).
     """
-    ent = ItemEdit(
-        base_id=base_id, new_id=new_id, corpus=corpus, remint_identity=remint_identity
-    ).apply(base_cooked)
+    if replace:
+        if new_id != base_id or remint_identity or corpus:
+            raise ValueError("a replacement keeps the base's id and identity")
+        ent = base_cooked
+    else:
+        ent = ItemEdit(
+            base_id=base_id, new_id=new_id, corpus=corpus,
+            remint_identity=remint_identity,
+        ).apply(base_cooked)
     from . import item_modifier as IM
     # A super key that embeds the base id (`Defense_To_Damage_SuperEffect`) was
     # renamed with it, to a key no bank holds, which shows blank text. Put the
@@ -521,26 +539,63 @@ def build_magic_item(
     if icon is not None:
         ent = set_icon(ent, icon)
 
-    files: dict[str, bytes] = {
-        f"EntitySettings/Objects/Magical_Objects/{rarity}/"
-        f"{new_id}.entity.ot.EntitySettingsResource.gen": ent
-    }
+    files_key = (f"EntitySettings/Objects/Magical_Objects/{rarity}/"
+                 f"{new_id}.entity.ot.EntitySettingsResource.gen")
+    files: dict[str, bytes] = {files_key: ent}
 
     if (name is not None or description is not None or super_description is not None) \
             and bank_base_gen is not None:
         from . import text_patches as T
         pairs = {}
+        # A copy writes keys of its own; a replacement rewrites the ones the
+        # base reads (a copy falling back to those would rename the base too).
+        key = (lambda sfx: _own_text_key(ent, new_id, sfx)) if replace \
+            else (lambda sfx: f"{new_id}_{sfx}")
         if name is not None:
-            pairs[f"{new_id}_Name"] = name
+            pairs[key("Name")] = name
         if description is not None:
-            pairs[f"{new_id}_Description"] = description
+            pairs[key("Description")] = description
         if super_description is not None:
             pairs[super_key] = super_description
-        banks = T.append_bank_keys(bank_base_gen, pairs)
-        files[MAGIC_TEXT_BANK] = banks.pop("__base__")
+        banks, rows = T.patch_bank(bank_base_gen, pairs, bank_prior)
+        # The entity caches each key's row beside it, and some readers go by
+        # the row, not the key: point the rows at where the text now is.
+        ent = T.repoint_text_rows(ent, _TEXT_BANK_NAME, rows)
+        files[files_key] = ent
+        if "__base__" in banks:
+            files[MAGIC_TEXT_BANK] = banks.pop("__base__")
         for lang_tok, blob in banks.items():
             files[MAGIC_TEXT_BANK + lang_tok] = blob
     return files
+
+
+_TEXT_BANK_NAME = "Magical_Objects~GAM.xls"
+
+
+def text_keys(cooked_bytes: bytes) -> list[str]:
+    """Every magical-objects text key the entity reads, in file order (a text
+    reference is ``lstr "Text" | lstr <bank> | u32 row | lstr <key>``)."""
+    head = struct.pack("<I", len(_TEXT_BANK_NAME)) + _TEXT_BANK_NAME.encode()
+    out, at = [], cooked_bytes.find(head)
+    while at != -1:
+        p = at + len(head) + 4
+        if p + 4 <= len(cooked_bytes):
+            n = struct.unpack_from("<I", cooked_bytes, p)[0]
+            key = cooked_bytes[p + 4:p + 4 + n]
+            if 0 < n < 256 and key.isascii():
+                out.append(key.decode())
+        at = cooked_bytes.find(head, at + 1)
+    return out
+
+
+def _own_text_key(ent: bytes, item_id: str, suffix: str) -> str:
+    """The key the item's ``suffix`` (Name/Description) text is read from:
+    the one the entity already references, else ``<id>_<suffix>``."""
+    want = f"{item_id}_{suffix}"
+    keys = text_keys(ent)
+    if want in keys:
+        return want
+    return next((k for k in keys if k.endswith("_" + suffix)), want)
 
 
 @dataclass

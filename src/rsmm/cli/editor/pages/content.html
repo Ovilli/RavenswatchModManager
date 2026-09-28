@@ -460,11 +460,13 @@ async function pickItem(id) {
   } catch (e) { status(e.message, "st-bad"); renderView(); return; }
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
-  S.itemEdit = Object.assign(freshItemEdit(), draft || {});
+  // A draft from before the switch existed was a copy.
+  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {});
   renderList(); renderView(); refresh();
 }
 function freshItemEdit() {
-  return { id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
+  // "replace" changes the shipped item itself; "clone" makes a new one beside it.
+  return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
     autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
@@ -499,7 +501,11 @@ function loadingView(text, small) {
 // always and in the browser as a draft where it can be.
 S.pending = { items: new Map(), talents: new Map() };
 function pendingName(tab, id) {
-  if (tab === "items") return (S.items.find(i => i.id === id) || {}).name || id;
+  if (tab === "items") {
+    const name = (S.items.find(i => i.id === id) || {}).name || id;
+    const edit = S.pending.items.get(id) || (isOpen(tab, id) && editPayload());
+    return edit && edit.mode === "clone" ? name + " (copy)" : name;
+  }
   return id.replace(/_/g, " ") + " talents";
 }
 function pendingEdits() {
@@ -508,7 +514,8 @@ function pendingEdits() {
     out.push({ tab, id, edit, name: pendingName(tab, id) });
   }
   // The open item shows before it has a change: its block alone makes the copy.
-  if (S.tab === "items" && S.item && !S.pending.items.has(S.item.id)) {
+  // A replacement with nothing changed writes nothing.
+  if (S.tab === "items" && S.item && S.itemEdit.mode === "clone" && !S.pending.items.has(S.item.id)) {
     out.unshift({ tab: "items", id: S.item.id, edit: editPayload(), name: pendingName("items", S.item.id) });
   }
   return out;
@@ -561,8 +568,11 @@ function suggestId(base) {
 
 function itemView() {
   const it = S.item, E = S.itemEdit, v = el("div");
-  v.append(el("div", { class: "help", text: "Copy a shipped item into a new one. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
-  if (!it) { v.append(el("div", { class: "empty", text: "Pick a base item on the left." })); return v; }
+  const replace = E.mode !== "clone";
+  v.append(el("div", { class: "help", text: replace
+    ? "Change a shipped item itself: its name, text, icon, values or the stats its effects give. The game's own item is replaced while the mod is on, and put back when it is off. Only what you change is written."
+    : "Copy a shipped item into a new one, next to the original. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
+  if (!it) { v.append(el("div", { class: "empty", text: "Pick an item on the left." })); return v; }
   const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
@@ -571,7 +581,14 @@ function itemView() {
     el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item", onclick: resetAll }, "Reset all"))));
 
 
-  v.append(el("div", { class: "sect", text: "The new item" }));
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Replace the item or make a copy" });
+  for (const [mode, label, title] of [["replace", "Replace this item", "Change the shipped item itself"],
+    ["clone", "Make a copy", "Add a new item next to the shipped one"]]) {
+    seg.append(el("button", { type: "button", class: (replace ? "replace" : "clone") === mode ? "on" : "", title,
+      "aria-pressed": String((replace ? "replace" : "clone") === mode),
+      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } }, label));
+  }
+  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }), seg);
   const f = el("div", { class: "form" });
   const idHint = el("div", { class: "hint" });
   const idIn = el("input", { value: E.id, spellcheck: "false" });
@@ -582,7 +599,7 @@ function itemView() {
   };
   idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
   checkId();
-  f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
+  if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
   const nameIn = el("input", { placeholder: it.name, value: E.name });
   f.append(textLabel("Name", nameIn, v => { E.name = v; }), nameIn);
   const card = it.card || {};
@@ -594,7 +611,7 @@ function itemView() {
   for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
   rar.value = E.rarity;
   rar.onchange = () => { E.rarity = rar.value; refresh(); };
-  f.append(el("label", { text: "Rarity" }), rar);
+  if (!replace) f.append(el("label", { text: "Rarity" }), rar);
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
     const b = el("button", { class: !E.iconUpload && (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
@@ -1374,7 +1391,7 @@ function editPayload() {
   if (S.tab === "items") {
     if (!S.item) return null;
     const E = S.itemEdit;
-    return { base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
+    return { mode: E.mode === "clone" ? "clone" : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })) };

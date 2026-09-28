@@ -51,7 +51,8 @@ def _text_merge_dir() -> Path:
 def _merge_text_bank(enc: str, srcs: list[Path],
                      vanilla: Path | None) -> Path | None:
     """Merge several mods' versions of ONE text-bank file into vanilla + the
-    union of each mod's appended tail, preserving index alignment.
+    union of each mod's appended tail, preserving index alignment. Vanilla rows
+    a mod rewrote in place are kept as well.
 
     Each mod's file is vanilla + that mod's appended entries (``append_bank_keys``
     appends the same count to the base keys file and every language sibling), so
@@ -74,6 +75,12 @@ def _merge_text_bank(enc: str, srcs: list[Path],
         except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
             return None
         if len(tf.entries) >= n:
+            # A vanilla row a mod rewrote in place (a relabelled skill, a
+            # replaced item's name) is kept too; a later mod wins a row both
+            # rewrote. Keys never change in place, so only value files differ.
+            for i, (was, now) in enumerate(zip(van.entries, tf.entries[:n], strict=True)):
+                if now != was:
+                    merged[i] = now
             merged.extend(tf.entries[n:])
     out_tf = TP.TextFile(path=vanilla, header=van.header, entries=merged,
                          footer=van.footer)
