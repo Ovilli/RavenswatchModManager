@@ -46,16 +46,16 @@ const description =
   body { font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--ink);
          display: flex; flex-direction: column; }
   a { color: inherit; }
-  nav { display: flex; align-items: baseline; gap: 4px; padding: 8px 16px 0; background: var(--panel);
+  nav { display: flex; align-items: center; gap: 4px; padding: 8px 16px; background: var(--panel);
         border-bottom: 1px solid var(--line); flex: none; flex-wrap: wrap; }
-  nav .brand { display: flex; align-items: center; gap: 8px; margin: 0 18px 10px 0; font-weight: 650;
+  nav .brand { display: flex; align-items: center; gap: 8px; margin: 0 18px 0 0; font-weight: 650;
                text-decoration: none; }
   nav .brand img { width: 24px; height: 24px; }
   nav .tab { color: var(--muted); text-decoration: none; padding: 6px 14px 9px;
              border-bottom: 3px solid transparent; }
   nav .tab:hover { color: var(--ink); }
   nav .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
-  nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center; padding-bottom: 10px;
+  nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center;
                font-size: 13px; color: var(--muted); }
   main { flex: 1; min-height: 0; position: relative; }
   iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
@@ -66,10 +66,13 @@ const description =
   ol.steps { padding-left: 22px; margin: 0 0 24px; }
   ol.steps li { margin-bottom: 8px; }
   code { background: var(--chip); border-radius: 4px; padding: 1px 5px; font-size: 13px; }
-  .pick { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: var(--accent-ink);
-          border: 0; border-radius: 9px; padding: 11px 20px; font: inherit; font-weight: 600; cursor: pointer; }
-  .pick:hover { filter: brightness(1.1); }
-  .pick[aria-disabled="true"] { opacity: .5; cursor: progress; }
+  .pick { display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent;
+          border-radius: 9px; padding: 11px 20px; font: inherit; font-weight: 600; }
+  .pick[data-state="loading"] { background: var(--chip); border-color: var(--line); color: var(--muted); cursor: progress; }
+  .pick[data-state="ready"] { background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  .pick[data-state="error"] { background: transparent; border-color: var(--bad); color: var(--bad); cursor: pointer; }
+  .pick[data-state="ready"]:hover { filter: brightness(1.1); }
+  .pick[data-state="error"]:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
   .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
   #progress { margin-top: 22px; padding: 12px 14px; border-radius: 9px; background: var(--panel);
               border: 1px solid var(--line); font-size: 14px; }
@@ -106,7 +109,7 @@ const description =
         <li>Make your changes, then save them as a mod. You get a <code>.zip</code>: unzip it into your
           mods folder and apply it with the desktop app or <code>rsmm apply</code>.</li>
       </ol>
-      <label class="pick" id="pickLabel" aria-disabled="true">
+      <label class="pick" id="pickLabel" aria-disabled="true" data-state="loading">
         Choose Ravenswatch folder
         <input id="folder" type="file" multiple hidden />
       </label>
@@ -182,13 +185,18 @@ function setProgress(text, cls) {
   $("progressText").textContent = text;
   $("progress").querySelector(".spin")?.toggleAttribute("hidden", !!cls);
 }
-function fail(text) { setProgress(text, "bad"); $("pickLabel").setAttribute("aria-disabled", "false"); }
+function setPickerState(state) {
+  const picker = $("pickLabel");
+  picker.dataset.state = state;
+  picker.setAttribute("aria-disabled", String(state === "loading"));
+}
+function fail(text) { setProgress(text, "bad"); setPickerState("error"); }
 
 let ready = null;
 ready = call("init", { bundle: new URL("rsmm.bundle", editorRoot).href })
   .then(() => {
     setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
-    $("pickLabel").setAttribute("aria-disabled", "false");
+    setPickerState("ready");
   })
   .catch((err) => fail("Could not load the editor engine: " + err.message));
 
@@ -220,7 +228,7 @@ $("folder").addEventListener("change", async () => {
       + "Pick the folder that holds Ravenswatch.exe.");
     return;
   }
-  $("pickLabel").setAttribute("aria-disabled", "true");
+  setPickerState("loading");
   try {
     await ready;
     await call("mount", { files, paths });
