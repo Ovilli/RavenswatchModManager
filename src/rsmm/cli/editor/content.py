@@ -86,18 +86,38 @@ def item_detail(item_id: str) -> dict:
     shadowed = {tv.label for tv in list_talent_values(data) if tv.is_overridden}
     meta = next((i for i in items() if i["id"] == _id), {})
     super_key = IM.super_text_key(data)
+    values = [{"label": label, "value": value, "shadowed": label in shadowed}
+              for label, value in cook.list_value_fields(data)]
+    parts, amounts = cook.item_numbers(data)
+    have = {v["label"] for v in values}
+    values += [v for v in parts if v["label"] not in have]
+    # A card number worked out by a math part reads the same number its
+    # effect does: say so, so the preview can show it (Dreamcatcher's 10%).
+    via = {src["via"]: src["label"] for src in amounts.values()
+           if src.get("via") and src.get("label")}
+    card = _card(data)
+    for part in card.values():
+        for e in part.get("entries") or []:
+            if e and not e["sources"] and e["node"] in via:
+                e["sources"] = [via[e["node"]]]
+    for mod, src in amounts.items():
+        for v in values:
+            if src.get("label") == v["label"]:
+                v.setdefault("usedBy", [])
+                if mod not in v["usedBy"]:
+                    v["usedBy"].append(mod)
     return {
         "id": _id, "rarity": rarity,
         "name": meta.get("name") or _id, "description": meta.get("description") or "",
         "icon": _icon_stem(cook.find_icon(data)),
         "idBytes": len(_id.encode("utf-8")),
-        "values": [{"label": label, "value": value, "shadowed": label in shadowed}
-                   for label, value in cook.list_value_fields(data)],
+        "values": values,
         "modifiers": [{"name": m.name, "stat": m.stat or _hex(m.key), "named": m.stat is not None,
-                       "super": m.super_effect} for m in IM.list_modifiers(data)],
+                       "super": m.super_effect, "amount": amounts.get(m.name)}
+                      for m in IM.list_modifiers(data)],
         "superKey": super_key,
         "superText": (_text_values().get(super_key) or "") if super_key else "",
-        "card": _card(data),
+        "card": card,
     }
 
 

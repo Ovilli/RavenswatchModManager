@@ -180,6 +180,191 @@ def _scan_after_label(data: bytes, label: str, old_value: float,
     return None if k < 0 else region_start + k
 
 
+# Number parts that are not values a player tunes: the rarity, and the
+# per-item counters the game fills in at run time.
+_NOT_TUNABLE = {"Quality Value", "Current Value"}
+
+
+def item_numbers(data: bytes) -> tuple[list[dict], dict[str, dict]]:
+    """Every number an item's effects use, read structurally: each plain
+    number part (``Price Reduction``, ``Shield Gain``), each modifier's own
+    amount when it holds one (``Super Effect Modifier.amount``), and, per
+    modifier, where its amount comes from -- so an editor can put the amount
+    beside the stat it gives. The label scanner behind ``list_value_fields``
+    misses the first two on many items (Dreamcatcher, Goldilocks' Porridge)."""
+    from . import entity_fields as EF
+    from . import entity_graph as EG
+    g = EG.parse(data, "item")
+    by_guid = {c.guid.hex(): c for c in g.components}
+    names = g.components[0].classes if g.components else []
+    picker = names.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in names else -1
+
+    def literal(f) -> tuple[str, float] | None:
+        if f.kind != "value" or "<-" in f.text:
+            return None
+        kind, _, num = f.text.partition(" ")
+        if kind not in ("f32", "int"):
+            return None
+        try:
+            return ("int" if kind == "int" else "float"), float(num)
+        except ValueError:
+            return None
+
+    def links(c, f) -> list:
+        body = c.body[f.offset:f.offset + f.size]
+        return [by_guid.get(r.guid.hex()) for _o, r in EG._pickers(body, picker)]
+
+    # A math part keeps its steps in sub-objects (`oCEntityCpntNodeSettings`
+    # sections, each naming the next by u32 id), and those steps hold the
+    # references to the numbers it combines: Dreamcatcher's "Scalable Value
+    # Operation" reads "Price Reduction" two nodes down.
+    from . import cooked
+    cf = cooked.parse(data)
+    objs = cf.sections[1:-1]
+    node = "oCEntityCpntNodeSettings"
+    node_cls = names.index(node) if node in names else -1
+
+    def sub_payloads(payload: bytes, seen: set[int]) -> list[bytes]:
+        out = []
+        for i in range(len(payload) - 3):
+            v = int.from_bytes(payload[i:i + 4], "little")
+            if 0 <= v < len(objs) and v not in seen and node_cls >= 0 \
+                    and int.from_bytes(objs[v].payload[:4], "little") == node_cls:
+                seen.add(v)
+                out.append(objs[v].payload)
+                out += sub_payloads(objs[v].payload, seen)
+        return out
+
+    def reads_through(x, known_guids: dict[bytes, str]) -> str | None:
+        for pl in [objs[x.index - 1].payload, *sub_payloads(objs[x.index - 1].payload, set())]:
+            for gid, name in known_guids.items():
+                if gid in pl:
+                    return name
+        return None
+
+    values, users = [], {}
+    for c in g.components:
+        if c.cls != "oCEntityCpntValueSettings" or c.name in _NOT_TUNABLE:
+            continue
+        f = next((x for x in EF.fields(c) if x.name == "value"), None)
+        lit = f and literal(f)
+        if lit:
+            values.append({"label": c.name, "value": lit[1], "type": lit[0], "shadowed": False})
+    known = {v["label"] for v in values}
+    amounts: dict[str, dict] = {}
+    for c in g.components:
+        if c.cls != "oCEntityCpntModifierSettings":
+            continue
+        f = next((x for x in EF.fields(c) if x.name == "amount"), None)
+        if f is None:
+            continue
+        lit = literal(f)
+        if lit:
+            label = f"{c.name}.amount"
+            values.append({"label": label, "value": lit[1], "type": lit[0], "shadowed": False,
+                           "modifier": c.name})
+            amounts[c.name] = {"label": label}
+            continue
+        # Follows another part: a number part directly, or a math part whose
+        # inputs include one (Green Armor: Armor Gain Operation reads "Armor
+        # per Object Value"). The first such number is the one to change.
+        src = [x for x in links(c, f) if x is not None]
+        direct = next((x.name for x in src if x.name in known), None)
+        via = None
+        if direct is None:
+            guids = {c2.guid: c2.name for c2 in g.components if c2.name in known}
+            for x in src:
+                hit = reads_through(x, guids)
+                if hit:
+                    direct, via = hit, x.name
+                    break
+        amounts[c.name] = {"label": direct, "via": via} if direct else \
+            {"label": None, "via": src[0].name if src else None}
+        if direct:
+            users.setdefault(direct, []).append(c.name)
+    for v in values:
+        if v["label"] in users:
+            v["usedBy"] = users[v["label"]]
+    return values, amounts
+
+
+def part_literal(data: bytes, label: str) -> float | None:
+    """The number ``label`` names by PART, or None: ``Price Reduction`` (a
+    number part's value) or ``Super Effect Modifier.amount`` (one field of a
+    part). Read with the structured entity parser, so it reaches the numbers
+    the label scanner behind :func:`set_value_after_label` does not consider
+    value nodes -- on Dreamcatcher and Goldilocks' Porridge, every number that
+    matters. A linked field (one that follows another part) reads None: its
+    inline number is dead, so it has nothing to patch by value."""
+    hit = _part_field(data, label)
+    if hit is None:
+        return None
+    _ef, _c, f = hit
+    if "<-" in f.text:
+        return None
+    kind, _, num = f.text.partition(" ")
+    if kind not in ("f32", "int"):
+        return None
+    try:
+        return float(num)
+    except ValueError:
+        return None
+
+
+def _part_field(data: bytes, label: str):
+    from . import entity_fields as EF
+    from .entity_graph_edit import EntityEditError, EntityFile
+    part, dot, fld = label.rpartition(".")
+    if not dot or not fld or " " in fld:
+        part, fld = label, "value"
+    try:
+        ef = EntityFile(data, "item")
+        c = ef.component(part)
+    except (EntityEditError, ValueError):
+        return None
+    f = next((x for x in EF.fields(c) if x.name == fld), None)
+    return (ef, c, f) if f is not None and f.kind == "value" else None
+
+
+def set_part_value(data: bytes, label: str, old_value: float, new_value: float) -> bytes:
+    """Set the number ``label`` names by part (see :func:`part_literal`),
+    refusing when it does not hold ``old_value`` -- the same guard
+    :func:`set_value_after_label` gives a label patch."""
+    cur = part_literal(data, label)
+    if cur is None:
+        raise ValueError(f"value label {label!r} not found")
+    if struct.pack("<f", cur) != struct.pack("<f", float(old_value)):
+        raise ValueError(f"{label!r} holds {cur:g}, not {old_value:g}; "
+                         f"the patch was written against another value")
+    ef, c, f = _part_field(data, label)
+    ef.set_value(c.name, f.name, new_value)
+    return ef.to_bytes()
+
+
+def apply_value_patch(data: bytes, label: str, old_value: float, new_value: float,
+                      clear: bool = False) -> bytes:
+    """One ``value_patches`` entry: by label when the label scanner knows it
+    (with its overridden-value guard), otherwise by part."""
+    from .talent_values import clear_value_override, is_label_overridden, list_talent_values
+    if label not in {tv.label for tv in list_talent_values(data)} \
+            and part_literal(data, label) is not None:
+        return set_part_value(data, label, old_value, new_value)
+    if is_label_overridden(data, label):
+        if not clear:
+            raise ValueError(
+                f"{label!r} is shadowed: its value is sourced from a "
+                f"selector/reference, so editing the inline value has NO "
+                f"in-game effect. Add clear_override=true to this "
+                f"value_patches entry to disable the override first (this "
+                f"unbinds its selector/curve, e.g. card-count scaling "
+                f"becomes a flat value).")
+        # Disable the override so the inline value becomes authoritative.
+        # clear only flips the 0e flag; the old value bytes are unchanged,
+        # so the set below still anchors on `old`.
+        data = clear_value_override(data, label)
+    return set_value_after_label(data, label, old_value, new_value)
+
+
 def set_value_after_label(data: bytes, label: str, old_value: float,
                           new_value: float, *, within: int = 64) -> bytes:
     """Patch a value node's f32, anchored on its label + expected current value.
@@ -527,24 +712,13 @@ def build_magic_item(
         names = {m.name for m in IM.list_modifiers(ent)}
         target = modifier if modifier in names else modifier.replace(base_id, new_id)
         ent = IM.set_modifier_stat(ent, target, stat)
-    from .talent_values import clear_value_override, is_label_overridden
     for vp in (value_patches or []):
         label, old, new = vp[0], vp[1], vp[2]
         clear = len(vp) > 3 and bool(vp[3])
-        if is_label_overridden(ent, label):
-            if not clear:
-                raise ValueError(
-                    f"{label!r} is shadowed: its value is sourced from a "
-                    f"selector/reference, so editing the inline value has NO "
-                    f"in-game effect. Add clear_override=true to this "
-                    f"value_patches entry to disable the override first (this "
-                    f"unbinds its selector/curve, e.g. card-count scaling "
-                    f"becomes a flat value).")
-            # Disable the override so the inline value becomes authoritative.
-            # clear only flips the 0e flag; the old value bytes are unchanged,
-            # so the set below still anchors on `old`.
-            ent = clear_value_override(ent, label)
-        ent = set_value_after_label(ent, label, old, new)
+        # A part name that embeds the base id was renamed with the item.
+        if new_id != base_id and part_literal(ent, label) is None and base_id in label:
+            label = label.replace(base_id, new_id)
+        ent = apply_value_patch(ent, label, old, new, clear)
     if icon is not None:
         ent = set_icon(ent, icon)
 

@@ -591,7 +591,7 @@ def _lint_content(modname: str, blocks: list[dict],
             label, old = (vp[0], vp[1]) if isinstance(vp, list) else (
                 vp.get("label"), vp.get("old"))
             try:
-                cook.set_value_after_label(data, str(label), float(old), float(old))
+                cook.apply_value_patch(data, str(label), float(old), float(old), True)
             except (ValueError, TypeError) as e:
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                       f"value_patch {_ST.accent(repr(label))}: {_ST.dim(str(e))}")

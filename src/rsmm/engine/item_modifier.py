@@ -260,8 +260,11 @@ def list_modifiers(cooked_bytes: bytes) -> list[Modifier]:
     for name, key in mods:
         # A state names its modifiers through `[Modifier] <item>\<name>` labels.
         label = ("\\" + name).encode("utf-8")
+        # Or the modifier says so itself: Dreamcatcher's "Super Effect Modifier"
+        # hangs off a state the super-effect state turns on, not off it directly.
         out.append(Modifier(name=name, key=key, stat=stat_name(key),
-                            super_effect=any(label in p for p in super_states)))
+                            super_effect=any(label in p for p in super_states)
+                            or "super effect" in name.lower()))
     return out
 
 

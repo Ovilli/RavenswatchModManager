@@ -203,6 +203,9 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
 .pchip .x:hover { color: var(--bad); }
 .errs div { color: var(--bad); font-size: 12px; }
 .row.stat .statnote { grid-column: 1 / -1; margin: 2px 0 0; }
+.effect { border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin: 6px 0; background: var(--panel); }
+.effect .row:nth-child(odd) { background: none; }
+.effect > .row:not(.stat) { margin-left: 18px; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
 #bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
 #bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
@@ -619,7 +622,13 @@ function itemView() {
   checkId();
   if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
   const nameIn = el("input", { placeholder: it.name, value: E.name });
-  f.append(textLabel("Name", nameIn, v => { E.name = v; }), nameIn);
+  // A copy left with the base's name and icon cannot be told apart from the
+  // original in game: testers pick up the shipped item and see "no change".
+  const twin = el("div", { class: "hint bad" });
+  const checkTwin = () => { twin.textContent = !replace && !E.name.trim() && !E.icon && !E.iconUpload
+    ? `Your copy will look exactly like ${it.name} in game. Give it its own name (or icon) so you can tell which one you picked up.` : ""; };
+  nameIn.addEventListener("input", checkTwin); checkTwin();
+  f.append(textLabel("Name", nameIn, v => { E.name = v; }), el("div", {}, nameIn, twin));
   const card = it.card || {};
   const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
@@ -645,17 +654,17 @@ function itemView() {
   f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
   v.append(f);
 
-  v.append(el("div", { class: "sect", text: `Values (${it.values.length})` }));
-  if (!it.values.length) v.append(el("div", { class: "muted", text: "This item has no editable values." }));
-  const rows = el("div");
-  for (const r of it.values) rows.append(valueRow(r.label, r.value, "float", r.shadowed, E.values[r.label],
-    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); }));
-  v.append(rows);
+  // One number row; the same edit state whichever section shows it.
+  const numRow = (r, label) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
+    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); });
+  const byLabel = new Map(it.values.map(r => [r.label, r]));
 
+  // Each effect: the stat it gives, and right under it the number that sets
+  // how much, so changing the stat and its amount happen in one place.
   v.append(el("div", { class: "sect", text: `Effects (${it.modifiers.length})` }));
   if (!it.modifiers.length) v.append(el("div", { class: "muted", text: "This item has no stat effects." }));
-  else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives. The amount keeps its old unit (5% crit chance becomes 0.05 of the new stat), so change the value above as well." }));
-  const stats = el("div");
+  else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives, and set how much under it. The amount keeps its old unit (0.05 crit chance is 5%), so change it when you change the stat." }));
+  const stats = el("div"), shown = new Set();
   for (const m of it.modifiers) {
     const row = statRow(m, E.stats[m.name], val => {
       if (val === undefined) delete E.stats[m.name]; else E.stats[m.name] = val;
@@ -664,11 +673,32 @@ function itemView() {
     });
     const miss = (E.textMiss || []).includes(m.name);
     if (miss) row.append(el("div", { class: "hint bad statnote", text: "The card text does not name this stat in a way the editor can swap. Write the new wording in the " + (m.super ? "super effect text" : "description") + " below." }));
-    stats.append(row);
+    const box = el("div", { class: "effect" }, row);
+    const a = m.amount || {}, r = a.label && byLabel.get(a.label);
+    if (r) {
+      shown.add(r.label);
+      const nr = numRow(r, "Amount");
+      const others = (r.usedBy || []).filter(n => n !== m.name);
+      nr.querySelector(".lbl").append(el("span", { class: "tag type", text: a.label.endsWith(".amount") ? "own number" : r.label,
+        title: (a.via ? `Scaled by “${a.via}” in game (e.g. per object owned).` : "") + (others.length ? ` Also used by: ${others.join(", ")}.` : "") }));
+      box.append(nr);
+    } else {
+      box.append(el("div", { class: "hint", style: "margin:2px 0 6px 12px", text: a.via ? `Its amount is worked out by “${a.via}” in game, from no single number this editor can change.` : "This effect has no amount to change." }));
+    }
+    stats.append(box);
   }
   v.append(stats);
+
+  const rest = it.values.filter(r => !shown.has(r.label));
+  v.append(el("div", { class: "sect", text: `Other values (${rest.length})` }));
+  if (!rest.length) v.append(el("div", { class: "muted", text: "Every number this item has is under its effect above." }));
+  const rows = el("div");
+  for (const r of rest) rows.append(numRow(r));
+  v.append(rows);
   if (it.superKey) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
+    if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+      text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
     const sup = el("textarea", { placeholder: it.superText || it.superKey });
     sup.value = E.superDescription;
     const f2 = el("div", { class: "form" });

@@ -105,12 +105,17 @@ def entity_values(raw: bytes, name: str = "") -> dict[str, dict[str, str]]:
 
 
 def item_values(raw: bytes) -> dict:
-    """A magical object's value labels and modifiers, as the item kind names them."""
+    """A magical object's numbers and modifiers, by the labels ``value_patches``
+    takes: the label scanner's, plus every number part and modifier amount
+    :func:`~rsmm.engine.magic_item_cook.item_numbers` finds by structure."""
     from . import item_modifier as IM
     from . import magic_item_cook as cook
 
+    values = dict(cook.list_value_fields(raw))
+    for v in cook.item_numbers(raw)[0]:
+        values.setdefault(v["label"], v["value"])
     return {
-        "values": dict(cook.list_value_fields(raw)),
+        "values": values,
         "modifiers": [{"name": m.name, "stat": m.stat or f"0x{m.key:08x}",
                        "super": bool(m.super_effect)} for m in IM.list_modifiers(raw)],
     }
@@ -291,8 +296,11 @@ def diff(a: dict, b: dict) -> Iterator[Change]:
                 yield Change(rel, f"item value {label}",
                              None if label not in va else repr(va[label]),
                              None if label not in vb else repr(vb[label]))
-        ma, mb = ia[rel].get("modifiers", []), ib[rel].get("modifiers", [])
+        # By name and stat only: `super` is rsmm's own reading of the item, and
+        # a better reading is not a change the update made.
+        ma = [(m["name"], m["stat"]) for m in ia[rel].get("modifiers", [])]
+        mb = [(m["name"], m["stat"]) for m in ib[rel].get("modifiers", [])]
         if ma != mb:
             yield Change(rel, "item modifiers",
-                         ", ".join(f"{m['name']}={m['stat']}" for m in ma),
-                         ", ".join(f"{m['name']}={m['stat']}" for m in mb))
+                         ", ".join(f"{n}={s}" for n, s in ma),
+                         ", ".join(f"{n}={s}" for n, s in mb))

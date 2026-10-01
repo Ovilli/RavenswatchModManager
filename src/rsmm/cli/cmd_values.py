@@ -84,7 +84,8 @@ def _diff(args, st: _term.Style) -> int:
         elif c.new is None:
             print(f"  {st.err('-')} {c.where}: {c.old}")
         else:
-            old, new = _term.truncate(c.old, 80), _term.truncate(c.new, 80)
+            cut = lambda t: t if len(t) <= 80 else t[:79] + "…"  # noqa: E731
+            old, new = cut(c.old), cut(c.new)
             print(f"  {c.where}: {st.dim(old)} -> {new}")
     files = len({c.rel for c in changes})
     more = f" (showing {args.limit})" if args.limit and len(changes) > args.limit else ""
