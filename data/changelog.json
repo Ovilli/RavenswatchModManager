@@ -1,6 +1,16 @@
 {
-  "generated": "2026-09-26",
+  "generated": "2026-10-01",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 24,
+      "date": "2026-10-01",
+      "summary": "Mods can give an item by its id (R.give.by_name), which the editor's test grants use. Fixed: a repeating main-thread task could run itself many times in one frame (a test grant handed out 66 items at once).",
+      "highlights": [
+        "Mods can now hand you a specific item by its id; the editor's new test grants use this.",
+        "Fixed: a mod's repeating task could run many times in a single frame, so one test grant handed out dozens of items at once."
+      ]
+    },
     {
       "version": "",
       "loader_version": 23,
