@@ -2,6 +2,21 @@
   "generated": "2026-10-01",
   "entries": [
     {
+      "version": "5.9.0",
+      "date": "2026-10-01",
+      "summary": "Custom heroes, one editor for items, talents, abilities and maps (also in your browser), much faster applies, and export of any of the game's models.",
+      "highlights": [
+        "New for mod authors: custom heroes. A mod can add a hero of its own with its own name, body, weapons, outfits, numbers, abilities, attacks, talent cards and story pages.",
+        "New: one editor for items, talents, abilities and maps (rsmm editor), also at docs.rsmm.me/editor with nothing to install. Cards are drawn the way the game draws them.",
+        "The editor can open a mod you saved and keep working on it. Its new Scripts tab gives you items, talents and XP at the start of a run, so you can test a change at once.",
+        "Ability changes in the editor save straight into your custom hero.",
+        "Applying mods is much faster: a mod that did not change is not rebuilt, and an unchanged model or texture is not cooked again. A custom hero went from 46 seconds to under one.",
+        "New: rsmm export-model exports any of the game's 3001 models (scenery, props, enemies, NPCs) with textures and animations for Blender. export-character and import-character take a hero's body and animations out and back in.",
+        "More you can mod: animations, map chapters that generate from their own tiles, enemy copies, boss swaps, and the stat each item effect gives.",
+        "Fixed: an item copy marked unique_identity now really gets its own identity, so you can hold it and the original together."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 24,
       "date": "2026-10-01",
