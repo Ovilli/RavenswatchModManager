@@ -162,3 +162,25 @@ def test_every_shipped_entity_round_trips_through_the_editor():
         if rel.endswith(".EntitySettingsResource.gen"):
             raw = corpus.read(rel)
             assert EE.EntityFile(raw).to_bytes() == raw, rel
+
+
+ICE_CLONE = ("EntitySettings/Heroes/Hero_Snow_Queen/"
+             "Hero_Snow_Queen_Ice_Clone.entity.ot.EntitySettingsResource.gen")
+
+
+@pytest.mark.skipif(corpus.read(ICE_CLONE) is None, reason="no Snow Queen")
+def test_setting_a_linked_number_replaces_the_link():
+    """A linked value picker never reads its inline number, so writing only
+    that would change nothing in game. Setting it makes it a literal, in the
+    `00` + union shape every shipped literal picker has."""
+    raw = corpus.read(ICE_CLONE)
+    ef = EE.EntityFile(raw, "Hero_Snow_Queen_Ice_Clone")
+    # Linked to a number in this file, and to one in a shared parent file.
+    for part, fld, v in (("Lifetime Timer", "duration", 7.0), ("GPN Body", "value_2", 2.5)):
+        assert "<-" in _field(ef, part, fld).text
+        ef.set_value(part, fld, v)
+        assert _field(ef, part, fld).text == f"f32 {v:g}"
+    out = ef.to_bytes()
+    assert len(out) < len(raw)
+    # Untouched fields keep their links.
+    assert "<- [Value]" in _field(ef, "Melting Timer", "duration").text

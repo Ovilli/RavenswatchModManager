@@ -56,6 +56,15 @@ def _field_targets(c, f, picker_cls: int) -> list[tuple[str, str]]:
     return [(r.guid.hex(), r.path) for _o, r in EG._pickers(body, picker_cls) if r.path]
 
 
+def _obj_literals(c, f) -> list[str]:
+    """The literals inside object field ``f``, in the order ``set = "Part.f[n]"``
+    counts them (``position``, ``transform``, a traverser's shape, ...)."""
+    from rsmm.engine import entity_graph as EG
+    sub = EG.Component(0, c.cls, "", "", b"", None,
+                       body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+    return [t.text for t in EG.tokens(sub) if t.kind == "value"]
+
+
 def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     """What the page draws: ``hero``'s entity after ``steps``, with issues."""
     from rsmm.engine import ability_edit as AE
@@ -71,9 +80,10 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
         raise ValueError(f"no entity {stem!r} in {hero}'s family")
     # The unedited values, so the page can show what a change replaced. Keyed
     # by position: a part can carry two fields of one name (a selector's `mode`).
-    was = {(c.guid.hex(), i): f.text
-           for c in EG.parse(files[stem], stem).components
-           for i, f in enumerate(EF.fields(c))}
+    orig = EG.parse(files[stem], stem).components
+    was = {(c.guid.hex(), i): f.text for c in orig for i, f in enumerate(EF.fields(c))}
+    was_lits = {(c.guid.hex(), i): _obj_literals(c, f) for c in orig
+                for i, f in enumerate(EF.fields(c)) if f.kind == "obj" and not f.items}
     error, warnings = "", []
     if steps:
         try:
@@ -84,6 +94,8 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     g = EG.parse(files[stem], stem)
     names = g.components[0].classes if g.components else []
     picker = names.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in names else -1
+    literal = {c.guid.hex(): f.text for c in g.components if c.cls == "oCEntityCpntValueSettings"
+               for f in EF.fields(c) if f.name == "value" and "<-" not in f.text}
     comps = []
     for c in g.components:
         fields = []
@@ -91,12 +103,20 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
             links = (_field_targets(c, f, picker) if f.kind in ("ref", "ref[]", "value")
                      else [])
             old = was.get((c.guid.hex(), i))
-            fields.append({
+            row = {
                 "name": f.name, "kind": f.kind, "text": f.text,
                 "targets": [g for g, _p in links], "paths": [p for _g, p in links],
                 "items": len(f.items),
                 "was": old if old is not None and old != f.text else None,
-            })
+            }
+            if f.kind == "value" and links:
+                # A linked number's inline literal is dead; what the game reads
+                # is the source's, known here when the source is a plain Value.
+                row["source"] = literal.get(links[0][0])
+            elif f.kind == "obj" and not f.items:
+                row["lits"] = _obj_literals(c, f)
+                row["wasLits"] = was_lits.get((c.guid.hex(), i))
+            fields.append(row)
         comps.append({"id": c.guid.hex(), "name": c.name, "group": c.group,
                       "cls": c.cls.removeprefix("oCEntityCpnt").removeprefix("oCDtEntityCpnt")
                       .removesuffix("Settings"),

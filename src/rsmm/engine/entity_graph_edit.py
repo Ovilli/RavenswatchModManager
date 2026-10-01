@@ -306,9 +306,19 @@ class EntityFile:
                "vec4": "<4f"}.get(kind)
         if fmt is None:
             raise EntityEditError(f"{field!r} is a {kind}; only numbers and vectors are set")
+        uoff = u.offset
+        if p[at + f.offset + 8]:
+            # A SOURCED picker reads its number from elsewhere and never reads
+            # its inline one, so writing that alone changes nothing in game.
+            # Make it a literal first: `00` + union is the shape of all 6490
+            # literal pickers in the corpus; a sourced one is `01 00` + picker
+            # + accessor, or `01 01` + a 4-byte global-value key, + union.
+            a, b = at + f.offset + 8, at + f.offset + u.offset
+            p[a:b] = b"\x00"
+            uoff = 9
         vals = value if isinstance(value, (list, tuple)) else [value]
         conv = {"f32": float, "int": int, "bool": bool}.get(kind, float)
-        struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *[conv(v) for v in vals])
+        struct.pack_into(fmt, p, at + f.offset + uoff + 16, *[conv(v) for v in vals])
 
     def _obj_token_span(self, c: EG.Component, f: EF.Field, kind: str, n: int,
                         label: str) -> tuple[int, int]:

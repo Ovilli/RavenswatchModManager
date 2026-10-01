@@ -693,7 +693,12 @@ as    = "Echo"                       # new group; each part gets " Echo"
 
 [[content.abilities]]
 set   = "Primary Ability Shots Delay.value"
-value = 0.2
+value = 0.2                          # on a linked number, replaces the link
+
+[[content.abilities]]
+entity = "Ice_Clone"                 # another file of the family
+set    = "Explosion Attack Traverser.obj_2[3]"
+value  = 4.0                         # the n-th number inside a part's settings
 
 [[content.abilities]]
 link  = "Primary Ability Shoot Timer.on_end"

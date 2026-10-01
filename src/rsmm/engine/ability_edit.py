@@ -14,7 +14,9 @@ One step per table::
     from = "Juliet"                       copy from another hero's entity
 
     set = "Primary Ability Shots Delay.value"
-    value = 0.2                           a number, bool or [x, y, z]
+    value = 0.2                           a number, bool or [x, y, z]; a number
+                                          linked to another part becomes this
+                                          literal (the link is dropped)
 
     set = "My Spawner.position[8]"        the n-th number inside an object
     value = 1.5708                        field (the spawn's yaw, radians)
