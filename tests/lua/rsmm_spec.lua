@@ -1535,6 +1535,28 @@ do
     R.schedule._main_tick()
     check(main_ran, "next_main runs on the main-thread pump")
 
+    -- The main pump is not re-entered: main work that dispatches on the bus
+    -- reaches _main_tick synchronously, and a repeater still due re-fired
+    -- itself 66 times in one frame (an item grant, 2026-10-01).
+    local fires = 0
+    local rep = R.schedule.every_main(1, function()
+        fires = fires + 1
+        R.schedule._main_tick()          -- what a synchronous dispatch does
+    end)
+    fake_clock = fake_clock + 5
+    R.schedule._main_tick()
+    check(fires == 1, "a nested main tick does not re-run a due repeater, got " .. fires)
+    local nested_ran = false
+    R.schedule.next_main(function()
+        R.schedule.next_main(function() nested_ran = true end)
+        R.schedule._main_tick()
+    end)
+    R.schedule._main_tick()
+    check(not nested_ran, "work queued during a main tick waits for the next one")
+    R.schedule._main_tick()
+    check(nested_ran, "and runs on that next tick")
+    R.schedule.cancel(rep)
+
     check(R.schedule.pending().timers == 0, "pending() reports a drained timer list")
     local ok = pcall(R.schedule.after, 1.0, "not a function")
     check(not ok, "after() rejects a non-function")

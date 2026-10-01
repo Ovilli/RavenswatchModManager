@@ -1051,6 +1051,70 @@ function R.give.random()
     return nil
 end
 
+-- The identity GUID (lo, hi) of a loaded item by its id (`"Damage_Attack"`, the
+-- cooked file's stem), or nil. Each pool def keeps the oCEntitySettings it was
+-- spawned from at +0x48, whose +0x08 points at the bare id (read off a live
+-- pool in game 2026-10-01: "Gain_Passive_Heal", "Increase_Shield"). Reads
+-- only, page-guarded.
+function R.give.find(id)
+    assert(type(id) == "string" and id ~= "", "R.give.find: id must be a string")
+    local want = id:lower()
+    for i = 0, R.give.count() - 1 do
+        local lo, hi, def = R.give.guid_at(i)
+        local ent = def and I.read_u64(def + 0x48)
+        local name = _ptr_plausible(ent) and I.read_u64(ent + 0x08)
+        name = _ptr_plausible(name) and I.read_cstr(name, 96)
+        if type(name) == "string" and name:lower() == want then return lo, hi end
+    end
+    return nil
+end
+
+-- Log what pool item `i` points at, two pointer hops deep: class names and the
+-- strings found — the diagnostic for R.give.find not knowing where an item's
+-- name lives. Reads only.
+function R.give.describe(i)
+    local lo, hi, def = R.give.guid_at(i)
+    if not def then R.log("[rsmm.give] describe: no item " .. tostring(i)); return end
+    R.log(("[rsmm.give] item %d def=0x%x %s guid=%016x%016x"):format(
+        i, def, tostring(R.rtti.name(def)), hi or 0, lo or 0))
+    local seen = 0
+    local function strings(tag, obj)
+        for _, s in ipairs(R.debug.strings(obj, { log = false, max_off = 0x200 })) do
+            R.log(("[rsmm.give]   %s+0x%03x -> %q"):format(tag, s.off, s.text))
+        end
+        for _, s in ipairs(R.debug.strings_at(obj, { before = 0, after = 0x200, min_len = 6 })) do
+            R.log(("[rsmm.give]   %s inline+0x%03x %q"):format(tag, s.off, s.text))
+        end
+    end
+    strings("def", def)
+    for off = 0, 0x1f8, 8 do
+        local p = I.read_u64(def + off)
+        if p and p ~= def and _ptr_plausible(p) and seen < 24 then
+            local cls = R.rtti.name(p)
+            if cls then
+                seen = seen + 1
+                R.log(("[rsmm.give]  def+0x%03x -> 0x%x %s"):format(off, p, cls))
+                strings(("def+0x%03x"):format(off), p)
+            end
+        end
+    end
+end
+
+-- Grant a loaded item by id (see R.give.find). Returns true on dispatch.
+-- MAIN THREAD only, like R.give.by_guid: the grant builds the item's entity
+-- with the engine's per-thread allocator, which the timer thread does not have
+-- (R.schedule.every crashed the game in EntityComponent_Activate, 2026-10-01).
+-- Call it from R.schedule.next_main / every_main.
+function R.give.by_name(id)
+    local lo, hi = R.give.find(id)
+    if not lo then
+        R.log(("[rsmm.give] no loaded item named %s (%d loaded); R.give.describe(i) shows one")
+            :format(tostring(id), R.give.count()))
+        return false
+    end
+    return R.give.by_guid(lo, hi)
+end
+
 -- Number of magical objects currently in the runtime (owned/active) pool array.
 function R.give.owned_count()
     local vec = _give_pool_vec()
