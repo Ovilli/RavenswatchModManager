@@ -84,10 +84,16 @@ class PropCookError(ValueError):
 # --------------------------------------------------------------------------- #
 
 def cook_texture(source_bytes: bytes) -> bytes:
-    """Cook a PNG (or DDS) into a cooked ``oCTexture`` container."""
+    """Cook a PNG (or DDS) into a cooked ``oCTexture`` container.
+
+    Memoised on the source bytes (:mod:`.cook_memo`): an unchanged texture is
+    not decoded again on the next apply.
+    """
+    from . import cook_memo
     from .cooked_schemas.texture import TextureHandler
 
-    return TextureHandler().encode_container(source_bytes)
+    return cook_memo.cached("texture", (source_bytes,),
+                            lambda: TextureHandler().encode_container(source_bytes))
 
 
 def cook_model(glb_bytes: bytes, donor_geometry_cooked: bytes,
@@ -102,10 +108,18 @@ def cook_model(glb_bytes: bytes, donor_geometry_cooked: bytes,
 
     The donor contributes vertex layout and material-slot count. Every
     position, normal and UV comes from `glb_bytes`.
+
+    Memoised on the model, the donor and the transform (:mod:`.cook_memo`): an
+    unchanged model is not cooked again on the next apply, and its warnings
+    are replayed.
     """
+    from . import cook_memo
     from .geometry_cook import swap_geometry
 
-    return swap_geometry(donor_geometry_cooked, glb_bytes, transform=transform)
+    spec = json.dumps(transform, sort_keys=True, default=repr)
+    return cook_memo.cached(
+        "model", (glb_bytes, donor_geometry_cooked, spec),
+        lambda: swap_geometry(donor_geometry_cooked, glb_bytes, transform=transform))
 
 
 # --------------------------------------------------------------------------- #

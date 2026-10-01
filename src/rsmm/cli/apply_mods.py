@@ -855,7 +855,115 @@ def _drop_emitted(m: Mod) -> None:
         pass
 
 
-def emit_content_blocks(mods: list[Mod]) -> int:
+#: Per-mod record of the last successful content emit: the key of everything
+#: that went into it and the size/mtime of every file it wrote.
+_EMIT_CACHE = ".rsmm_emit_cache.json"
+#: Mod-root files that are not emit INPUTS: apply's own bookkeeping, and what
+#: the loader rewrites during play (an emit key that moved every time the game
+#: ran would never hit).
+_EMIT_NOT_INPUT = (".rsmm_emitted.json", _EMIT_CACHE)
+
+
+def _game_stamp(game_dir: Path | None) -> str:
+    """What an emit reads from outside the mod: the game build
+    (`game_fingerprint`), the asset map derived from it, and the dev corpus
+    mirror. A game update or a
+    re-extracted mirror therefore re-emits every mod."""
+    h = hashlib.sha256()
+    if game_dir is not None:
+        try:
+            # Content-based, and blind to rsmm's own UsedRscList edits.
+            h.update(game_fingerprint(game_dir).encode())
+        except OSError:
+            h.update(b"game:none")
+    try:
+        h.update(ASSET_MAP_JSON.read_bytes())
+    except OSError:
+        h.update(b"map:none")
+    try:
+        from rsmm.engine import corpus, corpus_cache
+        if corpus.UNCOOKED.is_dir():
+            h.update(corpus_cache._fingerprint(corpus.UNCOOKED).encode())
+    except (ImportError, OSError):
+        pass
+    return h.hexdigest()
+
+
+def _emit_key(m: Mod, emitted: list[str], game_stamp: str) -> str:
+    """Key of everything a mod's content emit depends on: its blocks, every
+    file in the mod other than the emit's own output (by size + mtime), the
+    rsmm code and the game. Equal key = the emit would write the same bytes."""
+    from rsmm.engine.cook_memo import code_fingerprint
+    h = hashlib.sha256(code_fingerprint().encode())
+    h.update(game_stamp.encode())
+    h.update(json.dumps([m.id, m.experimental, m.content_blocks],
+                        sort_keys=True, default=str).encode())
+    own = {(m.assets_dir / Path(r)).resolve() for r in emitted}
+    files = []
+    for dirpath, dirs, names in os.walk(m.root):
+        dirs[:] = sorted(d for d in dirs if d not in (".git", "__pycache__"))
+        for name in names:
+            if (name in _EMIT_NOT_INPUT or name.startswith(".rsmm_state")
+                    or name.endswith(".tmp")):
+                continue
+            p = Path(dirpath) / name
+            if p.resolve() in own:
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            files.append((p.relative_to(m.root).as_posix(), st.st_size, st.st_mtime_ns))
+    h.update(json.dumps(sorted(files)).encode())
+    return h.hexdigest()
+
+
+def _file_sig(p: Path) -> list[int] | None:
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _emit_cache_hit(m: Mod, key: str, emitted: list[str]) -> list | None:
+    """The log records to replay when the last emit had this key and every file
+    it wrote is still exactly where it left it; else None (emit again)."""
+    if os.environ.get("RSMM_NO_COOK_CACHE", "").strip() in ("1", "true", "yes"):
+        return None
+    try:
+        rec = json.loads((m.root / _EMIT_CACHE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rec, dict) or rec.get("key") != key:
+        return None
+    files = rec.get("files") or {}
+    if sorted(files) != sorted(emitted):
+        return None
+    for rel, sig in files.items():
+        p = _emitted_stale_path(m.assets_dir, rel)
+        if p is None or _file_sig(p) != sig:
+            return None
+    return rec.get("log") or []
+
+
+def _emit_cache_store(m: Mod, key: str, emitted: list[str], log: list) -> None:
+    files = {rel: _file_sig(m.assets_dir / Path(rel)) for rel in emitted}
+    try:
+        (m.root / _EMIT_CACHE).write_text(
+            json.dumps({"key": key, "files": files, "log": log}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _emit_cache_drop(m: Mod) -> None:
+    try:
+        (m.root / _EMIT_CACHE).unlink()
+    except OSError:
+        pass
+
+
+def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
     """Materialize every mod's [[content]] block declarations under its
     own `assets/` tree. Idempotent — re-running just refreshes the
     emitted marker JSON files.
@@ -881,6 +989,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         print(f"  [content] sdk import failed: {e}", file=sys.stderr)
         return 0
     total = 0
+    stamp = _game_stamp(game_dir) if any(m.enabled and m.content_blocks for m in mods) else ""
     for m in mods:
         _CURRENT_MOD[0] = m.id
         if not m.enabled or not m.content_blocks:
@@ -892,10 +1001,12 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             # behind and `apply` went on banning 103 items after the list was
             # cleared, which crashed the game.
             _drop_emitted(m)
+            _emit_cache_drop(m)
             continue
         # Honor the manifest's `experimental = true` so non-confirmed content
         # kinds the author opted into actually emit (lint already respects it).
         cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        clean = True            # only a fully clean emit is worth caching
         for block in m.content_blocks:
             kind = block.get("kind")
             cid = block.get("id")
@@ -909,6 +1020,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                                if k not in ("kind", "id")})
             except ContentError as e:
                 print(f"  [content] {m.id}: {e}", file=sys.stderr)
+                clean = False
         out_dir = m.assets_dir
         # Track what content-emit produced so a later emit (e.g. after the
         # author renames/removes a content def) can delete the files it wrote
@@ -919,6 +1031,21 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             prev = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else []
         except (OSError, ValueError):
             prev = []
+        if not isinstance(prev, list):
+            prev = []
+        # Nothing the emit depends on changed since it last ran clean, and its
+        # files are untouched: keep them. A custom hero costs ~40 s to emit,
+        # and most applies change some OTHER mod. Its warnings are replayed so
+        # a kept emit reports what a fresh one would.
+        key = _emit_key(m, prev, stamp) if clean else None
+        replay = _emit_cache_hit(m, key, prev) if key else None
+        if replay is not None:
+            for name, level, msg in replay:
+                logging.getLogger(name).log(level, msg)
+            total += len(prev)
+            print(f"  [content] {m.id}: unchanged, kept {len(prev)} file(s)")
+            continue
+        _emit_cache_drop(m)
         # Last run's emitted files go BEFORE this run emits, not after.
         #
         # Several of them ACCUMULATE by design: a mapdef's tile pool and a
@@ -950,6 +1077,9 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                     dropped += 1
             except OSError:
                 pass
+        from rsmm.engine.cook_memo import _Capture
+        cap = _Capture()
+        logging.getLogger("rsmm").addHandler(cap)
         try:
             written = cr.emit(out_dir)
             total += len(written)
@@ -966,6 +1096,10 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                 pass
             if written:
                 print(f"  [content] {m.id}: emitted {len(written)} file(s)")
+            if clean:
+                # Keyed on the inputs as they were BEFORE the emit: what it
+                # wrote is excluded from the key by `new_rel`.
+                _emit_cache_store(m, _emit_key(m, new_rel, stamp), new_rel, cap.records)
         except SchemaNotMined as e:
             print(f"  [content] {m.id}: schema not mined yet: {e}",
                   file=sys.stderr)
@@ -973,6 +1107,8 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         except (OSError, ValueError) as e:
             print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
             _drop_emitted(m)
+        finally:
+            logging.getLogger("rsmm").removeHandler(cap)
     return total
 
 
@@ -2098,7 +2234,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     mods = apply_health_quarantine(mods, cooking)
     # Materialize [[content]] declarations before computing the asset
     # plan so the emitted files are picked up like any other asset.
-    emit_content_blocks(mods)
+    emit_content_blocks(mods, game_dir)
     state = State(cooking)
 
     # If a previous apply crashed mid-write, the stage dir may still be
@@ -2620,6 +2756,9 @@ def main() -> int:
                          "known mod assets during restore")
     ap.add_argument("--no-merge", action="store_true",
                     help="skip auto-merging [[patch]] blocks into mods/_merged/")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="re-emit every mod's content and re-cook every model "
+                         "and texture, ignoring the emit and cook caches")
     ap.add_argument("--force", action="store_true",
                     help="apply even if the compatibility graph has errors")
     ap.add_argument("--yes", action="store_true",
@@ -2627,6 +2766,8 @@ def main() -> int:
                          "(otherwise prompts interactively; set "
                          "RSMM_NONINTERACTIVE=1 to require --yes)")
     args = ap.parse_args()
+    if args.no_cache:
+        os.environ["RSMM_NO_COOK_CACHE"] = "1"      # read by both caches
     global _VERBOSE
     _VERBOSE = _VERBOSE or args.verbose
     _install_warning_handler()

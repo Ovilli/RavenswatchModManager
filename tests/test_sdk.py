@@ -431,6 +431,9 @@ def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
         raise ValueError("emit exploded")
 
     monkeypatch.setattr(ContentRegistry, "emit", boom)
+    # The manifest changes too, as it did in the incident: with identical inputs
+    # the emit cache would rightly keep the last good emit and never run this.
+    (mod / "manifest.toml").write_text(manifest + 'name = "X2"\n', encoding="utf-8")
     emit_content_blocks([Mod(mod)])
 
     assert not emitted.exists(), (

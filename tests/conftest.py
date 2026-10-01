@@ -110,6 +110,14 @@ _LAZY_PATH_ATTRS = ("MODS_DIR", "DEFAULT_GAME_DIR")
 
 
 @pytest.fixture(autouse=True)
+def _private_cook_cache(tmp_path_factory, monkeypatch):
+    """Point the cook memo at a per-session temp dir. Without this a test that
+    cooks a model or texture would read entries a developer's real applies
+    left in `.rsmm/cook_memo` (and write its own there)."""
+    monkeypatch.setenv("RSMM_COOK_CACHE", str(tmp_path_factory.getbasetemp() / "cook_memo"))
+
+
+@pytest.fixture(autouse=True)
 def _guard_lazy_paths(request):
     """Fail any test that leaves a lazy path attribute frozen in the module.
 

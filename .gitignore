@@ -87,6 +87,7 @@ docs/_re/project/
 # Local Claude Code config (per-machine permissions, scratch).
 .claude/
 .rsmm_emitted.json
+.rsmm_emit_cache.json
 .vercel
 .env*
 data/.symbol_remap.json
