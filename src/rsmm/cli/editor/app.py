@@ -34,6 +34,7 @@ MAX_BODY = 1 << 20
 TABS = {
     "items": ("Items", "/content/?tab=items"),
     "talents": ("Talents", "/content/?tab=talents"),
+    "scripts": ("Scripts", "/content/?tab=scripts"),
     "abilities": ("Abilities", "/abilities/"),
     "map": ("Map", "/map/"),
 }

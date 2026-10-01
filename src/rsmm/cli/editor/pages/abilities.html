@@ -105,7 +105,7 @@ text.el { fill: var(--muted); font-size: 11px; } text.el.hi { fill: var(--accent
       <ol>
         <li>Pick an ability on the left.</li>
         <li>Type a new number in the box and press <b>Enter</b>. The row turns purple and the change is checked straight away. <b>↺</b> puts the original back.</li>
-        <li>When the bar at the bottom says <b>Ready to build</b>, press <b>Copy manifest code</b>, paste it into your custom hero's <code>manifest.toml</code>, and run <code>rsmm apply</code>.</li>
+        <li>When the bar at the bottom says <b>Ready to build</b>, choose your mod at the bottom and press <b>Save to mod</b>: the changes go into its custom hero built on this hero, and come back when you open it again. Then run <code>rsmm apply</code>.</li>
       </ol>
       Nothing here touches your game until you apply. To change <i>what triggers what</i>, use the <b>Diagram</b> tab.
       <div style="margin-top:6px"><button class="small" id="helpOk">Got it, hide this</button></div>
@@ -129,7 +129,10 @@ text.el { fill: var(--muted); font-size: 11px; } text.el.hi { fill: var(--accent
 <section id="bar">
   <div class="head">
     <div id="status" class="idle">No changes yet.</div>
-    <button id="copy" class="primary" title="Copy your changes as manifest code" disabled>Copy manifest code</button>
+    <select id="mod" title="The mod to save into"></select>
+    <select id="block" title="Your custom hero in that mod, built on this hero" hidden></select>
+    <button id="save" class="primary" title="Write these changes into your custom hero in the chosen mod" disabled>Save to mod</button>
+    <button id="copy" class="small" title="Copy your changes as manifest code" disabled>Copy manifest code</button>
     <button id="toggleList" class="small">Show changes</button>
     <button id="undo" class="small" title="Remove the last change">Undo last</button>
     <button id="clear" class="small" title="Remove every change">Start over</button>
@@ -223,7 +226,9 @@ const typeOf = (cls) => TYPES[cls] || [cls.replace(/([a-z])([A-Z])/g, "$1 $2"), 
 const niceField = (n) => n.replace(/\?$/, "").replace(/_/g, " ");
 
 let S = { hero: "", entity: "", steps: [], data: null, group: "", sel: null, tab: "numbers",
-          tf: { x: 40, y: 40, k: 1 }, bounds: null, flash: null };
+          tf: { x: 40, y: 40, k: 1 }, bounds: null, flash: null,
+          // The mod and custom hero the changes save into, and the steps it holds.
+          mod: "", block: "", blocks: [], saved: "[]" };
 
 async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-RSMM-Token": TOKEN }, body: JSON.stringify(body) });
@@ -544,8 +549,9 @@ function drawSteps() {
   $("toml").value = S.data.toml || "";
   $("problems").replaceChildren();
   $("copy").disabled = !S.steps.length || !!S.data.error;
+  drawSave();
   $("toggleList").textContent = ($("details").hidden ? "Show" : "Hide") + ` changes (${S.steps.length})`;
-  if (!S.steps.length) setStatus("idle", "No changes yet. Type a new number in the list above and press Enter.");
+  if (!S.steps.length) setStatus(S.note ? "warn" : "idle", S.note || "No changes yet. Type a new number in the list above and press Enter.");
   else if (S.data.error) {
     // The check lists every broken link; the bar shows the first, the panel all.
     const probs = S.data.error.replace(/^ability step \d+ \((\w+)\): /, "").split("\n").map(l => l.trim().replace(/^\[error\] /, "")).filter(Boolean);
@@ -581,7 +587,78 @@ $("showAll").addEventListener("change", drawGroups);
 $("hero").addEventListener("change", () => {
   if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) { $("hero").value = S.hero; return; }
   S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; refresh();
+  loadBlocks();
 });
+// ---- saving into a mod ---------------------------------------------------------------
+// The steps go into a custom hero (kind = "hero") built on this hero, replacing the
+// steps it had: they are a sequence the build replays, so the whole list is saved
+// each time. Opening that hero loads them back, so work goes on where it stopped.
+const stepsJson = () => JSON.stringify(S.steps);
+async function getJ(url) {
+  const r = await fetch(url); const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
+function drawSave() {
+  const same = !!S.block && stepsJson() === S.saved;
+  $("save").disabled = !S.block || same || !!(S.data && S.data.error);
+  $("save").textContent = same ? "Saved" : "Save to mod";
+}
+async function loadMods() {
+  try {
+    const { mods } = await getJ("api/mods");
+    $("mod").replaceChildren(el("option", { value: "", text: "Save into a mod…" }),
+      ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
+    if (!mods.some(m => m.id === S.mod)) S.mod = "";
+    $("mod").value = S.mod;
+  } catch (e) { setStatus("bad", e.message); }
+}
+async function loadBlocks() {
+  S.block = ""; S.blocks = []; S.note = ""; $("block").hidden = true; drawSave();
+  if (!S.mod) return;
+  let j;
+  try { j = await getJ(`api/heroblocks?mod=${encodeURIComponent(S.mod)}&hero=${encodeURIComponent(S.hero)}`); }
+  catch (e) { setStatus("bad", e.message); return; }
+  S.blocks = j.blocks;
+  if (!j.blocks.length) {
+    S.note = `${S.mod} has no custom hero built on ${S.hero}. Ability changes belong to a custom hero: add a [[content]] block with kind = "hero" and base = "${S.hero}" to it first`
+      + (j.others.length ? ` (it has heroes built on ${j.others.join(", ")}).` : ".");
+    setStatus("warn", S.note);
+    return;
+  }
+  $("block").replaceChildren(...j.blocks.map(b => el("option", { value: b.id,
+    text: `${b.name} (${b.steps.length} saved change${b.steps.length === 1 ? "" : "s"})` })));
+  $("block").hidden = j.blocks.length < 2;
+  openBlock(j.blocks[0].id);
+}
+function openBlock(id) {
+  const b = S.blocks.find(x => x.id === id);
+  if (!b) return;
+  S.block = id; $("block").value = id;
+  const theirs = JSON.stringify(b.steps);
+  S.saved = theirs;
+  // Your unsaved changes win only if you say so; otherwise the hero's saved ones load.
+  if (S.steps.length && stepsJson() !== theirs
+      && !confirm(`Load ${b.name}'s saved changes (${b.steps.length}) in place of yours? Cancel keeps yours, to save them into ${b.name}.`)) {
+    drawSave(); return;
+  }
+  S.steps = JSON.parse(theirs); refresh();
+}
+$("mod").addEventListener("change", () => {
+  S.mod = $("mod").value;
+  try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
+  loadBlocks();
+});
+$("block").addEventListener("change", () => openBlock($("block").value));
+$("save").addEventListener("click", async () => {
+  try {
+    const j = await post("api/save", { mod: S.mod, block: S.block, hero: S.hero, steps: S.steps });
+    S.saved = stepsJson();
+    const b = S.blocks.find(x => x.id === S.block); if (b) b.steps = JSON.parse(S.saved);
+    drawSave();
+    setStatus("ok", `✓ Saved ${j.steps} change${j.steps === 1 ? "" : "s"} into ${S.block} in ${S.mod}. Keep editing, or run rsmm apply.`);
+  } catch (e) { setStatus("bad", e.message); }
+});
+
 $("entity").addEventListener("change", () => { S.entity = $("entity").value; S.group = ""; S.sel = null; refresh(); });
 $("undo").addEventListener("click", () => { if (S.steps.length) { S.steps.pop(); refresh(); } });
 $("clear").addEventListener("click", () => { if (S.steps.length && confirm("Remove all your changes?")) { S.steps = []; refresh(); } });
@@ -601,6 +678,9 @@ try { if (localStorage.getItem("ae-help")) $("help").hidden = true; } catch (e) 
   $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
   S.hero = heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
   refresh();
+  try { S.mod = localStorage.getItem("ae-mod") || ""; } catch (e) {}
+  await loadMods();
+  loadBlocks();
 })();
 </script>
 </body>

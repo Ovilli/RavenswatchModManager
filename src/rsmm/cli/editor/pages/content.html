@@ -212,6 +212,8 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
 .st-ok { color: var(--ok); } .st-bad { color: var(--bad); } .st-warn { color: var(--warn); }
 .results div { padding: 2px 0; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
+.grant { display: grid; grid-template-columns: 1fr 120px 26px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.openline { display: flex; gap: 6px; } .openline select { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -219,6 +221,7 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
   <h1>Item &amp; Talent Editor</h1>
   <button class="tab" data-tab="items">Items</button>
   <button class="tab" data-tab="talents">Talents</button>
+  <button class="tab" data-tab="scripts">Scripts</button>
 </header>
 
 <aside id="left">
@@ -238,7 +241,9 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
   </div>
   <div class="acts">
     <div class="line"><button id="check">Check</button><button id="copy">Copy</button></div>
-    <select id="mod"></select>
+    <div class="openline"><select id="mod"></select><button id="open" type="button" title="Open this mod to keep working on it">Open</button></div>
+    <button id="import" type="button" hidden title="Bring a mod you saved before back into the editor">Open a mod folder…</button>
+    <input id="importdir" type="file" hidden>
     <button id="save" class="primary">Add to mod</button>
     <div class="tiny muted">Nothing touches the game until you run <code>rsmm apply</code>.</div>
   </div>
@@ -407,7 +412,7 @@ function resetBtn(onclick, title) {
 
 // ---- state ------------------------------------------------------------------
 const S = {
-  tab: START_TAB === "talents" ? "talents" : "items",
+  tab: ["talents", "scripts"].includes(START_TAB) ? START_TAB : "items",
   items: [], icons: [], stats: [], heroes: [], mods: [], modTags: [], portraits: {},
   drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
   restored: "",      // the tab whose open edit came from a draft
@@ -415,6 +420,8 @@ const S = {
   itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
   hero: null, talents: null,
   talentEdit: { prefix: "", values: {}, cards: {} },   // values key: file + "\u0000" + label
+  script: null, scriptSaved: "",   // the Scripts tab's test grants, and what the mod holds
+  loaded: null,   // the opened mod: {id, name, entries: {tab \0 key: {blocks, json}}}
 };
 
 // ---- tabs + left list ----------------------------------------------------------
@@ -422,6 +429,7 @@ function setTab(t) {
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("#rarity").hidden = t !== "items";
+  $("#q").hidden = t === "scripts";
   $("#q").value = "";
   renderList(); renderView(); refresh();
 }
@@ -442,6 +450,8 @@ function renderList() {
         S.drafts.items.has(i.id) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null,
         el("span", { class: "sub", text: i.rarity })));
     }
+  } else if (S.tab === "scripts") {
+    list.append(el("div", { class: "empty", text: "Test grants are set on the right. They go into whichever mod you save to." }));
   } else {
     for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
       list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) },
@@ -479,6 +489,7 @@ function talentChanged(E) {
 }
 // Keep (or drop) the open edit's draft; called on every change.
 function saveDraft() {
+  if (S.tab === "scripts") return;
   const items = S.tab === "items";
   const id = items ? S.item && S.item.id : S.hero;
   if (!id) return;
@@ -536,7 +547,8 @@ async function openPending(tab, id) {
 function renderPending(edits, errors) {
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
-  if (edits.length < 2 && !bad.size) return;
+  const grants = scriptChanged();
+  if (edits.length + (grants ? 1 : 0) < 2 && !bad.size) return;
   for (const e of edits) {
     const chip = el("span", { class: "pchip" + (isOpen(e.tab, e.id) ? " open" : "") + (bad.has(e.name) ? " bad" : "") },
       el("button", { type: "button", title: "Open it", onclick: () => openPending(e.tab, e.id) }, e.name));
@@ -544,6 +556,12 @@ function renderPending(edits, errors) {
       chip.append(el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop " + e.name, onclick: () => dropPending(e.tab, e.id) }, "×"));
     }
     box.append(chip);
+  }
+  if (grants) {
+    box.append(el("span", { class: "pchip" + (S.tab === "scripts" ? " open" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => setTab("scripts") }, "Test grants"),
+      el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the test grants",
+        onclick: () => { S.script = JSON.parse(S.scriptSaved); saveScript(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
   }
 }
 
@@ -1424,8 +1442,196 @@ function allValues() {
 
 function renderView() {
   const view = $("#view"); view.textContent = "";
-  view.append(S.tab === "items" ? itemView() : talentView());
+  view.append(S.tab === "items" ? itemView() : S.tab === "talents" ? talentView() : scriptView());
 }
+
+// ---- scripts: test grants -------------------------------------------------------------
+// The Scripts tab sets the editor's own section of the mod's init.lua, which hands
+// out items, talents and XP when a run starts. The server writes the Lua; this
+// page only edits the settings.
+const SCRIPT_KEY = "rsmm.editor.script", LOADED_KEY = "rsmm.editor.loaded";
+const TIER_NAMES = ["Common", "Rare", "Epic", "Legendary"];
+function emptyScript() { return { hero: "", xp: 0, items: [], talents: [] }; }
+// The settings as the server keeps them: a half-filled row is not a change, and
+// talents need their hero.
+function scriptNorm(c) {
+  c = c || emptyScript();
+  return JSON.stringify({ hero: c.hero || "", xp: Math.max(0, Math.floor(Number(c.xp) || 0)),
+    items: (c.items || []).filter(i => i.id).map(i => ({ id: i.id, count: Math.min(99, Math.max(1, Math.floor(Number(i.count) || 1))) })),
+    talents: c.hero ? (c.talents || []).filter(t => t.name).map(t => ({ name: t.name, tier: Number(t.tier) || 0 })) : [] });
+}
+const NO_GRANTS = scriptNorm(emptyScript());
+function scriptChanged() { return !!S.script && scriptNorm(S.script) !== S.scriptSaved; }
+function saveScript() { store.set(SCRIPT_KEY, { script: S.script, saved: S.scriptSaved }); }
+const talentCards = new Map();
+function cardsOf(hero) {
+  if (!talentCards.has(hero)) {
+    talentCards.set(hero, get("api/talents?hero=" + encodeURIComponent(hero)).then(j => j.cards || []).catch(() => []));
+  }
+  return talentCards.get(hero);
+}
+
+function scriptView() {
+  const C = S.script, v = el("div");
+  const changed = () => { saveScript(); refresh(); };
+  const redraw = () => { renderView(); changed(); };
+  v.append(el("div", { class: "help", text: "Test grants: when a run starts, the mod hands you these items, talents and XP, so a change can be tried at once instead of waiting for the game to offer it. They go into the mod's init.lua, in a section the editor owns; your own code in that file is left alone. Take them out before you publish the mod." }));
+  const f = el("div", { class: "form" });
+  const hero = el("select", {}, el("option", { value: "", text: "Every hero" }),
+    ...S.heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
+  hero.value = C.hero;
+  hero.onchange = () => { C.hero = hero.value; redraw(); };
+  const xp = el("input", { type: "number", min: "0", max: "1000000", step: "100", value: String(C.xp || 0) });
+  xp.oninput = () => { C.xp = Math.max(0, Math.floor(Number(xp.value) || 0)); changed(); };
+  f.append(el("label", { text: "Only for" }), el("div", {}, hero,
+      el("div", { class: "hint", text: "A mod's script runs for whatever hero you play. Pick one and the grants happen only with that hero." })),
+    el("label", { text: "XP" }), el("div", {}, xp, el("div", { class: "hint", text: "5000 takes a new hero from level 1 to 4. 0 gives none." })));
+  v.append(el("div", { class: "sect", text: "Who and how much" }), f);
+
+  v.append(el("div", { class: "sect", text: `Items (${C.items.length})` }));
+  const items = [...S.items].sort((a, b) => a.name.localeCompare(b.name));
+  C.items.forEach((it, i) => {
+    const sel = el("select", {}, el("option", { value: "", text: "Pick an item…" }),
+      ...items.map(x => el("option", { value: x.id, text: `${x.name} (${x.rarity})` })));
+    sel.value = it.id;
+    sel.onchange = () => { it.id = sel.value; changed(); };
+    const n = el("input", { type: "number", min: "1", max: "99", value: String(it.count), title: "Copies" });
+    n.oninput = () => { it.count = Math.min(99, Math.max(1, Math.floor(Number(n.value) || 1))); changed(); };
+    v.append(el("div", { class: "grant" }, sel, n, resetBtn(() => { C.items.splice(i, 1); redraw(); }, "Remove")));
+  });
+  v.append(el("button", { type: "button", onclick: () => { C.items.push({ id: "", count: 1 }); redraw(); } }, "+ Add an item"));
+
+  v.append(el("div", { class: "sect", text: `Talents (${C.talents.length})` }));
+  if (!C.hero) {
+    v.append(el("div", { class: "muted", text: "Talents belong to one hero: pick the hero above to choose them." }));
+    return v;
+  }
+  const box = el("div", {}, loadingView("Loading " + C.hero.replace(/_/g, " ") + "'s talents…", true));
+  v.append(box);
+  cardsOf(C.hero).then(cards => {
+    box.textContent = "";
+    C.talents.forEach((t, i) => {
+      const sel = el("select", {}, el("option", { value: "", text: "Pick a talent…" }),
+        ...cards.map(c => el("option", { value: c.source, text: c.name ? `${c.name} (${c.source})` : c.source })));
+      sel.value = t.name;
+      sel.onchange = () => { t.name = sel.value; changed(); };
+      const tier = el("select", {}, ...TIER_NAMES.map((n, k) => el("option", { value: String(k), text: n })));
+      tier.value = String(t.tier || 0);
+      tier.onchange = () => { t.tier = Number(tier.value); changed(); };
+      box.append(el("div", { class: "grant" }, sel, tier, resetBtn(() => { C.talents.splice(i, 1); redraw(); }, "Remove")));
+    });
+    box.append(el("button", { type: "button", onclick: () => { C.talents.push({ name: "", tier: 0 }); redraw(); } }, "+ Add a talent"));
+  });
+  return v;
+}
+
+// ---- opening a mod -------------------------------------------------------------------
+// A saved mod opens back into the page: its items, talents and test grants become
+// the changes in the bar, and saving to it puts each changed block in place of the
+// old one. Blocks the editor cannot show exactly are listed and left as they are.
+// JSON with sorted keys: the page and the server build the same payload in
+// different key orders, and an untouched block must not count as changed.
+function canon(v) {
+  return JSON.stringify(v, (_k, x) => x && typeof x === "object" && !Array.isArray(x)
+    ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x);
+}
+function loadedEntry(tab, id) { return S.loaded && S.loaded.entries[tab + "\u0000" + id]; }
+function editIsNew(e) { const ent = loadedEntry(e.tab, e.id); return !ent || ent.json !== canon(e.edit); }
+function hasUnsaved() {
+  if (scriptChanged()) return true;
+  for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
+    if (editIsNew({ tab, id, edit })) return true;
+  }
+  return false;
+}
+// Rebuild the pending changes from the drafts (also when another tab of the
+// editor opened a mod: they share the browser's storage).
+function syncFromStore() {
+  for (const t of ["items", "talents"]) {
+    S.pending[t].clear(); S.drafts[t].clear();
+    for (const k of store.keys(DRAFT[t])) {
+      const id = k.slice(DRAFT[t].length), d = store.get(k);
+      S.drafts[t].add(id);
+      if (d && d.payload) S.pending[t].set(id, d.payload);    // older drafts join once reopened
+    }
+  }
+  S.loaded = store.get(LOADED_KEY);
+  const sc = store.get(SCRIPT_KEY);
+  S.script = sc && sc.script ? sc.script : emptyScript();
+  S.scriptSaved = sc && typeof sc.saved === "string" ? sc.saved : NO_GRANTS;
+}
+function reopenCurrent() {
+  S.restored = "";
+  if (S.item) S.itemEdit = Object.assign(freshItemEdit(), store.get(DRAFT.items + S.item.id) || {});
+  if (S.hero && S.talents) S.talentEdit = Object.assign(freshTalentEdit(), store.get(DRAFT.talents + S.hero) || {});
+}
+async function openMod(id, { ask = true, quiet = false } = {}) {
+  if (ask && hasUnsaved() && !confirm("Opening a mod replaces the changes you have not saved. Open it?")) return;
+  let j;
+  try { j = await get("api/mod?id=" + encodeURIComponent(id)); }
+  catch (e) { status(e.message, "st-bad"); return; }
+  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) store.del(k);
+  const entries = {};
+  for (const [t, map] of [["items", j.items], ["talents", j.talents]]) {
+    for (const [key, e] of Object.entries(map)) {
+      store.set(DRAFT[t] + key, Object.assign({}, e.edit, { payload: e.payload }));
+      entries[t + "\u0000" + key] = { blocks: e.blocks, json: canon(e.payload) };
+    }
+  }
+  const script = j.script ? JSON.parse(JSON.stringify(j.script)) : emptyScript();
+  store.set(SCRIPT_KEY, { script, saved: scriptNorm(script) });
+  store.set(LOADED_KEY, { id: j.id, name: j.name, entries, at: Date.now() });
+  syncFromStore(); reopenCurrent();
+  $("#mod").value = j.id; $("#mod").onchange();
+  renderList(); renderView(); await refresh();
+  if (quiet) return;
+  const n = Object.keys(j.items).length + Object.keys(j.talents).length;
+  const kept = j.kept.map(k => `${k.kind} ${k.id}: ${k.why}`);
+  flash(`Opened ${j.name}: ${n} item/hero change(s)${j.script ? " and test grants" : ""}. Change anything, then save to it.`
+    + (kept.length ? ` Left as they are: ${kept.join("; ")}.` : ""), kept.length ? "st-warn" : "st-ok", kept.length ? 20000 : 6000);
+}
+window.addEventListener("storage", e => {
+  if (e.key !== LOADED_KEY && e.key !== SCRIPT_KEY) return;
+  syncFromStore(); reopenCurrent();
+  if (S.loaded && $("#mod").value !== S.loaded.id && S.mods.some(m => m.id === S.loaded.id)) {
+    $("#mod").value = S.loaded.id; $("#mod").onchange();
+  }
+  renderList(); renderView(); refresh();
+});
+$("#open").onclick = () => { const id = $("#mod").value; if (id !== "__new__") openMod(id); };
+
+// The web editor's mods live only in the page, so one saved earlier is brought
+// back from its folder: only the files the editor reads are sent.
+$("#importdir").webkitdirectory = true;
+$("#import").hidden = !window.RSMM_HOSTED;
+$("#import").onclick = () => $("#importdir").click();
+function fileB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] || "");
+    r.onerror = () => rej(new Error("could not read " + file.name));
+    r.readAsDataURL(file);
+  });
+}
+$("#importdir").onchange = async () => {
+  const list = [...$("#importdir").files];
+  $("#importdir").value = "";
+  const files = {};
+  for (const f of list) {
+    const parts = (f.webkitRelativePath || f.name).split("/");
+    const rel = parts.slice(1).join("/");
+    if (!/^(manifest\.toml|init\.lua|icons\/[A-Za-z0-9_]+\.png)$/.test(rel)) continue;
+    files[rel] = await fileB64(f);
+    files._folder = parts[0];
+  }
+  if (!files["manifest.toml"]) { status("That folder has no manifest.toml. Pick the mod's own folder.", "st-bad"); return; }
+  if (hasUnsaved() && !confirm("Opening a mod replaces the changes you have not saved. Open it?")) return;
+  try {
+    const j = await post("api/import", { files });
+    S.mods = (await get("api/mods")).mods; renderMods();
+    await openMod(j.id, { ask: false });
+  } catch (e) { status(e.message, "st-bad"); }
+};
 
 // ---- the blocks ----------------------------------------------------------------------
 function editPayload() {
@@ -1457,22 +1663,26 @@ async function refresh() {
   const edits = pendingEdits();
   lastEdits = edits;
   renderPending(edits, []);
-  if (!edits.length) {
+  const grants = scriptNorm(S.script) !== NO_GRANTS;
+  if (!edits.length && !grants && !scriptChanged()) {
     $("#toml").textContent = "Nothing changed yet. Pick an item or a hero on the left.";
     $("#toml").className = "muted"; lastToml = ""; return;
   }
   try {
-    const j = await post("api/toml", editsBody(edits));
+    const j = await post("api/toml", Object.assign(editsBody(edits), grants ? { script: JSON.parse(scriptNorm(S.script)) } : {}));
     if (me !== tick) return;
     renderPending(edits, j.errors);
     lastToml = j.toml;
-    const pre = $("#toml"); pre.textContent = ""; pre.className = j.toml ? "" : "muted";
+    const pre = $("#toml"); pre.textContent = ""; pre.className = j.toml || j.lua ? "" : "muted";
     if (j.errors.length) {
       pre.append(el("div", { class: "errs" }, ...j.errors.map(e => el("div", { text: "✗ " + (e.name ? e.name + ": " : "") + e.error }))));
     }
-    pre.append(j.toml || (j.errors.length ? "" : "Nothing changed yet."));
+    pre.append(j.toml || (j.errors.length || j.lua ? "" : "Nothing changed yet."));
+    if (j.lua) pre.append((j.toml ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
+    else if (scriptChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the test grants are taken out\n");
     $("#copy").disabled = !j.toml;
-    $("#check").disabled = $("#save").disabled = !j.blocks || j.errors.length > 0;
+    $("#check").disabled = !j.blocks || j.errors.length > 0;
+    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged());
   } catch (e) {
     if (me !== tick) return;
     lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
@@ -1508,7 +1718,11 @@ function renderMods() {
   const sel = $("#mod"); sel.textContent = "";
   sel.append(el("option", { value: "__new__", text: "New mod…" }));
   for (const m of S.mods) sel.append(el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` }));
-  sel.onchange = () => { $("#save").textContent = sel.value === "__new__" ? "Create mod…" : "Add to mod"; };
+  sel.onchange = () => {
+    $("#open").disabled = sel.value === "__new__";
+    $("#save").textContent = sel.value === "__new__" ? "Create mod…"
+      : S.loaded && sel.value === S.loaded.id ? "Save to mod" : "Add to mod";
+  };
   sel.onchange();
 }
 
@@ -1548,19 +1762,25 @@ async function saveAll(error) {
     ({ id: mod, meta } = got);
     if (meta.author.trim()) store.set(AUTHOR_KEY, meta.author.trim());
   }
-  const edits = lastEdits;
+  // Saving to the opened mod sends only what changed since it was opened, in
+  // place of the blocks it came from; any other mod gets everything.
+  const intoOpened = !create && S.loaded && mod === S.loaded.id;
+  const edits = intoOpened ? lastEdits.filter(editIsNew) : lastEdits;
+  const replace = intoOpened ? edits.flatMap(e => (loadedEntry(e.tab, e.id) || {}).blocks || []) : [];
+  const wantScript = intoOpened ? scriptChanged() : scriptNorm(S.script) !== NO_GRANTS;
+  const script = wantScript ? JSON.parse(scriptNorm(S.script)) : null;
+  if (!edits.length && !script) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
   try {
-    const j = await post("api/save", Object.assign(editsBody(edits), { mod, create }, meta ? { meta } : {}));
-    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); $("#mod").value = mod; $("#mod").onchange(); }
-    // Everything saved is in the mod now: none of it is unfinished any more.
-    for (const e of edits) { store.del(DRAFT[e.tab] + e.id); S.pending[e.tab].delete(e.id); S.drafts[e.tab].delete(e.id); }
-    if (S.item) S.itemEdit = freshItemEdit();
-    if (S.hero) S.talentEdit = freshTalentEdit();
-    S.restored = "";
-    renderList(); renderView(); await refresh();
+    const j = await post("api/save", Object.assign(editsBody(edits), { mod, create, replace },
+      meta ? { meta } : {}, script ? { script } : {}));
+    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); }
+    // Keep working: the mod as saved opens back in, so the next change and save
+    // go to the same blocks.
+    await openMod(mod, { ask: false, quiet: true });
+    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : ""].filter(Boolean).join(" and ");
     flash(window.RSMM_HOSTED
-      ? `Added ${j.blocks} block(s) to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
-      : `Added ${j.blocks} block(s) to ${j.saved}. Now run: rsmm apply`, "st-ok", 9000);
+      ? `Saved ${what} to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
+      : `Saved ${what} to ${j.saved}. Keep editing, or run: rsmm apply`, "st-ok", 9000);
   } catch (e) {
     // A refused new mod (a taken id, a bad version) asks again, with the reason.
     if (create) saveAll(e.message); else status(e.message, "st-bad");
@@ -1575,13 +1795,12 @@ async function saveAll(error) {
     S.modTags = mo.tags || [];
     get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
-  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) {
-    const id = k.slice(DRAFT[t].length), d = store.get(k);
-    S.drafts[t].add(id);
-    if (d && d.payload) S.pending[t].set(id, d.payload);    // older drafts join once reopened
-  }
+  syncFromStore();
   for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
   renderMods();
+  // The mod opened last time is still open, if it is still there.
+  if (S.loaded && S.mods.some(m => m.id === S.loaded.id)) { $("#mod").value = S.loaded.id; $("#mod").onchange(); }
+  else if (S.loaded) { S.loaded = null; store.del(LOADED_KEY); }
   // A deep link opens a pick: #item=<id> or #hero=<name>.
   const link = new URLSearchParams(location.hash.slice(1));
   if (link.get("hero")) S.tab = "talents";

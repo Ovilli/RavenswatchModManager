@@ -777,12 +777,18 @@ def _new_manifest(mod_id: str, meta: dict | str | None = None) -> str:
 
 
 def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
-         create: bool = False, name: str = "", meta: dict | None = None) -> Path:
+         create: bool = False, name: str = "", meta: dict | None = None,
+         replace: set[tuple[str, str]] | None = None, script: dict | None = None) -> Path:
     """Append the blocks to ``mods/<mod_id>/manifest.toml`` (or create the mod).
+
+    ``replace`` names blocks an opened mod already has: they are taken out
+    first, so their new versions take their place. ``script`` is the Scripts
+    tab's test grants, written into the editor's section of ``init.lua``.
 
     Refuses an id the manifest already uses for that kind, and puts the old
     text back if the result does not parse, so a manifest is never left
     half-written."""
+    from . import modio
     if not _MOD_ID_RE.match(mod_id):
         raise EditorError("a mod id takes letters, digits, - and _ only")
     target = root / mod_id
@@ -797,6 +803,7 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
         if not manifest.is_file():
             raise EditorError(f"no mod {mod_id!r} in {root}")
         old = manifest.read_text(encoding="utf-8")
+        old = modio.remove_blocks(old, replace or set())
     try:
         have = {(c.get("kind"), c.get("id"))
                 for c in tomllib.loads(old).get("content", []) if isinstance(c, dict)}
@@ -810,7 +817,7 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
     if clash:
         raise EditorError(f"{mod_id} already has " + ", ".join(
             f"{f['kind']} {f['id']!r}" for f in clash) + " — change the id")
-    new = old.rstrip("\n") + "\n\n" + to_toml(defs)
+    new = old.rstrip("\n") + "\n\n" + to_toml(defs) if defs else old
     try:
         tomllib.loads(new)
     except tomllib.TOMLDecodeError as e:          # pragma: no cover - _toml is strict
@@ -818,6 +825,8 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
     for _k, _i, fields in defs:
         _write_files(target, fields)
     manifest.write_text(new, encoding="utf-8")
+    if script is not None:
+        modio.write_script(target, script)
     return manifest
 
 
@@ -991,13 +1000,54 @@ def _card_font(req: Request) -> dict:
     return font
 
 
+def _script(req: Request) -> dict | None:
+    """The request's test grants, checked; None when it sends none."""
+    from . import modio
+    raw = req.body.get("script")
+    return None if raw is None else modio.script_config(raw)
+
+
+def _replace(req: Request) -> set[tuple[str, str]]:
+    out = set()
+    for pair in req.body.get("replace") or []:
+        if not (isinstance(pair, list) and len(pair) == 2
+                and all(isinstance(x, str) for x in pair)):
+            raise EditorError("'replace' takes [kind, id] pairs")
+        out.add((pair[0], pair[1]))
+    return out
+
+
 def _save(req: Request) -> dict:
-    defs = _defs(req)
+    script = _script(req)
+    # Only the test grants changed: no blocks to write.
+    defs = [] if script is not None and req.body.get("edits") == [] else _defs(req)
     meta = req.body.get("meta")
     where = save(defs, str(req.body.get("mod") or ""), req.ctx.mods_dir,
                  create=bool(req.body.get("create")), name=str(req.body.get("name") or ""),
-                 meta=meta if isinstance(meta, dict) else None)
+                 meta=meta if isinstance(meta, dict) else None,
+                 replace=_replace(req), script=script)
     return {"saved": str(where), "blocks": len(defs)}
+
+
+def _toml_with_script(req: Request) -> dict:
+    """``_toml_route`` plus the ``init.lua`` section the test grants make."""
+    from . import modio
+    out = ({"toml": "", "errors": [], "blocks": 0} if req.body.get("edits") == []
+           else _toml_route(req))
+    script = _script(req)
+    out["lua"] = "" if script is None or modio.script_empty(script) else modio.script_lua(script)
+    return out
+
+
+def _open_mod(req: Request) -> dict:
+    from . import modio
+    return modio.load_mod(req.ctx.mods_dir, req.arg("id"))
+
+
+def _import_mod(req: Request) -> dict:
+    from . import modio
+    mod_id = modio.import_mod(req.ctx.mods_dir, req.body.get("files"))
+    return {"id": mod_id}
 
 
 ROUTES = {
@@ -1018,7 +1068,9 @@ ROUTES = {
     ("GET", "/api/heropng"): _hero_png,
     ("GET", "/api/mods"): lambda req: {"mods": list_mods(req.ctx.mods_dir),
                                        "tags": list(STORE_TAGS)},
-    ("POST", "/api/toml"): _toml_route,
+    ("POST", "/api/toml"): _toml_with_script,
+    ("GET", "/api/mod"): _open_mod,
+    ("POST", "/api/import"): _import_mod,
     ("POST", "/api/check"): lambda req: {"toml": to_toml(d := _defs(req)), "results": check(d)},
     ("POST", "/api/save"): _save,
 }

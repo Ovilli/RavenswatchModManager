@@ -4,7 +4,7 @@ description: Build item, talent, ability and map mods in your browser, from your
 ---
 
 The [web editor](/editor/) is `rsmm editor` running in
-your browser. It has the same four tabs (Items, Talents, Abilities, Map) and
+your browser. It has the same five tabs (Items, Talents, Scripts, Abilities, Map) and
 the same checks, and it saves the same mods. You need no Python, no CLI and no
 desktop app to use it. Installing the mod it gives you still takes one of those.
 
@@ -30,13 +30,38 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 |---|---|
 | **Items** | everything: pick an item, choose *Replace this item* (change the shipped one) or *Make a copy* (a new item beside it), change name, text, rarity (copies only), icon, values and the stat each effect gives, *Check*, save |
 | **Talents** | everything: card names and texts, each card's numbers per rarity, every value and the stat each effect gives, *Check*, save |
-| **Abilities** | everything: numbers, the graph, *Copy manifest code* |
+| **Scripts** | everything: test grants (items, talents and XP handed out when a run starts), for every hero or one |
+| **Abilities** | everything: numbers, the graph, *Save to mod* (into your custom hero built on that hero; its saved changes load back when you pick it), *Copy manifest code* |
 | **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |
 
-It cannot read or change the mods you already have. Each mod you save here
-starts empty in the page and exists only until you close the tab, so download it
-before you leave. To add blocks to an existing mod, press *Copy* and paste them
-at the end of that mod's `manifest.toml`.
+To keep working on a mod you saved earlier, press *Open a mod folder…* and
+pick that mod's folder. The editor reads its `manifest.toml`, its `init.lua` and
+its `icons/`, and nothing else. A mod you save here exists only until you close
+the tab, so download it before you leave.
+
+### Opening a mod
+
+Choose the mod beside *Save* and press *Open* (in the browser: *Open a mod
+folder…*). Each item, talent card and test grant in it comes back as a change in
+the bar, ready to edit. *Save to mod* then writes only the changes you made since
+opening it, in place of the blocks they came from. Anything else in the
+manifest stays exactly as it was: your comments, other blocks, and kinds the
+editor does not edit. A block the editor cannot show exactly (a field it has no
+control for, a value the base item no longer has) is listed when you open the
+mod and left alone. After a save the mod stays open, so you can keep going.
+
+### Test grants (Scripts)
+
+The Scripts tab makes a mod hand you items, talents and XP at the start of every
+run, so you can try a change at once instead of waiting for the game to offer
+it. For example: 15 Ace of Spades, a Legendary talent, and 5000 XP (level 1 to 4).
+Pick a hero under *Only for* and the grants happen only with that hero. Without
+it they reach every hero you play, and a test mod left enabled levels up all of
+them. Talents are chosen from that hero's own cards.
+
+The grants are written into the mod's `init.lua`, between two marker lines the
+editor owns. Code of your own in that file is left alone. They are for testing:
+take them out (remove every row and save) before you publish the mod.
 
 The Items and Talents tabs show each card the way the game will, drawn with the
 compendium's own frames and fonts read from your install: highlighted words,
