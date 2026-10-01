@@ -70,6 +70,7 @@ BUILTIN = {
     "overlay":           "rsmm.cli.cmd_overlay",
     "exp":               "rsmm.cli.cmd_exp",
     "save":              "rsmm.cli.cmd_save",
+    "values":            "rsmm.cli.cmd_values",
     # The module already declares prog="rsmm cmd"; it was simply never routed.
     "cmd":               "rsmm.cli.console_cmd",
     "home":              "rsmm.cli.cmd_shell",
@@ -173,6 +174,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("exp",      "[<mod>] [--json]",           "hypotheses a mod answered during a playtest"),
         ("cmd",      "['/command'] [--tail]",      "send /commands to the in-game console"),
         ("save",     "[path]... [--classes]",      "inspect profile saves (read-only)"),
+        ("values",   "<snapshot|list|diff|extract>", "back up a patch's values, diff an update"),
     )),
     ("assets & engine", (
         ("assets",   "search <text> | show <path>", "find a cooked asset by readable path"),

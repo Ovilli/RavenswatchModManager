@@ -357,6 +357,27 @@ names with `rsmm assets search`:
 ./rsmm assets search Heroes Portrait png   # texture paths
 ```
 
+### `rsmm values` — back up a patch before a game update
+
+A game update rebalances values in place, and afterwards the old ones exist
+nowhere: the update overwrites the files `apply` backed up from. Take a
+snapshot while the current patch is still installed:
+
+```sh
+./rsmm values snapshot                     # saves <date>-build<steam build id>
+./rsmm values list
+./rsmm values diff 2026-10-01-build23766761              # vs the install now
+./rsmm values diff <old> <new> --filter Snow_Queen       # two snapshots
+./rsmm values extract <old> EntitySettings/Heroes/Hero_Snow_Queen/Hero_Snow_Queen_Ice_Clone.entity.ot.EntitySettingsResource.gen -o old.gen
+```
+
+A snapshot holds every entity field as the editors show it, each magical
+object's values and modifiers, and the pristine cooked bytes of
+`EntitySettings/`, `Definitions/` and `GlobalValues/` (about 9 MB). It is read
+from the install, never the authoring mirror, and stored in the per-user data
+directory (`~/.local/share/rsmm/snapshots`, `%LOCALAPPDATA%\rsmm\snapshots`),
+so `restore --all` and Steam's file check leave it alone.
+
 ---
 
 ## Debugging
