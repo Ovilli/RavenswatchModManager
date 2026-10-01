@@ -352,26 +352,35 @@ def remint_guids(cooked: bytes, corpus: list[bytes], salt: str) -> bytes:
     return out
 
 
-def find_identity_guid(cooked: bytes, id_name: str) -> bytes | None:
-    """Return the 16-byte ROOT IDENTITY GUID of the item, or None.
+#: The magical-object component every droppable item carries. Its node GUID is
+#: the item's runtime identity: the pool's def IS this component
+#: (oCDtEntityCpntMagicalObjectDataSettings), and def+0x88/0x90 read back as
+#: this GUID for every item checked in game (2026-10-01).
+MO_DATA_NODE = "Dt Magical Object Data"
 
-    The root node is laid out as ``<16-byte GUID><u32 namelen><name>`` where
-    ``name`` is the item id (the EntitySettingsResource's own name). The 16
-    bytes immediately before that length-prefixed id string are the resource's
-    identity GUID — the value the engine exposes at the runtime def+0x88/0x90,
-    which MagicalObjectPool_SourceLookup matches AND the hero owned-set dedups
-    on (MagicalObject_RegisterInstance). Returns the first match; None if the id
-    node isn't found or has no preceding GUID.
+
+def find_identity_guid(cooked: bytes, id_name: str) -> bytes | None:
+    """Return the 16-byte runtime IDENTITY GUID of the item, or None.
+
+    A node is laid out as ``<16-byte GUID><u32 namelen><name>``. The identity is
+    the GUID of the ``Dt Magical Object Data`` component — what the engine
+    exposes at def+0x88/0x90, matches in MagicalObjectPool_SourceLookup and
+    dedups the hero's owned set on. It is unique per item, occurs once in its
+    file and nowhere else in the corpus (114/114 shipped items, 11694 files).
+    A node named after ``id_name`` is tried first, for blobs that carry one; no
+    shipped item does, which is why this used to return None for every one of
+    them and ``unique_identity`` silently did nothing. None when neither node
+    is found or the bytes before it are not a GUID.
     """
-    name_b = id_name.encode("utf-8")
-    prefix = struct.pack("<I", len(name_b)) + name_b
-    idx = cooked.find(prefix)
-    if idx < 16:
-        return None
-    g = cooked[idx - 16: idx]
-    if g == b"\x00" * 16 or any(m in g for m in _MARKERS):
-        return None
-    return g
+    for name in (id_name, MO_DATA_NODE):
+        name_b = name.encode("utf-8")
+        idx = cooked.find(struct.pack("<I", len(name_b)) + name_b)
+        if idx < 16:
+            continue
+        g = cooked[idx - 16: idx]
+        if g != b"\x00" * 16 and not any(m in g for m in _MARKERS):
+            return g
+    return None
 
 
 def remint_identity_guid(cooked: bytes, id_name: str, salt: str) -> bytes:
@@ -628,8 +637,9 @@ class ItemEdit:
     corpus: list[bytes] = field(default_factory=list)
     #: Re-mint ONLY the root identity GUID (the fix for the dedup collision
     #: above), leaving every other GUID intact so the entity still spawns. Safe
-    #: because registration is path-keyed and nothing references the root by
-    #: GUID; only the runtime identity changes. OPT-IN (default False) until
+    #: because registration is path-keyed and nothing references the identity
+    #: (the Dt Magical Object Data node's GUID) by GUID; only the runtime
+    #: identity changes. OPT-IN (default False) until
     #: verified in-game per item, since picking the wrong GUID would silently
     #: leave the collision or, worst case, touch a referenced node. Enable via
     #: the manifest item field ``unique_identity = true``.

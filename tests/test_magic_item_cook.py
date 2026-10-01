@@ -477,3 +477,37 @@ def test_the_bank_merge_keeps_a_row_rewritten_in_place(tmp_path, monkeypatch):
     _write_bank(b, ["one", "two", "three"])        # a copy's appended name
     out = content_merge._merge_text_bank("x", [a, b], vanilla)
     assert parse_text_file(out).entries == ["one", "TWO", "three"]
+
+
+def test_find_identity_guid_from_magical_object_component():
+    # Shipped items have no node named after their id: the identity is the GUID
+    # of the "Dt Magical Object Data" component (the pool def), and before this
+    # every shipped item came back None, so `unique_identity` did nothing.
+    guid = bytes(range(0x40, 0x50))
+    sibling = bytes(range(0x20, 0x30))
+    blob = (b"\x11\x11\xbb\xaa" + sibling + _lstr("Child State Equiped")
+            + guid + _lstr(C.MO_DATA_NODE) + b"\x22\x22\xbb\xaa")
+    assert C.find_identity_guid(blob, "Damage_Attack") == guid
+    out = C.remint_identity_guid(blob, "Damage_Attack", salt="Clone0")
+    assert len(out) == len(blob) and guid not in out and sibling in out
+    assert C.find_identity_guid(out, "Damage_Attack") not in (None, guid)
+
+
+def test_every_shipped_item_has_one_unique_identity():
+    from rsmm.engine import corpus
+    rels = [r for r in corpus.rels("EntitySettings/Objects/Magical_Objects")
+            if r.endswith(".EntitySettingsResource.gen")]
+    node = _lstr(C.MO_DATA_NODE)
+    found = {}
+    for rel in rels:
+        data = corpus.read(rel)
+        if data is None or node not in data:
+            continue  # templates / power-up models carry no MO component
+        item = rel.rsplit("/", 1)[1].split(".")[0]
+        g = C.find_identity_guid(data, item)
+        assert g is not None, item
+        assert data.count(g) == 1, f"{item}: identity occurs {data.count(g)}x"
+        found[item] = g
+    if not found:
+        pytest.skip("no magical-object corpus reachable")
+    assert len(set(found.values())) == len(found), "two items share an identity"
