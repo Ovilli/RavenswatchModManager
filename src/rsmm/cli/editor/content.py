@@ -51,7 +51,8 @@ def items() -> list[dict]:
     from rsmm.cli.cmd_items import _iter_items
     from rsmm.engine import item_catalog
 
-    names = {i.id: i for i in item_catalog.catalog()}
+    # The shipped names: an applied mod's rename is not the base item's.
+    names = {i.id: i for i in item_catalog.catalog(pristine=True)}
     out = []
     for item_id, rarity, _p in _iter_items():
         info = names.get(item_id)
@@ -129,13 +130,14 @@ def _hex(key: int) -> str:
 
 @cache
 def _text_values() -> dict[str, str]:
-    """The install's magical-object text bank, key -> English text."""
+    """The install's magical-object text bank, key -> English text, as shipped
+    (an applied mod's rewrite of a card is not the base item's text)."""
     from rsmm.cli.apply_mods import find_game_dir, load_asset_map
     from rsmm.engine import item_catalog
     game = find_game_dir()
     if game is None:
         return {}
-    return item_catalog._text_values(game, load_asset_map())
+    return item_catalog._text_values(game, load_asset_map(), pristine=True)
 
 
 @cache

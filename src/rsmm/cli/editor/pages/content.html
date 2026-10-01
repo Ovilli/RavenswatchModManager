@@ -687,6 +687,45 @@ const STAT_WORDS = {
   "Crit chance primary": ["Crit Chance"], "Crit chance secondary": ["Crit Chance"],
 };
 function statWords(stat) { return STAT_WORDS[stat] || [stat]; }
+// Whole phrases shipped cards use for a stat, {N} standing for the styled number
+// (&+{0}%~). A swap rewrites the phrase, not just its word: Ace of Spades'
+// "#ATTACK@ deals &+{}%~ damage" becomes "#ATTACK@ speed &+{}%~", where a word
+// swap would leave "#Attack Speed@ deals … damage". The first one is what a
+// swap writes; the number keeps its own markup.
+const ABILITY = { primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE", ultimate: "ULTIMATE" };
+const STAT_PHRASES = {
+  "Attack power": ["#DMG@ {N}", "{N} #DMG@"],
+  "Attack power basic": ["#ATTACK@ deals {N} damage"],
+  "Basic Attack Speed": ["#ATTACK@ speed {N}", "#Attack Speed@ {N}"],
+  "Armour": ["#ARMOR@ {N}", "{N} #ARMOR@"], "Vitality": ["#VITALITY@ {N}", "{N} #VITALITY@"],
+  "Crit chance": ["#Crit Chance@ {N}", "Gain {N} #Crit Chance@"],
+  "Crit damage": ["#Critical Hits@ deal {N} damage", "Critical hits deal {N} damage"],
+  "Move Speed Ratio": ["Move Speed {N}", "{N} Move Speed"],
+  "Healing effect": ["{N} to any healing effect provided or received"],
+  "Shield increase": ["{N} to any #SHIELD@ applied or received"],
+  "Increase damage to boss": ["Deal {N} damage to bosses"],
+  "CD reduce dash": ["Reduces #DASH@'s cooldown by {N}"],
+  "Ability_Charge_Dash": ["#DASH@ gains {N} charge(s)"],
+};
+for (const [k, w] of Object.entries(ABILITY)) {
+  STAT_PHRASES["Attack power " + k] = ["#" + w + "@ deals {N} damage"];
+  STAT_PHRASES["CD reduce " + k] = ["Reduces #" + w + "@'s cooldown by {N}"];
+  STAT_PHRASES["Ability_Charge_" + k[0].toUpperCase() + k.slice(1)] = ["#" + w + "@ gains {N} charge(s)"];
+}
+for (const k of ["primary", "secondary"]) STAT_PHRASES["Crit chance " + k] = ["#" + ABILITY[k] + "@ has {N} #Crit Chance@"];
+// A phrase as a pattern: its text literal (any case), {N} capturing the number.
+function phraseRe(phrase) {
+  return new RegExp(phrase.split("{N}").map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(&[^~]*~)"), "i");
+}
+// `text` with `from`'s phrase rewritten as `to`'s, or null when no phrase of `from` is on it.
+function swapPhrase(text, from, to) {
+  const target = (STAT_PHRASES[to] || ["#" + statWords(to)[0] + "@ {N}"])[0];
+  for (const p of STAT_PHRASES[from] || []) {
+    const re = phraseRe(p);
+    if (re.test(text)) return text.replace(re, (_m, num) => target.replace("{N}", num));
+  }
+  return null;
+}
 // Rewrite the shipped card text for every changed stat: the old stat's #word@
 // becomes the new one's. Only a text you have not written yourself follows; a
 // stat whose word is not on the card is listed in E.textMiss for a note.
@@ -701,6 +740,8 @@ function applyStatText() {
     for (const m of it.modifiers.filter(m => (part === "super") === m.super)) {
       const to = E.stats[m.name];
       if (!to) continue;
+      const swapped = swapPhrase(text, m.stat, to);
+      if (swapped !== null) { text = swapped; changed = true; continue; }
       let hit = false;
       for (const word of statWords(m.stat)) {
         const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
