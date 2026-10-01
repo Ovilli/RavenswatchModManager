@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**58 commands.**
+**59 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -35,6 +35,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm entity-graph` | `rsmm.cli.cmd_entity_graph` | `rsmm entity-graph` — read an entity's components and their links. |
 | `rsmm exp` | `rsmm.cli.cmd_exp` | rsmm exp — read back the hypotheses a mod answered during a playtest. |
 | `rsmm export-character` | `rsmm.cli.cmd_export_character` | `rsmm export-character` — a hero as one rigged glTF for Blender / Maya. |
+| `rsmm export-model` | `rsmm.cli.cmd_export_model` | `rsmm export-model` — any of the game's 3D models as a textured glTF. |
 | `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `rsmm` opens in a terminal. |
 | `rsmm import-character` | `rsmm.cli.cmd_import_character` | `rsmm import-character` — turn a character .glb edited in Blender into a mod. |
 | `rsmm install` | `rsmm.cli.cmd_install` | rsmm install — fetch, verify, and unpack a packed mod. |

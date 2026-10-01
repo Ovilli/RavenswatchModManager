@@ -149,8 +149,12 @@ def albedo_png(ref: str | None) -> bytes | None:
     return texture_png(ref, "color")
 
 
-def material_slots(mat_ref: str | None) -> dict[str, str]:
-    """``{"ALB"|"MRA"|"NRM": texture ref}`` from a ``.mat.ot`` (``u_ALB`` ...)."""
+def material_slots(mat_ref: str | None, scope: str | None = "Characters") -> dict[str, str]:
+    """``{"ALB"|"MRA"|"NRM": texture ref}`` from a ``.mat.ot`` (``u_ALB`` ...).
+
+    Only refs containing ``scope`` are kept (a hero's materials also name shared
+    masks); ``None`` keeps every one, which scenery and props need — their
+    textures live under ``Scenery\\`` or ``Mechas\\``."""
     if not mat_ref:
         return {}
     from . import corpus
@@ -164,7 +168,7 @@ def material_slots(mat_ref: str | None) -> dict[str, str]:
         if t in ("u_ALB", "u_MRA", "u_NRM"):
             ref = next((x for x in texts[i + 1:i + 4]
                         if x.lower().endswith((".tga", ".png", ".dds"))), None)
-            if ref and "Characters" in ref:
+            if ref and (scope is None or scope in ref):
                 out[t[2:]] = ref
     return out
 
@@ -220,8 +224,11 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
     """
     cf = cooked.parse(geometry_cooked)
     bones = read_skeleton(cf)
-    if not bones:
-        raise CharacterExportError("geometry has no skeleton (not a skinned character mesh)")
+    # No skeleton = a rigid model (a prop, a tree, a weapon): one plain mesh.
+    static = not bones
+    if static and (clips or attachments or extra_skinned):
+        raise CharacterExportError(
+            "geometry has no skeleton, so it takes no clips, attachments or skinned pieces")
     index = {b["name"]: i for i, b in enumerate(bones)}
     buf = _Buf()
 
@@ -236,11 +243,46 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
             roots.append(i)
         else:
             nodes[b["parent"]].setdefault("children", []).append(i)
-    ibm = buf.add("f", [v for b in bones for v in b["inverse_bind"]], len(bones), "MAT4", 5126)
-    skin = {"name": f"{name}_skin", "joints": list(range(len(bones))),
-            "inverseBindMatrices": ibm, "skeleton": roots[0]}
+    skins = []
+    if not static:
+        ibm = buf.add("f", [v for b in bones for v in b["inverse_bind"]], len(bones),
+                      "MAT4", 5126)
+        skins.append({"name": f"{name}_skin", "joints": list(range(len(bones))),
+                      "inverseBindMatrices": ibm, "skeleton": roots[0]})
 
     prim_slots: list[dict] = []
+
+    def rigid_prims(gcf, slots, what):
+        """Primitives of an unskinned geometry, one material each; ``slots`` is
+        one slot set, or one per submesh (the last repeated)."""
+        target = next((si for si, sec in enumerate(gcf.sections)
+                       if GC._find_records(sec.payload)), None)
+        if target is None:
+            raise CharacterExportError(f"{what}: geometry has no meshbuffers")
+        prims = []
+        refs = submesh_albedo_refs(gcf) if textures else []
+        for k, sm in enumerate(_geo._parse_meshbuffers(gcf.sections[target].payload)):
+            c = len(sm.positions)
+            if not c:
+                continue
+            attrs = {"POSITION": buf.add("f", [v for q in sm.positions for v in q], c, "VEC3",
+                                         5126, 34962, minmax=True)}
+            if sm.normals:
+                attrs["NORMAL"] = buf.add("f", [v for n in sm.normals for v in n], c,
+                                          "VEC3", 5126, 34962)
+            if sm.uvs:
+                attrs["TEXCOORD_0"] = buf.add("f", [v for u in sm.uvs for v in u], c,
+                                              "VEC2", 5126, 34962)
+            prim = {"attributes": attrs, "mode": 4, "material": len(prim_slots)}
+            if sm.indices:
+                prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
+                                          5125, 34963)
+            prims.append(prim)
+            mine = slots or {}
+            if isinstance(mine, list):     # one per submesh, the last one repeated
+                mine = mine[min(k, len(mine) - 1)] if mine else {}
+            prim_slots.append(mine or ({"ALB": refs[k]} if k < len(refs) and refs[k] else {}))
+        return prims
 
     def skinned_prims(gcf, what, index=index):
         target = next((si for si, sec in enumerate(gcf.sections)
@@ -257,8 +299,6 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
             raise CharacterExportError(
                 f"{what}: weights name bones the skeleton lacks: {missing[:6]}")
         return _skinned(subs, src["records"]["skinning#0"], [index[n] for n in palette])
-
-    skins = [skin]
 
     def _skinned(subs, recs, joint_of):
         prims, off = [], 0
@@ -293,18 +333,21 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
             prims.append(prim)
         return prims
 
-    prims = skinned_prims(cf, name)
-    nodes.append({"name": f"{name}_mesh", "mesh": 0, "skin": 0})
+    if static:
+        prims = rigid_prims(cf, materials or [], name)
+        nodes.append({"name": f"{name}_mesh", "mesh": 0})
+    else:
+        prims = skinned_prims(cf, name)
+        nodes.append({"name": f"{name}_mesh", "mesh": 0, "skin": 0})
+        # Per-primitive slot sets, body first then each attachment's submeshes.
+        refs = submesh_albedo_refs(cf) if textures else []
+        for i in range(len(prims)):
+            if materials and i < len(materials) and materials[i]:
+                prim_slots.append(materials[i])
+            else:
+                prim_slots.append({"ALB": refs[i]} if i < len(refs) and refs[i] else {})
     mesh_node = len(nodes) - 1
     meshes = [{"name": f"{name}_mesh", "primitives": prims}]
-
-    # Per-primitive slot sets, body first then each attachment's submeshes.
-    refs = submesh_albedo_refs(cf) if textures else []
-    for i in range(len(prims)):
-        if materials and i < len(materials) and materials[i]:
-            prim_slots.append(materials[i])
-        else:
-            prim_slots.append({"ALB": refs[i]} if i < len(refs) and refs[i] else {})
 
     # More meshes on the same rig (a skin's cloak, hat), sharing the skin.
     for extra in extra_skinned or []:
@@ -357,35 +400,11 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
         bone = index.get(att.get("bone", ""))
         if bone is None:
             continue
-        acf = cooked.parse(att["geometry"])
-        at = next((si for si, sec in enumerate(acf.sections)
-                   if GC._find_records(sec.payload)), None)
-        if at is None:
-            continue
-        aprims = []
-        arefs = submesh_albedo_refs(acf) if textures else []
-        for k, sm in enumerate(_geo._parse_meshbuffers(acf.sections[at].payload)):
-            c = len(sm.positions)
-            if not c:
-                continue
-            attrs = {"POSITION": buf.add("f", [v for q in sm.positions for v in q], c, "VEC3",
-                                         5126, 34962, minmax=True)}
-            if sm.normals:
-                attrs["NORMAL"] = buf.add("f", [v for n in sm.normals for v in n], c,
-                                          "VEC3", 5126, 34962)
-            if sm.uvs:
-                attrs["TEXCOORD_0"] = buf.add("f", [v for u in sm.uvs for v in u], c,
-                                              "VEC2", 5126, 34962)
-            prim = {"attributes": attrs, "mode": 4, "material": len(prim_slots)}
-            if sm.indices:
-                prim["indices"] = buf.add("I", list(sm.indices), len(sm.indices), "SCALAR",
-                                          5125, 34963)
-            aprims.append(prim)
-            slots = att.get("slots") or {}
-            if isinstance(slots, list):     # one per submesh, the last one repeated
-                slots = slots[min(k, len(slots) - 1)] if slots else {}
-            prim_slots.append(slots or
-                              ({"ALB": arefs[k]} if k < len(arefs) and arefs[k] else {}))
+        try:
+            aprims = rigid_prims(cooked.parse(att["geometry"]), att.get("slots") or {},
+                                 att.get("name", "attachment"))
+        except CharacterExportError:
+            continue                    # no meshbuffers: nothing to hang on the bone
         if aprims:
             meshes.append({"name": att.get("name", "attachment"), "primitives": aprims})
             nodes.append({"name": att.get("name", "attachment"), "mesh": len(meshes) - 1})
@@ -462,9 +481,10 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
 
     doc = {
         "asset": {"version": "2.0", "generator": "rsmm character export"},
-        "extras": {"rsmm": {"kind": "character", "clip_targets": clip_targets or {}}},
+        "extras": {"rsmm": {"kind": "model" if static else "character",
+                            "clip_targets": clip_targets or {}}},
         "scene": 0, "scenes": [{"nodes": [*roots, mesh_node]}],
-        "nodes": nodes, "skins": skins,
+        "nodes": nodes,
         "meshes": meshes,
         "materials": gl_materials,
         "buffers": [{"byteLength": 0}], "bufferViews": buf.views, "accessors": buf.accs,
@@ -473,6 +493,8 @@ def export(geometry_cooked: bytes, clips: dict[str, bytes] | None = None, *,
         doc["images"], doc["textures"] = images, gl_textures
         doc["samplers"] = [{"wrapS": 10497, "wrapT": 10497,
                             "magFilter": 9729, "minFilter": 9987}]
+    if skins:
+        doc["skins"] = skins            # glTF forbids an empty list
     if animations:
         doc["animations"] = animations
     binb = bytes(buf.bin) + b"\0" * (-len(buf.bin) % 4)

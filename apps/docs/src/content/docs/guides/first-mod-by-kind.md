@@ -185,7 +185,18 @@ every clip that fits that rig. `--skin Combat` exports a skin's look instead:
 its materials, its body and its weapon (`--list-skins` names them). A piece
 on a skeleton of its own, like the Combat cloak, comes in as a second armature
 at its own origin: the entity does not say where it hangs, so place it by hand.
-It imports as a posable, animated character. Two settings matter:
+It imports as a posable, animated character.
+
+For anything that is not a hero, use `rsmm export-model`. It exports any of the
+game's 3,001 models: scenery, props, enemies, NPCs and mechanisms like chests.
+Each comes with its full materials, and a rigged one also gets its skeleton and
+every clip in its folder that fits it. `rsmm export-model --list Ogres` shows
+what there is, and `rsmm export-model OgreHuman_GEO` writes one model.
+`rsmm export-model --all -o export/` writes every model into a tree laid out
+like the game's folders. That run is long, and `--no-textures` makes it much
+faster.
+
+Two settings matter:
 
 1. **Set the scene frame rate to 60 *before* importing.** Clips mix a 30 fps
    grid with 60 fps keys where something snaps (Piper's weapon flips in half a
