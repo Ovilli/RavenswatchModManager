@@ -77,6 +77,7 @@ const description =
   #progress { margin-top: 22px; padding: 12px 14px; border-radius: 9px; background: var(--panel);
               border: 1px solid var(--line); font-size: 14px; }
   #progress.bad { border-color: var(--bad); color: var(--bad); }
+  #progress .retry { display: block; margin-top: 10px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--bad); background: none; color: inherit; cursor: pointer; font: inherit; }
   #progress.ok { border-color: var(--ok); }
   .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted);
           border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;
@@ -141,13 +142,20 @@ const editorRoot = new URL("/editor/", location.origin);
 const appRoot = new URL("app/", editorRoot);          // mount paths live under /editor/app/
 
 // ---- worker -------------------------------------------------------------------
-const worker = new Worker(
-  URL.createObjectURL(new Blob([JSON.parse($("rsmm-worker").textContent)], { type: "text/javascript" })),
-  { type: "module" },
-);
+// One worker per start attempt: a download cut off mid-way can leave Pyodide
+// half-loaded, so a retry gets a clean worker rather than reusing that one.
+const workerUrl = URL.createObjectURL(new Blob([JSON.parse($("rsmm-worker").textContent)], { type: "text/javascript" }));
+let worker = null;
 let seq = 0;
 const pending = new Map();
-worker.onmessage = (e) => {
+function startWorker() {
+  if (worker) worker.terminate();
+  worker = new Worker(workerUrl, { type: "module" });
+  worker.onmessage = onMessage;
+  worker.onerror = onError;
+  worker.onmessageerror = () => stopped("a reply from the engine could not be read");
+}
+function onMessage(e) {
   const m = e.data;
   if (m.progress) { setProgress(m.progress); return; }
   if (m.fatal) { stopped(m.fatal); return; }
@@ -155,14 +163,13 @@ worker.onmessage = (e) => {
   if (!p) return;
   pending.delete(m.id);
   m.ok ? p.resolve(m.result) : p.reject(new Error(m.error));
-};
+}
 // An error event without a message is what a browser gives for a worker that
 // could not load or start, so say that rather than "unknown error".
-worker.onerror = (e) => {
+function onError(e) {
   e.preventDefault();
   stopped(e.message || (e.filename ? `${e.filename}:${e.lineno}` : "its worker could not start"));
-};
-worker.onmessageerror = () => stopped("a reply from the engine could not be read");
+}
 // The engine is gone or broken: nothing pending will ever be answered.
 function stopped(why) {
   console.error("[rsmm editor] engine stopped:", why);
@@ -193,13 +200,37 @@ function setPickerState(state) {
 }
 function fail(text) { setProgress(text, "bad"); setPickerState("error"); }
 
+// Start the engine; a failed start is retried on a fresh worker, alternating
+// CDNs, before the player is asked to do anything. Then a Retry button, never
+// a dead end: a cut-off download is almost always gone on the next try.
+const TRIES = 3;
 let ready = null;
-ready = call("init", { bundle: new URL("rsmm.bundle", editorRoot).href })
-  .then(() => {
-    setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
-    setPickerState("ready");
-  })
-  .catch((err) => fail("Could not load the editor engine: " + err.message));
+async function boot() {
+  let last;
+  for (let attempt = 0; attempt < TRIES; attempt++) {
+    startWorker();
+    try {
+      await call("init", { bundle: new URL("rsmm.bundle", editorRoot).href, attempt });
+      setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
+      setPickerState("ready");
+      return;
+    } catch (err) {
+      last = err;
+      console.warn("[rsmm editor] start attempt", attempt + 1, "failed:", err.message);
+      if (attempt + 1 < TRIES) setProgress(`The download was interrupted (${err.message}). Trying again…`);
+    }
+  }
+  const cut = /Content-Length|network|Failed to fetch|NetworkError|load failed/i.test(last.message);
+  fail("Could not load the editor engine: " + last.message + (cut
+    ? " The download kept being cut off, usually by an unstable connection, a VPN or proxy, or antivirus scanning downloads."
+    : ""));
+  const again = document.createElement("button");
+  again.textContent = "Try again";
+  again.className = "retry";
+  again.onclick = () => { again.remove(); setProgress("Starting…"); setPickerState("loading"); ready = boot(); };
+  $("progress").append(again);
+}
+ready = boot();
 
 // ---- the folder ------------------------------------------------------------------
 // The picked folder may be the install (holding DarkTalesResources) or

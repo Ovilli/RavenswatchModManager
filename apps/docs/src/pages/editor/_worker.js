@@ -13,18 +13,50 @@
 // lazily with FileReaderSync when Python opens it, so a 7 GB install costs
 // only the few megabytes the editors actually read. Nothing leaves the page.
 
-const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/';
+// The same Pyodide release from two CDNs. A download cut off part-way (a
+// flaky connection, a VPN, an antivirus scanning it) surfaces as "Content-Length
+// header of network response exceeds response Body"; the page then starts a
+// fresh worker with the next `attempt`, which takes the next mirror. Only the
+// core files are loaded (no packages), and those are byte-identical on both.
+const PYODIDE_MIRRORS = [
+  'https://cdn.jsdelivr.net/pyodide/v314.0.7/full/',
+  'https://unpkg.com/pyodide@314.0.7/',
+];
 
 let py = null;
 
 const send = (msg, transfer) => self.postMessage(msg, transfer || []);
 const progress = (text) => send({ progress: text });
 
-async function init({ bundle }) {
-  progress('Downloading the Python runtime (about 12 MB, cached after the first visit)…');
-  const { loadPyodide } = await import(`${PYODIDE}pyodide.mjs`);
+// A fetch retried while the network cuts it off; later tries skip the cache,
+// which may hold the truncated copy.
+async function fetchBytes(url, what) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(url, i ? { cache: 'reload' } : {});
+      if (!r.ok) throw new Error(`${what}: HTTP ${r.status}`);
+      return await r.arrayBuffer();
+    } catch (e) {
+      last = e;
+      if (String(e.message).startsWith(`${what}: HTTP 4`)) break; // missing, not cut off
+      progress(`The download of ${what} was cut off; trying again (${i + 2} of 3)…`);
+      await new Promise((ok) => setTimeout(ok, 800 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
+async function init({ bundle, attempt = 0 }) {
+  const base = PYODIDE_MIRRORS[attempt % PYODIDE_MIRRORS.length];
+  progress(
+    attempt
+      ? `Downloading the Python runtime again, from ${new URL(base).host} (try ${attempt + 1})…`
+      : 'Downloading the Python runtime (about 12 MB, cached after the first visit)…',
+  );
+  const { loadPyodide } = await import(`${base}pyodide.mjs`);
   py = await loadPyodide({
-    indexURL: PYODIDE,
+    indexURL: base,
     env: {
       HOME: '/home/pyodide',
       RSMM_REPO_ROOT: '/rsmm',
@@ -35,10 +67,7 @@ async function init({ bundle }) {
     stderr: (line) => console.warn('[rsmm]', line),
   });
   progress('Loading the rsmm engine…');
-  const tar = await fetch(bundle).then((r) => {
-    if (!r.ok) throw new Error(`rsmm bundle: HTTP ${r.status}`);
-    return r.arrayBuffer();
-  });
+  const tar = await fetchBytes(bundle, 'the rsmm engine');
   for (const d of ['/rsmm/src', '/rsmm/data', '/game/DarkTalesResources', '/mods'])
     py.FS.mkdirTree(d);
   // Gzip unless something between here and the server already unzipped it.
