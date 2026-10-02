@@ -2320,6 +2320,23 @@ do
     if ok and type(x) == "table" then R.map = x end
 end
 
+-- top-down camera --------------------------------------------------------
+--
+-- Lives in rsmm/camera.lua. Reads and changes the hero's TopDown camera
+-- settings live (a literal field is re-read from its settings record on every
+-- update). Components are found by RTTI name; every write is record-checked.
+--
+--   R.camera.set("yaw", 135)   -- degrees; rotates every hero camera
+--   R.camera.get("yaw")        -- the default camera's value
+--   R.camera.reset()           -- put back what this session changed
+--   R.camera.describe()        -- log every camera's fields
+--
+-- yaw is proven; the other FIELDS are labelled experimental in the module.
+do
+    local ok, x = _submodule_fn("camera", { R = R, I = I })
+    if ok and type(x) == "table" then R.camera = x end
+end
+
 -- player identity -------------------------------------------------------
 --
 -- The LOCAL player's real display name, straight from Steam
@@ -2913,6 +2930,12 @@ R.schedule = _submodule("schedule")
 -- Drive the schedule module's frame pump off the one true event bus.
 if R.schedule and R.schedule._tick then
     R.on("tick", function() R.schedule._tick() end)
+end
+
+-- Live config: re-read this mod's config.toml when something outside the game
+-- (the desktop overlay's controls) changed it, and fire R.config.on_change.
+if R.config and R.config._poll then
+    R.on("tick", function() R.config._poll() end)
 end
 
 -- Drive the MAIN-thread schedule pump off the gameplay bus. Those handlers run

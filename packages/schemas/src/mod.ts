@@ -13,9 +13,7 @@ export const modSlugSchema = z
   .max(64)
   .regex(/^[a-z0-9][a-z0-9-_]*$/, 'lowercase alphanumeric with -_');
 
-export const semverSchema = z
-  .string()
-  .regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/, 'semver x.y.z');
+export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/, 'semver x.y.z');
 
 export const overlayColumnTypeSchema = z.enum(['text', 'number', 'percent', 'bar']);
 
@@ -27,14 +25,20 @@ export const overlayColumnSchema = z.object({
   suffix: z.string().max(8).optional(),
 });
 
-export const overlayDeclarationSchema = z.object({
-  title: z.string().max(40).optional(),
-  icon: z.string().max(24).optional(),
-  columns: z.array(overlayColumnSchema).min(1).max(8),
-  sort: z.object({ key: z.string().min(1), dir: z.enum(['asc', 'desc']).optional() }).optional(),
-  highlight: z.string().max(48).optional(),
-  empty: z.string().max(120).optional(),
-});
+export const overlayDeclarationSchema = z
+  .object({
+    title: z.string().max(40).optional(),
+    icon: z.string().max(24).optional(),
+    columns: z.array(overlayColumnSchema).min(1).max(8).optional(),
+    // Fields of the mod's own config schema, shown as live controls.
+    controls: z.array(z.string().min(1).max(48)).max(6).optional(),
+    sort: z.object({ key: z.string().min(1), dir: z.enum(['asc', 'desc']).optional() }).optional(),
+    highlight: z.string().max(48).optional(),
+    empty: z.string().max(120).optional(),
+  })
+  .refine((o) => (o.columns?.length ?? 0) > 0 || (o.controls?.length ?? 0) > 0, {
+    message: 'an overlay needs at least one column or control',
+  });
 
 export type OverlayDeclaration = z.infer<typeof overlayDeclarationSchema>;
 
@@ -219,11 +223,7 @@ export type ModVersionCreate = z.infer<typeof modVersionCreateSchema>;
 /** Owner-only: presign a cover-image upload. */
 export const modImagePresignSchema = z.object({
   contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
-  sizeBytes: z
-    .number()
-    .int()
-    .positive()
-    .max(8_000_000, 'image must be ≤ 8 MB'),
+  sizeBytes: z.number().int().positive().max(8_000_000, 'image must be ≤ 8 MB'),
 });
 
 export type ModImagePresign = z.infer<typeof modImagePresignSchema>;

@@ -249,7 +249,31 @@ def _resolved_themes(store: ConfigStore) -> dict[str, dict[str, str]]:
             for name, grid in grids.items()}
 
 
-def cmd_config_set(mod_id: str, values_json: str) -> int:
+def _mirror_config_live(store: ConfigStore, mod_id: str) -> str | None:
+    """Copy the saved config.toml into the INSTALLED mod (<game>/mods/<id>/),
+    which is the copy the loader reads. The loader re-reads it when its mtime
+    moves (rsmm._internal.config_reload, polled by R.config each tick), so a
+    value set here reaches the running game without an apply. Returns the path
+    written, or None when the mod is not installed (nothing is running it)."""
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return None
+    root = (game_dir / "mods").resolve()
+    dest_dir = (root / mod_id).resolve()
+    try:
+        dest_dir.relative_to(root)
+    except ValueError:
+        return None
+    if dest_dir == root or not dest_dir.is_dir():
+        return None
+    from rsmm.engine.safeio import atomic_write_text
+    dest = dest_dir / "config.toml"
+    atomic_write_text(dest, store.values_path.read_text(encoding="utf-8"))
+    return str(dest)
+
+
+def cmd_config_set(mod_id: str, values_json: str, live: bool = False,
+                   merge: bool = False) -> int:
     try:
         store = _config_for_mod(mod_id)
     except ConfigError as exc:
@@ -262,16 +286,28 @@ def cmd_config_set(mod_id: str, values_json: str) -> int:
         return _emit({"ok": False, "error": f"invalid config JSON: {exc}"})
     if not isinstance(payload, dict):
         return _emit({"ok": False, "error": "config payload must be a JSON object"})
+    if merge:
+        # Only the keys sent change. An overlay sends just its controls, and a
+        # plain replace would reset every other field of the mod to its default.
+        payload = {**store.as_dict(), **payload}
     try:
         store.replace(payload)
     except ConfigError as exc:
         return _emit({"ok": False, "error": str(exc)})
+    live_path = None
+    if live:
+        try:
+            live_path = _mirror_config_live(store, mod_id)
+        except OSError as exc:
+            return _emit({"ok": False, "error": f"saved, but the running game's copy "
+                                                f"could not be written: {exc}"})
     return _emit({
         "ok": True,
         "modId": mod_id,
         "path": str(store.mod_dir),
         "schema": store.schema_as_dict(),
         "values": store.as_dict(),
+        "livePath": live_path,
     })
 
 
@@ -1780,6 +1816,10 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg_set = cfg_sub.add_parser("set", help="replace config values")
     p_cfg_set.add_argument("mod_id", help="folder name under mods/")
     p_cfg_set.add_argument("values_json", help="JSON object with config values")
+    p_cfg_set.add_argument("--live", action="store_true",
+                           help="also write the installed copy the running game reloads")
+    p_cfg_set.add_argument("--merge", action="store_true",
+                           help="change only the keys given; keep every other value")
     p_cat = sub.add_parser("item-catalog",
                            help="magical objects the install offers, for the picker")
     p_cat.add_argument("--icons", action="store_true",
@@ -1864,7 +1904,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.config_cmd == "get":
             return cmd_config_get(args.mod_id)
         if args.config_cmd == "set":
-            return cmd_config_set(args.mod_id, args.values_json)
+            return cmd_config_set(args.mod_id, args.values_json, args.live, args.merge)
         ap.error(f"unknown config subcommand: {args.config_cmd}")
         return 2
     if args.cmd == "item-catalog":

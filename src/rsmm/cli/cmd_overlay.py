@@ -52,24 +52,66 @@ ICONS = ("swords", "activity", "flame", "heart", "shield", "skull", "star",
 
 MAX_COLUMNS = 8
 MAX_ROWS = 64
+#: Config fields an overlay may show as live controls, and how many. Each names
+#: a field of the mod's OWN config_schema.toml, so the control's type, range and
+#: label come from the schema the player already edits in the app — the overlay
+#: adds no second place to declare them.
+CONTROL_TYPES = ("int", "float", "bool", "enum")
+MAX_CONTROLS = 6
 
 
 class OverlayError(ValueError):
     """A malformed `[overlay]` declaration."""
 
 
-def parse_spec(raw: Any, *, mod_id: str) -> dict[str, Any]:
+def _parse_controls(raw: Any, mod_id: str, schema: Any) -> list[str]:
+    """`controls = ["yaw", ...]`: config fields the overlay shows as live
+    controls. Checked against the mod's config schema when one is given (lint
+    and discovery pass it); a field that does not exist, or is a type a HUD
+    cannot draw as one control, is an error rather than a missing slider."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(k, str) and k.strip() for k in raw):
+        raise OverlayError(f"{mod_id}: [overlay].controls must be a list of config field names")
+    keys = [k.strip() for k in raw]
+    if len(keys) > MAX_CONTROLS:
+        raise OverlayError(f"{mod_id}: [overlay] has {len(keys)} controls (max {MAX_CONTROLS})")
+    if len(set(keys)) != len(keys):
+        raise OverlayError(f"{mod_id}: [overlay].controls names a field twice")
+    if schema is not None:
+        for k in keys:
+            f = schema.fields.get(k)
+            if f is None:
+                raise OverlayError(
+                    f"{mod_id}: [overlay] control {k!r} is not a field of config_schema.toml")
+            if f.type not in CONTROL_TYPES:
+                raise OverlayError(
+                    f"{mod_id}: [overlay] control {k!r} is a {f.type} field; a control "
+                    f"must be one of {', '.join(CONTROL_TYPES)}")
+            if f.type in ("int", "float") and (f.min is None or f.max is None):
+                raise OverlayError(
+                    f"{mod_id}: [overlay] control {k!r} needs min and max in "
+                    f"config_schema.toml (a slider needs both ends)")
+    return keys
+
+
+def parse_spec(raw: Any, *, mod_id: str, schema: Any = None) -> dict[str, Any]:
     """Validate a manifest's `[overlay]` table into a normalised declaration.
 
     Raises `OverlayError` with an author-readable message. Every field has a
-    default except the columns: an overlay with no columns has nothing to draw
-    and is far more likely a typo than an intention.
+    default except the content: an overlay needs columns (rows the mod
+    publishes) or controls (its own config fields, changed live), and one with
+    neither has nothing to draw and is far more likely a typo than an intention.
+    `schema` is the mod's `ConfigSchema`, when known, to check the controls.
     """
     if not isinstance(raw, dict):
         raise OverlayError(f"{mod_id}: [overlay] must be a table")
+    controls = _parse_controls(raw.get("controls"), mod_id, schema)
     cols_raw = raw.get("columns")
-    if not isinstance(cols_raw, list) or not cols_raw:
-        raise OverlayError(f"{mod_id}: [overlay] needs at least one column")
+    if cols_raw is None and controls:
+        cols_raw = []
+    elif not isinstance(cols_raw, list) or not cols_raw:
+        raise OverlayError(f"{mod_id}: [overlay] needs at least one column or control")
     if len(cols_raw) > MAX_COLUMNS:
         raise OverlayError(
             f"{mod_id}: [overlay] has {len(cols_raw)} columns (max {MAX_COLUMNS}) — "
@@ -127,6 +169,7 @@ def parse_spec(raw: Any, *, mod_id: str) -> dict[str, Any]:
         "sort": {"key": sort_key, "dir": sort_dir} if sort_key else None,
         "highlight": str(raw.get("highlight", "")).strip() or None,
         "empty": str(raw.get("empty", "No data yet."))[:120],
+        "controls": controls,
     }
 
 
@@ -293,6 +336,33 @@ def discover(game_dir: Path | str | None = None, *,
     return out
 
 
+def _mod_config(entry: Path) -> tuple[Any, dict[str, Any]]:
+    """`(ConfigSchema | None, values)` for an overlay's controls. The AUTHORING
+    copy wins: it is what `config set` writes, and the installed copy carries
+    config.toml but not config_schema.toml."""
+    from rsmm.sdk.config import ConfigError, ConfigStore
+
+    lib = library_dir()
+    for d in ([lib / entry.name] if lib else []) + [entry]:
+        if (d / "config_schema.toml").is_file():
+            try:
+                store = ConfigStore(d)
+            except (ConfigError, OSError, ValueError):
+                return None, {}
+            return store.schema, store.as_dict()
+    return None, {}
+
+
+def _resolve_controls(keys: list[str], schema: Any, values: dict[str, Any]) -> list[dict]:
+    out = []
+    for k in keys:
+        f = schema.fields[k]
+        out.append({"key": k, "label": f.label or k, "type": f.type, "min": f.min,
+                    "max": f.max, "choices": list(f.choices),
+                    "value": values.get(k, f.default)})
+    return out
+
+
 def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
               source: str) -> dict[str, Any] | None:
     """One mod's overlay record, or None when the mod declares no overlay."""
@@ -320,8 +390,13 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
         # rebuild the path from `modId`.
         "statePath": str(state_file(game_dir, entry.name)),
     }
+    schema, values = _mod_config(entry) if isinstance(raw, dict) and raw.get("controls") \
+        else (None, {})
     try:
-        spec = parse_spec(raw, mod_id=mod_id)
+        if isinstance(raw, dict) and raw.get("controls") and schema is None:
+            raise OverlayError(f"{mod_id}: [overlay] has controls but the mod has no "
+                               f"config_schema.toml")
+        spec = parse_spec(raw, mod_id=mod_id, schema=schema)
     except OverlayError as e:
         # A `title` even on the failure path. Every consumer treats it as the
         # one key always present — `render` indexes it directly — so omitting
@@ -331,6 +406,7 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
                        "rows": [], "meta": {}, "updated": 0, "exists": False})
         return record
     record.update(spec)
+    record["controls"] = _resolve_controls(spec["controls"], schema, values) if schema else []
     live = read_rows(state_file(game_dir, entry.name))
     if live is None:
         record.update({"rows": [], "meta": {}, "updated": 0, "exists": False})
@@ -394,6 +470,17 @@ def render(record: dict[str, Any]) -> list[str]:
     if record.get("error"):
         out.append("  " + _ST.err(str(record["error"])))
         return out
+    controls = record.get("controls") or []
+    if controls:
+        # Live controls are changed in the desktop overlay (or `rsmm json
+        # config set --live`); here they read back as their current values.
+        width = max(len(str(c["label"])) for c in controls)
+        for c in controls:
+            rng = f"  ({c['min']:g}-{c['max']:g})" if c.get("min") is not None else ""
+            out.append(f"  {str(c['label']).ljust(width)}  {c['value']}" + _ST.dim(rng))
+        out.append("")
+        if not record.get("columns"):
+            return out
     meta_bits = [f"{k} {v}" for k, v in sorted(record.get("meta", {}).items())]
     meta_bits.append(f"updated {_age(int(record.get('updated') or 0))}")
     out.append("  " + _ST.dim("   ".join(meta_bits)))

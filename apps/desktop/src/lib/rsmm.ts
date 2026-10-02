@@ -568,6 +568,8 @@ export interface ModConfigResponse {
   choices?: Record<string, ModConfigChoice[]>;
   /** Game textures per `item-grid` field, per theme slot (inline PNG data URLs). */
   themes?: Record<string, Record<string, string>>;
+  /** `set --live` only: the installed copy written, or null when not installed. */
+  livePath?: string | null;
 }
 
 interface RunResult {
@@ -681,11 +683,22 @@ export async function getModConfig(modId: string): Promise<ModConfigResponse> {
   return result;
 }
 
+/**
+ * Save a mod's config. `live` also writes the installed copy the running game
+ * re-reads (the loader polls its mtime), so the change reaches a mod mid-run
+ * through `R.config.on_change` — what an overlay control needs. `merge`
+ * changes only the keys given; without it, every field not sent is reset to
+ * its default.
+ */
 export async function setModConfig(
   modId: string,
   values: Record<string, ModConfigValue>,
+  opts: { live?: boolean; merge?: boolean } = {},
 ): Promise<ModConfigResponse> {
-  const result = await rsmm<ModConfigResponse>(['config', 'set', modId, JSON.stringify(values)], {
+  const args = ['config', 'set', modId, JSON.stringify(values)];
+  if (opts.live) args.push('--live');
+  if (opts.merge) args.push('--merge');
+  const result = await rsmm<ModConfigResponse>(args, {
     timeoutMs: LONG_TIMEOUT_MS,
   });
   if (!result) {
@@ -1092,6 +1105,21 @@ export interface OverlayColumn {
   suffix: string;
 }
 
+/**
+ * A live control in a mod's overlay: one field of the mod's own config schema
+ * (named in `[overlay].controls`), drawn by type and written back with
+ * `setModConfig(..., { live: true })`.
+ */
+export interface OverlayControl {
+  key: string;
+  label: string;
+  type: 'int' | 'float' | 'bool' | 'enum';
+  min: number | null;
+  max: number | null;
+  choices: string[];
+  value: ModConfigValue;
+}
+
 /** One mod's overlay: what it declared, plus the rows it has published. */
 export interface OverlayRecord {
   modId: string;
@@ -1105,6 +1133,8 @@ export interface OverlayRecord {
   title?: string;
   icon?: string;
   columns?: OverlayColumn[];
+  /** Config fields shown as live controls; empty for a rows-only overlay. */
+  controls?: OverlayControl[];
   sort?: { key: string; dir: 'asc' | 'desc' } | null;
   highlight?: string | null;
   empty?: string;

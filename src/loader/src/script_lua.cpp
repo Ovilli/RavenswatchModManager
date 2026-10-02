@@ -99,6 +99,9 @@ struct ModScript {
     std::string id;
     std::filesystem::path root;
     std::filesystem::file_time_type init_mtime{};
+    // config.toml's mtime when the config table was last loaded (or written by
+    // the mod itself), so config_reload can tell an outside edit from none.
+    std::filesystem::file_time_type cfg_mtime{};
     // How many rsmm.on_event handlers this state registered, so closing it
     // can take them back out of the process-wide count.
     int handlers = 0;
@@ -373,28 +376,43 @@ int lua_state_write(lua_State* L) {
 // (consumed by the R.config Lua module). Loaded once per lua_State at
 // script_run_mod_init; a hot-reload of init.lua re-reads it.
 
-void load_mod_config(lua_State* L, const std::filesystem::path& root) {
-    lua_newtable(L);
+// Parse <root>/config.toml into a new table on the stack. Returns false (and
+// pushes nothing) when the file exists but does not parse, so a reload can keep
+// the values it has instead of blanking them over a half-written file.
+bool push_config_table(lua_State* L, const std::filesystem::path& root) {
     const auto cfg_path = root / "config.toml";
     std::error_code ec;
-    if (std::filesystem::exists(cfg_path, ec)) {
-        try {
-            toml::table doc = toml::parse_file(cfg_path.string());
-            const toml::table* section = doc["config"].as_table();
-            if (!section) section = &doc;  // tolerate flat files without [config]
-            for (auto&& [key, node] : *section) {
-                if (auto b = node.as_boolean())             lua_pushboolean(L, **b ? 1 : 0);
-                else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
-                else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
-                else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
-                else continue;
-                lua_setfield(L, -2, std::string(key.str()).c_str());
-            }
-        } catch (const std::exception& e) {
-            Loader::get().log_err(std::string("[config] parse fail ")
-                              + cfg_path.string() + ": " + e.what());
-        }
+    if (!std::filesystem::exists(cfg_path, ec)) { lua_newtable(L); return true; }
+    toml::table doc;
+    try {
+        doc = toml::parse_file(cfg_path.string());
+    } catch (const std::exception& e) {
+        Loader::get().log_err(std::string("[config] parse fail ")
+                          + cfg_path.string() + ": " + e.what());
+        return false;
     }
+    lua_newtable(L);
+    const toml::table* section = doc["config"].as_table();
+    if (!section) section = &doc;  // tolerate flat files without [config]
+    for (auto&& [key, node] : *section) {
+        if (auto b = node.as_boolean())             lua_pushboolean(L, **b ? 1 : 0);
+        else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
+        else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
+        else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
+        else continue;
+        lua_setfield(L, -2, std::string(key.str()).c_str());
+    }
+    return true;
+}
+
+std::filesystem::file_time_type config_mtime(const std::filesystem::path& root) {
+    std::error_code ec;
+    const auto mt = std::filesystem::last_write_time(root / "config.toml", ec);
+    return ec ? std::filesystem::file_time_type{} : mt;
+}
+
+void load_mod_config(lua_State* L, const std::filesystem::path& root) {
+    if (!push_config_table(L, root)) lua_newtable(L);
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
 }
 
@@ -474,7 +492,29 @@ int lua_config_set(lua_State* L) {
     lua_pushvalue(L, 2);
     lua_settable(L, -3);
     lua_pop(L, 1);
-    lua_pushboolean(L, config_write_file(L, m->root) ? 1 : 0);
+    const bool wrote = config_write_file(L, m->root);
+    // Our own write is not an outside edit: without this the next
+    // config_reload would re-read the file it just wrote.
+    if (wrote) m->cfg_mtime = config_mtime(m->root);
+    lua_pushboolean(L, wrote ? 1 : 0);
+    return 1;
+}
+
+// rsmm._internal.config_reload() -> bool
+//   Re-read <mod_dir>/config.toml if it changed since it was last loaded, so a
+//   value edited OUTSIDE the game (the desktop overlay's controls) reaches a
+//   running mod. true = the table was replaced (R.config then diffs it and
+//   fires on_change); false = unchanged, or the file did not parse (the old
+//   values are kept and the parse error is logged).
+int lua_config_reload(lua_State* L) {
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushboolean(L, 0); return 1; }
+    const auto mt = config_mtime(m->root);
+    if (mt == m->cfg_mtime) { lua_pushboolean(L, 0); return 1; }
+    m->cfg_mtime = mt;
+    if (!push_config_table(L, m->root)) { lua_pushboolean(L, 0); return 1; }
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    lua_pushboolean(L, 1);
     return 1;
 }
 
@@ -1848,6 +1888,7 @@ void register_api(lua_State* L) {
         { "state_write",             lua_state_write },
         { "config_get",              lua_config_get },
         { "config_set",              lua_config_set },
+        { "config_reload",           lua_config_reload },
         { "config_all",              lua_config_all },
         { nullptr, nullptr }
     };
@@ -1957,6 +1998,7 @@ bool script_run_mod_init(const std::string& mod_id,
     s.id   = mod_id;
     s.root = mod_root;
     s.init_mtime = newest_lua_mtime(mod_root);
+    s.cfg_mtime  = config_mtime(mod_root);
 
     if (lua_dofile_traced(L, init_path.string().c_str()) != LUA_OK) {
         // lua_err_str, not lua_tostring: a mod that raises a TABLE (error{...})

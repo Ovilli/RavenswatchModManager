@@ -12,12 +12,18 @@
  * has no SPA fallback to land on.
  */
 import { getAllWebviewWindows, WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getPlatform } from './platform';
 
 /** Window label for a mod's overlay. Must match the `overlay-*` capability. */
 export function overlayLabel(modId: string): string {
   // Tauri labels allow a restricted character set; mod ids are slugs, but a
   // stray character would fail window creation with a cryptic error.
   return `overlay-${modId.replace(/[^a-zA-Z0-9\-_]/g, '_')}`;
+}
+
+/** Whether overlay windows are see-through on this platform (see openOverlay). */
+export function overlayTransparent(): boolean {
+  return getPlatform() !== 'linux';
 }
 
 function overlayUrl(modId: string): string {
@@ -130,7 +136,11 @@ export async function openOverlay(modId: string): Promise<void> {
     y: pos?.y,
     resizable: true,
     decorations: false,
-    transparent: true,
+    // Not on Linux: a transparent WebKitGTK window on X11 is not redrawn after
+    // a content update until input forces it, so the HUD went invisible and
+    // came back on a click (2026-10-02). Opaque there; the card paints the
+    // same, only its corners lose the see-through.
+    transparent: overlayTransparent(),
     alwaysOnTop: true,
     // Keep it out of the taskbar/alt-tab list: it is a HUD, and having it
     // steal a tab stop while you are playing is worse than useless.

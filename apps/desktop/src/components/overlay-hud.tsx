@@ -38,12 +38,15 @@ import { GripHorizontal } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
 import { readOverlayLive } from '../lib/overlay-state';
-import { savePosition } from '../lib/overlay-windows';
+import { overlayTransparent, savePosition } from '../lib/overlay-windows';
 import {
+  type ModConfigValue,
   type OverlayColumn,
+  type OverlayControl,
   type OverlayRecord,
   listOverlays,
   readOverlayState,
+  setModConfig,
 } from '../lib/rsmm';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
 
@@ -152,6 +155,81 @@ function Cell({
   );
 }
 
+/** Slider steps for a float control: fine enough to feel continuous. */
+const FLOAT_STEPS = 100;
+
+/**
+ * One live control: a field of the mod's own config schema, drawn by type.
+ * The label and range are the MOD's (from its schema), shown as declared.
+ */
+function ControlRow({
+  control,
+  value,
+  onChange,
+}: {
+  control: OverlayControl;
+  value: ModConfigValue;
+  onChange: (v: ModConfigValue) => void;
+}) {
+  if (control.type === 'bool') {
+    return (
+      <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+        <span className="flex-1 truncate">{control.label}</span>
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+          className="accent-crimson"
+        />
+      </label>
+    );
+  }
+  if (control.type === 'enum') {
+    return (
+      <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+        <span className="flex-1 truncate">{control.label}</span>
+        <select
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          className="max-w-[9rem] rounded-sm border border-border bg-pitch px-1 py-0.5 text-parchment"
+        >
+          {control.choices.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  const min = control.min ?? 0;
+  const max = control.max ?? 1;
+  const step = control.type === 'int' ? 1 : (max - min) / FLOAT_STEPS;
+  const num = Number(value ?? min);
+  return (
+    <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+      <span className="w-20 shrink-0 truncate" title={control.label}>
+        {control.label}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={num}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          onChange(control.type === 'int' ? Math.round(v) : v);
+        }}
+        className="min-w-0 flex-1 accent-crimson"
+      />
+      <span className="font-mono w-10 shrink-0 text-right text-[0.7rem] tabular-nums text-parchment">
+        {control.type === 'int' ? num.toFixed(0) : num.toFixed(Math.abs(max - min) >= 10 ? 0 : 2)}
+      </span>
+    </label>
+  );
+}
+
 export function OverlayHud({ modId }: { modId: string }) {
   const t = useT();
   const [record, setRecord] = useState<OverlayRecord | null>(null);
@@ -159,6 +237,8 @@ export function OverlayHud({ modId }: { modId: string }) {
   const [compact, setCompact] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
   const inFlight = useRef(false);
+  // The last live payload rendered, to skip identical re-renders.
+  const lastLive = useRef<string | null>(null);
   // The declaration, cached for the session. Null means "ask the CLI on the
   // next tick" — the state of affairs on mount and after a live read failed.
   const declared = useRef<OverlayRecord | null>(null);
@@ -169,14 +249,33 @@ export function OverlayHud({ modId }: { modId: string }) {
   const autoHeight = useRef<number | null>(null);
   const [manualSize, setManualSize] = useState(false);
   const body = useRef<HTMLDivElement | null>(null);
+  // Control values as the player set them. Seeded from the declaration and
+  // then owned here: the CLI reports the saved value only when re-asked, and a
+  // slider that snapped back between writes would fight the drag.
+  const [controlValues, setControlValues] = useState<Record<string, ModConfigValue>>({});
+  // The same values, readable synchronously: a change is computed from here
+  // and queued for writing in the same tick. Computing it inside a state
+  // updater did not work — React runs updaters later, at render, so the flush
+  // that followed found nothing queued and every write carried the PREVIOUS
+  // value (the camera trailed the slider by one move).
+  const controlValuesRef = useRef<Record<string, ModConfigValue>>({});
+  const pendingWrite = useRef<Record<string, ModConfigValue> | null>(null);
+  const writing = useRef(false);
+  const [controlError, setControlError] = useState<string | null>(null);
   const demo = new URLSearchParams(window.location.search).get('demo') === '1';
   // Outside the Tauri shell there is no window to drive and no sidecar to
   // call; the component still renders so the design can be previewed.
   const native = isTauri();
 
   // The window paints its own card; the app's page background would otherwise
-  // fill the frame and defeat `transparent: true`.
+  // fill the frame and defeat `transparent: true`. Where the window is opaque
+  // (Linux, see openOverlay) the page background stays: clearing it would
+  // leave the area around the card undefined.
   useEffect(() => {
+    if (!overlayTransparent()) {
+      document.body.style.overflow = 'hidden';
+      return;
+    }
     const html = document.documentElement;
     const prevHtml = html.style.background;
     const prevBody = document.body.style.background;
@@ -207,6 +306,51 @@ export function OverlayHud({ modId }: { modId: string }) {
     return found;
   }, [native, modId]);
 
+  // Seed control values from the declaration the first time it arrives.
+  const declaredControls = record?.controls;
+  const controls = declaredControls ?? [];
+  useEffect(() => {
+    if (!declaredControls?.length || Object.keys(controlValuesRef.current).length > 0) return;
+    const seeded = Object.fromEntries(declaredControls.map((c) => [c.key, c.value]));
+    controlValuesRef.current = seeded;
+    setControlValues(seeded);
+  }, [declaredControls]);
+
+  /**
+   * Write control values to the mod's config, live. Each write spawns the
+   * CLI, so writes are COALESCED: one in flight at a time, and whatever the
+   * player did meanwhile goes out as one write when it lands. A drag across a
+   * slider is then two or three writes, not one per pixel.
+   */
+  const flushControls = useCallback(async () => {
+    if (writing.current || !pendingWrite.current || !native) return;
+    writing.current = true;
+    const values = pendingWrite.current;
+    pendingWrite.current = null;
+    try {
+      const res = await setModConfig(modId, values, { live: true, merge: true });
+      setControlError(res.ok === false ? (res.error ?? 'config write failed') : null);
+    } catch (e) {
+      setControlError(e instanceof Error ? e.message : String(e));
+    } finally {
+      writing.current = false;
+      if (pendingWrite.current) void flushControls();
+    }
+  }, [modId, native]);
+
+  const changeControl = useCallback(
+    (key: string, value: ModConfigValue) => {
+      const next = { ...controlValuesRef.current, [key]: value };
+      controlValuesRef.current = next;
+      // Every control's value, written with `merge` so the mod's fields that
+      // are NOT controls keep theirs.
+      pendingWrite.current = next;
+      setControlValues(next);
+      void flushControls();
+    },
+    [flushControls],
+  );
+
   const poll = useCallback(async () => {
     if (demo) {
       setRecord(DEMO);
@@ -220,11 +364,19 @@ export function OverlayHud({ modId }: { modId: string }) {
       const declaration = declared.current ?? (await loadDeclaration());
       declared.current = declaration;
       if (!declaration?.statePath) return;
+      // A controls-only overlay publishes no rows: nothing to follow.
+      if (!declaration.columns?.length) return;
 
       const state = await readOverlayState(declaration.statePath);
       const live = state.exists
         ? readOverlayLive(state.content, declaration.sort ?? null)
         : { rows: [], meta: {}, updated: 0, exists: false };
+      // Re-render only when something changed. A new record every second
+      // repainted the window every second whether or not a number moved, and
+      // each repaint is a chance for an X11 webview to blank out.
+      const sig = JSON.stringify(live);
+      if (sig === lastLive.current) return;
+      lastLive.current = sig;
       setRecord((cur) => (cur ? { ...cur, ...live } : { ...declaration, ...live }));
       setError(null);
     } catch (e) {
@@ -325,7 +477,9 @@ export function OverlayHud({ modId }: { modId: string }) {
     // behind on the render that adds a row, and a HUD that lags one player
     // behind the fight looks broken.
     const measured = body.current.scrollHeight;
-    const wanted = Math.round(Math.max(measured, rowCount * 24 + 8) + chrome);
+    const wanted = Math.round(
+      Math.max(measured, rowCount * 24 + controls.length * 26 + 8) + chrome,
+    );
     const clamped = Math.max(72, Math.min(600, wanted));
     if (autoHeight.current !== null && Math.abs(autoHeight.current - clamped) < 4) return;
     autoHeight.current = clamped;
@@ -339,7 +493,7 @@ export function OverlayHud({ modId }: { modId: string }) {
         // A window that will not resize is not a reason to stop drawing.
       }
     })();
-  }, [native, manualSize, compact, rowCount]);
+  }, [native, manualSize, compact, rowCount, controls.length]);
 
   const toggleClickThrough = async () => {
     if (!native) return;
@@ -352,8 +506,10 @@ export function OverlayHud({ modId }: { modId: string }) {
   const columns = record?.columns ?? [];
   const rows = record?.rows ?? [];
   const highlight = record?.highlight ?? null;
+  const controlsOnly = columns.length === 0 && controls.length > 0;
   const stale =
-    !record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S);
+    !controlsOnly &&
+    (!record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S));
 
   // Rank changes flash, so a takeover is visible without staring at numbers.
   const rowKey = (row: Record<string, string | number | boolean>, i: number) =>
@@ -428,9 +584,24 @@ export function OverlayHud({ modId }: { modId: string }) {
       </header>
 
       <div ref={body} className="min-h-0 flex-1 overflow-y-auto">
+        {!record?.error && controls.length > 0 && (
+          <div className={`py-1 ${columns.length > 0 ? 'border-b border-border/70' : ''}`}>
+            {controls.map((c) => (
+              <ControlRow
+                key={c.key}
+                control={c}
+                value={controlValues[c.key] ?? c.value}
+                onChange={(v) => changeControl(c.key, v)}
+              />
+            ))}
+            {controlError ? (
+              <p className="px-2 pb-1 text-[0.68rem] text-crimson">{controlError}</p>
+            ) : null}
+          </div>
+        )}
         {record?.error ? (
           <p className="px-3 py-4 text-center text-xs text-crimson">{record.error}</p>
-        ) : rows.length > 0 ? (
+        ) : controlsOnly ? null : rows.length > 0 ? (
           <ul className="py-1">
             {rows.map((row, i) => {
               const key = rowKey(row, i);

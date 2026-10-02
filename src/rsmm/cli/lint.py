@@ -130,8 +130,19 @@ def lint_one(entry: Path) -> tuple[int, int]:
     # field was wrong.
     if "overlay" in t:
         from rsmm.cli.cmd_overlay import OverlayError, parse_spec
+        from rsmm.sdk.config import ConfigError, ConfigSchema
         try:
-            parse_spec(t.get("overlay"), mod_id=str(m.get("id", entry.name)))
+            schema = None
+            ov = t.get("overlay")
+            if isinstance(ov, dict) and ov.get("controls"):
+                if not (entry / "config_schema.toml").is_file():
+                    raise OverlayError(f"{entry.name}: [overlay] has controls but the mod "
+                                       f"has no config_schema.toml")
+                try:
+                    schema = ConfigSchema.load(entry / "config_schema.toml")
+                except (ConfigError, ValueError) as ce:
+                    raise OverlayError(f"{entry.name}: config_schema.toml: {ce}") from ce
+            parse_spec(ov, mod_id=str(m.get("id", entry.name)), schema=schema)
         except OverlayError as e:
             # parse_spec prefixes its own mod id (its messages also reach the
             # CLI and the desktop app, where there is no other context); here

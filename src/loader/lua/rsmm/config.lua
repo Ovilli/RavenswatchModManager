@@ -6,6 +6,7 @@
 
 local M = {}
 local _watchers = {}     -- key -> { fn, ... }
+local _last = nil        -- the values _poll last saw (see live reload below)
 
 -- `_G.rsmm and _G.rsmm._internal.config_get` reads as a guard and is not: when
 -- `rsmm` exists but `_internal` does not, it indexes nil and RAISES. That is
@@ -38,6 +39,9 @@ function M.set(key, value)
     if not I or not I.config_set then return end
     local old = M.get(key)
     I.config_set(key, value)
+    -- Our own change, not an outside edit: keep the poll's snapshot in step so
+    -- the next reload does not fire this key a second time.
+    if _last then _last[key] = value end
     local list = _watchers[key]
     if not list then return end
     for _, fn in ipairs(list) do
@@ -58,6 +62,51 @@ function M.all()
     local I = _native()
     if I and I.config_all then return I.config_all() end
     return {}
+end
+
+-- Live reload. A value changed OUTSIDE the game — the desktop overlay's
+-- controls write the installed config.toml — reaches the running mod here:
+-- rsmm.lua calls _poll on every loader tick, the native re-reads the file only
+-- when its mtime moved, and each key whose value differs fires its on_change
+-- watchers with (new, old), exactly as M.set does. A loader without
+-- config_reload (older DLL) makes this a no-op, never an error.
+--
+-- THREAD: the tick runs on the loader's background thread, so a watcher must
+-- not call engine functions directly — use R.schedule.next_main for those. A
+-- plain memory write (R.camera.set) is fine.
+
+local function _fire(key, value, old)
+    for _, fn in ipairs(_watchers[key] or {}) do
+        local ok, err = xpcall(fn, _msgh, value, old)
+        if not ok and _G.rsmm then
+            _G.rsmm.log("config watcher error on '" .. tostring(key) .. "': " .. tostring(err))
+        end
+    end
+end
+
+function M._poll()
+    local I = _native()
+    if not (I and I.config_reload) then return end
+    if _last == nil then _last = M.all() end
+    if not I.config_reload() then return end
+    local now = M.all()
+    local old = _last
+    _last = now
+    local changed = {}
+    for k, v in pairs(now) do
+        if old[k] ~= v then changed[#changed + 1] = k .. "=" .. tostring(v) end
+    end
+    if #changed > 0 and _G.rsmm and _G.rsmm.log then
+        table.sort(changed)
+        _G.rsmm.log("[rsmm.config] config.toml changed outside the game: "
+                    .. table.concat(changed, ", "))
+    end
+    for k, v in pairs(now) do
+        if old[k] ~= v then _fire(k, v, old[k]) end
+    end
+    for k, v in pairs(old) do
+        if now[k] == nil then _fire(k, nil, v) end
+    end
 end
 
 return M

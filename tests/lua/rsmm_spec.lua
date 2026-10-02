@@ -9691,5 +9691,176 @@ do
     R.entity.hero, R.rtti.name = real_hero, real_rtti
 end
 
+-- R.camera: the hero's TopDown cameras, found by RTTI name through the entity's
+-- component array; a literal f32 record is written in place, anything else is
+-- refused. Layout as read off the settings ctor/deserializer (2026-10-02):
+-- records at settings+0xf8+0x80*i, union at record+0x60 (sentinel +0x68 == 4,
+-- value +0x70, type byte +0x78), record+0x58 == -1 for a literal.
+do
+    check(R.camera ~= nil, "R.camera loaded")
+    local HERO_C, ARR = 0x12d00000, 0x12d10000
+    local CAM = { 0x12d20000, 0x12d30000 }             -- default, zoom
+    local SET = { 0x12d40000, 0x12d50000 }
+    local real_hero, real_rtti = R.entity.hero, R.rtti.name
+    local function rec(s, off, v, opts)
+        opts = opts or {}
+        local r = s + off
+        I.write_u32(r + 0x58, opts.linked and 3 or 0xffffffff)
+        I.write_u64(r + 0x68, 4)
+        mem[r + 0x78] = opts.type or 0
+        if opts.type == 2 then mem[r + 0x70] = v else I.write_f32(r + 0x70, v) end
+    end
+    for i = 1, 2 do
+        I.write_u64(CAM[i] + 0x10, SET[i])
+        rec(SET[i], 0x3f8, math.rad(45))                -- yaw
+        rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
+        rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
+        rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
+    end
+    I.write_u64(HERO_C + 0x190, ARR)
+    I.write_u32(HERO_C + 0x198, 2)
+    I.write_u64(ARR, CAM[1]); I.write_u64(ARR + 8, CAM[2])
+    R.entity.hero = function() return HERO_C end
+    R.rtti.name = function(p)
+        if p == CAM[1] or p == CAM[2] then return "oe::oCEntityCpntTopDownCamera" end
+        if p == SET[1] or p == SET[2] then return "oe::oCEntityCpntTopDownCameraSettings" end
+        return real_rtti(p)
+    end
+
+    local cams = R.camera.cameras()
+    check(cams and #cams == 2, "both hero cameras found by class name")
+    check(cams and cams[1].default and not cams[2].default, "the default flag picks Default Camera")
+    check(about(R.camera.get("yaw"), 45), "yaw reads in degrees")
+
+    check(R.camera.set("yaw", 135) == 2, "yaw moves every camera, so zooming keeps it")
+    check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "zoom camera yaw written in radians")
+    check(R.camera.set("distance", 50) == 1, "other fields change the default camera only")
+    check(about(I.read_f32(SET[2] + 0x2f8 + 0x70), 9.05), "zoom distance untouched")
+
+    local n, why = R.camera.set("fov", 40)
+    check(n == nil and why:find("linked"), "a linked field is refused, not written")
+    check(about(I.read_f32(SET[1] + 0x378 + 0x70), 31), "linked fov left alone")
+
+    I.write_u64(SET[2] + 0x3f8 + 0x68, 0x5550)          -- yaw no longer inline
+    check(R.camera.set("yaw", 90) == 1, "a record that fails the check is skipped")
+    check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "skipped record not written")
+    I.write_u64(SET[2] + 0x3f8 + 0x68, 4)
+
+    check(R.camera.reset() >= 3, "reset restores every changed value")
+    check(about(R.camera.get("yaw"), 45) and about(I.read_f32(SET[1] + 0x2f8 + 0x70), 33),
+          "originals back after reset")
+
+    -- In game the cameras were on none of hero / ctx / owner: they sit on an
+    -- entity a hero FIELD points at, accepted only if every component points
+    -- back at it.
+    local HERO_F, OWNER = 0x12d60000, 0x12d70000
+    I.write_u64(HERO_F + 0x40, OWNER)
+    I.write_u64(OWNER + 0x190, ARR)
+    I.write_u32(OWNER + 0x198, 2)
+    I.write_u64(CAM[1] + 0x08, OWNER)
+    I.write_u64(CAM[2] + 0x08, 0x12d80000)               -- not ours
+    R.entity.hero = function() return HERO_F end
+    local found = R.camera.cameras()
+    check(found and #found == 2,
+          "a probed array that fails the back-pointer check is not trusted, but the search still finds the cameras by class")
+    I.write_u64(CAM[2] + 0x08, OWNER)
+    local probed = R.camera.cameras()
+    check(probed and #probed == 2, "cameras found on an entity a hero field points at")
+
+    -- Third launch's finding: the cameras are in the oCEntity's CLASS-ID MAP
+    -- (slots {u32 id; u64 cpnt} @+0x5f0, mask @+0x600), not the +0x190 array.
+    local HERO_M, ENT_M, SLOTS = 0x12d90000, 0x12da0000, 0x12db0000
+    I.write_u64(HERO_M + 0x08, ENT_M)
+    I.write_u64(ENT_M + 0x5f0, SLOTS)
+    I.write_u64(ENT_M + 0x600, 3)                         -- 4 buckets
+    I.write_u32(SLOTS + 0x10, 0x1111); I.write_u64(SLOTS + 0x18, CAM[1])
+    I.write_u32(SLOTS + 0x30, 0x1112); I.write_u64(SLOTS + 0x38, CAM[2])
+    local rtti_cam = R.rtti.name
+    R.rtti.name = function(p)
+        if p == ENT_M then return "oe::oCEntity" end
+        return rtti_cam(p)
+    end
+    R.entity.hero = function() return HERO_M end
+    local mapped = R.camera.cameras()
+    check(mapped and #mapped == 2, "cameras found in the entity's class-id map")
+    R.rtti.name = function(p)
+        if p == ENT_M then return "oe::oCSomethingElse" end
+        return rtti_cam(p)
+    end
+    R.rtti.name = rtti_cam
+
+    -- Fourth launch: the cameras hang three hops off the hero through heap
+    -- objects (hero+0x1e0+0x2b0+0x548). Found by pointer search; only objects
+    -- whose RTTI says TopDownCamera are kept, and the component's own entity
+    -- (+0x08) is read for its siblings.
+    local HERO_P, A, B, CAM_ENT, CARR = 0x12dd0000, 0x12de0000, 0x12df0000, 0x12e00000, 0x12e10000
+    I.write_u64(HERO_P + 0x1e0, A)
+    I.write_u64(A + 0x2b0, B)
+    I.write_u64(B + 0x548, CAM[1])
+    I.write_u64(CAM[1] + 0x08, CAM_ENT)
+    I.write_u64(CAM_ENT + 0x190, CARR); I.write_u32(CAM_ENT + 0x198, 2)
+    I.write_u64(CARR, CAM[1]); I.write_u64(CARR + 8, CAM[2])
+    R.entity.hero = function() return HERO_P end
+    local chained = R.camera.cameras()
+    check(chained and #chained == 2, "camera three hops out found, sibling read off its own entity")
+    check(chained and (chained[1].default or chained[2].default), "the default camera is among them")
+
+    local FAKE, HERO_X = 0x12e20000, 0x12e30000
+    I.write_u64(HERO_X + 0x40, FAKE)
+    local BLOB = 0x12e40000                            -- a settings-shaped block, no RTTI
+    I.write_u64(FAKE + 0x10, BLOB)
+    I.write_u32(BLOB + 0x3f8 + 0x58, 0xffffffff); I.write_u64(BLOB + 0x3f8 + 0x68, 4)
+    R.entity.hero = function() return HERO_X end
+    check(R.camera.cameras() == nil, "an object is never taken for a camera without its class name")
+
+    R.entity.hero = function() return nil end
+    local none, reason = R.camera.cameras()
+    check(none == nil and reason:find("hero"), "no hero: nil plus why")
+    R.entity.hero, R.rtti.name = real_hero, real_rtti
+end
+
+-- Live config: a value written to config.toml OUTSIDE the game (the desktop
+-- overlay's controls) reaches R.config.on_change on the next tick. The native
+-- config_reload replaces the table only when the file changed; R.config diffs
+-- it and fires each changed key once with (new, old).
+do
+    local saved = { I.config_get, I.config_set, I.config_all, I.config_reload }
+    local cfg, file, dirty = { yaw = 45 }, nil, false
+    I.config_get = function(k) return cfg[k] end
+    I.config_set = function(k, v) cfg[k] = v; return true end
+    I.config_all = function() local t = {}; for k, v in pairs(cfg) do t[k] = v end; return t end
+    I.config_reload = function()
+        if not dirty then return false end
+        dirty = false; cfg = file; return true
+    end
+    local function outside(t) file = t; dirty = true end
+
+    local got = {}
+    R.config.on_change("yaw", function(new, old) got[#got + 1] = { new, old } end)
+    fire("tick")                                          -- takes the snapshot
+    check(#got == 0, "no change, no callback")
+    outside({ yaw = 135 })
+    fire("tick")
+    check(#got == 1 and got[1][1] == 135 and got[1][2] == 45, "outside edit fires on_change(new, old)")
+    fire("tick")
+    check(#got == 1, "fired once, not on every tick")
+
+    R.config.set("yaw", 200)                              -- the mod's own change
+    check(#got == 2, "R.config.set still fires its watcher")
+    outside({ yaw = 200, other = true })
+    fire("tick")
+    check(#got == 2, "a reload that leaves yaw as the mod set it does not re-fire yaw")
+
+    outside({ other = true })
+    fire("tick")
+    check(#got == 3 and got[3][1] == nil and got[3][2] == 200, "a removed key fires with nil")
+
+    I.config_reload = nil                                 -- older DLL
+    outside({ yaw = 1 })
+    fire("tick")
+    check(#got == 3, "no config_reload native: polling is a no-op, not an error")
+    I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

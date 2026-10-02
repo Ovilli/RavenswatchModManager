@@ -294,3 +294,135 @@ def test_the_installed_copy_wins_over_the_authoring_one(tmp_path, monkeypatch):
     assert record["source"] == "game"
     assert record["title"] == "Damage"           # the installed manifest
     assert record["exists"] is True              # and its rows
+
+
+# --- live controls -----------------------------------------------------------
+# `[overlay].controls` names fields of the mod's own config_schema.toml; the
+# overlay draws them and writes them back live (config set --live → loader
+# config_reload → R.config.on_change). The schema is the single place their
+# type, range and label are declared.
+
+CONTROLS_SPEC = """
+[mod]
+id = "cam"
+name = "Camera"
+
+[overlay]
+title = "Camera"
+controls = ["yaw"]
+"""
+
+SCHEMA = """
+[fields.yaw]
+type = "float"
+default = 45.0
+min = 0.0
+max = 360.0
+label = "Rotation"
+
+[fields.note]
+type = "string"
+default = ""
+
+[fields.wide]
+type = "float"
+default = 1.0
+"""
+
+
+def _schema(text=SCHEMA):
+    import tomllib
+
+    from rsmm.sdk.config import ConfigSchema
+    return ConfigSchema.from_dict(tomllib.loads(text))
+
+
+def test_an_overlay_may_have_controls_and_no_columns():
+    spec = cmd_overlay.parse_spec({"controls": ["yaw"]}, mod_id="m", schema=_schema())
+    assert spec["columns"] == []
+    assert spec["controls"] == ["yaw"]
+
+
+@pytest.mark.parametrize(
+    ("controls", "needle"),
+    [
+        (["nope"], "not a field of config_schema.toml"),
+        (["note"], "is a string field"),
+        (["wide"], "needs min and max"),
+        (["yaw", "yaw"], "names a field twice"),
+        ([str(i) for i in range(7)], "max 6"),
+        ("yaw", "must be a list"),
+    ],
+)
+def test_bad_controls_are_refused_with_a_reason(controls, needle):
+    with pytest.raises(cmd_overlay.OverlayError) as e:
+        cmd_overlay.parse_spec({"controls": controls}, mod_id="m", schema=_schema())
+    assert needle in str(e.value)
+
+
+def test_discover_resolves_controls_from_the_authoring_copy(tmp_path, monkeypatch):
+    """The installed mod has no config_schema.toml (install copies manifest,
+    init.lua and config.toml only), so the schema and the values the player
+    set come from the authoring tree."""
+    library = tmp_path / "library"
+    lib = _install(library, mod_id="cam", spec=CONTROLS_SPEC, rows=None)
+    (lib / "config_schema.toml").write_text(SCHEMA, encoding="utf-8")
+    (lib / "config.toml").write_text("[config]\nyaw = 135.0\n", encoding="utf-8")
+    monkeypatch.setenv("RSMM_MODS_DIR", str(library / "mods"))
+    game = tmp_path / "game"
+    _install(game, mod_id="cam", spec=CONTROLS_SPEC, rows=None)
+
+    [record] = cmd_overlay.discover(game)
+    assert "error" not in record
+    assert record["controls"] == [{
+        "key": "yaw", "label": "Rotation", "type": "float", "min": 0.0, "max": 360.0,
+        "choices": [], "value": 135.0,
+    }]
+
+
+def test_controls_without_a_schema_are_reported(tmp_path):
+    _install(tmp_path, mod_id="cam", spec=CONTROLS_SPEC, rows=None)
+    [record] = cmd_overlay.discover(tmp_path)
+    assert "no config_schema.toml" in record["error"]
+
+
+def test_config_set_live_mirrors_into_the_installed_mod(tmp_path, monkeypatch, capsys):
+    from rsmm.cli import json_bridge
+
+    library = tmp_path / "library" / "mods"
+    lib = library / "cam"
+    lib.mkdir(parents=True)
+    (lib / "config_schema.toml").write_text(SCHEMA, encoding="utf-8")
+    game = tmp_path / "game"
+    installed = game / "mods" / "cam"
+    installed.mkdir(parents=True)
+    monkeypatch.setenv("RSMM_MODS_DIR", str(library))
+    monkeypatch.setattr(json_bridge, "MODS_DIR", library)
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+
+    assert json_bridge.cmd_config_set("cam", json.dumps({"yaw": 90.0}), live=True) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] and out["livePath"] == str(installed / "config.toml")
+    assert (installed / "config.toml").read_text() == (lib / "config.toml").read_text()
+    assert "yaw = 90.0" in (installed / "config.toml").read_text()
+
+    # Not installed: saved, nothing mirrored, no error.
+    import shutil
+    shutil.rmtree(installed)
+    assert json_bridge.cmd_config_set("cam", json.dumps({"yaw": 10.0}), live=True) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] and out["livePath"] is None
+
+    # --merge keeps the fields the overlay did not send; a plain set resets them.
+    (lib / "config_schema.toml").write_text(
+        SCHEMA + '\n[fields.speed]\ntype = "int"\ndefault = 1\nmin = 0\nmax = 9\n',
+        encoding="utf-8")
+    json_bridge.cmd_config_set("cam", json.dumps({"yaw": 10.0, "speed": 7}))
+    capsys.readouterr()
+    json_bridge.cmd_config_set("cam", json.dumps({"yaw": 20.0}), live=True, merge=True)
+    assert json.loads(capsys.readouterr().out)["values"]["speed"] == 7
+    json_bridge.cmd_config_set("cam", json.dumps({"yaw": 30.0}))
+    assert json.loads(capsys.readouterr().out)["values"]["speed"] == 1
+
+    # A mod id that climbs out of mods/ is never written outside it.
+    assert json_bridge._mirror_config_live(json_bridge.ConfigStore(lib), "../escape") is None
