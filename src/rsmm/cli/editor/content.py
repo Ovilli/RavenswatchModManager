@@ -163,18 +163,32 @@ def _text_values() -> dict[str, str]:
 @cache
 def stats() -> list[dict]:
     """Every stat a modifier can change, by the engine's own display name, with
-    how many shipped item effects give it (the picker lists those first)."""
+    how many shipped item effects give it (the picker lists those first) and
+    the range of amounts they give (``amounts``: ``[min, max]`` of the
+    magnitudes, or None). Stats differ in unit -- armour is flat points, crit
+    chance a fraction -- so the page warns when an effect swapped to another
+    stat keeps an amount no shipped effect of that stat comes near."""
     from rsmm.cli.cmd_items import _iter_items
     from rsmm.engine import item_modifier as IM
+    from rsmm.engine import magic_item_cook as cook
 
     used: dict[int, int] = {}
+    spans: dict[int, list[float]] = {}
     for _id, _rarity, p in _iter_items():
         try:
-            for m in IM.list_modifiers(p.read_bytes()):
-                used[m.key] = used.get(m.key, 0) + 1
+            data = p.read_bytes()
+            mods = IM.list_modifiers(data)
+            values, amounts = cook.item_numbers(data)
         except (OSError, ValueError):
             continue
-    return [{"name": n, "used": used.get(k, 0), "key": _hex(k)}
+        by_label = {v["label"]: v["value"] for v in values}
+        for m in mods:
+            used[m.key] = used.get(m.key, 0) + 1
+            n = by_label.get((amounts.get(m.name) or {}).get("label"))
+            if n:
+                spans.setdefault(m.key, []).append(abs(n))
+    return [{"name": n, "used": used.get(k, 0), "key": _hex(k),
+             "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
 
 

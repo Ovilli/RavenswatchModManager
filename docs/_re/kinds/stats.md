@@ -323,9 +323,14 @@ string's real length.
 What it settled:
 
 * **Armour is registered with key `0`** — a definition, a display name and an
-  editor icon, but no id. It is genuinely unaddressable through the store, so no
-  `R.stat` call can read or write it; its live value is a plain field at
-  `hero+0x31c` (written by `0x1403aab60`, beside the attack cache at `+0x318`).
+  editor icon, but no id string, so `R.stat` has no name to address it by; its
+  live value is a plain field at `hero+0x31c` (written by `0x1403aab60`, beside
+  the attack cache at `+0x318`). ⚠ Key `0` IS a live store key all the same:
+  `0x1403aab60` opens with `EntityValue_Lookup(store, out, 0)` (`xor r8d, r8d`)
+  and folds that into the field, and every shipped armour modifier (8 items)
+  stores stat `0`. So item/talent modifiers fold into armour through the store
+  like any other stat, and repointing one from `0` to another key is not a
+  special case (2026-10-02).
   Five armour *effects* are keyed and usable: "Armour per missing health"
   (`0x16917db7`), "Armour increase crit damage" (`0x16917ec8`), "Armour into AP"
   (`0x174a0363`), "Armour per ability under cooldown" (`0x170329b8`) and

@@ -75,3 +75,12 @@ def test_every_shipped_item_opens_in_the_editor():
     from rsmm.cli.editor import content as C
     for it in C.items():
         C.item_detail(it["id"])
+
+
+def test_an_int_part_the_scanner_lists_is_patched_by_part():
+    # Horn of Plenty's Spawn Count is an int: the label scanner lists it (read
+    # as 2.0) but only writes f32s, so routing it there failed every edit.
+    raw = _raw("Spawn_Consumables")
+    out = cook.apply_value_patch(raw, "Spawn Count", 2.0, 4.0)
+    assert _text(out, "Spawn Count", "value") == "int 4"
+    assert len(out) == len(raw)

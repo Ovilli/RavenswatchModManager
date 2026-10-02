@@ -326,6 +326,11 @@ def _part_field(data: bytes, label: str):
     return (ef, c, f) if f is not None and f.kind == "value" else None
 
 
+def _part_is_int(data: bytes, label: str) -> bool:
+    hit = _part_field(data, label)
+    return hit is not None and hit[2].text.partition(" ")[0] == "int"
+
+
 def set_part_value(data: bytes, label: str, old_value: float, new_value: float) -> bytes:
     """Set the number ``label`` names by part (see :func:`part_literal`),
     refusing when it does not hold ``old_value`` -- the same guard
@@ -346,8 +351,11 @@ def apply_value_patch(data: bytes, label: str, old_value: float, new_value: floa
     """One ``value_patches`` entry: by label when the label scanner knows it
     (with its overridden-value guard), otherwise by part."""
     from .talent_values import clear_value_override, is_label_overridden, list_talent_values
-    if label not in {tv.label for tv in list_talent_values(data)} \
-            and part_literal(data, label) is not None:
+    if part_literal(data, label) is not None and (
+            label not in {tv.label for tv in list_talent_values(data)}
+            or _part_is_int(data, label)):
+        # The label scanner patches f32s only: an int part (Horn of Plenty's
+        # Spawn Count) is listed by it but can only be written by part.
         return set_part_value(data, label, old_value, new_value)
     if is_label_overridden(data, label):
         if not clear:

@@ -655,8 +655,8 @@ function itemView() {
   v.append(f);
 
   // One number row; the same edit state whichever section shows it.
-  const numRow = (r, label) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
-    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); });
+  const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
+    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); if (after) after(); });
   const byLabel = new Map(it.values.map(r => [r.label, r]));
 
   // Each effect: the stat it gives, and right under it the number that sets
@@ -677,11 +677,14 @@ function itemView() {
     const a = m.amount || {}, r = a.label && byLabel.get(a.label);
     if (r) {
       shown.add(r.label);
-      const nr = numRow(r, "Amount");
+      const warn = el("div", { class: "hint bad", style: "margin:2px 0 6px 12px" });
+      const check = () => { warn.textContent = unitWarning(E.stats[m.name], E.values[r.label] ?? r.value, m.stat); warn.hidden = !warn.textContent; };
+      const nr = numRow(r, "Amount", check);
       const others = (r.usedBy || []).filter(n => n !== m.name);
       nr.querySelector(".lbl").append(el("span", { class: "tag type", text: a.label.endsWith(".amount") ? "own number" : r.label,
         title: (a.via ? `Scaled by “${a.via}” in game (e.g. per object owned).` : "") + (others.length ? ` Also used by: ${others.join(", ")}.` : "") }));
-      box.append(nr);
+      check();
+      box.append(nr, warn);
     } else {
       box.append(el("div", { class: "hint", style: "margin:2px 0 6px 12px", text: a.via ? `Its amount is worked out by “${a.via}” in game, from no single number this editor can change.` : "This effect has no amount to change." }));
     }
@@ -1017,6 +1020,20 @@ function cssCard(it, E, card) {
 }
 
 // One effect: which stat it changes.
+// Stats differ in unit (armour is flat points, crit chance a fraction), and a
+// swapped effect keeps its old number. Say so when that number is far from
+// every amount shipped effects give the new stat: Armour's 2 as crit chance is
+// +200%, while 0.05 armour is nothing. "" when it is in range or unknown.
+function unitWarning(stat, amount, was) {
+  if (!stat || stat === was || typeof amount !== "number" || !amount) return "";
+  const span = (S.stats.find(s => s.name === stat) || {}).amounts;
+  if (!span) return "";
+  const [lo, hi] = span, n = Math.abs(amount);
+  if (n >= lo / 2 && n <= hi * 2) return "";
+  const range = lo === hi ? `${lo}` : `${lo} to ${hi}`;
+  return `Shipped effects that give ${stat} use ${range}; this one still gives ${amount}, its ${was} amount. Change the amount to match the new stat.`;
+}
+
 // One effect: which stat it changes. `onset(undefined)` means "back to the original".
 function statRow(m, cur, onset) {
   const row = el("div", { class: "row stat" + (cur !== undefined ? " changed" : "") });
