@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-01",
+  "generated": "2026-10-02",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 25,
+      "date": "2026-10-02",
+      "summary": "live config reload + R.camera",
+      "highlights": [
+        "live config reload + R.camera"
+      ]
+    },
     {
       "version": "5.9.0",
       "date": "2026-10-01",
