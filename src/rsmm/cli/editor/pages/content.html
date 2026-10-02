@@ -434,6 +434,7 @@ const S = {
 
 // ---- tabs + left list ----------------------------------------------------------
 function setTab(t) {
+  if (t !== S.tab) pickSeq++;     // a pick still loading belongs to the tab being left
   saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
@@ -471,12 +472,18 @@ function renderList() {
 }
 
 // ---- items ------------------------------------------------------------------------
+// The newest pick and the tab it was made on. A slow answer for an earlier pick,
+// or for a tab the user has since left, must not overwrite what is on screen.
+let pickSeq = 0;
+const stale = (me, tab) => me !== pickSeq || S.tab !== tab;
 async function pickItem(id) {
-  const meta = S.items.find(i => i.id === id);
+  const meta = S.items.find(i => i.id === id), me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
-  try {
-    S.item = await get("api/item?id=" + encodeURIComponent(id));
-  } catch (e) { status(e.message, "st-bad"); renderView(); return; }
+  let got;
+  try { got = await get("api/item?id=" + encodeURIComponent(id)); }
+  catch (e) { if (!stale(me, "items")) { status(e.message, "st-bad"); renderView(); } return; }
+  if (stale(me, "items")) return;
+  S.item = got;
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
   // A draft from before the switch existed was a copy.
@@ -1147,9 +1154,13 @@ function valueRow(label, value, type, shadowed, cur, onset) {
 // ---- talents ----------------------------------------------------------------------
 const TIERS = ["Common", "Rare", "Epic", "Legendary"];
 async function pickHero(h) {
+  const me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + h.replace(/_/g, " ") + "'s talents…"));
-  try { S.talents = await get("api/talents?hero=" + encodeURIComponent(h)); }
-  catch (e) { status(e.message, "st-bad"); renderView(); return; }
+  let got;
+  try { got = await get("api/talents?hero=" + encodeURIComponent(h)); }
+  catch (e) { if (!stale(me, "talents")) { status(e.message, "st-bad"); renderView(); } return; }
+  if (stale(me, "talents")) return;
+  S.talents = got;
   S.hero = h;
   const draft = store.get(DRAFT.talents + h);
   S.restored = draft ? "talents" : "";

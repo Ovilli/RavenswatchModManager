@@ -22,12 +22,28 @@ CSP = ("default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe
        "connect-src 'self'; img-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'")
 
 
+def _warm() -> None:
+    """Fill the item, stat and hero-list caches before the page asks: ~350 ms
+    of cooked-file parsing the page's first four requests would otherwise wait
+    on. Talents are not warmed: all twelve heroes are ~9 s of CPU that would
+    compete with the page's own requests. Best effort: a missing install just
+    leaves the caches to fill on demand, as before."""
+    try:
+        from rsmm.cli.editor import content
+        content.items()
+        content.stats()
+        content.heroes()
+    except Exception:  # noqa: BLE001 -- warming is optional; the real request reports any error
+        pass
+
+
 class EditorServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, ctx: app.Context):
         super().__init__(addr, Handler)
         self.ctx = ctx
+        threading.Thread(target=_warm, daemon=True).start()
 
     @property
     def token(self) -> str:

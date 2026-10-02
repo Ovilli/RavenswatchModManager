@@ -35,6 +35,7 @@ Two rules, both silent when broken:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Final
 
@@ -169,9 +170,17 @@ class CorpusFile:
 
 def subdirs(directory: str) -> list[str]:
     """Names of the immediate sub-directories of ``directory``."""
-    prefix = directory.rstrip("/") + "/"
-    return sorted({r[len(prefix):].split("/", 1)[0]
-                   for r in rels(prefix) if "/" in r[len(prefix):]})
+    return list(_subdirs(directory.rstrip("/") + "/", str(UNCOOKED), source()))
+
+
+@cache
+def _subdirs(prefix: str, _mirror: str, _store: str) -> tuple[str, ...]:
+    # Walking a directory is ~35 ms for the heroes tree and one card's icon
+    # asks for it each time (26 per hero). The mirror and the store are in the
+    # key, so a test that swaps or hides the mirror gets its own answer; the
+    # mirror itself is only rewritten by scripts, in their own process.
+    return tuple(sorted({r[len(prefix):].split("/", 1)[0]
+                         for r in rels(prefix) if "/" in r[len(prefix):]}))
 
 
 def files(directory: str, suffix: str = "") -> list[CorpusFile]:

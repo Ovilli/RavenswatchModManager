@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from functools import lru_cache
 
 from . import cooked
 
@@ -139,8 +140,17 @@ def class_names(data: bytes) -> list[str] | None:
     Every ``1111bbaa`` BEGIN marker is followed by an index into this list, so
     nothing in a cooked body can be identified without it.
     """
+    names = _class_names(data)
+    return None if names is None else list(names)
+
+
+@lru_cache(maxsize=32)
+def _class_names(data: bytes) -> tuple[str, ...] | None:
+    # A hero's talent cards ask for the same few files' tables dozens of times
+    # (45 calls over 19 files for one hero, ~0.3 s). `class_names` hands out a
+    # fresh list so a caller cannot change the cached one.
     try:
-        return [c.name for c in cooked.parse(data).classes]
+        return tuple(c.name for c in cooked.parse(data).classes)
     except (ValueError, IndexError, struct.error):
         return None
 

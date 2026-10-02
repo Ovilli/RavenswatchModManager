@@ -22,8 +22,9 @@ import binascii
 import json
 import re
 import tempfile
+import threading
 import tomllib
-from functools import cache
+from functools import cache, wraps
 from pathlib import Path
 
 from rsmm.cli.editor.app import Fail, Raw, Request
@@ -42,9 +43,26 @@ class EditorError(ValueError):
     """A request the page can show to the user as it is."""
 
 
+def _once(fn):
+    """``functools.cache`` that computes each answer once even when two requests
+    ask at the same moment. The server runs a thread per request, and a plain
+    cache lets both parse the same cooked files (a fast tab switch, or the
+    startup warm-up racing the page's first read), doubling the work they then
+    fight over the GIL to finish. Locked per function, so a slow hero's
+    talents do not hold up an icon."""
+    cached, lock = cache(fn), threading.RLock()
+
+    @wraps(fn)
+    def run(*args):
+        with lock:
+            return cached(*args)
+    run.cache_clear = cached.cache_clear
+    return run
+
+
 # --- items ------------------------------------------------------------------
 
-@cache
+@_once
 def items() -> list[dict]:
     """Every shipped magical object, with its display name when an install is
     readable (the names live in the install's text bank)."""
@@ -148,7 +166,7 @@ def _hex(key: int) -> str:
     return f"0x{key:08x}"
 
 
-@cache
+@_once
 def _text_values() -> dict[str, str]:
     """The install's magical-object text bank, key -> English text, as shipped
     (an applied mod's rewrite of a card is not the base item's text)."""
@@ -160,7 +178,7 @@ def _text_values() -> dict[str, str]:
     return item_catalog._text_values(game, load_asset_map(), pristine=True)
 
 
-@cache
+@_once
 def stats() -> list[dict]:
     """Every stat a modifier can change, by the engine's own display name, with
     how many shipped item effects give it (the picker lists those first) and
@@ -192,7 +210,7 @@ def stats() -> list[dict]:
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
 
 
-@cache
+@_once
 def icon_stems() -> list[str]:
     """Every icon under ``Ui/Objects`` by its full leaf name. Items use
     ``Icon_Object_*`` and ``Icon_PowerUp_*`` as well as ``UI_Object_*``."""
@@ -218,7 +236,7 @@ def icon_png(stem: str) -> bytes | None:
 
 # --- talents ----------------------------------------------------------------
 
-@cache
+@_once
 def _herodefs() -> dict[str, str]:
     """Hero folder name (``SunWukong``) -> herodef stem (``Sun_Wukong``).
 
@@ -249,7 +267,7 @@ def _hero_dir(hero: str) -> str:
     return f"Hero_{hero}"
 
 
-@cache
+@_once
 def talent_values(hero: str) -> list[dict]:
     """Every editable talent value of ``hero``, grouped by entity file.
 
@@ -282,7 +300,7 @@ def talent_values(hero: str) -> list[dict]:
     return files
 
 
-@cache
+@_once
 def talent_cards(hero: str) -> list[dict]:
     """The hero's talent cards with their current English name and text.
 
@@ -350,13 +368,13 @@ def _tiers(hero: str, file: str, entry) -> dict:
     return {"tiers": {t: {"index": i, "value": v} for t, (i, v, _tc) in tiers.items()}}
 
 
-@cache
+@_once
 def _hero_file(hero: str, file: str) -> bytes | None:
     from rsmm.engine import corpus
     return corpus.read(f"{_HEROES_DIR}/{_hero_dir(hero)}/{file}{_GEN_SUFFIX}")
 
 
-@cache
+@_once
 def _card_icon(hero: str, source: str) -> str | None:
     """The icon a talent card draws, as ``Heroes\\<Hero>\\<file>.png``.
 
@@ -382,7 +400,7 @@ def _hero_main(hero: str) -> bytes | None:
     return corpus.read(f"{_HEROES_DIR}/{folder}/{folder}{_GEN_SUFFIX}")
 
 
-@cache
+@_once
 def _hero_formats(hero: str) -> dict:
     """Text key -> ``(file, format)`` for every String Format of the hero that
     reads its ``Hero_<X>_Common~GAM.xls`` bank (the talent cards' bank)."""
@@ -401,7 +419,7 @@ def _hero_formats(hero: str) -> dict:
     return out
 
 
-@cache
+@_once
 def _hero_pngs(hero: str) -> tuple[str, ...]:
     """Every ``Heroes\\...png`` texture the hero's main entity names: its talent
     icons (``Skill Attack Dive.png``) and portrait. The icon route serves only
@@ -415,7 +433,7 @@ def hero_portrait(hero: str) -> str | None:
     return next((p for p in _hero_pngs(hero) if "\\Portrait_" in p), None)
 
 
-@cache
+@_once
 def hero_png(hero: str, path: str) -> bytes | None:
     """A texture the hero's main entity names, decoded to PNG."""
     from rsmm.engine import corpus, icon_decode
@@ -972,7 +990,7 @@ CARD_FONTS: dict[str, str] = {
 }
 
 
-@cache
+@_once
 def card_texture(name: str) -> bytes | None:
     """One card texture (or font page) decoded to PNG, from the install."""
     from rsmm.engine import corpus, icon_decode
@@ -993,7 +1011,7 @@ def card_texture(name: str) -> bytes | None:
         return None
 
 
-@cache
+@_once
 def card_font(name: str) -> dict | None:
     """A card font's metrics and glyphs, as the page draws them."""
     from rsmm.engine import corpus, game_font
