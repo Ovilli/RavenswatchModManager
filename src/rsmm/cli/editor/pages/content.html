@@ -73,7 +73,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .row.stat { grid-template-columns: 1fr 150px 240px 26px; }
 .reset { visibility: hidden; border: none; background: none; padding: 0 4px; color: var(--muted); font-size: 15px; line-height: 1; }
 .reset:hover { color: var(--accentink); }
-.changed > .reset, .changed .reset.own, label .reset.on { visibility: visible; }
+.changed > .reset, .changed .reset.own, label .reset.on, .grant .reset.on { visibility: visible; }
 .form label { display: flex; align-items: center; gap: 2px; }
 .pickbox { position: relative; }
 .pickbox input { width: 100%; }
@@ -411,6 +411,11 @@ function uploadButton(text, size, onicon) {
 }
 function resetBtn(onclick, title) {
   return el("button", { class: "reset", type: "button", title: title || "Undo this change", onclick }, "↺");
+}
+
+// A row's remove button: always shown, unlike the undo arrow that waits for a change.
+function removeBtn(onclick) {
+  return el("button", { class: "reset on", type: "button", title: "Remove", "aria-label": "Remove", onclick }, "\u2715");
 }
 
 // ---- state ------------------------------------------------------------------
@@ -1544,7 +1549,7 @@ function scriptView() {
     sel.onchange = () => { it.id = sel.value; changed(); };
     const n = el("input", { type: "number", min: "1", max: "99", value: String(it.count), title: "Copies" });
     n.oninput = () => { it.count = Math.min(99, Math.max(1, Math.floor(Number(n.value) || 1))); changed(); };
-    v.append(el("div", { class: "grant" }, sel, n, resetBtn(() => { C.items.splice(i, 1); redraw(); }, "Remove")));
+    v.append(el("div", { class: "grant" }, sel, n, removeBtn(() => { C.items.splice(i, 1); redraw(); })));
   });
   v.append(el("button", { type: "button", onclick: () => { C.items.push({ id: "", count: 1 }); redraw(); } }, "+ Add an item"));
 
@@ -1565,7 +1570,7 @@ function scriptView() {
       const tier = el("select", {}, ...TIER_NAMES.map((n, k) => el("option", { value: String(k), text: n })));
       tier.value = String(t.tier || 0);
       tier.onchange = () => { t.tier = Number(tier.value); changed(); };
-      box.append(el("div", { class: "grant" }, sel, tier, resetBtn(() => { C.talents.splice(i, 1); redraw(); }, "Remove")));
+      box.append(el("div", { class: "grant" }, sel, tier, removeBtn(() => { C.talents.splice(i, 1); redraw(); })));
     });
     box.append(el("button", { type: "button", onclick: () => { C.talents.push({ name: "", tier: 0 }); redraw(); } }, "+ Add a talent"));
   });
