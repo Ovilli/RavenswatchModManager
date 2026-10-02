@@ -434,6 +434,7 @@ const S = {
 
 // ---- tabs + left list ----------------------------------------------------------
 function setTab(t) {
+  saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("#rarity").hidden = t !== "items";
@@ -1549,6 +1550,8 @@ function scriptView() {
     sel.onchange = () => { it.id = sel.value; changed(); };
     const n = el("input", { type: "number", min: "1", max: "99", value: String(it.count), title: "Copies" });
     n.oninput = () => { it.count = Math.min(99, Math.max(1, Math.floor(Number(n.value) || 1))); changed(); };
+    // The box may hold 0 or nothing while typing; show the count that will be used.
+    n.onchange = () => { n.value = String(it.count); };
     v.append(el("div", { class: "grant" }, sel, n, removeBtn(() => { C.items.splice(i, 1); redraw(); })));
   });
   v.append(el("button", { type: "button", onclick: () => { C.items.push({ id: "", count: 1 }); redraw(); } }, "+ Add an item"));
