@@ -27,7 +27,7 @@ import tomllib
 from functools import cache, wraps
 from pathlib import Path
 
-from rsmm.cli.editor.app import Fail, Raw, Request
+from rsmm.cli.editor.app import Fail, Raw, Request, asset_dir
 
 MOUNT = "content"
 PAGE = "content.html"
@@ -830,7 +830,8 @@ def _new_manifest(mod_id: str, meta: dict | str | None = None) -> str:
 
 def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
          create: bool = False, name: str = "", meta: dict | None = None,
-         replace: set[tuple[str, str]] | None = None, script: dict | None = None) -> Path:
+         replace: set[tuple[str, str]] | None = None, script: dict | None = None,
+         program: dict | None = None) -> Path:
     """Append the blocks to ``mods/<mod_id>/manifest.toml`` (or create the mod).
 
     ``replace`` names blocks an opened mod already has: they are taken out
@@ -879,6 +880,8 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
     manifest.write_text(new, encoding="utf-8")
     if script is not None:
         modio.write_script(target, script)
+    if program is not None:
+        modio.write_blocks(target, program)
     return manifest
 
 
@@ -1069,15 +1072,28 @@ def _replace(req: Request) -> set[tuple[str, str]]:
     return out
 
 
+def _program(req: Request) -> dict | None:
+    """The request's block program, checked and compiled once so a refused one
+    stops the save; None when it sends none."""
+    from . import blocks
+    raw = req.body.get("program")
+    if raw is None:
+        return None
+    state = blocks.validate_state(raw)
+    blocks.compile_blocks(state)
+    return state
+
+
 def _save(req: Request) -> dict:
-    script = _script(req)
-    # Only the test grants changed: no blocks to write.
-    defs = [] if script is not None and req.body.get("edits") == [] else _defs(req)
+    script, program = _script(req), _program(req)
+    # Only the Scripts tab changed: no blocks to write.
+    only_script = (script is not None or program is not None) and req.body.get("edits") == []
+    defs = [] if only_script else _defs(req)
     meta = req.body.get("meta")
     where = save(defs, str(req.body.get("mod") or ""), req.ctx.mods_dir,
                  create=bool(req.body.get("create")), name=str(req.body.get("name") or ""),
                  meta=meta if isinstance(meta, dict) else None,
-                 replace=_replace(req), script=script)
+                 replace=_replace(req), script=script, program=program)
     return {"saved": str(where), "blocks": len(defs)}
 
 
@@ -1088,6 +1104,12 @@ def _toml_with_script(req: Request) -> dict:
            else _toml_route(req))
     script = _script(req)
     out["lua"] = "" if script is None or modio.script_empty(script) else modio.script_lua(script)
+    program = _program(req)
+    if program is not None:
+        from . import blocks
+        section, warnings = blocks.compile_blocks(program)
+        out["lua"] = (out["lua"] + "\n" if out["lua"] and section else out["lua"]) + section
+        out["warnings"] = warnings
     return out
 
 
@@ -1102,7 +1124,34 @@ def _import_mod(req: Request) -> dict:
     return {"id": mod_id}
 
 
+STATIC_FILES = {"blockly.min.js": "text/javascript; charset=utf-8",
+                "sprites.svg": "image/svg+xml"}
+
+
+def _static(req: Request) -> Raw:
+    name = req.path.removeprefix("/static/")
+    # sprites.svg is Blockly's icon sheet under the name it asks for.
+    f = asset_dir("static") / ("blockly-sprites.svg" if name == "sprites.svg" else name)
+    if name not in STATIC_FILES or not f.is_file():
+        raise Fail(404, "not found")
+    return Raw(f.read_bytes(), STATIC_FILES[name], cache=True)
+
+
+@_once
+def _block_events() -> list[dict]:
+    """The game events a block can listen to, from the mined catalog."""
+    from rsmm.engine import symbols
+    try:
+        catalog = symbols.load_symbol_map().gameplay_event_catalog
+    except (OSError, ValueError):       # the web editor carries no data/ folder
+        return []
+    return [{"name": e["name"], "category": e.get("category", "")}
+            for e in sorted(catalog, key=lambda e: e["name"])]
+
+
 ROUTES = {
+    ("GET", "/static/*"): _static,
+    ("GET", "/api/blocks/meta"): lambda req: {"events": _block_events()},
     ("GET", "/api/items"): lambda req: {"items": items()},
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},

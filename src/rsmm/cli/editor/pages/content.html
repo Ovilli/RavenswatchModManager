@@ -136,7 +136,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
 .seg button + button { border-left: 1px solid var(--line); }
-.seg button.on { background: #1c1b1a; color: var(--rc); font-weight: 600; }
+.seg button.on { background: #1c1b1a; color: var(--rc, #f4f3ef); font-weight: 600; }
 .tgrid { display: grid; gap: 12px; }
 .tcard { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel); align-items: start; }
 .tcard.changed { border-color: var(--accentline); }
@@ -216,6 +216,18 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
 .results div { padding: 2px 0; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 .grant { display: grid; grid-template-columns: 1fr 120px 26px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.blockly-host { height: max(380px, calc(100vh - 360px)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 8px; }
+body.wide .blockly-host { height: max(420px, calc(100vh - 190px)); }
+.blockly-warn { margin-top: 6px; }
+.wrap.blocks { max-width: none; }
+.blocksbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.blocksbar .grow { flex: 1; }
+.blockshelp { margin-top: 8px; } .blockshelp summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+body.wide { grid-template-columns: 0 1fr; }
+body.wide #left { display: none; }
+body.wide #main { padding: 10px 14px 14px; }
+body.wide #bar pre { display: none; }
+body.wide #bar { max-height: none; }
 .openline { display: flex; gap: 6px; } .openline select { flex: 1; min-width: 0; }
 </style>
 </head>
@@ -429,6 +441,9 @@ const S = {
   hero: null, talents: null,
   talentEdit: { prefix: "", values: {}, cards: {} },   // values key: file + "\u0000" + label
   script: null, scriptSaved: "",   // the Scripts tab's test grants, and what the mod holds
+  program: null, programSaved: "", // the Scripts tab's block program (Blockly's saved state), and what the mod holds
+  scriptMode: "grants",            // which half of the Scripts tab is open: grants | blocks
+  wide: false, ws: null, programWarn: [],       // the live Blockly workspace, and the compiler's notes on the program
   loaded: null,   // the opened mod: {id, name, entries: {tab \0 key: {blocks, json}}}
 };
 
@@ -563,8 +578,8 @@ async function openPending(tab, id) {
 function renderPending(edits, errors) {
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
-  const grants = scriptChanged();
-  if (edits.length + (grants ? 1 : 0) < 2 && !bad.size) return;
+  const grants = scriptChanged(), prog = programChanged();
+  if (edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) < 2 && !bad.size) return;
   for (const e of edits) {
     const chip = el("span", { class: "pchip" + (isOpen(e.tab, e.id) ? " open" : "") + (bad.has(e.name) ? " bad" : "") },
       el("button", { type: "button", title: "Open it", onclick: () => openPending(e.tab, e.id) }, e.name));
@@ -578,6 +593,12 @@ function renderPending(edits, errors) {
       el("button", { type: "button", title: "Open it", onclick: () => setTab("scripts") }, "Test grants"),
       el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the test grants",
         onclick: () => { S.script = JSON.parse(S.scriptSaved); saveScript(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
+  }
+  if (prog) {
+    box.append(el("span", { class: "pchip" + (S.tab === "scripts" && S.scriptMode === "blocks" ? " open" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => { S.scriptMode = "blocks"; if (S.tab === "scripts") renderView(); else setTab("scripts"); } }, "Blocks"),
+      el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the block changes",
+        onclick: () => { S.program = JSON.parse(S.programSaved); saveProgram(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
   }
 }
 
@@ -1505,8 +1526,11 @@ function allValues() {
 }
 
 function renderView() {
+  if (S.ws) { try { S.ws.dispose(); } catch { /* already gone */ } S.ws = null; }
   const view = $("#view"); view.textContent = "";
+  view.classList.toggle("blocks", S.tab === "scripts" && S.scriptMode === "blocks");
   view.append(S.tab === "items" ? itemView() : S.tab === "talents" ? talentView() : scriptView());
+  applyWide();
 }
 
 // ---- scripts: test grants -------------------------------------------------------------
@@ -1527,6 +1551,265 @@ function scriptNorm(c) {
 const NO_GRANTS = scriptNorm(emptyScript());
 function scriptChanged() { return !!S.script && scriptNorm(S.script) !== S.scriptSaved; }
 function saveScript() { store.set(SCRIPT_KEY, { script: S.script, saved: S.scriptSaved }); }
+// ---- scripts: the block program ---------------------------------------------------------
+// A Blockly workspace the server turns into Lua (editor/blocks.py), so the page never
+// writes code: a program can only use the blocks defined here.
+const PROGRAM_KEY = "rsmm.editor.program";
+function emptyProgram() { return { blocks: { languageVersion: 0, blocks: [] }, variables: [] }; }
+// A program with no blocks is the empty program, whatever the workspace saved around it.
+function programNorm(p) {
+  const blocks = (p && p.blocks && p.blocks.blocks) || [];
+  return JSON.stringify(blocks.length ? { blocks: p.blocks, variables: p.variables || [] } : emptyProgram());
+}
+const NO_PROGRAM = programNorm(emptyProgram());
+function programChanged() { return !!S.program && programNorm(S.program) !== S.programSaved; }
+function programUsed() { return programNorm(S.program) !== NO_PROGRAM; }
+function saveProgram() { store.set(PROGRAM_KEY, { program: S.program, saved: S.programSaved }); }
+
+let blocklyReady = null;
+// Blockly is one file served beside the page, loaded through fetch so it works in the
+// web editor too (which routes fetch, not script tags), then run as an inline script.
+function loadBlockly() {
+  if (!blocklyReady) blocklyReady = (async () => {
+    if (!window.Blockly) {
+      const r = await fetch("static/blockly.min.js");
+      if (!r.ok) throw new Error("the block editor could not be loaded");
+      const tag = document.createElement("script");
+      tag.textContent = await r.text();
+      document.head.append(tag);
+    }
+    let events = [];
+    try { events = (await get("api/blocks/meta")).events || []; } catch { /* free text instead */ }
+    defineBlocks(events);
+  })().catch(e => { blocklyReady = null; throw e; });
+  return blocklyReady;
+}
+
+// Block colours: one muted family, set in the theme below so the toolbox, the blocks and
+// Blockly's own categories all agree.
+const PALETTE = {
+  event: "#b3122c", action: "#2f6f8f", value: "#3f8f6b", logic: "#7a5aa6", loop: "#c0873a",
+  math: "#4a6fa5", text: "#7d8794", list: "#3e9a9a", variable: "#b06a8c", procedure: "#8a5ba8",
+};
+function defineBlocks(events) {
+  const items = [...S.items].sort((a, b) => a.name.localeCompare(b.name)).map(i => [`${i.name} (${i.rarity})`, i.id]);
+  const stats = S.stats.map(x => [x.name, x.name]);
+  const heroes = S.heroes.map(h => [h.replace(/_/g, " "), h]);
+  const orText = (opts, name, dflt) => opts.length ? { type: "field_dropdown", name, options: opts } : { type: "field_input", name, text: dflt };
+  const amount = { type: "input_value", name: "AMOUNT", check: "Number" };
+  const stack = { previousStatement: null, nextStatement: null };
+  Blockly.defineBlocksWithJsonArray([
+    { type: "rsmm_on_event", message0: "when %1", args0: [{ type: "field_dropdown", name: "EVENT", options: [
+        ["a run starts", "run:start"], ["a run ends", "run:end"], ["the menu opens", "menu:enter"], ["the game is ready", "ready"]] }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Runs its blocks when this happens. Actions wait until your hero exists." },
+    { type: "rsmm_on_gameplay", message0: "when the game event %1 happens", args0: [events.length
+        ? { type: "field_dropdown", name: "NAME", options: events.map(e => [e.name, e.name]) }
+        : { type: "field_input", name: "NAME", text: "ENEMY_KILLED" }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Runs its blocks each time the game fires this event (for example ENEMY_KILLED)." },
+    { type: "rsmm_on_every", message0: "every %1 seconds", args0: [{ type: "field_number", name: "SECONDS", value: 5, min: 0.05 }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Repeats while a run is going." },
+    { type: "rsmm_wait", message0: "after %1 seconds", args0: [{ type: "field_number", name: "SECONDS", value: 1, min: 0.05 }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], ...stack, style: "rsmm_event",
+      tooltip: "Runs its blocks once, after the wait." },
+    { type: "rsmm_stop", message0: "stop here", previousStatement: null, style: "rsmm_event",
+      tooltip: "Ends this event's blocks, or this function, right here." },
+    { type: "rsmm_give_item", message0: "give item %1 × %2", args0: [orText(items, "ITEM", "Armor_Per_Object"),
+        { type: "field_number", name: "COUNT", value: 1, min: 1, max: 99, precision: 1 }],
+      ...stack, style: "rsmm_action", tooltip: "Hands you copies of a magical object." },
+    { type: "rsmm_give_random", message0: "give %1 random item(s)", args0: [{ type: "field_number", name: "COUNT", value: 1, min: 1, max: 99, precision: 1 }],
+      ...stack, style: "rsmm_action", tooltip: "Hands you random magical objects from the game's pool." },
+    { type: "rsmm_grant_talent", message0: "give talent %1 at %2", args0: [{ type: "field_input", name: "TALENT", text: "" },
+        { type: "field_dropdown", name: "TIER", options: [["Common", "0"], ["Rare", "1"], ["Epic", "2"], ["Legendary", "3"]] }],
+      ...stack, style: "rsmm_action", tooltip: "Grants a talent card of your hero by its name." },
+    { type: "rsmm_grant_xp", message0: "give XP %1", args0: [amount], ...stack, style: "rsmm_action",
+      tooltip: "5000 takes a new hero from level 1 to 4." },
+    { type: "rsmm_stat_add", message0: "change stat %1 by %2 for %3 seconds (0 = the whole run)", args0: [orText(stats, "STAT", "Armour"), amount,
+        { type: "input_value", name: "SECONDS", check: "Number" }],
+      ...stack, style: "rsmm_action", tooltip: "Adds to one of your stats the way an item would." },
+    { type: "rsmm_hp", message0: "%1 health %2", args0: [{ type: "field_dropdown", name: "ACTION", options: [["heal", "heal"], ["damage", "damage"], ["set to", "set"]] }, amount],
+      ...stack, style: "rsmm_action", tooltip: "Changes your health." },
+    { type: "rsmm_shards", message0: "%1 dream shards %2", args0: [{ type: "field_dropdown", name: "ACTION", options: [["add", "add"], ["spend", "spend"], ["set to", "set"]] }, amount],
+      ...stack, style: "rsmm_action", tooltip: "Changes your dream shards." },
+    { type: "rsmm_log", message0: "write to the log %1", args0: [{ type: "input_value", name: "TEXT" }],
+      ...stack, style: "rsmm_action", tooltip: "Writes a line to the loader log (rsmm log)." },
+    { type: "rsmm_hp_value", message0: "my %1", args0: [{ type: "field_dropdown", name: "WHAT", options: [["health", "hp"], ["max health", "max"], ["health fraction", "frac"]] }],
+      output: "Number", style: "rsmm_value", tooltip: "Reads your health." },
+    { type: "rsmm_xp_level", message0: "my level", output: "Number", style: "rsmm_value" },
+    { type: "rsmm_shards_value", message0: "my dream shards", output: "Number", style: "rsmm_value" },
+    { type: "rsmm_item_count", message0: "items I own", output: "Number", style: "rsmm_value",
+      tooltip: "How many magical objects you hold right now." },
+    { type: "rsmm_stat_value", message0: "my stat %1", args0: [orText(stats, "STAT", "Armour")], output: "Number", style: "rsmm_value" },
+    { type: "rsmm_hero_is", message0: "my hero is %1", args0: [orText(heroes, "HERO", "Aladdin")], output: "Boolean", style: "rsmm_value" },
+  ]);
+}
+const num = (n) => ({ shadow: { type: "math_number", fields: { NUM: n } } });
+function toolbox() {
+  const b = (type, inputs, extra) => Object.assign({ kind: "block", type }, inputs ? { inputs } : {}, extra || {});
+  const cat = (name, style, contents, more) => Object.assign({ kind: "category", name, categorystyle: style, contents }, more || {});
+  const text = t => ({ shadow: { type: "text", fields: { TEXT: t } } });
+  return { kind: "categoryToolbox", contents: [
+    cat("Events", "rsmm_event_category", [b("rsmm_on_event"), b("rsmm_on_gameplay"), b("rsmm_on_every"), b("rsmm_wait"), b("rsmm_stop")]),
+    cat("Actions", "rsmm_action_category", [b("rsmm_give_item"), b("rsmm_give_random"), b("rsmm_grant_talent"), b("rsmm_grant_xp", { AMOUNT: num(5000) }),
+      b("rsmm_stat_add", { AMOUNT: num(1), SECONDS: num(0) }), b("rsmm_hp", { AMOUNT: num(10) }),
+      b("rsmm_shards", { AMOUNT: num(10) }), b("rsmm_log", { TEXT: text("hello") })]),
+    cat("Me", "rsmm_value_category", [b("rsmm_hp_value"), b("rsmm_xp_level"), b("rsmm_shards_value"), b("rsmm_item_count"), b("rsmm_stat_value"), b("rsmm_hero_is")]),
+    cat("Logic", "logic_category", [b("controls_if"), b("controls_if", null, { extraState: { hasElse: true } }),
+      b("logic_compare", { A: num(0), B: num(0) }), b("logic_operation"), b("logic_negate"), b("logic_boolean"),
+      b("logic_ternary", { THEN: num(1), ELSE: num(0) })]),
+    cat("Loops", "loop_category", [b("controls_repeat_ext", { TIMES: num(3) }), b("controls_for", { FROM: num(1), TO: num(5), BY: num(1) }),
+      b("controls_forEach"), b("controls_whileUntil"), b("controls_flow_statements")]),
+    cat("Math", "math_category", [b("math_number"), b("math_arithmetic", { A: num(1), B: num(1) }), b("math_single", { NUM: num(9) }),
+      b("math_round", { NUM: num(3.5) }), b("math_modulo", { DIVIDEND: num(10), DIVISOR: num(3) }),
+      b("math_constrain", { VALUE: num(50), LOW: num(1), HIGH: num(100) }), b("math_number_property", { NUMBER_TO_CHECK: num(0) }),
+      b("math_random_int", { FROM: num(1), TO: num(10) }), b("math_random_float")]),
+    cat("Text", "text_category", [b("text"), b("text_join"), b("text_append", { TEXT: text("") }), b("text_length", { VALUE: text("abc") }),
+      b("text_isEmpty", { VALUE: text("") })]),
+    cat("Lists", "list_category", [b("lists_create_with", null, { extraState: { itemCount: 0 } }), b("lists_create_with", null, { extraState: { itemCount: 3 } }),
+      b("lists_length"), b("lists_isEmpty"), b("lists_getIndex"), b("lists_setIndex")]),
+    { kind: "sep" },
+    cat("Variables", "variable_category", [], { custom: "VARIABLE" }),
+    cat("Functions", "procedure_category", [], { custom: "PROCEDURE" }),
+  ] };
+}
+// The page's own colours and font, so the workspace follows its light and dark themes.
+function blockTheme() {
+  const css = getComputedStyle(document.documentElement), c = (n, d) => css.getPropertyValue(n).trim() || d;
+  // Shadow inputs and outlines take lighter and darker shades of the block's own colour.
+  const mix = (hex, to, t) => "#" + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - t) + to * t)
+    .toString(16).padStart(2, "0")).join("");
+  const style = hex => ({ colourPrimary: hex, colourSecondary: mix(hex, 255, 0.35), colourTertiary: mix(hex, 0, 0.25) });
+  const P = PALETTE, ink = c("--ink", "#1d1d1f"), panel = c("--panel", "#ffffff");
+  return Blockly.Theme.defineTheme("rsmm", { name: "rsmm", base: Blockly.Themes.Zelos,
+    fontStyle: { family: 'system-ui, "Segoe UI", sans-serif', weight: "600", size: 11 },
+    blockStyles: {
+      rsmm_event: style(P.event), rsmm_action: style(P.action), rsmm_value: style(P.value),
+      logic_blocks: style(P.logic), loop_blocks: style(P.loop), math_blocks: style(P.math), text_blocks: style(P.text),
+      list_blocks: style(P.list), variable_blocks: style(P.variable), variable_dynamic_blocks: style(P.variable),
+      procedure_blocks: style(P.procedure),
+    },
+    categoryStyles: {
+      rsmm_event_category: { colour: P.event }, rsmm_action_category: { colour: P.action }, rsmm_value_category: { colour: P.value },
+      logic_category: { colour: P.logic }, loop_category: { colour: P.loop }, math_category: { colour: P.math }, text_category: { colour: P.text },
+      list_category: { colour: P.list }, variable_category: { colour: P.variable }, variable_dynamic_category: { colour: P.variable },
+      procedure_category: { colour: P.procedure },
+    },
+    componentStyles: {
+      workspaceBackgroundColour: c("--bg", "#f4f3ef"), toolboxBackgroundColour: panel, toolboxForegroundColour: ink,
+      flyoutBackgroundColour: panel, flyoutForegroundColour: ink, flyoutOpacity: 0.98, scrollbarColour: c("--muted", "#6a6a70"),
+      scrollbarOpacity: 0.5, insertionMarkerColour: ink, insertionMarkerOpacity: 0.25, cursorColour: ink } });
+}
+function paintProgramWarn() {
+  const host = document.getElementById("blockly-warn");
+  if (host) host.textContent = S.programWarn.length ? "Note: " + S.programWarn.join(" ") : "";
+}
+
+// Starter programs: each builds a complete Blockly state.
+let exId = 0;
+const xb = (type, fields, inputs, extra) => Object.assign({ type, id: "ex" + (++exId), fields: fields || {} }, inputs ? { inputs } : {}, extra || {});
+const xchain = (...bs) => { for (let i = 0; i + 1 < bs.length; i++) bs[i].next = { block: bs[i + 1] }; return { block: bs[0] }; };
+const xn = n => ({ block: xb("math_number", { NUM: n }) });
+const xv = id => ({ block: xb("variables_get", { VAR: { id } }) });
+const xstate = (blocks, variables) => ({ blocks: { languageVersion: 0, blocks }, variables: variables || [] });
+const at = (b, x, y) => Object.assign(b, { x, y });
+const EXAMPLES = [
+  ["Start with extras", () => xstate([at(xb("rsmm_on_event", { EVENT: "run:start" }, { DO: xchain(
+    xb("rsmm_give_random", { COUNT: 2 }), xb("rsmm_grant_xp", {}, { AMOUNT: xn(5000) })) }), 40, 40)])],
+  ["Heal when hurt on a kill", () => xstate([at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+    xb("controls_if", {}, { IF0: { block: xb("logic_compare", { OP: "LT" }, { A: { block: xb("rsmm_hp_value", { WHAT: "frac" }) }, B: xn(0.5) }) },
+      DO0: xchain(xb("rsmm_hp", { ACTION: "heal" }, { AMOUNT: xn(10) })) })) }), 40, 40)])],
+  ["Reward every 10 kills", () => xstate([at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+    xb("math_change", { VAR: { id: "kills" } }, { DELTA: xn(1) }),
+    xb("controls_if", {}, { IF0: { block: xb("logic_compare", { OP: "GTE" }, { A: xv("kills"), B: xn(10) }) },
+      DO0: xchain(xb("rsmm_give_random", { COUNT: 1 }), xb("variables_set", { VAR: { id: "kills" } }, { VALUE: xn(0) }),
+        xb("rsmm_log", {}, { TEXT: { shadow: { type: "text", fields: { TEXT: "kill reward" } } } })) })) }), 40, 40)],
+    [{ name: "kills", id: "kills" }])],
+  ["A function you call", () => xstate([
+    at(xb("procedures_defnoreturn", { NAME: "reward" }, { STACK: xchain(xb("rsmm_shards", { ACTION: "add" }, { AMOUNT: xv("amount") })) },
+      { extraState: { params: [{ name: "amount", id: "amount" }] } }), 40, 40),
+    at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+      xb("procedures_callnoreturn", {}, { ARG0: xn(5) }, { extraState: { name: "reward", params: ["amount"] } })) }), 40, 200)],
+    [{ name: "amount", id: "amount" }])],
+  ["Timed buff after 30 seconds", () => xstate([at(xb("rsmm_on_event", { EVENT: "run:start" }, { DO: xchain(
+    xb("rsmm_wait", { SECONDS: 30 }, { DO: xchain(xb("rsmm_stat_add",
+      { STAT: (S.stats.find(x => /armo/i.test(x.name)) || S.stats[0] || { name: "Armour" }).name },
+      { AMOUNT: xn(5), SECONDS: xn(60) })) })) }), 40, 40)])],
+];
+
+async function startBlockly(host, tools) {
+  await loadBlockly();
+  if (!host.isConnected || S.tab !== "scripts" || S.scriptMode !== "blocks") return;
+  const ws = Blockly.inject(host, { toolbox: toolbox(), theme: blockTheme(), renderer: "zelos", trashcan: true, sounds: false, media: "static/",
+    zoom: { controls: true, wheel: true, startScale: 0.95, minScale: 0.35, maxScale: 1.8, pinch: true },
+    grid: { spacing: 28, length: 3, colour: getComputedStyle(document.documentElement).getPropertyValue("--line").trim() || "#ccc", snap: true },
+    move: { scrollbars: true, drag: true, wheel: true } });
+  S.ws = ws;
+  let loading = true;
+  try { if (S.program && programUsed()) Blockly.serialization.workspaces.load(S.program, ws); }
+  catch (e) { host.before(el("div", { class: "hint bad", text: "The saved blocks could not be loaded: " + e.message })); }
+  loading = false;
+  const changed = () => { S.program = Blockly.serialization.workspaces.save(ws); saveProgram(); refresh(); };
+  ws.addChangeListener(ev => {
+    if (loading || ev.isUiEvent || ev.type === Blockly.Events.FINISHED_LOADING || S.ws !== ws) return;
+    changed();
+  });
+  tools.undo.onclick = () => ws.undo(false);
+  tools.redo.onclick = () => ws.undo(true);
+  tools.tidy.onclick = () => { ws.cleanUp(); changed(); };
+  tools.examples.onchange = () => {
+    const ex = EXAMPLES[Number(tools.examples.value)];
+    tools.examples.value = "";
+    if (!ex) return;
+    if (ws.getAllBlocks(false).length && !confirm("Replace the blocks on the canvas with this example?")) return;
+    loading = true;
+    try { Blockly.serialization.workspaces.load(ex[1](), ws); } finally { loading = false; }
+    changed(); ws.scrollCenter();
+  };
+  tools.wide.onclick = () => setWide(!S.wide);
+  const fit = () => Blockly.svgResize(ws);
+  window.addEventListener("resize", fit);
+  tools.fit = fit;
+  requestAnimationFrame(fit);
+}
+// "Expand" is a preference that only takes effect while the Blocks view is open, so
+// the item and hero lists are never left hidden on another tab.
+function applyWide() {
+  const blocks = S.tab === "scripts" && S.scriptMode === "blocks", on = blocks && !!S.wide;
+  document.body.classList.toggle("wide", on);
+  const btn = document.getElementById("blocks-wide");
+  if (btn) { btn.textContent = on ? "Shrink" : "Expand"; btn.setAttribute("aria-pressed", String(on)); }
+  if (S.ws) requestAnimationFrame(() => Blockly.svgResize(S.ws));
+}
+function setWide(on) { S.wide = on; store.set("rsmm.editor.wide", on); applyWide(); }
+
+function scriptView() {
+  const v = el("div"), seg = el("div", { class: "seg", role: "group", "aria-label": "Test grants or blocks" });
+  for (const [mode, label, title] of [["grants", "Test grants", "Hand yourself items, talents and XP when a run starts"],
+    ["blocks", "Blocks", "Build a script from blocks: events, conditions, variables, functions and game actions"]]) {
+    seg.append(el("button", { type: "button", class: S.scriptMode === mode ? "on" : "", title, "aria-pressed": String(S.scriptMode === mode),
+      onclick: () => { if (S.scriptMode !== mode) { S.scriptMode = mode; renderView(); } } }, label));
+  }
+  if (S.scriptMode === "grants") { v.append(seg, grantsView()); return v; }
+  const tools = {
+    undo: el("button", { type: "button", title: "Undo (Ctrl+Z)" }, "Undo"),
+    redo: el("button", { type: "button", title: "Redo (Ctrl+Y)" }, "Redo"),
+    tidy: el("button", { type: "button", title: "Line the scripts up in a column" }, "Tidy up"),
+    examples: el("select", { title: "Start from an example", "aria-label": "Examples" }, el("option", { value: "", text: "Examples…" }),
+      ...EXAMPLES.map((e, i) => el("option", { value: String(i), text: e[0] }))),
+    wide: el("button", { type: "button", id: "blocks-wide", title: "Hide the side list and the preview to give the blocks the whole window", "aria-pressed": "false" }, "Expand"),
+  };
+  v.append(el("div", { class: "blocksbar" }, seg, el("span", { class: "grow" }), tools.undo, tools.redo, tools.tidy, tools.examples, tools.wide));
+  v.append(el("details", { class: "blockshelp" }, el("summary", { text: "How blocks work" }),
+    el("div", { class: "help", text: "Drag blocks in from the left. An event block starts a script; the blocks under it run when it happens, on the game's main thread once your hero exists. Variables and functions work as in any block language. Right-click a block for more (duplicate, comment, collapse, disable). Saving writes a section of the mod's init.lua that the editor owns; your own code outside it is left alone." })));
+  const host = el("div", { class: "blockly-host" });
+  v.append(host, el("div", { id: "blockly-warn", class: "hint blockly-warn" }));
+  startBlockly(host, tools).catch(e => host.replaceChildren(el("div", { class: "empty", text: "Could not open the block editor: " + e.message })));
+  paintProgramWarn();
+  return v;
+}
+
 const talentCards = new Map();
 function cardsOf(hero) {
   if (!talentCards.has(hero)) {
@@ -1535,7 +1818,7 @@ function cardsOf(hero) {
   return talentCards.get(hero);
 }
 
-function scriptView() {
+function grantsView() {
   const C = S.script, v = el("div");
   const changed = () => { saveScript(); refresh(); };
   const redraw = () => { renderView(); changed(); };
@@ -1604,7 +1887,7 @@ function canon(v) {
 function loadedEntry(tab, id) { return S.loaded && S.loaded.entries[tab + "\u0000" + id]; }
 function editIsNew(e) { const ent = loadedEntry(e.tab, e.id); return !ent || ent.json !== canon(e.edit); }
 function hasUnsaved() {
-  if (scriptChanged()) return true;
+  if (scriptChanged() || programChanged()) return true;
   for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
     if (editIsNew({ tab, id, edit })) return true;
   }
@@ -1622,9 +1905,13 @@ function syncFromStore() {
     }
   }
   S.loaded = store.get(LOADED_KEY);
+  S.wide = !!store.get("rsmm.editor.wide");
   const sc = store.get(SCRIPT_KEY);
   S.script = sc && sc.script ? sc.script : emptyScript();
   S.scriptSaved = sc && typeof sc.saved === "string" ? sc.saved : NO_GRANTS;
+  const pr = store.get(PROGRAM_KEY);
+  S.program = pr && pr.program ? pr.program : emptyProgram();
+  S.programSaved = pr && typeof pr.saved === "string" ? pr.saved : NO_PROGRAM;
 }
 function reopenCurrent() {
   S.restored = "";
@@ -1646,6 +1933,8 @@ async function openMod(id, { ask = true, quiet = false } = {}) {
   }
   const script = j.script ? JSON.parse(JSON.stringify(j.script)) : emptyScript();
   store.set(SCRIPT_KEY, { script, saved: scriptNorm(script) });
+  const program = j.program ? JSON.parse(JSON.stringify(j.program)) : emptyProgram();
+  store.set(PROGRAM_KEY, { program, saved: programNorm(program) });
   store.set(LOADED_KEY, { id: j.id, name: j.name, entries, at: Date.now() });
   syncFromStore(); reopenCurrent();
   $("#mod").value = j.id; $("#mod").onchange();
@@ -1653,11 +1942,11 @@ async function openMod(id, { ask = true, quiet = false } = {}) {
   if (quiet) return;
   const n = Object.keys(j.items).length + Object.keys(j.talents).length;
   const kept = j.kept.map(k => `${k.kind} ${k.id}: ${k.why}`);
-  flash(`Opened ${j.name}: ${n} item/hero change(s)${j.script ? " and test grants" : ""}. Change anything, then save to it.`
+  flash(`Opened ${j.name}: ${n} item/hero change(s)${j.script ? " and test grants" : ""}${j.program ? " and blocks" : ""}. Change anything, then save to it.`
     + (kept.length ? ` Left as they are: ${kept.join("; ")}.` : ""), kept.length ? "st-warn" : "st-ok", kept.length ? 20000 : 6000);
 }
 window.addEventListener("storage", e => {
-  if (e.key !== LOADED_KEY && e.key !== SCRIPT_KEY) return;
+  if (e.key !== LOADED_KEY && e.key !== SCRIPT_KEY && e.key !== PROGRAM_KEY) return;
   syncFromStore(); reopenCurrent();
   if (S.loaded && $("#mod").value !== S.loaded.id && S.mods.some(m => m.id === S.loaded.id)) {
     $("#mod").value = S.loaded.id; $("#mod").onchange();
@@ -1729,14 +2018,16 @@ async function refresh() {
   const edits = pendingEdits();
   lastEdits = edits;
   renderPending(edits, []);
-  const grants = scriptNorm(S.script) !== NO_GRANTS;
-  if (!edits.length && !grants && !scriptChanged()) {
+  const grants = scriptNorm(S.script) !== NO_GRANTS, prog = programUsed();
+  if (!edits.length && !grants && !scriptChanged() && !prog && !programChanged()) {
     $("#toml").textContent = "Nothing changed yet. Pick an item or a hero on the left.";
     $("#toml").className = "muted"; lastToml = ""; return;
   }
   try {
-    const j = await post("api/toml", Object.assign(editsBody(edits), grants ? { script: JSON.parse(scriptNorm(S.script)) } : {}));
+    const j = await post("api/toml", Object.assign(editsBody(edits), grants ? { script: JSON.parse(scriptNorm(S.script)) } : {},
+      prog ? { program: JSON.parse(programNorm(S.program)) } : {}));
     if (me !== tick) return;
+    S.programWarn = j.warnings || []; paintProgramWarn();
     renderPending(edits, j.errors);
     lastToml = j.toml;
     const pre = $("#toml"); pre.textContent = ""; pre.className = j.toml || j.lua ? "" : "muted";
@@ -1745,10 +2036,10 @@ async function refresh() {
     }
     pre.append(j.toml || (j.errors.length || j.lua ? "" : "Nothing changed yet."));
     if (j.lua) pre.append((j.toml ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
-    else if (scriptChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the test grants are taken out\n");
+    else if (scriptChanged() || programChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the editor's section is taken out\n");
     $("#copy").disabled = !j.toml;
     $("#check").disabled = !j.blocks || j.errors.length > 0;
-    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged());
+    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged() || programChanged());
   } catch (e) {
     if (me !== tick) return;
     lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
@@ -1835,15 +2126,17 @@ async function saveAll(error) {
   const replace = intoOpened ? edits.flatMap(e => (loadedEntry(e.tab, e.id) || {}).blocks || []) : [];
   const wantScript = intoOpened ? scriptChanged() : scriptNorm(S.script) !== NO_GRANTS;
   const script = wantScript ? JSON.parse(scriptNorm(S.script)) : null;
-  if (!edits.length && !script) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
+  const wantProgram = intoOpened ? programChanged() : programUsed();
+  const program = wantProgram ? JSON.parse(programNorm(S.program)) : null;
+  if (!edits.length && !script && !program) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
   try {
     const j = await post("api/save", Object.assign(editsBody(edits), { mod, create, replace },
-      meta ? { meta } : {}, script ? { script } : {}));
+      meta ? { meta } : {}, script ? { script } : {}, program ? { program } : {}));
     if (create) { S.mods = (await get("api/mods")).mods; renderMods(); }
     // Keep working: the mod as saved opens back in, so the next change and save
     // go to the same blocks.
     await openMod(mod, { ask: false, quiet: true });
-    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : ""].filter(Boolean).join(" and ");
+    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : "", program ? "the blocks" : ""].filter(Boolean).join(" and ");
     flash(window.RSMM_HOSTED
       ? `Saved ${what} to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
       : `Saved ${what} to ${j.saved}. Keep editing, or run: rsmm apply`, "st-ok", 9000);

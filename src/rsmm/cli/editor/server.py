@@ -17,9 +17,10 @@ from pathlib import Path
 from rsmm.cli.editor import app
 
 #: What the pages need: inline scripts and styles, three.js served from this
-#: origin, blob: icons and textures, and the shell's same-origin frames.
+#: origin, blob: icons and textures, data: images (Blockly's text-field glyphs are
+#: inlined in its script), and the shell's same-origin frames.
 CSP = ("default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; "
-       "connect-src 'self'; img-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'")
+       "connect-src 'self'; img-src 'self' blob: data:; frame-src 'self'; frame-ancestors 'self'")
 
 
 def _warm() -> None:

@@ -194,3 +194,15 @@ def test_the_old_commands_open_their_tab(alias, tab):
     from rsmm.cli import _dispatch
     assert _dispatch.LEGACY[alias] == ("rsmm.cli.cmd_editor", ["--tab", tab])
     assert _dispatch.BUILTIN["editor"] == "rsmm.cli.cmd_editor"
+
+
+def test_the_block_editor_files_and_event_list_are_served(local, bridge):
+    for call in (local, bridge):
+        status, body, _ = call("GET", "/content/static/blockly.min.js")
+        assert status == 200 and b"Blockly" in body[:2000] + body[-2000:]
+        assert call("GET", "/content/static/sprites.svg")[0] == 200
+        # Only the files named in STATIC_FILES, never a path into the folder.
+        assert call("GET", "/content/static/../pages/content.html")[0] == 404
+        assert call("GET", "/content/static/three.module.min.js")[0] == 404
+        status, body, _ = call("GET", "/content/api/blocks/meta")
+        assert status == 200 and isinstance(json.loads(body)["events"], list)

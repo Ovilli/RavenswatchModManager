@@ -196,6 +196,61 @@ def write_script(mod_root: Path, cfg: dict) -> str:
     return "written"
 
 
+# --- the Scripts tab's block program --------------------------------------------
+# A second marked section of init.lua, beside the test grants. It carries the
+# Blockly workspace state in a comment, so opening the mod puts the blocks back.
+
+def _find(text: str, begin: str, end: str) -> tuple[int, int] | None:
+    a = text.find(begin)
+    if a < 0:
+        return None
+    b = text.find(end, a)
+    if b < 0:
+        raise EditorError("init.lua has the editor's block start line but not its end line; "
+                          "fix it by hand")
+    b += len(end)
+    if text[b:b + 1] == "\n":
+        b += 1
+    return a, b
+
+
+def read_blocks(init_text: str) -> dict | None:
+    """The block program saved in ``init_text``, or None when it has none."""
+    from . import blocks as B
+    span = _find(init_text, B.BEGIN, B.END)
+    if span is None:
+        return None
+    for line in init_text[span[0]:span[1]].splitlines():
+        if line.startswith(B.CONFIG):
+            try:
+                return B.validate_state(json.loads(line[len(B.CONFIG):]))
+            except (ValueError, EditorError):
+                break
+    raise EditorError("init.lua's block section has no readable program; fix it by hand")
+
+
+def write_blocks(mod_root: Path, state) -> list[str]:
+    """Put the program's section into ``mod_root/init.lua`` (or take it out when
+    the program is empty), leaving the rest of the file as it was. Returns the
+    warnings the page should show."""
+    from . import blocks as B
+    section, warnings = B.compile_blocks(state)
+    init = mod_root / "init.lua"
+    old = init.read_text(encoding="utf-8") if init.is_file() else ""
+    span = _find(old, B.BEGIN, B.END)
+    if span is None:
+        if not section:
+            return warnings
+        new = (old.rstrip("\n") + "\n\n" if old.strip() else "") + section
+    else:
+        new = old[:span[0]] + section + old[span[1]:]
+    if not new.strip():
+        init.unlink(missing_ok=True)
+    else:
+        init.write_text(new, encoding="utf-8")
+    return warnings
+
+
 # --- saving over blocks ----------------------------------------------------------
 
 _HEADER_RE = re.compile(r"^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$")
@@ -488,15 +543,20 @@ def load_mod(root: Path, mod_id: str) -> dict:
             "stats": [{"file": k.split("\u0000")[0], "modifier": k.split("\u0000")[1], "stat": v}
                       for k, v in E["stats"].items()],
             "cards": [{"source": s, **c} for s, c in E["cards"].items()]}
-    script = None
+    script = program = None
     init = mod_root / "init.lua"
     if init.is_file():
         try:
             script = read_script(init.read_text(encoding="utf-8"))
         except EditorError as e:
             kept.append({"kind": "init.lua", "id": "test grants", "why": str(e)})
+        try:
+            program = read_blocks(init.read_text(encoding="utf-8"))
+        except EditorError as e:
+            kept.append({"kind": "init.lua", "id": "blocks", "why": str(e)})
     return {"id": mod_id, "name": str((doc.get("mod") or {}).get("name") or mod_id),
-            "items": items, "talents": talents, "script": script, "kept": kept}
+            "items": items, "talents": talents, "script": script, "program": program,
+            "kept": kept}
 
 
 def _talent_prefix(hero: str, blocks: list[tuple[str, str, dict]]) -> str | None:
