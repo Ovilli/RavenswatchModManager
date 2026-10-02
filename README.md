@@ -9,7 +9,9 @@
   &nbsp;·&nbsp;
   <a href="https://docs.rsmm.me"><b>Documentation</b></a>
   &nbsp;·&nbsp;
-  <a href="https://docs.rsmm.me/getting-started/first-mod/"><b>Make a mod</b></a>
+  <a href="https://docs.rsmm.me/getting-started/first-mod/"><b>Make a mod</b></a>&nbsp;·&nbsp;
+  <a href="https://docs.rsmm.me/editor"><b>Editor</b></a>
+
 </p>
 
 <p align="center">
