@@ -1566,7 +1566,7 @@ function programChanged() { return !!S.program && programNorm(S.program) !== S.p
 function programUsed() { return programNorm(S.program) !== NO_PROGRAM; }
 function saveProgram() { store.set(PROGRAM_KEY, { program: S.program, saved: S.programSaved }); }
 
-let blocklyReady = null;
+let blocklyReady = null, blocklyMedia = "static/";
 // Blockly is one file served beside the page, loaded through fetch so it works in the
 // web editor too (which routes fetch, not script tags), then run as an inline script.
 function loadBlockly() {
@@ -1578,6 +1578,16 @@ function loadBlockly() {
       tag.textContent = await r.text();
       document.head.append(tag);
     }
+    // Blockly draws its zoom and trash icons from one sprite sheet it asks for by URL, and the
+    // web editor serves fetch, not image loads. So the sheet is fetched here and handed over as a
+    // data URL: Blockly appends "sprites.svg" to its media path, which lands after the "#" and is
+    // ignored. The unreserved characters encodeURIComponent keeps are escaped too, because the
+    // path ends up inside an unquoted CSS url().
+    try {
+      const r = await fetch("static/sprites.svg");
+      if (r.ok) blocklyMedia = "data:image/svg+xml," + encodeURIComponent(await r.text())
+        .replace(/[()'!*~]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase()) + "#";
+    } catch { /* the icons are missing, nothing else */ }
     let events = [];
     try { events = (await get("api/blocks/meta")).events || []; } catch { /* free text instead */ }
     defineBlocks(events);
@@ -1741,7 +1751,7 @@ const EXAMPLES = [
 async function startBlockly(host, tools) {
   await loadBlockly();
   if (!host.isConnected || S.tab !== "scripts" || S.scriptMode !== "blocks") return;
-  const ws = Blockly.inject(host, { toolbox: toolbox(), theme: blockTheme(), renderer: "zelos", trashcan: true, sounds: false, media: "static/",
+  const ws = Blockly.inject(host, { toolbox: toolbox(), theme: blockTheme(), renderer: "zelos", trashcan: true, sounds: false, media: blocklyMedia,
     zoom: { controls: true, wheel: true, startScale: 0.95, minScale: 0.35, maxScale: 1.8, pinch: true },
     grid: { spacing: 28, length: 3, colour: getComputedStyle(document.documentElement).getPropertyValue("--line").trim() || "#ccc", snap: true },
     move: { scrollbars: true, drag: true, wheel: true } });
