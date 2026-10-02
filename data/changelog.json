@@ -2,6 +2,17 @@
   "generated": "2026-10-02",
   "entries": [
     {
+      "version": "5.9.1",
+      "date": "2026-10-02",
+      "summary": "Block-based Scripts tab in the editor, faster talent cards, and editor tab fixes.",
+      "highlights": [
+        "New: the editor's Scripts tab can build a script from blocks (Blockly) and writes the Lua for you.",
+        "Editor: faster talent cards, and a slow pick no longer lands on the wrong tab.",
+        "Fixed: clicking a pending-change chip no longer turns another tab into an item editor.",
+        "The loader's live config reload and R.camera arrive through the loader channel."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 25,
       "date": "2026-10-02",
