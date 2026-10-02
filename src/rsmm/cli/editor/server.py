@@ -63,8 +63,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(r.data)
 
+    def _drain(self) -> None:
+        """Read a refused request's body (within the cap) before replying:
+        closing with unread bytes makes Windows reset the connection, and the
+        client sees WinError 10053 instead of the refusal."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if 0 < n <= app.MAX_BODY:
+            self.rfile.read(n)
+
     def _serve(self, method: str) -> None:
         if not self._host_ok():
+            if method == "POST":
+                self._drain()
             return self._reply(app._fail(403, "wrong host"))
         body = b""
         if method == "POST":
