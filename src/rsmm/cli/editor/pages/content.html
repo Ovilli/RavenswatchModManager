@@ -571,7 +571,14 @@ function dropPending(tab, id) {
   }
   renderList(); refresh();
 }
+// Inside the editor's shell every tab is its own frame with its own tab bar hidden,
+// so a chip for another tab must move the shell, not turn this frame into that tab.
+function elsewhere(tab) {
+  if (!document.documentElement.classList.contains("embedded") || tab === START_TAB) return false;
+  try { window.top.location.hash = "#" + tab; return true; } catch { return false; }
+}
 async function openPending(tab, id) {
+  if (elsewhere(tab)) return;
   if (tab !== S.tab) setTab(tab);
   if (tab === "items") await pickItem(id); else await pickHero(id);
 }
@@ -590,13 +597,13 @@ function renderPending(edits, errors) {
   }
   if (grants) {
     box.append(el("span", { class: "pchip" + (S.tab === "scripts" ? " open" : "") },
-      el("button", { type: "button", title: "Open it", onclick: () => setTab("scripts") }, "Test grants"),
+      el("button", { type: "button", title: "Open it", onclick: () => { if (!elsewhere("scripts")) setTab("scripts"); } }, "Test grants"),
       el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the test grants",
         onclick: () => { S.script = JSON.parse(S.scriptSaved); saveScript(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
   }
   if (prog) {
     box.append(el("span", { class: "pchip" + (S.tab === "scripts" && S.scriptMode === "blocks" ? " open" : "") },
-      el("button", { type: "button", title: "Open it", onclick: () => { S.scriptMode = "blocks"; if (S.tab === "scripts") renderView(); else setTab("scripts"); } }, "Blocks"),
+      el("button", { type: "button", title: "Open it", onclick: () => { if (elsewhere("scripts")) return; S.scriptMode = "blocks"; if (S.tab === "scripts") renderView(); else setTab("scripts"); } }, "Blocks"),
       el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the block changes",
         onclick: () => { S.program = JSON.parse(S.programSaved); saveProgram(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
   }
