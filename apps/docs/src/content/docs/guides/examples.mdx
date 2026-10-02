@@ -100,7 +100,7 @@ write the manifest; the SDK does the rest. See
 The loader bridges the game's named events to the Lua bus, so a mod subscribes
 by name — `enemy_killed`, `unlock_hero`, `game_start`, `level_up_reach`, … (one
 hook re-publishes every named analytics event; browse the list in the
-[`R.on` contract](https://github.com/Ovilli/RavenswatchModManager/blob/main/src/loader/lib/rsmm.lua)).
+[event systems reference](/reverse-engineering/event-systems/#analytics-firehose)).
 Needs the loader DLL. Both event buses are armed by default; the loader
 skips publishing entirely when no mod has subscribed.
 
