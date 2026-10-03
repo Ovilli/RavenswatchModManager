@@ -34,10 +34,9 @@ DB = REPO / "data/function_patterns.json"
 _ADDR_RE = re.compile(r"0x1[0-9a-fA-F]{7,9}")
 
 
-def _rx(pat: str) -> re.Pattern[bytes]:
-    return re.compile(
-        b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)])) for t in pat.split()),
-        re.DOTALL)
+def _rx(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 class Image:

@@ -17,10 +17,16 @@ import os
 import struct
 import sys
 
-DEFAULT_EXE = os.path.expanduser(
-    "~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/"
-    "common/Ravenswatch/Ravenswatch.exe"
-)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+try:   # the autodetected install (RSMM_GAME_DIR, Steam), as the other scripts use
+    from rsmm.engine.paths import default_game_dir
+    DEFAULT_EXE = str(default_game_dir() / "Ravenswatch.exe")
+except ImportError:  # pragma: no cover - no package on the path
+    DEFAULT_EXE = os.path.expanduser(
+        "~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/"
+        "common/Ravenswatch/Ravenswatch.exe"
+    )
 
 
 def parse_pe(data: bytes):
@@ -107,6 +113,7 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--exe", default=DEFAULT_EXE)
     ap.add_argument("--patterns", default="data/function_patterns.json")
+    ap.add_argument("--workers", type=int, help="processes for --all (default: cores-1)")
     args = ap.parse_args()
 
     with open(args.exe, "rb") as f:
@@ -118,46 +125,26 @@ def main():
         pats = json.load(f)
 
     if args.all:
-        # Fast path: scan each unique pattern once via regex, then
-        # compare hit-list against recorded VAs.
-        import re
+        # Scan each distinct pattern once, in parallel, with the loader's own
+        # counting (overlapping matches), then compare against recorded VAs.
+        import gen_function_patterns as gen
         text_bytes = data[text["raw_off"]:text["raw_off"] + text["raw_size"]]
-        def to_regex(pat: str):
-            parts = []
-            for t in pat.split():
-                if t == "??":
-                    parts.append(b".")
-                else:
-                    b = int(t, 16)
-                    if b in (0x5c, 0x5b, 0x5d, 0x5e, 0x24, 0x2e, 0x7c, 0x3f,
-                              0x2a, 0x2b, 0x28, 0x29, 0x7b, 0x7d):
-                        parts.append(b"\\" + bytes([b]))
-                    else:
-                        parts.append(bytes([b]))
-            return re.compile(b"".join(parts), re.DOTALL)
-        by_pat: dict[str, list] = {}
-        for e in pats:
-            by_pat.setdefault(e["pattern"], []).append(e)
+        text_va = img_base + text["rva"]
+        hits_by_pat = gen.scan_many(text_bytes, (e["pattern"] for e in pats), args.workers)
         ok = fail = 0
-        scanned = 0
-        for pat, entries in by_pat.items():
-            rx = to_regex(pat)
-            hits = [img_base + text["rva"] + m.start() for m in rx.finditer(text_bytes)]
-            for e in entries:
-                idx = e.get("match_index", 0)
-                want = int(e["addr"], 16)
-                got = hits[idx] if 0 <= idx < len(hits) else None
-                if got == want:
-                    ok += 1
-                else:
-                    fail += 1
-                    if fail < 5:
-                        got_hex = hex(got) if got else None
-                        print(f"MISMATCH {e['name']} want={e['addr']} "
-                              f"got={got_hex} idx={idx}/{len(hits)}")
-            scanned += 1
-            if scanned % 2000 == 0:
-                print(f"  scanned {scanned}/{len(by_pat)} ok={ok} fail={fail}", file=sys.stderr)
+        for e in pats:
+            hits = hits_by_pat[e["pattern"]]
+            idx = e.get("match_index", 0)
+            want = int(e["addr"], 16)
+            got = text_va + hits[idx] if 0 <= idx < len(hits) else None
+            if got == want:
+                ok += 1
+            else:
+                fail += 1
+                if fail < 5:
+                    got_hex = hex(got) if got else None
+                    print(f"MISMATCH {e['name']} want={e['addr']} "
+                          f"got={got_hex} idx={idx}/{len(hits)}")
         print(f"ALL DONE ok={ok} fail={fail} ({100 * ok / (ok + fail):.2f}%)")
         return
 

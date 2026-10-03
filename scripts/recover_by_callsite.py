@@ -51,12 +51,9 @@ SITE_WINDOW = 160     # how far a call site may drift inside its function
 CTX = 5               # bytes of context before the e8 opcode to anchor on
 
 
-def _rx(pat: str) -> re.Pattern[bytes]:
-    return re.compile(
-        b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)]))
-                 for t in pat.split()),
-        re.DOTALL,
-    )
+def _rx(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 def find_call_sites(text: bytes, target_off: int) -> list[int]:

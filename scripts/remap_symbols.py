@@ -49,19 +49,9 @@ NEW_CORPUS = REPO / "docs/_re/out_new/decompiled_new.jsonl"
 PROLOGUE_TRY = (32, 48, 64, 96, 128)  # grow until unique in old .text
 
 
-def pattern_to_regex(pat: str) -> re.Pattern[bytes]:
-    parts: list[bytes] = []
-    for t in pat.split():
-        if t == "??":
-            parts.append(b".")
-        else:
-            b = int(t, 16)
-            if b in (0x5C, 0x5B, 0x5D, 0x5E, 0x24, 0x2E, 0x7C, 0x3F,
-                     0x2A, 0x2B, 0x28, 0x29, 0x7B, 0x7D):
-                parts.append(b"\\" + bytes([b]))
-            else:
-                parts.append(bytes([b]))
-    return re.compile(b"".join(parts), re.DOTALL)
+def pattern_to_regex(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 def collect_targets(symbols: list[dict]) -> dict[int, list[str]]:

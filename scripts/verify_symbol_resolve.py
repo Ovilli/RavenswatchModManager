@@ -47,10 +47,9 @@ PROLOGUE_FIRST = ("push", "sub", "mov", "lea", "xor", "test", "cmp", "and", "or"
                   "call", "lock", "xchg", "int3")
 
 
-def _rx(pat: str) -> re.Pattern[bytes]:
-    return re.compile(
-        b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)])) for t in pat.split()),
-        re.DOTALL)
+def _rx(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 def _pdata_starts(data: bytes, img: int, secs: list[dict]) -> set[int]:

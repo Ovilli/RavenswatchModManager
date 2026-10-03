@@ -62,6 +62,7 @@ _DESC: dict[str, str] = {
     "new": "scaffold a new mod",
     "pack": "bundle a mod into a zip",
     "rebuild-asset-map": "re-run find_iyg from UsedRscList.ot",
+    "rebuild-fn-patterns": "rebuild the byte-pattern DB for this exe",
     "repo": "mod-repo signing/publishing",
     "restore": "roll back active overrides",
     "run": "launch Ravenswatch via Steam",

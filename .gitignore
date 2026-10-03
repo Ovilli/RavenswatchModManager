@@ -68,6 +68,7 @@ data/uncooked/
 # machine's extracted corpus.
 data/.corpus_cache/
 data/function_patterns.json
+data/function_patterns*.prev
 # game-derived: mine_fingerprints currently embeds decompiled function bodies
 data/symbol_fingerprints.json
 

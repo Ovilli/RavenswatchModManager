@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**60 commands.**
+**61 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -55,6 +55,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm poi` | `rsmm.cli.cmd_poi` | `rsmm poi` — browse the tiles and kinds a `poi` content def can use. |
 | `rsmm publish` | `rsmm.cli.cmd_publish` | rsmm publish — upload a mod to the store from the command line. |
 | `rsmm rebuild-asset-map` | `rsmm.engine.find_iyg` | Ravenswatch Asset Decrypter — builds a full obfuscated -> plaintext |
+| `rsmm rebuild-fn-patterns` | `rsmm.cli.cmd_rebuild_patterns` | `rsmm rebuild-fn-patterns` — regenerate the byte-pattern DB for the installed game. |
 | `rsmm repo` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm restore` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm run` | `rsmm.cli.run` | rsmm run — launch Ravenswatch via Steam, ensuring the WINEDLLOVERRIDES |

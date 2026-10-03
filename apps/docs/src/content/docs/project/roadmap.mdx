@@ -25,7 +25,7 @@ Historical entries mention `tools/<script>.py`; those scripts now live under
 | **Uncooked asset mirror** | `data/uncooked/` extract pipeline — textures decoded (BC1/BC3/BC5/RGBA8 → PNG, 4,776 PNGs) plus 15,431 raw `.gen` + 15,362 structural sidecars. See [Uncooked assets](/guides/uncooked-assets/). |
 | **Pack guard** | `rsmm pack` refuses files byte-identical to the original (`--allow-vanilla` for personal backups), preventing accidental redistribution of copyrighted assets. |
 | **Mass decompile** | 46,963 functions decompiled; symbols + strings exported to JSON. See [RE pipeline](/reverse-engineering/pipeline/). |
-| **Pattern resolver + `rsmm.call`** | 53,427 byte-pattern signatures in `data/function_patterns.json` (99.50% self-validate). Lua mods can call any of ~53k game functions by name, plus memory read/write. See [Calling game functions](/reverse-engineering/calling-game-functions/). |
+| **Pattern resolver + `rsmm.call`** | ~50k byte-pattern signatures in `data/function_patterns.json`, every one resolving to its recorded address by the loader's own scan (see [the pipeline](/reverse-engineering/pipeline/); the DB published before 2026-10-03 needs a republish to get there). Lua mods can call any of ~53k game functions by name, plus memory read/write. See [Calling game functions](/reverse-engineering/calling-game-functions/). |
 | **Seed surface mapped** | The built-in *Forced seed* option (`oe::UIntGameOption`, id `0x1949b098`) located with its enable bool. `ExampleSeedPin` pins a run's RNG for speedruns. See [Seed + mapgen](/reverse-engineering/seed-mapgen/). |
 
 ## In-game "Mods" UI <Badge text="Abandoned" variant="danger" />
@@ -50,13 +50,16 @@ Hooks are observation-first and gated by symbol status in `data/symbols.json`; a
 hook on an address that is not a function entry is refused or warned, not
 installed silently.
 
-## Pattern-DB self-rebuild on game update <Badge text="Planned" variant="note" />
+## Pattern-DB rebuild on game update <Badge text="Shipped" variant="success" />
 
 When Steam updates Ravenswatch, the signatures in `function_patterns.json` must
 be regenerated against the new exe.
 
-- Shipped: `./rsmm doctor` hashes the installed exe and warns when the pattern DB
-  is stale, and `rsmm symbols` remaps `data/symbols.json` after a patch.
-- Still missing: a one-shot `./rsmm rebuild-fn-patterns` wrapper that re-runs the
-  Ghidra dump + pattern generation + resolver self-test and reports the
-  unique-rate (~30 min per regen). Today those steps are run by hand.
+- `./rsmm doctor` hashes the installed exe and warns when the pattern DB is stale.
+- `./rsmm rebuild-fn-patterns` regenerates the DB in about 2–3 minutes, adds the
+  stable named entries, and checks that every mapped symbol lands on a function
+  boundary and every entry resolves to its address. The old DB is put back if a
+  step fails. `--ghidra` re-runs the symbol dump first.
+- `rsmm symbols` remaps `data/symbols.json` after a patch. That step, rebuilding the
+  loader and publishing are still run by hand (see the
+  [pipeline](/reverse-engineering/pipeline/)).

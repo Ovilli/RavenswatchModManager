@@ -23,6 +23,7 @@ so the loader DLL can parse it without external deps.
 import argparse
 import json
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -135,12 +136,72 @@ def make_pattern(prologue: bytes, base_va: int, target_len: int) -> tuple[str | 
     return " ".join(out), consumed
 
 
+class _Overlapping:
+    """A compiled pattern whose ``finditer`` yields every position it matches at, the way
+    the loader counts them: ``fn_resolver.cpp::scan_all`` steps one byte past each hit,
+    so matches may overlap, and plain ``re.finditer`` would skip those and rank
+    ``match_index`` differently. Each search restarts one byte past the last hit, which
+    keeps the regex engine's fast literal-prefix search (a lookahead would lose it)."""
+
+    __slots__ = ("rx",)
+
+    def __init__(self, rx: re.Pattern[bytes]):
+        self.rx = rx
+
+    def finditer(self, text: bytes):
+        search, pos = self.rx.search, 0
+        while (m := search(text, pos)) is not None:
+            yield m
+            pos = m.start() + 1
+
+
+def pattern_regex(pat: str) -> _Overlapping:
+    """``pat`` ("40 53 ?? 8d") compiled for loader-faithful scanning (see _Overlapping)."""
+    body = b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)]))
+                    for t in pat.split())
+    return _Overlapping(re.compile(body, re.DOTALL))
+
+
+def scan_offsets(text: bytes, pat: str) -> list[int]:
+    """Every offset in ``text`` where ``pat`` matches, ascending, loader semantics."""
+    return [m.start() for m in pattern_regex(pat).finditer(text)]
+
+
+# Scanning ~50k patterns over ~15 MB of .text is minutes of CPU, so it is spread over
+# processes. The text is handed to each worker once (inherited on fork, pickled once
+# per worker elsewhere), not per pattern.
+_SCAN_TEXT = b""
+
+
+def _scan_init(text: bytes) -> None:
+    global _SCAN_TEXT
+    _SCAN_TEXT = text
+
+
+def _scan_one(pat: str) -> tuple[str, list[int]]:
+    return pat, scan_offsets(_SCAN_TEXT, pat)
+
+
+def scan_many(text: bytes, patterns, workers: int | None = None) -> dict[str, list[int]]:
+    """``{pattern: offsets}`` for every distinct pattern, scanned in parallel."""
+    import multiprocessing as mp
+    pats = sorted(set(patterns))
+    if not pats:
+        return {}
+    workers = workers or max(1, (os.cpu_count() or 2) - 1)
+    if workers == 1 or len(pats) < 64:
+        return {p: scan_offsets(text, p) for p in pats}
+    with mp.Pool(workers, initializer=_scan_init, initargs=(text,)) as pool:
+        return dict(pool.imap_unordered(_scan_one, pats, chunksize=64))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default=DEFAULT_EXE)
     ap.add_argument("--symbols", default="docs/_re/out/symbols.json")
     ap.add_argument("--out", default="data/function_patterns.json")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--workers", type=int, help="processes for the .text scans (default: cores-1)")
     args = ap.parse_args()
 
     with open(args.exe, "rb") as f:
@@ -213,44 +274,46 @@ def main():
     print("  computing match_index against full .text scan...", file=sys.stderr)
     text = sections[0]
     text_bytes = data[text["raw_off"]:text["raw_off"] + text["raw_size"]]
-    by_pattern: dict[str, list] = {}
-    for entry in out:
-        by_pattern.setdefault(entry["pattern"], []).append(entry)
+    text_va = img_base + text["rva"]
 
-    import re
+    # Every pattern is scanned, not only the ones that repeat inside our symbol
+    # list: the binary holds thunks and unlisted functions with the same
+    # prologue, and a pattern unique in the list but not in .text, recorded
+    # as index 0, resolves to whichever copy comes first.
+    hits = scan_many(text_bytes, (e["pattern"] for e in out), args.workers)
 
-    def pattern_to_regex(pat: str) -> "re.Pattern[bytes]":
-        # Translate "40 53 ?? 8d" to a bytes regex with wildcards.
-        parts = []
-        for t in pat.split():
-            if t == "??":
-                parts.append(b".")
-            else:
-                b = int(t, 16)
-                # Escape regex metabytes.
-                if b in (0x5c, 0x5b, 0x5d, 0x5e, 0x24, 0x2e, 0x7c, 0x3f,
-                          0x2a, 0x2b, 0x28, 0x29, 0x7b, 0x7d):
-                    parts.append(b"\\" + bytes([b]))
-                else:
-                    parts.append(bytes([b]))
-        return re.compile(b"".join(parts), re.DOTALL)
+    # A pattern that still matches more than once is lengthened, once, as far
+    # as its own function goes (at most the longest prologue): a unique pattern
+    # survives a patch that shifts the other copies, an index does not. It
+    # never runs into the next function, whose own changes would break it.
+    # Kept only if it matches fewer places.
+    def room(e) -> int:
+        return min(PROLOGUE_BYTES_MAX, int(e.get("size") or 0))
 
-    total_dup_patterns = sum(1 for entries in by_pattern.values() if len(entries) > 1)
-    print(f"  {total_dup_patterns} unique duplicate-patterns to scan", file=sys.stderr)
-    done = 0
-    for pat, entries in by_pattern.items():
-        if len(entries) == 1:
-            entries[0]["match_index"] = 0
-            continue
-        rx = pattern_to_regex(pat)
-        offs = [m.start() for m in rx.finditer(text_bytes)]
-        va_to_idx = {img_base + text["rva"] + o: i for i, o in enumerate(offs)}
-        for e in entries:
-            va = int(e["addr"], 16)
-            e["match_index"] = va_to_idx.get(va, -1)
-        done += 1
-        if done % 500 == 0:
-            print(f"    scanned {done}/{total_dup_patterns}", file=sys.stderr)
+    multi = [e for e in out if len(hits[e["pattern"]]) > 1 and e["used_bytes"] < room(e)]
+    longer = {}
+    for e in multi:
+        prologue = data[e["_file_off"]:e["_file_off"] + PROLOGUE_BYTES_MAX + 16]
+        pat, used = make_pattern(prologue, int(e["addr"], 16), room(e))
+        if pat and pat != e["pattern"] and e["used_bytes"] < used <= room(e):
+            longer[id(e)] = (pat, used)
+    print(f"  {len(multi)} entries match more than once in .text; "
+          f"rescanning {len(longer)} lengthened patterns", file=sys.stderr)
+    hits.update(scan_many(text_bytes, (p for p, _u in longer.values()), args.workers))
+    lengthened = 0
+    for e in multi:
+        if id(e) in longer:
+            pat, used = longer[id(e)]
+            if len(hits[pat]) < len(hits[e["pattern"]]):
+                e["pattern"], e["used_bytes"] = pat, used
+                lengthened += 1
+
+    for e in out:
+        va_to_idx = {text_va + o: i for i, o in enumerate(hits[e["pattern"]])}
+        e["match_index"] = va_to_idx.get(int(e["addr"], 16), -1)
+    still = sum(1 for e in out if len(hits[e["pattern"]]) > 1)
+    print(f"  lengthened {lengthened}; {still} entries still resolve by index",
+          file=sys.stderr)
     # Drop entries whose match_index never found a hit (rare — extremely
     # short patterns that fell off both ends).
     before = len(out)

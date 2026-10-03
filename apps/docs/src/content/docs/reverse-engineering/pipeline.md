@@ -98,13 +98,36 @@ change in the manager.
 For non-unique prologues (templated dtors, vtable thunks, tiny
 wrappers — about 46% of functions), each entry records a
 `match_index` = rank within all matches in `.text`, sorted by VA.
-Validation rate on the current build: **99.50%** of entries resolve
-to their recorded VA.
+Every pattern is scanned against the whole `.text`, counting matches exactly
+as the loader does (every start position, overlapping hits included). A
+pattern that matches more than once is lengthened as far as its own function
+goes, so it becomes unique where it can and falls back to an index where it
+cannot. On the 2026-10-03 build, **100%** of 50,056 entries resolve to their
+recorded VA (`scripts/test_pattern_resolve.py --all`). One scanner,
+`gen_function_patterns.scan_offsets`, is shared by every pattern script so they
+cannot drift from each other or from the loader.
+
+The DB published before this fix indexed only the patterns repeated inside its
+own symbol list, and counted non-overlapping matches: about 73% of its generic
+entries resolve to the address they were made for. The hand-mapped symbols the
+loader uses were unaffected (all 192 `status=ok` symbols verify). Republish to
+ship the fixed DB.
 
 Cross-build accuracy (2026-07-09 patch): **77 of 92** hand-named function
 symbols re-located automatically by byte pattern; the remaining ones had
 prologues that changed too much and were flagged for manual RE (see the
 remap pipeline below). The generic ~53k-entry DB regenerates wholesale.
+
+## Rebuild for the installed game
+
+`./rsmm rebuild-fn-patterns` regenerates the DB for the exe you have, adds the
+stable named entries, and checks the result: every `status=ok` symbol must land
+on a function boundary and every entry must resolve to its recorded address.
+The old DB is kept as `*.prev` and put back if any step fails or you interrupt
+it. About 2–3 minutes. `--ghidra` re-dumps `symbols.json` first; `--dry-run`
+prints the plan. It needs `capstone` and uses the repo's `.venv` if the current
+interpreter lacks it. It does not remap `data/symbols.json` after a patch,
+rebuild the loader, or publish.
 
 ## Regen on a fresh checkout
 
