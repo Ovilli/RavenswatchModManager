@@ -76,8 +76,9 @@ named after the item). On the Talents tab, *Replace icon* swaps a card's picture
 (scaled to 128×128 and cooked over that card's icon), which is how a replacement
 talent gets a look to match its new name and text. The PNG is saved in the mod's
 `icons/` folder next to `manifest.toml`. Each
-change has an undo button (↺), *Reset all* drops every change to the open item
-or hero, and an unfinished edit is kept in your browser until you add it to a
+change has an undo button (↺), *Reset this item* / *Reset this hero* drops every
+change to the one that is open, *Reset everything* (in the bar at the bottom)
+drops every pending change in every tab after you confirm, and an unfinished edit is kept in your browser until you add it to a
 mod (a dot marks it in the list). Private windows and some browsers do not keep
 it.
 

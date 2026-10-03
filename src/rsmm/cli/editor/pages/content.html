@@ -200,6 +200,8 @@ dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
 #pending:empty { display: none; }
 .pchip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; padding: 0 2px 0 10px; }
 .pchip.open { border-color: var(--accentline); }
+.resetall { font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--bad); color: var(--bad); background: transparent; cursor: pointer; }
+.resetall:hover { background: var(--bad); color: var(--bg); }
 .pchip.bad { border-color: var(--bad); color: var(--bad); }
 .pchip button { border: none; background: none; padding: 2px 6px; font-size: 12px; }
 .pchip .x { color: var(--muted); font-size: 14px; line-height: 1; }
@@ -589,7 +591,12 @@ function renderPending(edits, errors) {
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
   const grants = scriptChanged(), prog = programChanged();
-  if (edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) < 2 && !bad.size) return;
+  const total = edits.length + (grants ? 1 : 0) + (prog ? 1 : 0);
+  if (!total) return;
+  // One button for all of it: every item, hero, test grant and block change at once.
+  const everything = el("button", { type: "button", class: "resetall", title: "Drop every change in every tab, back to what the game ships",
+    onclick: resetEverything }, total > 1 ? `Reset everything (${total} changes)` : "Reset everything");
+  if (total < 2 && !bad.size) { box.append(everything); return; }
   for (const e of edits) {
     const chip = el("span", { class: "pchip" + (isOpen(e.tab, e.id) ? " open" : "") + (bad.has(e.name) ? " bad" : "") },
       el("button", { type: "button", title: "Open it", onclick: () => openPending(e.tab, e.id) }, e.name));
@@ -610,6 +617,24 @@ function renderPending(edits, errors) {
       el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the block changes",
         onclick: () => { S.program = JSON.parse(S.programSaved); saveProgram(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
   }
+  box.append(everything);
+}
+// "Actually reset everything": the per-view Reset all only undoes the item or hero
+// that is open; this drops every pending change in every tab.
+function resetEverything() {
+  const edits = pendingEdits(), n = edits.length + (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0);
+  if (!n || !confirm(`Drop all ${n} change${n > 1 ? "s" : ""} in every tab (items, talents, test grants and blocks)? This cannot be undone.`)) return;
+  for (const t of ["items", "talents"]) {
+    for (const id of [...S.pending[t].keys()]) store.del(DRAFT[t] + id);
+    S.pending[t].clear(); S.drafts[t].clear();
+  }
+  if (S.item) S.itemEdit = freshItemEdit();
+  if (S.hero) S.talentEdit = freshTalentEdit();
+  S.script = JSON.parse(S.scriptSaved); saveScript();
+  S.program = JSON.parse(S.programSaved); saveProgram();
+  S.restored = "";
+  renderView(); renderList(); refresh();
+  flash("Every change dropped.", "muted");
 }
 
 // A message that answers a button press goes away by itself; any edit clears it too.
@@ -643,7 +668,7 @@ function itemView() {
   if (banner) v.append(banner);
   v.append(el("div", { class: "head" }, itemIcon(E, it),
     el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
-    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item", onclick: resetAll }, "Reset all"))));
+    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item (other items and heroes keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this item"))));
 
 
   const seg = el("div", { class: "seg", role: "group", "aria-label": "Replace the item or make a copy" });
@@ -1392,7 +1417,7 @@ function talentView() {
     el("div", { class: "tname" }, el("h2", { text: S.hero.replace(/_/g, " ") }),
       el("div", { class: "muted tiny", text: `${T.cards.length} talent cards · a hero's number of talents is fixed, so you change the ones there are` })),
     el("label", { class: "tiny muted tprefix" }, "Block id", pre),
-    el("button", { type: "button", title: "Undo every change to this hero", onclick: resetAll }, "Reset all")));
+    el("button", { type: "button", title: "Undo every change to this hero (other heroes and items keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this hero")));
 
   // Toolbar: search, preview rarity.
   const q = el("input", { type: "search", placeholder: "Find a card, e.g. dash", value: E.q || "" });
