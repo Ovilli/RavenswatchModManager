@@ -49,10 +49,10 @@ importers:
         version: 3.1051.0
       '@hono/node-server':
         specifier: 1.19.15
-        version: 1.19.15(hono@4.13.5)
+        version: 1.19.15(hono@4.13.12)
       '@hono/zod-validator':
         specifier: 0.4.2
-        version: 0.4.2(hono@4.13.5)(zod@3.25.76)
+        version: 0.4.2(hono@4.13.12)(zod@3.25.76)
       '@neondatabase/serverless':
         specifier: 0.10.4
         version: 0.10.4
@@ -72,11 +72,11 @@ importers:
         specifier: 0.45.2
         version: 0.45.2(@neondatabase/serverless@0.10.4)(@types/pg@8.11.10)(kysely@0.28.17)(pg@8.13.1)
       hono:
-        specifier: 4.13.5
-        version: 4.13.5
+        specifier: 4.13.12
+        version: 4.13.12
       nodemailer:
-        specifier: ^9.0.1
-        version: 9.1.1
+        specifier: ^10.0.9
+        version: 10.0.14
       pg:
         specifier: 8.13.1
         version: 8.13.1
@@ -3591,8 +3591,8 @@ packages:
   hastscript@9.0.1:
     resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
-  hono@4.13.5:
-    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
+  hono@4.13.12:
+    resolution: {integrity: sha512-6E2QDAc9Ick9Sq77ZrGS/dk2WUYni91aufTw6LJKpV7w8kW5/GxVUc650FOADOmlwg3K+f7Pun6XlV+pYmW6gw==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@3.0.3:
@@ -4107,9 +4107,9 @@ packages:
     resolution: {integrity: sha512-x0InOIyzgdk+eyaWaRJFH5snEtiImgBgblZ2CyPrLmqqcuMQkEvcDPHbzqbD8eDsSeJbVOjn+crzyzHaM4D+/A==}
     engines: {node: '>=18'}
 
-  nodemailer@9.1.1:
-    resolution: {integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==}
-    engines: {node: '>=6.0.0'}
+  nodemailer@10.0.14:
+    resolution: {integrity: sha512-eJoLFKg55fesSlzUekmfOv/SBXh4KUYT8oiQc2RLP0tfG0rbNMJBK7wgHJwXTJwqyKlSJMz9UzDZ4v+aHEvo8g==}
+    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -6464,13 +6464,13 @@ snapshots:
 
   '@fontsource/alegreya-sans@5.3.0': {}
 
-  '@hono/node-server@1.19.15(hono@4.13.5)':
+  '@hono/node-server@1.19.15(hono@4.13.12)':
     dependencies:
-      hono: 4.13.5
+      hono: 4.13.12
 
-  '@hono/zod-validator@0.4.2(hono@4.13.5)(zod@3.25.76)':
+  '@hono/zod-validator@0.4.2(hono@4.13.12)(zod@3.25.76)':
     dependencies:
-      hono: 4.13.5
+      hono: 4.13.12
       zod: 3.25.76
 
   '@iconify/types@2.0.0': {}
@@ -8631,7 +8631,7 @@ snapshots:
       property-information: 7.1.0
       space-separated-tokens: 2.0.2
 
-  hono@4.13.5: {}
+  hono@4.13.12: {}
 
   html-escaper@3.0.3: {}
 
@@ -9336,7 +9336,7 @@ snapshots:
 
   node-releases@2.0.56: {}
 
-  nodemailer@9.1.1: {}
+  nodemailer@10.0.14: {}
 
   normalize-path@3.0.0: {}
 
