@@ -50,6 +50,7 @@ function show(key) {
 window.rsmmPending = (tab) => {
   try { return frames[tab]?.contentWindow.rsmmPending?.() ?? null; } catch (e) { return null; }
 };
+window.rsmmReset = (tab) => { try { frames[tab]?.contentWindow.rsmmReset?.(); } catch (e) {} };
 window.rsmmAfterSave = (tab, mod) => { try { frames[tab]?.contentWindow.rsmmAfterSave?.(mod); } catch (e) {} };
 
 // Cross-tab links. A page asks the host to show another tab and hands that tab a

@@ -14,14 +14,9 @@ body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); 
        display: grid; grid-template: "top top" auto "left main" 1fr "left bar" auto / 280px 1fr; height: 100vh; }
 header { grid-area: top; display: flex; gap: 14px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 header h1 { font-size: 16px; margin: 0 10px 0 0; }
-select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
 textarea { width: 100%; resize: vertical; min-height: 58px; }
-button { cursor: pointer; } button:hover { border-color: var(--accentline); }
-button.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
-button:disabled { opacity: .45; cursor: default; }
 .tab { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); }
 .tab.on { border-bottom-color: var(--accentline); color: var(--ink); font-weight: 600; }
-.muted { color: var(--muted); } .tiny { font-size: 12px; }
 code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 #left { grid-area: left; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
 #left .filters { padding: 10px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
@@ -588,8 +583,10 @@ function renderPending(edits, errors) {
 // "Actually reset everything": the per-view Reset all only undoes the item or hero
 // that is open; this drops every pending change in every tab.
 function resetEverything() {
-  const edits = pendingEdits(), n = edits.length + (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0);
-  if (!n || !confirm(`Drop all ${n} change${n > 1 ? "s" : ""} in every tab (items, talents, test grants and blocks)? This cannot be undone.`)) return;
+  const edits = pendingEdits(), abil = abilityPending();
+  const n = edits.length + (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0) + (abil ? 1 : 0);
+  if (!n || !confirm(`Drop all ${n} change${n > 1 ? "s" : ""} in every tab (items, talents, abilities, test grants and blocks)? This cannot be undone.`)) return;
+  if (abil) { try { window.top.rsmmReset("abilities"); } catch {} }
   for (const t of ["items", "talents"]) {
     for (const id of [...S.pending[t].keys()]) store.del(DRAFT[t] + id);
     S.pending[t].clear(); S.drafts[t].clear();

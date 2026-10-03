@@ -23,16 +23,8 @@ header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
 header h1 { font-size: 15px; margin: 0 4px 0 0; font-weight: 650; }
 label.inline { display: flex; gap: 6px; align-items: center; color: var(--muted); }
 select { max-width: 260px; }
-select, input[type=text], input[type=number], input[type=search] {
-  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 6px; }
 input[type=number] { width: 70px; }
-button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-  border-radius: 6px; padding: 5px 12px; cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--onaccent); }
-button.small { padding: 1px 7px; font-size: 12px; }
 button.undo { border: none; background: none; color: var(--warn); padding: 0 4px; font-size: 15px; line-height: 1; }
-button:disabled { opacity: .5; cursor: default; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 4px 10px; }
 .seg button[aria-pressed=true] { background: var(--accent); color: var(--onaccent); }

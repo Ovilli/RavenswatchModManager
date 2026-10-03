@@ -12,13 +12,6 @@ body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); 
        display: grid; grid-template: "top top" auto "left main" 1fr "left bar" auto / 240px 1fr; height: 100vh; }
 header { grid-area: top; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 header h1 { font-size: 16px; margin: 0 8px 0 0; }
-select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
-button { cursor: pointer; } button:hover { border-color: var(--accentline); }
-button.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
-button:disabled { opacity: .45; cursor: default; }
-button.small { padding: 1px 8px; font-size: 12px; }
-button.link { border: none; background: none; color: var(--accentink); padding: 0; text-decoration: underline; }
-.muted { color: var(--muted); } .tiny { font-size: 12px; }
 code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 #left { grid-area: left; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); padding: 10px; }
 #left h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 4px 4px; }
@@ -185,7 +178,7 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
     <button id="newHero" class="small" hidden></button>
     <button id="copy" class="small" title="Copy your changes as manifest code" disabled>Copy manifest code</button>
     <button id="toggleList" class="small">Show changes</button>
-    <button id="undo" class="small" title="Remove the last change">Undo last</button>
+    <button id="undo" class="small" title="Remove the last change (after Start over: bring them all back)">Undo last</button>
     <button id="clear" class="small" title="Remove every change">Start over</button>
   </div>
   <div id="details" hidden>
@@ -286,11 +279,41 @@ async function post(path, body) {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-RSMM-Token": TOKEN }, body: JSON.stringify(body) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
+// Changes belong to one hero. Leaving a hero sets its unsaved changes aside and coming
+// back brings them back: no confirm box (some frames block it, and the switch then
+// silently did nothing), and nothing is lost.
+const stash = {};
+function switchHero(hero) {
+  if (hero === S.hero) return;
+  if (S.steps.length) stash[S.hero] = S.steps; else delete stash[S.hero];
+  S.hero = hero; $("hero").value = hero;
+  S.steps = stash[hero] || []; delete stash[hero]; S.cleared = null;
+}
+// Unsaved steps survive a reload (and a closed tab): kept in this browser, only while
+// they differ from what the chosen mod holds, and dropped once saved.
+function persist() {
+  try {
+    const dirty = S.steps.length > 0 && (!S.block || stepsJson() !== S.saved);
+    if (!dirty && !Object.keys(stash).length) { localStorage.removeItem("ae-draft"); return; }
+    localStorage.setItem("ae-draft", JSON.stringify({ hero: S.hero, steps: dirty ? S.steps : [], stash }));
+  } catch (e) {}
+}
+// "Reset everything" in another tab drops these too.
+window.rsmmReset = () => {
+  S.steps = []; S.cleared = null; for (const k of Object.keys(stash)) delete stash[k];
+  refresh();
+};
+let drawn = 0;
 async function refresh() {
   $("busy").textContent = "checking…";
-  try { S.data = await post("api/graph", { hero: S.hero, entity: S.entity, steps: S.steps }); S.entity = S.data.entity; }
-  catch (e) { setStatus("bad", e.message); $("busy").textContent = ""; return; }
+  const me = ++drawn;
+  let data;
+  try { data = await post("api/graph", { hero: S.hero, entity: S.entity, steps: S.steps }); }
+  catch (e) { if (me === drawn) { setStatus("bad", e.message); $("busy").textContent = ""; } return; }
+  if (me !== drawn) return;               // a newer change was drawn while this one was checked
+  S.data = data; S.entity = S.data.entity;
   $("busy").textContent = "";
+  $("undo").textContent = S.steps.length || !(S.cleared && S.cleared.length) ? "Undo last" : "Undo start over";
   $("baseName").textContent = S.hero;
   const main = "Hero_" + S.hero;
   $("entity").replaceChildren(...S.data.entities.map(n => el("option", { value: n,
@@ -301,6 +324,7 @@ async function refresh() {
   if (!keep) S.group = gs.find(g => g === "Ability Primary") || gs.find(g => g.startsWith("Ability")) || gs[0] || "";
   drawGroups(); drawSteps(); drawNumbers();
   if (S.tab === "diagram") { drawFlow(); inspect(S.sel && byId(S.sel.id) ? S.sel.id : null); }
+  persist();
 }
 const byId = (id) => S.data.components.find(c => c.id === id);
 const groupsOf = () => { const m = new Map(); for (const c of S.data.components) m.set(c.group, (m.get(c.group) || 0) + 1); return new Map([...m].sort()); };
@@ -600,8 +624,7 @@ async function drawAll(q) {
 }
 async function openHit(r) {
   if (r.hero !== S.hero) {
-    if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) return;
-    S.hero = r.hero; $("hero").value = r.hero; S.steps = []; loadBlocks();
+    switchHero(r.hero); loadBlocks();
   }
   $("allHeroes").checked = false; S.entity = r.entity && r.entity !== "Hero_" + r.hero ? r.entity : ""; S.group = r.group; S.sel = null;
   await refresh();
@@ -1122,13 +1145,14 @@ const entityKey = () => (S.entity && S.entity !== "Hero_" + S.hero) ? S.entity :
 const findStep = (op, addr) => S.steps.find(s => s[op] === addr && s.entity === entityKey());
 function addStep(step) {
   const e = entityKey(); if (e) step.entity = e;
-  S.steps.push(step); refresh();
+  S.cleared = null; S.steps.push(step); refresh();
 }
 // Setting a field (or pointing a link) again replaces the earlier change in
 // place, so the list stays one line per thing changed.
 function setStep(step) {
   const op = step.set !== undefined ? "set" : "link", old = findStep(op, step[op]);
   const e = entityKey(); if (e) step.entity = e;
+  S.cleared = null;
   if (old) S.steps[S.steps.indexOf(old)] = step; else S.steps.push(step);
   refresh();
 }
@@ -1209,8 +1233,7 @@ $("filter").addEventListener("input", () => { clearTimeout(filterTimer); filterT
 $("allHeroes").addEventListener("change", applyFilter);
 $("showAll").addEventListener("change", drawGroups);
 $("hero").addEventListener("change", () => {
-  if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) { $("hero").value = S.hero; return; }
-  S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; saveView(); refresh();
+  switchHero($("hero").value); S.entity = ""; S.group = ""; S.sel = null; saveView(); refresh();
   loadBlocks();
 });
 // ---- saving into a mod ---------------------------------------------------------------
@@ -1307,7 +1330,8 @@ function openBlock(id) {
   S.saved = theirs;
   // Your unsaved changes win only if you say so; otherwise the hero's saved ones load.
   // A hero with nothing saved has nothing to load: yours stay, and can be saved into it.
-  if (S.steps.length && (!b.steps.length || (stepsJson() !== theirs
+  const keep = S.keepDraft; S.keepDraft = false;
+  if (S.steps.length && (keep || !b.steps.length || (stepsJson() !== theirs
       && !confirm(`Load ${b.name}'s saved changes (${b.steps.length}) in place of yours? Cancel keeps yours, to save them into ${b.name}.`)))) {
     drawSave(); return;
   }
@@ -1392,8 +1416,19 @@ $("importdir").onchange = async () => {
 };
 
 $("entity").addEventListener("change", () => { S.entity = $("entity").value; S.group = ""; S.sel = null; refresh(); });
-$("undo").addEventListener("click", () => { if (S.steps.length) { S.steps.pop(); refresh(); } });
-$("clear").addEventListener("click", () => { if (S.steps.length && confirm("Remove all your changes?")) { S.steps = []; refresh(); } });
+// Start over asks nothing (a confirm box is blocked in some frames and webviews, which
+// made the button look dead). It is undone instead: Undo last brings the changes back.
+$("undo").addEventListener("click", () => {
+  if (S.steps.length) S.steps.pop();
+  else if (S.cleared && S.cleared.length) { S.steps = S.cleared; S.cleared = null; }
+  else return;
+  refresh();
+});
+$("clear").addEventListener("click", () => {
+  if (!S.steps.length) return;
+  S.cleared = S.steps; S.steps = []; refresh();
+  $("undo").textContent = "Undo start over";
+});
 $("toggleList").addEventListener("click", () => { $("details").hidden = !$("details").hidden; drawSteps(); });
 $("copy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("toml").value); $("copy").textContent = "Copied!"; }
@@ -1414,8 +1449,7 @@ async function focusAbility(t) {
   if (!t || typeof t.hero !== "string") return;
   if (t.hero !== S.hero) {
     if (![...$("hero").options].some(o => o.value === t.hero)) return;
-    if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) return;
-    S.hero = t.hero; $("hero").value = S.hero; S.steps = []; loadBlocks();
+    switchHero(t.hero); loadBlocks();
   }
   S.entity = ""; S.group = ""; S.sel = null;
   await refresh();
@@ -1437,6 +1471,18 @@ async function focusAbility(t) {
   const qs = new URLSearchParams(location.search);
   if (qs.has("hero") || qs.has("q")) want = { hero: qs.get("hero") || "", q: qs.get("q") || "", all: qs.get("all") === "1" };
   S.hero = heroes.includes(want.hero) ? want.hero : heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
+  // Unsaved steps from the last session, for the hero they were made on (an address that
+  // names another hero opens that one, with the draft set aside until you come back).
+  try {
+    const d = JSON.parse(localStorage.getItem("ae-draft") || "null");
+    if (d && Array.isArray(d.steps) && d.stash && typeof d.stash === "object") {
+      for (const [h, st] of Object.entries(d.stash)) if (heroes.includes(h) && Array.isArray(st)) stash[h] = st;
+      if (d.steps.length && heroes.includes(d.hero)) {
+        if (d.hero === S.hero) { S.steps = d.steps; S.keepDraft = true; } else stash[d.hero] = d.steps;
+      }
+      if (!S.steps.length && stash[S.hero]) { S.steps = stash[S.hero]; delete stash[S.hero]; S.keepDraft = true; }
+    }
+  } catch (e) {}
   $("filter").value = want.q || ""; $("allHeroes").checked = !!want.all;
   await refresh();
   try { S.mod = localStorage.getItem("ae-mod") || NEW_MOD; } catch (e) { S.mod = NEW_MOD; }

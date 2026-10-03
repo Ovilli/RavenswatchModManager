@@ -1,7 +1,7 @@
 /* Shared by every editor page: one palette, the reset, and embedded mode.
    Inlined into each page where the page names it, so a page is one
-   request both locally and in the web editor's frames. Layout and controls
-   stay in each page: the map's checkbox-heavy panels need their own.
+   request both locally and in the web editor's frames. Controls (inputs,
+   buttons) are shared too, so a fix lands once; layout stays in each page.
 
    The accent is RSMM's red (the docs site's accent, crimson on rsmm.me), and
    highlighted rows get a warm neutral wash rather than a tint of it, so the
@@ -24,6 +24,36 @@
   }
 }
 * { box-sizing: border-box; }
+:root { color-scheme: light dark; }
 [hidden] { display: none !important; }
 /* Inside `rsmm editor` or the web editor the tab bar names the editor. */
 html.embedded header h1 { display: none; }
+
+/* Controls: one look on every page. The fill is --panel everywhere (a page that wants
+   an inset look sets its own on one selector), and a browser autofill or a focused
+   field keeps it instead of turning white on a dark page. */
+select, input, button, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink); caret-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 100px var(--panel) inset; box-shadow: 0 0 0 100px var(--panel) inset; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accentline); outline-offset: -1px; border-color: var(--accentline); }
+button { cursor: pointer; } button:hover { border-color: var(--accentline); }
+button.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.small { padding: 1px 8px; font-size: 12px; }
+button.link { border: none; background: none; color: var(--accentink); padding: 0; text-decoration: underline; }
+.muted { color: var(--muted); } .tiny { font-size: 12px; }
+
+/* The browser's own clear (x) in a search box ignores the theme (and paints its glyph
+   white on a dark page): draw our own cross, in the page's muted ink and its accent on
+   hover. A plain background-image, not a mask, so it paints the same everywhere. The
+   colours are the --muted / --accentink tokens spelled out, as an image cannot read them. */
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none; appearance: none; height: 14px; width: 14px; margin-left: 6px;
+  cursor: pointer; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 3l8 8M11 3l-8 8' stroke='%236a6a70' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+input[type="search"]::-webkit-search-cancel-button:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 3l8 8M11 3l-8 8' stroke='%23b3122c' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  input[type="search"]::-webkit-search-cancel-button { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 3l8 8M11 3l-8 8' stroke='%23a0a0a8' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E"); }
+  input[type="search"]::-webkit-search-cancel-button:hover { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 3l8 8M11 3l-8 8' stroke='%23ef6b7c' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E"); }
+}
