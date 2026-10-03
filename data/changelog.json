@@ -1,6 +1,17 @@
 {
-  "generated": "2026-10-02",
+  "generated": "2026-10-03",
   "entries": [
+    {
+      "version": "5.9.2",
+      "date": "2026-10-03",
+      "summary": "Switching profiles no longer empties the one you left, every number on a talent card is editable, and cards link to the Ability editor.",
+      "highlights": [
+        "Fixed: switching profiles no longer empties or mislabels the profile you left. Its mods stay put and are no longer shown as 'not on disk'.",
+        "Talent editor: every number a card shows can now be edited, including computed ones (like the Ice Clone's damage), single-number selectors and values with unusual names. Cards with nothing editable dropped from 144 to 22 of 460.",
+        "Talent editor: new 'Open in Ability editor' link on each card jumps to that talent's parts and links.",
+        "Publishing: the website's publish page fills in the mod id, name, version, tags and more from the manifest in your zip."
+      ]
+    },
     {
       "version": "5.9.1",
       "date": "2026-10-02",
