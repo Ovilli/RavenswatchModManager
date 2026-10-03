@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
@@ -8,9 +8,9 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
-import { listLocalMods } from '../lib/rsmm';
+import { listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
-import { getMod, isEnabledIn, splitProfileMods, useApp } from '../store';
+import { getMod, isEnabledIn, splitProfileMods, splitProfileModsAgainst, useApp } from '../store';
 
 export const Route = createFileRoute('/profiles')({
   component: ProfilesPage,
@@ -58,6 +58,25 @@ function ProfilesPage() {
    * answer is not evidence of absence.
    */
   const modsKnown = localModsQuery.isSuccess;
+
+  /**
+   * What each OTHER profile has on disk. The sidecar lists one directory per
+   * call (the active profile's), so `getMod` knows nothing about a profile that
+   * is not active — judging those against it painted every one of their mods
+   * "not on disk". Each is asked for its own directory instead.
+   */
+  const otherProfiles = profiles.filter((p) => p.id !== activeId && p.id !== 'default');
+  const otherLists = useQueries({
+    queries: otherProfiles.map((p) => ({
+      queryKey: ['rsmm', 'list', p.id],
+      queryFn: () => listLocalModsForProfile(p.id),
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    })),
+  });
+  const listedByProfile = new Map(
+    otherProfiles.map((p, i) => [p.id, otherLists[i]?.data ?? undefined] as const),
+  );
 
   const t = useT();
   const dialog = useDialog();
@@ -343,11 +362,28 @@ function ProfilesPage() {
           // Count what actually exists. A profile whose mods were deleted
           // outside the app still holds their ids, and reporting those as
           // "12 total" is what made empty profiles look full.
-          const split = splitProfileMods(p);
+          // The active profile is judged against the live registry; any other
+          // against the list read from its own directory (see above).
+          const listed = isActive ? undefined : listedByProfile.get(p.id);
+          const known = isActive ? modsKnown : p.id === 'default' || listed !== undefined;
+          const split =
+            isActive || p.id === 'default'
+              ? splitProfileMods(p)
+              : splitProfileModsAgainst(p, listed ?? []);
+          const listedById = new Map(
+            (listed ?? []).flatMap(
+              (m) =>
+                [
+                  [m.id, m],
+                  [m.slug, m],
+                ] as const,
+            ),
+          );
+          const nameOf = (id: string) => (isActive ? getMod(id)?.name : listedById.get(id)?.name);
           // Before the list is known, treat every id as present rather than
           // as missing: the same "we do not know" reading as `modsKnown`.
-          const present = modsKnown ? split.present : p.loadOrder;
-          const missing = modsKnown ? split.missing : [];
+          const present = known ? split.present : p.loadOrder;
+          const missing = known ? split.missing : [];
           const enabled = present.filter((id) => isEnabledIn(p, id)).length;
           return (
             <article key={p.id} className="grimoire-card min-w-0 p-5">
@@ -382,15 +418,15 @@ function ProfilesPage() {
                   <li className="text-ash">{t('No mods.')}</li>
                 ) : (
                   p.loadOrder.map((id) => {
-                    const mod = getMod(id);
+                    const modName = nameOf(id);
                     // No mod on disk for this id: a half-finished install, a
                     // folder deleted outside the app, or a legacy API UUID.
                     // Say so instead of printing the raw id as if it were a
                     // real (merely disabled) mod.
-                    if (!mod) {
+                    if (modName === undefined) {
                       // Only accuse the id of being absent once we have been
                       // told what IS on disk.
-                      if (!modsKnown) {
+                      if (!known) {
                         return (
                           <li key={id} className="text-smoke" title={id}>
                             {id}
@@ -405,7 +441,7 @@ function ProfilesPage() {
                     }
                     return (
                       <li key={id} className={p.disabled.has(id) ? 'opacity-50' : ''}>
-                        {mod.name}
+                        {modName}
                       </li>
                     );
                   })
@@ -416,7 +452,10 @@ function ProfilesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const removed = pruneMissing(p.id);
+                    const removed = pruneMissing(
+                      p.id,
+                      isActive ? undefined : (listed ?? []).flatMap((m) => [m.id, m.slug]),
+                    );
                     toast.push(
                       t.n(
                         removed,

@@ -94,7 +94,7 @@ function CollectionDetailPage() {
           throw new Error(result?.error ?? t('install failed'));
         }
         const local = targetId ? await listLocalModsForProfile(targetId) : await listLocalMods();
-        if (local) syncLocalMods(local);
+        if (local) syncLocalMods(local, targetId);
       }
       installMod(modSlug, targetId);
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
@@ -134,8 +134,7 @@ function CollectionDetailPage() {
     // profile (see `installMod`) — a collection arriving under a name that has
     // nothing to do with it. Name the profile after the collection instead,
     // which is what installing a collection means.
-    const targetProfileId =
-      profile.id === 'default' ? createProfile(data.name) : profile.id;
+    const targetProfileId = profile.id === 'default' ? createProfile(data.name) : profile.id;
     for (const [idx, m] of data.mods.entries()) {
       setInstalling((prev) => ({ ...prev, [m.slug]: true }));
       try {
@@ -153,7 +152,7 @@ function CollectionDetailPage() {
     const local = targetProfileId
       ? await listLocalModsForProfile(targetProfileId)
       : await listLocalMods();
-    if (local) syncLocalMods(local);
+    if (local) syncLocalMods(local, targetProfileId);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
@@ -203,7 +202,7 @@ function CollectionDetailPage() {
       return;
     }
     const local = await listLocalModsForProfile(newProfileId);
-    if (local) syncLocalMods(local);
+    if (local) syncLocalMods(local, newProfileId);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });

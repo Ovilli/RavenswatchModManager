@@ -134,14 +134,17 @@ interface State {
   updateSettings: (patch: Partial<AppSettings>) => void;
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
-  syncLocalMods: (mods: LocalMod[]) => void;
+  /** `listedProfileId` = the profile the list was read from; defaults to the active one. */
+  syncLocalMods: (mods: LocalMod[], listedProfileId?: string) => void;
   /**
    * Drop every entry in a profile that has no mod on disk, and return how
    * many were removed. Explicit and user-triggered: the sync path keeps
    * unknown ids on purpose (a half-finished install must not be erased by
    * the next poll), so this is the escape hatch when they're truly stale.
+   * `onDiskIds` = ids read from THAT profile's own directory; required for any
+   * profile that is not active, which is otherwise left alone.
    */
-  pruneMissingMods: (profileId: string) => number;
+  pruneMissingMods: (profileId: string, onDiskIds?: string[]) => number;
   /** Add on-disk mods to a profile (the Library's "adopt" action). */
   adoptMods: (ids: string[], profileId?: string) => void;
   /** Patch latestVersion + image/summary onto local mods after polling the API. */
@@ -679,8 +682,14 @@ export const useApp = create<State>()(
           return { settings: { ...s.settings, ...clean } };
         }),
 
-      syncLocalMods: (mods) =>
+      syncLocalMods: (mods, listedProfileId) =>
         set((s) => {
+          // A list describes ONE profile's directory (every CLI call runs with
+          // RSMM_MODS_DIR at the active profile's folder), so only that profile
+          // may be reconciled against it. Reconciling the others read "not in
+          // this list" as "removed from disk" and emptied a profile the moment
+          // the user switched away from it.
+          const owner = listedProfileId ?? s.activeProfileId;
           const localMods: Record<string, Mod> = {};
           for (const m of mods) {
             localMods[m.id] = toMod(m, s.localMods[m.id]);
@@ -690,6 +699,7 @@ export const useApp = create<State>()(
             if (p.id === 'default') {
               return { ...p, loadOrder: [], disabled: new Set<string>() };
             }
+            if (p.id !== owner) return p;
             const loadOrder = reconcileProfileModIds(
               p.loadOrder,
               localMods,
@@ -708,11 +718,16 @@ export const useApp = create<State>()(
           return { localMods, installed, profiles };
         }),
 
-      pruneMissingMods: (profileId) => {
+      pruneMissingMods: (profileId, onDiskIds) => {
         const s = get();
         const profile = s.profiles.find((p) => p.id === profileId);
         if (!profile) return 0;
-        const onDisk = new Set(Object.keys(s.localMods));
+        // `localMods` is the ACTIVE profile's directory only. Pruning another
+        // profile against it would delete every one of its mods, so an
+        // inactive profile is only pruned against a list read from its own
+        // directory, and not at all when the caller has none.
+        if (!onDiskIds && profileId !== s.activeProfileId) return 0;
+        const onDisk = new Set(onDiskIds ?? Object.keys(s.localMods));
         const keep = profile.loadOrder.filter((id) => onDisk.has(id));
         const removed = profile.loadOrder.length - keep.length;
         if (removed === 0) return 0;
@@ -919,6 +934,28 @@ export function splitProfileMods(profile: Profile): { present: string[]; missing
   const missing: string[] = [];
   for (const id of profile.loadOrder) {
     (getMod(id) ? present : missing).push(id);
+  }
+  return { present, missing };
+}
+
+/**
+ * `splitProfileMods` for a profile that is NOT active: the same split, judged
+ * against the list read from THAT profile's own directory rather than the
+ * active profile's registry, which knows nothing about it.
+ */
+export function splitProfileModsAgainst(
+  profile: Profile,
+  listed: ReadonlyArray<{ id: string; slug: string }>,
+): { present: string[]; missing: string[] } {
+  const onDisk = new Set<string>();
+  for (const m of listed) {
+    onDisk.add(m.id);
+    onDisk.add(m.slug);
+  }
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const id of profile.loadOrder) {
+    (onDisk.has(id) ? present : missing).push(id);
   }
   return { present, missing };
 }

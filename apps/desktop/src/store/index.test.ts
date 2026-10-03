@@ -8,6 +8,7 @@ import {
   outdatedCount,
   outdatedMods,
   splitProfileMods,
+  splitProfileModsAgainst,
   unadoptedMods,
   useApp,
 } from './index';
@@ -591,5 +592,83 @@ describe('adopting mods from disk', () => {
     useApp.getState().adoptMods(['off-x', 'off-y']);
     const p = profileById(pid);
     expect(detectConflicts(p)).toEqual([]);
+  });
+});
+
+describe('syncLocalMods across profile switches', () => {
+  // Every CLI call runs against the ACTIVE profile's directory, so a list only
+  // describes that one profile. Reading it as the whole truth made every other
+  // profile look stripped of its mods.
+  function twoProfiles() {
+    const mk = (id: string, loadOrder: string[]): Profile => ({
+      id,
+      name: id,
+      loadOrder,
+      disabled: new Set<string>(),
+      createdAt: new Date().toISOString(),
+    });
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x', 'y']), mk('B', ['z'])],
+      activeProfileId: 'A',
+      installed: [],
+      localMods: {},
+    });
+  }
+
+  it('keeps an inactive profile’s mods after switching away and re-listing', () => {
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().setActiveProfile('B');
+    useApp.getState().syncLocalMods([localMod({ id: 'z' })]);
+    expect(profileById('A').loadOrder).toEqual(['x', 'y']);
+    expect(profileById('B').loadOrder).toEqual(['z']);
+  });
+
+  it('still prunes a mod confirmed gone from the profile the list describes', () => {
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().syncLocalMods([localMod({ id: 'x' })]);
+    expect(profileById('A').loadOrder).toEqual(['x']);
+  });
+});
+
+describe('profiles that are not active', () => {
+  const mk = (id: string, loadOrder: string[]): Profile => ({
+    id,
+    name: id,
+    loadOrder,
+    disabled: new Set<string>(),
+    createdAt: new Date().toISOString(),
+  });
+
+  it('splitProfileModsAgainst judges a profile by its OWN directory listing', () => {
+    const p = mk('B', ['a', 'b', 'gone']);
+    const split = splitProfileModsAgainst(p, [
+      localMod({ id: 'a' }),
+      localMod({ id: 'uuid-1', slug: 'b' }), // legacy id, matched by slug
+    ]);
+    expect(split.present).toEqual(['a', 'b']);
+    expect(split.missing).toEqual(['gone']);
+  });
+
+  it('never prunes an inactive profile against the active profile’s registry', () => {
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x']), mk('B', ['y', 'z'])],
+      activeProfileId: 'A',
+      localMods: {},
+    });
+    useApp.getState().syncLocalMods([localMod({ id: 'x' })]);
+    expect(useApp.getState().pruneMissingMods('B')).toBe(0);
+    expect(profileById('B').loadOrder).toEqual(['y', 'z']);
+  });
+
+  it('prunes an inactive profile against its own list when one is supplied', () => {
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x']), mk('B', ['y', 'z'])],
+      activeProfileId: 'A',
+      localMods: {},
+    });
+    expect(useApp.getState().pruneMissingMods('B', ['y'])).toBe(1);
+    expect(profileById('B').loadOrder).toEqual(['y']);
   });
 });
