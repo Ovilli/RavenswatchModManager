@@ -313,6 +313,22 @@ def hero_blocks(text: str) -> list[dict]:
             for c in _content(text) if c.get("kind") == "hero"]
 
 
+def add_hero_block(text: str, block_id: str, base: str, name: str) -> str:
+    """``text`` with a ``kind = "hero"`` block appended: a clone of ``base`` that
+    the Abilities tab's changes can be saved into. Refuses an id already used by
+    any block, and checks the result parses to exactly the old blocks plus it."""
+    from .content import _toml
+    before = _content(text)
+    if any(c.get("id") == block_id for c in before):
+        raise EditorError(f"manifest.toml already has a block with id {block_id!r}")
+    block = {"kind": "hero", "id": block_id, "base": base, "name": name}
+    new = text.rstrip("\n") + "\n\n[[content]]\n" + "".join(
+        f"{k} = {_toml(v)}\n" for k, v in block.items())
+    if _content(new) != [*before, block]:
+        raise EditorError("could not add the hero block to manifest.toml cleanly; add it by hand")
+    return new
+
+
 def set_hero_abilities(text: str, block_id: str, steps: list[dict]) -> str:
     """``text`` with hero block ``block_id``'s ``[[content.abilities]]`` steps
     replaced by ``steps``, everything else as it was. The steps are a sequence

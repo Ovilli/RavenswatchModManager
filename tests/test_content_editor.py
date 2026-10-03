@@ -377,3 +377,14 @@ def test_bad_mod_details_are_refused_before_anything_is_written(tmp_path, meta, 
     with pytest.raises(E.EditorError, match=message):
         E.save(_item(), "bad-mod", tmp_path, create=True, meta=meta)
     assert not (tmp_path / "bad-mod").exists()
+
+
+def test_an_item_missing_from_the_text_catalog_still_gets_its_icon():
+    """The catalog skips shipped items with no text entry, which left 21 of them
+    (Increase_Damage_To_Boss, ...) iconless in the list although the item's own
+    bytes name an icon."""
+    from rsmm.engine import corpus
+    if not corpus.rels("Ui/Objects/"):
+        pytest.skip("no game data (no mirror, no install)")
+    got = {i["id"]: i["icon"] for i in E.items()}
+    assert got.get("Increase_Damage_To_Boss") == "Icon_Object_VoodooDoll"

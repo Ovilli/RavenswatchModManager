@@ -175,6 +175,8 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
     <select id="mod" title="The mod to save into"></select>
     <select id="block" title="Your custom hero in that mod, built on this hero" hidden></select>
     <button id="save" class="primary" title="Write these changes into your custom hero in the chosen mod" disabled>Save to mod</button>
+    <span id="saveWhy" class="tiny muted"></span>
+    <button id="newHero" class="small" hidden></button>
     <button id="copy" class="small" title="Copy your changes as manifest code" disabled>Copy manifest code</button>
     <button id="toggleList" class="small">Show changes</button>
     <button id="undo" class="small" title="Remove the last change">Undo last</button>
@@ -1217,12 +1219,34 @@ function drawSave() {
   const same = !!S.block && stepsJson() === S.saved;
   $("save").disabled = !S.block || same || !!(S.data && S.data.error);
   $("save").textContent = same ? "Saved" : "Save to mod";
+  // Say why it is grey, and offer the fix where there is one.
+  const dlc = ["Carmilla", "Merlin"].includes(S.hero);
+  let why = "", offer = "";
+  if (same) why = "";
+  else if (!S.steps.length) why = "";
+  else if (S.data && S.data.error) why = "Fix the step marked in red first.";
+  else if (dlc) why = `${S.hero} is a paid DLC hero and cannot be cloned, so its changes cannot be saved into a mod. Use "Copy manifest code".`;
+  else if (!S.mod) why = "Pick a mod to save into.";
+  else if (!S.block) {
+    why = `${S.mod} has no custom hero built on ${S.hero}. Changes are saved into a separate custom hero, an extra one in the hero list. The original ${S.hero.replace(/_/g, " ")} is not changed.`;
+    offer = `Create a custom ${S.hero.replace(/_/g, " ")} in ${S.mod}`;
+  }
+  $("saveWhy").textContent = why;
+  $("newHero").hidden = !offer; $("newHero").textContent = offer;
 }
+$("newHero").addEventListener("click", async () => {
+  try {
+    const j = await post("api/newhero", { mod: S.mod, hero: S.hero });
+    await loadBlocks();
+    setStatus("ok", `Created ${j.block} in ${S.mod}, built on ${S.hero}. Now press Save to mod.`);
+  } catch (e) { setStatus("bad", e.message); }
+});
 async function loadMods() {
   try {
     const { mods } = await getJ("api/mods");
     $("mod").replaceChildren(el("option", { value: "", text: "Save into a mod…" }),
-      ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
+      ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })),
+      el("option", { value: NEW_MOD, text: "＋ New mod…" }));
     if (!mods.some(m => m.id === S.mod)) S.mod = "";
     $("mod").value = S.mod;
   } catch (e) { setStatus("bad", e.message); }
@@ -1252,13 +1276,28 @@ function openBlock(id) {
   const theirs = JSON.stringify(b.steps);
   S.saved = theirs;
   // Your unsaved changes win only if you say so; otherwise the hero's saved ones load.
-  if (S.steps.length && stepsJson() !== theirs
-      && !confirm(`Load ${b.name}'s saved changes (${b.steps.length}) in place of yours? Cancel keeps yours, to save them into ${b.name}.`)) {
+  // A hero with nothing saved has nothing to load: yours stay, and can be saved into it.
+  if (S.steps.length && (!b.steps.length || (stepsJson() !== theirs
+      && !confirm(`Load ${b.name}'s saved changes (${b.steps.length}) in place of yours? Cancel keeps yours, to save them into ${b.name}.`)))) {
     drawSave(); return;
   }
   S.steps = JSON.parse(theirs); refresh();
 }
-$("mod").addEventListener("change", () => {
+const NEW_MOD = "__new__";
+$("mod").addEventListener("change", async () => {
+  if ($("mod").value === NEW_MOD) {
+    // A new mod comes with a custom hero built on this one, ready to save into.
+    const name = (prompt(`Name of the new mod (it will hold a custom ${S.hero.replace(/_/g, " ")} with your changes):`, `${S.hero.replace(/_/g, " ")} changes`) || "").trim();
+    if (!name) { $("mod").value = S.mod; return; }
+    try {
+      const j = await post("api/newmod", { name, hero: S.hero });
+      S.mod = j.mod; await loadMods();
+      setStatus("ok", `Created ${j.mod} with a custom ${S.hero.replace(/_/g, " ")} (${j.block}). Press Save to mod.`);
+    } catch (e) { $("mod").value = S.mod; setStatus("bad", e.message); return; }
+    try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
+    await loadBlocks();
+    return;
+  }
   S.mod = $("mod").value;
   try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
   loadBlocks();

@@ -100,3 +100,25 @@ def test_search_finds_a_hit_value_in_the_heros_other_files():
     rows = AE.search("stagger", hero="Beowulf", skip="Hero_Beowulf")["rows"]
     assert any(r["entity"] == "Hero_Beowulf_Ultimate_2_Fireball"
                and r["part"] == "Stagger Power Selector" and r["value"] == "50" for r in rows)
+
+
+@needs
+def test_a_new_mod_comes_with_a_custom_hero_to_save_into(tmp_path):
+    """Saving ability changes needs a mod with a custom hero built on the hero;
+    "New mod…" makes both, and a paid DLC hero is refused."""
+    from types import SimpleNamespace
+
+    from rsmm.cli.editor import modio
+
+    def req(**body):
+        return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
+
+    got = AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))
+    assert got == {"mod": "pam-fireball-nerf", "block": "Beowulf_Edit"}
+    text = (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
+    assert [(b["id"], b["base"]) for b in modio.hero_blocks(text)] == [("Beowulf_Edit", "Beowulf")]
+    # a second mod of the same name gets its own folder
+    assert AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))["mod"] \
+        == "pam-fireball-nerf-2"
+    with pytest.raises(ValueError, match="DLC"):
+        AE._new_mod(req(name="x", hero="Carmilla"))

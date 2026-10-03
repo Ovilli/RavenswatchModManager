@@ -251,11 +251,15 @@ def _manifest(req: Request, mod_id: str):
     return path
 
 
+def _herodef(hero: str) -> str:
+    from rsmm.cli.editor import content as C
+    return C._herodefs().get(hero, hero)
+
+
 def _bases(hero: str) -> set[str]:
     """The ``base`` spellings a hero block may use for ``hero``: its folder
     name (``SunWukong``) or its herodef (``Sun_Wukong``)."""
-    from rsmm.cli.editor import content as C
-    return {hero, C._herodefs().get(hero, hero)}
+    return {hero, _herodef(hero)}
 
 
 def _mods(req: Request) -> dict:
@@ -271,6 +275,64 @@ def _hero_blocks(req: Request) -> dict:
     blocks = modio.hero_blocks(path.read_text(encoding="utf-8"))
     return {"blocks": [b for b in blocks if b["base"] in bases],
             "others": sorted({b["base"] for b in blocks if b["base"] not in bases})}
+
+
+def _add_hero(path, hero: str) -> str:
+    """Append a custom hero built on ``hero`` to the manifest at ``path`` and
+    return its block id. It is a separate, extra hero: the shipped one is not
+    changed. Paid DLC heroes cannot be cloned."""
+    import re
+
+    from rsmm.cli.editor import modio
+    from rsmm.sdk.kinds.heros import DLC_HEROES
+    if hero not in _heroes():
+        raise ValueError(f"no shipped hero {hero!r}")
+    if _bases(hero) & DLC_HEROES:
+        raise ValueError(f"{hero} is a paid DLC hero and cannot be cloned, so its abilities "
+                         "cannot be saved into a custom hero")
+    text = path.read_text(encoding="utf-8")
+    used = {b["id"] for b in modio.hero_blocks(text)}
+    stem = re.sub(r"[^A-Za-z0-9_]+", "_", hero).strip("_") + "_Edit"
+    block_id, n = stem, 2
+    while block_id in used:
+        block_id, n = f"{stem}{n}", n + 1
+    name = f"{hero.replace('_', ' ')} (edited)"
+    path.write_text(modio.add_hero_block(text, block_id, _herodef(hero), name), encoding="utf-8")
+    return block_id
+
+
+def _new_hero(req: Request) -> dict:
+    """Add a custom hero built on ``hero`` to an existing mod, so ability
+    changes have somewhere to be saved."""
+    path = _manifest(req, str(req.body.get("mod") or ""))
+    return {"block": _add_hero(path, str(req.body.get("hero") or ""))}
+
+
+def _new_mod(req: Request) -> dict:
+    """Create a mod (and a custom hero built on ``hero`` in it) to save into."""
+    import re
+
+    from rsmm.cli.editor import content as C
+    name = str(req.body.get("name") or "").strip()
+    hero = str(req.body.get("hero") or "")
+    if not name:
+        raise ValueError("give the mod a name")
+    if hero not in _heroes() or _bases(hero) & _dlc():
+        raise ValueError(f"{hero} cannot be saved into a mod: it is a paid DLC hero"
+                         if hero in _heroes() else f"no shipped hero {hero!r}")
+    root = req.ctx.mods_dir
+    stem = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "my-mod"
+    mod_id, n = stem, 2
+    while (root / mod_id).exists():
+        mod_id, n = f"{stem}-{n}", n + 1
+    C.save([], mod_id, root, create=True, name=name)
+    block = _add_hero(root / mod_id / "manifest.toml", hero)
+    return {"mod": mod_id, "block": block}
+
+
+def _dlc() -> frozenset:
+    from rsmm.sdk.kinds.heros import DLC_HEROES
+    return DLC_HEROES
 
 
 def _save(req: Request) -> dict:
@@ -298,4 +360,6 @@ ROUTES = {
     ("GET", "/api/mods"): _mods,
     ("GET", "/api/heroblocks"): _hero_blocks,
     ("POST", "/api/save"): _save,
+    ("POST", "/api/newhero"): _new_hero,
+    ("POST", "/api/newmod"): _new_mod,
 }

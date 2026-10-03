@@ -68,16 +68,25 @@ def items() -> list[dict]:
     readable (the names live in the install's text bank)."""
     from rsmm.cli.cmd_items import _iter_items
     from rsmm.engine import item_catalog
+    from rsmm.engine import magic_item_cook as cook
 
     # The shipped names: an applied mod's rename is not the base item's.
     names = {i.id: i for i in item_catalog.catalog(pristine=True)}
     out = []
-    for item_id, rarity, _p in _iter_items():
+    for item_id, rarity, path in _iter_items():
         info = names.get(item_id)
+        icon = _icon_stem(info.icon if info else None)
+        if not icon:
+            # The catalog skips items with no text entry (21 of them) and some
+            # carry no icon of their own to it; the item's own bytes name theirs.
+            try:
+                icon = _icon_stem(cook.find_icon(path.read_bytes()))
+            except OSError:
+                icon = None
         out.append({"id": item_id, "rarity": rarity,
                     "name": (info.name if info else None) or item_id,
                     "description": (info.description if info else None) or "",
-                    "icon": _icon_stem(info.icon if info else None)})
+                    "icon": icon})
     out.sort(key=lambda i: (i["rarity"], i["name"].lower()))
     return out
 
