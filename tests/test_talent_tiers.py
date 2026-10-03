@@ -95,6 +95,17 @@ def test_no_talent_controller_is_dropped_unexplained():
         assert all(x["reason"] for x in E.talent_skipped(h)), h
 
 
+def test_a_row_finds_its_card_through_a_string_format_link():
+    """`Ultimate Power 1` is the base ultimate: its name and description sit in
+    linked String Format parts, so no key is written on the row itself."""
+    from rsmm.cli.editor import content as E
+    from rsmm.sdk.kinds import skills as S
+    _aladdin()
+    own = S.controller_key_bases(E._herodefs()["Aladdin"])
+    assert "Skill_Ultimate_1" in own["Ultimate Power 1"]
+    assert "Skill_Ultimate_1_Better_Wish" in own["Ultimate 1 Upgrade 1"]
+
+
 def test_a_hero_is_named_with_or_without_underscores():
     from rsmm.sdk.kinds import skills as S
     _aladdin()

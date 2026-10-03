@@ -302,29 +302,6 @@ def talent_values(hero: str) -> list[dict]:
     return files
 
 
-def _controller_text_keys(main: bytes, folder: str) -> dict[str, list[str]]:
-    """Controller row (``Ultimate 1 Upgrade 1``) -> the card text-key bases its
-    own text fields name (``Skill_Ultimate_1_Better_Wish``)."""
-    import re
-
-    from rsmm.engine import entity_fields as EF
-    from rsmm.engine import entity_graph as EG
-    from rsmm.sdk.kinds import skills as S
-
-    out: dict[str, list[str]] = {}
-    for c in EG.parse(main, folder).components:
-        if not c.name.startswith("Skill Controller "):
-            continue
-        bases = []
-        for f in EF.fields(c):
-            for key in re.findall(r"'(Skill_\w+)'", f.text or ""):
-                for suf in (*S._NAME_SUFFIXES, *S._DESC_SUFFIXES):
-                    if key.endswith(suf):
-                        bases.append(key[:-len(suf)])
-        out[c.name[len("Skill Controller "):].removesuffix(" Skills")] = bases
-    return out
-
-
 @_once
 def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
     """``(cards, skipped)`` for ``hero``.
@@ -354,20 +331,18 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
     formats = _hero_formats(hero)
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out, skipped = [], []
-    own = _controller_text_keys(main, folder)
+    own = S.controller_key_bases(_herodefs()[hero])
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
         held = own.get(source, [])
-        base = next((b for b in held if any(k is not None for k in S.card_keys(b, keys))), None)
-        if base is None:
-            try:
-                base = S._text_key_base(source, keys)
-            except ContentError:
-                skipped.append({"source": source, "reason": (
-                    f"names {held[0]}_Name, which the hero's text bank does not hold"
-                    if held else "has no card text of its own (a helper row, not a card)"),
-                    "problem": bool(held)})
-                continue
+        try:
+            base = S._text_key_base(source, keys, held)
+        except ContentError:
+            skipped.append({"source": source, "reason": (
+                f"names {held[0]}_Name, which the hero's text bank does not hold"
+                if held else "has no card text of its own (a helper row, not a card)"),
+                "problem": bool(held)})
+            continue
         name_key, desc_key = S.card_keys(base, keys)
         file, fmt = formats.get(desc_key, (None, None))
         entries = [] if fmt is None else [

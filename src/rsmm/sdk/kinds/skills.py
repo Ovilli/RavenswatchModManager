@@ -131,14 +131,18 @@ def card_keys(key_base: str, bank_keys) -> tuple[str | None, str | None]:
     return name, desc
 
 
-def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
+def _text_key_base(source: str, bank_keys: list[str] | None = None,
+                   own: list[str] | None = None) -> str:
     """``Attack Dive`` -> ``Skill_Attack_Dive``; ``Primary Bleed`` ->
     ``Skill_Power_Bleed`` when the bank says so.
 
-    With ``bank_keys`` the answer is CHECKED against the hero's actual keys
-    rather than assumed, so a wrong guess fails naming what it looked for.
+    ``own`` is what the controller row itself names (``controller_key_bases``);
+    it wins over any guess from the row's name, which rows spell by slot,
+    ability or with typos. With ``bank_keys`` the answer is CHECKED against the
+    hero's actual keys rather than assumed, so a wrong guess fails naming what
+    it looked for.
     """
-    cands = _key_base_candidates(source)
+    cands = [*(own or ()), *_key_base_candidates(source)]
     if bank_keys is None:
         return cands[0]
     for c in cands:
@@ -148,6 +152,50 @@ def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
         f"skill: no text key for {source!r} — tried "
         + ", ".join(f"{c}_Name" for c in cands)
         + ". Check the controller name against the hero's bank.")
+
+
+def controller_key_bases(hero_token: str) -> dict[str, list[str]]:
+    """Controller row (``Ultimate 1 Upgrade 1``) -> the card text-key bases the
+    row itself names (``Skill_Ultimate_1_Better_Wish``).
+
+    A row holds its card's key in a text field, or links to a ``String Format``
+    part that does (the base ultimates ``Ultimate Power 1/2`` do). Empty for a
+    hero with no entity in the corpus."""
+    import re
+
+    from ...engine import entity_fields as EF
+    from ...engine import entity_graph as EG
+
+    low = hero_token.replace("_", "").lower()
+    for d in corpus.subdirs(_ENTITY_DIR):
+        if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low:
+            raw = corpus.read(f"{_ENTITY_DIR}/{d}/{d}.entity.ot.EntitySettingsResource.gen")
+            break
+    else:
+        return {}
+    if raw is None:
+        return {}
+    comps = EG.parse(raw, d).components
+    by_name: dict[str, list] = {}
+    for c in comps:
+        by_name.setdefault(c.name, []).append(c)
+
+    def bases(c, follow: bool) -> list[str]:
+        out = []
+        for f in EF.fields(c):
+            text = f.text or ""
+            for key in re.findall(r"'(Skill_\w+)'", text):
+                for suf in (*_NAME_SUFFIXES, *_DESC_SUFFIXES):
+                    if key.endswith(suf):
+                        out.append(key[:-len(suf)])
+            if follow:
+                for target in re.findall(r"<- \[String Format\] (.+)$", text):
+                    for t in by_name.get(target.rsplit("\\", 1)[-1], ()):
+                        out += bases(t, False)
+        return out
+
+    return {c.name[len("Skill Controller "):].removesuffix(" Skills"): bases(c, True)
+            for c in comps if c.name.startswith("Skill Controller ")}
 
 
 def _install_bank(hero_token: str):
@@ -212,7 +260,8 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
         return []
     base_gen, decoded_bank = _require_bank(hero_token)
     bank_keys = TP.parse_text_file(base_gen).entries
-    key_base = _text_key_base(source, bank_keys)
+    own = controller_key_bases(hero_token).get(source.strip().removeprefix("Skill Controller "))
+    key_base = _text_key_base(source, bank_keys, own)
     name_key, desc_key = card_keys(key_base, bank_keys)
     overrides: dict[str, str] = {}
     if display_name is not None:
