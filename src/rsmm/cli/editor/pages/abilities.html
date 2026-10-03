@@ -132,7 +132,7 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
   <span id="busy" class="muted tiny"></span>
 </header>
 <nav id="left">
-  <input id="filter" type="search" placeholder="Filter abilities">
+  <input id="filter" type="search" placeholder="Filter abilities or parts">
   <div id="groups"></div>
   <label class="tiny muted" style="display:block;margin:12px 4px"><input type="checkbox" id="showAll"> also show movement, animation and other groups</label>
 </nav>
@@ -306,10 +306,12 @@ function short(name, group) {
 function drawGroups() {
   const f = $("filter").value.toLowerCase(), out = [];
   // A pet, projectile or clone file has no ability groups at all: show its parts.
-  const all = $("showAll").checked || ![...groupsOf().keys()].some(g => kindOfGroup(g) !== "Other");
+  // A filter also matches part names, so "stagger" finds every ability holding one.
+  const hasPart = (g) => f && S.data && S.data.components.some(c => c.group === g && c.name.toLowerCase().includes(f));
+  const all = $("showAll").checked || !!f || ![...groupsOf().keys()].some(g => kindOfGroup(g) !== "Other");
   for (const sect of ["Abilities", "Talents", "Other"]) {
     if (sect === "Other" && !all) continue;
-    const rows = [...groupsOf()].filter(([g]) => kindOfGroup(g) === sect && g.toLowerCase().includes(f));
+    const rows = [...groupsOf()].filter(([g]) => kindOfGroup(g) === sect && (g.toLowerCase().includes(f) || hasPart(g)));
     if (!rows.length) continue;
     out.push(el("h3", { text: sect }));
     for (const [g, n] of rows) out.push(el("div", { class: "grp" + (g === S.group ? " on" : ""), title: `${n} parts`,

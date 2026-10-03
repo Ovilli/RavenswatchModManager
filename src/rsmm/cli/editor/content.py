@@ -302,6 +302,29 @@ def talent_values(hero: str) -> list[dict]:
     return files
 
 
+def _controller_text_keys(main: bytes, folder: str) -> dict[str, list[str]]:
+    """Controller row (``Ultimate 1 Upgrade 1``) -> the card text-key bases its
+    own text fields name (``Skill_Ultimate_1_Better_Wish``)."""
+    import re
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.sdk.kinds import skills as S
+
+    out: dict[str, list[str]] = {}
+    for c in EG.parse(main, folder).components:
+        if not c.name.startswith("Skill Controller "):
+            continue
+        bases = []
+        for f in EF.fields(c):
+            for key in re.findall(r"'(Skill_\w+)'", f.text or ""):
+                for suf in (*S._NAME_SUFFIXES, *S._DESC_SUFFIXES):
+                    if key.endswith(suf):
+                        bases.append(key[:-len(suf)])
+        out[c.name[len("Skill Controller "):].removesuffix(" Skills")] = bases
+    return out
+
+
 @_once
 def talent_cards(hero: str) -> list[dict]:
     """The hero's talent cards with their current English name and text.
@@ -329,12 +352,18 @@ def talent_cards(hero: str) -> list[dict]:
     formats = _hero_formats(hero)
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out = []
+    own = _controller_text_keys(main, folder)
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
         try:
             base = S._text_key_base(source, keys)
         except ContentError:
-            continue
+            # The row names no card by its own name (`Ultimate 1 Upgrade 1` is
+            # the Wondrous Wishes row), but the row itself holds the card's key.
+            base = next((b for b in own.get(source, ())
+                         if any(k is not None for k in S.card_keys(b, keys))), None)
+            if base is None:
+                continue
         name_key, desc_key = S.card_keys(base, keys)
         file, fmt = formats.get(desc_key, (None, None))
         entries = [] if fmt is None else [

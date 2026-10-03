@@ -94,11 +94,24 @@ def _key_base_candidates(source: str) -> list[str]:
         s = s[len("skill controller "):]
     if s.lower().startswith("skill_"):
         return [s]
+    # Row names carry typos and filler the keys do not: `Utimate 1 Immolation`,
+    # `Attack Controller Burst`, `Special Special Missiles`.
+    words = ["Ultimate" if w == "Utimate" else w for w in s.split() if w != "Controller"]
+    if len(words) > 1 and words[0] == words[1]:
+        words = words[1:]
+    s = " ".join(words)
     out = ["Skill_" + s.replace(" ", "_")]
     head, _, tail = s.partition(" ")
     alias = _KEY_PREFIX_ALIASES.get(head)
     if alias and tail:
         out.append("Skill_" + f"{alias} {tail}".replace(" ", "_"))
+    # An ultimate's upgrade card is keyed `Skill_Ultimate_2_Upgrade_Volcanic`
+    # while its row is `Ultimate 2 Volcanic`.
+    if (len(words) > 2 and words[0] == "Ultimate" and words[1] in ("1", "2")
+            and words[2] != "Upgrade"):
+        out.append("Skill_" + " ".join([*words[:2], "Upgrade", *words[2:]]).replace(" ", "_"))
+    # `Defense More Shot` -> `Skill_Defense_More_Shots`.
+    out.append(out[0] + "s")
     return out
 
 
