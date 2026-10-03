@@ -22,10 +22,12 @@ function Label({
 import { AlertTriangle, ImageIcon, Loader2, Package, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
+import { parseModManifest } from '../../lib/manifest-toml';
 import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { readManifestText } from '../../lib/zip-manifest';
 import { MDEditor } from '../components/md-editor';
 
 // react-md-editor pulls in `navigator` at module top-level; load it on
@@ -90,6 +92,38 @@ export default function PublishPage() {
   const [homepageUrl, setHomepageUrl] = useState('');
   const [nsfw, setNsfw] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  // What choosing the archive did to the form: nothing to read, or which fields
+  // it filled (and which it declined because the manifest's value is unusable).
+  const [fromManifest, setFromManifest] = useState<
+    { kind: 'none' } | { kind: 'filled'; filled: string[]; declined: string[] } | null
+  >(null);
+  // The form as it is NOW, for the async prefill below: it must only touch
+  // fields the user has not already filled, judged after the archive is read.
+  const formNow = useRef({
+    slug,
+    version,
+    name,
+    author,
+    summary,
+    description,
+    tags,
+    license,
+    repoUrl,
+    homepageUrl,
+  });
+  formNow.current = {
+    slug,
+    version,
+    name,
+    author,
+    summary,
+    description,
+    tags,
+    license,
+    repoUrl,
+    homepageUrl,
+  };
+  const zipPick = useRef(0);
 
   // Default the author display name to the signed-in user once the
   // session loads, but let the user override if they want a pen name.
@@ -125,6 +159,83 @@ export default function PublishPage() {
         .slice(0, 16),
     [tags],
   );
+
+  /**
+   * Choose the archive, then fill in what its own `manifest.toml` already says
+   * (id, name, version, author, summary, tags, license, links) instead of asking
+   * for it a second time. Only EMPTY fields — or the untouched `0.1.0` default
+   * and the account-name author default — are written, so nothing the user
+   * typed is overwritten. A manifest that is missing or unreadable leaves the
+   * form exactly as it was.
+   */
+  async function chooseZip(file: File | null) {
+    const pick = ++zipPick.current;
+    setZip(file);
+    setFromManifest(null);
+    if (!file) return;
+    const text = await readManifestText(file);
+    if (pick !== zipPick.current) return; // a newer archive was chosen meanwhile
+    const meta = text === null ? null : parseModManifest(text);
+    if (!meta || Object.keys(meta).length === 0) {
+      setFromManifest({ kind: 'none' });
+      return;
+    }
+    const now = formNow.current;
+    const filled: string[] = [];
+    const declined: string[] = [];
+    if (meta.id) {
+      if (SLUG_RE.test(meta.id)) {
+        if (now.slug === '') {
+          setSlug(meta.id);
+          filled.push('id');
+        }
+      } else declined.push('id');
+    }
+    if (meta.name && now.name.trim() === '') {
+      setName(meta.name);
+      filled.push('name');
+    }
+    if (meta.version) {
+      if (SEMVER_RE.test(meta.version)) {
+        if (now.version === '' || now.version === '0.1.0') {
+          setVersion(meta.version);
+          filled.push('version');
+        }
+      } else declined.push('version');
+    }
+    if (meta.author && (now.author.trim() === '' || now.author === session?.user?.name)) {
+      setAuthor(meta.author);
+      filled.push('author');
+    }
+    // The manifest's one-line `description` is this form's Summary; only when it
+    // also has a separate `summary` is it long-form text worth its own field.
+    const shortText = meta.summary ?? meta.description;
+    if (shortText && now.summary.trim() === '') {
+      setSummary(shortText.slice(0, 512));
+      filled.push('summary');
+    }
+    if (meta.summary && meta.description && (now.description ?? '').trim() === '') {
+      setDescription(meta.description);
+      filled.push('description');
+    }
+    if (meta.tags && now.tags.trim() === '') {
+      setTags(meta.tags.slice(0, 16).join(', '));
+      filled.push('tags');
+    }
+    if (meta.license && now.license.trim() === '') {
+      setLicense(meta.license);
+      filled.push('license');
+    }
+    if (meta.repoUrl && now.repoUrl.trim() === '') {
+      setRepoUrl(meta.repoUrl);
+      filled.push('repository');
+    }
+    if (meta.homepageUrl && now.homepageUrl.trim() === '') {
+      setHomepageUrl(meta.homepageUrl);
+      filled.push('homepage');
+    }
+    setFromManifest({ kind: 'filled', filled, declined });
+  }
 
   async function publish() {
     if (!zip) return;
@@ -316,13 +427,28 @@ export default function PublishPage() {
               id="zip"
               type="file"
               accept=".zip,application/zip"
-              onChange={(e) => setZip(e.target.files?.[0] ?? null)}
+              onChange={(e) => void chooseZip(e.target.files?.[0] ?? null)}
               className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
             />
             {zip ? (
               <p className="text-xs text-muted-foreground">
                 {zip.name} — {fmtBytes(zip.size)}
               </p>
+            ) : null}
+            {fromManifest?.kind === 'filled' ? (
+              <output className="block text-xs text-muted-foreground">
+                {fromManifest.filled.length > 0
+                  ? `Filled in from the archive's manifest.toml: ${fromManifest.filled.join(', ')}. Check them before publishing.`
+                  : 'Read the archive’s manifest.toml; every field it covers is already filled in.'}
+                {fromManifest.declined.length > 0
+                  ? ` Not used (not a valid ${fromManifest.declined.join(' / ')}): fix it in the manifest or enter it below.`
+                  : ''}
+              </output>
+            ) : null}
+            {fromManifest?.kind === 'none' ? (
+              <output className="block text-xs text-muted-foreground">
+                No readable manifest.toml in this archive, so fill in the fields below by hand.
+              </output>
             ) : null}
           </div>
           <div className="space-y-2">
