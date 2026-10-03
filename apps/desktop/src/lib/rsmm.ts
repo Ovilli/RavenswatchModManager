@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { useApp } from '../store';
 import { getPlatform, joinPathEntries } from './platform';
+import { noteGameStateChanged } from './session-cache';
 import { isSafeProfileId } from './untrusted-state';
 
 interface ExecResult {
@@ -116,9 +117,42 @@ interface RsmmOptions {
  * (development). Returns parsed JSON output. Throws a typed `RsmmError`
  * subclass on failure.
  */
+/**
+ * Commands that only read. Anything NOT listed is assumed to change the game or
+ * the mods folder, which is the safe default: a command forgotten here costs one
+ * extra re-check, where a wrongly-listed one would let a cached "all good"
+ * outlive an apply or a repair (see `session-cache.ts`).
+ */
+const READ_ONLY_COMMANDS = new Set([
+  'list',
+  'list-profiles',
+  'overlays',
+  'changelog',
+  'loader-runs',
+  'loader-health',
+  'loader-log',
+  'game-status',
+  'conflicts',
+  'active-overrides',
+]);
+
+export function writesGameState(args: string[]): boolean {
+  const [cmd = '', ...rest] = args;
+  if (rest.includes('--check')) return false;
+  if (cmd === 'doctor') return rest.includes('--fix');
+  if (cmd === 'config') return rest[0] !== 'get';
+  return !READ_ONLY_COMMANDS.has(cmd);
+}
+
 async function rsmm<T = unknown>(args: string[], options: RsmmOptions = {}): Promise<T | null> {
   const fullArgs = ['json', ...args];
-  const result = await execute(fullArgs, options);
+  let result: ExecResult;
+  try {
+    result = await execute(fullArgs, options);
+  } finally {
+    // Even a failed apply may have touched files, so invalidate either way.
+    if (writesGameState(args)) noteGameStateChanged();
+  }
   if (result.code !== 0) {
     throw new RsmmExitError(args, result.code, result.stdout, result.stderr);
   }
@@ -674,6 +708,31 @@ export async function uncookInfo(path: string): Promise<CookedInfo> {
 
 export const listLocalModsForProfile = (profileId: string) =>
   rsmm<LocalMod[]>(['list'], { profileId });
+
+/**
+ * The mods of several profiles in one sidecar process.
+ *
+ * `listLocalModsForProfile` once per profile started a cold sidecar each time,
+ * so opening Profiles cost one process per inactive profile. A profile that
+ * could not be read comes back `null`, which means "unknown", not "empty".
+ */
+export async function listLocalModsForProfiles(
+  ids: string[],
+): Promise<Record<string, LocalMod[] | null>> {
+  const safe = ids.filter(isSafeProfileId);
+  const out: Record<string, LocalMod[] | null> = {};
+  for (const id of ids) out[id] = null;
+  if (safe.length === 0) return out;
+  const res = await rsmm<{ profiles: Record<string, { ok: boolean; mods?: LocalMod[] }> }>([
+    'list-profiles',
+    ...safe,
+  ]);
+  for (const id of safe) {
+    const entry = res?.profiles?.[id];
+    out[id] = entry?.ok && Array.isArray(entry.mods) ? entry.mods : null;
+  }
+  return out;
+}
 
 export async function getModConfig(modId: string): Promise<ModConfigResponse> {
   const result = await rsmm<ModConfigResponse>(['config', 'get', modId]);

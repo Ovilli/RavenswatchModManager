@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
 }));
 
 import { useApp } from '../store';
-import { formatBytes, parseProgressLine, rsmmEnv } from './rsmm';
+import { formatBytes, parseProgressLine, rsmmEnv, writesGameState } from './rsmm';
 
 /**
  * `RSMM_MODS_DIR` is the directory the CLI creates, overwrites and DELETES in.
@@ -100,6 +100,40 @@ describe('formatBytes', () => {
   it('reads a missing or nonsensical size as zero', () => {
     for (const n of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(formatBytes(n)).toBe('0 B');
+    }
+  });
+});
+
+describe('writesGameState', () => {
+  // The session cache trusts this: a command wrongly called a read would let a
+  // cached "all good" survive an apply or a repair.
+  it('treats reads, and --check probes, as reads', () => {
+    for (const args of [
+      ['list'],
+      ['list-profiles', 'coop', 'solo'],
+      ['overlays'],
+      ['loader-health'],
+      ['update-loader', '--check'],
+      ['update-data', '--check'],
+      ['doctor'],
+      ['config', 'get', 'some-mod'],
+    ]) {
+      expect(writesGameState(args), args.join(' ')).toBe(false);
+    }
+  });
+
+  it('treats everything else, including a command it has never heard of, as a write', () => {
+    for (const args of [
+      ['apply'],
+      ['restore-all'],
+      ['install-mod', 'x'],
+      ['update-loader'],
+      ['update-data'],
+      ['doctor', '--fix'],
+      ['config', 'set', 'some-mod'],
+      ['a-command-added-next-year'],
+    ]) {
+      expect(writesGameState(args), args.join(' ')).toBe(true);
     }
   });
 });

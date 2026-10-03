@@ -6,6 +6,7 @@ import pkg from '../../package.json';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
+import { loaderStatus, noteLoaderResult } from '../lib/loader-status';
 import { quitApp } from '../lib/quit';
 import {
   type LoaderDownloadProgress,
@@ -653,7 +654,7 @@ export function VersionFooter() {
     void getAppVersion().then((v) => {
       if (alive && v) setAppVersion(v);
     });
-    void updateLoader({ checkOnly: true })
+    void loaderStatus()
       .then((r) => {
         if (alive && r?.installedVersion != null) setLoaderVersion(r.installedVersion);
       })
@@ -766,7 +767,7 @@ export function UpdaterSettings() {
     // Read-only probe: reports the planted loader version without writing
     // anything into the game directory. Offline just leaves it unknown —
     // the button below still works once there is a connection.
-    void updateLoader({ checkOnly: true })
+    void loaderStatus()
       .then((r) => {
         if (alive) setLoader(r);
       })
@@ -785,6 +786,7 @@ export function UpdaterSettings() {
     setLoaderProgress(null);
     try {
       const r = await updateLoader({ onProgress: setLoaderProgress });
+      noteLoaderResult(r);
       setLoader(r);
       void appendLauncherLog('info', '[Updater] loader channel check', {
         status: r?.status ?? 'null',

@@ -261,3 +261,39 @@ def test_loader_log_without_session_banners_returns_everything(tmp_path, monkeyp
     monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
     assert json_bridge.cmd_loader_log() == 0
     assert _emit_json(capsys)["lines"] == ["just a line", "and another"]
+
+
+def test_list_profiles_reads_sibling_profiles_in_one_call(tmp_path, monkeypatch, capsys):
+    """The Profiles screen needs every profile's mods; one process, not one each."""
+    root = tmp_path / "profiles"
+    _write_mod(root / "solo", "alpha", '[mod]\nname = "Alpha"\n')
+    _write_mod(root / "coop", "beta", '[mod]\nname = "Beta"\n')
+    _write_mod(root / "coop", "gamma", '[mod]\nname = "Gamma"\n')
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")  # the active profile
+
+    assert json_bridge.cmd_list_profiles(["coop", "solo"]) == 0
+    got = _emit_json(capsys)["profiles"]
+    assert [m["id"] for m in got["coop"]["mods"]] == ["beta", "gamma"]
+    assert [m["id"] for m in got["solo"]["mods"]] == ["alpha"]
+    assert got["coop"]["ok"] and got["solo"]["ok"]
+
+
+def test_list_profiles_a_missing_folder_is_empty_not_an_error(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "profiles"
+    (root / "solo").mkdir(parents=True)
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")
+    assert json_bridge.cmd_list_profiles(["never-made"]) == 0
+    assert _emit_json(capsys)["profiles"]["never-made"] == {"ok": True, "mods": []}
+
+
+def test_list_profiles_refuses_an_id_that_is_not_a_plain_name(tmp_path, monkeypatch, capsys):
+    """An id becomes a folder name; nothing with a separator or a dot may reach a path."""
+    root = tmp_path / "profiles"
+    _write_mod(tmp_path, "outside", '[mod]\nname = "Not a profile mod"\n')
+    (root / "solo").mkdir(parents=True)
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")
+    bad = ["..", "../outside", "a/b", ".hidden", "", "x" * 65]
+    assert json_bridge.cmd_list_profiles(bad) == 0
+    got = _emit_json(capsys)["profiles"]
+    assert all(v["ok"] is False for v in got.values())
+    assert len(got) == len(set(bad))

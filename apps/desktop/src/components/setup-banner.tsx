@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TParts, useT } from '../lib/i18n-react';
+import { noteLoaderResult } from '../lib/loader-status';
 import { inTauri } from '../lib/platform';
 import {
   type DoctorCheck,
@@ -12,6 +13,8 @@ import {
   updateLoader,
   updatePatternDb,
 } from '../lib/rsmm';
+import { cachedFor, oncePerLaunch } from '../lib/session-cache';
+import { useApp } from '../store';
 import { Button, CopyButton } from './chrome';
 
 const DISMISS_KEY = 'rsmm:setup-banner-dismissed';
@@ -81,7 +84,13 @@ export function SetupBanner() {
   // fixes a path in Settings, without restarting the app. When the user
   // re-checks, clear the persisted dismissal so a now-different (or now-
   // empty) failure set surfaces honestly.
-  const runChecks = useCallback(async (clearDismissal = false) => {
+  //
+  // `force` is what an explicit "Re-check" means: ignore what this launch has
+  // already learned. A plain mount (opening the Library again) does not — the
+  // updates are once-per-launch work and `doctor` is remembered for a minute
+  // unless something has written to the game since, so coming back to this screen
+  // no longer starts three sidecar processes one after another.
+  const runChecks = useCallback(async (clearDismissal = false, force = clearDismissal) => {
     if (!inTauri()) {
       setRunning(false);
       return;
@@ -97,7 +106,16 @@ export function SetupBanner() {
       // Refresh the loader's function-pattern DB first (rolling pattern-db
       // release) so doctor grades the freshly-planted copy, not a stale one.
       // Offline / fetch failures are non-fatal — doctor still runs.
-      await updatePatternDb().catch(() => null);
+      const updates = await oncePerLaunch(
+        'setup-updates',
+        async () => {
+          await updatePatternDb().catch(() => null);
+          const planted = await updateLoader().catch(() => null);
+          noteLoaderResult(planted);
+          return planted;
+        },
+        force,
+      );
       // Then the loader DLL + Lua SDK (rolling `loader` release). Both are
       // plain files in the game directory, so a loader or SDK fix reaches
       // users here rather than through a desktop release + reinstall. The
@@ -107,8 +125,15 @@ export function SetupBanner() {
       // Keep the result: a landed update needs a game restart to take
       // effect, and a blocked one needs the game closed. Still non-fatal —
       // a transport failure must not stop doctor from running.
-      setLoaderUpdate(await updateLoader().catch(() => null));
-      const r = await doctor();
+      setLoaderUpdate(updates);
+      const { gameDir, modsDir } = useApp.getState().settings;
+      const { activeProfileId } = useApp.getState();
+      const r = await cachedFor(
+        `doctor|${gameDir ?? ''}|${modsDir ?? ''}|${activeProfileId}`,
+        60_000,
+        () => doctor(),
+        force,
+      );
       setResult(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -249,7 +274,12 @@ export function SetupBanner() {
           ) : null}
         </div>
         {blocked ? (
-          <Button type="button" size="sm" onClick={() => void runChecks()} disabled={running}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void runChecks(false, true)}
+            disabled={running}
+          >
             {running ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (

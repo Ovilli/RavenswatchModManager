@@ -145,11 +145,13 @@ function LogPage() {
 
   // Re-read when the game stops: that is exactly when a canary opened by a
   // crashy boot becomes visible.
+  // Read on mount, and again each time the game stops. This was two effects
+  // that both fired on mount, so opening the Log screen read the health file twice.
+  const healthRead = useRef(false);
   useEffect(() => {
-    void refreshHealth();
-  }, [refreshHealth]);
-  useEffect(() => {
-    if (!running) void refreshHealth();
+    const first = !healthRead.current;
+    healthRead.current = true;
+    if (first || !running) void refreshHealth();
   }, [running, refreshHealth]);
 
   useEffect(() => {

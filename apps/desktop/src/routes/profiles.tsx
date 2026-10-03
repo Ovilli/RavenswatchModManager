@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
@@ -8,7 +8,7 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
-import { listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
+import { listLocalMods, listLocalModsForProfiles } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
 import { getMod, isEnabledIn, splitProfileMods, splitProfileModsAgainst, useApp } from '../store';
 
@@ -66,16 +66,18 @@ function ProfilesPage() {
    * "not on disk". Each is asked for its own directory instead.
    */
   const otherProfiles = profiles.filter((p) => p.id !== activeId && p.id !== 'default');
-  const otherLists = useQueries({
-    queries: otherProfiles.map((p) => ({
-      queryKey: ['rsmm', 'list', p.id],
-      queryFn: () => listLocalModsForProfile(p.id),
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    })),
+  const otherIds = otherProfiles.map((p) => p.id);
+  // ONE sidecar process for all of them. This used to be a query per profile, so
+  // opening this screen started one cold sidecar for each inactive profile.
+  const otherLists = useQuery({
+    queryKey: ['rsmm', 'list', 'profiles', activeId, otherIds.join(',')],
+    queryFn: () => listLocalModsForProfiles(otherIds),
+    enabled: otherIds.length > 0,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
   const listedByProfile = new Map(
-    otherProfiles.map((p, i) => [p.id, otherLists[i]?.data ?? undefined] as const),
+    otherProfiles.map((p) => [p.id, otherLists.data?.[p.id] ?? undefined] as const),
   );
 
   const t = useT();

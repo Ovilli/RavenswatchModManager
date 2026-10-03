@@ -129,7 +129,6 @@ def cmd_list() -> int:
     permission error and disabled install buttons for mods that were on disk
     all along. A failure now exits non-zero so the caller can tell them apart.
     """
-    items: list[dict[str, Any]] = []
     try:
         if not MODS_DIR.is_dir():
             # Not an error: no mods folder yet is a legitimate empty state.
@@ -138,10 +137,18 @@ def cmd_list() -> int:
         print(f"error: could not access mods directory {MODS_DIR}: {e}", file=sys.stderr)
         return 1
     try:
-        entries = sorted(MODS_DIR.iterdir())
+        items = _scan_mods(MODS_DIR)
     except (OSError, PermissionError) as e:
         print(f"error: could not read mods directory {MODS_DIR}: {e}", file=sys.stderr)
         return 1
+    return _emit(items)
+
+
+def _scan_mods(mods_dir: Path) -> list[dict[str, Any]]:
+    """The mods in one folder, in the shape ``list`` reports. Raises ``OSError``
+    when the folder cannot be read, which is NOT the same as it being empty."""
+    items: list[dict[str, Any]] = []
+    entries = sorted(mods_dir.iterdir())
     for entry in entries:
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
@@ -186,7 +193,38 @@ def cmd_list() -> int:
             "writes": writes,
             "hasConfig": has_config,
         })
-    return _emit(items)
+    return items
+
+
+#: Same rule the desktop applies before it lets a profile id near a path
+#: (`PROFILE_ID_RE` in untrusted-state.ts). Re-checked here because the ids
+#: arrive as arguments and a folder name is built from each one.
+_PROFILE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+
+
+def cmd_list_profiles(ids: list[str]) -> int:
+    """The mods of several profiles in ONE process.
+
+    Every profile's mods live in ``<root>/profiles/<id>``, and a call is run with
+    ``RSMM_MODS_DIR`` at the ACTIVE profile's folder, so its siblings are the
+    other profiles. Asking for them one ``list`` at a time started a fresh
+    sidecar per profile (each a cold start, more with antivirus on Windows); this
+    reads them all in one. A profile whose folder is missing has no mods, which is
+    a result, but one that cannot be read, or whose id is not a plain name, is
+    reported as failed so the caller does not take "nothing" to mean "empty".
+    """
+    root = MODS_DIR.parent
+    out: dict[str, dict[str, Any]] = {}
+    for pid in ids:
+        if not _PROFILE_ID_RE.match(pid):
+            out[pid] = {"ok": False, "error": "not a valid profile id"}
+            continue
+        folder = root / pid
+        try:
+            out[pid] = {"ok": True, "mods": _scan_mods(folder) if folder.is_dir() else []}
+        except OSError as e:
+            out[pid] = {"ok": False, "error": str(e)}
+    return _emit({"profiles": out})
 
 
 def _config_for_mod(mod_id: str) -> ConfigStore | None:
@@ -1766,6 +1804,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list installed mods")
+    p_list_profiles = sub.add_parser(
+        "list-profiles", help="list the mods of several profiles in one call")
+    p_list_profiles.add_argument("ids", nargs="*", help="profile ids (sibling folders)")
     p_apply = sub.add_parser("apply", help="run apply")
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
@@ -1853,6 +1894,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "list":
         return cmd_list()
+    if args.cmd == "list-profiles":
+        return cmd_list_profiles(list(args.ids))
     if args.cmd == "apply":
         rest = []
         if args.dry_run:
