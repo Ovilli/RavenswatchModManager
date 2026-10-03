@@ -1166,16 +1166,42 @@ def _program(req: Request) -> dict | None:
     return state
 
 
+def _abilities(req: Request) -> tuple[str, list, str] | None:
+    """The Abilities tab's unsaved changes, checked: ``(hero, steps, mode)``."""
+    from . import abilities
+    raw = req.body.get("abilities")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise EditorError("'abilities' must be an object")
+    hero, mode = str(raw.get("hero") or ""), str(raw.get("mode") or "inplace")
+    try:
+        return hero, abilities.check_steps(hero, raw.get("steps") or [], mode), mode
+    except ValueError as e:
+        raise EditorError(f"ability changes: {e}") from e
+
+
 def _save(req: Request) -> dict:
-    script, program = _script(req), _program(req)
-    # Only the Scripts tab changed: no blocks to write.
-    only_script = (script is not None or program is not None) and req.body.get("edits") == []
-    defs = [] if only_script else _defs(req)
+    script, program, abil = _script(req), _program(req), _abilities(req)
+    # Only the Scripts or Abilities tab changed: no blocks to write.
+    only_other = ((script is not None or program is not None or abil is not None)
+                  and req.body.get("edits") == [])
+    defs = [] if only_other else _defs(req)
     meta = req.body.get("meta")
-    where = save(defs, str(req.body.get("mod") or ""), req.ctx.mods_dir,
+    mod_id = str(req.body.get("mod") or "")
+    where = save(defs, mod_id, req.ctx.mods_dir,
                  create=bool(req.body.get("create")), name=str(req.body.get("name") or ""),
                  meta=meta if isinstance(meta, dict) else None,
                  replace=_replace(req), script=script, program=program)
+    if abil is not None and abil[1]:
+        from . import abilities
+        try:
+            abilities.add_steps(req.ctx.mods_dir, mod_id, *abil)
+        except (ValueError, EditorError):
+            if req.body.get("create"):
+                import shutil
+                shutil.rmtree(req.ctx.mods_dir / mod_id, ignore_errors=True)  # no half-made mod
+            raise
     return {"saved": str(where), "blocks": len(defs)}
 
 

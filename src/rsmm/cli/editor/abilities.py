@@ -263,8 +263,14 @@ def _bases(hero: str) -> set[str]:
 
 
 def _mods(req: Request) -> dict:
-    from rsmm.cli.editor.content import list_mods
-    return {"mods": list_mods(req.ctx.mods_dir)}
+    from rsmm.cli.editor.content import STORE_TAGS, list_mods
+    return {"mods": list_mods(req.ctx.mods_dir), "tags": list(STORE_TAGS)}
+
+
+def _import(req: Request) -> dict:
+    """Bring a mod folder saved earlier back (the web editor keeps mods in the page)."""
+    from rsmm.cli.editor import content as C
+    return C._import_mod(req)
 
 
 def _hero_blocks(req: Request) -> dict:
@@ -324,31 +330,60 @@ def _new_hero(req: Request) -> dict:
                                str(req.body.get("mode") or "inplace"))}
 
 
-def _new_mod(req: Request) -> dict:
-    """Create a mod (and a custom hero built on ``hero`` in it) to save into."""
-    import re
-
-    from rsmm.cli.editor import content as C
-    name = str(req.body.get("name") or "").strip()
-    hero = str(req.body.get("hero") or "")
-    if not name:
-        raise ValueError("give the mod a name")
-    if hero not in _heroes():
-        raise ValueError(f"no shipped hero {hero!r}")
-    root = req.ctx.mods_dir
-    stem = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "my-mod"
-    mod_id, n = stem, 2
-    while (root / mod_id).exists():
-        mod_id, n = f"{stem}-{n}", n + 1
-    C.save([], mod_id, root, create=True, name=name)
-    block = _add_hero(root / mod_id / "manifest.toml", hero,
-                      str(req.body.get("mode") or "inplace"))
-    return {"mod": mod_id, "block": block}
-
-
 def _dlc() -> frozenset:
     from rsmm.sdk.kinds.heros import DLC_HEROES
     return DLC_HEROES
+
+
+def _create_mod(req: Request, hero: str) -> tuple[str, str]:
+    """Make the mod the Save is going into, exactly as the other tabs do (the same
+    ``[mod]`` details, checked by the same rules), with a block for ``hero``'s steps.
+    Returns ``(mod id, block id)``."""
+    import shutil
+
+    from rsmm.cli.editor import content as C
+    mod_id = str(req.body.get("mod") or "")
+    meta = req.body.get("meta")
+    root = req.ctx.mods_dir
+    where = C.save([], mod_id, root, create=True, name=str(req.body.get("name") or ""),
+                   meta=meta if isinstance(meta, dict) else None)
+    try:
+        return mod_id, _add_hero(where, hero, str(req.body.get("mode") or "inplace"))
+    except Exception:
+        shutil.rmtree(root / mod_id, ignore_errors=True)      # no half-made mod
+        raise
+
+
+def check_steps(hero: str, steps, mode: str = "inplace") -> list[dict]:
+    """The Abilities tab's ``steps`` for ``hero``, refused unless they would build."""
+    if not isinstance(steps, list) or not all(isinstance(x, dict) for x in steps):
+        raise ValueError("steps is a list of tables")
+    if mode not in ("inplace", "custom"):
+        raise ValueError(f"unknown mode {mode!r}")
+    if hero not in _heroes():
+        raise ValueError(f"no shipped hero {hero!r}")
+    if mode == "inplace" and any("clone" in x for x in steps):
+        raise ValueError("copying an ability needs a custom hero: an in-place edit changes "
+                         "numbers and links only")
+    if steps and graph_payload(hero, steps)["error"]:
+        raise ValueError("the changes do not build yet; fix the step marked in red first")
+    return steps
+
+
+def add_steps(mods_dir, mod_id: str, hero: str, steps: list[dict],
+              mode: str = "inplace") -> str:
+    """Write ``steps`` into mod ``mod_id`` for ``hero``: into the block it already has
+    for that hero, else into a new one. This is how another tab's Save carries
+    unsaved ability changes along. Returns the block id."""
+    from rsmm.cli.editor import modio
+    path = mods_dir / mod_id / "manifest.toml"
+    kind = "ability" if mode == "inplace" else "hero"
+    text = path.read_text(encoding="utf-8")
+    have = [b for b in modio.hero_blocks(text, kind) if b["base"] in _bases(hero)]
+    block = have[0]["id"] if have else _add_hero(path, hero, mode)
+    path.write_text(modio.set_hero_abilities(path.read_text(encoding="utf-8"), block, steps,
+                                             kind), encoding="utf-8")
+    return block
 
 
 def _save(req: Request) -> dict:
@@ -356,23 +391,34 @@ def _save(req: Request) -> dict:
     steps = req.body.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(x, dict) for x in steps):
         raise ValueError("steps is a list of tables")
-    hero, block = str(req.body.get("hero") or ""), str(req.body.get("block") or "")
-    path = _manifest(req, str(req.body.get("mod") or ""))
-    text = path.read_text(encoding="utf-8")
+    hero = str(req.body.get("hero") or "")
     kind = str(req.body.get("kind") or "hero")
     if kind not in modio.ABILITY_KINDS:
         raise ValueError(f"unknown block kind {kind!r}")
-    match = [b for b in modio.hero_blocks(text, kind) if b["id"] == block]
-    if not match or match[0]["base"] not in _bases(hero):
-        raise ValueError(f"{block!r} is not a {kind} block for {hero}")
     if kind == "ability" and any("clone" in x for x in steps):
         raise ValueError("copying an ability needs a custom hero: an in-place edit changes "
                          "numbers and links only")
-    # The steps must still build on this hero before they are written.
+    # The steps must still build on this hero before anything is written or created.
     if steps and graph_payload(hero, steps)["error"]:
         raise ValueError("the changes do not build yet; fix the step marked in red first")
-    path.write_text(modio.set_hero_abilities(text, block, steps, kind), encoding="utf-8")
-    return {"saved": str(path), "steps": len(steps)}
+    block = str(req.body.get("block") or "")
+    created = bool(req.body.get("create"))
+    if created:
+        mod_id, block = _create_mod(req, hero)
+        req.body["mod"] = mod_id
+    path = _manifest(req, str(req.body.get("mod") or ""))
+    try:
+        text = path.read_text(encoding="utf-8")
+        match = [b for b in modio.hero_blocks(text, kind) if b["id"] == block]
+        if not match or match[0]["base"] not in _bases(hero):
+            raise ValueError(f"{block!r} is not a {kind} block for {hero}")
+        path.write_text(modio.set_hero_abilities(text, block, steps, kind), encoding="utf-8")
+    except Exception:
+        if created:
+            import shutil
+            shutil.rmtree(path.parent, ignore_errors=True)    # no half-made mod
+        raise
+    return {"saved": str(path), "steps": len(steps), "mod": path.parent.name, "block": block}
 
 
 ROUTES = {
@@ -383,5 +429,5 @@ ROUTES = {
     ("GET", "/api/heroblocks"): _hero_blocks,
     ("POST", "/api/save"): _save,
     ("POST", "/api/newhero"): _new_hero,
-    ("POST", "/api/newmod"): _new_mod,
+    ("POST", "/api/import"): _import,
 }

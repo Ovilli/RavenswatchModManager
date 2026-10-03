@@ -20,3 +20,40 @@ async function api(path, body) {
   if (!r.ok || data.error) throw new Error(data.error || ("HTTP " + r.status));
   return data;
 }
+
+// ---- the "New mod" form, shared by every editor that creates a mod ------------------
+// The same questions wherever a mod is made, so a mod looks the same whichever tab
+// started it. Resolves to `{id, meta}`, or null when cancelled; `error` reopens the
+// form with the reason a first try was refused. The author is kept for next time
+// (a per-viewer convenience: the page works the same without storage).
+const AUTHOR_KEY = "rsmm.editor.author";
+function askNewModDialog(modTags, error) {
+  const g = (id) => document.getElementById(id);
+  const dlg = g("newmoddlg"), tags = g("nm-tags");
+  if (!tags.childElementCount) {
+    for (const t of modTags || []) {
+      const box = document.createElement("input"); box.type = "checkbox"; box.value = t;
+      const label = document.createElement("label"); label.append(box, t); tags.append(label);
+    }
+  }
+  if (!g("nm-author").value) {
+    try { g("nm-author").value = JSON.parse(localStorage.getItem(AUTHOR_KEY) || '""') || ""; } catch { /* no storage */ }
+  }
+  g("nm-error").textContent = error || "";
+  return new Promise(resolve => {
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "ok") { resolve(null); return; }
+      const picked = [...tags.querySelectorAll("input:checked")].map(i => i.value);
+      const more = g("nm-moretags").value.split(",").map(t => t.trim()).filter(Boolean);
+      const meta = {
+        name: g("nm-name").value, author: g("nm-author").value, version: g("nm-version").value,
+        summary: g("nm-summary").value, description: g("nm-desc").value, tags: [...picked, ...more],
+        license: g("nm-license").value, homepage_url: g("nm-home").value, repo_url: g("nm-repo").value };
+      if (meta.author.trim()) { try { localStorage.setItem(AUTHOR_KEY, JSON.stringify(meta.author.trim())); } catch { /* no storage */ } }
+      resolve({ id: g("nm-id").value.trim(), meta });
+    };
+    dlg.returnValue = "";
+    dlg.showModal();
+    g("nm-id").focus();
+  });
+}

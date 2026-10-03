@@ -176,21 +176,6 @@ details.file .rows { padding: 0 6px 8px; }
 .cardbox.changed { border-color: var(--accentline); }
 .cardbox .src { font-size: 12px; color: var(--muted); }
 .cardbox input { width: 100%; margin: 6px 0; font-weight: 600; }
-dialog#newmoddlg { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px 20px; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
-dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
-#newmoddlg h3 { margin: 0 0 4px; }
-.nmgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 12px 0; }
-.nmgrid label, .nmgrid > div { display: flex; flex-direction: column; gap: 3px; font-weight: 600; font-size: 13px; }
-.nmgrid .wide { grid-column: 1 / -1; }
-.nmgrid input, .nmgrid select, .nmgrid textarea { font-weight: 400; width: 100%; }
-.nmgrid .hint { font-weight: 400; }
-.nmlabel { font-weight: 600; }
-.nmtags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-weight: 400; }
-.nmtags label { flex-direction: row; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-weight: 400; cursor: pointer; }
-.nmtags label:has(input:checked) { border-color: var(--accentline); background: var(--accentbg); }
-.nmtags input { width: auto; margin: 0; }
-.nmacts { display: flex; justify-content: flex-end; gap: 8px; }
-@media (max-width: 560px) { .nmgrid { grid-template-columns: 1fr; } }
 .loading { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 40px 20px; color: var(--muted); }
 .loading.small { padding: 20px; justify-content: flex-start; }
 .spin { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
@@ -270,31 +255,7 @@ body.wide #bar { max-height: none; }
   <div id="status" class="muted"></div>
 </section>
 
-<dialog id="newmoddlg" aria-labelledby="nm-title">
-  <form method="dialog" id="nmform">
-    <h3 id="nm-title">New mod</h3>
-    <p class="muted tiny">What people see about your mod in the desktop app and on the store. You can change all of it later in <code>manifest.toml</code>.</p>
-    <div class="nmgrid">
-      <label>Mod id<input id="nm-id" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]*" placeholder="stronger-items" spellcheck="false"><span class="hint">The folder name. Letters, digits, - and _.</span></label>
-      <label>Name<input id="nm-name" placeholder="Stronger Items"></label>
-      <label>Author<input id="nm-author" placeholder="Your name or handle"></label>
-      <label>Version<input id="nm-version" value="0.1.0" pattern="\d+\.\d+\.\d+.*"></label>
-      <label class="wide">Summary<input id="nm-summary" maxlength="512" placeholder="One line: what the mod does"></label>
-      <label class="wide">Description<textarea id="nm-desc" rows="4" maxlength="8192" placeholder="What changes, how to use it, anything players should know"></textarea></label>
-      <div class="wide"><span class="nmlabel">Tags</span><div id="nm-tags" class="nmtags"></div>
-        <input id="nm-moretags" placeholder="Other tags, separated by commas"></div>
-      <label>Licence<select id="nm-license">
-        <option value="">Choose…</option>
-        <option>MIT</option><option>CC-BY-4.0</option><option>CC-BY-NC-4.0</option><option>CC0-1.0</option>
-        <option>GPL-3.0-or-later</option><option value="All rights reserved">All rights reserved</option>
-      </select><span class="hint">Whether others may share or change your mod.</span></label>
-      <label>Homepage<input id="nm-home" type="url" placeholder="https://…"></label>
-      <label class="wide">Source code<input id="nm-repo" type="url" placeholder="https://github.com/…"></label>
-    </div>
-    <div id="nm-error" class="st-bad tiny"></div>
-    <div class="nmacts"><button value="cancel" formnovalidate>Cancel</button><button id="nm-ok" class="primary" value="ok">Create mod and add</button></div>
-  </form>
-</dialog>
+{{newmod.html}}
 
 <script>{{common.js}}</script>
 <script>
@@ -590,8 +551,8 @@ async function openPending(tab, id) {
 function renderPending(edits, errors) {
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
-  const grants = scriptChanged(), prog = programChanged();
-  const total = edits.length + (grants ? 1 : 0) + (prog ? 1 : 0);
+  const grants = scriptChanged(), prog = programChanged(), abil = abilityPending();
+  const total = edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) + (abil ? 1 : 0);
   if (!total) return;
   // One button for all of it: every item, hero, test grant and block change at once.
   const everything = el("button", { type: "button", class: "resetall", title: "Drop every change in every tab, back to what the game ships",
@@ -604,6 +565,11 @@ function renderPending(edits, errors) {
       chip.append(el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop " + e.name, onclick: () => dropPending(e.tab, e.id) }, "×"));
     }
     box.append(chip);
+  }
+  if (abil) {
+    box.append(el("span", { class: "pchip" },
+      el("button", { type: "button", title: "Open it", onclick: () => { try { window.top.location.hash = "#abilities"; } catch {} } },
+        `${abil.hero.replace(/_/g, " ")} abilities (${abil.steps.length})`)));
   }
   if (grants) {
     box.append(el("span", { class: "pchip" + (S.tab === "scripts" ? " open" : "") },
@@ -2104,6 +2070,11 @@ function editPayload() {
 }
 
 let lastToml = "", lastEdits = [], tick = 0;
+// The Abilities tab's unsaved steps, when this page sits in the editor's shell with it.
+function abilityPending() {
+  try { return window.top.rsmmPending ? window.top.rsmmPending("abilities") : null; } catch { return null; }
+}
+window.rsmmShown = () => refresh();     // the shell shows this tab: ability changes may be new
 function editsBody(edits) { return { edits: edits.map(e => ({ tab: e.tab, edit: e.edit, name: e.name })) }; }
 async function refresh() {
   renderPreview();
@@ -2117,7 +2088,8 @@ async function refresh() {
   lastEdits = edits;
   renderPending(edits, []);
   const grants = scriptNorm(S.script) !== NO_GRANTS, prog = programUsed();
-  if (!edits.length && !grants && !scriptChanged() && !prog && !programChanged()) {
+  const abil = abilityPending();
+  if (!edits.length && !grants && !scriptChanged() && !prog && !programChanged() && !abil) {
     $("#toml").textContent = "Nothing changed yet. Pick an item or a hero on the left.";
     $("#toml").className = "muted"; lastToml = ""; return;
   }
@@ -2137,7 +2109,8 @@ async function refresh() {
     else if (scriptChanged() || programChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the editor's section is taken out\n");
     $("#copy").disabled = !j.toml;
     $("#check").disabled = !j.blocks || j.errors.length > 0;
-    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged() || programChanged());
+    if (abil) pre.append((j.toml || j.lua ? "\n" : "") + `# ${abil.hero.replace(/_/g, " ")} ability changes (${abil.steps.length}) go into the mod's ${abil.mode === "custom" ? "custom hero" : "ability"} block\n`);
+    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged() || programChanged() || abil);
   } catch (e) {
     if (me !== tick) return;
     lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
@@ -2181,32 +2154,9 @@ function renderMods() {
   sel.onchange();
 }
 
-// The details of a new mod, asked when it is created. The author is kept for
-// next time (a per-viewer convenience; the page works the same without it).
-const AUTHOR_KEY = "rsmm.editor.author";
-// `error` reopens the form after a refusal, answers kept, with the reason.
-function askNewMod(error) {
-  const dlg = $("#newmoddlg"), tags = $("#nm-tags");
-  if (!tags.childElementCount) {
-    for (const t of S.modTags) tags.append(el("label", {}, el("input", { type: "checkbox", value: t }), t));
-  }
-  if (!$("#nm-author").value) $("#nm-author").value = store.get(AUTHOR_KEY) || "";
-  $("#nm-error").textContent = error || "";
-  return new Promise(resolve => {
-    dlg.onclose = () => {
-      if (dlg.returnValue !== "ok") { resolve(null); return; }
-      const picked = [...tags.querySelectorAll("input:checked")].map(i => i.value);
-      const more = $("#nm-moretags").value.split(",").map(t => t.trim()).filter(Boolean);
-      resolve({ id: $("#nm-id").value.trim(), meta: {
-        name: $("#nm-name").value, author: $("#nm-author").value, version: $("#nm-version").value,
-        summary: $("#nm-summary").value, description: $("#nm-desc").value, tags: [...picked, ...more],
-        license: $("#nm-license").value, homepage_url: $("#nm-home").value, repo_url: $("#nm-repo").value } });
-    };
-    dlg.returnValue = "";
-    dlg.showModal();
-    $("#nm-id").focus();
-  });
-}
+// The details of a new mod are asked by the shared dialog (common.js), which keeps the
+// author for next time. `error` reopens the form after a refusal, with the reason.
+function askNewMod(error) { return askNewModDialog(S.modTags, error); }
 $("#save").onclick = () => saveAll();
 async function saveAll(error) {
   const create = $("#mod").value === "__new__";
@@ -2215,8 +2165,7 @@ async function saveAll(error) {
     const got = await askNewMod(error);
     if (!got) return;
     ({ id: mod, meta } = got);
-    if (meta.author.trim()) store.set(AUTHOR_KEY, meta.author.trim());
-  }
+      }
   // Saving to the opened mod sends only what changed since it was opened, in
   // place of the blocks it came from; any other mod gets everything.
   const intoOpened = !create && S.loaded && mod === S.loaded.id;
@@ -2226,15 +2175,18 @@ async function saveAll(error) {
   const script = wantScript ? JSON.parse(scriptNorm(S.script)) : null;
   const wantProgram = intoOpened ? programChanged() : programUsed();
   const program = wantProgram ? JSON.parse(programNorm(S.program)) : null;
-  if (!edits.length && !script && !program) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
+  const abil = abilityPending();
+  if (!edits.length && !script && !program && !abil) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
   try {
     const j = await post("api/save", Object.assign(editsBody(edits), { mod, create, replace },
-      meta ? { meta } : {}, script ? { script } : {}, program ? { program } : {}));
+      meta ? { meta } : {}, script ? { script } : {}, program ? { program } : {},
+      abil ? { abilities: abil } : {}));
+    if (abil) { try { window.top.rsmmAfterSave("abilities", mod); } catch {} }
     if (create) { S.mods = (await get("api/mods")).mods; renderMods(); }
     // Keep working: the mod as saved opens back in, so the next change and save
     // go to the same blocks.
     await openMod(mod, { ask: false, quiet: true });
-    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : "", program ? "the blocks" : ""].filter(Boolean).join(" and ");
+    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : "", program ? "the blocks" : "", abil ? "the ability changes" : ""].filter(Boolean).join(" and ");
     flash(window.RSMM_HOSTED
       ? `Saved ${what} to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
       : `Saved ${what} to ${j.saved}. Keep editing, or run: rsmm apply`, "st-ok", 9000);

@@ -102,56 +102,112 @@ def test_search_finds_a_hit_value_in_the_heros_other_files():
                and r["part"] == "Stagger Power Selector" and r["value"] == "50" for r in rows)
 
 
-@needs
-def test_a_new_mod_comes_with_a_block_to_save_into(tmp_path):
-    """Saving ability changes needs a block: by default an in-place edit of the
-    shipped hero; or, as "custom", a separate hero built on it (a paid hero's copy
-    is marked `dlc_owner`)."""
+def _req(tmp_path, **body):
     from types import SimpleNamespace
+    return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
+
+
+_STEP = {"set": "Primary Ability Shots Delay.value", "value": 0.5}
+
+
+@needs
+def test_saving_into_a_new_mod_makes_it_like_the_other_tabs_do(tmp_path):
+    """Save creates the mod from the same details form as the Items and Talents tabs
+    (checked by the same rules), with the block the steps go into: by default an
+    in-place edit of the shipped hero."""
+    import tomllib
 
     from rsmm.cli.editor import modio
 
-    def req(**body):
-        return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
+    meta = {"name": "Piper tweak", "author": "me", "version": "1.2.3", "tags": ["heroes"],
+            "license": "MIT", "summary": "faster shots"}
+    got = AE._save(_req(tmp_path, create=True, mod="piper-tweak", meta=meta, hero="Piper",
+                        kind="ability", steps=[_STEP]))
+    assert (got["mod"], got["block"]) == ("piper-tweak", "PiperAbilities")
+    text = (tmp_path / "piper-tweak" / "manifest.toml").read_text(encoding="utf-8")
+    mod = tomllib.loads(text)["mod"]
+    assert (mod["name"], mod["author"], mod["version"], mod["license"]) == (
+        "Piper tweak", "me", "1.2.3", "MIT")
+    assert mod["experimental"] is True                         # the kind is experimental
+    assert [(b["id"], b["base"], b["steps"]) for b in modio.hero_blocks(text, "ability")] == [
+        ("PiperAbilities", "Piper", [_STEP])]
+    assert modio.hero_blocks(text) == []                       # no second hero
 
-    def text(got):
-        return (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
 
-    got = AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))
-    assert got == {"mod": "pam-fireball-nerf", "block": "BeowulfAbilities"}
-    blocks = modio.hero_blocks(text(got), "ability")
-    assert [(b["id"], b["base"]) for b in blocks] == [("BeowulfAbilities", "Beowulf")]
-    assert modio.hero_blocks(text(got)) == []                  # no second hero
-    # a second mod of the same name gets its own folder
-    assert AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))["mod"] \
-        == "pam-fireball-nerf-2"
-    # a custom hero is a separate, extra one
-    custom = AE._new_mod(req(name="Beowulf copy", hero="Beowulf", mode="custom"))
-    assert custom["block"] == "BeowulfEdit"
-    assert [b["id"] for b in modio.hero_blocks(text(custom))] == ["BeowulfEdit"]
+@needs
+def test_a_refused_new_mod_leaves_nothing_behind(tmp_path):
+    """A taken id, a bad version or steps that do not build create no folder."""
+    AE._save(_req(tmp_path, create=True, mod="taken", meta={}, hero="Piper", kind="ability",
+                  steps=[_STEP]))
+    for body, msg in [
+        ({"mod": "taken"}, "already exists"),
+        ({"mod": "other", "meta": {"version": "x"}}, "not like 1.0.0"),
+        ({"mod": "../evil"}, "letters, digits"),
+        ({"mod": "bad-steps", "steps": [{"set": "No Such Part.value", "value": 1}]},
+         "do not build"),
+    ]:
+        args = {"create": True, "meta": {}, "hero": "Piper", "kind": "ability",
+                "steps": [_STEP], **body}
+        with pytest.raises(ValueError, match=msg):
+            AE._save(_req(tmp_path, **args))
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["taken"]
+
+
+@needs
+def test_a_custom_hero_block_is_a_separate_extra_hero(tmp_path):
+    from rsmm.cli.editor import modio
+
+    got = AE._save(_req(tmp_path, create=True, mod="copy", meta={}, hero="Beowulf",
+                        kind="hero", mode="custom", steps=[]))
+    assert got["block"] == "BeowulfEdit"
+    text = (tmp_path / "copy" / "manifest.toml").read_text(encoding="utf-8")
+    assert [b["id"] for b in modio.hero_blocks(text)] == ["BeowulfEdit"]
     # A paid hero's copy says the author owns the DLC; a free one's does not, and an
     # in-place edit needs neither.
-    paid = AE._new_mod(req(name="Merlin copy", hero="Merlin", mode="custom"))
-    free = AE._new_mod(req(name="Carmilla copy", hero="Carmilla", mode="custom"))
-    assert "dlc_owner = true" in text(paid) and "dlc_owner" not in text(free)
-    assert "dlc_owner" not in text(AE._new_mod(req(name="Merlin edit", hero="Merlin")))
+    paid = AE._save(_req(tmp_path, create=True, mod="m", meta={}, hero="Merlin", kind="hero",
+                         mode="custom", steps=[]))
+    free = AE._save(_req(tmp_path, create=True, mod="c", meta={}, hero="Carmilla", kind="hero",
+                         mode="custom", steps=[]))
+    inplace = AE._save(_req(tmp_path, create=True, mod="e", meta={}, hero="Merlin", kind="ability",
+                            steps=[]))
+    read = lambda g: (tmp_path / g["mod"] / "manifest.toml").read_text(encoding="utf-8")  # noqa: E731
+    assert "dlc_owner = true" in read(paid)
+    assert "dlc_owner" not in read(free) and "dlc_owner" not in read(inplace)
 
 
 @needs
 def test_an_in_place_block_saves_steps_but_not_a_clone(tmp_path):
-    from types import SimpleNamespace
-
     from rsmm.cli.editor import modio
 
-    def req(**body):
-        return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
-
-    got = AE._new_mod(req(name="Edit", hero="Piper"))
-    step = {"set": "Primary Ability Shots Delay.value", "value": 0.5}
-    AE._save(req(mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
-                 steps=[step]))
+    got = AE._save(_req(tmp_path, create=True, mod="edit", meta={}, hero="Piper", kind="ability",
+                        steps=[]))
+    AE._save(_req(tmp_path, mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
+                  steps=[_STEP]))
     text = (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
-    assert modio.hero_blocks(text, "ability")[0]["steps"] == [step]
+    assert modio.hero_blocks(text, "ability")[0]["steps"] == [_STEP]
     with pytest.raises(ValueError, match="custom hero"):
-        AE._save(req(mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
-                     steps=[{"clone": "Ability Primary", "as": "Echo"}]))
+        AE._save(_req(tmp_path, mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
+                      steps=[{"clone": "Ability Primary", "as": "Echo"}]))
+
+
+@needs
+def test_another_tabs_save_carries_unsaved_ability_steps_into_its_mod(tmp_path):
+    """The Scripts tab's Save writes the Abilities tab's unsaved steps too, into the
+    block the mod already has for that hero, or a new one: saving twice never doubles."""
+    from rsmm.cli.editor import content as C
+    from rsmm.cli.editor import modio
+
+    body = {"edits": [], "mod": "lvl10", "create": True, "meta": {},
+            "abilities": {"hero": "Piper", "steps": [_STEP], "mode": "inplace"}}
+    C._save(_req(tmp_path, **body))
+    path = tmp_path / "lvl10" / "manifest.toml"
+    blocks = modio.hero_blocks(path.read_text(encoding="utf-8"), "ability")
+    assert [(b["id"], b["steps"]) for b in blocks] == [("PiperAbilities", [_STEP])]
+    C._save(_req(tmp_path, **{**body, "create": False}))
+    blocks = modio.hero_blocks(path.read_text(encoding="utf-8"), "ability")
+    assert [(b["id"], b["steps"]) for b in blocks] == [("PiperAbilities", [_STEP])]
+    bad = {**body, "mod": "nope", "abilities": {"hero": "Piper", "mode": "inplace",
+           "steps": [{"clone": "Ability Primary", "as": "Echo"}]}}
+    with pytest.raises(C.EditorError, match="custom hero"):
+        C._save(_req(tmp_path, **bad))
+    assert not (tmp_path / "nope").exists()                    # no half-made mod

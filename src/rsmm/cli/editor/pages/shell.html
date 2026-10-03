@@ -43,7 +43,14 @@ function show(key) {
   for (const [k, f] of Object.entries(frames)) f.hidden = k !== key;
   for (const a of nav.querySelectorAll("a")) a.classList.toggle("on", a.dataset.tab === key);
   document.title = TABS[key][0] + " · RSMM Editor";
+  try { frames[key].contentWindow.rsmmShown?.(); } catch (e) {}
 }
+// One tab's unsaved work, for another tab's Save to carry along. A tab offers it as
+// window.rsmmPending(); null when it has none or its frame is not open yet.
+window.rsmmPending = (tab) => {
+  try { return frames[tab]?.contentWindow.rsmmPending?.() ?? null; } catch (e) { return null; }
+};
+window.rsmmAfterSave = (tab, mod) => { try { frames[tab]?.contentWindow.rsmmAfterSave?.(mod); } catch (e) {} };
 
 // Cross-tab links. A page asks the host to show another tab and hands that tab a
 // target; the tab registers a receiver once it is loaded, so this works whether

@@ -179,6 +179,8 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
     <select id="mod" title="The mod to save into"></select>
     <select id="block" title="Your custom hero in that mod, built on this hero" hidden></select>
     <button id="save" class="primary" title="Write these changes into your custom hero in the chosen mod" disabled>Save to mod</button>
+    <button id="import" type="button" class="small" hidden title="Bring a mod you saved before back into the editor">Open a mod folder…</button>
+    <input id="importdir" type="file" hidden>
     <span id="saveWhy" class="tiny muted"></span>
     <button id="newHero" class="small" hidden></button>
     <button id="copy" class="small" title="Copy your changes as manifest code" disabled>Copy manifest code</button>
@@ -193,6 +195,7 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
     <textarea id="toml" readonly></textarea>
   </div>
 </section>
+{{newmod.html}}
 <script>{{common.js}}</script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1220,21 +1223,31 @@ async function getJ(url) {
   if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
 const inPlace = () => S.how !== "custom";
+// Another tab's Save (Scripts) writes these steps into its mod too, so unsaved work
+// here is not lost by switching tabs.
+window.rsmmPending = () => S.steps.length && !(S.data && S.data.error)
+  && (!S.block || stepsJson() !== S.saved)
+  ? { hero: S.hero, steps: S.steps, mode: S.how === "custom" ? "custom" : "inplace" } : null;
+window.rsmmAfterSave = async (mod) => { S.mod = mod; await loadMods(); await loadBlocks(); };
 const heroLabel = () => S.hero.replace(/_/g, " ");
 function drawSave() {
   const same = !!S.block && stepsJson() === S.saved;
   // A copied ability adds parts: only a custom hero builds those.
   const clones = inPlace() && S.steps.some(x => "clone" in x);
-  $("save").disabled = !S.block || same || clones || !!(S.data && S.data.error);
-  $("save").textContent = same ? "Saved" : "Save to mod";
+  const fresh = S.mod === NEW_MOD;           // the mod is made when Save is pressed
+  $("save").disabled = (fresh ? !S.steps.length : !S.block || same) || clones || !!(S.data && S.data.error);
+  $("save").textContent = fresh ? "Create mod…" : same ? "Saved" : "Save to mod";
   // Say why it is grey, and offer the fix where there is one.
   let why = "", offer = "";
-  if (same) why = "";
+  if (same && !fresh) why = "";
   else if (!S.steps.length) why = "No changes yet: type a new number and press Enter (the row turns purple).";
   else if (S.data && S.data.error) why = "Fix the step marked in red first.";
   else if (clones) why = "Copying an ability needs a custom hero: switch the box on the left to “Make a separate custom hero”.";
-  else if (!S.mod) why = "Pick a mod in the list on the left (“＋ New mod…” makes one) to save into.";
-  else if (!S.block) {
+  else if (fresh) {
+    why = inPlace() ? `Creating a mod that changes the original ${heroLabel()}.`
+      : `Creating a mod with a custom ${heroLabel()}, an extra hero in the list.` + ((S.dlc || []).includes(S.hero)
+        ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : "");
+  } else if (!S.block) {
     if (inPlace()) {
       why = `${S.mod} does not change ${heroLabel()} yet. Saving edits the original ${heroLabel()} in place, for everyone who runs the mod.`;
       offer = `Add a ${heroLabel()} edit to ${S.mod}`;
@@ -1257,18 +1270,18 @@ $("newHero").addEventListener("click", async () => {
 });
 async function loadMods() {
   try {
-    const { mods } = await getJ("api/mods");
-    // "New mod" sits first: at the end of a long list it was never found.
-    $("mod").replaceChildren(el("option", { value: "", text: "Save into a mod…" }),
-      el("option", { value: NEW_MOD, text: "＋ New mod…" }),
+    const { mods, tags } = await getJ("api/mods");
+    S.modTags = tags || [];
+    // "New mod" first and the default, as in the Items and Talents tabs.
+    $("mod").replaceChildren(el("option", { value: NEW_MOD, text: "New mod…" }),
       ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
-    if (!mods.some(m => m.id === S.mod)) S.mod = "";
+    if (!mods.some(m => m.id === S.mod)) S.mod = NEW_MOD;
     $("mod").value = S.mod;
   } catch (e) { setStatus("bad", e.message); }
 }
 async function loadBlocks() {
   S.block = ""; S.blocks = []; S.note = ""; $("block").hidden = true; drawSave();
-  if (!S.mod) return;
+  if (!S.mod || S.mod === NEW_MOD) return;
   let j;
   try { j = await getJ(`api/heroblocks?mod=${encodeURIComponent(S.mod)}&hero=${encodeURIComponent(S.hero)}`); }
   catch (e) { setStatus("bad", e.message); return; }
@@ -1301,23 +1314,9 @@ function openBlock(id) {
   S.steps = JSON.parse(theirs); refresh();
 }
 const NEW_MOD = "__new__";
-$("mod").addEventListener("change", async () => {
-  if ($("mod").value === NEW_MOD) {
-    // A new mod comes with the block your changes save into, ready to go.
-    const name = (prompt(`Name of the new mod (it will ${inPlace() ? "change" : "hold a custom"} ${heroLabel()}):`, `${heroLabel()} changes`) || "").trim();
-    if (!name) { $("mod").value = S.mod; return; }
-    try {
-      const j = await post("api/newmod", { name, hero: S.hero, mode: S.how });
-      S.mod = j.mod; await loadMods();
-      setStatus("ok", (inPlace() ? `Created ${j.mod}: it edits the original ${heroLabel()} (${j.block}).` : `Created ${j.mod} with a custom ${heroLabel()} (${j.block}).`) + " Press Save to mod."
-        + (!inPlace() && (S.dlc || []).includes(S.hero) ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : ""));
-    } catch (e) { $("mod").value = S.mod; setStatus("bad", e.message); return; }
-    try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
-    await loadBlocks();
-    return;
-  }
-  S.mod = $("mod").value;
-  try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
+$("mod").addEventListener("change", () => {
+  S.mod = $("mod").value || NEW_MOD;
+  if (S.mod !== NEW_MOD) { try { localStorage.setItem("ae-mod", S.mod); } catch (e) {} }
   loadBlocks();
 });
 $("block").addEventListener("change", () => openBlock($("block").value));
@@ -1329,14 +1328,68 @@ $("how").addEventListener("change", () => {
   loadBlocks();
 });
 $("save").addEventListener("click", async () => {
+  const body = { block: S.block, kind: inPlace() ? "ability" : "hero", hero: S.hero, steps: S.steps };
+  const create = S.mod === NEW_MOD;
+  let got = null, error = "";
   try {
-    const j = await post("api/save", { mod: S.mod, block: S.block, kind: inPlace() ? "ability" : "hero", hero: S.hero, steps: S.steps });
-    S.saved = stepsJson();
-    const b = S.blocks.find(x => x.id === S.block); if (b) b.steps = JSON.parse(S.saved);
-    drawSave();
-    setStatus("ok", `✓ Saved ${j.steps} change${j.steps === 1 ? "" : "s"} into ${S.block} in ${S.mod}. Keep editing, or run rsmm apply.`);
+    for (;;) {
+      if (create) {
+        // The same details form as the other tabs; a refusal (a taken id, a bad version)
+        // asks again with the reason.
+        got = await askNewModDialog(S.modTags, error);
+        if (!got) return;
+      }
+      try {
+        const j = await post("api/save", create
+          ? { ...body, create: true, mod: got.id, meta: got.meta, mode: S.how } : { ...body, mod: S.mod });
+        if (create) {
+          S.mod = j.mod;
+          try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
+          await loadMods(); await loadBlocks();
+        } else {
+          S.saved = stepsJson();
+          const b = S.blocks.find(x => x.id === S.block); if (b) b.steps = JSON.parse(S.saved);
+          drawSave();
+        }
+        setStatus("ok", `✓ Saved ${j.steps} change${j.steps === 1 ? "" : "s"} into ${j.block} in ${j.mod}. `
+          + (window.RSMM_HOSTED ? `${j.mod}.zip was downloaded: unzip it into your mods folder, then run rsmm apply.` : "Keep editing, or run rsmm apply."));
+        return;
+      } catch (e) {
+        if (!create) throw e;
+        error = e.message;
+      }
+    }
   } catch (e) { setStatus("bad", e.message); }
 });
+
+// The web editor's mods live only in the page, so one saved earlier is brought back
+// from its folder: only the files the editor reads are sent.
+$("importdir").webkitdirectory = true;
+$("import").hidden = !window.RSMM_HOSTED;
+$("import").onclick = () => $("importdir").click();
+const fileB64 = (file) => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(",")[1] || "");
+  r.onerror = () => rej(new Error("could not read " + file.name));
+  r.readAsDataURL(file);
+});
+$("importdir").onchange = async () => {
+  const list = [...$("importdir").files];
+  $("importdir").value = "";
+  const files = {};
+  for (const f of list) {
+    const parts = (f.webkitRelativePath || f.name).split("/");
+    const rel = parts.slice(1).join("/");
+    if (!/^(manifest\.toml|init\.lua|icons\/[A-Za-z0-9_]+\.png)$/.test(rel)) continue;
+    files[rel] = await fileB64(f);
+    files._folder = parts[0];
+  }
+  if (!files["manifest.toml"]) { setStatus("bad", "That folder has no manifest.toml. Pick the mod's own folder."); return; }
+  try {
+    const j = await post("api/import", { files });
+    S.mod = j.id; await loadMods(); await loadBlocks();
+  } catch (e) { setStatus("bad", e.message); }
+};
 
 $("entity").addEventListener("change", () => { S.entity = $("entity").value; S.group = ""; S.sel = null; refresh(); });
 $("undo").addEventListener("click", () => { if (S.steps.length) { S.steps.pop(); refresh(); } });
@@ -1386,7 +1439,7 @@ async function focusAbility(t) {
   S.hero = heroes.includes(want.hero) ? want.hero : heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
   $("filter").value = want.q || ""; $("allHeroes").checked = !!want.all;
   await refresh();
-  try { S.mod = localStorage.getItem("ae-mod") || ""; } catch (e) {}
+  try { S.mod = localStorage.getItem("ae-mod") || NEW_MOD; } catch (e) { S.mod = NEW_MOD; }
   await loadMods();
   loadBlocks();
   // Tell the editor shell we can take a target. Not framed (or the shell has no

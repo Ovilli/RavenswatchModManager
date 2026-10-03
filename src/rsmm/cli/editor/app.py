@@ -131,7 +131,8 @@ def _read(name: str) -> str:
 def render(name: str, token: str, **subs: str) -> str:
     """A page with the shared CSS/JS inlined and the launch's token filled in."""
     page = (_read(name).replace("{{common.css}}", _read("common.css"))
-            .replace("{{common.js}}", _read("common.js")))
+            .replace("{{common.js}}", _read("common.js"))
+            .replace("{{newmod.html}}", _read("newmod.html")))
     for key, value in subs.items():
         page = page.replace(key, value)
     return page.replace("__RSMM_TOKEN__", token)
