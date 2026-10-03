@@ -49,6 +49,29 @@ def _family(hero: str) -> dict[str, bytes]:
     return out
 
 
+def _norm(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+@cache
+def _cards(hero: str) -> dict[str, dict]:
+    """``normalised key base`` -> the talent card's in-game name and text, so
+    the group ``Skill Attack Burst`` can be found as "Volcanic Shots". Empty
+    when the card text is unreachable (no readable game install)."""
+    from rsmm.cli.editor import content as C
+    try:
+        out = {}
+        for c in C.talent_cards(hero):
+            if c.get("base"):
+                card = {"name": c["name"], "description": c["description"]}
+                # Beowulf's card is `Skill_Ultimate_2_Upgrade_Volcanic`, its group
+                # `Skill Ultimate 2 Volcanic`.
+                out[_norm(c["base"])] = out[_norm(c["base"].replace("_Upgrade", ""))] = card
+        return out
+    except (C.EditorError, OSError, ValueError, KeyError):   # card text is optional
+        return {}
+
+
 def _field_targets(c, f, picker_cls: int) -> list[tuple[str, str]]:
     """``(target GUID hex, target path)`` for every link in field ``f``."""
     from rsmm.engine import entity_graph as EG
@@ -84,6 +107,8 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
     was = {(c.guid.hex(), i): f.text for c in orig for i, f in enumerate(EF.fields(c))}
     was_lits = {(c.guid.hex(), i): _obj_literals(c, f) for c in orig
                 for i, f in enumerate(EF.fields(c)) if f.kind == "obj" and not f.items}
+    was_items = {(c.guid.hex(), i): [_obj_literals(c, it) for it in f.items if it.kind == "obj"]
+                 for c in orig for i, f in enumerate(EF.fields(c)) if f.kind == "obj[]" and f.items}
     error, warnings = "", []
     if steps:
         try:
@@ -116,13 +141,77 @@ def graph_payload(hero: str, steps: list[dict], entity: str = "") -> dict:
             elif f.kind == "obj" and not f.items:
                 row["lits"] = _obj_literals(c, f)
                 row["wasLits"] = was_lits.get((c.guid.hex(), i))
+            elif f.kind == "obj[]" and f.items and all(it.kind == "obj" for it in f.items):
+                # A selector's entries: each entry's literals, so its numbers can be set.
+                row["itemLits"] = [_obj_literals(c, it) for it in f.items]
+                row["wasItemLits"] = was_items.get((c.guid.hex(), i))
             fields.append(row)
         comps.append({"id": c.guid.hex(), "name": c.name, "group": c.group,
                       "cls": c.cls.removeprefix("oCEntityCpnt").removeprefix("oCDtEntityCpnt")
                       .removesuffix("Settings"),
                       "fields": fields})
+    cards = _cards(hero) if stem == main else {}
+    by_group = {g: cards[_norm(g)] for g in {c["group"] for c in comps} if _norm(g) in cards}
     return {"hero": hero, "entity": stem, "entities": sorted(files),
-            "components": comps, "error": error, "warnings": warnings}
+            "components": comps, "cards": by_group, "error": error, "warnings": warnings}
+
+
+@cache
+def _parts(hero: str, stem: str) -> list:
+    """One entity file's parts, parsed once: every search reads them."""
+    from rsmm.engine import entity_graph as EG
+    raw = _family(hero).get(stem)
+    return EG.parse(raw, stem).components if raw is not None else []
+
+
+def search(q: str, limit: int = 400, hero: str = "", skip: str = "") -> dict:
+    """Parts matching ``q`` (a part, ability or talent-card name, or card text),
+    each with its number. Without ``hero``: every hero's main entity. With
+    ``hero``: that hero's OTHER files (projectiles, pets, ...), minus ``skip``,
+    which is where an ability's hit values often live (a fireball's stagger is
+    in the fireball's own file, not the hero's)."""
+    from rsmm.engine import entity_fields as EF
+
+    q = q.strip().lower()
+    rows, total = [], 0
+    if not q:
+        return {"rows": rows, "total": 0}
+    if hero:
+        if hero not in _heroes():
+            raise ValueError(f"no shipped hero {hero!r}")
+        targets = [(hero, st) for st in sorted(_family(hero)) if st != skip]
+    else:
+        targets = [(h, f"Hero_{h}") for h in _heroes()]
+    for h, stem in targets:
+        main = stem == f"Hero_{h}"
+        cards = _cards(h) if main else {}
+        for c in _parts(h, stem):
+            card = cards.get(_norm(c.group))
+            by_part = q in c.name.lower()
+            by_ability = q in c.group.lower() or (
+                card is not None and q in (card["name"] + " " + card["description"]).lower())
+            # A whole ability matching would list every part: keep its plain numbers.
+            if not (by_part or (by_ability and c.cls == "oCEntityCpntValueSettings")):
+                continue
+            fields = EF.fields(c)
+            f = next((f for f in fields if f.name == "value"), None)
+            text = f.text if f is not None else ""
+            if f is None:       # a selector holds its numbers in its entries
+                ent = next((x for x in fields if x.name == "entries" and x.items), None)
+                if ent is not None:
+                    lits = [_obj_literals(c, it) for it in ent.items if it.kind == "obj"]
+                    text = ", ".join(x[-1].split(" ", 1)[-1] for x in lits if x)
+                elif not by_part:
+                    continue
+            total += 1
+            if len(rows) < limit:
+                rows.append({"hero": h, "entity": stem, "group": c.group, "part": c.name,
+                             "kind": c.cls.removeprefix("oCEntityCpnt").removesuffix("Settings"),
+                             "value": text.split("  <-")[0].removeprefix("f32 ")
+                             .removeprefix("int "),
+                             "linked": "<-" in text,
+                             "card": card["name"] if card else ""})
+    return {"rows": rows, "total": total}
 
 
 def steps_toml(steps: list[dict]) -> str:
@@ -145,6 +234,11 @@ def _graph(req: Request) -> dict:
     out = graph_payload(str(req.body.get("hero", "")), steps, str(req.body.get("entity") or ""))
     out["toml"] = steps_toml(steps)
     return out
+
+
+def _search(req: Request) -> dict:
+    return search(str(req.body.get("q", "")), hero=str(req.body.get("hero") or ""),
+                  skip=str(req.body.get("skip") or ""))
 
 
 def _manifest(req: Request, mod_id: str):
@@ -200,6 +294,7 @@ def _save(req: Request) -> dict:
 ROUTES = {
     ("GET", "/api/heroes"): lambda req: {"heroes": _heroes()},
     ("POST", "/api/graph"): _graph,
+    ("POST", "/api/search"): _search,
     ("GET", "/api/mods"): _mods,
     ("GET", "/api/heroblocks"): _hero_blocks,
     ("POST", "/api/save"): _save,

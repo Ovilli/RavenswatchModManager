@@ -279,6 +279,16 @@ class EntityFile:
         n-th scalar literal inside an object field, e.g. a spawner's
         ``position[8]`` (the spawn's yaw; see ``_set_obj_literal``)."""
         base, _, idx = field.partition("[")
+        if idx and "][" in idx:
+            # `entries[0][1]`: the n-th literal inside one item of an object list,
+            # e.g. the number in a selector's entry (a projectile's stagger power).
+            c = self.component(comp)
+            f = next((x for x in EF.fields(c) if x.name == base), None)
+            i, n = (int(x) for x in idx.rstrip("]").split("]["))
+            if f is None or not 0 <= i < len(f.items) or f.items[i].kind != "obj":
+                raise EntityEditError(f"{field!r}: {c.name!r} has no object entry {i} in {base!r}")
+            self._set_obj_literal(c, f.items[i], n, value, field)
+            return
         if idx:
             c = self.component(comp)
             f = next((x for x in EF.fields(c) if x.name == base), None)

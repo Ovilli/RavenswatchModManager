@@ -357,7 +357,7 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
                 if (file, label) in labels and {"file": file, "label": label} not in refs:
                     refs.append({"file": file, "label": label})
         icon = _card_icon(hero, source)
-        out.append({"source": source,
+        out.append({"source": source, "base": base,
                     "name": (text.get(name_key) or "").strip() if name_key else "",
                     "description": text.get(desc_key) or "" if desc_key else "",
                     "hasName": name_key is not None, "hasDescription": desc_key is not None,

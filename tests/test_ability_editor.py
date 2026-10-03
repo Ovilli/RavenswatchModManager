@@ -69,3 +69,34 @@ def test_writes_need_the_token_and_every_request_a_loopback_host():
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+@needs
+def test_a_selectors_entry_number_can_be_set():
+    """A projectile's stagger is the number in its `Stagger Power Selector`
+    entry (Beowulf's fireball: 50, in the fireball's own file). The Numbers
+    page lists it as `entries[0]`'s last literal and builds an edit to it."""
+    ent = "Hero_Beowulf_Ultimate_2_Fireball"
+    if ent not in AE._family("Beowulf"):
+        pytest.skip("Beowulf's fireball file is not in this corpus")
+    d = AE.graph_payload("Beowulf", [], ent)
+    sel = next(c for c in d["components"] if c["name"] == "Stagger Power Selector")
+    entries = next(f for f in sel["fields"] if f["name"] == "entries")
+    assert entries["itemLits"] == [["bool True", "f32 50"]]
+    step = {"set": "Stagger Power Selector.entries[0][1]", "value": 25, "entity": ent}
+    d = AE.graph_payload("Beowulf", [step], ent)
+    sel = next(c for c in d["components"] if c["name"] == "Stagger Power Selector")
+    assert d["error"] == ""
+    assert next(f for f in sel["fields"] if f["name"] == "entries")["itemLits"] == [
+        ["bool True", "f32 25"]]
+
+
+@needs
+def test_search_finds_a_hit_value_in_the_heros_other_files():
+    """The fireball's stagger is not in `Hero_Beowulf`: searching the hero's
+    other files finds it, so the page can point there."""
+    if "Hero_Beowulf_Ultimate_2_Fireball" not in AE._family("Beowulf"):
+        pytest.skip("Beowulf's fireball file is not in this corpus")
+    rows = AE.search("stagger", hero="Beowulf", skip="Hero_Beowulf")["rows"]
+    assert any(r["entity"] == "Hero_Beowulf_Ultimate_2_Fireball"
+               and r["part"] == "Stagger Power Selector" and r["value"] == "50" for r in rows)

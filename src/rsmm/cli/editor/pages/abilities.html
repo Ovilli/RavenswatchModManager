@@ -40,6 +40,8 @@ mark { background: color-mix(in srgb, var(--accent) 38%, transparent); color: in
 .gsec { margin: 22px 0 4px; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--chip); border-radius: 0 7px 7px 0; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
 .gsec span { font-weight: 400; opacity: .7; font-size: 12px; }
 .num.flash { outline: 2px solid var(--accent); }
+.hsec { margin: 26px 0 2px; display: flex; justify-content: space-between; font-size: 15px; } .hsec span { opacity: .7; font-size: 12px; }
+a.jump { color: var(--accent); text-decoration: underline dotted; cursor: pointer; }
 .sect { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; }
 .num { display: grid; grid-template-columns: 1fr 150px 70px; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; }
 .num:nth-child(odd) { background: var(--panel); }
@@ -131,12 +133,13 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
   <h1>Ability Editor</h1>
   <label>Hero <select id="hero" title="The shipped hero whose abilities you are looking at. Your custom hero uses this one as its base."></select></label>
   <label class="tiny muted">File <select id="entity" title="A hero is several files. Almost everything lives in the main one; FX is visual effects, the rest are pets, projectiles and skins."></select></label>
-  <input id="find" type="search" placeholder="Find a part by name…" style="min-width:220px" title="Type part of a name, then Enter to jump to it">
+  <input id="find" type="search" placeholder="Find a part by name…" style="min-width:220px" title="Type part of a name to list every match on one page, then Enter to jump to the first">
   <button id="helpBtn" class="small">How does this work?</button>
   <span id="busy" class="muted tiny"></span>
 </header>
 <nav id="left">
-  <input id="filter" type="search" placeholder="Filter abilities or parts">
+  <input id="filter" type="search" placeholder="Filter abilities, parts or card text">
+  <label class="tiny muted"><input type="checkbox" id="allHeroes"> search all heroes</label>
   <div id="groups"></div>
   <label class="tiny muted" style="display:block;margin:12px 4px"><input type="checkbox" id="showAll"> also show movement, animation and other groups</label>
 </nav>
@@ -293,6 +296,23 @@ async function refresh() {
 const byId = (id) => S.data.components.find(c => c.id === id);
 const groupsOf = () => { const m = new Map(); for (const c of S.data.components) m.set(c.group, (m.get(c.group) || 0) + 1); return new Map([...m].sort()); };
 const kindOfGroup = (g) => g.startsWith("Ability") ? "Abilities" : g.startsWith("Skill") ? "Talents" : "Other";
+const cardOf = (g) => (S.data.cards || {})[g];
+// The parts of ability `g` a filter `q` matches: its own name (or its talent card's
+// name or text) matching brings the whole ability, otherwise just the parts named so.
+function matchParts(g, q) {
+  const card = cardOf(g);
+  const whole = (g + " " + (card ? card.name + " " + card.description : "")).toLowerCase().includes(q);
+  return (indexOf(S.data).groups.get(g) || []).filter(c => whole || c.name.toLowerCase().includes(q));
+}
+function saveView() {
+  const v = { hero: S.hero, q: needle(), all: $("allHeroes").checked };
+  try { localStorage.setItem("ae-view", JSON.stringify(v)); } catch (e) {}
+  try {
+    const u = new URL(location.href);
+    for (const [k, x] of Object.entries({ hero: v.hero, q: v.q, all: v.all ? "1" : "" })) x ? u.searchParams.set(k, x) : u.searchParams.delete(k);
+    history.replaceState(null, "", u);
+  } catch (e) {}
+}
 const needle = () => $("filter").value.trim().toLowerCase();
 // `text` with every occurrence of `q` wrapped in <mark>, as nodes for el().
 function hl(text, q) {
@@ -323,17 +343,19 @@ function short(name, group) {
 
 function drawGroups() {
   const f = needle(), out = [];
+  if (f && $("allHeroes").checked) return;   // drawAll owns the list
   // A pet, projectile or clone file has no ability groups at all: show its parts.
   // A filter also matches part names, so "stagger" finds every ability holding one.
-  const hasPart = (g) => f && S.data && S.data.components.some(c => c.group === g && c.name.toLowerCase().includes(f));
   const all = $("showAll").checked || !!f || ![...groupsOf().keys()].some(g => kindOfGroup(g) !== "Other");
   for (const sect of ["Abilities", "Talents", "Other"]) {
     if (sect === "Other" && !all) continue;
-    const rows = [...groupsOf()].filter(([g]) => kindOfGroup(g) === sect && (g.toLowerCase().includes(f) || hasPart(g)));
+    const rows = [...groupsOf()].filter(([g]) => kindOfGroup(g) === sect && (!f || matchParts(g, f).length));
     if (!rows.length) continue;
     out.push(el("h3", { text: sect }));
     for (const [g, n] of rows) out.push(el("div", { class: "grp" + (g === S.group ? " on" : ""), title: `${n} parts`,
-      onclick: () => selectGroup(g) }, el("div", {}, ...hl(g || "General", f)), el("span", { text: n })));
+      onclick: () => selectGroup(g) },
+      el("div", {}, ...hl(g || "General", f), cardOf(g) ? el("div", { class: "tiny muted" }, ...hl(cardOf(g).name, f)) : null),
+      el("span", { text: f ? `${matchParts(g, f).length} of ${n}` : n })));
   }
   $("groups").replaceChildren(...out);
   $("groupTitle").textContent = f ? `Matches for “${f}”` : S.group || (groupsOf().has("") ? "General" : "Pick an ability");
@@ -383,19 +405,33 @@ const num = (s) => { const n = Number(String(s).trim()); return String(s).trim()
 const yesNo = (s) => { s = String(s).trim().toLowerCase(); return ["yes", "true", "1", "on"].includes(s) ? true : ["no", "false", "0", "off"].includes(s) ? false : undefined; };
 
 // Parts that READ this one; a phase switching it on (a ref[] list) is not a use.
-function usedBy(id) {
-  const out = [];
-  for (const c of S.data.components) for (const f of c.fields)
-    if (f.kind !== "ref[]" && f.targets.includes(id)) out.push(short(c.name, c.group) + (f.name === "value" ? "" : " (" + niceField(f.name) + ")"));
-  return [...new Set(out)];
+// Who reads each part, indexed once per loaded graph (a scan per row made a long
+// result list crawl).
+const INDEX = new WeakMap();
+function indexOf(data) {
+  let ix = INDEX.get(data);
+  if (!ix) {
+    ix = { users: new Map(), groups: new Map() };
+    for (const c of data.components) {
+      if (!ix.groups.has(c.group)) ix.groups.set(c.group, []);
+      ix.groups.get(c.group).push(c);
+      for (const f of c.fields) if (f.kind !== "ref[]") for (const t of f.targets) {
+        if (!ix.users.has(t)) ix.users.set(t, new Set());
+        ix.users.get(t).add(short(c.name, c.group) + (f.name === "value" ? "" : " (" + niceField(f.name) + ")"));
+      }
+    }
+    INDEX.set(data, ix);
+  }
+  return ix;
 }
+function usedBy(id) { return [...(indexOf(S.data).users.get(id) || [])]; }
 function numberRow(c, f, slot) {
   // `slot`: the index of a literal inside object field `f` (`Part.position[8]`).
   const inObj = slot !== undefined;
   const lit = inObj ? parseLit(f.lits[slot]) : literal(f);
   const addr = `${c.name}.${f.name}` + (inObj ? `[${slot}]` : ""), step = findStep("set", addr);
   const name = short(c.name, c.group), [tlabel, color] = typeOf(c.cls);
-  const label = inObj ? `${name} · ${niceField(f.name)} ${slotName(f, slot)}`
+  const label = inObj ? `${name} · ${f.nice || niceField(f.name) + " " + slotName(f, slot)}`
     : (c.cls === "Value" && f.name === "value") ? name : `${name} · ${niceField(f.name)}`;
   const users = usedBy(c.id), help = !inObj && FIELDS[f.name] && f.name !== "value" ? FIELDS[f.name] : "";
   const wasText = inObj ? (f.wasLits && f.wasLits[slot] !== f.lits[slot] ? f.wasLits[slot] : null) : f.was;
@@ -419,13 +455,16 @@ function numberRow(c, f, slot) {
     : el("input", { value: shown, inputmode: "decimal", placeholder: lit.bound ? "linked" : "", onchange: (e) => commit(e.target.value),
                     onkeydown: (e) => { if (e.key === "Escape") { e.target.value = shown; e.target.classList.remove("bad"); } } });
   if (lit.bool) inp.value = shown;
-  const link = lit.bound ? ` · follows ${sourceName(f)}${f.source ? "" : ", whose value is set there"}; a number typed here replaces the link` : "";
+  const link = lit.bound ? [" · follows ", el("a", { href: "#", class: "jump", title: "Go to that part", onclick: (e) => { e.preventDefault(); gotoPart(f.targets[0]); } }, sourceName(f)),
+    `${f.source ? "" : ", whose value is set there"}; a number typed here replaces the link`] : [];
   const wasLit = wasLinked ? { value: "linked" } : wasText !== null ? (inObj ? parseLit(wasText) : literal(f, wasText)) : null;
   return el("div", { class: "num" + (step ? " changed" : ""), title: c.name, "data-part": c.id },
     el("div", {},
       el("div", { class: "lbl" }, ...hl(label, needle())),
       el("div", { class: "sub" }, el("span", { class: "dot", style: `background:${color}` }), tlabel,
-        help ? " · " + help : "", link, users.length ? " · used by " + users.slice(0, 3).join(", ") + (users.length > 3 ? ` +${users.length - 3}` : "") : "")),
+        // The label drops words the part shares with its ability: show the full name when that is where the match is.
+        ...((needle() && !label.toLowerCase().includes(needle()) && c.name.toLowerCase().includes(needle())) ? [" · ", ...hl(c.name, needle())] : []),
+        help ? " · " + help : "", ...link, users.length ? " · used by " + users.slice(0, 3).join(", ") + (users.length > 3 ? ` +${users.length - 3}` : "") : "")),
     inp,
     el("div", {}, step ? el("button", { class: "small", title: "Put the original value back", text: "↺ reset", onclick: () => removeStep(step) }) : null,
       wasLit ? el("div", { class: "was", text: "was " + wasLit.value }) : null));
@@ -435,47 +474,146 @@ function numberRows(parts, group) {
   const main = [], tech = [], slots = [];
   for (const c of parts) for (const f of c.fields) {
     if (f.lits) { f.lits.forEach((t, i) => { if (parseLit(t)) slots.push([c, f, i]); }); continue; }
+    // A selector's entries (`Stagger Power Selector`): one number per entry, the last literal.
+    if (f.itemLits) {
+      f.itemLits.forEach((lits, i) => {
+        const j = lits.length - 1, l = lits.length ? parseLit(lits[j]) : null;
+        if (!l || l.bool) return;
+        const key = lits.length > 1 ? lits[0].replace(/^\w+ /, "") : "";
+        main.push([c, { ...f, name: `${f.name}[${i}]`, lits, wasLits: f.wasItemLits && f.wasItemLits[i], items: 0, itemLits: null,
+          nice: `entry ${i + 1}` + (key ? ` (when ${key})` : "") }, j]);
+      });
+      continue;
+    }
     if (!literal(f)) continue;
     (ADVANCED.test(f.name) ? tech : main).push([c, f]);
   }
   // Plain numbers first (what a beginner is looking for), yes/no last.
-  const rank = ([c, f]) => (c.cls === "Value" ? 0 : 1) + (literal(f).bool ? 2 : 0);
+  const rank = ([c, f, s]) => s !== undefined ? 1 : (c.cls === "Value" ? 0 : 1) + (literal(f).bool ? 2 : 0);
   main.sort((a, b) => rank(a) - rank(b) || short(a[0].name, group).localeCompare(short(b[0].name, group)));
   return { main, tech, slots };
 }
 
 // While a filter is typed, every match is one page: a heading per ability, the
 // matching parts' numbers under it.
+const ROW_CAP = 120;
 function drawFiltered(q) {
   const out = [];
-  let total = 0, abilities = 0;
+  let total = 0, abilities = 0, shown = 0;
   for (const sect of ["Abilities", "Talents", "Other"]) {
     for (const [g] of groupsOf()) {
       if (kindOfGroup(g) !== sect) continue;
-      const whole = g.toLowerCase().includes(q);
-      const parts = S.data.components.filter(c => c.group === g && (whole || c.name.toLowerCase().includes(q)));
+      const parts = matchParts(g, q);
       const { main, tech, slots } = numberRows(parts, g);
-      const more = [...tech.map(([c, f]) => numberRow(c, f)), ...slots.map(([c, f, i]) => numberRow(c, f, i))];
-      const rows = main.map(([c, f]) => numberRow(c, f));
-      if (!rows.length && !more.length) continue;
-      total += rows.length; abilities++;
+      if (!main.length && !tech.length && !slots.length) continue;
+      total += main.length; abilities++;
+      // Past the cap only the headings and counts are drawn: a broad search ("a")
+      // would otherwise build thousands of rows on every keystroke.
+      const room = Math.max(0, ROW_CAP - shown);
+      const nMore = tech.length + slots.length;
+      const rows = main.slice(0, room).map(([c, f, i]) => numberRow(c, f, i)); shown += rows.length;
       out.push(el("div", { class: "gsec", "data-group": g, title: "Jump to this ability's matches", onclick: () => selectGroup(g) },
-        el("div", {}, ...hl(g || "General", q)), el("span", { text: `${rows.length} number${rows.length === 1 ? "" : "s"} · ${{ Abilities: "ability", Talents: "talent", Other: "other" }[sect]}` })), el("div", {}, ...rows),
-        more.length ? el("details", {}, el("summary", { text: `Technical settings and shapes of these parts (${more.length})` }), el("div", {}, ...more)) : null);
+        el("div", {}, ...hl(g || "General", q), cardOf(g) ? el("span", { class: "tiny muted", text: ` · ${cardOf(g).name}` }) : null), el("span", { text: `${main.length} number${main.length === 1 ? "" : "s"} · ${{ Abilities: "ability", Talents: "talent", Other: "other" }[sect]}` })), el("div", {}, ...rows),
+        // Built only when opened: these are the long tail of internal flags.
+        nMore ? (() => {
+          const box = el("div", {});
+          const d = el("details", {}, el("summary", { text: `Technical settings and shapes of these parts (${nMore})` }), box);
+          d.addEventListener("toggle", () => { if (d.open && !box.firstChild) box.append(...tech.map(([c, f]) => numberRow(c, f)), ...slots.map(([c, f, i]) => numberRow(c, f, i))); });
+          return d;
+        })() : null);
     }
   }
+  out.push(el("div", { id: "others" }));
+  if (shown < total) out.push(el("div", { class: "muted", style: "margin:14px 0", text: `Showing the first ${shown} of ${total} numbers. Type more of the name to narrow it down.` }));
   out.unshift(el("div", { class: "sect", text: total ? `“${q}”: ${total} number${total > 1 ? "s" : ""} in ${abilities} abilit${abilities > 1 ? "ies" : "y"}` : `Nothing named “${q}” has a number to change` }));
   $("numList").replaceChildren(...out);
+  drawOthers(q);
+}
+
+// A hero's hit values often live in another file (a fireball's stagger is in the
+// fireball's own file): list what the filter also matches there.
+let othersSeq = 0;
+async function drawOthers(q) {
+  const my = ++othersSeq, box = $("others");
+  if (!box || (S.entity !== "" && S.entity !== "Hero_" + S.hero)) return;
+  let res;
+  try { res = await post("api/search", { q, hero: S.hero, skip: "Hero_" + S.hero }); } catch (e) { return; }
+  if (my !== othersSeq || needle() !== q || !$("others") || !res.rows.length) return;
+  const rows = [el("div", { class: "sect", text: `Also in ${S.hero.replace(/_/g, " ")}'s other files (${res.total}) · click to open` })];
+  let last = "";
+  for (const r of res.rows) {
+    if (r.entity !== last) { last = r.entity; rows.push(el("div", { class: "gsec", onclick: () => openHit(r) }, el("div", { text: r.entity.replace("Hero_" + S.hero + "_", "").replace(/_/g, " ") }))); }
+    rows.push(el("div", { class: "num", style: "cursor:pointer", title: "Open this part", onclick: () => openHit(r) },
+      el("div", {}, el("div", { class: "lbl" }, ...hl(r.part, q)), el("div", { class: "sub", text: r.kind.replace(/([a-z])([A-Z])/g, "$1 $2") })),
+      el("div", { class: "muted", text: r.value === "" ? "—" : r.linked ? `${r.value} (linked)` : r.value }), el("div")));
+  }
+  box.replaceChildren(...rows);
+}
+
+// Jump to a part from a link: its ability, its row if it has a number, else its step.
+function gotoPart(id) {
+  const c = byId(id); if (!c) return;
+  $("filter").value = ""; $("allHeroes").checked = false;
+  if (kindOfGroup(c.group) === "Other") $("showAll").checked = true;
+  S.group = c.group; S.sel = { id }; S.flash = id; saveView(); drawGroups(); drawNumbers();
+  const row = document.querySelector(`.num[data-part="${id}"]`);
+  if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1500); }
+  else { showTab("diagram"); drawFlow(); inspect(id); }
+}
+
+// "Search all heroes": the server lists matches on every hero, grouped by hero then ability.
+let allSeq = 0;
+async function drawAll(q) {
+  const my = ++allSeq;
+  $("numList").replaceChildren(el("div", { class: "muted", text: "Searching every hero…" }));
+  let res;
+  try { res = await post("api/search", { q }); }
+  catch (e) { $("numList").replaceChildren(el("div", { class: "muted", text: "Search failed: " + e.message })); return; }
+  if (my !== allSeq || needle() !== q || !$("allHeroes").checked) return;
+  const byHero = new Map();
+  for (const r of res.rows) { if (!byHero.has(r.hero)) byHero.set(r.hero, new Map()); const g = byHero.get(r.hero); if (!g.has(r.group)) g.set(r.group, []); g.get(r.group).push(r); }
+  const out = [el("div", { class: "sect", text: res.total ? `“${q}”: ${res.total} match${res.total > 1 ? "es" : ""} on ${byHero.size} hero${byHero.size > 1 ? "es" : ""}${res.total > res.rows.length ? ` (first ${res.rows.length} shown)` : ""}` : `Nothing matches “${q}” on any hero` })];
+  const side = [];
+  for (const [hero, groups] of byHero) {
+    const n = [...groups.values()].reduce((a, v) => a + v.length, 0);
+    side.push(el("div", { class: "grp", onclick: () => document.querySelector(`.hsec[data-hero="${hero}"]`)?.scrollIntoView({ block: "start" }) }, el("div", { text: hero.replace(/_/g, " ") }), el("span", { text: n })));
+    out.push(el("div", { class: "hsec", "data-hero": hero }, el("b", { text: hero.replace(/_/g, " ") }), el("span", { text: `${n} match${n > 1 ? "es" : ""}` })));
+    for (const [group, rows] of groups) {
+      out.push(el("div", { class: "gsec", title: "Open this ability" , onclick: () => openHit(rows[0]) }, el("div", {}, ...hl(group, q), rows[0].card ? el("span", { class: "tiny muted" }, " · ", ...hl(rows[0].card, q)) : null)));
+      for (const r of rows) out.push(el("div", { class: "num", title: "Open this part in " + hero, style: "cursor:pointer", onclick: () => openHit(r) },
+        el("div", {}, el("div", { class: "lbl" }, ...hl(r.part, q)), el("div", { class: "sub", text: r.kind.replace(/([a-z])([A-Z])/g, "$1 $2") })),
+        el("div", { class: "muted", text: r.value === "" ? "—" : r.linked ? `${r.value} (linked)` : r.value }), el("div")));
+    }
+  }
+  $("groups").replaceChildren(el("h3", { text: "Heroes" }), ...side);
+  $("groupTitle").textContent = `“${q}” on every hero`;
+  $("numList").replaceChildren(...out);
+}
+async function openHit(r) {
+  if (r.hero !== S.hero) {
+    if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) return;
+    S.hero = r.hero; $("hero").value = r.hero; S.steps = []; loadBlocks();
+  }
+  $("allHeroes").checked = false; S.entity = r.entity && r.entity !== "Hero_" + r.hero ? r.entity : ""; S.group = r.group; S.sel = null;
+  await refresh();
+  const c = S.data && S.data.components.find(x => x.name === r.part && x.group === r.group);
+  if (c) gotoPartKeepFilter(c);
+}
+function gotoPartKeepFilter(c) {
+  S.group = c.group; S.sel = { id: c.id }; saveView(); drawGroups(); drawNumbers();
+  const row = document.querySelector(`.num[data-part="${c.id}"]`);
+  if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1500); }
 }
 
 function drawNumbers() {
   const q = needle();
+  if (q && $("allHeroes").checked) return drawAll(q);
   if (q) return drawFiltered(q);
   const parts = S.data.components.filter(c => c.group === S.group);
   const { main, tech, slots } = numberRows(parts, S.group);
   const out = [];
   if (!main.length) out.push(el("div", { class: "muted", text: "This ability has no plain numbers to change. Its parts only link to each other: use the Diagram tab." }));
-  else out.push(el("div", { class: "sect", text: `Numbers in ${S.group} (${main.length})` }), el("div", {}, ...main.map(([c, f]) => numberRow(c, f))));
+  else out.push(el("div", { class: "sect", text: `Numbers in ${S.group} (${main.length})` }), el("div", {}, ...main.map(([c, f, i]) => numberRow(c, f, i))));
   if (tech.length) out.push(el("details", {}, el("summary", { text: `Technical settings (${tech.length}): internal flags whose meaning is not known yet` }),
     el("div", {}, ...tech.map(([c, f]) => numberRow(c, f)))));
   if (slots.length) out.push(el("details", { open: slots.some(([c, f, i]) => findStep("set", `${c.name}.${f.name}[${i}]`)) || undefined },
@@ -1029,10 +1167,16 @@ function showTab(t) {
   if (t === "diagram") { drawFlow(); inspect(S.sel && byId(S.sel.id) ? S.sel.id : null); }
 }
 for (const b of document.querySelectorAll(".tab")) b.onclick = () => showTab(b.dataset.tab);
+// The part box searches as you type, exactly like the filter on the left (same
+// highlighted one-page results); Enter then jumps to the best match.
+$("find").addEventListener("input", () => { $("filter").value = $("find").value; $("filter").dispatchEvent(new Event("input")); });
 $("find").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   const q = $("find").value.trim().toLowerCase(); if (!q) return;
-  const hit = S.data.components.find(c => c.name.toLowerCase() === q) || S.data.components.find(c => c.name.toLowerCase().includes(q));
+  clearTimeout(filterTimer); $("filter").value = $("find").value; saveView();
+  // An exact name first, then a part with a number to change (it has a row to land on), then any.
+  const named = S.data.components.filter(c => c.name.toLowerCase().includes(q));
+  const hit = named.find(c => c.name.toLowerCase() === q) || named.find(c => c.cls === "Value") || named[0];
   if (!hit) { $("find").style.borderColor = "var(--bad)"; return; }
   $("find").style.borderColor = "";
   if (kindOfGroup(hit.group) === "Other") $("showAll").checked = true;
@@ -1042,11 +1186,22 @@ $("find").addEventListener("keydown", (e) => {
   const row = document.querySelector(`.num[data-part="${hit.id}"]`);
   if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1500); }
 });
-$("filter").addEventListener("input", () => { drawGroups(); if (S.tab === "numbers") drawNumbers(); });
+// Typing redraws after a short pause, not on every key; the every-hero search
+// waits longer and for two letters, since it asks the server.
+let filterTimer = 0;
+function applyFilter() {
+  if ($("find").value !== $("filter").value) $("find").value = $("filter").value;
+  saveView(); drawGroups();
+  if (S.tab !== "numbers") return;
+  if (needle() && $("allHeroes").checked && needle().length < 2) return;
+  drawNumbers();
+}
+$("filter").addEventListener("input", () => { clearTimeout(filterTimer); filterTimer = setTimeout(applyFilter, $("allHeroes").checked ? 450 : 150); });
+$("allHeroes").addEventListener("change", applyFilter);
 $("showAll").addEventListener("change", drawGroups);
 $("hero").addEventListener("change", () => {
   if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) { $("hero").value = S.hero; return; }
-  S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; refresh();
+  S.hero = $("hero").value; S.entity = ""; S.steps = []; S.group = ""; S.sel = null; saveView(); refresh();
   loadBlocks();
 });
 // ---- saving into a mod ---------------------------------------------------------------
@@ -1159,7 +1314,13 @@ async function focusAbility(t) {
 (async () => {
   const r = await fetch("api/heroes"); const { heroes } = await r.json();
   $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
-  S.hero = heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
+  // The address (or, on a plain reload, the last session) says which hero and search to reopen.
+  let want = {};
+  try { want = JSON.parse(localStorage.getItem("ae-view") || "{}"); } catch (e) {}
+  const qs = new URLSearchParams(location.search);
+  if (qs.has("hero") || qs.has("q")) want = { hero: qs.get("hero") || "", q: qs.get("q") || "", all: qs.get("all") === "1" };
+  S.hero = heroes.includes(want.hero) ? want.hero : heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
+  $("filter").value = want.q || ""; $("allHeroes").checked = !!want.all;
   await refresh();
   try { S.mod = localStorage.getItem("ae-mod") || ""; } catch (e) {}
   await loadMods();
