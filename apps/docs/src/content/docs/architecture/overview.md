@@ -16,9 +16,11 @@ Two goals, in priority order:
 
 1. **Don't break the game.** Mod application must be deterministic and
    fully reversible.
-2. **Don't fight anti-tamper.** Ravenswatch.exe has anti-tamper logic
-   that crashes on common DLL-injection hook points (CreateFileW, Wine
-   forwarder patches, etc). v1 avoids the runtime path entirely.
+2. **Don't fight anti-tamper.** Ravenswatch.exe has a protector. Asset mods
+   never touch the running game: they replace files at install time, so no
+   anti-tamper code path runs. Only Lua mods need the optional loader, which
+   hooks the game at function entries (see
+   [Anti-tamper protector](/reverse-engineering/protector/)).
 3. **Treat a downloaded mod as hostile input.** A mod archive comes from
    a third party over the network. It must not be able to write outside
    `mods/`, delete anything, ship an executable, or exhaust the disk.
@@ -133,11 +135,11 @@ update if `UsedRscList.ot` changes.
   EngineSettings.ini, UsedRscList.ot). These are loaded from outside
   `_Cooking/` and are special-cased by the engine; v1 doesn't manage
   them. Manual edits work, no tooling around them yet.
-- **Add new entities, abilities, balance tweaks** that require a *new*
-  cooked file with new internal structure. Cooked `.gen` files are
-  positionally serialized against per-class schemas that live inside
-  `Ravenswatch.exe`. Building one from scratch needs the text-`.ot`
-  -> binary-`.gen` re-encoder (research, not built).
+- **Build a cooked file from nothing.** New items, heroes, enemies and
+  the like are made by the SDK content kinds, which cook a copy of a shipped
+  file and edit it (see [Authoring mods](/guides/modding/)). A free-form
+  text-`.ot` -> binary-`.gen` re-encoder for arbitrary classes is still
+  not built.
 - **Toggle mods in-game.** v1 is install-time only.
 
 ## v2: in-game UI (research)
@@ -167,17 +169,13 @@ a native-styled mod list. Path forward:
 
 See `FINDINGS.md` for the full reverse-engineering record.
 
-## Parked subsystems
+## The loader, and a parked subsystem
 
-The repo also contains:
-
-- `loader/` — winhttp.dll proxy + MinHook plumbing for in-process hooks.
-  Built, but disabled by default. Anti-tamper crashes both the IO hook
-  (`CreateFileW`) and the Vulkan present hook on this title.
+- `src/loader/` — winhttp.dll proxy + MinHook + Lua 5.4. This is the runtime for
+  Lua-scripted mods, installed with `rsmm install-loader` and updated with
+  `rsmm update-loader`. Asset-only mods do not need it.
 - `layer/` — Vulkan implicit layer that surfaces an ImGui overlay
-  without in-process hooks. Builds, but pressure-vessel strips
+  without in-process hooks. Parked: it builds, but pressure-vessel strips
   `VK_LAYER_PATH` so the user must drop the manifest into
   `~/.local/share/vulkan/implicit_layer.d/`. Gated by `RSMM_OVERLAY=1`
   via `enable_environment` in the layer manifest.
-
-Both are kept for the v2 work but are not part of the v1 pipeline.

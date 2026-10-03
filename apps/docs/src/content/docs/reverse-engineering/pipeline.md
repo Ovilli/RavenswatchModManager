@@ -195,12 +195,6 @@ See:
 
 ## What it doesn't enable
 
-- **Native hooks** (`MH_CreateHook` etc). The hook engine in
-  `src/loader/` builds, but every hookpoint we've tried crashes the
-  game's anti-tamper layer at startup. Until we have an injection
-  mechanism that survives that check, mods can only *call* and
-  *read/write memory* — not *intercept*. See `docs/INTERNALS.md`
-  §anti-tamper.
-- **New entities / heroes / items**. Still gated on the text-`.ot` →
-  binary-`.gen` re-encoder. RE work toward this is what `decompiled_all/`
-  is for.
+- **A general cooked-file re-encoder.** New items, heroes and enemies are
+  cooked by the SDK content kinds from a shipped file; building an
+  arbitrary class from scratch is still not supported.

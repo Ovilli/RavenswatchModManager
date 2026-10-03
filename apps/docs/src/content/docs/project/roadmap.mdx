@@ -37,32 +37,26 @@ from the desktop app and the CLI. The tooling (`rsmm menu`, `rsmm intents`,
 removed; what was learned about the game's UI is kept in
 [UI & the book menu](/reverse-engineering/ui-menus/).
 
-## Hook API (`rsmm.hook`) <Badge text="Blocked" variant="danger" />
+## Hook API (`rsmm.hook`) <Badge text="Shipped" variant="success" />
 
-`rsmm.call` covers *invoking* game functions; the missing surface is
-*intercepting* them (observer/mutator callbacks). The MinHook engine is wired but
-every hookpoint tried so far crashes the game under its anti-tamper integrity
-check.
+The loader intercepts game functions: `rsmm.hook` for mods, and the loader's own
+detours (damage meter, lobby parser, event bus, skins, talents) go through
+`hook_util.h`, which checks every target is a real function entry before it
+installs. The earlier belief that an anti-tamper integrity check crashed every
+hookpoint was wrong: the two hooks that failed had unrelated causes. See
+[Anti-tamper protector](/reverse-engineering/protector/).
 
-Paths forward:
-
-1. **Inject before anti-tamper init** via a TLS-callback DLL (runs before the
-   exe entry point) — confirm the first integrity sweep happens after.
-2. **Hook outside `.text`** — redirect through Vulkan loader / Steam SDK / FMOD
-   pointers we own indirectly, without touching the game image.
-3. **Indirect-call trap** — resolve the target and trap only when called from
-   `rsmm.call_hooked()`, non-invasive to the game image.
-
-Until one lands, `rsmm.hook` returns an explicit "not supported on this title"
-error so mods fail at write-time, not run-time.
+Hooks are observation-first and gated by symbol status in `data/symbols.json`; a
+hook on an address that is not a function entry is refused or warned, not
+installed silently.
 
 ## Pattern-DB self-rebuild on game update <Badge text="Planned" variant="note" />
 
 When Steam updates Ravenswatch, the signatures in `function_patterns.json` must
-be regenerated against the new exe. Missing UX:
+be regenerated against the new exe.
 
-- `./rsmm doctor` should hash the installed exe against the `image_base + filesize`
-  recorded in the pattern DB header and warn when `rsmm.resolve` may degrade.
-- `./rsmm rebuild-fn-patterns` — one-shot wrapper that re-runs the Ghidra dump +
-  pattern generation + resolver self-test and reports the unique-rate
-  (~30 min per regen).
+- Shipped: `./rsmm doctor` hashes the installed exe and warns when the pattern DB
+  is stale, and `rsmm symbols` remaps `data/symbols.json` after a patch.
+- Still missing: a one-shot `./rsmm rebuild-fn-patterns` wrapper that re-runs the
+  Ghidra dump + pattern generation + resolver self-test and reports the
+  unique-rate (~30 min per regen). Today those steps are run by hand.
