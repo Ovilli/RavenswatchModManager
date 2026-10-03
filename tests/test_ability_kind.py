@@ -57,7 +57,7 @@ def test_two_blocks_editing_one_file_both_land(tmp_path):
 @pytest.mark.parametrize("fields,msg", [
     ({"hero": "Nobody", "abilities": [{"set": "A.value", "value": 1}]}, "no shipped hero"),
     ({"abilities": [{"set": "A.value", "value": 1}]}, "needs a 'hero'"),
-    ({"hero": "Beowulf"}, "needs 'abilities'"),
+    ({"hero": "Beowulf", "abilities": "oops"}, "needs 'abilities'"),
     ({"hero": "Beowulf", "abilities": [{"clone": "Ability Primary", "as": "X"}]},
      "custom hero"),
     ({"hero": "Beowulf", "abilities": [{"set": "No Such Part.value", "value": 1}]},
@@ -66,3 +66,10 @@ def test_two_blocks_editing_one_file_both_land(tmp_path):
 def test_bad_ability_blocks_are_refused(tmp_path, fields, msg):
     with pytest.raises(ContentError, match=msg):
         hero_abilities.emit("m", ContentDef(kind="ability", id="X", fields=fields), tmp_path)
+
+
+@pytest.mark.parametrize("fields", [{"hero": "Beowulf"}, {"hero": "Beowulf", "abilities": []}])
+def test_block_with_no_steps_is_a_no_op(tmp_path, fields):
+    # The editor's New mod saves a block before any change is made.
+    defn = ContentDef(kind="ability", id="X", fields=fields)
+    assert hero_abilities.emit("m", defn, tmp_path) == []

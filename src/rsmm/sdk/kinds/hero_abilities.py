@@ -45,7 +45,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if not hero or not isinstance(hero, str):
         raise ContentError(f"ability {defn.id}: needs a 'hero' (a shipped hero, e.g. Beowulf)")
     steps = defn.fields.get("abilities")
-    if not isinstance(steps, list) or not steps or not all(isinstance(s, dict) for s in steps):
+    if steps is None or steps == []:
+        # The editor saves a block before any change is made (or after every change is
+        # undone): nothing to edit yet, so nothing to write.
+        _log.info("ability %s/%s: no steps yet, %s left as shipped", mod_id, defn.id, hero)
+        return []
+    if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(
             f"ability {defn.id}: needs 'abilities', a list of [[content.abilities]] steps")
     if any("clone" in s for s in steps):
