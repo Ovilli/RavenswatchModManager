@@ -2,6 +2,18 @@
   "generated": "2026-10-03",
   "entries": [
     {
+      "version": "5.9.4",
+      "date": "2026-10-03",
+      "summary": "Easier-to-read text throughout the app, and fewer background checks so screens open faster.",
+      "highlights": [
+        "Easier to read: new fonts, upright labels instead of slanted ones, and larger small text. The fonts now ship inside the app, so it no longer contacts Google at launch and looks the same offline.",
+        "Fixed: file paths in Settings were shown in capital letters. They now show exactly as they are.",
+        "Fixed: the top bar no longer gets cut off at the default window size.",
+        "Faster: coming back to the Library no longer re-runs the update checks, and Settings reuses what the app already learned at launch.",
+        "Faster: the Profiles screen reads all your profiles in one step instead of one per profile."
+      ]
+    },
+    {
       "version": "5.9.3",
       "date": "2026-10-03",
       "summary": "A website refresh: easier-to-read fonts and a home page that leads with the registry. The app itself is unchanged.",
