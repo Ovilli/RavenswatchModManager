@@ -44,6 +44,24 @@ function show(key) {
   for (const a of nav.querySelectorAll("a")) a.classList.toggle("on", a.dataset.tab === key);
   document.title = TABS[key][0] + " · RSMM Editor";
 }
+
+// Cross-tab links. A page asks the host to show another tab and hands that tab a
+// target; the tab registers a receiver once it is loaded, so this works whether
+// its frame is already open or is made by this very call.
+const waiting = {}, receivers = {};
+function deliver(tab) {
+  const fn = receivers[tab], target = waiting[tab];
+  if (fn && target) { delete waiting[tab]; fn(target); }
+}
+window.rsmmOpen = (tab, target) => {
+  if (!(tab in TABS)) return false;
+  waiting[tab] = target;
+  show(tab);
+  if (location.hash.slice(1) !== tab) location.hash = "#" + tab;
+  deliver(tab);
+  return true;
+};
+window.rsmmReady = (tab, fn) => { receivers[tab] = fn; deliver(tab); };
 window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 show(location.hash.slice(1) || "__RSMM_TAB__");
 </script>

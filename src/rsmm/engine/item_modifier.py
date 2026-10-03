@@ -357,6 +357,10 @@ class Placeholder:
     node: str            # the node's own name, e.g. ``Vitality Step Value``
     kind: str            # its bracket kind: ``Value``, ``Multi values operations``, ...
     sources: tuple[str, ...] = ()   # the [Value] nodes a computed node reads
+    #: the [Value Selector] nodes a computed node reads. Kept apart from
+    #: ``sources`` (which item cards also consume by plain-value lookup) because
+    #: a selector's number lives in a per-tier union, not a single value node.
+    selectors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -453,10 +457,16 @@ def text_formats(cooked_bytes: bytes, bank_name: str) -> list[tuple[str, CardFor
             kind = label[1:label.index("]")]
             node = label.rsplit("\\", 1)[-1]
             sources: tuple[str, ...] = ()
+            selectors: tuple[str, ...] = ()
             if kind != "Value" and node in own:
+                labs = _labels(own[node])
                 sources = tuple(dict.fromkeys(
-                    lab.rsplit("\\", 1)[-1] for lab in _labels(own[node])
+                    lab.rsplit("\\", 1)[-1] for lab in labs
                     if lab.startswith("[Value] ")))
-            entries.append(Placeholder(node=node, kind=kind, sources=sources))
+                selectors = tuple(dict.fromkeys(
+                    lab.rsplit("\\", 1)[-1] for lab in labs
+                    if lab.startswith("[Value Selector] ")))
+            entries.append(Placeholder(node=node, kind=kind, sources=sources,
+                                       selectors=selectors))
         out.append((name, CardFormat(key=key, entries=tuple(entries))))
     return out

@@ -1077,14 +1077,40 @@ $("helpOk").onclick = () => setHelp(false);
 $("helpBtn").onclick = () => { showTab("numbers"); setHelp($("help").hidden); };
 try { if (localStorage.getItem("ae-help")) $("help").hidden = true; } catch (e) {}
 
+// Another tab can send us here ("Open in Ability editor" on a talent card): show
+// that hero's main entity with the named ability selected and its numbers up. A
+// card named "Defense Clone" is the ability group "Skill Defense Clone"; the few
+// that are filed under another name (e.g. "_old Skill ...") are matched loosely,
+// and one that matches nothing still lands on the right hero.
+async function focusAbility(t) {
+  if (!t || typeof t.hero !== "string") return;
+  if (t.hero !== S.hero) {
+    if (![...$("hero").options].some(o => o.value === t.hero)) return;
+    if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) return;
+    S.hero = t.hero; $("hero").value = S.hero; S.steps = []; loadBlocks();
+  }
+  S.entity = ""; S.group = ""; S.sel = null;
+  await refresh();
+  if (!S.data) return;
+  const want = String(t.group || ""), low = want.toLowerCase(), gs = [...groupsOf().keys()];
+  const g = gs.includes(want) ? want : low ? gs.find(x => x.toLowerCase().includes(low)) : undefined;
+  if (!g) { setStatus("warn", want ? `No ability called “${want}” on ${S.hero}; showing the hero.` : ""); return; }
+  if (kindOfGroup(g) === "Other") $("showAll").checked = true;
+  selectGroup(g); showTab("numbers");
+  const on = document.querySelector(".grp.on"); if (on) on.scrollIntoView({ block: "nearest" });
+}
+
 (async () => {
   const r = await fetch("api/heroes"); const { heroes } = await r.json();
   $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
   S.hero = heroes.includes("Piper") ? "Piper" : heroes[0]; $("hero").value = S.hero;
-  refresh();
+  await refresh();
   try { S.mod = localStorage.getItem("ae-mod") || ""; } catch (e) {}
   await loadMods();
   loadBlocks();
+  // Tell the editor shell we can take a target. Not framed (or the shell has no
+  // such hook): nothing to do, the tab works exactly as before.
+  try { if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady("abilities", focusAbility); } catch (e) {}
 })();
 </script>
 </body>

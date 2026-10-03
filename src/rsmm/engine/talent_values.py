@@ -64,6 +64,7 @@ re-cook).
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -228,9 +229,18 @@ def _iter_lstrings(data: bytes):
         i += 1
 
 
-def _iter_value_nodes(data: bytes, names: list[str]):
+def _iter_value_nodes(data: bytes, names: list[str],
+                      extra: frozenset[str] = frozenset()):
     """Yield ``(label, offset, type_code, value_off, size, shadowed)`` for every
     resolvable numeric value node, in file order.
+
+    ``extra`` names labels to admit even though :func:`_is_authored_value_label`
+    would not: the suffix filter exists to keep ~6000 effect/animation/flag
+    nodes out of a LISTING, but a label somebody asked for BY NAME (a card's
+    placeholder, a manifest patch) is authored by definition, and the same
+    structural checks (picker -> union, fixed-width numeric) still guard it. A
+    suffix list cannot do this job: the cards alone reference 25 different
+    endings (``Lifetime``, ``Proc``, ``Delay``, ``Targets`` ...).
 
     De-duped by label *and* by the value's offset. The offset half matters
     because a node is laid out as ``<own name> <header> <scope name> <header>
@@ -242,7 +252,7 @@ def _iter_value_nodes(data: bytes, names: list[str]):
     seen: set[str] = set()
     claimed: set[int] = set()
     for off, s in _iter_lstrings(data):
-        if s in seen or not _is_authored_value_label(s):
+        if s in seen or not (s in extra or _is_authored_value_label(s)):
             continue
         node = _resolve_value_node(data, names, off + 4 + len(s.encode("ascii")))
         if node is None or node[1] in claimed:
@@ -252,7 +262,8 @@ def _iter_value_nodes(data: bytes, names: list[str]):
         yield (s, off, *node)
 
 
-def list_talent_values(data: bytes, *, include_spawner: bool = False) -> list[TalentValue]:
+def list_talent_values(data: bytes, *, include_spawner: bool = False,
+                       extra_labels: Iterable[str] = ()) -> list[TalentValue]:
     """Discover editable talent magnitudes in one cooked hero-entity file.
 
     Only nodes that genuinely resolve to ``oCEntityCpntValuePicker`` ->
@@ -261,13 +272,15 @@ def list_talent_values(data: bytes, *, include_spawner: bool = False) -> list[Ta
     skipped rather than reported as ``0.0``. Returns ``[]`` when the container's
     class table cannot be parsed, because without it no node can be identified.
     By default drops ``... Spawner Value`` runtime slots (always 0.0). De-dupes
-    by label, first occurrence wins.
+    by label, first occurrence wins. ``extra_labels`` are admitted whatever
+    their name ends in (see :func:`_iter_value_nodes`).
     """
     names = class_names(data)
     if names is None:
         return []
     out: list[TalentValue] = []
-    for label, _off, tc, voff, _size, shadowed in _iter_value_nodes(data, names):
+    for label, _off, tc, voff, _size, shadowed in _iter_value_nodes(
+            data, names, frozenset(extra_labels)):
         is_spawner = label.endswith("Spawner Value")
         if is_spawner and not include_spawner:
             continue
@@ -297,7 +310,8 @@ def is_label_overridden(data: bytes, label: str) -> bool:
     names = class_names(data)
     if names is None:
         return False
-    for lbl, _off, _tc, _voff, _size, shadowed in _iter_value_nodes(data, names):
+    for lbl, _off, _tc, _voff, _size, shadowed in _iter_value_nodes(
+            data, names, frozenset((label,))):
         if lbl == label:
             return shadowed
     return False
@@ -324,7 +338,8 @@ def set_talent_value(data: bytes, label: str, new_value: float,
     names = class_names(data)
     if names is None:
         raise ValueError("not a parseable cooked container (no class table)")
-    for lbl, _off, tc, voff, size, shadowed in _iter_value_nodes(data, names):
+    for lbl, _off, tc, voff, size, shadowed in _iter_value_nodes(
+            data, names, frozenset((label,))):
         if lbl != label:
             continue
         cur = _read_value(data, tc, voff)

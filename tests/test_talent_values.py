@@ -270,3 +270,36 @@ def test_set_union_value_guards_index_and_old_value():
         set_union_value(raw, "Damage Multiplier Selector", 1, 0.6, expect=0.4)
     with pytest.raises(ValueError, match="not found"):
         set_union_value(raw, "No Such Selector", 0, 1.0)
+
+
+# --------------------------------------------------------------------------
+# labels admitted by name, whatever they end in
+# --------------------------------------------------------------------------
+
+def _lifetime_sample() -> bytes:
+    # "Lifetime" is not one of the suffixes the listing keeps, and neither is a
+    # name that merely ends in a word nobody whitelisted.
+    return entity(value_node("Orbit Lifetime", 6.0), value_node("Crit Chance Value", 0.4))
+
+
+def test_listing_keeps_a_name_the_suffix_filter_does_not_admit_out():
+    labels = [v.label for v in list_talent_values(_lifetime_sample())]
+    assert labels == ["Crit Chance Value"]
+
+
+def test_extra_labels_admit_a_named_value_through_the_same_structural_checks():
+    raw = _lifetime_sample()
+    got = {v.label: v for v in list_talent_values(raw, extra_labels=("Orbit Lifetime",))}
+    assert got["Orbit Lifetime"].value == pytest.approx(6.0)
+    # A name that is admitted must still resolve to a picker -> union: a label
+    # with no value node behind it stays out rather than reading as 0.0.
+    assert "Nothing Behind This" not in {
+        v.label for v in list_talent_values(raw, extra_labels=("Nothing Behind This",))}
+
+
+def test_patching_by_explicit_label_reaches_a_value_the_listing_hides():
+    raw = _lifetime_sample()
+    out = set_talent_value(raw, "Orbit Lifetime", 9.5, expect=6.0)
+    got = {v.label: v for v in list_talent_values(out, extra_labels=("Orbit Lifetime",))}
+    assert got["Orbit Lifetime"].value == pytest.approx(9.5)
+    assert is_label_overridden(raw, "Orbit Lifetime") is False

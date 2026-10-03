@@ -143,6 +143,9 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .tside { display: grid; gap: 6px; min-width: 0; }
 .tside input, .tside textarea { width: 100%; box-sizing: border-box; }
 .tside .sect { margin: 8px 0 2px; }
+.sectrow { display: flex; align-items: center; justify-content: space-between; }
+.linkbtn { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--accentline, var(--ink)); cursor: pointer; text-decoration: underline; }
+.linkbtn:hover { color: var(--ink); }
 .tsrc { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
 .tsrc span { flex: 1; }
 .tnums { display: grid; gap: 4px; }
@@ -1233,20 +1236,29 @@ function talentCurrent(file, label) {
   return e ? e.new : r ? r.value : undefined;
 }
 function tierKey(file, label, index) { return file + "\u0000" + label + "\u0000" + index; }
+// A computed node ("Supposed Damage Operation") reads a selector; the indices of
+// its numbers belong to THAT node, not to the placeholder's own.
+function tierNode(e) { return e.tierNode || e.node; }
 function tierCurrent(file, e, tier) {
   const t = e.tiers[tier];
   if (!t) return undefined;
-  const ed = S.talentEdit.tiers[tierKey(file, e.node, t.index)];
+  const ed = S.talentEdit.tiers[tierKey(file, tierNode(e), t.index)];
   return ed ? ed.new : t.value;
+}
+function singleCurrent(file, e) {
+  const ed = S.talentEdit.tiers[tierKey(file, tierNode(e), e.single.index)];
+  return ed ? ed.new : e.single.value;
 }
 function talentFill(c) {
   const rarity = S.talentEdit.rarity || "Common";
   return (n, next) => {
     const e = c.entries[n];
-    if (e && e.tiers) {
-      const v = tierCurrent(c.file, e, rarity), chip = el("span", { class: "ph" });
+    if (e && (e.tiers || e.single)) {
+      const v = e.tiers ? tierCurrent(c.file, e, rarity) : singleCurrent(c.file, e);
+      const chip = el("span", { class: "ph" });
       chip.textContent = typeof v === "number" ? fmt(next === "%" ? v * 100 : v) : "{" + n + "}";
-      chip.title = "{" + n + "}: " + e.node + " (" + rarity + ")";
+      chip.title = "{" + n + "}: " + e.node + (e.tiers ? " (" + rarity + ")" : "")
+        + (tierNode(e) !== e.node ? ", estimated from " + tierNode(e) : "");
       return chip;
     }
     if (!e) {
@@ -1295,21 +1307,43 @@ function talentNumbers(c, redraw) {
   c.entries.forEach((e, n) => {
     const tag = el("span", { class: "phn", text: "{" + n + "}" });
     if (!e) { box.append(el("div", { class: "tnote" }, tag, "set inside the talent, not editable here")); return; }
+    if (e.single) {
+      // One number, no rarity: a selector with a single entry (the Ice Clone's
+      // health ratio). Saved exactly like a tier -- a union patch by index.
+      const node = tierNode(e), s = e.single, k = tierKey(c.file, node, s.index), cur = E.tiers[k];
+      const inp = el("input", { type: "number", step: s.type === "int" ? "1" : "any", value: fmt(cur ? cur.new : s.value), title: "was " + fmt(s.value) });
+      const undo = resetBtn(() => { delete E.tiers[k]; renderView(); refresh(); });
+      undo.classList.add("own");
+      const sync = () => undo.classList.toggle("on", !!E.tiers[k]);
+      inp.oninput = () => {
+        const nv = inp.value === "" ? NaN : Number(inp.value);
+        if (Number.isNaN(nv) || nv === s.value) delete E.tiers[k];
+        else E.tiers[k] = { file: c.file, label: node, index: s.index, old: s.value, new: nv };
+        inp.classList.toggle("ed", !!E.tiers[k]); sync(); redraw(); refresh();
+      };
+      inp.classList.toggle("ed", !!cur);
+      sync();
+      box.append(el("div", { class: "trow" },
+        el("div", { class: "lbl", title: node }, tag, " " + (node === e.node ? "" : "from ") + shortLabel(node, c.source)),
+        el("label", { class: "tier" }, inp), undo));
+      return;
+    }
     if (e.tiers) {
-      const row = el("div", { class: "trow" }, el("div", { class: "lbl", title: e.node }, tag, " " + shortLabel(e.node, c.source)));
-      const keys = TIERS.filter(t => e.tiers[t]).map(t => tierKey(c.file, e.node, e.tiers[t].index));
+      const node = tierNode(e);
+      const row = el("div", { class: "trow" }, el("div", { class: "lbl", title: node }, tag, " " + (node === e.node ? "" : "from ") + shortLabel(node, c.source)));
+      const keys = TIERS.filter(t => e.tiers[t]).map(t => tierKey(c.file, node, e.tiers[t].index));
       const undo = resetBtn(() => { for (const k of keys) delete E.tiers[k]; renderView(); refresh(); });
       undo.classList.add("own");
       const sync = () => undo.classList.toggle("on", keys.some(k => E.tiers[k]));
       for (const tier of TIERS) {
         const t = e.tiers[tier];
         if (!t) { row.append(el("span")); continue; }
-        const k = tierKey(c.file, e.node, t.index), cur = E.tiers[k];
+        const k = tierKey(c.file, node, t.index), cur = E.tiers[k];
         const inp = el("input", { type: "number", step: "any", value: fmt(cur ? cur.new : t.value), title: tier + " (was " + fmt(t.value) + ")", "data-tier": tier });
         inp.oninput = () => {
           const nv = inp.value === "" ? NaN : Number(inp.value);
           if (Number.isNaN(nv) || nv === t.value) delete E.tiers[k];
-          else E.tiers[k] = { file: c.file, label: e.node, index: t.index, old: t.value, new: nv };
+          else E.tiers[k] = { file: c.file, label: node, index: t.index, old: t.value, new: nv };
           inp.classList.toggle("ed", !!E.tiers[k]); sync(); redraw(); refresh();
         };
         inp.classList.toggle("ed", !!cur);
@@ -1387,10 +1421,23 @@ function talentView() {
   return v;
 }
 
+// "Open in Ability editor": the same numbers as parts of a graph, with the links
+// between them. Only inside the editor shell, which is what can switch tabs; the
+// ability group of a card "Defense Clone" is "Skill Defense Clone".
+function abilityLink(c) {
+  let host = null;
+  try { host = window.top !== window && window.top.rsmmOpen ? window.top : null; } catch { host = null; }
+  if (!host) return el("span");
+  return el("button", { type: "button", class: "linkbtn", title: "Show this talent's parts and links in the Ability editor",
+    onclick: () => host.rsmmOpen("abilities", { hero: S.hero, group: "Skill " + c.source }) }, "Open in Ability editor ↗");
+}
+
 // One talent: its card as the game draws it, and everything that changes it.
 function talentRow(c) {
   const E = S.talentEdit, cur = E.cards[c.source] || {};
-  const tierEdited = () => c.entries.some(e => e && e.tiers && Object.values(e.tiers).some(t => E.tiers[tierKey(c.file, e.node, t.index)]));
+  const tierEdited = () => c.entries.some(e => e && (
+    (e.tiers && Object.values(e.tiers).some(t => E.tiers[tierKey(c.file, tierNode(e), t.index)]))
+    || (e.single && E.tiers[tierKey(c.file, tierNode(e), e.single.index)])));
   const row = el("div", { class: "tcard" });
   const preview = el("div", { class: "tprev" });
   const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
@@ -1435,7 +1482,8 @@ function talentRow(c) {
   const side = el("div", { class: "tside" },
     el("div", { class: "tsrc" }, el("span", { text: c.source }), iconCtl, undo),
     nameIn, descIn);
-  if (c.entries.length) side.append(el("div", { class: "sect", text: "Numbers" }), talentNumbers(c, redraw));
+  if (c.entries.length) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
+    talentNumbers(c, redraw));
   row.append(preview, side);
   TPREV.add(preview, paint);
   row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited()));

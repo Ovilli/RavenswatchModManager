@@ -279,11 +279,13 @@ def talent_values(hero: str) -> list[dict]:
     from rsmm.engine.talent_values import TYPE_BOOL, list_talent_values
 
     files = []
+    on_cards = _card_labels(hero)
     for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
         data = p.read_bytes()
         seen: set[str] = set()
         rows = []
-        for v in list_talent_values(data):
+        stem = p.name.split(".entity.ot.", 1)[0]
+        for v in list_talent_values(data, extra_labels=on_cards.get(stem, ())):
             if v.is_spawner or v.label in seen:
                 continue
             seen.add(v.label)
@@ -337,7 +339,7 @@ def talent_cards(hero: str) -> list[dict]:
         file, fmt = formats.get(desc_key, (None, None))
         entries = [] if fmt is None else [
             None if e is None else {"node": e.node, "kind": e.kind, "sources": list(e.sources),
-                                    **_tiers(hero, file, e)}
+                                    "selectors": list(e.selectors), **_tiers(hero, file, e)}
             for e in fmt.entries]
         # The values behind the card's {N}: a plain node itself, or what a
         # computed one is worked out from. Looked up in the text's own file.
@@ -356,16 +358,44 @@ def talent_cards(hero: str) -> list[dict]:
 
 
 def _tiers(hero: str, file: str, entry) -> dict:
-    """``{"tiers": {tier: {index, value}}}`` when the placeholder is a per-rarity
-    selector (most talent numbers are), else nothing."""
-    if entry.kind != "Value Selector":
+    """The editable number(s) behind a placeholder that reads a value selector.
+
+    * ``{"tiers": {tier: {index, value}}, "tierNode": node}`` -- a per-rarity
+      selector (most talent numbers are);
+    * ``{"single": {index, value, type}, "tierNode": node}`` -- a selector that
+      holds ONE number and no rarity keys (the Ice Clone's health ratio);
+    * nothing when there is no selector to read.
+
+    The selector is the placeholder itself, or -- for a computed node such as
+    ``Skill X Supposed Damage Operation`` -- the ``[Value Selector]`` it reads.
+    ``tierNode`` names the selector the indices belong to, which is not the
+    placeholder's own node in the computed case."""
+    nodes = [entry.node] if entry.kind == "Value Selector" else list(entry.selectors)
+    if not nodes:
         return {}
-    from rsmm.engine.talent_values import tier_values
+    from rsmm.engine.talent_values import TYPE_BOOL, TYPE_INT32, list_union_values, tier_values
     data = _hero_file(hero, file)
-    tiers = tier_values(data, entry.node) if data else {}
-    if not tiers:
+    if not data:
         return {}
-    return {"tiers": {t: {"index": i, "value": v} for t, (i, v, _tc) in tiers.items()}}
+    for node in nodes:
+        tiers = tier_values(data, node)
+        if tiers:
+            return {"tiers": {t: {"index": i, "value": v} for t, (i, v, _tc) in tiers.items()},
+                    "tierNode": node}
+    for node in nodes:
+        try:
+            unions = list_union_values(data, node)
+        except ValueError:
+            continue
+        numbers = [(i, v, tc) for i, (_o, v, tc) in enumerate(unions) if tc != TYPE_BOOL]
+        # One number and nothing to tell it from: with two or more it would be a
+        # guess which one the card shows.
+        if len(numbers) == 1:
+            i, v, tc = numbers[0]
+            return {"single": {"index": i, "value": int(v) if tc == TYPE_INT32 else round(v, 4),
+                               "type": "int" if tc == TYPE_INT32 else "float"},
+                    "tierNode": node}
+    return {}
 
 
 @_once
@@ -417,6 +447,28 @@ def _hero_formats(hero: str) -> dict:
         for key, fmt in IM.formats_by_key(p.read_bytes(), bank).items():
             out.setdefault(key, (file, fmt))
     return out
+
+
+@_once
+def _card_labels(hero: str) -> dict[str, frozenset[str]]:
+    """File -> the value nodes its talent cards name as a ``{N}``, plainly or as
+    the inputs of a computed one.
+
+    A card is the one place the game itself says "this node is an authored
+    number", whatever the node is called. The generic value list keeps effect,
+    animation and flag nodes out by name ending, which also hides a card's
+    ``Skill Defense Tornado Lifetime`` or ``Skill Power Quest Explode Damage Per
+    Proc`` -- so these names are handed to the lister to admit explicitly."""
+    out: dict[str, set[str]] = {}
+    for file, fmt in _hero_formats(hero).values():
+        for e in fmt.entries:
+            if e is None:
+                continue
+            names = out.setdefault(file, set())
+            if e.kind == "Value":
+                names.add(e.node)
+            names.update(e.sources)
+    return {f: frozenset(n) for f, n in out.items()}
 
 
 @_once

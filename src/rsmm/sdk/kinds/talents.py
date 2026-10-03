@@ -187,7 +187,8 @@ def _modifier_stat_from(hero: str, node: str) -> bytes:
 
 def _label_in(cooked: bytes, label: str) -> bool:
     return any(tv.label == label
-               for tv in TV.list_talent_values(cooked, include_spawner=True))
+               for tv in TV.list_talent_values(cooked, include_spawner=True,
+                                               extra_labels=(label,)))
 
 
 def _apply_patch(cooked: bytes, label: str, old: float, new: float,
