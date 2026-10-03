@@ -326,12 +326,14 @@ def _controller_text_keys(main: bytes, folder: str) -> dict[str, list[str]]:
 
 
 @_once
-def talent_cards(hero: str) -> list[dict]:
-    """The hero's talent cards with their current English name and text.
+def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
+    """``(cards, skipped)`` for ``hero``.
 
-    A card is a ``Skill Controller <X>`` in the hero's main entity whose text
-    key the hero's bank really holds; controllers with no text (helpers such
-    as ``Attack Controller Burst``) are not cards and are left out."""
+    A card is a ``Skill Controller <X>`` in the hero's main entity. Its text key
+    is read from the controller itself, which names the card it draws; the
+    row's own name is only a fallback, because rows are named by slot or ability
+    or with typos and no spelling rule holds for every hero. A controller that
+    yields no card goes to ``skipped`` with the reason, never away unseen."""
     from rsmm.engine import corpus
     from rsmm.engine import skill_clone as SC
     from rsmm.engine import text_patches as TP
@@ -342,7 +344,7 @@ def talent_cards(hero: str) -> list[dict]:
     main = corpus.read(f"{_HEROES_DIR}/{folder}/{folder}{_GEN_SUFFIX}")
     bank = S._install_bank(_herodefs()[hero])
     if main is None or bank is None:
-        return []
+        return [], []
     keys = TP.parse_text_file(bank[0]).entries
     try:
         vals = TP.parse_text_file(TP.lang_path_for(bank[0], "EN")).entries
@@ -351,18 +353,20 @@ def talent_cards(hero: str) -> list[dict]:
     text = dict(zip(keys, vals, strict=False))
     formats = _hero_formats(hero)
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
-    out = []
+    out, skipped = [], []
     own = _controller_text_keys(main, folder)
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
-        try:
-            base = S._text_key_base(source, keys)
-        except ContentError:
-            # The row names no card by its own name (`Ultimate 1 Upgrade 1` is
-            # the Wondrous Wishes row), but the row itself holds the card's key.
-            base = next((b for b in own.get(source, ())
-                         if any(k is not None for k in S.card_keys(b, keys))), None)
-            if base is None:
+        held = own.get(source, [])
+        base = next((b for b in held if any(k is not None for k in S.card_keys(b, keys))), None)
+        if base is None:
+            try:
+                base = S._text_key_base(source, keys)
+            except ContentError:
+                skipped.append({"source": source, "reason": (
+                    f"names {held[0]}_Name, which the hero's text bank does not hold"
+                    if held else "has no card text of its own (a helper row, not a card)"),
+                    "problem": bool(held)})
                 continue
         name_key, desc_key = S.card_keys(base, keys)
         file, fmt = formats.get(desc_key, (None, None))
@@ -383,7 +387,20 @@ def talent_cards(hero: str) -> list[dict]:
                     "description": text.get(desc_key) or "" if desc_key else "",
                     "hasName": name_key is not None, "hasDescription": desc_key is not None,
                     "entries": entries, "file": file, "values": refs, "icon": icon})
-    return out
+    return out, skipped
+
+
+def talent_cards(hero: str) -> list[dict]:
+    """The hero's talent cards with their current English name and text."""
+    return _talent_rows(hero)[0]
+
+
+def talent_skipped(hero: str) -> list[dict]:
+    """Controllers that gave no card, each with why; ``problem`` marks the ones
+    that name a card the text bank lacks (a bug, not a helper row)."""
+    return _talent_rows(hero)[1]
+
+
 
 
 def _tiers(hero: str, file: str, entry) -> dict:
@@ -1244,6 +1261,7 @@ ROUTES = {
     ("GET", "/api/talents"): lambda req: {"hero": req.arg("hero"),
                                           "files": talent_values(req.arg("hero")),
                                           "cards": talent_cards(req.arg("hero")),
+                                          "skipped": talent_skipped(req.arg("hero")),
                                           "portrait": hero_portrait(req.arg("hero"))},
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},

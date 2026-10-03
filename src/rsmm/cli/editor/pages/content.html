@@ -48,7 +48,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .form label { padding-top: 6px; font-weight: 600; }
 .form input, .form select { width: 100%; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.hint.bad { color: var(--bad); }
+.hint.bad, .tiny.bad { color: var(--bad); }
 .own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .own .ownimg { width: 48px; height: 48px; object-fit: contain; border-radius: 6px; background: var(--chip); }
 .own span { font-size: 12px; color: var(--muted); max-width: 360px; }
@@ -1416,6 +1416,14 @@ function talentView() {
   q.oninput = () => { E.q = q.value; draw(); };
   draw();
   v.append(list);
+  // Anything the editor could not turn into a card is listed, never dropped.
+  const skipped = T.skipped || [];
+  if (skipped.length) {
+    const bad = skipped.filter(x => x.problem).length;
+    v.append(el("details", { class: "hint", ...(bad ? { open: "" } : {}) },
+      el("summary", { text: bad ? `${skipped.length} rows not shown as cards, ${bad} of them look like a bug` : `${skipped.length} rows not shown as cards (helpers, no card text)` }),
+      ...skipped.map(x => el("div", { class: "tiny" + (x.problem ? " bad" : " muted"), text: `${x.source}: ${x.reason}` }))));
+  }
   v.append(el("div", { class: "hint", text: "Card text markup: #WORD@ highlights, &{0}~ is a number that scales with rarity, $word* marks a drawback. Keep the placeholders the card already uses." }));
   v.append(allValues());
   return v;

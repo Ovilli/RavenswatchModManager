@@ -83,6 +83,18 @@ def test_every_talent_card_finds_the_icon_it_draws():
     assert missing == []
 
 
+def test_no_talent_controller_is_dropped_unexplained():
+    """A controller that yields no card is listed with a reason. One that names
+    a card the text bank lacks is a bug (before the card key was read from the
+    controller, Aladdin's `Ultimate 1 Upgrade 1` and 60-odd other cards vanished
+    without a trace)."""
+    from rsmm.cli.editor import content as E
+    _aladdin()
+    for h in E.heroes():
+        assert [x for x in E.talent_skipped(h) if x["problem"]] == [], h
+        assert all(x["reason"] for x in E.talent_skipped(h)), h
+
+
 def test_a_hero_is_named_with_or_without_underscores():
     from rsmm.sdk.kinds import skills as S
     _aladdin()
