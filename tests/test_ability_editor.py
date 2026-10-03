@@ -103,9 +103,10 @@ def test_search_finds_a_hit_value_in_the_heros_other_files():
 
 
 @needs
-def test_a_new_mod_comes_with_a_custom_hero_to_save_into(tmp_path):
-    """Saving ability changes needs a mod with a custom hero built on the hero;
-    "New mod…" makes both, and a paid hero's copy is marked `dlc_owner`."""
+def test_a_new_mod_comes_with_a_block_to_save_into(tmp_path):
+    """Saving ability changes needs a block: by default an in-place edit of the
+    shipped hero; or, as "custom", a separate hero built on it (a paid hero's copy
+    is marked `dlc_owner`)."""
     from types import SimpleNamespace
 
     from rsmm.cli.editor import modio
@@ -113,16 +114,44 @@ def test_a_new_mod_comes_with_a_custom_hero_to_save_into(tmp_path):
     def req(**body):
         return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
 
+    def text(got):
+        return (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
+
     got = AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))
-    assert got == {"mod": "pam-fireball-nerf", "block": "BeowulfEdit"}
-    text = (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
-    assert [(b["id"], b["base"]) for b in modio.hero_blocks(text)] == [("BeowulfEdit", "Beowulf")]
+    assert got == {"mod": "pam-fireball-nerf", "block": "BeowulfAbilities"}
+    blocks = modio.hero_blocks(text(got), "ability")
+    assert [(b["id"], b["base"]) for b in blocks] == [("BeowulfAbilities", "Beowulf")]
+    assert modio.hero_blocks(text(got)) == []                  # no second hero
     # a second mod of the same name gets its own folder
     assert AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))["mod"] \
         == "pam-fireball-nerf-2"
-    # A paid hero's copy says the author owns the DLC; a free one's does not.
-    paid = AE._new_mod(req(name="Merlin tweaks", hero="Merlin"))
-    free = AE._new_mod(req(name="Carmilla tweaks", hero="Carmilla"))
-    paid_text = (tmp_path / paid["mod"] / "manifest.toml").read_text(encoding="utf-8")
-    free_text = (tmp_path / free["mod"] / "manifest.toml").read_text(encoding="utf-8")
-    assert "dlc_owner = true" in paid_text and "dlc_owner" not in free_text
+    # a custom hero is a separate, extra one
+    custom = AE._new_mod(req(name="Beowulf copy", hero="Beowulf", mode="custom"))
+    assert custom["block"] == "BeowulfEdit"
+    assert [b["id"] for b in modio.hero_blocks(text(custom))] == ["BeowulfEdit"]
+    # A paid hero's copy says the author owns the DLC; a free one's does not, and an
+    # in-place edit needs neither.
+    paid = AE._new_mod(req(name="Merlin copy", hero="Merlin", mode="custom"))
+    free = AE._new_mod(req(name="Carmilla copy", hero="Carmilla", mode="custom"))
+    assert "dlc_owner = true" in text(paid) and "dlc_owner" not in text(free)
+    assert "dlc_owner" not in text(AE._new_mod(req(name="Merlin edit", hero="Merlin")))
+
+
+@needs
+def test_an_in_place_block_saves_steps_but_not_a_clone(tmp_path):
+    from types import SimpleNamespace
+
+    from rsmm.cli.editor import modio
+
+    def req(**body):
+        return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
+
+    got = AE._new_mod(req(name="Edit", hero="Piper"))
+    step = {"set": "Primary Ability Shots Delay.value", "value": 0.5}
+    AE._save(req(mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
+                 steps=[step]))
+    text = (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
+    assert modio.hero_blocks(text, "ability")[0]["steps"] == [step]
+    with pytest.raises(ValueError, match="custom hero"):
+        AE._save(req(mod=got["mod"], block=got["block"], kind="ability", hero="Piper",
+                     steps=[{"clone": "Ability Primary", "as": "Echo"}]))

@@ -268,27 +268,41 @@ def _mods(req: Request) -> dict:
 
 
 def _hero_blocks(req: Request) -> dict:
-    """The mod's custom heroes built on ``hero``, with their saved steps."""
+    """The mod's blocks that carry ``hero``'s ability steps: in-place edits of the
+    shipped hero (``kind = "ability"``) and custom heroes built on it
+    (``kind = "hero"``), with their saved steps."""
     from rsmm.cli.editor import modio
     path = _manifest(req, req.arg("mod"))
     bases = _bases(req.arg("hero"))
-    blocks = modio.hero_blocks(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    blocks = [b for kind in modio.ABILITY_KINDS for b in modio.hero_blocks(text, kind)]
     return {"blocks": [b for b in blocks if b["base"] in bases],
             "others": sorted({b["base"] for b in blocks if b["base"] not in bases})}
 
 
-def _add_hero(path, hero: str) -> str:
-    """Append a custom hero built on ``hero`` to the manifest at ``path`` and
-    return its block id. It is a separate, extra hero: the shipped one is not
-    changed. A paid DLC hero's block carries ``dlc_owner = true``, the author's
-    word that they own it (the build refuses the clone without it)."""
+def _add_hero(path, hero: str, mode: str = "inplace") -> str:
+    """Append a block for ``hero``'s ability steps to the manifest at ``path`` and
+    return its id. ``mode`` ``"inplace"`` (the default) edits the shipped hero
+    itself; ``"custom"`` builds a separate, extra hero and leaves the shipped one
+    alone. A paid DLC hero's custom copy carries ``dlc_owner = true``, the
+    author's word that they own it (the build refuses the clone without it)."""
     import re
 
     from rsmm.cli.editor import modio
     if hero not in _heroes():
         raise ValueError(f"no shipped hero {hero!r}")
-    paid = bool(_bases(hero) & _dlc())
     text = path.read_text(encoding="utf-8")
+    if mode == "inplace":
+        used = {b["id"] for b in modio.hero_blocks(text, "ability")}
+        stem = re.sub(r"[^A-Za-z0-9]+", "", hero) + "Abilities"
+        block_id, n = stem, 2
+        while block_id in used:
+            block_id, n = f"{stem}{n}", n + 1
+        path.write_text(modio.add_ability_block(text, block_id, hero), encoding="utf-8")
+        return block_id
+    if mode != "custom":
+        raise ValueError(f"unknown mode {mode!r}")
+    paid = bool(_bases(hero) & _dlc())
     used = {b["id"] for b in modio.hero_blocks(text)}
     # A hero with ability steps is a custom hero: its id is letters and digits only.
     stem = re.sub(r"[^A-Za-z0-9]+", "", hero) + "Edit"
@@ -306,7 +320,8 @@ def _new_hero(req: Request) -> dict:
     """Add a custom hero built on ``hero`` to an existing mod, so ability
     changes have somewhere to be saved."""
     path = _manifest(req, str(req.body.get("mod") or ""))
-    return {"block": _add_hero(path, str(req.body.get("hero") or ""))}
+    return {"block": _add_hero(path, str(req.body.get("hero") or ""),
+                               str(req.body.get("mode") or "inplace"))}
 
 
 def _new_mod(req: Request) -> dict:
@@ -326,7 +341,8 @@ def _new_mod(req: Request) -> dict:
     while (root / mod_id).exists():
         mod_id, n = f"{stem}-{n}", n + 1
     C.save([], mod_id, root, create=True, name=name)
-    block = _add_hero(root / mod_id / "manifest.toml", hero)
+    block = _add_hero(root / mod_id / "manifest.toml", hero,
+                      str(req.body.get("mode") or "inplace"))
     return {"mod": mod_id, "block": block}
 
 
@@ -343,13 +359,19 @@ def _save(req: Request) -> dict:
     hero, block = str(req.body.get("hero") or ""), str(req.body.get("block") or "")
     path = _manifest(req, str(req.body.get("mod") or ""))
     text = path.read_text(encoding="utf-8")
-    match = [b for b in modio.hero_blocks(text) if b["id"] == block]
+    kind = str(req.body.get("kind") or "hero")
+    if kind not in modio.ABILITY_KINDS:
+        raise ValueError(f"unknown block kind {kind!r}")
+    match = [b for b in modio.hero_blocks(text, kind) if b["id"] == block]
     if not match or match[0]["base"] not in _bases(hero):
-        raise ValueError(f"{block!r} is not a custom hero built on {hero}")
+        raise ValueError(f"{block!r} is not a {kind} block for {hero}")
+    if kind == "ability" and any("clone" in x for x in steps):
+        raise ValueError("copying an ability needs a custom hero: an in-place edit changes "
+                         "numbers and links only")
     # The steps must still build on this hero before they are written.
     if steps and graph_payload(hero, steps)["error"]:
         raise ValueError("the changes do not build yet; fix the step marked in red first")
-    path.write_text(modio.set_hero_abilities(text, block, steps), encoding="utf-8")
+    path.write_text(modio.set_hero_abilities(text, block, steps, kind), encoding="utf-8")
     return {"saved": str(path), "steps": len(steps)}
 
 

@@ -31,7 +31,7 @@ desktop app to use it. Installing the mod it gives you still takes one of those.
 | **Items** | everything: pick an item, choose *Replace this item* (change the shipped one) or *Make a copy* (a new item beside it), change name, text, rarity (copies only), icon, values and the stat each effect gives, *Check*, save |
 | **Talents** | everything: card names and texts, each card's numbers per rarity, every value and the stat each effect gives, *Check*, save |
 | **Scripts** | everything: test grants (items, talents and XP handed out when a run starts), for every hero or one |
-| **Abilities** | everything: numbers, the graph, *Save to mod* (into your custom hero built on that hero; its saved changes load back when you pick it), *Copy manifest code* |
+| **Abilities** | everything: numbers, the graph, *Save to mod* (by default an in-place edit of the shipped hero, or a separate custom hero built on it, as you choose; saved changes load back when you pick the mod; *＋ New mod…* makes the mod and the block), *Copy manifest code* |
 | **Map** | the recipe, the spots, the 3D terrain, and the chapter's scenery and tiles drawn with the game's own models and textures, read from your install |
 
 To keep working on a mod you saved earlier, press *Open a mod folder…* and

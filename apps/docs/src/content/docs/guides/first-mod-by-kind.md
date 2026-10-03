@@ -126,6 +126,51 @@ stops. Find labels, their files and their numbers with
 
 ---
 
+## `ability` — change a shipped hero's abilities in place
+
+**What the player sees.** The same hero, an ability that behaves differently:
+a number changed (a hit's stagger, a cooldown, a damage multiplier) or a link
+rewired. No second hero is added, so the change applies to every run with that
+hero, and `rsmm restore` puts the originals back.
+
+**Or build it on a page.** The **Abilities** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/): set a number, pick "Change the original
+hero", and *Save to mod* writes this block. Choose "Make a separate custom
+hero" there when you want a copy (`kind = "hero"`) instead, or an ability copied
+with `clone`.
+
+```toml
+[mod]
+id           = "BeowulfFireballNerf"
+name         = "Beowulf Fireball Nerf"
+version      = "0.1.0"
+author       = "you"
+description  = "Beowulf's Fireball staggers less."
+experimental = true
+
+[[content]]
+kind = "ability"
+id   = "BeowulfAbilities"
+hero = "Beowulf"
+
+[[content.abilities]]
+set    = "Stagger Power Selector.entries[0][1]"
+value  = 25
+entity = "Hero_Beowulf_Ultimate_2_Fireball"
+```
+
+**Prove it.** Use the ability in a run and look at the effect: here the fireball
+hits stagger enemies less than the 50 it ships with.
+
+**Trap.** A hit's numbers often live in another file of the hero (the fireball's
+stagger is in its own projectile file, hence `entity`), and a selector's number
+is addressed as `Part.entries[i][j]`, not `Part.value`. The editor's search
+lists matches in every file of a hero. `clone` steps are refused here: copying
+an ability adds parts that only a custom hero builds. The kind is experimental
+until the steps are proven in game.
+
+---
+
 ## `mesh` — put your model in the game
 
 **What the player sees.** A shipped prop, weapon or body wearing your geometry.

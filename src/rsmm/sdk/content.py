@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .api import sdk_export
 
-KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
+KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
@@ -43,6 +43,8 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # confirmed because downgrading it would newly require
                               # experimental=true from every working clone mod.
     "talent": "confirmed",    # plain in-place magnitude override, tested
+    "ability": "experimental",  # the same in-place file write as `talent`, but the edits are
+                              # ability_edit steps (set/link) whose in-game effect is unproven
     "enemy": "confirmed",     # mode="override" PROVEN in game 2026-08-28 (entity_ref is what
                               # the camp instantiates; cross_biome pool repoint places
                               # foreign-chapter creatures). mode="clone" PROVEN 2026-09-24: a
@@ -291,6 +293,7 @@ _KIND_MODULES = {
     "map": "maps",
     "hero": "heros",
     "talent": "talents",
+    "ability": "hero_abilities",
     "skill": "skills",
     "modifier": "modifiers",
     "game_mode": "game_modes",

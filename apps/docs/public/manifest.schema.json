@@ -104,6 +104,7 @@
         "properties": {
           "kind": {
             "enum": [
+              "ability",
               "animation",
               "boss",
               "enemy",
@@ -133,6 +134,28 @@
           "id"
         ],
         "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "ability"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "abilities": {},
+                "hero": {},
+                "id": {},
+                "kind": {},
+                "schema_version": {}
+              },
+              "additionalProperties": false
+            }
+          },
           {
             "if": {
               "properties": {

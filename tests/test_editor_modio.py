@@ -196,7 +196,7 @@ def test_abilities_save_route_only_writes_a_hero_built_on_that_hero(tmp_path):
     (tmp_path / "m" / "manifest.toml").write_text(HERO_MANIFEST)
     req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path),
                           body={"mod": "m", "block": "Nyx", "hero": "Beowulf", "steps": []})
-    with pytest.raises(ValueError, match="not a custom hero built on Beowulf"):
+    with pytest.raises(ValueError, match="not a hero block for Beowulf"):
         AB._save(req)
     req.body["hero"] = "Piper"
     assert AB._save(req)["steps"] == 0
@@ -216,3 +216,21 @@ def test_a_custom_hero_block_is_added_for_ability_changes():
     assert M.hero_blocks(saved)[0]["steps"] == [step]
     with pytest.raises(C.EditorError, match="already"):
         M.add_hero_block(new, "BeowulfEdit", "Beowulf", "x")
+
+
+def test_an_in_place_ability_block_marks_the_mod_experimental():
+    """`ability` is an experimental kind: `rsmm lint` fails a mod that uses it
+    without `[mod] experimental = true`, so adding one sets the flag."""
+    text = '[mod]\nid = "m"\nenabled = true\n\n[[content]]\nkind = "item"\nid = "X"\nbase = "Y"\n'
+    new = M.add_ability_block(text, "BeowulfAbilities", "Beowulf")
+    parsed = tomllib.loads(new)
+    assert parsed["mod"]["experimental"] is True
+    assert [(b["id"], b["base"]) for b in M.hero_blocks(new, "ability")] == [
+        ("BeowulfAbilities", "Beowulf")]
+    assert M.hero_blocks(new) == []
+    # an existing `experimental = false` is flipped, not duplicated
+    off = M.add_ability_block('[mod]\nid = "m"\nexperimental = false\n', "A", "Piper")
+    assert off.count("experimental") == 1 and tomllib.loads(off)["mod"]["experimental"] is True
+    step = {"set": "A.value", "value": 1}
+    saved = M.set_hero_abilities(new, "BeowulfAbilities", [step], "ability")
+    assert M.hero_blocks(saved, "ability")[0]["steps"] == [step]

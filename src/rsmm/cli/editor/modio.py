@@ -305,23 +305,74 @@ def remove_blocks(text: str, keys: set[tuple[str, str]]) -> str:
 
 # --- a custom hero's ability steps (the Abilities tab) ---------------------------
 
-def hero_blocks(text: str) -> list[dict]:
-    """Every ``kind = "hero"`` block: ``{id, base, name, steps}``."""
-    return [{"id": str(c.get("id") or ""), "base": str(c.get("base") or ""),
+#: The two blocks ability steps can live in: a custom hero (a copy of the base,
+#: ``base`` names the hero) or an in-place edit of the shipped hero itself
+#: (``hero`` names it). Both carry the same ``[[content.abilities]]`` steps.
+ABILITY_KINDS = ("hero", "ability")
+
+
+def hero_blocks(text: str, kind: str = "hero") -> list[dict]:
+    """Every block of ``kind`` (``hero`` or ``ability``) with ability steps:
+    ``{id, base, name, steps}`` (``base`` is the hero it is built on or edits)."""
+    return [{"id": str(c.get("id") or ""), "kind": kind,
+             "base": str(c.get("base") or c.get("hero") or ""),
              "name": str(c.get("name") or c.get("id") or ""),
              "steps": [s for s in c.get("abilities") or [] if isinstance(s, dict)]}
-            for c in _content(text) if c.get("kind") == "hero"]
+            for c in _content(text) if c.get("kind") == kind]
+
+
+def add_ability_block(text: str, block_id: str, hero: str) -> str:
+    """``text`` with a ``kind = "ability"`` block appended: an in-place edit of
+    the shipped ``hero`` that the Abilities tab's changes can be saved into. The
+    kind is experimental, so the mod is marked ``experimental = true`` (``rsmm
+    lint`` fails the mod otherwise)."""
+    return _append_block(_mark_experimental(text),
+                         {"kind": "ability", "id": block_id, "hero": hero})
+
+
+def _mark_experimental(text: str) -> str:
+    """``text`` with ``experimental = true`` in its ``[mod]`` table."""
+    try:
+        have = tomllib.loads(text).get("mod", {}).get("experimental")
+    except tomllib.TOMLDecodeError:
+        return text
+    if have is True:
+        return text
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == "[mod]"), None)
+    if start is None:
+        return text
+    if have is not None:                # an existing `experimental = false`
+        for i in range(start + 1, len(lines)):
+            if _HEADER_RE.match(lines[i]):
+                break
+            if re.match(r"\s*experimental\s*=", lines[i]):
+                lines[i] = "experimental = true\n"
+                return "".join(lines)
+    end = next((i for i in range(start + 1, len(lines)) if _HEADER_RE.match(lines[i])),
+               len(lines))
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1                        # keep the blank line before the next table
+    lines.insert(end, "experimental = true\n")
+    new = "".join(lines)
+    return new if tomllib.loads(new).get("mod", {}).get("experimental") is True else text
 
 
 def add_hero_block(text: str, block_id: str, base: str, name: str, **extra) -> str:
     """``text`` with a ``kind = "hero"`` block appended: a clone of ``base`` that
-    the Abilities tab's changes can be saved into. Refuses an id already used by
-    any block, and checks the result parses to exactly the old blocks plus it."""
+    the Abilities tab's changes can be saved into."""
+    return _append_block(text, {"kind": "hero", "id": block_id, "base": base,
+                                "name": name, **extra})
+
+
+def _append_block(text: str, block: dict) -> str:
+    """Append ``block`` as a ``[[content]]`` table. Refuses an id this kind already
+    uses, and checks the result parses to exactly the old blocks plus it."""
     from .content import _toml
     before = _content(text)
-    if any(c.get("id") == block_id for c in before):
-        raise EditorError(f"manifest.toml already has a block with id {block_id!r}")
-    block = {"kind": "hero", "id": block_id, "base": base, "name": name, **extra}
+    if any(c.get("id") == block["id"] and c.get("kind") == block["kind"] for c in before):
+        raise EditorError(f"manifest.toml already has a {block['kind']} block "
+                          f"with id {block['id']!r}")
     new = text.rstrip("\n") + "\n\n[[content]]\n" + "".join(
         f"{k} = {_toml(v)}\n" for k, v in block.items())
     if _content(new) != [*before, block]:
@@ -329,7 +380,8 @@ def add_hero_block(text: str, block_id: str, base: str, name: str, **extra) -> s
     return new
 
 
-def set_hero_abilities(text: str, block_id: str, steps: list[dict]) -> str:
+def set_hero_abilities(text: str, block_id: str, steps: list[dict],
+                       kind: str = "hero") -> str:
     """``text`` with hero block ``block_id``'s ``[[content.abilities]]`` steps
     replaced by ``steps``, everything else as it was. The steps are a sequence
     the build replays, so a save writes the whole list rather than adding to
@@ -352,10 +404,10 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict]) -> str:
             got = tomllib.loads("".join(lines[i:end])).get("content", [{}])[0]
         except tomllib.TOMLDecodeError:
             continue
-        if got.get("kind") == "hero" and got.get("id") == block_id:
+        if got.get("kind") == kind and got.get("id") == block_id:
             span = (n, i, end)
     if span is None:
-        raise EditorError(f"no hero block {block_id!r} in manifest.toml")
+        raise EditorError(f"no {kind} block {block_id!r} in manifest.toml")
     n, start, end = span
     while end > start and lines[end - 1].lstrip().startswith("#"):
         end -= 1                        # the next block's own comment
@@ -373,7 +425,7 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict]) -> str:
     new = "".join(lines[:start]) + body + ("\n" if end < len(lines) else "") + "".join(lines[end:])
     want = []
     for c in _content(text):
-        if c.get("kind") == "hero" and c.get("id") == block_id:
+        if c.get("kind") == kind and c.get("id") == block_id:
             c = {k: v for k, v in c.items() if k != "abilities"}
             if steps:
                 c["abilities"] = steps

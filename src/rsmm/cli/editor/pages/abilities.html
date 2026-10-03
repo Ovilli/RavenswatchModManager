@@ -172,6 +172,10 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
 <section id="bar">
   <div class="head">
     <div id="status" class="idle">No changes yet.</div>
+    <select id="how" title="What saving does to the hero">
+      <option value="inplace">Change the original hero</option>
+      <option value="custom">Make a separate custom hero</option>
+    </select>
     <select id="mod" title="The mod to save into"></select>
     <select id="block" title="Your custom hero in that mod, built on this hero" hidden></select>
     <button id="save" class="primary" title="Write these changes into your custom hero in the chosen mod" disabled>Save to mod</button>
@@ -1215,31 +1219,40 @@ async function getJ(url) {
   const r = await fetch(url); const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
+const inPlace = () => S.how !== "custom";
+const heroLabel = () => S.hero.replace(/_/g, " ");
 function drawSave() {
   const same = !!S.block && stepsJson() === S.saved;
-  $("save").disabled = !S.block || same || !!(S.data && S.data.error);
+  // A copied ability adds parts: only a custom hero builds those.
+  const clones = inPlace() && S.steps.some(x => "clone" in x);
+  $("save").disabled = !S.block || same || clones || !!(S.data && S.data.error);
   $("save").textContent = same ? "Saved" : "Save to mod";
   // Say why it is grey, and offer the fix where there is one.
-
   let why = "", offer = "";
   if (same) why = "";
   else if (!S.steps.length) why = "No changes yet: type a new number and press Enter (the row turns purple).";
   else if (S.data && S.data.error) why = "Fix the step marked in red first.";
- 
+  else if (clones) why = "Copying an ability needs a custom hero: switch the box on the left to “Make a separate custom hero”.";
   else if (!S.mod) why = "Pick a mod in the list on the left (“＋ New mod…” makes one) to save into.";
   else if (!S.block) {
-    why = `${S.mod} has no custom hero built on ${S.hero}. Changes are saved into a separate custom hero, an extra one in the hero list. The original ${S.hero.replace(/_/g, " ")} is not changed.`;
-    offer = `Create a custom ${S.hero.replace(/_/g, " ")} in ${S.mod}`;
-    if ((S.dlc || []).includes(S.hero)) why += ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.`;
+    if (inPlace()) {
+      why = `${S.mod} does not change ${heroLabel()} yet. Saving edits the original ${heroLabel()} in place, for everyone who runs the mod.`;
+      offer = `Add a ${heroLabel()} edit to ${S.mod}`;
+    } else {
+      why = `${S.mod} has no custom hero built on ${heroLabel()}. Changes are saved into a separate custom hero, an extra one in the hero list. The original ${heroLabel()} is not changed.`;
+      offer = `Create a custom ${heroLabel()} in ${S.mod}`;
+      if ((S.dlc || []).includes(S.hero)) why += ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.`;
+    }
   }
   $("saveWhy").textContent = why;
   $("newHero").hidden = !offer; $("newHero").textContent = offer;
 }
 $("newHero").addEventListener("click", async () => {
   try {
-    const j = await post("api/newhero", { mod: S.mod, hero: S.hero });
+    const j = await post("api/newhero", { mod: S.mod, hero: S.hero, mode: S.how });
     await loadBlocks();
-    setStatus("ok", `Created ${j.block} in ${S.mod}, built on ${S.hero}. Now press Save to mod.`);
+    setStatus("ok", inPlace() ? `Added ${j.block} to ${S.mod}: it edits the original ${heroLabel()}. Now press Save to mod.`
+      : `Created ${j.block} in ${S.mod}, built on ${S.hero}. Now press Save to mod.`);
   } catch (e) { setStatus("bad", e.message); }
 });
 async function loadMods() {
@@ -1259,17 +1272,19 @@ async function loadBlocks() {
   let j;
   try { j = await getJ(`api/heroblocks?mod=${encodeURIComponent(S.mod)}&hero=${encodeURIComponent(S.hero)}`); }
   catch (e) { setStatus("bad", e.message); return; }
-  S.blocks = j.blocks;
-  if (!j.blocks.length) {
-    S.note = `${S.mod} has no custom hero built on ${S.hero}. Ability changes belong to a custom hero: add a [[content]] block with kind = "hero" and base = "${S.hero}" to it first`
-      + (j.others.length ? ` (it has heroes built on ${j.others.join(", ")}).` : ".");
+  const kind = inPlace() ? "ability" : "hero";
+  S.blocks = j.blocks.filter(b => b.kind === kind);
+  if (!S.blocks.length) {
+    const other = j.blocks.length ? ` (it has ${j.blocks.length} for ${inPlace() ? "a custom hero" : "an in-place edit"}: change the box on the left to use it)` : "";
+    S.note = inPlace() ? `${S.mod} does not change ${heroLabel()} yet${other}.`
+      : `${S.mod} has no custom hero built on ${heroLabel()}${other}.`;
     setStatus("warn", S.note);
     return;
   }
-  $("block").replaceChildren(...j.blocks.map(b => el("option", { value: b.id,
+  $("block").replaceChildren(...S.blocks.map(b => el("option", { value: b.id,
     text: `${b.name} (${b.steps.length} saved change${b.steps.length === 1 ? "" : "s"})` })));
-  $("block").hidden = j.blocks.length < 2;
-  openBlock(j.blocks[0].id);
+  $("block").hidden = S.blocks.length < 2;
+  openBlock(S.blocks[0].id);
 }
 function openBlock(id) {
   const b = S.blocks.find(x => x.id === id);
@@ -1288,14 +1303,14 @@ function openBlock(id) {
 const NEW_MOD = "__new__";
 $("mod").addEventListener("change", async () => {
   if ($("mod").value === NEW_MOD) {
-    // A new mod comes with a custom hero built on this one, ready to save into.
-    const name = (prompt(`Name of the new mod (it will hold a custom ${S.hero.replace(/_/g, " ")} with your changes):`, `${S.hero.replace(/_/g, " ")} changes`) || "").trim();
+    // A new mod comes with the block your changes save into, ready to go.
+    const name = (prompt(`Name of the new mod (it will ${inPlace() ? "change" : "hold a custom"} ${heroLabel()}):`, `${heroLabel()} changes`) || "").trim();
     if (!name) { $("mod").value = S.mod; return; }
     try {
-      const j = await post("api/newmod", { name, hero: S.hero });
+      const j = await post("api/newmod", { name, hero: S.hero, mode: S.how });
       S.mod = j.mod; await loadMods();
-      setStatus("ok", `Created ${j.mod} with a custom ${S.hero.replace(/_/g, " ")} (${j.block}). Press Save to mod.`
-        + ((S.dlc || []).includes(S.hero) ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : ""));
+      setStatus("ok", (inPlace() ? `Created ${j.mod}: it edits the original ${heroLabel()} (${j.block}).` : `Created ${j.mod} with a custom ${heroLabel()} (${j.block}).`) + " Press Save to mod."
+        + (!inPlace() && (S.dlc || []).includes(S.hero) ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : ""));
     } catch (e) { $("mod").value = S.mod; setStatus("bad", e.message); return; }
     try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
     await loadBlocks();
@@ -1306,9 +1321,16 @@ $("mod").addEventListener("change", async () => {
   loadBlocks();
 });
 $("block").addEventListener("change", () => openBlock($("block").value));
+try { S.how = localStorage.getItem("ae-how") === "custom" ? "custom" : "inplace"; } catch (e) { S.how = "inplace"; }
+$("how").value = S.how;
+$("how").addEventListener("change", () => {
+  S.how = $("how").value;
+  try { localStorage.setItem("ae-how", S.how); } catch (e) {}
+  loadBlocks();
+});
 $("save").addEventListener("click", async () => {
   try {
-    const j = await post("api/save", { mod: S.mod, block: S.block, hero: S.hero, steps: S.steps });
+    const j = await post("api/save", { mod: S.mod, block: S.block, kind: inPlace() ? "ability" : "hero", hero: S.hero, steps: S.steps });
     S.saved = stepsJson();
     const b = S.blocks.find(x => x.id === S.block); if (b) b.steps = JSON.parse(S.saved);
     drawSave();
