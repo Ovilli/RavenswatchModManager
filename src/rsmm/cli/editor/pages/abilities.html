@@ -36,6 +36,10 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 #numbers .wrap { max-width: 860px; }
 .help { background: var(--accentbg); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
 .help ol { margin: 6px 0; padding-left: 20px; }
+mark { background: color-mix(in srgb, var(--accent) 38%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.gsec { margin: 22px 0 4px; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--chip); border-radius: 0 7px 7px 0; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.gsec span { font-weight: 400; opacity: .7; font-size: 12px; }
+.num.flash { outline: 2px solid var(--accent); }
 .sect { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 18px 0 6px; }
 .num { display: grid; grid-template-columns: 1fr 150px 70px; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; }
 .num:nth-child(odd) { background: var(--panel); }
@@ -289,8 +293,22 @@ async function refresh() {
 const byId = (id) => S.data.components.find(c => c.id === id);
 const groupsOf = () => { const m = new Map(); for (const c of S.data.components) m.set(c.group, (m.get(c.group) || 0) + 1); return new Map([...m].sort()); };
 const kindOfGroup = (g) => g.startsWith("Ability") ? "Abilities" : g.startsWith("Skill") ? "Talents" : "Other";
+const needle = () => $("filter").value.trim().toLowerCase();
+// `text` with every occurrence of `q` wrapped in <mark>, as nodes for el().
+function hl(text, q) {
+  if (!q) return [text];
+  const out = [], low = text.toLowerCase(); let i = 0, at;
+  while ((at = low.indexOf(q, i)) >= 0) {
+    if (at > i) out.push(text.slice(i, at));
+    out.push(el("mark", { text: text.slice(at, at + q.length) })); i = at + q.length;
+  }
+  if (i < text.length) out.push(text.slice(i));
+  return out;
+}
 function selectGroup(g) {
   S.group = g; S.sel = null; drawGroups(); drawNumbers();
+  // While filtering, every match is on one page: jump to this ability's part of it.
+  if (needle()) { const h = document.querySelector(`.gsec[data-group="${CSS.escape(g)}"]`); if (h) h.scrollIntoView({ block: "start" }); }
   if (S.tab === "diagram") { drawFlow(); inspect(null); }
 }
 
@@ -304,7 +322,7 @@ function short(name, group) {
 }
 
 function drawGroups() {
-  const f = $("filter").value.toLowerCase(), out = [];
+  const f = needle(), out = [];
   // A pet, projectile or clone file has no ability groups at all: show its parts.
   // A filter also matches part names, so "stagger" finds every ability holding one.
   const hasPart = (g) => f && S.data && S.data.components.some(c => c.group === g && c.name.toLowerCase().includes(f));
@@ -315,10 +333,10 @@ function drawGroups() {
     if (!rows.length) continue;
     out.push(el("h3", { text: sect }));
     for (const [g, n] of rows) out.push(el("div", { class: "grp" + (g === S.group ? " on" : ""), title: `${n} parts`,
-      onclick: () => selectGroup(g) }, el("div", { text: g || "General" }), el("span", { text: n })));
+      onclick: () => selectGroup(g) }, el("div", {}, ...hl(g || "General", f)), el("span", { text: n })));
   }
   $("groups").replaceChildren(...out);
-  $("groupTitle").textContent = S.group || (groupsOf().has("") ? "General" : "Pick an ability");
+  $("groupTitle").textContent = f ? `Matches for “${f}”` : S.group || (groupsOf().has("") ? "General" : "Pick an ability");
 }
 
 // ---- the Numbers tab ------------------------------------------------------------
@@ -376,7 +394,7 @@ function numberRow(c, f, slot) {
   const inObj = slot !== undefined;
   const lit = inObj ? parseLit(f.lits[slot]) : literal(f);
   const addr = `${c.name}.${f.name}` + (inObj ? `[${slot}]` : ""), step = findStep("set", addr);
-  const name = short(c.name, S.group), [tlabel, color] = typeOf(c.cls);
+  const name = short(c.name, c.group), [tlabel, color] = typeOf(c.cls);
   const label = inObj ? `${name} · ${niceField(f.name)} ${slotName(f, slot)}`
     : (c.cls === "Value" && f.name === "value") ? name : `${name} · ${niceField(f.name)}`;
   const users = usedBy(c.id), help = !inObj && FIELDS[f.name] && f.name !== "value" ? FIELDS[f.name] : "";
@@ -403,17 +421,17 @@ function numberRow(c, f, slot) {
   if (lit.bool) inp.value = shown;
   const link = lit.bound ? ` · follows ${sourceName(f)}${f.source ? "" : ", whose value is set there"}; a number typed here replaces the link` : "";
   const wasLit = wasLinked ? { value: "linked" } : wasText !== null ? (inObj ? parseLit(wasText) : literal(f, wasText)) : null;
-  return el("div", { class: "num" + (step ? " changed" : ""), title: c.name },
+  return el("div", { class: "num" + (step ? " changed" : ""), title: c.name, "data-part": c.id },
     el("div", {},
-      el("div", { class: "lbl", text: label }),
+      el("div", { class: "lbl" }, ...hl(label, needle())),
       el("div", { class: "sub" }, el("span", { class: "dot", style: `background:${color}` }), tlabel,
         help ? " · " + help : "", link, users.length ? " · used by " + users.slice(0, 3).join(", ") + (users.length > 3 ? ` +${users.length - 3}` : "") : "")),
     inp,
     el("div", {}, step ? el("button", { class: "small", title: "Put the original value back", text: "↺ reset", onclick: () => removeStep(step) }) : null,
       wasLit ? el("div", { class: "was", text: "was " + wasLit.value }) : null));
 }
-function drawNumbers() {
-  const parts = S.data.components.filter(c => c.group === S.group);
+// The number rows of one ability's parts, split into plain / technical / shape rows.
+function numberRows(parts, group) {
   const main = [], tech = [], slots = [];
   for (const c of parts) for (const f of c.fields) {
     if (f.lits) { f.lits.forEach((t, i) => { if (parseLit(t)) slots.push([c, f, i]); }); continue; }
@@ -422,7 +440,39 @@ function drawNumbers() {
   }
   // Plain numbers first (what a beginner is looking for), yes/no last.
   const rank = ([c, f]) => (c.cls === "Value" ? 0 : 1) + (literal(f).bool ? 2 : 0);
-  main.sort((a, b) => rank(a) - rank(b) || short(a[0].name, S.group).localeCompare(short(b[0].name, S.group)));
+  main.sort((a, b) => rank(a) - rank(b) || short(a[0].name, group).localeCompare(short(b[0].name, group)));
+  return { main, tech, slots };
+}
+
+// While a filter is typed, every match is one page: a heading per ability, the
+// matching parts' numbers under it.
+function drawFiltered(q) {
+  const out = [];
+  let total = 0, abilities = 0;
+  for (const sect of ["Abilities", "Talents", "Other"]) {
+    for (const [g] of groupsOf()) {
+      if (kindOfGroup(g) !== sect) continue;
+      const whole = g.toLowerCase().includes(q);
+      const parts = S.data.components.filter(c => c.group === g && (whole || c.name.toLowerCase().includes(q)));
+      const { main, tech, slots } = numberRows(parts, g);
+      const more = [...tech.map(([c, f]) => numberRow(c, f)), ...slots.map(([c, f, i]) => numberRow(c, f, i))];
+      const rows = main.map(([c, f]) => numberRow(c, f));
+      if (!rows.length && !more.length) continue;
+      total += rows.length; abilities++;
+      out.push(el("div", { class: "gsec", "data-group": g, title: "Jump to this ability's matches", onclick: () => selectGroup(g) },
+        el("div", {}, ...hl(g || "General", q)), el("span", { text: `${rows.length} number${rows.length === 1 ? "" : "s"} · ${{ Abilities: "ability", Talents: "talent", Other: "other" }[sect]}` })), el("div", {}, ...rows),
+        more.length ? el("details", {}, el("summary", { text: `Technical settings and shapes of these parts (${more.length})` }), el("div", {}, ...more)) : null);
+    }
+  }
+  out.unshift(el("div", { class: "sect", text: total ? `“${q}”: ${total} number${total > 1 ? "s" : ""} in ${abilities} abilit${abilities > 1 ? "ies" : "y"}` : `Nothing named “${q}” has a number to change` }));
+  $("numList").replaceChildren(...out);
+}
+
+function drawNumbers() {
+  const q = needle();
+  if (q) return drawFiltered(q);
+  const parts = S.data.components.filter(c => c.group === S.group);
+  const { main, tech, slots } = numberRows(parts, S.group);
   const out = [];
   if (!main.length) out.push(el("div", { class: "muted", text: "This ability has no plain numbers to change. Its parts only link to each other: use the Diagram tab." }));
   else out.push(el("div", { class: "sect", text: `Numbers in ${S.group} (${main.length})` }), el("div", {}, ...main.map(([c, f]) => numberRow(c, f))));
@@ -986,9 +1036,13 @@ $("find").addEventListener("keydown", (e) => {
   if (!hit) { $("find").style.borderColor = "var(--bad)"; return; }
   $("find").style.borderColor = "";
   if (kindOfGroup(hit.group) === "Other") $("showAll").checked = true;
-  S.group = hit.group; S.flash = hit.id; S.sel = { id: hit.id }; drawGroups(); drawNumbers(); showTab("diagram");
+  S.group = hit.group; S.flash = hit.id; S.sel = { id: hit.id }; drawGroups(); drawNumbers();
+  // Stay on the tab you are on: Numbers scrolls to the part's row if it has one.
+  if (S.tab === "diagram") { drawFlow(); inspect(hit.id); return; }
+  const row = document.querySelector(`.num[data-part="${hit.id}"]`);
+  if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1500); }
 });
-$("filter").addEventListener("input", drawGroups);
+$("filter").addEventListener("input", () => { drawGroups(); if (S.tab === "numbers") drawNumbers(); });
 $("showAll").addEventListener("change", drawGroups);
 $("hero").addEventListener("change", () => {
   if (S.steps.length && !confirm("Switching hero clears your changes. Continue?")) { $("hero").value = S.hero; return; }
