@@ -1220,16 +1220,17 @@ function drawSave() {
   $("save").disabled = !S.block || same || !!(S.data && S.data.error);
   $("save").textContent = same ? "Saved" : "Save to mod";
   // Say why it is grey, and offer the fix where there is one.
-  const dlc = ["Carmilla", "Merlin"].includes(S.hero);
+
   let why = "", offer = "";
   if (same) why = "";
-  else if (!S.steps.length) why = "";
+  else if (!S.steps.length) why = "No changes yet: type a new number and press Enter (the row turns purple).";
   else if (S.data && S.data.error) why = "Fix the step marked in red first.";
-  else if (dlc) why = `${S.hero} is a paid DLC hero and cannot be cloned, so its changes cannot be saved into a mod. Use "Copy manifest code".`;
-  else if (!S.mod) why = "Pick a mod to save into.";
+ 
+  else if (!S.mod) why = "Pick a mod in the list on the left (“＋ New mod…” makes one) to save into.";
   else if (!S.block) {
     why = `${S.mod} has no custom hero built on ${S.hero}. Changes are saved into a separate custom hero, an extra one in the hero list. The original ${S.hero.replace(/_/g, " ")} is not changed.`;
     offer = `Create a custom ${S.hero.replace(/_/g, " ")} in ${S.mod}`;
+    if ((S.dlc || []).includes(S.hero)) why += ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.`;
   }
   $("saveWhy").textContent = why;
   $("newHero").hidden = !offer; $("newHero").textContent = offer;
@@ -1244,9 +1245,10 @@ $("newHero").addEventListener("click", async () => {
 async function loadMods() {
   try {
     const { mods } = await getJ("api/mods");
+    // "New mod" sits first: at the end of a long list it was never found.
     $("mod").replaceChildren(el("option", { value: "", text: "Save into a mod…" }),
-      ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })),
-      el("option", { value: NEW_MOD, text: "＋ New mod…" }));
+      el("option", { value: NEW_MOD, text: "＋ New mod…" }),
+      ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
     if (!mods.some(m => m.id === S.mod)) S.mod = "";
     $("mod").value = S.mod;
   } catch (e) { setStatus("bad", e.message); }
@@ -1292,7 +1294,8 @@ $("mod").addEventListener("change", async () => {
     try {
       const j = await post("api/newmod", { name, hero: S.hero });
       S.mod = j.mod; await loadMods();
-      setStatus("ok", `Created ${j.mod} with a custom ${S.hero.replace(/_/g, " ")} (${j.block}). Press Save to mod.`);
+      setStatus("ok", `Created ${j.mod} with a custom ${S.hero.replace(/_/g, " ")} (${j.block}). Press Save to mod.`
+        + ((S.dlc || []).includes(S.hero) ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : ""));
     } catch (e) { $("mod").value = S.mod; setStatus("bad", e.message); return; }
     try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
     await loadBlocks();
@@ -1351,7 +1354,7 @@ async function focusAbility(t) {
 }
 
 (async () => {
-  const r = await fetch("api/heroes"); const { heroes } = await r.json();
+  const r = await fetch("api/heroes"); const { heroes, dlc } = await r.json(); S.dlc = dlc || [];
   $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
   // The address (or, on a plain reload, the last session) says which hero and search to reopen.
   let want = {};

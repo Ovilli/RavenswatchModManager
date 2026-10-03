@@ -636,7 +636,9 @@ Lua, `#R.defs.instances("oCDtHeroDefinition")` goes from 12 to 13.
 through the LiveOps versiondef's hero list, which `apply` appends to. Dropping a
 herodef file in without that loads nothing. The new hero takes the next index,
 which no save has unlocked, so test with the `unlock-heroes` mod. Paid DLC
-heroes (Carmilla, Merlin) cannot be a `base`.
+hero (Merlin) is a `base` only when the block says `dlc_owner = true`: the
+clone plays for anyone who installs the mod, so share it only with players
+who own the DLC.
 
 ### A hero of its own
 

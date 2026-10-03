@@ -27,9 +27,13 @@ clone takes the next index, which no save has unlocked, so it may need
 ``R.hero.unlock_progression()`` (the ``unlock-heroes`` mod) to be selectable.
 
 Fields:
-    ``base``  (str, required)  a shipped hero to clone, e.g. ``Piper``. Paid
-                               DLC heroes are refused: a clone would hand out
-                               a hero the player has not bought.
+    ``base``  (str, required)  a shipped hero to clone, e.g. ``Piper``. A paid
+                               DLC hero (Merlin) is refused unless the block
+                               says ``dlc_owner = true``: a clone plays for
+                               anyone who installs the mod, so share it only
+                               with players who own the DLC.
+    ``dlc_owner`` (bool)       "I own the DLC ``base`` belongs to"; needed to
+                               clone a paid hero, ignored otherwise.
 
 With ``base`` alone the clone is its base in every respect (the proven path).
 Everything below makes it a hero of its own; see
@@ -141,15 +145,18 @@ _HEROES_DIR = "Definitions/Heroes"
 _GEN_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 _HERO_CLASS = "oCDtHeroDefinition"
 
-#: Paid DLC heroes. Never a clone base: cloning one would unlock it for
-#: players who have not bought it.
-DLC_HEROES: Final[frozenset[str]] = frozenset({"Carmilla", "Merlin"})
+#: Paid DLC heroes. A clone of one would play for a player who has not bought it,
+#: so cloning needs the author to say they own it: ``dlc_owner = true`` on the
+#: block. The flag is a declaration, not a check; ownership is a Steam
+#: entitlement the game makes, which nothing here can see.
+DLC_HEROES: Final[frozenset[str]] = frozenset({"Merlin"})
 
 
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
-                     "skills", "placeholder", "memoirs", "effects", "hide", "attacks"})
+                     "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
+                     "dlc_owner"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
 #: hero of that name would still collide with it.
@@ -180,10 +187,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     base = defn.fields.get("base")
     if not isinstance(base, str) or not base:
         raise ContentError(f"hero {defn.id}: needs a 'base' (a shipped hero, e.g. Piper)")
-    if base in DLC_HEROES:
+    if base in DLC_HEROES and defn.fields.get("dlc_owner") is not True:
         raise ContentError(
-            f"hero {defn.id}: {base} is a paid DLC hero and cannot be cloned — the "
-            f"clone would give it to players who have not bought it.")
+            f"hero {defn.id}: {base} is a paid DLC hero. A clone plays for anyone who "
+            f"installs the mod, so add `dlc_owner = true` to this block to confirm you own "
+            f"the DLC, and share the mod only with players who do.")
     shipped = shipped_heroes()
     if defn.id in shipped:
         raise ContentError(f"hero {defn.id}: the id collides with a shipped hero")
@@ -198,7 +206,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"hero {defn.id}: {base}'s herodef or resource cache is not in the "
             f"corpus or the game install")
 
-    if set(defn.fields) - {"base"}:
+    # `dlc_owner` only unlocks cloning a paid hero: it does not make a hero of its own.
+    if set(defn.fields) - {"base", "dlc_owner"}:
         return _emit_custom(mod_id, defn, out_dir, base, raw, cache)
 
     dest = out_dir / Path(*_rel(defn.id).split("/"))

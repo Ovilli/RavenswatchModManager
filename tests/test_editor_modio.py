@@ -208,11 +208,11 @@ def test_a_custom_hero_block_is_added_for_ability_changes():
     """The Abilities tab saves into a `kind = "hero"` block; one can be made for
     a mod that has none, and its steps can then be written."""
     text = '[mod]\nid = "m"\n\n[[content]]\nkind = "item"\nid = "X"\nbase = "Y"\n'
-    new = M.add_hero_block(text, "Beowulf_Edit", "Beowulf", "Beowulf (edited)")
-    assert [b["id"] for b in M.hero_blocks(new)] == ["Beowulf_Edit"]
+    new = M.add_hero_block(text, "BeowulfEdit", "Beowulf", "Beowulf (edited)")
+    assert [b["id"] for b in M.hero_blocks(new)] == ["BeowulfEdit"]
     assert M.hero_blocks(new)[0]["base"] == "Beowulf"
     step = {"set": "A.value", "value": 1}
-    saved = M.set_hero_abilities(new, "Beowulf_Edit", [step])
+    saved = M.set_hero_abilities(new, "BeowulfEdit", [step])
     assert M.hero_blocks(saved)[0]["steps"] == [step]
     with pytest.raises(C.EditorError, match="already"):
-        M.add_hero_block(new, "Beowulf_Edit", "Beowulf", "x")
+        M.add_hero_block(new, "BeowulfEdit", "Beowulf", "x")

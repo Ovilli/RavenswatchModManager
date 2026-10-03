@@ -105,7 +105,7 @@ def test_search_finds_a_hit_value_in_the_heros_other_files():
 @needs
 def test_a_new_mod_comes_with_a_custom_hero_to_save_into(tmp_path):
     """Saving ability changes needs a mod with a custom hero built on the hero;
-    "New mod…" makes both, and a paid DLC hero is refused."""
+    "New mod…" makes both, and a paid hero's copy is marked `dlc_owner`."""
     from types import SimpleNamespace
 
     from rsmm.cli.editor import modio
@@ -114,11 +114,15 @@ def test_a_new_mod_comes_with_a_custom_hero_to_save_into(tmp_path):
         return SimpleNamespace(body=body, ctx=SimpleNamespace(mods_dir=tmp_path))
 
     got = AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))
-    assert got == {"mod": "pam-fireball-nerf", "block": "Beowulf_Edit"}
+    assert got == {"mod": "pam-fireball-nerf", "block": "BeowulfEdit"}
     text = (tmp_path / got["mod"] / "manifest.toml").read_text(encoding="utf-8")
-    assert [(b["id"], b["base"]) for b in modio.hero_blocks(text)] == [("Beowulf_Edit", "Beowulf")]
+    assert [(b["id"], b["base"]) for b in modio.hero_blocks(text)] == [("BeowulfEdit", "Beowulf")]
     # a second mod of the same name gets its own folder
     assert AE._new_mod(req(name="Pam Fireball Nerf", hero="Beowulf"))["mod"] \
         == "pam-fireball-nerf-2"
-    with pytest.raises(ValueError, match="DLC"):
-        AE._new_mod(req(name="x", hero="Carmilla"))
+    # A paid hero's copy says the author owns the DLC; a free one's does not.
+    paid = AE._new_mod(req(name="Merlin tweaks", hero="Merlin"))
+    free = AE._new_mod(req(name="Carmilla tweaks", hero="Carmilla"))
+    paid_text = (tmp_path / paid["mod"] / "manifest.toml").read_text(encoding="utf-8")
+    free_text = (tmp_path / free["mod"] / "manifest.toml").read_text(encoding="utf-8")
+    assert "dlc_owner = true" in paid_text and "dlc_owner" not in free_text

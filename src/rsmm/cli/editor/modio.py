@@ -313,7 +313,7 @@ def hero_blocks(text: str) -> list[dict]:
             for c in _content(text) if c.get("kind") == "hero"]
 
 
-def add_hero_block(text: str, block_id: str, base: str, name: str) -> str:
+def add_hero_block(text: str, block_id: str, base: str, name: str, **extra) -> str:
     """``text`` with a ``kind = "hero"`` block appended: a clone of ``base`` that
     the Abilities tab's changes can be saved into. Refuses an id already used by
     any block, and checks the result parses to exactly the old blocks plus it."""
@@ -321,7 +321,7 @@ def add_hero_block(text: str, block_id: str, base: str, name: str) -> str:
     before = _content(text)
     if any(c.get("id") == block_id for c in before):
         raise EditorError(f"manifest.toml already has a block with id {block_id!r}")
-    block = {"kind": "hero", "id": block_id, "base": base, "name": name}
+    block = {"kind": "hero", "id": block_id, "base": base, "name": name, **extra}
     new = text.rstrip("\n") + "\n\n[[content]]\n" + "".join(
         f"{k} = {_toml(v)}\n" for k, v in block.items())
     if _content(new) != [*before, block]:

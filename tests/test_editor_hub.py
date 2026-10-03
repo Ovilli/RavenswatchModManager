@@ -99,7 +99,8 @@ def test_each_page_is_served_whole(call, path, needle):
 
 def test_api_calls_reach_the_right_editor(call):
     assert json.loads(call("GET", "/content/api/heroes")[1]) == {"heroes": ["Juliet"]}
-    assert json.loads(call("GET", "/abilities/api/heroes")[1]) == {"heroes": ["Piper"]}
+    assert json.loads(call("GET", "/abilities/api/heroes")[1]) == {
+        "heroes": ["Piper"], "dlc": ["Merlin"]}
 
 
 @pytest.mark.parametrize("path, body", [

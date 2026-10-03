@@ -280,24 +280,25 @@ def _hero_blocks(req: Request) -> dict:
 def _add_hero(path, hero: str) -> str:
     """Append a custom hero built on ``hero`` to the manifest at ``path`` and
     return its block id. It is a separate, extra hero: the shipped one is not
-    changed. Paid DLC heroes cannot be cloned."""
+    changed. A paid DLC hero's block carries ``dlc_owner = true``, the author's
+    word that they own it (the build refuses the clone without it)."""
     import re
 
     from rsmm.cli.editor import modio
-    from rsmm.sdk.kinds.heros import DLC_HEROES
     if hero not in _heroes():
         raise ValueError(f"no shipped hero {hero!r}")
-    if _bases(hero) & DLC_HEROES:
-        raise ValueError(f"{hero} is a paid DLC hero and cannot be cloned, so its abilities "
-                         "cannot be saved into a custom hero")
+    paid = bool(_bases(hero) & _dlc())
     text = path.read_text(encoding="utf-8")
     used = {b["id"] for b in modio.hero_blocks(text)}
-    stem = re.sub(r"[^A-Za-z0-9_]+", "_", hero).strip("_") + "_Edit"
+    # A hero with ability steps is a custom hero: its id is letters and digits only.
+    stem = re.sub(r"[^A-Za-z0-9]+", "", hero) + "Edit"
     block_id, n = stem, 2
     while block_id in used:
         block_id, n = f"{stem}{n}", n + 1
     name = f"{hero.replace('_', ' ')} (edited)"
-    path.write_text(modio.add_hero_block(text, block_id, _herodef(hero), name), encoding="utf-8")
+    extra = {"dlc_owner": True} if paid else {}
+    path.write_text(modio.add_hero_block(text, block_id, _herodef(hero), name, **extra),
+                    encoding="utf-8")
     return block_id
 
 
@@ -317,9 +318,8 @@ def _new_mod(req: Request) -> dict:
     hero = str(req.body.get("hero") or "")
     if not name:
         raise ValueError("give the mod a name")
-    if hero not in _heroes() or _bases(hero) & _dlc():
-        raise ValueError(f"{hero} cannot be saved into a mod: it is a paid DLC hero"
-                         if hero in _heroes() else f"no shipped hero {hero!r}")
+    if hero not in _heroes():
+        raise ValueError(f"no shipped hero {hero!r}")
     root = req.ctx.mods_dir
     stem = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "my-mod"
     mod_id, n = stem, 2
@@ -354,7 +354,7 @@ def _save(req: Request) -> dict:
 
 
 ROUTES = {
-    ("GET", "/api/heroes"): lambda req: {"heroes": _heroes()},
+    ("GET", "/api/heroes"): lambda req: {"heroes": _heroes(), "dlc": sorted(_dlc())},
     ("POST", "/api/graph"): _graph,
     ("POST", "/api/search"): _search,
     ("GET", "/api/mods"): _mods,
