@@ -149,7 +149,7 @@ function Cell({
   // No fixed width: a number column is exactly as wide as its widest value,
   // so the name keeps everything left over.
   return (
-    <span className="font-mono shrink-0 whitespace-nowrap text-right text-[0.72rem] tabular-nums">
+    <span className="font-mono shrink-0 whitespace-nowrap text-right text-xs tabular-nums">
       {text}
     </span>
   );
@@ -223,7 +223,7 @@ function ControlRow({
         }}
         className="min-w-0 flex-1 accent-crimson"
       />
-      <span className="font-mono w-10 shrink-0 text-right text-[0.7rem] tabular-nums text-parchment">
+      <span className="font-mono w-10 shrink-0 text-right text-xs tabular-nums text-parchment">
         {control.type === 'int' ? num.toFixed(0) : num.toFixed(Math.abs(max - min) >= 10 ? 0 : 2)}
       </span>
     </label>
@@ -540,7 +540,7 @@ export function OverlayHud({ modId }: { modId: string }) {
         <Icon className="pointer-events-none h-3.5 w-3.5 text-crimson" />
         <span
           data-tauri-drag-region
-          className="font-mono pointer-events-none text-[0.6rem] uppercase tracking-[0.2em] text-ash"
+          className="font-mono pointer-events-none text-xs uppercase tracking-[0.2em] text-ash"
         >
           rsmm
         </span>
@@ -594,9 +594,7 @@ export function OverlayHud({ modId }: { modId: string }) {
                 onChange={(v) => changeControl(c.key, v)}
               />
             ))}
-            {controlError ? (
-              <p className="px-2 pb-1 text-[0.68rem] text-crimson">{controlError}</p>
-            ) : null}
+            {controlError ? <p className="px-2 pb-1 text-xs text-crimson">{controlError}</p> : null}
           </div>
         )}
         {record?.error ? (
@@ -617,7 +615,7 @@ export function OverlayHud({ modId }: { modId: string }) {
                     moved[key] ? 'animate-ink-stamp' : '',
                   ].join(' ')}
                 >
-                  <span className="font-mono w-3 shrink-0 text-right text-[0.7rem] text-ash">
+                  <span className="font-mono w-3 shrink-0 text-right text-xs text-ash">
                     {i + 1}
                   </span>
                   {columns.map((col) => (
@@ -657,7 +655,7 @@ export function OverlayHud({ modId }: { modId: string }) {
       )}
 
       {!compact && (
-        <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-2 py-1 text-[0.68rem] text-ash">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-2 py-1 text-xs text-ash">
           {/* Footer values are whatever the mod published — key + value, in
               its own words, separated so two pairs never read as one. */}
           {Object.entries(record?.meta ?? {})

@@ -219,7 +219,7 @@ export function ShareLogDialog({
             </div>
 
             {showPreview ? (
-              <pre className="font-data max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-pitch/60 p-3 text-[11px] text-parchment/90">
+              <pre className="font-data max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-pitch/60 p-3 text-xs text-parchment/90">
                 {report.content}
               </pre>
             ) : null}

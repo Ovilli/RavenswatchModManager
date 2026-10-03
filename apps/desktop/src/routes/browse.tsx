@@ -422,7 +422,7 @@ function BrowsePage() {
                 onChange={(e) => update({ showNsfw: e.target.checked })}
                 className="h-4 w-4 accent-crimson"
               />
-              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-widest text-crimson/80">
+              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-xs uppercase tracking-widest text-crimson/80">
                 <EyeOff className="h-3 w-3" /> NSFW
               </span>
             </label>
@@ -881,7 +881,7 @@ function ModRow({
             {m.name}
           </span>
           {m.nsfw ? (
-            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-[10px] uppercase tracking-widest text-crimson/80">
+            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-xs uppercase tracking-widest text-crimson/80">
               {t('nsfw')}
             </span>
           ) : null}

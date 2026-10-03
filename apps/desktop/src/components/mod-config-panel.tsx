@@ -556,7 +556,7 @@ function MultiSelectField({
                   </span>
                   <span
                     className={[
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border text-[0.6rem]',
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border text-xs',
                       on ? 'border-crimson bg-crimson/40 text-parchment' : 'border-ash/50',
                     ].join(' ')}
                   >

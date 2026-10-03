@@ -305,7 +305,7 @@ function DoctorView({ result }: { result: DoctorResult }) {
                   ) : null}
                   {/* CLI text (`c.fix.label`) passes through untranslated. */}
                   {!c.ok && c.fix ? (
-                    <span className="font-mono mt-0.5 block text-[11px] text-ash">
+                    <span className="font-mono mt-0.5 block text-xs text-ash">
                       {t('fix:')} {c.fix.label}
                       {c.fix.manual ? ` ${t('(manual)')}` : ''}
                       {c.fix.risk === 'destructive' ? ` ${t('— destructive')}` : ''}

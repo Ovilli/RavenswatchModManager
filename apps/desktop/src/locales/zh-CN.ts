@@ -111,8 +111,8 @@ export const zhCN: Record<string, string> = {
   Balance: '平衡性',
   'Big mod sets can outrun the timeout. Try again, or run the command from a terminal to watch it work.':
     '模组数量多时可能会超时。请重试，或在终端里运行该命令，看着它跑完。',
-  'Blackletter headings, Garamond body — the default look.':
-    '哥特体标题、Garamond 正文——默认外观。',
+  'Alegreya headings and text, clear at small sizes — the default look.':
+    'Alegreya 标题与正文，小字号下依然清晰——默认外观。',
   'Broken dependency chain': '依赖链断裂',
   Browse: '浏览',
   'Browse community mods and install in one click': '浏览社区模组并一键安装',
@@ -586,8 +586,7 @@ export const zhCN: Record<string, string> = {
   'Run vanilla': '运行原版',
   'Running…': '运行中…',
   'Same file': '同一文件',
-  'Same shape, no blackletter. Easier on long reading.':
-    '版式相同，但不用哥特体，长时间阅读更轻松。',
+  'Your system serif everywhere, for long reading.': '全程使用系统衬线字体，适合长时间阅读。',
   Save: '保存',
   'Save or reset before leaving.': '离开前请保存或重置。',
   'Save or restore all profiles, the active profile, and settings.':

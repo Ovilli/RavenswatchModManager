@@ -118,7 +118,7 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
       {collapsed ? null : <span className="font-serif-italic text-base">{label}</span>}
       {updates && !collapsed ? (
         <span
-          className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gilt/20 px-1.5 font-mono text-[11px] font-semibold text-gilt"
+          className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gilt/20 px-1.5 font-mono text-xs font-semibold text-gilt"
           title={updates}
         >
           {outdated}
@@ -171,7 +171,7 @@ function StatusStrip() {
                label in every typeface preset, so all three states render at the
                same width; a preset wide enough to exceed it grows rather than
                clipping. Shared by both buttons so the pair reads as a pair. */
-            className="min-w-[11rem]"
+            className="min-w-[10rem]"
             onClick={() => void launch('vanilla')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
@@ -188,7 +188,7 @@ function StatusStrip() {
             size="sm"
             variant="primary"
             disabled={busy}
-            className="min-w-[11rem]"
+            className="min-w-[10rem]"
             onClick={() => void launch('modded')}
           >
             <LaunchIcon className="h-5 w-5 text-parchment" />
@@ -225,11 +225,13 @@ function StatusStrip() {
             </button>
           </span>
         ) : null}
-        {/* Hidden rather than squashed below `lg`. The cluster is `shrink-0`
+        {/* Hidden rather than squashed below 1340px. The cluster is `shrink-0`
             so the launch buttons keep their size, which means something has to
             give when the window is narrow — and a mod count is the most
-            expendable thing in this row. */}
-        <div className="hidden items-center gap-2 lg:flex" style={noDragStyle}>
+            expendable thing in this row. The cut-off is where the row measurably
+            stops fitting beside the sidebar (it overflowed from `lg`, 1024px, up
+            to 1340px), not a standard breakpoint. */}
+        <div className="hidden items-center gap-2 min-[1340px]:flex" style={noDragStyle}>
           <StatPill value={enabled} label={t('enabled')} />
           <StatPill value={disabled} label={t('disabled')} />
           {outdated > 0 ? <StatPill value={outdated} label={t('updates')} tone="gilt" /> : null}

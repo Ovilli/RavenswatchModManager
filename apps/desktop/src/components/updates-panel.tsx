@@ -143,7 +143,7 @@ export function UpdatesPanel() {
                 >
                   {m.name}
                 </Link>
-                <p className="font-mono text-[11px] text-ash">
+                <p className="font-mono text-xs text-ash">
                   v{m.version} → <span className="text-gilt">v{m.latestVersion}</span>
                 </p>
               </div>

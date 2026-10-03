@@ -401,7 +401,7 @@ function LauncherLogPanel() {
         </div>
         <div className="flex items-center gap-2">
           {launchBusy ? (
-            <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
+            <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-xs text-gilt">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
               {t('live')}
             </span>
@@ -585,7 +585,7 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
           {entry.at ? new Date(entry.at).toLocaleTimeString(t.tag) : '—'}
         </span>
         <span
-          className={`font-mono shrink-0 border px-1.5 py-[1px] text-[10px] ${LOG_LEVEL_TONE[entry.level]}`}
+          className={`font-mono shrink-0 border px-1.5 py-[1px] text-xs ${LOG_LEVEL_TONE[entry.level]}`}
         >
           {entry.level}
         </span>
@@ -593,7 +593,7 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
       </div>
       {entry.context ? (
         <details className="mt-1">
-          <summary className="font-mono cursor-pointer text-[10px] text-ash hover:text-parchment">
+          <summary className="font-mono cursor-pointer text-xs text-ash hover:text-parchment">
             {t('context')}
           </summary>
           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-ash">
@@ -719,7 +719,7 @@ function TypographyControls() {
           onChange={(e) => update({ fontScale: normalizeFontScale(e.target.value) })}
           className="w-full accent-crimson"
         />
-        <div className="font-mono mt-1 flex justify-between text-[10px] text-ash">
+        <div className="font-mono mt-1 flex justify-between text-xs text-ash">
           <span>{MIN_FONT_SCALE}%</span>
           <span>100%</span>
           <span>{MAX_FONT_SCALE}%</span>
@@ -947,7 +947,7 @@ function LoaderFlagsPanel() {
                       {flag.label}
                     </span>
                     {!flag.safe ? (
-                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-[10px] uppercase text-crimson">
+                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-xs uppercase text-crimson">
                         {t('locked')}
                       </span>
                     ) : null}

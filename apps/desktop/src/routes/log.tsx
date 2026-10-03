@@ -385,7 +385,7 @@ function LogPage() {
         />
 
         {meta?.path ? (
-          <p className="font-data mt-2 break-all text-[10px] text-ash">{meta.path}</p>
+          <p className="font-data mt-2 break-all text-xs text-ash">{meta.path}</p>
         ) : null}
       </Panel>
 
@@ -596,13 +596,13 @@ function LogBody({
             ) : (
               <div className="flex flex-wrap items-baseline gap-2">
                 {line.stamp ? (
-                  <span className="font-mono shrink-0 text-[10px] text-ash">
+                  <span className="font-mono shrink-0 text-xs text-ash">
                     {line.stamp.slice(11)}
                   </span>
                 ) : null}
                 {line.severity ? (
                   <span
-                    className={`font-mono shrink-0 border px-1 text-[10px] uppercase ${
+                    className={`font-mono shrink-0 border px-1 text-xs uppercase ${
                       line.severity === 'err'
                         ? 'border-crimson/60 text-crimson'
                         : 'border-gilt/50 text-gilt'
@@ -612,7 +612,7 @@ function LogBody({
                   </span>
                 ) : null}
                 {line.tag ? (
-                  <span className="font-mono shrink-0 border border-border px-1 text-[10px] text-smoke">
+                  <span className="font-mono shrink-0 border border-border px-1 text-xs text-smoke">
                     {line.tag}
                   </span>
                 ) : null}

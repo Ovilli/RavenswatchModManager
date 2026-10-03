@@ -463,7 +463,7 @@ function GridCard({
           {label.slice(0, 2).toUpperCase()}
         </span>
       )}
-      <span className="line-clamp-2 min-h-8 w-full break-words text-center text-[0.7rem] leading-tight">
+      <span className="line-clamp-2 min-h-8 w-full break-words text-center text-xs leading-tight">
         {label}
       </span>
       {spec.number && n != null ? (

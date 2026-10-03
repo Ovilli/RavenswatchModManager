@@ -133,7 +133,7 @@ describe('language', () => {
     expect(el.lang).toBe('zh-CN');
     // The preset faces still come first: Latin text keeps the chosen typeface
     // and only the glyphs it lacks fall through to the CJK stack.
-    expect(vars['--font-body']?.startsWith("'EB Garamond'")).toBe(true);
+    expect(vars['--font-body']?.startsWith(FONT_PRESETS.grimoire.vars.body)).toBe(true);
     for (const key of ['--font-body', '--font-display', '--font-accent', '--font-mono']) {
       expect(vars[key]).toContain('Noto Sans SC');
     }

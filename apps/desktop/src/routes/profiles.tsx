@@ -435,7 +435,7 @@ function ProfilesPage() {
                       }
                       return (
                         <li key={id} className="text-crimson/80" title={id}>
-                          {id} <span className="font-mono text-[11px]">{t('— not on disk')}</span>
+                          {id} <span className="font-mono text-xs">{t('— not on disk')}</span>
                         </li>
                       );
                     }

@@ -27,7 +27,8 @@ interface FontPreset {
 const SYSTEM_SANS =
   'Inter, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
 const SYSTEM_SERIF = 'Georgia, "Times New Roman", "Liberation Serif", serif';
-const SYSTEM_MONO = '"JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace';
+const SYSTEM_MONO =
+  '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace';
 
 /**
  * Appended to every font var while a CJK language is active.
@@ -45,17 +46,17 @@ const CJK_FALLBACK =
 export const FONT_PRESETS: Record<FontChoice, FontPreset> = {
   grimoire: {
     label: msg('Grimoire'),
-    hint: msg('Blackletter headings, Garamond body — the default look.'),
+    hint: msg('Alegreya headings and text, clear at small sizes — the default look.'),
     vars: {
-      body: "'EB Garamond', Georgia, serif",
-      display: "'UnifrakturCook', 'UnifrakturMaguntia', serif",
-      accent: "'Cormorant Garamond', Georgia, serif",
+      body: "'Alegreya Sans', system-ui, sans-serif",
+      display: "'Alegreya Variable', Georgia, serif",
+      accent: "'Alegreya Sans', system-ui, sans-serif",
       mono: SYSTEM_MONO,
     },
   },
   serif: {
     label: msg('Plain serif'),
-    hint: msg('Same shape, no blackletter. Easier on long reading.'),
+    hint: msg('Your system serif everywhere, for long reading.'),
     vars: {
       body: SYSTEM_SERIF,
       display: SYSTEM_SERIF,
