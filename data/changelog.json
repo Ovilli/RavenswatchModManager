@@ -2,6 +2,17 @@
   "generated": "2026-10-03",
   "entries": [
     {
+      "version": "5.9.3",
+      "date": "2026-10-03",
+      "summary": "A website refresh: easier-to-read fonts and a home page that leads with the registry. The app itself is unchanged.",
+      "highlights": [
+        "Website: a redesigned home page that puts the download, a search box and the most popular mods first.",
+        "Website: easier-to-read fonts across every page, with the blackletter kept for the logo.",
+        "Website: removed the grey box that appeared on mod, guide and collection pages.",
+        "No changes to the app in this version."
+      ]
+    },
+    {
       "version": "5.9.2",
       "date": "2026-10-03",
       "summary": "Switching profiles no longer empties the one you left, every number on a talent card is editable, and cards link to the Ability editor.",
