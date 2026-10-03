@@ -159,7 +159,7 @@ function GuidesIndex() {
     <main className="container mx-auto space-y-10 px-6 py-12">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-fraktur text-5xl text-parchment">Guides</h1>
+          <h1 className="font-display text-5xl text-parchment">Guides</h1>
           <p className="mt-1 text-muted-foreground">
             Community tutorials and how-tos for Ravenswatch — modding, strategies, and more.
           </p>

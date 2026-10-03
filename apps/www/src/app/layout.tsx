@@ -3,9 +3,8 @@ import { buttonVariants } from '@rsmm/ui';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
-import { Cormorant_Garamond, EB_Garamond, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
+import { Alegreya, Alegreya_Sans, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
-import Script from 'next/script';
 import { BanGate } from './components/ban-gate';
 import { Nav } from './nav';
 import { Providers } from './providers';
@@ -21,19 +20,23 @@ const fraktur = UnifrakturCook({
   display: 'swap',
   variable: '--font-fraktur',
 });
-const cormorant = Cormorant_Garamond({
-  weight: ['400', '500', '600'],
+// Headings: Alegreya, a calligraphic serif with a storybook feel that stays
+// legible at size. Text and UI: Alegreya Sans, its sans companion, which holds
+// up at small sizes on a dark background where the old Garamond went thin.
+// Blackletter is kept for the wordmark only.
+const display = Alegreya({
+  weight: ['500', '700', '800'],
   style: ['normal', 'italic'],
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-cormorant',
+  variable: '--font-display',
 });
-const garamond = EB_Garamond({
-  weight: ['400', '500', '600'],
+const body = Alegreya_Sans({
+  weight: ['400', '500', '700'],
   style: ['normal', 'italic'],
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-garamond',
+  variable: '--font-body',
 });
 const mono = JetBrains_Mono({
   weight: ['400', '500', '700'],
@@ -144,7 +147,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`dark ${fraktur.variable} ${cormorant.variable} ${garamond.variable} ${mono.variable}`}
+      className={`dark ${fraktur.variable} ${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body className="flex min-h-screen flex-col">
         {/* Sitewide structured data: Organization (logo in knowledge panel) +
@@ -207,7 +210,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   alt="Ravenswatch Mod Manager"
                   className="h-8 w-8 rounded-md object-cover"
                 />
-                <span className="text-sm font-semibold text-foreground">
+                <span className="font-fraktur text-lg text-foreground">
                   Ravenswatch Mod Manager
                 </span>
               </Link>
@@ -280,18 +283,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </footer>
         <SpeedInsights />
-        {/* Google AdSense loader. Production only (Google rejects the script
-            from localhost/preview). This both verifies the site during the
-            AdSense review and serves Auto Ads once approved. */}
-        {process.env.NODE_ENV === 'production' ? (
-          <Script
-            id="adsbygoogle-init"
-            strategy="afterInteractive"
-            async
-            crossOrigin="anonymous"
-            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9139637424510522"
-          />
-        ) : null}
       </body>
     </html>
   );

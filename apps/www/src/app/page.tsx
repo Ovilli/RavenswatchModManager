@@ -1,11 +1,13 @@
 import { type ModListItem, jsonLd } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
+import { Search } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { getApiUrl } from '../lib/api-url';
 import { type LatestRelease, getLatestRelease } from '../lib/releases';
 import { FAQ } from './components/faq';
 import { faqs } from './components/faq-data';
+import { ModCard } from './components/mod-card';
 import { OsDownload } from './os-download';
 
 export const revalidate = 300;
@@ -153,6 +155,18 @@ const screens = [
   },
 ];
 
+// The registry's own category filters, so each one lands on a real result list.
+const categories = [
+  'gameplay',
+  'balance',
+  'cosmetic',
+  'qol',
+  'audio',
+  'difficulty',
+  'speedrun',
+  'utility',
+];
+
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 10_000) return `${Math.round(n / 1_000)}K`;
@@ -166,67 +180,124 @@ export default async function Home() {
   const popular = [
     ...featured,
     ...byDownloads.filter((m) => !featured.some((f) => f.id === m.id)),
-  ].slice(0, 5);
+  ].slice(0, 8);
 
   return (
     <main className="home">
-      {/* Hero */}
-      <section className="container mx-auto grid items-center gap-12 px-6 pb-20 pt-14 lg:grid-cols-12 lg:gap-10 lg:pb-28 lg:pt-24">
-        <div className="lg:col-span-5">
-          {/* The product's own name was nowhere in the page text — only in the
-              logo alt and the footer — so "ravenswatch mod manager" and "rsmm"
-              had no on-page match. Name it once, above the headline. */}
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-gilt">
-            Ravenswatch Mod Manager · RSMM
-          </p>
-          <h1 className="font-fraktur text-6xl leading-[0.95] text-parchment sm:text-7xl">
-            Mods for Ravenswatch
-          </h1>
-          <p className="mt-6 max-w-md text-xl leading-relaxed text-parchment/80">
-            A free app that installs Ravenswatch mods, keeps them in order and puts your game back
-            the way it was whenever you ask.
-          </p>
-          <div className="mt-9 flex flex-wrap items-center gap-3">
-            <OsDownload release={release} showVersion={false} />
-            <Link href="/registry" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
-              Browse mods
-            </Link>
+      {/* Intro, in two zones that share a top and a bottom edge: get the app
+          (left) and find a mod (right). The product's own name is in the
+          sentence under the headline so "ravenswatch mod manager" and "rsmm"
+          have an on-page match. */}
+      <section className="container mx-auto px-6 pb-14 pt-12 lg:pb-20 lg:pt-16">
+        <div className="grid gap-8 lg:grid-cols-12 lg:gap-10">
+          <div className="lg:col-span-7">
+            <h1 className="font-display text-5xl text-parchment sm:text-6xl">
+              Mods for Ravenswatch
+            </h1>
+            <p className="mt-5 max-w-xl text-xl leading-relaxed text-parchment/80">
+              Ravenswatch Mod Manager (RSMM) is a free app that installs Ravenswatch mods, keeps
+              them in order and puts your game back the way it was whenever you ask.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3">
+              <OsDownload release={release} showVersion={false} />
+              <Link
+                href="/download"
+                className="text-lg text-parchment/75 underline underline-offset-4 hover:text-parchment"
+              >
+                Other downloads
+              </Link>
+            </div>
+            <p className="mt-4 text-base text-parchment/60">
+              {release.tag ? `Version ${release.tag.replace(/^v/, '')} for` : 'For'} Windows, Linux
+              and Steam Deck. Free and open source.
+            </p>
           </div>
-          <p className="mt-5 text-base text-parchment/60">
-            {release.tag ? `Version ${release.tag.replace(/^v/, '')} for` : 'For'} Windows, Linux
-            and Steam Deck.{' '}
-            <Link href="/download" className="underline underline-offset-4 hover:text-parchment">
-              Other downloads
-            </Link>
-          </p>
-        </div>
-        <div className="lg:col-span-7">
-          <figure className="gilt-frame">
-            <img
-              src="/screens/library.jpg"
-              alt="The RSMM library: installed mods grouped by category, each with an on/off switch and settings"
-              width={2160}
-              height={1350}
-              className="block h-auto w-full"
-              fetchPriority="high"
-            />
-          </figure>
+
+          <div className="lg:col-span-5">
+            <div className="grimoire-card flex h-full flex-col gap-5 p-6">
+              <h2 className="font-display text-2xl text-parchment">Find a mod</h2>
+              {/* A plain GET form: works without JavaScript and lands on the
+                  registry with the query already filled in. */}
+              <form action="/registry" method="get" className="flex gap-2">
+                <label htmlFor="home-search" className="sr-only">
+                  Search mods
+                </label>
+                <div className="relative flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-parchment/50"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="home-search"
+                    name="q"
+                    type="search"
+                    placeholder="Search mods"
+                    className="input-grim !py-3 !pl-11 !text-lg"
+                  />
+                </div>
+                <button type="submit" className={buttonVariants({ size: 'lg' })}>
+                  Search
+                </button>
+              </form>
+              <div className="flex flex-wrap gap-2">
+                {categories.map((c) => (
+                  <Link
+                    key={c}
+                    href={`/registry?category=${c}` as Route}
+                    className="rounded-full border border-border/80 px-3.5 py-1 text-base text-parchment/80 hover:border-gilt/60 hover:text-gilt"
+                  >
+                    {c}
+                  </Link>
+                ))}
+              </div>
+              <p className="mt-auto text-base text-parchment/60">
+                {totalMods > 0
+                  ? `${totalMods} mods, installed ${fmt(totalModDownloads)} times. Every upload is scanned for malware before it goes live.`
+                  : 'Every upload is scanned for malware before it goes live.'}
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* How it works — a real sequence, so it is numbered */}
+      {/* Popular mods: the registry is the front page */}
+      <section className="container mx-auto px-6 pb-16 lg:pb-24">
+        <div className="flex items-baseline justify-between gap-6">
+          <h2 className="font-display text-3xl text-parchment sm:text-4xl">Popular mods</h2>
+          <Link href="/registry" className="text-lg underline underline-offset-4 hover:text-gilt">
+            Browse all mods
+          </Link>
+        </div>
+        {popular.length > 0 ? (
+          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {popular.map((mod) => (
+              <ModCard key={mod.id} mod={mod} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-8 text-lg text-parchment/70">
+            The registry could not be reached just now.{' '}
+            <Link href="/registry" className="underline underline-offset-4 hover:text-parchment">
+              Open it directly
+            </Link>
+            .
+          </p>
+        )}
+      </section>
+
+      {/* How it works: a real sequence, so it is numbered */}
       <section className="border-y border-border/60 bg-card/40">
         <ol className="container mx-auto grid gap-10 px-6 py-14 md:grid-cols-3 md:gap-12">
           {steps.map((s, i) => (
             <li key={s.title} className="flex gap-5">
               <span
-                className="font-fraktur w-9 shrink-0 text-5xl leading-none text-gilt"
+                className="font-display w-9 shrink-0 text-5xl leading-none text-gilt"
                 aria-hidden="true"
               >
                 {i + 1}
               </span>
               <div>
-                <h2 className="text-2xl text-parchment">{s.title}</h2>
+                <h2 className="font-display text-2xl text-parchment">{s.title}</h2>
                 <p className="mt-2 text-lg leading-relaxed text-parchment/70">{s.body}</p>
               </div>
             </li>
@@ -234,9 +305,19 @@ export default async function Home() {
         </ol>
       </section>
 
-      {/* Screens */}
-      <section className="container mx-auto px-6 py-20 lg:py-28">
-        <h2 className="font-fraktur text-5xl text-parchment">Inside the app</h2>
+      {/* The app: one large, readable screenshot, then what else it does */}
+      <section className="container mx-auto px-6 py-16 lg:py-24">
+        <h2 className="font-display text-3xl text-parchment sm:text-4xl">Inside the app</h2>
+        <figure className="gilt-frame mt-8">
+          <img
+            src="/screens/library.jpg"
+            alt="The RSMM library: installed mods grouped by category, each with an on/off switch and settings"
+            width={2160}
+            height={1350}
+            className="block h-auto w-full"
+            loading="lazy"
+          />
+        </figure>
         <div className="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
           {screens.map((s) => (
             <figure key={s.src}>
@@ -249,7 +330,7 @@ export default async function Home() {
                 className="block h-auto w-full rounded border border-border"
               />
               <figcaption className="mt-5">
-                <h3 className="text-2xl text-parchment">{s.title}</h3>
+                <h3 className="font-display text-2xl text-parchment">{s.title}</h3>
                 <p className="mt-2 text-lg leading-relaxed text-parchment/70">{s.body}</p>
               </figcaption>
             </figure>
@@ -257,47 +338,11 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Popular mods */}
-      <section className="container mx-auto px-6 pb-20 lg:pb-28">
-        <div className="grid gap-10 lg:grid-cols-12">
-          <div className="lg:col-span-4">
-            <h2 className="font-fraktur text-5xl text-parchment">From the registry</h2>
-            <p className="mt-5 max-w-sm text-lg leading-relaxed text-parchment/70">
-              {totalMods > 0
-                ? `${totalMods} mods so far, installed ${fmt(totalModDownloads)} times. Every upload is scanned for malware before it goes live.`
-                : 'Every upload is scanned for malware before it goes live.'}
-            </p>
-            <Link href="/registry" className={`${buttonVariants({ size: 'lg' })} mt-7`}>
-              Browse all mods
-            </Link>
-          </div>
-          <ul className="divide-y divide-border/70 border-y border-border/70 lg:col-span-8">
-            {popular.map((mod) => (
-              <li key={mod.id}>
-                <Link
-                  href={`/registry/${mod.slug}` as Route}
-                  className="group grid gap-1 py-5 sm:grid-cols-[1fr_auto] sm:items-baseline sm:gap-x-8"
-                >
-                  <span className="text-2xl text-parchment group-hover:text-gilt">{mod.name}</span>
-                  <span className="text-base text-parchment/55 sm:text-right">
-                    {mod.downloads ? `${fmt(mod.downloads)} installs` : 'New'}
-                  </span>
-                  <span className="text-lg leading-relaxed text-parchment/70 sm:col-span-2">
-                    {mod.summary ? `${mod.summary} ` : null}
-                    {mod.author ? <span className="text-parchment/50">by {mod.author}</span> : null}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
       {/* For mod authors */}
       <section className="border-y border-border/60 bg-card/40">
         <div className="container mx-auto grid items-center gap-10 px-6 py-16 lg:grid-cols-2 lg:py-20">
           <div>
-            <h2 className="font-fraktur text-5xl text-parchment">Make your own</h2>
+            <h2 className="font-display text-3xl text-parchment sm:text-4xl">Make your own</h2>
             <p className="mt-5 max-w-lg text-lg leading-relaxed text-parchment/70">
               Mods are data, not code: a manifest that says what changes, plus any textures, models
               or sounds. The open-source <code className="text-gilt">rsmm</code> tool builds, tests
@@ -379,7 +424,7 @@ export default async function Home() {
         }}
       />
       <section className="container mx-auto px-6 pb-16 pt-20 lg:pb-20 lg:pt-28">
-        <h2 className="font-fraktur text-5xl text-parchment">Questions</h2>
+        <h2 className="font-display text-3xl text-parchment sm:text-4xl">Questions</h2>
         <FAQ />
         <p className="mt-10 text-lg text-parchment/70">
           Not answered here? The{' '}

@@ -53,7 +53,7 @@ export default function MyModsPage() {
     <main className="container mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-fraktur text-5xl text-parchment">My mods</h1>
+          <h1 className="font-display text-5xl text-parchment">My mods</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Mods you own. Click one to edit metadata, upload a new version, or manage assets.
           </p>

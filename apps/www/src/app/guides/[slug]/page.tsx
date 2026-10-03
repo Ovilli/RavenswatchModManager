@@ -10,7 +10,6 @@ import { use, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
-import { AdBanner } from '../../components/ad-banner';
 import { MDEditor, MDPreview } from '../../components/md-editor';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -268,9 +267,6 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
           )}
         </div>
       ) : null}
-
-      {/* Ads only on public (approved) guides. */}
-      {g.status === 'approved' ? <AdBanner slot="1934448674" className="rounded-lg" /> : null}
 
       {/* Reviews — approved guides only */}
       {g.status === 'approved' ? (

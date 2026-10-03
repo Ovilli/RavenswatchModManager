@@ -274,7 +274,7 @@ function RegistryInner() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
       <div className="relative container mx-auto space-y-6 px-6 py-12">
         <header className="space-y-2">
-          <h1 className="font-fraktur text-5xl text-parchment sm:text-6xl">Mod registry</h1>
+          <h1 className="font-display text-5xl text-parchment sm:text-6xl">Mod registry</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Browse community-published mods for Ravenswatch — hero skins, balance tweaks, custom
             magical objects, quality-of-life improvements, audio swaps, and more. Search or filter

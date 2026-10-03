@@ -1,5 +1,15 @@
 # AdSense setup (apps/www)
 
+> **Ads are OFF (2026-10-03).** AdSense was abandoned on 2026-09-17, and the
+> ad slots rendered as a grey "blocked" box because the CSP's `frame-src` never
+> allowed Google's ad frame. The three `<AdBanner>` units (mod, guide and
+> collection pages) and the loader script in `layout.tsx` are removed.
+> `ad-banner.tsx`, `ads.txt`, the site-ownership meta tag and the CSP stay, so
+> turning ads back on means re-adding the loader and the units **and** adding
+> `https://pagead2.googlesyndication.com` to `frame-src` and
+> `https://ep1.adtrafficquality.google` to `connect-src`. Ads are for the
+> WEBSITE only, never the desktop app (account termination).
+
 Operational notes for the Google AdSense integration on rsmm.me. Most of this is
 already wired in code; the remaining work is **console configuration** that can't
 live in the repo.

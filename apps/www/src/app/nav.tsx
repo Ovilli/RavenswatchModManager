@@ -220,7 +220,7 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
             alt="Ravenswatch Mod Manager"
             className="h-8 w-8 rounded-md object-cover"
           />
-          <span className="hidden text-sm font-medium text-foreground/90 md:inline">
+          <span className="font-fraktur hidden text-lg text-foreground lg:inline">
             Ravenswatch Mod Manager
           </span>
         </Link>

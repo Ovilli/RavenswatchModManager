@@ -21,7 +21,6 @@ import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import { useSession } from '../../../lib/auth-client';
 import { toEmbedUrl } from '../../../lib/video-embed';
-import { AdBanner } from '../../components/ad-banner';
 import { FollowButton } from '../../components/follow-button';
 import { MDPreview } from '../../components/md-editor';
 import { ReportModal } from '../../components/report-modal';
@@ -244,10 +243,6 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 </ul>
               </div>
             ) : null}
-            {/* AdSense "no ads on screens without publisher content": a mod
-                with no author-written summary renders a near-empty page (the
-                same rule that noindexes it in layout.tsx), so skip the ad. */}
-            {mod.summary?.trim() ? <AdBanner slot="1934448674" className="rounded-lg" /> : null}
           </aside>
         </div>
       </div>

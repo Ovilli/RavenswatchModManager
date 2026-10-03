@@ -17,7 +17,7 @@ export default function CollectionsIndexPage() {
     <main className="container mx-auto space-y-6 px-6 py-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-fraktur text-5xl text-parchment">Collections</h1>
+          <h1 className="font-display text-5xl text-parchment">Collections</h1>
           <p className="mt-1 text-muted-foreground">Mod bundles curated by the community.</p>
         </div>
       </div>
