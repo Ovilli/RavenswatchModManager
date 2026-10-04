@@ -1,6 +1,16 @@
 {
-  "generated": "2026-10-03",
+  "generated": "2026-10-04",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 26,
+      "date": "2026-10-04",
+      "summary": "Online backend redirect: set RSMM_BACKEND_URL=http://host:port to point the game at a self-hosted backend (services/stormancer). Off by default; with it unset the WinHTTP wrappers are a plain passthrough. Also adds a Steam web-ticket identity probe that logs the identity string and never the ticket.",
+      "highlights": [
+        "Self-hosted online backend: point the game at your own server with RSMM_BACKEND_URL (off by default)",
+        "Steam web-ticket identity probe for backend setup (logs the identity, never the ticket)"
+      ]
+    },
     {
       "version": "5.9.4",
       "date": "2026-10-03",
