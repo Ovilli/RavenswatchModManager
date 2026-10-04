@@ -65,6 +65,7 @@ BUILTIN = {
     "schema":            "rsmm.cli.cmd_schema",
     "install":           "rsmm.cli.cmd_install",
     "pack":              "rsmm.cli.cmd_pack",
+    "modpack":           "rsmm.cli.cmd_modpack",
     "publish":           "rsmm.cli.cmd_publish",
     "log":               "rsmm.cli.cmd_log",
     "overlay":           "rsmm.cli.cmd_overlay",
@@ -176,6 +177,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("cmd",      "['/command'] [--tail]",      "send /commands to the in-game console"),
         ("save",     "[path]... [--classes]",      "inspect profile saves (read-only)"),
         ("values",   "<snapshot|list|diff|extract>", "back up a patch's values, diff an update"),
+        ("modpack",  "[--json]",                   "fingerprint of applied mods, for online play"),
     )),
     ("assets & engine", (
         ("assets",   "search <text> | show <path>", "find a cooked asset by readable path"),
