@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>Rsmm.Backend</RootNamespace>
+		<!-- The grid builds the deployed directory itself; keep local build output out of the package. -->
+		<StormancerPackageExcludes>bin;obj</StormancerPackageExcludes>
+	</PropertyGroup>
+
+	<!-- The ticket verifier and the mod-pack registry are internal: the grid never calls them from
+	     outside this assembly, and the test project is the only other consumer. -->
+	<ItemGroup>
+		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+			<_Parameter1>RsmmBackend.Tests</_Parameter1>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Stormancer.Server.Hosting" Version="2.1.1.2-pre" />
+		<PackageReference Include="Stormancer.Server.Hosting.SourceGenerator" Version="0.1.0.4" />
+
+		<!-- The scenes Ravenswatch connects to: authenticator, friends, party-manager, party-<id>, matchmaking. -->
+		<PackageReference Include="Stormancer.Server.Plugins.Users" Version="10.0.3.8-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.Steam" Version="4.3.0.2-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.Friends" Version="5.1.0.8-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.Party" Version="5.3.0.8-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.GameFinder" Version="8.4.0.25-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.GameSession" Version="6.3.2.37-pre" />
+
+		<!-- Users pulls 0.1.0.17-pre, but other plugins are built against 0.1.0.18: without this pin the
+		     host's dependency registration aborts halfway and later services go missing. -->
+		<PackageReference Include="Stormancer.Server.Plugins.Database.EntityFrameworkCore" Version="0.1.0.18-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.Analytics" Version="2.2.0-pre" />
+	</ItemGroup>
+
+</Project>

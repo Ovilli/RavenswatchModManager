@@ -1,0 +1,13 @@
+bin/
+obj/
+grid/data/
+grid/tmp/
+grid/packages/
+grid/.stormancer/
+grid/logs/
+grid/*.log
+.tools/
+
+# The CLI writes a bootstrapper config into whatever directory it is run from; the
+# one that matters is grid/bootstrapper.config.json, which is tracked.
+/bootstrapper.config.json

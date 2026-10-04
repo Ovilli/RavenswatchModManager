@@ -1,0 +1,264 @@
+﻿{
+
+  "constants": {
+    "publicIp": "localhost",
+    "elasticHost": "localhost:9200",
+    "loadBalancedIp": "localhost",
+    "dataDirectory": "{workingDirectory}/data/{configName}",
+    "sharedDirectory": "{workingDirectory}/data/shared",
+    "cluster": "local",
+    "n2nPort": "40243",
+    "apiHttpPort": "8090",
+    "apiHttpsPort": "8443",
+    "adminApiHttpPort": "8091",
+    "udpPort": "30100",
+    "tempDir": "{workingDirectory}/tmp/{configName}",
+    "localPackageSource": "{workingDirectory}/packages"
+  },
+  "configs": [
+    // Paths to protected files accessible only by the stormancer process. 
+    //The content of these files is added to constants at runtime.
+    //"{dataDirectory}/secrets/passwords.json"
+  ],
+  "security": {
+    "privateKeyStores": [
+      {
+        "path": "{dataDirectory}/secrets"
+      }
+    ]
+  },
+
+  "webApis": {
+
+    // Ssl protocols allowed by the web API.
+    // Defaults to ["None"] to let the server OS decide. See <see href="https://learn.microsoft.com/en-us/dotnet/api/system.security.authentication.sslprotocols?view=net-8.0"/> for accepted values.
+    "sslProtocols": [ "None" ],
+
+    // List of enabled HTTP(S) endpoints.
+    "endpoints": {
+      "public": {
+        "ip": "*",
+        "port": "{apiHttpPort}",
+        "settings": {}
+      },
+      "private": {
+        "ip": "*",
+        "port": "{adminApiHttpPort}",
+        "settings": {}
+      }
+    },
+
+    // Configuration of the public API.
+    "publicApi": {
+      "endpoints": [ "public" ],
+      "hosts": [],
+      "publish": [ "http://{loadBalancedIp}:8095" ]
+    },
+
+    // Configuration of the private API.
+    "adminApi": {
+      "endpoints": [ "public", "private" ],
+      "hosts": [],
+      "publish": [ "http://127.0.0.1:{adminApiHttpPort}" ]
+    }
+  },
+
+
+
+  "identity": {
+    //Name of the node. Automatically generated if not specified here.
+    //It's recommanded to have different names for each node when running distributed.
+    //"name": "test"
+    "roles": [ "apps", "data", "leader" ]
+  },
+  //Contains the list of public endpoints to the node and their configuration.
+  "endpoints": {
+    "udp1": {
+      "type": "raknet",
+      "port": "{udpPort}",
+      "maxConnections": 65000,
+      "publicEndpoint": "{publicIp}:{udpPort}"
+    }
+  },
+  "hosting": {
+    "packages": {
+      "applications": "{sharedDirectory}/apps",
+      //nuget sources used to locate hosts.
+      //ALWAYS PUT REMOTE SOURCES BEFORE LOCAL SOURCES
+      "hostSources": [
+        "https://api.nuget.org/v3/index.json"
+      ],
+      //Sources used during dotnet restore for server applications.
+      //ALWAYS PUT REMOTE SOURCES BEFORE LOCAL SOURCES
+      "sources": [
+        "https://api.nuget.org/v3/index.json"
+        //,"{localPackageSource}"
+
+      ]
+    },
+
+    //Default shard allocation algorithm uses 'hosting.weight'
+    "weight": 1,
+    "dotnetCommand": "dotnet",
+    "dataStorage": "{dataDirectory}/storage",
+    //Root directory where server applications are loaded.
+    //The directory of a specific app is : <appInstallDirectory>\<accountId>\<appName>\<deploymentId>
+    "applicationInstallDirectory": "{tempDir}/hosting/apps/",
+    //Directory where application hosts are loaded.
+    "hostsDirectory": "{tempDir}/hosting/hosts/",
+    //Local package storage
+    "localPackageStorageDirectory": "{tempDir}/packages",
+
+    //Set to true to launch the debugger whenever an host starts. Must be disabled in production.
+    "launchDebugger": false,
+    //Port range for application HTTP communications
+    "allowedPortsRange": "42000-42200",
+
+    "gc": {
+      //Interval of time in seconds between two subsequent run of the server application GC.
+      "interval": 60,
+      //inactivity period in seconds before an application becomes eligible for GC.
+      "timeout": 600,
+      //When an app doesn't answers to requests, it is destroyed after this timeout expires (in second).
+      //Note that when debugging, dev should increase this value to prevent the app from being kill when breakpoints are hit.
+      "statusTimeout": 30
+    }
+  },
+
+
+  //Configuration for the geo IP plugin
+  "geoip": {
+    //Path to the geo ip db in the file system.
+    "db": "{dataDirectory}/geoip/GeoLite2-City.mmdb"
+  },
+
+
+  "cluster": {
+    //Id of the cluster. Defaults to 'default'
+    "name": "{cluster}",
+
+    //Does the cluster requires node authentication? If no, node 2 node communications are not encrypted, and federation is not possible.
+    //Setting to true requires configuring a private key.
+    "requireNodeAuthentication": false,
+
+    "coordination": {
+      "type": "discovery",
+      "endpoints": [],
+      "electionTimeout": {
+        "min": 800,
+        "max": 1200
+
+      },
+      "heartbeat": 500
+    },
+    //minimum number of votes required to elect a leader.
+    //configure this as more than half the number of nodes in the cluster to prevent split brain situations.
+    "minVotes": 1,
+    //Bindings for the cluster transport socket.
+    "endpoint": [ "0.0.0.0:{n2nPort}" ],
+
+    //endpoint published to contact the node. The endpoint MUST be accessible from all nodes in the cluster. If not, connection edges establishment may fail.
+    "publishedEndpoint": "{publicIp}:{n2nPort}"
+  },
+
+  "federation": {
+    //Endpoint used by nodes of other clusters in the federation to connect to this node
+    //leave empty or set to null to prevent this node from accepting connections from nodes in other clusters.
+    "publicEndpoint": "{publicIp}:{n2nPort}",
+    "clusters": {
+      //List of endpoints to try to get metadata about the remote clusters
+      "endpoints": [ "http://{publicIp}:{adminApiHttpPort}" ],
+      //Paths containing the public keys authenticating each remote cluster (
+      "certificateSources": [
+        {
+          "path": "{dataDirectory}/certs"
+        }
+      ]
+    }
+  },
+
+  //nat traversal configuration (used to establish p2p communication between clients)
+  "p2p": {
+    //The number of p2p ping attempts that may be active at the same time between two peers.
+    "maxConcurrentPings": 8,
+    //
+    "enableRelay": true
+  },
+
+  "logging": {
+    "outputs": {
+      "nlog": {
+        "enabled": true
+      }
+    },
+    "applications": {
+      "minLogLevel": "Info" //Min logging level for applications. Trace, Debug, Info, Warn, Error, Fatal
+    }
+
+  },
+  "tokens": {
+    "maxUserDataSize": 10240,
+    "randomAccount": {
+      "randomApp": {
+        "useNativeDateFormat": false // disable nativeDate format in tokens for randomAccount/randomApp
+      },
+      "useNativeDateFormat": true // enable nativeDate format in tokens for app in randomAccount different from randomAccount/randomApp
+    },
+    "useNativeDateFormat": false //// disable nativeDate format in all other accounts.
+  },
+
+  "plugins": {
+    "aws": {
+      "enabled": false
+    },
+    "lettuceEncrypt": {
+      "enabled": false,
+      // Which API type to use LettuceEncrypt with. Due to a current limitation, it cannot be enabled for both public and admin APIs.
+      // Valid values are "public" and "admin".
+      "apiType": "public",
+      // Email for certificate renewal (required)
+      "email": "email@email.com",
+      // Domain name(s) to request certificates for
+      "domainNames": [ "{loadBalancedIp}" ],
+      // Use Let's Encrypt staging server for issuing certificate. true for testing ; false for prod
+      "useStagingServer": true,
+      // Directory to be used to save LettuceEncrypt data. Required.
+      "certificateDirectory": "{dataDirectory}/lettuceEncrypt",
+      // Show detailed LettuceEncrypt (and Kestrel) logs.
+      "showLogs": false
+    }
+  },
+  "fileStorage": {
+    "appPackages": {
+      "type": "fileSystem",
+      "root": "{sharedDirectory}/apps"
+    }
+  },
+
+  "webApis": {
+    "endpoints": {
+      "public": {
+        "ip": "*",
+        "port": "{apiHttpPort}",
+        "settings": {}
+      },
+      "private": {
+        "ip": "*",
+        "port": "{adminApiHttpPort}",
+        "settings": {}
+      }
+    },
+
+    "publicApi": {
+      "endpoints": [ "public" ],
+      "hosts": [],
+      "publish": [ "http://{loadBalancedIp}:8095" ]
+    },
+
+    "adminApi": {
+      "endpoints": [ "private" ],
+      "hosts": [],
+      "publish": [ "http://{publicIp}:{adminApiHttpPort}" ]
+    }
+  }
+}
