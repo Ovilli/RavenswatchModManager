@@ -98,15 +98,29 @@ same three things `run-local.sh` arranges for itself:
 - **With `DOTNET_ROLL_FORWARD=Major`**, because the CLI targets .NET 8 and a machine with only a
   newer runtime otherwise fails with "You must install or update .NET".
 
+The store has to exist before a secret can go into it. `manage secrets update` only writes into an
+existing one — despite its help text reading "Create or update a secrets store", it answers
+`Secret store not found.` — so creating it is a separate command group, `secrets-store`.
+
 ```sh
 cd services/stormancer
 ./run-local.sh                      # if the grid is not already up
 cd grid
-DOTNET_ROLL_FORWARD=Major ../.tools/stormancer manage secrets generate --path /tmp/ticketKey.bin
-DOTNET_ROLL_FORWARD=Major ../.tools/stormancer manage secrets update \
-    --cluster local --account darktales \
+export DOTNET_ROLL_FORWARD=Major
+
+# 1. a 32-byte random key (or use your own: head -c 32 /dev/urandom > /tmp/ticketKey.bin)
+../.tools/stormancer manage secrets generate --size 32 -o /tmp/ticketKey.bin
+
+# 2. the store, once per account
+../.tools/stormancer manage secrets-store create --cluster local --account darktales --id rsmm
+
+# 3. the key itself, at the path app-config.json points to (darktales/rsmm/ticketKey)
+../.tools/stormancer manage secrets update --cluster local --account darktales \
     --store rsmm --id ticketKey --path /tmp/ticketKey.bin
 ```
+
+`manage secrets-store list --cluster local --account darktales` shows what exists. The same two
+steps apply to the `steam` store if a publisher key ever arrives.
 
 With no key configured every RSMM ticket is refused — it fails closed, and the first authentication
 logs `RSMM identity configuration` with `ticketKeys: 0` so a mistyped path is visible in `grid.log`
