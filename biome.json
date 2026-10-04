@@ -20,6 +20,7 @@
       "**/__pycache__/**",
       "src/rsmm/**",
       "src/loader/**",
+      "services/**",
       "src/*.egg-info/**",
       "mods/**",
       "docs/_re/**",

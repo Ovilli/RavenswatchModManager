@@ -87,16 +87,23 @@ the Steam login. The client only ferries the ticket.
 The signing key never goes in this repo. Create it in the grid's secret store, the same way as the
 Steam key:
 
-The CLI lives in this directory and talks to the cluster's admin API, so run it from here with a
-grid already started (`./run-local.sh`) — against a stopped grid it fails to connect. It also needs
-`DOTNET_ROLL_FORWARD=Major`, the same as `run-local.sh` sets for itself: the CLI targets .NET 8, and
-without it a machine that only has a newer runtime fails with "You must install or update .NET".
+Run it **from `grid/`**, with a grid already started, and with `DOTNET_ROLL_FORWARD=Major` — the
+same three things `run-local.sh` arranges for itself:
+
+- **From `grid/`**, because the `manage` verb comes from the `Stormancer.Management.CLI` plugin
+  listed in `grid/bootstrapper.config.json`. Run from anywhere else, the bootstrapper writes a fresh
+  config without that plugin, builds a second ~100MB grid into `.stormancer/` there, and then fails
+  with `Unrecognized command or argument 'manage'`.
+- **With a grid up** (`./run-local.sh`), because it talks to the cluster's admin API on `:8091`.
+- **With `DOTNET_ROLL_FORWARD=Major`**, because the CLI targets .NET 8 and a machine with only a
+  newer runtime otherwise fails with "You must install or update .NET".
 
 ```sh
 cd services/stormancer
 ./run-local.sh                      # if the grid is not already up
-head -c 32 /dev/urandom > /tmp/ticketKey.bin
-DOTNET_ROLL_FORWARD=Major ./.tools/stormancer manage secrets update \
+cd grid
+DOTNET_ROLL_FORWARD=Major ../.tools/stormancer manage secrets generate --path /tmp/ticketKey.bin
+DOTNET_ROLL_FORWARD=Major ../.tools/stormancer manage secrets update \
     --cluster local --account darktales \
     --store rsmm --id ticketKey --path /tmp/ticketKey.bin
 ```

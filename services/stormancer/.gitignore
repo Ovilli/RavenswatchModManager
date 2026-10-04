@@ -3,7 +3,9 @@ obj/
 grid/data/
 grid/tmp/
 grid/packages/
-grid/.stormancer/
+# Any level: the CLI also builds a grid into .stormancer/ in whatever directory it is run from,
+# which is ~100MB of build output.
+.stormancer/
 grid/logs/
 grid/*.log
 .tools/
