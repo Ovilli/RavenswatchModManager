@@ -1935,8 +1935,11 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 #: iterate cycle, and the archive it was supposed to produce never had an input.
 #: `_health.json` is the same shape of thing — the boot canary and the
 #: three-strike crash history, which exist precisely to survive a bad run.
+#: `.rsmm_backend` is the player's own setting (`rsmm backend <url>`), not a mod's
+#: output: wiping it on every apply silently sent the game back to the official
+#: servers, and a player who had just set a private backend saw "it stopped working".
 _LOADER_OWNED_RUNTIME_FILES = frozenset({
-    "_log.txt", "_log.prev.txt", "_health.json",
+    "_log.txt", "_log.prev.txt", "_health.json", ".rsmm_backend",
 })
 
 
@@ -1967,7 +1970,7 @@ def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
             else:
                 child.unlink()
         if kept:
-            print(f"  kept {kept} loader file(s) (log + health history)")
+            print(f"  kept {kept} loader file(s) (log, health history, backend address)")
     except OSError as e:
         print(f"  [warn] failed to clear {game_mods}: {e}", file=sys.stderr)
         return 0

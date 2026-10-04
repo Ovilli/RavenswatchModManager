@@ -238,6 +238,35 @@ The game has a built-in setting, `EndPointApp`, registered next to `Accepted EUL
 `LocalDev` means a local test needs no exe patch at all, only something answering on port 80.
 Players elsewhere need a real redirect (loader work).
 
+## Connecting a player
+
+On the player's machine, with the loader up to date (`rsmm update-loader`):
+
+```sh
+rsmm backend http://85.214.117.164:8090
+```
+
+That is the whole setup, on Windows and Linux alike. It writes the address to
+`<game>/mods/.rsmm_backend`, which the loader reads at every game start, so there is no `setx`, no
+Steam restart and no launch-option variable (on Linux the launch option is still
+`WINEDLLOVERRIDES="winhttp=n,b" %command%`; on Windows there is none). `rsmm backend off` goes back
+to the official servers, and `rsmm backend` on its own shows the state.
+
+It also checks the things that, when wrong, make the redirect silently do nothing, each of which has
+cost a tester an evening:
+
+| Check | What goes wrong without it |
+| --- | --- |
+| **Which game folder** rsmm is looking at, and where that answer came from | With two Steam libraries auto-detection can pick the install that is not being played, so `rsmm log` shows a log that never updates. Pass `--game-dir`, or set `RSMM_GAME_DIR` once. |
+| **Whether the installed loader can redirect** | A loader older than v26 is installed, accepts the setting, and ignores it. A `winhttp.dll` of exactly 713160 bytes is Proton's/Windows' own, i.e. no loader at all. |
+| **The address itself** | The loader does not fail on a bad address, it logs one line and does nothing: `https://`, a path, IPv6 and a port out of range are all ignored. They are refused here with the reason. `85.214.117.164:8090/` is accepted and cleaned up. |
+| **`RSMM_BACKEND_URL` in the environment** | It beats the file. A leftover `setx` keeps the old address no matter what the file says. |
+| **The server's answer** (`/_federation`) | A server whose `publicIp` / `loadBalancedIp` are still `localhost` answers the HTTP request and then tells every player to connect to *their own* machine, which looks like a problem on the player's side. |
+| **The loader's own log** | Shows the `[backend] redirected …` line from the last launch and how old the log is. |
+
+`rsmm apply` keeps the address: it empties `<game>/mods/` on every run, and wiping a setting the
+player made on purpose silently sent the game back to the official servers.
+
 ## Known gaps
 
 - **Minting tickets**: the mechanism exists and is unit-tested — `apps/api/src/steam-openid.ts`
@@ -256,10 +285,7 @@ Players elsewhere need a real redirect (loader work).
   publisher key, so this path stays closed and is not the one this backend relies on.
 - ~~**Pointing the game here**~~: done. `src/loader/src/hook_backend.cpp` rewrites the host at the
   WinHTTP layer (the loader IS the game's `winhttp.dll`), so no exe patch and no `EndPointApp`
-  change are needed. Arm it with `RSMM_BACKEND_URL=http://127.0.0.1:8090` in the Steam launch
-  options, alongside `WINEDLLOVERRIDES="winhttp=n,b"`. The loader also reads
-  `<game>/mods/.rsmm_backend`, but prefer the env var: `apply` and `install-loader` rebuild the
-  game's `mods/` directory and wipe that file.
+  change are needed. See **Connecting a player** below.
 - ~~**Federation transports**~~: resolved 2026-10-04. Passtech's `/_federation` also lists
   `"transports": {"raknet": [...]}` and ours does not, but it does not matter: the scene tokens
   carry the RakNet endpoint and a real client connected on `localhost:30100`
