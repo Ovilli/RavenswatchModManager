@@ -51,7 +51,8 @@
     // Configuration of the public API.
     // DEAD: a second "webApis" key later in this file overrides this whole
     // block (JSON keeps the last one). Kept in sync anyway so the two cannot
-    // disagree if the duplicate is ever removed.
+    // disagree if the duplicate is ever removed. Both were pointed at :8095 by an
+    // earlier debugging session; fixing only this one changed nothing.
     "publicApi": {
       "endpoints": [ "public" ],
       "hosts": [],
@@ -255,9 +256,10 @@
       }
     },
 
-    // `publish` is what /_federation advertises and what the game then DIALS.
-    // Stock hardcodes :8095 while the server binds {apiHttpPort}, so with the
-    // ports moved off 80/81/443 every login failed with WinHttpSendRequest 12029
+    // `publish` is what /_federation advertises and what the game then DIALS, so it
+    // must name a port this node actually binds. It was left pointing at :8095 by
+    // an earlier debugging session (a logging proxy that no longer runs), not by
+    // the stock config, and every login failed with WinHttpSendRequest 12029
     // ("Can't reach the server endpoint. http://localhost:8095").
     "publicApi": {
       "endpoints": [ "public" ],

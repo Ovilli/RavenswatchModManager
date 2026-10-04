@@ -140,11 +140,12 @@ anywhere we do not control.
 ### Steam (`steam`)
 
 - `appId`: `2071280` (set).
-- `backendIdentity`: **`2071280MyNacon`** — read from a running game 2026-10-04 via the loader's
-  identity probe (`hook_backend.cpp` logs `[backend] Steam web-ticket identity`). The game fills it
-  at runtime and it is not a literal in the exe or the game data, so observation was the only way to
-  get it. The game also requests an `epiconlineservices` identity; that one is for Epic, not
-  Stormancer.
+- `backendIdentity`: **`Ravenswatch`** (set). Confirmed 2026-10-04 by the loader's identity probe
+  (`hook_backend.cpp` logs `[backend] Steam web-ticket identity`), which is the only way to get it:
+  the game fills it at runtime and it is not a literal in the exe or the game data. The probe sees
+  three identities in one session and only the first is Stormancer's — `Ravenswatch`,
+  `2071280MyNacon`, and `epiconlineservices` (Epic's). Read the whole log, not the tail: a tail that
+  happened to show only the other two is how this was briefly recorded wrong.
 - `apiKey`: `darktales/steam/apiKey`, a secret in the grid's `steam` secrets store, and it must be a
   **publisher** key to be of any use to the plugin — see below. Ticket validation needs one
   regardless, and only Passtech has it.
@@ -256,7 +257,9 @@ Players elsewhere need a real redirect (loader work).
 - ~~**Pointing the game here**~~: done. `src/loader/src/hook_backend.cpp` rewrites the host at the
   WinHTTP layer (the loader IS the game's `winhttp.dll`), so no exe patch and no `EndPointApp`
   change are needed. Arm it with `RSMM_BACKEND_URL=http://127.0.0.1:8090` in the Steam launch
-  options, alongside `WINEDLLOVERRIDES="winhttp=n,b"`, or put the URL in `<game>/mods/.rsmm_backend`.
+  options, alongside `WINEDLLOVERRIDES="winhttp=n,b"`. The loader also reads
+  `<game>/mods/.rsmm_backend`, but prefer the env var: `apply` and `install-loader` rebuild the
+  game's `mods/` directory and wipe that file.
 - ~~**Federation transports**~~: resolved 2026-10-04. Passtech's `/_federation` also lists
   `"transports": {"raknet": [...]}` and ours does not, but it does not matter: the scene tokens
   carry the RakNet endpoint and a real client connected on `localhost:30100`
