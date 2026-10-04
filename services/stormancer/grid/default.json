@@ -49,10 +49,13 @@
     },
 
     // Configuration of the public API.
+    // DEAD: a second "webApis" key later in this file overrides this whole
+    // block (JSON keeps the last one). Kept in sync anyway so the two cannot
+    // disagree if the duplicate is ever removed.
     "publicApi": {
       "endpoints": [ "public" ],
       "hosts": [],
-      "publish": [ "http://{loadBalancedIp}:8095" ]
+      "publish": [ "http://{loadBalancedIp}:{apiHttpPort}" ]
     },
 
     // Configuration of the private API.
@@ -235,6 +238,9 @@
     }
   },
 
+  // NOTE: this is the SECOND "webApis" key in this file. JSON keeps the last
+  // one, so this block is the effective config and the one near the top is
+  // dead — editing that one changes nothing, which cost a debugging round.
   "webApis": {
     "endpoints": {
       "public": {
@@ -249,10 +255,14 @@
       }
     },
 
+    // `publish` is what /_federation advertises and what the game then DIALS.
+    // Stock hardcodes :8095 while the server binds {apiHttpPort}, so with the
+    // ports moved off 80/81/443 every login failed with WinHttpSendRequest 12029
+    // ("Can't reach the server endpoint. http://localhost:8095").
     "publicApi": {
       "endpoints": [ "public" ],
       "hosts": [],
-      "publish": [ "http://{loadBalancedIp}:8095" ]
+      "publish": [ "http://{loadBalancedIp}:{apiHttpPort}" ]
     },
 
     "adminApi": {
