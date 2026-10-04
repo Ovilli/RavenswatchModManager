@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**61 commands.**
+**62 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -49,6 +49,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm log` | `rsmm.cli.cmd_log` | rsmm log — read the loader log from the game install directory. |
 | `rsmm map-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
+| `rsmm modpack` | `rsmm.cli.cmd_modpack` | rsmm modpack — the identity of this install's applied mod set. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
 | `rsmm overlay` | `rsmm.cli.cmd_overlay` | rsmm overlay — read the live HUD data a mod publishes. |
 | `rsmm pack` | `rsmm.cli.cmd_pack` | rsmm pack — bundle a mod for distribution. |
