@@ -139,15 +139,65 @@ anywhere we do not control.
 
 ### Steam (`steam`)
 
-Kept for the day a publisher key exists; unused by the ticket path above.
-
 - `appId`: `2071280` (set).
-- `backendIdentity`: the identity string the game passes to `GetAuthTicketForWebApi`. The game
-  sends `version=v1`, which requires it. **Unknown** — not a literal in the exe or the game data;
-  the game fills it at runtime, so it has to be read from a running, logged-in game. The ticket path
-  does not need it.
-- `apiKey`: `darktales/steam/apiKey`, a secret in the grid's `steam` secrets store. A regular
-  (non-publisher) key is **not** accepted for another studio's app id.
+- `backendIdentity`: **`2071280MyNacon`** — read from a running game 2026-10-04 via the loader's
+  identity probe (`hook_backend.cpp` logs `[backend] Steam web-ticket identity`). The game fills it
+  at runtime and it is not a literal in the exe or the game data, so observation was the only way to
+  get it. The game also requests an `epiconlineservices` identity; that one is for Epic, not
+  Stormancer.
+- `apiKey`: `darktales/steam/apiKey`, a secret in the grid's `steam` secrets store, and it must be a
+  **publisher** key to be of any use to the plugin — see below. Ticket validation needs one
+  regardless, and only Passtech has it.
+
+#### The plugin sends every Steam call to the publisher host
+
+`SteamService` hardcodes `private const string ApiRoot = "https://partner.steam-api.com"`. That host
+accepts **only** a publisher key: a perfectly valid free key gets `403` there and `200` on
+`api.steampowered.com` (both measured 2026-10-04). Because it is a `const`, no configuration
+redirects it, and its own fallback does not help — `TryGetAsync` retries on the public host only when
+the request throws `HttpRequestException`, i.e. a network failure. A `403` is a *successful* HTTP
+exchange, so the retry never runs and the caller's `EnsureSuccessStatusCode()` throws.
+
+The consequence is not limited to ticket validation: `SteamAuthenticationProvider.Authenticate`
+calls `GetPlayerSummary` immediately after a ticket is accepted, so with a free key the whole login
+died on a profile lookup *after* authentication had succeeded — a `403` naming nothing to do with
+auth. `SteamProfiles.cs` issues that request itself, against the public host, with the key read from
+the secret store; `GetPlayerSummaries` has never needed a publisher key.
+
+A misstored key is otherwise invisible, since Steam answers `403` identically for a missing key, a
+wrong key and a correct key with a trailing newline. `RsmmSteamService` logs the key's *shape* at
+startup (byte length, length after trim, whether it is 32 hex characters) and never its value.
+
+### The game never falls back to anonymous auth
+
+Observed 2026-10-04: the client tries the `steam` provider only. When it is refused it logs
+`Login failed : Authentication refused by steam.` and disconnects, with no second attempt at
+`ephemeral` or `deviceidentifier`. **The anonymous tier is unreachable from Ravenswatch**, so the
+RSMM ticket is not an optimisation — it is the only way a real client can log in. Those providers
+stay enabled for clients we write ourselves.
+
+### Local testing without any key (`trustUnverifiedSteamTickets`)
+
+**Insecure. Never for a deployment.** Because the game only offers a Steam ticket and we cannot
+validate one, there is otherwise no way to drive the backend with a real client until the ticket
+path is finished. With this on, `RsmmSteamService` reads the SteamID64 out of the ticket *without
+validating it* — so anyone who can reach the authenticator can log in as any Steam account by
+writing an id into a blob. It logs a WARN naming itself on every use.
+
+The id is found by structure, not at a fixed offset: every 8-byte little-endian window is tested
+against the shape of an individual account id (universe 1, type 1), the conventional offset 12 wins
+when several match, and an ambiguous ticket is refused rather than guessed.
+
+Prefer the environment variable so no insecure value is committed (a test fails if
+`trustUnverifiedSteamTickets` is ever true in `app-config.json`):
+
+```sh
+cd services/stormancer
+RSMM_TRUST_UNVERIFIED_STEAM_TICKETS=1 ./run-local.sh
+```
+
+Verified end to end 2026-10-04 with a real game client: login, user creation with the real SteamID64
+and persona name, session, and party creation.
 
 ## Modded games
 
@@ -201,13 +251,16 @@ Players elsewhere need a real redirect (loader work).
 - **Getting the ticket into the game**: the client has to put the ticket in the field it currently
   fills with a Steam ticket. That is loader work (hook the ticket source) and has not been done, so
   the ticket path is unit-tested but has never carried a real login.
-- **Steam ticket login**: still needs `backendIdentity` and a publisher API key (above), and is not
-  the path this backend relies on.
-- **Pointing the game here**: the federation URLs are hardcoded in `Ravenswatch.exe`. Redirecting
-  them is loader work that has not been done.
-- **Federation transports**: Passtech's `/_federation` also lists
-  `"transports": {"raknet": ["…:30100"]}`; ours does not. Scene tokens do carry the RakNet
-  endpoint, so this may not matter. Untested.
+- **Steam ticket login**: `backendIdentity` is now known, but validation still needs Passtech's
+  publisher key, so this path stays closed and is not the one this backend relies on.
+- ~~**Pointing the game here**~~: done. `src/loader/src/hook_backend.cpp` rewrites the host at the
+  WinHTTP layer (the loader IS the game's `winhttp.dll`), so no exe patch and no `EndPointApp`
+  change are needed. Arm it with `RSMM_BACKEND_URL=http://127.0.0.1:8090` in the Steam launch
+  options, alongside `WINEDLLOVERRIDES="winhttp=n,b"`, or put the URL in `<game>/mods/.rsmm_backend`.
+- ~~**Federation transports**~~: resolved 2026-10-04. Passtech's `/_federation` also lists
+  `"transports": {"raknet": [...]}` and ours does not, but it does not matter: the scene tokens
+  carry the RakNet endpoint and a real client connected on `localhost:30100`
+  (`ID_CONNECTION_REQUEST_ACCEPTED`, `Completed connection [local]`).
 - **Late-join guard**: `PartyGuard` refuses joins on two signals (member in a started game
   session, or all members Ready). Which one Ravenswatch triggers is unknown until a real session.
   `RunTracker` is process-wide, so it is only correct on a single-node grid.

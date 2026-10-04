@@ -55,10 +55,12 @@ public class RavenswatchPlugin : IHostPlugin
             // publisher key — in the ticket field instead, and only falls through to Steam for a
             // ticket that is not one of ours.
             //
-            // The first-party `ephemeral` and `deviceidentifier` providers stay enabled as the
-            // degraded tier (both are string literals in the exe), for a client that cannot
-            // present a ticket at all. That tier is anonymous: it carries no identity and no mod
-            // pack, so `rsmm.requireVerifiedIdentity` is what closes it once tickets work.
+            // The first-party `ephemeral` and `deviceidentifier` providers stay enabled, but NOT as
+            // a fallback for the game: observed 2026-10-04, the client tries `steam` only and
+            // disconnects when it is refused ("Login failed : Authentication refused by steam."),
+            // with no second attempt. So the anonymous tier is unreachable from Ravenswatch itself
+            // and the ticket path is the only way a real client gets in — not an optimisation.
+            // They stay on for clients we write (tools, a lobby browser), which can choose them.
             host.ConfigureUsers(u => u
                 .ConfigureSteam(s => s.Enabled().DefaultAuthProtocol(SteamAuthenticationProtocolVersion.V1))
                 .ConfigureEphemeral(b => b.Enabled())

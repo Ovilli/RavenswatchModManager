@@ -28,7 +28,11 @@ fi
 
 cd "$here/grid"
 if ! curl -sf -m 2 http://127.0.0.1:8090/_federation >/dev/null; then
-    setsid "$cli" start >grid.log 2>&1 &
+    # Appended, not truncated: `>grid.log` threw away the previous run every time the grid was
+    # restarted, which is exactly when a log is worth comparing across. A restart banner keeps the
+    # boundary readable.
+    printf '\n===== grid start %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>grid.log
+    setsid "$cli" start >>grid.log 2>&1 &
     for _ in $(seq 1 60); do
         curl -sf -m 2 http://127.0.0.1:8090/_federation >/dev/null && break
         sleep 1

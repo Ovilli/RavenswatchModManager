@@ -29,6 +29,22 @@ public class RsmmOptions
     public bool EnforceModPack { get; set; } = true;
 
     /// <summary>
+    /// <b>Insecure. Local testing only.</b> Accept a Steam ticket by reading the SteamID64 out of it
+    /// without validating it, because validation needs a publisher key we do not have.
+    /// </summary>
+    /// <remarks>
+    /// With this on, anyone who can reach the authenticator can log in as any Steam account by
+    /// writing the id into a blob. It exists because the game client only ever tries the
+    /// <c>steam</c> provider — it does not fall back to the anonymous tier when Steam refuses, so
+    /// without either this or a minted RSMM ticket a real client cannot log in at all.
+    ///
+    /// Defaults to off and must stay off in the committed config (there is a test for that). For a
+    /// local session, prefer the <c>RSMM_TRUST_UNVERIFIED_STEAM_TICKETS=1</c> environment variable,
+    /// which the grid passes to the app host: it leaves no insecure value in the repo.
+    /// </remarks>
+    public bool TrustUnverifiedSteamTickets { get; set; }
+
+    /// <summary>
     /// How long a minted ticket stays usable. Short, because the only replay protection that
     /// survives a grid restart is this window.
     /// </summary>

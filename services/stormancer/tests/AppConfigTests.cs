@@ -76,6 +76,19 @@ public class AppConfigTests
     }
 
     [Fact]
+    public void The_unvalidated_ticket_bypass_is_off_in_the_committed_config()
+    {
+        // The bypass trusts a SteamID64 nobody checked. Shipping it enabled would let anyone log in
+        // as any account, so it must be off here; a local session turns it on with the
+        // RSMM_TRUST_UNVERIFIED_STEAM_TICKETS environment variable instead.
+        var section = RsmmSection();
+        if (section.TryGetProperty("trustUnverifiedSteamTickets", out var flag))
+        {
+            Assert.False(flag.GetBoolean());
+        }
+    }
+
+    [Fact]
     public void A_minted_ticket_cannot_outlive_the_configured_maximum_age()
     {
         // The API's DEFAULT_TICKET_TTL_SECONDS is 300. If the grid's cap were lower, every ticket
