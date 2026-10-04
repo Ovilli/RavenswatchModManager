@@ -4,8 +4,8 @@ EXPORTS
     WinHttpAddRequestHeadersEx=winhttp_real.WinHttpAddRequestHeadersEx
     WinHttpAutoProxySvcMain=winhttp_real.WinHttpAutoProxySvcMain
     WinHttpCheckPlatform=winhttp_real.WinHttpCheckPlatform
-    WinHttpCloseHandle=winhttp_real.WinHttpCloseHandle
-    WinHttpConnect=winhttp_real.WinHttpConnect
+    WinHttpCloseHandle=rsmm_WinHttpCloseHandle
+    WinHttpConnect=rsmm_WinHttpConnect
     WinHttpConnectionDeletePolicyEntries=winhttp_real.WinHttpConnectionDeletePolicyEntries
     WinHttpConnectionDeleteProxyInfo=winhttp_real.WinHttpConnectionDeleteProxyInfo
     WinHttpConnectionFreeNameList=winhttp_real.WinHttpConnectionFreeNameList
@@ -34,7 +34,7 @@ EXPORTS
     WinHttpGetProxySettingsVersion=winhttp_real.WinHttpGetProxySettingsVersion
     WinHttpGetTunnelSocket=winhttp_real.WinHttpGetTunnelSocket
     WinHttpOpen=winhttp_real.WinHttpOpen
-    WinHttpOpenRequest=winhttp_real.WinHttpOpenRequest
+    WinHttpOpenRequest=rsmm_WinHttpOpenRequest
     WinHttpPacJsWorkerMain=winhttp_real.WinHttpPacJsWorkerMain
     WinHttpPalAcquireNextInterface=winhttp_real.WinHttpPalAcquireNextInterface
     WinHttpPalAcquireNextInterfaceAsync=winhttp_real.WinHttpPalAcquireNextInterfaceAsync
