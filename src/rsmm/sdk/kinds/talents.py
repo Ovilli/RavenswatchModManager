@@ -61,6 +61,24 @@ Fields:
                                instead (a ``data/stat_keys.json`` name or a
                                ``0x`` key), as the item kind's ``stats``. The
                                amount keeps its old unit. Needs ``file``.
+    ``add_stats``              list of ``{talent, stat, values, percent}``: give
+                               the talent a stat bonus it does not have, e.g.
+                               ``{talent = "Trait Fire", stat = "CD reduce
+                               trait", values = [0.10, 0.15, 0.20, 0.25]}``.
+                               ``values`` is one number, four (Common, Rare,
+                               Epic, Legendary) or a table by rarity, in the
+                               stat's own unit (0.25 on a CD stat = -25%). The
+                               card gains a ``{N}`` slot showing it (``percent``,
+                               default true, shows it x100). ``during = "DEFENSE"``
+                               (or ATTACK, POWER, SPECIAL, TRAIT, DASH) applies it
+                               only while that ability is in use. No ``file``
+                               needed; see ``rsmm.engine.talent_add_stat``.
+    ``rebuild``                list of talent names whose own effect is turned
+                               OFF, keeping the card: the talent builder's blank
+                               slot. The card's number slots are cleared too, so
+                               ``add_stats`` numbers start at ``{0}``; give the
+                               card new text with a ``skill`` block. Runs before
+                               ``add_stats``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -246,6 +264,26 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
     return out
 
 
+def _coerce_add_stats(raw) -> list[dict]:
+    """Normalise ``add_stats`` entries; the values are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"add_stats must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or "stat" not in e or "values" not in e:
+            raise ContentError(f"add_stats entry needs talent, stat and values, got {e!r}")
+        during = e.get("during")
+        if during is not None and not isinstance(during, str):
+            raise ContentError(f"add_stats: during must be an ability name, got {during!r}")
+        out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
+                    "percent": bool(e.get("percent", True)), "during": during})
+    return out
+
+
 def _coerce_int_patches(raw) -> list[tuple[str, int, int, int]]:
     """Normalise ``int_patches`` into ``(label, end_index, old, new)``.
 
@@ -312,10 +350,17 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     clone_nodes = _coerce_clone_nodes(defn.fields.get("clone_nodes"))
     from .items import _coerce_stats
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
-    if not (patches or rewires or int_patches or union_patches or clone_nodes or stats):
+    add_stats = _coerce_add_stats(defn.fields.get("add_stats"))
+    rebuild = defn.fields.get("rebuild") or []
+    if isinstance(rebuild, str):
+        rebuild = [rebuild]
+    if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
+        raise ContentError(f"talent {defn.id}: rebuild must be a list of talent names")
+    if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
+            or add_stats or rebuild):
         raise ContentError(
             f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes, stats or int_patches given")
+            f"clone_nodes, stats, add_stats, rebuild or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in hero_dir.entity_files()
@@ -336,6 +381,59 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         earlier = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
         if earlier.is_file():
             edited[p] = earlier.read_bytes()
+
+    # add_stats find their own file (the one holding the talent's controller),
+    # and like clones they grow the file, so they run before the length-
+    # preserving edits.
+    def _home(talent: str):
+        ctl = f"Skill Controller {talent}".encode()
+        homes = [p for p in candidates if ctl in (edited.get(p) or p.read_bytes())]
+        if len(homes) != 1:
+            raise ContentError(f"talent {defn.id}: {len(homes)} of {hero}'s entity files "
+                               f"hold a talent named {talent!r}")
+        return homes[0]
+
+    if rebuild:
+        from ...engine import talent_add_stat as TA
+        for talent in rebuild:
+            p = _home(talent)
+            try:
+                edited[p], cleared = TA.rebuild_talent(edited.get(p) or p.read_bytes(),
+                                                       talent=talent, seed=f"{mod_id}:{defn.id}")
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s rebuilt (its effect is off; %d card number(s) "
+                      "cleared)", mod_id, defn.id, talent, cleared)
+
+    if add_stats:
+        from ...engine import talent_add_stat as TA
+        donor_dir = _resolve_hero_dir(TA.DONOR_HERO)
+        donor = next((p for p in (donor_dir.entity_files() if donor_dir else [])
+                      if p.name == f"Hero_{TA.DONOR_HERO}{_GEN_SUFFIX}"), None)
+        if donor is None:
+            raise ContentError(f"talent {defn.id}: add_stats needs the game's "
+                               f"{TA.DONOR_HERO} files to copy a modifier from")
+        during_donor = None
+        if any(e["during"] for e in add_stats):
+            ddir = _resolve_hero_dir(TA.DONOR_DURING_HERO)
+            during_donor = next((p for p in (ddir.entity_files() if ddir else [])
+                                 if p.name == f"Hero_{TA.DONOR_DURING_HERO}{_GEN_SUFFIX}"), None)
+            if during_donor is None:
+                raise ContentError(f"talent {defn.id}: 'during' needs the game's "
+                                   f"{TA.DONOR_DURING_HERO} files to copy a selector from")
+        for entry in add_stats:
+            p = _home(entry["talent"])
+            try:
+                edited[p], added = TA.add_stat(
+                    edited.get(p) or p.read_bytes(), donor.read_bytes(),
+                    talent=entry["talent"], stat=entry["stat"], values=entry["values"],
+                    percent=entry["percent"], seed=f"{mod_id}:{defn.id}",
+                    during=entry["during"],
+                    during_donor_raw=during_donor.read_bytes() if entry["during"] else None)
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s gets %s; card slot {%s}", mod_id, defn.id,
+                      entry["talent"], entry["stat"], added.slot)
 
     # Clones change the file's structure (a new record, a longer component
     # vector), so they go first: every later edit re-reads the grown file, and

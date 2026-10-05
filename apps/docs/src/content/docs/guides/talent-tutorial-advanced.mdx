@@ -502,10 +502,84 @@ the finisher attack has not been confirmed yet.
 
 ## Recipe 4: Add a stat bonus, with a new number on the card
 
-<Badge text="Not yet tested" variant="danger" />
+<Badge text="Tested in game" variant="success" />
 
 **Goal:** Sun Wukong's **Fiery Dragon** also reduces his TRAIT cooldown: −10 %
 Common, −15 % Rare, −20 % Epic, −25 % Legendary. The card shows the number.
+
+### The short way: `add_stats`
+
+<Badge text="Partly tested" variant="caution" />
+
+One field does all of the wiring below. In the editor, it is the **+ Add a stat**
+button under a talent card.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "fiery_dragon_cooldown"
+hero = "SunWukong"
+add_stats = [
+  { talent = "Trait Fire", stat = "CD reduce trait", values = [0.10, 0.15, 0.20, 0.25] },
+]
+```
+
+- `talent` is the card's row name (`Skill Controller Trait Fire` → `Trait Fire`).
+- `stat` is any stat from the stat list: the same names the item editor offers.
+- `values` is one number for every rarity, or four (Common, Rare, Epic, Legendary).
+  The number is in the stat's own unit: `0.25` on a cooldown stat is −25 %.
+- The card gets a new number slot, the next `{N}` after the ones it has. Write it in
+  the description with a `skill` block, for example `• #TRAIT@ cooldown &-{1}%~`.
+  `percent = false` shows the number as it is, without multiplying by 100.
+
+`add_stats` is not quite the hand-built version below. It adds the new modifier to
+the talent's own State instead of swapping that State for a copy, so talents whose
+State already does something keep doing it. The parts are the proven ones; this
+exact arrangement has not been played yet.
+
+Ultimates cannot take a stat this way: they have no State that marks them as owned.
+
+<Badge text="Tested in game" variant="success" /> **Only while an ability is in use:** add `during = "DEFENSE"` (or `ATTACK`, `POWER`,
+`SPECIAL`, `TRAIT`, `DASH`) to an entry, e.g. "During #DEFENSE@, #ATTACK@ damage
+&+{0}%~". The bonus then reads a copy of a selector the game ships ("ability in use
+→ the number, else 0"). The ability is found through the hero's controller for that
+button, never by name. A hero whose ability only signals its start (Merlin's POWER,
+DEFENSE and TRAIT) cannot use `during` for it; the editor leaves those out.
+
+### Rebuild a talent from scratch: `rebuild`
+
+<Badge text="Not yet tested" variant="danger" />
+
+The number of talents a hero has is fixed, so a new talent replaces one you pick.
+`rebuild` turns that talent's own effect off and keeps only its card slot; the
+stats you add are then all it does. In the editor, this is the **Rebuild this
+talent** switch on a card.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "keen_eye"
+hero = "Beowulf"
+rebuild   = ["Attack Fire Cone"]
+add_stats = [
+  { talent = "Attack Fire Cone", stat = "Crit chance primary", values = [0.05, 0.10, 0.15, 0.20] },
+]
+
+[[content]]
+kind        = "skill"
+id          = "keen_eye_card"
+hero        = "Beowulf"
+source      = "Attack Fire Cone"
+name        = "Keen Eye"
+description = "• #POWER@ Crit Chance &+{0}%~"
+```
+
+How it works: the talent's controller is pointed at a new, empty State, so the
+State everything the talent did hangs off never switches on. The card's old
+numbers are removed too, which is why the first added stat is `{0}`. Give the card
+new text: without a `skill` block it keeps the old wording.
+
+### The long way: four clones
 
 This recipe needs four clones, because a stat bonus is a small chain of its own:
 
@@ -838,6 +912,8 @@ block can point at them.
 | `value_patches` | Single numbers (beginner tutorial). Add `clear_override = true` to unlock a `LOCKED` one. |
 | `union_patches` | Per-rarity numbers (beginner tutorial). |
 | `int_patches` | An older way to write whole numbers inside a part. Use `union_patches` instead. |
+| `add_stats` | Give a talent a stat it does not have, with a number on its card ([Recipe 4](#the-short-way-add_stats)). |
+| `rebuild` | Turn a talent's own effect off, keeping its card: the start of a new talent ([Recipe 4](#rebuild-a-talent-from-scratch-rebuild)). |
 
 ## Rules that save hours
 

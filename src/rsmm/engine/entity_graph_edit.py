@@ -398,12 +398,21 @@ class EntityFile:
     def set_ref(self, comp: str, field: str, target: str | None) -> None:
         """Point a reference (``ref`` field, list element ``name[i]``, the
         reference inside a value field, or ``obj[n]``: the n-th reference
-        inside an object field, counting the empty ones ``--tokens`` shows) at
-        component ``target`` or at nothing."""
+        inside an object field, counting the empty ones ``--tokens`` shows, or
+        ``list[i][n]``: the n-th reference inside item i of an object list, e.g.
+        a selector's ``entries[0][0]`` (its condition) and ``entries[0][1]``
+        (its value)) at component ``target`` or at nothing."""
         base, _, idx = field.partition("[")
         c = self.component(comp)
         fo = next((x for x in EF.fields(c) if x.name == base), None)
-        if idx and fo is not None and fo.kind == "obj" and not fo.items:
+        item, _, nth = idx.partition("][")
+        if nth and fo is not None and fo.kind == "obj[]":
+            i, n = int(item), int(nth.rstrip("]"))
+            if not 0 <= i < len(fo.items):
+                raise EntityEditError(f"{c.name!r}: {base} has {len(fo.items)} items, no {i}")
+            f, at = fo.items[i], len(self.objects[c.index - 1]) - len(c.body)
+            a, b = self._obj_token_span(c, f, "ref", n, field)
+        elif idx and fo is not None and fo.kind == "obj" and not fo.items:
             f, at = fo, len(self.objects[c.index - 1]) - len(c.body)
             a, b = self._obj_token_span(c, f, "ref", int(idx.rstrip("]")), field)
         else:
@@ -438,6 +447,154 @@ class EntityFile:
         end = at + f.offset + f.size
         p[end:end] = self._picker(target)
         struct.pack_into("<I", p, at + f.offset, n + 1)
+
+    def add_format_slot(self, comp: str, target: str, *, percent: bool = True) -> int:
+        """Append a value slot to the String Format ``comp``, reading ``target``.
+
+        Returns the new slot's index: the ``{N}`` the card text uses for it.
+
+        A String Format is ``value`` (the text key), a u32 slot count, then one
+        ``oCStringFormatEntryPicker`` object per slot (RE 2026-10-05)::
+
+            BEGIN oCStringFormatEntryPicker
+              u32 0
+              BEGIN oCEntityCpntValuePicker { flags, picker, accessor, union } END
+              u32 display mode      (1: shown x100, as a percentage; 0: plain;
+                                     2 on damage numbers)
+            END
+
+        The new slot is a copy of an existing one (this format's, else any
+        other format's in the file) re-pointed with :meth:`set_ref`, which also
+        rewrites the accessor for the target's class. ``percent`` sets the
+        trailing flag.
+        """
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, count_f = self._format_slots(c)
+        if count_f is None:
+            raise EntityEditError(f"{c.name!r}: cannot find its slot count")
+        template = None
+        if slots:
+            template = c.body[slots[-1].offset:slots[-1].offset + slots[-1].size]
+        else:
+            for other in self.graph().components:
+                if other.cls == c.cls and other.guid != c.guid:
+                    o_slots, _ = self._format_slots(other)
+                    if o_slots:
+                        f = o_slots[0]
+                        template = other.body[f.offset:f.offset + f.size]
+                        break
+        if template is None:
+            raise EntityEditError(f"{c.name!r}: no String Format slot in this file to copy")
+        # The trailing u32 is a small display mode (0 plain, 1 percent, 2 seen on
+        # damage numbers); anything else means the layout is not the one above.
+        if struct.unpack("<I", template[-8:-4])[0] > 15 or template[-4:] != _E:
+            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
+        slot = template[:-8] + struct.pack("<I", 1 if percent else 0) + template[-4:]
+
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        end = (slots[-1].offset + slots[-1].size) if slots else (count_f.offset + count_f.size)
+        p = self.objects[c.index - 1]
+        p[at + end:at + end] = slot
+        struct.pack_into("<I", p, at + count_f.offset, len(slots) + 1)
+
+        new_slots, _ = self._format_slots(self.component(comp))
+        if len(new_slots) != len(slots) + 1:
+            raise EntityEditError(f"{c.name!r}: the new slot did not parse back")
+        self.set_ref(comp, f"{new_slots[-1].name}[0]", target)
+        self._slot_accessor(comp, target)
+        return len(slots)
+
+    def _slot_accessor(self, comp: str, target: str) -> None:
+        """Give the newest slot of ``comp`` the accessor CARD SLOTS use for
+        ``target``'s kind.
+
+        An accessor depends on who reads, not only on what is read: the game's
+        card slots read a Value Selector with ``64 c9 d2 0f`` (236 of 236
+        shipped slots), while a calculation reading the same selector uses
+        ``11 78 ae 17``. ``set_ref`` learns accessors from the whole file, so a
+        slot copied from one that read a calculation kept the calculation's
+        accessor -- and the card showed 0 (a rebuilt Aladdin card, 2026-10-05).
+        Learned here from this file's own slots; left alone when none reads
+        that kind, rather than guessed."""
+        from collections import Counter
+
+        g = self.graph()
+        cls_of_path = {x.path: x.cls for x in g.components}
+        want_cls = next((x.cls for x in g.components if x.name == target), None)
+        if want_cls is None:
+            return
+
+        def slot_tokens(c: EG.Component, f: EF.Field) -> list[EG.Token]:
+            return EG.tokens(EG.Component(0, c.cls, "", "", b"", None,
+                                          body=c.body[f.offset:f.offset + f.size],
+                                          classes=c.classes))
+
+        votes: Counter = Counter()
+        for c in g.components:
+            if not c.cls.endswith("StringFormatValueSettings"):
+                continue
+            for f in self._format_slots(c)[0]:
+                toks = slot_tokens(c, f)
+                for i, t in enumerate(toks[:-1]):
+                    nxt = toks[i + 1]
+                    if t.kind != "ref" or nxt.kind != "bytes" or nxt.size != 4:
+                        continue
+                    path = t.text.split("] ", 1)[-1].split("\\", 1)[-1]
+                    if cls_of_path.get(path) == want_cls:
+                        votes[c.body[f.offset + nxt.offset:f.offset + nxt.offset + 4]] += 1
+        if not votes:
+            return
+        want = votes.most_common(1)[0][0]
+        c = self.component(comp)
+        f = self._format_slots(c)[0][-1]
+        toks = slot_tokens(c, f)
+        i = next(i for i, t in enumerate(toks) if t.kind == "ref")
+        acc = toks[i + 1]
+        if acc.kind != "bytes" or acc.size != 4:
+            return
+        at = len(self.objects[c.index - 1]) - len(c.body) + f.offset + acc.offset
+        self.objects[c.index - 1][at:at + 4] = want
+
+    def clear_format_slots(self, comp: str) -> int:
+        """Remove every value slot from the String Format ``comp``; returns how
+        many there were. Text that still says ``{0}`` then shows nothing there,
+        so the caller replaces the text too."""
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, count_f = self._format_slots(c)
+        if count_f is None:
+            raise EntityEditError(f"{c.name!r}: cannot find its slot count")
+        if not slots:
+            return 0
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        p = self.objects[c.index - 1]
+        del p[at + slots[0].offset:at + slots[-1].offset + slots[-1].size]
+        struct.pack_into("<I", p, at + count_f.offset, 0)
+        return len(slots)
+
+    def _format_slots(self, c: EG.Component) -> tuple[list[EF.Field], EF.Field | None]:
+        """A String Format's slot fields and the u32 field holding their count."""
+        tag = _B + struct.pack("<I", self._class_index("oCStringFormatEntryPicker"))
+        fs = EF.fields(c)
+        slots = [f for f in fs if f.kind == "obj"
+                 and c.body[f.offset:f.offset + len(tag)] == tag]
+        count_f = None
+        for f in fs:
+            if f.kind == "bytes" and f.size == 4 and \
+                    struct.unpack_from("<I", c.body, f.offset)[0] == len(slots):
+                count_f = f
+                if slots and f.offset + f.size == slots[0].offset:
+                    break
+        return slots, count_f
+
+    def _class_index(self, name: str) -> int:
+        for i, cls in enumerate(self.cf.classes):
+            if cls.name == name:
+                return i
+        return -1
 
     def remove_ref(self, comp: str, field: str, index: int) -> None:
         c, f, at = self._field(comp, field)

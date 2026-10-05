@@ -153,6 +153,15 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .tier input.ed { background: var(--accentbg); }
 .trow .reset.on { visibility: visible; }
 .tnote { font-size: 12px; color: var(--muted); padding: 2px 8px; }
+.addstat { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 6px; }
+.addstat .sectrow .pickbox { flex: 1; min-width: 0; }
+.addnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.addnums label { display: grid; gap: 2px; }
+.addnums input { width: 100%; min-width: 0; }
+.addpct { display: flex; align-items: center; gap: 6px; }
+.rebuild { padding: 6px 8px; border-radius: 6px; background: var(--chip); }
+.tcard.rebuilt .rebuild { outline: 1px solid var(--accent, #c33); }
+.addpct input { width: auto; margin: 0; }
 .phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
 details.allv { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
 details.allv > summary { cursor: pointer; font-weight: 600; }
@@ -477,7 +486,8 @@ function itemChanged(E) {
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
-    || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length);
+    || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length
+    || Object.keys(E.addStats || {}).length || Object.keys(E.rebuild || {}).length);
 }
 // Keep (or drop) the open edit's draft; called on every change.
 function saveDraft() {
@@ -1190,7 +1200,7 @@ async function pickHero(h) {
 
 function freshTalentEdit() {
   return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents",
-    values: {}, cards: {}, tiers: {}, stats: {}, rarity: "Common", q: "" };
+    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, rarity: "Common", q: "" };
 }
 
 // A texture the hero's own entity names (talent icons, the portrait).
@@ -1240,6 +1250,15 @@ function singleCurrent(file, e) {
 function talentFill(c) {
   const rarity = S.talentEdit.rarity || "Common";
   return (n, next) => {
+    const added = addedAt(c, n);
+    if (added) {
+      const v = added.values[TIERS.indexOf(rarity)];
+      const chip = el("span", { class: "ph" });
+      chip.textContent = typeof v === "number" ? fmt(added.percent !== false ? v * 100 : v) : "{" + n + "}";
+      chip.title = "{" + n + "}: added " + (added.stat || "stat") + " (" + rarity + ")";
+      return chip;
+    }
+    if (isRebuilt(c)) return el("span", { class: "ph", text: "{" + n + "}", title: "{" + n + "}: no added stat has this number" });
     const e = c.entries[n];
     if (e && (e.tiers || e.single)) {
       const v = e.tiers ? tierCurrent(c.file, e, rarity) : singleCurrent(c.file, e);
@@ -1257,6 +1276,139 @@ function talentFill(c) {
     return placeholder(n, next, e, label => talentCurrent(c.file, label));
   };
 }
+// The added stat a card's {n} shows, if n is past the card's own numbers.
+function addedAt(c, n) {
+  const info = c.addStat, list = (S.talentEdit.addStats || {})[c.source], base = firstSlot(c);
+  if (!info || base == null || !list || n < base) return null;
+  return list[n - base] || null;
+}
+// The {N} the first added stat takes: right after the card's own numbers, or 0
+// when the talent is rebuilt (rebuilding clears the card's old numbers).
+function firstSlot(c) {
+  if (!c.addStat || c.addStat.nextSlot == null) return null;
+  return isRebuilt(c) ? 0 : c.addStat.nextSlot;
+}
+function isRebuilt(c) { return !!(S.talentEdit.rebuild || {})[c.source]; }
+
+// The card line for an added stat, in the game's own markup. The ability is the
+// stat's last word, named as the cards name it (the CD stat keys run primary,
+// secondary, defensive, trait = POWER, SPECIAL, DEFENSE, TRAIT).
+const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE",
+  trait: "TRAIT", dash: "DASH", ultimate: "ULTIMATE" };
+function statLine(stat, n, percent, during) {
+  const line = statPhrase(stat, n, percent);
+  return during ? line.replace(/^• (\S)/, (_m, ch) => `• During #${during}@, ${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
+}
+function statPhrase(stat, n, percent) {
+  const num = "{" + n + "}" + (percent ? "%" : "");
+  const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
+  const ab = m && m[2] ? "#" + (ABILITY_WORD[m[2]] || m[2].toUpperCase()) + "@ " : "";
+  if (m && m[1] === "CD reduce") return `• ${ab}cooldown &-${num}~`;
+  if (m && m[1] === "Attack power") return `• ${ab || ""}${ab ? "damage" : "Damage"} &+${num}~`;
+  if (m && m[1] === "Crit chance") return `• ${ab}Crit Chance &+${num}~`;
+  if (m && m[1] === "Life on hit") return `• ${ab}Life on hit &+${num}~`;
+  if (stat === "Crit damage") return `• Crit Damage &+${num}~`;
+  return `• ${stat || "New stat"} &+${num}~`;
+}
+
+// New stats a talent did not have (add_stats), e.g. Fiery Dragon also lowering
+// TRAIT cooldown. Each one gets the next {N} on the card so its text can show the
+// number, and the number scales with the card's rarity like the others.
+function addedStats(c, redraw, desc) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  const info = c.addStat || { ok: false, why: "" };
+  if (!info.ok) {
+    box.append(el("div", { class: "tnote", text: "A new stat can't be added to this card: " + info.why }));
+    return box;
+  }
+  E.addStats = E.addStats || {};
+  const list = E.addStats[c.source] || [];
+  // Keep each added stat's card line in step with it: write it when the stat is
+  // picked, rewrite it when the stat, the percent switch or its {N} changes, drop
+  // it when the stat goes. A line you have edited by hand is left alone.
+  const syncLines = removed => {
+    if (!desc || !c.hasDescription) return;
+    let text = desc.get();
+    if (removed && removed.line && text.includes(removed.line))
+      text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+    const base = firstSlot(c);
+    list.forEach((a, i) => {
+      if (!a.stat || base == null) return;
+      const want = statLine(a.stat, base + i, a.percent !== false, a.during);
+      if (a.line && text.includes(a.line)) text = text.replace(a.line, want);
+      else if (!a.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
+      else return;                       // edited by hand: theirs now
+      a.line = want;
+    });
+    desc.set(text);
+  };
+  const save = removed => {
+    syncLines(removed);
+    if (list.length) E.addStats[c.source] = list; else delete E.addStats[c.source];
+    redraw(); refresh();
+  };
+  list.forEach((a, i) => {
+    const n = firstSlot(c) != null ? firstSlot(c) + i : null;
+    const picker = statPicker(a.stat, null, st => { a.stat = st; save(); });
+    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
+      const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
+      inp.oninput = () => {
+        const v = Number(inp.value);
+        if (inp.value !== "" && !Number.isNaN(v)) { a.values[k] = v; save(); }
+      };
+      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
+    }));
+    const pct = el("input", { type: "checkbox", ...(a.percent !== false ? { checked: "" } : {}) });
+    pct.onchange = () => { a.percent = pct.checked; save(); };
+    // When the bonus applies: always while the talent is owned, or only while one
+    // of the hero's abilities is in use (abilities this hero cannot signal are left out).
+    const when = el("select", { "aria-label": "When it applies" },
+      el("option", { value: "", text: "Always" }),
+      ...(info.during || []).map(ab => el("option", { value: ab, text: "During " + ab })));
+    when.value = a.during || "";
+    when.onchange = () => { a.during = when.value || undefined; save(); };
+    const del = el("button", { type: "button", title: "Remove this added stat and its card line",
+      onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    box.append(el("div", { class: "addstat" },
+      el("div", { class: "sectrow" }, el("span", { class: "phn", text: n != null ? "{" + n + "}" : "+" }), picker.el, del),
+      nums,
+      el("label", { class: "tiny addpct" }, "When", when),
+      el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
+      el("div", { class: "tiny muted", text: n != null
+        ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
+        : "This card has no text format, so the number can't be shown on it." })));
+  });
+  box.append(el("button", { type: "button",
+    title: "Give this talent a stat it does not have, e.g. -25% TRAIT cooldown",
+    onclick: () => { list.push({ stat: "", values: [0, 0, 0, 0], percent: true }); save(); renderView(); } },
+    "+ Add a stat"));
+  return box;
+}
+
+// The talent builder: turn a talent's own effect off and make the card a new
+// talent from the stats added to it (`rebuild` in the talent kind). The card's old
+// numbers go too, so its text starts again from the added stats' lines.
+function rebuildSwitch(c, desc, onchange) {
+  const E = S.talentEdit;
+  E.rebuild = E.rebuild || {};
+  const info = c.addStat || { ok: false };
+  const box = el("label", { class: "tiny addpct rebuild" });
+  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(info.ok ? {} : { disabled: "" }) });
+  cb.onchange = () => {
+    if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
+    const list = (E.addStats || {})[c.source] || [];
+    const base = firstSlot(c);
+    const lines = list.filter(a => a.stat).map((a, i) => (a.line = statLine(a.stat, base + i, a.percent !== false, a.during)));
+    if (desc && c.hasDescription)
+      desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
+    onchange();
+  };
+  box.append(cb, info.ok
+    ? "Rebuild this talent: turn off what it does now and make it a new talent from the stats you add below"
+    : "Can't be rebuilt: " + info.why);
+  return box;
+}
+
 // A talent card's icon: the one you uploaded for it, else its own.
 function cardIcon(c, cls) {
   const up = (S.talentEdit.cards[c.source] || {}).iconUpload;
@@ -1438,16 +1590,25 @@ function talentRow(c) {
   const preview = el("div", { class: "tprev" });
   const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
   const descIn = el("textarea", { rows: "3" });
-  descIn.value = cur.description || c.description;
+  // A rebuilt talent starts from no text: its old text describes what is now off,
+  // and its old {0} would now show the first added stat.
+  descIn.value = cur.description || (isRebuilt(c) ? "" : c.description);
+  if (isRebuilt(c)) descIn.placeholder = "Describe the new talent. Each stat you add below writes a line here.";
+  // Tall enough to show every line, so a line added for a new stat is seen.
+  const descWarn = el("div", { class: "tiny bad", text: "Give the new talent a description: without one, the card keeps its old text in game." });
+  const syncWarn = () => { descWarn.hidden = !!descIn.value.trim(); };
+  const fitDesc = () => { descIn.rows = Math.max(3, descIn.value.split("\n").length + 1); syncWarn(); };
+  fitDesc();
   if (!c.hasName) nameIn.disabled = true;
   if (!c.hasDescription) descIn.disabled = true;
   const paint = () => {
     preview.textContent = "";
-    preview.append(talentCard(c, nameIn.value || c.name, descIn.value || c.description));
+    preview.append(talentCard(c, nameIn.value || c.name,
+      descIn.value || (isRebuilt(c) ? "" : c.description)));
   };
   const redraw = () => {
     TPREV.redraw(preview, paint);
-    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited()));
+    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
   };
   const upd = () => {
     const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
@@ -1457,7 +1618,7 @@ function talentRow(c) {
     else delete E.cards[c.source];
     redraw(); refresh();
   };
-  nameIn.oninput = upd; descIn.oninput = upd;
+  nameIn.oninput = upd; descIn.oninput = () => { syncWarn(); upd(); };
   const setIcon = d => {
     const cur = E.cards[c.source] || { name: "", description: "" };
     if (d) cur.iconUpload = d; else delete cur.iconUpload;
@@ -1478,11 +1639,18 @@ function talentRow(c) {
   const side = el("div", { class: "tside" },
     el("div", { class: "tsrc" }, el("span", { text: c.source }), iconCtl, undo),
     nameIn, descIn);
-  if (c.entries.length) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
+  if (isRebuilt(c)) side.append(descWarn);
+  syncWarn();
+  const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
+  side.append(rebuildSwitch(c, desc, () => renderView()));
+  if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
     talentNumbers(c, redraw));
+  side.append(el("div", { class: "sect sectrow" }, el("span", { text: isRebuilt(c) ? "What the new talent does" : "Added stats" })),
+    addedStats(c, redraw, desc));
   row.append(preview, side);
   TPREV.add(preview, paint);
-  row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited()));
+  row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
+  row.classList.toggle("rebuilt", isRebuilt(c));
   return row;
 }
 
@@ -2063,7 +2231,10 @@ function editPayload() {
   const E = S.talentEdit;
   return { hero: S.hero, prefix: E.prefix, values: Object.values(E.values), tiers: Object.values(E.tiers),
     stats: Object.entries(E.stats).map(([k, stat]) => { const [file, modifier] = k.split("\u0000"); return { file, modifier, stat }; }),
-    cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })) };
+    cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
+    addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
+      .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}) }))),
+    rebuild: Object.keys(E.rebuild || {}) };
 }
 
 let lastToml = "", lastEdits = [], tick = 0;

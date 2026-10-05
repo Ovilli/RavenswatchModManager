@@ -556,12 +556,14 @@
             },
             "then": {
               "properties": {
+                "add_stats": {},
                 "clone_nodes": {},
                 "file": {},
                 "hero": {},
                 "id": {},
                 "int_patches": {},
                 "kind": {},
+                "rebuild": {},
                 "rewires": {},
                 "schema_version": {},
                 "stats": {},

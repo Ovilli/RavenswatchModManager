@@ -341,6 +341,7 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out, skipped = [], []
     own = S.controller_key_bases(_herodefs()[hero])
+    add_stat = _add_stat_info(main)
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
         held = own.get(source, [])
@@ -370,8 +371,39 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
                     "name": (text.get(name_key) or "").strip() if name_key else "",
                     "description": text.get(desc_key) or "" if desc_key else "",
                     "hasName": name_key is not None, "hasDescription": desc_key is not None,
-                    "entries": entries, "file": file, "values": refs, "icon": icon})
+                    "entries": entries, "file": file, "values": refs, "icon": icon,
+                    "addStat": add_stat(source)})
     return out, skipped
+
+
+def _add_stat_info(main: bytes):
+    """``source -> {ok, why, nextSlot}``: whether a talent can be given a new
+    stat (``add_stats``, rsmm.engine.talent_add_stat) and which ``{N}`` the
+    first added number takes on its card."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_graph_edit as GE
+    from rsmm.engine import talent_add_stat as TA
+
+    graph = EG.parse(main)
+    ef = GE.EntityFile(main)
+    # Abilities this hero's talents can be conditioned on ("during"): the ones
+    # whose in-use state can be found. Same for every card of the hero.
+    during = []
+    for ability in TA.ABILITIES:
+        try:
+            TA.ability_state(graph, ability)
+            during.append(ability)
+        except TA.AddStatError:
+            pass
+
+    def info(source: str) -> dict:
+        try:
+            _state, _sel, fmt = TA.talent_parts(graph, source)
+        except TA.AddStatError as e:
+            return {"ok": False, "why": str(e), "nextSlot": None, "during": []}
+        slots = len(ef._format_slots(fmt)[0]) if fmt is not None else None
+        return {"ok": True, "why": "", "nextSlot": slots, "during": during}
+    return info
 
 
 def talent_cards(hero: str) -> list[dict]:
@@ -702,7 +734,10 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``req``: ``hero``, ``prefix`` (the block-id stem), ``values`` =
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
     ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
-    stat}]``; only changed rows are sent."""
+    stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent}]``
+    (new stats a talent did not have) and ``rebuild`` = ``[talent]`` (talents
+    whose own effect is turned off, the talent builder); only changed rows are
+    sent."""
     hero = str(req.get("hero") or "")
     prefix = str(req.get("prefix") or "")
     if not hero:
@@ -750,6 +785,29 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if old != new:
             unions_by_file.setdefault(file, []).append(
                 {"label": label, "index": index, "old": old, "new": new})
+    added = []
+    for row in req.get("addStats") or []:
+        talent, stat = str(row.get("talent") or ""), str(row.get("stat") or "")
+        if not talent or not stat:
+            raise EditorError("an added stat needs its talent and a stat")
+        try:
+            resolve_stat(stat)
+        except ItemModifierError as e:
+            raise EditorError(f"{talent}: {e}") from None
+        values = row.get("values")
+        if not isinstance(values, list) or len(values) != 4:
+            raise EditorError(f"{talent}: give a number for each rarity")
+        during = row.get("during") or None
+        if during is not None and str(during).upper() not in (
+                "ATTACK", "POWER", "SPECIAL", "DEFENSE", "TRAIT", "DASH"):
+            raise EditorError(f"{talent}: unknown ability {during!r}")
+        added.append({"talent": talent, "stat": stat,
+                      "values": [float(_num(v, f"{talent} {stat}")) for v in values],
+                      **({} if row.get("percent", True) else {"percent": False}),
+                      **({"during": str(during).upper()} if during else {})})
+    rebuild = req.get("rebuild") or []
+    if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
+        raise EditorError("rebuild takes a list of talent names")
     out: list[tuple[str, str, dict]] = []
     for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
@@ -762,6 +820,17 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if stats_by_file.get(file):
             fields["stats"] = stats_by_file[file]
         out.append(("talent", tid, fields))
+    if added or rebuild:
+        # Its own block, after the edits above: it grows the entity file, and the
+        # talent kind starts each block from the copy the previous one wrote.
+        # Inside it, `rebuild` runs before `add_stats`.
+        aid = f"{prefix}_builder"
+        block: dict = {"kind": "talent", "id": aid, "hero": hero}
+        if rebuild:
+            block["rebuild"] = list(dict.fromkeys(rebuild))
+        if added:
+            block["add_stats"] = added
+        out.append(("talent", aid, block))
     for card in req.get("cards") or []:
         source = str(card.get("source") or "")
         if not source:
