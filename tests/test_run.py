@@ -41,7 +41,7 @@ def test_linux_uses_flatpak_spawn_host_when_sandboxed(monkeypatch):
     real_exists = run_mod.Path.exists
     monkeypatch.setattr(
         run_mod.Path, "exists",
-        lambda self: str(self) == "/.flatpak-info" or real_exists(self))
+        lambda self: self.as_posix() in ("/.flatpak-info", "\\.flatpak-info") or real_exists(self))
     # The sandbox's own `flatpak` cannot reach the host's Steam.
     monkeypatch.setattr(run_mod, "_spawn_launcher",
                         lambda argv: calls.append(argv) or (None if argv[0] == "flatpak-spawn"

@@ -27,6 +27,10 @@ APPIMAGE_ENV = {
 }
 
 
+linux_only = pytest.mark.skipif(sys.platform == "win32", reason="AppImage is Linux-only")
+
+
+@linux_only
 def test_appimage_library_and_gtk_overrides_are_removed():
     # These made host `flatpak` load the AppImage's old GLib and exit 127
     # ("undefined symbol: g_task_set_static_name"), so Launch did nothing.
@@ -37,6 +41,7 @@ def test_appimage_library_and_gtk_overrides_are_removed():
         assert var not in env, var
 
 
+@linux_only
 def test_path_lists_keep_only_the_host_entries():
     env = host_env(APPIMAGE_ENV)
 
@@ -44,6 +49,7 @@ def test_path_lists_keep_only_the_host_entries():
     assert env["XDG_DATA_DIRS"] == "/usr/share:/usr/local/share"
 
 
+@linux_only
 def test_everything_else_is_passed_through():
     env = host_env(APPIMAGE_ENV)
 
@@ -74,6 +80,12 @@ def test_a_launcher_that_keeps_running_is_a_success(monkeypatch):
     # With Steam closed, `flatpak run ... -applaunch` becomes Steam itself.
     monkeypatch.setattr(run, "_LAUNCHER_GRACE_S", 0.2)
     assert run._spawn_launcher(["sleep", "5"]) is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows behaviour")
+def test_windows_environment_is_never_rewritten(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert host_env({"PATH": r"C:\\Windows;C:\\tools", "APPDIR": "x"}) is None
 
 
 def test_a_missing_program_is_reported():

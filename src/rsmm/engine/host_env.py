@@ -63,7 +63,11 @@ def host_env(base: dict[str, str] | None = None) -> dict[str, str] | None:
 
     Outside an AppImage or frozen bundle this returns None: a developer's own
     `LD_LIBRARY_PATH` is theirs, and running from source has nothing to undo.
+    Also None on Windows: there is no AppImage there, and a frozen sidecar's
+    environment holds `C:\\...` paths that a ':'-separated scrub would cut apart.
     """
+    if os.name != "posix":
+        return None
     env = dict(os.environ if base is None else base)
     if not (env.get("APPDIR") or env.get("APPIMAGE") or (base is None and _bundled())):
         return None
@@ -75,9 +79,9 @@ def host_env(base: dict[str, str] | None = None) -> dict[str, str] | None:
     for var in _PATH_LISTS:
         if var not in env or not roots:
             continue
-        kept = [p for p in env[var].split(os.pathsep)
+        kept = [p for p in env[var].split(":")
                 if p and not any(p == r or p.startswith(r + "/") for r in roots)]
         if var == "PATH" and not kept:
             kept = ["/usr/local/bin", "/usr/bin", "/bin"]
-        env[var] = os.pathsep.join(kept)
+        env[var] = ":".join(kept)
     return env
