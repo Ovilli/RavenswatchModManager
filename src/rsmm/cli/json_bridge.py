@@ -1709,6 +1709,77 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def _backend_state(game_dir: Path, check_server: bool) -> dict[str, Any]:
+    """Everything the Settings panel shows about the self-hosted backend."""
+    from rsmm.engine import backend_redirect as br
+
+    stored = br.read_marker(game_dir)
+    url, invalid = None, None
+    if stored:
+        try:
+            url = br.normalize_url(stored)
+        except br.BackendUrlError as e:
+            invalid = str(e)
+    loader = br.inspect_loader(game_dir)
+    log = br.last_backend_log(game_dir)
+    env = br.env_override()
+    state: dict[str, Any] = {
+        "ok": True,
+        "gameDir": str(game_dir),
+        "url": url,
+        "invalid": invalid,
+        # Only worth showing when it wins over the file with a different address.
+        "envOverride": env if env and env.rstrip("/") != url else None,
+        "loaderCanRedirect": loader.can_redirect,
+        "loaderSummary": loader.summary,
+        "logPath": str(log.path),
+        "logModified": log.modified,
+        "logLines": list(log.lines),
+        "server": None,
+    }
+    if url and check_server:
+        fed = br.probe_federation(url)
+        state["server"] = {
+            "reachable": fed.reachable,
+            "endpoints": list(fed.endpoints),
+            "error": fed.error or None,
+            "advertisesLoopback": fed.reachable and br.advertises_loopback(url, fed),
+        }
+    return state
+
+
+def cmd_backend(action: str, url: str | None, check_server: bool) -> int:
+    """Read, set or clear the self-hosted backend address (`rsmm backend`).
+
+    `set` and `off` run the CLI command itself, so the desktop gets the same
+    repairs it does — installing a loader that cannot redirect, removing a
+    leftover `setx RSMM_BACKEND_URL` — instead of a second copy of that logic.
+    Its human-readable report comes back as `output`.
+    """
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": False, "error": "game directory not found"})
+    try:
+        output = None
+        if action in ("set", "off"):
+            from rsmm.engine import backend_redirect as br
+
+            target = "off" if action == "off" else (url or "")
+            if action == "set":
+                try:
+                    br.normalize_url(target)
+                except br.BackendUrlError as e:
+                    return _emit({"ok": False, "error": str(e)})
+            result = _collect_rsmm(["backend", target, "--game-dir", str(game_dir),
+                                    "--no-check"])
+            output = (result.get("stdout") or "") + (result.get("stderr") or "")
+        state = _backend_state(game_dir, check_server)
+        state["output"] = output
+        return _emit(state)
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "error": str(e)})
+
+
 def cmd_changelog(refresh: bool) -> int:
     """
     Read the rolling release-notes channel.
@@ -1886,6 +1957,16 @@ def main(argv: list[str] | None = None) -> int:
         "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
     p_upd_loader.add_argument("--check", action="store_true",
                               help="report status only, do not install")
+    p_backend = sub.add_parser(
+        "backend", help="read, set or clear the self-hosted online backend address")
+    backend_sub = p_backend.add_subparsers(dest="backend_cmd", required=True)
+    p_backend_get = backend_sub.add_parser("get", help="current address + checks")
+    p_backend_get.add_argument("--check-server", action="store_true",
+                               help="also ask the server whether it answers")
+    p_backend_set = backend_sub.add_parser(
+        "set", help="set the address (installs a loader that can redirect if needed)")
+    p_backend_set.add_argument("url", help="http://host:port")
+    backend_sub.add_parser("off", help="go back to the official servers")
     p_changelog = sub.add_parser(
         "changelog", help="read release notes from the rolling changelog channel")
     p_changelog.add_argument("--refresh", action="store_true",
@@ -1965,6 +2046,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_loader(args.check)
     if args.cmd == "changelog":
         return cmd_changelog(args.refresh)
+    if args.cmd == "backend":
+        return cmd_backend(args.backend_cmd, getattr(args, "url", None),
+                           getattr(args, "check_server", False) or args.backend_cmd == "set")
     if args.cmd == "loader-flags":
         if args.flags_cmd == "get":
             return cmd_loader_flags_get()

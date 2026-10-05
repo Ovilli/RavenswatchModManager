@@ -203,6 +203,54 @@ def env_override() -> str | None:
     return value or None
 
 
+def remove_user_env_var() -> str | None:
+    """Delete a ``setx RSMM_BACKEND_URL`` from the user's registry; return what it held.
+
+    That variable is what testers were told to set before `rsmm backend`
+    existed, and because it beats the file, a stale one silently pins the game
+    to an old address. Removing it is part of setting the address, not a
+    separate chore. Windows only (no-op elsewhere). Once removed it is also
+    dropped from this process, so the report does not warn about it.
+
+    Steam keeps the environment it started with, so a Steam that was running
+    when `setx` was used still hands the old value to the game until it is
+    restarted; the caller says so.
+    """
+    if os.name != "nt":
+        return None
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                            winreg.KEY_READ | winreg.KEY_SET_VALUE) as key:
+            old, _ = winreg.QueryValueEx(key, ENV_VAR)
+            winreg.DeleteValue(key, ENV_VAR)
+    except OSError:
+        return None
+    os.environ.pop(ENV_VAR, None)
+    return str(old)
+
+
+def other_installs(game_dir: Path) -> list[Path]:
+    """Every *other* Ravenswatch install the autodetector can see.
+
+    With two Steam libraries, rsmm can configure one copy while Steam launches
+    the other - which is exactly "the setting does nothing and the log never
+    updates".
+    """
+    from rsmm.engine.paths import COOKING_SUBDIR, _game_dir_candidates
+
+    here = Path(game_dir).resolve()
+    found = []
+    for cand in _game_dir_candidates():
+        try:
+            if (cand / COOKING_SUBDIR).is_dir() and cand.resolve() != here:
+                found.append(cand)
+        except OSError:
+            continue
+    return found
+
+
 @dataclass(frozen=True)
 class LogInfo:
     path: Path

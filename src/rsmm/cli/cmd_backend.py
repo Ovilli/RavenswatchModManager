@@ -5,9 +5,11 @@
     rsmm backend off                           go back to the official servers
 
 One command instead of `setx` + a Steam restart: the loader reads the address
-from <game>/mods/.rsmm_backend at every game start. The output is as much the
-point as the write - each line below is something that, when wrong, makes the
-redirect silently do nothing.
+from <game>/mods/.rsmm_backend at every game start. Setting an address also
+FIXES what it can rather than reporting it: a missing or too-old loader is
+installed, and a leftover `setx RSMM_BACKEND_URL` (which beats the file) is
+removed. A first tester session needed six manual steps across cmd and
+PowerShell to get there; each line below is one of them.
 """
 
 from __future__ import annotations
@@ -39,6 +41,29 @@ def _resolve_game_dir(arg: Path | None) -> tuple[Path, str]:
     return default_game_dir(), "auto-detected"
 
 
+def _install_loader(game_dir: Path) -> bool:
+    """Make the game folder's loader one that can redirect. True if it now can.
+
+    `install-loader` first: it plants the bundled loader and, on Linux, the
+    Proton launch option the DLL needs to load at all. Then the update channel,
+    for a desktop build whose bundled loader predates the redirect.
+    """
+    from rsmm.cli import install_loader
+    from rsmm.engine.loader_update import LoaderUpdateError, apply_update
+
+    print(f"{_INFO} installing the loader into {game_dir} ...")
+    install_loader.main([str(game_dir)])
+    if br.inspect_loader(game_dir).can_redirect:
+        return True
+    print(f"{_INFO} fetching the newest loader from the update channel ...")
+    try:
+        apply_update(game_dir)
+    except (LoaderUpdateError, OSError) as exc:
+        print(f"{_BAD} could not update the loader: {exc}")
+        return False
+    return br.inspect_loader(game_dir).can_redirect
+
+
 def _age(seconds: float) -> str:
     if seconds < 90:
         return f"{int(seconds)} s"
@@ -61,10 +86,15 @@ def _report(game_dir: Path, url: str | None, check_server: bool) -> int:
     env = br.env_override()
     if env:
         if url is None or env.rstrip("/") != url:
-            print(f"{_WARN} the environment variable {br.ENV_VAR}={env} is set and "
+            print(f"{_BAD} the environment variable {br.ENV_VAR}={env} is set and "
                   "takes priority over the file above")
-            print("       remove it:  reg delete \"HKCU\\Environment\" /v "
-                  f"{br.ENV_VAR} /f   (Windows), then open a new terminal")
+            blocking = True
+            if os.name == "nt":
+                print("       `rsmm backend <URL>` removes one set with `setx`; if this "
+                      "still shows after that, remove it in System Properties > "
+                      "Environment Variables. Then restart Steam")
+            else:
+                print(f"       unset it where you exported it (e.g. `unset {br.ENV_VAR}`)")
         else:
             print(f"{_OK} {br.ENV_VAR} is also set, to the same address")
 
@@ -115,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="Ravenswatch folder (default: RSMM_GAME_DIR, else auto-detected)")
     ap.add_argument("--no-check", action="store_true",
                     help="do not contact the server")
+    ap.add_argument("--no-install", action="store_true",
+                    help="do not install or update the loader when it cannot redirect")
     args = ap.parse_args(argv)
 
     game_dir, origin = _resolve_game_dir(args.game_dir)
@@ -125,8 +157,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if not (game_dir / "Ravenswatch.exe").exists():
         print(f"{_WARN} Ravenswatch.exe is not in that folder - is it the right one?")
+    if origin != "--game-dir":
+        for other in br.other_installs(game_dir):
+            print(f"{_WARN} another Ravenswatch install exists at {other}")
+            print(f"       if Steam launches that one, add:  --game-dir \"{other}\"")
 
     if args.target is not None and args.target.strip().lower() == "off":
+        _drop_env_var()
         removed = br.clear_marker(game_dir)
         print(f"{_OK} " + ("removed the backend address - the game uses the official servers"
                            if removed else "no backend address was set"))
@@ -144,6 +181,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         path = br.write_marker(game_dir, url)
         print(f"{_OK} wrote {path}")
+        _drop_env_var()
+        if not args.no_install and not br.inspect_loader(game_dir).can_redirect:
+            _install_loader(game_dir)
     else:
         stored = br.read_marker(game_dir)
         url = None
@@ -155,7 +195,20 @@ def main(argv: list[str] | None = None) -> int:
                       f"would ignore: {exc}")
                 return 1
 
-    return _report(game_dir, url, check_server=not args.no_check)
+    code = _report(game_dir, url, check_server=not args.no_check)
+    if args.target is not None and code == 0:
+        print()
+        print("Done. Start Ravenswatch from Steam, then run")
+        print("`rsmm backend` again to see whether the game used the address.")
+    return code
+
+
+def _drop_env_var() -> None:
+    """Remove a `setx RSMM_BACKEND_URL` left over from before this command existed."""
+    old = br.remove_user_env_var()
+    if old:
+        print(f"{_OK} removed the old {br.ENV_VAR}={old} setting (it overrode this one)")
+        print(f"{_WARN} restart Steam once - it still remembers the old value until then")
 
 
 if __name__ == "__main__":

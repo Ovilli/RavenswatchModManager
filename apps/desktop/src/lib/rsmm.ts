@@ -141,6 +141,7 @@ export function writesGameState(args: string[]): boolean {
   if (rest.includes('--check')) return false;
   if (cmd === 'doctor') return rest.includes('--fix');
   if (cmd === 'config') return rest[0] !== 'get';
+  if (cmd === 'backend') return rest[0] !== 'get';
   return !READ_ONLY_COMMANDS.has(cmd);
 }
 
@@ -1048,6 +1049,47 @@ export const getLoaderFlags = () => rsmm<LoaderFlagsState>(['loader-flags', 'get
 // safe, so a stale UI can never arm a crashing flag).
 export const setLoaderFlags = (names: string[]) =>
   rsmm<LoaderFlagsState>(['loader-flags', 'set', JSON.stringify(names)]);
+
+export interface BackendServerCheck {
+  reachable: boolean;
+  endpoints: string[];
+  error: string | null;
+  // Reached, but tells players to dial localhost: the server's publicIp is unset.
+  advertisesLoopback: boolean;
+}
+
+export interface BackendState {
+  ok: boolean;
+  error?: string;
+  gameDir?: string;
+  /** The address the loader will use, or null for the official servers. */
+  url?: string | null;
+  /** The stored address is one the loader would ignore; says why. */
+  invalid?: string | null;
+  /** An RSMM_BACKEND_URL that beats the file with a different address. */
+  envOverride?: string | null;
+  loaderCanRedirect?: boolean;
+  loaderSummary?: string;
+  logPath?: string;
+  /** Unix seconds; null when there is no loader log yet. */
+  logModified?: number | null;
+  /** The loader's `[backend]` lines from the last launch. */
+  logLines?: string[];
+  server?: BackendServerCheck | null;
+  /** `set` / `off`: the CLI report, including any loader install it did. */
+  output?: string | null;
+}
+
+/** Self-hosted online backend (`rsmm backend`). `checkServer` contacts it. */
+export const getBackend = (opts: { checkServer?: boolean } = {}) =>
+  rsmm<BackendState>(['backend', 'get', ...(opts.checkServer ? ['--check-server'] : [])]);
+
+/** Set the address. Also installs a loader that can redirect, when needed —
+ *  a download, hence the long timeout. */
+export const setBackend = (url: string) =>
+  rsmm<BackendState>(['backend', 'set', url], { timeoutMs: LONG_TIMEOUT_MS });
+
+export const clearBackend = () => rsmm<BackendState>(['backend', 'off']);
 
 export const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;

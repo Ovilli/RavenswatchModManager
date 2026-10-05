@@ -396,6 +396,18 @@ def fetch_manifest(base: str | None = None) -> dict:
     return manifest
 
 
+def loader_missing(game_dir: Path) -> bool:
+    """True when the game dir has no winhttp.dll at all, i.e. the game runs with no loader.
+
+    `plant_stale` cannot say this: `plant_matches_bundle` answers None ("cannot be told") when
+    either file is missing, and None is not False. So after `restore --all` or a Steam
+    verify/update removed the DLL, `update-loader` compared version numbers, found them equal
+    and printed "up to date" over a game that was not running the loader. A player who then set
+    a backend address saw the redirect do nothing, with no hint why.
+    """
+    return not (Path(game_dir) / "winhttp.dll").is_file()
+
+
 def _plant_stale(game_dir: Path) -> bool:
     """Shared by `check`'s early returns; see the comment in `check`."""
     planted = planted_manifest_version(game_dir)
@@ -419,6 +431,7 @@ def check(game_dir: Path) -> dict:
             "planted_version": planted_manifest_version(game_dir),
             "bundled_version": bundled_version(),
             "plant_stale": _plant_stale(game_dir),
+            "not_planted": loader_missing(game_dir),
         }
     except AbiTooNewError as e:
         # A real answer, not a transport failure: report it as a status so
@@ -430,6 +443,7 @@ def check(game_dir: Path) -> dict:
             "planted_version": planted_manifest_version(game_dir),
             "bundled_version": bundled_version(),
             "plant_stale": _plant_stale(game_dir),
+            "not_planted": loader_missing(game_dir),
             "error": str(e),
         }
 
@@ -463,6 +477,7 @@ def check(game_dir: Path) -> dict:
         "planted_version": planted_now,
         "bundled_version": bundled_version(),
         "plant_stale": plant_stale,
+        "not_planted": loader_missing(game_dir),
         "remote_version": remote_version,
         "rsmm_version": manifest.get("rsmm_version"),
         "generated": manifest.get("generated"),

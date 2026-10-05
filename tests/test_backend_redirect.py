@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -296,7 +297,7 @@ def test_showing_the_state_changes_nothing(game, capsys):
 def test_an_old_loader_is_a_failure_even_though_the_file_was_written(game, capsys):
     (game / "winhttp.dll").write_bytes(b"MZ" + b"\x01" * 4000)
 
-    code, out = run(game, "example.org:8090", "--no-check", capsys=capsys)
+    code, out = run(game, "example.org:8090", "--no-check", "--no-install", capsys=capsys)
 
     assert code == 1
     assert "[FAIL] loader" in out
@@ -309,9 +310,9 @@ def test_an_environment_variable_that_wins_is_called_out(game, capsys, monkeypat
 
     code, out = run(game, "example.org:8090", "--no-check", capsys=capsys)
 
-    assert code == 0
+    # It beats the file, so the address just set would do nothing: a failure, not a note.
+    assert code == 1
     assert "takes priority" in out
-    assert "reg delete" in out
 
 
 def test_the_same_address_in_the_environment_is_not_a_warning(game, capsys, monkeypatch):
@@ -376,3 +377,197 @@ def test_an_unreachable_server_is_a_warning_not_a_failure(game, capsys, monkeypa
 
     assert code == 0
     assert "[warn] server: not reachable (connection refused)" in out
+
+
+# --- setting an address fixes what it can ------------------------------------
+
+@pytest.fixture
+def installs(monkeypatch):
+    """Record `_install_loader` calls; the stub plants a loader that can redirect."""
+    calls = []
+
+    def fake(game_dir):
+        calls.append(game_dir)
+        (game_dir / "winhttp.dll").write_bytes(REDIRECT_DLL)
+        return True
+
+    monkeypatch.setattr(cmd_backend, "_install_loader", fake)
+    return calls
+
+
+def test_a_missing_loader_is_installed_when_an_address_is_set(game, capsys, installs):
+    # A tester's `update-loader` said "up to date" over a folder with no DLL at all;
+    # setting the address must not depend on them noticing that.
+    (game / "winhttp.dll").unlink()
+
+    code, out = run(game, "example.org:8090", "--no-check", capsys=capsys)
+
+    assert installs == [game]
+    assert code == 0
+    assert "able to redirect" in out
+    assert "Done." in out
+
+
+def test_a_loader_too_old_to_redirect_is_replaced(game, capsys, installs):
+    (game / "winhttp.dll").write_bytes(b"MZ" + b"\x01" * 4000)
+
+    code, _ = run(game, "example.org:8090", "--no-check", capsys=capsys)
+
+    assert installs == [game]
+    assert code == 0
+
+
+def test_a_working_loader_is_left_alone(game, capsys, installs):
+    run(game, "example.org:8090", "--no-check", capsys=capsys)
+
+    assert installs == []
+
+
+def test_showing_the_state_never_installs(game, capsys, installs):
+    (game / "winhttp.dll").unlink()
+
+    code, _ = run(game, "--no-check", capsys=capsys)
+
+    assert installs == []
+    assert code == 1
+
+
+def test_no_install_opts_out(game, capsys, installs):
+    (game / "winhttp.dll").unlink()
+
+    run(game, "example.org:8090", "--no-check", "--no-install", capsys=capsys)
+
+    assert installs == []
+
+
+def test_a_removed_setx_value_is_reported_and_no_longer_warned_about(
+        game, capsys, monkeypatch):
+    def fake_remove():
+        os.environ.pop(br.ENV_VAR, None)
+        return "http://old.example:8090"
+
+    monkeypatch.setenv(br.ENV_VAR, "http://old.example:8090")
+    monkeypatch.setattr(br, "remove_user_env_var", fake_remove)
+
+    code, out = run(game, "example.org:8090", "--no-check", capsys=capsys)
+
+    assert code == 0
+    assert "removed the old RSMM_BACKEND_URL=http://old.example:8090" in out
+    assert "restart Steam" in out
+    assert "takes priority" not in out
+
+
+def test_off_also_removes_a_setx_value(game, capsys, monkeypatch):
+    calls = []
+    monkeypatch.setattr(br, "remove_user_env_var", lambda: calls.append(1))
+
+    run(game, "off", capsys=capsys)
+
+    assert calls == [1]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the registry path only runs on Windows")
+def test_remove_user_env_var_leaves_a_shell_export_alone(monkeypatch):
+    # Off Windows the variable is the user's own `export`, not something we told
+    # them to set; it is reported, never silently dropped.
+    monkeypatch.setenv(br.ENV_VAR, "http://mine.example:8090")
+
+    assert br.remove_user_env_var() is None
+    assert os.environ[br.ENV_VAR] == "http://mine.example:8090"
+
+
+def test_another_install_is_pointed_out(game, tmp_path_factory, capsys, monkeypatch):
+    other = tmp_path_factory.mktemp("second-library")
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
+    monkeypatch.setattr(br, "other_installs", lambda _g: [other])
+
+    cmd_backend.main(["--no-check"])
+    out = capsys.readouterr().out
+
+    assert f"another Ravenswatch install exists at {other}" in out
+    assert f'--game-dir "{other}"' in out
+
+
+def test_an_explicit_game_dir_skips_the_other_install_scan(game, capsys, monkeypatch):
+    def boom(_g):
+        raise AssertionError("scanned despite --game-dir")
+
+    monkeypatch.setattr(br, "other_installs", boom)
+    run(game, "--no-check", capsys=capsys)
+
+
+def test_other_installs_lists_only_real_installs_besides_this_one(tmp_path, monkeypatch):
+    from rsmm.engine import paths
+
+    here, there, empty = tmp_path / "a", tmp_path / "b", tmp_path / "c"
+    for d in (here, there):
+        (d / paths.COOKING_SUBDIR).mkdir(parents=True)
+    empty.mkdir()
+    monkeypatch.setattr(paths, "_game_dir_candidates", lambda: [here, there, empty])
+
+    assert br.other_installs(here) == [there]
+
+
+# --- the desktop bridge (`rsmm json backend`) --------------------------------
+
+def bridge(monkeypatch, capsys, game: Path, *args: str) -> dict:
+    from rsmm.cli import json_bridge
+    from rsmm.engine.paths import COOKING_SUBDIR
+
+    (game / COOKING_SUBDIR).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
+    json_bridge.main(["backend", *args])
+    return json.loads(capsys.readouterr().out)
+
+
+def test_bridge_get_reports_the_state_without_writing(game, capsys, monkeypatch):
+    br.write_marker(game, "http://example.org:8090")
+
+    state = bridge(monkeypatch, capsys, game, "get")
+
+    assert state["ok"] is True
+    assert state["url"] == "http://example.org:8090"
+    assert state["loaderCanRedirect"] is True
+    assert state["server"] is None  # not asked to contact it
+    assert state["output"] is None
+
+
+def test_bridge_set_runs_the_cli_command_so_its_repairs_apply(game, capsys, monkeypatch):
+    from rsmm.cli import json_bridge
+
+    calls = []
+
+    def fake_collect(args):
+        calls.append(args)
+        br.write_marker(game, "http://example.org:8090")
+        return {"ok": True, "stdout": "[ok]   wrote it\n", "stderr": ""}
+
+    monkeypatch.setattr(json_bridge, "_collect_rsmm", fake_collect)
+    monkeypatch.setattr(br, "probe_federation", lambda _u: br.Federation(True, ("http://example.org:8090",)))
+
+    state = bridge(monkeypatch, capsys, game, "set", "example.org:8090")
+
+    assert calls == [["backend", "example.org:8090", "--game-dir", str(game), "--no-check"]]
+    assert state["url"] == "http://example.org:8090"
+    assert state["server"]["reachable"] is True  # set always checks the server
+    assert "wrote it" in state["output"]
+
+
+def test_bridge_rejects_a_bad_address_without_running_anything(game, capsys, monkeypatch):
+    from rsmm.cli import json_bridge
+
+    monkeypatch.setattr(json_bridge, "_collect_rsmm", lambda _a: pytest.fail("ran the CLI"))
+
+    state = bridge(monkeypatch, capsys, game, "set", "https://example.org:8090")
+
+    assert state["ok"] is False
+    assert "plain http" in state["error"]
+
+
+def test_bridge_flags_an_environment_variable_that_wins(game, capsys, monkeypatch):
+    br.write_marker(game, "http://example.org:8090")
+    monkeypatch.setenv(br.ENV_VAR, "http://old.example:8090")
+
+    state = bridge(monkeypatch, capsys, game, "get")
+
+    assert state["envOverride"] == "http://old.example:8090"

@@ -117,6 +117,7 @@ describe('writesGameState', () => {
       ['update-data', '--check'],
       ['doctor'],
       ['config', 'get', 'some-mod'],
+      ['backend', 'get', '--check-server'],
     ]) {
       expect(writesGameState(args), args.join(' ')).toBe(false);
     }
@@ -131,6 +132,8 @@ describe('writesGameState', () => {
       ['update-data'],
       ['doctor', '--fix'],
       ['config', 'set', 'some-mod'],
+      ['backend', 'set', 'http://host:8090'],
+      ['backend', 'off'],
       ['a-command-added-next-year'],
     ]) {
       expect(writesGameState(args), args.join(' ')).toBe(true);

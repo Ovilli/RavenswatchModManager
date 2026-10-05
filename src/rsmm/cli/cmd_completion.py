@@ -100,7 +100,7 @@ _FLAGS: dict[str, tuple[str, ...]] = {
     "disable": ("--all",),
     "pack": ("--allow-vanilla",),
     "modpack": ("--game-dir", "--json"),
-    "backend": ("--game-dir", "--no-check"),
+    "backend": ("--game-dir", "--no-check", "--no-install"),
     "build": ("--skip-loader",),
     "run": ("--set-launch-options",),
     "watch": ("--interval",),
