@@ -2,6 +2,14 @@
   "generated": "2026-10-05",
   "entries": [
     {
+      "version": "5.9.6",
+      "date": "2026-10-05",
+      "summary": "Fixes Launch on Linux, which started neither Steam nor the game.",
+      "highlights": [
+        "Fixed (Linux): Launch did nothing. The app reported the game as started, but Steam and the game never opened. It now starts Steam properly, and if one way of reaching Steam fails it tries the next and tells you what went wrong."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 27,
       "date": "2026-10-05",
