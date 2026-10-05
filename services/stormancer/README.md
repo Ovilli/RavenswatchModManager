@@ -307,6 +307,14 @@ fatal host exception to stdout, because stdout is the only output the grid keeps
 - `Stormancer.Server.Hosting` 2.1.1.2-pre: 2.0.1.1 lacks `Scene.AuthorizeP2P`.
 - `Stormancer.Server.Plugins.Database.EntityFrameworkCore` 0.1.0.18-pre: Users pulls 0.1.0.17-pre.
 - `Stormancer.Server.Plugins.Analytics` 2.2.0-pre: GameSession needs it.
+- `Stormancer.Server.Plugins.Party` **5.3.0-pre**, and `Stormancer.Server.Plugins.Steam` 4.3.0-pre to
+  match (4.3.0.2-pre requires Party ≥ 5.3.0.8-pre): Party 5.3.0.1-pre changed
+  `PartySettingsDto.CustomData` / `PartySettingsUpdateDto.CustomData` from `string` to `byte[]`, and
+  Ravenswatch's client still sends a string. On a newer Party plugin every party settings update fails
+  with `Unexpected msgpack code 217 (str 8)` and the game logs `_UpdatePartyData - Exception Caught`
+  several times a second, though the invitation code is still generated. Those two fields are the only
+  wire difference between 5.3.0-pre and 5.3.0.8-pre. Do not bump Party past 5.3.0-pre without
+  re-checking them.
 
 ## Linux notes (`grid/default.json`)
 

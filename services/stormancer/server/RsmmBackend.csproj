@@ -25,9 +25,13 @@
 
 		<!-- The scenes Ravenswatch connects to: authenticator, friends, party-manager, party-<id>, matchmaking. -->
 		<PackageReference Include="Stormancer.Server.Plugins.Users" Version="10.0.3.8-pre" />
-		<PackageReference Include="Stormancer.Server.Plugins.Steam" Version="4.3.0.2-pre" />
+		<PackageReference Include="Stormancer.Server.Plugins.Steam" Version="4.3.0-pre" />
 		<PackageReference Include="Stormancer.Server.Plugins.Friends" Version="5.1.0.8-pre" />
-		<PackageReference Include="Stormancer.Server.Plugins.Party" Version="5.3.0.8-pre" />
+		<!-- 5.3.0-pre, not newer: 5.3.0.1-pre changed PartySettingsDto.CustomData (and
+		     PartySettingsUpdateDto's) from string to byte[]. Ravenswatch's client sends a string, so on a
+		     newer plugin every party settings update fails to deserialize ("Unexpected msgpack code 217
+		     (str 8)") - the game logs _UpdatePartyData exceptions several times a second. -->
+		<PackageReference Include="Stormancer.Server.Plugins.Party" Version="5.3.0-pre" />
 		<PackageReference Include="Stormancer.Server.Plugins.GameFinder" Version="8.4.0.25-pre" />
 		<PackageReference Include="Stormancer.Server.Plugins.GameSession" Version="6.3.2.37-pre" />
 
