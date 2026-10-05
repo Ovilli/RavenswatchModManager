@@ -2,6 +2,15 @@
   "generated": "2026-10-05",
   "entries": [
     {
+      "version": "",
+      "loader_version": 27,
+      "date": "2026-10-05",
+      "summary": "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server.",
+      "highlights": [
+        "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server."
+      ]
+    },
+    {
       "version": "5.9.5",
       "date": "2026-10-05",
       "summary": "Play on a community-hosted online server in one step, from Settings or with one command.",
