@@ -38,8 +38,10 @@ Needs the .NET SDK (8 or newer).
 ./run-local.sh stop
 ```
 
-The grid logs to `grid/grid.log`. Runtime data (`grid/data`, `grid/tmp`) and the CLI (`.tools/`)
-are gitignored.
+The grid logs to `grid/grid.log`, and the previous run (or the part of this one that rolled over)
+is in `grid/grid.prev.log`. Each file is capped at `GRID_LOG_MAX_MB` (default 50), so the log never
+takes more than about twice that on disk. Runtime data (`grid/data`, `grid/tmp`) and the CLI
+(`.tools/`) are gitignored.
 
 Unit tests (ticket verification, the mod-pack registry, the cross-language vector):
 

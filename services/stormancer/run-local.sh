@@ -26,13 +26,33 @@ if [[ ! -x "$cli" ]]; then
     dotnet tool install Stormancer.CLI --tool-path "$tools"
 fi
 
+# stdin -> grid.log, rolling over to grid.prev.log once grid.log passes GRID_LOG_MAX_MB.
+capped_log() {
+    local max=$(( ${GRID_LOG_MAX_MB:-50} * 1024 * 1024 )) size line
+    size=$(stat -c %s grid.log 2>/dev/null || echo 0)
+    exec >>grid.log
+    while IFS= read -r line; do
+        printf '%s\n' "$line"
+        size=$(( size + ${#line} + 1 ))
+        if (( size > max )); then
+            mv -f grid.log grid.prev.log
+            exec >grid.log
+            printf '===== log rolled over at %s MB =====\n' "${GRID_LOG_MAX_MB:-50}"
+            size=0
+        fi
+    done
+}
+
 cd "$here/grid"
 if ! curl -sf -m 2 http://127.0.0.1:8090/_federation >/dev/null; then
-    # Appended, not truncated: `>grid.log` threw away the previous run every time the grid was
-    # restarted, which is exactly when a log is worth comparing across. A restart banner keeps the
-    # boundary readable.
-    printf '\n===== grid start %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>grid.log
-    setsid "$cli" start >>grid.log 2>&1 &
+    # Bounded on disk: at most grid.log + grid.prev.log, each up to GRID_LOG_MAX_MB (default 50).
+    # Appending forever grew without limit on the hosted server, and one bad client can log
+    # several errors a second for as long as it stays connected. The previous run is rotated to
+    # grid.prev.log rather than thrown away, because a restart is exactly when a log is worth
+    # comparing across.
+    [[ -f grid.log ]] && mv -f grid.log grid.prev.log
+    printf '===== grid start %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >grid.log
+    setsid bash -c "$(declare -f capped_log); \"\$0\" start 2>&1 | capped_log" "$cli" &
     for _ in $(seq 1 60); do
         curl -sf -m 2 http://127.0.0.1:8090/_federation >/dev/null && break
         sleep 1
