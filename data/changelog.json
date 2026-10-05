@@ -1,6 +1,17 @@
 {
-  "generated": "2026-10-04",
+  "generated": "2026-10-05",
   "entries": [
+    {
+      "version": "5.9.5",
+      "date": "2026-10-05",
+      "summary": "Play on a community-hosted online server in one step, from Settings or with one command.",
+      "highlights": [
+        "New: Settings > Game > Online server. Paste the address the host gave you and the app sets everything up, including installing or updating the loader when needed.",
+        "The same from the command line: `rsmm backend http://host:port` (and `rsmm backend off` to go back to the official servers). No more setx or Steam restarts.",
+        "Shows whether the server answers and whether your last game launch actually used it.",
+        "Fixed: `rsmm update-loader` said \"up to date\" when the game folder had no loader at all. It now says so."
+      ]
+    },
     {
       "version": "",
       "loader_version": 26,

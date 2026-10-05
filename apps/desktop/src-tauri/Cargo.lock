@@ -3124,7 +3124,7 @@ dependencies = [
 
 [[package]]
 name = "rsmm-desktop"
-version = "5.9.4"
+version = "5.9.5"
 dependencies = [
  "serde",
  "serde_json",
