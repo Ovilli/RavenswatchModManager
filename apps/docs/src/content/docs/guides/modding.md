@@ -1397,6 +1397,32 @@ The `data/uncooked/` mirror is git-ignored for the same reason — it exists for
 
 ---
 
+## Online play: client-only and gameplay mods
+
+For online play, RSMM sorts every running mod into one of two groups:
+
+- **Client-only** mods change what *you* see or read, never the game the party plays:
+  a damage meter or other overlay, a camera change, a texture or sound swap, new UI text.
+- **Gameplay** mods change the game: new or edited content (`[[content]]`), data
+  patches (`[[patch]]`), overrides of game data, or Lua that does more than read
+  (`R.give`, `R.stat.modify`, `R.hp.set`, `R.talent.grant`, `R.emit`, …).
+
+An install that runs only client-only mods counts as **vanilla** online. Run
+`rsmm modpack` to see which group each of your mods is in, and why.
+
+RSMM decides the group from what the mod contains, not from its
+`multiplayer_scope`, so a wrong declaration cannot move a mod into the
+client-only group. Lint warns when a mod declares `cosmetic` or `local-only` (or
+nothing) but changes the game. Declare `deterministic-shared` or
+`host-authoritative` for those.
+
+For Lua, the client-only calls are the whole of `R.log`, `R.on`/`R.off`/`R.once`,
+`R.overlay`, `R.config`, `R.kv`, `R.schedule`, `R.exp`, `R.health`, `R.i18n`,
+`R.damage` and `R.camera`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
+`R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max` and
+`R.events.known`/`count`/`category`. Anything else, including `R[...]` lookups or
+passing `R` to another function, counts as gameplay.
+
 ## Load order
 
 When two mods override the same encoded path, the applier keeps the **later mod by alphabetical id** and warns. Explicit load-order control will come with the in-game UI. If order matters now, encode it: `10_Patch`, `20_Skins`, ...

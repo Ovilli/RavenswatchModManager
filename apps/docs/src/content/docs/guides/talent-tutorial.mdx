@@ -281,7 +281,7 @@ sdk_version = ">=3.0,<4"
 enabled     = true
 experimental = true
 tags        = ["talents", "snow-queen"]
-multiplayer_scope = "local-only"
+multiplayer_scope = "deterministic-shared"
 ```
 
 What the lines mean:
@@ -293,7 +293,7 @@ What the lines mean:
 | `author` | Your name. |
 | `enabled = true` | RSMM installs this mod when you apply. |
 | `experimental = true` | Needed because Step 7 renames a talent. See the note below. |
-| `multiplayer_scope = "local-only"` | The mod changes only your own game. |
+| `multiplayer_scope = "deterministic-shared"` | The mod changes the game, so everyone in a party needs it. See [Online play](/guides/modding/#online-play-client-only-and-gameplay-mods). |
 
 <Aside type="note" title="Why experimental?">
 Renaming uses the `skill` content type. As a whole, RSMM rates that type
@@ -455,7 +455,7 @@ For this guide's mod, you should see:
 
 ```text
   [WARN] glacier-shield: content kind 'skill' is 'guess' — shipping under experimental opt-in (may not work in-game).
-  [OK]   glacier-shield  (raw=0 patches=0 content=3 scope=local-only)
+  [OK]   glacier-shield  (raw=0 patches=0 content=3 scope=deterministic-shared)
 ```
 
 That warning is expected. It is the "experimental" note from Step 4. A line that
@@ -601,7 +601,7 @@ sdk_version = ">=3.0,<4"
 enabled     = true
 experimental = true
 tags        = ["talents", "snow-queen"]
-multiplayer_scope = "local-only"
+multiplayer_scope = "deterministic-shared"
 
 # Lasts 9 seconds instead of 6.
 [[content]]

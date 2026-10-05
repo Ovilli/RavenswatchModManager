@@ -127,7 +127,7 @@ Native = framework-author territory.
 
 **Most critical gap. Today: undefined behavior under any non-cosmetic mod.**
 
-**Scope taxonomy.** Manifest field `multiplayer_scope`:
+**Scope taxonomy.** Manifest field `multiplayer_scope`: the author's declaration. Online matching does not trust it: `rsmm.engine.mod_scope` derives *client-only* vs *gameplay* from the mod's contents (see the modding guide's [Online play](/guides/modding/#online-play-client-only-and-gameplay-mods)).
 
 - **cosmetic** — textures, audio, UI strings. Local-only.
 - **deterministic-shared** — stat tweaks. MUST be identical on every

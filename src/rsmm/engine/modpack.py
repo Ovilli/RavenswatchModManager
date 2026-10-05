@@ -9,6 +9,14 @@ ticket.
 Not to be confused with ``rsmm pack``, which bundles ONE mod for distribution.
 This is the fingerprint of *everything* currently applied to an install.
 
+Only GAMEPLAY mods count (``rsmm.engine.mod_scope``). A client-only mod — a
+damage meter, a texture swap, a camera change — cannot desync anyone, so an
+install running only those is ``client-only``: no fingerprint, matched like a
+vanilla install, and the status public matchmaking can allow. Lua mods count
+too, from the runtime copies the loader actually runs in ``<game>/mods/``: they
+never touch the apply journal, so until 2026-10-05 an install running
+``lucky-chests`` or ``sprint`` reported itself as vanilla.
+
 Derived from applied bytes, not from mod ids and versions, on purpose. Two
 installs can agree on every ``id@version`` and still hold different bytes — a
 different SDK version cooked the asset, or the author edited it in place — and
@@ -41,7 +49,8 @@ STATE_FILE_NAME = ".rsmm_state.json"
 _LABEL_NAMES = 3
 
 
-def modpack_id(active: Mapping[str, Mapping]) -> str | None:
+def modpack_id(active: Mapping[str, Mapping],
+               lua: Mapping[str, str] | None = None) -> str | None:
     """Fingerprint of the applied override set, or None when it is unknowable.
 
     `active` is the apply journal's ``active`` map: encoded path -> entry.
@@ -59,8 +68,12 @@ def modpack_id(active: Mapping[str, Mapping]) -> str | None:
 
     The encoded path is used as the key because it is derived from the decoded
     path by a fixed cipher, so it is identical on every machine.
+
+    `lua` maps a running Lua mod's folder name to the digest of its runtime
+    files (:func:`runtime_digest`); those join the set under a ``lua:`` prefix,
+    which no encoded path can start with.
     """
-    if not active:
+    if not active and not lua:
         return None
 
     lines = []
@@ -72,6 +85,8 @@ def modpack_id(active: Mapping[str, Mapping]) -> str | None:
         # boundary, and the trailing newline keeps entries from running
         # together.
         lines.append(f"{encoded}\0{digest}\n")
+    for name, digest in (lua or {}).items():
+        lines.append(f"lua:{name}\0{digest}\n")
 
     # Sorted, because a dict's order reflects the order `apply` happened to
     # walk the mods — which differs between machines that applied the same set.
@@ -117,6 +132,34 @@ def modpack_label(mod_ids: Sequence[str]) -> str | None:
     return f"{', '.join(names[:_LABEL_NAMES])} +{rest} more"
 
 
+def runtime_digest(mod_dir: Path) -> str | None:
+    """Digest of a runtime mod folder's files (what the loader reads), or None
+    when one cannot be read."""
+    h = hashlib.sha256()
+    try:
+        for f in sorted(p for p in Path(mod_dir).iterdir() if p.is_file()):
+            h.update(f"{f.name}\0{hashlib.sha256(f.read_bytes()).hexdigest()}\n".encode())
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def running_lua_mods(game_dir: Path) -> list[Path]:
+    """Runtime folders under ``<game>/mods/`` whose Lua the loader will run.
+
+    `apply` removes a disabled mod's ``init.lua`` but keeps its manifest, so the
+    presence of Lua is what "running" means; the loader's own files live at the
+    top level and are not folders.
+    """
+    root = Path(game_dir) / "mods"
+    try:
+        return sorted(d for d in root.iterdir()
+                      if d.is_dir() and not d.name.startswith(("_", "."))
+                      and any(d.glob("*.lua")))
+    except OSError:
+        return []
+
+
 @dataclass(frozen=True)
 class Modpack:
     """What an install is running, and whether we could tell.
@@ -126,7 +169,9 @@ class Modpack:
     are failed open on, but only one of them is worth acting on:
 
     * ``vanilla`` — nothing applied. Correct and final.
-    * ``ok`` — a fingerprint was computed.
+    * ``client-only`` — only client-only mods run. No fingerprint: these match
+      a vanilla install, and are what public matchmaking can allow.
+    * ``ok`` — gameplay mods run, and a fingerprint was computed.
     * ``unknown`` — something is applied but could not be fingerprinted (a
       pre-0.1.12 journal, or one that is missing/corrupt). ``rsmm apply``
       rewrites it.
@@ -135,11 +180,20 @@ class Modpack:
     id: str | None
     label: str | None
     status: str
+    #: Running mods that change the game, each with the reasons it does.
+    gameplay: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: Running mods that are client-only.
+    client_only: tuple[str, ...] = ()
 
     @property
     def matchable(self) -> bool:
         """Whether this install can be matched against another at all."""
-        return self.status in ("ok", "vanilla")
+        return self.status in ("ok", "vanilla", "client-only")
+
+    @property
+    def public_matchmaking_ok(self) -> bool:
+        """No gameplay mod is running, so the game is the vanilla game."""
+        return self.status in ("vanilla", "client-only")
 
 
 def read_modpack(game_dir: Path) -> Modpack:
@@ -166,10 +220,47 @@ def read_modpack(game_dir: Path) -> Modpack:
     if not isinstance(active, Mapping):
         active = {}
 
-    pack_id = modpack_id(active)
-    label = modpack_label(applied_mod_ids(active))
+    from rsmm.engine.cipher import decode
+    from rsmm.engine.mod_scope import classify_runtime
+
+    # Which mod each applied file belongs to, by decoded path.
+    by_mod: dict[str, list[str]] = {}
+    for encoded, entry in active.items():
+        mod = entry.get("mod") if isinstance(entry, Mapping) else None
+        by_mod.setdefault(mod if isinstance(mod, str) and mod else "?",
+                          []).append(encoded)
+    lua_dirs = {d.name: d for d in running_lua_mods(game_dir)}
+
+    gameplay: list[tuple[str, tuple[str, ...]]] = []
+    client_only: list[str] = []
+    gameplay_active: dict[str, Mapping] = {}
+    lua_digests: dict[str, str] = {}
+    unreadable = False
+    for name in sorted(set(by_mod) | set(lua_dirs)):
+        encoded_paths = by_mod.get(name, [])
+        decoded = [decode(e.replace("\\", "/")) for e in encoded_paths]
+        verdict = classify_runtime(Path(game_dir) / "mods" / name, decoded)
+        if verdict.client_only:
+            client_only.append(name)
+            continue
+        gameplay.append((name, tuple(verdict.reasons)))
+        for e in encoded_paths:
+            gameplay_active[e] = active[e]
+        if name in lua_dirs:
+            digest = runtime_digest(lua_dirs[name])
+            if digest is None:
+                unreadable = True
+            else:
+                lua_digests[name] = digest
+
+    label = modpack_label([*(g for g, _ in gameplay), *client_only])
+    common = {"gameplay": tuple(gameplay), "client_only": tuple(client_only)}
+    if not gameplay:
+        status = "client-only" if client_only else "vanilla"
+        return Modpack(None, label, status, **common)
+    pack_id = None if unreadable else modpack_id(gameplay_active, lua_digests)
     if pack_id is not None:
-        return Modpack(pack_id, label, "ok")
-    # No id and nothing applied is a vanilla install; no id with entries in the
-    # journal means they could not be hashed.
-    return Modpack(None, label, "vanilla" if not active else "unknown")
+        return Modpack(pack_id, label, "ok", **common)
+    # Gameplay mods run but could not be hashed (an old journal, an unreadable
+    # runtime folder): say so rather than claim a fingerprint for part of them.
+    return Modpack(None, label, "unknown", **common)

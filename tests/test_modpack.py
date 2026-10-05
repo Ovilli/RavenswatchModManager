@@ -247,3 +247,71 @@ def test_applied_mod_ids_ignores_entries_with_no_usable_mod_id():
     }
 
     assert applied_mod_ids(active) == ["real"]
+
+
+# --- client-only vs gameplay (rsmm.engine.mod_scope) --------------------------
+
+def runtime_mod(game_dir, name: str, lua: str) -> None:
+    d = game_dir / "mods" / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "manifest.toml").write_text(f'[mod]\nid = "{name}"\nversion = "1.0.0"\n',
+                                     encoding="utf-8")
+    (d / "init.lua").write_text('local R = require "rsmm"\n' + lua, encoding="utf-8")
+
+
+def test_a_lua_gameplay_mod_is_not_vanilla(tmp_path):
+    # Before 2026-10-05 Lua mods never reached the fingerprint: an install
+    # running a stat mod reported itself as vanilla.
+    write_state(tmp_path, {"version": 1, "active": {}, "enabled_mods": ["sprint"]})
+    runtime_mod(tmp_path, "sprint", 'R.stat.modify(h, "move_speed", 2)')
+
+    pack = read_modpack(tmp_path)
+
+    assert pack.status == "ok"
+    assert pack.id is not None
+    assert not pack.public_matchmaking_ok
+    assert [m for m, _ in pack.gameplay] == ["sprint"]
+
+
+def test_only_client_only_mods_is_matched_like_vanilla(tmp_path):
+    from rsmm.engine.cipher import encode
+
+    texture = encode("3D/X/T_A_ALB.tga.Texture.dxt")
+    write_state(tmp_path, {"version": 1, "enabled_mods": [],
+                           "active": {texture: {"mod": "skin", "src_sha256": A}}})
+    runtime_mod(tmp_path, "damage-meter", "R.damage.enable()\nR.overlay.publish({})")
+
+    pack = read_modpack(tmp_path)
+
+    assert pack.status == "client-only"
+    assert pack.id is None
+    assert pack.matchable and pack.public_matchmaking_ok
+    assert pack.client_only == ("damage-meter", "skin")
+
+
+def test_client_only_mods_do_not_change_the_fingerprint(tmp_path):
+    write_state(tmp_path, {"version": 1, "enabled_mods": [],
+                           "active": {"path/one": {"mod": "m", "src_sha256": A}}})
+    without = read_modpack(tmp_path).id
+    runtime_mod(tmp_path, "damage-meter", "R.damage.enable()")
+
+    assert read_modpack(tmp_path).id == without
+
+
+def test_editing_a_gameplay_lua_mod_changes_the_fingerprint(tmp_path):
+    write_state(tmp_path, {"version": 1, "active": {}, "enabled_mods": []})
+    runtime_mod(tmp_path, "sprint", "R.stat.modify(h, 'move_speed', 2)")
+    before = read_modpack(tmp_path).id
+    runtime_mod(tmp_path, "sprint", "R.stat.modify(h, 'move_speed', 3)")
+
+    assert read_modpack(tmp_path).id != before
+
+
+def test_a_disabled_lua_mod_does_not_count(tmp_path):
+    # `apply` keeps a disabled mod's manifest but removes its init.lua.
+    write_state(tmp_path, {"version": 1, "active": {}, "enabled_mods": []})
+    d = tmp_path / "mods" / "sprint"
+    d.mkdir(parents=True)
+    (d / "manifest.toml").write_text('[mod]\nid = "sprint"\n', encoding="utf-8")
+
+    assert read_modpack(tmp_path).status == "vanilla"

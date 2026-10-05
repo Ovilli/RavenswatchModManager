@@ -8,7 +8,8 @@ Surfaces problems before `rsmm apply`:
   - raw assets/ overrides that no-op, edit a shadowed value, or re-frame the
     container (needs the vanilla corpus; skipped when it isn't on disk)
   - [[patch]] blocks whose fields don't exist
-  - declared multiplayer_scope mismatch with patch kinds
+  - a declared multiplayer_scope that claims less than the mod does
+    (derived by rsmm.engine.mod_scope; online matching reads the derived verdict)
   - dep specs that don't parse
 
 Usage:
@@ -118,11 +119,27 @@ def lint_one(entry: Path) -> tuple[int, int]:
     warns += _lint_store_metadata(mod_s, m)
     warns += _report_unknown(mod_s, "[mod]", m, MS.MOD_FIELDS, warn=True)
     warns += _report_unknown(mod_s, "top level", t, MS.TOP_LEVEL, warn=True)
-    scope = m.get("multiplayer_scope", "cosmetic")
-    if scope not in {"cosmetic", "deterministic-shared",
-                     "host-authoritative", "local-only"}:
+    scope = m.get("multiplayer_scope")
+    if scope is not None and scope not in {"cosmetic", "deterministic-shared",
+                                           "host-authoritative", "local-only"}:
         print(f"  {_T_FAIL} {mod_s}: unknown multiplayer_scope {_ST.accent(repr(scope))}")
         errs += 1
+    # The declared scope is the author's claim; what decides online matching is
+    # the verdict DERIVED from the mod's contents (rsmm.engine.mod_scope). Say
+    # so when the claim promises more than the mod delivers. A warning, not an
+    # error: matching never reads the claim, so a wrong one cannot let a
+    # gameplay mod into public matchmaking — it only misleads the reader.
+    from rsmm.engine.mod_scope import classify_mod_dir
+    verdict = classify_mod_dir(entry)
+    if scope in (None, "cosmetic", "local-only") and not verdict.client_only:
+        claim = f"declares {scope!r}" if scope else "declares no multiplayer_scope"
+        why = "; ".join(verdict.reasons[:3])
+        more = f" (+{len(verdict.reasons) - 3} more)" if len(verdict.reasons) > 3 else ""
+        print(f"  {_T_WARN} {mod_s}: {claim}, but it changes the game: {_ST.dim(why + more)}")
+        print(f"         {_ST.dim('online it counts as a gameplay mod either way; declare')} "
+              f"{_ST.accent('deterministic-shared')} {_ST.dim('or')} "
+              f"{_ST.accent('host-authoritative')}")
+        warns += 1
 
     # [overlay] — a mod-declared HUD. Validated here rather than at runtime
     # because the failure is otherwise invisible: the desktop app would list
