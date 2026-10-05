@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_set>
@@ -137,6 +138,47 @@ Fn real_fn(const char* name) {
 
 std::mutex g_redirected_mu;
 std::unordered_set<HINTERNET> g_redirected;  // connect handles we pointed elsewhere
+
+std::string narrow(LPCWSTR w) {
+    std::string out;
+    for (const wchar_t* p = w; p && *p; ++p) out.push_back(static_cast<char>(*p));
+    return out;
+}
+
+// A failed call into the real WinHTTP, said once per (function, error). On a
+// Windows tester's machine every WinHttpConnect came back NULL - Stormancer and
+// MyNacon both logged only "Open failed", the cpprest text for "the connection
+// could not be opened" - and nothing here said why, because the wrapper logged
+// "redirected" without looking at the result. The module path is part of the
+// answer: winhttp_real.dll is a COPY of the system DLL on Windows, Wine's own
+// on Proton, and the two have only ever been proven on one of those.
+// Restores the caller's last error, so the game sees exactly what it saw before.
+void note_winhttp_failure(const char* fn, LPCWSTR server) {
+    const DWORD err = GetLastError();
+    static std::mutex mu;
+    static std::unordered_set<std::uint64_t> seen;
+    bool first_ever = false;
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        first_ever = seen.empty();
+        const std::uint64_t key = (static_cast<std::uint64_t>(std::hash<std::string>{}(fn)) << 32) ^ err;
+        if (!seen.insert(key).second) {
+            SetLastError(err);
+            return;
+        }
+    }
+    if (first_ever) {
+        char path[MAX_PATH] = {};
+        HMODULE real = real_winhttp();
+        if (real) GetModuleFileNameA(real, path, sizeof(path));
+        Loader::get().log_warn(std::string("[backend] real WinHTTP is ") +
+                               (path[0] ? path : "<not loaded>"));
+    }
+    Loader::get().log_warn(std::string("[backend] ") + fn + "(" + narrow(server) +
+                           ") failed, error " + std::to_string(err) +
+                           " (12xxx = ERROR_WINHTTP_*; 12018 = handle from another WinHTTP)");
+    SetLastError(err);
+}
 
 // ---- Steam identity probe -------------------------------------------------
 
@@ -253,16 +295,22 @@ HINTERNET WINAPI rsmm_WinHttpConnect(HINTERNET session, LPCWSTR server, INTERNET
     if (identity_probe_wanted()) install_identity_probe_once();
 
     const BackendTarget& t = target();
-    if (!t.armed || !is_passtech_backend(server)) return real(session, server, port, reserved);
+    if (!t.armed || !is_passtech_backend(server)) {
+        HINTERNET h = real(session, server, port, reserved);
+        if (!h) note_winhttp_failure("WinHttpConnect", server);
+        return h;
+    }
 
     HINTERNET h = real(session, t.host.c_str(), t.port, reserved);
-    if (h) {
+    if (!h) {
+        note_winhttp_failure("WinHttpConnect", t.host.c_str());
+        return h;
+    }
+    {
         std::lock_guard<std::mutex> lk(g_redirected_mu);
         g_redirected.insert(h);
     }
-    std::string from;
-    for (const wchar_t* p = server; *p; ++p) from.push_back(static_cast<char>(*p));
-    Loader::get().log("[backend] redirected " + from + " -> " + t.url);
+    Loader::get().log("[backend] redirected " + narrow(server) + " -> " + t.url);
     return h;
 }
 
@@ -282,7 +330,9 @@ HINTERNET WINAPI rsmm_WinHttpOpenRequest(HINTERNET connect, LPCWSTR verb, LPCWST
         redirected = g_redirected.count(connect) != 0;
     }
     if (redirected) flags &= ~static_cast<DWORD>(WINHTTP_FLAG_SECURE);
-    return real(connect, verb, object, version, referrer, accept_types, flags);
+    HINTERNET h = real(connect, verb, object, version, referrer, accept_types, flags);
+    if (!h) note_winhttp_failure("WinHttpOpenRequest", object);
+    return h;
 }
 
 BOOL WINAPI rsmm_WinHttpCloseHandle(HINTERNET handle) {
