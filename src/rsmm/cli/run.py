@@ -292,56 +292,74 @@ def _rsmm_subcommand(args: list[str], /) -> bool:
         return False
 
 
+#: How long a launcher gets to fail before it counts as started. `flatpak run`
+#: and `steam` hand off to a running Steam and exit 0 within a second; when
+#: Steam was not running they BECOME Steam and keep running, which is success.
+#: A broken environment fails in milliseconds (exit 127, symbol lookup error).
+_LAUNCHER_GRACE_S = 4.0
+
+
+def _spawn_launcher(argv: list[str]) -> str | None:
+    """Start one launcher. None when it started; otherwise why it did not.
+
+    Started in its own session with the host environment: it may become Steam
+    itself, which must outlive this process and the desktop app that spawned
+    it, and must not load the AppImage's libraries (see rsmm.engine.host_env).
+    """
+    import tempfile
+
+    from rsmm.engine.host_env import host_env
+
+    with tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=err,
+                                    env=host_env(), start_new_session=True)
+        except OSError as e:
+            return str(e)
+        try:
+            code = proc.wait(timeout=_LAUNCHER_GRACE_S)
+        except subprocess.TimeoutExpired:
+            return None  # still running: it is Steam now
+        if code == 0:
+            return None
+        err.seek(0)
+        detail = err.read().decode("utf-8", errors="replace").strip().splitlines()
+        return f"exit {code}" + (f": {detail[-1]}" if detail else "")
+
+
+def _linux_launchers(app_id: str, url: str) -> list[list[str]]:
+    """Ways to reach Steam, most direct first."""
+    out = []
+    if shutil.which("steam"):
+        out.append(["steam", "-applaunch", app_id])
+    if shutil.which("flatpak"):
+        out.append(["flatpak", "run", "com.valvesoftware.Steam", "-applaunch", app_id])
+    if Path("/.flatpak-info").exists() and shutil.which("flatpak-spawn"):
+        # rsmm itself sandboxed: only the host can start the Steam flatpak.
+        out.append(["flatpak-spawn", "--host", "flatpak", "run",
+                    "com.valvesoftware.Steam", "-applaunch", app_id])
+    if shutil.which("xdg-open"):
+        out.append(["xdg-open", url])
+    return out
+
+
 def _open_steam_url(url: str) -> int:
     if sys.platform == "win32":
         os.startfile(url)  # type: ignore[attr-defined]
         return 0
-    # Linux
-    if shutil.which("steam"):
-        print(f"==> steam -applaunch {url.rsplit('/', 1)[-1]}")
-        try:
-            subprocess.Popen(["steam", "-applaunch", url.rsplit('/', 1)[-1]],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+    app_id = url.rsplit("/", 1)[-1]
+    failures = []
+    for argv in _linux_launchers(app_id, url):
+        print(f"==> {' '.join(argv)}", flush=True)
+        why = _spawn_launcher(argv)
+        if why is None:
             return 0
-        except OSError as e:
-            print(f"Could not launch via steam: {e}", file=sys.stderr)
-            return 1
-    if shutil.which("flatpak"):
-        print(f"==> flatpak run com.valvesoftware.Steam -applaunch {url.rsplit('/', 1)[-1]}")
-        try:
-            if shutil.which("flatpak-spawn"):
-                subprocess.Popen(
-                    [
-                        "flatpak-spawn",
-                        "--host",
-                        "flatpak",
-                        "run",
-                        "com.valvesoftware.Steam",
-                        "-applaunch",
-                        url.rsplit('/', 1)[-1],
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            else:
-                subprocess.Popen(
-                    [
-                        "flatpak",
-                        "run",
-                        "com.valvesoftware.Steam",
-                        "-applaunch",
-                        url.rsplit("/", 1)[-1],
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            return 0
-        except OSError as e:
-            print(f"Could not launch via flatpak Steam: {e}", file=sys.stderr)
-            return 1
-    print(f"Could not find a working Steam launcher or URL handler. Open this URL manually: {url}",
-          file=sys.stderr)
+        failures.append(f"{argv[0]}: {why}")
+        print(f"    failed ({why}), trying the next way", file=sys.stderr)
+    if failures:
+        print("Could not start Steam:\n  " + "\n  ".join(failures), file=sys.stderr)
+    print(f"Open this URL manually: {url}", file=sys.stderr)
     return 1
 
 
