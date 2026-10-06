@@ -1,6 +1,18 @@
 {
-  "generated": "2026-10-05",
+  "generated": "2026-10-06",
   "entries": [
+    {
+      "version": "5.9.7",
+      "date": "2026-10-06",
+      "summary": "Mods you switch off in the Library now really stay off, and the talent builder learns \"for a while after an ability\".",
+      "highlights": [
+        "Fixed: mods switched off in the Library were still installed when you launched the game. The Library is now what decides; mods in your profile folder that the Library shows as off are turned off before launch.",
+        "Talent builder: an added stat can now apply \"For a while after\" an ability, e.g. +25% damage for 3 seconds after POWER. Each use restarts the time.",
+        "Talent builder: stats are found by the words on the cards (\"trait cooldown\", \"power charge\"), and stats that would debuff your own hero (Ignite, Vulnerable, Rooted...) are greyed out.",
+        "Fixed: a talent with two added stats failed to build.",
+        "Editor: game-state values like \"Is in cinematic\" are no longer offered as stats, and \"Reset everything\" also clears test grants."
+      ]
+    },
     {
       "version": "5.9.6",
       "date": "2026-10-05",
