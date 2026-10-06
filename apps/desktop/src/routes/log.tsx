@@ -50,18 +50,19 @@ const LINE_CAP = 2000;
 
 /** Which log the screen is showing. Archived runs are named, not indexed: the
  *  name is an opaque handle the sidecar resolves against its own listing. */
-type Source = { kind: 'current' } | { kind: 'prev' } | { kind: 'run'; name: string };
+/** `current` is the run in progress (nothing, with no game up); `last` the last
+ *  run that ENDED: the newest log with no game up, the rotated one while a game
+ *  writes the newest; `run` an archived run, by name. */
+type Source = { kind: 'current' } | { kind: 'last' } | { kind: 'run'; name: string };
 
 /** How often the screen asks whether Ravenswatch is up while it shows the newest
  *  log. A process check, not a file read, so far slower than the tail poll. */
 const GAME_POLL_MS = 5000;
 
-/** `t` is passed in: this is a plain helper, and the label is copy. `live`: the
- *  game is up, so the newest log is the run in progress; otherwise it is the
- *  last run that ended, and calling it "current" read as a live session. */
-function sourceLabel(source: Source, t: (message: string) => string, live: boolean): string {
-  if (source.kind === 'current') return live ? t('Current run') : t('Last run');
-  if (source.kind === 'prev') return t('Previous run');
+/** `t` is passed in: this is a plain helper, and the label is copy. */
+function sourceLabel(source: Source, t: (message: string) => string): string {
+  if (source.kind === 'current') return t('Current run');
+  if (source.kind === 'last') return t('Last run');
   return source.name.replace(/\.log$/, '');
 }
 
@@ -101,7 +102,6 @@ function LogPage() {
   // and with no game at all the newest log is the LAST run, not a current one.
   const [processUp, setProcessUp] = useState<boolean | null>(null);
   useEffect(() => {
-    if (!followable) return;
     let cancelled = false;
     const check = async () => {
       try {
@@ -117,9 +117,14 @@ function LogPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [followable]);
+  }, []);
   // Unknown (an older sidecar, a failed check) falls back to the launch state.
   const gameUp = !!running || processUp === true;
+  // With no game up, "Current run" has nothing to show: the newest log is a
+  // finished run, which is "Last run" (user report: the screen kept showing it).
+  const idle = followable && !gameUp;
+  // While a game writes the newest log, the last FINISHED run is the rotated one.
+  const readPrev = source.kind === 'last' && gameUp;
 
   /** Full reload through the sidecar: it owns game-directory resolution and
    *  the archived-run lookup, and it hands back the byte length the
@@ -134,7 +139,7 @@ function LogPage() {
     try {
       const r = await readLoaderLog({
         lines: LINE_CAP,
-        prev: source.kind === 'prev',
+        prev: readPrev,
         run: source.kind === 'run' ? source.name : undefined,
         // Session slicing happens client-side over the whole buffer, so the
         // view stays right when the game starts a new session mid-follow.
@@ -159,11 +164,20 @@ function LogPage() {
     } finally {
       setLoading(false);
     }
-  }, [source]);
+  }, [source, readPrev]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A game starting while "Current run" sits empty: read the new log from the
+  // start rather than tailing on from the finished run's buffer.
+  const wasUp = useRef(gameUp);
+  useEffect(() => {
+    const started = gameUp && !wasUp.current;
+    wasUp.current = gameUp;
+    if (started && followable) void load();
+  }, [gameUp, followable, load]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -286,12 +300,10 @@ function LogPage() {
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-fraktur text-xl text-parchment">
-              {sourceLabel(source, t, gameUp)}
-            </h3>
+            <h3 className="font-fraktur text-xl text-parchment">{sourceLabel(source, t)}</h3>
             {gameUp && followable ? (
               <MonoTag tone="gilt">{t('game running')}</MonoTag>
-            ) : meta?.exists ? (
+            ) : idle ? null : meta?.exists ? (
               <MonoTag>{t.n(sessions, '{n} session', '{n} sessions')}</MonoTag>
             ) : null}
             {tail.truncated ? <MonoTag>{t('oldest lines trimmed')}</MonoTag> : null}
@@ -347,21 +359,31 @@ function LogPage() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Select
             value={
-              source.kind === 'run' ? `run:${source.name}` : source.kind === 'prev' ? 'prev' : 'now'
+              source.kind === 'run'
+                ? `run:${source.name}`
+                : source.kind === 'current'
+                  ? 'now'
+                  : source.kind
             }
             onChange={(v) =>
               setSource(
                 v === 'now'
                   ? { kind: 'current' }
-                  : v === 'prev'
-                    ? { kind: 'prev' }
+                  : v === 'last'
+                    ? { kind: 'last' }
                     : { kind: 'run', name: v.slice('run:'.length) },
               )
             }
             ariaLabel={t('Which run to read')}
           >
-            <option value="now">{gameUp ? t('Current run') : t('Last run')}</option>
-            <option value="prev">{t('Previous run')}</option>
+            <option value="now">{t('Current run')}</option>
+            {/* The loader archives a run when the NEXT one starts, so with no
+                game up the newest log is the one finished run the archive below
+                does not hold yet. While a game runs, that run is the newest
+                archive entry, and a second "previous" entry only repeated it. */}
+            {!gameUp || source.kind === 'last' ? (
+              <option value="last">{t('Last run')}</option>
+            ) : null}
             {runs.map((r) => (
               <option key={r.name} value={`run:${r.name}`}>
                 {r.name.replace(/\.log$/, '')} · {Math.max(1, Math.round(r.bytes / 1024))} KB
@@ -402,12 +424,6 @@ function LogPage() {
           </label>
         </div>
 
-        {followable && !gameUp && meta?.exists ? (
-          <p className="font-serif-italic mb-2 text-xs text-ash">
-            {t('Ravenswatch is not running. This is the log of its last run.')}
-          </p>
-        ) : null}
-
         {problemsOnly ? (
           <p className="font-serif-italic mb-2 text-xs text-ash">
             {t(
@@ -416,15 +432,33 @@ function LogPage() {
           </p>
         ) : null}
 
-        <LogBody
-          loading={loading}
-          error={error}
-          meta={meta}
-          lines={visible}
-          total={lines.length}
-          scrollRef={scrollRef}
-          onScroll={onScroll}
-        />
+        {idle ? (
+          <div className="border border-border bg-pitch/60 p-3">
+            <p className="font-serif-italic text-ash">
+              {t('Ravenswatch is not running. Its log shows here as soon as you start it.')}
+            </p>
+            {meta?.exists ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-2"
+                onClick={() => setSource({ kind: 'last' })}
+              >
+                {t('Show the last run')}
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <LogBody
+            loading={loading}
+            error={error}
+            meta={meta}
+            lines={visible}
+            total={lines.length}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+          />
+        )}
 
         {meta?.path ? (
           <p className="font-data mt-2 break-all text-xs text-ash">{meta.path}</p>

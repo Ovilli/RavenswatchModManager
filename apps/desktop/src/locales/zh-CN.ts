@@ -205,8 +205,9 @@ export const zhCN: Record<string, string> = {
   'Curated bundles of mods made by the community.': '社区精心搭配的模组合集。',
   'Current run': '本次运行',
   'Last run': '最近一次运行',
-  'Ravenswatch is not running. This is the log of its last run.':
-    'Ravenswatch 未在运行。这是它最近一次运行的日志。',
+  'Ravenswatch is not running. Its log shows here as soon as you start it.':
+    'Ravenswatch 未在运行。启动游戏后，日志会立即显示在这里。',
+  'Show the last run': '查看最近一次运行',
   'Current run only. Cleared whenever you launch Vanilla or Modded.':
     '只保留本次运行。每次启动原版或模组版时都会清空。',
   'Declared conflict': '声明的冲突',
@@ -486,7 +487,6 @@ export const zhCN: Record<string, string> = {
   'Play video': '播放视频',
   'Preview exactly what is uploaded': '预览将要上传的确切内容',
   Previous: '上一个',
-  'Previous run': '上一次运行',
   Privacy: '隐私',
   'Profile "{name}" deleted.': '方案“{name}”已删除。',
   'Profile code': '方案代码',
