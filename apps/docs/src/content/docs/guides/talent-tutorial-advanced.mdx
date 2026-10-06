@@ -567,6 +567,31 @@ hero itself, so a stat the game only ever puts on whoever is hit (Ignite, Bleed,
 Chilled, Vulnerable, Weak, Marked, Rooted, …) would debuff your own hero. The list
 is read from the game's files; the editor shows those stats greyed out.
 
+### Give a talent another talent's effect: `include`
+
+<Badge text="Tested in game" variant="success" />
+
+Owning one talent can also switch on another of the same hero's talents. What a
+talent does hangs off its State, so `include` keeps the other talent's State on
+while this one is owned, and everything that State does or unlocks runs. In the
+editor, it is **Also gives the effect of** on a card.
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "shapeshifter_wick"
+hero    = "Red"
+include = [{ talent = "Trait Active", from = "Secondary Quick Bombs" }]
+```
+
+This gives Scarlet's **Shapeshifter** the bomb from **Short Wick** that explodes as
+soon as it hits the ground: that behaviour is a switch wired to Short Wick's State,
+which the bomb reads. You get all of the other talent, not a piece of it: here
+Short Wick's faster SPECIAL recharge comes too. Numbers that scale with the other
+card's rarity use their Common value, because that card is not owned. Only talents
+of the same hero can be included. Mention the effect in the card's text with a
+`skill` block.
+
 ### Rebuild a talent from scratch: `rebuild`
 
 <Badge text="Not yet tested" variant="danger" />

@@ -491,7 +491,8 @@ function itemChanged(E) {
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
     || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length
-    || Object.keys(E.addStats || {}).length || Object.keys(E.rebuild || {}).length);
+    || Object.keys(E.addStats || {}).length || Object.keys(E.rebuild || {}).length
+    || Object.keys(E.include || {}).length);
 }
 // Keep (or drop) the open edit's draft; called on every change.
 function saveDraft() {
@@ -1229,7 +1230,7 @@ async function pickHero(h) {
 
 function freshTalentEdit() {
   return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents",
-    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, rarity: "Common", q: "" };
+    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, include: {}, rarity: "Common", q: "" };
 }
 
 // A texture the hero's own entity names (talent icons, the portrait).
@@ -1434,6 +1435,25 @@ function addedStats(c, redraw, desc) {
     onclick: () => { list.push({ stat: "", values: [0, 0, 0, 0], percent: true }); save(); renderView(); } },
     "+ Add a stat"));
   return box;
+}
+
+// Owning this talent also switches on another of the hero's talents (`include`):
+// that talent's own effect runs, e.g. Short Wick's bomb that explodes on landing
+// given to Shapeshifter. Its rarity numbers take their Common value.
+function includeControl(c, redraw) {
+  const E = S.talentEdit;
+  E.include = E.include || {};
+  const others = S.talents.cards.filter(o => o.source !== c.source);
+  const sel = el("select", { "aria-label": "Also gives the effect of" },
+    el("option", { value: "", text: "(nothing)" }),
+    ...others.map(o => el("option", { value: o.source, text: (o.name || o.source) + (o.name ? " (" + o.source + ")" : "") })));
+  sel.value = E.include[c.source] || "";
+  sel.onchange = () => {
+    if (sel.value) E.include[c.source] = sel.value; else delete E.include[c.source];
+    redraw(); refresh();
+  };
+  return el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. Its numbers that scale with rarity use their Common value. Mention it in this card's text." },
+    "Also gives the effect of", sel);
 }
 
 // The talent builder: turn a talent's own effect off and make the card a new
@@ -1659,7 +1679,8 @@ function talentRow(c) {
   };
   const redraw = () => {
     TPREV.redraw(preview, paint);
-    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
+    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)
+      || (E.include || {})[c.source]));
   };
   const upd = () => {
     const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
@@ -1694,6 +1715,7 @@ function talentRow(c) {
   syncWarn();
   const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
   side.append(rebuildSwitch(c, desc, () => renderView()));
+  side.append(includeControl(c, redraw));
   if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
     talentNumbers(c, redraw));
   side.append(el("div", { class: "sect sectrow" }, el("span", { text: isRebuilt(c) ? "What the new talent does" : "Added stats" })),
@@ -2286,7 +2308,8 @@ function editPayload() {
     addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
       .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
         ...(a.after ? { after: a.after, seconds: a.seconds } : {}) }))),
-    rebuild: Object.keys(E.rebuild || {}) };
+    rebuild: Object.keys(E.rebuild || {}),
+    include: Object.entries(E.include || {}).map(([talent, from]) => ({ talent, from })) };
 }
 
 let lastToml = "", lastEdits = [], tick = 0;

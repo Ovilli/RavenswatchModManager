@@ -402,3 +402,47 @@ def test_game_state_is_told_apart_from_stats(wukong):
 def test_a_game_state_flag_is_refused(wukong, beowulf):
     with pytest.raises(TA.AddStatError, match="game state"):
         TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Is in cinematic", values=1)
+
+
+# --- include another talent's effect --------------------------------------------
+
+@pytest.fixture(scope="module")
+def red() -> bytes:
+    return hero_file("Red")
+
+
+def test_shapeshifter_can_include_short_wicks_instant_bomb(red):
+    # Short Wick's "explodes on landing" is a bool wired to its state, read by
+    # Hero_Red_Bomb; owning Shapeshifter now switches that state on too.
+    out = TA.include_talent(red, talent="Trait Active", other="Secondary Quick Bombs")
+    assert _refs(out, "Skill Trait Active", "while_active") == [
+        "Skill Trait Active Max Health Modifier", "Skill Secondary Quick Bombs"]
+    assert EC.check(out, red, name="Hero_Red") == []
+
+
+@pytest.mark.parametrize(("talent", "other", "msg"), [
+    ("Trait Active", "Trait Active", "itself"),
+    ("Trait Active", "Nope", "no talent"),
+])
+def test_a_bad_include_is_refused(red, talent, other, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.include_talent(red, talent=talent, other=other)
+
+
+def test_including_twice_is_refused(red):
+    out = TA.include_talent(red, talent="Trait Active", other="Secondary Quick Bombs")
+    with pytest.raises(TA.AddStatError, match="already includes"):
+        TA.include_talent(out, talent="Trait Active", other="Secondary Quick Bombs")
+
+
+def test_the_talent_kind_applies_include(tmp_path, red):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="wick", fields={
+        "hero": "Red",
+        "include": [{"talent": "Trait Active", "from": "Secondary Quick Bombs"}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    assert "Skill Secondary Quick Bombs" in _refs(path.read_bytes(), "Skill Trait Active",
+                                                  "while_active")

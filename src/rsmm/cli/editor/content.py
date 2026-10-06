@@ -773,7 +773,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
     during?, after?, seconds?}]`` (new stats a talent did not have) and
     ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
-    talent builder); only changed rows are sent."""
+    talent builder) and ``include`` = ``[{talent, from}]`` (owning ``talent``
+    also runs ``from``'s effect); only changed rows are sent."""
     hero = str(req.get("hero") or "")
     prefix = str(req.get("prefix") or "")
     if not hero:
@@ -855,6 +856,15 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     rebuild = req.get("rebuild") or []
     if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
         raise EditorError("rebuild takes a list of talent names")
+    include = []
+    for row in req.get("include") or []:
+        talent = str((row or {}).get("talent") or "")
+        other = str((row or {}).get("from") or "")
+        if not talent or not other:
+            raise EditorError("an included effect needs its talent and the talent it takes")
+        if talent == other:
+            raise EditorError(f"{talent}: a talent cannot include itself")
+        include.append({"talent": talent, "from": other})
     out: list[tuple[str, str, dict]] = []
     for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
@@ -867,7 +877,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if stats_by_file.get(file):
             fields["stats"] = stats_by_file[file]
         out.append(("talent", tid, fields))
-    if added or rebuild:
+    if added or rebuild or include:
         # Its own block, after the edits above: it grows the entity file, and the
         # talent kind starts each block from the copy the previous one wrote.
         # Inside it, `rebuild` runs before `add_stats`.
@@ -875,6 +885,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         block: dict = {"kind": "talent", "id": aid, "hero": hero}
         if rebuild:
             block["rebuild"] = list(dict.fromkeys(rebuild))
+        if include:
+            block["include"] = include
         if added:
             block["add_stats"] = added
         out.append(("talent", aid, block))

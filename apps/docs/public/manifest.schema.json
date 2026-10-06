@@ -561,6 +561,7 @@
                 "file": {},
                 "hero": {},
                 "id": {},
+                "include": {},
                 "int_patches": {},
                 "kind": {},
                 "rebuild": {},

@@ -434,3 +434,17 @@ def test_an_added_stat_for_a_while_after_an_ability_carries_its_seconds():
 def test_a_bad_after_is_refused(row, msg):
     with pytest.raises(E.EditorError, match=msg):
         _added(**row)
+
+
+def test_an_included_effect_joins_the_builder_block():
+    defs = E.talent_defs({"hero": "Red", "prefix": "r", "include": [
+        {"talent": "Trait Active", "from": "Secondary Quick Bombs"}]})
+    [(_kind, cid, fields)] = defs
+    assert cid == "r_builder"
+    assert fields["include"] == [{"talent": "Trait Active", "from": "Secondary Quick Bombs"}]
+
+
+@pytest.mark.parametrize("row", [{"talent": "Trait Active"}, {"talent": "A", "from": "A"}])
+def test_a_bad_include_row_is_refused(row):
+    with pytest.raises(E.EditorError):
+        E.talent_defs({"hero": "Red", "prefix": "r", "include": [row]})

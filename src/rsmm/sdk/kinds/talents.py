@@ -82,6 +82,13 @@ Fields:
                                ``add_stats`` numbers start at ``{0}``; give the
                                card new text with a ``skill`` block. Runs before
                                ``add_stats``.
+    ``include``                list of ``{talent, from}``: owning ``talent``
+                               also switches on ``from``'s effect (same hero),
+                               e.g. ``{talent = "Trait Active", from =
+                               "Secondary Quick Bombs"}`` gives Red's
+                               Shapeshifter Short Wick's bomb that explodes on
+                               landing. ``from``'s rarity numbers take their
+                               Common value. Runs after ``rebuild``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -363,11 +370,19 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         rebuild = [rebuild]
     if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
         raise ContentError(f"talent {defn.id}: rebuild must be a list of talent names")
+    include = defn.fields.get("include") or []
+    if isinstance(include, dict):
+        include = [include]
+    if not isinstance(include, list) or not all(
+            isinstance(e, dict) and isinstance(e.get("talent"), str) and e["talent"]
+            and isinstance(e.get("from"), str) and e["from"] for e in include):
+        raise ContentError(f"talent {defn.id}: include must be a list of "
+                           "{talent, from} talent names")
     if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
-            or add_stats or rebuild):
+            or add_stats or rebuild or include):
         raise ContentError(
             f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes, stats, add_stats, rebuild or int_patches given")
+            f"clone_nodes, stats, add_stats, rebuild, include or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in hero_dir.entity_files()
@@ -411,6 +426,20 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
             _log.info("talent %s/%s: %s rebuilt (its effect is off; %d card number(s) "
                       "cleared)", mod_id, defn.id, talent, cleared)
+
+    for entry in include:
+        from ...engine import talent_add_stat as TA
+        p = _home(entry["talent"])
+        if _home(entry["from"]) != p:
+            raise ContentError(f"talent {defn.id}: {entry['talent']!r} and {entry['from']!r} "
+                               "are in different entity files")
+        try:
+            edited[p] = TA.include_talent(edited.get(p) or p.read_bytes(),
+                                          talent=entry["talent"], other=entry["from"])
+        except TA.AddStatError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+        _log.info("talent %s/%s: %s now also runs %s", mod_id, defn.id,
+                  entry["talent"], entry["from"])
 
     if add_stats:
         from ...engine import talent_add_stat as TA

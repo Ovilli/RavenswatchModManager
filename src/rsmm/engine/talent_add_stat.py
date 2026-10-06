@@ -225,6 +225,41 @@ def rebuild_talent(raw: bytes, *, talent: str, seed: str = "") -> tuple[bytes, i
         raise AddStatError(f"talent {talent!r}: {e}") from e
 
 
+def include_talent(raw: bytes, *, talent: str, other: str) -> bytes:
+    """Make owning ``talent`` also switch on ``other``'s effect (same hero).
+
+    A talent's effect hangs off its owned state: modifiers in its lists, and
+    gameplay nodes that TEST it. Red's Short Wick is the case that asked for
+    this: its "bomb explodes on landing" is `Skill Secondary Ignite Quick Bombs
+    Value`, a bool wired to "Short Wick's state is on", which the bomb reads
+    (Pam, 2026-10-06: keep it available to Shapeshifter players). So ``other``'s
+    owned state is added to ``talent``'s ``while_active``: while ``talent`` is
+    owned, ``other``'s state is on and everything it does or gates runs. States
+    holding states in ``while_active`` is shipped data (Wukong's DEFENSE,
+    Beowulf's Damage Aura). Numbers keyed on ``other``'s rarity read its own
+    card's tier, which an unowned card does not have: they take the selector's
+    last (fallback) entry, the Common value in every shipped talent selector."""
+    if talent == other:
+        raise AddStatError(f"talent {talent!r} cannot include itself")
+    graph = EG.parse(raw)
+    ctls = {n: next((c for c in graph.components if c.name == f"Skill Controller {n}"), None)
+            for n in (talent, other)}
+    for n, c in ctls.items():
+        if c is None:
+            raise AddStatError(f"no talent {n!r} here (no 'Skill Controller {n}')")
+    mine = owned_state(graph, ctls[talent], talent)
+    theirs = owned_state(graph, ctls[other], other)
+    already = [r for r in mine.refs if r.guid == theirs.guid]
+    if already:
+        raise AddStatError(f"talent {talent!r} already includes {other!r}")
+    ef = GE.EntityFile(raw)
+    try:
+        ef.add_ref(mine.name, "while_active", theirs.name)
+        return ef.to_bytes()
+    except GE.EntityEditError as e:
+        raise AddStatError(f"talent {talent!r}: {e}") from e
+
+
 def _empty_state(ef: GE.EntityFile, name: str) -> None:
     """Remove every reference from every list of state ``name``."""
     for f in EF.fields(ef.component(name)):
