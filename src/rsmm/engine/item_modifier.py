@@ -134,6 +134,74 @@ def stat_catalog() -> dict[str, int]:
     return {**STAT_KEYS, **extra} if extra else STAT_KEYS
 
 
+@dataclass(frozen=True)
+class ModifierSurvey:
+    """How the game's shipped modifiers use each stat key (counts per key)."""
+    used: dict[int, int]      # every modifier naming the key
+    on_hit: dict[int, int]    # EMPTY targets list: carried onto its victims
+    on_self: dict[int, int]   # targets exactly one self collector
+
+
+@functools.cache
+def modifier_survey() -> ModifierSurvey:
+    """Walk every shipped entity's modifiers once (~3 s) and count, per stat
+    key, how they are used. Empty when no game data is reachable."""
+    from . import cooked, corpus
+    from . import entity_fields as EF
+    from . import entity_graph as EG
+    from .entity_append import _directory
+    used: dict[int, int] = {}
+    hit: dict[int, int] = {}
+    own: dict[int, int] = {}
+    for rel in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen"):
+        raw = corpus.read(rel)
+        if not raw or b"Modifier" not in raw:
+            continue
+        try:
+            graph = EG.parse(raw)
+            cf = cooked.parse(raw)
+            names = [c.name for c in cf.classes]
+            _n, directory = _directory(cf)
+        except (ValueError, IndexError, struct.error):
+            continue
+        for c in graph.components:
+            if c.cls != _MODIFIER_CLASS:
+                continue
+            try:
+                fs = {f.name: f for f in EF.fields(c)}
+                t, k = fs["targets"], fs["modifier_id"]
+                n = struct.unpack_from("<I", c.body, t.offset + 8)[0]
+                key = struct.unpack_from("<I", c.body, k.offset)[0]
+                ids = struct.unpack_from(f"<{n}I", c.body, t.offset + 12) if n else ()
+            except (KeyError, ValueError, struct.error):
+                continue
+            used[key] = used.get(key, 0) + 1
+            kinds = {names[directory[i]] for i in ids
+                     if i < len(directory) and directory[i] < len(names)}
+            if not n:
+                hit[key] = hit.get(key, 0) + 1
+            elif kinds == {"oCSelfEntityCollectorSettings"}:
+                own[key] = own.get(key, 0) + 1
+    return ModifierSurvey(used, hit, own)
+
+
+def game_state_keys() -> frozenset[int]:
+    """Catalog keys that are game state, not stats: "Is in cinematic", "Is
+    day", "Current map id"... The engine registers its values from a few
+    functions (``data/stat_keys.json`` ``registry``); a registry NONE of whose
+    keys any shipped modifier names holds state, not stats (2026-10-06: the
+    app/scene, day-night and cheat registries, 81 keys, 0 modifiers; the two
+    character registries are used throughout). Decided by usage, not by address,
+    so a patch that moves the functions changes nothing. Empty when no game
+    data is reachable."""
+    from ._stat_keys_gen import STAT_REGISTRY
+    used = modifier_survey().used
+    if not used:
+        return frozenset()
+    live = {reg for key, reg in STAT_REGISTRY.items() if used.get(key)}
+    return frozenset(key for key, reg in STAT_REGISTRY.items() if reg not in live)
+
+
 def data_value_key(label: str) -> int:
     """The key of a data-defined entity value, from its label.
 

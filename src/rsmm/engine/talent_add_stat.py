@@ -32,7 +32,6 @@ numbers start at ``{0}``.
 
 from __future__ import annotations
 
-import functools
 import struct
 from dataclasses import dataclass
 
@@ -40,7 +39,7 @@ from . import entity_fields as EF
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
 from . import talent_values as TV
-from .item_modifier import ItemModifierError, resolve_stat, set_modifier_stat
+from .item_modifier import ItemModifierError, modifier_survey, resolve_stat, set_modifier_stat
 
 #: The proven donor: a self-targeted permanent stat modifier.
 DONOR_HERO = "Beowulf"
@@ -123,7 +122,6 @@ class AddStatError(ValueError):
     """The talent cannot take a stat bonus this way; the message says why."""
 
 
-@functools.cache
 def applied_on_hit() -> frozenset[int]:
     """Stat keys the game applies to whoever is HIT, never to its owner.
 
@@ -133,40 +131,10 @@ def applied_on_hit() -> frozenset[int]:
     and almost never through a self collector (surveyed 2026-10-06: Vulnerable
     11 on hit vs 1 self; the rest 0 self). ``add_stat`` builds a SELF modifier,
     so one of these would debuff the player's own hero. Read from the game's
-    files, so it follows a patch; empty when no game data is reachable."""
-    from . import cooked, corpus
-    from .entity_append import _directory
-    hit: dict[int, int] = {}
-    own: dict[int, int] = {}
-    for rel in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen"):
-        raw = corpus.read(rel)
-        if not raw or b"Modifier" not in raw:
-            continue
-        try:
-            graph = EG.parse(raw)
-            cf = cooked.parse(raw)
-            names = [c.name for c in cf.classes]
-            _n, directory = _directory(cf)
-        except (ValueError, IndexError, struct.error):
-            continue
-        for c in graph.components:
-            if c.cls != "oCEntityCpntModifierSettings":
-                continue
-            try:
-                fs = {f.name: f for f in EF.fields(c)}
-                t, k = fs["targets"], fs["modifier_id"]
-                n = struct.unpack_from("<I", c.body, t.offset + 8)[0]
-                key = struct.unpack_from("<I", c.body, k.offset)[0]
-                ids = struct.unpack_from(f"<{n}I", c.body, t.offset + 12) if n else ()
-            except (KeyError, ValueError, struct.error):
-                continue
-            kinds = {names[directory[i]] for i in ids
-                     if i < len(directory) and directory[i] < len(names)}
-            if not n:
-                hit[key] = hit.get(key, 0) + 1
-            elif kinds == {"oCSelfEntityCollectorSettings"}:
-                own[key] = own.get(key, 0) + 1
-    return frozenset(k for k, v in hit.items() if v > own.get(k, 0))
+    files (:func:`item_modifier.modifier_survey`), so it follows a patch; empty
+    when no game data is reachable."""
+    survey = modifier_survey()
+    return frozenset(k for k, v in survey.on_hit.items() if v > survey.on_self.get(k, 0))
 
 
 @dataclass(frozen=True)
@@ -319,6 +287,10 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
         key = resolve_stat(stat)
     except ItemModifierError as e:
         raise AddStatError(str(e)) from e
+    from .item_modifier import game_state_keys
+    if key in game_state_keys():
+        raise AddStatError(f"{stat!r} is game state (scene, menu, day/night), not a stat "
+                           "a modifier can change")
     if key in applied_on_hit():
         raise AddStatError(
             f"{stat!r} is something the game puts on whoever is hit, and an added stat "

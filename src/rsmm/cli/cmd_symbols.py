@@ -959,6 +959,15 @@ def _gen_python_stats() -> str:
         lines.append(f"    {json.dumps(name, ensure_ascii=False)}: 0x{key:08x},")
     lines.append("}")
     lines.append("")
+    # Which engine function registered each key. The character registries hold
+    # the stats modifiers change; others hold game state ("Is in cinematic") that
+    # no shipped modifier ever names, which the editors use to leave those out.
+    lines.append("# key -> the engine function that registers it")
+    lines.append("STAT_REGISTRY: dict[int, str] = {")
+    for rec in sorted(records, key=lambda r: r.get("key") or 0):
+        lines.append(f"    0x{rec.get('key') or 0:08x}: {json.dumps(rec.get('registry') or '')},")
+    lines.append("}")
+    lines.append("")
     return "\n".join(lines)
 
 

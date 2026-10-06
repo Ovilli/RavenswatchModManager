@@ -222,7 +222,11 @@ def test_the_stat_list_puts_numbers_on_the_stats_items_give():
         pytest.skip("shipped items not available")
     stats = {s["name"]: s["used"] for s in E.stats()}
     assert stats["Attack power"] > 0 and stats["Armour"] > 0
-    assert len(stats) > 200
+    # Game state the engine keeps beside the stats is not offered (Pam: "Is in
+    # book scene" ... "should probably be removed"); real stats all stay.
+    assert not any(n.startswith(("Is in ", "GameModifier")) for n in stats)
+    assert "Ability_Charge_Trait" in stats and "Strength" in stats
+    assert len(stats) > 150
 
 
 def test_card_textures_are_an_allowlist():

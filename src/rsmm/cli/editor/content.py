@@ -191,7 +191,8 @@ def _text_values() -> dict[str, str]:
 def stats() -> list[dict]:
     """Every stat a modifier can change, by the engine's own display name, with
     how many shipped item effects give it (the picker lists those first),
-    whether the game only ever puts it on whoever is hit (``onHit``: a talent's
+    (game state such as "Is in cinematic" is left out), whether the game only
+    ever puts it on whoever is hit (``onHit``: a talent's
     added stat lands on the hero itself, so the talent picker refuses those) and
     the range of amounts they give (``amounts``: ``[min, max]`` of the
     magnitudes, or None). Stats differ in unit -- armour is flat points, crit
@@ -218,10 +219,14 @@ def stats() -> list[dict]:
                 spans.setdefault(m.key, []).append(abs(n))
     from rsmm.engine.talent_add_stat import applied_on_hit
     on_hit = applied_on_hit()
+    # Game state the engine keeps beside the stats ("Is in cinematic", "Is
+    # day") is not something a modifier changes: left out of every picker.
+    state = IM.game_state_keys()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
              "onHit": k in on_hit,
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
-            for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
+            for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
+            if k not in state]
 
 
 #: The engine's per-ability stat suffix -> the button the cards name it by.

@@ -561,7 +561,7 @@ function renderPending(edits, errors) {
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
   const grants = scriptChanged(), prog = programChanged(), abil = abilityPending();
-  const total = edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) + (abil ? 1 : 0);
+  const total = resetCount(edits);
   if (!total) return;
   // One button for all of it: every item, hero, test grant and block change at once.
   const everything = el("button", { type: "button", class: "resetall", title: "Drop every change in every tab, back to what the game ships",
@@ -594,11 +594,21 @@ function renderPending(edits, errors) {
   }
   box.append(everything);
 }
+// What "Reset everything" would drop. Test grants and blocks count when they differ
+// from the opened mod's OR are not empty: a mod's own grants are reset too.
+function resetCount(edits) {
+  const grants = scriptChanged() || scriptNorm(S.script) !== NO_GRANTS;
+  const prog = programChanged() || programUsed();
+  return edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) + (abilityPending() ? 1 : 0);
+}
 // "Actually reset everything": the per-view Reset all only undoes the item or hero
-// that is open; this drops every pending change in every tab.
+// that is open; this drops every pending change in every tab, back to what the game
+// ships. Test grants and blocks are EMPTIED, not put back to the opened mod's: going
+// back to the mod's copy kept a mod's item grant, so a reset still handed the item
+// out (saving then takes the editor's init.lua section out).
 function resetEverything() {
   const edits = pendingEdits(), abil = abilityPending();
-  const n = edits.length + (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0) + (abil ? 1 : 0);
+  const n = resetCount(edits);
   if (!n || !confirm(`Drop all ${n} change${n > 1 ? "s" : ""} in every tab (items, talents, abilities, test grants and blocks)? This cannot be undone.`)) return;
   if (abil) { try { window.top.rsmmReset("abilities"); } catch {} }
   for (const t of ["items", "talents"]) {
@@ -607,8 +617,8 @@ function resetEverything() {
   }
   if (S.item) S.itemEdit = freshItemEdit();
   if (S.hero) S.talentEdit = freshTalentEdit();
-  S.script = JSON.parse(S.scriptSaved); saveScript();
-  S.program = JSON.parse(S.programSaved); saveProgram();
+  S.script = emptyScript(); saveScript();
+  S.program = emptyProgram(); saveProgram();
   S.restored = "";
   renderView(); renderList(); refresh();
   flash("Every change dropped.", "muted");

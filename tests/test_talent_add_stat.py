@@ -384,3 +384,21 @@ def test_two_stats_on_one_talent_in_one_block_get_their_own_guids(tmp_path, wuko
     })
     [path] = talents.emit("test-mod", defn, tmp_path)
     assert len(comp(path.read_bytes(), "Skill Trait Fire", "StateSettings").refs) == 2
+
+
+# --- game state is not a stat ---------------------------------------------------
+
+def test_game_state_is_told_apart_from_stats(wukong):
+    from rsmm.engine import item_modifier as IM
+    state = IM.game_state_keys()
+    for flag in ("Is in cinematic", "Is in book scene", "Is day", "Current map id",
+                 "Is Session Host", "Cheat version"):
+        assert TA.resolve_stat(flag) in state, flag
+    for stat in ("Armour", "Attack power", "CD reduce trait", "Strength", "Vulnerable",
+                 "Ability_Charge_Trait", "Basic Attack Speed"):
+        assert TA.resolve_stat(stat) not in state, stat
+
+
+def test_a_game_state_flag_is_refused(wukong, beowulf):
+    with pytest.raises(TA.AddStatError, match="game state"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Is in cinematic", values=1)
