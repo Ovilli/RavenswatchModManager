@@ -2,6 +2,16 @@
   "generated": "2026-10-06",
   "entries": [
     {
+      "version": "5.9.9",
+      "date": "2026-10-06",
+      "summary": "Mods that need your hero (like the camera mod) now work for everyone, and the Log starts empty until a game runs.",
+      "highlights": [
+        "Fixed: the camera mod and other mods that read or change your hero did nothing unless a hidden loader setting had been switched on by hand. Settings > Loader features now has a Hero capture switch, and a mod that needs it switches it on for you when you apply.",
+        "Log: opens empty until a game is running, then shows that game live. Pick Last run or any earlier run in the list to read an old log.",
+        "For mod makers: `loader_flags = [\"RSMM_ENABLE_HERO_CAPTURE\"]` in [mod] asks for hero capture while your mod is enabled."
+      ]
+    },
+    {
       "version": "5.9.8",
       "date": "2026-10-06",
       "summary": "Talent builder: give one talent another talent's effect, and the Log no longer calls a finished game the current run.",
