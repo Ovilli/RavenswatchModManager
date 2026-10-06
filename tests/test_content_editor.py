@@ -388,3 +388,45 @@ def test_an_item_missing_from_the_text_catalog_still_gets_its_icon():
         pytest.skip("no game data (no mirror, no install)")
     got = {i["id"]: i["icon"] for i in E.items()}
     assert got.get("Increase_Damage_To_Boss") == "Icon_Object_VoodooDoll"
+
+
+# --- stat picker -------------------------------------------------------------
+
+@pytest.mark.parametrize(("name", "aka"), [
+    ("CD reduce trait", "TRAIT cooldown"),        # Pam searched "trait cooldown": no hit
+    ("CD reduce secondary", "SPECIAL cooldown"),
+    ("Attack power primary", "POWER damage"),
+    ("Crit chance defensive", "DEFENSE crit chance"),
+    ("Ability_Charge_Primary", "+ POWER charge"),
+    ("CD reduce", "all cooldowns"),
+    ("Armour", None),
+    ("Attack power", None),
+])
+def test_a_per_ability_stat_is_searchable_by_the_cards_words(name, aka):
+    assert E.stat_aka(name) == aka
+
+
+# --- talent builder: when an added stat applies ----------------------------------
+
+def _added(**row):
+    base = {"talent": "Trait Fire", "stat": "Attack power", "values": [0.1, 0.2, 0.3, 0.4]}
+    defs = E.talent_defs({"hero": "SunWukong", "prefix": "w", "addStats": [{**base, **row}]})
+    [(_kind, _id, fields)] = defs
+    return fields["add_stats"][0]
+
+
+def test_an_added_stat_for_a_while_after_an_ability_carries_its_seconds():
+    assert _added(after="defense", seconds=4) == {
+        "talent": "Trait Fire", "stat": "Attack power", "values": [0.1, 0.2, 0.3, 0.4],
+        "after": "DEFENSE", "seconds": 4.0}
+
+
+@pytest.mark.parametrize(("row", "msg"), [
+    ({"after": "DEFENSE"}, "not a number"),
+    ({"after": "DEFENSE", "seconds": 0}, "above 0"),
+    ({"after": "JUMP", "seconds": 3}, "unknown ability"),
+    ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "not both"),
+])
+def test_a_bad_after_is_refused(row, msg):
+    with pytest.raises(E.EditorError, match=msg):
+        _added(**row)

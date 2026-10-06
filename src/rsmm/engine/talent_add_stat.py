@@ -32,9 +32,11 @@ numbers start at ``{0}``.
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass
 
+from . import entity_fields as EF
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
 from . import talent_values as TV
@@ -52,6 +54,16 @@ TIERS = TV.TIERS  # Common, Rare, Epic, Legendary
 DONOR_DURING_HERO = "Aladdin"
 DONOR_DURING_SELECTOR = "Ability Trait Wish 1 Extra Damage Selector"
 
+#: "For N s after X": an event state that switches a window state off and on
+#: (copied from Beowulf's Retaliation, ``Skill Attack Flurry``, whose event
+#: restarts a timer from DEFENSE) and a copy of its timer, run by the window, whose
+#: ``state`` ENDS the window after N s. That is the shape of Beowulf's Damage Aura
+#: and Dragon Empowered UI: the event switches the state, the timer only ends it.
+#: Both come from :data:`DONOR_HERO`'s file, already read for the modifier. The
+#: bonus is then "during" the window.
+DONOR_TIMER = "Skill Attack Flurry Timer"
+DONOR_RESTART = "Event Skill Attack Flurry Reset Timer"
+
 #: Button -> the hero's controller for it. The controller is what the button runs,
 #: and its first State reference is the state active while the ability is used.
 #: Its NAME is the button's; the state's name is the designers' and does not
@@ -67,10 +79,13 @@ ABILITY_CONTROLLERS = {
 ABILITIES = (*ABILITY_CONTROLLERS, "DASH")
 
 
-def ability_state(graph: EG.EntityGraph, ability: str) -> EG.Component:
+def ability_state(graph: EG.EntityGraph, ability: str, *,
+                  momentary_ok: bool = False) -> EG.Component:
     """The state that is active while ``ability`` (ATTACK, POWER, SPECIAL,
     DEFENSE, TRAIT or DASH) is being used, or :class:`AddStatError` saying why
-    this hero has none to read."""
+    this hero has none to read. ``momentary_ok`` accepts a state that only
+    flicks on as the ability starts: useless for "during", exactly right for
+    "after" (which only needs the start)."""
     ability = ability.upper()
     if ability not in ABILITIES:
         raise AddStatError(f"unknown ability {ability!r}; use one of {', '.join(ABILITIES)}")
@@ -96,7 +111,7 @@ def ability_state(graph: EG.EntityGraph, ability: str) -> EG.Component:
     if hit is None:
         raise AddStatError(f"this hero has no state that marks {ability} as in use, "
                            "so 'during' cannot be built for it")
-    if hit.name.startswith("Event "):
+    if hit.name.startswith("Event ") and not momentary_ok:
         # A momentary event state flicks on at activation and off again: "during"
         # on it would almost never apply. Merlin's POWER/DEFENSE/TRAIT are like this.
         raise AddStatError(f"this hero's {ability} only signals its start ({hit.name!r}), "
@@ -106,6 +121,52 @@ def ability_state(graph: EG.EntityGraph, ability: str) -> EG.Component:
 
 class AddStatError(ValueError):
     """The talent cannot take a stat bonus this way; the message says why."""
+
+
+@functools.cache
+def applied_on_hit() -> frozenset[int]:
+    """Stat keys the game applies to whoever is HIT, never to its owner.
+
+    A modifier names its targets as collector sub-objects; an EMPTY list means
+    something else carries it onto its victims (an attack, a zone). Ignite,
+    Bleed, Chilled, Vulnerable, Weak, Marked, Rooted ... are applied that way
+    and almost never through a self collector (surveyed 2026-10-06: Vulnerable
+    11 on hit vs 1 self; the rest 0 self). ``add_stat`` builds a SELF modifier,
+    so one of these would debuff the player's own hero. Read from the game's
+    files, so it follows a patch; empty when no game data is reachable."""
+    from . import cooked, corpus
+    from .entity_append import _directory
+    hit: dict[int, int] = {}
+    own: dict[int, int] = {}
+    for rel in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen"):
+        raw = corpus.read(rel)
+        if not raw or b"Modifier" not in raw:
+            continue
+        try:
+            graph = EG.parse(raw)
+            cf = cooked.parse(raw)
+            names = [c.name for c in cf.classes]
+            _n, directory = _directory(cf)
+        except (ValueError, IndexError, struct.error):
+            continue
+        for c in graph.components:
+            if c.cls != "oCEntityCpntModifierSettings":
+                continue
+            try:
+                fs = {f.name: f for f in EF.fields(c)}
+                t, k = fs["targets"], fs["modifier_id"]
+                n = struct.unpack_from("<I", c.body, t.offset + 8)[0]
+                key = struct.unpack_from("<I", c.body, k.offset)[0]
+                ids = struct.unpack_from(f"<{n}I", c.body, t.offset + 12) if n else ()
+            except (KeyError, ValueError, struct.error):
+                continue
+            kinds = {names[directory[i]] for i in ids
+                     if i < len(directory) and directory[i] < len(names)}
+            if not n:
+                hit[key] = hit.get(key, 0) + 1
+            elif kinds == {"oCSelfEntityCollectorSettings"}:
+                own[key] = own.get(key, 0) + 1
+    return frozenset(k for k, v in hit.items() if v > own.get(k, 0))
 
 
 @dataclass(frozen=True)
@@ -177,15 +238,11 @@ def rebuild_talent(raw: bytes, *, talent: str, seed: str = "") -> tuple[bytes, i
     state = owned_state(graph, ctl, talent)
     _s, _sel, fmt = talent_parts(graph, talent)
 
-    from . import entity_fields as EF
     ef = GE.EntityFile(raw)
     try:
         new = rebuilt_name(talent)
         ef.clone([state.name], rename={state.name: new}, seed=(seed or talent) + ":rebuild")
-        for f in EF.fields(ef.component(new)):
-            if f.kind == "ref[]":
-                for _ in range(len(f.items)):
-                    ef.remove_ref(new, f.name, 0)
+        _empty_state(ef, new)
         moved = 0
         for f in EF.fields(ef.component(ctl.name)):
             if f.kind == "ref" and ctl.body[f.offset + 8:f.offset + 24] == state.guid:
@@ -198,6 +255,14 @@ def rebuild_talent(raw: bytes, *, talent: str, seed: str = "") -> tuple[bytes, i
         return ef.to_bytes(), cleared
     except GE.EntityEditError as e:
         raise AddStatError(f"talent {talent!r}: {e}") from e
+
+
+def _empty_state(ef: GE.EntityFile, name: str) -> None:
+    """Remove every reference from every list of state ``name``."""
+    for f in EF.fields(ef.component(name)):
+        if f.kind == "ref[]":
+            for _ in range(len(f.items)):
+                ef.remove_ref(name, f.name, 0)
 
 
 def _float_selector(raw: bytes, graph: EG.EntityGraph, group: str, ctl_guid: bytes,
@@ -237,17 +302,27 @@ def normalise_values(values) -> dict[str, float]:
 
 def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
              values, percent: bool = True, seed: str = "", during: str | None = None,
-             during_donor_raw: bytes | None = None) -> tuple[bytes, AddedStat]:
+             during_donor_raw: bytes | None = None, after: str | None = None,
+             seconds: float | None = None) -> tuple[bytes, AddedStat]:
     """Return ``raw`` (the hero entity holding ``talent``) with the stat bonus added.
 
     ``during`` (an ability, e.g. ``"DEFENSE"``) makes the bonus apply only while
     that ability is in use: the modifier's amount reads a copy of
     :data:`DONOR_DURING_SELECTOR` ("ability state active -> the per-rarity
-    number, else 0"), taken from ``during_donor_raw`` (the Aladdin entity)."""
+    number, else 0"), taken from ``during_donor_raw`` (the Aladdin entity).
+
+    ``after`` (an ability) with ``seconds`` makes it apply for that long each
+    time the ability is used, restarting on every use: the ability switches a
+    window state on (off and on again if it already was) and the window's timer
+    (:data:`DONOR_TIMER`) ends it; read through the same selector as ``during``."""
     try:
         key = resolve_stat(stat)
     except ItemModifierError as e:
         raise AddStatError(str(e)) from e
+    if key in applied_on_hit():
+        raise AddStatError(
+            f"{stat!r} is something the game puts on whoever is hit, and an added stat "
+            f"applies to the hero itself, so {talent!r} would debuff its own hero")
     amounts = normalise_values(values)
 
     graph = EG.parse(raw)
@@ -257,26 +332,62 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
 
     tag = f"{key:08x}"
     cond_state = None
+    hook = None
+    if during and after:
+        raise AddStatError("give 'during' or 'after', not both")
     if during:
         cond_state = ability_state(graph, during)
         tag += f" During {during.upper()}"
-        if during_donor_raw is None:
-            raise AddStatError(f"'during' needs the game's {DONOR_DURING_HERO} files")
+    if after:
+        if not isinstance(seconds, int | float) or isinstance(seconds, bool) or seconds <= 0:
+            raise AddStatError(f"'after' needs how many seconds it lasts, got {seconds!r}")
+        hook = ability_state(graph, after, momentary_ok=True)
+        tag += f" After {after.upper()}"
+    if (during or after) and during_donor_raw is None:
+        raise AddStatError(f"'{'during' if during else 'after'}' needs the game's "
+                           f"{DONOR_DURING_HERO} files")
     new_sel = f"Skill {talent} Added {tag} Selector"
     new_mod = f"Skill {talent} Added {tag} Modifier"
     new_cond = f"Skill {talent} Added {tag} Condition Selector"
+    new_win = f"Skill {talent} Added {tag} Window"
+    new_timer = f"Skill {talent} Added {tag} Window Timer"
+    new_restart = f"Event Skill {talent} Added {tag} Window Restart"
     if any(c.name in (new_sel, new_mod) for c in graph.components):
         raise AddStatError(f"talent {talent!r} already gets this stat from an earlier entry")
 
     ef = GE.EntityFile(raw)
     donor = GE.EntityFile(donor_raw)
-    seed = seed or f"{talent}:{tag}"
+    # The tag is always part of it: the talent kind passes one seed per block,
+    # and two stats on one talent copy the same selector, so without the tag
+    # their copies minted the same GUID and the second entry failed.
+    seed = f"{seed or talent}:{tag}"
     try:
         ef.clone([sel.name], rename={sel.name: new_sel}, seed=seed + ":sel")
         donor_mod = donor.component(DONOR_MODIFIER)
         ef.clone([DONOR_MODIFIER], rename={DONOR_MODIFIER: new_mod},
                  group={donor_mod.group: f"Skill {talent}"}, source=donor, seed=seed + ":mod")
         amount = new_sel
+        if hook is not None:
+            # The window: an empty copy of the talent's own state. Using the
+            # ability fires a copy of Retaliation's restart event, re-pointed to
+            # switch the WINDOW off and on; the window runs a copy of the timer,
+            # whose `state` ENDS the window when `seconds` run out. A timer's
+            # `state` never switches a state on (playtest 2026-10-06: pointing
+            # only the timer at the window, the window never came on); this is
+            # Beowulf's Damage Aura shape (proc event -> state, state -> timer).
+            ef.clone([state.name], rename={state.name: new_win}, seed=seed + ":win")
+            _empty_state(ef, new_win)
+            dgrp = donor.component(DONOR_TIMER).group
+            ef.clone([DONOR_TIMER, DONOR_RESTART],
+                     rename={DONOR_TIMER: new_timer, DONOR_RESTART: new_restart},
+                     group={dgrp: f"Skill {talent}"}, source=donor, seed=seed + ":timer")
+            ef.set_ref(new_restart, "activates[0]", new_win)
+            ef.set_ref(new_restart, "deactivates?[0]", new_win)
+            ef.add_ref(new_win, "while_active", new_timer)
+            ef.set_ref(new_timer, "state", new_win)
+            ef.set_value(new_timer, "duration", float(seconds))
+            ef.add_ref(hook.name, "activates", new_restart)
+            cond_state = ef.component(new_win)
         if cond_state is not None:
             src = GE.EntityFile(during_donor_raw)
             grp = src.component(DONOR_DURING_SELECTOR).group

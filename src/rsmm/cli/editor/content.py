@@ -190,7 +190,9 @@ def _text_values() -> dict[str, str]:
 @_once
 def stats() -> list[dict]:
     """Every stat a modifier can change, by the engine's own display name, with
-    how many shipped item effects give it (the picker lists those first) and
+    how many shipped item effects give it (the picker lists those first),
+    whether the game only ever puts it on whoever is hit (``onHit``: a talent's
+    added stat lands on the hero itself, so the talent picker refuses those) and
     the range of amounts they give (``amounts``: ``[min, max]`` of the
     magnitudes, or None). Stats differ in unit -- armour is flat points, crit
     chance a fraction -- so the page warns when an effect swapped to another
@@ -214,9 +216,37 @@ def stats() -> list[dict]:
             n = by_label.get((amounts.get(m.name) or {}).get("label"))
             if n:
                 spans.setdefault(m.key, []).append(abs(n))
-    return [{"name": n, "used": used.get(k, 0), "key": _hex(k),
+    from rsmm.engine.talent_add_stat import applied_on_hit
+    on_hit = applied_on_hit()
+    return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
+             "onHit": k in on_hit,
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())]
+
+
+#: The engine's per-ability stat suffix -> the button the cards name it by.
+_ABILITY_WORD = {"basic": "ATTACK", "primary": "POWER", "secondary": "SPECIAL",
+                 "defensive": "DEFENSE", "trait": "TRAIT", "dash": "DASH",
+                 "ultimate": "ULTIMATE"}
+
+
+def stat_aka(name: str) -> str | None:
+    """A stat as the talent cards word it, for the picker to search and show.
+
+    The engine names stats by input slot and abbreviation (``CD reduce trait``,
+    ``Ability_Charge_Primary``); players search the card's words ("trait
+    cooldown", "power charge") and found nothing."""
+    m = re.fullmatch(r"(CD reduce|Attack power|Crit chance|Life on hit) (\w+)", name)
+    if m and m.group(2).lower() in _ABILITY_WORD:
+        what = {"CD reduce": "cooldown", "Attack power": "damage"}.get(
+            m.group(1), m.group(1).lower())
+        return f"{_ABILITY_WORD[m.group(2).lower()]} {what}"
+    if name == "CD reduce":
+        return "all cooldowns"
+    m = re.fullmatch(r"Ability_Charge_(\w+)", name)
+    if m and m.group(1).lower() in _ABILITY_WORD:
+        return f"+ {_ABILITY_WORD[m.group(1).lower()]} charge"
+    return None
 
 
 @_once
@@ -388,21 +418,22 @@ def _add_stat_info(main: bytes):
     ef = GE.EntityFile(main)
     # Abilities this hero's talents can be conditioned on ("during"): the ones
     # whose in-use state can be found. Same for every card of the hero.
-    during = []
+    during, after = [], []
     for ability in TA.ABILITIES:
-        try:
-            TA.ability_state(graph, ability)
-            during.append(ability)
-        except TA.AddStatError:
-            pass
+        for out, momentary in ((during, False), (after, True)):
+            try:
+                TA.ability_state(graph, ability, momentary_ok=momentary)
+                out.append(ability)
+            except TA.AddStatError:
+                pass
 
     def info(source: str) -> dict:
         try:
             _state, _sel, fmt = TA.talent_parts(graph, source)
         except TA.AddStatError as e:
-            return {"ok": False, "why": str(e), "nextSlot": None, "during": []}
+            return {"ok": False, "why": str(e), "nextSlot": None, "during": [], "after": []}
         slots = len(ef._format_slots(fmt)[0]) if fmt is not None else None
-        return {"ok": True, "why": "", "nextSlot": slots, "during": during}
+        return {"ok": True, "why": "", "nextSlot": slots, "during": during, "after": after}
     return info
 
 
@@ -734,10 +765,10 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``req``: ``hero``, ``prefix`` (the block-id stem), ``values`` =
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
     ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
-    stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent}]``
-    (new stats a talent did not have) and ``rebuild`` = ``[talent]`` (talents
-    whose own effect is turned off, the talent builder); only changed rows are
-    sent."""
+    stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
+    during?, after?, seconds?}]`` (new stats a talent did not have) and
+    ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
+    talent builder); only changed rows are sent."""
     hero = str(req.get("hero") or "")
     prefix = str(req.get("prefix") or "")
     if not hero:
@@ -797,14 +828,25 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         values = row.get("values")
         if not isinstance(values, list) or len(values) != 4:
             raise EditorError(f"{talent}: give a number for each rarity")
+        abilities = ("ATTACK", "POWER", "SPECIAL", "DEFENSE", "TRAIT", "DASH")
         during = row.get("during") or None
-        if during is not None and str(during).upper() not in (
-                "ATTACK", "POWER", "SPECIAL", "DEFENSE", "TRAIT", "DASH"):
+        if during is not None and str(during).upper() not in abilities:
             raise EditorError(f"{talent}: unknown ability {during!r}")
+        after = row.get("after") or None
+        if after is not None and str(after).upper() not in abilities:
+            raise EditorError(f"{talent}: unknown ability {after!r}")
+        if during and after:
+            raise EditorError(f"{talent} {stat}: choose 'during' or 'after', not both")
+        seconds = None
+        if after:
+            seconds = float(_num(row.get("seconds"), f"{talent} {stat} seconds"))
+            if seconds <= 0:
+                raise EditorError(f"{talent} {stat}: how many seconds it lasts must be above 0")
         added.append({"talent": talent, "stat": stat,
                       "values": [float(_num(v, f"{talent} {stat}")) for v in values],
                       **({} if row.get("percent", True) else {"percent": False}),
-                      **({"during": str(during).upper()} if during else {})})
+                      **({"during": str(during).upper()} if during else {}),
+                      **({"after": str(after).upper(), "seconds": seconds} if after else {})})
     rebuild = req.get("rebuild") or []
     if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
         raise EditorError("rebuild takes a list of talent names")

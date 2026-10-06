@@ -14,6 +14,7 @@ import pytest
 from rsmm.engine import corpus
 from rsmm.engine import entity_append as EA
 from rsmm.engine import entity_check as EC
+from rsmm.engine import entity_fields as EF
 from rsmm.engine import entity_graph as EG
 from rsmm.engine import talent_add_stat as TA
 from rsmm.engine import talent_values as TV
@@ -288,3 +289,98 @@ def test_a_rebuilt_card_slot_reads_its_selector_correctly(aladdin, beowulf):
                              during_donor_raw=aladdin)
     assert _slot_accessors(out, "Skill String Desc Attack Dive") == \
         [(added.selector, "64 c9 d2 0f")]
+
+
+# --- stats the game only puts on whoever is hit ---------------------------------
+
+def test_on_hit_stats_are_the_debuffs_not_the_buffs(wukong):
+    on_hit = TA.applied_on_hit()
+    for debuff in ("Ignite", "Bleed", "Chilled", "Vulnerable", "Weak", "Marked", "Rooted"):
+        assert TA.resolve_stat(debuff) in on_hit, debuff
+    for own in ("Strength", "Regeneration", "Shield", "Attack power", "CD reduce trait",
+                "Crit damage", "Armour"):
+        assert TA.resolve_stat(own) not in on_hit, own
+
+
+def test_an_on_hit_stat_is_refused_because_it_would_debuff_the_hero(wukong, beowulf):
+    with pytest.raises(TA.AddStatError, match="debuff its own hero"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Vulnerable", values=0.2)
+
+
+# --- conditions: "for N s after <ability>" --------------------------------------
+
+def _refs(raw: bytes, name: str, field: str) -> list[str]:
+    c = comp(raw, name)
+    f = next(f for f in EF.fields(c) if f.name == field)
+    items = f.items if f.kind == "ref[]" else [f]
+    return [i.text.rsplit("\\", 1)[-1] for i in items if i.text and "(none)" not in i.text]
+
+
+def test_after_builds_a_window_the_ability_restarts(wukong, beowulf, aladdin):
+    out, added = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+                             values=0.3, after="DEFENSE", seconds=4, during_donor_raw=aladdin)
+    tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
+    # Using DEFENSE fires the restart event, which switches the window off and on...
+    assert _refs(out, "State Defensive Ability", "activates")[-1] == f"Event {tag} Window Restart"
+    assert _refs(out, f"Event {tag} Window Restart", "activates") == [f"{tag} Window"]
+    assert _refs(out, f"Event {tag} Window Restart", "deactivates?") == [f"{tag} Window"]
+    # ...the window runs only its timer, and the timer ENDS the window after 4 s
+    # (a timer's `state` never switches a state on: the first build relied on
+    # that and the window never came on in game)...
+    assert _refs(out, f"{tag} Window", "while_active") == [f"{tag} Window Timer"]
+    assert _refs(out, f"{tag} Window Timer", "state") == [f"{tag} Window"]
+    timer = comp(out, f"{tag} Window Timer")
+    assert next(f for f in EF.fields(timer) if f.name == "duration").text == "f32 4"
+    # ...and the amount is "window on -> the per-rarity number, else 0".
+    assert [r.path.rsplit("\\", 1)[-1] for r in comp(out, f"{tag} Condition Selector").refs] \
+        == [f"{tag} Window", added.selector]
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+def test_after_accepts_an_ability_that_only_signals_its_start(beowulf, aladdin):
+    merlin = hero_file("Merlin")
+    out, _ = TA.add_stat(merlin, beowulf, talent="Trait Quest Gain Charge", stat="Crit chance",
+                         values=0.1, after="DEFENSE", seconds=2, during_donor_raw=aladdin)
+    assert EC.check(out, merlin, name="Hero_Merlin") == []
+
+
+@pytest.mark.parametrize("seconds", [None, 0, -1, True, "3"])
+def test_after_needs_a_positive_number_of_seconds(wukong, beowulf, aladdin, seconds):
+    with pytest.raises(TA.AddStatError, match="seconds"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
+                    after="DEFENSE", seconds=seconds, during_donor_raw=aladdin)
+
+
+def test_during_and_after_together_are_refused(wukong, beowulf, aladdin):
+    with pytest.raises(TA.AddStatError, match="not both"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
+                    during="POWER", after="DEFENSE", seconds=3, during_donor_raw=aladdin)
+
+
+def test_the_talent_kind_passes_after_and_seconds(tmp_path, wukong):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="dragon_after", fields={
+        "hero": "SunWukong",
+        "add_stats": [{"talent": "Trait Fire", "stat": "Attack power", "values": 0.3,
+                       "after": "DEFENSE", "seconds": 4}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    timer = comp(path.read_bytes(), "Skill Trait Fire Added 15a486c4 After DEFENSE Window Timer")
+    assert next(f for f in EF.fields(timer) if f.name == "duration").text == "f32 4"
+
+
+def test_two_stats_on_one_talent_in_one_block_get_their_own_guids(tmp_path, wukong):
+    # The kind passes one seed for the whole block; the second entry used to
+    # mint the first one's GUIDs and fail ("a minted GUID collides").
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="two", fields={
+        "hero": "SunWukong",
+        "add_stats": [{"talent": "Trait Fire", "stat": "CD reduce trait", "values": 0.1},
+                      {"talent": "Trait Fire", "stat": "Crit chance", "values": 0.05}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    assert len(comp(path.read_bytes(), "Skill Trait Fire", "StateSettings").refs) == 2

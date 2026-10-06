@@ -76,6 +76,9 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .picklist .grp { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px 2px; }
 .picklist .opt { padding: 4px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; }
 .picklist .opt .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.picklist .opt .aka { font-size: 11px; color: var(--muted); }
+.picklist .opt.off { opacity: .5; cursor: not-allowed; }
+.picklist .opt.off:hover { background: none; }
 .picklist .opt.on, .picklist .opt:hover { background: var(--accentbg); }
 .picklist .none { padding: 6px 8px; color: var(--muted); }
 .card { background: #1c1b1a; color: #ecebe6; border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; max-width: 520px; box-sizing: border-box; }
@@ -153,6 +156,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .tier input.ed { background: var(--accentbg); }
 .trow .reset.on { visibility: visible; }
 .tnote { font-size: 12px; color: var(--muted); padding: 2px 8px; }
+.addstat .secs { width: 5em; }
 .addstat { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 6px; }
 .addstat .sectrow .pickbox { flex: 1; min-width: 0; }
 .addnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
@@ -1094,7 +1098,9 @@ function statRow(m, cur, onset) {
 
 // Type to find a stat. The stats shipped items give are listed first, with how
 // many effects use each; `unnamed` is an extra key offered as itself.
-function statPicker(value, unnamed, onpick) {
+// `selfOnly`: the stat lands on the hero itself (a talent's added stat), so stats the
+// game only puts on whoever is hit are listed apart and can't be picked.
+function statPicker(value, unnamed, onpick, selfOnly) {
   let cur = value, open = false, hi = 0, shown = [];
   const input = el("input", { value: label(cur), spellcheck: "false", "aria-label": "Stat" });
   const list = el("div", { class: "picklist", role: "listbox" });
@@ -1104,20 +1110,26 @@ function statPicker(value, unnamed, onpick) {
   function options(q) {
     q = q.toLowerCase();
     const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
-    // A stat is found by its name or its key (0x058e0a5c), as a manifest may name either.
-    const hit = all.filter(o => !q || o.name.toLowerCase().includes(q) || (o.key && o.key.includes(q))
-      || (o.unnamed && "unnamed".includes(q)));
-    const used = hit.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
-    const rest = hit.filter(o => o.used === 0);
-    return { used, rest };
+    // A stat is found by its name, its key (0x058e0a5c, as a manifest may name
+    // either) or the card's wording ("trait cooldown" for CD reduce trait); every
+    // word typed must match, in any order.
+    const words = q.split(/\s+/).filter(Boolean);
+    const hit = all.filter(o => {
+      const hay = [o.name, o.aka || "", o.key || "", o.unnamed ? "unnamed" : ""].join(" ").toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+    const ok = hit.filter(o => !(selfOnly && o.onHit));
+    const used = ok.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
+    const rest = ok.filter(o => o.used === 0);
+    return { used, rest, blocked: selfOnly ? hit.filter(o => o.onHit) : [] };
   }
   function draw() {
     list.textContent = "";
     const q = input.value === label(cur) ? "" : input.value;
-    const { used, rest } = options(q);
+    const { used, rest, blocked } = options(q);
     shown = [...used, ...rest];
     hi = Math.max(0, Math.min(hi, shown.length - 1));
-    if (!shown.length) { list.append(el("div", { class: "none", text: "No stat matches." })); return; }
+    if (!shown.length && !blocked.length) { list.append(el("div", { class: "none", text: "No stat matches." })); return; }
     let k = 0;
     const add = (title, opts) => {
       if (!opts.length) return;
@@ -1126,12 +1138,19 @@ function statPicker(value, unnamed, onpick) {
         const idx = k++;
         const row = el("div", { class: "opt" + (idx === hi ? " on" : ""), role: "option",
           onmousedown: ev => { ev.preventDefault(); pick(o.name); } },
-          el("span", { text: label(o.name) }), o.used && !o.unnamed ? el("span", { class: "n", text: o.used + "×" }) : null);
+          el("span", { text: label(o.name) }), o.aka ? el("span", { class: "aka", text: o.aka }) : null,
+          o.used && !o.unnamed ? el("span", { class: "n", text: o.used + "×" }) : null);
         list.append(row);
       }
     };
     add("Given by shipped items", used);
     add("Every other stat", rest);
+    if (blocked.length) {
+      list.append(el("div", { class: "grp", text: "Put on enemies hit — would debuff your own hero" }));
+      for (const o of blocked) list.append(el("div", { class: "opt off", "aria-disabled": "true", onmousedown: ev => ev.preventDefault(),
+        title: "The game puts this on whoever an attack hits. A stat added to a talent applies to the hero itself, so it can't be added here." },
+        el("span", { text: o.name }), o.aka ? el("span", { class: "aka", text: o.aka }) : null));
+    }
     const on = list.querySelector(".opt.on");
     if (on) on.scrollIntoView({ block: "nearest" });
   }
@@ -1295,9 +1314,13 @@ function isRebuilt(c) { return !!(S.talentEdit.rebuild || {})[c.source]; }
 // secondary, defensive, trait = POWER, SPECIAL, DEFENSE, TRAIT).
 const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE",
   trait: "TRAIT", dash: "DASH", ultimate: "ULTIMATE" };
-function statLine(stat, n, percent, during) {
-  const line = statPhrase(stat, n, percent);
-  return during ? line.replace(/^• (\S)/, (_m, ch) => `• During #${during}@, ${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
+// `a` is an added stat: its stat, percent switch and when it applies (`during`
+// an ability, or for `seconds` `after` one).
+function statLine(a, n) {
+  const line = statPhrase(a.stat, n, a.percent !== false);
+  const lead = a.during ? `During #${a.during}@`
+    : a.after ? `For #${fmt(a.seconds)}@ second(s) after using #${a.after}@` : "";
+  return lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}, ${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
 }
 function statPhrase(stat, n, percent) {
   const num = "{" + n + "}" + (percent ? "%" : "");
@@ -1334,7 +1357,7 @@ function addedStats(c, redraw, desc) {
     const base = firstSlot(c);
     list.forEach((a, i) => {
       if (!a.stat || base == null) return;
-      const want = statLine(a.stat, base + i, a.percent !== false, a.during);
+      const want = statLine(a, base + i);
       if (a.line && text.includes(a.line)) text = text.replace(a.line, want);
       else if (!a.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
       else return;                       // edited by hand: theirs now
@@ -1349,7 +1372,7 @@ function addedStats(c, redraw, desc) {
   };
   list.forEach((a, i) => {
     const n = firstSlot(c) != null ? firstSlot(c) + i : null;
-    const picker = statPicker(a.stat, null, st => { a.stat = st; save(); });
+    const picker = statPicker(a.stat, null, st => { a.stat = st; save(); }, true);
     const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
       const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
       inp.oninput = () => {
@@ -1360,19 +1383,37 @@ function addedStats(c, redraw, desc) {
     }));
     const pct = el("input", { type: "checkbox", ...(a.percent !== false ? { checked: "" } : {}) });
     pct.onchange = () => { a.percent = pct.checked; save(); };
-    // When the bonus applies: always while the talent is owned, or only while one
-    // of the hero's abilities is in use (abilities this hero cannot signal are left out).
+    // When the bonus applies: always while the talent is owned, only while one of
+    // the hero's abilities is in use, or for some seconds each time one is used
+    // (abilities this hero cannot signal are left out of each list).
     const when = el("select", { "aria-label": "When it applies" },
       el("option", { value: "", text: "Always" }),
-      ...(info.during || []).map(ab => el("option", { value: ab, text: "During " + ab })));
-    when.value = a.during || "";
-    when.onchange = () => { a.during = when.value || undefined; save(); };
+      ...(info.during || []).map(ab => el("option", { value: "during:" + ab, text: "During " + ab })),
+      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })));
+    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : "";
+    const secs = el("input", { type: "number", step: "any", min: "0", value: fmt(a.seconds ?? 3),
+      "aria-label": "Seconds", class: "secs" });
+    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting on each use");
+    secsBox.hidden = !a.after;
+    when.onchange = () => {
+      const [kind, ab] = when.value.split(":");
+      a.during = kind === "during" ? ab : undefined;
+      a.after = kind === "after" ? ab : undefined;
+      if (a.after && !(a.seconds > 0)) a.seconds = 3;
+      secsBox.hidden = !a.after;
+      save();
+    };
+    secs.oninput = () => {
+      const v = Number(secs.value);
+      if (secs.value !== "" && v > 0) { a.seconds = v; save(); }
+    };
     const del = el("button", { type: "button", title: "Remove this added stat and its card line",
       onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
     box.append(el("div", { class: "addstat" },
       el("div", { class: "sectrow" }, el("span", { class: "phn", text: n != null ? "{" + n + "}" : "+" }), picker.el, del),
       nums,
       el("label", { class: "tiny addpct" }, "When", when),
+      secsBox,
       el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
       el("div", { class: "tiny muted", text: n != null
         ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
@@ -1398,7 +1439,7 @@ function rebuildSwitch(c, desc, onchange) {
     if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
     const list = (E.addStats || {})[c.source] || [];
     const base = firstSlot(c);
-    const lines = list.filter(a => a.stat).map((a, i) => (a.line = statLine(a.stat, base + i, a.percent !== false, a.during)));
+    const lines = list.filter(a => a.stat).map((a, i) => (a.line = statLine(a, base + i)));
     if (desc && c.hasDescription)
       desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
     onchange();
@@ -2233,7 +2274,8 @@ function editPayload() {
     stats: Object.entries(E.stats).map(([k, stat]) => { const [file, modifier] = k.split("\u0000"); return { file, modifier, stat }; }),
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
     addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
-      .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}) }))),
+      .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
+        ...(a.after ? { after: a.after, seconds: a.seconds } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}) };
 }
 

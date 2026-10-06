@@ -71,8 +71,11 @@ Fields:
                                card gains a ``{N}`` slot showing it (``percent``,
                                default true, shows it x100). ``during = "DEFENSE"``
                                (or ATTACK, POWER, SPECIAL, TRAIT, DASH) applies it
-                               only while that ability is in use. No ``file``
-                               needed; see ``rsmm.engine.talent_add_stat``.
+                               only while that ability is in use; ``after =
+                               "DEFENSE", seconds = 3`` applies it for 3 s each
+                               time that ability is used (restarting on every
+                               use). No ``file`` needed; see
+                               ``rsmm.engine.talent_add_stat``.
     ``rebuild``                list of talent names whose own effect is turned
                                OFF, keeping the card: the talent builder's blank
                                slot. The card's number slots are cleared too, so
@@ -279,8 +282,12 @@ def _coerce_add_stats(raw) -> list[dict]:
         during = e.get("during")
         if during is not None and not isinstance(during, str):
             raise ContentError(f"add_stats: during must be an ability name, got {during!r}")
+        after = e.get("after")
+        if after is not None and not isinstance(after, str):
+            raise ContentError(f"add_stats: after must be an ability name, got {after!r}")
         out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
-                    "percent": bool(e.get("percent", True)), "during": during})
+                    "percent": bool(e.get("percent", True)), "during": during,
+                    "after": after, "seconds": e.get("seconds")})
     return out
 
 
@@ -414,12 +421,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             raise ContentError(f"talent {defn.id}: add_stats needs the game's "
                                f"{TA.DONOR_HERO} files to copy a modifier from")
         during_donor = None
-        if any(e["during"] for e in add_stats):
+        if any(e["during"] or e["after"] for e in add_stats):
             ddir = _resolve_hero_dir(TA.DONOR_DURING_HERO)
             during_donor = next((p for p in (ddir.entity_files() if ddir else [])
                                  if p.name == f"Hero_{TA.DONOR_DURING_HERO}{_GEN_SUFFIX}"), None)
             if during_donor is None:
-                raise ContentError(f"talent {defn.id}: 'during' needs the game's "
+                raise ContentError(f"talent {defn.id}: 'during'/'after' need the game's "
                                    f"{TA.DONOR_DURING_HERO} files to copy a selector from")
         for entry in add_stats:
             p = _home(entry["talent"])
@@ -428,8 +435,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     edited.get(p) or p.read_bytes(), donor.read_bytes(),
                     talent=entry["talent"], stat=entry["stat"], values=entry["values"],
                     percent=entry["percent"], seed=f"{mod_id}:{defn.id}",
-                    during=entry["during"],
-                    during_donor_raw=during_donor.read_bytes() if entry["during"] else None)
+                    during=entry["during"], after=entry["after"], seconds=entry["seconds"],
+                    during_donor_raw=(during_donor.read_bytes()
+                                      if entry["during"] or entry["after"] else None))
             except TA.AddStatError as e:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
             _log.info("talent %s/%s: %s gets %s; card slot {%s}", mod_id, defn.id,
