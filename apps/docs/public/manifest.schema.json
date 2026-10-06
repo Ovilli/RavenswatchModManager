@@ -93,6 +93,13 @@
             "local-only"
           ],
           "description": "cosmetic | deterministic-shared | host-authoritative | local-only."
+        },
+        "loader_flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Loader features this mod needs switched on while it is enabled, e.g. [\"RSMM_ENABLE_HERO_CAPTURE\"] for R.entity/R.stat/R.camera."
         }
       },
       "additionalProperties": false

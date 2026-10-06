@@ -124,6 +124,19 @@ def lint_one(entry: Path) -> tuple[int, int]:
                                            "host-authoritative", "local-only"}:
         print(f"  {_T_FAIL} {mod_s}: unknown multiplayer_scope {_ST.accent(repr(scope))}")
         errs += 1
+    flags = m.get("loader_flags")
+    if flags is not None:
+        from rsmm.engine.loader_flags import SAFE_FLAG_NAMES
+        if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
+            print(f"  {_T_FAIL} {mod_s}: loader_flags must be a list of flag names")
+            errs += 1
+        else:
+            for f in flags:
+                if f not in SAFE_FLAG_NAMES:
+                    print(f"  {_T_FAIL} {mod_s}: loader flag {_ST.accent(repr(f))} is unknown "
+                          "or locked; a mod may ask for: "
+                          + ", ".join(sorted(SAFE_FLAG_NAMES)))
+                    errs += 1
     # The declared scope is the author's claim; what decides online matching is
     # the verdict DERIVED from the mod's contents (rsmm.engine.mod_scope). Say
     # so when the claim promises more than the mod delivers. A warning, not an

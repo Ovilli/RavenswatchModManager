@@ -73,6 +73,11 @@ from rsmm.cli.apply_mods import (
 )
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine import net
+from rsmm.engine.loader_flags import FLAGS_FILE as _LOADER_FLAGS_FILE
+from rsmm.engine.loader_flags import KNOWN_FLAG_NAMES as _KNOWN_FLAG_NAMES
+from rsmm.engine.loader_flags import LOADER_FLAGS
+from rsmm.engine.loader_flags import SAFE_FLAG_NAMES as _SAFE_FLAG_NAMES
+from rsmm.engine.loader_flags import read_flags as _read_loader_flags
 from rsmm.engine.paths import MODS_DIR, REPO_ROOT, dist_out_dir, self_cmd
 from rsmm.logging import get_logger
 from rsmm.sdk import archive
@@ -520,94 +525,8 @@ def cmd_active_overrides() -> int:
     })
 
 
-# Loader feature flags surfaced in the desktop "Loader features" panel.
-# The loader reads these from <game_dir>/rsmm_loader_flags.json (a JSON array
-# of enabled flag names) OR from a matching environment variable. Only flags
-# marked safe=True are user-togglable; the rest are documented but locked so
-# the UI can explain why (e.g. RSMM_ENABLE_ITEM_INJECT crashes the game).
-LOADER_FLAGS: list[dict[str, Any]] = [
-    # Both event buses are ON by default (the loader skips publishing entirely
-    # when no mod has subscribed, so an asset-only install pays nothing). These
-    # entries are the opt-OUT switches, for isolating a suspected event-bus
-    # problem without uninstalling the loader.
-    {
-        "name": "RSMM_DISABLE_GAMEPLAY_EVENTS",
-        "label": "Disable gameplay event bus",
-        "description": "Stop bridging the in-game oCGameNamedEvent bus to Lua "
-                       "(R.on(\"gameplay:<NAME>\")). Event-driven mods break "
-                       "while this is on — troubleshooting only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_DISABLE_GAME_EVENTS",
-        "label": "Disable analytics event bridge",
-        "description": "Stop bridging the analytics firehose (run_start, "
-                       "enemy_killed, ...) to R.on. Troubleshooting only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_EVENT_PROBE",
-        "label": "Event payload probe",
-        "description": "Attach a raw field window (ev.w38..ev.w70) to every "
-                       "gameplay event, for reverse-engineering an undecoded "
-                       "payload. Verbose; developers only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_SKILL_HOOK",
-        "label": "Skill hook (read-only)",
-        "description": "Log the herodef skill vector at load. Experimental; "
-                       "may fail to resolve under Proton on some builds.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_UI_HOOK",
-        "label": "UI button events",
-        "description": "Emit R.on(\"ui:press\") when a native UI button is "
-                       "clicked. Needed by mods that add in-game menu actions.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_ITEM_INJECT",
-        "label": "Item pool injection",
-        "description": "Disabled: crashes the game. Custom items already load "
-                       "via UsedRscList — no injection needed.",
-        "safe": False,
-    },
-    {
-        "name": "RSMM_ENABLE_SKILL_INJECT",
-        "label": "Skill injection (proof-of-path)",
-        "description": "Disabled: experimental loader path that duplicates a "
-                       "skill slot. For development only.",
-        "safe": False,
-    },
-    {
-        "name": "RSMM_DUMP_SYMBOLS",
-        "label": "Dump resolved symbols (RE/dev)",
-        "description": "At boot, write <game>/rsmm/resolved_symbols.json — the "
-                       "addresses the loader actually resolved every semantic "
-                       "pattern to. Feeds `rsmm symbols audit`. Read-only; adds "
-                       "~1s to load. Dev/RE aid.",
-        "safe": True,
-    },
-]
-
-_LOADER_FLAGS_FILE = "rsmm_loader_flags.json"
-_SAFE_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS if f["safe"])
-_KNOWN_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS)
-
-
-def _read_loader_flags(flags_path: Path) -> list[str]:
-    """Read the enabled-flag list, tolerating a missing/garbage file."""
-    if not flags_path.exists():
-        return []
-    try:
-        data = json.loads(flags_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if not isinstance(data, list):
-        return []
-    return [x for x in data if isinstance(x, str) and x in _KNOWN_FLAG_NAMES]
+# The loader feature flags live in rsmm.engine.loader_flags (imported above),
+# which `apply` also uses for a mod's `loader_flags`.
 
 
 def _loader_status(game_dir: Path) -> dict[str, Any]:

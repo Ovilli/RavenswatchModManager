@@ -394,6 +394,13 @@ class Mod:
             else str(raw_enabled).lower() in ("1", "true", "yes", "on")
         )
         self.experimental: bool = bool(m.get("experimental", False))
+        # Loader features this mod needs switched on while it is enabled
+        # (rsmm.engine.loader_flags), e.g. RSMM_ENABLE_HERO_CAPTURE for a mod
+        # that moves the camera.
+        flags = m.get("loader_flags", []) or []
+        if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
+            raise ValueError("mod.loader_flags must be a list of flag names")
+        self.loader_flags: list[str] = list(flags)
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
@@ -428,6 +435,39 @@ class Mod:
                 continue
             out.append((f, decoded))
         return out
+
+
+def _sync_loader_flags(game_dir: Path, mods: list[Mod], state: State) -> None:
+    """Switch on the loader features the enabled mods ask for (``[mod]
+    loader_flags``) and off the ones only a now-disabled mod asked for.
+
+    A mod that needs hero capture (the camera, R.stat) did nothing for every
+    player who had not switched it on by hand, and the app offered no switch
+    (bug report 2026-10-06: the camera mod saved slider changes and never
+    applied one). Flags the player set themselves are never touched; what was
+    switched on for mods is kept in the state file to tell the two apart."""
+    from rsmm.engine import loader_flags as LF
+
+    requested: set[str] = set()
+    for m in mods:
+        if not m.enabled:
+            continue
+        for f in m.loader_flags:
+            if f in LF.SAFE_FLAG_NAMES:
+                requested.add(f)
+            else:
+                print(f"  [warn] {m.id}: loader flag {f!r} is unknown or locked; "
+                      "not switched on", file=sys.stderr)
+    before = set(state.data.get("mod_loader_flags", []))
+    try:
+        _new, added = LF.sync_mod_flags(game_dir / LF.FLAGS_FILE, requested, before)
+    except OSError as e:
+        print(f"  [warn] could not update {LF.FLAGS_FILE}: {e}", file=sys.stderr)
+        return
+    state.data["mod_loader_flags"] = sorted(added)
+    if added != before:
+        print("Loader features the enabled mods need: "
+              + (", ".join(sorted(added)) or "none"))
 
 
 def load_asset_map(_repo: Path | None = None) -> dict[str, str]:
@@ -2364,6 +2404,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])
+        _sync_loader_flags(game_dir, mods, state)
         try:
             state.save()
             print(f"State written: {state.path}")

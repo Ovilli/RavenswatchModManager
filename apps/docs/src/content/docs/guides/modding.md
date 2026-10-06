@@ -1381,6 +1381,27 @@ Lua errors print as `[lua] <mod-id> ...`; `rsmm.log("msg")` calls land in the sa
 
 ---
 
+## Loader features a mod needs
+
+Some loader features are off until switched on, because they hook the engine
+more deeply. The one mods need most is **hero capture**: without it `R.entity`,
+`R.stat`, `R.combat`, `R.xp`, `R.camera` and the talent grants never find your
+hero, and a mod that uses them silently does nothing. Declare what your mod needs
+and `rsmm apply` switches it on while the mod is enabled (and off again when no
+enabled mod needs it, leaving flags the player set alone):
+
+```toml
+[mod]
+id           = "camera-control"
+loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]
+```
+
+Only the flags the app's **Loader features** panel lets a player switch on are
+accepted; `rsmm lint` names them. In Lua, `R.entity.capture_enabled()` tells "the
+player turned it off" apart from "the hero is not found yet" (loading, menus).
+
+---
+
 ## Don't ship vanilla bytes
 
 `rsmm pack <id>` hashes every file against the original cooked asset. If any file is byte-identical to the original, pack **refuses** — shipping unmodified game bytes is redistribution of copyrighted game content, not a mod.

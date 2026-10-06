@@ -120,6 +120,8 @@ MOD_FIELDS: dict[str, str] = {
     "conflicts": "Mods that must not be enabled with this one.",
     "replaces": "Mod ids this one supersedes.",
     "multiplayer_scope": "cosmetic | deterministic-shared | host-authoritative | local-only.",
+    "loader_flags": "Loader features this mod needs switched on while it is enabled, "
+                    "e.g. [\"RSMM_ENABLE_HERO_CAPTURE\"] for R.entity/R.stat/R.camera.",
 }
 
 #: Top-level tables a manifest may contain.
@@ -204,6 +206,8 @@ def json_schema() -> dict:
                     "load_order": {"type": "integer",
                                    "description": MOD_FIELDS["load_order"]},
                     "priority": {"type": "integer", "description": MOD_FIELDS["priority"]},
+                    "loader_flags": {"type": "array", "items": {"type": "string"},
+                                     "description": MOD_FIELDS["loader_flags"]},
                     "multiplayer_scope": {
                         "enum": ["cosmetic", "deterministic-shared",
                                  "host-authoritative", "local-only"],
