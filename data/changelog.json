@@ -2,6 +2,16 @@
   "generated": "2026-10-06",
   "entries": [
     {
+      "version": "5.9.8",
+      "date": "2026-10-06",
+      "summary": "Talent builder: give one talent another talent's effect, and the Log no longer calls a finished game the current run.",
+      "highlights": [
+        "Talent builder: \"Also gives the effect of\" on a card makes owning that talent also run another of the same hero's talents. Tested in game: Scarlet's Shapeshifter with Short Wick's bomb that explodes as soon as it lands.",
+        "Talent builder: the \"... Count\" stats are now labelled as tallies (\"defensive objects held\") and listed apart. They count things for other effects and do nothing on their own.",
+        "Fixed: the Log screen said \"Current run\" when no game was running. It now says \"Last run\", and notices a game started from Steam."
+      ]
+    },
+    {
       "version": "5.9.7",
       "date": "2026-10-06",
       "summary": "Mods you switch off in the Library now really stay off, and the talent builder learns \"for a while after an ability\".",
