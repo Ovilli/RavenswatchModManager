@@ -1130,15 +1130,18 @@ function statPicker(value, unnamed, onpick, selfOnly) {
       return words.every(w => hay.includes(w));
     });
     const ok = hit.filter(o => !(selfOnly && o.onHit));
-    const used = ok.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
-    const rest = ok.filter(o => o.used === 0);
-    return { used, rest, blocked: selfOnly ? hit.filter(o => o.onHit) : [] };
+    // Tallies ("Defensive Object Count") are counters other effects read, not
+    // stats: listed apart so a +1 is not mistaken for a bonus.
+    const plain = ok.filter(o => !o.tally), tallies = ok.filter(o => o.tally);
+    const used = plain.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
+    const rest = plain.filter(o => o.used === 0);
+    return { used, rest, tallies, blocked: selfOnly ? hit.filter(o => o.onHit) : [] };
   }
   function draw() {
     list.textContent = "";
     const q = input.value === label(cur) ? "" : input.value;
-    const { used, rest, blocked } = options(q);
-    shown = [...used, ...rest];
+    const { used, rest, tallies, blocked } = options(q);
+    shown = [...used, ...rest, ...tallies];
     hi = Math.max(0, Math.min(hi, shown.length - 1));
     if (!shown.length && !blocked.length) { list.append(el("div", { class: "none", text: "No stat matches." })); return; }
     let k = 0;
@@ -1156,6 +1159,7 @@ function statPicker(value, unnamed, onpick, selfOnly) {
     };
     add("Given by shipped items", used);
     add("Every other stat", rest);
+    add("Tallies: only matter if something counts them", tallies);
     if (blocked.length) {
       list.append(el("div", { class: "grp", text: "Put on enemies hit — would debuff your own hero" }));
       for (const o of blocked) list.append(el("div", { class: "opt off", "aria-disabled": "true", onmousedown: ev => ev.preventDefault(),
@@ -1335,6 +1339,8 @@ function statLine(a, n) {
 }
 function statPhrase(stat, n, percent) {
   const num = "{" + n + "}" + (percent ? "%" : "");
+  const tally = (S.stats.find(s => s.name === stat) || {}).tally;
+  if (tally) return `• Counts as #+${num}@ more ${tally}(s)`;
   const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
   const ab = m && m[2] ? "#" + (ABILITY_WORD[m[2]] || m[2].toUpperCase()) + "@ " : "";
   if (m && m[1] === "CD reduce") return `• ${ab}cooldown &-${num}~`;
@@ -1383,7 +1389,14 @@ function addedStats(c, redraw, desc) {
   };
   list.forEach((a, i) => {
     const n = firstSlot(c) != null ? firstSlot(c) + i : null;
-    const picker = statPicker(a.stat, null, st => { a.stat = st; save(); }, true);
+    const picker = statPicker(a.stat, null, st => {
+      a.stat = st;
+      // A tally counts things: a whole number, never a percentage.
+      const tally = (S.stats.find(s => s.name === st) || {}).tally;
+      if (tally) a.percent = false;
+      save();
+      if (tally) renderView();
+    }, true);
     const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
       const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
       inp.oninput = () => {

@@ -448,3 +448,18 @@ def test_an_included_effect_joins_the_builder_block():
 def test_a_bad_include_row_is_refused(row):
     with pytest.raises(E.EditorError):
         E.talent_defs({"hero": "Red", "prefix": "r", "include": [row]})
+
+
+@pytest.mark.parametrize(("name", "tally"), [
+    ("Defensive Object Count", "defensive object"),
+    ("Joker Card Count", "joker card"),
+    ("Rare MO Collection Count", "rare magical object"),
+    ("Counter attack damage", None),       # "count" only inside "counter"
+    ("Armour", None),
+])
+def test_count_stats_are_labelled_as_tallies(name, tally):
+    # Pam: "what is the point of modifiers that have count in the name". They
+    # are counters other effects read; the picker lists them apart.
+    assert E.stat_tally(name) == tally
+    if tally:
+        assert E.stat_aka(name) == f"tally: {tally}s held"

@@ -223,7 +223,7 @@ def stats() -> list[dict]:
     # day") is not something a modifier changes: left out of every picker.
     state = IM.game_state_keys()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
-             "onHit": k in on_hit,
+             "onHit": k in on_hit, "tally": stat_tally(n),
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
             if k not in state]
@@ -233,6 +233,26 @@ def stats() -> list[dict]:
 _ABILITY_WORD = {"basic": "ATTACK", "primary": "POWER", "secondary": "SPECIAL",
                  "defensive": "DEFENSE", "trait": "TRAIT", "dash": "DASH",
                  "ultimate": "ULTIMATE"}
+
+
+def stat_tally(name: str) -> str | None:
+    """What a "... Count" stat tallies ("defensive object"), or None.
+
+    These are counters the game keeps so other effects can ask how many of
+    something the hero holds: every DEFENSE item adds 1 to Defensive Object
+    Count, and so do two of Romeo's talents, so they count as one for anything
+    that scales with defensive objects; the card items add to their Card Counts;
+    every magical object to its rarity's Collection Count. A +1 does nothing by
+    itself unless something reads the tally, which is why the picker lists them
+    apart (Pam: "what is the point of modifiers that have count in the name")."""
+    m = re.fullmatch(r"(.+?) Card Count", name)
+    if m:
+        return f"{m.group(1).lower()} card"
+    m = re.fullmatch(r"(Common|Rare|Epic|Legendary) MO Collection Count", name)
+    if m:
+        return f"{m.group(1).lower()} magical object"
+    m = re.fullmatch(r"(.+?) Count", name)
+    return m.group(1).lower() if m else None
 
 
 def stat_aka(name: str) -> str | None:
@@ -251,6 +271,9 @@ def stat_aka(name: str) -> str | None:
     m = re.fullmatch(r"Ability_Charge_(\w+)", name)
     if m and m.group(1).lower() in _ABILITY_WORD:
         return f"+ {_ABILITY_WORD[m.group(1).lower()]} charge"
+    tally = stat_tally(name)
+    if tally:
+        return f"tally: {tally}s held"
     return None
 
 
