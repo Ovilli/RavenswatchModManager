@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
-import { useApp } from '../store';
+import { isEnabledIn, useApp } from '../store';
 import { getPlatform, joinPathEntries } from './platform';
 import { noteGameStateChanged } from './session-cache';
 import { isSafeProfileId } from './untrusted-state';
@@ -1091,12 +1091,32 @@ export const setBackend = (url: string) =>
 
 export const clearBackend = () => rsmm<BackendState>(['backend', 'off']);
 
+/**
+ * The mods the Library shows as enabled in a profile: what `apply` must install.
+ *
+ * The Library keeps enabled/disabled in this store, but `apply` reads each
+ * mod's `manifest.toml`, so a mod switched off here used to be installed anyway
+ * (bug report 2026-10-06). `apply` now gets this list (`--enabled-json`) and
+ * makes the manifests match it first. Undefined, leaving the manifests as they
+ * are, when the profile is unknown or is `default`: the store forces default's
+ * load order empty on every sync ("the vanilla load"), so it says nothing about
+ * the files in that folder and would switch every one of them off.
+ */
+export function profileEnabledMods(profileId?: string): string[] | undefined {
+  const s = useApp.getState();
+  const profile = s.profiles.find((p) => p.id === (profileId ?? s.activeProfileId));
+  if (!profile || profile.id === 'default') return undefined;
+  return profile.loadOrder.filter((id) => isEnabledIn(profile, id));
+}
+
 export const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
   if (force) args.push('--force');
   if (noMerge) args.push('--no-merge');
+  const enabled = profileEnabledMods(rsmmOpts.profileId);
+  if (enabled) args.push('--enabled-json', JSON.stringify(enabled));
   return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
 };
 

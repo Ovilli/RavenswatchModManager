@@ -44,7 +44,10 @@ def set_mod_enabled(mods_dir: Path, mod_id: str, enabled: bool) -> str:
     text = manifest.read_text(encoding="utf-8")
     want = f"enabled = {'true' if enabled else 'false'}"
     # Replace an existing top-level `enabled` assignment (any spacing)…
-    new, n = re.subn(r"(?m)^(enabled\s*=\s*)(true|false)\s*$",
+    # `[ \t]*`, not `\s*`: under (?m) `\s*$` also ate the line break after
+    # the flag (at the end of the file or before a blank line), so a manifest
+    # that already matched lost a newline and was reported as changed.
+    new, n = re.subn(r"(?m)^(enabled[ \t]*=[ \t]*)(true|false)[ \t]*$",
                      lambda m: m.group(1) + ("true" if enabled else "false"),
                      text, count=1)
     if n == 0:

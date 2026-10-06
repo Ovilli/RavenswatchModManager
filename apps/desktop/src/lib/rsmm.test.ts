@@ -10,7 +10,13 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
 }));
 
 import { useApp } from '../store';
-import { formatBytes, parseProgressLine, rsmmEnv, writesGameState } from './rsmm';
+import {
+  formatBytes,
+  parseProgressLine,
+  profileEnabledMods,
+  rsmmEnv,
+  writesGameState,
+} from './rsmm';
 
 /**
  * `RSMM_MODS_DIR` is the directory the CLI creates, overwrites and DELETES in.
@@ -52,6 +58,48 @@ describe('rsmmEnv', () => {
     useApp.setState({ settings: { ...useApp.getState().settings, modsDir: '   ' } });
     expect(rsmmEnv('p1').RSMM_MODS_DIR).toMatch(/\/profiles\/p1$/);
     expect(rsmmEnv('p1').RSMM_MODS_DIR).not.toMatch(/^\s*\/profiles/);
+  });
+});
+
+/**
+ * What `apply` is told to install. The Library keeps enabled/disabled in the
+ * store while `apply` read only the manifests, so a mod switched off in the app
+ * was installed anyway (bug report 2026-10-06).
+ */
+describe('profileEnabledMods', () => {
+  const profile = (id: string, loadOrder: string[], disabled: string[]) => ({
+    id,
+    name: id,
+    loadOrder,
+    disabled: new Set(disabled),
+    createdAt: '2026-10-06T00:00:00.000Z',
+  });
+
+  it('lists the profile mods that are not switched off', () => {
+    useApp.setState({
+      profiles: [profile('default', [], []), profile('mine', ['a', 'b', 'c'], ['b'])],
+      activeProfileId: 'mine',
+    });
+    expect(profileEnabledMods()).toEqual(['a', 'c']);
+  });
+
+  it('is an empty list when every mod is switched off', () => {
+    useApp.setState({ profiles: [profile('mine', ['a'], ['a'])], activeProfileId: 'mine' });
+    expect(profileEnabledMods()).toEqual([]);
+  });
+
+  it('honours an explicit profile id', () => {
+    useApp.setState({
+      profiles: [profile('mine', ['a'], []), profile('other', ['x', 'y'], ['x'])],
+      activeProfileId: 'mine',
+    });
+    expect(profileEnabledMods('other')).toEqual(['y']);
+  });
+
+  it('leaves the manifests alone for the default profile and an unknown one', () => {
+    useApp.setState({ profiles: [profile('default', [], [])], activeProfileId: 'default' });
+    expect(profileEnabledMods()).toBeUndefined();
+    expect(profileEnabledMods('gone')).toBeUndefined();
   });
 });
 

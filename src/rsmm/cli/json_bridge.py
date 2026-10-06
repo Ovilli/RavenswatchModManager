@@ -421,8 +421,52 @@ def _run_rsmm(args: list[str]) -> int:
     return _emit(_collect_rsmm(args))
 
 
-def cmd_apply(rest: list[str]) -> int:
-    return _run_rsmm(["apply", *rest])
+def sync_enabled(mods_dir: Path, enabled_ids: list[str]) -> list[str]:
+    """Make every mod folder's manifest ``enabled`` flag match ``enabled_ids``
+    (the desktop profile's enabled mods); returns ``"<id>: on|off"`` per flip.
+
+    The desktop Library keeps enabled/disabled in its own profile store, but
+    `apply` reads each manifest's `enabled`, so a mod switched off in the app
+    was still installed (bug report 2026-10-06: "disabled mods in my library
+    were still applied"). Folders the profile does not list are switched off,
+    as the Library shows them; ids with no folder are ignored."""
+    from rsmm.cli.cmd_mods import set_mod_enabled
+    want = set(enabled_ids)
+    changed: list[str] = []
+    for entry in sorted(mods_dir.iterdir()) if mods_dir.is_dir() else []:
+        if not entry.is_dir() or entry.name.startswith("_"):
+            continue
+        if not (entry / "manifest.toml").is_file():
+            continue
+        on = entry.name in want
+        if set_mod_enabled(mods_dir, entry.name, on) == "ok":
+            changed.append(f"{entry.name}: {'on' if on else 'off'}")
+    return changed
+
+
+def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
+    """``apply``; with ``enabled_json`` (a JSON list of mod ids) the manifests
+    are first made to match it (:func:`sync_enabled`)."""
+    note = ""
+    if enabled_json is not None:
+        try:
+            ids = json.loads(enabled_json)
+        except json.JSONDecodeError as e:
+            return _emit({"ok": False, "code": 2, "stdout": "",
+                          "stderr": f"--enabled-json is not JSON: {e}"})
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            return _emit({"ok": False, "code": 2, "stdout": "",
+                          "stderr": "--enabled-json must be a list of mod ids"})
+        try:
+            changed = sync_enabled(MODS_DIR, ids)
+        except OSError as e:
+            return _emit({"ok": False, "code": 1, "stdout": "",
+                          "stderr": f"could not update mod manifests: {e}"})
+        if changed:
+            note = "Matched the profile: " + ", ".join(changed) + "\n"
+    result = _collect_rsmm(["apply", *rest])
+    result["stdout"] = note + result["stdout"]
+    return _emit(result)
 
 
 def cmd_restore_all() -> int:
@@ -1882,6 +1926,9 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
     p_apply.add_argument("--no-merge", action="store_true")
+    p_apply.add_argument("--enabled-json", default=None,
+                         help="JSON list of the profile's enabled mod ids; manifests "
+                              "are made to match it before applying")
     sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
@@ -1985,7 +2032,7 @@ def main(argv: list[str] | None = None) -> int:
             rest.append("--force")
         if args.no_merge:
             rest.append("--no-merge")
-        return cmd_apply(rest)
+        return cmd_apply(rest, args.enabled_json)
     if args.cmd == "overlays":
         return cmd_overlays()
     if args.cmd == "active-overrides":
