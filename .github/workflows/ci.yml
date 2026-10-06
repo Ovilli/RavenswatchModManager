@@ -154,11 +154,16 @@ jobs:
           # deployed — which is exactly when the link first needs to pass CI.
           # Nothing is lost by skipping them: a missing endpoint fails the
           # site build, not the link check.
+          # The VS Code Marketplace answers automated requests with 503 (the
+          # whole site, from the runner and from curl, 2026-10-06), so its
+          # state says nothing about our docs: excluded rather than accepting
+          # 503 everywhere, which would hide real outages.
           args: >-
             --no-progress --root-dir "$GITHUB_WORKSPACE"
             --exclude '^file://' --exclude-path 'node_modules'
             --exclude '^https?://(localhost|127\.0\.0\.1|example\.com)'
             --exclude '^https?://([a-z]+\.)?rsmm\.me/llms[a-z-]*\.txt$'
+            --exclude '^https://marketplace\.visualstudio\.com/'
             --accept 200,206,403,429 --max-retries 2 --max-concurrency 4
             'apps/docs/src/content/docs/**/*.md'
             'apps/docs/src/content/docs/**/*.mdx'
