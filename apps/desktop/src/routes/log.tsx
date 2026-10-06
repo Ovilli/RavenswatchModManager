@@ -25,6 +25,7 @@ import {
   type ArchivedRun,
   type LoaderHealth,
   type LoaderLogResult,
+  gameStatus,
   listLoaderRuns,
   loaderHealth,
   readLoaderLog,
@@ -51,9 +52,15 @@ const LINE_CAP = 2000;
  *  name is an opaque handle the sidecar resolves against its own listing. */
 type Source = { kind: 'current' } | { kind: 'prev' } | { kind: 'run'; name: string };
 
-/** `t` is passed in: this is a plain helper, and the label is copy. */
-function sourceLabel(source: Source, t: (message: string) => string): string {
-  if (source.kind === 'current') return t('Current run');
+/** How often the screen asks whether Ravenswatch is up while it shows the newest
+ *  log. A process check, not a file read, so far slower than the tail poll. */
+const GAME_POLL_MS = 5000;
+
+/** `t` is passed in: this is a plain helper, and the label is copy. `live`: the
+ *  game is up, so the newest log is the run in progress; otherwise it is the
+ *  last run that ended, and calling it "current" read as a live session. */
+function sourceLabel(source: Source, t: (message: string) => string, live: boolean): string {
+  if (source.kind === 'current') return live ? t('Current run') : t('Last run');
   if (source.kind === 'prev') return t('Previous run');
   return source.name.replace(/\.log$/, '');
 }
@@ -88,6 +95,31 @@ function LogPage() {
   // Only the live log grows. Following a finished run would poll a file that
   // will never change again.
   const followable = source.kind === 'current';
+
+  // Whether the game is up, however it was started: `running` only knows about
+  // launches from this app, so a game started from Steam would read as stopped,
+  // and with no game at all the newest log is the LAST run, not a current one.
+  const [processUp, setProcessUp] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!followable) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const st = await gameStatus();
+        if (!cancelled) setProcessUp(st ? !!st.running : null);
+      } catch {
+        if (!cancelled) setProcessUp(null);
+      }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), GAME_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [followable]);
+  // Unknown (an older sidecar, a failed check) falls back to the launch state.
+  const gameUp = !!running || processUp === true;
 
   /** Full reload through the sidecar: it owns game-directory resolution and
    *  the archived-run lookup, and it hands back the byte length the
@@ -254,8 +286,10 @@ function LogPage() {
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-fraktur text-xl text-parchment">{sourceLabel(source, t)}</h3>
-            {running && followable ? (
+            <h3 className="font-fraktur text-xl text-parchment">
+              {sourceLabel(source, t, gameUp)}
+            </h3>
+            {gameUp && followable ? (
               <MonoTag tone="gilt">{t('game running')}</MonoTag>
             ) : meta?.exists ? (
               <MonoTag>{t.n(sessions, '{n} session', '{n} sessions')}</MonoTag>
@@ -326,7 +360,7 @@ function LogPage() {
             }
             ariaLabel={t('Which run to read')}
           >
-            <option value="now">{t('Current run')}</option>
+            <option value="now">{gameUp ? t('Current run') : t('Last run')}</option>
             <option value="prev">{t('Previous run')}</option>
             {runs.map((r) => (
               <option key={r.name} value={`run:${r.name}`}>
@@ -367,6 +401,12 @@ function LogPage() {
             {t('all sessions')}
           </label>
         </div>
+
+        {followable && !gameUp && meta?.exists ? (
+          <p className="font-serif-italic mb-2 text-xs text-ash">
+            {t('Ravenswatch is not running. This is the log of its last run.')}
+          </p>
+        ) : null}
 
         {problemsOnly ? (
           <p className="font-serif-italic mb-2 text-xs text-ash">

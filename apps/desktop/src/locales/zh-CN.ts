@@ -204,6 +204,9 @@ export const zhCN: Record<string, string> = {
   Credits: '致谢',
   'Curated bundles of mods made by the community.': '社区精心搭配的模组合集。',
   'Current run': '本次运行',
+  'Last run': '最近一次运行',
+  'Ravenswatch is not running. This is the log of its last run.':
+    'Ravenswatch 未在运行。这是它最近一次运行的日志。',
   'Current run only. Cleared whenever you launch Vanilla or Modded.':
     '只保留本次运行。每次启动原版或模组版时都会清空。',
   'Declared conflict': '声明的冲突',
