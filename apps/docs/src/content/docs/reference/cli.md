@@ -174,7 +174,12 @@ Scaffold a new mod directory:
 # Creates: mods/MyMod/manifest.toml
 
 ./rsmm new MyMod --kind item        # also seeds a [[content]] block
+./rsmm new MyMod --desc "Faster dodges" --tags balance,heroes --license MIT
 ```
+
+The author comes from `--author`, else your `git config user.name`. Fill in
+`--desc`, `--tags` and `--license` too and the new mod passes `rsmm lint` with no
+warnings; leave them out and the scaffold says what is still missing.
 
 `--kind` takes `item`, `talent`, `enemy`, `boss`, `map` or `hero`. Kinds that
 aren't confirmed are scaffolded with `experimental = true` and `enabled = false`.
@@ -192,9 +197,12 @@ current value, so the scaffold applies without hand-editing:
 |------|---------|
 | `--base ID` | Vanilla id to clone. Bare (`Armor_Per_Object`) or rarity-qualified (`Common/Armor_Per_Object`). Omit it at a terminal to get a searchable picker. |
 | `--name TEXT` | Display name for the mod and its content. |
-| `--desc TEXT` | Description shown in-game. |
+| `--desc TEXT` | Description shown in-game and on the store card. |
 | `--icon ID` | Vanilla icon stem (`rsmm items icons`) or `assets/<file>.png`. Defaults to the base's own icon. |
 | `--rarity R` | `Common`, `Rare`, `Epic`, `Legendary`, `Cursed` or `Powerups`. Defaults to the base's rarity. |
+| `--author NAME` | Who made it. Defaults to `git config user.name`. |
+| `--tags a,b` | Store tags, comma-separated: lower-case letters, digits and `-`, at most 16. |
+| `--license ID` | SPDX id (`MIT`, `CC-BY-4.0`) or a licence name. |
 
 See [Custom items](/guides/custom-items/) for the full walkthrough.
 

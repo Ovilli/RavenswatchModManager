@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 
 from rsmm.engine.paths import MODS_DIR
@@ -81,9 +82,13 @@ _FOLDER_SEED: dict[str, list[str]] = {
     ],
 }
 _ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+#: The store's tag rule (the editor's `mod_meta` holds new mods to the same).
+_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+_MAX_TAGS = 16
 _USAGE = (
     f"usage: rsmm new <id> [--kind {'|'.join(_CONTENT_KINDS)}] [--base ID]\n"
     "                     [--name TEXT] [--desc TEXT] [--icon ID] [--rarity R]\n"
+    "                     [--author NAME] [--tags a,b] [--license ID]\n"
     "\n"
     "Scaffold a new mod directory under mods/<id>/.\n"
     "\n"
@@ -94,14 +99,21 @@ _USAGE = (
     "               icon, rarity and every editable value field with its\n"
     "               true default, so the scaffold applies as-is.\n"
     "  --name TEXT  display name for the content (default: derived from <id>)\n"
-    "  --desc TEXT  description shown in-game\n"
+    "  --desc TEXT  description shown in-game and on the store card\n"
     "  --icon ID    vanilla icon stem (`rsmm items icons`) or assets/<file>.png\n"
     "  --rarity R   Common|Rare|Epic|Legendary|Cursed|Powerups (default: the\n"
     "               base item's own rarity)\n"
+    "  --author NAME  who made it (default: your `git config user.name`)\n"
+    "  --tags a,b   store tags, comma-separated (lower-case, digits, '-')\n"
+    "  --license ID SPDX id such as MIT, or a licence name\n"
     "\n"
     "With --kind item and no --base, an interactive picker lists the vanilla\n"
     "items to clone. Piped or redirected, it falls back to a placeholder base.\n"
+    "Pass --desc, --tags and --license and the new mod lints with no warnings.\n"
 )
+
+#: Where the SDK reference lives; the old `docs/MODDING.md` is a stub now.
+_GUIDE_URL = "https://docs.rsmm.me/guides/modding/"
 
 #: Cap on how many search hits the interactive base picker prints at once.
 _PICK_LIMIT = 20
@@ -119,6 +131,36 @@ def _toml_str(value: str) -> str:
     if "'" not in text:
         return f"'{text}'"
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _git_author() -> str | None:
+    """`git config user.name`: the name most authors have already told a tool.
+
+    None when git is missing or has no name set, so the scaffold falls back to
+    the placeholder that `rsmm lint` flags.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "config", "--get", "user.name"], capture_output=True,
+            text=True, timeout=5, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    name = out.stdout.strip()
+    return name or None
+
+
+def _parse_tags(raw: str) -> tuple[list[str], str | None]:
+    """Split `--tags`, normalised the way the store keeps them. Returns
+    (tags, error message or None)."""
+    tags = list(dict.fromkeys(t.strip().lower() for t in raw.split(",") if t.strip()))
+    bad = [t for t in tags if not _TAG_RE.match(t)]
+    if bad:
+        return [], (f"--tags: {bad[0]!r} is not a tag (lower-case letters, "
+                    "digits and '-', up to 32 characters)")
+    if len(tags) > _MAX_TAGS:
+        return [], f"--tags: at most {_MAX_TAGS} tags"
+    return tags, None
 
 
 def _interactive() -> bool:
@@ -280,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     opts: dict[str, str | None] = {
         "kind": None, "base": None, "name": None,
         "desc": None, "icon": None, "rarity": None,
+        "author": None, "tags": None, "license": None,
     }
     args: list[str] = []
     i = 0
@@ -321,6 +364,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"invalid mod id: {mod_id!r} (must match {_ID_RE.pattern})",
               file=sys.stderr)
         return 2
+    tags: list[str] = []
+    if opts["tags"] is not None:
+        tags, err = _parse_tags(opts["tags"])
+        if err:
+            print(err, file=sys.stderr)
+            return 2
     target = MODS_DIR / mod_id
     if target.exists():
         print(f"mod already exists: {target}", file=sys.stderr)
@@ -339,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     conf = kind_confidence(kind) if kind else "confirmed"
     experimental = conf != "confirmed"
 
+    author = (opts["author"] or "").strip() or _git_author()
     notes: list[str] = []
     manifest = [
         # Taplo / Even Better TOML load this for autocomplete and flag unknown
@@ -349,16 +399,19 @@ def main(argv: list[str] | None = None) -> int:
         f'id          = "{mod_id}"',
         f'name        = {_toml_str(opts["name"] or mod_id)}',
         'version     = "0.1.0"',
-        'author      = "you"           # <- your name; `rsmm lint` flags this default',
+        (f'author      = {_toml_str(author)}' if author else
+         'author      = "you"           # <- your name; `rsmm lint` flags this default'),
         f'description = {_toml_str(opts["desc"] or "")}',
         f"enabled     = {'false' if experimental else 'true'}",
         'sdk_version = ">=3.0,<4"',
         # Scaffold what the store card renders, rather than leaving an author
         # to discover the fields exist only when their published mod shows up
         # blank. Empty values are what `rsmm lint` warns on, so the prompt to
-        # fill them in is the scaffold itself.
-        'tags        = []              # e.g. ["items", "balance"] — how players find it',
-        'license     = ""              # e.g. "MIT" — omit and nobody may fork it',
+        # fill them in is the scaffold itself — unless the flags filled them.
+        ("tags        = [" + ", ".join(_toml_str(t) for t in tags) + "]" if tags else
+         'tags        = []              # e.g. ["items", "balance"] — how players find it'),
+        (f'license     = {_toml_str(opts["license"])}' if opts["license"] else
+         'license     = ""              # e.g. "MIT" — omit and nobody may fork it'),
     ]
     if experimental:
         manifest.append(
@@ -425,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
                                           encoding="utf-8")
 
     (target / "init.lua").write_text(
-        '-- ' + mod_id + ' — see docs/MODDING.md for the SDK reference.\n'
+        '-- ' + mod_id + ' — SDK reference: ' + _GUIDE_URL + '\n'
         '\n'
         'local R = require "rsmm"\n'
         'R.health.checkpoint("per_mod:' + mod_id + '")\n'
@@ -462,7 +515,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Next: `rsmm items show {resolved_base}` to see every editable "
               f"field, then `rsmm lint {mod_id}` and `rsmm apply`.")
     else:
-        print("Next: edit init.lua + manifest.toml, then `rsmm apply`.")
+        print(f"Next: edit init.lua + manifest.toml, then `rsmm lint {mod_id}` "
+              "and `rsmm apply` (or leave `rsmm watch` running to re-apply on "
+              "every save).")
+    missing = [field for field, have in
+               (("author", author), ("description", opts["desc"]),
+                ("tags", tags), ("license", opts["license"])) if not have]
+    if missing:
+        print(f"  · still to fill in for the store card: {', '.join(missing)} "
+              "(`rsmm lint` warns until manifest.toml has them)")
     return 0
 
 
