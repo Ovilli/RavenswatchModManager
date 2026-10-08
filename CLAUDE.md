@@ -10,7 +10,7 @@ Hybrid monorepo with two parallel toolchains:
 - **TypeScript pnpm workspace** (`apps/*` + `packages/*`) — Tauri 2 desktop shell, Hono API, Next.js site, Astro docs, shared `@rsmm/*` packages. Orchestrated by Turbo (`turbo.json`).
 - **Native loader DLL** (`src/loader/`, Windows-only) — `winhttp.dll` proxy + MinHook + Lua 5.4 VM injected into Ravenswatch for Lua-scripted mods. Built with CMake. Texture/asset overrides work without it. The Lua SDK (`src/loader/lib/rsmm.lua` + the generated `engine_gen.lua`/`events_gen.lua`, plus the `src/loader/lua/rsmm/*.lua` submodules it requires) is **disk-loaded from `<game>/rsmm/lib/`, not embedded in the DLL** — a Lua-only change ships via `rsmm install-loader` (or a straight file copy), no rebuild.
 
-The desktop app does **not** reimplement the CLI — it bundles the Python CLI as a PyInstaller sidecar (`apps/desktop/src-tauri/binaries/rsmm-<triple>[.exe]`) and shells out via Tauri's `shell:allow-execute`. See `scripts/build-sidecar.py` for the bundle definition (every data file the frozen CLI needs must be in `add_data_args` or it will crash on a fresh user install).
+The desktop app does **not** reimplement the CLI — it bundles the Python CLI as a PyInstaller sidecar (`apps/desktop/src-tauri/binaries/rsmm-<triple>[.exe]`) and shells out via Tauri's `shell:allow-execute`. `scripts/build-sidecar.py` is the only bundle definition (release.yml and the CI `sidecar` job both call it): every data file the frozen CLI needs must be in its `BUNDLE` list, and its post-build check fails when a listed file is missing from the binary or a subcommand crashes when run frozen.
 
 ## Common commands
 
