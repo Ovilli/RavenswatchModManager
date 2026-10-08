@@ -115,6 +115,7 @@
               "animation",
               "boss",
               "enemy",
+              "entity",
               "game_mode",
               "hero",
               "item",
@@ -245,6 +246,28 @@
                 "seed": {},
                 "tribe": {},
                 "weight": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "entity"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "entity": {},
+                "id": {},
+                "kind": {},
+                "schema_version": {},
+                "steps": {}
               },
               "additionalProperties": false
             }

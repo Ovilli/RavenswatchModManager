@@ -171,6 +171,40 @@ until the steps are proven in game.
 
 ---
 
+## `entity` — edit any shipped entity in place
+
+**What the player sees.** One shipped object behaving differently: a boss
+spawner, a camp, a UI. It takes the same `set` / `link` / `add_link` /
+`remove_link` steps as `ability`, aimed at one entity file that is not a hero's.
+`rsmm restore` puts the original back.
+
+```toml
+[mod]
+id           = "NoOvertimeTint"
+name         = "No Overtime Tint"
+version      = "0.1.0"
+author       = "you"
+description  = "Removes the red screen tint before and during overtime."
+
+[[content]]
+kind   = "entity"
+id     = "boss_spawner_no_tint"
+entity = "Objects/Map_Boss_Spawner/Map_Boss_Spawner_Graph_Model"
+
+[[content.steps]]
+remove_link = "State FX PreOvertime.while_active[1]"
+```
+
+**Prove it.** Let a chapter run into overtime: the screen stays its normal
+colour while the banner, minimap ping and music still arrive.
+
+**Trap.** `entity` is the path under `EntitySettings` (`.entity.ot` optional).
+Part names and link indices are the ones `rsmm entity-graph` prints for that
+file, and removing a link shifts the later indices of the SAME list, so remove
+from the end first or list one step per field. `clone` steps are refused.
+
+---
+
 ## `mesh` — put your model in the game
 
 **What the player sees.** A shipped prop, weapon or body wearing your geometry.

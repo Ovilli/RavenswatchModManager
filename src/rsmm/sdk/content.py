@@ -18,7 +18,8 @@ from pathlib import Path
 from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation")
+         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
+         "entity")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -72,6 +73,10 @@ KIND_CONFIDENCE: dict[str, str] = {
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
+    "entity": "confirmed",    # in-place graph edit of any shipped entity (the
+                              # ability kind's steps, not tied to a hero). PROVEN
+                              # IN GAME 2026-10-08: no-overtime-tint's three
+                              # remove_link steps took the overtime tint away.
     "game_mode": "confirmed", # PROVEN IN GAME: skipping (SeedRunsChapter3 [2,3], 2026-07-11) and a
                               # DESCENDING order ([1,0] played Storm Island then Dark Hills,
                               # 2026-09-19). Repeats are refused: [0,0,1] skipped the duplicate.
@@ -294,6 +299,7 @@ _KIND_MODULES = {
     "hero": "heros",
     "talent": "talents",
     "ability": "hero_abilities",
+    "entity": "entities",
     "skill": "skills",
     "modifier": "modifiers",
     "game_mode": "game_modes",
