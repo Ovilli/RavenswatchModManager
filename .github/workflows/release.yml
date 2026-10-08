@@ -176,87 +176,17 @@ jobs:
             --pattern 'function_patterns*' --dir data --clobber
           ls -la data/function_patterns* || true
 
-      - name: Build rsmm sidecar (PyInstaller)
+      # scripts/build-sidecar.py is the one definition of what the frozen CLI
+      # bundles; it then runs the binary from an empty folder and fails the
+      # leg if a bundled file is missing or a command crashes, so a sidecar
+      # that would break on a fresh install never reaches the installer.
+      # --require-loader: the DLL built above must be inside it.
+      - name: Build rsmm sidecar (PyInstaller) and check it
         shell: bash
         run: |
           python -m pip install --upgrade pip pyinstaller
           pip install -e .
-          OUT=apps/desktop/src-tauri/binaries
-          mkdir -p "$OUT"
-          # Keep PyInstaller paths inside the workspace so Windows runners
-          # (workspace on D:, system temp on C:) don't hit cross-drive relpath errors.
-          PYI_DIST="$PWD/.pyi-build/dist"
-          PYI_WORK="$PWD/.pyi-build/work"
-          PYI_SPEC="$PWD/.pyi-build"
-          mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
-          # Subcommands are loaded dynamically via importlib, so PyInstaller's
-          # static analyzer cannot find them. Use --collect-submodules to walk
-          # the rsmm.cli and rsmm.engine packages and pull in every module —
-          # this avoids the maintenance burden of an explicit hidden-import
-          # list that has to be kept in sync with every new subcommand.
-          HIDDEN_IMPORTS=(
-            --collect-submodules=rsmm.cli
-            --collect-submodules=rsmm.engine
-            --collect-submodules=rsmm.sdk
-          )
-          # PyInstaller's --add-data separator is ':' on Unix, ';' on Windows.
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then SEP=';'; else SEP=':'; fi
-          # PyInstaller resolves relative --add-data SRC paths against the
-          # --specpath dir, not the cwd. We use a separate spec dir so use
-          # absolute paths here to keep the source unambiguous.
-          # On git-bash (windows-latest) `$PWD` returns the MSYS-style
-          # `/d/a/...` which PyInstaller misreads as `\d\a\...`. Use
-          # `pwd -W` to get a real `D:/a/...` Windows path.
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            ROOT="$(pwd -W)"
-          else
-            ROOT="$PWD"
-          fi
-          # Bundle every runtime file the CLI reads from the repo tree.
-          # The frozen binary resolves REPO_ROOT to _MEIPASS, so anything
-          # listed here is reachable at the same relative path it had in
-          # source. Skipping any of these makes apply/doctor/install-loader
-          # crash on a fresh user install (we hit this in public tests).
-          ADD_DATA=(
-            --add-data "${ROOT}/pyproject.toml${SEP}."
-            --add-data "${ROOT}/data/asset_map.json${SEP}data"
-            --add-data "${ROOT}/data/asset_map.csv${SEP}data"
-            --add-data "${ROOT}/data/loader_version.json${SEP}data"
-            --add-data "${ROOT}/data/changelog.json${SEP}data"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.sh${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/editor/pages${SEP}src/rsmm/cli/editor/pages"
-            --add-data "${ROOT}/src/rsmm/cli/editor/static${SEP}src/rsmm/cli/editor/static"
-            --add-data "${ROOT}/src/loader/lua${SEP}src/loader/lua"
-            --add-data "${ROOT}/src/loader/lib${SEP}src/loader/lib"
-          )
-          # function_patterns.json is gitignored (game-derived, ~14MB) —
-          # fetched from the rolling pattern-db release in the step above;
-          # bundle it + its meta stamp if the fetch succeeded.
-          if [ -f "${ROOT}/data/function_patterns.json" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.json${SEP}data")
-          fi
-          if [ -f "${ROOT}/data/function_patterns.meta.json" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.meta.json${SEP}data")
-          fi
-          # schemas/ + templates/ are optional dev assets — bundle if present.
-          if [ -d "${ROOT}/data/schemas" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/schemas${SEP}data/schemas")
-          fi
-          if [ -d "${ROOT}/data/templates" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/templates${SEP}data/templates")
-          fi
-          # Ship the prebuilt Windows loader DLL when we just built it.
-          if [ -f "${ROOT}/dist/winhttp.dll" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/dist/winhttp.dll${SEP}dist")
-          fi
-          TRIPLE=$(rustc -vV | sed -n 's/host: //p')
-          pyinstaller --onefile --name "rsmm-$TRIPLE" \
-            --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-            "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
-            ./rsmm
-          ls -la "$OUT"
+          python scripts/build-sidecar.py --require-loader
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile --ignore-scripts
