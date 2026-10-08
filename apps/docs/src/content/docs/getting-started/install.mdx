@@ -1,132 +1,166 @@
 ---
-title: Installation
-description: Install the Ravenswatch Mod Manager on Windows or Linux.
+title: Install the app
+description: Download and install Ravenswatch Mod Manager on Windows, Linux or Steam Deck, step by step.
+sidebar:
+  label: Install the app
 ---
 
 import { Tabs, TabItem, Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-RSMM runs on **Windows and Linux**. Most people only need the desktop app — no terminal required.
+This page gets the Ravenswatch Mod Manager app onto your computer. It takes a few
+minutes and you don't need to type any commands.
 
-## Desktop app (recommended)
+**Before you start**, make sure Ravenswatch is installed through Steam and that
+you've started it at least once. RSMM works on **Windows 10/11**, **Linux** and
+**Steam Deck**. macOS is not supported.
 
-The desktop app gives you a graphical interface to browse, install, and manage mods.
+## 1. Download and install
+
+All downloads are on the
+[latest release page](https://github.com/Ovilli/RavenswatchModManager/releases/latest).
+Scroll down to **Assets** and pick the file for your system.
 
 <Tabs syncKey="os">
   <TabItem label="Windows" icon="seti:windows">
     <Steps>
-    1. Download [`RSMM-x64.msi`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) from the latest release.
-    2. Double-click the `.msi` and follow the installer.
-    3. Launch **Ravenswatch Mod Manager** from the Start Menu.
+    1. Download the file that ends in **`x64-setup.exe`**, for example
+       `Ravenswatch.Mod.Manager_5.9.9_x64-setup.exe`. The version number will be
+       whatever is newest.
+    2. Double-click it and follow the installer.
+
+       Windows may show a blue box saying **"Windows protected your PC"**. That
+       happens with small projects that haven't paid for a code-signing
+       certificate. Click **More info**, then **Run anyway**.
+    3. Open **Ravenswatch Mod Manager** from the Start menu.
     </Steps>
 
     <Aside type="tip">
-    If the app won't open, install [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) — it ships with Windows 11 and most Windows 10 builds.
+    If the app doesn't open at all, install
+    [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+    (choose the *Evergreen Bootstrapper*) and try again. Windows 11 already has it.
     </Aside>
   </TabItem>
   <TabItem label="Linux" icon="linux">
-    | Distro | Package |
-    |---|---|
-    | Any (AppImage) | [`RSMM-x86_64.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) — `chmod +x` then run |
-    | Debian / Ubuntu | [`rsmm_amd64.deb`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
-    | Arch Linux | [AUR](https://aur.archlinux.org/packages/rsmm): `yay -S rsmm` |
-    | Other | Use the [CLI](#cli-advanced) or `pipx` below |
+    There are two choices. **If you're not sure, use the AppImage.** It works on
+    almost every distribution and updates itself.
 
-    <Aside type="tip">
-    **Prefer the AppImage if you want automatic updates.** The in-app updater
-    replaces the running file, which it can only do for an AppImage you own —
-    put it somewhere like `~/Applications`. Installed from the `.deb` or from a
-    root-owned directory instead? The app offers a one-click **Install to
-    ~/Applications** the next time an update lands, and updates itself from
-    then on. The old system copy stays put; the app tells you the
-    `sudo apt remove` line for it.
-    </Aside>
+    **AppImage (recommended)**
+
+    <Steps>
+    1. Download the file that ends in **`.AppImage`**.
+    2. Move it somewhere you'll keep it, such as `~/Applications`.
+    3. Make it runnable. Right-click it, open **Properties → Permissions**, and
+       tick **Allow executing file as program**. Or, in a terminal:
+       ```sh
+       chmod +x ~/Applications/Ravenswatch.Mod.Manager_*.AppImage
+       ```
+    4. Double-click it to start the app.
+    </Steps>
+
+    **Debian / Ubuntu package**
+
+    Download the file that ends in **`.deb`** and open it with your software
+    installer, or run `sudo apt install ./Ravenswatch.Mod.Manager_*_amd64.deb` in
+    the folder you downloaded it to.
+
+    A `.deb` install can't update itself. When an update comes out, the app
+    offers a one-click **Install to ~/Applications**, which switches you over to
+    a self-updating AppImage.
+
+    **Arch Linux**
+
+    There is an [AUR package](https://aur.archlinux.org/packages/rsmm):
+    `yay -S rsmm`.
 
     <Aside type="caution">
-    Gray screen on launch (Debian/Ubuntu)? Run with the compositing fallback:
+    **Gray, empty window on Debian or Ubuntu?** Start the app from a terminal
+    like this instead:
     ```sh
-    WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 rsmm
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 ./Ravenswatch.Mod.Manager_*.AppImage
     ```
     </Aside>
   </TabItem>
+  <TabItem label="Steam Deck">
+    <Steps>
+    1. Hold the power button and choose **Switch to Desktop**.
+    2. Open the release page in the browser and download the file that ends in
+       **`.AppImage`**.
+    3. Open the **Downloads** folder, right-click the file, open
+       **Properties → Permissions** and tick **Is executable**.
+    4. Double-click it to start the app.
+    </Steps>
+
+    Mods that change looks, numbers and text work on Steam Deck. Script (Lua)
+    mods need one extra setting, explained in
+    [Script mods on Linux and Steam Deck](#script-mods-on-linux-and-steam-deck).
+  </TabItem>
 </Tabs>
 
-### First run
+## 2. First start
+
+When the app opens, it looks through your Steam libraries for Ravenswatch and
+runs a quick health check. **If nothing pops up, everything is fine** and you
+can skip to the next page.
+
+If something needs fixing, a **First-run setup** box appears at the top of the
+**Library** page and lists what's wrong:
 
 <Steps>
-1. **Set your game path** — RSMM auto-detects Steam installs. If it can't, browse to the folder containing `Ravenswatch.exe`.
-2. **Run the Doctor** — click the Doctor button to verify the setup.
-3. **Browse mods** — open the Registry tab to discover community mods.
-4. **Apply** — click Apply to install your selected mods into the game.
-5. **Play** — launch Ravenswatch from the app.
+1. If there's a button like **Repair 2 automatically**, press it. That fixes
+   most problems.
+2. If it says the game wasn't found, press **Open Settings** and fill in
+   **Game install** with the folder that contains `Ravenswatch.exe`.
+
+   Not sure where that is? In Steam, right-click **Ravenswatch** →
+   **Manage** → **Browse local files**. The folder that opens is the one you
+   want.
+3. Go back to the **Library** and press **Re-check**. When every check passes,
+   the box goes away.
 </Steps>
 
-## CLI (advanced)
+You're ready. Go to [Using the app](/getting-started/desktop-app/) to install
+your first mod.
 
-Install from source if you want to author mods, script installs, or run on a platform without a pre-built package.
+## Updates
 
-**Prerequisites:** Python 3.11+, Git, and Ravenswatch installed.
+The app checks for new versions by itself. When one is ready you'll see a
+message with a **Restart & update** button. That's all you need to do.
 
-<Tabs syncKey="os">
-  <TabItem label="Windows" icon="seti:windows">
-    ```cmd
-    git clone https://github.com/Ovilli/RavenswatchModManager.git
-    cd RavenswatchModManager
-    python -m venv venv
-    venv\Scripts\activate
-    pip install -e .
-    rsmm doctor
-    ```
-  </TabItem>
-  <TabItem label="Linux" icon="linux">
-    ```sh
-    sudo apt install build-essential cmake pkg-config   # build deps
-    git clone https://github.com/Ovilli/RavenswatchModManager.git
-    cd RavenswatchModManager
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -e .
-    ./rsmm doctor
-    ```
-  </TabItem>
-  <TabItem label="pipx (any OS)" icon="rocket">
-    ```sh
-    pipx install git+https://github.com/Ovilli/RavenswatchModManager.git
-    rsmm doctor
-    ```
-  </TabItem>
-</Tabs>
+The app also keeps the **loader** (the small extra file that script mods need)
+up to date in your game folder each time it starts.
 
-### Verify your setup
+## Script mods on Linux and Steam Deck
 
-```sh
-rsmm doctor          # health check — should pass with no errors
-rsmm new TestMod     # scaffold a test mod
-rsmm apply           # apply all enabled mods
-rsmm run             # launch the game
-```
+On Linux, Ravenswatch runs through Steam's Proton. Script (Lua) mods need Steam
+to load RSMM's loader file, which takes one launch option:
 
-## Lua scripting (Windows only; experimental on Steam Proton)
+<Steps>
+1. In Steam, right-click **Ravenswatch** → **Properties**.
+2. Under **General → Launch Options**, paste:
+   ```
+   WINEDLLOVERRIDES="winhttp=n,b" %command%
+   ```
+3. Close the window. Steam saves it automatically.
+</Steps>
 
-Lua mods run inside the game process and need the loader DLL (`winhttp.dll`) next to `Ravenswatch.exe`. Texture and asset overrides work **without** it.
+Script mods on Linux are still experimental. Mods that only change looks, numbers
+or text don't need this.
 
-```sh
-rsmm install-loader  # install into the game
-```
+## Uninstall
 
-From a source checkout, `install-loader` downloads the signed prebuilt loader the
-first time, so you do not need a C++ toolchain. Only loader developers build it
-themselves: `src/loader/build.sh` (Linux cross-compile, MinGW) or
-`src\loader\build.bat` (Windows); both need CMake.
+1. In the app, open **Commands** and run **Restore originals**. This puts every
+   original game file back.
+2. Uninstall the app the normal way: **Settings → Apps** on Windows, or delete
+   the AppImage on Linux.
 
-<Aside type="note">
-Steam Proton on Linux: add this launch option — `WINEDLLOVERRIDES="winhttp=n,b" %command%`
-</Aside>
+To be extra sure the game is clean, right-click Ravenswatch in Steam →
+**Properties → Installed Files → Verify integrity of game files**.
 
 ## Next steps
 
 <CardGrid>
-  <LinkCard title="Your first mod" href="/getting-started/first-mod/" description="Install and create a mod in minutes." />
-  <LinkCard title="CLI reference" href="/reference/cli/" description="Every command explained." />
-  <LinkCard title="Authoring mods" href="/guides/modding/" description="Build and share your own mods." />
-  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/" description="Fixes for common issues." />
+  <LinkCard title="Using the app" href="/getting-started/desktop-app/" description="Find mods, switch them on, and play." />
+  <LinkCard title="Make your first mod" href="/getting-started/first-mod/" description="Change an item in your browser, no tools needed." />
+  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/" description="If something didn't work." />
+  <LinkCard title="Modding tools" href="/getting-started/modding-tools/" description="The rsmm command-line tool, for mod makers." />
 </CardGrid>

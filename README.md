@@ -7,6 +7,8 @@
   &nbsp;·&nbsp;
   <a href="https://rsmm.me/registry"><b>Browse mods</b></a>
   &nbsp;·&nbsp;
+  <a href="https://docs.rsmm.me/getting-started/start-here/"><b>New to modding?</b></a>
+  &nbsp;·&nbsp;
   <a href="https://docs.rsmm.me"><b>Documentation</b></a>
   &nbsp;·&nbsp;
   <a href="https://docs.rsmm.me/getting-started/first-mod/"><b>Make a mod</b></a>&nbsp;·&nbsp;
@@ -56,17 +58,22 @@ scripting gameplay in Lua, and publishing to the site with one command.
 | :---: | :---: | :---: |
 | [Installer (`.exe`)](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.deb` package](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
 
-The app keeps itself up to date after the first install. Steam Deck works through the Linux build.
+On Windows, download the file ending in `x64-setup.exe`. The app keeps itself up to
+date after the first install. Steam Deck works through the Linux AppImage.
 
-1. **Open RSMM.** It looks for Ravenswatch in your Steam library. If it can't find
-   it, choose the folder that contains `Ravenswatch.exe`.
-2. **Add mods** from the **Browse** tab, or drop a mod folder into your library.
-3. **Press Apply.** This writes the enabled mods into the game. Enabling or
-   disabling a mod does nothing until you apply.
-4. **Start the game.**
+1. **Open RSMM.** It finds Ravenswatch in your Steam library by itself. If it can't,
+   it asks you for the folder that contains `Ravenswatch.exe`.
+2. **Get some mods.** Open **Browse** and press **install** on any mod you like. It
+   lands in your **Library**, switched on.
+3. **Press Launch Modded.** The game starts with your mods.
 
-To go back to the unmodded game, disable your mods and apply again, or use
-**Restore** to undo everything at once.
+When you quit the game, RSMM puts the original files back by itself. **Launch Vanilla**
+starts the plain game. Starting Ravenswatch from Steam also gives you the plain game,
+so use **Launch Modded** whenever you want mods.
+
+New to all this? The [step-by-step install guide](https://docs.rsmm.me/getting-started/install/)
+and [app tour](https://docs.rsmm.me/getting-started/desktop-app/) explain every screen,
+and the [FAQ](https://docs.rsmm.me/getting-started/faq/) covers safety, co-op and game updates.
 
 <table>
 <tr>
@@ -86,7 +93,8 @@ To go back to the unmodded game, disable your mods and apply again, or use
 | **New content** | Custom magical objects. Enemies, maps, shops and rewards are supported but still experimental, and mods that use them say so |
 | **Scripted gameplay** | Lua scripts running in the game through the loader |
 
-Many mods have their own settings: press **Config** on a mod to change them before applying.
+Many mods have their own settings: press the settings button on a mod in your
+**Library** to change them before you play.
 
 > [!NOTE]
 > Mods only change files on your own machine. Cosmetic mods are fine in co-op. Mods
@@ -95,7 +103,14 @@ Many mods have their own settings: press **Config** on a mod to change them befo
 
 ## Making mods
 
-Mod authoring uses the `rsmm` CLI, which needs Python 3.11 or newer.
+**No install needed to start:** the [web editor](https://docs.rsmm.me/editor/) changes
+items, talents and abilities right in your browser, using your own game files.
+[Make your first mod](https://docs.rsmm.me/getting-started/first-mod/) walks you
+through it.
+
+For everything else there's the `rsmm` command-line tool, which needs Python 3.11 or
+newer and Git. Never used a terminal? [Set up the modding tools](https://docs.rsmm.me/getting-started/modding-tools/)
+goes through it one step at a time.
 
 ```sh
 git clone https://github.com/Ovilli/RavenswatchModManager
@@ -146,15 +161,15 @@ Steam launch options.
 
 | Problem | Fix |
 | --- | --- |
-| Mods don't show up in the game | Press **Apply** after changing mods |
-| The game crashes | Run `rsmm safe-mode`, or restore and re-enable mods one at a time |
-| A game update broke things | Restore, let Steam verify the game files, then apply again |
+| Mods don't show up in the game | Start the game with **Launch Modded**, not from Steam, and check you're not in the **Default** profile |
+| The game crashes | Press **Launch Vanilla** to check the game itself works, then switch mods off half at a time to find the culprit |
+| A game update broke things | Press **Repair** on the "Ravenswatch updated" banner, then **Launch Modded** |
 | Gray window on Debian/Ubuntu | Start the app with `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1` |
 | The app won't open on Windows | Install [WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/) |
 
 </details>
 
-`rsmm doctor` checks your setup and reports what it finds. More fixes are in the
+**Commands → Doctor** in the app (or `rsmm doctor`) checks your setup and reports what it finds. More fixes are in the
 [troubleshooting guide](https://docs.rsmm.me/getting-started/troubleshooting/). If you're
 still stuck, [open an issue](https://github.com/Ovilli/RavenswatchModManager/issues) with
 your OS, RSMM version and the `rsmm doctor` output.
