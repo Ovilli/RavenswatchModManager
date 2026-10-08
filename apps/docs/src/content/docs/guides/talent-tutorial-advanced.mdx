@@ -539,6 +539,14 @@ exact arrangement has not been played yet.
 
 Ultimates cannot take a stat this way: they have no State that marks them as owned.
 
+**Talents two heroes share.** Romeo and Juliet build their shared talents (Love
+Shield, Ignite, …) in one file both inherit, `Hero_Juliet/Hero_Romeo_Juliet_Common`;
+each hero's own file only overrides the card. `add_stats` and `include` find the
+talent there and write that file, so the change reaches **both** heroes. `during`
+and `after` then take the abilities that file builds (SPECIAL and TRAIT).
+`rebuild` is refused for these for now: the hero's own card would keep
+pointing at the old effect.
+
 <Badge text="Tested in game" variant="success" /> **Only while an ability is in use:** add `during = "DEFENSE"` (or `ATTACK`, `POWER`,
 `SPECIAL`, `TRAIT`, `DASH`) to an entry, e.g. "During #DEFENSE@, #ATTACK@ damage
 &+{0}%~". The bonus then reads a copy of a selector the game ships ("ability in use
@@ -559,6 +567,36 @@ ability starts, `after` also works for abilities that only signal their start
 ```toml
 add_stats = [
   { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE", seconds = 3 },
+]
+```
+
+<Badge text="Tested in game" variant="success" /> **At most once every N seconds:** add `cooldown = 8` to an
+`after` entry and a use only restarts the window when the last restart was at least
+8 seconds ago; uses in between do nothing. This is how Romeo's **Love Shield** limits
+itself ("every 3 s max"), and the gate is a copy of his: the ability fires a tester
+that passes only while a new Cooldown State is off, and that State then restarts the
+window and switches itself off after `cooldown` seconds. In the editor, fill in **At
+most once every … second(s)** under the "Lasts" box; leave it empty for every use.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE",
+    seconds = 3, cooldown = 8 },
+]
+```
+
+<Badge text="Tested in game" variant="success" /> **Your next ability after another:** add `next = "ATTACK"` to an
+`after` entry and the bonus ends once ATTACK has been used, like Beowulf's
+**Retaliation** ("your next ATTACK within … after DEFENSE"). The window is the same
+`after` window; ATTACK's in-use State ends it as it finishes, so the bonus covers that
+whole attack and is gone after it. `next` takes an ability whose use lasts (the same
+ones `during` takes) and must differ from `after`. In the editor, pick it under
+**Used up by**. `next` and `cooldown` can be combined.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.5, after = "DEFENSE",
+    seconds = 4, next = "ATTACK" },
 ]
 ```
 

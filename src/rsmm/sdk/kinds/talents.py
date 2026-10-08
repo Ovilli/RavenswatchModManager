@@ -74,7 +74,10 @@ Fields:
                                only while that ability is in use; ``after =
                                "DEFENSE", seconds = 3`` applies it for 3 s each
                                time that ability is used (restarting on every
-                               use). No ``file`` needed; see
+                               use); add ``cooldown = 8`` to let it restart at
+                               most once every 8 s, or ``next = "ATTACK"`` to end
+                               it once ATTACK has been used ("your next ATTACK").
+                               No ``file`` needed; see
                                ``rsmm.engine.talent_add_stat``.
     ``rebuild``                list of talent names whose own effect is turned
                                OFF, keeping the card: the talent builder's blank
@@ -131,6 +134,40 @@ class _HeroDir:
 
     def entity_files(self) -> list[corpus.CorpusFile]:
         return corpus.files(f"{_HEROES_DIR}/{self.name}", _GEN_SUFFIX)
+
+
+def _inherited_files(hero_dir: _HeroDir) -> list[corpus.CorpusFile]:
+    """Hero entity files ``hero_dir``'s main entity inherits from, transitively,
+    outside its own folder.
+
+    Some talents live there and not in the hero's own files: Romeo's and
+    Juliet's shared talents (Love Shield, ...) are built in
+    ``Hero_Juliet/Hero_Romeo_Juliet_Common``, which both inherit through their
+    FX entity; the hero's own file only overrides the card's controller."""
+    from ...engine import entity_components as ECM
+    mine = {p.rel for p in hero_dir.entity_files()}
+    main = next((p for p in hero_dir.entity_files()
+                 if p.name == f"{hero_dir.name}{_GEN_SUFFIX}"), None)
+    out: list[corpus.CorpusFile] = []
+    todo, seen = ([main] if main else []), set()
+    while todo:
+        f = todo.pop()
+        try:
+            refs = ECM.parents(f.read_bytes())
+        except (OSError, ValueError):
+            continue
+        for ref in refs:
+            rel = ref.replace("\\", "/")
+            if not rel.startswith("Heroes/") or not rel.endswith(".entity.ot") or rel in seen:
+                continue
+            seen.add(rel)
+            parent = corpus.CorpusFile(f"EntitySettings/{rel[:-len('.entity.ot')]}{_GEN_SUFFIX}")
+            if not parent.is_file():
+                continue
+            todo.append(parent)
+            if parent.rel not in mine:
+                out.append(parent)
+    return out
 
 
 def _resolve_hero_dir(hero: str) -> _HeroDir | None:
@@ -274,6 +311,18 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
     return out
 
 
+def _owns_talent(raw: bytes, talent: str) -> bool:
+    """Whether ``raw`` holds ``talent``'s owned state, not only its controller."""
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    try:
+        graph = EG.parse(raw)
+        ctl = next((c for c in graph.components if c.name == f"Skill Controller {talent}"), None)
+        return ctl is not None and TA.owned_state(graph, ctl, talent) is not None
+    except (TA.AddStatError, ValueError):
+        return False
+
+
 def _coerce_add_stats(raw) -> list[dict]:
     """Normalise ``add_stats`` entries; the values are checked when applied."""
     if raw is None:
@@ -292,9 +341,13 @@ def _coerce_add_stats(raw) -> list[dict]:
         after = e.get("after")
         if after is not None and not isinstance(after, str):
             raise ContentError(f"add_stats: after must be an ability name, got {after!r}")
+        nxt = e.get("next")
+        if nxt is not None and not isinstance(nxt, str):
+            raise ContentError(f"add_stats: next must be an ability name, got {nxt!r}")
         out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
                     "percent": bool(e.get("percent", True)), "during": during,
-                    "after": after, "seconds": e.get("seconds")})
+                    "after": after, "seconds": e.get("seconds"),
+                    "cooldown": e.get("cooldown"), "next": nxt})
     return out
 
 
@@ -398,9 +451,15 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Another talent block in this mod may already have written the same entity
     # during this emit (the previous emit's files are removed before any block
     # runs). Start from that copy, or this block silently discards its edits.
+    # The talent builder (add_stats / include / rebuild) also reaches the hero
+    # files this hero inherits (see _inherited_files); the label-based patches
+    # keep to the hero's own files, as before.
+    builder_files = candidates + ([] if file_filter else
+                                  [p for p in _inherited_files(hero_dir)
+                                   if add_stats or rebuild or include])
     edited: dict[corpus.CorpusFile, bytes] = {}
-    for p in candidates:
-        earlier = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
+    for p in builder_files:
+        earlier = out_dir / Path(*p.rel.split("/"))
         if earlier.is_file():
             edited[p] = earlier.read_bytes()
 
@@ -409,7 +468,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # preserving edits.
     def _home(talent: str):
         ctl = f"Skill Controller {talent}".encode()
-        homes = [p for p in candidates if ctl in (edited.get(p) or p.read_bytes())]
+        homes = [p for p in builder_files if ctl in (edited.get(p) or p.read_bytes())]
+        if len(homes) > 1:
+            # A hero's own file can override an inherited talent's controller
+            # (Romeo's Love Shield); the talent is built where its owned state is.
+            homes = [p for p in homes if _owns_talent(edited.get(p) or p.read_bytes(), talent)]
         if len(homes) != 1:
             raise ContentError(f"talent {defn.id}: {len(homes)} of {hero}'s entity files "
                                f"hold a talent named {talent!r}")
@@ -419,6 +482,14 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         from ...engine import talent_add_stat as TA
         for talent in rebuild:
             p = _home(talent)
+            overrides = [q.name for q in candidates if q is not p
+                         and f"Skill Controller {talent}".encode() in (edited.get(q)
+                                                                         or q.read_bytes())]
+            if p not in candidates and overrides:
+                raise ContentError(
+                    f"talent {defn.id}: {talent!r} is built in {p.name} and its card is "
+                    f"overridden in {', '.join(overrides)}, which would keep its effect on; "
+                    "rebuild cannot turn an inherited talent off yet")
             try:
                 edited[p], cleared = TA.rebuild_talent(edited.get(p) or p.read_bytes(),
                                                        talent=talent, seed=f"{mod_id}:{defn.id}")
@@ -457,6 +528,14 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if during_donor is None:
                 raise ContentError(f"talent {defn.id}: 'during'/'after' need the game's "
                                    f"{TA.DONOR_DURING_HERO} files to copy a selector from")
+        limiter_donor = None
+        if any(e["cooldown"] is not None for e in add_stats):
+            ldir = _resolve_hero_dir(TA.DONOR_LIMITER_HERO)
+            limiter_donor = next((p for p in (ldir.entity_files() if ldir else [])
+                                  if p.name == f"{TA.DONOR_LIMITER_FILE}{_GEN_SUFFIX}"), None)
+            if limiter_donor is None:
+                raise ContentError(f"talent {defn.id}: 'cooldown' needs the game's "
+                                   f"{TA.DONOR_LIMITER_FILE} file to copy a gate from")
         for entry in add_stats:
             p = _home(entry["talent"])
             try:
@@ -466,7 +545,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     percent=entry["percent"], seed=f"{mod_id}:{defn.id}",
                     during=entry["during"], after=entry["after"], seconds=entry["seconds"],
                     during_donor_raw=(during_donor.read_bytes()
-                                      if entry["during"] or entry["after"] else None))
+                                      if entry["during"] or entry["after"] else None),
+                    cooldown=entry["cooldown"], next_ability=entry["next"],
+                    limiter_donor_raw=(limiter_donor.read_bytes()
+                                       if entry["cooldown"] is not None else None))
             except TA.AddStatError as e:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
             _log.info("talent %s/%s: %s gets %s; card slot {%s}", mod_id, defn.id,
@@ -563,7 +645,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     written: list[Path] = []
     for p, blob in edited.items():
-        decoded = f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}"
+        decoded = p.rel
         dest = out_dir / Path(*decoded.split("/"))
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)

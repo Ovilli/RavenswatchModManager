@@ -233,6 +233,10 @@ class EntityFile:
             ng, nn = group.get(c.group, c.group), rename.get(c.name, c.name)
             paths[c.path] = f"{ng}\\{nn}" if ng else nn
 
+        # A copy from another entity is referenced by THIS file's name: a link
+        # among the copies kept the donor's (`[State] Hero_Romeo_Juliet_Common\...`)
+        # in its label, which no reference in a shipped file ever carries.
+        scope = self._scope() if src is not self else None
         payloads: list[bytearray] = []
         for old in comps + subs:
             p = bytearray(src.objects[old])
@@ -244,7 +248,7 @@ class EntityFile:
             p = payloads[i]
             for a, b in guid.items():                 # own GUID + links to copies
                 p[:] = p.replace(a, b)
-            p[:] = _rewrite_ref_paths(bytes(p), src.cf, paths, set(guid.values()))
+            p[:] = _rewrite_ref_paths(bytes(p), src.cf, paths, set(guid.values()), scope)
             if old in by_name:
                 c = by_name[old]
                 p[:] = _rewrite_header(bytes(p), rename.get(c.name, c.name),
@@ -722,8 +726,9 @@ def _raw_spans(p: bytes, special: set[int]) -> list[tuple[int, int]]:
 
 
 def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
-                       new_guids: set[bytes]) -> bytes:
-    """Rename the ``Group\\Name`` tail of every picker that targets a copy."""
+                       new_guids: set[bytes], scope: str | None = None) -> bytes:
+    """Rename the ``Group\\Name`` tail of every picker that targets a copy, and
+    its ``scope`` (the entity's name) too when one is given."""
     names = [x.name for x in cf.classes]
     if "oCEntityCpntPicker" not in names:
         return p
@@ -734,7 +739,7 @@ def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
         m = EG._PATH.match(ref.path)
         if not m or m["rest"] not in paths:
             continue
-        new = f"[{m['kind']}] {m['scope']}\\{paths[m['rest']]}"
+        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[m['rest']]}"
         s = off + 8 + 16                              # BEGIN, class, GUID
         n = struct.unpack_from("<I", p, s)[0]
         out += p[last:s] + _lstr(new)

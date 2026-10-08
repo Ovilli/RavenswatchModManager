@@ -399,7 +399,7 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out, skipped = [], []
     own = S.controller_key_bases(_herodefs()[hero])
-    add_stat = _add_stat_info(main)
+    add_stat = _add_stat_info([main, *(f.read_bytes() for f in _inherited(hero))])
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
         held = own.get(source, [])
@@ -434,34 +434,62 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
     return out, skipped
 
 
-def _add_stat_info(main: bytes):
-    """``source -> {ok, why, nextSlot}``: whether a talent can be given a new
-    stat (``add_stats``, rsmm.engine.talent_add_stat) and which ``{N}`` the
-    first added number takes on its card."""
+def _inherited(hero: str) -> list:
+    """Hero files ``hero`` inherits that build some of its talents (Romeo's and
+    Juliet's shared ``Hero_Romeo_Juliet_Common``); see the talent kind."""
+    from rsmm.sdk.kinds import talents as T
+    d = T._resolve_hero_dir(hero)
+    return T._inherited_files(d) if d else []
+
+
+def _add_stat_info(files: list[bytes]):
+    """``source -> {ok, why, nextSlot, during, after}``: whether a talent can be
+    given a new stat (``add_stats``, rsmm.engine.talent_add_stat), which ``{N}``
+    the first added number takes on its card, and the abilities it can be
+    conditioned on. ``files`` is the hero's main entity, then the files it
+    inherits: a talent is built in the first that holds its owned state, and its
+    abilities are the ones THAT file builds (the shared Romeo/Juliet file builds
+    SPECIAL and TRAIT, the heroes' own files the rest)."""
     from rsmm.engine import entity_graph as EG
     from rsmm.engine import entity_graph_edit as GE
     from rsmm.engine import talent_add_stat as TA
 
-    graph = EG.parse(main)
-    ef = GE.EntityFile(main)
-    # Abilities this hero's talents can be conditioned on ("during"): the ones
-    # whose in-use state can be found. Same for every card of the hero.
-    during, after = [], []
-    for ability in TA.ABILITIES:
-        for out, momentary in ((during, False), (after, True)):
-            try:
-                TA.ability_state(graph, ability, momentary_ok=momentary)
-                out.append(ability)
-            except TA.AddStatError:
-                pass
+    parsed: list[tuple] = []
+
+    def file_info(i: int) -> tuple:
+        while len(parsed) <= i:
+            raw = files[len(parsed)]
+            graph = EG.parse(raw)
+            during, after = [], []
+            for ability in TA.ABILITIES:
+                for out, momentary in ((during, False), (after, True)):
+                    try:
+                        TA.ability_state(graph, ability, momentary_ok=momentary)
+                        out.append(ability)
+                    except TA.AddStatError:
+                        pass
+            parsed.append((graph, GE.EntityFile(raw), during, after))
+        return parsed[i]
 
     def info(source: str) -> dict:
-        try:
-            _state, _sel, fmt = TA.talent_parts(graph, source)
-        except TA.AddStatError as e:
-            return {"ok": False, "why": str(e), "nextSlot": None, "during": [], "after": []}
-        slots = len(ef._format_slots(fmt)[0]) if fmt is not None else None
-        return {"ok": True, "why": "", "nextSlot": slots, "during": during, "after": after}
+        why = ""
+        for i in range(len(files)):
+            graph, ef, during, after = file_info(i)
+            try:
+                _state, _sel, fmt = TA.talent_parts(graph, source)
+            except TA.AddStatError as e:
+                why = why or str(e)
+                continue
+            slots = len(ef._format_slots(fmt)[0]) if fmt is not None else None
+            # Built in an inherited file while the hero's own file overrides
+            # its controller: rebuilding would leave the override pointing at
+            # the old effect, so the kind refuses it (talents._home).
+            overridden = i > 0 and f"Skill Controller {source}".encode() in files[0]
+            return {"ok": True, "why": "", "nextSlot": slots, "during": during,
+                    "after": after, "rebuild": not overridden,
+                    "rebuildWhy": ("it is shared with another hero's file, and turning it "
+                                   "off there is not supported yet") if overridden else ""}
+        return {"ok": False, "why": why, "nextSlot": None, "during": [], "after": []}
     return info
 
 
@@ -563,7 +591,10 @@ def _hero_formats(hero: str) -> dict:
         return {}
     bank = m.group(1).decode()
     out: dict = {}
-    for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
+    # The hero's own files first, then the ones it inherits (Love Shield's card
+    # text is formatted in the shared Romeo/Juliet file).
+    for p in [*corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX),
+              *_inherited(hero)]:
         file = p.name.split(".entity.ot.", 1)[0]
         for key, fmt in IM.formats_by_key(p.read_bytes(), bank).items():
             out.setdefault(key, (file, fmt))
@@ -794,7 +825,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
     ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
     stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
-    during?, after?, seconds?}]`` (new stats a talent did not have) and
+    during?, after?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
     ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
     talent builder) and ``include`` = ``[{talent, from}]`` (owning ``talent``
     also runs ``from``'s effect); only changed rows are sent."""
@@ -871,11 +902,30 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             seconds = float(_num(row.get("seconds"), f"{talent} {stat} seconds"))
             if seconds <= 0:
                 raise EditorError(f"{talent} {stat}: how many seconds it lasts must be above 0")
+        cooldown = None
+        if row.get("cooldown") not in (None, ""):
+            if not after:
+                raise EditorError(f"{talent} {stat}: a cooldown only limits 'For a while after'")
+            cooldown = float(_num(row.get("cooldown"), f"{talent} {stat} cooldown"))
+            if cooldown <= 0:
+                raise EditorError(f"{talent} {stat}: the cooldown must be above 0 seconds")
+        nxt = row.get("next") or None
+        if nxt is not None:
+            if not after:
+                raise EditorError(f"{talent} {stat}: 'your next ...' only ends "
+                                  "a 'For a while after'")
+            if str(nxt).upper() not in abilities:
+                raise EditorError(f"{talent}: unknown ability {nxt!r}")
+            if str(nxt).upper() == str(after).upper():
+                raise EditorError(f"{talent} {stat}: the next ability must differ from the one "
+                                  "that starts it")
         added.append({"talent": talent, "stat": stat,
                       "values": [float(_num(v, f"{talent} {stat}")) for v in values],
                       **({} if row.get("percent", True) else {"percent": False}),
                       **({"during": str(during).upper()} if during else {}),
-                      **({"after": str(after).upper(), "seconds": seconds} if after else {})})
+                      **({"after": str(after).upper(), "seconds": seconds} if after else {}),
+                      **({"cooldown": cooldown} if cooldown is not None else {}),
+                      **({"next": str(nxt).upper()} if nxt else {})})
     rebuild = req.get("rebuild") or []
     if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
         raise EditorError("rebuild takes a list of talent names")

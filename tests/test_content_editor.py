@@ -425,11 +425,21 @@ def test_an_added_stat_for_a_while_after_an_ability_carries_its_seconds():
         "after": "DEFENSE", "seconds": 4.0}
 
 
+def test_an_after_window_carries_its_cooldown_and_an_empty_one_means_every_use():
+    assert _added(after="DEFENSE", seconds=3, cooldown=8)["cooldown"] == 8.0
+    assert "cooldown" not in _added(after="DEFENSE", seconds=3, cooldown="")
+
+
 @pytest.mark.parametrize(("row", "msg"), [
     ({"after": "DEFENSE"}, "not a number"),
     ({"after": "DEFENSE", "seconds": 0}, "above 0"),
     ({"after": "JUMP", "seconds": 3}, "unknown ability"),
     ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "not both"),
+    ({"after": "DEFENSE", "seconds": 3, "cooldown": 0}, "above 0"),
+    ({"cooldown": 8}, "only limits"),
+    ({"next": "ATTACK"}, "only ends"),
+    ({"after": "DEFENSE", "seconds": 3, "next": "DEFENSE"}, "must differ"),
+    ({"after": "DEFENSE", "seconds": 3, "next": "JUMP"}, "unknown ability"),
 ])
 def test_a_bad_after_is_refused(row, msg):
     with pytest.raises(E.EditorError, match=msg):
@@ -463,3 +473,15 @@ def test_count_stats_are_labelled_as_tallies(name, tally):
     assert E.stat_tally(name) == tally
     if tally:
         assert E.stat_aka(name) == f"tally: {tally}s held"
+
+
+def test_an_inherited_talent_can_take_a_stat_but_not_a_rebuild():
+    # Love Shield is built in the Romeo/Juliet common file; Romeo's own file only
+    # overrides its controller. Its abilities are the ones that file builds.
+    if "Romeo" not in E.heroes():
+        pytest.skip("shipped heroes not available")
+    card = next(c for c in E.talent_cards("Romeo") if c["source"] == "Special Invulnerable")
+    info = card["addStat"]
+    assert info["ok"] and info["during"] == ["SPECIAL", "TRAIT"]
+    assert info["rebuild"] is False and info["rebuildWhy"]
+    assert card["file"] == "Hero_Romeo_Juliet_Common" and card["entries"]

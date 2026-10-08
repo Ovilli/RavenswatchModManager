@@ -1330,12 +1330,16 @@ function isRebuilt(c) { return !!(S.talentEdit.rebuild || {})[c.source]; }
 const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE",
   trait: "TRAIT", dash: "DASH", ultimate: "ULTIMATE" };
 // `a` is an added stat: its stat, percent switch and when it applies (`during`
-// an ability, or for `seconds` `after` one).
+// an ability, or for `seconds` `after` one, at most once every `cooldown` s,
+// used up by the `next` use of another ability).
 function statLine(a, n) {
   const line = statPhrase(a.stat, n, a.percent !== false);
   const lead = a.during ? `During #${a.during}@`
+    : a.after && a.next ? `Within #${fmt(a.seconds)}@ second(s) after using #${a.after}@, your next #${a.next}@ gets`
     : a.after ? `For #${fmt(a.seconds)}@ second(s) after using #${a.after}@` : "";
-  return lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}, ${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
+  const sep = a.after && a.next ? " " : ", ";
+  const out = lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}${sep}${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
+  return a.after && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
 }
 function statPhrase(stat, n, percent) {
   const num = "{" + n + "}" + (percent ? "%" : "");
@@ -1419,12 +1423,30 @@ function addedStats(c, redraw, desc) {
       "aria-label": "Seconds", class: "secs" });
     const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting on each use");
     secsBox.hidden = !a.after;
+    // Empty = every use restarts it; a number = at most once every that many seconds.
+    const cd = el("input", { type: "number", step: "any", min: "0", value: a.cooldown > 0 ? fmt(a.cooldown) : "",
+      placeholder: "every use", "aria-label": "Cooldown seconds", class: "secs" });
+    const cdBox = el("label", { class: "tiny addpct" }, "At most once every", cd, "second(s)");
+    cdBox.hidden = !a.after;
+    // "Your next X": the bonus ends once X has been used (X's in-use state ends).
+    const nxt = el("select", { "aria-label": "Used up by" }, el("option", { value: "", text: "nothing (lasts the full time)" }),
+      ...(info.during || []).map(ab => el("option", { value: ab, text: "the next " + ab })));
+    nxt.value = a.next || "";
+    const nxtBox = el("label", { class: "tiny addpct" }, "Used up by", nxt);
+    nxtBox.hidden = !a.after;
+    nxt.onchange = () => { if (nxt.value && nxt.value !== a.after) a.next = nxt.value; else { delete a.next; nxt.value = ""; } save(); };
+    cd.oninput = () => {
+      const v = Number(cd.value);
+      if (cd.value === "") { delete a.cooldown; save(); } else if (v > 0) { a.cooldown = v; save(); }
+    };
     when.onchange = () => {
       const [kind, ab] = when.value.split(":");
       a.during = kind === "during" ? ab : undefined;
       a.after = kind === "after" ? ab : undefined;
       if (a.after && !(a.seconds > 0)) a.seconds = 3;
-      secsBox.hidden = !a.after;
+      if (!a.after) delete a.cooldown;
+      if (!a.after || a.next === a.after) { delete a.next; nxt.value = ""; }
+      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !a.after;
       save();
     };
     secs.oninput = () => {
@@ -1438,6 +1460,8 @@ function addedStats(c, redraw, desc) {
       nums,
       el("label", { class: "tiny addpct" }, "When", when),
       secsBox,
+      cdBox,
+      nxtBox,
       el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
       el("div", { class: "tiny muted", text: n != null
         ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
@@ -1476,8 +1500,9 @@ function rebuildSwitch(c, desc, onchange) {
   const E = S.talentEdit;
   E.rebuild = E.rebuild || {};
   const info = c.addStat || { ok: false };
+  const can = info.ok && info.rebuild !== false;
   const box = el("label", { class: "tiny addpct rebuild" });
-  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(info.ok ? {} : { disabled: "" }) });
+  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
   cb.onchange = () => {
     if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
     const list = (E.addStats || {})[c.source] || [];
@@ -1487,9 +1512,9 @@ function rebuildSwitch(c, desc, onchange) {
       desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
     onchange();
   };
-  box.append(cb, info.ok
+  box.append(cb, can
     ? "Rebuild this talent: turn off what it does now and make it a new talent from the stats you add below"
-    : "Can't be rebuilt: " + info.why);
+    : "Can't be rebuilt: " + (info.ok ? info.rebuildWhy : info.why));
   return box;
 }
 
@@ -2320,7 +2345,8 @@ function editPayload() {
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
     addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
       .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
-        ...(a.after ? { after: a.after, seconds: a.seconds } : {}) }))),
+        ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
+          ...(a.next ? { next: a.next } : {}) } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}),
     include: Object.entries(E.include || {}).map(([talent, from]) => ({ talent, from })) };
 }

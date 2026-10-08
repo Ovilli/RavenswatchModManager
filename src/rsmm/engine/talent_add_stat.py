@@ -63,6 +63,21 @@ DONOR_DURING_SELECTOR = "Ability Trait Wish 1 Extra Damage Selector"
 DONOR_TIMER = "Skill Attack Flurry Timer"
 DONOR_RESTART = "Event Skill Attack Flurry Reset Timer"
 
+#: "At most once every M s" (``cooldown``): Romeo's Love Shield gate. Its kiss
+#: event fires a tester that passes only while the shield's Active state is OFF
+#: and its Available state is ON, and switches Active on; Active runs a timer
+#: whose ``state`` ends it. Copied, Active lasts the cooldown and fires the
+#: window's restart event, so a use during the cooldown finds Active on and
+#: does nothing. Available is held on by the talent's owned state (a state in
+#: ``while_active`` is shipped data, as ``include`` uses). Romeo's own cooldown
+#: timer and Available tester are not copied: Active's own length is the gate.
+DONOR_LIMITER_HERO = "Juliet"
+DONOR_LIMITER_FILE = "Hero_Romeo_Juliet_Common"
+DONOR_LIMITER_TESTER = "Skill Special Invulnerable Active Tester"
+DONOR_LIMITER_ACTIVE = "State Skill Special Invulnerable Active"
+DONOR_LIMITER_TIMER = "Skill Special Invulnerable Duration Timer"
+DONOR_LIMITER_AVAILABLE = "State Skill Special Invulnerable Available"
+
 #: Button -> the hero's controller for it. The controller is what the button runs,
 #: and its first State reference is the state active while the ability is used.
 #: Its NAME is the button's; the state's name is the designers' and does not
@@ -306,7 +321,9 @@ def normalise_values(values) -> dict[str, float]:
 def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
              values, percent: bool = True, seed: str = "", during: str | None = None,
              during_donor_raw: bytes | None = None, after: str | None = None,
-             seconds: float | None = None) -> tuple[bytes, AddedStat]:
+             seconds: float | None = None, cooldown: float | None = None,
+             limiter_donor_raw: bytes | None = None,
+             next_ability: str | None = None) -> tuple[bytes, AddedStat]:
     """Return ``raw`` (the hero entity holding ``talent``) with the stat bonus added.
 
     ``during`` (an ability, e.g. ``"DEFENSE"``) makes the bonus apply only while
@@ -317,7 +334,21 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
     ``after`` (an ability) with ``seconds`` makes it apply for that long each
     time the ability is used, restarting on every use: the ability switches a
     window state on (off and on again if it already was) and the window's timer
-    (:data:`DONOR_TIMER`) ends it; read through the same selector as ``during``."""
+    (:data:`DONOR_TIMER`) ends it; read through the same selector as ``during``.
+
+    ``cooldown`` (with ``after``) lets the ability restart the window at most
+    once every that many seconds, counted from the restart: a copy of Romeo's
+    Love Shield gate (:data:`DONOR_LIMITER_TESTER`), taken from
+    ``limiter_donor_raw`` (the ``Hero_Romeo_Juliet_Common`` entity).
+
+    ``next_ability`` (with ``after``) makes the bonus last only until ability ``next``
+    is next used: "within N s after DEFENSE, your next ATTACK ...". When that
+    ability's state ENDS, a second copy of the restart event switches the window
+    off, so the bonus covers that whole use and is gone after it. The list a
+    state fires on exit is ``disables_while_active?`` (named before this was
+    known): DEFENSE's "Just Exit Timer", the dash's "Exit Event Sender" and
+    Romeo's Love Shield cooldown, which starts as the shield ends, all sit
+    there (survey 2026-10-08)."""
     try:
         key = resolve_stat(stat)
     except ItemModifierError as e:
@@ -350,6 +381,25 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
             raise AddStatError(f"'after' needs how many seconds it lasts, got {seconds!r}")
         hook = ability_state(graph, after, momentary_ok=True)
         tag += f" After {after.upper()}"
+    used_up = None
+    if next_ability is not None:
+        if not after:
+            raise AddStatError("'next' ends an 'after' window when that ability is used; "
+                               "give 'after' too")
+        if next_ability.upper() == after.upper():
+            raise AddStatError(f"'next' is {next_ability.upper()}, the ability that starts the "
+                               "window; the bonus would only ever cover that same use")
+        # The window must last the whole use, so a state that only flicks on as
+        # the ability starts (Merlin) would end it before anything lands.
+        used_up = ability_state(graph, next_ability)
+        tag += f" Next {next_ability.upper()}"
+    if cooldown is not None:
+        if not after:
+            raise AddStatError("'cooldown' limits how often 'after' restarts; give 'after' too")
+        if not isinstance(cooldown, int | float) or isinstance(cooldown, bool) or cooldown <= 0:
+            raise AddStatError(f"'cooldown' needs a number of seconds above 0, got {cooldown!r}")
+        if limiter_donor_raw is None:
+            raise AddStatError(f"'cooldown' needs the game's {DONOR_LIMITER_FILE} file")
     if (during or after) and during_donor_raw is None:
         raise AddStatError(f"'{'during' if during else 'after'}' needs the game's "
                            f"{DONOR_DURING_HERO} files")
@@ -359,6 +409,11 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
     new_win = f"Skill {talent} Added {tag} Window"
     new_timer = f"Skill {talent} Added {tag} Window Timer"
     new_restart = f"Event Skill {talent} Added {tag} Window Restart"
+    new_consume = f"Event Skill {talent} Added {tag} Window Used Up"
+    new_gate = f"Skill {talent} Added {tag} Cooldown Tester"
+    new_gate_on = f"Skill {talent} Added {tag} Cooldown"
+    new_gate_timer = f"Skill {talent} Added {tag} Cooldown Timer"
+    new_gate_ready = f"Skill {talent} Added {tag} Cooldown Available"
     if any(c.name in (new_sel, new_mod) for c in graph.components):
         raise AddStatError(f"talent {talent!r} already gets this stat from an earlier entry")
 
@@ -393,7 +448,21 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
             ef.add_ref(new_win, "while_active", new_timer)
             ef.set_ref(new_timer, "state", new_win)
             ef.set_value(new_timer, "duration", float(seconds))
-            ef.add_ref(hook.name, "activates", new_restart)
+            if used_up is not None:
+                # A copy of the restart event that only switches the window
+                # off, fired as `next`'s ability ends.
+                ef.clone([DONOR_RESTART], rename={DONOR_RESTART: new_consume},
+                         group={dgrp: f"Skill {talent}"}, source=donor, seed=seed + ":next")
+                ef.remove_ref(new_consume, "activates", 0)
+                ef.set_ref(new_consume, "deactivates?[0]", new_win)
+                ef.add_ref(used_up.name, "disables_while_active?", new_consume)
+            if cooldown is None:
+                ef.add_ref(hook.name, "activates", new_restart)
+            else:
+                _add_limiter(ef, GE.EntityFile(limiter_donor_raw), state=state.name,
+                             hook=hook.name, restart=new_restart, seconds=float(cooldown),
+                             names=(new_gate, new_gate_on, new_gate_timer, new_gate_ready),
+                             group=f"Skill {talent}", seed=seed + ":gate")
             cond_state = ef.component(new_win)
         if cond_state is not None:
             src = GE.EntityFile(during_donor_raw)
@@ -426,6 +495,33 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
     for index, amount in written.items():
         out = TV.set_union_value(out, new_sel, index, amount)
     return out, AddedStat(new_sel, new_mod, slot)
+
+
+def _add_limiter(ef: GE.EntityFile, donor: GE.EntityFile, *, state: str, hook: str,
+                 restart: str, seconds: float, names: tuple[str, str, str, str],
+                 group: str, seed: str) -> None:
+    """Fire ``restart`` from ``hook`` at most once every ``seconds``.
+
+    Copies Romeo's Love Shield gate (tester, Active, its timer, Available) as
+    one set, so the tester's two sub-tests and Active's timer point at the
+    copies. Every list on the copied states is emptied first: Romeo's Active
+    also runs his invincibility and shield FX, and his cooldown timer, none of
+    which may come along."""
+    tester, on, timer, ready = names
+    dgrp = donor.component(DONOR_LIMITER_TESTER).group
+    ef.clone([DONOR_LIMITER_TESTER, DONOR_LIMITER_ACTIVE, DONOR_LIMITER_TIMER,
+              DONOR_LIMITER_AVAILABLE],
+             rename={DONOR_LIMITER_TESTER: tester, DONOR_LIMITER_ACTIVE: on,
+                     DONOR_LIMITER_TIMER: timer, DONOR_LIMITER_AVAILABLE: ready},
+             group={dgrp: group}, source=donor, seed=seed)
+    _empty_state(ef, on)
+    _empty_state(ef, ready)
+    ef.add_ref(on, "activates", timer)        # Active starts its timer (Romeo's own wiring)
+    ef.add_ref(on, "activates", restart)      # ...and restarts the bonus window
+    ef.set_ref(timer, "state", on)            # the timer ENDS Active: the gate reopens
+    ef.set_value(timer, "duration", seconds)  # Romeo reads his from a value; make it literal
+    ef.add_ref(state, "while_active", ready)  # Available is on while the talent is owned
+    ef.add_ref(hook, "activates", tester)
 
 
 def stat_key_bytes(stat: str | int) -> bytes:

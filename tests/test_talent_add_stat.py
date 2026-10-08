@@ -371,6 +371,171 @@ def test_the_talent_kind_passes_after_and_seconds(tmp_path, wukong):
     assert next(f for f in EF.fields(timer) if f.name == "duration").text == "f32 4"
 
 
+# --- "at most once every M s": Romeo's Love Shield gate ----------------------------
+
+@pytest.fixture(scope="module")
+def romeo_juliet() -> bytes:
+    for f in corpus.files("EntitySettings/Heroes/Hero_Juliet"):
+        if f.name == f"{TA.DONOR_LIMITER_FILE}{GEN}":
+            return f.read_bytes()
+    pytest.skip(f"{TA.DONOR_LIMITER_FILE} entity not available (no mirror or game install)")
+
+
+def test_cooldown_gates_the_window_restart(wukong, beowulf, aladdin, romeo_juliet):
+    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+                         values=0.3, after="DEFENSE", seconds=3, cooldown=8,
+                         during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+    tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
+    # DEFENSE fires the gate's tester, not the restart event directly...
+    acts = _refs(out, "State Defensive Ability", "activates")
+    assert acts[-1] == f"{tag} Cooldown Tester"
+    assert f"Event {tag} Window Restart" not in acts
+    # ...which switches the Cooldown state on; it restarts the window, and its
+    # timer ends it after 8 s...
+    assert _refs(out, f"{tag} Cooldown Tester", "on_true") == [f"{tag} Cooldown"]
+    assert _refs(out, f"{tag} Cooldown", "activates") == [f"{tag} Cooldown Timer",
+                                                          f"Event {tag} Window Restart"]
+    assert _refs(out, f"{tag} Cooldown Timer", "state") == [f"{tag} Cooldown"]
+    timer = comp(out, f"{tag} Cooldown Timer")
+    assert next(f for f in EF.fields(timer) if f.name == "duration").text == "f32 8"
+    # ...Available is held on by the owned state, and none of Romeo's shield
+    # (invincibility, FX, his cooldown timer) or his file's name came along.
+    assert f"{tag} Cooldown Available" in _refs(out, "Skill Trait Fire", "while_active")
+    for state in (f"{tag} Cooldown", f"{tag} Cooldown Available"):
+        assert _refs(out, state, "while_active") == []
+    assert b"Romeo_Juliet" not in out and b"Invulnerable" not in out
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+def test_cooldown_tests_its_own_copies(wukong, beowulf, aladdin, romeo_juliet):
+    from rsmm.engine import entity_edit as EE
+    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+                         values=0.3, after="DEFENSE", seconds=3, cooldown=8,
+                         during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+    tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
+    ed = EE.EntityEdit(out)
+    tested = sorted(b.decode() for a, z in ed._subtest_ranges(f"{tag} Cooldown Tester")
+                    for b in [ed.concat[a:z].split(b"\\")[-1].split(b'"')[0]])
+    assert tested == [f"{tag} Cooldown", f"{tag} Cooldown Available"]
+
+
+@pytest.mark.parametrize("cooldown", [0, -2, True, "8"])
+def test_cooldown_needs_a_positive_number(wukong, beowulf, aladdin, romeo_juliet, cooldown):
+    with pytest.raises(TA.AddStatError, match="cooldown"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
+                    after="DEFENSE", seconds=3, cooldown=cooldown,
+                    during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+
+
+def test_cooldown_without_after_is_refused(wukong, beowulf, romeo_juliet):
+    with pytest.raises(TA.AddStatError, match="give 'after' too"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
+                    cooldown=8, limiter_donor_raw=romeo_juliet)
+
+
+def test_the_talent_kind_passes_cooldown(tmp_path, wukong, romeo_juliet):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="dragon_gated", fields={
+        "hero": "SunWukong",
+        "add_stats": [{"talent": "Trait Fire", "stat": "Attack power", "values": 0.3,
+                       "after": "DEFENSE", "seconds": 3, "cooldown": 8}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    timer = comp(path.read_bytes(),
+                 "Skill Trait Fire Added 15a486c4 After DEFENSE Cooldown Timer")
+    assert next(f for f in EF.fields(timer) if f.name == "duration").text == "f32 8"
+
+
+# --- "your next X after Y": the window ends when X's use ends ----------------------
+
+def test_next_ends_the_window_as_that_ability_finishes(wukong, beowulf, aladdin):
+    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+                         values=0.5, after="DEFENSE", seconds=4, next_ability="ATTACK",
+                         during_donor_raw=aladdin)
+    tag = "Skill Trait Fire Added 15a486c4 After DEFENSE Next ATTACK"
+    attack = TA.ability_state(EG.parse(out), "ATTACK").name
+    # ATTACK's on-exit list fires an event that only switches the window off...
+    assert _refs(out, attack, "disables_while_active?") == [f"Event {tag} Window Used Up"]
+    assert _refs(out, f"Event {tag} Window Used Up", "activates") == []
+    assert _refs(out, f"Event {tag} Window Used Up", "deactivates?") == [f"{tag} Window"]
+    # ...and DEFENSE still restarts it as before.
+    assert _refs(out, "State Defensive Ability", "activates")[-1] == f"Event {tag} Window Restart"
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+@pytest.mark.parametrize(("kw", "msg"), [
+    ({"next_ability": "ATTACK"}, "give 'after' too"),
+    ({"after": "DEFENSE", "seconds": 3, "next_ability": "DEFENSE"}, "starts the window"),
+])
+def test_a_bad_next_is_refused(wukong, beowulf, aladdin, kw, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
+                    during_donor_raw=aladdin, **kw)
+
+
+def test_next_refuses_an_ability_that_only_signals_its_start(beowulf, aladdin):
+    merlin = hero_file("Merlin")
+    with pytest.raises(TA.AddStatError, match="only signals its start"):
+        TA.add_stat(merlin, beowulf, talent="Trait Quest Gain Charge", stat="Crit chance",
+                    values=0.1, after="ATTACK", seconds=2, next_ability="DEFENSE",
+                    during_donor_raw=aladdin)
+
+
+def test_next_and_cooldown_combine(wukong, beowulf, aladdin, romeo_juliet):
+    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+                         values=0.5, after="DEFENSE", seconds=4, next_ability="ATTACK",
+                         cooldown=10, during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+def test_the_talent_kind_passes_next(tmp_path, wukong):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="dragon_next", fields={
+        "hero": "SunWukong",
+        "add_stats": [{"talent": "Trait Fire", "stat": "Attack power", "values": 0.5,
+                       "after": "DEFENSE", "seconds": 4, "next": "ATTACK"}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    comp(path.read_bytes(),
+         "Event Skill Trait Fire Added 15a486c4 After DEFENSE Next ATTACK Window Used Up")
+
+
+# --- talents built in a file the hero inherits ------------------------------------
+
+def test_an_inherited_talent_is_built_in_the_file_that_holds_it(tmp_path, romeo_juliet):
+    # Romeo's own file only overrides Love Shield's controller; its state, numbers
+    # and card text live in the Romeo/Juliet common file, written back there.
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="shield", fields={
+        "hero": "Romeo",
+        "add_stats": [{"talent": "Special Invulnerable", "stat": "Armour",
+                       "values": [5, 10, 15, 20], "percent": False}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    assert path.relative_to(tmp_path).as_posix() == (
+        f"EntitySettings/Heroes/Hero_Juliet/{TA.DONOR_LIMITER_FILE}{GEN}")
+    out = path.read_bytes()
+    owned = comp(out, "Skill Special Invulnerable", "StateSettings")
+    assert any("Added" in r.path and r.path.endswith("Modifier") for r in owned.refs)
+    assert EC.check(out, romeo_juliet, name=TA.DONOR_LIMITER_FILE) == []
+
+
+def test_rebuilding_an_overridden_inherited_talent_is_refused(tmp_path, romeo_juliet):
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="rb", fields={
+        "hero": "Romeo", "rebuild": ["Special Invulnerable"]})
+    with pytest.raises(ContentError, match="cannot turn an inherited talent off"):
+        talents.emit("test-mod", defn, tmp_path)
+
+
 def test_two_stats_on_one_talent_in_one_block_get_their_own_guids(tmp_path, wukong):
     # The kind passes one seed for the whole block; the second entry used to
     # mint the first one's GUIDs and fail ("a minted GUID collides").
