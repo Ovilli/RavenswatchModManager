@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **297** symbols across 24 categories.
+Total: **299** symbols across 24 categories.
 
 ## analytics
 
@@ -80,6 +80,7 @@ Total: **297** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `AppSettings_SectionList` | `0x1412f5aa8` | 📍 va |  | Global list of application-settings SECTIONS: {void** data @+0x0, u32 count @+0x8}. Rea… |
 | `ClassRegistry_FindByKey` | `0x140523a10` | ❓ unverified |  | void*(void* unused, void* identityKey) |
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
 | `Component_GetTypeId` | `0x1401e6950` | ❓ unverified |  | uint32_t(void* component) |
@@ -185,6 +186,7 @@ Total: **297** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `DayNightCycle_InitCycle` | `0x1401eca80` | ❓ unverified |  | Per-CHAPTER setup of the day/night component (this = component in RCX), called from the… |
 | `DayNightCycle_PushValues` | `0x1401ee1c4` | ❓ unverified |  | Per-frame writer for the 'Day/Night cycle' value family (see DayNightCycle_RegisterValu… |
 | `DayNightCycle_RegisterValues` | `0x1401ee9e3` | ❓ unverified |  | Registers the 'Day/Night cycle' entity-value family: 27 named values plus 9 named trigg… |
 

@@ -2300,6 +2300,19 @@ do
     if ok and type(x) == "table" then R.watch = x end
 end
 
+-- chapter timer -----------------------------------------------------------
+--
+-- Lives in rsmm/daynight.lua. Reads and sets the day/night cycle every
+-- chapter load copies (day/night lengths, half-cycles before the boss,
+-- overtime). Plain memory writes; a change lands at the NEXT chapter load.
+--
+--   R.daynight.get() / .set{ day = 120, half_cycles = 4 } / .restore()
+do
+    local ok, x = _submodule_fn("daynight", { R = R, I = I, _va_ok = _va_ok,
+                                              _ptr_plausible = _ptr_plausible })
+    if ok and type(x) == "table" then R.daynight = x end
+end
+
 -- map reveal ------------------------------------------------------------
 --
 -- Lives in rsmm/map.lua. Fires the game's own CROWS_MAP_REVEAL so POI markers

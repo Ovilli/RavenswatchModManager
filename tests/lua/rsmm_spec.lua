@@ -10026,5 +10026,61 @@ do
     I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
 end
 
+-- R.daynight: the chapter timer lives in the DarkTalesAppSettingsSection that
+-- DayNightCycle_InitCycle copies on every chapter load. Found by RTTI name in
+-- AppSettings_SectionList, range-checked before any write.
+do
+    package.loaded["rsmm"] = nil
+    local Rd = require "rsmm"
+    local LIST, DATA = 0x1412f5aa8, 0x1f100000
+    local OTHER, SEC = 0x1f110000, 0x1f120000
+    I.write_u64(LIST, DATA); I.write_u32(LIST + 8, 2)
+    I.write_u64(DATA, OTHER); I.write_u64(DATA + 8, SEC)
+    -- The shipped block: 1 / 180 / 180 / 5 / 6 / 60 / 180.
+    I.write_u8(SEC + 0x1a0, 1)
+    I.write_f32(SEC + 0x1a4, 180); I.write_f32(SEC + 0x1a8, 180)
+    I.write_f32(SEC + 0x1ac, 5);   I.write_u32(SEC + 0x1b0, 6)
+    I.write_f32(SEC + 0x1b4, 60);  I.write_f32(SEC + 0x1b8, 180)
+    local real_name = Rd.rtti.name
+    Rd.rtti.name = function(p)
+        if p == SEC then return "oe::dt::DarkTalesAppSettingsSection" end
+        if p == OTHER then return "oe::dt::SomeOtherSection" end
+        return nil
+    end
+
+    check(Rd.daynight.section() == SEC, "the section is found by RTTI name, not by index")
+    local t = Rd.daynight.get()
+    check(t and t.day == 180 and t.night == 180 and t.half_cycles == 6
+          and t.overtime == 180 and t.start_day == true, "the shipped values read back")
+    check(Rd.daynight.boss_time() == 1260, "boss time is the engine's formula (21 min shipped)")
+
+    check(Rd.daynight.set{ day = 120, night = 90, half_cycles = 4 }, "a valid set lands")
+    check(I.read_f32(SEC + 0x1a4) == 120 and I.read_u32(SEC + 0x1b0) == 4,
+          "and writes the section's own fields")
+
+    local ok = Rd.daynight.set{ day = 60, half_cycles = 2.5 }
+    check(not ok and I.read_f32(SEC + 0x1a4) == 120,
+          "a bad value refuses the WHOLE table: nothing is half-written")
+    check(not Rd.daynight.set{ dya = 1 }, "an unknown field is refused, not ignored")
+    check(not Rd.daynight.set{ day = 0 }, "a zero-length day is refused")
+
+    check(Rd.daynight.restore() and I.read_f32(SEC + 0x1a4) == 180
+          and I.read_u32(SEC + 0x1b0) == 6, "restore puts the game's own values back")
+
+    -- A section whose block reads as garbage is NOT written into.
+    I.write_f32(SEC + 0x1a4, -5)
+    check(not Rd.daynight.set{ day = 100 } and I.read_f32(SEC + 0x1a4) == -5,
+          "an implausible block refuses instead of writing")
+    I.write_f32(SEC + 0x1a4, 180)
+
+    va_trusted_val = false
+    check(not Rd.daynight.set{ day = 100 }, "a closed va gate refuses")
+    va_trusted_val = true
+
+    Rd.rtti.name = real_name
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

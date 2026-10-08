@@ -74,6 +74,7 @@ constexpr std::uintptr_t Vector_Grow = 0x140155230ull;
 constexpr const char* Vector_Grow_Pattern = "Vector_Grow";
 
 // --- engine-core ---
+constexpr std::uintptr_t AppSettings_SectionList = 0x1412f5aa8ull;
 constexpr std::uintptr_t ClassRegistry_FindByKey = 0x140523a10ull;
 // ClassRegistry_FindByKey_Pattern omitted: status=unverified
 constexpr std::uintptr_t ClassRegistry_Global = 0x141436690ull;
@@ -241,6 +242,7 @@ constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
 
 // --- gameplay ---
+constexpr std::uintptr_t DayNightCycle_InitCycle = 0x1401eca80ull;
 constexpr std::uintptr_t DayNightCycle_PushValues = 0x1401ee1c4ull;
 constexpr std::uintptr_t DayNightCycle_RegisterValues = 0x1401ee9e3ull;
 
