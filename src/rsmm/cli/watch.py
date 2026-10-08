@@ -190,8 +190,12 @@ def _lint_gate(mod_ids: list[str], mods_root: Path, log) -> list[str]:
         if not _wants_lint(mod_dir):
             continue
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            errs, warns = lint_one(mod_dir)
+        try:
+            with contextlib.redirect_stdout(buf):
+                errs, warns = lint_one(mod_dir)
+        except Exception as e:                  # noqa: BLE001 - a lint bug must not end the session
+            log(_ST.warn(f"lint: could not check {mod_id} ({e}); applying anyway"))
+            continue
         if not errs:
             if warns:
                 log(_ST.dim(f"lint: {mod_id} ok, {warns} warning(s) "
