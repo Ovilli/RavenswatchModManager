@@ -7,6 +7,8 @@ Surfaces problems before `rsmm apply`:
   - assets/ paths that don't resolve via asset_map
   - raw assets/ overrides that no-op, edit a shadowed value, or re-frame the
     container (needs the vanilla corpus; skipped when it isn't on disk)
+  - raw assets/ overrides a [[patch]] or [[content]] block could replace,
+    with the exact block when the game's own copy is readable
   - [[patch]] blocks whose fields don't exist
   - a declared multiplayer_scope that claims less than the mod does
     (derived by rsmm.engine.mod_scope; online matching reads the derived verdict)
@@ -218,6 +220,9 @@ def lint_one(entry: Path) -> tuple[int, int]:
     re_, rw = _lint_raw_overrides(entry.name, entry)
     errs += re_
     warns += rw
+
+    # raw assets/ overrides a declarative block could replace
+    warns += _lint_patchable(entry.name, entry)
 
     # [[patch]] blocks. Everything that makes a patch do nothing is an ERROR:
     # merge skips an unknown name, a field the value does not have, or a
@@ -471,6 +476,32 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
                   f"{_ST.dim('bytes differ, but no tracked magnitude node changed')} "
                   f"{_ST.dim('(GUID/selector/counter edits are not tracked — verify in game)')}")
     return errs, warns
+
+
+def _lint_patchable(modname: str, entry: Path) -> int:
+    """Warn about whole-file overrides a `[[patch]]` / `[[content]]` block could
+    express, printing the block when it is proven to rebuild the same bytes.
+
+    A warning, not an error: the override works. But it is a copy of a game
+    asset, it cannot merge with another mod, and it silently reverts whatever
+    the next game patch changes in that file. Returns the warning count."""
+    from rsmm.cli.apply_mods import find_game_dir
+    from rsmm.cli.patch_suggest import suggest_for_mod
+
+    exact_hint = "replace it with this block (rebuilds the same bytes), then delete the file:"
+    vague_hint = "(the game copy is not readable here, so the exact block cannot be written)"
+    found = suggest_for_mod(entry, game_dir=find_game_dir())
+    mod_s = _ST.bold(modname)
+    for s in found:
+        print(f"  {_T_WARN} {mod_s}: whole-file override "
+              f"{_ST.accent(s.decoded)} {_ST.dim('— ' + s.note)}")
+        if s.exact:
+            print(f"         {_ST.dim(exact_hint)}")
+            for ln in s.toml.rstrip("\n").splitlines():
+                print(f"           {ln}")
+        else:
+            print(f"         {_ST.dim(vague_hint)}")
+    return len(found)
 
 
 def _has_ban_picker(mod_root: Path | None) -> bool:
