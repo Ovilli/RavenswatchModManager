@@ -122,6 +122,7 @@ from rsmm.engine.versiondef import (
     collect_item_bans,
     sync_versiondef,
 )
+from rsmm.sdk.archive import DANGEROUS_EXTENSIONS
 from rsmm.sdk.transaction import ApplyTransaction
 
 
@@ -1388,10 +1389,9 @@ def plan_apply(mods: list[Mod],
     return additions, removals, registrations, synthesized
 
 
-_DANGEROUS_ROOT_EXTS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
-})
+# The extractor's list: a local mod is warned about exactly what a downloaded
+# one is refused for, rather than a shorter copy that had drifted from it.
+_DANGEROUS_ROOT_EXTS = DANGEROUS_EXTENSIONS
 
 
 class VanillaMissing(RuntimeError):
@@ -1704,6 +1704,20 @@ def run_disable_hook(mod_root: Path,
     )
 
 
+def uninstall_hook_pending(mod_root: Path, mod_id: str, state: State) -> bool:
+    """Whether uninstalling `mod_id` would run its `on_disable.py`.
+
+    The same gate `run_uninstall_hook` applies (the mod ships a hook and was
+    applied as enabled), asked without running anything, so a caller with no
+    terminal to prompt on — the desktop bridge — can get the user's consent
+    first. `_run_deactivation_hooks` never runs a hook unasked; uninstall must
+    not either, because the hook came in the mod's archive and runs as the
+    user with no sandbox.
+    """
+    return ((mod_root / DEACTIVATION_SCRIPT_NAME).is_file()
+            and mod_id in set(state.enabled_mods))
+
+
 def run_uninstall_hook(mod_root: Path,
                        mod_id: str,
                        game_dir: Path,
@@ -1724,6 +1738,10 @@ def run_uninstall_hook(mod_root: Path,
     is unsandboxed Python, and a mod that was never enabled never ran, so it
     can have no runtime state to undo — without this gate, "install a mod and
     uninstall it without ever turning it on" would be an arbitrary-code path.
+    That gate is not consent, though: an asset-only mod never runs any code
+    while enabled, so enabling it is not agreeing to run its Python. Callers
+    ask first (`uninstall_hook_pending`) and only call this once the user has
+    said yes.
 
     Returns (status, detail) where status is one of:
       ok / failed / timeout / error   — the hook ran (or tried to)

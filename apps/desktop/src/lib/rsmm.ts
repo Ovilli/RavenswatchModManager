@@ -1207,6 +1207,13 @@ export interface UninstallResult {
    */
   disableHook?: string;
   disableHookDetail?: string;
+  /**
+   * The mod ships an `on_disable.py` that would run, and nothing was removed:
+   * the CLI never runs a mod's script without the user's say-so.
+   * `uninstallLocalMod` asks and calls again.
+   */
+  needsHookConsent?: boolean;
+  hookPath?: string;
 }
 
 /** Statuses where no cleanup was owed, or it completed. */
@@ -1244,8 +1251,33 @@ export const installModVersion = (slug: string, version: string, profileId?: str
     profileId,
   });
 
-export const uninstallLocalMod = (modId: string) =>
-  rsmm<UninstallResult>(['uninstall-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });
+/** Asked before a mod's `on_disable.py` runs; resolves true to run it. */
+export type ConfirmDisableHook = (modId: string) => Promise<boolean>;
+
+/**
+ * Delete a mod's folder, running its `on_disable.py` first only if the user
+ * agrees.
+ *
+ * That script is the mod author's Python. It arrives inside the downloaded
+ * archive and runs as the user, outside the game, with no sandbox, so an
+ * asset-only mod that never ran any code while enabled could run anything the
+ * moment it was uninstalled. The CLI now refuses to run it unasked and reports
+ * `needsHookConsent`; this asks through `confirmHook` and calls again with the
+ * answer. With no way to ask, the script is skipped and the mod still removed.
+ */
+export const uninstallLocalMod = async (
+  modId: string,
+  confirmHook?: ConfirmDisableHook,
+): Promise<UninstallResult | null> => {
+  const first = await rsmm<UninstallResult>(['uninstall-mod', modId], {
+    timeoutMs: LONG_TIMEOUT_MS,
+  });
+  if (!first?.needsHookConsent) return first;
+  const run = confirmHook ? await confirmHook(modId) : false;
+  return rsmm<UninstallResult>(['uninstall-mod', modId, run ? '--run-hook' : '--skip-hook'], {
+    timeoutMs: LONG_TIMEOUT_MS,
+  });
+};
 
 /** A column in a mod-declared overlay (its manifest `[overlay]` block). */
 export interface OverlayColumn {

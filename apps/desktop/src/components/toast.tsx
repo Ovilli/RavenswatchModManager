@@ -74,6 +74,8 @@ interface ConfirmOptions {
   title: string;
   body?: string;
   confirmLabel?: string;
+  /** Label for the button that resolves false (default "Cancel"). */
+  cancelLabel?: string;
   destructive?: boolean;
 }
 
@@ -217,7 +219,7 @@ function DialogModal({
             onClick={cancel}
             className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
           >
-            {t('Cancel')}
+            {(state.kind === 'confirm' && state.opts.cancelLabel) || t('Cancel')}
           </button>
           <button
             type="button"

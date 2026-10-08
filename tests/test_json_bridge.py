@@ -200,6 +200,79 @@ def test_uninstall_removes_existing(tmp_path, monkeypatch, capsys):
     assert not (mods / "Doomed").exists()
 
 
+@pytest.mark.parametrize("mod_id", [".", "", "Keep/..", "Keep\\..", "C:Keep"])
+def test_uninstall_never_takes_the_mods_folder_itself(tmp_path, monkeypatch, capsys, mod_id):
+    """`.` resolves to mods/ itself; removing it would delete every mod."""
+    mods = tmp_path / "mods"
+    _write_mod(mods, "Keep", '[mod]\nname = "k"\n')
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+    json_bridge.cmd_uninstall_mod(mod_id)
+    res = _emit_json(capsys)
+    assert res["ok"] is False and "invalid mod id" in res["error"]
+    assert (mods / "Keep" / "manifest.toml").is_file()
+
+
+_MARKER_HOOK = (
+    "import os\nfrom pathlib import Path\n"
+    "Path(os.environ['RSMM_GAME_DIR'], 'hook-ran.txt').write_text('x')\n"
+)
+
+
+@pytest.fixture()
+def hooked_mod(tmp_path, monkeypatch):
+    """An enabled mod that ships an on_disable.py, and the install it was applied to."""
+    from rsmm.cli import apply_mods
+    mods = tmp_path / "mods"
+    _write_mod(mods, "Seedy", '[mod]\nname = "s"\n')
+    (mods / "Seedy" / "on_disable.py").write_text(_MARKER_HOOK, encoding="utf-8")
+    game = tmp_path / "game"
+    cooking = game / "DarkTalesResources" / "_Cooking"
+    cooking.mkdir(parents=True)
+    state = apply_mods.State(cooking)
+    state.set_enabled_mods(["Seedy"])
+    state.save()
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    return mods, game
+
+
+def test_uninstall_asks_before_running_a_mods_hook(hooked_mod, capsys):
+    """The hook is the mod author's Python, run as the user: never unasked."""
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy")
+    res = _emit_json(capsys)
+    assert res["ok"] is False
+    assert res["needsHookConsent"] is True
+    assert res["hookPath"].endswith("on_disable.py")
+    assert not (game / "hook-ran.txt").exists()
+    assert (mods / "Seedy").is_dir(), "nothing is removed until the user answers"
+
+
+def test_uninstall_runs_the_hook_when_told_to(hooked_mod, capsys):
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy", "run")
+    res = _emit_json(capsys)
+    assert res["ok"] is True and res["disableHook"] == "ok", res
+    assert (game / "hook-ran.txt").is_file()
+    assert not (mods / "Seedy").exists()
+
+
+def test_uninstall_skips_the_hook_when_declined(hooked_mod, capsys):
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy", "skip")
+    res = _emit_json(capsys)
+    assert res["ok"] is True and res["disableHook"] == "skipped"
+    assert not (game / "hook-ran.txt").exists()
+    assert not (mods / "Seedy").exists()
+
+
+def test_uninstall_flags_reach_the_command(hooked_mod, capsys):
+    _, game = hooked_mod
+    assert json_bridge.main(["uninstall-mod", "Seedy", "--skip-hook"]) == 0
+    assert _emit_json(capsys)["disableHook"] == "skipped"
+    assert not (game / "hook-ran.txt").exists()
+
+
 # --- cmd_loader_log (desktop Log tab) --------------------------------------
 
 def _write_log(tmp_path: Path, text: str) -> Path:

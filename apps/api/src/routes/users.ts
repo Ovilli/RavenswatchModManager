@@ -76,10 +76,14 @@ usersRouter.get('/:idOrHandle', async (c) => {
       tags: schema.mods.tags,
       featured: schema.mods.featured,
       ownerId: schema.mods.ownerId,
+      // Servable versions only, as on the registry list: a version still in
+      // the malware scan, or one it flagged, is withheld everywhere else and
+      // must not be advertised here either.
       latestVersion: sql<string | null>`(
         select ${schema.modVersions.version}
         from ${schema.modVersions}
         where ${schema.modVersions.modId} = ${outerModId}
+          and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,

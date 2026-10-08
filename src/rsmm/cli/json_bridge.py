@@ -25,7 +25,12 @@ Subcommands:
         <slug> <version>            download a specific version of a mod
     rsmm json config get <id>       read a mod's config schema + values
     rsmm json config set <id> <js>  replace a mod's config values
-    rsmm json uninstall-mod <id>    remove a mod from mods/<id>/
+    rsmm json uninstall-mod <id> [--run-hook|--skip-hook]
+                                    remove a mod from mods/<id>/. A mod
+                                    whose on_disable.py would run gets
+                                    {ok:false, needsHookConsent:true} and
+                                    is left in place until the caller
+                                    passes one of the two flags
     rsmm json loader-log [--run N]  read the loader log, or an archived run
     rsmm json loader-runs           list archived runs under <game>/rsmm/logs
     rsmm json loader-health         boot canary + per-mod crash history
@@ -66,10 +71,12 @@ from pathlib import Path
 from typing import Any
 
 from rsmm.cli.apply_mods import (
+    DEACTIVATION_SCRIPT_NAME,
     State,
     clear_runtime_mods,
     find_game_dir,
     run_uninstall_hook,
+    uninstall_hook_pending,
 )
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine import net
@@ -232,7 +239,21 @@ def cmd_list_profiles(ids: list[str]) -> int:
     return _emit({"profiles": out})
 
 
+def _is_plain_mod_id(mod_id: str) -> bool:
+    """Whether `mod_id` names one folder directly under ``mods/``.
+
+    The id arrives on argv from the desktop app. ``.`` (or an empty id) joins
+    to ``mods/`` itself, which uninstall would then delete wholesale and
+    config would treat as a mod; a separator or drive prefix reaches another
+    folder entirely.
+    """
+    return (bool(mod_id) and mod_id not in (".", "..")
+            and not any(c in mod_id for c in "/\\:\0"))
+
+
 def _config_for_mod(mod_id: str) -> ConfigStore | None:
+    if not _is_plain_mod_id(mod_id):
+        return None
     mod_dir = MODS_DIR / mod_id
     if not mod_dir.is_dir():
         return None
@@ -354,12 +375,22 @@ def cmd_config_set(mod_id: str, values_json: str, live: bool = False,
     })
 
 
-def cmd_uninstall_mod(mod_id: str) -> int:
-    mod_path = (MODS_DIR / mod_id).resolve()
+def cmd_uninstall_mod(mod_id: str, hook: str | None = None) -> int:
+    """Delete ``mods/<mod_id>/``, giving its ``on_disable.py`` a chance first.
+
+    `hook` is the user's answer about that script: ``"run"``, ``"skip"``, or
+    None for "not asked yet". The script came inside the mod's archive and
+    runs as the user with no sandbox, so it never runs unasked: with no
+    answer, a mod whose hook would run is reported as ``needsHookConsent``
+    and left exactly as it was, for the caller to ask and call again.
+    """
     mods_root = MODS_DIR.resolve()
+    mod_path = (MODS_DIR / mod_id).resolve() if _is_plain_mod_id(mod_id) else mods_root
     try:
         mod_path.relative_to(mods_root)
     except ValueError:
+        mod_path = mods_root
+    if mod_path == mods_root:
         return _emit({"ok": False, "error": f"invalid mod id: {mod_id!r}"})
 
     # Give the mod its on_disable.py while the directory still exists — see
@@ -370,9 +401,25 @@ def cmd_uninstall_mod(mod_id: str) -> int:
         game_dir = find_game_dir()
         if game_dir is not None:
             cooking = game_dir / "DarkTalesResources" / "_Cooking"
-            hook_status, hook_detail = run_uninstall_hook(
-                mod_path, mod_id, game_dir, cooking, State(cooking))
-        elif (mod_path / "on_disable.py").is_file():
+            state = State(cooking)
+            pending = uninstall_hook_pending(mod_path, mod_id, state)
+            if pending and hook is None:
+                return _emit({
+                    "ok": False,
+                    "modId": mod_id,
+                    "needsHookConsent": True,
+                    "hookPath": str(mod_path / DEACTIVATION_SCRIPT_NAME),
+                    "error": (f"{mod_id} ships {DEACTIVATION_SCRIPT_NAME}, which runs "
+                              "with your permissions and no sandbox; pass --run-hook "
+                              "or --skip-hook"),
+                })
+            if pending and hook == "skip":
+                hook_status = "skipped"
+                hook_detail = f"you chose not to run {DEACTIVATION_SCRIPT_NAME}"
+            else:
+                hook_status, hook_detail = run_uninstall_hook(
+                    mod_path, mod_id, game_dir, cooking, state)
+        elif (mod_path / DEACTIVATION_SCRIPT_NAME).is_file():
             hook_status = "no-game-dir"
             hook_detail = ("Ravenswatch install not found, so this mod's "
                            "on_disable.py could not run before removal.")
@@ -1910,6 +1957,11 @@ def main(argv: list[str] | None = None) -> int:
     p_bans_set.add_argument("items_json", help="JSON array of item ids to ban")
     p_uninstall = sub.add_parser("uninstall-mod", help="remove a mod from mods/<id>/")
     p_uninstall.add_argument("mod_id", help="folder name under mods/")
+    hook_choice = p_uninstall.add_mutually_exclusive_group()
+    hook_choice.add_argument("--run-hook", dest="hook", action="store_const", const="run",
+                             help="run the mod's on_disable.py before removing it")
+    hook_choice.add_argument("--skip-hook", dest="hook", action="store_const", const="skip",
+                             help="remove the mod without running its on_disable.py")
     p_flags = sub.add_parser("loader-flags", help="read or set loader feature flags")
     flags_sub = p_flags.add_subparsers(dest="flags_cmd", required=True)
     flags_sub.add_parser("get", help="list available flags + which are enabled")
@@ -2005,7 +2057,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.bans_cmd == "set":
             return cmd_item_bans_set(args.items_json)
     if args.cmd == "uninstall-mod":
-        return cmd_uninstall_mod(args.mod_id)
+        return cmd_uninstall_mod(args.mod_id, args.hook)
     if args.cmd == "update-data":
         return cmd_update_data(args.check)
     if args.cmd == "update-loader":
