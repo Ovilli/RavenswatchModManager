@@ -6,16 +6,18 @@ import {
   Heart,
   Library,
   LogOut,
+  Menu,
   Settings,
   ShieldCheck,
   Upload,
   User as UserIcon,
+  X,
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth-client';
 
@@ -202,14 +204,115 @@ function UserMenu() {
   );
 }
 
+const REPO = 'https://github.com/Ovilli/RavenswatchModManager';
+
+function isActivePath(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/';
+  return pathname.startsWith(href);
+}
+
+/**
+ * The bar's links below `md`, where the inline row is hidden.
+ *
+ * Without this a phone got the logo and Sign In and nothing else: the
+ * registry, collections and the download page were reachable only by
+ * scrolling to the footer, and most visitors arrive on a phone from a link
+ * shared in Discord or Reddit. Same links as the wide bar, plus View Source,
+ * which the bar also drops below `sm`.
+ */
+function MobileMenu({ pathname }: { pathname: string }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // A link inside the panel navigates without unmounting the header, so close
+  // on the route change rather than relying on each link's onClick.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the trigger, not an input.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} className="md:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={open ? 'Close menu' : 'Open menu'}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition hover:border-crimson/60 hover:text-foreground"
+      >
+        {open ? (
+          <X className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <Menu className="h-4 w-4" aria-hidden="true" />
+        )}
+      </button>
+
+      {open ? (
+        <nav
+          id={panelId}
+          aria-label="Site"
+          className="absolute inset-x-0 top-full border-b border-border/40 bg-background shadow-xl"
+        >
+          <ul className="container mx-auto flex flex-col gap-1 px-6 py-3">
+            {navLinks.map((link) => {
+              const active = isActivePath(pathname, link.href);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href as Route}
+                    aria-current={active ? 'page' : undefined}
+                    className={`block rounded-lg px-3 py-2.5 text-base transition-colors ${
+                      active
+                        ? 'bg-crimson/10 text-parchment'
+                        : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
+            <li className="mt-1 border-t border-border/40 pt-2">
+              <a
+                href={REPO}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-lg px-3 py-2.5 text-base text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+              >
+                View Source
+              </a>
+            </li>
+          </ul>
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
 export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
 
-  const isActive = (href: string) => {
-    if (href === '/') return pathname === '/';
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string) => isActivePath(pathname, href);
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
@@ -230,6 +333,7 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
             <Link
               key={link.href}
               href={link.href as Route}
+              aria-current={isActive(link.href) ? 'page' : undefined}
               className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
                 isActive(link.href)
                   ? 'bg-crimson/10 text-parchment'
@@ -243,7 +347,7 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
 
         <div className="flex items-center gap-3">
           <a
-            href="https://github.com/Ovilli/RavenswatchModManager"
+            href={REPO}
             target="_blank"
             rel="noopener noreferrer"
             className="hidden text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline sm:inline"
@@ -269,6 +373,8 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
               Sign In
             </Link>
           )}
+
+          <MobileMenu pathname={pathname} />
         </div>
       </div>
     </header>

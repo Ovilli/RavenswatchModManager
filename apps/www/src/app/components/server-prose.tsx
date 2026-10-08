@@ -1,6 +1,7 @@
 import { ArrowLeft, EyeOff } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { renderMarkdown } from '../../lib/markdown';
 
 /**
@@ -28,6 +29,7 @@ export function ServerProse({
   title,
   byline,
   summary,
+  actions,
   image,
   body,
   bodyHeading,
@@ -39,8 +41,11 @@ export function ServerProse({
   backHref: Route | string;
   backLabel: string;
   title: string;
-  byline?: string | null;
+  byline?: ReactNode;
   summary?: string | null;
+  /** The page's primary buttons (Download and the like), placed under the
+   *  title and summary so a long body can never push them below the fold. */
+  actions?: ReactNode;
   /** Cover image. Rendered above the title so the body still reads as the
    *  section under the picture, the way it did before any of this moved. */
   image?: {
@@ -72,7 +77,7 @@ export function ServerProse({
         {html ? (
           <article
             data-color-mode="dark"
-            className="md-editor-themed prose-invert max-w-none"
+            className="md-editor-themed prose-invert user-prose max-w-none"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: user-submitted Markdown, rendered and tag-allowlisted by renderMarkdown() — see lib/markdown.ts.
             dangerouslySetInnerHTML={{ __html: html }}
           />
@@ -122,6 +127,8 @@ export function ServerProse({
       {summary?.trim() ? (
         <p className="text-lg text-muted-foreground max-w-3xl">{summary}</p>
       ) : null}
+
+      {actions}
 
       {bodyBlock ? card ? <div className="grimoire-card p-6">{bodyBlock}</div> : bodyBlock : null}
     </div>

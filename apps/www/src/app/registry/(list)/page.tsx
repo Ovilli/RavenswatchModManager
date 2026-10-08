@@ -149,6 +149,14 @@ function RegistryInner() {
   });
   const [filtersOpen, setFiltersOpen] = useState(true);
   const filterBodyId = useId();
+  // Open beside the results on a wide screen, folded on a narrow one: there
+  // the panel sits ABOVE the results, and open it filled a phone's whole
+  // first screen, so the page looked like a form with no mods on it. Decided
+  // on mount for the same hydration reason as the layout below.
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 1023px)').matches) setFiltersOpen(false);
+  }, []);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
   // Starts at the server-rendered default and adopts the stored preference on
   // mount — reading localStorage during render would desync hydration.
   const [view, setView] = useState<View>('grid');
@@ -260,6 +268,14 @@ function RegistryInner() {
     setMinRating(0);
   };
 
+  // The pager sits under the last result, so without this "Next" left you
+  // looking at the bottom of the new page rather than its first mod.
+  const goToPage = (n: number) => {
+    setPage(n);
+    const top = resultsRef.current;
+    if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
+  };
+
   const clearFilters = () => {
     setQ('');
     clearFacets();
@@ -294,6 +310,8 @@ function RegistryInner() {
           <div className="relative min-w-[260px] flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              type="search"
+              aria-label="Search mods"
               placeholder="Search by name, author, or summary…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -486,7 +504,7 @@ function RegistryInner() {
             ) : null}
           </aside>
 
-          <div className="min-w-0 flex-1 space-y-6">
+          <div ref={resultsRef} className="min-w-0 flex-1 scroll-mt-24 space-y-6">
             {list.isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Spinner />
@@ -540,7 +558,7 @@ function RegistryInner() {
               <div className="flex items-center justify-center gap-4 pt-2">
                 <button
                   type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => goToPage(Math.max(1, page - 1))}
                   disabled={page <= 1 || list.isFetching}
                   className={buttonVariants({ variant: 'outline', size: 'sm' })}
                 >
@@ -551,7 +569,7 @@ function RegistryInner() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(Math.min(totalPages, page + 1))}
                   disabled={page >= totalPages || list.isFetching}
                   className={buttonVariants({ variant: 'outline', size: 'sm' })}
                 >
@@ -613,13 +631,13 @@ function ModGridCard({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <a
-              href={`/registry/${m.slug}`}
+            <Link
+              href={`/registry/${m.slug}` as Route}
               onClick={(e) => e.stopPropagation()}
               className="hover:text-gilt transition-colors"
             >
               <CardTitle className="text-lg">{m.name}</CardTitle>
-            </a>
+            </Link>
             <CardDescription className="mt-0.5">
               {m.author ?? 'unknown'}
               {m.latestVersion ? (
@@ -716,13 +734,13 @@ function ModListRow({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <a
-            href={`/registry/${m.slug}`}
+          <Link
+            href={`/registry/${m.slug}` as Route}
             onClick={(e) => e.stopPropagation()}
             className="truncate text-base leading-tight transition-colors hover:text-gilt"
           >
             {m.name}
-          </a>
+          </Link>
           {m.featured ? (
             <Star className="h-3 w-3 shrink-0 text-gilt" aria-label="Featured" />
           ) : null}
