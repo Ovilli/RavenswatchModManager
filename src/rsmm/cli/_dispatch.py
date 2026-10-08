@@ -57,6 +57,7 @@ LEGACY = {
 
 BUILTIN = {
     "new":               "rsmm.cli.cmd_new",
+    "diff":              "rsmm.cli.cmd_diff",
     "items":             "rsmm.cli.cmd_items",
     "enemies":           "rsmm.cli.cmd_enemies",
     "talents":           "rsmm.cli.cmd_talents",
@@ -155,6 +156,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("lint",     "[<id>]",                     "validate manifests + asset paths"),
         ("test",     "[<id>] [--record]",          "diff build.py output vs checked-in fixture"),
         ("compat",   "",                           "analyze requires/conflicts/replaces graph"),
+        ("diff",     "<id> [--all] [--json]",      "game files a mod changes + overlaps"),
         ("pack",     "<id> [--allow-vanilla]",     "bundle mods/<id>/ into a zip"),
         ("publish",  "<id> | login | whoami",      "upload a mod to the store with an API token"),
         ("build",    "[--skip-loader]",            "asset map + loader + merge + apply"),

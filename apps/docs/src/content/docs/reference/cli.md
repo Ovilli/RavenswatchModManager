@@ -395,6 +395,23 @@ See [`rsmm apply`](#rsmm-apply).
 ./rsmm apply --dry-run
 ```
 
+### `rsmm diff <id>`
+
+Show what applying one mod changes, without touching anything. Every file the
+mod ships is listed as replacing a game file (`~`), adding a new one (`+`), or
+being skipped because no game path can be derived for it (`?`). A file another
+enabled mod also writes is marked as merged (text banks, tile pools, resource
+caches and alias tables combine) or as a conflict naming the mod whose copy
+lands. `[[patch]]` fields set to a different value by another mod say which one
+wins under `load_order`. When the game is found, the summary also counts files
+that are installed and files that still need `rsmm apply`.
+
+```sh
+./rsmm diff my-mod            # first 15 files per section; conflicts always shown
+./rsmm diff my-mod --all      # every file
+./rsmm diff my-mod --json     # for scripts
+```
+
 ### Reading the loader log
 
 Read the loader log of the last game launch. See [`rsmm log`](#rsmm-log).
