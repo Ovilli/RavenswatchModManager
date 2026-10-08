@@ -8,6 +8,11 @@ on:
   release:
     types: [published]
 
+# Read-only token: nothing here writes to the repo, so a compromised step
+# or action cannot push, tag or edit releases with it.
+permissions:
+  contents: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest

@@ -44,6 +44,12 @@ class FakeApi(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != f"Bearer {TOKEN}":
             return self._reply(401, {"error": "unauthorized"})
         if (method, self.path) == ("GET", "/api/me"):
+            if "redirect_to" in srv.plan:
+                self.send_response(302)
+                self.send_header("Location", srv.plan["redirect_to"])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
             return self._reply(200, {"id": "user-1", "name": "Modder"})
         if (method, self.path) == ("POST", "/api/mods/upload"):
             status = srv.plan.get("upload_status", 200)
@@ -133,6 +139,20 @@ def test_token_is_never_sent_over_plain_http_to_a_remote_host(monkeypatch):
     monkeypatch.setenv("RSMM_API_TOKEN", TOKEN)
     with pytest.raises(P.PublishError, match="https"):
         P.whoami(TOKEN)
+
+
+def test_a_redirect_never_carries_the_token_anywhere(api, monkeypatch):
+    """urllib forwards Authorization on a redirect, to any host. Refuse it."""
+    other = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
+    other.calls, other.plan = [], {}
+    threading.Thread(target=other.serve_forever, daemon=True).start()
+    try:
+        api.plan["redirect_to"] = f"http://127.0.0.1:{other.server_address[1]}/api/me"
+        with pytest.raises(P.PublishError, match="redirect"):
+            P.whoami(TOKEN)
+        assert other.calls == [], "the redirect target must never be contacted"
+    finally:
+        other.shutdown()
 
 
 def test_missing_or_malformed_token(monkeypatch, tmp_path):

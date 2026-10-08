@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only token: nothing here writes to the repo, so a compromised step
+# or action cannot push, tag or edit releases with it.
+permissions:
+  contents: read
+
 jobs:
   python:
     name: python ${{ matrix.os }}

@@ -284,6 +284,8 @@ never disagree.
 
 Place next to `manifest.toml`. Fires from `./rsmm apply` when the mod flips `enabled = true → false`. Subprocess with 30s timeout; receives `RSMM_GAME_DIR`, `RSMM_COOKING`, `RSMM_MOD_DIR` env vars.
 
+The hook runs as the player, outside the game, with no sandbox, so it never runs unasked: `rsmm apply` lists the pending hooks and waits for a yes (or `--yes`), and uninstalling from the desktop app asks whether to run it before removing the mod.
+
 Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
 
 See `mods/ExampleSeedPin/on_disable.py` for a canonical example.

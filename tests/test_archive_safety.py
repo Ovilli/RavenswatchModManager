@@ -122,6 +122,17 @@ def test_scan_dangerous_blocks_executables(tmp_path):
         archive.scan_dangerous(zf, "M")
 
 
+@pytest.mark.parametrize("name", [
+    "_root/run.com", "_root/x.pif", "_root/setup.msi", "_root/a.hta", "_root/t.reg",
+    "_root/Play.lnk", "_root/go.url", "_root/plugin.asi", "_root/ctl.ocx", "tools/x.pyw",
+])
+def test_scan_dangerous_blocks_other_windows_executables(tmp_path, name):
+    """Run by a double-click or loaded as code, so as dangerous as a `.bat`."""
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"", f"M/{name}": b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="blocked file type"):
+        archive.scan_dangerous(zf, "M")
+
+
 def test_scan_dangerous_reports_every_root_overlay(tmp_path):
     """`_root/` members overwrite the game install itself — always warn.
 

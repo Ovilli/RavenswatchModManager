@@ -75,6 +75,11 @@ export const zhCN: Record<string, string> = {
   'This writes the safe automated repairs into your game install.':
     '这会把安全的自动修复写入你的游戏安装目录。',
   'Uninstall {name}?': '卸载 {name}？',
+  "Run {name}'s cleanup script?": '运行 {name} 的清理脚本？',
+  "This mod ships a cleanup script (on_disable.py) that undoes changes it made to the game. It runs as you, outside the game, with access to all your files. Run it only if you trust the mod's author. The mod is removed either way.":
+    '该模组附带一个清理脚本（on_disable.py），用于撤销它对游戏所做的更改。该脚本会以你的身份在游戏之外运行，可以访问你的全部文件。只有在你信任该模组作者时才运行它。无论如何，该模组都会被移除。',
+  'Run script': '运行脚本',
+  'Remove without running': '不运行，直接移除',
   'Uninstall {n} mod?': '卸载 {n} 个模组？',
   'Uninstall {n} mods?': '卸载 {n} 个模组？',
   'Uninstalling…': '正在卸载…',

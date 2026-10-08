@@ -26,6 +26,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { ConfigButton } from '../components/config-button';
+import { useConfirmDisableHook } from '../components/disable-hook-consent';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
 import { SetupBanner } from '../components/setup-banner';
@@ -315,15 +316,16 @@ function LibraryPage() {
     }
   }, [syncLocalMods, queryClient, activeProfileId]);
 
+  const confirmDisableHook = useConfirmDisableHook();
   const removeLocalMod = useCallback(
     async (id: string) => {
-      const result = await uninstallLocalMod(id);
+      const result = await uninstallLocalMod(id, confirmDisableHook);
       if (!result || !result.ok) {
         throw new Error(result?.error || t('Failed to uninstall {id}', { id }));
       }
       return result;
     },
-    [t],
+    [confirmDisableHook, t],
   );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);

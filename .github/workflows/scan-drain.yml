@@ -26,6 +26,11 @@ concurrency:
   group: scan-drain
   cancel-in-progress: false
 
+# Read-only token: nothing here writes to the repo, so a compromised step
+# or action cannot push, tag or edit releases with it.
+permissions:
+  contents: read
+
 jobs:
   drain:
     runs-on: ubuntu-latest

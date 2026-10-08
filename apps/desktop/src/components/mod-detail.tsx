@@ -40,6 +40,7 @@ import {
   SectionHeader,
   StatPill,
 } from './chrome';
+import { useConfirmDisableHook } from './disable-hook-consent';
 import { OverlayButton } from './overlay-button';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
@@ -139,6 +140,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
+  const confirmDisableHook = useConfirmDisableHook();
   const uninstall = useCallback(
     async (modId: string) => {
       // Deleting the mod from disk has no undo.
@@ -152,7 +154,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       setVersionBusy(modId);
       setVersionError(null);
       try {
-        const result = await uninstallLocalMod(modId);
+        const result = await uninstallLocalMod(modId, confirmDisableHook);
         if (!result || !result.ok) {
           throw new Error(result?.error || t('Failed to uninstall {id}', { id: modId }));
         }
@@ -170,7 +172,17 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         setVersionBusy(null);
       }
     },
-    [dialog, liveBySlug?.name, queryClient, refreshLocalMods, slug, t, toast, uninstallModStore],
+    [
+      confirmDisableHook,
+      dialog,
+      liveBySlug?.name,
+      queryClient,
+      refreshLocalMods,
+      slug,
+      t,
+      toast,
+      uninstallModStore,
+    ],
   );
 
   if (isLoading) {
