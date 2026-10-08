@@ -18,6 +18,7 @@ import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
+import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
 import {
   disableHookWarning,
   installModVersion,
@@ -114,12 +115,18 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       setVersionBusy(version);
       setVersionError(null);
       try {
-        await installModVersion(slug, version);
-        const mods = await listLocalMods();
-        if (mods) syncLocalMods(mods);
         if (addToProfile) {
-          const folderId = mods?.find((m) => m.slug === slug)?.id ?? slug;
-          installMod(folderId);
+          // Into the profile it is being added to — settled before the
+          // download, since Default reroutes to a new profile — and with the
+          // result checked: a failed install is `ok: false`, not a throw.
+          await installModIntoProfile(slug, resolveInstallTarget(), { version });
+        } else {
+          const result = await installModVersion(slug, version);
+          if (!result || !result.ok) {
+            throw new Error(result?.error ?? t('Failed to install this version.'));
+          }
+          const mods = await listLocalMods();
+          if (mods) syncLocalMods(mods);
         }
         await queryClient.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
       } catch (err) {
@@ -128,7 +135,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         setVersionBusy(null);
       }
     },
-    [installMod, queryClient, slug, syncLocalMods, t],
+    [queryClient, slug, syncLocalMods, t],
   );
 
   const uninstallModStore = useApp((s) => s.uninstallMod);
@@ -320,7 +327,9 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
               disabled={versionBusy !== null}
               onClick={() => {
                 const ver = apiLatest ?? latestVersion?.version;
-                if (!liveBySlug && ver && inTauri()) {
+                // On Default the add lands in a NEW profile, whose folder does
+                // not have the copy Default's folder holds: download it there.
+                if ((!liveBySlug || profile.id === 'default') && ver && inTauri()) {
                   void installVersion(ver, true);
                   return;
                 }

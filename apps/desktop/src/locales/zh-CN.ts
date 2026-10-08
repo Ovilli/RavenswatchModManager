@@ -614,7 +614,6 @@ export const zhCN: Record<string, string> = {
   'Select filtered': '选中筛选结果',
   'Selected mods uninstalled.': '所选模组已卸载。',
   'Send crash reports': '发送崩溃报告',
-  'Set a mods folder in Settings first': '请先在设置中指定模组文件夹',
   'Set the game folder in Settings → Paths, then run the command again.':
     '请在“设置 → 路径”中设置游戏文件夹，然后重新运行该命令。',
   'Set your game install path under General, then reopen Settings to manage loader features.':
@@ -817,7 +816,6 @@ export const zhCN: Record<string, string> = {
   'include mod list': '附带模组列表',
   install: '安装',
   'install all': '全部安装',
-  'install failed': '安装失败',
   'install rest': '安装其余',
   installed: '已安装',
   'installing…': '正在安装…',
