@@ -8,7 +8,8 @@ import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
 import { validateProfileName } from '../lib/profile-name';
-import { listLocalMods, listLocalModsForProfiles } from '../lib/rsmm';
+import { duplicateProfileWithMods } from '../lib/profile-mods';
+import { listLocalMods, listLocalModsForProfiles, modsRoot } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
 import { getMod, isEnabledIn, splitProfileMods, splitProfileModsAgainst, useApp } from '../store';
 
@@ -21,7 +22,6 @@ function ProfilesPage() {
   const activeId = useApp((s) => s.activeProfileId);
   const setActive = useApp((s) => s.setActiveProfile);
   const create = useApp((s) => s.createProfile);
-  const duplicate = useApp((s) => s.duplicateProfile);
   const rename = useApp((s) => s.renameProfile);
   const remove = useApp((s) => s.deleteProfile);
   const exportP = useApp((s) => s.exportProfile);
@@ -96,20 +96,12 @@ function ProfilesPage() {
    * again.
    */
   const onDuplicate = async (profileId: string) => {
-    const newId = duplicate(profileId);
-    const modsRoot = useApp.getState().settings.modsDir?.trim();
-    if (!modsRoot) return;
-    try {
-      await invoke('copy_profile_dir', {
-        modsRoot,
-        fromProfileId: profileId,
-        toProfileId: newId,
-      });
-    } catch (err) {
+    // An empty mods-folder setting means "the default folder", not "skip the
+    // files": this used to return early there, leaving the copy empty.
+    const { copyError } = await duplicateProfileWithMods(profileId);
+    if (copyError) {
       toast.push(
-        t('Copied the profile, but not its mod files: {error}', {
-          error: err instanceof Error ? err.message : String(err),
-        }),
+        t('Copied the profile, but not its mod files: {error}', { error: copyError }),
         'error',
       );
     }
@@ -129,13 +121,11 @@ function ProfilesPage() {
       toast.push(t('Invalid profile id'), 'error');
       return;
     }
-    const modsRoot = useApp.getState().settings.modsDir?.trim();
-    if (!modsRoot) {
-      toast.push(t('Set a mods folder in Settings first'), 'error');
-      return;
-    }
     try {
-      await invoke('open_profile_dir', { modsRoot, profileId });
+      // `modsRoot()` resolves an empty setting to the default folder, the one
+      // every CLI call uses. Refusing here sent users to Settings to fill in a
+      // field documented as "leave empty to use the default".
+      await invoke('open_profile_dir', { modsRoot: modsRoot(), profileId });
     } catch (err) {
       toast.push(err instanceof Error ? err.message : String(err), 'error');
     }

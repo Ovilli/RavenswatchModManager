@@ -29,8 +29,8 @@ import {
   filterMods,
 } from '../lib/browse-filter';
 import { TParts, useT } from '../lib/i18n-react';
+import { installModIntoProfile } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
-import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
 
@@ -65,9 +65,7 @@ function BrowsePage() {
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
-  const installMod = useApp((s) => s.installMod);
   const createProfile = useApp((s) => s.createProfile);
-  const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const view = useApp((s) => s.settings.browseView);
@@ -85,16 +83,10 @@ function BrowsePage() {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [slug]: true }));
     try {
-      // Already-on-disk path skips the network round-trip.
-      if (!installed.includes(slug)) {
-        const result = await installModFromIndex(slug, targetProfileId);
-        if (!result || !result.ok) {
-          throw new Error(result?.error ?? t('install failed'));
-        }
-        const local = await listLocalModsForProfile(targetProfileId);
-        if (local) syncLocalMods(local, targetProfileId);
-      }
-      installMod(slug, targetProfileId);
+      // Downloads into the TARGET profile's folder unless that folder already
+      // has the mod. `installed` describes the active profile, which the
+      // target often is not (the picker offers every profile).
+      await installModIntoProfile(slug, targetProfileId);
       // Default profile installs create a new "My Mods" profile — read the
       // active profile after installMod, not the requested id.
       const { profiles, activeProfileId } = useApp.getState();

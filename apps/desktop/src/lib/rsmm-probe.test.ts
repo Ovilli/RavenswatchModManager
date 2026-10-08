@@ -130,4 +130,56 @@ describe('program discovery', () => {
     await pending;
     expect(liveChildCount()).toBe(0);
   });
+
+  it('does not track a child that exited before its spawn was acknowledged', async () => {
+    // `close` and `spawn()`'s answer travel separately; a command that fails
+    // fast can report its exit first. Tracking it afterwards left a dead pid in
+    // `liveChildren` for the rest of the session.
+    const kill = vi.fn(async () => {});
+    const handlers: Record<string, (arg: unknown) => void> = {};
+    sidecar.mockImplementation(() => ({
+      stdout: { on: (_e: string, cb: (c: string) => void) => cb('[]') },
+      stderr: { on: vi.fn() },
+      on: (event: string, cb: (arg: unknown) => void) => {
+        handlers[event] = cb;
+      },
+      spawn: () => {
+        handlers.close?.({ code: 0 });
+        return Promise.resolve({ pid: 7, kill });
+      },
+    }));
+    const { listLocalMods, liveChildCount } = await freshRsmm();
+
+    await listLocalMods();
+    await Promise.resolve();
+    expect(liveChildCount()).toBe(0);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('kills a child whose command was aborted while the spawn was in flight', async () => {
+    // The abort handler kills `child`, which does not exist until spawn()
+    // resolves, so an early abort used to leave the process running untracked.
+    const kill = vi.fn(async () => {});
+    let ack: (c: { pid: number; kill: typeof kill }) => void = () => {};
+    sidecar.mockImplementation(() => ({
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      on: vi.fn(),
+      spawn: () =>
+        new Promise((resolve) => {
+          ack = resolve;
+        }),
+    }));
+    const { applyMods, liveChildCount } = await freshRsmm();
+
+    const controller = new AbortController();
+    const pending = applyMods({ signal: controller.signal });
+    await vi.waitFor(() => expect(sidecar).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    ack({ pid: 8, kill });
+    await vi.waitFor(() => expect(kill).toHaveBeenCalledTimes(1));
+    expect(liveChildCount()).toBe(0);
+  });
 });

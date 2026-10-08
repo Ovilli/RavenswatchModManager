@@ -19,7 +19,7 @@ import { OverlayHud } from './components/overlay-hud';
 import { RouteErrorComponent } from './components/route-error';
 import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
-import { reportDesktopAuthFailure } from './lib/desktop-auth';
+import { firstSightOfDeepLink, reportDesktopAuthFailure } from './lib/desktop-auth';
 import { setLocale, t } from './lib/i18n';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
@@ -59,6 +59,9 @@ async function handleAuthDeepLink(urls: string[] | null) {
     const url = new URL(raw);
     // rsmm://desktop-auth?token=…  → host is "desktop-auth"
     if (url.host !== 'desktop-auth' && !url.pathname.includes('desktop-auth')) return;
+    // Already handled in this window: the reload after a successful sign-in
+    // gets the same link back from `getCurrent()`. See firstSightOfDeepLink.
+    if (!firstSightOfDeepLink(raw)) return;
     // Login-CSRF guard: only accept tokens from a flow THIS install started.
     // signin.tsx minted the nonce and the relay echoed it back; a deep link
     // someone else crafted (their own OAuth flow → their token) won't match.

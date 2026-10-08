@@ -219,6 +219,48 @@ describe('importBackup treats the payload as untrusted', () => {
   });
 });
 
+describe('a malformed profile in a code cannot break the app', () => {
+  // Every screen walks `loadOrder`, and the bad profile is persisted, so a
+  // missing or non-array value used to throw on every render of every launch.
+  it('importBackup gives a profile with no usable loadOrder an empty one', () => {
+    const code = btoa(
+      JSON.stringify({
+        kind: 'rsmm-backup',
+        profiles: [
+          { id: 'a', name: 'No order' },
+          { id: 'b', name: 'String order', loadOrder: 'mod-a', disabled: 'mod-a' },
+          { id: 'c', loadOrder: ['mod-a', 7, null, 'mod-a', 'mod-b'], disabled: [1, 'mod-b'] },
+          null,
+          'not a profile',
+        ],
+      }),
+    );
+    expect(useApp.getState().importBackup(code).ok).toBe(true);
+
+    expect(profileById('a').loadOrder).toEqual([]);
+    expect(profileById('b').loadOrder).toEqual([]);
+    expect([...profileById('b').disabled]).toEqual([]);
+    expect(profileById('c').loadOrder).toEqual(['mod-a', 'mod-b']);
+    expect([...profileById('c').disabled]).toEqual(['mod-b']);
+    expect(typeof profileById('c').name).toBe('string');
+    for (const p of useApp.getState().profiles) {
+      expect(() => splitProfileMods(p)).not.toThrow();
+    }
+  });
+
+  it('importProfile does the same for a single profile code', () => {
+    const code = btoa(
+      JSON.stringify({ kind: 'rsmm-profile', profile: { loadOrder: { x: 1 }, disabled: 3 } }),
+    );
+    const id = useApp.getState().importProfile(code);
+    expect(id).not.toBeNull();
+    const p = profileById(id as string);
+    expect(p.loadOrder).toEqual([]);
+    expect([...p.disabled]).toEqual([]);
+    expect(p.name).toBe('Profile (imported)');
+  });
+});
+
 describe('hydrateSettings sanitizes a persisted blob', () => {
   it('falls back on a directory containing control characters', () => {
     const defaults = useApp.getState().settings;
@@ -621,6 +663,20 @@ describe('syncLocalMods across profile switches', () => {
     useApp.getState().setActiveProfile('B');
     useApp.getState().syncLocalMods([localMod({ id: 'z' })]);
     expect(profileById('A').loadOrder).toEqual(['x', 'y']);
+    expect(profileById('B').loadOrder).toEqual(['z']);
+  });
+
+  it('leaves the active profile’s registry alone when listing another profile', () => {
+    // Browse installs into a profile that is not active and syncs that
+    // profile's own listing. It used to replace `localMods`/`installed` with
+    // it, so the active Library showed its own mods as "not on disk".
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().syncLocalMods([localMod({ id: 'z' }), localMod({ id: 'w' })], 'B');
+    const s = useApp.getState();
+    expect(Object.keys(s.localMods).sort()).toEqual(['x', 'y']);
+    expect([...s.installed].sort()).toEqual(['x', 'y']);
+    expect(splitProfileMods(profileById('A')).missing).toEqual([]);
     expect(profileById('B').loadOrder).toEqual(['z']);
   });
 

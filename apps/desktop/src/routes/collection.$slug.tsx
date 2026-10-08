@@ -30,7 +30,8 @@ import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
-import { installModFromIndex, listLocalMods, listLocalModsForProfile } from '../lib/rsmm';
+import { installModIntoProfile, modIdsOf, resolveInstallTarget } from '../lib/profile-mods';
+import { listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 
 export const Route = createFileRoute('/collection/$slug')({
@@ -57,9 +58,7 @@ function CollectionDetailPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const dialog = useDialog();
-  const installed = useApp((s) => s.installed);
   const profile = useApp(activeProfile);
-  const installMod = useApp((s) => s.installMod);
   const createProfile = useApp((s) => s.createProfile);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
@@ -87,16 +86,10 @@ function CollectionDetailPage() {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [modSlug]: true }));
     try {
-      const targetId = profile.id === 'default' ? undefined : profile.id;
-      if (!installed.includes(modSlug)) {
-        const result = await installModFromIndex(modSlug, targetId);
-        if (!result || !result.ok) {
-          throw new Error(result?.error ?? t('install failed'));
-        }
-        const local = targetId ? await listLocalModsForProfile(targetId) : await listLocalMods();
-        if (local) syncLocalMods(local, targetId);
-      }
-      installMod(modSlug, targetId);
+      // Default never carries mods: settle the real target BEFORE the
+      // download, or the files land in Default's folder while the mod is
+      // listed under the "My Mods" profile `installMod` creates.
+      await installModIntoProfile(modSlug, resolveInstallTarget(profile.id));
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
       toast.push(t('Added {slug} to profile', { slug: modSlug }), 'success');
     } catch (err) {
@@ -113,17 +106,6 @@ function CollectionDetailPage() {
     }
   }
 
-  async function downloadAndAddMod(modSlug: string, targetProfileId: string | undefined) {
-    const currentInstalled = useApp.getState().installed;
-    if (!currentInstalled.includes(modSlug)) {
-      const result = await installModFromIndex(modSlug, targetProfileId);
-      if (!result || !result.ok) {
-        throw new Error(result?.error ?? t('failed to install {slug}', { slug: modSlug }));
-      }
-    }
-    installMod(modSlug, targetProfileId);
-  }
-
   async function installAll() {
     if (!data?.mods) return;
     setInstallAllRunning(true);
@@ -135,10 +117,22 @@ function CollectionDetailPage() {
     // nothing to do with it. Name the profile after the collection instead,
     // which is what installing a collection means.
     const targetProfileId = profile.id === 'default' ? createProfile(data.name) : profile.id;
+    // The target's OWN folder, listed once. The store's `installed` described
+    // the profile active when the page opened — after `createProfile` that is
+    // no longer the target, and every mod it happened to hold was skipped.
+    let onDisk: Set<string>;
+    try {
+      onDisk = modIdsOf(await listLocalModsForProfile(targetProfileId));
+    } catch (err) {
+      setInstallError(err instanceof Error ? err.message : String(err));
+      setInstallAllRunning(false);
+      setInstallProgress({ value: 0, max: 0 });
+      return;
+    }
     for (const [idx, m] of data.mods.entries()) {
       setInstalling((prev) => ({ ...prev, [m.slug]: true }));
       try {
-        await downloadAndAddMod(m.slug, targetProfileId);
+        await installModIntoProfile(m.slug, targetProfileId, { onDisk });
       } catch (err) {
         setInstallError(err instanceof Error ? err.message : String(err));
         setInstalling((prev) => ({ ...prev, [m.slug]: false }));
@@ -149,9 +143,7 @@ function CollectionDetailPage() {
       setInstalling((prev) => ({ ...prev, [m.slug]: false }));
       setInstallProgress({ value: idx + 1, max: data.mods.length });
     }
-    const local = targetProfileId
-      ? await listLocalModsForProfile(targetProfileId)
-      : await listLocalMods();
+    const local = await listLocalModsForProfile(targetProfileId);
     if (local) syncLocalMods(local, targetProfileId);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
@@ -189,9 +181,11 @@ function CollectionDetailPage() {
     setInstallProgress({ value: 0, max: data.mods.length });
     const newProfileId = createProfile(name);
     try {
+      // A new profile's folder starts empty (or does not exist yet).
+      const onDisk = modIdsOf(await listLocalModsForProfile(newProfileId));
       for (const [idx, m] of data.mods.entries()) {
         setInstalling((prev) => ({ ...prev, [m.slug]: true }));
-        await downloadAndAddMod(m.slug, newProfileId);
+        await installModIntoProfile(m.slug, newProfileId, { onDisk });
         setInstalling((prev) => ({ ...prev, [m.slug]: false }));
         setInstallProgress({ value: idx + 1, max: data.mods.length });
       }

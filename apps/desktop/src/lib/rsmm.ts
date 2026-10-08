@@ -176,6 +176,19 @@ function defaultModsDir(): string {
 }
 
 /**
+ * The mods root every profile folder lives under, as the CLI will see it.
+ *
+ * The Settings field is documented as "leave empty to use the default", so an
+ * empty value means the platform default, not "unset". Anything that builds a
+ * profile path itself (duplicating a profile's files, revealing its folder)
+ * must resolve it the same way, or it acts on a different directory from the
+ * one every CLI call uses.
+ */
+export function modsRoot(): string {
+  return useApp.getState().settings.modsDir?.trim() || defaultModsDir();
+}
+
+/**
  * Environment handed to every CLI invocation. Exported for tests: the profile
  * id it interpolates decides which directory the CLI creates, overwrites and
  * deletes in, so the fail-closed behaviour below is worth asserting directly
@@ -183,7 +196,7 @@ function defaultModsDir(): string {
  */
 export function rsmmEnv(profileId?: string): Record<string, string> {
   const state = useApp.getState();
-  const rootDir = state.settings.modsDir?.trim() || defaultModsDir();
+  const rootDir = modsRoot();
   const requested = profileId ?? state.activeProfileId;
   // Defence in depth. The store sanitizes every profile id at the boundary
   // (see lib/untrusted-state.ts), but this is the SINK: the id lands inside
@@ -420,6 +433,10 @@ function spawnWithLifecycle(
     let stdoutBuf = '';
     let stderrBuf = '';
     let settled = false;
+    // The process has reported its end. `close`/`error` arrive over a separate
+    // channel from `spawn()`'s answer, so for a fast command they can land
+    // FIRST — before there is a `child` to untrack.
+    let exited = false;
     let child: Child | null = null;
 
     const cleanup = (timeoutHandle: ReturnType<typeof setTimeout> | null) => {
@@ -475,6 +492,7 @@ function spawnWithLifecycle(
     });
 
     cmd.on('close', ({ code }: { code: number | null }) => {
+      exited = true;
       if (child) liveChildren.delete(child);
       if (stdoutBuf && options.onStdout) options.onStdout(stripCR(stdoutBuf));
       if (stderrBuf && options.onStderr) options.onStderr(stripCR(stderrBuf));
@@ -483,6 +501,7 @@ function spawnWithLifecycle(
     });
 
     cmd.on('error', (err: string) => {
+      exited = true;
       if (child) liveChildren.delete(child);
       // Started and then died: the command ran, so this must not be retried
       // against another program. Only a failure to spawn at all is a
@@ -492,6 +511,17 @@ function spawnWithLifecycle(
 
     cmd.spawn().then(
       (c) => {
+        // Already gone: tracking it now would leave a dead entry in
+        // `liveChildren` for good, and quit would later kill whatever process
+        // reused its pid.
+        if (exited) return;
+        // Aborted or timed out while the spawn was in flight. Both of those
+        // paths call `child?.kill()`, which was a no-op with no child yet, so
+        // the command ran on to completion untracked.
+        if (settled) {
+          c.kill().catch(() => {});
+          return;
+        }
         child = c;
         liveChildren.add(c);
       },

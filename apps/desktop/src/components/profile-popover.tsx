@@ -1,7 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ChevronDown, Copy, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
+import { duplicateProfileWithMods } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
 import { CheckIcon } from './icons/CheckIcon';
@@ -21,7 +23,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
   const activeId = useApp((s) => s.activeProfileId);
   const setActive = useApp((s) => s.setActiveProfile);
   const create = useApp((s) => s.createProfile);
-  const duplicate = useApp((s) => s.duplicateProfile);
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const dialog = useDialog();
   const toast = useToast();
@@ -46,6 +48,24 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  /**
+   * Same as the Profiles page: the row AND the mod files. This button copied
+   * only the row, so the copy (which becomes active) had no folder and both it
+   * and the original looked empty in the Library.
+   */
+  const onDuplicate = async (id: string) => {
+    const { copyError } = await duplicateProfileWithMods(id);
+    if (copyError) {
+      toast.push(
+        t('Copied the profile, but not its mod files: {error}', { error: copyError }),
+        'error',
+      );
+    }
+    // The new profile went active before its folder existed, so a list read in
+    // between saw nothing. Read it again now that the files are there.
+    await queryClient.invalidateQueries({ queryKey: ['rsmm', 'list'] });
+  };
 
   const onNewProfile = async () => {
     setOpen(false);
@@ -156,8 +176,8 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
               type="button"
               role="menuitem"
               onClick={() => {
-                if (active) duplicate(active.id);
                 setOpen(false);
+                if (active) void onDuplicate(active.id);
               }}
               className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
             >
