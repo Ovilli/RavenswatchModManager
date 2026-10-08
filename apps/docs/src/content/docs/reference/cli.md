@@ -73,8 +73,19 @@ version drift, the loader (DLL bytes by hash, the disk-loaded Lua SDK under
 `<game>/rsmm/lib`, the planted pattern DB, dangerous feature flags left armed,
 and — on Proton — whether Steam's launch options still carry the
 `WINEDLLOVERRIDES` the loader needs), mod manifests and asset paths, raw-file
-and `[[patch]]` conflicts, the dependency graph, applier state versus what is
-actually on disk, `UsedRscList.ot` record alignment, and recent crash dumps.
+and `[[patch]]` conflicts, whole-file overrides a declarative block could
+replace, the dependency graph, applier state versus what is actually on disk,
+`UsedRscList.ot` record alignment, and recent crash dumps.
+
+A whole-file override is a mod shipping a complete game file where a
+`[[patch]] kind = "stat"` (stat files), `[[patch]] kind = "ot"`
+(`ApplicationSettings.ot` via `_root/`) or `[[content]] kind = "talent"` (hero
+talent values) would do. The copy works, but it cannot merge with another mod
+and it silently reverts whatever the next game patch changes in that file.
+`rsmm lint <id>` prints the replacement block. It only offers one it has proven:
+the block is parsed back and run through the same code `apply` uses, and must
+rebuild the mod's file byte for byte. Without a readable game copy it names the
+route but cannot write the block.
 
 :::tip
 A planted `winhttp.dll` is only half an install. The Lua SDK and pattern DB are

@@ -317,8 +317,9 @@ graduates to SDK reference. Never forced to read INTERNALS.
 - Best: registry call via SDK (`m.register_*`). Conflict-free by
   namespacing.
 
-`rsmm doctor` should nudge: "MyMod ships raw `Aladdin.gen` — consider
-switching to `m.stat(...)` to allow merging."
+`rsmm doctor` nudges: "MyMod: ships a whole copy of `Hero_SunWukong.entity...`",
+and `rsmm lint <id>` prints the `[[patch]]` / `[[content]]` block that rebuilds
+it (shipped; stat, `.ot` and hero talent values).
 
 **Lua mutator chains.**
 - All chain handlers run, ordered by priority.

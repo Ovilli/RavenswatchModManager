@@ -761,6 +761,39 @@ def check_mods() -> list[Result]:
     return out
 
 
+def check_raw_overrides(game_dir: Path | None = None) -> list[Result]:
+    """Enabled mods shipping a whole game file a declarative block could
+    replace (STRATEGY §8's override ladder). `rsmm lint <id>` prints the block.
+    """
+    from rsmm.cli.patch_suggest import suggest_for_mod
+
+    if not MODS_DIR.is_dir():
+        return []
+    if game_dir is not None and not game_dir.is_dir():
+        game_dir = None
+    out: list[Result] = []
+    for entry in sorted(MODS_DIR.iterdir()):
+        if not entry.is_dir() or entry.name.startswith(("_", ".")):
+            continue
+        try:
+            meta = _toml_load(entry / "manifest.toml").get("mod", {})
+        except (OSError, ValueError):
+            continue                       # check_mods reports a bad manifest
+        raw = meta.get("enabled", True) if isinstance(meta, dict) else True
+        if not (raw if isinstance(raw, bool)
+                else str(raw).lower() in ("1", "true", "yes", "on")):
+            continue
+        for sg in suggest_for_mod(entry, game_dir=game_dir):
+            name = sg.decoded.rsplit("/", 1)[-1]
+            how = (f"`rsmm lint {entry.name}` prints the exact block" if sg.exact
+                   else "use " + sg.note)
+            out.append(Result("WARN", f"{entry.name}: ships a whole copy of {name}",
+                              f"{sg.note}; {how}" if sg.exact else how,
+                              code="raw-overrides.patchable"))
+    return out or [Result("OK", "no whole-file override a [[patch]] or "
+                                "[[content]] block could replace")]
+
+
 def check_patch_conflicts() -> list[Result]:
     out: list[Result] = []
     patches = collect_patches()
@@ -1027,6 +1060,7 @@ def _checks() -> list[Check]:
         Check("patch-conflicts", "patch conflicts",
               lambda _g: check_patch_conflicts() or
               [Result("OK", "no [[patch]] blocks in any mod")]),
+        Check("raw-overrides", "whole-file overrides", check_raw_overrides),
         Check("compat-graph", "compatibility graph", lambda _g: check_compat_graph()),
         Check("exe-hash", "game executable", check_exe_hash),
         Check("state", "applier state", check_state),
