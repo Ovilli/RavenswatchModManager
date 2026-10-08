@@ -224,7 +224,11 @@ PREAMBLE = """rsmm — single CLI for Ravenswatch mod install + lifecycle.
 
 Mods are written in Lua against the SDK. Drop a mod under `mods/<id>/`,
 start its `init.lua` with `local R = require "rsmm"`, and use the
-documented `R.*` API. See `docs/MODDING.md`."""
+documented `R.*` API. See https://docs.rsmm.me/guides/modding/."""
+
+
+#: Width of the usage column in `render_help`; descriptions start after it.
+_USAGE_COL = 36
 
 
 def render_help() -> str:
@@ -252,9 +256,16 @@ def render_help() -> str:
         out.append(st.heading(f"  {title}"))
         for cmd, args, desc in shown:
             usage = f"{cmd} {args}".rstrip()
+            if len(usage) >= _USAGE_COL:
+                # Too long for the column: it ran straight into its own
+                # description (`[-o out.glb]rigged mesh…`). Give the
+                # description the next line, still in the column.
+                out.append(f"    {st.bold(usage)}")
+                out.append(f"    {' ' * _USAGE_COL}{st.dim(desc)}")
+                continue
             # Pad the PLAIN string: padding a styled one counts the ANSI
             # escapes as width and mis-aligns every row.
-            padded = f"{usage:<36}"
+            padded = f"{usage:<{_USAGE_COL}}"
             out.append(f"    {st.bold(padded)}{st.dim(desc)}")
         out.append("")
 
