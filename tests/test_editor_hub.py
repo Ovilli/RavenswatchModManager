@@ -168,13 +168,20 @@ def _shell_game(page: bytes) -> dict:
 
 
 def test_the_shell_names_the_install_it_reads(tmp_path, monkeypatch, stubbed):
-    # A folder name that would end the shell's <script> if it were not escaped.
-    game = tmp_path / "Raven</script>swatch"
+    game = tmp_path / "Ravenswatch"
     (game / "DarkTalesResources" / "_Cooking").mkdir(parents=True)
     monkeypatch.setenv("RSMM_GAME_DIR", str(game))
     page = Bridge(mods=tmp_path).request("GET", "/")[2]
-    assert b"</script>swatch" not in page
     assert _shell_game(page) == {"dir": str(game), "override": str(game)}
+
+
+def test_an_install_path_cannot_end_the_shells_script(tmp_path, monkeypatch, stubbed):
+    # Linux allows "<" in a folder name (Windows does not, so no real folder here).
+    weird = {"dir": "/games/Raven</script><script>alert(1)</script>", "override": None}
+    monkeypatch.setattr(app, "game_status", lambda: weird)
+    page = Bridge(mods=tmp_path).request("GET", "/")[2]
+    assert b"</script><script>alert" not in page
+    assert _shell_game(page) == weird
 
 
 def test_the_shell_says_why_no_install_was_found(tmp_path, monkeypatch, stubbed):
