@@ -1070,6 +1070,12 @@ local function _modify_shards(delta)
     if not base or base == 0 then return false end
     -- empty oCCustomFlagList ctx { vftable, list=0, count=0 } in scratch
     local ctx = I.scratch(0x20)
+    -- The engine dereferences ctx, so no arena means no call (a null ctx is a
+    -- crash, not a no-op). R.map and R.talent check the same thing.
+    if not ctx or ctx == 0 then
+        R.log("[rsmm.shards] no scratch memory for the call context — refusing modify")
+        return false
+    end
     I.poke(ctx + 0x00, base + (FLAGLIST_VFT_VA - ENTITY_IMG_BASE), 8)
     I.poke(ctx + 0x08, 0, 8)
     I.poke(ctx + 0x10, 0, 8)
@@ -1378,6 +1384,8 @@ function R.entity.value(key)
     local e = R.entity.hero(); if not e then return nil end
     local ctx = _ev_ctx(e); if not ctx then return nil end
     local out = I.scratch(0x20)               -- zeroed; tag starts at 0
+    -- The engine WRITES through `out`: no arena, no call.
+    if not out or out == 0 then return nil end
     local ok = pcall(R.engine.call, "EntityValue_Get", ctx, out, key)
     if not ok then return nil end
     if I.read_u32(out + EV_TAG_OFF) ~= EV_TAG_INLINE then return nil end

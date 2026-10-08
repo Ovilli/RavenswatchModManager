@@ -6435,6 +6435,20 @@ do
     -- A length that disagrees with the bytes is refused rather than smeared.
     I.write_u32(REC2, 40)
     check(H.read(REC2) == nil, "a length that does not match the text is refused")
+
+    -- A "record" no blob ever named is not a member. Sky's 2026-10-06 log:
+    -- `roster: )[record], Jivil(hero 5)[hook], ...` -- param_1 was not a
+    -- record, and ")" read back as a perfectly printable name.
+    local JUNK = 0x1f003000
+    put_inline(JUNK, ")")
+    I.write_u8(JUNK + 0xc5, 1)
+    Rr.lobby._note_blob('{"PlayerName":"Akaza","RequestedHero":7}')
+    H.records[#H.records + 1] = REC
+    H.records[#H.records + 1] = JUNK
+    local names = {}
+    for _, mm in ipairs(Rr.lobby.members()) do names[mm.name] = mm.src end
+    check(names.Akaza == "record", "a record whose name a blob gave is read back")
+    check(names[")"] == nil, "a record no blob ever named stays off the roster")
 end
 
 -- N2. R.lobby: a completed roster is not the final roster ------------------
@@ -7640,6 +7654,141 @@ do  -- 9l. TWO stale ally rows are ambiguous, so it refuses instead of guessing
     check(said, "and says why, so a split board is not a mystery")
 
     I.is_grant_target = saved_grant
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- Give `ent` an owner GUID the way the engine lays it out: net component
+-- +0xb8 -> +0x100 -> +0x28 (see F._dmg_controller_guid). `ncmap` backs the
+-- R.net.component stub.
+local function _guid_on(ncmap, ent, scratch, g)
+    I.write_u64(scratch + 0xb8, scratch + 0x1000)
+    I.write_u64(scratch + 0x1000 + 0x100, scratch + 0x2000)
+    I.write_u64(scratch + 0x2000 + 0x28, g)
+    ncmap[ent] = scratch
+end
+
+do  -- 9l2. two stale ally rows: the OWNER GUID says which one came back
+    -- 2026-10-07 (Sky's log): both allies' controllers died over a chapter
+    -- change, Jivil's new controller forked a fourth row, the name guess gave
+    -- it "MaxS394" (who had left before the run), and Jivil's real total
+    -- stopped growing. The GUID that rebinds it was already on his row.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved_grant, saved_nc = I.is_grant_target, Rk.net.component
+    local ncmap = {}
+    Rk.net.component = function(ent) return ncmap[ent] end
+
+    Rk.damage.enable{ window = 10 }
+    local B = 0xbc000000
+    local ctrl, deal = _own_world(B, { "me", "a1", "a2" })
+    local G1, G2 = 0xbb0001411378f61, 0x79000baa7e71ce1
+    _guid_on(ncmap, ctrl[2] + 0x8000, B + 0x50000, G1)
+    _guid_on(ncmap, ctrl[3] + 0x8000, B + 0x54000, G2)
+    local alive = {}
+    for _, c in ipairs(ctrl) do alive[c] = true end
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0); deal(ctrl[2], 50.0); deal(ctrl[3], 40.0)
+    check(#Rk.damage.board() == 3, "three players, three rows")
+
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ctrl[2]], alive[ctrl[3]] = nil, nil
+    local NEW = B + 0x900000
+    local NENT = NEW + 0x10000
+    alive[NEW], alive[NENT] = true, true
+    I.write_u64(NEW + 0x08, NENT)
+    I.write_u8(NEW + 0x1d88, 0)
+    _guid_on(ncmap, NENT, B + 0x58000, G2)     -- a2 came back
+    deal(NEW, 25.0)
+
+    local board = Rk.damage.board()
+    check(#board == 3, "the GUID rebinds the row instead of forking a fourth")
+    local dealt = {}
+    for _, row in ipairs(board) do dealt[#dealt + 1] = row.dealt end
+    table.sort(dealt)
+    check(dealt[1] == 50.0 and dealt[2] == 65.0 and dealt[3] == 100.0,
+          "and the damage lands on a2's row (40 + 25), not a1's")
+
+    I.is_grant_target, Rk.net.component = saved_grant, saved_nc
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9l3. ONE stale row with a DIFFERENT owner GUID is a different player
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved_grant, saved_nc = I.is_grant_target, Rk.net.component
+    local ncmap = {}
+    Rk.net.component = function(ent) return ncmap[ent] end
+
+    Rk.damage.enable{ window = 10 }
+    local B = 0xbd000000
+    local ctrl, deal = _own_world(B, { "me", "a1" })
+    _guid_on(ncmap, ctrl[2] + 0x8000, B + 0x50000, 0x1111)
+    local alive = { [ctrl[1]] = true, [ctrl[2]] = true }
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0); deal(ctrl[2], 50.0)
+
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ctrl[2]] = nil
+    local NEW = B + 0x900000
+    local NENT = NEW + 0x10000
+    alive[NEW], alive[NENT] = true, true
+    I.write_u64(NEW + 0x08, NENT)
+    I.write_u8(NEW + 0x1d88, 0)
+    _guid_on(ncmap, NENT, B + 0x58000, 0x2222)
+    deal(NEW, 25.0)
+
+    check(#Rk.damage.board() == 3,
+          "a new machine's controller does not inherit the leaver's row")
+
+    I.is_grant_target, Rk.net.component = saved_grant, saved_nc
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9l4. a lobby member who LEFT gets no placeholder row
+    -- 2026-10-07: "MaxS394" sat on a three-player board at 0 from the start.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved = { Rk.lobby.members, Rk.net.peers, Rk.player.name }
+    Rk.lobby.members = function()
+        return { { name = "Sky" }, { name = "Jivil" }, { name = "MaxS394" } }
+    end
+    Rk.player.name = function() return "Sky" end
+    Rk.net.peers = function() return { { name = "Jivil" } } end
+
+    Rk.damage.enable{ window = 10, roster_rows = true }
+    local ctrl, deal = _own_world(0xbe000000, { "me" })
+    I.is_grant_target = function(e) return e == ctrl[1] end
+    deal(ctrl[1], 100.0)
+    local names = {}
+    for _, row in ipairs(Rk.damage.board()) do names[row.label] = true end
+    check(names.Jivil and not names.MaxS394,
+          "the connected ally is listed, the one who left is not")
+
+    -- An unreadable peer table filters nothing: never drop a real player.
+    Rk.net.peers = function() return { { name = "Jivil" }, { name = nil } } end
+    names = {}
+    for _, row in ipairs(Rk.damage.board()) do names[row.label] = true end
+    check(names.MaxS394, "a partial peer table leaves the roster alone")
+
+    Rk.lobby.members, Rk.net.peers, Rk.player.name = saved[1], saved[2], saved[3]
     Rk.damage.disable(); Rk.damage.reset()
     rsmm.log = saved_log
     package.loaded["rsmm"] = nil
@@ -9859,6 +10008,21 @@ do
     outside({ yaw = 1 })
     fire("tick")
     check(#got == 3, "no config_reload native: polling is a no-op, not an error")
+
+    -- A watcher that clamps by writing its own key back. Before the change
+    -- check it re-entered itself until the C stack overflowed.
+    cfg = { speed = 1 }
+    local calls = 0
+    R.config.on_change("speed", function(new)
+        calls = calls + 1
+        if calls > 50 then error("runaway watcher") end
+        R.config.set("speed", math.min(new, 10))
+    end)
+    R.config.set("speed", 30)
+    check(cfg.speed == 10 and calls == 2,
+          "a clamping watcher settles instead of recursing")
+    R.config.set("speed", 10)
+    check(calls == 2, "setting the value it already has fires nothing")
     I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
 end
 

@@ -309,7 +309,12 @@ local function _field(name)
 end
 
 local function _to_file(f, v) return f.unit == "deg" and math.rad(v) or v end
-local function _from_file(f, v) return f.unit == "deg" and math.deg(v) or v end
+-- `v` is a guarded read, so nil when the page went away under us (a chapter
+-- teardown); nil passes through rather than raising in math.deg.
+local function _from_file(f, v)
+    if v == nil then return nil end
+    return f.unit == "deg" and math.deg(v) or v
+end
 
 --- The default camera's `name` (degrees for yaw/pitch), or nil + reason.
 function M.get(name)
@@ -320,7 +325,9 @@ function M.get(name)
         if c.default then
             local at, err = _record(c.settings, f.off)
             if not at then return nil, err end
-            return _from_file(f, I.read_f32(at))
+            local v = _from_file(f, I.read_f32(at))
+            if v == nil then return nil, "the camera record is no longer readable" end
+            return v
         end
     end
     return nil, "no default camera found"
@@ -373,7 +380,8 @@ function M.describe()
         local parts = {}
         for name, f in pairs(M.FIELDS) do
             local at, err = _record(c.settings, f.off)
-            parts[#parts + 1] = name .. "=" .. (at and ("%.3f"):format(_from_file(f, I.read_f32(at))) or err)
+            local v = at and _from_file(f, I.read_f32(at))
+            parts[#parts + 1] = name .. "=" .. (v and ("%.3f"):format(v) or err or "unreadable")
         end
         table.sort(parts)
         R.log(("[rsmm.camera] #%d %s settings=0x%x %s"):format(

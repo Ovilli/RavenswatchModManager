@@ -398,7 +398,9 @@ end
 
 --- Read by raw 32-bit key, for a key the slug table does not cover.
 function R.game.get_key(key)
-    if type(key) ~= "number" then return nil end
+    -- An integer key only: `%08x` raises on 1.5, and this must never raise.
+    key = math.tointeger(key)
+    if not key then return nil end
     return _read_key(key, string.format("0x%08x", key))
 end
 
@@ -481,6 +483,8 @@ function R.game._write_key(key, value)
     if type(key) ~= "number" or type(value) ~= "number" then
         return false, "key and value must be numbers"
     end
+    key = math.tointeger(key)
+    if not key then return false, "key must be an integer" end
     local p = _ctx()
     if not p then return false, _why end
     local ok, rec = pcall(R.engine.call, "SceneContextValue_Find", p, key)
@@ -526,7 +530,10 @@ function R.game._write_key(key, value)
     -- Read it back: the replication gate refuses WITHOUT a word, so a call
     -- that returned is not a write that landed.
     local got = _read_key(key, ("0x%08x"):format(key))
-    if got == nil or math.abs(got - value) > 1e-4 then
+    -- RELATIVE tolerance: an f32 holds ~7 significant digits, so 123456.7
+    -- reads back 123456.703 -- off by 3e-3, which a fixed 1e-4 called a
+    -- failed write.
+    if got == nil or math.abs(got - value) > math.max(1e-4, math.abs(value) * 1e-6) then
         return false, ("%s returned but 0x%08x reads %s, not %s"):format(
             fn, key, tostring(got), tostring(value))
     end

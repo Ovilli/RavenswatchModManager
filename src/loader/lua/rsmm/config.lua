@@ -42,15 +42,10 @@ function M.set(key, value)
     -- Our own change, not an outside edit: keep the poll's snapshot in step so
     -- the next reload does not fire this key a second time.
     if _last then _last[key] = value end
-    local list = _watchers[key]
-    if not list then return end
-    for _, fn in ipairs(list) do
-        local ok, err = xpcall(fn, _msgh, value, old)
-        if not ok and _G.rsmm then
-            _G.rsmm.log("config watcher error on '" .. tostring(key) .. "': "
-                        .. tostring(err))
-        end
-    end
+    -- Only a CHANGE fires. A watcher that writes its own key back (clamping,
+    -- say) would otherwise call itself until the stack overflowed.
+    if old == value then return end
+    M._fire(key, value, old)
 end
 
 function M.on_change(key, fn)
@@ -75,7 +70,7 @@ end
 -- not call engine functions directly — use R.schedule.next_main for those. A
 -- plain memory write (R.camera.set) is fine.
 
-local function _fire(key, value, old)
+function M._fire(key, value, old)
     for _, fn in ipairs(_watchers[key] or {}) do
         local ok, err = xpcall(fn, _msgh, value, old)
         if not ok and _G.rsmm then
@@ -102,10 +97,10 @@ function M._poll()
                     .. table.concat(changed, ", "))
     end
     for k, v in pairs(now) do
-        if old[k] ~= v then _fire(k, v, old[k]) end
+        if old[k] ~= v then M._fire(k, v, old[k]) end
     end
     for k, v in pairs(old) do
-        if now[k] == nil then _fire(k, nil, v) end
+        if now[k] == nil then M._fire(k, nil, v) end
     end
 end
 

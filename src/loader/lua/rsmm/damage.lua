@@ -636,8 +636,8 @@ function F._dmg_label_for(slot, is_local)
     -- damage totals (reported 2026-08-19, 4p co-op: the local row was right and
     -- every ally row was shuffled). A wrong name on a real number is worse than
     -- no name, so everything else waits for the hero-id join in F._dmg_relabel.
-    local ok, allies = pcall(R.lobby.allies)
-    if ok and type(allies) == "table" and #allies == 1 then
+    local allies = F._dmg_live_allies()
+    if type(allies) == "table" and #allies == 1 then
         local others = 0
         for _, row in ipairs(_dmg.order) do
             if not row.is_local then others = others + 1 end
@@ -816,15 +816,33 @@ function F._dmg_rebind(hero, is_local, entity)
     -- nothing here can say which is which -- that forks, as before. In a34f
     -- only one ally's controller moved per chapter (the others kept their
     -- address), which is precisely the unambiguous case.
+    --
+    -- The OWNER GUID settles it when it is known on both sides. It is the
+    -- owning machine's RakNetGUID (F._dmg_owner_guid), so it cannot change
+    -- across a chapter, and two players never share one. 2026-10-07 (Sky's
+    -- log): both allies' controllers died over a chapter change, Jivil's new
+    -- one forked a row, the name guess labelled it "MaxS394" (who had left
+    -- before the run), and the raknet join then saw rows 2 and 4 both pair
+    -- with Jivil and refused -- the GUID that would have rebound the row was
+    -- already on it. It also vetoes the n == 1 case when the GUIDs disagree:
+    -- that is a different player, not a rebuilt controller.
     if not prev and not is_local then
         local stale, n = nil, 0
+        local g = F._dmg_controller_guid and F._dmg_controller_guid(hero)
+        local match, m = nil, 0
         for _, r in ipairs(_dmg.order) do
             if not r.is_local and (r.epoch or 0) < _dmg.epoch
                and not (_ptr_plausible(r.key) and F._dmg_is_hero(r.key)) then
                 stale, n = r, n + 1
+                if g and (r.owner_guid or r.boarded_guid) == g then
+                    match, m = r, m + 1
+                end
             end
         end
-        if n == 1 then
+        local sg = stale and (stale.owner_guid or stale.boarded_guid)
+        if m == 1 then
+            prev, why = match, DMG.STALE_ALLY
+        elseif n == 1 and not (g and sg and sg ~= g) then
             prev, why = stale, DMG.STALE_ALLY
         elseif n > 1 then
             if not _dmg.stale_said then
@@ -923,6 +941,14 @@ function F._dmg_row_for_hero(hero)
     F._dmg_bind_netid(row, entity)
     if is_local and _dmg.local_id == nil then
         _dmg.local_id = (row.netid ~= false and row.netid) or false
+    end
+    -- Read the owner GUID NOW, while the controller is live: it is what
+    -- F._dmg_rebind tells two stale ally rows apart by after the next chapter,
+    -- and by then this controller is gone and the chain no longer walks. Kept
+    -- beside `owner_guid`, not in it: that one is the joins' sticky answer,
+    -- and a first-hit read must not pre-empt what they measure later.
+    if not is_local and F._dmg_controller_guid then
+        row.boarded_guid = F._dmg_controller_guid(hero)
     end
     return row
 end
@@ -1598,7 +1624,7 @@ function R.damage.enable(opts)
     local stats = F._dmg_arm_stats()
     local taken = F._dmg_arm_taken()
     local resolver = F._dmg_arm_resolver()
-    R.log(("[rsmm.damage] metering on (window %ds, sources: %s, victims: %s%s)")
+    R.log(("[rsmm.damage] metering on (window %gs, sources: %s, victims: %s%s)")
           :format(_dmg.window, R.damage.mode(),
                   _dmg.ignore_scenery and "enemies only" or "everything the game counts",
                   _dmg.probe and ", probe on" or ""))
@@ -1708,6 +1734,8 @@ function R.damage.reset()
     -- The sweep's CURSOR points at a row that no longer exists; the CHAIN is a
     -- fact about the engine's layout and stays.
     F._own.cursor = nil
+    -- New run, new rows: each gets its net-id detail logged once again.
+    F._netid.said_rows = {}
     -- Same split for the member link: the cursor and the per-member "already
     -- swept" set point at dead rows, the learned OFFSET is layout and stays.
     -- The candidate table goes too — a hit is only evidence while the row it
@@ -1775,10 +1803,13 @@ function F._dmg_roster_rows(taken, next_slot)
             return {}
         end
     end
-    local me, out = F._dmg_me(), {}
+    -- Not someone who has left: a placeholder for them is a player the board
+    -- claims is in the run (2026-10-07, "MaxS394" at 0 for a 3-player run).
+    local me, out, live = F._dmg_me(), {}, F._dmg_connected_names()
     for _, m in ipairs(members) do
         local nm = m.name
-        if type(nm) == "string" and nm ~= "" and not taken[nm] then
+        if type(nm) == "string" and nm ~= "" and not taken[nm]
+           and (not live or live[nm]) then
             taken[nm] = true
             next_slot = next_slot + 1
             out[#out + 1] = {

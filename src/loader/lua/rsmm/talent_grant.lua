@@ -135,6 +135,9 @@ return function(env)
             local off = CAT_BASE + cat * CAT_STRIDE
             if R.ptr.vector_valid(h, off, off + 8, { max = MAX_PER_CATEGORY }) then
                 local data, n = I.read_u64(h + off), I.read_u32(h + off + 8)
+                -- Re-read after the check, so re-checked (nil `n` raises).
+                if type(n) ~= "number" or n > MAX_PER_CATEGORY
+                   or not R.ptr.plausible(data) then n = 0 end
                 for i = 0, n - 1 do
                     local c = I.read_u64(data + i * 8)
                     if c and c ~= 0 and controller_ok(c, h) then

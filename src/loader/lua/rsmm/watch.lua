@@ -80,10 +80,16 @@ function M.field(ptr, off, opts)
     local len = opts.len or 4
     local va = ptr + off
     if va % len ~= 0 then
+        -- The widest length this address IS aligned to (it used to always
+        -- suggest 1, which is right only for odd addresses).
+        local fit = 1
+        for _, w in ipairs({ 8, 4, 2 }) do
+            if w < len and va % w == 0 then fit = w; break end
+        end
         local err = string.format(
             "%#x+%#x = %#x is not %d-byte aligned; a misaligned watchpoint "
             .. "never fires. Use len = %d, or watch the aligned neighbour.",
-            ptr, off, va, len, 1)
+            ptr, off, va, len, fit)
         R.log("[watch] " .. err)
         return nil, err
     end

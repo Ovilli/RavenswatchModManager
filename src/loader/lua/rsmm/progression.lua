@@ -253,6 +253,11 @@ local function _published_ctx()
     end
     -- Semantic gate: a hero's store answers with a positive, finite max health.
     local out = I.scratch(0x20)
+    -- The engine WRITES through `out`: no arena, no call.
+    if not out or out == 0 then
+        _ctx_why = "no scratch memory for the read buffer"
+        return nil
+    end
     local okc = pcall(R.engine.call, "EntityValue_Get", ctx, out,
                       R.stat.keys.max_health and R.stat.keys.max_health.key
                           or R.stat.keys.attack_power.key)
@@ -298,10 +303,15 @@ end
 local function _stat_read(spec)
     local ctx = _stat_ctx(R.entity.hero()); if not ctx then return nil end
     local out = I.scratch(0x20)                               -- zeroed union buffer
+    if not out or out == 0 then return nil end                -- engine writes here
     local ok = pcall(R.engine.call, "EntityValue_Get", ctx, out, spec.key)
     if not ok then return nil end
     if I.read_u32(out + EV_INLINE_OFF) ~= EV_INLINE then return nil end
-    if spec.kind == "int" then return I.read_u32(out + EV_VALUE_OFF) end
+    if spec.kind == "int" then
+        -- int32, SIGNED: read_u32 alone turned -1 into 4294967295.
+        local n = I.read_u32(out + EV_VALUE_OFF)
+        return n and ((n >= 0x80000000) and (n - 0x100000000) or n)
+    end
     return I.read_f32(out + EV_VALUE_OFF)
 end
 
@@ -430,6 +440,12 @@ end
 -- closed (logs, no-op) if writes aren't enabled, the hero/store is implausible,
 -- or a symbol is unresolved.
 function R.stat.set(name, value)
+    return R.stat._set(name, value, false)
+end
+
+-- `quiet` drops the success line: R.stat.stick's re-assert runs on every
+-- gameplay event, and one "set ... TRANSIENT" line per event buried the log.
+function R.stat._set(name, value, quiet)
     local spec = R.stat.keys[name]
     if not spec then R.log("[rsmm.stat] unknown stat: " .. tostring(name)); return false end
     if not _stat_writes_enabled then
@@ -466,8 +482,10 @@ function R.stat.set(name, value)
         entry = slot
     end
     _stat_write_union(entry, spec, value)
-    R.log(string.format("[rsmm.stat] set %s = %s (override cache — TRANSIENT; use R.stat.stick to keep it)",
-        name, tostring(value)))
+    if not quiet then
+        R.log(string.format("[rsmm.stat] set %s = %s (override cache — TRANSIENT; use R.stat.stick to keep it)",
+            name, tostring(value)))
+    end
     return true
 end
 
@@ -555,6 +573,9 @@ function R.stat.modify(name, amount, duration, opts)
     if not spec then R.log("[rsmm.stat] unknown stat: " .. tostring(name)); return false end
     if type(amount) ~= "number" then
         R.log("[rsmm.stat] modify: amount must be a number"); return false
+    end
+    if duration ~= nil and type(duration) ~= "number" then
+        R.log("[rsmm.stat] modify: duration must be a number of seconds (or nil)"); return false
     end
     if not _stat_writes_enabled then
         R.log("[rsmm.stat] writes are experimental and off — call R.stat.enable_writes() first")
@@ -720,7 +741,7 @@ local function _stat_reassert()
     for name, value in pairs(_stat_sticky) do
         local cur = R.stat.get(name)
         if cur == nil or math.abs(cur - value) > _STAT_DRIFT then
-            R.stat.set(name, value)
+            R.stat._set(name, value, true)
         end
     end
 end
@@ -847,9 +868,14 @@ local function _xp_heuristic(hero, mbase)
     for _, entity in ipairs(_xp_entities(hero)) do
         local arr = I.read_u64(entity + XP_ARR_OFF)
         local n   = I.read_u32(entity + XP_ARR_COUNT_OFF)
+        -- Re-checked here, as _xp_scan does: the owner list is CACHED per
+        -- hero, so the array it validated may since have been torn down -- a
+        -- nil count raised in the `for`, a garbage one walked millions of
+        -- entries, and a nil entry raised on the `+`.
+        if not _ptr_plausible(arr) or type(n) ~= "number" or n > 0x400 then n = 0 end
         for i = 0, n - 1 do
             local comp = I.read_u64(arr + i * 8)
-            local prog = I.read_u64(comp + XP_PROGRESS_OFF)
+            local prog = _ptr_plausible(comp) and I.read_u64(comp + XP_PROGRESS_OFF)
             if prog and prog ~= 0 and _ptr_plausible(prog)
                and _ptr_plausible(I.read_u64(comp + 0x10)) then
                 local lvl = I.read_u32(prog)
@@ -1268,8 +1294,10 @@ function R.xp.grant(amount)
         return false
     end
     if not _va_ok("R.xp") then return false end
-    amount = math.floor(amount or 0)
-    if amount <= 0 then return false end
+    amount = math.floor(tonumber(amount) or 0)
+    -- The engine reads an int32 (*(int*)(gain+0x50)): past 2^31 write_u32 would
+    -- hand it a different -- possibly negative -- number than the one asked for.
+    if amount <= 0 or amount > 0x7fffffff then return false end
     local hero = R.entity.hero()
     if not hero then _log_throttled("xp.nohero", "[rsmm.xp] no hero captured yet"); return false end
     -- grant runs on the MAIN thread (schedule.next_main contract) — the only

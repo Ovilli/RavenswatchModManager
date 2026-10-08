@@ -478,8 +478,17 @@ function F._dmg_owner_guid(row)
     -- and cannot change under a row, so the first answer is the answer -- and
     -- a join that runs later must not lose the key it already had.
     if row.owner_guid then return row.owner_guid end
-    if not I.read_u64 or not _ptr_plausible(row.key) then return nil end
-    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    local g = F._dmg_controller_guid(row.key)
+    if g then row.owner_guid = g end
+    return g
+end
+
+--- The owner GUID of a hero CONTROLLER that has no row yet, or nil. Guarded
+--- reads only, so it is safe on the main thread inside a damage hook -- which
+--- is where F._dmg_rebind needs it, to tell two stale ally rows apart.
+function F._dmg_controller_guid(key)
+    if not I.read_u64 or not _ptr_plausible(key) then return nil end
+    local ent = I.read_u64(key + DMG.HERO_ENTITY_OFF)
     if not _ptr_plausible(ent) then return nil end
     local nc = R.net.component(ent)
     if not nc then return nil end
@@ -487,8 +496,53 @@ function F._dmg_owner_guid(row)
     if not inner then return nil end
     local g = I.read_u64(inner + 0x28)
     if type(g) ~= "number" or g == 0 or g == -1 then return nil end
-    row.owner_guid = g
     return g
+end
+
+--- Lobby names of the players actually CONNECTED to this session, as a set,
+--- or nil when the peer table cannot say (unreadable, empty, or a slot with no
+--- readable name -- filtering on a partial table would drop a real player).
+---
+--- The lobby roster only ever grows within a session: 2026-10-07 (Sky's log)
+--- kept "MaxS394" for a three-player run he had already left. The board showed
+--- him as a zeroed placeholder, and after a chapter change the name guess
+--- handed his name to Jivil's forked row. The peer table is the engine's own
+--- list of who is in the session, so it is what decides who is still here.
+---
+--- And only when every peer is a lobby member: a peer table that names someone
+--- the lobby never saw is not describing this session, and filtering on it
+--- would drop the real players.
+function F._dmg_connected_names()
+    local ok, peers = pcall(R.net.peers)
+    if not ok or type(peers) ~= "table" or #peers == 0 then return nil end
+    local okl, members = pcall(R.lobby.members, true)
+    if not okl or type(members) ~= "table" then return nil end
+    local known = {}
+    for _, m in ipairs(members) do
+        if type(m.name) == "string" then known[m.name] = true end
+    end
+    local set = {}
+    for _, e in ipairs(peers) do
+        if type(e.name) ~= "string" or not known[e.name] then return nil end
+        set[e.name] = true
+    end
+    local okm, me = pcall(R.player.name)
+    if okm and type(me) == "string" then set[me] = true end
+    return set
+end
+
+--- R.lobby.allies() minus anyone the peer table says has left. Unfiltered
+--- when the peer table cannot answer (see F._dmg_connected_names).
+function F._dmg_live_allies()
+    local ok, allies = pcall(R.lobby.allies)
+    if not ok or type(allies) ~= "table" then return nil end
+    local live = F._dmg_connected_names()
+    if not live then return allies end
+    local out = {}
+    for _, nm in ipairs(allies) do
+        if live[nm] then out[#out + 1] = nm end
+    end
+    return out
 end
 
 --- Is `t` well-formed UTF-8?
@@ -1659,6 +1713,13 @@ function F._dmg_probe_netid(row, targets)
     for _, h in ipairs(hits) do
         if h.m and not who[h.m.name] then who[h.m.name] = true; nwho = nwho + 1 end
     end
+    -- Once per row per RUN. The probe re-runs every chapter (its cache is
+    -- per controller, and a chapter rebuilds them), and Sky's 2026-10-07 log
+    -- repeated this block after each of 11 chapters -- ~40 lines a chapter
+    -- of the same shape, burying the lines a reader needed.
+    F._netid.said_rows = F._netid.said_rows or {}
+    if F._netid.said_rows[row.slot] then return hits end
+    F._netid.said_rows[row.slot] = true
     for i, h in ipairs(hits) do
         if i > 4 then break end
         R.log(("[rsmm.damage] net id: row %d (%s) netcomp%s +0x%x is %q (%s)")

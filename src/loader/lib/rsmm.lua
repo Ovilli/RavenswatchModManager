@@ -1199,7 +1199,7 @@ end
 -- path calls them through those upvalues.
 local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
-local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
+local _native_capture_active, _ev_ctx, _ctx_chain_ok
 do
     local ok, x = _submodule_fn("entity", {
         I = I, R = R,
@@ -1217,7 +1217,6 @@ do
     LOBBY_REFRESH_SLOT = x.LOBBY_REFRESH_SLOT
     ENTITY_VALCTX_OFF, EV_STORE_OFF = x.ENTITY_VALCTX_OFF, x.EV_STORE_OFF
     _native_capture_active = x._native_capture_active
-    _hero_plausible        = x._hero_plausible
     _ev_ctx                = x._ev_ctx
     _ctx_chain_ok          = x._ctx_chain_ok
     -- Into the forward declarations near the top of the chunk, not new locals.
@@ -3463,7 +3462,6 @@ end
 -- first use: a Lua local is invisible to code written earlier in the file, and
 -- R.lobby sits ahead of the damage section that also wants it.
 local MEM_SCAN_MB = 4096
-local LOBBY_KEY_STRIDE = 0x20
 local LOBBY_VALUE_OFF = 0x10
 local LOBBY_ANCHOR_OFF = -0x60          -- "RequestedHero" relative to PlayerName
 
@@ -4059,6 +4057,13 @@ function R.lobby.members(all)
         local m = LOBBY_HOOK.read(va)
         -- NOT filtered on the record's InLobby byte either — same flag, same
         -- meaning ("in the lobby menu"), and it is false for everyone in a run.
+        --
+        -- Only a name some BLOB also said. `param_1` is not always a record,
+        -- and any short printable string reads as a name: Sky's 2026-10-06 log
+        -- has `roster: )[record], Jivil(hero 5)[hook], ...`. Every real member
+        -- is parsed from its blob in the same hook call that records the
+        -- pointer, so a record name no blob ever named is not a member.
+        if m and LOBBY_HOOK.by_name[m.name] == nil then m = nil end
         if m and not seen[m.name] then
             seen[m.name] = true
             out[#out + 1] = m
@@ -4473,18 +4478,10 @@ end
 -- not as a stable identifier to key persistent state on.
 local _SETTINGS_NAME_OFF = 0xa0
 
--- The entity's OWN resource path, measured in-game 2026-09-17: on a live
--- interaction target the cstr pointer at entity+0x220 read
--- `Objects\Melodies\Deal_Damage_Around_Zone_Attack.entity.ot`, while every
--- other reachable string in a 0x1000 window was a component name or a shader
--- uniform (`u_Mask`, `u_Fresnel`, `Velocity`). So this is the field that names
--- the object, and the string sweep below is the fallback rather than the method.
---
--- ⚠ DEMOTED 2026-09-17: this is NOT a general field. It held a path on one
--- object type and junk (`0nO:`) on another, and on the shrine it produced a
--- melody's path for an object that was almost certainly the pillar. It is kept
--- only as a late fallback, behind the RTTI walk, and every read is validated.
-local _ENTITY_PATH_OFF = 0x220
+-- entity+0x220 is NOT the entity's resource path, though it once looked like
+-- it (2026-09-17: a melody's path on one interaction target, junk `0nO:` on
+-- another, and a melody's path for what was almost certainly the shrine's
+-- pillar). R.interact.name no longer reads it; noted here so nobody re-adds it.
 
 function R.interact.name(ev)
     local entity = ev

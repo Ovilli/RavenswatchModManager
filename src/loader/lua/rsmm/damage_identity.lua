@@ -1505,8 +1505,10 @@ function R.damage.identity()
 end
 
 function F._dmg_relabel()
-    local ok, allies = pcall(R.lobby.allies)
-    if not ok or type(allies) ~= "table" or #allies == 0 then return end
+    -- Connected allies only: a name from someone who has left is exactly what
+    -- the leftover-row guess below would hand to a forked row.
+    local allies = F._dmg_live_allies()
+    if type(allies) ~= "table" or #allies == 0 then return end
     -- Name by HERO when the row's identity is known: each lobby member record
     -- carries its RequestedHero, so this is an exact join.
     --
