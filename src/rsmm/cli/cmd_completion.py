@@ -33,7 +33,7 @@ from rsmm.cli._dispatch import iter_commands
 
 # Subcommands whose positional argument is a mod id. Completion offers live
 # mod ids for these; everything else falls back to filename completion.
-_MOD_COMMANDS = ("enable", "disable", "pack", "lint", "test")
+_MOD_COMMANDS = ("enable", "disable", "pack", "lint", "test", "diff")
 
 # One-line descriptions shown next to each command. Keep terse.
 _DESC: dict[str, str] = {
@@ -44,6 +44,7 @@ _DESC: dict[str, str] = {
     "completion": "emit a shell tab-completion script",
     "cook": "cook an asset into the game format",
     "decode": "dump an oCTextSaver cooked file",
+    "diff": "game files a mod changes + overlaps",
     "disable": "disable mods",
     "docs-gen": "regenerate SDK/CLI reference docs",
     "doctor": "system health check",

@@ -284,7 +284,7 @@ graduates to SDK reference. Never forced to read INTERNALS.
 **First-class debugging.**
 - `rsmm doctor --mod <id>` scoped check.
 - `rsmm trace <id>` runs with `RSMM_TRACE=1` and surfaces log inline.
-- `rsmm diff <id>` shows which cooked files this mod would change.
+- `rsmm diff <id>` shows which cooked files this mod would change (shipped).
 
 **Empty-state UX.**
 - Fresh checkout + `rsmm doctor` → green or actionable WARNs only.

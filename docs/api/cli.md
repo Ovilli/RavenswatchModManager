@@ -6,7 +6,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**63 commands.**
+**64 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -22,6 +22,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm completion` | `rsmm.cli.cmd_completion` | rsmm completion — emit a shell tab-completion script. |
 | `rsmm cook` | `rsmm.cli.cook` | rsmm cook — pack an editable source-format file into a cooked asset. |
 | `rsmm decode` | `rsmm.engine.ot_decoder` | oCTextSaver binary decoder. |
+| `rsmm diff` | `rsmm.cli.cmd_diff` | `rsmm diff <mod>` — what applying one mod changes in the game. |
 | `rsmm disable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm docs-gen` | `rsmm.cli.docs_gen_cmd` | `rsmm docs-gen` — write the SDK/CLI reference from @sdk_export registrations. |
 | `rsmm doctor` | `rsmm.cli.doctor` | rsmm doctor — system health check, and the repair path for what it finds. |
