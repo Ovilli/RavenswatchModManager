@@ -231,6 +231,8 @@ function GuidesIndex() {
           <div className="relative min-w-[260px] flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              type="search"
+              aria-label="Search guides"
               placeholder="Search guides by title, summary, or content…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -255,6 +257,20 @@ function GuidesIndex() {
         {published.isLoading ? (
           <div className="flex items-center justify-center py-24">
             <Spinner />
+          </div>
+        ) : published.isError ? (
+          // Not "No guides yet": an outage must not read as an empty library.
+          <div className="grimoire-card flex flex-col items-center gap-3 p-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Guides could not be loaded. Check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => published.refetch()}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Try again
+            </button>
           </div>
         ) : !published.data || published.data.items.length === 0 ? (
           debouncedQ ? (

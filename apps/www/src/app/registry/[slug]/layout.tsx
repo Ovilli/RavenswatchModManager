@@ -1,8 +1,10 @@
 import { jsonLd } from '@rsmm/schemas';
-import type { Metadata } from 'next';
+import type { Metadata, Route } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
 import { ServerProse } from '../../components/server-prose';
+import { ModActions } from './mod-actions';
 
 const SITE = 'Ravenswatch Mod Manager';
 const ORIGIN = 'https://rsmm.me';
@@ -20,6 +22,7 @@ interface Mod {
   downloads?: number;
   latestVersion?: string | null;
   updatedAt?: string | null;
+  ownerId?: string | null;
 }
 
 // GET /api/mods/:slug wraps the record: { mod, versions }.
@@ -86,12 +89,30 @@ export async function generateMetadata({
 }
 
 // Mirrors the byline the client page used to render, so moving it to the
-// server is not also a copy change: author · version · updated date.
-function modByline(mod: Mod): string {
-  const parts = [mod.author ?? 'unknown'];
-  if (mod.latestVersion) parts.push(`v${mod.latestVersion}`);
-  if (mod.updatedAt) parts.push(`updated ${new Date(mod.updatedAt).toLocaleDateString('en-US')}`);
-  return parts.join(' · ');
+// server is not also a copy change: author · version · updated date. The
+// author links to their profile, which is what the client page's separate
+// "More by …" row used to do.
+function ModByline({ mod }: { mod: Mod }) {
+  const author = mod.author ?? 'unknown';
+  const rest: string[] = [];
+  if (mod.latestVersion) rest.push(`v${mod.latestVersion}`);
+  if (mod.updatedAt) rest.push(`updated ${new Date(mod.updatedAt).toLocaleDateString('en-US')}`);
+  return (
+    <>
+      {mod.ownerId ? (
+        <Link
+          href={`/u/${mod.ownerId}` as Route}
+          title={`More mods by ${author}`}
+          className="text-foreground underline-offset-2 hover:text-gilt hover:underline"
+        >
+          {author}
+        </Link>
+      ) : (
+        author
+      )}
+      {rest.map((part) => ` · ${part}`).join('')}
+    </>
+  );
 }
 
 function modJsonLd(slug: string, mod: Mod) {
@@ -160,18 +181,20 @@ export default async function Layout({
           dangerouslySetInnerHTML={{ __html: jsonLd(modJsonLd(slug, res.data)) }}
         />
       ) : null}
-      {/* Name, byline, summary and description, rendered on the server so the
-          page has crawlable text before any client fetch resolves. The client
-          page below no longer renders these — it owns the cover image, the
-          action buttons and everything interactive. */}
+      {/* Name, byline, summary, the action buttons and the description,
+          rendered here so the page has crawlable text before any client fetch
+          resolves and Download sits under the title rather than under a long
+          README. The client page below owns the gallery, versions, reviews
+          and the details sidebar. */}
       {res.state === 'ok' ? (
         <ServerProse
           backHref="/registry"
           backLabel="Back to Registry"
           title={res.data.name ?? slug}
           titleClassName="text-4xl font-bold tracking-tight"
-          byline={modByline(res.data)}
+          byline={<ModByline mod={res.data} />}
           summary={res.data.summary}
+          actions={<ModActions slug={slug} latestVersion={res.data.latestVersion} />}
           image={{
             url: res.data.imageUrl,
             alt: `${res.data.name ?? slug} cover`,
@@ -183,7 +206,13 @@ export default async function Layout({
           bodyFallback={res.data.summary?.trim() ? null : 'No description available.'}
           card
         />
-      ) : null}
+      ) : (
+        // The API blipped on the server; the page below fetches again on the
+        // client, and the buttons appear once it has the mod.
+        <div className="relative container mx-auto px-6 pt-12">
+          <ModActions slug={slug} waitForClient />
+        </div>
+      )}
       {children}
     </>
   );

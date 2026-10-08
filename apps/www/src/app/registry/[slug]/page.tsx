@@ -20,41 +20,25 @@ import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import { useSession } from '../../../lib/auth-client';
+import { useHydrated } from '../../../lib/use-hydrated';
 import { toEmbedUrl } from '../../../lib/video-embed';
-import { FollowButton } from '../../components/follow-button';
 import { MDPreview } from '../../components/md-editor';
-import { ReportModal } from '../../components/report-modal';
+import { useModDetail } from './mod-actions';
 
-// RSMM desktop ships for Windows + Linux only. Non-target platforms (macOS)
-// resolve to 'other' so we label the button neutrally instead of promising a
-// Mac build. The downloaded mod zip itself is platform-agnostic.
-function getClientOS(): 'windows' | 'linux' | 'other' {
-  if (typeof window === 'undefined') return 'linux';
-  const p = navigator.platform.toLowerCase();
-  const ua = navigator.userAgent.toLowerCase();
-  if (p.includes('win') || ua.includes('windows')) return 'windows';
-  if (p.includes('linux') || p.includes('x11')) return 'linux';
-  return 'other';
+/** The registry filtered to one category or tag, so a mod page leads to more like it. */
+function registryHref(param: 'category' | 'tags', value: string): Route {
+  return `/registry?${new URLSearchParams({ [param]: value })}` as Route;
 }
-
-const OS_LABELS: Record<string, string> = {
-  windows: 'Windows',
-  linux: 'Linux',
-  other: '',
-};
 
 export default function ModDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
 
-  const detail = useQuery({
-    queryKey: ['mods', 'detail', slug],
-    queryFn: () => api.mods.get(slug),
-    retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
-  });
+  const detail = useModDetail(slug);
+  // `ModActions` in the layout runs this same query and can fill the cache
+  // before this page's boundary hydrates; the server rendered the spinner.
+  const hydrated = useHydrated();
 
-  const os = useMemo(() => getClientOS(), []);
-
-  if (detail.isLoading) {
+  if (!hydrated || detail.isLoading) {
     return (
       <main className="relative overflow-hidden animate-page-in">
         <div className="container mx-auto flex items-center justify-center px-6 py-24">
@@ -72,64 +56,37 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
           <Link href="/registry" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Registry
           </Link>
-          <p className="text-muted-foreground">
-            {notFound ? `No mod matches “${slug}”.` : `Cannot reach API (${String(detail.error)})`}
-          </p>
+          {notFound ? (
+            <p className="text-muted-foreground">No mod matches “{slug}”.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-muted-foreground">
+                The registry could not be reached. Check your connection and try again.
+              </p>
+              <button
+                type="button"
+                onClick={() => detail.refetch()}
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                Try again
+              </button>
+            </div>
+          )}
         </div>
       </main>
     );
   }
 
   const { mod, versions } = detail.data;
-  const latestVersion = versions[0];
-  const apiBase = getApiUrl().replace(/\/+$/, '');
-  const downloadUrl = latestVersion
-    ? `${apiBase}/api/mods/${mod.slug}/${latestVersion.version}/download`
-    : null;
-  const sizeBytes = latestVersion?.sizeBytes ?? null;
+  const sizeBytes = versions[0]?.sizeBytes ?? null;
 
   return (
     <main className="relative overflow-hidden animate-page-in">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
+      {/* Name, byline, author link and the Download / Open in App / Follow /
+          Report buttons are server-rendered by `[slug]/layout.tsx`, above
+          the description. */}
       <div className="relative container mx-auto space-y-6 px-6 pb-12 pt-6">
-        {/* Name and byline are server-rendered by `[slug]/layout.tsx` so they
-            reach a crawler without JS; the owner link stays here because it is
-            the one part of the byline that needs the client record. */}
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="text-sm text-muted-foreground">
-            {mod.ownerId ? (
-              <Link
-                href={`/u/${mod.ownerId}` as Route}
-                className="text-foreground hover:text-gilt hover:underline underline-offset-2"
-              >
-                More by {mod.author ?? 'unknown'}
-              </Link>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {downloadUrl ? (
-              <a href={downloadUrl} className={buttonVariants({ variant: 'default', size: 'sm' })}>
-                <Download className="mr-1.5 h-4 w-4" />
-                {OS_LABELS[os] ? `Download for ${OS_LABELS[os]}` : 'Download'}
-              </a>
-            ) : null}
-            <a
-              href={`rsmm://mods/${mod.slug}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              title="Open in RSMM desktop app"
-            >
-              <ExternalLink className="mr-1.5 h-4 w-4" />
-              Open in App
-            </a>
-            <FollowButton
-              slug={mod.slug}
-              initialFollowing={mod.isFollowing ?? false}
-              followerCount={mod.followerCount ?? 0}
-            />
-            <ReportModal slug={mod.slug} />
-          </div>
-        </header>
-
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div className="space-y-4 md:col-span-2">
             {(mod.screenshots?.length ?? 0) > 0 || (mod.videos?.length ?? 0) > 0 ? (
@@ -195,7 +152,19 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 Details
               </h3>
               <dl className="space-y-2 text-sm">
-                {mod.category ? <Row k="Category" v={mod.category} /> : null}
+                {mod.category ? (
+                  <Row
+                    k="Category"
+                    v={
+                      <Link
+                        href={registryHref('category', mod.category)}
+                        className="underline-offset-2 hover:text-gilt hover:underline"
+                      >
+                        {mod.category}
+                      </Link>
+                    }
+                  />
+                ) : null}
                 {mod.rating != null ? <Row k="Rating" v={`${mod.rating.toFixed(1)} ★`} /> : null}
                 {mod.downloads != null ? (
                   <Row k="Downloads" v={mod.downloads.toLocaleString()} />
@@ -215,9 +184,14 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {mod.tags.map((t) => (
-                    <Badge key={t} variant="secondary">
-                      {t}
-                    </Badge>
+                    <Link
+                      key={t}
+                      href={registryHref('tags', t)}
+                      title={`More mods tagged ${t}`}
+                      className="rounded-md transition-opacity hover:opacity-80"
+                    >
+                      <Badge variant="secondary">{t}</Badge>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -256,19 +230,21 @@ function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
   const [showChangelog, setShowChangelog] = useState(false);
   return (
     <div className="py-3">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      {/* Wraps on a phone: the buttons drop under the version line instead of
+          being pushed past the card's edge and clipped. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="font-data text-sm font-medium">v{version.version}</span>
-          <span className="ml-3 text-xs text-muted-foreground">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             {new Date(version.createdAt).toLocaleDateString()}
           </span>
           {version.sizeBytes ? (
-            <span className="ml-3 text-xs text-muted-foreground">
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
               {(version.sizeBytes / 1024 / 1024).toFixed(2)} MB
             </span>
           ) : null}
           {version.downloads != null ? (
-            <span className="ml-3 text-xs text-muted-foreground">
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
               {version.downloads.toLocaleString()} dl
             </span>
           ) : null}
@@ -309,7 +285,7 @@ function VersionRow({ version, slug }: { version: ModVersion; slug: string }) {
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-muted-foreground">{k}</dt>
