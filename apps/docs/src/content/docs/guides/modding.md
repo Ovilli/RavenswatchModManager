@@ -1343,8 +1343,10 @@ its author felt like that day. `rsmm lint` rejects a malformed declaration.
 
 Run `./rsmm watch` in a side terminal while the game runs. On any save under `mods/`:
 
-1. Re-applies cooked overrides.
-2. Syncs `manifest.toml` + `init.lua` into the game-dir `mods/<id>/`.
+1. Lints the mods you changed. A lint error holds the apply back and is printed, so a typo
+   never reaches the game (`--no-lint` skips this).
+2. Re-applies cooked overrides and syncs each enabled mod's `manifest.toml`, `init.lua` and
+   other top-level Lua/data files into the game-dir `mods/<id>/`.
 3. The loader polls those files every ~1 second, tears down the changed mod's `lua_State`, and re-runs `init.lua`.
 
 Tweak a number, hit save, see the result in-game without restarting.

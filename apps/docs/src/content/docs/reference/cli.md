@@ -109,7 +109,15 @@ Re-apply mods automatically whenever a file changes under `mods/`. Keeps running
 
 ```sh
 ./rsmm watch
+./rsmm watch --no-lint             # apply even when a changed mod has lint errors
 ```
+
+Each save prints which mods and files changed, then lints those mods before applying. A
+changed mod with lint errors is not applied: the errors are printed and the game keeps the
+last good apply until you fix them and save again. Without that, a manifest caught
+half-written would be skipped by `apply`, which takes the mod out of the game until the
+next save. Files `apply` writes itself (emitted content, its caches, `mods/_merged/`) and
+editor swap files don't count as changes.
 
 ### `rsmm restore`
 
