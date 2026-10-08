@@ -10,10 +10,15 @@
  */
 
 /* ---------------------------------------------------------------- dark mode
- * `:root` IS Starlight's dark block — the light block below re-declares every
- * one of these, so anything set here only ever lands in dark mode.
+ * Scoped to "not light" rather than plain `:root`. Starlight ships its own
+ * palette inside a cascade layer, and an unlayered rule beats any layered one
+ * whatever its specificity — so a plain `:root` here also won over Starlight's
+ * `:root[data-theme='light']` block, and light mode (the default for anyone
+ * whose OS is set to light) rendered near-black text on this charcoal.
+ * Starlight's head script always resolves `data-theme` to `light` or `dark`
+ * before first paint, so this selector covers dark and only dark.
  */
-:root {
+:root:not([data-theme='light']) {
   /* Warm charcoal ramp: same lightness steps as Starlight, hue 350 instead of
      224, saturation kept low so surfaces read neutral rather than pink. */
   --sl-color-gray-1: hsl(350, 14%, 94%);

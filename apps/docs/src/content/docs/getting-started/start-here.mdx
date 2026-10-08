@@ -1,0 +1,98 @@
+---
+title: New to modding? Start here
+description: What mods are, what RSMM does, and which page to read next. No experience needed.
+sidebar:
+  label: Start here
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+Never modded a game before? That's fine. This page explains the basics in plain
+words and then points you to the one page you need next.
+
+## What is a mod?
+
+A **mod** (short for *modification*) is a small add-on that changes something in
+a game. A Ravenswatch mod might:
+
+- give a hero a new look,
+- make an item stronger or weaker,
+- change what the game's text says, or translate it,
+- add something new, like a magical object that doesn't exist in the normal game,
+- show extra information on screen, like a damage meter.
+
+The game without any mods is called **vanilla**. You'll see that word a lot.
+
+## What is RSMM?
+
+**RSMM** stands for **Ravenswatch Mod Manager**. It's a free program that puts
+mods into the game for you and takes them out again. You never have to copy game
+files around by hand.
+
+It comes in a few pieces. You only need the ones that match what you want to do:
+
+| Piece | What it is | Who it's for |
+| --- | --- | --- |
+| **The app** | A normal desktop program for Windows and Linux. Find mods, switch them on, press play. | Everyone who wants to **play** with mods |
+| **[rsmm.me](https://rsmm.me/registry)** | The website where people share mods. The app shows the same list. | Everyone |
+| **The web editor** | A page in your browser that changes items, talents and abilities. Nothing to install. | People who want to **make** a simple mod |
+| **The modding tools** | A command-line program called `rsmm`, for making and publishing mods. | People who want to **make** mods |
+
+## Is it safe?
+
+Yes, and it's built to be easy to undo.
+
+- **Everything can be undone.** Before RSMM changes a game file, it saves a copy
+  of the original. When you play through the app with **Launch Modded**, it puts
+  every original file back as soon as you close the game.
+- **It doesn't touch the game's program.** RSMM never changes `Ravenswatch.exe`
+  and doesn't try to get around any protection in the game. Most mods only swap
+  data files, like pictures, numbers and text.
+- **Uploaded mods are scanned.** Every mod uploaded to rsmm.me is checked for
+  malware before it shows up on the site.
+
+<Aside type="tip">
+If you ever want the plain game back, press **Launch Vanilla** in the app. It
+restores the original files and starts the game without mods.
+</Aside>
+
+## What do you want to do?
+
+<CardGrid>
+  <Card title="I want to play with mods" icon="rocket">
+    Install the app, pick some mods, press **Launch Modded**. No typing commands,
+    no editing files.
+
+    [Install the app →](/getting-started/install/)
+  </Card>
+  <Card title="I want to make a mod" icon="pencil">
+    Start in your browser with the web editor, then move on to the modding tools
+    when you want more.
+
+    [Make your first mod →](/getting-started/first-mod/)
+  </Card>
+</CardGrid>
+
+## Words you'll see
+
+You don't need to learn these up front. Come back here when one trips you up, or
+see the full [glossary](/reference/glossary/).
+
+| Word | What it means |
+| --- | --- |
+| **Vanilla** | The game exactly as it comes from Steam, with no mods. |
+| **Apply** | Write your switched-on mods into the game's files. The app does this for you when you press **Launch Modded**. |
+| **Restore** | Put the original game files back, undoing every mod. |
+| **Profile** | A saved set of mods. You can keep one for a normal run, another for a silly run, and switch between them. |
+| **Load order** | The order mods are applied in. When two mods change the same thing, the later one wins. |
+| **Conflict** | Two switched-on mods that change the same file. The app warns you and shows a **Conflicts** page. |
+| **Loader** | A small extra file RSMM puts next to the game so that *script* mods (written in Lua) can run. Mods that only change looks, numbers or text don't need it. |
+| **Manifest** | The `manifest.toml` file inside every mod. It's a short text file that says what the mod is called and what it changes. |
+| **CLI / terminal** | A window where you type commands instead of clicking buttons. Only needed for the modding tools, never for playing. |
+
+## Still have questions?
+
+<CardGrid>
+  <LinkCard title="Frequently asked questions" href="/getting-started/faq/" description="Bans, co-op, Steam Deck, saves, game updates and more." />
+  <LinkCard title="Something isn't working" href="/getting-started/troubleshooting/" description="Fixes for the most common problems, by symptom." />
+</CardGrid>

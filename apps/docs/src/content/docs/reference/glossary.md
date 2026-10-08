@@ -1,9 +1,68 @@
 ---
 title: Glossary
-description: Engine, cooking, and modding terms used throughout these docs.
+description: Plain-language meanings of the words used in RSMM and these docs, from "vanilla" to "cooked asset".
 ---
 
-Quick definitions for the terms that show up across the RE notes and guides.
+What the words in these docs mean. The first section is for everyone. The later
+sections are for mod makers and people digging into how the game works.
+
+## Everyday words
+
+- **Mod** — short for *modification*: an add-on that changes something in the
+  game, such as how a hero looks, how strong an item is, or what the text says.
+- **Vanilla** — the game exactly as it comes from Steam, with no mods.
+- **RSMM** — Ravenswatch Mod Manager: the app, the website
+  [rsmm.me](https://rsmm.me/registry), the web editor and the `rsmm` modding
+  tools, together.
+- **Registry** — the list of mods shared on rsmm.me. The app's **Browse** page
+  shows it.
+- **Apply** — write your switched-on mods into the game's files, keeping a copy of
+  each original first. The app does this for you when you press **Launch
+  Modded**.
+- **Restore** — put the original game files back, undoing every mod.
+- **Launch Modded / Launch Vanilla** — the app's two play buttons: start the game
+  with your mods, or without any.
+- **Profile** — a saved set of mods you can switch between. The **Default**
+  profile is always the plain game.
+- **Enabled / disabled** — whether a mod is switched on in the current profile. A
+  disabled mod stays on your computer but isn't used.
+- **Load order** — the order mods are applied in. When two mods change the same
+  thing, the one applied later wins.
+- **Conflict** — two switched-on mods that change the same file.
+- **Dependency** — another mod a mod needs in order to work. A missing one shows as
+  *missing deps*.
+- **Config** — a mod's own settings, changed with its settings button in the app.
+- **Overlay** — a small window some mods show on top of the game, like a damage
+  meter.
+- **Script mod / Lua mod** — a mod that includes a small program written in the
+  Lua language, which runs inside the game. Most mods are not script mods.
+- **Loader** — a small file (`winhttp.dll`) RSMM puts next to the game so that
+  script mods can run. Mods that only change looks, numbers or text don't need it.
+- **Experimental** — a kind of change RSMM doesn't fully understand yet. It may not
+  work completely, and may crash the game.
+- **Doctor** — RSMM's health check. In the app: **Commands → Doctor**. In a
+  terminal: `rsmm doctor`.
+- **Terminal / command line / CLI** — a window where you type commands instead of
+  clicking. Only needed for the modding tools.
+- **Web editor** — a page on this site that makes item, talent and ability mods in
+  your browser. See [Web editor](/guides/web-editor/).
+
+## Mod-making words
+
+- **`manifest.toml`** — the text file at the heart of every mod. It says what the
+  mod is called and what it changes.
+- **`[[content]]` block** — a section of the manifest that adds or changes one
+  thing, such as an item or an enemy.
+- **`[[patch]]` block** — a section of the manifest that changes one value, such
+  as a number. Several mods can patch different values of the same file without
+  clashing.
+- **Kind** — what a `[[content]]` block changes: `item`, `talent`, `enemy`,
+  `map` and so on.
+- **Base** — the existing game thing a new one is copied from, or the one being
+  changed.
+- **Lint** — `rsmm lint`: checks a mod for mistakes before you play.
+- **Pack** — `rsmm pack`: bundles a mod into one `.zip` file to share.
+- **Publish** — upload a mod to rsmm.me so others can install it.
 
 ## Assets & cooking
 

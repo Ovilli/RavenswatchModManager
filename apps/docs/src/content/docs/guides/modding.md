@@ -7,6 +7,13 @@ This is the **single** authoring guide — scaffolding a mod through shipping a
 finished `.zip`. For CLI command details, see the [CLI Reference](/reference/cli/);
 for the SDK design rationale, [SDK_V3.md](/guides/sdk/).
 
+:::tip[New to modding?]
+This page is the complete reference, and it gets technical fast. If you haven't
+made a mod before, start with [Make your first mod](/getting-started/first-mod/),
+which walks you through one from start to finish, then come back here when you
+want to know what else a mod can do.
+:::
+
 ```mermaid
 flowchart LR
     N["rsmm new"] --> E["edit manifest.toml<br/>+ drop assets"]

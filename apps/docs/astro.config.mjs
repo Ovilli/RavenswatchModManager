@@ -82,12 +82,23 @@ export default defineConfig({
       plugins: [starlightLinksValidator({ errorOnRelativeLinks: false, exclude: ['/editor/'] })],
       sidebar: [
         {
-          label: 'Getting started',
+          label: 'Playing with mods',
           items: [
-            { label: 'Installation', slug: 'getting-started/install' },
-            { label: 'Desktop app guide', slug: 'getting-started/desktop-app' },
-            { label: 'Your first mod', slug: 'getting-started/first-mod' },
+            { label: 'Start here', slug: 'getting-started/start-here' },
+            { label: 'Install the app', slug: 'getting-started/install' },
+            { label: 'Using the app', slug: 'getting-started/desktop-app' },
+            { label: 'FAQ', slug: 'getting-started/faq' },
             { label: 'Troubleshooting', slug: 'getting-started/troubleshooting' },
+          ],
+        },
+        {
+          label: 'Making mods',
+          items: [
+            { label: 'Make your first mod', slug: 'getting-started/first-mod' },
+            { label: 'Set up the modding tools', slug: 'getting-started/modding-tools' },
+            { label: 'Web editor (in your browser)', slug: 'guides/web-editor' },
+            { label: 'First mod, by kind', slug: 'guides/first-mod-by-kind' },
+            { label: 'Example mods', slug: 'guides/examples' },
           ],
         },
         {
@@ -105,9 +116,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
-            { label: 'Web editor (in your browser)', slug: 'guides/web-editor' },
             { label: 'Build a mod with an AI assistant', slug: 'guides/ai-assistant' },
-            { label: 'Example mods', slug: 'guides/examples' },
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
             { label: 'Talent modding, step by step', slug: 'guides/talent-tutorial' },
