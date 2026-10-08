@@ -108,7 +108,7 @@ def _game_with_ot(tmp_path: Path, text: str) -> Path:
     game = tmp_path / "game"
     p = game / "DarkTalesResources" / "ApplicationSettings.ot"
     p.parent.mkdir(parents=True)
-    p.write_text(text, encoding="utf-8")
+    p.write_text(text, encoding="utf-8", newline="")   # no CRLF on Windows: the mod side is LF
     return game
 
 
