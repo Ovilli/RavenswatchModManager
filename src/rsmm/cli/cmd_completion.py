@@ -102,6 +102,7 @@ _FLAGS: dict[str, tuple[str, ...]] = {
     "modpack": ("--game-dir", "--json"),
     "backend": ("--game-dir", "--no-check", "--no-install"),
     "build": ("--skip-loader",),
+    "editor": ("--tab", "--port", "--no-browser", "--game-dir"),
     "run": ("--set-launch-options",),
     "watch": ("--interval",),
     "test": ("--record",),

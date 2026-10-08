@@ -13,23 +13,58 @@ nav h1 { font-size: 16px; margin: 0 18px 8px 0; }
 nav a { color: var(--muted); text-decoration: none; padding: 6px 14px 8px; border-bottom: 3px solid transparent; }
 nav a:hover { color: var(--ink); }
 nav a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accentline); }
+nav a.dirty::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--warn); vertical-align: 2px; }
 main { flex: 1; min-height: 0; position: relative; }
 iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
 iframe[hidden] { display: none; }
+#where { margin: 0 0 8px auto; padding-left: 12px; color: var(--muted); font-size: 12px; max-width: 64ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nogame { flex: none; padding: 12px 16px; background: var(--warnbg); border-bottom: 1px solid var(--line); }
+#nogame p { margin: 0 0 6px; max-width: 90ch; overflow-wrap: anywhere; }
+#nogame p:last-child { margin-bottom: 0; }
+#nogame strong { color: var(--warn); }
+#nogame code { display: inline-block; max-width: 100%; font: 13px ui-monospace, monospace; background: var(--panel); padding: 2px 6px; border-radius: 4px; }
 </style>
 </head>
 <body>
 <nav id="nav"><h1>RSMM Editor</h1></nav>
+<div id="nogame" role="alert" hidden></div>
 <main id="main"></main>
 <script>
 "use strict";
 const TABS = __RSMM_TABS__;
+const GAME = __RSMM_GAME__;
 const frames = {};
 const nav = document.getElementById("nav"), main = document.getElementById("main");
 for (const [key, [label]] of Object.entries(TABS)) {
   const a = document.createElement("a");
   a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
   nav.append(a);
+}
+// Which install every tab reads, or, when there is none, why and how to fix it:
+// without an install each tab only has its own one-line error to show.
+function para(...parts) {
+  const p = document.createElement("p");
+  for (const part of parts) {
+    if (typeof part === "string") { p.append(part); continue; }
+    const e = document.createElement(part[0]); e.textContent = part[1]; p.append(e);
+  }
+  return p;
+}
+if (GAME.dir) {
+  const w = document.createElement("span");
+  w.id = "where"; w.title = "Reading Ravenswatch from " + GAME.dir;
+  w.textContent = "Game: " + GAME.dir;
+  nav.append(w);
+} else {
+  const box = document.getElementById("nogame");
+  box.append(GAME.override
+    ? para(["strong", "Ravenswatch was not found."], " RSMM_GAME_DIR is set to ", ["code", GAME.override],
+           ", but that folder has no DarkTalesResources\\_Cooking inside it, so the tabs have nothing to show.")
+    : para(["strong", "Ravenswatch was not found,"], " so the tabs have nothing to show."),
+    para("Stop the editor (Ctrl+C) and start it again with your install folder: ",
+         ["code", 'rsmm editor --game-dir "<your Ravenswatch folder>"']),
+    para("To find the folder in Steam, right-click Ravenswatch, then Manage, then Browse local files."));
+  box.hidden = false;
 }
 // A frame is made on first visit and then kept, so switching tabs never loses
 // unsaved work in another editor.
@@ -50,6 +85,25 @@ function show(key) {
 window.rsmmPending = (tab) => {
   try { return frames[tab]?.contentWindow.rsmmPending?.() ?? null; } catch (e) { return null; }
 };
+// Unsaved work per tab (see tellShell in common.js): a dot on each tab holding
+// changes that are in no mod yet, and a question before the page closes when any of
+// them would be lost with it (the others are kept as drafts in this browser).
+const unsaved = (tab) => { try { return frames[tab]?.contentWindow.rsmmUnsaved?.() || null; } catch (e) { return null; } };
+window.rsmmChanged = () => {
+  for (const a of nav.querySelectorAll("a[data-tab]")) {
+    const u = unsaved(a.dataset.tab), n = u ? u.count : 0;
+    a.classList.toggle("dirty", n > 0);
+    if (!n) { a.removeAttribute("title"); a.removeAttribute("aria-label"); continue; }
+    const what = `${n} change${n > 1 ? "s" : ""} not saved to a mod yet`;
+    a.title = what + (u.kept ? " (kept in this browser until you save them)" : "");
+    a.setAttribute("aria-label", `${TABS[a.dataset.tab][0]}: ${what}`);
+  }
+};
+window.addEventListener("beforeunload", (e) => {
+  if (Object.keys(frames).some((k) => { const u = unsaved(k); return u && u.count > 0 && !u.kept; })) {
+    e.preventDefault(); e.returnValue = "";
+  }
+});
 window.rsmmReset = (tab) => { try { frames[tab]?.contentWindow.rsmmReset?.(); } catch (e) {} };
 window.rsmmAfterSave = (tab, mod) => { try { frames[tab]?.contentWindow.rsmmAfterSave?.(mod); } catch (e) {} };
 

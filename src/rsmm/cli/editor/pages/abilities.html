@@ -292,12 +292,19 @@ function switchHero(hero) {
 // Unsaved steps survive a reload (and a closed tab): kept in this browser, only while
 // they differ from what the chosen mod holds, and dropped once saved.
 function persist() {
+  tellShell();
   try {
     const dirty = S.steps.length > 0 && (!S.block || stepsJson() !== S.saved);
     if (!dirty && !Object.keys(stash).length) { localStorage.removeItem("ae-draft"); return; }
     localStorage.setItem("ae-draft", JSON.stringify({ hero: S.hero, steps: dirty ? S.steps : [], stash }));
   } catch (e) {}
 }
+window.rsmmUnsaved = () => {
+  const dirty = S.steps.length > 0 && (!S.block || stepsJson() !== S.saved);
+  let count = dirty ? S.steps.length : 0;
+  for (const st of Object.values(stash)) count += st.length;
+  return { count, kept: true };
+};
 // "Reset everything" in another tab drops these too.
 window.rsmmReset = () => {
   S.steps = []; S.cleared = null; for (const k of Object.keys(stash)) delete stash[k];
@@ -1373,7 +1380,7 @@ $("save").addEventListener("click", async () => {
         } else {
           S.saved = stepsJson();
           const b = S.blocks.find(x => x.id === S.block); if (b) b.steps = JSON.parse(S.saved);
-          drawSave();
+          drawSave(); persist();
         }
         setStatus("ok", `✓ Saved ${j.steps} change${j.steps === 1 ? "" : "s"} into ${j.block} in ${j.mod}. `
           + (window.RSMM_HOSTED ? `${j.mod}.zip was downloaded: unzip it into your mods folder, then run rsmm apply.` : "Keep editing, or run rsmm apply."));
@@ -1465,6 +1472,12 @@ async function focusAbility(t) {
 (async () => {
   const r = await fetch("api/heroes"); const { heroes, dlc } = await r.json(); S.dlc = dlc || [];
   $("hero").replaceChildren(...heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
+  if (!heroes.length) {
+    // No install, no heroes: asking for hero "" only earns a raw "no shipped hero ''".
+    $("groups").replaceChildren(el("div", { class: "tiny muted", style: "margin:12px 4px", text: "No heroes found. Is the game install readable?" }));
+    setStatus("bad", "No heroes found: the Abilities tab reads them from your game install.");
+    return;
+  }
   // The address (or, on a plain reload, the last session) says which hero and search to reopen.
   let want = {};
   try { want = JSON.parse(localStorage.getItem("ae-view") || "{}"); } catch (e) {}
@@ -1485,6 +1498,7 @@ async function focusAbility(t) {
   } catch (e) {}
   $("filter").value = want.q || ""; $("allHeroes").checked = !!want.all;
   await refresh();
+  tellShell();   // a restored draft counts even when its first check failed
   try { S.mod = localStorage.getItem("ae-mod") || NEW_MOD; } catch (e) { S.mod = NEW_MOD; }
   await loadMods();
   loadBlocks();

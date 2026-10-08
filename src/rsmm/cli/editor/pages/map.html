@@ -28,7 +28,7 @@ button.undo { border: none; background: none; color: var(--warn); padding: 0 4px
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 4px 10px; }
 .seg button[aria-pressed=true] { background: var(--accent); color: var(--onaccent); }
-#status { margin-left: auto; color: var(--muted); max-width: 52ch; }
+#status { margin-left: auto; color: var(--muted); max-width: 52ch; overflow-wrap: anywhere; }
 #status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
 main { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 12px;
   padding: 12px 16px; flex: 1; min-height: 0; }
@@ -935,6 +935,7 @@ function render() {
   ({ kinds: renderKinds, quotas: renderQuotas, slot: renderSlot, changes: renderChanges })[S.tab]();
   const n = changeList().length;
   $("nchanges").textContent = n ? `(${n})` : "";
+  tellShell();
   const hs = new URLSearchParams({ chapter: S.chapter.key, scenario: String(S.scen), view: S.view });
   if (S.kind != null) hs.set("kind", S.work.kinds[S.kind].name);
   // Keeping the pick in the URL is a convenience. The web editor shows this
@@ -996,7 +997,7 @@ async function doSave() {
   if (!id) { status("Give the mod an id first (letters, digits, - or _).", "bad"); $("modid").focus(); return; }
   try {
     const r = await api("api/save", { chapter: S.chapter.key, mod_id: id, name: $("modname").value.trim(), edits: edits() });
-    S.lastSave = r; status(`Saved ${r.path}`, "ok");
+    S.lastSave = r; S.savedKey = changeKey(); status(`Saved ${r.path}`, "ok");
     if (![...$("openmod").options].some(o => o.value === id)) {
       $("openmod").insertAdjacentHTML("beforeend", `<option value="${esc(id)}">${esc(id)} (${esc(S.chapter.key)})</option>`);
     }
@@ -1059,7 +1060,18 @@ $("sample").addEventListener("click", () => {
 $("clearlayout").addEventListener("click", () => { S.layout = {}; S.layoutSample = false; drawLayout(); setView(S.view); render(); });
 $("showall").addEventListener("change", e => { S.showAll = e.target.checked; render(); });
 document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); render(); }));
-window.addEventListener("beforeunload", e => { if (S.work && changeList().length && !S.lastSave) { e.preventDefault(); e.returnValue = ""; } });
+// Changes since the last save, which nothing keeps: they are lost with the page.
+const changeKey = () => JSON.stringify(changeList().map(c => c.text));
+function unsavedChanges() {
+  if (!S.work) return 0;
+  const n = changeList().length;
+  return n && !(S.lastSave && S.savedKey === changeKey()) ? n : 0;
+}
+window.rsmmUnsaved = () => ({ count: unsavedChanges(), kept: false });
+// Inside the editor shell the shell asks before the page closes, for every tab at once.
+window.addEventListener("beforeunload", e => {
+  if (window.parent === window && unsavedChanges()) { e.preventDefault(); e.returnValue = ""; }
+});
 Object.assign(window, { rsmmEditor: { S, G, project, pickAt } });   // for tests and the console
 init().catch(err => status(err.message, "bad"));
 </script>

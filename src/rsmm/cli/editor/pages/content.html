@@ -452,6 +452,7 @@ function renderList() {
   } else if (S.tab === "scripts") {
     list.append(el("div", { class: "empty", text: "Test grants are set on the right. They go into whichever mod you save to." }));
   } else {
+    if (!S.heroes.length) list.append(el("div", { class: "empty", text: "No heroes found. Is the game install readable?" }));
     for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
       list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) },
         heroImg(h, S.portraits[h]), el("span", { class: "nm", text: h.replace(/_/g, " ") }),
@@ -559,6 +560,7 @@ async function openPending(tab, id) {
   if (tab === "items") await pickItem(id); else await pickHero(id);
 }
 function renderPending(edits, errors) {
+  tellShell();
   const box = $("#pending"); box.textContent = "";
   const bad = new Set((errors || []).map(e => e.name));
   const grants = scriptChanged(), prog = programChanged(), abil = abilityPending();
@@ -2226,6 +2228,15 @@ function canon(v) {
 }
 function loadedEntry(tab, id) { return S.loaded && S.loaded.entries[tab + "\u0000" + id]; }
 function editIsNew(e) { const ent = loadedEntry(e.tab, e.id); return !ent || ent.json !== canon(e.edit); }
+// This frame's own tab's share of hasUnsaved(), counted: the shell marks each tab
+// with the changes made there. Every one of them is kept as a draft in the browser.
+window.rsmmUnsaved = () => {
+  if (START_TAB === "scripts") return { count: (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0), kept: true };
+  const tab = START_TAB === "talents" ? "talents" : "items";
+  let count = 0;
+  for (const [id, edit] of S.pending[tab]) if (editIsNew({ tab, id, edit })) count++;
+  return { count, kept: true };
+};
 function hasUnsaved() {
   if (scriptChanged() || programChanged()) return true;
   for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
