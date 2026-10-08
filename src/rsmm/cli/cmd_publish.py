@@ -294,7 +294,15 @@ def main(argv: list[str] | None = None) -> int:
             me = whoami(token)
             print(f"{me.get('name') or '?'} ({me.get('id')}) via {mask(token)} on {api_base()}")
             return 0
-        return publish(args.target, wait=not args.no_wait, timeout=args.timeout)
+        # Resolve the id before anything touches the network or the token, so
+        # a typo is answered at once and the upload names the real folder.
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        from rsmm.engine.paths import mods_dir
+        try:
+            mod_id = resolve_mod(args.target, mods_dir())
+        except UnknownMod as e:
+            raise PublishError(str(e)) from None
+        return publish(mod_id, wait=not args.no_wait, timeout=args.timeout)
     except PublishError as e:
         print(f"rsmm publish: {e}", file=sys.stderr)
         return 1

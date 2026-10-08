@@ -885,11 +885,12 @@ def main() -> int:
 
     candidates: list[Path] = []
     if args.mod_id:
-        p = MODS_DIR / args.mod_id
-        if not p.is_dir():
-            print(_ST_ERR.err(f"no such mod: {args.mod_id}"), file=sys.stderr)
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        try:
+            candidates = [MODS_DIR / resolve_mod(args.mod_id, MODS_DIR)]
+        except UnknownMod as e:
+            print(_ST_ERR.err(str(e)), file=sys.stderr)
             return 1
-        candidates = [p]
     else:
         for entry in sorted(MODS_DIR.iterdir()):
             if not entry.is_dir() or entry.name.startswith(("_", ".")):

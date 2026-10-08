@@ -195,14 +195,16 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) != 1:
         print(_USAGE, file=sys.stderr)
         return 2
-    mod_id = args[0]
+    from rsmm.cli._suggest import UnknownMod, resolve_mod
+    try:
+        mod_id = resolve_mod(args[0], MODS_DIR)
+    except UnknownMod as e:
+        print(e, file=sys.stderr)
+        return 1
     if not _ID_RE.match(mod_id):
         print(f"invalid mod id: {mod_id!r}", file=sys.stderr)
         return 1
     src = MODS_DIR / mod_id
-    if not src.is_dir():
-        print(f"no such mod: {src}", file=sys.stderr)
-        return 1
     if not allow_vanilla:
         offenders = _vanilla_offenders(src)
         if offenders:

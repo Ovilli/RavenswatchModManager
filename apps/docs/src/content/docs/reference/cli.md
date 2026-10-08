@@ -10,6 +10,11 @@ All commands are run via the `rsmm` entry point:
 rsmm <command> [options]       # Windows
 ```
 
+Commands that take a mod id (`enable`, `disable`, `lint`, `diff`, `pack`, `publish`,
+`test`) accept the folder name under `mods/` in any case, with the trailing slash tab
+completion adds, or as a path (`mods/MyMod`). A misspelled id or subcommand gets a
+"did you mean …?" instead of a list.
+
 ---
 
 ## Core commands

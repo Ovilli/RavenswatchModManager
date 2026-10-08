@@ -145,4 +145,6 @@ def test_cli_json_and_unknown_mod(mods_dir, monkeypatch, capsys):
     assert out["mod"] == "alpha" and out["game_found"] is False
     assert out["files"][0]["action"] == "replace"
     assert D.main(["nope"]) == 1
-    assert "known: alpha" in capsys.readouterr().err
+    assert "installed: alpha" in capsys.readouterr().err
+    assert D.main(["alpah"]) == 1
+    assert "did you mean alpha?" in capsys.readouterr().err

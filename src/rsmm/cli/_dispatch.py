@@ -313,8 +313,12 @@ def main(argv: list[str] | None = None) -> int:
         mod, prefix = LEGACY[sub]
         return _dispatch_module(mod, [*prefix, *rest])
 
-    print(f"unknown subcommand: {sub}", file=sys.stderr)
-    print(render_help(), file=sys.stderr)
+    # One line, not the whole listing: the listing buried the typo it was
+    # answering under seventy lines of commands.
+    from rsmm.cli._suggest import did_you_mean
+    routed = [name for name, _mod in iter_commands()]
+    print(f"unknown subcommand: {sub}{did_you_mean(sub, routed)}", file=sys.stderr)
+    print("`rsmm --help` lists every command.", file=sys.stderr)
     return 2
 
 
