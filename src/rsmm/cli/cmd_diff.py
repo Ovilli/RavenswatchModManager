@@ -385,9 +385,18 @@ def main(argv: list[str] | None = None) -> int:
     mods = A.discover_mods(REPO_DIR)
     mod = _find(mods, args.mod)
     if mod is None:
-        known = ", ".join(m.id for m in mods) or f"none in {A.MODS_DIR}"
-        print(f"no mod '{args.mod}' (known: {known})", file=sys.stderr)
-        return 1
+        # Not an id or folder as typed: try it as a folder spelled another
+        # way (case, a trailing slash from tab completion, a path).
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        try:
+            mod = _find(mods, resolve_mod(args.mod, A.MODS_DIR))
+        except UnknownMod as e:
+            print(e, file=sys.stderr)
+            return 1
+        if mod is None:
+            print(f"mod '{args.mod}' has no readable manifest.toml "
+                  f"(`rsmm lint {args.mod}` says why)", file=sys.stderr)
+            return 1
 
     active = None
     game_dir = args.game_dir or A.find_game_dir()

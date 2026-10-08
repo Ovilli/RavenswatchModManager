@@ -118,9 +118,11 @@ def main() -> int:
         print(s, flush=True)
 
     if args.mod_id:
-        targets = [MODS_DIR / args.mod_id]
-        if not targets[0].is_dir():
-            log(f"no such mod: {targets[0]}")
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        try:
+            targets = [MODS_DIR / resolve_mod(args.mod_id, MODS_DIR)]
+        except UnknownMod as e:
+            log(str(e))
             return 2
     elif not MODS_DIR.is_dir():
         log(f"mods dir does not exist: {MODS_DIR}")

@@ -305,6 +305,14 @@ def test_pack_warns_about_root_overlays_but_still_packs(tmp_path, monkeypatch, c
     assert (tmp_path / "dist" / "Overlay.zip").is_file()
 
 
+def test_pack_takes_the_folder_as_tab_completion_writes_it(tmp_path, monkeypatch, capsys):
+    _packable(tmp_path / "mods", "Tabbed")
+    assert _run_pack(tmp_path, monkeypatch, "tabbed/") == 0
+    assert (tmp_path / "dist" / "Tabbed.zip").is_file()
+    assert _run_pack(tmp_path, monkeypatch, "Tabed") == 1
+    assert "did you mean Tabbed?" in capsys.readouterr().err
+
+
 def test_packed_archive_installs_cleanly(tmp_path, monkeypatch):
     """The round trip the two halves exist to guarantee."""
     _packable(tmp_path / "mods", "RoundTrip")

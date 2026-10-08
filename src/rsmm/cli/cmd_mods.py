@@ -11,7 +11,8 @@ the game install reflects the change. `--no-apply` skips that final step.
 `rsmm enable <id> --only` is the "test exactly this mod" shortcut: it
 enables the listed mods and disables every other mod in one pass.
 
-Mod ids are the directory names under `mods/` (case-sensitive).
+Mod ids are the directory names under `mods/`; case is forgiven when only one
+folder matches, and a typo gets a "did you mean".
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from pathlib import Path
 
 from ..engine import paths as P
 from . import _keys, _term
+from ._suggest import UnknownMod, resolve_mod
 
 _ST = _term.Style()
 
@@ -282,11 +284,24 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing selected", file=sys.stderr)
         return 1
 
-    unknown = [i for i in targets if i not in known]
-    if unknown:
-        print(f"error: unknown mod id(s): {', '.join(unknown)}", file=sys.stderr)
-        print(f"known: {', '.join(known)}", file=sys.stderr)
+    resolved: list[str] = []
+    bad = 0
+    for raw in targets:
+        try:
+            mod_id = resolve_mod(raw, mods_dir)
+        except UnknownMod as e:
+            print(f"error: {e}", file=sys.stderr)
+            bad += 1
+            continue
+        if mod_id not in known:
+            # A folder with no manifest.toml: there is no `enabled` to flip.
+            print(f"error: {mods_dir / mod_id} has no manifest.toml", file=sys.stderr)
+            bad += 1
+            continue
+        resolved.append(mod_id)
+    if bad:
         return 2
+    targets = list(dict.fromkeys(resolved))
 
     failures = 0
     for mod_id in targets:
