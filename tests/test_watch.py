@@ -189,3 +189,15 @@ def test_watch_refuses_to_start_without_a_game(mods, tmp_path, monkeypatch, caps
     monkeypatch.setattr("sys.argv", ["watch", "--game-dir", str(tmp_path / "nope")])
     assert W.main() == 1
     assert "no Ravenswatch install" in capsys.readouterr().err
+
+
+def test_a_lint_crash_does_not_end_the_session(mods, monkeypatch):
+    _mod(mods, "A")
+
+    def boom(_entry):
+        raise RuntimeError("lint bug")
+
+    monkeypatch.setattr("rsmm.cli.lint.lint_one", boom)
+    lines: list[str] = []
+    assert W._lint_gate(["A"], mods, lines.append) == []
+    assert "could not check A" in lines[0]
