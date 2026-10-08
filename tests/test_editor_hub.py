@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import threading
 
 import pytest
@@ -159,6 +160,52 @@ def test_the_shell_lists_every_tab_and_opens_on_the_asked_one(local):
         assert f'"{key}"'.encode() in page and url.encode() in page
     assert b'|| "map")' in page
     assert "frame-src 'self'" in headers["Content-Security-Policy"]
+
+
+def _shell_game(page: bytes) -> dict:
+    line = next(ln for ln in page.decode().splitlines() if ln.startswith("const GAME = "))
+    return json.loads(line.removeprefix("const GAME = ").rstrip(";"))
+
+
+def test_the_shell_names_the_install_it_reads(tmp_path, monkeypatch, stubbed):
+    # A folder name that would end the shell's <script> if it were not escaped.
+    game = tmp_path / "Raven</script>swatch"
+    (game / "DarkTalesResources" / "_Cooking").mkdir(parents=True)
+    monkeypatch.setenv("RSMM_GAME_DIR", str(game))
+    page = Bridge(mods=tmp_path).request("GET", "/")[2]
+    assert b"</script>swatch" not in page
+    assert _shell_game(page) == {"dir": str(game), "override": str(game)}
+
+
+def test_the_shell_says_why_no_install_was_found(tmp_path, monkeypatch, stubbed):
+    monkeypatch.setenv("RSMM_GAME_DIR", str(tmp_path / "not-the-game"))
+    page = Bridge(mods=tmp_path).request("GET", "/")[2]
+    assert _shell_game(page) == {"dir": None, "override": str(tmp_path / "not-the-game")}
+    assert b"rsmm editor --game-dir" in page
+
+
+@pytest.mark.parametrize("pick", ["", "DarkTalesResources", "DarkTalesResources/_Cooking"])
+def test_game_dir_takes_the_install_or_a_folder_inside_it(tmp_path, pick):
+    (tmp_path / "DarkTalesResources" / "_Cooking").mkdir(parents=True)
+    assert server.find_install(str(tmp_path / pick)) == tmp_path.resolve()
+
+
+def test_a_wrong_game_dir_stops_the_editor_before_it_serves(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("RSMM_GAME_DIR", raising=False)
+    monkeypatch.setattr(server, "serve", lambda *a, **k: pytest.fail("served with no install"))
+    assert server.run(["--no-browser", "--game-dir", str(tmp_path)]) == 2
+    assert "no Ravenswatch install" in capsys.readouterr().err
+    assert "RSMM_GAME_DIR" not in os.environ
+
+
+@pytest.mark.parametrize("page", ["content.html", "abilities.html", "map.html"])
+def test_every_tab_reports_its_unsaved_work_to_the_shell(page):
+    """The shell's tab dots and its close question ask each page through
+    rsmmUnsaved(); a page that never calls tellShell() would leave a dot stale."""
+    text = (app.asset_dir("pages") / page).read_text(encoding="utf-8")
+    assert "window.rsmmUnsaved = " in text and "tellShell()" in text
+    shell = (app.asset_dir("pages") / "shell.html").read_text(encoding="utf-8")
+    assert "window.rsmmChanged = " in shell and '"beforeunload"' in shell
 
 
 def test_a_foreign_host_is_refused_on_every_mount(local):

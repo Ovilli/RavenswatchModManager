@@ -34,11 +34,11 @@ const description =
   :root {
     --bg: hsl(350, 13%, 9%); --panel: hsl(350, 10%, 13%); --ink: #efe9ea; --muted: #a99fa1;
     --line: hsl(350, 8%, 22%); --accent: hsl(352, 78%, 48%); --accent-ink: #fff;
-    --ok: #4cc27f; --bad: #ff7b72; --chip: hsl(350, 8%, 18%);
+    --ok: #4cc27f; --bad: #ff7b72; --warn: #f0a63c; --chip: hsl(350, 8%, 18%);
   }
   @media (prefers-color-scheme: light) {
     :root { --bg: #f6f3f3; --panel: #fff; --ink: #1d1a1b; --muted: #6b6264; --line: #e2dcdd;
-            --chip: #efe9ea; --ok: #1f8a4c; --bad: #b8322a; }
+            --chip: #efe9ea; --ok: #1f8a4c; --bad: #b8322a; --warn: #9a6200; }
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -55,6 +55,8 @@ const description =
              border-bottom: 3px solid transparent; }
   nav .tab:hover { color: var(--ink); }
   nav .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  nav .tab.dirty::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
+                          border-radius: 50%; background: var(--warn); vertical-align: 2px; }
   nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center;
                font-size: 13px; color: var(--muted); }
   main { flex: 1; min-height: 0; position: relative; }
@@ -382,6 +384,26 @@ window.rsmmOpen = (tab, target) => {
   return true;
 };
 window.rsmmReady = (tab, fn) => { receivers[tab] = fn; deliver(tab); };
+
+// Unsaved work per tab, as in rsmm editor's shell (src/rsmm/cli/editor/pages/shell.html):
+// a dot on each tab holding changes that are in no mod yet, and a question before the
+// page closes when any of them would be lost with it.
+const unsaved = (tab) => { try { return frames[tab]?.contentWindow.rsmmUnsaved?.() || null; } catch { return null; } };
+window.rsmmChanged = () => {
+  for (const a of document.querySelectorAll("nav .tab")) {
+    const u = unsaved(a.dataset.tab), n = u ? u.count : 0;
+    a.classList.toggle("dirty", n > 0);
+    if (!n) { a.removeAttribute("title"); a.removeAttribute("aria-label"); continue; }
+    const what = `${n} change${n > 1 ? "s" : ""} not saved to a mod yet`;
+    a.title = what + (u.kept ? " (kept in this browser until you save them)" : "");
+    a.setAttribute("aria-label", `${TABS[a.dataset.tab][0]}: ${what}`);
+  }
+};
+window.addEventListener("beforeunload", (e) => {
+  if (Object.keys(frames).some((k) => { const u = unsaved(k); return u && u.count > 0 && !u.kept; })) {
+    e.preventDefault(); e.returnValue = "";
+  }
+});
 
 function open() {
   $("start").hidden = true;

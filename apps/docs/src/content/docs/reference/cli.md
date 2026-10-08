@@ -324,11 +324,20 @@ same editors also run in the browser with no install:
 ./rsmm editor --tab map            # open on another tab: items, talents, abilities, map
 ./rsmm editor --port 9000          # pick the port (falls back to a free one)
 ./rsmm editor --no-browser         # just print the URL
+./rsmm editor --game-dir "D:\SteamLibrary\steamapps\common\Ravenswatch"   # when it isn't found
 ./rsmm restore --all && ./rsmm apply   # install what you saved
 ```
 
 `item-editor`, `talent-editor`, `ability-editor` and `map-editor` still work:
 each opens this editor on its tab.
+
+The tab bar names the install the editor reads. When none is found, every tab
+says so and shows the `--game-dir` command to start it with; the folder can be
+Ravenswatch itself or `DarkTalesResources` inside it (`RSMM_GAME_DIR` works
+too). A dot on a tab means it holds changes that are in no mod yet. Item,
+talent, test-grant and ability changes are kept in your browser until you save
+them; Map changes are not, so closing the page with unsaved Map changes asks
+first.
 
 **Items and Talents.** *Check* builds the blocks with the real kind builders,
 so it reports exactly what `rsmm apply` would refuse. *Add to mod* appends them

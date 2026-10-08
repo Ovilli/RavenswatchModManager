@@ -23,7 +23,7 @@ import secrets
 import struct
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from functools import cache
+from functools import cache, cached_property
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -102,6 +102,12 @@ class Context:
         from rsmm.engine.paths import mods_dir
         return mods_dir()
 
+    @cached_property
+    def game(self) -> dict:
+        """:func:`game_status`, once per launch: the scan for an install can be
+        slow on Windows, and nothing that decides it changes while it runs."""
+        return game_status()
+
 
 @dataclass
 class Request:
@@ -138,6 +144,18 @@ def render(name: str, token: str, **subs: str) -> str:
     return page.replace("__RSMM_TOKEN__", token)
 
 
+def game_status() -> dict:
+    """Which install the editors read, for the shell to name it or say none was
+    found. ``dir`` is that install, else None; ``override`` is ``RSMM_GAME_DIR``
+    when set (it is authoritative, so a wrong one is why nothing was found)."""
+    import os
+
+    from rsmm.cli.apply_mods import find_game_dir
+    game = find_game_dir()
+    return {"dir": str(game) if game else None,
+            "override": os.environ.get("RSMM_GAME_DIR", "").strip() or None}
+
+
 def _find(routes: Mapping, method: str, path: str) -> Route | None:
     fn = routes.get((method, path))
     if fn is not None:
@@ -161,7 +179,9 @@ def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
         if method != "GET":
             return _fail(405, "method not allowed")
         page = render("shell.html", ctx.token, __RSMM_TABS__=json.dumps(TABS),
-                      __RSMM_TAB__=ctx.start if ctx.start in TABS else "items")
+                      __RSMM_TAB__=ctx.start if ctx.start in TABS else "items",
+                      # "<" escaped: a folder named "</script>" must not end the shell's script.
+                      __RSMM_GAME__=json.dumps(ctx.game).replace("<", "\\u003c"))
         return Reply(200, HTML, page.encode("utf-8"))
 
     mount, _, rest = path.lstrip("/").partition("/")

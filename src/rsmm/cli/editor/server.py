@@ -8,6 +8,7 @@ response headers (the one content-security policy every page runs under).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 import webbrowser
@@ -119,6 +120,19 @@ def serve(port: int, *, tab: str = "items", mods: Path | None = None) -> EditorS
     return EditorServer(("127.0.0.1", port), app.Context(mods=mods, start=tab))
 
 
+def find_install(raw: str) -> Path | None:
+    """The install a ``--game-dir`` names. The Ravenswatch folder itself, or
+    ``DarkTalesResources`` or ``_Cooking`` inside it, so a player who picks a
+    folder one level too deep (the web editor asks for ``DarkTalesResources``)
+    is still understood."""
+    from rsmm.engine.paths import COOKING_REL
+    path = Path(os.path.expandvars(raw)).expanduser().resolve()
+    for cand in (path, path.parent, path.parent.parent):
+        if (cand / COOKING_REL).is_dir():
+            return cand
+    return None
+
+
 def run(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="rsmm editor",
@@ -126,13 +140,29 @@ def run(argv: list[str] | None = None) -> int:
     ap.add_argument("--tab", choices=list(app.TABS), default="items", help="tab to open on")
     ap.add_argument("--port", type=int, default=8765, help="port on 127.0.0.1 (default 8765)")
     ap.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    ap.add_argument("--game-dir", metavar="DIR",
+                    help="Ravenswatch install folder (autodetected if omitted)")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
+    if args.game_dir:
+        game = find_install(args.game_dir)
+        if game is None:
+            print(f"rsmm editor: no Ravenswatch install at {args.game_dir} "
+                  "(expected DarkTalesResources/_Cooking inside it). In Steam: "
+                  "right-click Ravenswatch > Manage > Browse local files.", file=sys.stderr)
+            return 2
+        # Every editor finds the install through find_game_dir(), which takes
+        # RSMM_GAME_DIR as authoritative; the web editor points it the same way.
+        os.environ["RSMM_GAME_DIR"] = str(game)
     try:
         srv = serve(args.port, tab=args.tab)
     except OSError:
         srv = serve(0, tab=args.tab)         # the default port is taken: take any free one
     url = f"http://127.0.0.1:{srv.server_address[1]}/#{args.tab}"
     print(f"rsmm editor: {url}")
+    game = srv.ctx.game["dir"]
+    print(f"reading Ravenswatch from {game}" if game else
+          "Ravenswatch was not found, so the tabs will be empty; "
+          'start again with: rsmm editor --game-dir "<your Ravenswatch folder>"')
     print(f"mods are saved under {srv.ctx.mods_dir}; install them with: rsmm apply")
     print("Ctrl+C to stop.")
     if not args.no_browser:

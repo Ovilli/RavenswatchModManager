@@ -7,6 +7,15 @@ const TOKEN = "__RSMM_TOKEN__";
 
 if (window.top !== window) document.documentElement.classList.add("embedded");
 
+// Unsaved work, for the editor shell to mark this page's tab. A page offers
+// window.rsmmUnsaved() -> { count, kept }: how many of its changes are in no mod
+// yet, and whether they outlive a closed page (kept as drafts in this browser).
+// It calls tellShell() whenever that may have changed; the shell then asks every
+// tab. Standalone, or under a shell without the hook, this does nothing.
+function tellShell() {
+  try { if (window.parent !== window) window.parent.rsmmChanged?.(); } catch { /* not our shell */ }
+}
+
 // GET `path`, or POST `body` as JSON. Resolves to the reply's JSON and throws
 // its `error`. Paths are relative ("api/items"), so a page works at `/`, under
 // a mount of `rsmm editor`, and in the web editor, where fetch is routed to
