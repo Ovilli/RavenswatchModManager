@@ -263,3 +263,31 @@ def test_add_loader_changelog_writes_and_replaces(tmp_path):
     assert [e.get("loader_version") for e in doc["entries"]].count(8) == 1
     assert doc["entries"][0]["summary"] == "second"
     assert len(doc["entries"]) == 2
+
+
+def test_add_loader_changelog_keeps_a_full_feed_publishable(tmp_path):
+    """A feed already at the client's cap: adding a note retires the OLDEST
+    entry instead of leaving 51, which publish_changelog.sh refuses (the loader
+    v29 publish failed exactly there, after the loader had shipped)."""
+    import subprocess
+
+    from rsmm.engine.changelog_feed import MAX_ENTRIES, parse
+
+    feed = tmp_path / "changelog.json"
+    feed.write_text(json.dumps({"generated": "2026-08-01", "entries": [
+        {"version": f"1.0.{i}", "date": "2026-08-01", "highlights": [f"note {i}"]}
+        for i in range(MAX_ENTRIES, 0, -1)                   # newest first
+    ]}), encoding="utf-8")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "add_loader_changelog.py"
+    out = subprocess.run(
+        [sys.executable, str(script), "--loader-version", "29", "--summary", "new",
+         "--highlight", "a thing", "--date", "2026-10-08", "--feed", str(feed)],
+        capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert "retired the 1 oldest" in out.stdout
+    raw = feed.read_bytes()
+    doc = json.loads(raw)
+    assert len(doc["entries"]) == MAX_ENTRIES
+    assert doc["entries"][0]["loader_version"] == 29
+    assert doc["entries"][-1]["version"] == "1.0.2"           # 1.0.1 retired
+    assert len(parse(raw)["entries"]) == MAX_ENTRIES          # nothing dropped

@@ -3,6 +3,15 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 29,
+      "date": "2026-10-08",
+      "summary": "Mods can set each chapter's day/night timer",
+      "highlights": [
+        "New: mods can change day/night length and boss timing per chapter (Chapter Timer)"
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 28,
       "date": "2026-10-08",
       "summary": "Damage meter keeps each player's damage on their own row across chapters, plus stability fixes for mods",
@@ -540,16 +549,6 @@
         "The damage board no longer counts destructible props as combatants.",
         "The identity scan that could stall the game during a run has been retired.",
         "Loader and Lua SDK updates now announce themselves in-app, including when Ravenswatch is holding the loader open and needs closing first."
-      ]
-    },
-    {
-      "version": "5.0.0",
-      "date": "2026-08-14",
-      "summary": "The game loader and Lua SDK now update without a launcher release.",
-      "highlights": [
-        "A signed rolling update channel ships the loader DLL and Lua SDK straight into the game directory, so a scripting fix no longer waits on a full launcher release and reinstall.",
-        "Every payload is verified against the same signing key as the launcher itself, with a fixed destination allowlist. There is no unsigned path.",
-        "RSMM_GAME_DIR is honoured everywhere the game directory is resolved."
       ]
     }
   ]
