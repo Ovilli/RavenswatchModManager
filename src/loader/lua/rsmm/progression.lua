@@ -92,14 +92,15 @@ R.stat.slots = { primary = 0, secondary = 1, defensive = 2, trait = 3, ultimate 
 -- crit / cooldown instead of the hero-wide stat.
 --
 -- NOTE for attack_power: the hero-wide key (0x15a486c4) is NOT this family's
--- base -- the per-slot family starts at 0x15a5cf40. For crit_chance and
--- cooldown_reduction the family base IS the hero-wide key, so `*_primary`
--- resolves to the same key as the bare name; that mirrors the registry and is
--- not a bug.
+-- base -- the per-slot family starts at 0x15a5cf40. crit_chance and
+-- cooldown_reduction register as one run of eight: hero-wide, basic, then the
+-- five slots, so `*_primary` is hero-wide + 4 (engine registry labels in
+-- data/stat_keys.json; deriving from the hero-wide key named every slot two
+-- places off -- `cooldown_reduction_secondary` read "CD reduce basic").
 local _slot_families = {
     attack_power       = 0x15a5cf40,
-    crit_chance        = 0x15c7d482,
-    cooldown_reduction = 0x15b45d80,
+    crit_chance        = 0x15c7d482 + 4,
+    cooldown_reduction = 0x15b45d80 + 4,
 }
 for family, base in pairs(_slot_families) do
     for slot_name, slot in pairs(R.stat.slots) do
@@ -107,10 +108,13 @@ for family, base in pairs(_slot_families) do
     end
 end
 
--- Off-family specials. `basic` sits +0x11 from the attack-power family base
--- (NOT a `+2*slot` member), and the dash keys live in a different range
--- entirely, so they are listed explicitly rather than derived.
-R.stat.keys.attack_power_basic      = { key = 0x15a5cf51, kind = "f32" }
+-- Off-family specials. Attack power's `basic` sits +0x11 from its family base
+-- (NOT a `+2*slot` member); crit / cooldown `basic` sit between the hero-wide
+-- key and primary; the dash keys live in a different range entirely. All are
+-- listed explicitly rather than derived.
+R.stat.keys.attack_power_basic       = { key = 0x15a5cf51, kind = "f32" }
+R.stat.keys.crit_chance_basic        = { key = 0x15c7d484, kind = "f32" }
+R.stat.keys.cooldown_reduction_basic = { key = 0x15b45d82, kind = "f32" }
 R.stat.keys.attack_power_dash       = { key = 0x183a609a, kind = "f32" }
 R.stat.keys.crit_chance_dash        = { key = 0x183a60b6, kind = "f32" }
 R.stat.keys.cooldown_reduction_dash = { key = 0x183a5fc9, kind = "f32" }

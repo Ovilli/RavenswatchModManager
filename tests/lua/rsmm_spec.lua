@@ -575,13 +575,9 @@ local function about(a, b) return math.abs(a - b) < 1e-3 end
 
 -- 1. stat catalog integrity ------------------------------------------------
 do
-    -- Two per-slot families share their base key with the hero-wide stat: the
-    -- registry's crit / cooldown families START at the hero-wide key, so
-    -- `<stat>_primary` is genuinely the same id. attack_power does NOT alias.
-    local allowed_alias = {
-        crit_chance_primary        = "crit_chance",
-        cooldown_reduction_primary = "cooldown_reduction",
-    }
+    -- No name may share a key: crit / cooldown `_primary` once aliased the
+    -- hero-wide key, which was the off-by-two-slots bug, not the registry.
+    local allowed_alias = {}
     local seen = {}
     for name, spec in pairs(R.stat.keys) do
         check(type(spec.key) == "number", "key not number: " .. name)
@@ -601,8 +597,10 @@ end
 
 -- 1b. per-slot + status keys -----------------------------------------------
 do
-    local fam = { attack_power = 0x15a5cf40, crit_chance = 0x15c7d482,
-                  cooldown_reduction = 0x15b45d80 }
+    -- Crit / cooldown slot bases are hero-wide + 4 (hero-wide, basic, then the
+    -- five slots), per the engine registry labels in data/stat_keys.json.
+    local fam = { attack_power = 0x15a5cf40, crit_chance = 0x15c7d486,
+                  cooldown_reduction = 0x15b45d84 }
     local order = { "primary", "secondary", "defensive", "trait", "ultimate" }
     for family, base in pairs(fam) do
         for i, slot in ipairs(order) do
@@ -614,6 +612,10 @@ do
         end
     end
     check(R.stat.keys.attack_power_basic.key == 0x15a5cf51, "attack_power_basic key")
+    check(R.stat.keys.crit_chance_basic.key == 0x15c7d484, "crit_chance_basic key")
+    check(R.stat.keys.cooldown_reduction_basic.key == 0x15b45d82, "cooldown_reduction_basic key")
+    check(R.stat.keys.cooldown_reduction_secondary.key == 0x15b45d86,
+          "cooldown_reduction_secondary is the registry's 'CD reduce secondary'")
     check(R.stat.keys.attack_power_dash.key == 0x183a609a, "attack_power_dash key")
     check(R.stat.keys.crit_chance_dash.key == 0x183a60b6, "crit_chance_dash key")
     check(R.stat.keys.cooldown_reduction_dash.key == 0x183a5fc9, "cooldown_reduction_dash key")

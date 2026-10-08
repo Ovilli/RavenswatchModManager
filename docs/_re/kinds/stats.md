@@ -141,11 +141,11 @@ each stores its key at `def+0x6c` via `FUN_1406de840(list, KEY, name, …)`.
 | attack power (base) | `0x15a486c4` | f32 |
 | attack power per slot | `0x15a5cf40 + 2·slot` (basic `0x15a5cf51`, dash `0x183a609a`) | f32 |
 | crit chance (base) | `0x15c7d482` | f32 |
-| crit chance per slot | `0x15c7d482 + 2·slot` (dash `0x183a60b6`) | f32 |
+| crit chance per slot | `0x15c7d486 + 2·slot` (basic `0x15c7d484`, dash `0x183a60b6`) | f32 |
 | crit damage | `0x15c82d13` | f32 |
 | move speed ("Move Speed Ratio") | `0x044dadde` | f32 |
 | cooldown reduction (base) | `0x15b45d80` | f32 |
-| cooldown reduction per slot | `0x15b45d80 + 2·slot` (dash `0x183a5fc9`) | f32 |
+| cooldown reduction per slot | `0x15b45d84 + 2·slot` (basic `0x15b45d82`, dash `0x183a5fc9`) | f32 |
 | life steal | `0x15c028c2` | f32 |
 | life on hit (base) | `0x1894f1a2` | f32 |
 | dream shards (currency count) | `0x171c27b5` | int |
