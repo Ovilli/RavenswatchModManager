@@ -1,9 +1,8 @@
 import type { TelemetryRun } from '@rsmm/schemas';
 import { useApp } from '../store';
 import { api } from './api';
+import { RSMM_VERSION } from './app-version';
 import { appendLauncherLog } from './launcher-log';
-
-const RSMM_VERSION = import.meta.env.VITE_RSMM_VERSION ?? '0.0.0-dev';
 
 export function detectOs(): TelemetryRun['os'] {
   if (typeof navigator === 'undefined') return 'unknown';

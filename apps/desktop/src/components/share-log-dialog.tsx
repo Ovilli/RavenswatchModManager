@@ -3,6 +3,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { Check, ExternalLink, Link2, Loader2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api, describeApiError } from '../lib/api';
+import { RSMM_VERSION } from '../lib/app-version';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog, readLauncherLog } from '../lib/launcher-log';
 import { buildLogReport } from '../lib/log-share';
@@ -11,8 +12,6 @@ import { listLocalMods } from '../lib/rsmm';
 import { detectOs } from '../lib/telemetry';
 import { Button, CopyButton, Fleuron, MonoTag, Panel } from './chrome';
 import { useToast } from './toast';
-
-const RSMM_VERSION = import.meta.env.VITE_RSMM_VERSION ?? '0.0.0-dev';
 
 /**
  * "Share log" — turn a run's log into a link instead of a wall of pasted text.
