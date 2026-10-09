@@ -1,6 +1,20 @@
 {
-  "generated": "2026-10-08",
+  "generated": "2026-10-09",
   "entries": [
+    {
+      "version": "5.9.10",
+      "date": "2026-10-09",
+      "summary": "Build your own talents in the editor: a new step-by-step builder, abilities that grow bigger, and effects borrowed from other heroes.",
+      "highlights": [
+        "Editor: a new custom-talent builder. Pick the talent to replace, name it, and add building blocks or start from an example. Ideas it can't build yet (\"POWER spawns a tornado\") can be sent to us from the same screen.",
+        "Talent builder: \"Make an ability bigger\" grows an ability's area, length or width while you own the talent. Tested in game: Melusine's POWER area.",
+        "Talent builder: borrow a talent's effect from another hero (9 talents can move, e.g. Sun Wukong's Focused Strikes on Piper's Virtuoso). Its numbers follow your card's rarity.",
+        "Talent builder: bonuses that last until \"your next ATTACK\" and bonuses that can trigger \"at most once every N seconds\".",
+        "Editor: reopening a mod keeps your custom talents editable, and the editor says when it can't find the game.",
+        "For mod makers: rsmm diff shows what applying one mod changes, rsmm watch checks a mod before applying it, and mistyped mod names and commands get a suggestion.",
+        "Fixed: profile, install, sign-in and background-helper bugs in the app, and several security gaps."
+      ]
+    },
     {
       "version": "",
       "loader_version": 30,
@@ -538,16 +552,6 @@
         "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
         "Interface animations can be turned off in Settings, and the hover movement is gone.",
         "The launcher and game loader versions are shown in the corner of the window."
-      ]
-    },
-    {
-      "version": "5.0.2",
-      "date": "2026-08-20",
-      "summary": "Damage-meter ally names, and the loader version is now visible in Settings.",
-      "highlights": [
-        "Ally rows in the damage meter are named from the netcode peer table instead of a positional guess, so names stay correct in co-op.",
-        "Settings shows the running launcher version alongside the planted game-loader version, with pending updates for each.",
-        "Refreshed the function-pattern database against the 2026-08-20 game build."
       ]
     }
   ]
