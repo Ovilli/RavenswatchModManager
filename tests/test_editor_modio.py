@@ -234,3 +234,66 @@ def test_an_in_place_ability_block_marks_the_mod_experimental():
     step = {"set": "A.value", "value": 1}
     saved = M.set_hero_abilities(new, "BeowulfAbilities", [step], "ability")
     assert M.hero_blocks(saved, "ability")[0]["steps"] == [step]
+
+
+BUILDER_MOD = '''[mod]
+id = "built"
+name = "Built"
+version = "0.1.0"
+
+[[content]]
+kind    = "talent"
+id      = "mt_builder"
+hero    = "Melusine"
+rebuild = ["Trait Armor"]
+
+[[content.include]]
+talent = "Trait Armor"
+from   = "Power Hold"
+hero   = "SunWukong"
+
+[[content.add_stats]]
+talent  = "Trait Armor"
+stat    = "Crit chance"
+values  = 0.2
+after   = "DEFENSE"
+seconds = 3
+
+[[content.scale]]
+talent = "Trait Armor"
+node   = "Primary Ability Radius Operation"
+file   = "Hero_Melusine_Power_Caster_Model"
+values = [0.5, 1.0, 1.5, 2.0]
+
+[[content]]
+kind        = "skill"
+id          = "mt_Trait_Armor"
+hero        = "Melusine"
+source      = "Trait Armor"
+name        = "Rising Tide"
+description = "• #POWER@ area &+{1}%~"
+'''
+
+
+def test_a_builder_block_opens_with_every_part_and_saves_back_the_same(tmp_path):
+    if "Melusine" not in C.heroes():
+        pytest.skip("no game data")
+    (tmp_path / "built").mkdir()
+    (tmp_path / "built" / "manifest.toml").write_text(BUILDER_MOD)
+    got = M.load_mod(tmp_path, "built")
+    assert got["kept"] == []
+    E = got["talents"]["Melusine"]["edit"]
+    assert E["prefix"] == "mt"
+    assert E["rebuild"] == {"Trait Armor": True}
+    assert E["include"] == {"Trait Armor": "SunWukong\u0000Power Hold"}
+    assert E["addStats"]["Trait Armor"][0]["values"] == [0.2] * 4
+    assert E["scale"]["Trait Armor"][0]["values"] == [0.5, 1.0, 1.5, 2.0]
+    # Card text saved before is never rewritten or appended to on reopening.
+    assert all(r["line"] == M._LOADED_LINE for r in E["scale"]["Trait Armor"])
+    defs = C.talent_defs(got["talents"]["Melusine"]["payload"])
+    blocks = {bid: f for _k, bid, f in defs}
+    want = tomllib.loads(BUILDER_MOD)["content"][0]
+    assert blocks["mt_builder"]["scale"] == want["scale"]
+    assert blocks["mt_builder"]["include"] == want["include"]
+    assert blocks["mt_builder"]["rebuild"] == want["rebuild"]
+    assert blocks["mt_builder"]["add_stats"][0]["after"] == "DEFENSE"

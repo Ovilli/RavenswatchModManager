@@ -580,8 +580,7 @@ most once every … second(s)** under the "Lasts" box; leave it empty for every 
 
 ```toml
 add_stats = [
-  { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE",
-    seconds = 3, cooldown = 8 },
+  { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE", seconds = 3, cooldown = 8 },
 ]
 ```
 
@@ -595,8 +594,7 @@ ones `during` takes) and must differ from `after`. In the editor, pick it under
 
 ```toml
 add_stats = [
-  { talent = "Trait Fire", stat = "Attack power", values = 0.5, after = "DEFENSE",
-    seconds = 4, next = "ATTACK" },
+  { talent = "Trait Fire", stat = "Attack power", values = 0.5, after = "DEFENSE", seconds = 4, next = "ATTACK" },
 ]
 ```
 
@@ -679,8 +677,9 @@ kind    = "talent"
 id      = "rising_tide"
 hero    = "Melusine"
 rebuild = ["Trait Dash"]
-scale   = [{ talent = "Trait Dash", node = "Primary Ability Radius Operation",
-             file = "Hero_Melusine_Power_Caster_Model", values = [0.2, 0.3, 0.4, 0.5] }]
+scale   = [
+  { talent = "Trait Dash", node = "Primary Ability Radius Operation", file = "Hero_Melusine_Power_Caster_Model", values = [0.2, 0.3, 0.4, 0.5] },
+]
 ```
 
 `node` is the number to grow and `file` the hero file it is in, which is needed

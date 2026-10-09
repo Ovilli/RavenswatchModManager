@@ -1742,7 +1742,7 @@ function writeStatLines(c, desc) {
   if (base == null || !c.hasDescription) return;
   let text = desc.get();
   list.forEach((a, i) => {
-    if (!a.stat || (a.line && text.includes(a.line))) return;
+    if (!a.stat || a.line) return;              // has its line (or was saved before)
     a.line = statLine(a, base + i);
     text = text.trim() ? text.replace(/\s*$/, "") + "\n" + a.line : a.line;
   });

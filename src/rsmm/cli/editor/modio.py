@@ -441,6 +441,50 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict],
 _ITEM_KEYS = {"kind", "id", "base", "mode", "name", "display_name", "description", "rarity",
               "icon", "value_patches", "stats", "super_description"}
 _TALENT_KEYS = {"kind", "id", "hero", "file", "value_patches", "union_patches", "stats"}
+#: The talent builder's block (``<prefix>_builder``, see ``content.talent_defs``).
+_BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale"}
+#: A card line the page did not write this session: it is never rewritten or
+#: appended again, so text saved before (by the page or by hand) stays as it is.
+_LOADED_LINE = "\u0000loaded"
+
+
+def _tiers4(values, what: str) -> list[float]:
+    """A builder entry's ``values`` as the page holds them: one per rarity."""
+    if isinstance(values, (int, float)) and not isinstance(values, bool):
+        return [float(values)] * 4
+    if isinstance(values, list) and len(values) == 4:
+        return [float(v) for v in values]
+    if isinstance(values, dict):
+        try:
+            return [float(values[t]) for t in ("Common", "Rare", "Epic", "Legendary")]
+        except (KeyError, TypeError, ValueError):
+            pass
+    raise EditorError(f"{what}: values the editor cannot show ({values!r})")
+
+
+def _builder(f: dict, E: dict) -> None:
+    """The builder block back into the page's state: rebuilt talents, included
+    effects, added stats and bigger abilities."""
+    if set(f) - _BUILDER_KEYS:
+        raise EditorError("has fields the editor has no control for: "
+                          + ", ".join(sorted(set(f) - _BUILDER_KEYS)))
+    for t in f.get("rebuild") or []:
+        E["rebuild"][str(t)] = True
+    for e in f.get("include") or []:
+        talent, other, hero = str(e.get("talent") or ""), str(e.get("from") or ""), e.get("hero")
+        E["include"][talent] = f"{_hero_of(str(hero))}\u0000{other}" if hero else other
+    for e in f.get("add_stats") or []:
+        a = {"stat": str(e["stat"]), "values": _tiers4(e.get("values"), str(e["stat"])),
+             "percent": bool(e.get("percent", True)), "line": _LOADED_LINE}
+        for k in ("during", "after", "seconds", "cooldown", "next"):
+            if e.get(k) is not None:
+                a[k] = e[k]
+        E["addStats"].setdefault(str(e["talent"]), []).append(a)
+    for e in f.get("scale") or []:
+        E["scale"].setdefault(str(e["talent"]), []).append({
+            "node": str(e["node"]), "file": str(e.get("file") or ""),
+            "values": _tiers4(e.get("values"), str(e["node"])),
+            "percent": bool(e.get("percent", True)), "line": _LOADED_LINE})
 _SKILL_KEYS = {"kind", "id", "hero", "source", "name", "description", "icon"}
 
 
@@ -514,6 +558,9 @@ def _hero_of(name: str) -> str:
 
 def _talent(f: dict, E: dict) -> None:
     from . import content as C
+    if not f.get("file") and set(f) & (_BUILDER_KEYS - {"kind", "id", "hero"}):
+        _builder(f, E)
+        return
     if set(f) - _TALENT_KEYS:
         raise EditorError("has fields the editor has no control for: "
                           + ", ".join(sorted(set(f) - _TALENT_KEYS)))
@@ -588,7 +635,8 @@ def load_mod(root: Path, mod_id: str) -> dict:
                 entry = talents.setdefault(hero, {"edit": None, "blocks": [], "ids": []})
                 if entry["edit"] is None:
                     entry["edit"] = {"prefix": "", "values": {}, "cards": {}, "tiers": {},
-                                     "stats": {}, "rarity": "Common", "q": ""}
+                                     "stats": {}, "addStats": {}, "rebuild": {}, "include": {},
+                                     "scale": {}, "rarity": "Common", "q": ""}
                 (_talent(f, entry["edit"]) if kind == "talent"
                  else _skill(mod_root, f, entry["edit"]))
                 entry["blocks"].append([kind, bid])
@@ -610,7 +658,15 @@ def load_mod(root: Path, mod_id: str) -> dict:
             "tiers": list(E["tiers"].values()),
             "stats": [{"file": k.split("\u0000")[0], "modifier": k.split("\u0000")[1], "stat": v}
                       for k, v in E["stats"].items()],
-            "cards": [{"source": s, **c} for s, c in E["cards"].items()]}
+            "cards": [{"source": s, **c} for s, c in E["cards"].items()],
+            "addStats": [{"talent": t, **{k: v for k, v in a.items() if k != "line"}}
+                         for t, rows in E["addStats"].items() for a in rows],
+            "rebuild": list(E["rebuild"]),
+            "include": [{"talent": t, "from": p.split("\u0000")[-1],
+                         **({"hero": p.split("\u0000")[0]} if "\u0000" in p else {})}
+                        for t, p in E["include"].items()],
+            "scale": [{"talent": t, "node": r["node"], "file": r["file"], "values": r["values"],
+                       "percent": r["percent"]} for t, rows in E["scale"].items() for r in rows]}
     script = program = None
     init = mod_root / "init.lua"
     if init.is_file():
@@ -632,7 +688,9 @@ def _talent_prefix(hero: str, blocks: list[tuple[str, str, dict]]) -> str | None
     (see ``content.talent_defs``), or None when they do not share one."""
     out = None
     for kind, bid, f in blocks:
-        if kind == "talent":
+        if kind == "talent" and not f.get("file") and bid.endswith("_builder"):
+            prefix = bid[:-len("_builder")]
+        elif kind == "talent":
             file = str(f.get("file") or "").removesuffix(".entity")
             slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
             if slug and not bid.endswith(slug):
