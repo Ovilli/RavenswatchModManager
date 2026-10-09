@@ -122,10 +122,45 @@ bool is_passtech_backend(LPCWSTR server) {
 
 // ---- WinHTTP passthrough --------------------------------------------------
 
+bool under_wine() {
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    return ntdll && GetProcAddress(ntdll, "wine_get_version");
+}
+
+HMODULE renamed_copy() {
+    HMODULE m = GetModuleHandleA("winhttp_real.dll");
+    return m ? m : LoadLibraryA("winhttp_real.dll");
+}
+
+// The WinHTTP every call is passed on to, chosen once. Every export (the
+// thunks in winhttp_thunks.S and the wrappers below) goes to this ONE module,
+// so a handle is never used with a WinHTTP other than the one that made it.
+//
+// Native Windows: the genuine System32\winhttp.dll, by full path. It used to
+// be winhttp_real.dll, a copy of that file in the game folder, and running it
+// under that name broke WinHTTP outright: a player's every Stormancer and
+// MyNacon request failed at once with cpprest's "Open failed" (no party code,
+// no online), while the same bytes worked after restore moved them back to
+// winhttp.dll (2026-10-09).
+//
+// Wine/Proton keeps the renamed copy -- Wine's own builtin, and the only
+// combination proven there. It is also the fallback when the System32 load
+// fails or hands back this proxy instead of a second module.
 HMODULE real_winhttp() {
     static HMODULE h = [] {
-        HMODULE m = GetModuleHandleA("winhttp_real.dll");
-        return m ? m : LoadLibraryA("winhttp_real.dll");
+        if (!under_wine()) {
+            wchar_t dir[MAX_PATH];
+            const UINT n = GetSystemDirectoryW(dir, MAX_PATH);
+            HMODULE self = nullptr;
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               reinterpret_cast<LPCWSTR>(&real_winhttp), &self);
+            if (n > 0 && n < MAX_PATH - 16) {
+                HMODULE m = LoadLibraryW((std::wstring(dir, n) + L"\\winhttp.dll").c_str());
+                if (m && m != self) return m;
+            }
+        }
+        return renamed_copy();
     }();
     return h;
 }
@@ -260,6 +295,17 @@ bool identity_probe_wanted() {
 } // namespace
 
 bool install_backend_redirect() {
+    {
+        // Which WinHTTP the game's online traffic goes through: the first
+        // thing to read when a player reports no party code.
+        char path[MAX_PATH] = {};
+        HMODULE real = real_winhttp();
+        if (real) GetModuleFileNameA(real, path, sizeof(path));
+        if (real)
+            Loader::get().log(std::string("[backend] real WinHTTP: ") + path);
+        else
+            Loader::get().log_warn("[backend] no real WinHTTP could be loaded -- online will fail");
+    }
     const BackendTarget& t = target();
     if (!t.url.empty() && !t.armed) {
         Loader::get().log_warn("[backend] ignoring backend URL \"" + t.url +
@@ -279,6 +325,37 @@ bool install_backend_redirect() {
 // ---- exported WinHTTP wrappers (see exports/winhttp.def) ---------------------
 
 extern "C" {
+
+// ---- pass-through table for winhttp_thunks.S ---------------------------------
+
+namespace {
+const char* const kFwdNames[] = {
+#include "winhttp_fwd_names.inc"
+};
+constexpr std::size_t kFwdCount = sizeof(kFwdNames) / sizeof(kFwdNames[0]);
+
+// What an export the real module lacks resolves to. Every pass-through export
+// returns BOOL, a handle or a DWORD status, so 0 plus a last error is a plain
+// failure the caller already handles -- unlike a jump to null.
+std::uintptr_t WINAPI missing_export() {
+    SetLastError(ERROR_PROC_NOT_FOUND);
+    return 0;
+}
+} // namespace
+
+void* rsmm_winhttp_fwd[kFwdCount] = {};
+
+// Called by a thunk's first use; returns (and caches) the real address.
+// Concurrent first calls resolve the same address, so the race is benign.
+void* rsmm_winhttp_resolve(unsigned idx) {
+    if (idx >= kFwdCount) return reinterpret_cast<void*>(&missing_export);
+    void* fn = nullptr;
+    if (HMODULE real = rsmm::real_winhttp())
+        fn = reinterpret_cast<void*>(GetProcAddress(real, kFwdNames[idx]));
+    if (!fn) fn = reinterpret_cast<void*>(&missing_export);
+    rsmm_winhttp_fwd[idx] = fn;
+    return fn;
+}
 
 HINTERNET WINAPI rsmm_WinHttpConnect(HINTERNET session, LPCWSTR server, INTERNET_PORT port,
                                      DWORD reserved) {

@@ -72,8 +72,13 @@ set(LOADER_SRC
     src/fn_resolver.cpp
     src/fn_call.cpp)
 
+# WinHTTP pass-through thunks (GNU assembler; generated from exports/winhttp.def
+# by scripts/gen_winhttp_thunks.py). Every build of this DLL is MinGW.
+enable_language(ASM)
+
 add_library(winhttp SHARED
     ${LOADER_SRC}
+    src/winhttp_thunks.S
     exports/winhttp.def)
 
 target_include_directories(winhttp PRIVATE include)
