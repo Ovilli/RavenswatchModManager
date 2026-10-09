@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
+import type { Listing } from '../src/translate.js';
+
+// translate.ts reaches src/env.ts through the logger, and env.ts throws without
+// these. CI has no env file, so set placeholders BEFORE the module loads (a
+// static import would be hoisted above them).
+process.env.DATABASE_URL ??= 'postgres://user:pass@localhost:5432/db';
+process.env.BETTER_AUTH_SECRET ??= 'x'.repeat(32);
+
+const {
   GatewayUnavailable,
-  type Listing,
   alreadyChinese,
   freshTranslation,
   linksIn,
@@ -9,7 +16,7 @@ import {
   translateListing,
   translationsConfigured,
   validateTranslation,
-} from '../src/translate.js';
+} = await import('../src/translate.js');
 
 const listing: Listing = {
   name: 'Damage Meter',
