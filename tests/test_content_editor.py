@@ -464,6 +464,24 @@ def test_an_include_from_another_hero_names_that_hero():
         {"talent": "Attack Move Speed", "from": "Power Hold", "hero": "SunWukong"}]
 
 
+def test_a_bigger_ability_joins_the_builder_block():
+    defs = E.talent_defs({"hero": "Melusine", "prefix": "m", "scale": [
+        {"talent": "Trait Dash", "node": "Primary Ability Radius Operation",
+         "file": "Hero_Melusine_Power_Caster_Model", "values": [0.1, 0.2, 0.3, 0.4]}]})
+    [(_kind, cid, fields)] = defs
+    assert cid == "m_builder"
+    assert fields["scale"] == [{"talent": "Trait Dash", "node": "Primary Ability Radius Operation",
+                                "file": "Hero_Melusine_Power_Caster_Model",
+                                "values": [0.1, 0.2, 0.3, 0.4]}]
+
+
+@pytest.mark.parametrize("row", [{"talent": "Trait Dash", "values": [0, 0, 0, 0]},
+                                 {"talent": "Trait Dash", "node": "N", "values": [1]}])
+def test_a_bad_bigger_ability_row_is_refused(row):
+    with pytest.raises(E.EditorError):
+        E.talent_defs({"hero": "Melusine", "prefix": "m", "scale": [row]})
+
+
 def test_the_borrowable_list_holds_talents_that_move():
     if "SunWukong" not in E.heroes():
         pytest.skip("no game data")

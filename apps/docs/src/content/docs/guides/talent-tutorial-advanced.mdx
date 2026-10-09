@@ -665,6 +665,33 @@ tornado. RSMM refuses those and says why. These 9 can be given to any hero:
 In the editor, they are under **Other heroes** in the **Also gives the effect of**
 list.
 
+### Make an ability bigger: `scale`
+
+<Badge text="Tested in game" variant="success" />
+
+Range is not a stat: each ability works out its own size in its own files. `scale`
+grows one of those numbers (a radius, a length, a width) while the talent is
+owned, by `1 + amount`, so `0.3` is +30%:
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "rising_tide"
+hero    = "Melusine"
+rebuild = ["Trait Dash"]
+scale   = [{ talent = "Trait Dash", node = "Primary Ability Radius Operation",
+             file = "Hero_Melusine_Power_Caster_Model", values = [0.2, 0.3, 0.4, 0.5] }]
+```
+
+`node` is the number to grow and `file` the hero file it is in, which is needed
+only when the name is in more than one. The number can sit in an entity the hero
+spawns (Melusine's POWER caster, Piper's projectile), as long as that entity
+already reads values from the hero. The card gets a `{N}` for the amount. Only the
+hit area is sure to change; an ability's visual effect may keep its old size.
+
+In the editor, this is **Make an ability bigger** in the custom-talent builder: it
+lists each hero's sizes by ability.
+
 ### Rebuild a talent from scratch: `rebuild`
 
 <Badge text="Not yet tested" variant="danger" />

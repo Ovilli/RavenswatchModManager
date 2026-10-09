@@ -552,6 +552,21 @@ def borrowable_talents() -> list[dict]:
     return out
 
 
+@_once
+def scalable(hero: str) -> list[dict]:
+    """The size numbers of ``hero``'s abilities a talent can grow (``scale``;
+    rsmm.engine.talent_range.candidates)."""
+    from rsmm.engine import talent_range as TR
+    from rsmm.sdk.kinds import talents as T
+
+    d = T._resolve_hero_dir(_hero_dir(hero)[len("Hero_"):])
+    if d is None:
+        return []
+    files = [(f.name.split(".")[0], f.read_bytes()) for f in d.entity_files()
+             if f.name.endswith(_GEN_SUFFIX)]
+    return TR.candidates(files, hero)
+
+
 def talent_cards(hero: str) -> list[dict]:
     """The hero's talent cards with their current English name and text."""
     return _talent_rows(hero)[0]
@@ -1003,6 +1018,18 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if talent == other and not donor:
             raise EditorError(f"{talent}: a talent cannot include itself")
         include.append({"talent": talent, "from": other, **({"hero": donor} if donor else {})})
+    scale = []
+    for row in req.get("scale") or []:
+        talent, node = str((row or {}).get("talent") or ""), str((row or {}).get("node") or "")
+        if not talent or not node:
+            raise EditorError("a bigger ability needs its talent and the number it grows")
+        values = row.get("values")
+        if not isinstance(values, list) or len(values) != 4:
+            raise EditorError(f"{talent}: give a number for each rarity")
+        scale.append({"talent": talent, "node": node,
+                      "values": [float(_num(v, f"{talent} {node}")) for v in values],
+                      **({"file": str(row["file"])} if row.get("file") else {}),
+                      **({} if row.get("percent", True) else {"percent": False})})
     out: list[tuple[str, str, dict]] = []
     for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
@@ -1015,7 +1042,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if stats_by_file.get(file):
             fields["stats"] = stats_by_file[file]
         out.append(("talent", tid, fields))
-    if added or rebuild or include:
+    if added or rebuild or include or scale:
         # Its own block, after the edits above: it grows the entity file, and the
         # talent kind starts each block from the copy the previous one wrote.
         # Inside it, `rebuild` runs before `add_stats`.
@@ -1027,6 +1054,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             block["include"] = include
         if added:
             block["add_stats"] = added
+        if scale:
+            block["scale"] = scale
         out.append(("talent", aid, block))
     for card in req.get("cards") or []:
         source = str(card.get("source") or "")
@@ -1540,6 +1569,7 @@ ROUTES = {
                                           "skipped": talent_skipped(req.arg("hero")),
                                           "portrait": hero_portrait(req.arg("hero"))},
     ("GET", "/api/talents/borrowable"): lambda req: {"talents": borrowable_talents()},
+    ("GET", "/api/talents/scalable"): lambda req: {"nodes": scalable(req.arg("hero"))},
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},
     ("GET", "/api/heropng"): _hero_png,

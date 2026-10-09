@@ -443,6 +443,109 @@ class EntityFile:
             raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
         self.objects[obj][:] = p
 
+    # ---- number slots (value pickers) ----------------------------------------
+    #
+    # A number slot is an `oCEntityCpntValuePicker`: `00` + a value union holds
+    # a literal; `01 00` + a reference + a 4-byte accessor + the union reads the
+    # number from another node. The accessor is how the target is read and
+    # depends on its class and value type; for an f32 it is one per class across
+    # every hero file (surveyed 2026-10-09), which is what lets a brand-new node,
+    # one no picker in this file reads yet, be sourced.
+    F32_ACCESSOR = {
+        "oCEntityCpntValueSettings": 0x0FD2C964,
+        "oCEntityCpntValueSelectorSettings": 0x0FD2C964,
+        "oCEntityCpntValueOperationsSettings": 0x17AE7811,
+        "oCEntityCpntGetValueSettings": 0x16ABF2EB,
+    }
+
+    def _value_pickers(self, c: EG.Component) -> list[EG.Token]:
+        return [t for t in EG.tokens(c)
+                if t.kind == "object" and t.text == "oCEntityCpntValuePicker"]
+
+    def source_value(self, comp: str, n: int, target: str) -> None:
+        """Make the n-th number slot of ``comp`` read component ``target`` (an f32
+        node of this file), literal or sourced before; its inline number goes."""
+        c = self.component(comp)
+        t = self.component(target)
+        acc = self.F32_ACCESSOR.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
+        vps = self._value_pickers(c)
+        if not 0 <= n < len(vps):
+            raise EntityEditError(f"{comp!r} has {len(vps)} number slots, no index {n}")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + vps[n].offset + 8          # just past BEGIN + class
+        union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+        u = p.find(union, at)
+        if u < 0:
+            raise EntityEditError(f"{comp!r}: number slot {n} has no value")
+        if struct.unpack_from("<I", p, u + 8)[0] != 0:
+            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal number")
+        p[at:u] = b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
+        u = p.find(union, at)
+        struct.pack_into("<f", p, u + 16, 0.0)
+
+    def append_operand(self, comp: str, target: str) -> None:
+        """Add ``target`` (an f32 node of this file) as one more operand of the
+        value operation ``comp``: on a multiply, the result is multiplied by it."""
+        c = self.component(comp)
+        if not c.cls.endswith("ValueOperationsSettings"):
+            raise EntityEditError(f"{comp!r} is not a value operation")
+        t = self.component(target)
+        acc = self.F32_ACCESSOR.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
+        toks = EG.tokens(c)
+        node = next((i for i, x in enumerate(toks)
+                     if x.kind == "object" and x.text == "oCEntityCpntNodeSettings"), None)
+        ends = [x for x in toks if x.kind == "end"]
+        if node is None or not ends:
+            raise EntityEditError(f"{comp!r}: no operation list found")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        count_at = at + toks[node].offset + 8 + 4             # after BEGIN, class, op id
+        item = (struct.pack("<Ii", 0, -1)
+                + _B + struct.pack("<I", self._class_index("oCEntityCpntValuePicker"))
+                + b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
+                + self._f32_union() + _E)
+        last = at + ends[-1].offset
+        p[last:last] = item
+        struct.pack_into("<I", p, count_at, struct.unpack_from("<I", p, count_at)[0] + 1)
+
+    def _f32_union(self) -> bytes:
+        """A decimal value union holding 0, in this file's class numbering, copied
+        from one the file already has (BEGIN, class, type 0, u32, f32, END)."""
+        union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+        for p in self.objects:
+            i = p.find(union)
+            while i >= 0:
+                if struct.unpack_from("<I", p, i + 8)[0] == 0 and p[i + 20:i + 24] == _E:
+                    return bytes(p[i:i + 16]) + struct.pack("<f", 0.0) + _E
+                i = p.find(union, i + 1)
+        raise EntityEditError("this file holds no decimal number to copy the shape of")
+
+    def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
+        """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
+        entity (``guid``, ``label`` = ``[Kind] Scope\\Group\\Name``) of the same
+        kind, keeping the accessor after it: a get-value node reading its owner."""
+        c = self.component(comp)
+        obj = c.index - 1
+        head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index("oCEntityCpntPicker"))
+        new = head + guid + _lstr(label) + _E
+        moved = 0
+        p = self.objects[obj]
+        i = p.find(head + old)
+        while i >= 0:
+            n = struct.unpack_from("<I", p, i + 24)[0]
+            end = i + 28 + n + 4
+            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(label):
+                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
+                                      f"the same kind of node as {label!r}")
+            p[i:end] = new
+            moved += 1
+            i = p.find(head + old, i + len(new))
+        return moved
+
     def swap_refs(self, comp: str, old: bytes, target: str) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at ``target``, a
         component of the SAME kind, keeping what follows each reference (a
@@ -477,6 +580,23 @@ class EntityFile:
         end = at + f.offset + f.size
         p[end:end] = self._picker(target)
         struct.pack_into("<I", p, at + f.offset, n + 1)
+
+    def insert_ref(self, comp: str, field: str, index: int, target: str) -> None:
+        """Put ``target`` into the reference list ``field`` at ``index`` (the
+        lists run in order: a state's ``activates`` switches nodes on one after
+        another, so a node must come before the ones that read it)."""
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        if not 0 <= index <= len(f.items):
+            raise EntityEditError(f"{field!r} has {len(f.items)} items, no index {index}")
+        if index == len(f.items):
+            self.add_ref(comp, field, target)
+            return
+        p = self.objects[c.index - 1]
+        pos = at + f.items[index].offset
+        p[pos:pos] = self._picker(target)
+        struct.pack_into("<I", p, at + f.offset, len(f.items) + 1)
 
     def add_format_slot(self, comp: str, target: str, *, percent: bool = True) -> int:
         """Append a value slot to the String Format ``comp``, reading ``target``.
@@ -656,7 +776,11 @@ class EntityFile:
         if target is None:
             return head + bytes(16) + _lstr("") + _E
         t = self.component(target)
-        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{t.path}") + _E
+        # A node with no group is named `Scope\Name` by every shipped reference
+        # (Melusine's caster reads `...Power_Caster_Model\Owner Skill ...`), not
+        # `Scope\\Name`, which is what its empty-group path would give.
+        path = t.path if t.group else t.name
+        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
 
     def _label(self, cls: str) -> str:
         """The ``[Kind]`` label for ``cls``: from this file's own references

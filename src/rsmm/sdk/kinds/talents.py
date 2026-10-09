@@ -79,6 +79,15 @@ Fields:
                                it once ATTACK has been used ("your next ATTACK").
                                No ``file`` needed; see
                                ``rsmm.engine.talent_add_stat``.
+    ``scale``                  list of ``{talent, node, values, file?,
+                               percent?}``: while ``talent`` is owned, the
+                               number ``node`` (an ability's radius, length,
+                               width ...) is multiplied by ``1 + amount``,
+                               ``values`` per rarity (``0.3`` = +30%). ``node``
+                               is a value node or a multiply operation in any
+                               of the hero's entity files (``file`` narrows
+                               it); the card gains a ``{N}`` slot. See
+                               ``rsmm.engine.talent_range``.
     ``rebuild``                list of talent names whose own effect is turned
                                OFF, keeping the card: the talent builder's blank
                                slot. The card's number slots are cleared too, so
@@ -358,6 +367,88 @@ def _coerce_add_stats(raw) -> list[dict]:
     return out
 
 
+def _donor_file(hero: str, file: str, what: str) -> bytes:
+    d = _resolve_hero_dir(hero)
+    p = next((p for p in (d.entity_files() if d else []) if p.name == f"{file}{_GEN_SUFFIX}"), None)
+    if p is None:
+        raise ContentError(f"{what} needs the game's {file} file to copy from")
+    return p.read_bytes()
+
+
+def _apply_scale(defn, mod_id, hero_dir, scale, files, edited, home) -> None:
+    """``scale``: grow a number of an ability while a talent is owned
+    (rsmm.engine.talent_range). The factor goes in the talent's file; the number
+    may sit in another entity of the hero (a caster, a projectile), which then
+    reads the factor through a get-value node."""
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    from ...engine import talent_range as TR
+    during = _donor_file(TA.DONOR_DURING_HERO, f"Hero_{TA.DONOR_DURING_HERO}", "scale")
+    factor = _donor_file(TR.DONOR_FACTOR_HERO, TR.DONOR_FACTOR_FILE, "scale")
+    getter = _donor_file(TR.DONOR_FACTOR_HERO, TR.DONOR_GET_FILE, "scale")
+    mul = _donor_file(TR.DONOR_MUL_HERO, TR.DONOR_MUL_FILE, "scale")
+    seed = f"{mod_id}:{defn.id}"
+    main = f"{hero_dir.name}{_GEN_SUFFIX}"
+    for e in scale:
+        p = home(e["talent"])
+        want = e["file"].lower() if e["file"] else None
+        hosts = [q for q in files if (want is None or want in q.name.lower())
+                 and any(c.name == e["node"]
+                         for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
+        if len(hosts) != 1:
+            raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
+                               f"files hold a node named {e['node']!r}"
+                               + ("; give `file`" if hosts else ""))
+        q = hosts[0]
+        try:
+            TR.how_scaled(edited.get(q) or q.read_bytes(), e["node"])
+            edited[p], fac = TR.add_factor(edited.get(p) or p.read_bytes(), during, factor,
+                                           talent=e["talent"], values=e["values"], tag=e["node"],
+                                           percent=e["percent"], seed=seed)
+            name = fac.name
+            if q is not p:
+                owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
+                if not TR.reads_owner(q.read_bytes(), owner):
+                    raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
+                                       f"{hero_dir.name}, so it could not read the talent's factor")
+                if p.name != main:
+                    raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
+                                       f"scaling a number in {q.name} from there is not supported")
+                fg = next(c for c in EG.parse(edited[p]).components if c.name == fac.name)
+                name = f"Owner {fac.name}"
+                label = f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}"
+                edited[q] = TR.reader(edited.get(q) or q.read_bytes(), getter, factor_guid=fg.guid,
+                                      factor_label=label, owner_resource=owner, name=name,
+                                      seed=seed)
+            edited[q] = TR.scale_node(edited.get(q) or q.read_bytes(), mul, node=e["node"],
+                                      factor=name, seed=seed,
+                                      activate=(name,) if q is not p else ())
+        except (TR.RangeError, TA.AddStatError) as err:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
+        _log.info("talent %s/%s: %s grows %s (%s); card slot {%s}", mod_id, defn.id,
+                  e["talent"], e["node"], q.name, fac.slot)
+
+
+def _coerce_scale(raw) -> list[dict]:
+    """Normalise ``scale`` entries; the node and values are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"scale must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or not e.get("node") or "values" not in e:
+            raise ContentError(f"scale entry needs talent, node and values, got {e!r}")
+        f = e.get("file")
+        if f is not None and not isinstance(f, str):
+            raise ContentError(f"scale: file must be an entity file name, got {f!r}")
+        out.append({"talent": str(e["talent"]), "node": str(e["node"]), "values": e["values"],
+                    "file": f, "percent": bool(e.get("percent", True))})
+    return out
+
+
 def _coerce_int_patches(raw) -> list[tuple[str, int, int, int]]:
     """Normalise ``int_patches`` into ``(label, end_index, old, new)``.
 
@@ -425,6 +516,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     from .items import _coerce_stats
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     add_stats = _coerce_add_stats(defn.fields.get("add_stats"))
+    scale = _coerce_scale(defn.fields.get("scale"))
     rebuild = defn.fields.get("rebuild") or []
     if isinstance(rebuild, str):
         rebuild = [rebuild]
@@ -440,10 +532,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise ContentError(f"talent {defn.id}: include must be a list of "
                            "{talent, from[, hero]} talent names")
     if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
-            or add_stats or rebuild or include):
+            or add_stats or rebuild or include or scale):
         raise ContentError(
             f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes, stats, add_stats, rebuild, include or int_patches given")
+            f"clone_nodes, stats, add_stats, scale, rebuild, include or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in hero_dir.entity_files()
@@ -464,7 +556,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # keep to the hero's own files, as before.
     builder_files = candidates + ([] if file_filter else
                                   [p for p in _inherited_files(hero_dir)
-                                   if add_stats or rebuild or include])
+                                   if add_stats or rebuild or include or scale])
     edited: dict[corpus.CorpusFile, bytes] = {}
     for p in builder_files:
         earlier = out_dir / Path(*p.rel.split("/"))
@@ -584,6 +676,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
             _log.info("talent %s/%s: %s gets %s; card slot {%s}", mod_id, defn.id,
                       entry["talent"], entry["stat"], added.slot)
+
+    if scale:
+        _apply_scale(defn, mod_id, hero_dir, scale, builder_files, edited, _home)
 
     # Clones change the file's structure (a new record, a longer component
     # vector), so they go first: every later edit re-reads the grown file, and
