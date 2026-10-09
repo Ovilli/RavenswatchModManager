@@ -147,11 +147,39 @@ function prompt(l: Listing, lang: TranslationLang): { system: string; user: stri
 export class GatewayUnavailable extends Error {}
 
 function gatewayToken(): string | null {
-  return process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || null;
+  // A deployed function gets its OIDC token per request, in the
+  // x-vercel-oidc-token header (read through the request context, as
+  // @vercel/oidc does); VERCEL_OIDC_TOKEN is only the fallback. Reading the
+  // env var alone found nothing in production, and translation silently
+  // stayed off.
+  let header: string | undefined;
+  try {
+    const ctx = (
+      globalThis as {
+        [key: symbol]:
+          | { get?: () => { headers?: Record<string, string | undefined> } | undefined }
+          | undefined;
+      }
+    )[Symbol.for('@vercel/request-context')];
+    header = ctx?.get?.()?.headers?.['x-vercel-oidc-token'];
+  } catch {
+    header = undefined;
+  }
+  return process.env.AI_GATEWAY_API_KEY || header || process.env.VERCEL_OIDC_TOKEN || null;
 }
 
+let reportedOff = false;
+
 export function translationsConfigured(): boolean {
-  return process.env.RSMM_TRANSLATIONS !== 'off' && Boolean(gatewayToken());
+  if (process.env.RSMM_TRANSLATIONS === 'off') return false;
+  if (gatewayToken()) return true;
+  // Said once per instance, so "nothing is being translated" is visible in
+  // the logs instead of looking exactly like "nothing needs translating".
+  if (!reportedOff) {
+    reportedOff = true;
+    log.warn('translations off: no AI Gateway credential (AI_GATEWAY_API_KEY or OIDC token)');
+  }
+  return false;
 }
 
 /** One gateway call. Throws GatewayUnavailable for credit/budget/rate refusals. */
