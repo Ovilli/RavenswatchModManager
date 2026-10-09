@@ -100,9 +100,6 @@ export interface AppSettings {
   /** UI language. Seeded from the OS languages on a fresh install; after that
    * it is whatever the user picked and is never re-detected. */
   language: Locale;
-  /** Show the API's machine translation of store listings when the UI is not
-   * English. Toggled from a mod page ("Show original"). */
-  translateListings: boolean;
   /** Send frontend crash reports to the RSMM API. Local launcher-log entries
    * are written either way — this only controls what leaves the machine. */
   crashReports: boolean;
@@ -345,8 +342,6 @@ export function hydrateSettings(
     // hand-edited blob) falls back to English rather than leaving the UI
     // looking up messages in a catalog that does not exist.
     language: normalizeLocale(merged.language),
-    // On unless explicitly turned off: an older build's payload has no key.
-    translateListings: merged.translateListings !== false,
   };
 }
 
@@ -390,7 +385,6 @@ export const useApp = create<State>()(
         modsDir: defaultModsDir(),
         showNsfw: false,
         language: detectLocale(),
-        translateListings: true,
         sources: ['https://rsmm.me/registry'],
         density: 'cozy',
         animations: DEFAULT_ANIMATIONS,

@@ -5,7 +5,6 @@ import { Hono } from 'hono';
 import { cronConfigured, env } from '../env.js';
 import { errString, log } from '../logger.js';
 import { drainBatch } from '../scan-service.js';
-import { drainTranslations } from '../translate.js';
 import type { AppEnv } from '../types.js';
 
 export const cronRouter = new Hono<AppEnv>();
@@ -84,9 +83,6 @@ const CRON_DRAIN_MAX = 3;
  * Auth: Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`. We reject
  * anything else so the endpoint can't be used to trigger scans at will.
  */
-// Listing translations one cron run makes (each is one model call of a few seconds).
-const CRON_TRANSLATE_MAX = 8;
-
 cronRouter.get('/scan-drain', async (c) => {
   if (!cronConfigured()) return c.json({ error: 'cron not configured' }, 503);
 
@@ -111,24 +107,13 @@ cronRouter.get('/scan-drain', async (c) => {
     log.error('cron shared-log purge failed', { err: errString(err) });
   }
 
-  // Store-listing translations: the backfill for whatever browse-traffic kicks
-  // missed. Small and capped, so it stays well inside the function timeout;
-  // a failure here must not cost the scan drain below.
-  let translated = 0;
-  try {
-    translated = await drainTranslations(CRON_TRANSLATE_MAX);
-    if (translated) log.info('cron translations', { translated });
-  } catch (err) {
-    log.error('cron translations failed', { err: errString(err) });
-  }
-
   try {
     // Forced: this drain is awaited for the whole request, so it can finish a
     // scan, and it must not be blocked by a detached kick the platform froze
     // mid-scan in this instance (see DrainLock in scan-gate.ts).
     const results = await drainBatch(CRON_DRAIN_MAX, { force: true });
     if (results.length) log.info('cron scan-drain', { drained: results });
-    return c.json({ ok: true, drained: results.length, results, purged, translated });
+    return c.json({ ok: true, drained: results.length, results, purged });
   } catch (err) {
     log.error('cron scan-drain failed', { err: errString(err) });
     return c.json({ error: 'drain failed', purged }, 500);

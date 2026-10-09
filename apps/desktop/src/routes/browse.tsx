@@ -29,7 +29,6 @@ import {
   filterMods,
 } from '../lib/browse-filter';
 import { TParts, useT } from '../lib/i18n-react';
-import { displayListing, listingLang } from '../lib/listing-translation';
 import { installModIntoProfile } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
 import { activeProfile, useApp } from '../store';
@@ -69,7 +68,6 @@ function BrowsePage() {
   const createProfile = useApp((s) => s.createProfile);
   const profile = useApp(activeProfile);
   const showNsfw = useApp((s) => s.settings.showNsfw);
-  const lang = useApp((s) => listingLang(s.settings.language, s.settings.translateListings));
   const view = useApp((s) => s.settings.browseView);
   const update = useApp((s) => s.updateSettings);
   const queryClient = useQueryClient();
@@ -136,8 +134,8 @@ function BrowsePage() {
     error: modError,
     isLoading: modLoading,
   } = useQuery({
-    queryKey: ['mods', 'list', q, lang],
-    queryFn: () => api.mods.list({ q: q.trim() || undefined, limit: 100, lang }),
+    queryKey: ['mods', 'list', q],
+    queryFn: () => api.mods.list({ q: q.trim() || undefined, limit: 100 }),
     staleTime: 30_000,
     retry: 1,
     enabled: tab === 'mods',
@@ -156,17 +154,11 @@ function BrowsePage() {
     enabled: tab === 'collections',
   });
 
-  // Translated name/summary laid over each item once, so cards, rows and the
-  // client-side search all see what is shown.
-  const items = useMemo(
-    () => (modData?.items ?? []).map((m) => displayListing(m, lang)),
-    [modData, lang],
-  );
-  const facets = useMemo(() => computeFacets(items, showNsfw), [items, showNsfw]);
+  const facets = useMemo(() => computeFacets(modData?.items ?? [], showNsfw), [modData, showNsfw]);
 
   const list = useMemo(() => {
     if (tab === 'collections') return [];
-    return filterMods(items, {
+    return filterMods(modData?.items ?? [], {
       q,
       sort,
       showNsfw,
@@ -176,7 +168,7 @@ function BrowsePage() {
       hideInstalled,
       installed,
     });
-  }, [items, sort, q, tab, showNsfw, category, tags, minRating, hideInstalled, installed]);
+  }, [modData, sort, q, tab, showNsfw, category, tags, minRating, hideInstalled, installed]);
 
   const activeFilters = countActiveFilters({ category, tags, minRating, hideInstalled });
 

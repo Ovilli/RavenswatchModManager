@@ -489,8 +489,6 @@ export function createApiClient(options: ApiClientOptions) {
           sort?: 'recent' | 'popular' | 'featured' | 'rating';
           /** Trending window for sort=popular (downloads within last N days). */
           window?: '7d' | '30d';
-          /** UI language; adds a machine `translation` to each item when one exists. */
-          lang?: string;
         } = {},
       ) => {
         const qs = new URLSearchParams();
@@ -507,7 +505,6 @@ export function createApiClient(options: ApiClientOptions) {
         if (params.owner) qs.set('owner', params.owner);
         if (params.sort) qs.set('sort', params.sort);
         if (params.window) qs.set('window', params.window);
-        if (params.lang) qs.set('lang', params.lang);
         return request<{
           items: ModListItem[];
           total: number;
@@ -517,9 +514,9 @@ export function createApiClient(options: ApiClientOptions) {
           } | null;
         }>(`/api/mods?${qs}`, { method: 'GET' }, modListResponseSchema);
       },
-      get: (slug: string, opts: { lang?: string } = {}) =>
+      get: (slug: string) =>
         request(
-          `/api/mods/${encodeURIComponent(slug)}${opts.lang ? `?lang=${encodeURIComponent(opts.lang)}` : ''}`,
+          `/api/mods/${encodeURIComponent(slug)}`,
           { method: 'GET' },
           modDetailResponseSchema,
         ),

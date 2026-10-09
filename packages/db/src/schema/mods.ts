@@ -376,41 +376,6 @@ export const guideReviews = pgTable(
   }),
 );
 
-/**
- * Machine translations of a mod's store listing (name, summary, description),
- * one row per mod and language. Made in the background through Vercel AI
- * Gateway (apps/api/src/translate.ts) and served beside the original, never in
- * place of it: the UI marks it machine-translated and can show the original.
- *
- * `sourceHash` is the hash of the original text the row was made from. A row
- * whose hash no longer matches the mod is stale and is neither served nor kept:
- * the next drain replaces it. All three text columns null = the listing is
- * already in that language and needs no translation.
- */
-export const modTranslations = pgTable(
-  'mod_translations',
-  {
-    modId: uuid('mod_id')
-      .notNull()
-      .references(() => mods.id, { onDelete: 'cascade' }),
-    lang: varchar('lang', { length: 16 }).notNull(),
-    sourceHash: varchar('source_hash', { length: 64 }).notNull(),
-    name: text('name'),
-    summary: text('summary'),
-    description: text('description'),
-    model: varchar('model', { length: 128 }),
-    // Failed attempts in a row, and when the last one ran: a listing the model
-    // keeps getting wrong backs off instead of being retried on every drain.
-    failures: integer('failures').notNull().default(0),
-    lastError: text('last_error'),
-    attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull().defaultNow(),
-    translatedAt: timestamp('translated_at', { withTimezone: true }),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.modId, table.lang] }),
-  }),
-);
-
 export const modsRelations = relations(mods, ({ many, one }) => ({
   versions: many(modVersions),
   authors: many(modAuthors),
@@ -419,7 +384,6 @@ export const modsRelations = relations(mods, ({ many, one }) => ({
   reports: many(modReports),
   follows: many(modFollows),
   inCollections: many(collectionMods),
-  translations: many(modTranslations),
 }));
 
 export const modReviewsRelations = relations(modReviews, ({ one }) => ({
@@ -480,8 +444,4 @@ export const modVersionsRelations = relations(modVersions, ({ one }) => ({
 export const modAuthorsRelations = relations(modAuthors, ({ one }) => ({
   mod: one(mods, { fields: [modAuthors.modId], references: [mods.id] }),
   user: one(users, { fields: [modAuthors.userId], references: [users.id] }),
-}));
-
-export const modTranslationsRelations = relations(modTranslations, ({ one }) => ({
-  mod: one(mods, { fields: [modTranslations.modId], references: [mods.id] }),
 }));

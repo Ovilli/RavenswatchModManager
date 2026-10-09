@@ -9,7 +9,7 @@ import {
   reportCreateSchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
-import { and, asc, desc, eq, gte, ilike, inArray, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
@@ -29,7 +29,6 @@ import {
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
 import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
-import { freshTranslation, isTranslationLang, kickTranslations } from '../translate.js';
 import type { AppEnv } from '../types.js';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -99,9 +98,6 @@ const listQuerySchema = z.object({
   // Time window for the 'popular' sort: rank by downloads within the last N
   // days instead of all time (a trending list). Ignored for other sorts.
   window: z.enum(['7d', '30d']).optional(),
-  // UI language of the caller. A machine translation of each listing, when one
-  // exists for it, is returned beside the original (`translation`).
-  lang: z.string().max(16).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(24),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -113,8 +109,6 @@ const slugParamSchema = z.object({
     .max(128)
     .regex(/^[a-z0-9_-]+$/),
 });
-
-const langQuerySchema = z.object({ lang: z.string().max(16).optional() });
 
 const downloadParamSchema = z.object({
   slug: z
@@ -201,17 +195,12 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
           ? sql`${schema.mods.featured} desc, ${schema.mods.featuredAt} desc nulls last, ${schema.mods.updatedAt} desc`
           : desc(schema.mods.updatedAt);
 
-  // Only fetched when a translation is asked for: its hash covers the
-  // description, so the freshness check needs it, and nothing else in the list
-  // response does.
-  const lang = isTranslationLang(c.req.valid('query').lang) ? c.req.valid('query').lang : null;
   const rows = await db
     .select({
       id: schema.mods.id,
       slug: schema.mods.slug,
       name: schema.mods.name,
       summary: schema.mods.summary,
-      description: lang ? schema.mods.description : sql<string | null>`null`,
       license: schema.mods.license,
       updatedAt: schema.mods.updatedAt,
       category: schema.mods.category,
@@ -306,40 +295,10 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   // queue advances even between the (plan-limited) cron ticks. Single-flight +
   // fire-and-forget (waitUntil), so it never adds latency to this response.
   kickScanWorker();
-  kickTranslations();
-
-  const translations =
-    lang && rows.length
-      ? new Map(
-          (
-            await db
-              .select()
-              .from(schema.modTranslations)
-              .where(
-                and(
-                  eq(schema.modTranslations.lang, lang),
-                  inArray(
-                    schema.modTranslations.modId,
-                    rows.map((r) => r.id),
-                  ),
-                ),
-              )
-          ).map((t) => [t.modId, t]),
-        )
-      : null;
 
   return c.json({
     facets: facetData,
     items: rows.map((r) => ({
-      translation: (() => {
-        if (!translations || !lang) return null;
-        const t = freshTranslation(
-          { name: r.name, summary: r.summary, description: r.description },
-          translations.get(r.id),
-        );
-        // The list shows name + summary only; the description rides on detail.
-        return t ? { lang, machine: true, name: t.name, summary: t.summary } : null;
-      })(),
       id: r.id,
       slug: r.slug,
       name: r.name,
@@ -366,152 +325,130 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
   });
 });
 
-modsRouter.get(
-  '/:slug',
-  zValidator('param', slugParamSchema),
-  zValidator('query', langQuerySchema),
-  async (c) => {
-    const { slug } = c.req.valid('param');
-    const db = getDb();
+modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
+  const { slug } = c.req.valid('param');
+  const db = getDb();
 
-    const mod = await db.query.mods.findFirst({
-      where: eq(schema.mods.slug, slug),
-      with: { versions: true },
-    });
-    if (!mod) return c.json({ error: 'not found' }, 404);
+  const mod = await db.query.mods.findFirst({
+    where: eq(schema.mods.slug, slug),
+    with: { versions: true },
+  });
+  if (!mod) return c.json({ error: 'not found' }, 404);
 
-    // Admin takedown gate: a delisted/removed mod is 404 to the public. The owner
-    // and admins can still load it (to see the takedown reason / appeal).
-    const viewer = c.get('user');
-    if (mod.takedownStatus !== 'active' && mod.ownerId !== viewer?.id && !isAdmin(viewer?.id)) {
-      return c.json({ error: 'not found' }, 404);
-    }
+  // Admin takedown gate: a delisted/removed mod is 404 to the public. The owner
+  // and admins can still load it (to see the takedown reason / appeal).
+  const viewer = c.get('user');
+  if (mod.takedownStatus !== 'active' && mod.ownerId !== viewer?.id && !isAdmin(viewer?.id)) {
+    return c.json({ error: 'not found' }, 404);
+  }
 
-    // Aggregate downloads across all days for this mod. Mirrors the
-    // expression used by the list endpoint so the same number shows up
-    // everywhere; previously this route hard-coded `downloads: 0` and
-    // the mod-detail page was permanently stuck at zero even after
-    // hundreds of installs.
-    const downloadAgg = await db
-      .select({
-        total: sql<number>`coalesce(sum(${schema.modDownloads.count})::int, 0)`,
+  // Aggregate downloads across all days for this mod. Mirrors the
+  // expression used by the list endpoint so the same number shows up
+  // everywhere; previously this route hard-coded `downloads: 0` and
+  // the mod-detail page was permanently stuck at zero even after
+  // hundreds of installs.
+  const downloadAgg = await db
+    .select({
+      total: sql<number>`coalesce(sum(${schema.modDownloads.count})::int, 0)`,
+    })
+    .from(schema.modDownloads)
+    .where(eq(schema.modDownloads.modId, mod.id));
+  const downloads = downloadAgg[0]?.total ?? 0;
+
+  // Owner privacy: users.public_download_counts hides the per-mod figure from
+  // the public. The owner and admins keep seeing the real number, and it is
+  // reported as null rather than 0 so the UI drops the stat instead of
+  // claiming the mod has never been installed.
+  const owner = mod.ownerId
+    ? await db.query.users.findFirst({
+        where: eq(schema.users.id, mod.ownerId),
+        columns: { publicDownloadCounts: true },
       })
-      .from(schema.modDownloads)
-      .where(eq(schema.modDownloads.modId, mod.id));
-    const downloads = downloadAgg[0]?.total ?? 0;
+    : null;
+  const showDownloads =
+    owner?.publicDownloadCounts !== false || mod.ownerId === viewer?.id || isAdmin(viewer?.id);
 
-    // Owner privacy: users.public_download_counts hides the per-mod figure from
-    // the public. The owner and admins keep seeing the real number, and it is
-    // reported as null rather than 0 so the UI drops the stat instead of
-    // claiming the mod has never been installed.
-    const owner = mod.ownerId
-      ? await db.query.users.findFirst({
-          where: eq(schema.users.id, mod.ownerId),
-          columns: { publicDownloadCounts: true },
-        })
-      : null;
-    const showDownloads =
-      owner?.publicDownloadCounts !== false || mod.ownerId === viewer?.id || isAdmin(viewer?.id);
+  // Per-version download totals (public). Rows recorded before per-version
+  // day-bucketing shipped attribute a whole day to one version — close
+  // enough for a public counter.
+  const perVersionRows = await db
+    .select({
+      versionId: schema.modDownloads.versionId,
+      n: sql<number>`sum(${schema.modDownloads.count})::int`,
+    })
+    .from(schema.modDownloads)
+    .where(eq(schema.modDownloads.modId, mod.id))
+    .groupBy(schema.modDownloads.versionId);
+  const perVersionDownloads = new Map(perVersionRows.map((r) => [r.versionId, r.n]));
 
-    // Per-version download totals (public). Rows recorded before per-version
-    // day-bucketing shipped attribute a whole day to one version — close
-    // enough for a public counter.
-    const perVersionRows = await db
-      .select({
-        versionId: schema.modDownloads.versionId,
-        n: sql<number>`sum(${schema.modDownloads.count})::int`,
-      })
-      .from(schema.modDownloads)
-      .where(eq(schema.modDownloads.modId, mod.id))
-      .groupBy(schema.modDownloads.versionId);
-    const perVersionDownloads = new Map(perVersionRows.map((r) => [r.versionId, r.n]));
+  // Fail-CLOSED: only versions scanned clean (or explicitly skipped when
+  // scanning is disabled server-side) are shown publicly. Un-scanned
+  // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
+  // freshly uploaded mod is never downloadable before its scan clears.
+  // Managers (owner/co-authors) and admins see every version with its scan
+  // status, so an upload still in review isn't invisible to its author —
+  // the download route re-checks the gate, so this reveals state, not bytes.
+  const sortedVersions = [...mod.versions].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+  const servableVersions = sortedVersions.filter((v) => isServable(v.scanStatus));
+  const canManage = viewer ? isAdmin(viewer.id) || (await canManageMod(mod, viewer.id)) : false;
+  const visibleVersions = canManage ? sortedVersions : servableVersions;
 
-    // Fail-CLOSED: only versions scanned clean (or explicitly skipped when
-    // scanning is disabled server-side) are shown publicly. Un-scanned
-    // ('pending'/'queued'), 'flagged', and 'error' versions are withheld so a
-    // freshly uploaded mod is never downloadable before its scan clears.
-    // Managers (owner/co-authors) and admins see every version with its scan
-    // status, so an upload still in review isn't invisible to its author —
-    // the download route re-checks the gate, so this reveals state, not bytes.
-    const sortedVersions = [...mod.versions].sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    );
-    const servableVersions = sortedVersions.filter((v) => isServable(v.scanStatus));
-    const canManage = viewer ? isAdmin(viewer.id) || (await canManageMod(mod, viewer.id)) : false;
-    const visibleVersions = canManage ? sortedVersions : servableVersions;
+  // Follow state for the current viewer + total follower count (both cheap).
+  const followerRows = await db
+    .select({ userId: schema.modFollows.userId })
+    .from(schema.modFollows)
+    .where(eq(schema.modFollows.modId, mod.id));
+  const followerCount = followerRows.length;
+  const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
 
-    // Follow state for the current viewer + total follower count (both cheap).
-    const followerRows = await db
-      .select({ userId: schema.modFollows.userId })
-      .from(schema.modFollows)
-      .where(eq(schema.modFollows.modId, mod.id));
-    const followerCount = followerRows.length;
-    const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
-
-    const lang = c.req.valid('query').lang;
-    const translation = isTranslationLang(lang)
-      ? freshTranslation(
-          mod,
-          await db.query.modTranslations.findFirst({
-            where: and(
-              eq(schema.modTranslations.modId, mod.id),
-              eq(schema.modTranslations.lang, lang),
-            ),
-          }),
-        )
-      : null;
-
-    return c.json({
-      mod: {
-        translation: translation ? { lang, machine: true, ...translation } : null,
-        id: mod.id,
-        slug: mod.slug,
-        name: mod.name,
-        author: mod.authorName,
-        summary: mod.summary,
-        description: mod.description,
-        license: mod.license,
-        repoUrl: mod.repoUrl,
-        homepageUrl: mod.homepageUrl,
-        latestVersion: servableVersions[0]?.version ?? null,
-        downloads: showDownloads ? downloads : null,
-        updatedAt: mod.updatedAt.toISOString(),
-        category: mod.category,
-        imageUrl: mod.imageUrl,
-        screenshots: mod.screenshots ?? [],
-        videos: mod.videos ?? [],
-        rating: mod.rating != null ? Number(mod.rating) : null,
-        tags: mod.tags ?? [],
-        featured: mod.featured,
-        nsfw: mod.nsfw,
-        ownerId: mod.ownerId,
-        takedownStatus: mod.takedownStatus,
-        takedownReason: mod.takedownReason,
-        isFollowing,
-        followerCount,
-        dependencies:
-          (
-            servableVersions[0]?.manifestJson as
-              | { dependencies?: Record<string, string> }
-              | undefined
-          )?.dependencies ?? undefined,
-      },
-      versions: visibleVersions.map((v) => ({
-        id: v.id,
-        modId: v.modId,
-        version: v.version,
-        sha256: v.sha256,
-        sizeBytes: v.sizeBytes,
-        manifestJson: v.manifestJson,
-        assetUrl: v.assetUrl,
-        createdAt: v.createdAt.toISOString(),
-        scanStatus: v.scanStatus,
-        changelog: v.changelog,
-        downloads: showDownloads ? (perVersionDownloads.get(v.id) ?? 0) : null,
-      })),
-    });
-  },
-);
+  return c.json({
+    mod: {
+      id: mod.id,
+      slug: mod.slug,
+      name: mod.name,
+      author: mod.authorName,
+      summary: mod.summary,
+      description: mod.description,
+      license: mod.license,
+      repoUrl: mod.repoUrl,
+      homepageUrl: mod.homepageUrl,
+      latestVersion: servableVersions[0]?.version ?? null,
+      downloads: showDownloads ? downloads : null,
+      updatedAt: mod.updatedAt.toISOString(),
+      category: mod.category,
+      imageUrl: mod.imageUrl,
+      screenshots: mod.screenshots ?? [],
+      videos: mod.videos ?? [],
+      rating: mod.rating != null ? Number(mod.rating) : null,
+      tags: mod.tags ?? [],
+      featured: mod.featured,
+      nsfw: mod.nsfw,
+      ownerId: mod.ownerId,
+      takedownStatus: mod.takedownStatus,
+      takedownReason: mod.takedownReason,
+      isFollowing,
+      followerCount,
+      dependencies:
+        (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
+          ?.dependencies ?? undefined,
+    },
+    versions: visibleVersions.map((v) => ({
+      id: v.id,
+      modId: v.modId,
+      version: v.version,
+      sha256: v.sha256,
+      sizeBytes: v.sizeBytes,
+      manifestJson: v.manifestJson,
+      assetUrl: v.assetUrl,
+      createdAt: v.createdAt.toISOString(),
+      scanStatus: v.scanStatus,
+      changelog: v.changelog,
+      downloads: showDownloads ? (perVersionDownloads.get(v.id) ?? 0) : null,
+    })),
+  });
+});
 
 modsRouter.use('/:slug/:version/download', downloadLimiter);
 modsRouter.get('/:slug/:version/download', zValidator('param', downloadParamSchema), async (c) => {
@@ -868,7 +805,6 @@ modsRouter.post(
     // Nudge the worker now — on serverless the interval tick alone can starve
     // the queue (it only fires while an instance stays warm).
     kickScanWorker();
-    kickTranslations();
     const info = await queueInfo(versionId);
     return c.json({
       ok: true,
@@ -958,13 +894,6 @@ modsRouter.patch(
       .set(updates)
       .where(eq(schema.mods.id, existing.id))
       .returning();
-    if (
-      patch.name !== undefined ||
-      patch.summary !== undefined ||
-      patch.description !== undefined
-    ) {
-      kickTranslations();
-    }
     return c.json({ mod: rows[0] });
   },
 );

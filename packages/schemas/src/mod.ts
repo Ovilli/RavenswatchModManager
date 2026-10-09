@@ -2,9 +2,9 @@ import { z } from 'zod';
 import {
   httpUrlSchema,
   safeHttpUrl,
+  sanitizedOptionalHttpUrlSchema,
   sanitizedHttpUrlArraySchema,
   sanitizedHttpUrlSchema,
-  sanitizedOptionalHttpUrlSchema,
 } from './url';
 
 export const modSlugSchema = z
@@ -91,22 +91,6 @@ export const modCategorySchema = z.enum([
 
 export type ModCategory = z.infer<typeof modCategorySchema>;
 
-/**
- * A machine translation of a listing into the caller's UI language, served
- * beside the original (never instead of it) when the API has a fresh one.
- * Each field is null where the original has nothing to translate; the list
- * endpoint omits `description`.
- */
-export const modTranslationSchema = z.object({
-  lang: z.string().max(16),
-  machine: z.boolean(),
-  name: z.string().max(512).nullable(),
-  summary: z.string().max(4096).nullable(),
-  description: z.string().max(200_000).nullable().optional(),
-});
-
-export type ModTranslation = z.infer<typeof modTranslationSchema>;
-
 export const modListItemSchema = z.object({
   id: z.string().uuid(),
   slug: modSlugSchema,
@@ -148,9 +132,6 @@ export const modListItemSchema = z.object({
   // modManifestSchema). The desktop app uses these to warn on mismatch.
   sdkVersion: z.string().nullable().optional(),
   gameBuild: z.string().nullable().optional(),
-  // Optional + nullable: older API builds omit it, and it is null when no
-  // fresh translation exists for the requested language.
-  translation: modTranslationSchema.nullable().optional(),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;
