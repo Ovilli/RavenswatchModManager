@@ -7,7 +7,7 @@ import pytest
 from rsmm.engine import corpus
 from rsmm.engine import entity_fields as EF
 from rsmm.engine import entity_graph as EG
-from rsmm.sdk.content import ContentDef, ContentError
+from rsmm.sdk.content import ContentDef, ContentError, ContentRegistry
 from rsmm.sdk.kinds import entities
 
 _ENTITY = "Objects/Map_Boss_Spawner/Map_Boss_Spawner_Graph_Model"
@@ -56,6 +56,34 @@ def test_two_blocks_editing_one_file_both_land(tmp_path):
     blob = written[0].read_bytes()
     assert "WARNING Render Settings" not in _links(blob, "State FX PreOvertime", "while_active")
     assert "Cinematic" not in _links(blob, "Event FX Overtime Warning", "activates")
+
+
+@needs_corpus
+def test_a_packed_mods_shipped_output_is_rebuilt_not_edited_again(tmp_path):
+    """A packed mod ships its emitted file without .rsmm_emitted.json, so the
+    player's apply finds last build's output on disk. Re-running the steps over
+    it cut while_active[2] from a two-element list (IndexError, 2026-10-09)."""
+    steps = [{"remove_link": "State FX PreOvertime.while_active[1]"},
+             {"remove_link": "Event FX Overtime Warning.activates[0]"},
+             {"remove_link": "State FX Overtime.while_active[2]"}]
+
+    def registry_emit():
+        cr = ContentRegistry(mod_id="m")
+        cr.register("entity", id="Tint", entity=_ENTITY, steps=steps)
+        return cr.emit(tmp_path)
+
+    first = registry_emit()[0].read_bytes()
+    again = registry_emit()                     # the shipped file is still there
+    assert again[0].read_bytes() == first
+
+
+def test_an_out_of_range_link_names_the_list(tmp_path):
+    from rsmm.engine.ability_edit import AbilityEditError, apply
+    if corpus.read(_REL) is None:
+        pytest.skip("no entity corpus")
+    with pytest.raises(AbilityEditError, match=r"while_active\[9\].*element"):
+        apply({"x": corpus.read(_REL)},
+              [{"remove_link": "State FX Overtime.while_active[9]"}], main="x", seed="s")
 
 
 @pytest.mark.parametrize("fields,msg", [

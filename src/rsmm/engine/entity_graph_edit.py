@@ -807,6 +807,9 @@ class EntityFile:
         c, f, at = self._field(comp, field)
         if f.kind != "ref[]":
             raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        if not 0 <= index < len(f.items):
+            raise EntityEditError(f"{c.name}.{field}[{index}]: the list has "
+                                  f"{len(f.items)} element(s)")
         e = f.items[index]
         p = self.objects[c.index - 1]
         del p[at + e.offset:at + e.offset + e.size]

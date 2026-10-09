@@ -25,7 +25,7 @@ from pathlib import Path
 
 from ...engine import ability_edit as AE
 from ...engine import corpus
-from ..content import ContentDef, ContentError
+from ..content import ContentDef, ContentError, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                            f"is the game install readable?")
     stem = Path(rel).name.removesuffix(_GEN_SUFFIX)
     dest = out_dir / Path(*rel.split("/"))
-    before = dest.read_bytes() if dest.is_file() else shipped
+    before = dest.read_bytes() if written_this_run(dest) else shipped
     try:
         res = AE.apply({stem: before}, steps, main=stem, seed=f"{mod_id}:{defn.id}")
     except AE.AbilityEditError as e:

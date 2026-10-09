@@ -11,6 +11,7 @@ emit, so authors see exactly which class needs RE work next.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
@@ -221,6 +222,29 @@ def _deref(value):
     return value
 
 
+#: Files written so far by the ContentRegistry.emit in progress (None outside one).
+_EMITTED_THIS_RUN: ContextVar[set[Path] | None] = ContextVar("rsmm_emitted_this_run",
+                                                             default=None)
+
+
+def written_this_run(path: Path) -> bool:
+    """True when an earlier def of this emit already wrote ``path``, so a kind
+    that lets several defs edit one file should build on it.
+
+    A file merely being on disk is not that. A packed mod ships its emitted
+    files but not ``.rsmm_emitted.json`` (cmd_pack strips it), so on the
+    installing player's machine apply never deletes them first, and a kind
+    that read them back re-ran its steps over its own output:
+    no-overtime-tint's ``remove_link while_active[2]`` hit a list already cut
+    to two (IndexError in remove_ref, 2026-10-09). Outside a registry emit (a
+    kind called directly) any file on disk still counts.
+    """
+    run = _EMITTED_THIS_RUN.get()
+    if run is None:
+        return path.is_file()
+    return path.resolve() in run and path.is_file()
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -277,18 +301,27 @@ class ContentRegistry:
     def emit(self, out_dir: Path) -> list[Path]:
         """Materialize every registered def into `out_dir`. Returns written paths."""
         written: list[Path] = []
-        for d in self.defs:
-            mod = _load_kind(d.kind)
-            # Check for emit() instead of catching AttributeError around the
-            # call: an AttributeError raised INSIDE a builder (a typo, a None
-            # where a def was expected) is a bug in that builder, and
-            # reporting it as "this kind has no emit()" sent authors hunting
-            # for a missing function that was there all along.
-            emit = getattr(mod, "emit", None)
-            if not callable(emit):
-                raise ContentError(f"kind {d.kind!r} module has no emit()")
-            written.extend(emit(self.mod_id, d, out_dir))
+        run: set[Path] = set()
+        token = _EMITTED_THIS_RUN.set(run)
+        try:
+            for d in self.defs:
+                written.extend(self._emit_one(d, out_dir))
+                run.update(p.resolve() for p in written)
+        finally:
+            _EMITTED_THIS_RUN.reset(token)
         return written
+
+    def _emit_one(self, d: ContentDef, out_dir: Path) -> list[Path]:
+        mod = _load_kind(d.kind)
+        # Check for emit() instead of catching AttributeError around the
+        # call: an AttributeError raised INSIDE a builder (a typo, a None
+        # where a def was expected) is a bug in that builder, and
+        # reporting it as "this kind has no emit()" sent authors hunting
+        # for a missing function that was there all along.
+        emit = getattr(mod, "emit", None)
+        if not callable(emit):
+            raise ContentError(f"kind {d.kind!r} module has no emit()")
+        return emit(self.mod_id, d, out_dir)
 
 
 _KIND_MODULES = {

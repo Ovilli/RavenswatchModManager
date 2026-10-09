@@ -31,7 +31,7 @@ import logging
 from pathlib import Path
 
 from ...engine import ability_edit as AE
-from ..content import ContentDef, ContentError
+from ..content import ContentDef, ContentError, written_this_run
 from . import _common as C
 from .talents import _ASSET_PREFIX, _GEN_SUFFIX, _resolve_hero_dir
 
@@ -69,7 +69,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     for p in hero_dir.entity_files():
         stem = p.name.removesuffix(_GEN_SUFFIX)
         dest = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
-        files[stem] = dest.read_bytes() if dest.is_file() else p.read_bytes()
+        files[stem] = dest.read_bytes() if written_this_run(dest) else p.read_bytes()
         paths[stem] = dest
     try:
         res = AE.apply(files, steps, main=hero_dir.name, seed=f"{mod_id}:{defn.id}")
