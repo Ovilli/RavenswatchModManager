@@ -140,6 +140,20 @@ describe('translateListing', () => {
     );
   });
 
+  it("carries the gateway's own reason for a refusal", async () => {
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'test-key');
+    const f = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { type: 'model_not_found', message: 'not on the free tier' } }),
+          { status: 403 },
+        ),
+    ) as unknown as typeof fetch;
+    await expect(translateListing(listing, 'zh-CN', f)).rejects.toThrow(
+      'HTTP 403: model_not_found not on the free tier',
+    );
+  });
+
   it('rejects an answer that is not JSON', async () => {
     vi.stubEnv('AI_GATEWAY_API_KEY', 'test-key');
     await expect(

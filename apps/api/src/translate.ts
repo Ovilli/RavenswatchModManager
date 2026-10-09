@@ -182,6 +182,26 @@ export function translationsConfigured(): boolean {
   return false;
 }
 
+/** `: <type> <message>` from a gateway error body, trimmed; '' when unreadable. */
+async function gatewayReason(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text) as {
+        error?: { type?: string; code?: string; message?: string } | string;
+      };
+      const e = typeof j.error === 'string' ? { message: j.error } : (j.error ?? {});
+      const parts = [e.type ?? e.code, e.message].filter(Boolean).join(' ');
+      if (parts) return `: ${parts.slice(0, 300)}`;
+    } catch {
+      // not JSON: fall through to the raw text
+    }
+    return text ? `: ${text.slice(0, 300)}` : '';
+  } catch {
+    return '';
+  }
+}
+
 /** One gateway call. Throws GatewayUnavailable for credit/budget/rate refusals. */
 export async function translateListing(
   l: Listing,
@@ -206,10 +226,15 @@ export async function translateListing(
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 429) {
-    throw new GatewayUnavailable(`AI Gateway refused the request (HTTP ${res.status})`);
+  if (!res.ok) {
+    // The gateway says WHY in its body (model not on the free tier, account
+    // verification, credit, rate limit). A bare status left a 403 undiagnosable.
+    const reason = await gatewayReason(res);
+    if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 429) {
+      throw new GatewayUnavailable(`AI Gateway refused the request (HTTP ${res.status}${reason})`);
+    }
+    throw new Error(`AI Gateway HTTP ${res.status}${reason}`);
   }
-  if (!res.ok) throw new Error(`AI Gateway HTTP ${res.status}`);
   const body = (await res.json()) as {
     choices?: { message?: { content?: unknown } }[];
     model?: string;
