@@ -2,6 +2,18 @@
   "generated": "2026-10-09",
   "entries": [
     {
+      "version": "5.9.11",
+      "date": "2026-10-09",
+      "summary": "Online works again on Windows with RSMM, mods from the hub no longer stop the game from launching, and the Log screen can open and clear its logs.",
+      "highlights": [
+        "Fixed: on Windows, launching through RSMM could leave you offline with no party code, even with no mods enabled. The game now uses Windows' own networking library while modded.",
+        "Fixed: \"rsmm apply failed\" (IndexError) on launch after installing No Overtime Tint, or another mod that edits game entities, from the hub.",
+        "Log screen: \"Open folder\" shows every saved run, and \"Delete logs\" clears them.",
+        "Shared logs and crash reports now show your real RSMM version instead of 0.0.0-dev.",
+        "Talent builder: \"Hits apply a status\" makes one of a hero's hits Chill, Ignite, Bleed, Weaken, make Vulnerable or Root while you own the talent (not yet tested in game)."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 31,
       "date": "2026-10-09",
@@ -535,18 +547,6 @@
         "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
         "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
         "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
-      ]
-    },
-    {
-      "version": "5.1.1",
-      "date": "2026-08-24",
-      "summary": "The game loader now shows a download bar and can restart the game for you, publishing a mod version cannot mislabel it, and restoring no longer deletes the previous run's log.",
-      "highlights": [
-        "Updating the game loader now shows a real download bar instead of a spinner, and offers to restart Ravenswatch when it finishes — a running game keeps the loader it started with, so the update only takes effect in a fresh session. If a run is in progress it asks first.",
-        "Fixed installed mods arriving switched off. A mod packaged while its author had it disabled shipped that setting with it, so it installed, applied, and then did nothing — with no error anywhere, because a disabled mod has its code removed rather than skipped. Packaging now always marks the mod as on, and whether you run it stays your choice in the launcher.",
-        "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
-        "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
-        "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
       ]
     }
   ]
