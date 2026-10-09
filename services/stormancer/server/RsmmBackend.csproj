@@ -39,6 +39,9 @@
 		     host's dependency registration aborts halfway and later services go missing. -->
 		<PackageReference Include="Stormancer.Server.Plugins.Database.EntityFrameworkCore" Version="0.1.0.18-pre" />
 		<PackageReference Include="Stormancer.Server.Plugins.Analytics" Version="2.2.0-pre" />
+		<!-- In-memory database for the Friends plugin (see InMemoryDatabase.cs). Same 8.0.x line as the
+		     EntityFrameworkCore 8.0.6 the database plugin is built against. -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.6" />
 	</ItemGroup>
 
 </Project>

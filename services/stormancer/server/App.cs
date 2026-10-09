@@ -42,6 +42,9 @@ public class RavenswatchPlugin : IHostPlugin
         ctx.HostDependenciesRegistration += (IDependencyBuilder builder) =>
         {
             builder.Register<PartyGuard>().As<IPartyEventHandler>().InstancePerRequest();
+            // The Friends plugin needs a database; without one every party join failed. See InMemoryDatabase.
+            builder.Register<InMemoryDatabase>().As<Stormancer.Server.Plugins.Database.EntityFrameworkCore.IDbContextLifecycleHandler>().SingleInstance();
+            builder.Register<InMemoryJsonDocuments>().As<Stormancer.Server.Plugins.Database.EntityFrameworkCore.IDbModelBuilder>().SingleInstance();
             builder.Register<ModPackSessionHandler>().As<IUserSessionEventHandler>().InstancePerRequest();
             builder.Register<RunTrackerGameSessionHandler>().As<IGameSessionEventHandler>().InstancePerRequest();
             builder.Register(static r => new RsmmSteamService(r.Resolve<Func<IEnumerable<ISteamService>>>(), r.Resolve<Stormancer.Diagnostics.ILogger>(), r.Resolve<Stormancer.Server.Plugins.Configuration.IConfiguration>(), r.Resolve<Stormancer.Server.Secrets.ISecretsStore>())).As<ISteamService>();
