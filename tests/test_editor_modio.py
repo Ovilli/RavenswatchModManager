@@ -265,6 +265,12 @@ node   = "Primary Ability Radius Operation"
 file   = "Hero_Melusine_Power_Caster_Model"
 values = [0.5, 1.0, 1.5, 2.0]
 
+[[content.on_hit]]
+talent = "Trait Armor"
+damage = "Primary Ability Damage"
+file   = "Hero_Melusine_Power_Caster_Model"
+status = "Ignite"
+
 [[content]]
 kind        = "skill"
 id          = "mt_Trait_Armor"
@@ -297,3 +303,5 @@ def test_a_builder_block_opens_with_every_part_and_saves_back_the_same(tmp_path)
     assert blocks["mt_builder"]["include"] == want["include"]
     assert blocks["mt_builder"]["rebuild"] == want["rebuild"]
     assert blocks["mt_builder"]["add_stats"][0]["after"] == "DEFENSE"
+    assert blocks["mt_builder"]["on_hit"] == want["on_hit"]
+    assert E["onHit"]["Trait Armor"][0]["line"] == M._LOADED_LINE

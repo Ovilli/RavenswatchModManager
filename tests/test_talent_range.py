@@ -103,6 +103,20 @@ def test_a_multiply_gets_the_factor_as_one_more_operand(mel, caster, donors):
         0x17B29BE2, 3)                                         # still a multiply, now of 3
 
 
+def test_the_look_can_be_left_alone(tmp_path):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    entity("Melusine")
+    defn = ContentDef(kind="talent", id="b", fields={"hero": "Melusine", "scale": [
+        {"talent": "Trait Dash", "node": "Primary Ability Radius Operation",
+         "values": 0.5, "visual": False}]})
+    paths = {p.name.split(".")[0]: p.read_bytes() for p in talents.emit("t", defn, tmp_path)}
+    root = comp(paths["Hero_Melusine_Power_Caster_Model"], "Root Node")
+    assert root.refs == comp(entity("Melusine", "Hero_Melusine_Power_Caster_Model"),
+                             "Root Node").refs
+
+
 def test_other_operations_and_non_numbers_are_refused(caster):
     with pytest.raises(TR.RangeError, match="not a number|decimal"):
         TR.how_scaled(caster, "Skill Power Chill Modifier")
@@ -144,5 +158,26 @@ def test_the_talent_kind_scales_across_files(tmp_path):
     from rsmm.engine import entity_fields as EF
     order = [i.text.rsplit("\\", 1)[-1] for i in next(
         f for f in EF.fields(init) if f.name == "activates").items]
-    k = order.index("Primary Ability Radius Operation")
-    assert order[k - 1] == get.name
+    assert order[0] == get.name           # first: the root node below reads it too
+    assert order.index("Root Node") < order.index("Primary Ability Radius Operation")
+    # What the caster draws grows with the radius: its root node's ground scale
+    # (X, Z) reads the factor, its height (Y) stays 1.
+    root = comp(paths["Hero_Melusine_Power_Caster_Model"], "Root Node")
+    toks = EG.tokens(root)
+    k = next(i for i, t in enumerate(toks)
+             if t.kind == "object" and t.text == "oCEntity3dTransformPicker")
+    vps = [i for i, t in enumerate(toks[k:], k)
+           if t.kind == "object" and t.text == "oCEntityCpntValuePicker"][:11]
+    assert [toks[vps[s] + 2].text.rsplit("\\", 1)[-1] for s in (8, 10)] == [get.name] * 2
+    assert toks[vps[9] + 1].text.startswith("00")
+
+
+def test_a_shots_lifetime_is_offered_as_its_range():
+    # Snow Queen's ATTACK is a projectile: its range is speed x how long it flies.
+    files = [(f.name.split(".")[0], f.read_bytes())
+             for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen") if f.name.endswith(GEN)]
+    if not files:
+        pytest.skip("no game data")
+    got = {c["node"]: c for c in TR.candidates(files, "Snow_Queen") if c["where"] is None}
+    assert got["Basic Attack Lifetime Duration Default"]["ability"] == "ATTACK"
+    assert got["Ability Defense Frost Radius Default"]["ability"] == "DEFENSE"   # her spelling

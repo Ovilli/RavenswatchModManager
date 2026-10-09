@@ -475,6 +475,17 @@ def test_a_bigger_ability_joins_the_builder_block():
                                 "values": [0.1, 0.2, 0.3, 0.4]}]
 
 
+def test_a_status_on_hit_joins_the_builder_block():
+    defs = E.talent_defs({"hero": "Melusine", "prefix": "m", "onHit": [
+        {"talent": "Trait Dash", "damage": "Primary Ability Damage",
+         "file": "Hero_Melusine_Power_Caster_Model", "status": "Ignite"}]})
+    [(_kind, _cid, fields)] = defs
+    assert fields["on_hit"] == [{"talent": "Trait Dash", "damage": "Primary Ability Damage",
+                                 "status": "Ignite", "file": "Hero_Melusine_Power_Caster_Model"}]
+    with pytest.raises(E.EditorError):
+        E.talent_defs({"hero": "Melusine", "prefix": "m", "onHit": [{"talent": "Trait Dash"}]})
+
+
 @pytest.mark.parametrize("row", [{"talent": "Trait Dash", "values": [0, 0, 0, 0]},
                                  {"talent": "Trait Dash", "node": "N", "values": [1]}])
 def test_a_bad_bigger_ability_row_is_refused(row):

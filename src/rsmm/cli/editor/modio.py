@@ -442,7 +442,7 @@ _ITEM_KEYS = {"kind", "id", "base", "mode", "name", "display_name", "description
               "icon", "value_patches", "stats", "super_description"}
 _TALENT_KEYS = {"kind", "id", "hero", "file", "value_patches", "union_patches", "stats"}
 #: The talent builder's block (``<prefix>_builder``, see ``content.talent_defs``).
-_BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale"}
+_BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale", "on_hit"}
 #: A card line the page did not write this session: it is never rewritten or
 #: appended again, so text saved before (by the page or by hand) stays as it is.
 _LOADED_LINE = "\u0000loaded"
@@ -480,11 +480,16 @@ def _builder(f: dict, E: dict) -> None:
             if e.get(k) is not None:
                 a[k] = e[k]
         E["addStats"].setdefault(str(e["talent"]), []).append(a)
+    for e in f.get("on_hit") or []:
+        E["onHit"].setdefault(str(e["talent"]), []).append({
+            "damage": str(e["damage"]), "file": str(e.get("file") or ""),
+            "status": str(e["status"]), "line": _LOADED_LINE})
     for e in f.get("scale") or []:
         E["scale"].setdefault(str(e["talent"]), []).append({
             "node": str(e["node"]), "file": str(e.get("file") or ""),
             "values": _tiers4(e.get("values"), str(e["node"])),
-            "percent": bool(e.get("percent", True)), "line": _LOADED_LINE})
+            "percent": bool(e.get("percent", True)), "visual": bool(e.get("visual", True)),
+            "line": _LOADED_LINE})
 _SKILL_KEYS = {"kind", "id", "hero", "source", "name", "description", "icon"}
 
 
@@ -636,7 +641,7 @@ def load_mod(root: Path, mod_id: str) -> dict:
                 if entry["edit"] is None:
                     entry["edit"] = {"prefix": "", "values": {}, "cards": {}, "tiers": {},
                                      "stats": {}, "addStats": {}, "rebuild": {}, "include": {},
-                                     "scale": {}, "rarity": "Common", "q": ""}
+                                     "scale": {}, "onHit": {}, "rarity": "Common", "q": ""}
                 (_talent(f, entry["edit"]) if kind == "talent"
                  else _skill(mod_root, f, entry["edit"]))
                 entry["blocks"].append([kind, bid])
@@ -666,7 +671,10 @@ def load_mod(root: Path, mod_id: str) -> dict:
                          **({"hero": p.split("\u0000")[0]} if "\u0000" in p else {})}
                         for t, p in E["include"].items()],
             "scale": [{"talent": t, "node": r["node"], "file": r["file"], "values": r["values"],
-                       "percent": r["percent"]} for t, rows in E["scale"].items() for r in rows]}
+                       "percent": r["percent"], **({} if r["visual"] else {"visual": False})}
+                      for t, rows in E["scale"].items() for r in rows],
+            "onHit": [{"talent": t, "damage": r["damage"], "file": r["file"], "status": r["status"]}
+                      for t, rows in E["onHit"].items() for r in rows]}
     script = program = None
     init = mod_root / "init.lua"
     if init.is_file():

@@ -594,6 +594,7 @@
                 "include": {},
                 "int_patches": {},
                 "kind": {},
+                "on_hit": {},
                 "rebuild": {},
                 "rewires": {},
                 "scale": {},

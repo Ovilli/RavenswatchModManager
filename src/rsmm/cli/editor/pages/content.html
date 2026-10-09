@@ -203,6 +203,8 @@ details.allv > summary { cursor: pointer; font-weight: 600; }
 .tb-palette.wish .tb-block { background: var(--bg); border-style: dashed; }
 .tb-palette.wish .tb-block .b { font-style: italic; }
 .tb-borrow { padding: 8px; border-radius: 8px; background: var(--chip); }
+.tb-include { display: grid; gap: 6px; }
+.tb-incnums:not(:empty) { display: grid; gap: 4px; padding: 6px 8px; border-left: 2px solid var(--line); }
 .tb-idea { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accentline); background: var(--panel); display: grid; gap: 8px; }
 .tb-idea h3 { margin: 0; }
 .tb-idea p { margin: 0; }
@@ -536,7 +538,8 @@ function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
     || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length
     || Object.keys(E.addStats || {}).length || Object.keys(E.rebuild || {}).length
-    || Object.keys(E.include || {}).length);
+    || Object.keys(E.include || {}).length || Object.keys(E.scale || {}).length
+    || Object.keys(E.onHit || {}).length);
 }
 // Keep (or drop) the open edit's draft; called on every change.
 function saveDraft() {
@@ -1279,7 +1282,7 @@ async function pickHero(h) {
 
 function freshTalentEdit() {
   return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents",
-    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, include: {}, scale: {}, rarity: "Common", q: "" };
+    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, include: {}, scale: {}, onHit: {}, rarity: "Common", q: "" };
 }
 
 // A texture the hero's own entity names (talent icons, the portrait).
@@ -1543,12 +1546,27 @@ function includeControl(c, redraw) {
   borrowable = borrowable || get("api/talents/borrowable").then(j => j.talents || []).catch(() => []);
   borrowable.then(fill);
   sel.value = E.include[c.source] || "";
+  // A talent of this hero runs with its OWN numbers, which live on its own card:
+  // they are shown here to edit (the Common column is what this card gets, as the
+  // included card is not owned). Another hero's are copies and follow this card.
+  const nums = el("div", { class: "tb-incnums" });
+  const drawNums = () => {
+    nums.textContent = "";
+    const pick = E.include[c.source] || "";
+    const o = !pick.includes("\u0000") && S.talents.cards.find(x => x.source === pick);
+    if (!o || !o.entries.length) return;
+    nums.append(el("div", { class: "tiny muted", text: `${o.name || o.source}'s numbers. Through this card the Common value applies; changing them also changes ${o.name || o.source}'s own card.` }),
+      talentNumbers(o, redraw));
+  };
   sel.onchange = () => {
     if (sel.value) E.include[c.source] = sel.value; else delete E.include[c.source];
-    redraw(); refresh();
+    drawNums(); redraw(); refresh();
   };
-  return el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. A talent of this hero uses the Common value of its numbers that scale with rarity; another hero's talent follows this card's rarity. Only a few other heroes' talents can be given: most work inside their own hero's abilities. Mention it in this card's text." },
-    "Also gives the effect of", sel);
+  drawNums();
+  return el("div", { class: "tb-include" },
+    el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. A talent of this hero uses the Common value of its numbers that scale with rarity; another hero's talent follows this card's rarity. Only a few other heroes' talents can be given: most work inside their own hero's abilities. Mention it in this card's text." },
+      "Also gives the effect of", sel),
+    nums);
 }
 
 // The talent builder: turn a talent's own effect off and make the card a new
@@ -1705,12 +1723,12 @@ const BLOCKS = [
   { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
   { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
   { id: "bigger", title: "Make an ability bigger", blurb: "A wider, longer or larger area: +30% POWER radius." },
+  { id: "status", title: "Hits apply a status", blurb: "e.g. POWER's hits set enemies on fire (Ignite), chill or weaken them." },
   { id: "borrow", title: "Borrow a talent's effect", blurb: "Also run another talent's effect, even another hero's." },
 ];
 // Not buildable yet: each opens the idea box with a starting line.
 const WISHES = [
   { title: "Spawn something", ex: "POWER spawns a tornado that pulls enemies in" },
-  { title: "Put a status on enemies", ex: "ATTACK hits chill enemies" },
   { title: "Change how an ability behaves", ex: "SPECIAL bounces to a second enemy" },
   { title: "Extra ability charges", ex: "+1 DEFENSE charge" },
   { title: "Map, loot and shards", ex: "Reveal chests on the map at night" },
@@ -1798,7 +1816,9 @@ function ideaBox(c, ideaRef) {
 // after the added stats' ones.
 const scalableNodes = new Map();
 function scaleWord(node) {
-  const m = /radius|length|width|distance|range|scale|size|area/i.exec(node || "");
+  const m = /radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  if (m && /lifetime/i.test(m[0]))           // a shot's lifetime is its range; anything else lasts longer
+    return /projectile|basic attack/i.test(node) ? "range" : "duration";
   return m ? m[0].toLowerCase().replace("radius", "area") : "size";
 }
 function scaleLine(r, n, ability) {
@@ -1857,10 +1877,82 @@ function scaleRows(c, paint, desc) {
       return el("label", { class: "tiny" }, el("span", { text: t }), inp);
     }));
     const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    // Something the hero spawns (a caster, a projectile) can grow its look with
+    // the number; the hero's own file never does, it would grow the hero.
+    const look = el("input", { type: "checkbox", ...(r.visual === false ? {} : { checked: "" }) });
+    look.onchange = () => { r.visual = look.checked; save(); };
     box.append(el("div", { class: "addstat" },
       el("div", { class: "sectrow" }, el("span", { class: "phn", text: "{" + (base() + i) + "}" }), sel, del),
       nums,
-      el("div", { class: "tiny muted", text: "Grows by this much while the talent is owned: 0.3 is +30%. Only the hit area changes; an ability's visual effect may keep its old size." })));
+      el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
+        look, "Grow its look too (water, fire, the effect on the ground)"),
+      el("div", { class: "tiny muted", text: "Grows by this much while the talent is owned: 0.3 is +30%." })));
+  });
+  return box;
+}
+
+// "Hits apply a status" (`on_hit`): while the talent is owned, one of the hero's
+// hits (a damage record of an ability) also puts a status on whoever it hits.
+// The server lists the hits by ability and the statuses it has a donor for.
+const hitDamages = new Map();
+function hitLine(r) {
+  return `• #${r.ability || "Ability"}@ hits #${r.status}@ enemies`;
+}
+function hitRows(c, paint, desc) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  E.onHit = E.onHit || {};
+  const list = E.onHit[c.source] || [];
+  if (!list.length) return box;
+  if (!hitDamages.has(S.hero))
+    hitDamages.set(S.hero, get("api/talents/damages?hero=" + encodeURIComponent(S.hero))
+      .catch(() => ({ damages: [], statuses: [] })));
+  const save = removed => {
+    if (desc && c.hasDescription) {
+      let text = desc.get();
+      if (removed && removed.line) text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+      for (const r of list) {
+        if (!r.damage) continue;
+        const want = hitLine(r);
+        if (r.line && text.includes(r.line)) text = text.replace(r.line, want);
+        else if (!r.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
+        else continue;
+        r.line = want;
+      }
+      desc.set(text);
+    }
+    if (list.length) E.onHit[c.source] = list; else delete E.onHit[c.source];
+    paint(); refresh();
+  };
+  list.forEach((r, i) => {
+    const hit = el("select", { "aria-label": "Which hit" }, el("option", { value: "", text: "Loading the hero's hits…" }));
+    const status = el("select", { "aria-label": "Status" });
+    hitDamages.get(S.hero).then(j => {
+      hit.textContent = "";
+      hit.append(el("option", { value: "", text: j.damages.length ? "Pick the hit…" : "No hits found for this hero" }));
+      const groups = new Map();
+      for (const d of j.damages) {
+        const g = (d.ability || "Other") + (d.where ? " \u00b7 " + d.where.replace(/_/g, " ") : "");
+        if (!groups.has(g)) groups.set(g, el("optgroup", { label: g }));
+        groups.get(g).append(el("option", { value: d.file + "\u0000" + d.damage, "data-ability": d.ability || "", text: d.damage }));
+      }
+      for (const g of groups.values()) hit.append(g);
+      hit.value = r.damage ? r.file + "\u0000" + r.damage : "";
+      status.textContent = "";
+      for (const st of j.statuses) status.append(el("option", { value: st, text: st }));
+      status.value = r.status;
+    });
+    hit.onchange = () => {
+      const [file, damage] = hit.value.split("\u0000");
+      const opt = hit.selectedOptions[0];
+      r.file = file || ""; r.damage = damage || "";
+      r.ability = (opt && opt.dataset.ability) || "";
+      save();
+    };
+    status.onchange = () => { r.status = status.value; save(); };
+    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    box.append(el("div", { class: "addstat" },
+      el("div", { class: "sectrow" }, hit, status, del),
+      el("div", { class: "tiny muted", text: "While the talent is owned, this hit also puts the status on whoever it hits. Pick every hit of the ability that should do it (some have two, like a normal and an upgraded one)." })));
   });
   return box;
 }
@@ -1966,7 +2058,7 @@ function builderView() {
   if (plain) plain.remove();
   const borrowBox = el("div", { class: "tb-borrow" }, includeControl(c, paint));
   borrowBox.hidden = !(E.include || {})[c.source] && !E.showBorrow;
-  right.append(effects, scaleRows(c, paint, desc), borrowBox);
+  right.append(effects, scaleRows(c, paint, desc), hitRows(c, paint, desc), borrowBox);
 
   const palette = el("div", { class: "tb-palette" });
   for (const blk of BLOCKS) {
@@ -1976,6 +2068,11 @@ function builderView() {
       title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
       onclick: () => {
         if (blk.id === "borrow") { E.showBorrow = true; borrowBox.hidden = false; borrowBox.querySelector("select").focus(); return; }
+        if (blk.id === "status") {
+          E.onHit = E.onHit || {};
+          (E.onHit[c.source] = E.onHit[c.source] || []).push({ damage: "", file: "", status: "Ignite" });
+          renderView(); refresh(); return;
+        }
         if (blk.id === "bigger") {
           E.scale = E.scale || {};
           (E.scale[c.source] = E.scale[c.source] || []).push({ node: "", file: "", values: [0.1, 0.2, 0.3, 0.4] });
@@ -2126,7 +2223,7 @@ function talentRow(c) {
   const redraw = () => {
     TPREV.redraw(preview, paint);
     row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)
-      || (E.include || {})[c.source] || (E.scale || {})[c.source]));
+      || (E.include || {})[c.source] || (E.scale || {})[c.source] || (E.onHit || {})[c.source]));
   };
   const upd = () => {
     const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
@@ -2777,8 +2874,11 @@ function editPayload() {
         ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
           ...(a.next ? { next: a.next } : {}) } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}),
+    onHit: Object.entries(E.onHit || {}).flatMap(([talent, list]) => list.filter(r => r.damage && r.status)
+      .map(r => ({ talent, damage: r.damage, file: r.file, status: r.status }))),
     scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node)
-      .map(r => ({ talent, node: r.node, file: r.file, values: r.values, percent: r.percent !== false }))),
+      .map(r => ({ talent, node: r.node, file: r.file, values: r.values, percent: r.percent !== false,
+        ...(r.visual === false ? { visual: false } : {}) }))),
     include: Object.entries(E.include || {}).map(([talent, pick]) => {
       const [a, b] = pick.split("\u0000");
       return b === undefined ? { talent, from: a } : { talent, from: b, hero: a };

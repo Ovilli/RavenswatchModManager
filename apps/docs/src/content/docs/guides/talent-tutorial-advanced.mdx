@@ -691,6 +691,34 @@ hit area is sure to change; an ability's visual effect may keep its old size.
 In the editor, this is **Make an ability bigger** in the custom-talent builder: it
 lists each hero's sizes by ability.
 
+### Make hits put a status on enemies: `on_hit`
+
+<Badge text="Not yet tested" variant="danger" />
+
+While the talent is owned, one of the hero's hits also puts a status on whoever
+it hits: Chilled, Ignite, Bleed, Vulnerable, Weak or Rooted.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "fire_tide"
+hero = "Melusine"
+
+[[content.on_hit]]
+talent = "Attack Speed"
+damage = "Primary Ability Damage"
+status = "Ignite"
+```
+
+`damage` is one of the hero's damage records, the thing a hit deals: an ability
+can have more than one (Melusine's POWER has a normal and a geyser hit), so add
+an entry for each. `file` narrows it to one entity file when the name repeats.
+The status is copied from a hit in the game that already applies it, with its
+own duration and strength. Mention it in the card's text with a `skill` block.
+
+In the editor, this is **Hits apply a status** in the custom-talent builder: it
+lists each hero's hits by ability.
+
 ### Rebuild a talent from scratch: `rebuild`
 
 <Badge text="Not yet tested" variant="danger" />

@@ -86,8 +86,17 @@ Fields:
                                ``values`` per rarity (``0.3`` = +30%). ``node``
                                is a value node or a multiply operation in any
                                of the hero's entity files (``file`` narrows
-                               it); the card gains a ``{N}`` slot. See
+                               it); the card gains a ``{N}`` slot. When the
+                               number is in an entity the hero spawns, that
+                               entity's look grows with it (its root node's
+                               ground scale); ``visual = false`` keeps it. See
                                ``rsmm.engine.talent_range``.
+    ``on_hit``                 list of ``{talent, damage, status, file?}``: while
+                               ``talent`` is owned, the damage record ``damage``
+                               (one of an ability's hits) also puts ``status``
+                               (Chilled, Ignite, Bleed, Vulnerable, Weak,
+                               Rooted) on whoever it hits. See
+                               ``rsmm.engine.talent_status``.
     ``rebuild``                list of talent names whose own effect is turned
                                OFF, keeping the card: the talent builder's blank
                                slot. The card's number slots are cleared too, so
@@ -423,10 +432,100 @@ def _apply_scale(defn, mod_id, hero_dir, scale, files, edited, home) -> None:
             edited[q] = TR.scale_node(edited.get(q) or q.read_bytes(), mul, node=e["node"],
                                       factor=name, seed=seed,
                                       activate=(name,) if q is not p else ())
+            if q is not p and e["visual"]:
+                # What the spawned entity draws grows too; never the hero itself.
+                edited[q], root = TR.scale_visual(edited[q], name)
+                if root is None:
+                    _log.warning("talent %s/%s: %s has no single plain root node; only "
+                                 "the number grows, not what it draws", mod_id, defn.id, q.name)
         except (TR.RangeError, TA.AddStatError) as err:
             raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
         _log.info("talent %s/%s: %s grows %s (%s); card slot {%s}", mod_id, defn.id,
                   e["talent"], e["node"], q.name, fac.slot)
+
+
+def _coerce_on_hit(raw) -> list[dict]:
+    """Normalise ``on_hit`` entries; the damage and status are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"on_hit must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or not e.get("damage") \
+                or not e.get("status"):
+            raise ContentError(f"on_hit entry needs talent, damage and status, got {e!r}")
+        f = e.get("file")
+        if f is not None and not isinstance(f, str):
+            raise ContentError(f"on_hit: file must be an entity file name, got {f!r}")
+        out.append({"talent": str(e["talent"]), "damage": str(e["damage"]),
+                    "status": str(e["status"]), "file": f})
+    return out
+
+
+def _apply_on_hit(defn, mod_id, hero_dir, entries, files, edited, home) -> None:
+    """``on_hit``: an ability's hits also put a status on enemies while a talent
+    is owned (rsmm.engine.talent_status). A damage in the talent's own file
+    switches on the talent's owned state; one in another entity of the hero (a
+    caster, a projectile) reads an owned flag from the hero file."""
+    from ...engine import corpus
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    from ...engine import talent_range as TR
+    from ...engine import talent_status as TS
+    flag_donor = _donor_file("Melusine", TS.FLAG_DONOR_FILE, "on_hit")
+    reader_donor = _donor_file("Melusine", TS.READER_DONOR_FILE, "on_hit")
+    seed = f"{mod_id}:{defn.id}"
+    main = f"{hero_dir.name}{_GEN_SUFFIX}"
+    owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
+    for e in entries:
+        if e["status"] not in TS.DONORS:
+            raise ContentError(f"talent {defn.id}: unknown status {e['status']!r}; one of "
+                               + ", ".join(TS.STATUSES))
+        donor = corpus.read(TS.DONORS[e["status"]].rel)
+        if donor is None:
+            raise ContentError(f"talent {defn.id}: on_hit needs the game's files to copy "
+                               f"{e['status']} from")
+        p = home(e["talent"])
+        want = e["file"].lower() if e["file"] else None
+        hosts = [q for q in files if (want is None or want in q.name.lower())
+                 and any(c.name == e["damage"] and c.cls.endswith("CpntDamageSettings")
+                         for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
+        if len(hosts) != 1:
+            raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
+                               f"files hold a damage named {e['damage']!r}"
+                               + ("; give `file`" if hosts else ""))
+        q = hosts[0]
+        try:
+            if q is p:
+                g = EG.parse(edited.get(p) or p.read_bytes())
+                ctl = next(c for c in g.components
+                           if c.name == f"Skill Controller {e['talent']}")
+                switch = TA.owned_state(g, ctl, e["talent"]).name
+            else:
+                if not TR.reads_owner(q.read_bytes(), owner):
+                    raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
+                                       f"{hero_dir.name}, so it could not tell the talent is owned")
+                if p.name != main:
+                    raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
+                                       f"a status on a hit in {q.name} from there is not supported")
+                edited[p], flag = TS.add_flag(edited.get(p) or p.read_bytes(), flag_donor,
+                                              talent=e["talent"], seed=seed)
+                fg = next(c for c in EG.parse(edited[p]).components if c.name == flag)
+                switch = f"Owner {flag}"
+                edited[q] = TS.reader(edited.get(q) or q.read_bytes(), reader_donor,
+                                      flag_guid=fg.guid,
+                                      flag_label=f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}",
+                                      owner_resource=owner, name=switch, seed=seed)
+            edited[q] = TS.apply_status(edited.get(q) or q.read_bytes(), donor,
+                                        damage=e["damage"], status=e["status"], switch=switch,
+                                        talent=e["talent"], seed=seed)
+        except (TS.StatusError, TA.AddStatError) as err:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
+        _log.info("talent %s/%s: %s makes %s apply %s (%s)", mod_id, defn.id, e["talent"],
+                  e["damage"], e["status"], q.name)
 
 
 def _coerce_scale(raw) -> list[dict]:
@@ -445,7 +544,8 @@ def _coerce_scale(raw) -> list[dict]:
         if f is not None and not isinstance(f, str):
             raise ContentError(f"scale: file must be an entity file name, got {f!r}")
         out.append({"talent": str(e["talent"]), "node": str(e["node"]), "values": e["values"],
-                    "file": f, "percent": bool(e.get("percent", True))})
+                    "file": f, "percent": bool(e.get("percent", True)),
+                    "visual": bool(e.get("visual", True))})
     return out
 
 
@@ -517,6 +617,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     add_stats = _coerce_add_stats(defn.fields.get("add_stats"))
     scale = _coerce_scale(defn.fields.get("scale"))
+    on_hit = _coerce_on_hit(defn.fields.get("on_hit"))
     rebuild = defn.fields.get("rebuild") or []
     if isinstance(rebuild, str):
         rebuild = [rebuild]
@@ -532,10 +633,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise ContentError(f"talent {defn.id}: include must be a list of "
                            "{talent, from[, hero]} talent names")
     if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
-            or add_stats or rebuild or include or scale):
+            or add_stats or rebuild or include or scale or on_hit):
         raise ContentError(
-            f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes, stats, add_stats, scale, rebuild, include or int_patches given")
+            f"talent {defn.id}: no value_patches, union_patches, rewires, clone_nodes, "
+            f"stats, add_stats, scale, on_hit, rebuild, include or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
     candidates = [p for p in hero_dir.entity_files()
@@ -556,7 +657,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # keep to the hero's own files, as before.
     builder_files = candidates + ([] if file_filter else
                                   [p for p in _inherited_files(hero_dir)
-                                   if add_stats or rebuild or include or scale])
+                                   if add_stats or rebuild or include or scale
+                                   or on_hit])
     edited: dict[corpus.CorpusFile, bytes] = {}
     for p in builder_files:
         earlier = out_dir / Path(*p.rel.split("/"))
@@ -679,6 +781,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     if scale:
         _apply_scale(defn, mod_id, hero_dir, scale, builder_files, edited, _home)
+    if on_hit:
+        _apply_on_hit(defn, mod_id, hero_dir, on_hit, builder_files, edited, _home)
 
     # Clones change the file's structure (a new record, a longer component
     # vector), so they go first: every later edit re-reads the grown file, and

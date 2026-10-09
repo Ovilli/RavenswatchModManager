@@ -567,6 +567,19 @@ def scalable(hero: str) -> list[dict]:
     return TR.candidates(files, hero)
 
 
+@_once
+def hit_damages(hero: str) -> dict:
+    """The damage records of ``hero``'s abilities a status can be added to
+    (``on_hit``; rsmm.engine.talent_status.damages), and the statuses."""
+    from rsmm.engine import talent_status as TS
+    from rsmm.sdk.kinds import talents as T
+
+    d = T._resolve_hero_dir(_hero_dir(hero)[len("Hero_"):])
+    files = [] if d is None else [(f.name.split(".")[0], f.read_bytes())
+                                   for f in d.entity_files() if f.name.endswith(_GEN_SUFFIX)]
+    return {"damages": TS.damages(files, hero), "statuses": list(TS.STATUSES)}
+
+
 def talent_cards(hero: str) -> list[dict]:
     """The hero's talent cards with their current English name and text."""
     return _talent_rows(hero)[0]
@@ -1029,7 +1042,16 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         scale.append({"talent": talent, "node": node,
                       "values": [float(_num(v, f"{talent} {node}")) for v in values],
                       **({"file": str(row["file"])} if row.get("file") else {}),
-                      **({} if row.get("percent", True) else {"percent": False})})
+                      **({} if row.get("percent", True) else {"percent": False}),
+                      **({} if row.get("visual", True) else {"visual": False})})
+    on_hit = []
+    for row in req.get("onHit") or []:
+        talent, damage, status = (str((row or {}).get(k) or "")
+                                  for k in ("talent", "damage", "status"))
+        if not talent or not damage or not status:
+            raise EditorError("a status on hit needs its talent, the hit and the status")
+        on_hit.append({"talent": talent, "damage": damage, "status": status,
+                       **({"file": str(row["file"])} if row.get("file") else {})})
     out: list[tuple[str, str, dict]] = []
     for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
@@ -1042,7 +1064,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if stats_by_file.get(file):
             fields["stats"] = stats_by_file[file]
         out.append(("talent", tid, fields))
-    if added or rebuild or include or scale:
+    if added or rebuild or include or scale or on_hit:
         # Its own block, after the edits above: it grows the entity file, and the
         # talent kind starts each block from the copy the previous one wrote.
         # Inside it, `rebuild` runs before `add_stats`.
@@ -1056,6 +1078,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             block["add_stats"] = added
         if scale:
             block["scale"] = scale
+        if on_hit:
+            block["on_hit"] = on_hit
         out.append(("talent", aid, block))
     for card in req.get("cards") or []:
         source = str(card.get("source") or "")
@@ -1570,6 +1594,7 @@ ROUTES = {
                                           "portrait": hero_portrait(req.arg("hero"))},
     ("GET", "/api/talents/borrowable"): lambda req: {"talents": borrowable_talents()},
     ("GET", "/api/talents/scalable"): lambda req: {"nodes": scalable(req.arg("hero"))},
+    ("GET", "/api/talents/damages"): lambda req: hit_damages(req.arg("hero")),
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},
     ("GET", "/api/heropng"): _hero_png,

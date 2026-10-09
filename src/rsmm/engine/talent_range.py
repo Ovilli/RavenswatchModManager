@@ -152,7 +152,8 @@ def reader(raw: bytes, get_raw: bytes, *, factor_guid: bytes, factor_label: str,
         raise RangeError(str(e)) from e
 
 
-def _activate_before(ef: GE.EntityFile, node: str, new: list[str]) -> int:
+def _activate_before(ef: GE.EntityFile, node: str, new: list[str],
+                     first: tuple[str, ...] = ()) -> int:
     """Switch the ``new`` nodes on just before ``node`` wherever a state's
     ``activates`` list switches ``node`` on; returns how many lists took them.
 
@@ -175,6 +176,10 @@ def _activate_before(ef: GE.EntityFile, node: str, new: list[str]) -> int:
             continue
         for k, name in enumerate(new):
             ef.insert_ref(c.name, "activates", at + k, name)
+        # A reader of the hero goes first of all: other nodes the list switches
+        # on before `node` may read it too (the root node, once its scale does).
+        for k, name in enumerate(first):
+            ef.insert_ref(c.name, "activates", k, name)
         lists += 1
     return lists
 
@@ -189,7 +194,7 @@ def scale_node(raw: bytes, mul_raw: bytes, *, node: str, factor: str, seed: str 
     try:
         if kind == "multiply":
             ef.append_operand(node, factor)
-            _activate_before(ef, node, list(activate))
+            _activate_before(ef, node, [], first=activate)
             return ef.to_bytes()
         c = ef.component(node)
         base, scaled = f"{node} Base", f"{node} Scaled"
@@ -203,10 +208,54 @@ def scale_node(raw: bytes, mul_raw: bytes, *, node: str, factor: str, seed: str 
         ef.set_ref(scaled, "operations[0]", base)
         ef.source_value(scaled, 1, factor)
         ef.source_value(node, 0, scaled)
-        _activate_before(ef, node, [*activate, base, scaled])
+        _activate_before(ef, node, [base, scaled], first=activate)
         return ef.to_bytes()
     except GE.EntityEditError as e:
         raise RangeError(f"{node!r}: {e}") from e
+
+
+#: A 3d node's transform: 11 number slots, position (0-3), rotation (4-7), scale
+#: X (8), Y (9, height), Z (10) — read off shipped nodes that drive them from a
+#: value: Beowulf's dash warning sets 8 from its attack width and 10 to its
+#: length, Merlin's fireball and Melusine's wisp set 8 from a scale operation.
+_SCALE_X, _SCALE_Z = 8, 10
+
+
+def scale_visual(raw: bytes, factor: str) -> tuple[bytes, str | None]:
+    """Grow what an entity the hero spawns DRAWS by ``factor``: its root node's
+    ground scale (X and Z) reads the factor, so the effects hung on it grow with
+    the number ``scale_node`` grew (Melusine's POWER water stayed its old size
+    with only the radius scaled, playtest 2026-10-09). Returns the new bytes and
+    the root node's name, or ``(raw, None)`` when the entity has no single root
+    node with a plain 1 x 1 scale (nothing is guessed)."""
+    ef = GE.EntityFile(raw)
+    roots = []
+    for c in ef.graph().components:
+        if not c.cls.endswith("3dNodeSettings"):
+            continue
+        refs = [t for t in EG.tokens(c) if t.kind == "ref"]
+        if refs and refs[0].text == "(none)":
+            roots.append(c)
+    if len(roots) != 1:
+        return raw, None
+    root = roots[0]
+    toks = EG.tokens(root)
+    k = next((i for i, t in enumerate(toks)
+              if t.kind == "object" and t.text == "oCEntity3dTransformPicker"), None)
+    if k is None:
+        return raw, None
+    vps = [i for i, t in enumerate(toks[k:], k)
+           if t.kind == "object" and t.text == "oCEntityCpntValuePicker"][:11]
+    for slot in (_SCALE_X, _SCALE_Z):
+        if len(vps) <= slot or not toks[vps[slot] + 1].text.startswith("00") \
+                or next(t.text for t in toks[vps[slot]:] if t.kind == "value") != "f32 1":
+            return raw, None
+    try:
+        for slot in (_SCALE_X, _SCALE_Z):
+            ef.source_value(root.name, slot, factor)
+        return ef.to_bytes(), root.name
+    except GE.EntityEditError:
+        return raw, None
 
 
 def reads_owner(raw: bytes, owner_resource: str) -> bool:
@@ -219,12 +268,16 @@ def reads_owner(raw: bytes, owner_resource: str) -> bool:
                for c in EG.parse(raw).components)
 
 
-_SIZE = re.compile(r"radius|range|length|width|size|scale|distance|area", re.I)
+#: A projectile's range is its speed x how long it flies, so a LIFETIME is a range
+#: too: Snow Queen's ATTACK shot flies "Basic Attack Lifetime Duration Default"
+#: (0.45 s at speed 25); growing it makes the shot reach further.
+_SIZE = re.compile(r"radius|range|length|width|size|scale|distance|area|lifetime", re.I)
 _NOT_GAMEPLAY = re.compile(r"fx|camera|mesh|decal|gauge|anim|shader|sound|fmod|\bui\b|preview|"
                            r"smooth|shadow|marker|light|collision|detection|recall|follow", re.I)
 #: The ability a node's group names, as the cards name the buttons.
 _GROUP_ABILITY = (("Ability Basic", "ATTACK"), ("Ability Primary", "POWER"),
                   ("Ability Secondary", "SPECIAL"), ("Ability Defensive", "DEFENSE"),
+                  ("Ability Defense", "DEFENSE"),                 # Snow Queen's spelling
                   ("Ability Trait", "TRAIT"), ("Ability Dash", "DASH"),
                   ("Ability Ultimate", "ULTIMATE"))
 

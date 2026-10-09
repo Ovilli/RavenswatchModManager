@@ -524,6 +524,63 @@ class EntityFile:
                 i = p.find(union, i + 1)
         raise EntityEditError("this file holds no decimal number to copy the shape of")
 
+    #: How a true/false switch reads each kind of node (surveyed 2026-10-09 over
+    #: every damage debuff in the game: 76 read a [State], 56 a [Value], 41 an
+    #: [Entity Get Value], all with these accessors).
+    BOOL_ACCESSOR = {
+        "oCEntityCpntStateSettings": 0x0FD2832A,
+        "oCEntityCpntValueSettings": 0x0FD2832A,
+        "oCEntityCpntGetValueSettings": 0x16ABF2ED,
+    }
+
+    def add_subobject(self, owner: str, list_field: str, donor: EntityFile, obj: int, *,
+                      refs: dict[bytes, str] | None = None, switch: str | None = None) -> int:
+        """Copy sub-object ``obj`` of ``donor`` into this file, owned by ``owner``
+        through its id list ``list_field`` (``u32 count`` + ``count`` u32 ids, as a
+        damage record's debuffs). ``refs`` re-points the copy's references (donor
+        GUID -> a component of this file); ``switch`` makes its first number slot
+        a true/false read of that component (a debuff's "is it on"). Returns the
+        new sub-object's id. Fails closed on a donor that owns sub-objects."""
+        c = self.component(owner)
+        f = next((x for x in EF.fields(c) if x.name == list_field), None)
+        if f is None:
+            raise EntityEditError(f"{owner!r} has no field {list_field!r}")
+        n = struct.unpack_from("<I", c.body, f.offset)[0]
+        if f.size != 4 + 4 * n:
+            raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
+        if donor.subtree({obj}):
+            raise EntityEditError(f"sub-object #{obj} owns sub-objects of its own; not copied")
+        payload = bytes(donor.objects[obj])
+        extend_class_table(self.cf, donor.cf, class_closure(payload, donor.cf))
+        payload = bytearray(_remap_class_tags(payload, donor.cf, self.cf))
+        head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
+        for old, target in (refs or {}).items():
+            i = payload.find(head + old)
+            if i < 0:
+                raise EntityEditError(f"sub-object #{obj} does not reference the node to re-point")
+            end = i + 28 + struct.unpack_from("<I", payload, i + 24)[0] + 4
+            payload[i:end] = self._picker(target)
+        if switch is not None:
+            t = self.component(switch)
+            acc = self.BOOL_ACCESSOR.get(t.cls)
+            if acc is None:
+                raise EntityEditError(f"{switch!r} is a {t.cls}; no known way to read it as on/off")
+            vp = _B + struct.pack("<I", self._class_index("oCEntityCpntValuePicker"))
+            union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+            a = payload.find(vp)
+            u = payload.find(union, a)
+            if a < 0 or u < 0:
+                raise EntityEditError(f"sub-object #{obj} has no number slot to switch")
+            payload[a + 8:u] = b"\x01\x00" + self._picker(switch) + struct.pack("<I", acc)
+        new_id = len(self.objects)
+        self.objects.append(payload)
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + f.offset
+        p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
+        struct.pack_into("<I", p, at, n + 1)
+        self.to_bytes()
+        return new_id
+
     def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
         entity (``guid``, ``label`` = ``[Kind] Scope\\Group\\Name``) of the same
