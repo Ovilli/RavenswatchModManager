@@ -2,6 +2,15 @@
   "generated": "2026-10-09",
   "entries": [
     {
+      "version": "",
+      "loader_version": 32,
+      "date": "2026-10-09",
+      "summary": "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)",
+      "highlights": [
+        "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)"
+      ]
+    },
+    {
       "version": "5.9.11",
       "date": "2026-10-09",
       "summary": "Online works again on Windows with RSMM, mods from the hub no longer stop the game from launching, and the Log screen can open and clear its logs.",
@@ -535,18 +544,6 @@
         "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
         "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
         "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 8,
-      "date": "2026-08-24",
-      "summary": "Stutter fixes for the damage meter, and it now attributes a transformed hero to the right player.",
-      "highlights": [
-        "Fixed the stuttering reported in co-op. The meter's background probes were asking the operating system about a page of memory once per value read — tens of thousands of times a second. They now read a page at a time, which the game's own thread feels as a stutter no longer competing with it.",
-        "An ability that swaps your hero — Sun Wukong's transform, a respawn — no longer counts you as a second player. Your damage follows you through it, and for allies too, using the identity the game itself stamps on every hit.",
-        "Hits the game does not count are no longer counted by the meter either, so the board matches the end-of-run screen. Rows now show kills.",
-        "Turning the meter off now stops its background work as well as its counting, and a board that has split a player into two rows no longer guesses names."
       ]
     }
   ]
