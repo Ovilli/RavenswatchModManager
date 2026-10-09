@@ -36,6 +36,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -215,6 +216,22 @@ void note_winhttp_failure(const char* fn, LPCWSTR server) {
     SetLastError(err);
 }
 
+// Said once per function: that the game got this far in WinHTTP. cpprest
+// reports every failure while setting up a session as the same "Open failed",
+// so the first-call lines show which step it reached.
+void note_first_call(const char* fn, const std::string& detail) {
+    static std::mutex mu;
+    static std::unordered_set<std::string> seen;
+    {
+        std::lock_guard<std::mutex> lk(mu);
+        if (!seen.insert(fn).second) return;
+    }
+    const DWORD err = GetLastError();
+    Loader::get().log(std::string("[backend] ") + fn + " reached" +
+                      (detail.empty() ? "" : " (" + detail + ")"));
+    SetLastError(err);
+}
+
 // ---- Steam identity probe -------------------------------------------------
 
 using GetAuthTicketForWebApiFn = std::uint32_t (*)(void* self, const char* identity);
@@ -375,6 +392,7 @@ HINTERNET WINAPI rsmm_WinHttpConnect(HINTERNET session, LPCWSTR server, INTERNET
     if (!t.armed || !is_passtech_backend(server)) {
         HINTERNET h = real(session, server, port, reserved);
         if (!h) note_winhttp_failure("WinHttpConnect", server);
+        else note_first_call("WinHttpConnect", narrow(server));
         return h;
     }
 
@@ -426,5 +444,117 @@ BOOL WINAPI rsmm_WinHttpCloseHandle(HINTERNET handle) {
     }
     return real(handle);
 }
+
+// ---- diagnostic pass-throughs -------------------------------------------------
+//
+// Every step cpprest takes to open a session, so a failure says which call and
+// which error instead of the one "Open failed" the game logs for all of them.
+// A Windows player stayed offline with nothing but this proxy active (no game
+// hooks: no pattern DB) and with the real WinHTTP loaded from System32, and
+// the loader logged no failure at all, because only Connect / OpenRequest were
+// watched (2026-10-09). Each wrapper calls straight through and changes nothing.
+
+#define RSMM_REAL(name, Fn)                                         \
+    static Fn real = rsmm::real_fn<Fn>(name);                       \
+    if (!real) {                                                    \
+        SetLastError(ERROR_PROC_NOT_FOUND);                         \
+        rsmm::note_winhttp_failure(name, nullptr);                  \
+    }
+
+HINTERNET WINAPI rsmm_WinHttpOpen(LPCWSTR agent, DWORD access, LPCWSTR proxy, LPCWSTR bypass,
+                                  DWORD flags) {
+    using Fn = HINTERNET(WINAPI*)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, DWORD);
+    RSMM_REAL("WinHttpOpen", Fn)
+    if (!real) return nullptr;
+    // The proxy mode, not the proxy itself: whether one is configured is the
+    // useful part, and its address is the player's own network detail.
+    rsmm::note_first_call("WinHttpOpen", "access type " + std::to_string(access) +
+                          (proxy && *proxy ? ", named proxy set" : "") +
+                          ", flags 0x" + [&] { char b[16]; snprintf(b, sizeof b, "%lx",
+                              static_cast<unsigned long>(flags)); return std::string(b); }());
+    HINTERNET h = real(agent, access, proxy, bypass, flags);
+    if (!h) rsmm::note_winhttp_failure("WinHttpOpen", nullptr);
+    return h;
+}
+
+BOOL WINAPI rsmm_WinHttpSetTimeouts(HINTERNET h, int resolve, int connect, int send, int receive) {
+    using Fn = BOOL(WINAPI*)(HINTERNET, int, int, int, int);
+    RSMM_REAL("WinHttpSetTimeouts", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(h, resolve, connect, send, receive);
+    if (!ok) rsmm::note_winhttp_failure("WinHttpSetTimeouts", nullptr);
+    return ok;
+}
+
+BOOL WINAPI rsmm_WinHttpSetOption(HINTERNET h, DWORD option, LPVOID buffer, DWORD length) {
+    using Fn = BOOL(WINAPI*)(HINTERNET, DWORD, LPVOID, DWORD);
+    RSMM_REAL("WinHttpSetOption", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(h, option, buffer, length);
+    if (!ok) {
+        const DWORD err = GetLastError();
+        std::wstring which = L"option " + std::to_wstring(option);
+        SetLastError(err);
+        rsmm::note_winhttp_failure("WinHttpSetOption", which.c_str());
+    }
+    return ok;
+}
+
+WINHTTP_STATUS_CALLBACK WINAPI rsmm_WinHttpSetStatusCallback(HINTERNET h,
+                                                             WINHTTP_STATUS_CALLBACK cb,
+                                                             DWORD flags, DWORD_PTR reserved) {
+    using Fn = WINHTTP_STATUS_CALLBACK(WINAPI*)(HINTERNET, WINHTTP_STATUS_CALLBACK, DWORD, DWORD_PTR);
+    RSMM_REAL("WinHttpSetStatusCallback", Fn)
+    if (!real) return WINHTTP_INVALID_STATUS_CALLBACK;
+    WINHTTP_STATUS_CALLBACK prev = real(h, cb, flags, reserved);
+    if (prev == WINHTTP_INVALID_STATUS_CALLBACK)
+        rsmm::note_winhttp_failure("WinHttpSetStatusCallback", nullptr);
+    return prev;
+}
+
+BOOL WINAPI rsmm_WinHttpGetDefaultProxyConfiguration(WINHTTP_PROXY_INFO* info) {
+    using Fn = BOOL(WINAPI*)(WINHTTP_PROXY_INFO*);
+    RSMM_REAL("WinHttpGetDefaultProxyConfiguration", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(info);
+    if (!ok) rsmm::note_winhttp_failure("WinHttpGetDefaultProxyConfiguration", nullptr);
+    return ok;
+}
+
+BOOL WINAPI rsmm_WinHttpGetIEProxyConfigForCurrentUser(WINHTTP_CURRENT_USER_IE_PROXY_CONFIG* cfg) {
+    using Fn = BOOL(WINAPI*)(WINHTTP_CURRENT_USER_IE_PROXY_CONFIG*);
+    RSMM_REAL("WinHttpGetIEProxyConfigForCurrentUser", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(cfg);
+    // Failing here is normal when no IE proxy is set; cpprest moves on.
+    if (!ok) rsmm::note_winhttp_failure("WinHttpGetIEProxyConfigForCurrentUser", nullptr);
+    else if (cfg)
+        rsmm::note_first_call("WinHttpGetIEProxyConfigForCurrentUser",
+                              std::string(cfg->fAutoDetect ? "auto-detect on" : "auto-detect off") +
+                              (cfg->lpszAutoConfigUrl ? ", PAC url set" : "") +
+                              (cfg->lpszProxy ? ", proxy set" : ""));
+    return ok;
+}
+
+BOOL WINAPI rsmm_WinHttpSendRequest(HINTERNET h, LPCWSTR headers, DWORD headers_len, LPVOID optional,
+                                    DWORD optional_len, DWORD total_len, DWORD_PTR context) {
+    using Fn = BOOL(WINAPI*)(HINTERNET, LPCWSTR, DWORD, LPVOID, DWORD, DWORD, DWORD_PTR);
+    RSMM_REAL("WinHttpSendRequest", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(h, headers, headers_len, optional, optional_len, total_len, context);
+    if (!ok) rsmm::note_winhttp_failure("WinHttpSendRequest", nullptr);
+    return ok;
+}
+
+BOOL WINAPI rsmm_WinHttpReceiveResponse(HINTERNET h, LPVOID reserved) {
+    using Fn = BOOL(WINAPI*)(HINTERNET, LPVOID);
+    RSMM_REAL("WinHttpReceiveResponse", Fn)
+    if (!real) return FALSE;
+    BOOL ok = real(h, reserved);
+    if (!ok) rsmm::note_winhttp_failure("WinHttpReceiveResponse", nullptr);
+    return ok;
+}
+
+#undef RSMM_REAL
 
 } // extern "C"

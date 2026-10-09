@@ -1,5 +1,9 @@
 LIBRARY winhttp
 EXPORTS
+    DllCanUnloadNow=rsmm_fwd_DllCanUnloadNow
+    DllGetClassObject=rsmm_fwd_DllGetClassObject
+    Private1=rsmm_fwd_Private1
+    SvchostPushServiceGlobals=rsmm_fwd_SvchostPushServiceGlobals
     WinHttpAddRequestHeaders=rsmm_fwd_WinHttpAddRequestHeaders
     WinHttpAddRequestHeadersEx=rsmm_fwd_WinHttpAddRequestHeadersEx
     WinHttpAutoProxySvcMain=rsmm_fwd_WinHttpAutoProxySvcMain
@@ -24,16 +28,17 @@ EXPORTS
     WinHttpFreeProxyResult=rsmm_fwd_WinHttpFreeProxyResult
     WinHttpFreeProxyResultEx=rsmm_fwd_WinHttpFreeProxyResultEx
     WinHttpFreeProxySettings=rsmm_fwd_WinHttpFreeProxySettings
-    WinHttpGetDefaultProxyConfiguration=rsmm_fwd_WinHttpGetDefaultProxyConfiguration
-    WinHttpGetIEProxyConfigForCurrentUser=rsmm_fwd_WinHttpGetIEProxyConfigForCurrentUser
+    WinHttpGetDefaultProxyConfiguration=rsmm_WinHttpGetDefaultProxyConfiguration
+    WinHttpGetIEProxyConfigForCurrentUser=rsmm_WinHttpGetIEProxyConfigForCurrentUser
     WinHttpGetProxyForUrl=rsmm_fwd_WinHttpGetProxyForUrl
     WinHttpGetProxyForUrlEx=rsmm_fwd_WinHttpGetProxyForUrlEx
+    WinHttpGetProxyForUrlEx2=rsmm_fwd_WinHttpGetProxyForUrlEx2
     WinHttpGetProxyForUrlHvsi=rsmm_fwd_WinHttpGetProxyForUrlHvsi
     WinHttpGetProxyResult=rsmm_fwd_WinHttpGetProxyResult
     WinHttpGetProxyResultEx=rsmm_fwd_WinHttpGetProxyResultEx
     WinHttpGetProxySettingsVersion=rsmm_fwd_WinHttpGetProxySettingsVersion
     WinHttpGetTunnelSocket=rsmm_fwd_WinHttpGetTunnelSocket
-    WinHttpOpen=rsmm_fwd_WinHttpOpen
+    WinHttpOpen=rsmm_WinHttpOpen
     WinHttpOpenRequest=rsmm_WinHttpOpenRequest
     WinHttpPacJsWorkerMain=rsmm_fwd_WinHttpPacJsWorkerMain
     WinHttpPalAcquireNextInterface=rsmm_fwd_WinHttpPalAcquireNextInterface
@@ -57,16 +62,16 @@ EXPORTS
     WinHttpReadData=rsmm_fwd_WinHttpReadData
     WinHttpReadProxySettings=rsmm_fwd_WinHttpReadProxySettings
     WinHttpReadProxySettingsHvsi=rsmm_fwd_WinHttpReadProxySettingsHvsi
-    WinHttpReceiveResponse=rsmm_fwd_WinHttpReceiveResponse
+    WinHttpReceiveResponse=rsmm_WinHttpReceiveResponse
     WinHttpResetAutoProxy=rsmm_fwd_WinHttpResetAutoProxy
     WinHttpSaveProxyCredentials=rsmm_fwd_WinHttpSaveProxyCredentials
-    WinHttpSendRequest=rsmm_fwd_WinHttpSendRequest
+    WinHttpSendRequest=rsmm_WinHttpSendRequest
     WinHttpSetCredentials=rsmm_fwd_WinHttpSetCredentials
     WinHttpSetDefaultProxyConfiguration=rsmm_fwd_WinHttpSetDefaultProxyConfiguration
-    WinHttpSetOption=rsmm_fwd_WinHttpSetOption
+    WinHttpSetOption=rsmm_WinHttpSetOption
     WinHttpSetProxySettingsPerUser=rsmm_fwd_WinHttpSetProxySettingsPerUser
-    WinHttpSetStatusCallback=rsmm_fwd_WinHttpSetStatusCallback
-    WinHttpSetTimeouts=rsmm_fwd_WinHttpSetTimeouts
+    WinHttpSetStatusCallback=rsmm_WinHttpSetStatusCallback
+    WinHttpSetTimeouts=rsmm_WinHttpSetTimeouts
     WinHttpTimeFromSystemTime=rsmm_fwd_WinHttpTimeFromSystemTime
     WinHttpTimeToSystemTime=rsmm_fwd_WinHttpTimeToSystemTime
     WinHttpWebSocketClose=rsmm_fwd_WinHttpWebSocketClose

@@ -26,9 +26,9 @@ rsmm_fwd_slow:
     pop %rcx
     jmp *%rax
 
-    .globl rsmm_fwd_WinHttpAddRequestHeaders
+    .globl rsmm_fwd_DllCanUnloadNow
     .p2align 4
-rsmm_fwd_WinHttpAddRequestHeaders:
+rsmm_fwd_DllCanUnloadNow:
     mov rsmm_winhttp_fwd+0(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -36,9 +36,9 @@ rsmm_fwd_WinHttpAddRequestHeaders:
 1:  mov $0, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpAddRequestHeadersEx
+    .globl rsmm_fwd_DllGetClassObject
     .p2align 4
-rsmm_fwd_WinHttpAddRequestHeadersEx:
+rsmm_fwd_DllGetClassObject:
     mov rsmm_winhttp_fwd+8(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -46,9 +46,9 @@ rsmm_fwd_WinHttpAddRequestHeadersEx:
 1:  mov $1, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpAutoProxySvcMain
+    .globl rsmm_fwd_Private1
     .p2align 4
-rsmm_fwd_WinHttpAutoProxySvcMain:
+rsmm_fwd_Private1:
     mov rsmm_winhttp_fwd+16(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -56,9 +56,9 @@ rsmm_fwd_WinHttpAutoProxySvcMain:
 1:  mov $2, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpCheckPlatform
+    .globl rsmm_fwd_SvchostPushServiceGlobals
     .p2align 4
-rsmm_fwd_WinHttpCheckPlatform:
+rsmm_fwd_SvchostPushServiceGlobals:
     mov rsmm_winhttp_fwd+24(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -66,9 +66,9 @@ rsmm_fwd_WinHttpCheckPlatform:
 1:  mov $3, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionDeletePolicyEntries
+    .globl rsmm_fwd_WinHttpAddRequestHeaders
     .p2align 4
-rsmm_fwd_WinHttpConnectionDeletePolicyEntries:
+rsmm_fwd_WinHttpAddRequestHeaders:
     mov rsmm_winhttp_fwd+32(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -76,9 +76,9 @@ rsmm_fwd_WinHttpConnectionDeletePolicyEntries:
 1:  mov $4, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionDeleteProxyInfo
+    .globl rsmm_fwd_WinHttpAddRequestHeadersEx
     .p2align 4
-rsmm_fwd_WinHttpConnectionDeleteProxyInfo:
+rsmm_fwd_WinHttpAddRequestHeadersEx:
     mov rsmm_winhttp_fwd+40(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -86,9 +86,9 @@ rsmm_fwd_WinHttpConnectionDeleteProxyInfo:
 1:  mov $5, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionFreeNameList
+    .globl rsmm_fwd_WinHttpAutoProxySvcMain
     .p2align 4
-rsmm_fwd_WinHttpConnectionFreeNameList:
+rsmm_fwd_WinHttpAutoProxySvcMain:
     mov rsmm_winhttp_fwd+48(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -96,9 +96,9 @@ rsmm_fwd_WinHttpConnectionFreeNameList:
 1:  mov $6, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionFreeProxyInfo
+    .globl rsmm_fwd_WinHttpCheckPlatform
     .p2align 4
-rsmm_fwd_WinHttpConnectionFreeProxyInfo:
+rsmm_fwd_WinHttpCheckPlatform:
     mov rsmm_winhttp_fwd+56(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -106,9 +106,9 @@ rsmm_fwd_WinHttpConnectionFreeProxyInfo:
 1:  mov $7, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionFreeProxyList
+    .globl rsmm_fwd_WinHttpConnectionDeletePolicyEntries
     .p2align 4
-rsmm_fwd_WinHttpConnectionFreeProxyList:
+rsmm_fwd_WinHttpConnectionDeletePolicyEntries:
     mov rsmm_winhttp_fwd+64(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -116,9 +116,9 @@ rsmm_fwd_WinHttpConnectionFreeProxyList:
 1:  mov $8, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionGetNameList
+    .globl rsmm_fwd_WinHttpConnectionDeleteProxyInfo
     .p2align 4
-rsmm_fwd_WinHttpConnectionGetNameList:
+rsmm_fwd_WinHttpConnectionDeleteProxyInfo:
     mov rsmm_winhttp_fwd+72(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -126,9 +126,9 @@ rsmm_fwd_WinHttpConnectionGetNameList:
 1:  mov $9, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionGetProxyInfo
+    .globl rsmm_fwd_WinHttpConnectionFreeNameList
     .p2align 4
-rsmm_fwd_WinHttpConnectionGetProxyInfo:
+rsmm_fwd_WinHttpConnectionFreeNameList:
     mov rsmm_winhttp_fwd+80(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -136,9 +136,9 @@ rsmm_fwd_WinHttpConnectionGetProxyInfo:
 1:  mov $10, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionGetProxyList
+    .globl rsmm_fwd_WinHttpConnectionFreeProxyInfo
     .p2align 4
-rsmm_fwd_WinHttpConnectionGetProxyList:
+rsmm_fwd_WinHttpConnectionFreeProxyInfo:
     mov rsmm_winhttp_fwd+88(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -146,9 +146,9 @@ rsmm_fwd_WinHttpConnectionGetProxyList:
 1:  mov $11, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionSetPolicyEntries
+    .globl rsmm_fwd_WinHttpConnectionFreeProxyList
     .p2align 4
-rsmm_fwd_WinHttpConnectionSetPolicyEntries:
+rsmm_fwd_WinHttpConnectionFreeProxyList:
     mov rsmm_winhttp_fwd+96(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -156,9 +156,9 @@ rsmm_fwd_WinHttpConnectionSetPolicyEntries:
 1:  mov $12, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionSetProxyInfo
+    .globl rsmm_fwd_WinHttpConnectionGetNameList
     .p2align 4
-rsmm_fwd_WinHttpConnectionSetProxyInfo:
+rsmm_fwd_WinHttpConnectionGetNameList:
     mov rsmm_winhttp_fwd+104(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -166,9 +166,9 @@ rsmm_fwd_WinHttpConnectionSetProxyInfo:
 1:  mov $13, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpConnectionUpdateIfIndexTable
+    .globl rsmm_fwd_WinHttpConnectionGetProxyInfo
     .p2align 4
-rsmm_fwd_WinHttpConnectionUpdateIfIndexTable:
+rsmm_fwd_WinHttpConnectionGetProxyInfo:
     mov rsmm_winhttp_fwd+112(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -176,9 +176,9 @@ rsmm_fwd_WinHttpConnectionUpdateIfIndexTable:
 1:  mov $14, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpCrackUrl
+    .globl rsmm_fwd_WinHttpConnectionGetProxyList
     .p2align 4
-rsmm_fwd_WinHttpCrackUrl:
+rsmm_fwd_WinHttpConnectionGetProxyList:
     mov rsmm_winhttp_fwd+120(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -186,9 +186,9 @@ rsmm_fwd_WinHttpCrackUrl:
 1:  mov $15, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpCreateProxyResolver
+    .globl rsmm_fwd_WinHttpConnectionSetPolicyEntries
     .p2align 4
-rsmm_fwd_WinHttpCreateProxyResolver:
+rsmm_fwd_WinHttpConnectionSetPolicyEntries:
     mov rsmm_winhttp_fwd+128(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -196,9 +196,9 @@ rsmm_fwd_WinHttpCreateProxyResolver:
 1:  mov $16, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpCreateUrl
+    .globl rsmm_fwd_WinHttpConnectionSetProxyInfo
     .p2align 4
-rsmm_fwd_WinHttpCreateUrl:
+rsmm_fwd_WinHttpConnectionSetProxyInfo:
     mov rsmm_winhttp_fwd+136(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -206,9 +206,9 @@ rsmm_fwd_WinHttpCreateUrl:
 1:  mov $17, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpDetectAutoProxyConfigUrl
+    .globl rsmm_fwd_WinHttpConnectionUpdateIfIndexTable
     .p2align 4
-rsmm_fwd_WinHttpDetectAutoProxyConfigUrl:
+rsmm_fwd_WinHttpConnectionUpdateIfIndexTable:
     mov rsmm_winhttp_fwd+144(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -216,9 +216,9 @@ rsmm_fwd_WinHttpDetectAutoProxyConfigUrl:
 1:  mov $18, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpFreeProxyResult
+    .globl rsmm_fwd_WinHttpCrackUrl
     .p2align 4
-rsmm_fwd_WinHttpFreeProxyResult:
+rsmm_fwd_WinHttpCrackUrl:
     mov rsmm_winhttp_fwd+152(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -226,9 +226,9 @@ rsmm_fwd_WinHttpFreeProxyResult:
 1:  mov $19, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpFreeProxyResultEx
+    .globl rsmm_fwd_WinHttpCreateProxyResolver
     .p2align 4
-rsmm_fwd_WinHttpFreeProxyResultEx:
+rsmm_fwd_WinHttpCreateProxyResolver:
     mov rsmm_winhttp_fwd+160(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -236,9 +236,9 @@ rsmm_fwd_WinHttpFreeProxyResultEx:
 1:  mov $20, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpFreeProxySettings
+    .globl rsmm_fwd_WinHttpCreateUrl
     .p2align 4
-rsmm_fwd_WinHttpFreeProxySettings:
+rsmm_fwd_WinHttpCreateUrl:
     mov rsmm_winhttp_fwd+168(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -246,9 +246,9 @@ rsmm_fwd_WinHttpFreeProxySettings:
 1:  mov $21, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetDefaultProxyConfiguration
+    .globl rsmm_fwd_WinHttpDetectAutoProxyConfigUrl
     .p2align 4
-rsmm_fwd_WinHttpGetDefaultProxyConfiguration:
+rsmm_fwd_WinHttpDetectAutoProxyConfigUrl:
     mov rsmm_winhttp_fwd+176(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -256,9 +256,9 @@ rsmm_fwd_WinHttpGetDefaultProxyConfiguration:
 1:  mov $22, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetIEProxyConfigForCurrentUser
+    .globl rsmm_fwd_WinHttpFreeProxyResult
     .p2align 4
-rsmm_fwd_WinHttpGetIEProxyConfigForCurrentUser:
+rsmm_fwd_WinHttpFreeProxyResult:
     mov rsmm_winhttp_fwd+184(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -266,9 +266,9 @@ rsmm_fwd_WinHttpGetIEProxyConfigForCurrentUser:
 1:  mov $23, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxyForUrl
+    .globl rsmm_fwd_WinHttpFreeProxyResultEx
     .p2align 4
-rsmm_fwd_WinHttpGetProxyForUrl:
+rsmm_fwd_WinHttpFreeProxyResultEx:
     mov rsmm_winhttp_fwd+192(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -276,9 +276,9 @@ rsmm_fwd_WinHttpGetProxyForUrl:
 1:  mov $24, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxyForUrlEx
+    .globl rsmm_fwd_WinHttpFreeProxySettings
     .p2align 4
-rsmm_fwd_WinHttpGetProxyForUrlEx:
+rsmm_fwd_WinHttpFreeProxySettings:
     mov rsmm_winhttp_fwd+200(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -286,9 +286,9 @@ rsmm_fwd_WinHttpGetProxyForUrlEx:
 1:  mov $25, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxyForUrlHvsi
+    .globl rsmm_fwd_WinHttpGetProxyForUrl
     .p2align 4
-rsmm_fwd_WinHttpGetProxyForUrlHvsi:
+rsmm_fwd_WinHttpGetProxyForUrl:
     mov rsmm_winhttp_fwd+208(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -296,9 +296,9 @@ rsmm_fwd_WinHttpGetProxyForUrlHvsi:
 1:  mov $26, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxyResult
+    .globl rsmm_fwd_WinHttpGetProxyForUrlEx
     .p2align 4
-rsmm_fwd_WinHttpGetProxyResult:
+rsmm_fwd_WinHttpGetProxyForUrlEx:
     mov rsmm_winhttp_fwd+216(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -306,9 +306,9 @@ rsmm_fwd_WinHttpGetProxyResult:
 1:  mov $27, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxyResultEx
+    .globl rsmm_fwd_WinHttpGetProxyForUrlEx2
     .p2align 4
-rsmm_fwd_WinHttpGetProxyResultEx:
+rsmm_fwd_WinHttpGetProxyForUrlEx2:
     mov rsmm_winhttp_fwd+224(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -316,9 +316,9 @@ rsmm_fwd_WinHttpGetProxyResultEx:
 1:  mov $28, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetProxySettingsVersion
+    .globl rsmm_fwd_WinHttpGetProxyForUrlHvsi
     .p2align 4
-rsmm_fwd_WinHttpGetProxySettingsVersion:
+rsmm_fwd_WinHttpGetProxyForUrlHvsi:
     mov rsmm_winhttp_fwd+232(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -326,9 +326,9 @@ rsmm_fwd_WinHttpGetProxySettingsVersion:
 1:  mov $29, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpGetTunnelSocket
+    .globl rsmm_fwd_WinHttpGetProxyResult
     .p2align 4
-rsmm_fwd_WinHttpGetTunnelSocket:
+rsmm_fwd_WinHttpGetProxyResult:
     mov rsmm_winhttp_fwd+240(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -336,9 +336,9 @@ rsmm_fwd_WinHttpGetTunnelSocket:
 1:  mov $30, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpOpen
+    .globl rsmm_fwd_WinHttpGetProxyResultEx
     .p2align 4
-rsmm_fwd_WinHttpOpen:
+rsmm_fwd_WinHttpGetProxyResultEx:
     mov rsmm_winhttp_fwd+248(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -346,9 +346,9 @@ rsmm_fwd_WinHttpOpen:
 1:  mov $31, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPacJsWorkerMain
+    .globl rsmm_fwd_WinHttpGetProxySettingsVersion
     .p2align 4
-rsmm_fwd_WinHttpPacJsWorkerMain:
+rsmm_fwd_WinHttpGetProxySettingsVersion:
     mov rsmm_winhttp_fwd+256(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -356,9 +356,9 @@ rsmm_fwd_WinHttpPacJsWorkerMain:
 1:  mov $32, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalAcquireNextInterface
+    .globl rsmm_fwd_WinHttpGetTunnelSocket
     .p2align 4
-rsmm_fwd_WinHttpPalAcquireNextInterface:
+rsmm_fwd_WinHttpGetTunnelSocket:
     mov rsmm_winhttp_fwd+264(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -366,9 +366,9 @@ rsmm_fwd_WinHttpPalAcquireNextInterface:
 1:  mov $33, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalAcquireNextInterfaceAsync
+    .globl rsmm_fwd_WinHttpPacJsWorkerMain
     .p2align 4
-rsmm_fwd_WinHttpPalAcquireNextInterfaceAsync:
+rsmm_fwd_WinHttpPacJsWorkerMain:
     mov rsmm_winhttp_fwd+272(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -376,9 +376,9 @@ rsmm_fwd_WinHttpPalAcquireNextInterfaceAsync:
 1:  mov $34, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalCancelRequest
+    .globl rsmm_fwd_WinHttpPalAcquireNextInterface
     .p2align 4
-rsmm_fwd_WinHttpPalCancelRequest:
+rsmm_fwd_WinHttpPalAcquireNextInterface:
     mov rsmm_winhttp_fwd+280(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -386,9 +386,9 @@ rsmm_fwd_WinHttpPalCancelRequest:
 1:  mov $35, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalCreateCmSessionReference
+    .globl rsmm_fwd_WinHttpPalAcquireNextInterfaceAsync
     .p2align 4
-rsmm_fwd_WinHttpPalCreateCmSessionReference:
+rsmm_fwd_WinHttpPalAcquireNextInterfaceAsync:
     mov rsmm_winhttp_fwd+288(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -396,9 +396,9 @@ rsmm_fwd_WinHttpPalCreateCmSessionReference:
 1:  mov $36, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalCreateRequestCtx
+    .globl rsmm_fwd_WinHttpPalCancelRequest
     .p2align 4
-rsmm_fwd_WinHttpPalCreateRequestCtx:
+rsmm_fwd_WinHttpPalCancelRequest:
     mov rsmm_winhttp_fwd+296(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -406,9 +406,9 @@ rsmm_fwd_WinHttpPalCreateRequestCtx:
 1:  mov $37, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalDllInit
+    .globl rsmm_fwd_WinHttpPalCreateCmSessionReference
     .p2align 4
-rsmm_fwd_WinHttpPalDllInit:
+rsmm_fwd_WinHttpPalCreateCmSessionReference:
     mov rsmm_winhttp_fwd+304(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -416,9 +416,9 @@ rsmm_fwd_WinHttpPalDllInit:
 1:  mov $38, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalDllUnload
+    .globl rsmm_fwd_WinHttpPalCreateRequestCtx
     .p2align 4
-rsmm_fwd_WinHttpPalDllUnload:
+rsmm_fwd_WinHttpPalCreateRequestCtx:
     mov rsmm_winhttp_fwd+312(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -426,9 +426,9 @@ rsmm_fwd_WinHttpPalDllUnload:
 1:  mov $39, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalFreeProxyInfo
+    .globl rsmm_fwd_WinHttpPalDllInit
     .p2align 4
-rsmm_fwd_WinHttpPalFreeProxyInfo:
+rsmm_fwd_WinHttpPalDllInit:
     mov rsmm_winhttp_fwd+320(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -436,9 +436,9 @@ rsmm_fwd_WinHttpPalFreeProxyInfo:
 1:  mov $40, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalFreeRequestCtx
+    .globl rsmm_fwd_WinHttpPalDllUnload
     .p2align 4
-rsmm_fwd_WinHttpPalFreeRequestCtx:
+rsmm_fwd_WinHttpPalDllUnload:
     mov rsmm_winhttp_fwd+328(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -446,9 +446,9 @@ rsmm_fwd_WinHttpPalFreeRequestCtx:
 1:  mov $41, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalGetProxyCreds
+    .globl rsmm_fwd_WinHttpPalFreeProxyInfo
     .p2align 4
-rsmm_fwd_WinHttpPalGetProxyCreds:
+rsmm_fwd_WinHttpPalFreeProxyInfo:
     mov rsmm_winhttp_fwd+336(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -456,9 +456,9 @@ rsmm_fwd_WinHttpPalGetProxyCreds:
 1:  mov $42, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalGetProxyForCurrentInterface
+    .globl rsmm_fwd_WinHttpPalFreeRequestCtx
     .p2align 4
-rsmm_fwd_WinHttpPalGetProxyForCurrentInterface:
+rsmm_fwd_WinHttpPalFreeRequestCtx:
     mov rsmm_winhttp_fwd+344(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -466,9 +466,9 @@ rsmm_fwd_WinHttpPalGetProxyForCurrentInterface:
 1:  mov $43, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalIsImplemented
+    .globl rsmm_fwd_WinHttpPalGetProxyCreds
     .p2align 4
-rsmm_fwd_WinHttpPalIsImplemented:
+rsmm_fwd_WinHttpPalGetProxyCreds:
     mov rsmm_winhttp_fwd+352(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -476,9 +476,9 @@ rsmm_fwd_WinHttpPalIsImplemented:
 1:  mov $44, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpPalOnSendRequestComplete
+    .globl rsmm_fwd_WinHttpPalGetProxyForCurrentInterface
     .p2align 4
-rsmm_fwd_WinHttpPalOnSendRequestComplete:
+rsmm_fwd_WinHttpPalGetProxyForCurrentInterface:
     mov rsmm_winhttp_fwd+360(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -486,9 +486,9 @@ rsmm_fwd_WinHttpPalOnSendRequestComplete:
 1:  mov $45, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpProbeConnectivity
+    .globl rsmm_fwd_WinHttpPalIsImplemented
     .p2align 4
-rsmm_fwd_WinHttpProbeConnectivity:
+rsmm_fwd_WinHttpPalIsImplemented:
     mov rsmm_winhttp_fwd+368(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -496,9 +496,9 @@ rsmm_fwd_WinHttpProbeConnectivity:
 1:  mov $46, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpQueryAuthSchemes
+    .globl rsmm_fwd_WinHttpPalOnSendRequestComplete
     .p2align 4
-rsmm_fwd_WinHttpQueryAuthSchemes:
+rsmm_fwd_WinHttpPalOnSendRequestComplete:
     mov rsmm_winhttp_fwd+376(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -506,9 +506,9 @@ rsmm_fwd_WinHttpQueryAuthSchemes:
 1:  mov $47, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpQueryDataAvailable
+    .globl rsmm_fwd_WinHttpProbeConnectivity
     .p2align 4
-rsmm_fwd_WinHttpQueryDataAvailable:
+rsmm_fwd_WinHttpProbeConnectivity:
     mov rsmm_winhttp_fwd+384(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -516,9 +516,9 @@ rsmm_fwd_WinHttpQueryDataAvailable:
 1:  mov $48, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpQueryHeaders
+    .globl rsmm_fwd_WinHttpQueryAuthSchemes
     .p2align 4
-rsmm_fwd_WinHttpQueryHeaders:
+rsmm_fwd_WinHttpQueryAuthSchemes:
     mov rsmm_winhttp_fwd+392(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -526,9 +526,9 @@ rsmm_fwd_WinHttpQueryHeaders:
 1:  mov $49, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpQueryOption
+    .globl rsmm_fwd_WinHttpQueryDataAvailable
     .p2align 4
-rsmm_fwd_WinHttpQueryOption:
+rsmm_fwd_WinHttpQueryDataAvailable:
     mov rsmm_winhttp_fwd+400(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -536,9 +536,9 @@ rsmm_fwd_WinHttpQueryOption:
 1:  mov $50, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpReadData
+    .globl rsmm_fwd_WinHttpQueryHeaders
     .p2align 4
-rsmm_fwd_WinHttpReadData:
+rsmm_fwd_WinHttpQueryHeaders:
     mov rsmm_winhttp_fwd+408(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -546,9 +546,9 @@ rsmm_fwd_WinHttpReadData:
 1:  mov $51, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpReadProxySettings
+    .globl rsmm_fwd_WinHttpQueryOption
     .p2align 4
-rsmm_fwd_WinHttpReadProxySettings:
+rsmm_fwd_WinHttpQueryOption:
     mov rsmm_winhttp_fwd+416(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -556,9 +556,9 @@ rsmm_fwd_WinHttpReadProxySettings:
 1:  mov $52, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpReadProxySettingsHvsi
+    .globl rsmm_fwd_WinHttpReadData
     .p2align 4
-rsmm_fwd_WinHttpReadProxySettingsHvsi:
+rsmm_fwd_WinHttpReadData:
     mov rsmm_winhttp_fwd+424(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -566,9 +566,9 @@ rsmm_fwd_WinHttpReadProxySettingsHvsi:
 1:  mov $53, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpReceiveResponse
+    .globl rsmm_fwd_WinHttpReadProxySettings
     .p2align 4
-rsmm_fwd_WinHttpReceiveResponse:
+rsmm_fwd_WinHttpReadProxySettings:
     mov rsmm_winhttp_fwd+432(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -576,9 +576,9 @@ rsmm_fwd_WinHttpReceiveResponse:
 1:  mov $54, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpResetAutoProxy
+    .globl rsmm_fwd_WinHttpReadProxySettingsHvsi
     .p2align 4
-rsmm_fwd_WinHttpResetAutoProxy:
+rsmm_fwd_WinHttpReadProxySettingsHvsi:
     mov rsmm_winhttp_fwd+440(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -586,9 +586,9 @@ rsmm_fwd_WinHttpResetAutoProxy:
 1:  mov $55, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSaveProxyCredentials
+    .globl rsmm_fwd_WinHttpResetAutoProxy
     .p2align 4
-rsmm_fwd_WinHttpSaveProxyCredentials:
+rsmm_fwd_WinHttpResetAutoProxy:
     mov rsmm_winhttp_fwd+448(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -596,9 +596,9 @@ rsmm_fwd_WinHttpSaveProxyCredentials:
 1:  mov $56, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSendRequest
+    .globl rsmm_fwd_WinHttpSaveProxyCredentials
     .p2align 4
-rsmm_fwd_WinHttpSendRequest:
+rsmm_fwd_WinHttpSaveProxyCredentials:
     mov rsmm_winhttp_fwd+456(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -626,9 +626,9 @@ rsmm_fwd_WinHttpSetDefaultProxyConfiguration:
 1:  mov $59, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSetOption
+    .globl rsmm_fwd_WinHttpSetProxySettingsPerUser
     .p2align 4
-rsmm_fwd_WinHttpSetOption:
+rsmm_fwd_WinHttpSetProxySettingsPerUser:
     mov rsmm_winhttp_fwd+480(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -636,9 +636,9 @@ rsmm_fwd_WinHttpSetOption:
 1:  mov $60, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSetProxySettingsPerUser
+    .globl rsmm_fwd_WinHttpTimeFromSystemTime
     .p2align 4
-rsmm_fwd_WinHttpSetProxySettingsPerUser:
+rsmm_fwd_WinHttpTimeFromSystemTime:
     mov rsmm_winhttp_fwd+488(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -646,9 +646,9 @@ rsmm_fwd_WinHttpSetProxySettingsPerUser:
 1:  mov $61, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSetStatusCallback
+    .globl rsmm_fwd_WinHttpTimeToSystemTime
     .p2align 4
-rsmm_fwd_WinHttpSetStatusCallback:
+rsmm_fwd_WinHttpTimeToSystemTime:
     mov rsmm_winhttp_fwd+496(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -656,9 +656,9 @@ rsmm_fwd_WinHttpSetStatusCallback:
 1:  mov $62, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpSetTimeouts
+    .globl rsmm_fwd_WinHttpWebSocketClose
     .p2align 4
-rsmm_fwd_WinHttpSetTimeouts:
+rsmm_fwd_WinHttpWebSocketClose:
     mov rsmm_winhttp_fwd+504(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -666,9 +666,9 @@ rsmm_fwd_WinHttpSetTimeouts:
 1:  mov $63, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpTimeFromSystemTime
+    .globl rsmm_fwd_WinHttpWebSocketCompleteUpgrade
     .p2align 4
-rsmm_fwd_WinHttpTimeFromSystemTime:
+rsmm_fwd_WinHttpWebSocketCompleteUpgrade:
     mov rsmm_winhttp_fwd+512(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -676,9 +676,9 @@ rsmm_fwd_WinHttpTimeFromSystemTime:
 1:  mov $64, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpTimeToSystemTime
+    .globl rsmm_fwd_WinHttpWebSocketQueryCloseStatus
     .p2align 4
-rsmm_fwd_WinHttpTimeToSystemTime:
+rsmm_fwd_WinHttpWebSocketQueryCloseStatus:
     mov rsmm_winhttp_fwd+520(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -686,9 +686,9 @@ rsmm_fwd_WinHttpTimeToSystemTime:
 1:  mov $65, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpWebSocketClose
+    .globl rsmm_fwd_WinHttpWebSocketReceive
     .p2align 4
-rsmm_fwd_WinHttpWebSocketClose:
+rsmm_fwd_WinHttpWebSocketReceive:
     mov rsmm_winhttp_fwd+528(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -696,9 +696,9 @@ rsmm_fwd_WinHttpWebSocketClose:
 1:  mov $66, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpWebSocketCompleteUpgrade
+    .globl rsmm_fwd_WinHttpWebSocketSend
     .p2align 4
-rsmm_fwd_WinHttpWebSocketCompleteUpgrade:
+rsmm_fwd_WinHttpWebSocketSend:
     mov rsmm_winhttp_fwd+536(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -706,9 +706,9 @@ rsmm_fwd_WinHttpWebSocketCompleteUpgrade:
 1:  mov $67, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpWebSocketQueryCloseStatus
+    .globl rsmm_fwd_WinHttpWebSocketShutdown
     .p2align 4
-rsmm_fwd_WinHttpWebSocketQueryCloseStatus:
+rsmm_fwd_WinHttpWebSocketShutdown:
     mov rsmm_winhttp_fwd+544(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -716,9 +716,9 @@ rsmm_fwd_WinHttpWebSocketQueryCloseStatus:
 1:  mov $68, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpWebSocketReceive
+    .globl rsmm_fwd_WinHttpWriteData
     .p2align 4
-rsmm_fwd_WinHttpWebSocketReceive:
+rsmm_fwd_WinHttpWriteData:
     mov rsmm_winhttp_fwd+552(%rip), %rax
     test %rax, %rax
     jz 1f
@@ -726,42 +726,12 @@ rsmm_fwd_WinHttpWebSocketReceive:
 1:  mov $69, %eax
     jmp rsmm_fwd_slow
 
-    .globl rsmm_fwd_WinHttpWebSocketSend
+    .globl rsmm_fwd_WinHttpWriteProxySettings
     .p2align 4
-rsmm_fwd_WinHttpWebSocketSend:
+rsmm_fwd_WinHttpWriteProxySettings:
     mov rsmm_winhttp_fwd+560(%rip), %rax
     test %rax, %rax
     jz 1f
     jmp *%rax
 1:  mov $70, %eax
-    jmp rsmm_fwd_slow
-
-    .globl rsmm_fwd_WinHttpWebSocketShutdown
-    .p2align 4
-rsmm_fwd_WinHttpWebSocketShutdown:
-    mov rsmm_winhttp_fwd+568(%rip), %rax
-    test %rax, %rax
-    jz 1f
-    jmp *%rax
-1:  mov $71, %eax
-    jmp rsmm_fwd_slow
-
-    .globl rsmm_fwd_WinHttpWriteData
-    .p2align 4
-rsmm_fwd_WinHttpWriteData:
-    mov rsmm_winhttp_fwd+576(%rip), %rax
-    test %rax, %rax
-    jz 1f
-    jmp *%rax
-1:  mov $72, %eax
-    jmp rsmm_fwd_slow
-
-    .globl rsmm_fwd_WinHttpWriteProxySettings
-    .p2align 4
-rsmm_fwd_WinHttpWriteProxySettings:
-    mov rsmm_winhttp_fwd+584(%rip), %rax
-    test %rax, %rax
-    jz 1f
-    jmp *%rax
-1:  mov $73, %eax
     jmp rsmm_fwd_slow

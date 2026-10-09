@@ -22,4 +22,6 @@ def test_nothing_forwards_to_the_renamed_copy_any_more():
     # online request (2026-10-09). Pass-through goes through a thunk instead.
     text = DEF.read_text(encoding="utf-8")
     assert "winhttp_real." not in text
-    assert "WinHttpOpen=rsmm_fwd_WinHttpOpen" in text
+    exports = [line.strip() for line in text.splitlines()[2:] if "=" in line]
+    odd = [e for e in exports if not e.split("=")[1].startswith(("rsmm_fwd_", "rsmm_WinHttp"))]
+    assert not odd, f"every export is a thunk or a loader wrapper: {odd}"
