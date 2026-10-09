@@ -1,10 +1,20 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { AlertTriangle, ChevronDown, Link2, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  FolderOpen,
+  Link2,
+  Pause,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, CopyButton, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { ShareLogDialog } from '../components/share-log-dialog';
-import { useToast } from '../components/toast';
+import { useDialog, useToast } from '../components/toast';
 import { explainError } from '../lib/errors';
 import { TParts, useT } from '../lib/i18n-react';
 import {
@@ -17,7 +27,9 @@ import {
   type LogChunk,
   type TailState,
   appendChunk,
+  deleteLoaderLogs,
   emptyTail,
+  openLoaderLogsDir,
   readLoaderLogChunk,
   sessionSlice,
 } from '../lib/loader-log-tail';
@@ -70,8 +82,10 @@ function LogPage() {
   const t = useT();
   const { running } = useLaunch();
   const toast = useToast();
+  const dialog = useDialog();
   const [source, setSource] = useState<Source>({ kind: 'current' });
   const [runs, setRuns] = useState<ArchivedRun[]>([]);
+  const [runsDir, setRunsDir] = useState<string | null>(null);
   const [meta, setMeta] = useState<LoaderLogResult | null>(null);
   const [tail, setTail] = useState<TailState>(emptyTail);
   const [health, setHealth] = useState<LoaderHealth | null>(null);
@@ -200,11 +214,57 @@ function LogPage() {
     if (first || !running) void refreshHealth();
   }, [running, refreshHealth]);
 
-  useEffect(() => {
-    void listLoaderRuns()
-      .then((r) => setRuns(r?.runs ?? []))
-      .catch(() => setRuns([]));
+  const refreshRuns = useCallback(async () => {
+    try {
+      const r = await listLoaderRuns();
+      setRuns(r?.runs ?? []);
+      setRunsDir(r?.dir ?? null);
+    } catch {
+      setRuns([]);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshRuns();
+  }, [refreshRuns]);
+
+  const onOpenFolder = async () => {
+    if (!runsDir) return;
+    try {
+      await openLoaderLogsDir(runsDir);
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
+
+  const onDeleteLogs = async () => {
+    if (!runsDir) return;
+    const ok = await dialog.confirm({
+      title: t('Delete all logs?'),
+      body: gameUp
+        ? t(
+            'This deletes every archived run. The log of the game that is running now is kept until it closes.',
+          )
+        : t(
+            'This deletes every archived run and the last run’s log. Logs you have already shared keep working.',
+          ),
+      confirmLabel: t('Delete'),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await deleteLoaderLogs(runsDir, !gameUp);
+      toast.push(
+        t.n(r.files, 'Deleted {n} log file.', 'Deleted {n} log files.'),
+        r.skipped > 0 ? 'error' : 'success',
+      );
+      setSource({ kind: 'current' });
+      await refreshRuns();
+      await load();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
 
   /**
    * The follow loop.
@@ -350,6 +410,26 @@ function LogPage() {
             >
               <Link2 className="h-3.5 w-3.5" aria-hidden />
               {t('Share link')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!runsDir}
+              onClick={() => void onOpenFolder()}
+              title={t('Open the folder that holds every archived run')}
+            >
+              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+              {t('Open folder')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!runsDir}
+              onClick={() => void onDeleteLogs()}
+              title={t('Delete the archived runs and the last run’s log')}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              {t('Delete logs')}
             </Button>
           </div>
         </div>

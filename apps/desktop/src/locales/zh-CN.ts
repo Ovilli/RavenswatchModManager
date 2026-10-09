@@ -993,4 +993,14 @@ export const zhCN: Record<string, string> = {
     '那次启动没有使用服务器地址。请重新启动游戏。',
   'What was done': '执行了哪些操作',
   'Game folder: {path}': '游戏目录：{path}',
+  'Delete all logs?': '删除所有日志？',
+  'This deletes every archived run. The log of the game that is running now is kept until it closes.':
+    '这会删除所有已归档的运行日志。正在运行的游戏的日志会保留到游戏关闭为止。',
+  'This deletes every archived run and the last run’s log. Logs you have already shared keep working.':
+    '这会删除所有已归档的运行日志以及最近一次运行的日志。已经分享的日志链接不受影响。',
+  'Deleted {n} log file.': '已删除 {n} 个日志文件。',
+  'Deleted {n} log files.': '已删除 {n} 个日志文件。',
+  'Open the folder that holds every archived run': '打开存放所有已归档运行日志的文件夹',
+  'Delete the archived runs and the last run’s log': '删除已归档的运行日志和最近一次运行的日志',
+  'Delete logs': '删除日志',
 };

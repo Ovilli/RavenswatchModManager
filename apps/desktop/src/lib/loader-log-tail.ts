@@ -37,6 +37,23 @@ export function readLoaderLogChunk(
   });
 }
 
+/** Reveal `<game>/rsmm/logs` (the `dir` from `listLoaderRuns`) in the file manager. */
+export function openLoaderLogsDir(dir: string): Promise<void> {
+  return invoke<void>('open_loader_logs_dir', { dir });
+}
+
+export interface DeletedLogs {
+  files: number;
+  bytes: number;
+  /** Files the OS would not remove — the live log while the game holds it. */
+  skipped: number;
+}
+
+/** Delete every archived run; with `includeLive`, the live and last-run log too. */
+export function deleteLoaderLogs(dir: string, includeLive: boolean): Promise<DeletedLogs> {
+  return invoke<DeletedLogs>('delete_loader_logs', { dir, includeLive });
+}
+
 export interface TailState {
   /** Byte offset to resume from, or null before the first successful read. */
   offset: number | null;

@@ -106,7 +106,7 @@ pub fn open_profile_dir(
 /// So: strip the AppDir variables, spawn, and WAIT for the launcher, whose
 /// non-zero status becomes a real error message.
 #[cfg(target_os = "linux")]
-fn reveal(_app: &tauri::AppHandle, dir: &Path) -> Result<(), String> {
+pub(crate) fn reveal(_app: &tauri::AppHandle, dir: &Path) -> Result<(), String> {
     // linuxdeploy's GTK hook plus the AppImage runtime's own two. Removing a
     // variable that was never set is a no-op, so this is safe outside an
     // AppImage — where it is also unnecessary, and where nothing is lost by
@@ -148,7 +148,7 @@ fn reveal(_app: &tauri::AppHandle, dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn reveal(app: &tauri::AppHandle, dir: &Path) -> Result<(), String> {
+pub(crate) fn reveal(app: &tauri::AppHandle, dir: &Path) -> Result<(), String> {
     app.opener()
         .open_path(path_str(dir)?, None::<&str>)
         .map_err(|e| format!("could not open {}: {e}", dir.display()))

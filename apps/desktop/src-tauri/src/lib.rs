@@ -57,6 +57,8 @@ pub fn run() {
             launcher_log::clear_launcher_log,
             launcher_log::read_launcher_log,
             loader_log::read_loader_log_chunk,
+            loader_log::open_loader_logs_dir,
+            loader_log::delete_loader_logs,
             overlay_state::read_overlay_state,
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
