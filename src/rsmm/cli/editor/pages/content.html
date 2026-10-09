@@ -169,6 +169,49 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
 details.allv { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
 details.allv > summary { cursor: pointer; font-weight: 600; }
+/* The custom-talent builder. */
+.tb-promo { display: flex; gap: 16px; align-items: center; padding: 12px 16px; margin-bottom: 12px; border-radius: 12px; background: var(--accentbg); border: 1px solid var(--line); }
+.tb-promotext { flex: 1; display: grid; gap: 2px; }
+.tb-promotext span { font-size: 13px; color: var(--muted); }
+.tb-promo button { flex: none; }
+.tb-rowbtn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tb-rowbtn.on > button:first-child { border-color: var(--accentline); color: var(--accentink); }
+.tbuild h3 { margin: 18px 0 6px; font-size: 15px; }
+.tbuild .thead .linkbtn { font-size: 13px; }
+.tb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.tb-tile { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; padding: 8px; }
+.tb-tile .ico { grid-row: 1 / 3; width: 40px; height: 40px; }
+.tb-tile .n { font-weight: 600; overflow-wrap: anywhere; }
+.tb-tile .s { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.tb-tile.on { border-color: var(--accentline); background: var(--accentbg); }
+.tb-tile[disabled] { opacity: .45; cursor: not-allowed; }
+.tb-grid { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 24px; align-items: start; }
+.tb-left { position: sticky; top: 0; display: grid; gap: 10px; justify-items: start; }
+.tb-card { width: 100%; }
+.tb-segrow { display: flex; gap: 8px; align-items: center; }
+.tb-right { display: grid; gap: 8px; min-width: 0; }
+.tb-right > input, .tb-right > textarea { width: 100%; box-sizing: border-box; }
+.tb-right > h3:first-child { margin-top: 0; }
+.tb-iconrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tb-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 10px; }
+.tb-palette, .tb-recipes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.tb-block, .tb-recipe { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 10px; }
+.tb-block .t, .tb-recipe .t { font-weight: 600; }
+.tb-block .b, .tb-recipe .b { font-size: 12px; color: var(--muted); }
+.tb-block[disabled] { opacity: .45; cursor: not-allowed; }
+.tb-recipe { border-style: dashed; }
+.tb-palette.wish .tb-block { background: var(--bg); border-style: dashed; }
+.tb-palette.wish .tb-block .b { font-style: italic; }
+.tb-borrow { padding: 8px; border-radius: 8px; background: var(--chip); }
+.tb-idea { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accentline); background: var(--panel); display: grid; gap: 8px; }
+.tb-idea h3 { margin: 0; }
+.tb-idea p { margin: 0; }
+.tb-idea textarea { width: 100%; box-sizing: border-box; }
+.tb-ideabtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+a.btnlike { display: inline-block; text-decoration: none; border: 1px solid var(--line); border-radius: 7px; padding: 5px 12px; color: inherit; background: var(--panel); }
+a.btnlike.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
+a.btnlike.off { opacity: .5; pointer-events: none; }
+@media (max-width: 1000px) { .tb-grid { grid-template-columns: minmax(0, 1fr); } .tb-left { position: static; } .tb-promo { flex-direction: column; align-items: stretch; } }
 @media (max-width: 1150px) { .tcard { grid-template-columns: minmax(0, 1fr); } .trow { grid-template-columns: minmax(0, 1fr) repeat(4, 64px) 26px; } }
 .mini { background: #1c1b1a; color: #ecebe6; border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: pre-wrap; }
 .mini .t { font-weight: 700; display: block; }
@@ -1637,14 +1680,276 @@ function talentNumbers(c, redraw) {
   return box;
 }
 
+// ---- talents: the custom-talent builder ------------------------------------------
+// A hero's number of talents is fixed, so a custom talent REPLACES one: pick it,
+// then build what it does from blocks. Everything here writes the same edit state
+// as the cards below it (rebuild, addStats, include, cards), so the manifest is the
+// one the card list would write. What cannot be built yet is asked for: the idea
+// goes to the issue tracker, and asked-for ideas are how the blocks grew.
+const IDEA_URL = "https://github.com/Ovilli/RavenswatchModManager/issues/new";
+const IDEA_SPARKS = [
+  "POWER spawns a tornado that pulls enemies in",
+  "Dashing through an enemy sets it on fire",
+  "Every 5th ATTACK chills everything around you",
+  "Leave a decoy behind when you DASH",
+  "Killing an enemy during DEFENSE refunds its cooldown",
+  "Your SPECIAL is twice as big but costs health",
+  "At night, chests show on the map",
+  "+1 DEFENSE charge, but DEFENSE recharges slower",
+];
+// Blocks that build today. `when` presets the added stat; `needs` is the ability
+// list (from the server's addStat info) the block cannot work without.
+const BLOCKS = [
+  { id: "always", title: "Boost a stat", blurb: "On for as long as you own the talent. Damage, cooldowns, crit, armour, health…" },
+  { id: "during", title: "While using an ability", blurb: "e.g. ATTACK damage +40% during DEFENSE.", needs: "during" },
+  { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
+  { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
+  { id: "borrow", title: "Borrow a talent's effect", blurb: "Also run another talent's effect, even another hero's." },
+];
+// Not buildable yet: each opens the idea box with a starting line.
+const WISHES = [
+  { title: "Spawn something", ex: "POWER spawns a tornado that pulls enemies in" },
+  { title: "Put a status on enemies", ex: "ATTACK hits chill enemies" },
+  { title: "Change an ability's size or range", ex: "SPECIAL hits a 30% larger area" },
+  { title: "Extra ability charges", ex: "+1 DEFENSE charge" },
+  { title: "Map, loot and shards", ex: "Reveal chests on the map at night" },
+  { title: "Something else entirely", ex: "" },
+];
+// Example talents: a name and the stats they add. Shown only when the hero's
+// abilities support every row.
+const RECIPES = [
+  { name: "Riposte", blurb: "After DEFENSE, your next ATTACK is more likely to crit.",
+    rows: [{ stat: "Crit chance", values: [0.15, 0.2, 0.25, 0.3], after: "DEFENSE", seconds: 6, next: "ATTACK" }] },
+  { name: "Battle Trance", blurb: "Hit harder while your SPECIAL is in use.",
+    rows: [{ stat: "Attack power", values: [0.2, 0.3, 0.4, 0.5], during: "SPECIAL" }] },
+  { name: "Second Wind", blurb: "DEFENSE comes back sooner.",
+    rows: [{ stat: "CD reduce defensive", values: [0.1, 0.15, 0.2, 0.25] }] },
+  { name: "Momentum", blurb: "A short burst of damage after every POWER, at most every 8 s.",
+    rows: [{ stat: "Attack power", values: [0.15, 0.2, 0.25, 0.3], after: "POWER", seconds: 3, cooldown: 8 }] },
+];
+
+function recipeFits(r, info) {
+  return r.rows.every(a => (!a.during || (info.during || []).includes(a.during))
+    && (!a.after || (info.after || []).includes(a.after))
+    && (!a.next || (info.during || []).includes(a.next)));
+}
+
+// The card text the builder writes: one line per added stat that has none yet,
+// in the same form the stat rows write (addedStats keeps them in step after).
+function writeStatLines(c, desc) {
+  const list = (S.talentEdit.addStats || {})[c.source] || [], base = firstSlot(c);
+  if (base == null || !c.hasDescription) return;
+  let text = desc.get();
+  list.forEach((a, i) => {
+    if (!a.stat || (a.line && text.includes(a.line))) return;
+    a.line = statLine(a, base + i);
+    text = text.trim() ? text.replace(/\s*$/, "") + "\n" + a.line : a.line;
+  });
+  desc.set(text);
+}
+
+// The idea box: free text about what the talent should do, sent as a prefilled
+// issue (the "Talent idea" form) or copied for the Discord.
+function ideaBox(c, ideaRef) {
+  const E = S.talentEdit;
+  const spark = IDEA_SPARKS[Math.floor(Math.random() * IDEA_SPARKS.length)];
+  const ta = el("textarea", { rows: "3", placeholder: "Describe it the way you'd say it, e.g. “" + spark + "”" });
+  ta.value = E.idea || "";
+  const summary = () => {
+    const list = ((E.addStats || {})[c?.source] || []).filter(a => a.stat);
+    const lines = list.map((a, i) => statLine(a, i).replace(/[#@&~$*]/g, "").replace(/\{\d+\}/, fmt(a.values[3])).replace(/^• /, "- "));
+    const inc = c && (E.include || {})[c.source];
+    if (inc) lines.push("- Also runs " + inc.replace("\u0000", "'s ") + "'s effect");
+    return lines.join("\n");
+  };
+  const send = el("a", { class: "btnlike primary", target: "_blank", rel: "noopener" }, "Send the idea ↗");
+  const sync = () => {
+    E.idea = ta.value;
+    const q = new URLSearchParams({ template: "talent-idea.yml",
+      title: "Talent idea: " + (ta.value.trim().split("\n")[0].slice(0, 70) || "…"),
+      hero: S.hero.replace(/_/g, " "), talent: c ? (c.name || c.source) : "", idea: ta.value, builder: summary() });
+    send.href = IDEA_URL + "?" + q.toString();
+    send.classList.toggle("off", !ta.value.trim());
+  };
+  ta.oninput = () => { sync(); saveDraft(); };
+  sync();
+  const copy = el("button", { type: "button", onclick: async () => {
+    const text = `Talent idea for ${S.hero.replace(/_/g, " ")}${c ? " (replacing " + (c.name || c.source) + ")" : ""}:\n${ta.value}` + (summary() ? "\n\nBuilt so far:\n" + summary() : "");
+    try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; } catch { copy.textContent = "Copy failed"; }
+    setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+  } }, "Copy");
+  ideaRef.focus = ex => {
+    if (ex && !ta.value.includes(ex)) ta.value = ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" + ex : ex;
+    sync(); saveDraft();
+    ta.scrollIntoView({ behavior: "smooth", block: "center" }); ta.focus();
+  };
+  return el("div", { class: "tb-idea" },
+    el("h3", { text: "Dream it up" }),
+    el("p", { class: "tiny muted", text: "Can't build it with the blocks? Describe it anyway, however wild. Ideas people sent became blocks: “your next ATTACK”, “at most once every N s” and borrowing another hero's talent all started as requests." }),
+    ta,
+    el("div", { class: "tb-ideabtns" }, send, copy,
+      el("span", { class: "tiny muted", text: "Opens a short form on GitHub (needs an account), or copy it for the Discord." })));
+}
+
+// Step 1: which talent does the custom one replace?
+function builderPicker() {
+  const E = S.talentEdit, T = S.talents;
+  const grid = el("div", { class: "tb-pick" });
+  for (const c of T.cards) {
+    const info = c.addStat || { ok: false, why: "" };
+    const can = info.ok && info.rebuild !== false;
+    const b = el("button", { type: "button", class: "tb-tile" + (isRebuilt(c) ? " on" : ""), ...(can ? {} : { disabled: "" }),
+      title: can ? "Replace " + (c.name || c.source) : (info.ok ? info.rebuildWhy : info.why) || "Can't be replaced",
+      onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
+    cardIcon(c, "ico"), el("span", { class: "n", text: c.name || c.source }), el("span", { class: "s", text: c.source }));
+    grid.append(b);
+  }
+  return el("div", {},
+    el("h3", { text: "1. Pick the talent it replaces" }),
+    el("p", { class: "tiny muted", text: "A hero's number of talents is fixed, so a custom talent takes the place of one. Its card slot, icon and rarity stay; what it does is up to you. Greyed-out cards can't be replaced yet (hover for why)." }),
+    grid);
+}
+
+function builderView() {
+  const E = S.talentEdit, T = S.talents;
+  const v = el("div", { class: "tpage tbuild" });
+  const back = el("button", { type: "button", class: "linkbtn", onclick: () => { delete E.build; renderView(); refresh(); } }, "← All talent cards");
+  v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
+    el("div", { class: "tname" }, back, el("h2", { text: "Custom talent for " + S.hero.replace(/_/g, " ") }))));
+  const c = T.cards.find(x => x.source === E.build);
+  const ideaRef = {};
+  if (!c) {
+    v.append(builderPicker(), ideaBox(null, ideaRef));
+    return v;
+  }
+  const info = c.addStat || { ok: false, during: [], after: [] };
+  const cur = E.cards[c.source] || {};
+
+  // The card, large, beside everything that changes it.
+  const preview = el("div", { class: "tb-card" });
+  const nameIn = el("input", { value: cur.name || c.name, placeholder: "Name your talent", ...(c.hasName ? {} : { disabled: "" }) });
+  const descIn = el("textarea", { rows: "4", placeholder: "What the card says. Each effect you add writes a line here; reword it freely.", ...(c.hasDescription ? {} : { disabled: "" }) });
+  descIn.value = cur.description || (isRebuilt(c) ? "" : c.description);
+  const fit = () => { descIn.rows = Math.max(4, descIn.value.split("\n").length + 1); };
+  fit();
+  const paint = () => {
+    preview.textContent = "";
+    preview.append(talentCard(c, nameIn.value || c.name, descIn.value || (isRebuilt(c) ? "" : c.description)));
+  };
+  const store = () => {
+    const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
+    const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
+    const icon = (E.cards[c.source] || {}).iconUpload || "";
+    if (n || d || icon) E.cards[c.source] = { name: n, description: d, ...(icon ? { iconUpload: icon } : {}) };
+    else delete E.cards[c.source];
+    paint(); refresh();
+  };
+  nameIn.oninput = store;
+  descIn.oninput = () => { fit(); store(); };
+  const desc = { get: () => descIn.value, set: t => { descIn.value = t; fit(); store(); } };
+  const setIcon = d => {
+    const now = E.cards[c.source] || { name: "", description: "" };
+    if (d) now.iconUpload = d; else delete now.iconUpload;
+    E.cards[c.source] = now;
+    store(); renderView();
+  };
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Preview rarity" });
+  for (const tier of TIERS) {
+    const b = el("button", { type: "button", class: (E.rarity || "Common") === tier ? "on" : "", onclick: () => {
+      E.rarity = tier;
+      for (const x of seg.children) x.classList.toggle("on", x.textContent === tier);
+      paint(); saveDraft();
+    } }, tier);
+    b.style.setProperty("--rc", RARITY_COLOUR[tier]);
+    seg.append(b);
+  }
+  const left = el("div", { class: "tb-left" }, preview, el("div", { class: "tb-segrow" }, el("span", { class: "tiny muted", text: "Preview as" }), seg),
+    el("button", { type: "button", class: "linkbtn", onclick: () => { E.build = ""; renderView(); } }, "Replace a different talent"));
+
+  const right = el("div", { class: "tb-right" });
+  // 2. Name and look.
+  const up = (E.cards[c.source] || {}).iconUpload;
+  right.append(el("h3", { text: "2. Name it" }),
+    el("div", { class: "tb-replacing tiny muted", text: "Replacing " + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "") }),
+    nameIn, descIn,
+    el("div", { class: "tb-iconrow" }, c.icon ? uploadButton(up ? "Replace icon…" : "Use your own icon…", 128, setIcon) : el("span"),
+      up ? el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again") : el("span"),
+      el("span", { class: "tiny muted", text: "Markup: #WORD@ highlights, &{0}~ is a number that grows with rarity." })));
+
+  // 3. What it does.
+  right.append(el("h3", { text: "3. What it does" }));
+  right.append(rebuildSwitch(c, desc, () => renderView()));
+  const addRow = a => {
+    E.addStats = E.addStats || {};
+    (E.addStats[c.source] = E.addStats[c.source] || []).push(a);
+    writeStatLines(c, desc);
+    renderView(); refresh();
+  };
+  const effects = el("div", { class: "tb-effects" });
+  effects.append(addedStats(c, paint, desc));
+  // addedStats ends with its own "+ Add a stat"; the palette replaces it here.
+  const plain = effects.querySelector(".tnums > button:last-child");
+  if (plain) plain.remove();
+  const borrowBox = el("div", { class: "tb-borrow" }, includeControl(c, paint));
+  borrowBox.hidden = !(E.include || {})[c.source] && !E.showBorrow;
+  right.append(effects, borrowBox);
+
+  const palette = el("div", { class: "tb-palette" });
+  for (const blk of BLOCKS) {
+    const list = blk.needs ? info[blk.needs] || [] : [true];
+    const ok = info.ok && list.length;
+    palette.append(el("button", { type: "button", class: "tb-block", ...(ok ? {} : { disabled: "" }),
+      title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
+      onclick: () => {
+        if (blk.id === "borrow") { E.showBorrow = true; borrowBox.hidden = false; borrowBox.querySelector("select").focus(); return; }
+        const a = { stat: "", values: [0, 0, 0, 0], percent: true };
+        if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
+        if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
+        if (blk.id === "next") {
+          const nxt = (info.during || []).filter(x => x !== a.after);
+          if (nxt.length) a.next = nxt.includes("ATTACK") ? "ATTACK" : nxt[0];
+        }
+        addRow(a);
+      } }, el("span", { class: "t", text: "+ " + blk.title }), el("span", { class: "b", text: blk.blurb })));
+  }
+  right.append(el("div", { class: "tb-sub", text: "Add a building block" }), palette);
+
+  const fits = RECIPES.filter(r => recipeFits(r, info));
+  if (info.ok && fits.length) {
+    right.append(el("div", { class: "tb-sub", text: "Or start from an example" }),
+      el("div", { class: "tb-recipes" }, ...fits.map(r => el("button", { type: "button", class: "tb-recipe", onclick: () => {
+        if (!nameIn.value.trim() || nameIn.value === c.name) { nameIn.value = r.name; store(); }
+        for (const row of r.rows) {
+          E.addStats = E.addStats || {};
+          (E.addStats[c.source] = E.addStats[c.source] || []).push({ percent: true, ...structuredClone(row) });
+        }
+        writeStatLines(c, desc);
+        renderView(); refresh();
+      } }, el("span", { class: "t", text: r.name }), el("span", { class: "b", text: r.blurb })))));
+  }
+
+  right.append(el("div", { class: "tb-sub", text: "Not buildable yet: ask for it" }),
+    el("div", { class: "tb-palette wish" }, ...WISHES.map(w => el("button", { type: "button", class: "tb-block", onclick: () => ideaRef.focus(w.ex) },
+      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))));
+  right.append(ideaBox(c, ideaRef));
+
+  v.append(el("div", { class: "tb-grid" }, left, right));
+  paint();
+  return v;
+}
+
 function talentView() {
   const T = S.talents, v = el("div", { class: "tpage" });
   if (!CARD.ready) cardAssets().then(() => { if (S.tab === "talents" && S.talents) TPREV.all(); });
   if (!T) {
-    v.append(el("div", { class: "help", text: "Pick a hero on the left to rename their talent cards and change the numbers behind them." }));
+    v.append(el("div", { class: "help", text: "Pick a hero on the left to rename their talent cards, change the numbers behind them, or build a talent of your own." }));
     return v;
   }
   const E = S.talentEdit;
+  if (typeof E.build === "string") {
+    if (!CARD.ready) cardAssets().then(() => { if (S.tab === "talents" && typeof S.talentEdit.build === "string") renderView(); });
+    return builderView();
+  }
   const resetAll = () => { S.talentEdit = freshTalentEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
@@ -1657,6 +1962,15 @@ function talentView() {
       el("div", { class: "muted tiny", text: `${T.cards.length} talent cards · a hero's number of talents is fixed, so you change the ones there are` })),
     el("label", { class: "tiny muted tprefix" }, "Block id", pre),
     el("button", { type: "button", title: "Undo every change to this hero (other heroes and items keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this hero")));
+
+  // The way in to the builder: a custom talent, and the ideas the blocks can't do yet.
+  const built = Object.keys(E.rebuild || {});
+  v.append(el("div", { class: "tb-promo" },
+    el("div", { class: "tb-promotext" },
+      el("strong", { text: built.length ? `${built.length} custom talent${built.length > 1 ? "s" : ""} in progress` : "Make your own talent" }),
+      el("span", { text: "Replace one of " + S.hero.replace(/_/g, " ") + "'s talents with one you build from blocks: bonuses during or after abilities, “your next ATTACK”, another hero's talent… And if your idea is “POWER spawns a tornado”, ask for it: that is how the blocks get made." })),
+    el("button", { type: "button", class: "primary", onclick: () => { E.build = built.length === 1 ? built[0] : ""; renderView(); } },
+      built.length === 1 ? "Open the builder" : "Build a custom talent")));
 
   // Toolbar: search, preview rarity.
   const q = el("input", { type: "search", placeholder: "Find a card, e.g. dash", value: E.q || "" });
@@ -1767,7 +2081,19 @@ function talentRow(c) {
   if (isRebuilt(c)) side.append(descWarn);
   syncWarn();
   const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
-  side.append(rebuildSwitch(c, desc, () => renderView()));
+  // Replacing a talent happens in the builder; here, a way in (and out).
+  const info = c.addStat || { ok: false };
+  const canBuild = info.ok && info.rebuild !== false;
+  side.append(el("div", { class: "tb-rowbtn" + (isRebuilt(c) ? " on" : "") },
+    el("button", { type: "button", ...(canBuild ? {} : { disabled: "" }),
+      title: canBuild ? "" : "Can't be replaced: " + ((info.ok ? info.rebuildWhy : info.why) || "not supported"),
+      onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
+    isRebuilt(c) ? "Custom talent: open in the builder →" : "Replace with a custom talent →"),
+    isRebuilt(c) ? el("button", { type: "button", class: "linkbtn", onclick: () => {
+      delete E.rebuild[c.source];
+      if (!E.cards[c.source]?.name) delete E.cards[c.source];
+      renderView(); refresh();
+    } }, "Turn back into " + (c.name || c.source)) : el("span")));
   side.append(includeControl(c, redraw));
   if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
     talentNumbers(c, redraw));

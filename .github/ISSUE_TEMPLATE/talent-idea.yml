@@ -1,0 +1,32 @@
+name: Talent idea
+description: A talent you want to build, or an effect the talent builder can't make yet. However wild.
+title: "Talent idea: "
+labels: ["talent idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the talent the way you'd explain it to a friend: "POWER spawns a tornado that pulls enemies in" is a perfect idea.
+        Ideas sent here are how the talent builder gets new blocks ("your next ATTACK", "at most once every N s" and borrowing another hero's talent all started this way).
+  - type: input
+    id: hero
+    attributes:
+      label: Hero
+      placeholder: Piper
+  - type: input
+    id: talent
+    attributes:
+      label: Talent it would replace (optional)
+      placeholder: Virtuoso
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should happen in game? Numbers are welcome but not needed.
+    validations:
+      required: true
+  - type: textarea
+    id: builder
+    attributes:
+      label: What you built so far (optional)
+      description: Filled in by the editor's talent builder when you send from there.
