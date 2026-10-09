@@ -2,6 +2,15 @@
   "generated": "2026-10-09",
   "entries": [
     {
+      "version": "",
+      "loader_version": 31,
+      "date": "2026-10-09",
+      "summary": "Fix: online / party code failing on Windows while the loader is installed",
+      "highlights": [
+        "Fix: online / party code failing on Windows while the loader is installed"
+      ]
+    },
+    {
       "version": "5.9.10",
       "date": "2026-10-09",
       "summary": "Build your own talents in the editor: a new step-by-step builder, abilities that grow bigger, and effects borrowed from other heroes.",
@@ -538,20 +547,6 @@
         "Publishing a mod version now checks that the version you are publishing matches the one inside the package. When they disagreed, the store offered an update that installed correctly and never changed the version, so pressing Update appeared to do nothing forever.",
         "Restoring no longer deletes the previous run's log. The loader archives it at the start of the next launch, and restore was removing it first — so the archive it was supposed to produce never had anything to save, and neither did the crash history that decides whether a mod is disabled after repeated failed launches.",
         "The launcher now tells you when the loader planted in your game folder is not the one it carries, instead of reporting everything as up to date."
-      ]
-    },
-    {
-      "version": "5.1.0",
-      "date": "2026-08-22",
-      "summary": "Release notes now update on their own, the store gained filters and a list view, and the damage meter stops lagging co-op runs.",
-      "highlights": [
-        "Release notes ship on their own channel, so a loader or scripting fix can announce itself without waiting for a launcher build. What's new appears once after an update, and lives in Settings under About.",
-        "Fixed the damage meter lagging co-op runs. A player whose name is not plain ASCII, such as 7♣, read back as nameless, and that left two identity searches running for the whole match instead of stopping once every row was named.",
-        "The damage meter now lists everyone in the lobby, including players who have not dealt damage yet. A support who spends the opening minutes healing was previously missing from the board entirely.",
-        "The store has filters for category, tag and rating, a switch to hide mods you already have, and a dense list view beside the existing cards. Picking a mod in the list opens its page next to the results.",
-        "Settings gained an About tab and moved to the foot of the sidebar, which now collapses to icons.",
-        "Interface animations can be turned off in Settings, and the hover movement is gone.",
-        "The launcher and game loader versions are shown in the corner of the window."
       ]
     }
   ]
