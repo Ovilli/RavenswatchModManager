@@ -137,12 +137,12 @@ HMODULE renamed_copy() {
 // thunks in winhttp_thunks.S and the wrappers below) goes to this ONE module,
 // so a handle is never used with a WinHTTP other than the one that made it.
 //
-// Native Windows: the genuine System32\winhttp.dll, by full path. It used to
-// be winhttp_real.dll, a copy of that file in the game folder, and running it
-// under that name broke WinHTTP outright: a player's every Stormancer and
-// MyNacon request failed at once with cpprest's "Open failed" (no party code,
-// no online), while the same bytes worked after restore moved them back to
-// winhttp.dll (2026-10-09).
+// Native Windows: the genuine System32\winhttp.dll, by full path, rather
+// than winhttp_real.dll, a copy of it in the game folder. The copy was first
+// blamed for a player having no online at all, and was NOT the cause: with
+// System32 loaded the game still failed every request with "Open failed".
+// What fixed it was exporting what the real DLL exports (see winhttp.def).
+// The build that worked in game loaded from here (2026-10-09).
 //
 // Wine/Proton keeps the renamed copy -- Wine's own builtin, and the only
 // combination proven there. It is also the fallback when the System32 load

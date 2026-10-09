@@ -1079,7 +1079,7 @@ This structure can likely be reconstructed via graph clustering.
 
 ### Loader architecture
 
-- `winhttp.dll` proxy (MinGW cross-build). Each WinHTTP export is an assembly thunk (`src/loader/src/winhttp_thunks.S`, generated from `exports/winhttp.def` by `scripts/gen_winhttp_thunks.py`) that jumps into the real WinHTTP: the genuine `System32\winhttp.dll` on Windows, `winhttp_real.dll` (Wine's builtin) under Proton. On Windows it used to be `.def` forwarders to `winhttp_real.dll`, a renamed copy of the system DLL, and running WinHTTP under that name broke every online request ("Open failed", no party code).
+- `winhttp.dll` proxy (MinGW cross-build). Each WinHTTP export is an assembly thunk (`src/loader/src/winhttp_thunks.S`, generated from `exports/winhttp.def` by `scripts/gen_winhttp_thunks.py`) that jumps into the real WinHTTP: the genuine `System32\winhttp.dll` on Windows, `winhttp_real.dll` (Wine's builtin) under Proton. The `.def` gives every export the ordinal it has in Windows' own `winhttp.dll`: the proxy is the `winhttp.dll` every module in the game process binds to, and while it lacked five of the real DLL's exports a Windows player had no online at all (every Stormancer request "Open failed", no party code).
 - Wine loads it because Steam launch options set `WINEDLLOVERRIDES="winhttp=n,b" %command%`
 - `DllMain` spawns a worker thread which calls `rsmm::install_engine_hooks()`
 - Process filter: `GetModuleFileNameW` → skip if leaf != `Ravenswatch.exe`. Required
