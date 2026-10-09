@@ -611,3 +611,62 @@ def test_the_talent_kind_applies_include(tmp_path, red):
     [path] = talents.emit("test-mod", defn, tmp_path)
     assert "Skill Secondary Quick Bombs" in _refs(path.read_bytes(), "Skill Trait Active",
                                                   "while_active")
+
+
+# --- include another HERO's talent ----------------------------------------------
+
+def hero_readers(hero: str) -> list[bytes]:
+    return [f.read_bytes() for f in corpus.files(f"EntitySettings/Heroes/Hero_{hero}")
+            if f.name.endswith(GEN) and f.name != f"Hero_{hero}{GEN}"]
+
+
+@pytest.fixture(scope="module")
+def piper() -> bytes:
+    return hero_file("Piper")
+
+
+def test_piper_can_borrow_wukongs_power_hold(piper, wukong):
+    out = TA.borrow_talent(piper, wukong, talent="Attack Move Speed", other="Power Hold",
+                           hero="SunWukong", readers=hero_readers("SunWukong"))
+    assert _refs(out, "Skill Attack Move Speed", "while_active")[-1] == \
+        "Skill Power Hold From SunWukong"
+    assert _refs(out, "Skill Power Hold From SunWukong", "while_active") == [
+        "Skill Power Hold AP Modifier From SunWukong"]
+    # The numbers are keyed on PIPER's card now, and keep Wukong's per-rarity check.
+    sel = comp(out, "Skill Power Hold AP Selector From SunWukong")
+    assert {r.path for r in sel.refs} == {
+        "[Dt Skill Controller] Hero_Piper\\Skills\\Skill Controller Attack Move Speed"}
+    assert TV.tier_values(out, sel.name) == TV.tier_values(wukong, "Skill Power Hold AP Selector")
+    assert EC.check(out, piper, name="Hero_Piper") == []
+
+
+@pytest.mark.parametrize(("hero", "other", "msg"), [
+    ("Aladdin", "Defense Tornado", "inside its hero's abilities"),
+    ("Geppetto", "Passive Create Objects", "does not load"),
+    ("Melusine", "Ultimate 2 Spawn More", "only numbers"),
+])
+def test_a_talent_bound_to_its_hero_is_not_borrowed(piper, hero, other, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.borrow_talent(piper, hero_file(hero), talent="Attack Move Speed", other=other,
+                         hero=hero, readers=hero_readers(hero))
+
+
+def test_borrowing_twice_is_refused(piper, wukong):
+    out = TA.borrow_talent(piper, wukong, talent="Attack Move Speed", other="Power Hold",
+                           hero="SunWukong", readers=hero_readers("SunWukong"))
+    with pytest.raises(TA.AddStatError, match="already includes"):
+        TA.borrow_talent(out, wukong, talent="Attack Move Speed", other="Power Hold",
+                         hero="SunWukong", readers=hero_readers("SunWukong"))
+
+
+def test_the_talent_kind_includes_from_another_hero(tmp_path, piper):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    defn = ContentDef(kind="talent", id="borrow", fields={
+        "hero": "Piper",
+        "include": [{"talent": "Attack Move Speed", "from": "Power Hold", "hero": "SunWukong"}],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    assert "Skill Power Hold From SunWukong" in _refs(path.read_bytes(),
+                                                      "Skill Attack Move Speed", "while_active")

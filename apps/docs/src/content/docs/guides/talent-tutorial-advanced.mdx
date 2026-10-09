@@ -626,9 +626,44 @@ This gives Scarlet's **Shapeshifter** the bomb from **Short Wick** that explodes
 soon as it hits the ground: that behaviour is a switch wired to Short Wick's State,
 which the bomb reads. You get all of the other talent, not a piece of it: here
 Short Wick's faster SPECIAL recharge comes too. Numbers that scale with the other
-card's rarity use their Common value, because that card is not owned. Only talents
-of the same hero can be included. Mention the effect in the card's text with a
-`skill` block.
+card's rarity use their Common value, because that card is not owned. Mention the
+effect in the card's text with a `skill` block.
+
+#### From another hero
+
+<Badge text="Tested in game" variant="success" />
+
+Add `hero` to take a talent from another hero. Its effect is copied into your
+hero's file, and its numbers follow **your** card's rarity:
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "virtuoso_focus"
+hero    = "Piper"
+include = [{ talent = "Attack Move Speed", from = "Power Hold", hero = "SunWukong" }]
+```
+
+Owning Piper's **Virtuoso** now also gives Wukong's **Focused Strikes** bonus.
+
+Most talents cannot move. They work inside their hero's abilities: Aladdin's
+Defense Tornado is a number his DEFENSE tornado reads, and Piper has no such
+tornado. RSMM refuses those and says why. These 9 can be given to any hero:
+
+| Hero | Talent (card) | `from` |
+|------|---------------|--------|
+| Aladdin | Master Thief | `Passive Extra MO` |
+| Aladdin | Jinniya's Gift | `Trait Extra Wish` |
+| Carmilla | Bat Master | `Defense Master` |
+| Juliet | Wedding Gifts | `Passive Bonus Object` |
+| Melusine | Soothing Presence | `Passive Heal In Combat` |
+| Melusine | Dance Step | `Trait Dash` |
+| Merlin | Astrology | `Passive Gain Reroll High Talent` |
+| Piper | Virtuoso | `Attack Move Speed` |
+| Sun Wukong | Focused Strikes | `Power Hold` |
+
+In the editor, they are under **Other heroes** in the **Also gives the effect of**
+list.
 
 ### Rebuild a talent from scratch: `rebuild`
 

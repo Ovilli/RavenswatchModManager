@@ -493,6 +493,65 @@ def _add_stat_info(files: list[bytes]):
     return info
 
 
+@_once
+def borrowable_talents() -> list[dict]:
+    """``[{hero, source, name}]``: talents whose effect can be given to ANOTHER
+    hero's talent (``include`` with ``hero``; rsmm.engine.talent_add_stat.borrowable).
+    Few pass: most talents work inside their own hero's abilities."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import talent_add_stat as TA
+    from rsmm.engine import text_patches as TP
+    from rsmm.sdk.content import ContentError
+    from rsmm.sdk.kinds import skills as S
+    from rsmm.sdk.kinds import talents as T
+
+    out = []
+    for hero in heroes():
+        d = T._resolve_hero_dir(hero)
+        if d is None:
+            continue
+        # Talents are looked for in the hero's own files only (Juliet's folder
+        # holds the Romeo/Juliet shared file), but read across all of them.
+        own_files = [f.read_bytes() for f in d.entity_files()]
+        graphs = [EG.parse(raw) for raw in own_files] + [
+            EG.parse(f.read_bytes()) for f in T._inherited_files(d)]
+        found = []
+        for i in range(len(own_files)):
+            others = graphs[:i] + graphs[i + 1:]
+            for c in graphs[i].components:
+                if not c.name.startswith("Skill Controller "):
+                    continue
+                source = c.name[len("Skill Controller "):]
+                try:
+                    TA.borrowable(graphs[i], source, readers=others)
+                except TA.AddStatError:
+                    continue
+                found.append(source)
+        if not found:
+            continue
+        bank = S._install_bank(_herodefs()[hero])
+        text: dict = {}
+        if bank is not None:
+            keys = TP.parse_text_file(bank[0]).entries
+            try:
+                vals = TP.parse_text_file(TP.lang_path_for(bank[0], "EN")).entries
+            except (OSError, ValueError):
+                vals = []
+            text = dict(zip(keys, vals, strict=False))
+            own = S.controller_key_bases(_herodefs()[hero])
+        for source in sorted(set(found)):
+            name = ""
+            if bank is not None:
+                try:
+                    name_key, _d = S.card_keys(S._text_key_base(source, keys, own.get(source, [])),
+                                               keys)
+                    name = (text.get(name_key) or "").strip() if name_key else ""
+                except ContentError:
+                    pass
+            out.append({"hero": hero, "source": source, "name": name})
+    return out
+
+
 def talent_cards(hero: str) -> list[dict]:
     """The hero's talent cards with their current English name and text."""
     return _talent_rows(hero)[0]
@@ -827,8 +886,9 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
     during?, after?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
     ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
-    talent builder) and ``include`` = ``[{talent, from}]`` (owning ``talent``
-    also runs ``from``'s effect); only changed rows are sent."""
+    talent builder) and ``include`` = ``[{talent, from, hero?}]`` (owning
+    ``talent`` also runs ``from``'s effect, ``hero``'s when given); only changed
+    rows are sent."""
     hero = str(req.get("hero") or "")
     prefix = str(req.get("prefix") or "")
     if not hero:
@@ -935,9 +995,14 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         other = str((row or {}).get("from") or "")
         if not talent or not other:
             raise EditorError("an included effect needs its talent and the talent it takes")
-        if talent == other:
+        donor = str((row or {}).get("hero") or "")
+        if donor and donor not in heroes():
+            raise EditorError(f"{talent}: no shipped hero {donor!r}")
+        if donor == hero:
+            donor = ""
+        if talent == other and not donor:
             raise EditorError(f"{talent}: a talent cannot include itself")
-        include.append({"talent": talent, "from": other})
+        include.append({"talent": talent, "from": other, **({"hero": donor} if donor else {})})
     out: list[tuple[str, str, dict]] = []
     for file in list(dict.fromkeys([*by_file, *stats_by_file, *unions_by_file])):
         slug = re.sub(r"[^A-Za-z0-9_]", "_", file.removeprefix(f"Hero_{hero}"))
@@ -1474,6 +1539,7 @@ ROUTES = {
                                           "cards": talent_cards(req.arg("hero")),
                                           "skipped": talent_skipped(req.arg("hero")),
                                           "portrait": hero_portrait(req.arg("hero"))},
+    ("GET", "/api/talents/borrowable"): lambda req: {"talents": borrowable_talents()},
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},
     ("GET", "/api/heropng"): _hero_png,

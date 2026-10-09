@@ -51,6 +51,7 @@ from .entity_append import (
     EntityAppendError,
     _Accessors,
     _directory,
+    _label_kind,
     component_vector,
     fix_accessor,
     fix_format_slot,
@@ -441,6 +442,31 @@ class EntityFile:
             self.objects[obj][at + a:at + a + len(new)] = old      # leave the file as it was
             raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
         self.objects[obj][:] = p
+
+    def swap_refs(self, comp: str, old: bytes, target: str) -> int:
+        """Point every reference in ``comp`` to GUID ``old`` at ``target``, a
+        component of the SAME kind, keeping what follows each reference (a
+        skill controller's per-rarity accessor). For a copy whose links still
+        name its donor's component: :meth:`set_ref` cannot judge an accessor
+        for a target outside this file. Returns how many it moved."""
+        c = self.component(comp)
+        obj = c.index - 1
+        head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index(
+            "oCEntityCpntPicker"))
+        new = self._picker(target)
+        moved = 0
+        p = self.objects[obj]
+        i = p.find(head + old)
+        while i >= 0:
+            n = struct.unpack_from("<I", p, i + 24)[0]
+            end = i + 28 + n + 4
+            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(_picker_path(new)):
+                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
+                                      f"the same kind of node as {target!r}")
+            p[i:end] = new
+            moved += 1
+            i = p.find(head + old, i + len(new))
+        return moved
 
     def add_ref(self, comp: str, field: str, target: str) -> None:
         c, f, at = self._field(comp, field)

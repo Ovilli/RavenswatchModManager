@@ -454,6 +454,25 @@ def test_an_included_effect_joins_the_builder_block():
     assert fields["include"] == [{"talent": "Trait Active", "from": "Secondary Quick Bombs"}]
 
 
+def test_an_include_from_another_hero_names_that_hero():
+    if "SunWukong" not in E.heroes():
+        pytest.skip("no game data")
+    defs = E.talent_defs({"hero": "Piper", "prefix": "p", "include": [
+        {"talent": "Attack Move Speed", "from": "Power Hold", "hero": "SunWukong"}]})
+    [(_kind, _cid, fields)] = defs
+    assert fields["include"] == [
+        {"talent": "Attack Move Speed", "from": "Power Hold", "hero": "SunWukong"}]
+
+
+def test_the_borrowable_list_holds_talents_that_move():
+    if "SunWukong" not in E.heroes():
+        pytest.skip("no game data")
+    got = {(t["hero"], t["source"]) for t in E.borrowable_talents()}
+    assert ("SunWukong", "Power Hold") in got
+    assert ("Aladdin", "Defense Tornado") not in got        # read by his DEFENSE
+    assert ("Geppetto", "Passive Create Objects") not in got  # loads his drop bag
+
+
 @pytest.mark.parametrize("row", [{"talent": "Trait Active"}, {"talent": "A", "from": "A"}])
 def test_a_bad_include_row_is_refused(row):
     with pytest.raises(E.EditorError):

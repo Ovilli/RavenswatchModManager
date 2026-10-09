@@ -1476,22 +1476,35 @@ function addedStats(c, redraw, desc) {
   return box;
 }
 
-// Owning this talent also switches on another of the hero's talents (`include`):
-// that talent's own effect runs, e.g. Short Wick's bomb that explodes on landing
-// given to Shapeshifter. Its rarity numbers take their Common value.
+// Owning this talent also switches on another talent (`include`): that talent's
+// own effect runs, e.g. Short Wick's bomb that explodes on landing given to
+// Shapeshifter (its rarity numbers take their Common value). Another hero's
+// talent is copied in (`hero`), and only the few whose effect does not live in
+// their hero's abilities can be: the server lists them. Their numbers follow
+// this card's rarity. Another hero's pick is kept as "hero\u0000source".
+let borrowable = null;
 function includeControl(c, redraw) {
   const E = S.talentEdit;
   E.include = E.include || {};
   const others = S.talents.cards.filter(o => o.source !== c.source);
+  const label = o => (o.name || o.source) + (o.name ? " (" + o.source + ")" : "");
   const sel = el("select", { "aria-label": "Also gives the effect of" },
     el("option", { value: "", text: "(nothing)" }),
-    ...others.map(o => el("option", { value: o.source, text: (o.name || o.source) + (o.name ? " (" + o.source + ")" : "") })));
+    el("optgroup", { label: S.hero.replace(/_/g, " ") }, ...others.map(o => el("option", { value: o.source, text: label(o) }))));
+  const fill = list => {
+    const theirs = list.filter(o => o.hero !== S.hero);
+    if (theirs.length) sel.append(el("optgroup", { label: "Other heroes" },
+      ...theirs.map(o => el("option", { value: o.hero + "\u0000" + o.source, text: o.hero.replace(/_/g, " ") + ": " + label(o) }))));
+    sel.value = E.include[c.source] || "";
+  };
+  borrowable = borrowable || get("api/talents/borrowable").then(j => j.talents || []).catch(() => []);
+  borrowable.then(fill);
   sel.value = E.include[c.source] || "";
   sel.onchange = () => {
     if (sel.value) E.include[c.source] = sel.value; else delete E.include[c.source];
     redraw(); refresh();
   };
-  return el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. Its numbers that scale with rarity use their Common value. Mention it in this card's text." },
+  return el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. A talent of this hero uses the Common value of its numbers that scale with rarity; another hero's talent follows this card's rarity. Only a few other heroes' talents can be given: most work inside their own hero's abilities. Mention it in this card's text." },
     "Also gives the effect of", sel);
 }
 
@@ -2359,7 +2372,10 @@ function editPayload() {
         ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
           ...(a.next ? { next: a.next } : {}) } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}),
-    include: Object.entries(E.include || {}).map(([talent, from]) => ({ talent, from })) };
+    include: Object.entries(E.include || {}).map(([talent, pick]) => {
+      const [a, b] = pick.split("\u0000");
+      return b === undefined ? { talent, from: a } : { talent, from: b, hero: a };
+    }) };
 }
 
 let lastToml = "", lastEdits = [], tick = 0;

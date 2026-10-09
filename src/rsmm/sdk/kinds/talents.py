@@ -91,7 +91,14 @@ Fields:
                                "Secondary Quick Bombs"}`` gives Red's
                                Shapeshifter Short Wick's bomb that explodes on
                                landing. ``from``'s rarity numbers take their
-                               Common value. Runs after ``rebuild``.
+                               Common value. Add ``hero = "SunWukong"`` to take
+                               ANOTHER hero's talent: its effect is copied in
+                               and its numbers follow ``talent``'s rarity. Only
+                               talents whose effect hangs off their own state
+                               can move (9 shipped, e.g. Wukong's Power Hold,
+                               Piper's Attack Move Speed); the rest work inside
+                               their hero's abilities and are refused. Runs
+                               after ``rebuild``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -428,9 +435,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         include = [include]
     if not isinstance(include, list) or not all(
             isinstance(e, dict) and isinstance(e.get("talent"), str) and e["talent"]
-            and isinstance(e.get("from"), str) and e["from"] for e in include):
+            and isinstance(e.get("from"), str) and e["from"]
+            and isinstance(e.get("hero", ""), str) for e in include):
         raise ContentError(f"talent {defn.id}: include must be a list of "
-                           "{talent, from} talent names")
+                           "{talent, from[, hero]} talent names")
     if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
             or add_stats or rebuild or include):
         raise ContentError(
@@ -501,6 +509,29 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     for entry in include:
         from ...engine import talent_add_stat as TA
         p = _home(entry["talent"])
+        donor_dir = _resolve_hero_dir(entry["hero"]) if entry.get("hero") else hero_dir
+        if donor_dir is None:
+            raise ContentError(f"talent {defn.id}: no hero {entry['hero']!r} to include from")
+        if donor_dir != hero_dir:
+            # Another hero's talent: its effect is copied into this file.
+            donor_files = donor_dir.entity_files() + _inherited_files(donor_dir)
+            ctl = f"Skill Controller {entry['from']}".encode()
+            homes = [q for q in donor_files if ctl in q.read_bytes()
+                     and _owns_talent(q.read_bytes(), entry["from"])]
+            if len(homes) != 1:
+                raise ContentError(f"talent {defn.id}: {len(homes)} of {donor_dir.name}'s "
+                                   f"entity files hold a talent named {entry['from']!r}")
+            try:
+                edited[p] = TA.borrow_talent(
+                    edited.get(p) or p.read_bytes(), homes[0].read_bytes(),
+                    talent=entry["talent"], other=entry["from"],
+                    hero=donor_dir.name[len("Hero_"):], seed=f"{mod_id}:{defn.id}",
+                    readers=[q.read_bytes() for q in donor_files if q is not homes[0]])
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s now also runs %s's %s", mod_id, defn.id,
+                      entry["talent"], donor_dir.name, entry["from"])
+            continue
         if _home(entry["from"]) != p:
             raise ContentError(f"talent {defn.id}: {entry['talent']!r} and {entry['from']!r} "
                                "are in different entity files")

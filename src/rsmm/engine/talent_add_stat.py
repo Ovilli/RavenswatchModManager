@@ -275,6 +275,155 @@ def include_talent(raw: bytes, *, talent: str, other: str) -> bytes:
         raise AddStatError(f"talent {talent!r}: {e}") from e
 
 
+#: Entities every hero inherits (checked 2026-10-09 on all 11 playable heroes): a
+#: copied effect may keep its links into these, whichever hero it moves to.
+SHARED_SCOPES = frozenset({"Character_Common", "Hero_Common", "Hero_Common_Update5"})
+
+
+#: Node kinds that only hold or work out a number. An effect made of nothing
+#: else does nothing on another hero: something of its own hero reads it, by a
+#: path no reference shows (Melusine's Crescendo, Carmilla's Blood Reserve).
+_PASSIVE = ("StateSettings", "ValueSettings", "ValueSelectorSettings",
+            "ValueOperationsSettings", "ValueOperationSettings", "SelectorSettings")
+
+
+def borrowable(raw: bytes | EG.EntityGraph, other: str, *,
+               readers: list[bytes | EG.EntityGraph] = ()) -> list[str]:
+    """The components that make up talent ``other``'s effect, when the effect can
+    run on another hero; otherwise :class:`AddStatError` saying why.
+
+    ``raw`` is the file holding ``other``'s owned state; ``readers`` are its
+    hero's other entity files (each bytes, or already parsed, to list many).
+    The effect is what hangs off the owned state (modifiers, testers, timers, fx
+    ...). It moves only when it is whole: nothing else reads it, the talent's own
+    controller excepted (its card and the selectors keyed on its rarity), it links
+    nowhere but into itself and :data:`SHARED_SCOPES`, it loads no resource, and
+    something in it acts (see :data:`_PASSIVE`). Most talents fail this: their
+    number is read by their hero's ability graph (Aladdin's Defense Tornado's damage
+    multiplier is read by his DEFENSE tornado), which is not there on another hero.
+    9 of 343 shipped talents pass (survey 2026-10-09): Wukong's Focused Strikes,
+    Piper's Virtuoso, Melusine's Soothing Presence and Dance Step, Aladdin's Master
+    Thief and Jinniya's Gift, Carmilla's Bat Master, Juliet's Wedding Gifts,
+    Merlin's Astrology."""
+    graph = raw if isinstance(raw, EG.EntityGraph) else EG.parse(raw)
+    ctl = next((c for c in graph.components if c.name == f"Skill Controller {other}"), None)
+    if ctl is None:
+        raise AddStatError(f"no talent {other!r} here (no 'Skill Controller {other}')")
+    state = owned_state(graph, ctl, other)
+    by_guid = graph.by_guid()
+    if state.guid not in by_guid:
+        raise AddStatError(f"talent {other!r} is built in another file")
+    seen = {state.guid}
+    todo = [state]
+    while todo:
+        for r in todo.pop().refs:
+            if r.guid == ctl.guid or r.guid == bytes(16):
+                continue
+            t = by_guid.get(r.guid)
+            if t is None:
+                if r.scope and r.scope not in SHARED_SCOPES:
+                    raise AddStatError(f"talent {other!r} uses {r.path}, which another hero "
+                                       "does not have")
+                continue
+            if t.name.startswith("Skill Controller "):
+                raise AddStatError(f"talent {other!r} depends on another talent "
+                                   f"({t.name[len('Skill Controller '):]!r})")
+            if t.guid not in seen:
+                seen.add(t.guid)
+                todo.append(t)
+    if len(seen) == 1:
+        raise AddStatError(f"talent {other!r} does its work inside its hero's abilities, "
+                           "not through its own state, so it cannot move to another hero")
+    for x in seen:
+        loads = _weak_resources(by_guid[x])
+        if loads:
+            # Not in this hero's preload caches: it would load as null and can
+            # crash the game (engine/CLAUDE.md). Geppetto's Flash of Genius.
+            raise AddStatError(f"talent {other!r} loads {loads[0]}, which another hero "
+                               "does not load; borrowing it is not supported")
+    if all(by_guid[x].cls.endswith(_PASSIVE) for x in seen):
+        raise AddStatError(f"talent {other!r} holds only numbers that its hero reads "
+                           "elsewhere, so on another hero it would do nothing")
+    mine = seen | {ctl.guid}
+    for g in [graph, *(b if isinstance(b, EG.EntityGraph) else EG.parse(b) for b in readers)]:
+        for c in g.components:
+            if c.guid in seen or c.guid == ctl.guid or c.name.startswith("Skill Controller ") \
+                    or c.cls.endswith("StringFormatValueSettings"):
+                continue
+            hit = next((r for r in c.refs if r.guid in mine), None)
+            if hit is not None:
+                raise AddStatError(
+                    f"talent {other!r} works through its hero's own abilities ({c.name!r} in "
+                    f"{g.name or 'its file'} reads {hit.path.rsplit(chr(92), 1)[-1]!r}), so it "
+                    "cannot move to another hero")
+    return [c.name for c in graph.components if c.guid in seen]
+
+
+def _weak_resources(c: EG.Component) -> list[str]:
+    """Resource paths ``c`` names through a weak reference (archive, path)."""
+    if "oCResourceWeakRef" not in c.classes:
+        return []
+    from . import cooked
+    from . import entity_strings as ES
+    tag = cooked.MARK_BEGIN + struct.pack("<I", c.classes.index("oCResourceWeakRef"))
+    out = []
+    i = c.body.find(tag)
+    while i >= 0:
+        strs = [t for _o, t in ES._scan_payload(c.body[i + 8:c.body.find(cooked.MARK_END, i)])]
+        if len(strs) >= 2 and strs[1]:
+            out.append(strs[1])
+        i = c.body.find(tag, i + 1)
+    return out
+
+
+def borrow_talent(raw: bytes, donor_raw: bytes, *, talent: str, other: str, hero: str,
+                  readers: list[bytes | EG.EntityGraph] = (), seed: str = "") -> bytes:
+    """Make owning ``talent`` also run ``other``'s effect, ``other`` being a
+    talent of another hero (``hero``, whose file is ``donor_raw``).
+
+    :func:`include_talent` across heroes: ``other``'s effect (see
+    :func:`borrowable`) is copied into this file, renamed ``... From <hero>``, and
+    its copied owned state is added to ``talent``'s ``while_active``. Numbers
+    keyed on ``other``'s rarity are re-keyed on ``talent``'s controller, so they
+    follow THIS card's rarity (a same-hero include reads the Common value)."""
+    names = borrowable(donor_raw, other, readers=readers)
+    graph = EG.parse(raw)
+    ctl = next((c for c in graph.components if c.name == f"Skill Controller {talent}"), None)
+    if ctl is None:
+        raise AddStatError(f"no talent {talent!r} here (no 'Skill Controller {talent}')")
+    mine = owned_state(graph, ctl, talent)
+    donor = GE.EntityFile(donor_raw)
+    dg = donor.graph()
+    dctl = next(c for c in dg.components if c.name == f"Skill Controller {other}")
+    dstate = owned_state(dg, dctl, other)
+    tag = f" From {hero}"
+    rename = {n: n + tag for n in names}
+    groups = {c.group for c in dg.components if c.name in rename}
+    if any(c.name in rename.values() for c in graph.components):
+        raise AddStatError(f"talent {talent!r} already includes {hero}'s {other!r}")
+    ef = GE.EntityFile(raw)
+    try:
+        ef.clone(names, rename=rename, group={g: g + tag for g in groups}, source=donor,
+                 seed=f"{seed or talent}:borrow:{hero}:{other}")
+        for new in rename.values():
+            ef.swap_refs(new, dctl.guid, ctl.name)
+            if dctl.guid in ef.component(new).body:
+                raise AddStatError(f"{new!r} still names {other!r}'s controller where "
+                                   "this edit cannot reach it")
+        ef.add_ref(mine.name, "while_active", rename[dstate.name])
+        out = ef.to_bytes()
+    except GE.EntityEditError as e:
+        raise AddStatError(f"talent {talent!r}: {e}") from e
+    # Backstop for borrowable's own check: a resource this hero's preload
+    # caches do not list loads as null and can crash the game.
+    from .entity_check import resource_paths
+    new = sorted(resource_paths(out) - resource_paths(raw))
+    if new:
+        raise AddStatError(f"{hero}'s {other!r} loads {', '.join(new)}, which this hero "
+                           "does not load; borrowing it is not supported")
+    return out
+
+
 def _empty_state(ef: GE.EntityFile, name: str) -> None:
     """Remove every reference from every list of state ``name``."""
     for f in EF.fields(ef.component(name)):
