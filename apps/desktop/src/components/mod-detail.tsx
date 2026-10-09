@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useT } from '../lib/i18n-react';
+import { listingLang, usableTranslation } from '../lib/listing-translation';
 import { inTauri } from '../lib/platform';
 import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
 import {
@@ -77,9 +78,15 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const toast = useToast();
   const dialog = useDialog();
 
+  // Asked for whenever the UI is not English, whatever the toggle says, so
+  // switching between the translation and the original needs no refetch.
+  const lang = useApp((s) => listingLang(s.settings.language, true));
+  const translateListings = useApp((s) => s.settings.translateListings);
+  const updateSettings = useApp((s) => s.updateSettings);
+
   const { data, error, isLoading } = useQuery({
-    queryKey: ['mods', 'detail', slug],
-    queryFn: () => api.mods.get(slug),
+    queryKey: ['mods', 'detail', slug, lang],
+    queryFn: () => api.mods.get(slug, { lang }),
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
     enabled: inTauri(),
@@ -205,6 +212,8 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
 
   const apiMod = data?.mod;
   const latestVersion = data?.versions?.[0];
+  const translation = usableTranslation(apiMod, lang);
+  const shownTranslation = translateListings ? translation : null;
 
   if (!apiMod && !liveBySlug) {
     return (
@@ -231,10 +240,11 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
     );
   }
 
-  const name = apiMod?.name ?? liveBySlug?.name ?? slug;
+  const name = shownTranslation?.name ?? apiMod?.name ?? liveBySlug?.name ?? slug;
   const author = apiMod?.author ?? liveBySlug?.author ?? t('unknown');
-  const summary = apiMod?.summary ?? liveBySlug?.summary ?? '';
-  const description = apiMod?.description ?? liveBySlug?.description ?? '';
+  const summary = shownTranslation?.summary ?? apiMod?.summary ?? liveBySlug?.summary ?? '';
+  const description =
+    shownTranslation?.description ?? apiMod?.description ?? liveBySlug?.description ?? '';
   const category = apiMod?.category ?? liveBySlug?.category ?? null;
   const tags = apiMod?.tags ?? liveBySlug?.tags ?? [];
   const rating = apiMod?.rating ?? null;
@@ -253,8 +263,10 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const videos = apiMod?.videos ?? [];
   const dependencies = apiMod?.dependencies ?? {};
 
+  // A shown translation wins over the installed copy's README, which is the
+  // original text and would undo the translation the moment a mod is installed.
   const markdown =
-    liveBySlug?.markdown ??
+    (shownTranslation ? undefined : liveBySlug?.markdown) ??
     (description ? `# ${name}\n\n${description}` : `# ${name}\n\n${summary || ''}`);
   const sizeBytes = latestVersion?.sizeBytes ?? null;
   const apiBase = getApiUrl().replace(/\/+$/, '');
@@ -366,6 +378,19 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
           <Panel>
             <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
             <Fleuron />
+            {translation ? (
+              <p className="font-mono mt-3 flex flex-wrap items-center gap-2 text-xs text-ash">
+                <Globe className="h-3.5 w-3.5" aria-hidden />
+                {shownTranslation ? t('Machine-translated') : t('Shown as the author wrote it')}
+                <button
+                  type="button"
+                  className="text-gilt underline-offset-2 hover:underline"
+                  onClick={() => updateSettings({ translateListings: !translateListings })}
+                >
+                  {shownTranslation ? t('Show original') : t('Show translation')}
+                </button>
+              </p>
+            ) : null}
             <Markdown source={markdown} className="mt-4" />
           </Panel>
 

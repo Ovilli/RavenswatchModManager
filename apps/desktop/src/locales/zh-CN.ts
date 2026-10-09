@@ -1003,4 +1003,8 @@ export const zhCN: Record<string, string> = {
   'Open the folder that holds every archived run': '打开存放所有已归档运行日志的文件夹',
   'Delete the archived runs and the last run’s log': '删除已归档的运行日志和最近一次运行的日志',
   'Delete logs': '删除日志',
+  'Machine-translated': '机器翻译',
+  'Shown as the author wrote it': '作者原文',
+  'Show original': '显示原文',
+  'Show translation': '显示翻译',
 };
