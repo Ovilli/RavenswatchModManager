@@ -5456,77 +5456,347 @@
    "note": "The hero character controller's CLEAR_STAGGER handler (hero dispatcher channel map; see events-bus.md). Body: this+0x33c (f32, the accumulated stagger) = 0, then 0x1403c9ab0(this) returns the stagger threshold and, when it is > 0, pushes +0x33c / threshold to the gauge at this+0x8b0 via 0x1402f0890 (tail call). A .pdata function start. Its sibling RESET_STAGGER_RESILIENCE 0x1403cc1c0 is a two-instruction leaf (this+0x344 = 0; ret) with NO .pdata entry, so it is not hookable and is not mapped. Hooked read-only by R.status (rsmm/status.lua) to capture the controller and log +0x33c before and after a clear."
   }
  ],
- "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",
+ "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`. Each entry's `fields` are the property names the emitter passes (literals in the emitting function, 2026-09-11 catalog); the loader decodes them onto the event table, so a handler reads ev.<field>. Entries with `confirmed` were seen firing in game with those fields (solo run, 2026-10-10); the rest are from the static catalog only.",
  "event_catalog": [
   {
-   "name": "game_start",
+   "name": "active_boss",
    "category": "run",
-   "note": "a game/session begins"
+   "note": "a boss fight ended",
+   "fields": [
+    "time",
+    "success"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
   },
   {
-   "name": "run_start",
+   "name": "altar_revive",
    "category": "run",
-   "note": "a run begins"
+   "note": "the Altar of Heroes revived a player",
+   "fields": [
+    "count"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "blood_fountain",
+   "category": "run",
+   "note": "a blood fountain was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
   },
   {
    "name": "chapter_end",
    "category": "run",
-   "note": "a chapter ends"
-  },
-  {
-   "name": "matchmaking_start",
-   "category": "multiplayer",
-   "note": "matchmaking begins; payload {search_difficulty, current_party_size}"
-  },
-  {
-   "name": "matchmaking_end",
-   "category": "multiplayer",
-   "note": "matchmaking ends"
+   "note": "a chapter ends, with the run stats so far (seen: enemy_killed, damage_dealt, damage_received, dream_shard_collected, dream_shard_spend, level_reached, objects, reroll_used, revive_token, attack_power, armor, vitality; name and collection were not sent)",
+   "fields": [
+    "name",
+    "collection",
+    "enemy_killed",
+    "damage_dealt",
+    "damage_received",
+    "level_reached",
+    "dream_shard_collected",
+    "dream_shard_spend",
+    "attack_power",
+    "armor",
+    "vitality",
+    "reroll_used",
+    "revive_token",
+    "objects"
+   ],
+   "confirmed": "2026-10-10"
   },
   {
    "name": "enemy_killed",
    "category": "combat",
-   "note": "an enemy was killed"
-  },
-  {
-   "name": "level_up_reach",
-   "category": "progression",
-   "note": "hero reached a new level (telemetry name; the typed 'level_up' event carries {level})"
-  },
-  {
-   "name": "level_up_book",
-   "category": "progression",
-   "note": "level-up book / talent pick"
-  },
-  {
-   "name": "unlock_skill",
-   "category": "meta",
-   "note": "a skill was unlocked"
-  },
-  {
-   "name": "unlock_object",
-   "category": "meta",
-   "note": "an object was unlocked"
-  },
-  {
-   "name": "unlock_hero",
-   "category": "meta",
-   "note": "a hero was unlocked"
-  },
-  {
-   "name": "unlock_level_nightmare",
-   "category": "meta",
-   "note": "a nightmare difficulty was unlocked"
-  },
-  {
-   "name": "event_start",
-   "category": "run",
-   "note": "an in-run event begins"
+   "note": "\u26a0 NOT an event in practice: never fired in a full solo chapter with 127 kills (2026-10-10), and absent from the 33-call-site emitter table \u2014 `enemy_killed` is a FIELD of chapter_end (the chapter kill count). For kills use the gameplay bus (gameplay:ENEMY_KILLED)",
+   "fields": []
   },
   {
    "name": "event_end",
    "category": "run",
-   "note": "an in-run event ends"
+   "note": "an in-run event ends (status = success / failed; reward on activities)",
+   "fields": [
+    "event_name",
+    "type",
+    "reward",
+    "success",
+    "failed",
+    "status",
+    "refugee"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "event_start",
+   "category": "run",
+   "note": "an in-run event begins",
+   "fields": [
+    "event_name",
+    "type"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "game_start",
+   "category": "run",
+   "note": "a game/session begins",
+   "fields": [
+    "DLCs_owned",
+    "os_language",
+    "game_language",
+    "region",
+    "cpu_frequency",
+    "cpu_name",
+    "cpu_nb_core",
+    "cpu_nb_thread",
+    "gamepad",
+    "gpu_name",
+    "os_name",
+    "ram_size"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "health_fountain",
+   "category": "run",
+   "note": "a healing fountain was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hero_death",
+   "category": "combat",
+   "note": "the hero died, naming the killer (enemy_name, e.g. Standard_Undead_Hog_Reaper; enemy_type was not sent in solo play)",
+   "fields": [
+    "enemy_name",
+    "enemy_type"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hero_heal",
+   "category": "run",
+   "note": "the hero was healed (source unread; not the health fountain, which sends health_fountain)",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hourglass",
+   "category": "run",
+   "note": "the hourglass was used",
+   "fields": [
+    "dream_shard",
+    "object_count"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "key_used",
+   "category": "run",
+   "note": "a key was used (locked chest)",
+   "fields": [],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "level_up_book",
+   "category": "progression",
+   "note": "level-up book / talent pick",
+   "fields": [
+    "hero_name",
+    "level_reached"
+   ]
+  },
+  {
+   "name": "levelup_run",
+   "category": "progression",
+   "note": "hero reached a new level in the run; level_up_reach = the new level (it is a FIELD, not an event name). The typed level_up event carries {level} too.",
+   "fields": [
+    "level_up_reach"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "matchmaking_end",
+   "category": "multiplayer",
+   "note": "matchmaking ends",
+   "fields": [
+    "search_difficulty",
+    "duration",
+    "found"
+   ]
+  },
+  {
+   "name": "matchmaking_start",
+   "category": "multiplayer",
+   "note": "matchmaking begins; payload {search_difficulty, current_party_size}",
+   "fields": [
+    "search_difficulty",
+    "current_party_size"
+   ]
+  },
+  {
+   "name": "note_gain",
+   "category": "run",
+   "note": "a melody note was gained",
+   "fields": [
+    "key_gain"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "object_proposed",
+   "category": "items",
+   "note": "a magical object was OFFERED",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "object_selected",
+   "category": "items",
+   "note": "a magical object was TAKEN",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "open_chest",
+   "category": "run",
+   "note": "a chest was opened; locked = the red key chest",
+   "fields": [
+    "locked"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "reconnect",
+   "category": "multiplayer",
+   "note": "a peer reconnect attempt, with network stats",
+   "fields": [
+    "heal_sum",
+    "heal_count",
+    "hero_heal",
+    "use_relay",
+    "peer_id",
+    "ping_min",
+    "ping_max",
+    "ping_average",
+    "resend_buffer_min",
+    "resend_buffer_max",
+    "resend_buffer_average",
+    "loss_average",
+    "network_stats",
+    "reason",
+    "duration",
+    "success"
+   ]
+  },
+  {
+   "name": "revive_token",
+   "category": "run",
+   "note": "a revive token was spent to bring a player back (the 2026-09-11 table had this as revive_player with a revive_token field; the game sends the name revive_token, with no fields)",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "run_start",
+   "category": "run",
+   "note": "a run begins \u2014 not seen in a solo run (2026-10-10); may fire only for online / matchmade runs",
+   "fields": [
+    "player_count",
+    "player_heroes",
+    "custom_mode",
+    "challenge",
+    "use_relay",
+    "matchmaking",
+    "source",
+    "run_restart",
+    "voice_chat_mode"
+   ]
+  },
+  {
+   "name": "sandman_buy",
+   "category": "shop",
+   "note": "a Sandman shop purchase",
+   "fields": [
+    "article_name",
+    "article_price",
+    "article_rarity"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "skill_proposed",
+   "category": "progression",
+   "note": "a talent was OFFERED",
+   "fields": [
+    "skill_tier",
+    "skill_name",
+    "skill_rarity",
+    "skill_count"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "skill_selected",
+   "category": "progression",
+   "note": "a talent was TAKEN",
+   "fields": [
+    "skill_tier",
+    "skill_name",
+    "skill_rarity",
+    "skill_count"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "unlock_hero",
+   "category": "meta",
+   "note": "a hero was unlocked",
+   "fields": [
+    "hero_name"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_level_nightmare",
+   "category": "meta",
+   "note": "a nightmare difficulty was unlocked",
+   "fields": [
+    "level"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_object",
+   "category": "meta",
+   "note": "an object was unlocked",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_skill",
+   "category": "meta",
+   "note": "a skill was unlocked",
+   "fields": [
+    "skill_name"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "use_teleportation",
+   "category": "run",
+   "note": "a teleporter was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
   }
  ],
  "gameplay_event_catalog_doc": "Names dispatched on the oCGameNamedEvent bus, mined from the shipped exe by tools/mine_event_names.py (SCREAMING_CASE literal pools in .rdata, kept only where a pool contains an event name independently CONFIRMED in-game). Subscribe with R.on('gameplay:<NAME>', cb). The loader's bus detour reads the plaintext name off the event object, so this list is a browsable catalog, not a whitelist -- a name the game adds still fires. `category` groups by the engine's own naming, it is not semantics we verified. Regenerate after a game patch: python tools/mine_event_names.py --verify --json - .",

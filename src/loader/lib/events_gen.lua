@@ -7,9 +7,13 @@ return {
   lifecycle = { "setup", "ready", "tick", "exit" },
   derived = { "hero:captured", "hero:changed", "hero:lost", "menu:enter", "menu:leave", "run:start", "run:end" },
   analytics = {
-    "chapter_end", "enemy_killed", "event_end", "event_start", "game_start",
-    "level_up_book", "level_up_reach", "matchmaking_end", "matchmaking_start", "run_start",
-    "unlock_hero", "unlock_level_nightmare", "unlock_object", "unlock_skill",
+    "active_boss", "altar_revive", "blood_fountain", "chapter_end", "enemy_killed",
+    "event_end", "event_start", "game_start", "health_fountain", "hero_death", "hero_heal",
+    "hourglass", "key_used", "level_up_book", "levelup_run", "matchmaking_end",
+    "matchmaking_start", "note_gain", "object_proposed", "object_selected", "open_chest",
+    "reconnect", "revive_token", "run_start", "sandman_buy", "skill_proposed",
+    "skill_selected", "unlock_hero", "unlock_level_nightmare", "unlock_object",
+    "unlock_skill", "use_teleportation",
   },
   gameplay = {
     "ABILITY_EXIT", "ACTIVITY_FAILED", "ACTIVITY_START", "ACTIVITY_SUCCESS",

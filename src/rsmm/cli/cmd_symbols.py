@@ -135,11 +135,13 @@ def _cmd_events(smap: SymbolMap, filt: str | None = None) -> int:
 
     cat = smap.event_catalog
     if cat:
-        print(f"\n{_ST.heading('Analytics firehose (observation-grade, payload = name + seq):')}")
+        print(f"\n{_ST.heading('Analytics firehose (observation-grade, payload = ev.<field>):')}")
         for e in sorted(cat, key=lambda x: (x.get("category", ""), x["name"])):
             name = _ST.accent(f"{e['name']:<22}")
             tag = _ST.dim(f"[{e.get('category', '?')}]")
             print(f"  {name} {tag} {_ST.dim(e.get('note', ''))}")
+            if e.get("fields"):
+                print(f"  {'':<22} {_ST.bold('{' + ', '.join(e['fields']) + '}')}")
         print(_ST.dim("  (+ any other name the game emits — the firehose forwards all)"))
 
     bus = smap.gameplay_event_catalog

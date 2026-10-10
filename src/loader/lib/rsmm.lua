@@ -64,7 +64,7 @@ end
 -- re-publishes EVERY event to this bus by its raw name — no per-event
 -- wiring, and new names the game adds appear automatically. Confirmed:
 --   "game_start" "run_start" "matchmaking_start" "matchmaking_end"
---   "chapter_end" "level_up_reach" "level_up_book" "enemy_killed"
+--   "chapter_end" "levelup_run" "level_up_book" "enemy_killed"
 --   "unlock_skill" "unlock_object" "unlock_hero" "unlock_level_nightmare"
 --   "event_start" "event_end"
 -- OBSERVATION-grade: they fire after the action and carry the analytics

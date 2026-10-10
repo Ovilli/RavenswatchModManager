@@ -63,11 +63,14 @@ def test_analytics_firehose_events_recognised():
     fire even though no symbol carries them. Warning on those told authors a
     working handler was dead — and pushed them onto the typed event instead."""
     events, _ = lint._engine_vocab()
-    assert {"run_start", "level_up_reach", "level_up_book", "enemy_killed"} <= events
+    assert {"run_start", "levelup_run", "level_up_book", "enemy_killed"} <= events
+    # level_up_reach is a FIELD of levelup_run (seen in game 2026-10-10), so a
+    # handler on it would never fire and must keep warning.
+    assert "level_up_reach" not in events
 
 
 def test_analytics_event_does_not_warn(tmp_path):
-    d = _mod(tmp_path, 'R.on("level_up_reach", function() end)\n')
+    d = _mod(tmp_path, 'R.on("levelup_run", function() end)\n')
     assert lint._lint_lua_api("LuaMod", d) == (0, 0)
 
 

@@ -32,7 +32,7 @@ and submit it as JSON to Passtech's backend. The event name is `arg3`, a
 `install_analytics_firehose()` detours that single sink, reads the name, and
 emits it to Lua — so **one hook exposes every named event**, and any name a patch
 adds shows up automatically. Confirmed names: `game_start` `run_start` `run_end`
-`chapter_end` `level_up_reach` `enemy_killed` `unlock_skill` `unlock_hero` …
+`chapter_end` `levelup_run` `enemy_killed` `unlock_skill` `unlock_hero` …
 
 **Observation-grade, not a gameplay bus** — fires after the action and carries
 analytics KV, not a live entity handle. Perfect for triggers, useless for

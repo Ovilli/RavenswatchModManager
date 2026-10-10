@@ -1,6 +1,6 @@
 ---
 title: Lua gameplay API
-description: The R.* calls a Lua mod uses to change a run — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls and chapter flow.
+description: The R.* calls a Lua mod uses to change a run — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls and chapter flow — and the run events it can react to.
 ---
 
 These are the `R.*` calls that change the game during a run. Each one sends the
@@ -200,6 +200,60 @@ Each acts on the **current chapter only**: they refuse between chapters, in a
 menu, on a loading screen or during a victory/defeat sequence, and a chapter
 takes one end — a second call is refused instead of landing on the next chapter.
 `R.run.world_ready()` is `false` until the chapter's first world event.
+
+## Run events — what happened, and what it was
+
+The calls above change the run. To **react** to it, subscribe to the game's own
+analytics events: the game reports these moments to its telemetry, and the
+loader passes every one to mods with its fields. They arrive just after the
+moment, so use them to trigger something, not to cancel it.
+
+```lua
+R.on("hero_death", function(ev)
+    R.log("killed by " .. tostring(ev.enemy_name))
+end)
+
+R.on("sandman_buy", function(ev)
+    R.log(("bought %s for %d shards"):format(ev.article_name, ev.article_price))
+end)
+```
+
+These all fire in a solo run:
+
+| Event | Fires when | Fields (`ev.<field>`) |
+|---|---|---|
+| `hero_death` | the hero dies | `enemy_name` (e.g. `Standard_Undead_Hog_Reaper`) |
+| `revive_token` | a revive token brings a player back | — |
+| `hero_heal` | the hero is healed | — |
+| `health_fountain` | a healing fountain is used | — |
+| `blood_fountain` | a blood fountain is used | — |
+| `open_chest` | a chest is opened | `locked` (1 = the red key chest) |
+| `object_proposed` | an item is offered (once per card) | `object_name`, `object_quality` |
+| `object_selected` | an item is taken | `object_name`, `object_quality` |
+| `skill_proposed` | a talent is offered (once per card) | `skill_name`, `skill_rarity`, `skill_tier`, `skill_count` |
+| `skill_selected` | a talent is taken | `skill_name`, `skill_rarity`, `skill_tier`, `skill_count` |
+| `sandman_buy` | something is bought in the Sandman shop | `article_name`, `article_price`, `article_rarity` |
+| `levelup_run` | the hero levels up | `level_up_reach` (the new level) |
+| `use_teleportation` | a teleporter is used | — |
+| `event_start` | a quest, activity or melody event starts | `event_name`, `type` |
+| `event_end` | it ends | `event_name`, `type`, `status`, `reward` |
+| `chapter_end` | a chapter is finished | the run so far: `enemy_killed`, `damage_dealt`, `damage_received`, `dream_shard_collected`, `dream_shard_spend`, `level_reached`, `objects`, `reroll_used`, `revive_token`, `attack_power`, `armor`, `vitality` |
+| `game_start` | the game session starts | system info, `DLCs_owned` |
+| `active_boss` | a boss fight ends | `time`, `success` |
+| `key_used` | a key opens a locked chest | — |
+| `hourglass` | the hourglass is used | `dream_shard`, `object_count` |
+| `note_gain` | a melody note is collected | `key_gain` |
+| `altar_revive` | the Altar of Heroes revives a player | `count` |
+| `unlock_hero` | a hero is unlocked | `hero_name` |
+| `unlock_object` | an item is unlocked | `object_name`, `object_quality` |
+| `unlock_skill` | a talent is unlocked | `skill_name` |
+| `unlock_level_nightmare` | a nightmare difficulty is unlocked | `level` |
+
+Online-only events (`run_start`, `matchmaking_start`, `matchmaking_end`,
+`reconnect`) are catalogued too; `rsmm symbols events` lists every name with
+its fields. For kills, use the
+gameplay bus (`R.on("gameplay:ENEMY_KILLED", …)`): `enemy_killed` is only a
+field of `chapter_end` (the chapter's kill count), not an event of its own.
 
 ## When a call returns `false`
 
