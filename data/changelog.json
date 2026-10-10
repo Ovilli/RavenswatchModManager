@@ -2,6 +2,16 @@
   "generated": "2026-10-10",
   "entries": [
     {
+      "version": "5.9.13",
+      "date": "2026-10-10",
+      "summary": "The Damage Meter no longer counts as a gameplay mod online, and mod authors get the full list of run events.",
+      "highlights": [
+        "Online: the Damage Meter is now treated as a client-only mod again, so running it no longer marks you as modded for public matchmaking.",
+        "Mod authors: 26 run events (hero death, chests, shop purchases, item and talent picks, chapter-end stats and more) are now listed with their fields in rsmm symbols events, and rsmm lint accepts them.",
+        "Mod authors: R.status.watch_stagger() and R.status.stagger() read stagger values, and the Lua API docs record which calls are proven in game."
+      ]
+    },
+    {
       "version": "",
       "loader_version": 39,
       "date": "2026-10-10",
