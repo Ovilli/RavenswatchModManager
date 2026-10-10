@@ -1086,8 +1086,9 @@ function R.melody.choose(lo, hi)
     return true
 end
 
--- R.reroll — the hero's offer rerolls (EXPERIMENTAL, static RE 2026-10-10;
--- in-game proof pending).
+-- R.reroll — the hero's offer rerolls. PROVEN IN GAME 2026-10-10: add(3) took
+-- the counter 3 -> 6 (get() and the `reroll_count` game value agree) and the
+-- extra rerolls showed on the offer screen and worked.
 --
 --   R.reroll.get()    -- rerolls the hero has, or nil (hero not captured yet)
 --   R.reroll.add(3)   -- grant 3 (1..32767); true once dispatched

@@ -1183,7 +1183,7 @@ do
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
     dispatched = false
 
-    -- R.reroll.add rides it too. EXPERIMENTAL (static RE 2026-10-10): the layout
+    -- R.reroll.add rides it too. Proven in game 2026-10-10: the layout
     -- is the GainReroll ctor's, the count is a u16 at +0x50 as the game's own
     -- sender writes it, and bad counts never reach the engine.
     local REROLL_VFT = I.module_base() + (0x140f263d0 - 0x140000000)

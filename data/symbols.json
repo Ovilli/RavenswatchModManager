@@ -5339,7 +5339,7 @@
    "category": "event",
    "va": "0x140f263d0",
    "status": "va",
-   "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs the experimental R.reroll.add (static RE 2026-10-10; in-game proof pending).",
+   "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs R.reroll.add, PROVEN IN GAME 2026-10-10 (counter 3 -> 6, rerolls usable on the offer screen).",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -5351,7 +5351,7 @@
    "raw": "FUN_1403aa9e0",
    "status": "unverified",
    "signature": "void(void* hero, void* ev)",
-   "note": "Hero-bound GAIN_REROLL handler: *(s16*)(*(hero+0x1d80)+0x16) += *(s16*)(ev+0x50), then publishes that value as the reroll_count game value (key 0x1a922cd6). So the hero's available offer rerolls live in the HUD mirror (hero+0x1d80, the same pointer the dream-shard code uses) at +0x16 as a signed 16-bit count; R.reroll.get reads it. Static RE 2026-10-10, not proven in game.",
+   "note": "Hero-bound GAIN_REROLL handler: *(s16*)(*(hero+0x1d80)+0x16) += *(s16*)(ev+0x50), then publishes that value as the reroll_count game value (key 0x1a922cd6). So the hero's available offer rerolls live in the HUD mirror (hero+0x1d80, the same pointer the dream-shard code uses) at +0x16 as a signed 16-bit count; R.reroll.get reads it. Behaviour proven in game 2026-10-10: a +3 GAIN_REROLL took the s16 3 -> 6 and the published reroll_count followed; the address itself is still only pattern-matched, hence unverified.",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
@@ -5362,7 +5362,7 @@
    "category": "event",
    "raw": "FUN_1402eb030",
    "status": "unverified",
-   "note": "The game's own reroll grant: builds a GainReroll event on the stack with the count (an int truncated to u16) at +0x50, records it as a scene-context value (0x1bf49d2a for a gain, 0x1c036132 for a loss), accumulates it into this+0x68, then for each target hero either NamedEvent_Dispatch(entity+0x4d8, ev) (no net component, or locally owned) or NamedEvent_NetSendToPeer to the owning peer. The model for R.reroll.add. Static RE 2026-10-10.",
+   "note": "The game's own reroll grant: builds a GainReroll event on the stack with the count (an int truncated to u16) at +0x50, records it as a scene-context value (0x1bf49d2a for a gain, 0x1c036132 for a loss), accumulates it into this+0x68, then for each target hero either NamedEvent_Dispatch(entity+0x4d8, ev) (no net component, or locally owned) or NamedEvent_NetSendToPeer to the owning peer. The model for R.reroll.add (proven in game 2026-10-10). Static RE 2026-10-10.",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]
