@@ -1352,4 +1352,88 @@ function R.xp.grant(amount)
     return true
 end
 
+-- Shared guards for set_level / set_xp: writes enabled, the party's level
+-- component found, its progress pointer live. Returns comp, prog, level, xp.
+local function _xp_set_target(fn)
+    if not _stat_writes_enabled then
+        R.log("[rsmm.xp] " .. fn .. " is experimental and off — call R.stat.enable_writes() first")
+        return nil
+    end
+    if not _va_ok("R.xp") then return nil end
+    local comp = _xp_component(R.entity.hero(), true)
+    if not comp then
+        _log_throttled("xp.nocomp", "[rsmm.xp] " .. fn .. ": level component not found yet")
+        return nil
+    end
+    local prog = I.read_u64(comp + XP_PROGRESS_OFF)
+    if not _ptr_plausible(prog) then
+        R.log("[rsmm.xp] " .. fn .. ": level progress not live — refusing")
+        return nil
+    end
+    return comp, prog, I.read_u32(prog), I.read_u32(prog + 4)
+end
+
+-- Raise the party level to `n` directly, the way Hero_GainExperience finishes
+-- a gain: XpComponent_SetXp(comp, 0) then XpComponent_SetLevel(comp, n) — one
+-- SetLevel even across several levels, exactly like a big XP gain, and it is
+-- SetLevel that fires the game's own _XP_LEVEL_UP. Only RAISES: lowering would
+-- leave talents already picked for levels the party no longer has.
+-- PROVEN IN GAME 2026-10-10 (level 1 -> 10, max 20, ultimate unlocked).
+-- MAIN-THREAD ONLY, gated by R.stat.enable_writes().
+function R.xp.set_level(n)
+    if type(n) ~= "number" or n ~= math.floor(n) or n < 1 then
+        R.log("[rsmm.xp] set_level(n): n must be a whole number >= 1")
+        return false
+    end
+    local comp, prog, lvl0, xp0 = _xp_set_target("set_level")
+    if not comp then return false end
+    if lvl0 and n <= lvl0 then
+        R.log(string.format("[rsmm.xp] set_level(%d): the party is already level %d — only raises", n, lvl0))
+        return false
+    end
+    local okm, maxl = pcall(R.engine.call, "XpComponent_GetMaxLevel", comp)
+    if not okm or type(maxl) ~= "number" or maxl < 1 then
+        R.log("[rsmm.xp] set_level: max level unreadable — refusing")
+        return false
+    end
+    if n > maxl then
+        R.log(string.format("[rsmm.xp] set_level(%d): above the max level %d — refusing", n, maxl))
+        return false
+    end
+    R.engine.call("XpComponent_SetXp", comp, 0)
+    R.engine.call("XpComponent_SetLevel", comp, n)
+    local lvl1 = I.read_u32(prog)
+    R.log(string.format("[rsmm.xp] set_level %s->%s (xp %s->0, max %d)",
+        tostring(lvl0), tostring(lvl1), tostring(xp0), maxl))
+    return lvl1 == n
+end
+
+-- Set the XP within the current level. Must stay below that level's threshold
+-- (XpComponent_XpForLevel): only a GAIN runs the level-up loop, so a value at
+-- or past it would sit there without ever levelling. Use R.xp.grant to level
+-- through XP. EXPERIMENTAL, MAIN-THREAD ONLY, gated by R.stat.enable_writes().
+function R.xp.set_xp(x)
+    if type(x) ~= "number" or x ~= math.floor(x) or x < 0 or x > 0x7fffffff then
+        R.log("[rsmm.xp] set_xp(x): x must be a whole number >= 0")
+        return false
+    end
+    local comp, prog, lvl0, xp0 = _xp_set_target("set_xp")
+    if not comp then return false end
+    local okn, need = pcall(R.engine.call, "XpComponent_XpForLevel", comp, lvl0 or 1)
+    if not okn or type(need) ~= "number" or need == 0 or need == 0xffffffff then
+        R.log("[rsmm.xp] set_xp: this level's threshold is unreadable — refusing")
+        return false
+    end
+    if x >= need then
+        R.log(string.format("[rsmm.xp] set_xp(%d): level %s needs %d to complete; "
+            .. "set below it, or use R.xp.grant to level up", x, tostring(lvl0), need))
+        return false
+    end
+    R.engine.call("XpComponent_SetXp", comp, x)
+    local xp1 = I.read_u32(prog + 4)
+    R.log(string.format("[rsmm.xp] set_xp %s->%s (level %s, needs %d)",
+        tostring(xp0), tostring(xp1), tostring(lvl0), need))
+    return xp1 == x
+end
+
 end

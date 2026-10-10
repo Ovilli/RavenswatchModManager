@@ -294,6 +294,19 @@ engine["Hero_GainExperience"] = function(comp, gain)
     return 0
 end
 
+-- Models FUN_1402e3630 / FUN_1402e3190: plain writes into the progress block
+-- (the engine also fires _XP_LEVEL_UP on a raise; not modeled). The counters
+-- let a test see which routine was called, and in what order.
+local xp_set_calls = {}
+engine["XpComponent_SetXp"] = function(comp, xp)
+    xp_set_calls[#xp_set_calls + 1] = "xp"
+    wint(rint(comp + XP_PROGRESS_OFF, 8) + 4, xp, 4)
+end
+engine["XpComponent_SetLevel"] = function(comp, level)
+    xp_set_calls[#xp_set_calls + 1] = "level"
+    wint(rint(comp + XP_PROGRESS_OFF, 8), level, 4)
+end
+
 -- ---------------------------------------------------------------------------
 -- mock native bindings (the `rsmm` global rsmm.lua reads at load)
 -- ---------------------------------------------------------------------------
@@ -1036,6 +1049,33 @@ do
     check(R.xp.grant(100) == true, "grant lands once a level curve exists")
     check(R.xp.xp() == 440, "granted xp is credited through the engine call")
 
+    -- set_level raises the party level the way a gain ends: SetXp(0), then
+    -- ONE SetLevel (which is what fires the game's _XP_LEVEL_UP).
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    check(R.xp.set_level(10) == true and R.xp.level() == 10, "set_level raises the level (7 -> 10)")
+    check(R.xp.xp() == 0, "...and starts the new level at 0 xp")
+    check(table.concat(xp_set_calls, ",") == "xp,level", "...through SetXp then SetLevel, like a gain")
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    for _, bad in ipairs({ 10, 9, 0, 21, 2.5, "12" }) do
+        check(R.xp.set_level(bad) == false, "set_level refuses " .. tostring(bad))
+    end
+    check(#xp_set_calls == 0 and R.xp.level() == 10, "...without calling the engine")
+
+    -- set_xp stays below the level's threshold: only a gain levels up.
+    local XPCFG, XPARR = 0x1b900000, 0x1ba00000
+    I.write_u64(GLCOMP + 0x10, XPCFG)
+    I.write_u8(XPCFG + 0x1d0, 1)
+    I.write_u64(XPCFG + 0x1d8, XPARR)
+    I.write_u32(XPCFG + 0x1e0, 20)
+    for lv = 1, 20 do I.write_u32(XPARR + (lv - 1) * 4, lv * 100) end   -- level 10 needs 1000
+    check(R.xp.set_xp(999) == true and R.xp.xp() == 999, "set_xp sets the xp within the level")
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    for _, bad in ipairs({ 1000, 5000, -1, 1.5 }) do
+        check(R.xp.set_xp(bad) == false, "set_xp refuses " .. tostring(bad))
+    end
+    check(#xp_set_calls == 0 and R.xp.xp() == 999, "...without calling the engine")
+
+
     -- A torn-down entity must not keep serving stale numbers.
     I.write_u64(GLCOMP, 0)
     check(R.xp.level() == nil, "capture is dropped once the object stops validating")
@@ -1231,6 +1271,151 @@ do
     engine["NamedEvent_ChooseMelody_Ctor"] = nil
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
     I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
+
+    -- R.ability sends the game's own ability events, oCNamedEventNetworkWithData
+    -- with ONE typed value in an oCEntityValueUnion at +0x50 (storage @+0x58,
+    -- 4 = inline; value @+0x60; type @+0x68: 0 f32, 1 int32, 2 bool). The
+    -- handlers check the type, so each call must carry the right one, and the
+    -- union must come from the engine's routines (the bus clones the event
+    -- through the union's vftable). Mocks behave like the real union ctor.
+    local WD_VFT = I.module_base() + (0x140f0f180 - 0x140000000)
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+    local UNION_VFT = I.module_base() + 0x2000
+    engine["EntityValueUnion_DefaultCtor"] = function(u)
+        I.write_u64(u, UNION_VFT); I.write_u64(u + 0x08, 4)
+        I.write_u64(u + 0x10, 0); I.write_u8(u + 0x18, 0)
+        return u
+    end
+    -- Like the engine: type 1 is a 16-byte type stored OUT of line (measured
+    -- in game 2026-10-10), so its storage is a heap pointer, not 4.
+    local union_freed = 0
+    local function init_as_type(u, t)
+        I.write_u8(u + 0x18, t)
+        if t == 1 then I.write_u64(u + 0x08, scratch(0x10)) end
+    end
+    engine["EntityValueUnion_InitAsType"] = init_as_type
+    engine["EntityValueUnion_Destruct"] = function() union_freed = union_freed + 1 end
+    local name_at = function(ev)
+        local p, s = I.read_u64(ev + 0x20), ""
+        for i = 0, 63 do
+            local c = I.read_u8(p + i); if c == 0 then break end; s = s .. string.char(c)
+        end
+        return s
+    end
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev),
+                 uvft = I.read_u64(ev + 0x50), storage = I.read_u64(ev + 0x58),
+                 type = I.read_u8(ev + 0x68), f = I.read_f32(ev + 0x60),
+                 i = I.read_u64(ev + 0x58) ~= 4 and I.read_u32(I.read_u64(ev + 0x58) & ~1)
+                     or I.read_u32(ev + 0x60),
+                 b = I.read_u8(ev + 0x60),
+                 peer = I.read_u64(ev + 0x38), state = I.read_u32(ev + 0x08) }
+    end
+    dispatched, sent = false, nil
+    check(R.ability and R.ability.reset_cooldown("dash") == true, "ability reset_cooldown dispatches")
+    check(sent.disp == DISP and sent.vft == WD_VFT, "...a with-data event on the hero dispatcher")
+    check(sent.name == "CLEAR_DASH_CD", "...named for the slot")
+    check(sent.uvft == UNION_VFT and sent.storage == 4, "...with an engine-built inline union")
+    check(sent.type == 2 and sent.b == 1, "...carrying bool true, the type the CLEAR handler requires")
+    check(sent.state == 2 and (sent.peer == -1 or sent.peer == 0xffffffffffffffff),
+          "...and the header the game's sender writes")
+    check(R.ability.reset_cooldown() == true and sent.name == "CLEAR_CD", "no slot clears every ability")
+    check(R.ability.reduce_cooldown(2.5, "ULTIMATE") == true and sent.name == "REDUCE_ULTIMATE_CD",
+          "reduce_cooldown names the slot (case-insensitive)")
+    check(sent.type == 0 and about(sent.f, 2.5), "...and carries the seconds as f32")
+    check(R.ability.reduce_cooldown(1) == true and sent.name == "REDUCE_CD", "no slot reduces every ability")
+    check(R.ability.add_charge("primary", 2) == true and sent.name == "ADD_PRIMARY_CHARGE",
+          "add_charge names the slot")
+    check(sent.type == 1 and sent.i == 2, "...and carries the count as int32 in the out-of-line storage")
+    check(union_freed > 0, "...and frees the union's allocation after dispatch")
+    check(R.ability.add_charge("trait") == true and sent.i == 1, "add_charge defaults to one")
+    check(R.ability.remove_charge("basic") == true and sent.name == "REMOVE_BASIC_CHARGE",
+          "remove_charge names the slot")
+    for _, bad in ipairs({
+        { "reset_cooldown", "wings" }, { "reduce_cooldown", 0 }, { "reduce_cooldown", -1 },
+        { "reduce_cooldown", "2" }, { "add_charge", nil, 1 }, { "add_charge", "dash", 0 },
+        { "add_charge", "dash", 1.5 }, { "remove_charge" }, { "remove_charge", 3 },
+    }) do
+        dispatched = false
+        check(R.ability[bad[1]](bad[2], bad[3]) == false,
+              "ability " .. bad[1] .. " refuses " .. tostring(bad[2]) .. "/" .. tostring(bad[3]))
+        check(not dispatched, "...without reaching the engine")
+    end
+    -- A union whose storage is neither inline nor a plausible pointer, or
+    -- whose type did not take, would hand the handler garbage: refuse.
+    engine["EntityValueUnion_InitAsType"] = function(u, t)
+        I.write_u8(u + 0x18, t); I.write_u64(u + 0x08, 0x10)
+    end
+    dispatched = false
+    check(R.ability.add_charge("dash") == false, "an implausible out-of-line union storage is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["EntityValueUnion_InitAsType"] = function() end
+    dispatched = false
+    check(R.ability.reset_cooldown("dash") == false, "a union whose type did not take is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["EntityValueUnion_InitAsType"] = init_as_type
+    I.write_u64(WD_VFT, 0)
+    dispatched = false
+    check(R.ability.reset_cooldown("dash") == false, "an implausible with-data vftable is refused")
+    check(not dispatched, "...and never dispatched")
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+
+    -- R.shards.gain sends GAIN_DREAM_SHARDS as a pickup would (the handler
+    -- applies the hero's shard-gain bonuses); R.ingredient sends
+    -- GAIN_INGREDIENT with the id read from the live IngredientDefinition.
+    local SHARD_VFT = I.module_base() + (0x140f224c0 - 0x140000000)
+    local ING_VFT = I.module_base() + (0x140f26460 - 0x140000000)
+    I.write_u64(SHARD_VFT, I.module_base() + 0x1000)
+    I.write_u64(ING_VFT, I.module_base() + 0x1000)
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev),
+                 src = I.read_u64(ev + 0x50), amount = I.read_u32(ev + 0x58),
+                 picked = I.read_u8(ev + 0x5c), purchase = I.read_u8(ev + 0x5d),
+                 ing = I.read_u32(ev + 0x50), count = I.read_u16(ev + 0x54) }
+    end
+    dispatched, sent = false, nil
+    check(R.shards.gain and R.shards.gain(25) == true, "shards gain dispatches")
+    check(sent.disp == DISP and sent.vft == SHARD_VFT and sent.name == "GAIN_DREAM_SHARDS",
+          "...a GainDreamShards event on the hero dispatcher")
+    check(sent.amount == 25 and sent.picked == 1 and sent.purchase == 0,
+          "...as a pickup: amount at +0x58, picked-up flag set, not a purchase")
+    check(sent.src == -1 or sent.src == 0xffffffffffffffff, "...with the ctor's source id")
+    for _, bad in ipairs({ 0, -5, 2.5, "3" }) do
+        dispatched = false
+        check(R.shards.gain(bad) == false, "shards gain refuses " .. tostring(bad))
+        check(not dispatched, "...without reaching the engine")
+    end
+
+    local KEY_DEF = scratch(0x300)
+    local key_name = scratch(8)
+    for i, c in ipairs({ ("Key"):byte(1, -1) }) do I.write_u8(key_name + i - 1, c) end
+    I.write_u32(KEY_DEF + 0x290, 0x5eed)
+    I.write_u64(KEY_DEF + 0x298, key_name)
+    local real_instances = R.defs.instances
+    R.defs.instances = function(which)
+        return which == "IngredientDefinition" and { KEY_DEF } or {}
+    end
+    check(R.ingredient.names()[1] == "Key", "ingredient names come from the live defs")
+    dispatched, sent = false, nil
+    check(R.ingredient.add("key", 2) == true, "ingredient add dispatches (name is case-insensitive)")
+    check(sent.vft == ING_VFT and sent.name == "GAIN_INGREDIENT", "...a GainIngredient event")
+    check(sent.ing == 0x5eed and sent.count == 2, "...with the def's id and the count")
+    check(R.ingredient.remove("Key") == true and sent.count == 0xffff,
+          "remove sends a negative count (-1)")
+    for _, bad in ipairs({ { "Wood", 1 }, { 3, 1 }, { "Key", 0 }, { "Key", 0x8000 }, { "Key", 1.5 } }) do
+        dispatched = false
+        check(R.ingredient.add(bad[1], bad[2]) == false,
+              "ingredient add refuses " .. tostring(bad[1]) .. " x" .. tostring(bad[2]))
+        check(not dispatched, "...without reaching the engine")
+    end
+    I.write_u64(ING_VFT, 0)
+    dispatched = false
+    check(R.ingredient.add("Key") == false and not dispatched,
+          "an implausible GainIngredient vftable is refused")
+    R.defs.instances = real_instances
+
     engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 

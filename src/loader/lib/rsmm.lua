@@ -2481,6 +2481,39 @@ do
     if ok and type(x) == "table" then R.map = x end
 end
 
+-- game events sent to the hero: abilities, shards, ingredients -----------
+--
+-- rsmm/named_event.lua builds a game named event by hand and sends it to the
+-- same hero dispatcher R.give uses, with that dispatcher and its liveness
+-- check handed over like rsmm/map.lua. The two namespaces below share it.
+-- Proven in game 2026-10-10 (cooldown reset, shards.gain, ingredient.add).
+--
+-- rsmm/ability.lua — the game's own ability events (CLEAR_*_CD, REDUCE_*_CD,
+-- ADD_/REMOVE_*_CHARGE):
+--     R.ability.reset_cooldown("dash")      -- nil slot = every ability
+--     R.ability.reduce_cooldown(2.5)        -- seconds; optional slot
+--     R.ability.add_charge("dash", 2)
+--     R.ability.remove_charge("dash")
+-- rsmm/resources.lua — pickups (GAIN_DREAM_SHARDS, GAIN_INGREDIENT):
+--     R.shards.gain(20)                     -- shard-gain bonuses apply
+--     R.ingredient.add("Key", 2) / .remove("Key") / .names()
+do
+    local ok, ne = _submodule_fn("named_event", {
+        R = R, I = I, img_base = GIVE_IMG_BASE, va_ok = _va_ok,
+        give_hero = function() return _give_hero end,
+        dispatcher_live = function(p) return _dispatcher_live(p) end,
+    })
+    if ok and type(ne) == "table" then
+        local ok_a, a = _submodule_fn("ability", { R = R, I = I, named_event = ne })
+        if ok_a and type(a) == "table" then R.ability = a end
+        local ok_r, r = _submodule_fn("resources", { R = R, I = I, named_event = ne })
+        if ok_r and type(r) == "table" then
+            if R.shards then R.shards.gain = r.shards.gain end
+            R.ingredient = r.ingredient
+        end
+    end
+end
+
 -- top-down camera --------------------------------------------------------
 --
 -- Lives in rsmm/camera.lua. Reads and changes the hero's TopDown camera

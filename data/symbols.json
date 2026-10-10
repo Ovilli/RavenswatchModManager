@@ -3244,7 +3244,7 @@
    "category": "event",
    "raw": "FUN_1407276a0",
    "status": "ok",
-   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]",
+   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]\n\n[2026-10-10 static re-read, for an R.damage.deal] Arguments are (source entity rcx, target entity rdx, oCEntityHitData* r8). A LOCAL target (no net component, or its +0x130 is-remote byte clear) gets Entity_DispatchHit(target, hit) directly at 0x14072772d; the network event is only built for a remote one. The event's f32 @+0x40 is NOT read from the hit: it is *(f32*)(*(source+0x30)+0x24) * 1000.0 (const @0x140fcbee8), i.e. most likely a source-side TIME in ms, so do not take +0x40 as the hit's damage without checking it against the damage meter's own decode. The hit is copied field by field: +0x10 instigator, +0x18..+0x6c floats/vectors, +0x70/+0x78/+0x80 u64, +0x88 u16, +0x90 ptr, +0xa0 ptr (an object whose +0x70 byte gates the network send). WHERE THE DAMAGE AMOUNT LIVES in the hit is still unknown statically. Next step is dynamic, not more reading: R.debug.dump a live hit (the third argument here) on one known hit of known damage, then find the float that matches. Only then build R.damage.deal, and as a COPY of a live hit (valid source/target handles) replayed through Entity_DispatchHit on a LOCAL target, never a hit built from zero.",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ],
@@ -4923,7 +4923,7 @@
      "uint32_t"
     ]
    },
-   "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13.",
+   "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13. Backs R.xp.set_level (SetXp(0) then SetLevel(n), like the tail of Hero_GainExperience) \u2014 PROVEN IN GAME 2026-10-10: level 1 -> 10.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ],
@@ -4949,7 +4949,7 @@
      "uint32_t"
     ]
    },
-   "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13.",
+   "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13. Backs R.xp.set_xp (kept below XpComponent_XpForLevel; not yet exercised in game).",
    "refs": [
     "docs/_re/kinds/stats.md"
    ],
@@ -5342,6 +5342,39 @@
    "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs R.reroll.add, PROVEN IN GAME 2026-10-10 (counter 3 -> 6, rerolls usable on the offer screen).",
    "refs": [
     "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "oCNamedEventNetworkWithData_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f0f180",
+   "status": "va",
+   "note": "vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), the named event that carries ONE typed value: an oCEntityValueUnion embedded at +0x50 (union vft @+0x50, storage @+0x58 with 4 = inline, inline value @+0x60, type byte @+0x68: 0 = f32, 1 = int32, 2 = bool; read off the handlers, not the union symbol's note). Header as every named event, then +0x38 = -1, +0x40 = 0, +0x48 = -1; 0x70 bytes. Class chain oCGameNamedEvent (0x140f05aa8) -> oCGameNamedEventNetwork (0x140f09d98) -> this. Layout read off the game's own sender in HeroStats_OnDamageTaken (0x1403a6900..0x1403a6a80): it stack-builds one named CLEAR_PRIMARY_CD, InitAsType(union, 2), writes bool 1 and dispatches it to entity+0x4d8. The ability family subscribes to it in AbilityController_Ctor (0x1402c9e2c.., on owner+0x4d8, then a switch on the slot 0..6): CLEAR_CD / CLEAR_<SLOT>_CD -> 0x1402cce40 (IsKindOf this class, requires type 2 and a true byte), REDUCE_CD / REDUCE_<SLOT>_CD -> 0x1402cd140 (cooldown at controller+0x6c minus the f32 (type 0) or int (type 1) value), ADD_<SLOT>_CHARGE -> 0x1402ccf30 (int count, type 1; default 1, negative -> 0; only when the ability has charges), REMOVE_<SLOT>_CHARGE -> 0x1402cd040 (removes one, reads no payload). Activity events (ACTIVITY_*/SOLO_ACTIVITY_*) also use this class with type 5 (String). Backs R.ability. PROVEN IN GAME 2026-10-10: CLEAR_CD made the ultimate ready again at once. MEASURED in game: type 1 is a 16-byte type InitAsType allocates OUT of line (storage = heap pointer, not 4), and the charge handler reads its first int32 there.",
+   "refs": [
+    "src/loader/lua/rsmm/ability.lua"
+   ]
+  },
+  {
+   "name": "oCDtNamedEventGainDreamShards_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f224c0",
+   "status": "va",
+   "note": "vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0x60 bytes; ctor 0x1402e6ce0 (NamedEvent_GainDreamShards_Ctor): standard header, +0x38/+0x48 = -1, +0x40 = 0, then +0x50 u64 source net id = -1, +0x58 i32 amount = 0, +0x5c u8 picked-up = 1, +0x5d u8 purchase = 0. Hero handler 0x1403a72b0 (subscribed in NamedEvent_HeroSubscribeAll): a positive amount is multiplied by the hero's shard-gain values 0x173900d6 and 0x1d788952, tagged 'PickedUpByMyself' (+0x5c, when +0x50 is the hero's own id) and/or 'Purchase' (+0x5d), then passed to Hero_ModifyDreamShards with those tags. Backs R.shards.gain, PROVEN IN GAME 2026-10-10 (+50 took the counter 0 -> 50 in the same frame).",
+   "refs": [
+    "src/loader/lua/rsmm/resources.lua"
+   ]
+  },
+  {
+   "name": "oCGameEventGainIngredient_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f26460",
+   "status": "va",
+   "note": "vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x1402da4f0: standard header, +0x38/+0x48 = -1, +0x40 = 0, +0x50 u32 ingredient id = 0, +0x54 i16 count = 0. Hero handler 0x14039acc0 tail-calls 0x14039a970(hero, id, count), which finds the IngredientDefinition whose +0x290 u32 equals the id (name oCString at +0x298: Bean, Key, Note, Stone, Straw, Wood) and adds, or removes for a negative count, against the hero HUD mirror's list (hero+0x1d80, entries at +0x48/+0x50). Backs R.ingredient, PROVEN IN GAME 2026-10-10 (add(\"Key\", 2) showed two more keys; remove not yet exercised).",
+   "refs": [
+    "src/loader/lua/rsmm/resources.lua"
    ]
   },
   {

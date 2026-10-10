@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **319** symbols across 24 categories.
+Total: **322** symbols across 24 categories.
 
 ## analytics
 
@@ -174,7 +174,10 @@ Total: **319** symbols across 24 categories.
 | `NamedEvent_NetSend` | `0x140721630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
 | `Reroll_GrantToHeroes` | `0x1402eb030` | ❓ unverified |  | The game's own reroll grant: builds a GainReroll event on the stack with the count (an … |
+| `oCDtNamedEventGainDreamShards_vftable` | `0x140f224c0` | 📍 va |  | vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0… |
 | `oCDtNamedEventGainReroll_vftable` | `0x140f263d0` | 📍 va |  | vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_I… |
+| `oCGameEventGainIngredient_vftable` | `0x140f26460` | 📍 va |  | vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x140… |
+| `oCNamedEventNetworkWithData_vftable` | `0x140f0f180` | 📍 va |  | vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), th… |
 
 ## gameplay
 

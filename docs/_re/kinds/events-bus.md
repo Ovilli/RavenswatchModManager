@@ -390,3 +390,119 @@ name/string offset verified live before it can ship.
 - Whether a brand-new event id (one no entity subscribes to) is safe to dispatch
   is untested; unknown ids just miss the channel map (no-op), which should be
   safe but is unverified in-game.
+
+## Who handles each event (static sweep, 2026-10-10)
+
+How the table was made, so it can be redone after a patch: every event name is
+interned once per compilation unit (8 static initializers each, found by the
+name's image-base RVA — the strings are reached as `lea rax,[rbx+rva]` off
+`lea rbx,[image base]`, which is why a `lea [rip+str]` scan finds none). Each
+initializer stores the id in its own global; the code that loads one of those
+globals is either a sender (writes it to ev+0x30) or a subscriber. Subscribers
+come in two shapes, both ending in a thunk `jmp [rip+X]` whose target qword is
+the handler:
+
+* **Hero controller** — `NamedEvent_HeroSubscribeAll` inlines each subscription:
+  id → `[rbp+..]`, `Netcode_Channel_LookupById`, then `lea rax,[rip+thunk]`.
+  Validated: this resolves GAIN_REROLL to 0x1403aa9e0 (the proven handler),
+  GIVE_MAGICAL_OBJECT to 0x1403a88f0 and CHOOSE_MELODY to 0x140399090.
+* **Ability controller** — `AbilityController_Ctor` calls a per-handler
+  template (0x1402f1bb0 / 0x1402f1cb0 / …) on owner+0x4d8; the template holds
+  the thunk. A jump-table tail shares one template call across slots (all
+  `REDUCE_<SLOT>_CD` reach 0x1402cd140 through 0x1402ca1ce), so read the call
+  that the id-load FLOWS into, not the next call in address order.
+
+Ability family (payload = `oCNamedEventNetworkWithData`, one typed value; see
+the `oCNamedEventNetworkWithData_vftable` symbol): CLEAR_CD / CLEAR_<SLOT>_CD →
+0x1402cce40 (bool true), REDUCE_CD / REDUCE_<SLOT>_CD → 0x1402cd140 (f32 or
+int seconds), ADD_<SLOT>_CHARGE → 0x1402ccf30 (int, default 1),
+REMOVE_<SLOT>_CHARGE → 0x1402cd040 (no payload). Slots: BASIC PRIMARY
+SECONDARY DEFENSIVE TRAIT ULTIMATE DASH. Backs `R.ability` (CLEAR_CD proven in game 2026-10-10).
+
+Hero-controller handlers (handler payloads unread unless noted — read each
+handler before building on it):
+
+| event | handler |
+|---|---|
+| ABILITY_EXIT | 0x1402cca20, 0x1403cf910 |
+| ADD_ALL_SKILLS | 0x1402eef80 |
+| ADD_RANDOM_ULTI_SKILL | 0x1403a75d0 |
+| ALTAR_HERO_REVIVE_STAT | 0x1401f9350 |
+| BABAYAGA_HOUSE_DEFEATED | 0x140293d00 |
+| BOSS_FIGHTING_START | 0x1401f90c0, 0x1402888b0, 0x140293cb0 |
+| BOSS_FIGHTING_STOP | 0x1401f9150, 0x140288a50 |
+| CHARGE_LINK | 0x1403cf8c0 |
+| CHOOSE_MELODY | 0x140399090 |
+| CINE_ASK_SKIP | 0x140288680 |
+| CINE_START | 0x1402885a0 |
+| CINE_STOP | 0x140288610 |
+| CLEAR_CHILLED | 0x1403cbc40 |
+| CLEAR_ROSE_SEED | 0x1403cbc60 |
+| CLEAR_STAGGER | 0x1403cc1d0 |
+| CLEAR_STATUS | 0x1403bfb00 |
+| COMBO_LINK | 0x1403cf900 |
+| DEATHDOOR_TIMER_END | 0x1403a8040 |
+| DUPLICATE_RANDOM_COMMON_OBJECT | 0x1403a8260 |
+| DUPLICATE_RANDOM_EPIC_OBJECT | 0x1403a8560 |
+| DUPLICATE_RANDOM_MAGICAL_OBJECT | 0x1403a80c0 |
+| DUPLICATE_RANDOM_RARE_OBJECT | 0x1403a83e0 |
+| FIRING_EXPLODE | 0x1403dc610, 0x1403dd120 |
+| FORCE_DEATH | 0x1403cbc80 |
+| GAIN_DREAM_SHARDS | 0x1403a72b0 |
+| GAIN_INGREDIENT | 0x14039acc0 |
+| GAIN_REROLL | 0x1403aa9e0 |
+| GAME_CHRONO_START | 0x140287eb0 |
+| GAME_END_CHANGE_STATE | 0x1402890b0 |
+| GAME_END_FAILED | 0x140289020 |
+| GAME_END_NEXT_CHAPTER | 0x140293d20 |
+| GAME_END_SUCCESS | 0x140289000 |
+| GAME_END_SUCCESS_SKIP_NEXT | 0x140289010 |
+| GIVE_MAGICAL_OBJECT | 0x1403a88f0 |
+| HERO_REVIVE | 0x1403a2700 |
+| HOURGLASS_STATS | 0x1401f8cd0 |
+| INTERACTION_CANCELED | 0x1402e5d20 |
+| INTERACTION_FAILED | 0x1403a21f0, 0x1403a2270 |
+| INTERACTION_REJECT | 0x1403a2170 |
+| INTERACTION_REQUEST | 0x1402e5740 |
+| INTERACTION_VALIDATE | 0x1403a2110 |
+| LOCAL_INTERACTION_SUCCESS | 0x140305910 |
+| OPEN_CHEST | 0x1401f8f30 |
+| POWER_UP_COLLECT_REQUEST | 0x1402e8330 |
+| REMOVE_ALL_COMMON_OBJECT | 0x1403a8c80 |
+| REMOVE_ALL_CURSED_OBJECT | 0x1403a8cc0 |
+| REMOVE_ALL_EPIC_OBJECT | 0x1403a8ca0 |
+| REMOVE_ALL_LEGENDARY_OBJECT | 0x1403a8cb0 |
+| REMOVE_ALL_MAGICAL_OBJECT | 0x1403a8c70 |
+| REMOVE_ALL_RARE_OBJECT | 0x1403a8c90 |
+| REMOVE_MAGICAL_OBJECT_FROM_ID | 0x1403a8b70 |
+| REMOVE_MELODY | 0x140399150 |
+| REMOVE_NEWLY_UNLOCK | 0x140359bf0 |
+| REMOVE_RANDOM_COMMON_OBJECT | 0x1403a8a80 |
+| REMOVE_RANDOM_CURSED_OBJECT | 0x1403a8b40 |
+| REMOVE_RANDOM_EPIC_OBJECT | 0x1403a8ae0 |
+| REMOVE_RANDOM_LEGENDARY_OBJECT | 0x1403a8b10 |
+| REMOVE_RANDOM_MAGICAL_OBJECT | 0x1403a8a50 |
+| REMOVE_RANDOM_RARE_OBJECT | 0x1403a8ab0 |
+| RESET_SKILLS | 0x1403a7f60 |
+| RESET_STAGGER_RESILIENCE | 0x1403cc1c0 |
+| REVIVE_RELEASE_TOKEN | 0x140288590 |
+| REVIVE_REQUEST | 0x140287ef0 |
+| REVIVE_VALIDATE | 0x1403a26b0 |
+| STARTUP_LINK | 0x1403cf880 |
+| START_DAYMARE | 0x1401ee4e0 |
+| START_NIGHTMARE | 0x1401ee590 |
+| TELEPORT_SUBMAP_ENTER | 0x140288b50 |
+| TELEPORT_SUBMAP_EXIT | 0x140288c10 |
+| TUMOR_FIGHTING_START | 0x1402886b0 |
+| TUMOR_FIGHTING_STOP | 0x1402887a0 |
+| UPDATE_OBJECT_UI | 0x1403a86e0 |
+| UPGRADE_LOWER_SKILL | 0x1403a7ba0 |
+| UPGRADE_LOWER_SKILL_TO_LEGENDARY | 0x1403a7d80 |
+| UPGRADE_SPECIFIC_SKILL | 0x1403a79e0 |
+| USE_BLOOD_FOUNTAIN | 0x1401f9070 |
+| USE_HEAL_FOUNTAIN | 0x1401f9020 |
+
+Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
+(layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).
+Not in this table: the skill/item events that subscribe through another path
+(UPGRADE_RANDOM_SKILL), and events with no subscriber found by either shape.

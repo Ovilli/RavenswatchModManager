@@ -317,12 +317,15 @@ ADDR: dict[str, int] = {
     "g_RosterManager": 0x141436590,
     "g_StatReportRoot": 0x14143cb28,
     "oCCustomFlagList_vftable": 0x140f01650,
+    "oCDtNamedEventGainDreamShards_vftable": 0x140f224c0,
     "oCDtNamedEventGainReroll_vftable": 0x140f263d0,
     "oCEntityHitData_vftable": 0x140f137d8,
     "oCEntityValueUnion_vftable": 0x140f95008,
+    "oCGameEventGainIngredient_vftable": 0x140f26460,
     "oCGameEventNetworkModifier_vftable": 0x140f322d0,
     "oCGameNamedEventChooseMelody_vftable": 0x140f25c48,
     "oCGameNamedEventRemoveMelody_vftable": 0x140f22608,
+    "oCNamedEventNetworkWithData_vftable": 0x140f0f180,
     "oCString_Dtor": 0x140111d90,
 }
 

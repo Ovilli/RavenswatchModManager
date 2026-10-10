@@ -258,7 +258,10 @@ constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
 constexpr std::uintptr_t Reroll_GrantToHeroes = 0x1402eb030ull;
 // Reroll_GrantToHeroes_Pattern omitted: status=unverified
+constexpr std::uintptr_t oCDtNamedEventGainDreamShards_vftable = 0x140f224c0ull;
 constexpr std::uintptr_t oCDtNamedEventGainReroll_vftable = 0x140f263d0ull;
+constexpr std::uintptr_t oCGameEventGainIngredient_vftable = 0x140f26460ull;
+constexpr std::uintptr_t oCNamedEventNetworkWithData_vftable = 0x140f0f180ull;
 
 // --- gameplay ---
 constexpr std::uintptr_t DayNightCycle_InitCycle = 0x1401eca80ull;
