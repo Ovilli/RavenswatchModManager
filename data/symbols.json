@@ -5127,8 +5127,10 @@
    "category": "melodies",
    "va": "0x140f25c48",
    "status": "va",
-   "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. \u26a0 NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. Working hypothesis, untested: +0x38/+0x48 are the melody definition's 128-bit GUID halves (melodydefs carry one, e.g. Fully_Heal a284971b7ccb5f46a60c8eb637ce3a44) the way R.give's event carries a magical-object GUID. Backs the experimental R.melody.choose.",
-   "refs": []
+   "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. \u26a0 NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. DISPROVED 2026-10-10 (static read of the handler): the GUID-at-+0x38/+0x48 hypothesis was wrong. The hero handler 0x140399090 takes the oCString at +0x50 {ptr, len|flags @+0x58} and 0x1403afa90 compares it with each live MelodyDefinition's *(*(def+0x48)+0x18) name string; the match goes to the registry lookup 0x14025ac40, then 0x1403988c0 applies it. So the melody is named by that string. Backs R.melody.choose(name) (rsmm/melody.lua), which reads the live strings and sends one verbatim; the first R.melody.choose(lo, hi) left +0x50 empty and could never match.",
+   "refs": [
+    "src/loader/lua/rsmm/melody.lua"
+   ]
   },
   {
    "name": "oCGameNamedEventRemoveMelody_vftable",
@@ -5136,8 +5138,10 @@
    "category": "melodies",
    "va": "0x140f22608",
    "status": "va",
-   "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170.",
-   "refs": []
+   "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170. Hero handler 0x140399150 reads the same +0x50 name string as CHOOSE_MELODY. Backs R.melody.remove(name) (rsmm/melody.lua).",
+   "refs": [
+    "src/loader/lua/rsmm/melody.lua"
+   ]
   },
   {
    "name": "oCString_Dtor",
@@ -5413,7 +5417,7 @@
      "void*"
     ]
    },
-   "note": "In-place ctor of NamedEventChooseMelody (0x60 bytes), reached from the class registrar's metaclass construct slot via thunk 0x140303080 (2026-10-10 sweep). Decompile: oCGameNamedEvent header (state 2 @+0x08, name 'CHOOSE_MELODY' @+0x20 via String_Assign, interned id @+0x30 from global 0x1412ef578), +0x38 = -1, +0x40 = 0, +0x48 = -1, second oCString @+0x50/+0x58/+0x5c empty. Pattern match_index 0 of 2. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch.",
+   "note": "In-place ctor of NamedEventChooseMelody (0x60 bytes), reached from the class registrar's metaclass construct slot via thunk 0x140303080 (2026-10-10 sweep). Decompile: oCGameNamedEvent header (state 2 @+0x08, name 'CHOOSE_MELODY' @+0x20 via String_Assign, interned id @+0x30 from global 0x1412ef578), +0x38 = -1, +0x40 = 0, +0x48 = -1, second oCString @+0x50/+0x58/+0x5c empty. Pattern match_index 0 of 2. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch. [2026-10-10] No longer called by the SDK: rsmm/melody.lua builds the event by hand (the name string at +0x50 is the payload).",
    "refs": [
     "src/loader/lib/rsmm.lua"
    ]

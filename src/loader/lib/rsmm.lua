@@ -991,100 +991,9 @@ function R.give.by_index(i)
     return R.give.by_guid(lo, hi)
 end
 
--- melodies (EXPERIMENTAL, UNPROVEN) ---------------------------------------
---
--- R.melody.choose(lo, hi) dispatches the game's own CHOOSE_MELODY named event
--- on the hero's bus, carrying a melody definition's 128-bit GUID. Same
--- machinery as R.give and R.talent.grant: build the event in scratch, put the
--- interned id at +0x30, dispatch on the captured hero dispatcher.
---
--- ⚠ THE PAYLOAD IS A HYPOTHESIS. The event class is only ever built by a
--- network-deserialisation factory (see oCGameNamedEventChooseMelody_vftable in
--- the symbol map), so no emitter exists to read the field meanings off. Its
--- ctor leaves +0x38 = -1, +0x40 = 0, +0x48 = -1 and an empty string at +0x50;
--- this writes the GUID halves into +0x38/+0x48 because that is the shape
--- R.give's event uses for a magical object. If a run shows the event firing
--- and nothing happening, the identity is one of the other fields.
---
--- Returns false (and logs) with no live hero dispatcher — the hero must act
--- once first. MAIN THREAD only, like every engine-mutating call.
+-- melodies: R.melody lives in rsmm/melody.lua, wired with the other game-event
+-- senders below (it names a melody by its definition's name string).
 R.melody = {}
-
-function R.melody.choose(lo, hi)
-    local MELODY_EVENT_VFT_VA = 0x140f25c48   -- oCGameNamedEventChooseMelody_vftable
-    local EVENT, EVENT_CRC = "CHOOSE_MELODY", 0xe311632b
-    if type(lo) ~= "number" or type(hi) ~= "number" then
-        R.log("[rsmm.melody] choose(lo, hi): the melody GUID halves must be numbers")
-        return false
-    end
-    if not _give_hero then
-        R.log("[rsmm.melody] no hero dispatcher yet — the hero must act once first")
-        return false
-    end
-    if not R.engine.resolve("NamedEvent_Dispatch") then
-        R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
-        return false
-    end
-    if not _dispatcher_live(_give_hero) then
-        R.log("[rsmm.melody] hero dispatcher is not live — refusing")
-        return false
-    end
-    -- Prefer the event's own ctor: it initialises every field and needs no
-    -- vftable address. Its pattern is not unique (named-event ctors are one
-    -- template), so the name it wrote is checked before anything is sent.
-    local ev
-    if R.engine.resolve("NamedEvent_ChooseMelody_Ctor") then
-        local buf = I.scratch(0x60)
-        ev = buf and buf ~= 0 and R.engine.call("NamedEvent_ChooseMelody_Ctor", buf) or nil
-        if ev and ev ~= 0 and R.engine.event_name(ev) ~= EVENT then
-            R.log("[rsmm.melody] the ChooseMelody ctor built " .. tostring(R.engine.event_name(ev))
-                .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
-            return false
-        end
-    end
-    if not ev or ev == 0 then
-        -- Fallback for a pattern DB that predates the ctor symbol: build the
-        -- event by hand, the layout the ctor writes.
-        if not _va_ok("R.melody") then return false end
-        if not R.engine.resolve("NamedEvent_Id_FromCrc") then
-            R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
-            return false
-        end
-        local base = I.module_base()
-        if not base or base == 0 then return false end
-        local vft = base + (MELODY_EVENT_VFT_VA - GIVE_IMG_BASE)
-        local slot0 = I.read_u64(vft)
-        if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
-            R.log("[rsmm.melody] event vftable implausible on this build — refusing")
-            return false
-        end
-        -- ONE scratch block: event (0x60) + name tail. A second alloc while
-        -- this one is live can overlap and zero the front (see R.stat.modify).
-        ev = I.scratch(0x80)
-        if not ev or ev == 0 then return false end
-        local tail = ev + 0x60
-        for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
-        I.write_u8(tail + #EVENT, 0)
-        I.write_u64(ev + 0x00, vft)
-        I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
-        I.write_u64(ev + 0x10, 0)
-        I.write_u64(ev + 0x18, 0)
-        I.write_u64(ev + 0x20, tail)                   -- name string
-        I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
-        I.write_u32(ev + 0x2c, 0)
-        I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
-        I.write_u32(ev + 0x40, 0)
-        I.write_u64(ev + 0x50, tail + #EVENT)          -- second string: empty
-        I.write_u32(ev + 0x58, 0x80000000)
-        I.write_u32(ev + 0x5c, 0)
-    end
-    I.poke(ev + 0x38, lo, 8)                       -- melody GUID low  (hypothesis)
-    I.poke(ev + 0x48, hi, 8)                       -- melody GUID high (hypothesis)
-    R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
-    R.log(string.format("[rsmm.melody] dispatched %s guid=%016x%016x disp=0x%x id=0x%x",
-        EVENT, hi, lo, _give_hero, I.read_u32(ev + 0x30) or 0))
-    return true
-end
 
 -- R.reroll — the hero's offer rerolls. PROVEN IN GAME 2026-10-10: add(3) took
 -- the counter 3 -> 6 (get() and the `reroll_count` game value agree) and the
@@ -2513,6 +2422,16 @@ do
             if R.shards then R.shards.gain = r.shards.gain end
             R.ingredient = r.ingredient
         end
+        -- rsmm/melody.lua — CHOOSE_MELODY / REMOVE_MELODY by melody name
+        -- (proven in game 2026-10-10): R.melody.choose("Fully_Heal") / .remove(...) / .names()
+        local ok_m, mel = _submodule_fn("melody", { R = R, I = I, named_event = ne })
+        if ok_m and type(mel) == "table" then
+            for k, v in pairs(mel) do R.melody[k] = v end
+        end
+        -- rsmm/control.lua — LOCK_CONTROL / UNLOCK_CONTROL, counted
+        -- (proven in game 2026-10-10): R.control.lock() / .unlock() / .release() / .held()
+        local ok_c, ctl = _submodule_fn("control", { R = R, named_event = ne })
+        if ok_c and type(ctl) == "table" then R.control = ctl end
         -- rsmm/status.lua — CLEAR_STATUS / CLEAR_STAGGER / RESET_STAGGER_RESILIENCE
         -- (EXPERIMENTAL): R.status.clear() / .clear_stagger() / .reset_stagger_resilience()
         local ok_s, st = _submodule_fn("status", { R = R, named_event = ne })
@@ -5214,6 +5133,18 @@ function R.run.signalled() return R.run._signalled == true end
 
 --- When the current run started (I.now clock), or nil.
 function R.run.started_at() return R.run._started_at end
+
+-- Lives in rsmm/run_flow.lua. Ends the chapter or the run through the game's own
+-- GAME_END_* events, sent to the WORLD dispatcher (oCEntitySceneContext+0x340,
+-- learned from the bus) by the shared builder. Proven in game 2026-10-10.
+--
+--     R.run.next_chapter() / .win() / .lose() / .world_ready()
+if _named_event then
+    local ok, x = _submodule_fn("run_flow", { R = R, named_event = _named_event })
+    if ok and type(x) == "table" then
+        for k, v in pairs(x) do R.run[k] = v end
+    end
+end
 
 -- ── R.serialize ───────────────────────────────────────────────────────────
 --

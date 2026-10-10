@@ -1207,20 +1207,52 @@ do
     check(not dispatched, "...and never dispatched")
     engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
 
-    -- R.melody.choose rides the same dispatcher. EXPERIMENTAL: the payload is a
-    -- hypothesis, but its guards must hold — the event's own vftable has to be
-    -- plausible on this build, and bad arguments never reach the engine.
+    -- R.melody names a melody by its DEFINITION'S NAME STRING: both hero
+    -- handlers compare the oCString at +0x50 with *(*(def+0x48)+0x18). The SDK
+    -- reads that string from the live defs and sends it verbatim; a bare stem
+    -- ("Fully_Heal") or the exact string both resolve.
     local MELODY_VFT = I.module_base() + (0x140f25c48 - 0x140000000)
+    local MELODY_RM_VFT = I.module_base() + (0x140f22608 - 0x140000000)
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)   -- a plausible slot 0
-    dispatched = false
-    check(R.melody.choose(0x1122, 0x3344) == true, "melody choose dispatches")
-    check(dispatched, "...through the engine")
-    dispatched = false
-    check(R.melody.choose("x", 1) == false, "a non-numeric guid is refused")
-    check(not dispatched, "...and never reaches the engine")
+    I.write_u64(MELODY_RM_VFT, I.module_base() + 0x1000)
+    local MEL_PATH = "Objects\\Melodies\\Fully_Heal.entity.ot"
+    local MEL_DEF, MEL_OBJ, MEL_STR = scratch(0x80), scratch(0x40), scratch(#MEL_PATH + 1)
+    for i = 1, #MEL_PATH do I.write_u8(MEL_STR + i - 1, MEL_PATH:byte(i)) end
+    I.write_u64(MEL_DEF + 0x48, MEL_OBJ); I.write_u64(MEL_OBJ + 0x18, MEL_STR)
+    local real_mel_instances = R.defs.instances
+    R.defs.instances = function(which) return which == "MelodyDefinition" and { MEL_DEF } or {} end
+    local mel_sent
+    local function cstr(p, n)
+        local out = ""
+        for i = 0, (n or 128) - 1 do
+            local c = I.read_u8(p + i); if not c or c == 0 then break end; out = out .. string.char(c)
+        end
+        return out
+    end
+    engine["NamedEvent_Dispatch"] = function(_, ev)
+        dispatched = true
+        mel_sent = { vft = I.read_u64(ev), event = cstr(I.read_u64(ev + 0x20)),
+                     name = cstr(I.read_u64(ev + 0x50)), len = I.read_u32(ev + 0x58) }
+    end
+    check(R.melody.names()[1] == "Fully_Heal", "melody names come from the live defs, as stems")
+    dispatched, mel_sent = false, nil
+    check(R.melody.choose("fully_heal") == true, "melody choose dispatches (stem, case-insensitive)")
+    check(mel_sent.vft == MELODY_VFT and mel_sent.event == "CHOOSE_MELODY", "...a ChooseMelody event")
+    check(mel_sent.name == MEL_PATH and mel_sent.len == 0x80000000 + #MEL_PATH,
+          "...carrying the def's own name string at +0x50, unowned")
+    check(R.melody.remove(MEL_PATH) == true and mel_sent.vft == MELODY_RM_VFT
+          and mel_sent.event == "REMOVE_MELODY" and mel_sent.name == MEL_PATH,
+          "melody remove accepts the exact string and sends a RemoveMelody event")
+    for _, bad in ipairs({ "Reveal_Map", "", 7 }) do
+        dispatched = false
+        check(R.melody.choose(bad) == false and not dispatched, "melody choose refuses " .. tostring(bad))
+    end
     I.write_u64(MELODY_VFT, 0)
-    check(R.melody.choose(1, 2) == false, "an implausible event vftable is refused")
+    dispatched = false
+    check(R.melody.choose("Fully_Heal") == false and not dispatched, "an implausible event vftable is refused")
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
+    R.defs.instances = real_mel_instances
+    engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 
     -- R.reroll.add rides it too. Proven in game 2026-10-10: the layout
@@ -1259,17 +1291,6 @@ do
     check(R.reroll.add(2) == false, "a GainReroll ctor that built a sibling event is refused")
     check(not dispatched, "...and never dispatched")
     engine["NamedEvent_GainReroll_Ctor"] = nil
-    engine["NamedEvent_ChooseMelody_Ctor"] = named_ctor("CHOOSE_MELODY")
-    I.write_u64(MELODY_VFT, 0)
-    dispatched = false
-    check(R.melody.choose(0x1122, 0x3344) == true, "melody choose uses the ChooseMelody ctor when it resolves")
-    check(dispatched, "...through the engine")
-    engine["NamedEvent_ChooseMelody_Ctor"] = named_ctor("GAIN_REROLL")
-    dispatched = false
-    check(R.melody.choose(0x1122, 0x3344) == false, "a ChooseMelody ctor that built a sibling event is refused")
-    check(not dispatched, "...and never dispatched")
-    engine["NamedEvent_ChooseMelody_Ctor"] = nil
-    I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
     I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
 
     -- R.ability sends the game's own ability events, oCNamedEventNetworkWithData
@@ -1524,6 +1545,77 @@ do
           "a candidate the engine would read through address 0xc8 is refused")
     I.write_u32(HERO + 0xfc0, 0)
     for k = 0, 9 do I.write_u64(HERO + 0xff0 + k * 0x20, saved_slots[k] or 0) end
+
+    -- R.control: the game COUNTS locks, so the SDK counts its own and never
+    -- sends an unlock it does not owe.
+    dispatched, sent = false, nil
+    check(R.control.unlock() == false and not dispatched, "unlock with no lock held is refused")
+    check(R.control.lock() == true and sent.name == "LOCK_CONTROL" and R.control.held() == 1, "lock sends LOCK_CONTROL")
+    check(R.control.lock() == true and R.control.held() == 2, "locks are counted")
+    local unlocks = 0
+    engine["NamedEvent_Dispatch"] = function(_, ev) if name_at(ev) == "UNLOCK_CONTROL" then unlocks = unlocks + 1 end end
+    check(R.control.release() == 2 and unlocks == 2 and R.control.held() == 0,
+          "release sends exactly the unlocks this SDK owes")
+    check(R.control.release() == 0 and unlocks == 2, "...and nothing more")
+
+    -- R.run: WORLD events, sent to the oCEntitySceneContext's dispatcher at
+    -- +0x340, learned from the bus with an RTTI check — and only for the
+    -- CURRENT chapter: the dispatcher outlives the chapter, so an end sent while
+    -- one closes or loads would land on the next one.
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, name = name_at(ev) }
+    end
+    dispatched = false
+    check(R.run.next_chapter() == false and not dispatched, "run.next_chapter before any chapter is refused")
+    local SCENE = scratch(0x400)
+    I.write_u64(SCENE, 0x140f00000)                    -- a vtable, like HERO's
+    local WORLD = SCENE + 0x340
+    local real_rtti_name = R.rtti.name
+    R.rtti.name = function(o) if o == SCENE then return "oCEntitySceneContext" end return real_rtti_name(o) end
+    local function world_ev(name)
+        fire("gameplay:" .. name, { source = "gameplay", dispatcher = string.format("0x%x", WORLD) })
+    end
+    world_ev("SHOW_MAIN_MENU")
+    check(not R.run.world_ready(), "a world event OUTSIDE a chapter (main menu) is not captured")
+    world_ev("GAME_CHRONO_START")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay", dispatcher = string.format("0x%x", DISP) })
+    check(R.run.world_ready(), "inside a chapter, the scene context's dispatcher is the world (the hero's is not)")
+    dispatched, sent = false, nil
+    check(R.run.next_chapter() == true and sent.name == "GAME_END_SUCCESS" and sent.disp == WORLD,
+          "run.next_chapter sends GAME_END_SUCCESS on the world dispatcher")
+    dispatched = false
+    check(R.run.win() == false and not dispatched,
+          "a SECOND end in the same chapter is refused (it would land on the next chapter)")
+    world_ev("GAME_END_SUCCESS")                       -- the engine's chapter end reaches the bus
+    check(not R.run.world_ready(), "a chapter end forgets the world dispatcher")
+    dispatched = false
+    check(R.run.lose() == false and not dispatched, "between chapters nothing is sent")
+    world_ev("MAP_GENERATION_DONE")                    -- the next chapter
+    dispatched, sent = false, nil
+    check(R.run.win() == true and sent.name == "GAME_END_SUCCESS_SKIP_NEXT" and sent.disp == WORLD,
+          "the next chapter re-learns the dispatcher and takes its own end (win)")
+    world_ev("GAME_END_SUCCESS_SKIP_NEXT"); world_ev("GAME_START")
+    local real_game_get, real_game_ready = R.game.get, R.game.ready
+    R.game.ready = function() return true end
+    R.game.get = function(k) return k == "is_in_loading_screen" and 1 or 0 end
+    dispatched = false
+    check(R.run.lose() == false and not dispatched, "the game's own loading-screen value blocks an end")
+    R.game.get = function() return 0 end
+    dispatched, sent = false, nil
+    check(R.run.lose() == true and sent.name == "GAME_END_FAILED", "run.lose sends GAME_END_FAILED")
+    R.game.get, R.game.ready = real_game_get, real_game_ready
+    world_ev("GAME_END_FAILED"); world_ev("GAME_START")
+    check(R.run.world_ready(), "a fresh chapter captures the world again")
+    R.rtti.name = real_rtti_name
+    dispatched = false
+    check(R.run.win() == false and not dispatched, "a world dispatcher whose owner is no longer the scene context is refused")
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        local st = I.read_u64(ev + 0x58)
+        sent = { disp = disp, name = name_at(ev), type = I.read_u8(ev + 0x68),
+                 i = st ~= 4 and I.read_u32(st & ~1) or I.read_u32(ev + 0x60) }
+    end
 
     engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false

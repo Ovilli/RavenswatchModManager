@@ -50,14 +50,21 @@ return function(env)
 
     -- Every guard, then a zeroed scratch event with its header written. `extra`
     -- names engine functions the caller will also need. Returns ev, disp.
-    function M.begin(feature, vft_va, name, size, extra)
+    -- `world` sends to a dispatcher the CALLER found and validated (the world
+    -- dispatcher, rsmm/run.lua) instead of the hero's.
+    function M.begin(feature, vft_va, name, size, extra, world)
         local tag = "[" .. feature:gsub("^R%.", "rsmm.") .. "] "
-        local disp = give_hero and give_hero() or nil
+        local disp = world or (give_hero and give_hero() or nil)
         if not disp or disp == 0 then
             R.log(tag .. "no hero dispatcher yet — the hero must act once first")
             return nil
         end
-        if not dispatcher_live(disp) then
+        if world then
+            if not R.ptr.plausible(world) then
+                R.log(tag .. "dispatcher is not plausible — refusing")
+                return nil
+            end
+        elseif not dispatcher_live(disp) then
             R.log(tag .. "hero dispatcher is not live — refusing")
             return nil
         end
@@ -101,10 +108,12 @@ return function(env)
     end
 
     function M.send(feature, ev, disp, detail)
+        -- Read the label before dispatching: the bus clones the event, so read
+        -- the original while it is certainly untouched.
+        local label, id = R.engine.event_name(ev) or "?", I.read_u32(ev + 0x30) or 0
         R.engine.call("NamedEvent_Dispatch", disp, ev)
         R.log(string.format("[%s] dispatched %s %s disp=0x%x id=0x%x",
-            feature:gsub("^R%.", "rsmm."), R.engine.event_name(ev) or "?", detail or "",
-            disp, I.read_u32(ev + 0x30) or 0))
+            feature:gsub("^R%.", "rsmm."), label, detail or "", disp, id))
         return true
     end
 
@@ -117,12 +126,13 @@ return function(env)
     local WD_SIZE, UNION_OFF = 0x70, 0x50
     M.T_F32, M.T_INT, M.T_BOOL = 0, 1, 2
 
-    -- Build and dispatch one with-data event. `vtype` is M.T_F32/T_INT/T_BOOL.
-    function M.send_value(feature, name, vtype, value)
+    -- Build and dispatch one with-data event. `vtype` is M.T_F32/T_INT/T_BOOL;
+    -- `world` as for M.begin.
+    function M.send_value(feature, name, vtype, value, world)
         local tag = "[" .. feature:gsub("^R%.", "rsmm.") .. "] "
         local ev, disp = M.begin(feature, WD_VFT_VA, name, WD_SIZE,
             { "EntityValueUnion_DefaultCtor", "EntityValueUnion_InitAsType",
-              "EntityValueUnion_Destruct" })
+              "EntityValueUnion_Destruct" }, world)
         if not ev then return false end
         -- The value goes through the engine's own union routines: the bus
         -- CLONES the event before delivering it, and the clone copies the

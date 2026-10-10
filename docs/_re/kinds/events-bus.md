@@ -552,6 +552,28 @@ count at +0x16 — most likely the revive-token count, unconfirmed. HERO_REVIVE
 0x1403a2700 (hero) / 0x1403cbbb0 (character) is a long scene-context routine in
 the multiplayer revive flow; read it in full before sending it.
 
+Melody, control, run flow (read 2026-10-10):
+* CHOOSE_MELODY 0x140399090 / REMOVE_MELODY 0x140399150 (hero) name the melody
+  by the oCString at +0x50, compared with *(*(def+0x48)+0x18) of each live
+  MelodyDefinition — NOT a GUID (the first R.melody.choose guessed +0x38/+0x48
+  and could never match). Backs `R.melody.choose/remove/names` (rsmm/melody.lua).
+* LOCK_CONTROL 0x1403a7580 / UNLOCK_CONTROL 0x1403a75a0 (hero, no payload): a
+  counter at hero+0xc50; the apply/release branches test byte hero+0xc54 in
+  opposite senses, meaning unestablished. Backs `R.control` (counts its own locks).
+* GAME_END_SUCCESS / _SUCCESS_SKIP_NEXT / _FAILED (0x140289000 / 0x140289010 /
+  0x140289020, no payload) are WORLD events: subscribed by the game-mode
+  controller (0x140284db0) on oCEntitySceneContext+0x340's channel map. Guarded
+  by an already-ended byte (this+0x213) and a context vtable slot +0xd8 (likely
+  authority). Backs `R.run.next_chapter/win/lose` (rsmm/run_flow.lua), which
+  learns the world dispatcher from the bus by RTTI — only inside a live chapter,
+  since the same dispatcher survives the chapter switch (an end sent during the
+  transition would hit the next chapter); one end per chapter. Not wrapped:
+  GAME_END_NEXT_CHAPTER (level load's follow-up step), TELEPORT_SUBMAP_ENTER/EXIT
+  (they only set the player-location flags after a move), START_DAYMARE /
+  START_NIGHTMARE (0x1401ee4e0 / 0x1401ee590: on the day/night component they
+  restart the CURRENT phase's timer, only when the phase matches, then schedule
+  something through 0x140205120 — unread).
+
 Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
 (layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).
 Not in this table: the skill/item events that subscribe through another path
