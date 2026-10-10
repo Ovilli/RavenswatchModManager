@@ -21,13 +21,13 @@ jobs:
         # RSMM targets Windows + Linux only (macOS support dropped).
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Match the Python version used by .github/workflows/release.yml
       # (3.12), so any test that passes here also passes in the frozen
       # PyInstaller bundle CI ships to users.
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -84,10 +84,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -104,15 +104,15 @@ jobs:
     name: typescript (biome + tsc + vitest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5.0.0
         with:
           version: 9.12.0
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -144,7 +144,7 @@ jobs:
     name: loader (mingw-w64 cross-compile)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install mingw-w64 + cmake + lua
         run: |
@@ -170,7 +170,7 @@ jobs:
         run: python3 scripts/validate_loader_dll.py dist/winhttp.dll
 
       - name: Upload winhttp.dll
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: winhttp-dll
           path: dist/winhttp.dll
@@ -180,7 +180,7 @@ jobs:
     name: docs external links (lychee)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check external links
         uses: lycheeverse/lychee-action@v2
         with:
