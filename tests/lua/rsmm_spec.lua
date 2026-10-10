@@ -1445,6 +1445,86 @@ do
         check(not dispatched, "...without reaching the engine")
     end
 
+    -- R.status: payload-free cleanse events, in the with-data shape.
+    for fn, name in pairs({ clear = "CLEAR_STATUS", clear_stagger = "CLEAR_STAGGER",
+                            reset_stagger_resilience = "RESET_STAGGER_RESILIENCE" }) do
+        dispatched, sent = false, nil
+        check(R.status[fn]() == true and sent.name == name and sent.type == 2,
+              "status." .. fn .. " sends " .. name)
+    end
+
+    -- R.talent event senders. Two engine handlers crash in states they do not
+    -- guard, so upgrade(i) and add_random_ultimate() check the hero first.
+    check(R.entity.hero() == HERO, "the hero is captured for the talent guards")
+    local saved_slots = {}
+    for k = 0, 9 do
+        saved_slots[k] = I.read_u64(HERO + 0xff0 + k * 0x20)
+        I.write_u64(HERO + 0xff0 + k * 0x20, 0)
+    end
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        local st = I.read_u64(ev + 0x58)
+        sent = { disp = disp, name = name_at(ev), type = I.read_u8(ev + 0x68),
+                 i = st ~= 4 and I.read_u32(st & ~1) or I.read_u32(ev + 0x60) }
+    end
+    for _, case in ipairs({
+        { function() return R.talent.reset() end, "RESET_SKILLS" },
+        { function() return R.talent.upgrade_lowest() end, "UPGRADE_LOWER_SKILL" },
+        { function() return R.talent.upgrade_lowest(true) end, "UPGRADE_LOWER_SKILL_TO_LEGENDARY" },
+    }) do
+        dispatched, sent = false, nil
+        check(case[1]() == true and sent.name == case[2] and sent.disp == DISP, "talent sends " .. case[2])
+    end
+    check(R.talent.upgrade_random(2) == true and sent.name == "UPGRADE_RANDOM_SKILL"
+          and sent.type == 1 and sent.i == 2, "upgrade_random(2) sends the count as int")
+    check(R.talent.upgrade_random() == true and sent.i == 1, "upgrade_random defaults to one")
+    for _, bad in ipairs({ 0, 11, 1.5 }) do
+        dispatched = false
+        check(R.talent.upgrade_random(bad) == false and not dispatched, "upgrade_random refuses " .. tostring(bad))
+    end
+
+    check(R.talent.owned() == 0, "owned() counts the talent slots (none)")
+    dispatched = false
+    check(R.talent.upgrade(1) == false and not dispatched,
+          "upgrade with NO talent owned is refused (the engine would index a null list)")
+    I.write_u64(HERO + 0xff0 + 2 * 0x20, scratch(0x80))
+    I.write_u64(HERO + 0xff0 + 5 * 0x20, scratch(0x80))
+    check(R.talent.owned() == 2, "owned() counts filled slots")
+    check(R.talent.upgrade(2) == true and sent.name == "UPGRADE_SPECIFIC_SKILL" and sent.i == 1,
+          "upgrade(2) sends the 0-based index of the 2nd talent owned")
+    dispatched = false
+    check(R.talent.upgrade(3) == false and not dispatched, "upgrade past the talents owned is refused")
+
+    -- add_random_ultimate replays the engine's candidate test.
+    local function ulti_cand(active, is_ulti)
+        local c, a, d = scratch(0x80), scratch(0x60), scratch(0xd0)
+        I.write_u64(c + 0x70, a); I.write_u64(a + 0x10, d)
+        I.write_u8(d + 0xc0, active and 1 or 0); I.write_u8(a + 0x40, is_ulti and 1 or 0)
+        return c
+    end
+    local ULIST = scratch(0x20)
+    I.write_u64(HERO + 0xfb8, ULIST)
+    I.write_u32(HERO + 0xfc0, 0)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "no ultimate candidates is refused (the engine would divide by zero)")
+    I.write_u64(ULIST, ulti_cand(true, true)); I.write_u64(ULIST + 8, ulti_cand(false, false))
+    I.write_u32(HERO + 0xfc0, 2)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "no QUALIFYING candidate is refused (divide by zero after the re-rolls)")
+    I.write_u64(ULIST + 8, ulti_cand(false, true))
+    dispatched, sent = false, nil
+    check(R.talent.add_random_ultimate() == true and sent.name == "ADD_RANDOM_ULTI_SKILL",
+          "one qualifying candidate sends ADD_RANDOM_ULTI_SKILL")
+    local bad = ulti_cand(false, true); I.write_u64(I.read_u64(bad + 0x70) + 0x10, 0)
+    I.write_u64(ULIST, bad)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "a candidate the engine would read through address 0xc8 is refused")
+    I.write_u32(HERO + 0xfc0, 0)
+    for k = 0, 9 do I.write_u64(HERO + 0xff0 + k * 0x20, saved_slots[k] or 0) end
+
     engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 

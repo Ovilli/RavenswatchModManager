@@ -2497,6 +2497,7 @@ end
 -- rsmm/resources.lua — pickups (GAIN_DREAM_SHARDS, GAIN_INGREDIENT):
 --     R.shards.gain(20)                     -- shard-gain bonuses apply
 --     R.ingredient.add("Key", 2) / .remove("Key") / .names()
+local _named_event   -- rsmm/named_event.lua, also handed to talent_events below
 do
     local ok, ne = _submodule_fn("named_event", {
         R = R, I = I, img_base = GIVE_IMG_BASE, va_ok = _va_ok,
@@ -2504,6 +2505,7 @@ do
         dispatcher_live = function(p) return _dispatcher_live(p) end,
     })
     if ok and type(ne) == "table" then
+        _named_event = ne
         local ok_a, a = _submodule_fn("ability", { R = R, I = I, named_event = ne })
         if ok_a and type(a) == "table" then R.ability = a end
         local ok_r, r = _submodule_fn("resources", { R = R, I = I, named_event = ne })
@@ -2511,6 +2513,10 @@ do
             if R.shards then R.shards.gain = r.shards.gain end
             R.ingredient = r.ingredient
         end
+        -- rsmm/status.lua — CLEAR_STATUS / CLEAR_STAGGER / RESET_STAGGER_RESILIENCE
+        -- (EXPERIMENTAL): R.status.clear() / .clear_stagger() / .reset_stagger_resilience()
+        local ok_s, st = _submodule_fn("status", { R = R, named_event = ne })
+        if ok_s and type(st) == "table" then R.status = st end
         -- rsmm/items.lua — REMOVE_RANDOM_* / REMOVE_ALL_* / DUPLICATE_RANDOM_*
         -- (proven in game 2026-10-10): R.give.remove_random("cursed") / .remove_all / .duplicate_random
         local ok_i, it = _submodule_fn("items", { R = R, named_event = ne })
@@ -3080,6 +3086,19 @@ do
         give_hero = function() return _give_hero end,
         dispatcher_live = function(p) return _dispatcher_live(p) end,
     })
+    if ok and type(x) == "table" then
+        for k, v in pairs(x) do R.talent[k] = v end
+    end
+end
+
+-- Lives in rsmm/talent_events.lua. Reset or upgrade the hero's talents through
+-- the game's own events (RESET_SKILLS, UPGRADE_*_SKILL, ADD_RANDOM_ULTI_SKILL),
+-- sent by the shared builder above. Proven in game 2026-10-10.
+--
+--     R.talent.reset() / .upgrade_random(n) / .upgrade_lowest(to_legendary)
+--     R.talent.upgrade(i) / .add_random_ultimate() / .owned()
+if _named_event then
+    local ok, x = _submodule_fn("talent_events", { R = R, I = I, named_event = _named_event })
     if ok and type(x) == "table" then
         for k, v in pairs(x) do R.talent[k] = v end
     end

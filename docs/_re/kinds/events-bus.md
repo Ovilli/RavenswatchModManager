@@ -498,6 +498,7 @@ handler before building on it):
 | UPDATE_OBJECT_UI | 0x1403a86e0 |
 | UPGRADE_LOWER_SKILL | 0x1403a7ba0 |
 | UPGRADE_LOWER_SKILL_TO_LEGENDARY | 0x1403a7d80 |
+| UPGRADE_RANDOM_SKILL | 0x1403a77e0 |
 | UPGRADE_SPECIFIC_SKILL | 0x1403a79e0 |
 | USE_BLOOD_FOUNTAIN | 0x1401f9070 |
 | USE_HEAL_FOUNTAIN | 0x1401f9020 |
@@ -515,6 +516,41 @@ the MAGICAL variant collects rarities 0, 1 and 2 only. Rarity codes: 0 common,
 1 rare, 2 epic, 3 legendary, 4 cursed, 6 any (MAGICAL). Not wrapped:
 REMOVE_MAGICAL_OBJECT_FROM_ID — it reads a type-1 value but copies only its
 first u32 into the GUID it removes, so it cannot name an arbitrary item.
+
+Talent family (read 2026-10-10; backs `R.talent.reset` / `upgrade_random` /
+`upgrade_lowest` / `upgrade` / `add_random_ultimate`, rsmm/talent_events.lua;
+all five proven in game the same day — the added ultimate is not in the 10
+slots, and reset leaves the hero's starting talent):
+hero-bound; 10 talent slots at hero+0xff0 (stride 0x20), tier = *(*(slot+0x68)),
+0..3, changed through SkillController_SetTier. RESET_SKILLS 0x1403a7f60 (no
+payload; HeroController_RemoveSkill on each slot, count into hero+0x1374).
+UPGRADE_RANDOM_SKILL 0x1403a77e0 — subscribed with its thunk 0x4f bytes past
+the id load, which is why the first sweep missed it — upgrades `count`
+(with-data int, default 1) distinct talents below tier 3. UPGRADE_LOWER_SKILL
+0x1403a7ba0 / _TO_LEGENDARY 0x1403a7d80: no payload, a random lowest-tier
+talent +1 / set to 3. UPGRADE_SPECIFIC_SKILL 0x1403a79e0: with-data int index
+into the owned talents (default the last) — **crashes with no talent owned**
+(index -1 of a null list). ADD_RANDOM_ULTI_SKILL 0x1403a75d0: draws from
+hero+0xfb8 (count +0xfc0), re-rolling `div count` with no zero check — **divides
+by zero when no candidate qualifies** (the Sandman-shop rand); qualifying =
+*(cand+0x70)+0x10 object's +0xc0 byte == 0 and the +0x70 object's +0x40 byte
+!= 0, and a null +0x10 makes the engine read address 0xc8. The SDK checks both
+before sending.
+
+Status family (backs `R.status`, rsmm/status.lua): subscribed by the hero's
+character controller on the hero dispatcher's channel map (entity+0x500 =
+0x4d8+0x28). CLEAR_STATUS 0x1403bfb00 → 0x1403c8d40 clears the listed status
+keys from the value store at this+0x4c8 and checks that store for null;
+CLEAR_STAGGER 0x1403cc1d0 zeroes this+0x33c; RESET_STAGGER_RESILIENCE 0x1403cc1c0
+zeroes this+0x344. Not wrapped: CLEAR_CHILLED / CLEAR_ROSE_SEED (0x1403cbc40 /
+0x1403cbc60) hand the same this+0x4c8 to 0x140749720 WITHOUT the null check;
+FORCE_DEATH 0x1403cbc80 activates this+0x588.
+
+Revive (not wrapped, parked): REVIVE_VALIDATE 0x1403a26b0 activates hero+0x13f0
+and increments the u16 at HUD-mirror (hero+0x1d80) +0x14, beside the reroll
+count at +0x16 — most likely the revive-token count, unconfirmed. HERO_REVIVE
+0x1403a2700 (hero) / 0x1403cbbb0 (character) is a long scene-context routine in
+the multiplayer revive flow; read it in full before sending it.
 
 Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
 (layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).
