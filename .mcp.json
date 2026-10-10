@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "ghidra": {
-      "command": "sh",
-      "args": [
-        "-c",
-        "PATH=\"$HOME/.local/bin:$PATH\" exec uv run --script tools/ghidra_mcp/bridge_mcp_ghidra.py --ghidra-server http://127.0.0.1:8080/ --transport stdio"
-      ]
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp"
     }
   }
 }
