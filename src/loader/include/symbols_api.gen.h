@@ -68,6 +68,13 @@ inline ChallengeUnlock_IsUnlocked_fn ChallengeUnlock_IsUnlocked() {
     return reinterpret_cast<ChallengeUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::ChallengeUnlock_IsUnlocked_Pattern));
 }
 
+// CharacterController_ClearStagger  (CharacterController_ClearStagger)
+//   void(void* charController)
+using CharacterController_ClearStagger_fn = void(*)(void*);
+inline CharacterController_ClearStagger_fn CharacterController_ClearStagger() {
+    return reinterpret_cast<CharacterController_ClearStagger_fn>(rsmm::fn_resolve(Sym::CharacterController_ClearStagger_Pattern));
+}
+
 // Definition_PostLoad  (Definition_PostLoad)
 //   bool(void* definition)
 using Definition_PostLoad_fn = uint32_t(*)(void*);

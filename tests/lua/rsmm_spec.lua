@@ -1474,6 +1474,23 @@ do
               "status." .. fn .. " sends " .. name)
     end
 
+    -- R.status.watch_stagger: a read-only hook on the CLEAR_STAGGER handler that
+    -- captures the controller and logs the gauge (+0x33c) before and after.
+    do
+        check(R.status.stagger() == nil, "stagger() is nil before any clear has run")
+        check(R.status.watch_stagger() == true, "watch_stagger arms the hook")
+        local h = hooks[I.resolve("CharacterController_ClearStagger")]
+        check(h and h.sig == "vp", "...on CharacterController_ClearStagger, void(ptr)")
+        local CTL = scratch(0x400)
+        I.write_f32(CTL + 0x33c, 42.5); I.write_f32(CTL + 0x344, 3.5)
+        local ran = false
+        h.cb(CTL, function(c) ran = true; I.write_f32(c + 0x33c, 0) end)
+        check(ran, "the hook calls the original handler")
+        local g, r = R.status.stagger()
+        check(g == 0 and r == 3.5, "stagger() reads the captured controller after the clear")
+        check(R.status.watch_stagger() == true, "watch_stagger is idempotent")
+    end
+
     -- R.talent event senders. Two engine handlers crash in states they do not
     -- guard, so upgrade(i) and add_random_ultimate() check the hero first.
     check(R.entity.hero() == HERO, "the hero is captured for the talent guards")

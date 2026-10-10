@@ -1,6 +1,8 @@
 -- R.melody — give or take the hero's melodies through the game's own events
--- PROVEN IN GAME 2026-10-10: choose("Reveal_Map") then ten R.ingredient.add("Note")
--- gave the melody. remove() was sent without error; its effect is unconfirmed.
+-- choose() DOES NOT WORK (in game 2026-10-10): choose("Reveal_Map") plus 13 notes
+-- filled the bar twice and granted two melodies, neither Reveal_Map — the game's
+-- random pick wins. Notes (R.ingredient.add("Note")) do fill the bar. remove()
+-- is sent without error; its effect is unseen.
 --
 --     R.melody.choose("Fully_Heal")    -- CHOOSE_MELODY: start COLLECTING it
 --     R.melody.remove("Fully_Heal")    -- REMOVE_MELODY

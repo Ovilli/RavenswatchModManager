@@ -14,6 +14,7 @@ return {
   ["BookController_ResolveTabs"] = { pattern = "BookController_ResolveTabs", offset = 0x0, sig = "vp" },
   ["ChallengeDef_PostLoad"] = { pattern = "ChallengeDef_PostLoad", offset = 0x0, sig = "up" },
   ["ChallengeUnlock_IsUnlocked"] = { pattern = "ChallengeUnlock_IsUnlocked", offset = 0x0, sig = "up" },
+  ["CharacterController_ClearStagger"] = { pattern = "CharacterController_ClearStagger", offset = 0x0, sig = "vp" },
   ["Definition_PostLoad"] = { pattern = "Definition_PostLoad", offset = 0x0, sig = "up" },
   ["Definition_PreUnload"] = { pattern = "Definition_PreUnload", offset = 0x0, sig = "vp" },
   ["DreamShardDef_PostLoad"] = { pattern = "DreamShardDef_PostLoad", offset = 0x0, sig = "up" },

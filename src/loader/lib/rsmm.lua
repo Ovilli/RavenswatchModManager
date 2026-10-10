@@ -1640,7 +1640,7 @@ end
 -- only with a token left (> 0) decrements it and goes on to revive. So adding
 -- tokens is a write of that value, through the same guarded path as
 -- R.modifier.set — it refuses a value replicated to peers unless solo.
--- EXPERIMENTAL (static RE 2026-10-10). Gated by R.stat.enable_writes();
+-- PROVEN IN GAME 2026-10-10 (tokens 6 -> 8). Gated by R.stat.enable_writes();
 -- MAIN THREAD only.
 --
 --     R.revive.tokens()        -- tokens left, or nil
@@ -2463,7 +2463,7 @@ do
             R.ingredient = r.ingredient
         end
         -- rsmm/melody.lua — CHOOSE_MELODY / REMOVE_MELODY by melody name
-        -- (proven in game 2026-10-10): R.melody.choose("Fully_Heal") / .remove(...) / .names()
+        -- (choose() does not force a melody in game 2026-10-10): R.melody.choose("Fully_Heal") / .remove(...) / .names()
         local ok_m, mel = _submodule_fn("melody", { R = R, I = I, named_event = ne })
         if ok_m and type(mel) == "table" then
             for k, v in pairs(mel) do R.melody[k] = v end
@@ -2473,8 +2473,8 @@ do
         local ok_c, ctl = _submodule_fn("control", { R = R, named_event = ne })
         if ok_c and type(ctl) == "table" then R.control = ctl end
         -- rsmm/status.lua — CLEAR_STATUS / CLEAR_STAGGER / RESET_STAGGER_RESILIENCE
-        -- (EXPERIMENTAL): R.status.clear() / .clear_stagger() / .reset_stagger_resilience()
-        local ok_s, st = _submodule_fn("status", { R = R, named_event = ne })
+        -- (clear() proven in game 2026-10-10): R.status.clear() / .clear_stagger() / .reset_stagger_resilience()
+        local ok_s, st = _submodule_fn("status", { R = R, I = I, named_event = ne })
         if ok_s and type(st) == "table" then R.status = st end
         -- rsmm/items.lua — REMOVE_RANDOM_* / REMOVE_ALL_* / DUPLICATE_RANDOM_*
         -- (proven in game 2026-10-10): R.give.remove_random("cursed") / .remove_all / .duplicate_random

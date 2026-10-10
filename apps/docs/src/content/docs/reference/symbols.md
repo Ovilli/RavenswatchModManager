@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **322** symbols across 24 categories.
+Total: **323** symbols across 24 categories.
 
 ## analytics
 
@@ -48,6 +48,7 @@ Total: **322** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `CharacterController_ClearStagger` | `0x1403cc1d0` | ✅ ok | ✔ | void(void* charController) |
 | `HeroStats_OnDamageDealt` | `0x14039aef0` | ✅ ok |  | void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload… |
 | `HeroStats_OnDamageTaken` | `0x1403a0940` | ✅ ok |  | void(void* hero, void* payload) |
 | `ProjectileAttack_BeginAttack` | `0x14083e7d0` | ✅ ok | ✔ | void(void* projectile_attack_cpnt) |

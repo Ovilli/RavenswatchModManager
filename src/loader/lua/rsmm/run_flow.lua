@@ -1,8 +1,8 @@
 -- R.run.next_chapter / win / lose — end the current chapter or the whole run
 -- through the game's own GAME_END_* events. PROVEN IN GAME 2026-10-10:
 -- next_chapter() loaded the next chapter and win() ended the run as won (before
--- the current-chapter guards below were added; those are spec-tested). lose()
--- is unexercised.
+-- the current-chapter guards below were added; those are spec-tested), and
+-- lose() ended the run as lost.
 --
 --     R.run.next_chapter()    -- finish the chapter as a success (GAME_END_SUCCESS):
 --                             -- the next chapter loads, or the run is won after the last

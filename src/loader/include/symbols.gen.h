@@ -34,6 +34,8 @@ constexpr std::uintptr_t Analytics_EmitUnlockSkill = 0x1401f7e50ull;
 // Analytics_EmitUnlockSkill_Pattern omitted: status=unverified
 
 // --- combat ---
+constexpr std::uintptr_t CharacterController_ClearStagger = 0x1403cc1d0ull;
+constexpr const char* CharacterController_ClearStagger_Pattern = "CharacterController_ClearStagger";
 constexpr std::uintptr_t HeroStats_OnDamageDealt = 0x14039aef0ull;
 constexpr const char* HeroStats_OnDamageDealt_Pattern = "HeroStats_OnDamageDealt";
 constexpr std::uintptr_t HeroStats_OnDamageTaken = 0x1403a0940ull;

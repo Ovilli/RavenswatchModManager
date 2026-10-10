@@ -133,9 +133,9 @@ with no talent owned, and with no ultimate left to add.
 
 | Call | Does | Status |
 |---|---|---|
-| `R.status.clear()` | clear status effects | sent |
-| `R.status.clear_stagger()` | empty the stagger gauge | sent |
-| `R.status.reset_stagger_resilience()` | reset stagger resilience | sent |
+| `R.status.clear()` | clear status effects | proven |
+| `R.status.clear_stagger()` | empty the stagger gauge | runs, but heroes never build stagger — nothing to clear |
+| `R.status.reset_stagger_resilience()` | reset stagger resilience | runs, but heroes never build stagger — nothing to clear |
 
 ## Revive tokens — `R.revive`
 
@@ -144,8 +144,8 @@ refuses unless you play solo (the value is shared with the other players).
 
 | Call | Does | Status |
 |---|---|---|
-| `R.revive.tokens()` | tokens left, or `nil` outside a run | sent |
-| `R.revive.add_token(n)` | `n` more tokens (default 1, up to 99) | sent |
+| `R.revive.tokens()` | tokens left, or `nil` outside a run | proven |
+| `R.revive.add_token(n)` | `n` more tokens (default 1, up to 99) | proven |
 
 ## Melodies — `R.melody`
 
@@ -157,17 +157,14 @@ Melodies are named by their definition name: `Deal_Damage_Around`, `Fully_Heal`,
 
 | Call | Does | Status |
 |---|---|---|
-| `R.melody.choose(name)` | start **collecting** that melody | proven |
-| `R.melody.remove(name)` | drop it | sent |
+| `R.melody.choose(name)` | meant to start collecting that melody — **does not work**: the game still picks a random one | not working |
+| `R.melody.remove(name)` | drop it | sent (effect unseen) |
 | `R.melody.names()` | the melodies loaded this session | proven |
 
-`choose` does not play the melody. Its effect fires when notes complete it, so
-give notes to finish it:
-
-```lua
-R.melody.choose("Reveal_Map")
-for _ = 1, 10 do R.ingredient.add("Note", 1) end
-```
+Notes fill the melody bar, so `R.ingredient.add("Note", n)` does work: each full
+bar grants a melody. Which melody is the game's own random pick — in game,
+`choose("Reveal_Map")` followed by notes granted two melodies, neither of them
+Reveal_Map.
 
 ## Player controls — `R.control`
 
@@ -196,7 +193,7 @@ co-op client's call does nothing.
 |---|---|---|
 | `R.run.next_chapter()` | finish the chapter as a success; the next one loads, or the run is won after the last | proven |
 | `R.run.win()` | end the run as won now | proven |
-| `R.run.lose()` | end the run as lost | sent |
+| `R.run.lose()` | end the run as lost | proven |
 | `R.run.world_ready()` | `true` once the current chapter's world has been seen | proven |
 
 Each acts on the **current chapter only**: they refuse between chapters, in a
