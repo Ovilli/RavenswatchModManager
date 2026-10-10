@@ -3,6 +3,15 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 37,
+      "date": "2026-10-10",
+      "summary": "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run",
+      "highlights": [
+        "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run"
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 36,
       "date": "2026-10-10",
       "summary": "New SDK APIs: R.melody.choose/remove by name (the old GUID-based choose never worked), R.control.lock/unlock/release, R.run.next_chapter/win/lose (current chapter only).",
@@ -528,18 +537,6 @@
         "Your launcher entry, icon and sign-in links are carried over, so the shortcut you already have keeps working and simply opens the new copy.",
         "The download is signature-checked exactly like any other update before a single byte is installed, and nothing outside your home folder is touched — the old system-wide copy stays where your package manager put it, and the app tells you the command to remove it.",
         "Windows is unaffected: updates there already installed themselves."
-      ]
-    },
-    {
-      "version": "5.3.0",
-      "date": "2026-08-29",
-      "summary": "Banning magical objects no longer means knowing their internal names — pick them from a searchable list of the game's own icons — and a mod's settings now open in place instead of throwing you into a page of every mod's settings.",
-      "highlights": [
-        "New: the Banned Items mod is edited from a picker that shows every magical object the game can offer you, with its real name, icon, description and rarity, read straight out of your own install. Banned objects are removed from the game's catalogue, so they can never be offered, dropped or found.",
-        "A ban is written into the game's data rather than filtered while you play, which means everyone in a co-op run sees the same pool — provided everyone has the same mod installed.",
-        "Configure on a mod now opens that one mod's settings in a window over the library. It used to navigate the whole library into a list of every configurable mod's settings, with yours somewhere in it.",
-        "The close button in that window stays where you put it and always closes. It previously drifted as the panel loaded and could end up off the top of the screen, and the unsaved-changes prompt could answer itself without ever appearing.",
-        "Settings screens now say what they are waiting for: the first open of a picker decodes the game's icons and takes a few seconds, and after saving, the panel says the running game will not see the change — quit Ravenswatch completely and press Play, which rebuilds the affected game files first."
       ]
     }
   ]
