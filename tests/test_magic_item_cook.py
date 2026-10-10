@@ -318,16 +318,17 @@ def test_sdk_custom_png_icon_cooks_texture(tmp_path):
     icon repointed at it."""
     pytest.importorskip("rsmm.sdk.content")
     from rsmm.engine.image import encode_png
-    from rsmm.sdk.content import ContentRegistry
+    from rsmm.sdk.content import ContentRegistry, SchemaNotMined
     root = tmp_path / "mod"
     root.mkdir()
     (root / "myicon.png").write_bytes(encode_png(4, 4, bytes([0, 0, 200, 255]) * 16))
     cr = ContentRegistry(mod_id="IconMod")
     cr.register("item", id="Custom_Icon_Item", base="Armor_Per_Object",
                 icon="myicon.png")
-    written = cr.emit(root / "assets")
-    if not any("Custom_Icon_Item.entity" in p.name for p in written):
-        pytest.skip("data/uncooked base not available")
+    try:
+        written = cr.emit(root / "assets")
+    except SchemaNotMined:
+        pytest.skip("no game install or mirror to clone the base from")
     tex = [p for p in written if "Texture.dxt" in p.name]
     assert tex, "custom PNG should cook into a Texture.dxt"
     ent = next(p for p in written if "Custom_Icon_Item.entity" in p.name)

@@ -490,18 +490,22 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     return written
 
 
-def _base_not_found(item_id: str, base: str) -> ContentError:
+def _base_not_found(item_id: str, base: str) -> ContentError | SchemaNotMined:
     """The error for a ``base`` that names no vanilla magical object.
 
     This used to fall back to writing a ``_pending_items/<id>.json`` manifest
     that nothing read, so a mistyped base emitted no item and said nothing:
     the mod applied cleanly and the item never existed in game.
+
+    With no install or mirror readable the base cannot be checked at all, which
+    is `SchemaNotMined` like every other kind's missing-corpus case (callers
+    and tests treat that as "this machine has no game data", not a bad mod).
     """
     from rsmm.cli._suggest import did_you_mean
 
     known = _vanilla_item_ids()
     if not known:
-        return ContentError(
+        return SchemaNotMined(
             f"item {item_id}: can't read the vanilla item {base!r} to clone — "
             f"no game install found (set RSMM_GAME_DIR to it)")
     stem = base.replace("\\", "/").rpartition("/")[2]

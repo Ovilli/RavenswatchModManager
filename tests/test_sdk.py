@@ -220,7 +220,7 @@ def test_content_register_and_emit_unknown_base(tmp_path: Path):
                 rarity="Epic")
     out = tmp_path / "out"
     out.mkdir()
-    with pytest.raises(ContentError, match="VanillaSword"):
+    with pytest.raises((ContentError, SchemaNotMined), match="VanillaSword"):
         cr.emit(out)
     assert not any(out.iterdir())
 
@@ -433,7 +433,7 @@ def test_item_with_unknown_base_fails_loudly(tmp_path: Path, monkeypatch):
         items.emit("T", wrong, tmp_path)
 
     monkeypatch.setattr(items, "_vanilla_item_ids", set)
-    with pytest.raises(ContentError, match="RSMM_GAME_DIR"):
+    with pytest.raises(SchemaNotMined, match="RSMM_GAME_DIR"):
         items.emit("T", defn, tmp_path)
 
 
