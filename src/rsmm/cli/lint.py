@@ -13,6 +13,9 @@ Surfaces problems before `rsmm apply`:
   - a declared multiplayer_scope that claims less than the mod does
     (derived by rsmm.engine.mod_scope; online matching reads the derived verdict)
   - dep specs that don't parse
+  - mod Lua that reads a name above its top-level `local` (a silent nil)
+  - POI `components` that inherit a marker/interaction parent without the
+    overrides it reads (it loads, and draws or arms nothing)
 
 Usage:
     rsmm lint                # every mod
@@ -27,6 +30,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -298,6 +302,7 @@ def lint_one(entry: Path) -> tuple[int, int]:
                            mod_root=entry)
     errs += ce
     warns += cw
+    errs += _lint_poi_components(entry.name, entry, t.get("content", []) or [])
 
     # stray discovery scripts — a mod ships data, not code
     se, sw = _lint_stray_scripts(entry.name, entry)
@@ -555,6 +560,11 @@ def _check_base(mod_s: str, where: str, kind: str, base) -> int:
     return 1
 
 
+def _vanilla_items_readable() -> bool:
+    from rsmm.sdk.kinds.items import _vanilla_item_ids
+    return bool(_vanilla_item_ids())
+
+
 def _lint_content(modname: str, blocks: list[dict],
                   *, experimental: bool = False,
                   mod_root: Path | None = None) -> tuple[int, int]:
@@ -645,17 +655,15 @@ def _lint_content(modname: str, blocks: list[dict],
             errs += 1
             continue
         found = cmd_items._find_item(str(base))
-        if found is None and c.get("mode") == "replace":
-            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
-                  f"mode='replace' but base {_ST.accent(repr(base))} is not a "
-                  f"shipped item")
-            errs += 1
-            continue
+        if found is None and not _vanilla_items_readable():
+            continue  # no install or mirror to check against
         if found is None:
-            hint = "not a known vanilla item (falls back to legacy manifest)"
-            print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
-                  f"base {_ST.accent(repr(base))} {_ST.dim(hint)}")
-            warns += 1
+            # Apply refuses it too (`items._base_not_found`); this used to warn
+            # "falls back to legacy manifest", a manifest nothing read.
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                  f"base {_ST.accent(repr(base))} is not a shipped item "
+                  f"{_ST.dim('(`rsmm items list` shows them)')}")
+            errs += 1
             continue
         data = found[2].read_bytes()
         for vp in c.get("value_patches", []) or []:
@@ -694,6 +702,34 @@ def _lint_content(modname: str, blocks: list[dict],
                       f"icon {_ST.accent(repr(icon))} {_ST.dim(hint)}")
                 warns += 1
     return errs, warns
+
+
+def _lint_poi_components(modname: str, entry: Path, blocks: list[dict]) -> int:
+    """Fail POI `components` that inherit a marker/interaction parent without
+    the overrides it reads — see :func:`rsmm.sdk.kinds.poi.inert_components`.
+
+    Folder POIs (`pois/<name>/`) are checked too: they never appear in the
+    manifest, and they are where `components` is usually written.
+    """
+    from rsmm.sdk.content import ContentError
+    from rsmm.sdk.kinds import poi
+
+    pois = [b for b in blocks if b.get("kind") == "poi"]
+    try:
+        pois += poi.discover(entry)
+    except (ContentError, OSError, ValueError) as e:
+        print(f"  {_T_FAIL} {_ST.bold(modname)}: pois/: {_ST.dim(str(e))}")
+        return 1
+    errs = 0
+    for b in pois:
+        prop = b.get("prop")
+        if not isinstance(prop, dict):
+            continue
+        for why in poi.inert_components(prop):
+            print(f"  {_T_FAIL} {_ST.bold(modname)}: poi "
+                  f"{_ST.accent(str(b.get('id')))}: {_ST.dim(why)}")
+            errs += 1
+    return errs
 
 
 #: Python files a mod is allowed to ship. Today only the deactivation
@@ -828,6 +864,20 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
         except OSError:
             continue
         rel = f.relative_to(entry).as_posix()
+        try:
+            late = late_locals(text)
+        except LuaSyntaxError as e:
+            print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
+                  f"{_ST.dim(f'scope not checked: {e}')}")
+            warns += 1
+            late = []
+        for h in late:
+            hint = (f"— its `local` is on line {h.decl_line}, so here it compiles "
+                    f"to a global read and is nil at run time; move the local "
+                    f"above its first use")
+            print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{h.line}')}: "
+                  f"{_ST.accent(h.name)} read before its local {_ST.dim(hint)}")
+            errs += 1
         for ln, line in enumerate(text.splitlines(), 1):
             code = line.split("--", 1)[0]  # ignore comments
             if _RE_RAW_VA.search(code):

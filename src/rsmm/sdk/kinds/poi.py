@@ -530,6 +530,42 @@ def chapter_kinds(chapter: str) -> set[str]:
 POIS_DIRNAME = "pois"
 
 
+#: The `prop` setting that brings each override parent's missing half.
+_OVERRIDE_SETTING = {"minimap": "[marker]", "interaction": "interactive = true"}
+
+
+def inert_components(prop: dict) -> list[str]:
+    """Why each entry of ``prop["components"]`` would load and do nothing.
+
+    Inheriting `Minimap_Marker_Reveal_Model` or `Interactive_Object_Model`
+    brings the machinery but not the settings it reads: the reveal model ships
+    every texture Value empty, and the interaction is armed by an override
+    (`Event Interaction Available At Start`). Named alone in `components`, the
+    host runs the whole state machine, draws no icon, offers no prompt, and
+    nothing complains — three playtests went into that before it had a name.
+    `[marker]` and `interactive = true` add the same parent AND copy the
+    overrides, so they are the only way to ask for either.
+    """
+    by_parent = {parent: key for key, (parent, _d, _p) in EC.OVERRIDE_DONORS.items()}
+    have = {"minimap": bool(prop.get("marker")),
+            "interaction": bool(prop.get("interactive"))}
+    out: list[str] = []
+    for name in prop.get("components") or []:
+        try:
+            ref = EC.resolve_parent(str(name))
+        except EC.EntityComponentError:
+            continue  # reported where the list is parsed
+        key = by_parent.get(ref)
+        if key is None or have[key]:
+            continue
+        out.append(
+            f"`components` entry {name!r} inherits {ref} without the overrides "
+            f"it reads, so it loads and does nothing (no icon / no prompt). Use "
+            f"{_OVERRIDE_SETTING[key]} instead — it adds that parent and copies "
+            f"its settings.")
+    return out
+
+
 def discover(mod_root: Path) -> list[dict]:
     """Turn ``mods/<id>/pois/<name>/`` folders into ``[[content]]`` blocks.
 
@@ -2187,6 +2223,9 @@ def _decorate_host(mod_id: str, defn: ContentDef, out_dir: Path, ent: bytes,
     edited = ent
     if spec.get("components"):
         names = list(spec["components"])
+        inert = inert_components(spec)
+        if inert:
+            raise ContentError(f"poi {defn.id}: {inert[0]}")
         edited = EC.add_parents(edited, names)
         extra_deps += EC.parent_cooked_paths(names)
         _log.info("poi %s/%s: %s now inherits %s", mod_id, defn.id, ref,

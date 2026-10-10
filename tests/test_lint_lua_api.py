@@ -69,3 +69,23 @@ def test_analytics_firehose_events_recognised():
 def test_analytics_event_does_not_warn(tmp_path):
     d = _mod(tmp_path, 'R.on("level_up_reach", function() end)\n')
     assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_read_above_its_local_is_an_error(tmp_path, capsys):
+    """The closure reads a latch whose `local` is declared below it — nil at run
+    time, and silent until the line runs. Lint is the only net a mod has."""
+    d = _mod(
+        tmp_path,
+        'R.on("ready", function()\n'
+        '    if seen then return end\n'
+        'end)\n'
+        'local seen = false\n',
+    )
+    errs, _warns = lint._lint_lua_api("LuaMod", d)
+    assert errs == 1
+    assert "init.lua:2" in capsys.readouterr().out
+
+
+def test_unwalkable_lua_warns_instead_of_failing(tmp_path):
+    d = _mod(tmp_path, 'R.on("ready", function()\n')   # never closed
+    assert lint._lint_lua_api("LuaMod", d) == (0, 1)
