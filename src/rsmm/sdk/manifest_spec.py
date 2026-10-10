@@ -39,7 +39,6 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "mode", "base", "name", "display_name", "description", "rarity", "icon",
         "value_patches", "unique_identity", "stats", "super_description",
         "items",                                # mode = "ban"
-        "tags", "drop_weight", "level",         # legacy manifest fallback
     }),
     "enemy": frozenset({
         # mode = "clone"

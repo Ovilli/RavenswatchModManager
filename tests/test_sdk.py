@@ -212,14 +212,17 @@ def test_i18n_merge_no_collision(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_content_register_and_emit(tmp_path: Path):
+def test_content_register_and_emit_unknown_base(tmp_path: Path):
+    """An item cloned from a base the game doesn't ship emits nothing and says
+    so — with or without an install to check it against."""
     cr = ContentRegistry(mod_id="MM")
     cr.register("item", id="FrostBlade", base="VanillaSword",
                 rarity="Epic")
     out = tmp_path / "out"
     out.mkdir()
-    written = cr.emit(out)
-    assert any(p.name == "FrostBlade.json" for p in written)
+    with pytest.raises(ContentError, match="VanillaSword"):
+        cr.emit(out)
+    assert not any(out.iterdir())
 
 
 def test_content_unknown_kind_rejected():
@@ -376,24 +379,62 @@ def test_all_repo_mods_are_v3(tmp_path: Path):
     assert not bad, "non-v3 manifests still present: " + ", ".join(bad)
 
 
+#: An item ban: the one content block that emits without a game install.
+_BAN_BLOCK = '[[content]]\nkind = "item"\nid = "X"\nmode = "ban"\nitems = ["Foo"]\n'
+
+
+def _unvalidated_bans(monkeypatch):
+    """Let `Foo` through ban validation whether or not an install is readable."""
+    from rsmm.sdk.kinds import items
+    monkeypatch.setattr(items, "_catalog_item_ids", lambda: None)
+    monkeypatch.setattr(items, "_vanilla_item_ids", set)
+
+
 def test_content_block_emission_via_applier(tmp_path: Path, monkeypatch):
     """`[[content]]` blocks in a manifest produce per-kind emit markers."""
+    _unvalidated_bans(monkeypatch)
     mods_dir = tmp_path / "mods"
     mod = mods_dir / "T"
     mod.mkdir(parents=True)
     (mod / "manifest.toml").write_text(
         '[mod]\nid = "T"\nname = "T"\nversion = "1"\nenabled = true\n'
-        'sdk_version = ">=3.0,<4"\n\n'
-        '[[content]]\nkind = "item"\nid = "X"\nbase = "Common/Foo"\n',
+        'sdk_version = ">=3.0,<4"\n\n' + _BAN_BLOCK,
         encoding="utf-8",
     )
     from rsmm.cli.apply_mods import Mod, emit_content_blocks
     m = Mod(mod)
     assert m.content_blocks and m.content_blocks[0]["id"] == "X"
     emit_content_blocks([m])
-    assert (mod / "assets" / "_pending_items" / "X.json").exists()
+    assert (mod / "assets" / "_pending_bans" / "X.json").exists()
     # Filtered from the asset walk.
     assert m.files() == []
+
+
+def test_item_with_unknown_base_fails_loudly(tmp_path: Path, monkeypatch):
+    """A `base` that names no shipped item is an error, not a silent no-op.
+
+    It used to write a `_pending_items/<id>.json` that nothing read, so the mod
+    applied cleanly and the item never existed in game.
+    """
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import items
+
+    monkeypatch.setattr(items, "_vanilla_item_ids",
+                        lambda: {"Armor_Per_Object", "Balor_Eye"})
+    monkeypatch.setattr(items, "_find_base", lambda base: None)
+    defn = ContentDef(kind="item", id="X", fields={"base": "Armor_Per_Objct"})
+    with pytest.raises(ContentError, match="did you mean Armor_Per_Object"):
+        items.emit("T", defn, tmp_path)
+    assert not any(tmp_path.rglob("*")), "a failed emit wrote files"
+
+    # A real item under the wrong rarity folder names the right spelling.
+    wrong = ContentDef(kind="item", id="X", fields={"base": "Rare/Armor_Per_Object"})
+    with pytest.raises(ContentError, match="wrong rarity folder"):
+        items.emit("T", wrong, tmp_path)
+
+    monkeypatch.setattr(items, "_vanilla_item_ids", set)
+    with pytest.raises(ContentError, match="RSMM_GAME_DIR"):
+        items.emit("T", defn, tmp_path)
 
 
 def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
@@ -409,16 +450,16 @@ def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
     """
     from rsmm.cli.apply_mods import Mod, emit_content_blocks
 
+    _unvalidated_bans(monkeypatch)
     mod = tmp_path / "mods" / "T"
     mod.mkdir(parents=True)
     manifest = (
         '[mod]\nid = "T"\nname = "T"\nversion = "1"\nenabled = true\n'
-        'sdk_version = ">=3.0,<4"\n\n'
-        '[[content]]\nkind = "item"\nid = "X"\nbase = "Common/Foo"\n'
+        'sdk_version = ">=3.0,<4"\n\n' + _BAN_BLOCK
     )
     (mod / "manifest.toml").write_text(manifest, encoding="utf-8")
     emit_content_blocks([Mod(mod)])
-    emitted = mod / "assets" / "_pending_items" / "X.json"
+    emitted = mod / "assets" / "_pending_bans" / "X.json"
     assert emitted.exists(), "precondition: the good manifest emits"
     marker = mod / ".rsmm_emitted.json"
     assert marker.exists()
@@ -597,6 +638,9 @@ def test_bad_tag_id_rejected(tmp_path: Path, monkeypatch):
 
 
 def test_tags_written_on_commit(tmp_path: Path, monkeypatch):
+    from rsmm.sdk.kinds import items
+    # No vanilla `Sword` to cook from; this is about tags.json, not the item.
+    monkeypatch.setattr(items, "emit", lambda mod_id, defn, out_dir: [])
     m = _builder(tmp_path, monkeypatch)
     blade = m.item("FrostBlade", base="Sword")
     m.tag("weapons/all", [blade])

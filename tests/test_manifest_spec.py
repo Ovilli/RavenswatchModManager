@@ -19,9 +19,8 @@ from rsmm.sdk import manifest_spec as S
 
 _KINDS_DIR = Path(C.__file__).parent / "kinds"
 
-#: Where each kind's field reads live. `item` delegates part of its parse to
-#: the `item/` package's legacy manifest builder.
-_EXTRA_SOURCES = {"item": [_KINDS_DIR / "item" / "builder.py"]}
+#: Extra modules a kind delegates field reads to, beyond its own module.
+_EXTRA_SOURCES: dict[str, list[Path]] = {}
 
 #: A read of a top-level field: `defn.fields.get("x")`, `fields["x"]`,
 #: `f.get("x")` (poi aliases `f = defn.fields`), `"x" in defn.fields`.

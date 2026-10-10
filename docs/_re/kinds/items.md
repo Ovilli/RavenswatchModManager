@@ -120,7 +120,9 @@ The "rarity / count / level" labels are *educated guesses* from the
 ordering inside `oCDtEntityCpntMagicalObject` — there is no schema
 string in the binary that proves the mapping. **Mark them as
 provisional until a save-game diff confirms which signal carries which
-int.**
+int.** No SDK code writes them: the item kind clones a shipped item's
+cooked bytes and patches only labelled values (see below), so they are
+open RE only.
 
 ## `oCDtEntityCpntMagicalObjectsDropSettings` layout (size `0xa50`)
 
@@ -202,24 +204,18 @@ ABI:
 
 ## What this means for the v3 SDK builder
 
-The builder doesn't (yet) emit any of the above directly into engine
-memory at runtime — we don't have TLS hook reliability yet. Instead:
+None of the offsets above are emitted. The item kind
+(`src/rsmm/sdk/kinds/items.py`) clones a shipped item's cooked entity
+through `engine/magic_item_cook.py`, applies only label-resolved
+`value_patches`, and registers it via the versiondef MO vector +
+`UsedRscCache` (verified in game). A `base` that names no shipped item
+is an emit error.
 
-- The builder writes a **manifest** under `<out>/_pending_items/<id>.json`
-  describing the four pieces above with the field offsets we know.
-- The apply pipeline (next phase) translates the manifest into either:
-  - asset writes that the engine loads through the normal
-    `LoadUsedRscList_or_Archive` path, *or*
-  - a runtime patch the loader DLL applies once it's stable.
-- Unknown fields fall back to **clone-from-base**: copy a vanilla
-  reward def's bytes verbatim and patch only the offsets above. The
-  manifest carries a `synthesized: {offset: value}` map and a
-  `cloned_from: <base_id>` field so the apply layer can audit which
-  bytes are real schema vs which are inherited.
-
-This intentionally keeps the manifest schema additive: as more offsets
-are mined, the `synthesized` map grows and `cloned_from` becomes
-optional. No mod metadata changes are required when that flip happens.
+The earlier plan — a `_pending_items/<id>.json` manifest carrying these
+offsets for a later apply step — was never consumed by anything and was
+removed on 2026-10-10, along with `kinds/item/builder.py` and
+`kinds/item/schema.py`. Its only effect had been to hide a mistyped
+`base`: the mod applied cleanly and the item never existed.
 
 ## See also
 

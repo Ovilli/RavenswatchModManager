@@ -42,8 +42,6 @@ from ...engine import corpus
 from ...engine import magic_item_cook as cook
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
-from .item import schema as item_schema
-from .item.builder import build_manifest
 
 _log = logging.getLogger(__name__)
 
@@ -53,9 +51,7 @@ _MO_DIR = "EntitySettings/Objects/Magical_Objects"
 _MO_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 _RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
-PENDING_ITEMS_SUBDIR = "_pending_items"
 PENDING_BANS_SUBDIR = "_pending_bans"
-TEXT_BANK_OVERRIDES_SUBDIR = "_pending_text_overrides"
 
 
 def _find_base(base_id: str) -> tuple[bytes, str] | None:
@@ -404,15 +400,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         )
 
     found = _find_base(base)
-    if found is None and replace:
-        raise ContentError(
-            f"item {defn.id}: mode='replace' needs a shipped item as 'base'; "
-            f"{base!r} is not one (see `rsmm items list`)")
     if found is None:
-        # Base isn't a known vanilla magical object (or no game install is
-        # readable): fall back to the legacy manifest so registration/tagging
-        # still works. Real cooked output requires a real base id.
-        return _emit_legacy_manifest(mod_id, defn, out_dir)
+        raise _base_not_found(defn.id, base)
 
     base_cooked, base_rarity = found
     if replace:
@@ -501,28 +490,29 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     return written
 
 
-def _emit_legacy_manifest(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Legacy path: write a `_pending_items/<id>.json` manifest + EN text seed.
+def _base_not_found(item_id: str, base: str) -> ContentError:
+    """The error for a ``base`` that names no vanilla magical object.
 
-    Used when the ``base`` isn't a resolvable vanilla magical object, so
-    registration/tagging/summary still work without producing cooked bytes.
+    This used to fall back to writing a ``_pending_items/<id>.json`` manifest
+    that nothing read, so a mistyped base emitted no item and said nothing:
+    the mod applied cleanly and the item never existed in game.
     """
-    display_name = str(
-        defn.fields.get("name") or defn.fields.get("display_name") or defn.id
-    )
-    manifest = build_manifest(
-        mod_id=mod_id, item_id=defn.id,
-        fields={**defn.fields, "name": display_name},
-        schema_version=max(int(defn.schema_version or 1),
-                           item_schema.ITEM_MANIFEST_SCHEMA_VERSION),
-    )
-    written = [C.write_json(
-        out_dir / PENDING_ITEMS_SUBDIR / f"{defn.id}.json", manifest.to_json(),
-    )]
-    written.append(C.write_json(
-        out_dir / TEXT_BANK_OVERRIDES_SUBDIR / f"{mod_id}__{defn.id}__EN.json",
-        {"locale": "EN", "mod": mod_id, "id": defn.id,
-         "strings": {manifest.text_keys["name"]: display_name},
-         "note": "Seeded by rsmm.sdk.kinds.items; lang/<locale>.toml overrides."},
-    ))
-    return written
+    from rsmm.cli._suggest import did_you_mean
+
+    known = _vanilla_item_ids()
+    if not known:
+        return ContentError(
+            f"item {item_id}: can't read the vanilla item {base!r} to clone — "
+            f"no game install found (set RSMM_GAME_DIR to it)")
+    stem = base.replace("\\", "/").rpartition("/")[2]
+    if stem in known:
+        # Real item, wrong rarity folder: `_find_base` only looks in the one
+        # the base names.
+        found = _find_base(stem)
+        right = f"{found[1]}/{stem}" if found else stem
+        return ContentError(
+            f"item {item_id}: {base!r} is in the wrong rarity folder; "
+            f"use {stem!r} or {right!r}")
+    hint = did_you_mean(stem, known) or " (`rsmm items list` shows them)"
+    return ContentError(
+        f"item {item_id}: 'base' {base!r} is not a shipped item{hint}")
