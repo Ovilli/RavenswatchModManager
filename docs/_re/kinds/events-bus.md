@@ -502,6 +502,20 @@ handler before building on it):
 | USE_BLOOD_FOUNTAIN | 0x1401f9070 |
 | USE_HEAL_FOUNTAIN | 0x1401f9020 |
 
+Item family (read 2026-10-10; back `R.give.remove_random` / `remove_all` /
+`duplicate_random`, all three proven in game the same day): none of these handlers reads the event payload.
+REMOVE_RANDOM_<R>_OBJECT (0x1403a8a50..0x1403a8b40) calls the picker
+0x14039bb60(hero, &guid, rarity, 0) — it walks the owned items at hero+0xd80
+(count +0xd88), filters by the item's quality (clamped 0..5), and returns a
+random one's def GUID (entry+0x280 -> +0x10 def, +0x88/+0x90) — then the
+remover 0x1403985a0(hero, &guid). REMOVE_ALL_<R>_OBJECT (0x1403a8c70..0x1403a8cc0)
+passes the rarity to 0x1403a8bf0. DUPLICATE_RANDOM_<R>_OBJECT collects through
+0x14039be20 and re-grants through Hero_GrantMagicalObject tagged "Duplicate";
+the MAGICAL variant collects rarities 0, 1 and 2 only. Rarity codes: 0 common,
+1 rare, 2 epic, 3 legendary, 4 cursed, 6 any (MAGICAL). Not wrapped:
+REMOVE_MAGICAL_OBJECT_FROM_ID — it reads a type-1 value but copies only its
+first u32 into the GUID it removes, so it cannot name an arbitrary item.
+
 Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
 (layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).
 Not in this table: the skill/item events that subscribe through another path

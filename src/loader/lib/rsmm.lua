@@ -2511,6 +2511,12 @@ do
             if R.shards then R.shards.gain = r.shards.gain end
             R.ingredient = r.ingredient
         end
+        -- rsmm/items.lua — REMOVE_RANDOM_* / REMOVE_ALL_* / DUPLICATE_RANDOM_*
+        -- (proven in game 2026-10-10): R.give.remove_random("cursed") / .remove_all / .duplicate_random
+        local ok_i, it = _submodule_fn("items", { R = R, named_event = ne })
+        if ok_i and type(it) == "table" then
+            for k, v in pairs(it) do R.give[k] = v end
+        end
     end
 end
 

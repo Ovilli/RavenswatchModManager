@@ -1416,6 +1416,35 @@ do
           "an implausible GainIngredient vftable is refused")
     R.defs.instances = real_instances
 
+    -- R.give.remove_random / remove_all / duplicate_random send the item
+    -- events, whose handlers read no payload, in the with-data shape.
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev), type = I.read_u8(ev + 0x68) }
+    end
+    for _, case in ipairs({
+        { "remove_random", "cursed", "REMOVE_RANDOM_CURSED_OBJECT" },
+        { "remove_random", nil, "REMOVE_RANDOM_MAGICAL_OBJECT" },
+        { "remove_random", "Legendary", "REMOVE_RANDOM_LEGENDARY_OBJECT" },
+        { "remove_all", "common", "REMOVE_ALL_COMMON_OBJECT" },
+        { "remove_all", nil, "REMOVE_ALL_MAGICAL_OBJECT" },
+        { "duplicate_random", "epic", "DUPLICATE_RANDOM_EPIC_OBJECT" },
+        { "duplicate_random", nil, "DUPLICATE_RANDOM_MAGICAL_OBJECT" },
+    }) do
+        dispatched, sent = false, nil
+        check(R.give[case[1]](case[2]) == true and sent.name == case[3],
+              "give." .. case[1] .. "(" .. tostring(case[2]) .. ") sends " .. case[3])
+        check(sent.disp == DISP and sent.vft == WD_VFT and sent.type == 2,
+              "...as a with-data event on the hero dispatcher")
+    end
+    for _, case in ipairs({ { "remove_random", "shiny" }, { "remove_all", 3 },
+                            { "duplicate_random", "legendary" }, { "duplicate_random", "cursed" } }) do
+        dispatched = false
+        check(R.give[case[1]](case[2]) == false, "give." .. case[1] .. " refuses " .. tostring(case[2]))
+        check(not dispatched, "...without reaching the engine")
+    end
+
     engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 

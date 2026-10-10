@@ -36,9 +36,7 @@ return function(env)
     local NE = env.named_event                   -- rsmm/named_event.lua
     local M = {}
 
-    local EVENT_VFT_VA = 0x140f0f180             -- oCNamedEventNetworkWithData_vftable
-    local EV_SIZE, UNION_OFF = 0x70, 0x50
-    local T_F32, T_INT, T_BOOL = 0, 1, 2
+    local T_F32, T_INT, T_BOOL = NE.T_F32, NE.T_INT, NE.T_BOOL
 
     -- Slot names as the event names spell them, in the controller's own order.
     local SLOTS = { "basic", "primary", "secondary", "defensive", "trait", "ultimate", "dash" }
@@ -48,43 +46,9 @@ return function(env)
 
     function M.ready() return NE.ready() end
 
-    -- Build and dispatch one with-data event. `vtype` is T_F32/T_INT/T_BOOL.
+    -- One with-data event (rsmm/named_event.lua builds it).
     local function send(name, vtype, value)
-        local ev, disp = NE.begin("R.ability", EVENT_VFT_VA, name, EV_SIZE,
-            { "EntityValueUnion_DefaultCtor", "EntityValueUnion_InitAsType",
-              "EntityValueUnion_Destruct" })
-        if not ev then return false end
-        -- The value goes through the engine's own union routines: the bus
-        -- CLONES the event before delivering it, and the clone copies the
-        -- union through its vftable, which only the ctor sets.
-        local u = ev + UNION_OFF
-        R.engine.call("EntityValueUnion_DefaultCtor", u)
-        if vtype ~= T_F32 then R.engine.call("EntityValueUnion_InitAsType", u, vtype) end
-        -- Storage is 4 = inline at +0x10, or else a heap pointer (low bit is a
-        -- flag): type 1 is a 16-byte type the engine allocates out of line
-        -- (measured in game 2026-10-10, storage=0x6247d230), and the charge
-        -- handler reads its first int32 there — the same either-or it uses.
-        local storage = I.read_u64(u + 0x08) or 0
-        local data = storage == 4 and u + 0x10 or (storage & ~1)
-        if I.read_u8(u + 0x18) ~= vtype or (storage ~= 4 and not R.ptr.plausible(data)) then
-            R.log(string.format("[rsmm.ability] value union did not initialise as type %d "
-                .. "(storage=0x%x type=%s) — refusing", vtype, storage,
-                tostring(I.read_u8(u + 0x18))))
-            R.engine.call("EntityValueUnion_Destruct", u)
-            return false
-        end
-        if vtype == T_F32 then
-            I.write_f32(data, value)
-        elseif vtype == T_INT then
-            I.write_u32(data, value & 0xffffffff)
-        else
-            I.write_u8(data, value and 1 or 0)
-        end
-        local sent = NE.send("R.ability", ev, disp, "value=" .. tostring(value))
-        -- Delivery went to the engine's clone; free what InitAsType allocated
-        -- for ours (a no-op for an inline value).
-        R.engine.call("EntityValueUnion_Destruct", u)
-        return sent
+        return NE.send_value("R.ability", name, vtype, value)
     end
 
     -- `slot` nil = every ability, where the engine has an all-slots event.
