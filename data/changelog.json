@@ -1,6 +1,17 @@
 {
-  "generated": "2026-10-09",
+  "generated": "2026-10-10",
   "entries": [
+    {
+      "version": "5.9.12",
+      "date": "2026-10-10",
+      "summary": "Bug reports are easier to act on: the shared log now includes the health check and your loader version, and can be copied instead of uploaded.",
+      "highlights": [
+        "Share log: the report now lists any problems the health check found and which loader you have installed, so whoever helps you sees the likely cause first.",
+        "Share log: \"Copy report\" puts the same redacted report on your clipboard if you would rather not upload it.",
+        "Mod authors: rsmm lint now catches Lua that reads a variable above the line that declares it (it is always nil in game), and POI components that would load but show no icon or prompt.",
+        "Mod authors: an item whose base is not a shipped item is now an error with a suggestion, instead of silently making nothing."
+      ]
+    },
     {
       "version": "",
       "loader_version": 32,
@@ -533,17 +544,6 @@
         "Repeated handler errors latch after a few consecutive failures rather than writing a line per event fire.",
         "One failing hook installer no longer stops every other capability from arming, or blocks mods from starting.",
         "A mod that raises a non-string error (error{...}) no longer takes the game down from inside the loader's own error handler; Lua errors now carry a full traceback."
-      ]
-    },
-    {
-      "version": "5.1.2",
-      "date": "2026-08-25",
-      "summary": "Uninstalling a mod now runs its cleanup step, so a mod can no longer leave game settings behind after it is gone.",
-      "highlights": [
-        "Mods can ship a cleanup step that undoes settings they changed while running. In the installed app that step never actually ran — it only worked in a development checkout — so every mod's cleanup had been silently doing nothing. It runs now.",
-        "Uninstalling a mod deleted its folder before giving it a chance to clean up, which removed the only thing that knew how to undo the change. Reported as a run seed that stayed frozen after a seed-pinning mod was removed: the mod was gone, its setting was not. Cleanup now runs first.",
-        "If a mod's cleanup cannot run — it failed, or the mod folder was deleted by hand while it was still enabled — the app says so instead of reporting a clean uninstall that quietly left settings behind.",
-        "Publishing a mod from the app wrote the packaged file into a temporary folder that was deleted a moment later, so the upload had nothing to send. It now writes somewhere that lasts."
       ]
     }
   ]
