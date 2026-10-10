@@ -35,6 +35,12 @@ jobs:
       - name: Install dev deps
         run: python -m pip install --upgrade pip pytest pytest-xdist ruff
 
+      # luac for tests/test_loader_lua.py: the accidental-global scan and the
+      # 200-local headroom check skip without it, so on this job they never ran.
+      - name: Install Lua (luac)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
       - name: ruff
         run: ruff check src/ tests/ scripts/
 
