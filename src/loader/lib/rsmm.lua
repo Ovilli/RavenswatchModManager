@@ -614,6 +614,23 @@ function R.engine.call_safe(name, ptr_args, ...)
     return R.engine.call(name, ...)
 end
 
+-- The name a named-event ctor wrote into `ev` (the oCString at +0x20), or nil.
+--
+-- Every named-event ctor is the same template, so their byte patterns are not
+-- unique: GiveMagicalObject's is match 11 of 13, GainReroll's 8 of 13. The
+-- loader picks by rank, and a game patch can shift the rank onto a SIBLING
+-- event's ctor — which builds a perfectly valid event of the wrong kind, so
+-- nothing faults and the wrong thing happens. The name is what a sibling cannot
+-- fake, and unlike an address it survives patches: check it after every ctor
+-- call and before the event is dispatched. Reads only, page-guarded.
+function R.engine.event_name(ev)
+    if not _ptr_plausible(ev) then return nil end
+    local s = I.read_u64(ev + 0x20)
+    if not _ptr_plausible(s) then return nil end
+    local name = I.read_cstr(s, 64)
+    return type(name) == "string" and name or nil
+end
+
 -- Expose the primitives to advanced mods / the SDK's own paths.
 R.ptr = {
     plausible    = _ptr_plausible,
@@ -933,6 +950,12 @@ function R.give.by_guid(lo, hi)
         R.log("[rsmm.give] GiveMagicalObject ctor failed (symbol unresolved?)")
         return false
     end
+    local built = R.engine.event_name(ev)
+    if built ~= "GIVE_MAGICAL_OBJECT" then
+        R.log("[rsmm.give] the GiveMagicalObject ctor built " .. tostring(built)
+            .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
+        return false
+    end
     I.poke(ev + 0x50, lo or 0, 8)
     I.poke(ev + 0x58, hi or 0, 8)
     -- Validate the dispatcher AT THE CALL, not just when it was captured.
@@ -994,51 +1017,176 @@ function R.melody.choose(lo, hi)
         R.log("[rsmm.melody] choose(lo, hi): the melody GUID halves must be numbers")
         return false
     end
-    if not _va_ok("R.melody") then return false end
     if not _give_hero then
         R.log("[rsmm.melody] no hero dispatcher yet — the hero must act once first")
         return false
     end
-    if not (R.engine.resolve("NamedEvent_Id_FromCrc") and R.engine.resolve("NamedEvent_Dispatch")) then
+    if not R.engine.resolve("NamedEvent_Dispatch") then
         R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
-        return false
-    end
-    local base = I.module_base()
-    if not base or base == 0 then return false end
-    local vft = base + (MELODY_EVENT_VFT_VA - GIVE_IMG_BASE)
-    local slot0 = I.read_u64(vft)
-    if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
-        R.log("[rsmm.melody] event vftable implausible on this build — refusing")
         return false
     end
     if not _dispatcher_live(_give_hero) then
         R.log("[rsmm.melody] hero dispatcher is not live — refusing")
         return false
     end
-    -- ONE scratch block: event (0x60) + name tail. A second alloc while this
-    -- one is live can overlap and zero the front (see R.stat.modify).
-    local ev = I.scratch(0x80)
-    if not ev or ev == 0 then return false end
-    local tail = ev + 0x60
-    for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
-    I.write_u8(tail + #EVENT, 0)
-    I.write_u64(ev + 0x00, vft)
-    I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
-    I.write_u64(ev + 0x10, 0)
-    I.write_u64(ev + 0x18, 0)
-    I.write_u64(ev + 0x20, tail)                   -- name string
-    I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
-    I.write_u32(ev + 0x2c, 0)
-    I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+    -- Prefer the event's own ctor: it initialises every field and needs no
+    -- vftable address. Its pattern is not unique (named-event ctors are one
+    -- template), so the name it wrote is checked before anything is sent.
+    local ev
+    if R.engine.resolve("NamedEvent_ChooseMelody_Ctor") then
+        local buf = I.scratch(0x60)
+        ev = buf and buf ~= 0 and R.engine.call("NamedEvent_ChooseMelody_Ctor", buf) or nil
+        if ev and ev ~= 0 and R.engine.event_name(ev) ~= EVENT then
+            R.log("[rsmm.melody] the ChooseMelody ctor built " .. tostring(R.engine.event_name(ev))
+                .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
+            return false
+        end
+    end
+    if not ev or ev == 0 then
+        -- Fallback for a pattern DB that predates the ctor symbol: build the
+        -- event by hand, the layout the ctor writes.
+        if not _va_ok("R.melody") then return false end
+        if not R.engine.resolve("NamedEvent_Id_FromCrc") then
+            R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
+            return false
+        end
+        local base = I.module_base()
+        if not base or base == 0 then return false end
+        local vft = base + (MELODY_EVENT_VFT_VA - GIVE_IMG_BASE)
+        local slot0 = I.read_u64(vft)
+        if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
+            R.log("[rsmm.melody] event vftable implausible on this build — refusing")
+            return false
+        end
+        -- ONE scratch block: event (0x60) + name tail. A second alloc while
+        -- this one is live can overlap and zero the front (see R.stat.modify).
+        ev = I.scratch(0x80)
+        if not ev or ev == 0 then return false end
+        local tail = ev + 0x60
+        for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
+        I.write_u8(tail + #EVENT, 0)
+        I.write_u64(ev + 0x00, vft)
+        I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
+        I.write_u64(ev + 0x10, 0)
+        I.write_u64(ev + 0x18, 0)
+        I.write_u64(ev + 0x20, tail)                   -- name string
+        I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
+        I.write_u32(ev + 0x2c, 0)
+        I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+        I.write_u32(ev + 0x40, 0)
+        I.write_u64(ev + 0x50, tail + #EVENT)          -- second string: empty
+        I.write_u32(ev + 0x58, 0x80000000)
+        I.write_u32(ev + 0x5c, 0)
+    end
     I.poke(ev + 0x38, lo, 8)                       -- melody GUID low  (hypothesis)
-    I.write_u32(ev + 0x40, 0)
     I.poke(ev + 0x48, hi, 8)                       -- melody GUID high (hypothesis)
-    I.write_u64(ev + 0x50, tail + #EVENT)          -- second string: empty
-    I.write_u32(ev + 0x58, 0x80000000)
-    I.write_u32(ev + 0x5c, 0)
     R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
     R.log(string.format("[rsmm.melody] dispatched %s guid=%016x%016x disp=0x%x id=0x%x",
         EVENT, hi, lo, _give_hero, I.read_u32(ev + 0x30) or 0))
+    return true
+end
+
+-- R.reroll — the hero's offer rerolls (EXPERIMENTAL, static RE 2026-10-10;
+-- in-game proof pending).
+--
+--   R.reroll.get()    -- rerolls the hero has, or nil (hero not captured yet)
+--   R.reroll.add(3)   -- grant 3 (1..32767); true once dispatched
+--
+-- add() sends the game's own GAIN_REROLL named event to the hero, exactly as the
+-- game's sender (0x1402eb030) does: event + 0x50 is a 16-bit count, dispatched
+-- to the hero's event dispatcher (entity + 0x4d8, the same one R.give and
+-- R.melody use). The hero-bound handler (0x1403aa9e0) adds it to the s16 at
+-- *(hero + 0x1d80) + 0x16 and publishes that as the `reroll_count` game value,
+-- which is what get() reads. Layout from the event's own ctor (0x1402e6eb0,
+-- 0x58 bytes): the standard named-event header, +0x38 = -1, +0x40 = 0,
+-- +0x48 = -1, +0x50 = count. Same scratch-block construction as R.melody.
+-- MAIN THREAD only (R.schedule.next_main), like every engine-mutating call.
+R.reroll = {}
+
+function R.reroll.get()
+    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if not hero then return nil end
+    local mirror = I.read_u64(hero + ENTITY_HUDMIRROR_OFF)
+    if not _ptr_plausible(mirror) then return nil end
+    local v = I.read_u16(mirror + 0x16)
+    if type(v) ~= "number" then return nil end
+    return v >= 0x8000 and v - 0x10000 or v
+end
+
+function R.reroll.add(n)
+    local REROLL_EVENT_VFT_VA = 0x140f263d0   -- oCDtNamedEventGainReroll_vftable
+    local EVENT, EVENT_CRC = "GAIN_REROLL", 0x96065360
+    if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 0x7fff then
+        R.log("[rsmm.reroll] add(n): n must be a whole number from 1 to 32767")
+        return false
+    end
+    if not _give_hero then
+        R.log("[rsmm.reroll] no hero dispatcher yet — the hero must act once first")
+        return false
+    end
+    if not R.engine.resolve("NamedEvent_Dispatch") then
+        R.log("[rsmm.reroll] event primitives unresolved on this build — refusing")
+        return false
+    end
+    if not _dispatcher_live(_give_hero) then
+        R.log("[rsmm.reroll] hero dispatcher is not live — refusing")
+        return false
+    end
+    -- Prefer the event's own ctor (match 8 of 13 identical ctor templates, so
+    -- the name it wrote is checked before anything is sent).
+    local ev
+    if R.engine.resolve("NamedEvent_GainReroll_Ctor") then
+        local buf = I.scratch(0x58)
+        ev = buf and buf ~= 0 and R.engine.call("NamedEvent_GainReroll_Ctor", buf) or nil
+        if ev and ev ~= 0 and R.engine.event_name(ev) ~= EVENT then
+            R.log("[rsmm.reroll] the GainReroll ctor built " .. tostring(R.engine.event_name(ev))
+                .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
+            return false
+        end
+    end
+    if not ev or ev == 0 then
+        -- Fallback for a pattern DB that predates the ctor symbol: build the
+        -- event by hand, the layout the ctor writes.
+        if not _va_ok("R.reroll") then return false end
+        if not R.engine.resolve("NamedEvent_Id_FromCrc") then
+            R.log("[rsmm.reroll] event primitives unresolved on this build — refusing")
+            return false
+        end
+        local base = I.module_base()
+        if not base or base == 0 then return false end
+        local vft = base + (REROLL_EVENT_VFT_VA - GIVE_IMG_BASE)
+        local slot0 = I.read_u64(vft)
+        if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
+            R.log("[rsmm.reroll] event vftable implausible on this build — refusing")
+            return false
+        end
+        -- ONE scratch block: event (0x58) + name tail.
+        ev = I.scratch(0x78)
+        if not ev or ev == 0 then return false end
+        local tail = ev + 0x58
+        for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
+        I.write_u8(tail + #EVENT, 0)
+        I.write_u64(ev + 0x00, vft)
+        I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
+        I.write_u64(ev + 0x10, 0)
+        I.write_u64(ev + 0x18, 0)
+        I.write_u64(ev + 0x20, tail)                   -- name string
+        I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
+        I.write_u32(ev + 0x2c, 0)
+        I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+        I.write_u64(ev + 0x38, 0xffffffffffffffff)     -- peer: -1 = local
+        I.write_u32(ev + 0x40, 0)
+        I.write_u32(ev + 0x44, 0)
+        I.write_u64(ev + 0x48, 0xffffffffffffffff)
+        I.write_u16(ev + 0x52, 0)
+        I.write_u32(ev + 0x54, 0)
+    end
+    I.write_u16(ev + 0x50, n)                      -- the count
+    local before = R.reroll.get()
+    R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
+    R.log(string.format("[rsmm.reroll] dispatched %s +%d disp=0x%x id=0x%x rerolls %s -> %s",
+        EVENT, n, _give_hero, I.read_u32(ev + 0x30) or 0,
+        tostring(before), tostring(R.reroll.get())))
     return true
 end
 

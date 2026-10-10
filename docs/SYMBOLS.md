@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **314** symbols across 24 categories.
+Total: **319** symbols across 24 categories.
 
 ## analytics
 
@@ -159,18 +159,22 @@ Total: **314** symbols across 24 categories.
 | `EventQueue_Drain` | `0x1406642d0` | ✅ ok |  | void(void* queue) |
 | `Event_LevelUp` → `level_up` | `0x1401f6bf0` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401f59c0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
+| `Hero_GainRerollHandler` | `0x1403aa9e0` | ❓ unverified |  | void(void* hero, void* ev) |
 | `Id_HashString` | `0x14033f7a0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
 | `NamedEvent_ChannelMap_Find` | `0x14066dc10` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `NamedEvent_Delete` | `0x1401273b0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x14066b6b0` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x1407276a0` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
 | `NamedEvent_GainDreamShards_Ctor` | `0x1402e6ce0` | ❓ unverified |  | void*(void* buf) |
+| `NamedEvent_GainReroll_Ctor` | `0x1402e6eb0` | ✅ ok | ✔ | oe::dt::NamedEventGainReroll*(void* buf) |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
 | `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
 | `NamedEvent_Id_FromCrc` | `0x14051f090` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x140721630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
+| `Reroll_GrantToHeroes` | `0x1402eb030` | ❓ unverified |  | The game's own reroll grant: builds a GainReroll event on the stack with the count (an … |
+| `oCDtNamedEventGainReroll_vftable` | `0x140f263d0` | 📍 va |  | vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_I… |
 
 ## gameplay
 
@@ -286,6 +290,7 @@ Total: **314** symbols across 24 categories.
 |------|---------|--------|----------|------------------|
 | `HeroMelodyPersistentData_vftable` | `0x140f12f40` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
 | `MelodyDefinition_Ctor` | `0x140326b20` | ❓ unverified |  | void*(void* self) |
+| `NamedEvent_ChooseMelody_Ctor` | `0x1402da150` | ✅ ok | ✔ | oe::dt::NamedEventChooseMelody*(void* buf) |
 | `oCGameNamedEventChooseMelody_vftable` | `0x140f25c48` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
 | `oCGameNamedEventRemoveMelody_vftable` | `0x140f22608` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
 

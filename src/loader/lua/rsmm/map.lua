@@ -125,6 +125,13 @@ return function(env)
         if not ev or ev == 0 then
             R.log("[rsmm.map] event ctor failed"); return false
         end
+        -- Checked before the name is overwritten below: a ctor pattern that
+        -- landed on a sibling event's ctor is caught here (R.engine.event_name).
+        if R.engine.event_name(ev) ~= "GIVE_MAGICAL_OBJECT" then
+            R.log("[rsmm.map] the GiveMagicalObject ctor built "
+                .. tostring(R.engine.event_name(ev)) .. " on this build — refusing")
+            return false
+        end
 
         -- Constructed through the GiveMagicalObject ctor because it is the one
         -- event ctor with a status=ok pattern; the base `oCGameNamedEvent`

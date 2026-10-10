@@ -228,6 +228,8 @@ constexpr std::uintptr_t Event_LevelUp = 0x1401f6bf0ull;
 constexpr const char* Event_LevelUp_Pattern = "Event_LevelUp";
 constexpr std::uintptr_t Event_RunEnd = 0x1401f59c0ull;
 constexpr const char* Event_RunEnd_Pattern = "Event_RunEnd";
+constexpr std::uintptr_t Hero_GainRerollHandler = 0x1403aa9e0ull;
+// Hero_GainRerollHandler_Pattern omitted: status=unverified
 constexpr std::uintptr_t Id_HashString = 0x14033f7a0ull;
 // Id_HashString_Pattern omitted: status=unverified
 constexpr std::uintptr_t NamedEvent_ChannelMap_Find = 0x14066dc10ull;
@@ -240,6 +242,8 @@ constexpr std::uintptr_t NamedEvent_EmitNetworkDamageFromHit = 0x1407276a0ull;
 constexpr const char* NamedEvent_EmitNetworkDamageFromHit_Pattern = "NamedEvent_EmitNetworkDamageFromHit";
 constexpr std::uintptr_t NamedEvent_GainDreamShards_Ctor = 0x1402e6ce0ull;
 // NamedEvent_GainDreamShards_Ctor_Pattern omitted: status=unverified
+constexpr std::uintptr_t NamedEvent_GainReroll_Ctor = 0x1402e6eb0ull;
+constexpr const char* NamedEvent_GainReroll_Ctor_Pattern = "NamedEvent_GainReroll_Ctor";
 constexpr std::uintptr_t NamedEvent_GiveMagicalObject_Ctor = 0x14030fd30ull;
 constexpr const char* NamedEvent_GiveMagicalObject_Ctor_Pattern = "NamedEvent_GiveMagicalObject_Ctor";
 constexpr std::uintptr_t NamedEvent_HeroSubscribeAll = 0x140391860ull;
@@ -252,6 +256,9 @@ constexpr std::uintptr_t NamedEvent_NetSend = 0x140721630ull;
 constexpr const char* NamedEvent_NetSend_Pattern = "NamedEvent_NetSend";
 constexpr std::uintptr_t NamedEvent_NetSendToPeer = 0x1407216c0ull;
 constexpr const char* NamedEvent_NetSendToPeer_Pattern = "NamedEvent_NetSendToPeer";
+constexpr std::uintptr_t Reroll_GrantToHeroes = 0x1402eb030ull;
+// Reroll_GrantToHeroes_Pattern omitted: status=unverified
+constexpr std::uintptr_t oCDtNamedEventGainReroll_vftable = 0x140f263d0ull;
 
 // --- gameplay ---
 constexpr std::uintptr_t DayNightCycle_InitCycle = 0x1401eca80ull;
@@ -407,6 +414,8 @@ constexpr const char* oCString_Dtor_Pattern = "oCString_Dtor";
 constexpr std::uintptr_t HeroMelodyPersistentData_vftable = 0x140f12f40ull;
 constexpr std::uintptr_t MelodyDefinition_Ctor = 0x140326b20ull;
 // MelodyDefinition_Ctor_Pattern omitted: status=unverified
+constexpr std::uintptr_t NamedEvent_ChooseMelody_Ctor = 0x1402da150ull;
+constexpr const char* NamedEvent_ChooseMelody_Ctor_Pattern = "NamedEvent_ChooseMelody_Ctor";
 constexpr std::uintptr_t oCGameNamedEventChooseMelody_vftable = 0x140f25c48ull;
 constexpr std::uintptr_t oCGameNamedEventRemoveMelody_vftable = 0x140f22608ull;
 

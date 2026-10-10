@@ -1137,8 +1137,20 @@ do
     check(R.give.ready(), "spec fixture: a live dispatcher is captured")
 
     -- The grant path builds an event object first; give it one so the test
-    -- exercises the dispatcher guard rather than bailing before it.
-    engine["NamedEvent_GiveMagicalObject_Ctor"] = function(buf) return buf end
+    -- exercises the dispatcher guard rather than bailing before it. Like the
+    -- real ctor it writes the event's name at +0x20: callers check it, because
+    -- named-event ctor patterns are one shared template and a patch can move
+    -- the resolve onto a sibling's ctor (R.engine.event_name).
+    local function named_ctor(name)
+        return function(buf)
+            local s = scratch(#name + 1)
+            for i = 1, #name do I.write_u8(s + i - 1, name:byte(i)) end
+            I.write_u8(s + #name, 0)
+            I.write_u64(buf + 0x20, s)
+            return buf
+        end
+    end
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
 
     -- Sanity: with a LIVE dispatcher the grant goes through. Without this the
     -- refusal below could pass for the wrong reason.
@@ -1146,6 +1158,14 @@ do
     engine["NamedEvent_Dispatch"] = function() dispatched = true end
     check(R.give.by_guid(0xA001, 0xB001) == true, "a live dispatcher grants")
     check(dispatched, "and the engine call is made")
+
+    -- A ctor pattern that resolved to a SIBLING event's ctor builds a valid
+    -- event of the wrong kind; the name check refuses it before dispatch.
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GAIN_REROLL")
+    dispatched = false
+    check(R.give.by_guid(0xA001, 0xB001) == false, "a give whose ctor built a sibling event is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
 
     -- R.melody.choose rides the same dispatcher. EXPERIMENTAL: the payload is a
     -- hypothesis, but its guards must hold — the event's own vftable has to be
@@ -1161,6 +1181,57 @@ do
     I.write_u64(MELODY_VFT, 0)
     check(R.melody.choose(1, 2) == false, "an implausible event vftable is refused")
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
+    dispatched = false
+
+    -- R.reroll.add rides it too. EXPERIMENTAL (static RE 2026-10-10): the layout
+    -- is the GainReroll ctor's, the count is a u16 at +0x50 as the game's own
+    -- sender writes it, and bad counts never reach the engine.
+    local REROLL_VFT = I.module_base() + (0x140f263d0 - 0x140000000)
+    I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
+    local sent
+    engine["NamedEvent_Dispatch"] = function(_, ev)
+        dispatched = true
+        sent = { vft = I.read_u64(ev), count = I.read_u16(ev + 0x50),
+                 peer = I.read_u64(ev + 0x38), state = I.read_u32(ev + 0x08) }
+    end
+    dispatched = false
+    check(R.reroll.add(3) == true, "reroll add dispatches")
+    check(dispatched and sent.vft == REROLL_VFT, "...a GainReroll event")
+    check(sent.count == 3, "...carrying the count at +0x50")
+    check(sent.peer == -1 or sent.peer == 0xffffffffffffffff, "...with the peer field at -1 (local)")
+    check(sent.state == 2, "...and the header state the ctor leaves")
+    for _, bad in ipairs({ 0, -2, 1.5, 0x8000, "3" }) do
+        dispatched = false
+        check(R.reroll.add(bad) == false, "reroll add refuses " .. tostring(bad))
+        check(not dispatched, "...without reaching the engine")
+    end
+    I.write_u64(REROLL_VFT, 0)
+    check(R.reroll.add(1) == false, "an implausible GainReroll vftable is refused")
+
+    -- With the ctor symbols in the pattern DB, both use the engine's own ctor
+    -- and need no vftable address at all (the vftable stays implausible here).
+    engine["NamedEvent_GainReroll_Ctor"] = named_ctor("GAIN_REROLL")
+    dispatched, sent = false, nil
+    check(R.reroll.add(2) == true, "reroll add uses the GainReroll ctor when it resolves")
+    check(dispatched and sent.count == 2, "...and still writes the count at +0x50")
+    engine["NamedEvent_GainReroll_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
+    dispatched = false
+    check(R.reroll.add(2) == false, "a GainReroll ctor that built a sibling event is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["NamedEvent_GainReroll_Ctor"] = nil
+    engine["NamedEvent_ChooseMelody_Ctor"] = named_ctor("CHOOSE_MELODY")
+    I.write_u64(MELODY_VFT, 0)
+    dispatched = false
+    check(R.melody.choose(0x1122, 0x3344) == true, "melody choose uses the ChooseMelody ctor when it resolves")
+    check(dispatched, "...through the engine")
+    engine["NamedEvent_ChooseMelody_Ctor"] = named_ctor("GAIN_REROLL")
+    dispatched = false
+    check(R.melody.choose(0x1122, 0x3344) == false, "a ChooseMelody ctor that built a sibling event is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["NamedEvent_ChooseMelody_Ctor"] = nil
+    I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
+    I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
+    engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 
     -- Now make it look dead, and do it the way it actually dies: the HERO is

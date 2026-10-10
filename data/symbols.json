@@ -5332,6 +5332,76 @@
    "refs": [
     "docs/_re"
    ]
+  },
+  {
+   "name": "oCDtNamedEventGainReroll_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f263d0",
+   "status": "va",
+   "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs the experimental R.reroll.add (static RE 2026-10-10; in-game proof pending).",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "Hero_GainRerollHandler",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1403aa9e0",
+   "status": "unverified",
+   "signature": "void(void* hero, void* ev)",
+   "note": "Hero-bound GAIN_REROLL handler: *(s16*)(*(hero+0x1d80)+0x16) += *(s16*)(ev+0x50), then publishes that value as the reroll_count game value (key 0x1a922cd6). So the hero's available offer rerolls live in the HUD mirror (hero+0x1d80, the same pointer the dream-shard code uses) at +0x16 as a signed 16-bit count; R.reroll.get reads it. Static RE 2026-10-10, not proven in game.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "Reroll_GrantToHeroes",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402eb030",
+   "status": "unverified",
+   "note": "The game's own reroll grant: builds a GainReroll event on the stack with the count (an int truncated to u16) at +0x50, records it as a scene-context value (0x1bf49d2a for a gain, 0x1c036132 for a loss), accumulates it into this+0x68, then for each target hero either NamedEvent_Dispatch(entity+0x4d8, ev) (no net component, or locally owned) or NamedEvent_NetSendToPeer to the owning peer. The model for R.reroll.add. Static RE 2026-10-10.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "NamedEvent_ChooseMelody_Ctor",
+   "kind": "function",
+   "category": "melodies",
+   "raw": "FUN_1402da150",
+   "status": "ok",
+   "signature": "oe::dt::NamedEventChooseMelody*(void* buf)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "In-place ctor of NamedEventChooseMelody (0x60 bytes), reached from the class registrar's metaclass construct slot via thunk 0x140303080 (2026-10-10 sweep). Decompile: oCGameNamedEvent header (state 2 @+0x08, name 'CHOOSE_MELODY' @+0x20 via String_Assign, interned id @+0x30 from global 0x1412ef578), +0x38 = -1, +0x40 = 0, +0x48 = -1, second oCString @+0x50/+0x58/+0x5c empty. Pattern match_index 0 of 2. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "NamedEvent_GainReroll_Ctor",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402e6eb0",
+   "status": "ok",
+   "signature": "oe::dt::NamedEventGainReroll*(void* buf)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "In-place ctor of oCDtNamedEventGainReroll (0x58 bytes), reached via thunk 0x140303560 from the class registrar's construct slot and called inline by the game's sender Reroll_GrantToHeroes. Decompile: oCGameNamedEvent header (name 'GAIN_REROLL' @+0x20, interned id @+0x30 from global 0x1412eec78), +0x38 = -1, +0x40 = 0, +0x48 = -1, +0x50 u16 count = 0. Pattern match_index 8 of 13. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

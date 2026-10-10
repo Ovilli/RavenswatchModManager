@@ -329,6 +329,13 @@ return function(env)
         if not buf or buf == 0 then return false end
         local ev = R.engine.call("NamedEvent_GiveMagicalObject_Ctor", buf)
         if not ev or ev == 0 then return false end
+        -- Before the name is overwritten below: catches a ctor pattern that
+        -- resolved to a sibling event's ctor (see R.engine.event_name).
+        if R.engine.event_name(ev) ~= "GIVE_MAGICAL_OBJECT" then
+            R.log("[rsmm.talent] the GiveMagicalObject ctor built "
+                .. tostring(R.engine.event_name(ev)) .. " on this build — refusing")
+            return false
+        end
         -- The give subclass is the one event ctor with an ok pattern. Dispatch
         -- routes by the id at +0x30; ADD_ALL_SKILLS reads a tier only from the
         -- value-event subclass, which this is not, so every talent lands at

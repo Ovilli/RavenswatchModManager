@@ -458,6 +458,13 @@ inline NamedEvent_ChannelMap_Find_fn NamedEvent_ChannelMap_Find() {
     return reinterpret_cast<NamedEvent_ChannelMap_Find_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChannelMap_Find_Pattern));
 }
 
+// NamedEvent_ChooseMelody_Ctor  (NamedEvent_ChooseMelody_Ctor)
+//   oe::dt::NamedEventChooseMelody*(void* buf)
+using NamedEvent_ChooseMelody_Ctor_fn = void*(*)(void*);
+inline NamedEvent_ChooseMelody_Ctor_fn NamedEvent_ChooseMelody_Ctor() {
+    return reinterpret_cast<NamedEvent_ChooseMelody_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChooseMelody_Ctor_Pattern));
+}
+
 // NamedEvent_Delete  (NamedEvent_Delete)
 //   void(oCGameNamedEvent* ev)
 using NamedEvent_Delete_fn = void(*)(void*);
@@ -470,6 +477,13 @@ inline NamedEvent_Delete_fn NamedEvent_Delete() {
 using NamedEvent_Dispatch_fn = void(*)(void*, void*);
 inline NamedEvent_Dispatch_fn NamedEvent_Dispatch() {
     return reinterpret_cast<NamedEvent_Dispatch_fn>(rsmm::fn_resolve(Sym::NamedEvent_Dispatch_Pattern));
+}
+
+// NamedEvent_GainReroll_Ctor  (NamedEvent_GainReroll_Ctor)
+//   oe::dt::NamedEventGainReroll*(void* buf)
+using NamedEvent_GainReroll_Ctor_fn = void*(*)(void*);
+inline NamedEvent_GainReroll_Ctor_fn NamedEvent_GainReroll_Ctor() {
+    return reinterpret_cast<NamedEvent_GainReroll_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_GainReroll_Ctor_Pattern));
 }
 
 // NamedEvent_GiveMagicalObject_Ctor  (NamedEvent_GiveMagicalObject_Ctor)
