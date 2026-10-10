@@ -50,6 +50,8 @@ CLIENT_CALLS: frozenset[str] = frozenset({
     "stat.get", "stat.cached", "stat.keys", "stat.names", "stat.key",
     "hp.get", "hp.frac", "hp.max",
     "events.known", "events.count", "events.category",
+    # Reads the netcode peer table (names, session ids) — no write, no send.
+    "net.peers",
 })
 
 

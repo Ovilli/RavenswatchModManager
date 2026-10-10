@@ -1453,8 +1453,8 @@ nothing) but changes the game. Declare `deterministic-shared` or
 For Lua, the client-only calls are the whole of `R.log`, `R.on`/`R.off`/`R.once`,
 `R.overlay`, `R.config`, `R.kv`, `R.schedule`, `R.exp`, `R.health`, `R.i18n`,
 `R.damage` and `R.camera`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
-`R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max` and
-`R.events.known`/`count`/`category`. Anything else, including `R[...]` lookups or
+`R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max`,
+`R.events.known`/`count`/`category` and `R.net.peers`. Anything else, including `R[...]` lookups or
 passing `R` to another function, counts as gameplay.
 
 ## Load order

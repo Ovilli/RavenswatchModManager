@@ -41,6 +41,7 @@ def make_mod(root: Path, *, manifest: str = "", lua: str | None = None,
     'R.config.get("x"); R.kv.set("a", 1); R.schedule.every(1, function() end)',
     'local h = R.entity.hero(); local hp = R.hp.get(h); local s = R.stat.get(h, "x")',
     'local exp = R.exp or {}',  # aliasing a namespace that is client-only as a whole
+    'local peers = R.net.peers()',  # the damage meter's peer-name read
 ])
 def test_read_only_and_presentation_lua_is_client_only(body):
     assert lua_reasons(SDK + body) == []
