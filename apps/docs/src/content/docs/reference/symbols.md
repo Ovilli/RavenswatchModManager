@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **299** symbols across 24 categories.
+Total: **314** symbols across 24 categories.
 
 ## analytics
 
@@ -91,7 +91,12 @@ Total: **299** symbols across 24 categories.
 | `Engine_Singleton` | `0x14143cbd0` | 📍 va |  | Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores b… |
 | `GameScene_FindContextByTester` | `0x14066cad0` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
 | `MetaClass_AddMember` | `0x14050aa30` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
+| `MetaClass_Construct_Zero16` | `0x1401a96e0` | ❓ unverified |  | void(void* obj) |
+| `MetaClass_Construct_Zero8` | `0x1401a9570` | ❓ unverified |  | void(void* obj) |
+| `MetaClass_DestructInPlace` | `0x1401a9530` | ❓ unverified | ✔ | void(void* obj) |
+| `MetaClass_DestructInPlace_Slot0` | `0x1401aaf30` | ❓ unverified |  | void(void* obj) |
 | `MetaClass_FindMember` | `0x14050cd20` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
+| `MetaClass_GetObjectClass` | `0x1401b9850` | ❓ unverified |  | void*(void* obj) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
 | `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401c8e60` | ✅ ok |  | bool(void* reader, void* refSlot) |
@@ -175,6 +180,7 @@ Total: **299** symbols across 24 categories.
 | `NamedEvent_Delete` | `0x1401273b0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x14066b6b0` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x1407276a0` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
+| `NamedEvent_GainDreamShards_Ctor` | `0x1402e6ce0` | ❓ unverified |  | void*(void* buf) |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
 | `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
 | `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
@@ -212,6 +218,7 @@ Total: **299** symbols across 24 categories.
 | `HeroDef_Deserialize` | `0x14031ef30` | ✅ ok | ✔ | bool(oCDtHeroDefinition* def, oCBinaryStream* stream) |
 | `HeroDef_LoadBaseEntity` | `0x14031ece0` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
 | `HeroDef_LoadSkinEntity` | `0x14031ea40` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
+| `HeroDefinition_Ctor` | `0x14031df10` | ❓ unverified |  | void*(void* self) |
 | `HeroProgressionUnlock_IsUnlocked` | `0x1402b2b10` | ✅ ok | ✔ | bool(void* condition_data) |
 | `HeroRankLock_IsUnlocked` | `0x1402b1c10` | ✅ ok | ✔ | bool(void* condition_data) |
 | `HeroStoryUnlock_IsUnlocked` | `0x1402b21a0` | ✅ ok | ✔ | bool(void* condition_data) |
@@ -237,6 +244,7 @@ Total: **299** symbols across 24 categories.
 |------|---------|--------|----------|------------------|
 | `AchievementDef_PostLoad` | `0x140312060` | ✅ ok | ✔ | bool(void* definition) |
 | `ChallengeDef_PostLoad` | `0x140324f30` | ✅ ok | ✔ | bool(void* definition) |
+| `Crt_Free` | `0x140ce09b0` | ❓ unverified |  | void(void* p) |
 | `DefinitionRegistry_Ctrl` | `0x1412f0a68` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `DefinitionRegistry_Mask` | `0x1412f0a80` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `DefinitionRegistry_Slots` | `0x1412f0a70` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
@@ -282,6 +290,7 @@ Total: **299** symbols across 24 categories.
 | `SharedRef_AddRefCopy` | `0x1401663a0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
 | `SharedRef_AddRefCopy_b` | `0x14021e390` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
 | `SharedRef_Release` | `0x140111cf0` | ✅ ok | ✔ | void(void*) |
+| `Std_AllocateBytes` | `0x140128090` | ❓ unverified |  | void*(size_t n) |
 | `TileDef_Deserialize` | `0x140324690` | ❓ unverified |  | bool(oCDtTileDefinition* def, oCBinaryStream* stream) |
 | `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
 | `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
@@ -292,6 +301,7 @@ Total: **299** symbols across 24 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `HeroMelodyPersistentData_vftable` | `0x140f12f40` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
+| `MelodyDefinition_Ctor` | `0x140326b20` | ❓ unverified |  | void*(void* self) |
 | `oCGameNamedEventChooseMelody_vftable` | `0x140f25c48` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
 | `oCGameNamedEventRemoveMelody_vftable` | `0x140f22608` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
 
@@ -366,6 +376,7 @@ Total: **299** symbols across 24 categories.
 | `CustomFlagList_ContainsAll` | `0x14066ac70` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `CustomFlagList_ContainsAny` | `0x14066ad90` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `RewardDef_Deserialize` | `0x1403244c0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
+| `RewardDefinition_Ctor` | `0x1401c9b90` | ❓ unverified |  | void*(void* self) |
 | `RewardItem_Serialize` | `0x140323dd0` | ✅ ok |  | bool(void* oCItem, void* reader) |
 | `RewardSelectorSettings_Serialize` | `0x140340470` | ✅ ok |  | bool(void* settings, void* reader) |
 | `RewardType_Serialize` | `0x140324260` | ✅ ok |  | bool(void* oCType, void* reader) |
@@ -390,10 +401,12 @@ Total: **299** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `AbilityController_Ctor` | `0x1402c8db0` | ❓ unverified |  | void*(void* self) |
 | `EntityComponent_Activate` | `0x140712c50` | ✅ ok | ✔ | void(void* unused, oIEntityCpnt* cpnt) |
 | `EntityEventTrigger_Fire` | `0x140713b00` | ✅ ok | ✔ | void(EventTrigger* trig) |
 | `HeroController_AddSkill` | `0x1403974b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl) |
 | `HeroController_RemoveSkill` | `0x1403977b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud) |
+| `SkillController_Ctor` | `0x1402ecc40` | ❓ unverified |  | void*(void* self) |
 | `SkillController_SetTier` | `0x1402edd80` | ✅ ok | ✔ | void(oCDtEntityCpntSkillController* ctrl, int32_t tier) |
 
 ## skins
@@ -420,6 +433,8 @@ Total: **299** symbols across 24 categories.
 | `HeroSelect_ConfirmPressed` | `0x1403e9300` | ✅ ok |  | int(void* screen) |
 | `HeroSelect_SetConfirmEnabled` | `0x1403e9500` | ✅ ok |  | void(void* screen, bool enabled) |
 | `HeroSelect_ValidateBlockedPtr` | `0x14143cb58` | 📍 va |  | Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate … |
+| `StringFormat_ArgPointer` | `0x1402c44f0` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
+| `StringFormat_ArgString` | `0x14052c7d0` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
 | `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
 | `UiButton_PressReturnSite` | `0x1407d7382` | ✅ ok |  | (code location, not callable) |

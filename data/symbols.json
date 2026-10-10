@@ -5146,6 +5146,192 @@
    "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
    "raw": "FUN_140111d90",
    "status": "ok"
+  },
+  {
+   "name": "Crt_Free",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140ce09b0",
+   "status": "unverified",
+   "signature": "void(void* p)",
+   "note": "CRT free (_free_base): HeapFree(DAT_14143cb18 crt heap,0,p), on failure maps GetLastError into errno. Called through thunk 0x140cc9100 (21277 refs) and 8 other thunks. Confidence: likely (decompile plain; name by shape). \u26a0 The Ghidra project flags it AND its thunks noreturn, which truncates every function that frees memory (4443 functions stopped at their first free); clearing the flags and re-flowing the 7220 call sites put 7104 back inside their caller and removed the spurious 'does not return' warnings (e.g. Hero_GrantMagicalObject 8 -> 0). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "Std_AllocateBytes",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140128090",
+   "status": "unverified",
+   "signature": "void*(size_t n)",
+   "note": "MSVC std::_Allocate path: n<0x1000 -> _malloc_base(n); else _malloc_base(n+0x27) aligned to 32 with the raw pointer stored at [ret-8] (the big-block layout oCString_Dtor undoes); overflow -> Rt_FailFast / length error. Bumps alloc counter DAT_1414442b4. Confidence: likely. \u26a0 Also wrongly flagged noreturn in the Ghidra project (657 truncated callers); clearing the flags and re-flowing the 7220 call sites put 7104 back inside their caller and removed the spurious 'does not return' warnings (e.g. Hero_GrantMagicalObject 8 -> 0). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_DestructInPlace",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a9530",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Generic in-place destructor stored at metaclass ops+0x90 (ops = desc+0x88) by EVERY class registrar: 1784/1787 registrars store this exact address (registrars.tsv). Body = obj->vftable[2](obj, 0), i.e. the scalar-deleting dtor with flags 0 (destroy, don't free). Was not a Ghidra function before the sweep (only LEA refs, 3568). Confidence: confirmed (decompile + registrar store site, e.g. oCEntityValueModifierMaxComputer registrar FUN_14017f981). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ],
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   }
+  },
+  {
+   "name": "MetaClass_GetObjectClass",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401b9850",
+   "status": "unverified",
+   "signature": "void*(void* obj)",
+   "note": "Generic adapter stored at class descriptor +0x80 (plVar2[0x10]) by all 1787 registrars: tail-jumps to obj->vftable[0] (the per-class virtual that returns the object's runtime metaclass). Undefined before the sweep (3574 LEA refs). Confidence: likely (store site certain; slot-0 meaning inferred). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_DestructInPlace_Slot0",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401aaf30",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Variant of MetaClass_DestructInPlace that calls obj->vftable[0](obj,0) \u2014 for class families whose deleting dtor is slot 0. 58 LEA refs from registrar-shaped functions (e.g. FUN_1402fa1a1, FUN_1403b9ff1). Undefined before the sweep. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_Construct_Zero16",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a96e0",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Placement-construct callback for 16-byte POD reflected types: zeroes two qwords. Stored at ops+0x80 by registrars (16 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_Construct_Zero8",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a9570",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Placement-construct callback for 8-byte POD reflected types: zeroes one qword. Stored at ops+0x80 by registrars (12 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "HeroDefinition_Ctor",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_14031df10",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtHeroDefinition in-place ctor (size 0x908, hash 0x1768d0c9). Found via the class registrar at 0x1401957ac: metaclass ops+0x80 = 0x1401ae340 (sweep-defined JMP thunk) -> FUN_14031df10. Same ops+0x80 path independently lands on the already-confirmed EnemyDefinition_ctor (thunk 0x140249420) and NamedEvent_GiveMagicalObject_Ctor (thunk 0x140318cc0), which validates the slot. Supersedes the pre-patch FUN_14031d610 in docs/_re/kinds/skills-system.md. Confidence: likely (slot proven; body not read). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "RewardDefinition_Ctor",
+   "kind": "function",
+   "category": "rewards",
+   "raw": "FUN_1401c9b90",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtRewardDefinition in-place ctor, via registrar ops+0x80 thunk 0x1402480a0 -> FUN_1401c9b90 (same proof path as HeroDefinition_Ctor). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "SkillController_Ctor",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1402ecc40",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtEntityCpntSkillController in-place ctor (size 0x2a8, hash 0x15f639fc), via registrar 0x1402f97fb ops+0x80 thunk 0x140302db0 -> FUN_1402ecc40. This is the descriptor docs/_re/kinds/skills-system.md needed for a runtime-appended skill. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MelodyDefinition_Ctor",
+   "kind": "function",
+   "category": "melodies",
+   "raw": "FUN_140326b20",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "MelodyDefinition in-place ctor via registrar ops+0x80 thunk 0x1401adfa0 -> FUN_140326b20. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "AbilityController_Ctor",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1402c8db0",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtEntityCpntAbilityController in-place ctor via registrar ops+0x80 thunk 0x140302d80 -> FUN_1402c8db0. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "NamedEvent_GainDreamShards_Ctor",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402e6ce0",
+   "status": "unverified",
+   "signature": "void*(void* buf)",
+   "note": "oCDtNamedEventGainDreamShards in-place ctor via registrar ops+0x80 thunk 0x140303500 -> FUN_1402e6ce0. Sibling of NamedEvent_GiveMagicalObject_Ctor, i.e. a candidate for an R.* shards grant through the event bus. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "StringFormat_ArgString",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_14052c7d0",
+   "status": "unverified",
+   "signature": "void(oCString* arg, oCString* out, FormatSpec* spec)",
+   "note": "Per-type argument formatter for the engine's string-format: if spec text (spec+8) isn't a literal '%...', handles 'f' (quote), 'U' (toupper) and 'u' (tolower) on the oCString argument, else plain append. Reached via sweep-defined JMP thunk 0x14021e680 (128 LEA refs). Siblings: thunks 0x14021e6a0->FUN_14052c510, 0x14021e690->FUN_14052c760, 0x140166de0->FUN_14052c3d0, 0x1402b9d30->FUN_14052c650 (16-bit arg, 'x' hex). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "StringFormat_ArgPointer",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1402c44f0",
+   "status": "unverified",
+   "signature": "void(void** arg, oCString* out, FormatSpec* spec)",
+   "note": "Pointer argument formatter: default spec '0x%016p' unless the spec text starts with '%'. Undefined before the sweep (10 LEA refs). Confidence: confirmed (decompile + string). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",

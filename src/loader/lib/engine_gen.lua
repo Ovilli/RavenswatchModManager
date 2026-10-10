@@ -72,6 +72,7 @@ return {
   ["MagicalObject_SpawnAllObjects"] = { pattern = "MagicalObject_SpawnAllObjects", offset = 0x0, sig = "vpp" },
   ["MapDef_PostLoad"] = { pattern = "MapDef_PostLoad", offset = 0x0, sig = "up" },
   ["MelodyDef_PostLoad"] = { pattern = "MelodyDef_PostLoad", offset = 0x0, sig = "up" },
+  ["MetaClass_DestructInPlace"] = { pattern = "MetaClass_DestructInPlace", offset = 0x0, sig = "vp" },
   ["ModifierEvent_Ctor"] = { pattern = "ModifierEvent_Ctor", offset = 0x0, sig = "ppp" },
   ["NamedEvent_ChannelMap_Find"] = { pattern = "NamedEvent_ChannelMap_Find", offset = 0x0, sig = "pppp" },
   ["NamedEvent_Delete"] = { pattern = "NamedEvent_Delete", offset = 0x0, sig = "vp" },

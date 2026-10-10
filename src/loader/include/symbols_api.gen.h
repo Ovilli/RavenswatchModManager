@@ -10,7 +10,7 @@
 namespace engine {
 
 // Omitted as not status=ok (calling an unverified address is how a
-// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), Netcode_EntityReplSetup (unverified)
+// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified), Netcode_EntityReplSetup (unverified)
 
 // AchievementDef_PostLoad  (AchievementDef_PostLoad)
 //   bool(void* definition)
