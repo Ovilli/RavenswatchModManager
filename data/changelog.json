@@ -3,6 +3,17 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 36,
+      "date": "2026-10-10",
+      "summary": "New SDK APIs: R.melody.choose/remove by name (the old GUID-based choose never worked), R.control.lock/unlock/release, R.run.next_chapter/win/lose (current chapter only).",
+      "highlights": [
+        "Mods can start collecting a melody by name, or remove one (R.melody.choose / remove)",
+        "Mods can freeze and release the player's controls (R.control.lock / release)",
+        "Mods can finish the chapter, win or lose the run (R.run.next_chapter / win / lose)"
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 35,
       "date": "2026-10-10",
       "summary": "New SDK APIs: R.talent.reset / upgrade_random / upgrade_lowest / upgrade / add_random_ultimate change talents during a run; R.status.clear / clear_stagger cleanse the hero.",
@@ -529,19 +540,6 @@
         "Configure on a mod now opens that one mod's settings in a window over the library. It used to navigate the whole library into a list of every configurable mod's settings, with yours somewhere in it.",
         "The close button in that window stays where you put it and always closes. It previously drifted as the panel loaded and could end up off the top of the screen, and the unsaved-changes prompt could answer itself without ever appearing.",
         "Settings screens now say what they are waiting for: the first open of a picker decodes the game's icons and takes a few seconds, and after saving, the panel says the running game will not see the change — quit Ravenswatch completely and press Play, which rebuilds the affected game files first."
-      ]
-    },
-    {
-      "version": "5.2.0",
-      "date": "2026-08-27",
-      "summary": "Reporting a problem is now a link instead of a wall of pasted text, and the Log screen finally shows the things the loader already knew: older runs, which lines are real failures, and why a mod was switched off.",
-      "highlights": [
-        "New: Share link on the Log screen uploads your log once and gives you a URL to paste into a bug report, instead of pasting thousands of lines into chat. It attaches the details anyone helping would ask for next — app version, system, and which mods were on.",
-        "Before anything is uploaded you see exactly what will be sent. Your Windows account name, home folder, e-mail addresses, IP addresses, Steam IDs and player names are replaced with placeholders first. The page is deleted automatically after 30 days, and anyone with the link can read it, so treat it as public.",
-        "The Log screen can now open any of your last 20 game runs, not just the current and previous one — a crash from three launches ago is no longer out of reach.",
-        "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
-        "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
-        "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
       ]
     }
   ]
