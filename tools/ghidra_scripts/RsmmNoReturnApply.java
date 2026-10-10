@@ -1,7 +1,17 @@
-// Clear the bogus "noreturn" flag on free / std::_Allocate / oCString_Dtor (and
-// every thunk to them), re-flow each call site, regrow the parent functions, and
-// fold back tail functions that exist only because the parent was cut short.
-// Saves (run WITHOUT -readOnly to apply). Arg: <log out path>
+// Clear wrong "noreturn" flags, re-flow each call site, regrow the parent
+// functions, and fold back tail functions that exist only because the parent
+// was cut short.
+//
+// A function is WRONGLY noreturn when its own body (a thunk's: its target's)
+// contains a RET: Ghidra builds the body by following flow, so a RET in it is
+// reachable. On the 2026-10-10 build that rule picked exactly free,
+// std::_Allocate and both oCString_Dtor entries plus their thunks (12 of 45
+// flagged functions) — the flags auto-analysis set, which cut 4,443 functions
+// short at their first free. Rule-based, not address-based, so it survives game
+// patches; scripts/ghidra_export.py runs it after every auto-analysis.
+//
+// Args: <log out path> [--list]   (--list reports the targets and changes nothing)
+// Saves when run without -readOnly.
 // @category RSMM
 import ghidra.app.script.GhidraScript;
 import ghidra.app.cmd.function.CreateFunctionCmd;
@@ -13,30 +23,54 @@ import java.nio.file.*;
 import java.util.*;
 
 public class RsmmNoReturnApply extends GhidraScript {
+    static final java.util.regex.Pattern NEVER_RETURNS = java.util.regex.Pattern.compile(
+        "(?i)throw|terminate|abort|(^|_)exit|failfast|invalid_parameter|report_gsfailure|invoke_watson");
+
     int dnr(Function f, DecompInterface ifc) {
         DecompileResults r = ifc.decompileFunction(f, 120, monitor);
         if (r == null || r.getDecompiledFunction() == null) return -1;
         return r.getDecompiledFunction().getC().split("does not return", -1).length - 1;
     }
 
+    boolean bodyReturns(Function f) {
+        Listing listing = currentProgram.getListing();
+        for (Instruction i : listing.getInstructions(f.getBody(), true)) {
+            if (i.getFlowType().isTerminal() && i.getMnemonicString().toUpperCase().startsWith("RET")) return true;
+        }
+        return false;
+    }
+
     @Override
     public void run() throws Exception {
-        String out = getScriptArgs()[0];
+        String[] args = getScriptArgs();
+        String out = args[0];
+        boolean listOnly = args.length > 1 && args[1].equals("--list");
         StringBuilder log = new StringBuilder();
         AddressSpace sp = currentProgram.getAddressFactory().getDefaultAddressSpace();
         FunctionManager fm = currentProgram.getFunctionManager();
-        long[] roots = {0x140ce09b0L, 0x140128090L, 0x140111d90L, 0x14010bee0L};
         Set<Function> targets = new LinkedHashSet<>();
-        for (long r : roots) {
-            Function f = fm.getFunctionAt(sp.getAddress(r));
-            if (f == null) { log.append("MISSING root " + Long.toHexString(r) + "\n"); continue; }
+        for (Function f : fm.getFunctions(true)) {
+            if (!f.hasNoReturn()) continue;
+            Function body = f.isThunk() ? f.getThunkedFunction(true) : f;
+            if (body == null || !bodyReturns(body)) continue;
+            // A RET after a call that never comes back is dead code, and these
+            // are the CRT functions that end that way. _CxxThrowException has a
+            // RET after RaiseException; un-flagging it makes every throw site
+            // fall through into garbage. Library names come from Ghidra's
+            // function ID, so this holds across game patches.
+            if (NEVER_RETURNS.matcher(body.getName()).find() || NEVER_RETURNS.matcher(f.getName()).find()) {
+                log.append("kept noreturn (never-returns by name) " + f.getName() + "@" + f.getEntryPoint() + "\n");
+                continue;
+            }
             targets.add(f);
         }
-        for (Function f : fm.getFunctions(true)) {
-            if (f.isThunk()) {
-                Function t = f.getThunkedFunction(true);
-                if (t != null && targets.contains(t)) targets.add(f);
-            }
+        if (listOnly) {
+            for (Function t : targets)
+                log.append("target " + t.getName() + "@" + t.getEntryPoint() + " thunk=" + t.isThunk() + "\n");
+            log.append("targets " + targets.size() + "\n");
+            Files.write(Paths.get(out), log.toString().getBytes());
+            println("RSMM_NR_LIST\n" + log);
+            return;
         }
         int nrBefore = 0, userNamed = 0;
         for (Function f : fm.getFunctions(true)) {
