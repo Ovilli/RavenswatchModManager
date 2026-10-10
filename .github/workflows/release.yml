@@ -16,8 +16,49 @@ jobs:
   # waits on it, so a red tree costs a minute instead of a release.
   gate:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
+
+      # The two suites below are Linux-only and Python/Lua-only. CI covers the
+      # rest — Windows pytest, both frozen sidecars, typescript, the loader
+      # cross-compile — and v5.9.10 shipped from a commit whose CI was red
+      # (typescript), because nothing here looked at it. Wait for CI on this
+      # exact commit and refuse anything but green. A tag on a commit that was
+      # never pushed to main has no CI run and is refused too. Only the external
+      # link check is exempt: a third-party site being down says nothing about
+      # the build.
+      - name: CI green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          id=""
+          for _ in $(seq 1 20); do
+            id=$(gh run list --workflow ci.yml --commit "$SHA" --event push \
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$id" ] && break
+            echo "no CI run for $SHA yet; waiting"; sleep 30
+          done
+          if [ -z "$id" ]; then
+            echo "::error::no CI run for $SHA — push the commit to main and let CI finish before tagging"
+            exit 1
+          fi
+          gh run watch "$id" --interval 30 > /dev/null
+          bad=$(gh run view "$id" --json jobs --jq \
+            '.jobs[] | select(.name | startswith("docs external links") | not)
+                     | select(.conclusion != "success" and .conclusion != "skipped")
+                     | "\(.name): \(.conclusion)"')
+          if [ -n "$bad" ]; then
+            echo "::error::CI is not green on $SHA (run $id):"
+            echo "$bad"
+            exit 1
+          fi
+          echo "CI run $id is green on $SHA"
 
       - name: Install Python
         uses: actions/setup-python@v5
