@@ -3,6 +3,17 @@
   "entries": [
     {
       "version": "",
+      "loader_version": 35,
+      "date": "2026-10-10",
+      "summary": "New SDK APIs: R.talent.reset / upgrade_random / upgrade_lowest / upgrade / add_random_ultimate change talents during a run; R.status.clear / clear_stagger cleanse the hero.",
+      "highlights": [
+        "Mods can upgrade talents: random, lowest, a specific one, or straight to legendary (R.talent.upgrade*)",
+        "Mods can add a random ultimate talent or reset every talent (R.talent.add_random_ultimate / reset)",
+        "Mods can clear status effects and stagger (R.status.clear)"
+      ]
+    },
+    {
+      "version": "",
       "loader_version": 34,
       "date": "2026-10-10",
       "summary": "New SDK APIs: R.give.remove_random, R.give.remove_all and R.give.duplicate_random take items away or copy one, by rarity or for any.",
@@ -531,16 +542,6 @@
         "New: a problems only filter, plus a count of errors and warnings for the run, so you can find what went wrong without reading the whole log.",
         "When the loader switches a mod off for crashing during startup, the Log screen now says which mod, why, and offers to try it again. Previously the mod just appeared to be off with no explanation.",
         "The log now updates while you watch it without the app constantly working in the background, and it stops updating entirely while the window is hidden."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 10,
-      "date": "2026-08-27",
-      "summary": "Loader log lines now say which ones are actually failures.",
-      "highlights": [
-        "The in-game log now marks the lines where something genuinely failed, so tracking down a crash no longer means reading several hundred equal-looking lines. The app's Log screen can filter to just those, and so can rsmm log --errors.",
-        "A capability that is simply switched off — because you never enabled it, or because no mod uses it — is deliberately not marked as a failure, so the filter stays worth using."
       ]
     }
   ]
