@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { doctorStatus } from '../lib/doctor-status';
 import { TParts, useT } from '../lib/i18n-react';
 import { noteLoaderResult } from '../lib/loader-status';
 import { inTauri } from '../lib/platform';
@@ -13,8 +14,7 @@ import {
   updateLoader,
   updatePatternDb,
 } from '../lib/rsmm';
-import { cachedFor, oncePerLaunch } from '../lib/session-cache';
-import { useApp } from '../store';
+import { oncePerLaunch } from '../lib/session-cache';
 import { Button, CopyButton } from './chrome';
 
 const DISMISS_KEY = 'rsmm:setup-banner-dismissed';
@@ -126,15 +126,7 @@ export function SetupBanner() {
       // effect, and a blocked one needs the game closed. Still non-fatal —
       // a transport failure must not stop doctor from running.
       setLoaderUpdate(updates);
-      const { gameDir, modsDir } = useApp.getState().settings;
-      const { activeProfileId } = useApp.getState();
-      const r = await cachedFor(
-        `doctor|${gameDir ?? ''}|${modsDir ?? ''}|${activeProfileId}`,
-        60_000,
-        () => doctor(),
-        force,
-      );
-      setResult(r);
+      setResult(await doctorStatus(force));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

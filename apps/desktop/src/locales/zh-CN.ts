@@ -86,6 +86,8 @@ export const zhCN: Record<string, string> = {
   '{done} of {total} uninstalled.': '已卸载 {done} / {total} 个。',
   'Checking for conflicts…': '正在检查冲突…',
   'Could not check for conflicts': '无法检查冲突',
+  'Could not copy — select the preview below and copy it from there.':
+    '无法复制——请选中下方的预览内容，从那里复制。',
   'Could not read the installed mods': '无法读取已安装的模组',
   'The mod names below may be incomplete until this succeeds.':
     '在此成功之前，下面的模组名称可能不完整。',
@@ -180,6 +182,7 @@ export const zhCN: Record<string, string> = {
   'Copy error details to clipboard': '将错误详情复制到剪贴板',
   'Copy this code to restore the full app state': '复制此代码即可恢复完整的应用状态',
   'Copy this code to share the profile': '复制此代码即可分享该方案',
+  'Copy report': '复制报告',
   Cosmetic: '外观美化',
   'Could not create account.': '无法创建账户。',
   'Could not load this collection.': '无法加载此合集。',
@@ -819,6 +822,8 @@ export const zhCN: Record<string, string> = {
   'in profile': '已在方案中',
   'include app log': '附带程序日志',
   'include mod list': '附带模组列表',
+  'include health check': '附带健康检查',
+  'running health check…': '正在运行健康检查…',
   install: '安装',
   'install all': '全部安装',
   'install rest': '安装其余',

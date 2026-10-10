@@ -1,6 +1,6 @@
 import { LOG_SHARE_MAX_CHARS, type LogShareSource } from '@rsmm/schemas';
 import { loaderLogProblems, parseLoaderLog } from './loader-log';
-import type { LocalMod } from './rsmm';
+import type { DoctorCheck, LocalMod, UpdateLoaderResult } from './rsmm';
 
 /**
  * Build the text that a "Share log" upload actually publishes.
@@ -78,6 +78,8 @@ export interface LogReportInput {
   mods?: LocalMod[];
   gameBuild?: string | null;
   loaderVersion?: string | null;
+  /** `rsmm doctor` findings. Only the ones that are not OK are written out. */
+  doctor?: DoctorCheck[] | null;
   /** What the user typed to describe the problem. */
   note?: string;
   redact?: boolean;
@@ -90,6 +92,34 @@ export interface LogReport {
    *  were dropped — the dialog says so rather than letting it pass silently. */
   truncated: boolean;
   meta: Record<string, unknown>;
+}
+
+/** The loader line for the report header: what is planted, and whether the
+ *  channel has something newer. `null` when the check could not tell. */
+export function describeLoader(status: UpdateLoaderResult | null | undefined): string | null {
+  if (!status) return null;
+  const have = status.installedVersion != null ? `v${status.installedVersion}` : 'not installed';
+  const channel = status.remoteVersion != null ? `, channel v${status.remoteVersion}` : '';
+  return `${have}${channel} (${status.status})`;
+}
+
+/** A finding's detail is capped: the header is never truncated, so one huge
+ *  detail could otherwise push the log itself out of the upload. */
+const DOCTOR_DETAIL_MAX = 300;
+
+function doctorSummary(checks: DoctorCheck[], scrub: (s: string) => string): string[] {
+  const bad = checks.filter((c) => c.status !== 'OK');
+  const lines = [`doctor: ${checks.length - bad.length} ok, ${bad.length} not ok`];
+  for (const c of bad) {
+    lines.push(`  [${c.status}] ${scrub(c.label)}${c.code ? ` (${c.code})` : ''}`);
+    const detail = c.detail?.trim();
+    if (detail) {
+      const clipped =
+        detail.length > DOCTOR_DETAIL_MAX ? `${detail.slice(0, DOCTOR_DETAIL_MAX)}…` : detail;
+      lines.push(`      ${scrub(clipped).replace(/\s*\n\s*/g, ' ')}`);
+    }
+  }
+  return lines;
 }
 
 function modSummary(mods: LocalMod[]): string[] {
@@ -126,6 +156,10 @@ export function buildLogReport(input: LogReportInput): LogReport {
   if (input.loaderVersion) header.push(`loader: ${input.loaderVersion}`);
   if (input.loaderPath) header.push(`log path: ${scrub(input.loaderPath)}`);
   header.push(`redacted: ${redact ? 'yes' : 'no'}`);
+  // In the header, not a section after it: `clampReport` keeps the header whole
+  // and drops the oldest log lines, so a long log cannot push the health check
+  // — usually the fastest answer in the report — out of the upload.
+  if (input.doctor) header.push(...doctorSummary(input.doctor, scrub));
   if (input.mods) header.push(...modSummary(input.mods));
 
   // Triage line. The whole reason the loader stamps severity is that a reader
@@ -166,6 +200,7 @@ export function buildLogReport(input: LogReportInput): LogReport {
       loaderVersion: input.loaderVersion ?? null,
       redacted: redact,
       truncated,
+      doctorNotOk: input.doctor ? input.doctor.filter((c) => c.status !== 'OK').length : null,
       errors: problems.errors,
       warnings: problems.warnings,
     },

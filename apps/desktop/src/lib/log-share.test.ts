@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildLogReport, clampReport, redactLogText } from './log-share';
+import { buildLogReport, clampReport, describeLoader, redactLogText } from './log-share';
+import type { DoctorCheck } from './rsmm';
 
 describe('redactLogText', () => {
   it('blanks the account name out of Windows paths but keeps the path shape', () => {
@@ -149,5 +150,57 @@ describe('buildLogReport triage line', () => {
     });
     expect(r.content).toContain('C:\\Users\\<user>\\mods');
     expect(r.content).not.toContain('alice');
+  });
+});
+
+describe('diagnostics: doctor and loader', () => {
+  const checks: DoctorCheck[] = [
+    { status: 'OK', ok: true, label: 'game dir found' },
+    {
+      status: 'FAIL',
+      ok: false,
+      label: 'loader DLL missing',
+      code: 'loader.missing',
+      detail: 'expected C:\\Users\\alice\\Ravenswatch\\winhttp.dll',
+    },
+    { status: 'WARN', ok: false, label: 'pattern DB stale' },
+  ];
+
+  it('writes the findings that are not OK into the header, redacted', () => {
+    const r = buildLogReport({ rsmmVersion: '1', os: 'win', loaderLines: [], doctor: checks });
+    expect(r.content).toContain('doctor: 1 ok, 2 not ok');
+    expect(r.content).toContain('[FAIL] loader DLL missing (loader.missing)');
+    expect(r.content).toContain('[WARN] pattern DB stale');
+    expect(r.content).not.toContain('game dir found');
+    expect(r.content).not.toContain('alice');
+    expect(r.meta.doctorNotOk).toBe(2);
+  });
+
+  it('keeps the findings when a long log is truncated', () => {
+    const loaderLines = Array.from({ length: 20_000 }, (_, i) => `line ${i} ${'x'.repeat(20)}`);
+    const r = buildLogReport({ rsmmVersion: '1', os: 'win', loaderLines, doctor: checks });
+    expect(r.truncated).toBe(true);
+    expect(r.content).toContain('[FAIL] loader DLL missing');
+  });
+
+  it('leaves the section out when doctor was not run', () => {
+    const r = buildLogReport({ rsmmVersion: '1', os: 'win', loaderLines: [] });
+    expect(r.content).not.toContain('doctor:');
+    expect(r.meta.doctorNotOk).toBeNull();
+  });
+
+  it('describes the planted loader against the channel', () => {
+    expect(describeLoader(null)).toBeNull();
+    expect(
+      describeLoader({
+        ok: true,
+        status: 'update_available',
+        installedVersion: 31,
+        remoteVersion: 32,
+      }),
+    ).toBe('v31, channel v32 (update_available)');
+    expect(describeLoader({ ok: true, status: 'not_published', installedVersion: null })).toBe(
+      'not installed (not_published)',
+    );
   });
 });

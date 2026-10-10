@@ -1,13 +1,15 @@
 import { isRateLimited } from '@rsmm/api-client';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Check, ExternalLink, Link2, Loader2, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, Link2, Loader2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api, describeApiError } from '../lib/api';
 import { RSMM_VERSION } from '../lib/app-version';
+import { doctorStatus } from '../lib/doctor-status';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog, readLauncherLog } from '../lib/launcher-log';
-import { buildLogReport } from '../lib/log-share';
-import type { LocalMod } from '../lib/rsmm';
+import { loaderStatus } from '../lib/loader-status';
+import { buildLogReport, describeLoader } from '../lib/log-share';
+import type { DoctorCheck, LocalMod } from '../lib/rsmm';
 import { listLocalMods } from '../lib/rsmm';
 import { detectOs } from '../lib/telemetry';
 import { Button, CopyButton, Fleuron, MonoTag, Panel } from './chrome';
@@ -36,16 +38,22 @@ export function ShareLogDialog({
   const [redact, setRedact] = useState(true);
   const [includeLauncher, setIncludeLauncher] = useState(true);
   const [includeMods, setIncludeMods] = useState(true);
+  const [includeHealth, setIncludeHealth] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [mods, setMods] = useState<LocalMod[] | null>(null);
   const [launcherLog, setLauncherLog] = useState<string | null>(null);
+  // `undefined` while doctor runs, `null` when it could not run at all.
+  const [health, setHealth] = useState<DoctorCheck[] | null | undefined>(undefined);
+  const [loaderLine, setLoaderLine] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<{ url: string; expiresAt: string } | null>(null);
 
   // Gathered up front, not at upload time: the preview has to show what will
   // actually be sent, and a fetch hidden behind the button would make the
-  // preview a lie.
+  // preview a lie. Doctor and the loader status are the cached results the
+  // Library already holds when it has run them, so this rarely starts a process.
   useEffect(() => {
     void listLocalMods()
       .then(setMods)
@@ -53,6 +61,12 @@ export function ShareLogDialog({
     void readLauncherLog()
       .then((raw) => setLauncherLog(raw.split('\n').slice(-300).join('\n')))
       .catch(() => setLauncherLog(''));
+    void doctorStatus()
+      .then((r) => setHealth(r ? (r.checks ?? []) : null))
+      .catch(() => setHealth(null));
+    void loaderStatus()
+      .then((s) => setLoaderLine(describeLoader(s)))
+      .catch(() => setLoaderLine(null));
   }, []);
 
   const report = useMemo(
@@ -64,11 +78,38 @@ export function ShareLogDialog({
         loaderPath,
         launcherLog: includeLauncher ? launcherLog : null,
         mods: includeMods ? (mods ?? []) : undefined,
+        loaderVersion: loaderLine,
+        doctor: includeHealth ? health : null,
         note,
         redact,
       }),
-    [loaderLines, loaderPath, includeLauncher, launcherLog, includeMods, mods, note, redact],
+    [
+      loaderLines,
+      loaderPath,
+      includeLauncher,
+      launcherLog,
+      includeMods,
+      mods,
+      loaderLine,
+      includeHealth,
+      health,
+      note,
+      redact,
+    ],
   );
+
+  // For a report that should not go to a server: offline, rate limited, or a
+  // private channel. Same bytes as the upload, preview and redaction included.
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(report.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setShowPreview(true);
+      toast.push(t('Could not copy — select the preview below and copy it from there.'), 'error');
+    }
+  };
 
   const upload = async () => {
     setUploading(true);
@@ -190,6 +231,11 @@ export function ShareLogDialog({
                 onChange={setIncludeMods}
                 label={t('include mod list')}
               />
+              <Toggle
+                checked={includeHealth}
+                onChange={setIncludeHealth}
+                label={t('include health check')}
+              />
             </div>
 
             {redact ? (
@@ -210,6 +256,9 @@ export function ShareLogDialog({
               <MonoTag>{(report.content.length / 1024).toFixed(1)} KB</MonoTag>
               <MonoTag>{t('{n} lines', { n: report.content.split('\n').length })}</MonoTag>
               {report.truncated ? <MonoTag tone="gilt">{t('oldest lines dropped')}</MonoTag> : null}
+              {includeHealth && health === undefined ? (
+                <MonoTag>{t('running health check…')}</MonoTag>
+              ) : null}
               <Button type="button" size="sm" onClick={() => setShowPreview((p) => !p)}>
                 {showPreview
                   ? t('Hide exactly what is uploaded')
@@ -232,6 +281,14 @@ export function ShareLogDialog({
             <div className="flex items-center justify-end gap-2">
               <Button type="button" onClick={onClose}>
                 {t('Cancel')}
+              </Button>
+              <Button type="button" onClick={() => void copyReport()}>
+                {copied ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {copied ? t('Copied') : t('Copy report')}
               </Button>
               <Button
                 type="button"
