@@ -1071,6 +1071,8 @@ rsmm.read_cstr(va, max)              -- read NUL-terminated string
 rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 ```
 
+To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/); the primitives above are the layer underneath.
+
 See `mods/ExampleLuaMod/init.lua` and `mods/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [docs/_re/CALLING_GAME_FUNCTIONS.md](/reverse-engineering/calling-game-functions/).
 
 ### Events

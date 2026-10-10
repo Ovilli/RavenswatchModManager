@@ -571,8 +571,24 @@ Melody, control, run flow (read 2026-10-10):
   GAME_END_NEXT_CHAPTER (level load's follow-up step), TELEPORT_SUBMAP_ENTER/EXIT
   (they only set the player-location flags after a move), START_DAYMARE /
   START_NIGHTMARE (0x1401ee4e0 / 0x1401ee590: on the day/night component they
-  restart the CURRENT phase's timer, only when the phase matches, then schedule
-  something through 0x140205120 — unread).
+  set flag +0x148 and the timer +0x13c, only when the phase matches, then
+  schedule 0x1401ed010 through 0x140205120 — a TRANSITION tick: it counts +0x140
+  down against the dawn/dusk half-length (+0xb4) and then flips the phase byte
+  +0x134 (0 day / 1 night). Reading: DAYMARE (day only) starts the day->night
+  transition early, NIGHTMARE (night only) the reverse — "force night/day now".
+  Unconfirmed: +0x13c being set to the day/night LENGTH does not fit cleanly,
+  and the dispatcher (subscribed in 0x1401eca80) is unread. Test before an API).
+
+World-interaction events are NOTIFICATIONS: OPEN_CHEST, USE_HEAL_FOUNTAIN,
+USE_BLOOD_FOUNTAIN, HOURGLASS_STATS and ALTAR_HERO_REVIVE_STAT are subscribed
+only by the analytics emitters (Analytics_EmitOpenChest..+0x190) — sending one
+opens nothing and fakes an analytics event. WISHING_WELL_FILLED,
+ALTAR_OF_HEROES_PAID and BOSS_ACTIVATED have no code subscriber at all.
+CINE_ASK_SKIP (world, 0x140288680) is the cutscene SKIP VOTE: ++this+0x204, then
+0x1402742e0 with the count — a candidate for an auto-skip mod, untested.
+REVIVE: the party's tokens are the scene-context int 0x1633db76; REVIVE_REQUEST
+(world, 0x140287ef0) revives only with a token left and decrements it. Backs
+`R.revive.add_token` (a guarded game-value write).
 
 Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
 (layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).

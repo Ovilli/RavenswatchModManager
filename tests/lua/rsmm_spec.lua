@@ -1607,6 +1607,26 @@ do
     R.game.get, R.game.ready = real_game_get, real_game_ready
     world_ev("GAME_END_FAILED"); world_ev("GAME_START")
     check(R.run.world_ready(), "a fresh chapter captures the world again")
+
+    -- R.revive: the party's tokens are the scene-context value 0x1633db76,
+    -- written through R.game's guarded path (refuses replicated unless solo).
+    do
+        local real_get_key, real_write = R.game.get_key, R.game._write_key
+        local tokens, wrote = 2, nil
+        R.game.get_key = function(k) if k == 0x1633db76 then return tokens end return real_get_key(k) end
+        R.game._write_key = function(k, v) wrote = { k = k, v = v }; tokens = v; return true end
+        check(R.revive.tokens() == 2, "revive.tokens reads the Revive token value")
+        local was_on = R.stat.writes_enabled()
+        check(R.revive.add_token(0) == false and wrote == nil, "add_token(0) is refused")
+        if was_on then
+            check(R.revive.add_token(3) == true and wrote.k == 0x1633db76 and wrote.v == 5
+                  and R.revive.tokens() == 5, "add_token(3) writes tokens + 3")
+        end
+        tokens, wrote = nil, nil
+        check(R.revive.add_token(1) == false and wrote == nil,
+              "with no readable token value (no run scene) nothing is written")
+        R.game.get_key, R.game._write_key = real_get_key, real_write
+    end
     R.rtti.name = real_rtti_name
     dispatched = false
     check(R.run.win() == false and not dispatched, "a world dispatcher whose owner is no longer the scene context is refused")

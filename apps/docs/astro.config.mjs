@@ -139,6 +139,7 @@ export default defineConfig({
           items: [
             { label: 'CLI commands', slug: 'reference/cli' },
             { label: 'Conventions & best practices', slug: 'reference/conventions' },
+            { label: 'Lua gameplay API', slug: 'reference/lua-api' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
             { label: 'Glossary', slug: 'reference/glossary' },
             { label: 'Talent name lookup', slug: 'reference/talent-names' },

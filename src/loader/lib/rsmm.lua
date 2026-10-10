@@ -1633,6 +1633,46 @@ function R.modifier.clear(name)
     return ok
 end
 
+-- revive tokens ------------------------------------------------------------
+--
+-- The party's revive tokens are the scene-context value "Revive token"
+-- (0x1633db76): the world REVIVE_REQUEST handler (0x140287ef0) reads it, and
+-- only with a token left (> 0) decrements it and goes on to revive. So adding
+-- tokens is a write of that value, through the same guarded path as
+-- R.modifier.set — it refuses a value replicated to peers unless solo.
+-- EXPERIMENTAL (static RE 2026-10-10). Gated by R.stat.enable_writes();
+-- MAIN THREAD only.
+--
+--     R.revive.tokens()        -- tokens left, or nil
+--     R.revive.add_token(n)    -- n more (default 1)
+R.revive = {}
+do
+    local REVIVE_TOKEN_KEY = 0x1633db76
+
+    function R.revive.tokens() return R.game.get_key(REVIVE_TOKEN_KEY) end
+
+    function R.revive.add_token(n)
+        n = n == nil and 1 or n
+        if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 99 then
+            R.log("[rsmm.revive] add_token(n): n must be a whole number from 1 to 99")
+            return false
+        end
+        if not (R.stat.writes_enabled and R.stat.writes_enabled()) then
+            R.log("[rsmm.revive] add_token is a write — call R.stat.enable_writes() first")
+            return false
+        end
+        local cur = R.revive.tokens()
+        if type(cur) ~= "number" then
+            R.log("[rsmm.revive] the revive-token value is not readable yet (no run scene) — refusing")
+            return false
+        end
+        local ok, why = R.game._write_key(REVIVE_TOKEN_KEY, math.floor(cur) + n)
+        R.log(string.format("[rsmm.revive] add_token(%d): %s (tokens %s -> %s)", n,
+            ok and "ok" or ("REFUSED: " .. tostring(why)), tostring(cur), tostring(R.revive.tokens())))
+        return ok
+    end
+end
+
 -- Names this SDK can WRITE, sorted. Same set as R.modifier.names() today; kept
 -- separate so a read-only key added later does not silently become writable.
 function R.modifier.writable()
