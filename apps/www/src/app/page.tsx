@@ -399,7 +399,7 @@ export default async function Home() {
             operatingSystem: 'Windows, Linux, SteamOS',
             url: 'https://rsmm.me',
             downloadUrl: 'https://rsmm.me/download',
-            image: 'https://rsmm.me/screens/library.jpg',
+            image: 'https://rsmm.me/screens/library.jpg?v=2',
             ...(release.tag ? { softwareVersion: release.tag.replace(/^v/, '') } : {}),
             offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
             publisher: { '@id': 'https://rsmm.me/#org' },
