@@ -387,6 +387,7 @@ export const zhCN: Record<string, string> = {
   'Loading…': '加载中…',
   Log: '日志',
   'Log uploaded — link copied below.': '日志已上传——链接见下方。',
+  'Logo by Arch': '图标设计：Arch',
   'Manage profiles →': '管理方案 →',
   Maximize: '最大化',
   'Maximum legibility — your OS UI font everywhere.': '最高可读性——全部使用系统界面字体。',

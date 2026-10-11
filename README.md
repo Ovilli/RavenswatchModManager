@@ -207,7 +207,7 @@ RSMM is free and open source. If you'd like to support it:
 <sub>MIT licensed, see [LICENSE](LICENSE). The loader includes MinHook, Dear ImGui and Lua 5.4,
 whose licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). RSMM does not modify
 `Ravenswatch.exe` or bypass anti-cheat, contains no game assets, and requires a legitimate copy
-of the game. Not affiliated with Passtech Games or Nacon.</sub>
+of the game. Not affiliated with Passtech Games or Nacon. Logo by Arch.</sub>
 
 ## Contributors
 
