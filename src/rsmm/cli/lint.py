@@ -159,6 +159,18 @@ def lint_one(entry: Path) -> tuple[int, int]:
               f"{_ST.accent('host-authoritative')}")
         warns += 1
 
+    # config_schema.toml — the fields the desktop app and the overlay draw.
+    # A schema that does not parse is invisible until a player opens the
+    # config panel and finds it broken (an enum with no options rendered as a
+    # dropdown that could not change anything), so check every mod that has one.
+    if (entry / "config_schema.toml").is_file():
+        from rsmm.sdk.config import ConfigError, ConfigSchema
+        try:
+            ConfigSchema.load(entry / "config_schema.toml")
+        except (ConfigError, ValueError) as ce:
+            print(f"  {_T_FAIL} {mod_s}: config_schema.toml: {ce}")
+            errs += 1
+
     # [overlay] — a mod-declared HUD. Validated here rather than at runtime
     # because the failure is otherwise invisible: the desktop app would list
     # the overlay, refuse to open it, and the author would have no idea which

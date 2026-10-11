@@ -153,6 +153,25 @@ class Field:
             raise ConfigError(f"{self.name}: {v} > max {self.max}")
 
 
+def _choices(name: str, type_: str, body: dict) -> list[str]:
+    """A field's static option list.
+
+    `choices` is the documented key. `values` is accepted too because it is
+    what authors reach for — every enum in the repo's own mods used it, and the
+    parser read only `choices`, so each of those dropdowns rendered EMPTY in
+    the config panel and the overlay and could not change anything. An enum or
+    multiselect that ends up with no options and no `source` is now an error
+    instead of a dead control.
+    """
+    raw = body.get("choices")
+    if raw is None:
+        raw = body.get("values")
+    out = [str(c) for c in (raw or [])]
+    if type_ in ("enum", "multiselect") and not out and body.get("source") is None:
+        raise ConfigError(f"{name}: an {type_} needs its options: choices = [\"a\", \"b\", ...]")
+    return out
+
+
 @dataclass
 class ConfigSchema:
     fields: dict[str, Field] = field(default_factory=dict)
@@ -170,7 +189,7 @@ class ConfigSchema:
                 default=body.get("default"),
                 min=body.get("min"),
                 max=body.get("max"),
-                choices=list(body.get("choices", []) or []),
+                choices=_choices(name, t, body),
                 label=str(body.get("label", name)),
                 source=_check_source(name, body.get("source"), t),
             )
