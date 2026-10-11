@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-10",
+  "generated": "2026-10-11",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 40,
+      "date": "2026-10-11",
+      "summary": "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options.",
+      "highlights": [
+        "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options."
+      ]
+    },
     {
       "version": "5.9.15",
       "date": "2026-10-11",
