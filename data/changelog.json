@@ -2,6 +2,14 @@
   "generated": "2026-10-11",
   "entries": [
     {
+      "version": "5.9.17",
+      "date": "2026-10-11",
+      "summary": "RSMM has a new logo.",
+      "highlights": [
+        "New app icon and logo: a red gear with a feather, across the app, the website and the docs."
+      ]
+    },
+    {
       "version": "5.9.16",
       "date": "2026-10-11",
       "summary": "The Overlay button no longer stays greyed out after you install a mod.",
