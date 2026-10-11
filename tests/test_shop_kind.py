@@ -118,7 +118,7 @@ def test_pool_match_is_all_include_and_no_exclude():
 def test_flag_edit_round_trips():
     _require_corpus()
     raw = (_MIRROR / S.ITEM_DIR_ASSET / f"{_GRIMOIRE}{S.ITEM_SUFFIX}").read_bytes()
-    tagged = S.set_flags(raw, S.read_flags(raw) + [S.row_tag("minor")])
+    tagged = S.set_flags(raw, [*S.read_flags(raw), S.row_tag("minor")])
     assert S.read_flags(tagged) == ["Grimoire", "High", "RSMM_Shop_minor"]
     assert S.set_flags(tagged, ["Grimoire", "High"]) == raw
 

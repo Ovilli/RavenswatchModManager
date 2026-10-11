@@ -1,10 +1,20 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { AlertTriangle, ChevronDown, Link2, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  FolderOpen,
+  Link2,
+  Pause,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, CopyButton, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { ShareLogDialog } from '../components/share-log-dialog';
-import { useToast } from '../components/toast';
+import { useDialog, useToast } from '../components/toast';
 import { explainError } from '../lib/errors';
 import { TParts, useT } from '../lib/i18n-react';
 import {
@@ -17,7 +27,9 @@ import {
   type LogChunk,
   type TailState,
   appendChunk,
+  deleteLoaderLogs,
   emptyTail,
+  openLoaderLogsDir,
   readLoaderLogChunk,
   sessionSlice,
 } from '../lib/loader-log-tail';
@@ -25,6 +37,7 @@ import {
   type ArchivedRun,
   type LoaderHealth,
   type LoaderLogResult,
+  gameStatus,
   listLoaderRuns,
   loaderHealth,
   readLoaderLog,
@@ -49,12 +62,19 @@ const LINE_CAP = 2000;
 
 /** Which log the screen is showing. Archived runs are named, not indexed: the
  *  name is an opaque handle the sidecar resolves against its own listing. */
-type Source = { kind: 'current' } | { kind: 'prev' } | { kind: 'run'; name: string };
+/** `current` is the run in progress (nothing, with no game up); `last` the last
+ *  run that ENDED: the newest log with no game up, the rotated one while a game
+ *  writes the newest; `run` an archived run, by name. */
+type Source = { kind: 'current' } | { kind: 'last' } | { kind: 'run'; name: string };
+
+/** How often the screen asks whether Ravenswatch is up while it shows the newest
+ *  log. A process check, not a file read, so far slower than the tail poll. */
+const GAME_POLL_MS = 5000;
 
 /** `t` is passed in: this is a plain helper, and the label is copy. */
 function sourceLabel(source: Source, t: (message: string) => string): string {
   if (source.kind === 'current') return t('Current run');
-  if (source.kind === 'prev') return t('Previous run');
+  if (source.kind === 'last') return t('Last run');
   return source.name.replace(/\.log$/, '');
 }
 
@@ -62,8 +82,10 @@ function LogPage() {
   const t = useT();
   const { running } = useLaunch();
   const toast = useToast();
+  const dialog = useDialog();
   const [source, setSource] = useState<Source>({ kind: 'current' });
   const [runs, setRuns] = useState<ArchivedRun[]>([]);
+  const [runsDir, setRunsDir] = useState<string | null>(null);
   const [meta, setMeta] = useState<LoaderLogResult | null>(null);
   const [tail, setTail] = useState<TailState>(emptyTail);
   const [health, setHealth] = useState<LoaderHealth | null>(null);
@@ -89,6 +111,35 @@ function LogPage() {
   // will never change again.
   const followable = source.kind === 'current';
 
+  // Whether the game is up, however it was started: `running` only knows about
+  // launches from this app, so a game started from Steam would read as stopped,
+  // and with no game at all the newest log is the LAST run, not a current one.
+  const [processUp, setProcessUp] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const st = await gameStatus();
+        if (!cancelled) setProcessUp(st ? !!st.running : null);
+      } catch {
+        if (!cancelled) setProcessUp(null);
+      }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), GAME_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+  // Unknown (an older sidecar, a failed check) falls back to the launch state.
+  const gameUp = !!running || processUp === true;
+  // With no game up, "Current run" has nothing to show: the newest log is a
+  // finished run, which is "Last run" (user report: the screen kept showing it).
+  const idle = followable && !gameUp;
+  // While a game writes the newest log, the last FINISHED run is the rotated one.
+  const readPrev = source.kind === 'last' && gameUp;
+
   /** Full reload through the sidecar: it owns game-directory resolution and
    *  the archived-run lookup, and it hands back the byte length the
    *  incremental tail resumes from. */
@@ -102,7 +153,7 @@ function LogPage() {
     try {
       const r = await readLoaderLog({
         lines: LINE_CAP,
-        prev: source.kind === 'prev',
+        prev: readPrev,
         run: source.kind === 'run' ? source.name : undefined,
         // Session slicing happens client-side over the whole buffer, so the
         // view stays right when the game starts a new session mid-follow.
@@ -127,11 +178,20 @@ function LogPage() {
     } finally {
       setLoading(false);
     }
-  }, [source]);
+  }, [source, readPrev]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A game starting while "Current run" sits empty: read the new log from the
+  // start rather than tailing on from the finished run's buffer.
+  const wasUp = useRef(gameUp);
+  useEffect(() => {
+    const started = gameUp && !wasUp.current;
+    wasUp.current = gameUp;
+    if (started && followable) void load();
+  }, [gameUp, followable, load]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -145,18 +205,66 @@ function LogPage() {
 
   // Re-read when the game stops: that is exactly when a canary opened by a
   // crashy boot becomes visible.
+  // Read on mount, and again each time the game stops. This was two effects
+  // that both fired on mount, so opening the Log screen read the health file twice.
+  const healthRead = useRef(false);
   useEffect(() => {
-    void refreshHealth();
-  }, [refreshHealth]);
-  useEffect(() => {
-    if (!running) void refreshHealth();
+    const first = !healthRead.current;
+    healthRead.current = true;
+    if (first || !running) void refreshHealth();
   }, [running, refreshHealth]);
 
-  useEffect(() => {
-    void listLoaderRuns()
-      .then((r) => setRuns(r?.runs ?? []))
-      .catch(() => setRuns([]));
+  const refreshRuns = useCallback(async () => {
+    try {
+      const r = await listLoaderRuns();
+      setRuns(r?.runs ?? []);
+      setRunsDir(r?.dir ?? null);
+    } catch {
+      setRuns([]);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshRuns();
+  }, [refreshRuns]);
+
+  const onOpenFolder = async () => {
+    if (!runsDir) return;
+    try {
+      await openLoaderLogsDir(runsDir);
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
+
+  const onDeleteLogs = async () => {
+    if (!runsDir) return;
+    const ok = await dialog.confirm({
+      title: t('Delete all logs?'),
+      body: gameUp
+        ? t(
+            'This deletes every archived run. The log of the game that is running now is kept until it closes.',
+          )
+        : t(
+            'This deletes every archived run and the last run’s log. Logs you have already shared keep working.',
+          ),
+      confirmLabel: t('Delete'),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await deleteLoaderLogs(runsDir, !gameUp);
+      toast.push(
+        t.n(r.files, 'Deleted {n} log file.', 'Deleted {n} log files.'),
+        r.skipped > 0 ? 'error' : 'success',
+      );
+      setSource({ kind: 'current' });
+      await refreshRuns();
+      await load();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
 
   /**
    * The follow loop.
@@ -253,9 +361,9 @@ function LogPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-fraktur text-xl text-parchment">{sourceLabel(source, t)}</h3>
-            {running && followable ? (
+            {gameUp && followable ? (
               <MonoTag tone="gilt">{t('game running')}</MonoTag>
-            ) : meta?.exists ? (
+            ) : idle ? null : meta?.exists ? (
               <MonoTag>{t.n(sessions, '{n} session', '{n} sessions')}</MonoTag>
             ) : null}
             {tail.truncated ? <MonoTag>{t('oldest lines trimmed')}</MonoTag> : null}
@@ -303,6 +411,26 @@ function LogPage() {
               <Link2 className="h-3.5 w-3.5" aria-hidden />
               {t('Share link')}
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!runsDir}
+              onClick={() => void onOpenFolder()}
+              title={t('Open the folder that holds every archived run')}
+            >
+              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+              {t('Open folder')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!runsDir}
+              onClick={() => void onDeleteLogs()}
+              title={t('Delete the archived runs and the last run’s log')}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              {t('Delete logs')}
+            </Button>
           </div>
         </div>
 
@@ -311,21 +439,31 @@ function LogPage() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Select
             value={
-              source.kind === 'run' ? `run:${source.name}` : source.kind === 'prev' ? 'prev' : 'now'
+              source.kind === 'run'
+                ? `run:${source.name}`
+                : source.kind === 'current'
+                  ? 'now'
+                  : source.kind
             }
             onChange={(v) =>
               setSource(
                 v === 'now'
                   ? { kind: 'current' }
-                  : v === 'prev'
-                    ? { kind: 'prev' }
+                  : v === 'last'
+                    ? { kind: 'last' }
                     : { kind: 'run', name: v.slice('run:'.length) },
               )
             }
             ariaLabel={t('Which run to read')}
           >
             <option value="now">{t('Current run')}</option>
-            <option value="prev">{t('Previous run')}</option>
+            {/* The loader archives a run when the NEXT one starts, so with no
+                game up the newest log is the one finished run the archive below
+                does not hold yet. While a game runs, that run is the newest
+                archive entry, and a second "previous" entry only repeated it. */}
+            {!gameUp || source.kind === 'last' ? (
+              <option value="last">{t('Last run')}</option>
+            ) : null}
             {runs.map((r) => (
               <option key={r.name} value={`run:${r.name}`}>
                 {r.name.replace(/\.log$/, '')} · {Math.max(1, Math.round(r.bytes / 1024))} KB
@@ -374,18 +512,36 @@ function LogPage() {
           </p>
         ) : null}
 
-        <LogBody
-          loading={loading}
-          error={error}
-          meta={meta}
-          lines={visible}
-          total={lines.length}
-          scrollRef={scrollRef}
-          onScroll={onScroll}
-        />
+        {idle ? (
+          <div className="border border-border bg-pitch/60 p-3">
+            <p className="font-serif-italic text-ash">
+              {t('Ravenswatch is not running. Its log shows here as soon as you start it.')}
+            </p>
+            {meta?.exists ? (
+              <Button
+                type="button"
+                size="sm"
+                className="mt-2"
+                onClick={() => setSource({ kind: 'last' })}
+              >
+                {t('Show the last run')}
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <LogBody
+            loading={loading}
+            error={error}
+            meta={meta}
+            lines={visible}
+            total={lines.length}
+            scrollRef={scrollRef}
+            onScroll={onScroll}
+          />
+        )}
 
         {meta?.path ? (
-          <p className="font-data mt-2 break-all text-[10px] text-ash">{meta.path}</p>
+          <p className="font-data mt-2 break-all text-xs text-ash">{meta.path}</p>
         ) : null}
       </Panel>
 
@@ -596,13 +752,13 @@ function LogBody({
             ) : (
               <div className="flex flex-wrap items-baseline gap-2">
                 {line.stamp ? (
-                  <span className="font-mono shrink-0 text-[10px] text-ash">
+                  <span className="font-mono shrink-0 text-xs text-ash">
                     {line.stamp.slice(11)}
                   </span>
                 ) : null}
                 {line.severity ? (
                   <span
-                    className={`font-mono shrink-0 border px-1 text-[10px] uppercase ${
+                    className={`font-mono shrink-0 border px-1 text-xs uppercase ${
                       line.severity === 'err'
                         ? 'border-crimson/60 text-crimson'
                         : 'border-gilt/50 text-gilt'
@@ -612,7 +768,7 @@ function LogBody({
                   </span>
                 ) : null}
                 {line.tag ? (
-                  <span className="font-mono shrink-0 border border-border px-1 text-[10px] text-smoke">
+                  <span className="font-mono shrink-0 border border-border px-1 text-xs text-smoke">
                     {line.tag}
                   </span>
                 ) : null}

@@ -5,14 +5,14 @@
     rsmm disable <id>... [--no-apply] [--mods-dir DIR]
     rsmm disable --all   [--no-apply] [--mods-dir DIR]
 
-Flips `enabled` in each mod's `manifest.toml` (same edit the in-game mod
-menu performs via `rsmm intents apply`), then re-runs `rsmm apply` so the
-game install reflects the change. `--no-apply` skips that final step.
+Flips `enabled` in each mod's `manifest.toml`, then re-runs `rsmm apply` so
+the game install reflects the change. `--no-apply` skips that final step.
 
 `rsmm enable <id> --only` is the "test exactly this mod" shortcut: it
 enables the listed mods and disables every other mod in one pass.
 
-Mod ids are the directory names under `mods/` (case-sensitive).
+Mod ids are the directory names under `mods/`; case is forgiven when only one
+folder matches, and a typo gets a "did you mean".
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from ..engine import paths as P
 from . import _keys, _term
-from .cmd_intents import set_mod_enabled
+from ._suggest import UnknownMod, resolve_mod
 
 _ST = _term.Style()
 
@@ -36,6 +36,31 @@ _DOT = "·"        # ·
 #: Manifests are written with the value aligned (`enabled     = true`), so a
 #: naive `"enabled = true" in text` check reports every mod as disabled.
 _ENABLED_TRUE = re.compile(r"^\s*enabled\s*=\s*true\s*$", re.MULTILINE)
+
+
+def set_mod_enabled(mods_dir: Path, mod_id: str, enabled: bool) -> str:
+    """Flip `enabled` in mods/<id>/manifest.toml. Returns a status word."""
+    manifest = mods_dir / mod_id / "manifest.toml"
+    if not manifest.is_file():
+        return "missing"
+    text = manifest.read_text(encoding="utf-8")
+    want = f"enabled = {'true' if enabled else 'false'}"
+    # Replace an existing top-level `enabled` assignment (any spacing)…
+    # `[ \t]*`, not `\s*`: under (?m) `\s*$` also ate the line break after
+    # the flag (at the end of the file or before a blank line), so a manifest
+    # that already matched lost a newline and was reported as changed.
+    new, n = re.subn(r"(?m)^(enabled[ \t]*=[ \t]*)(true|false)[ \t]*$",
+                     lambda m: m.group(1) + ("true" if enabled else "false"),
+                     text, count=1)
+    if n == 0:
+        # …or insert one right after the [mod] header.
+        new, n = re.subn(r"(?m)^\[mod\]\s*$", "[mod]\n" + want, text, count=1)
+        if n == 0:
+            return "no-mod-table"
+    if new == text:
+        return "unchanged"
+    manifest.write_text(new, encoding="utf-8")
+    return "ok"
 
 
 def _all_mod_ids(mods_dir: Path) -> list[str]:
@@ -259,11 +284,24 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing selected", file=sys.stderr)
         return 1
 
-    unknown = [i for i in targets if i not in known]
-    if unknown:
-        print(f"error: unknown mod id(s): {', '.join(unknown)}", file=sys.stderr)
-        print(f"known: {', '.join(known)}", file=sys.stderr)
+    resolved: list[str] = []
+    bad = 0
+    for raw in targets:
+        try:
+            mod_id = resolve_mod(raw, mods_dir)
+        except UnknownMod as e:
+            print(f"error: {e}", file=sys.stderr)
+            bad += 1
+            continue
+        if mod_id not in known:
+            # A folder with no manifest.toml: there is no `enabled` to flip.
+            print(f"error: {mods_dir / mod_id} has no manifest.toml", file=sys.stderr)
+            bad += 1
+            continue
+        resolved.append(mod_id)
+    if bad:
         return 2
+    targets = list(dict.fromkeys(resolved))
 
     failures = 0
     for mod_id in targets:

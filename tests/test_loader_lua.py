@@ -103,11 +103,11 @@ def _sdk_lua_files() -> list[Path]:
     """
     files = sorted((REPO / "src" / "loader" / "lib").glob("*.lua"))
     files += sorted((REPO / "src" / "loader" / "lua" / "rsmm").glob("*.lua"))
-    # Mods too. They are written against the same trap and have no other net:
-    # `rsmm lint` reads them statically without resolving scope, and mods_spec
-    # only reaches a bad line if the event that runs it fires under the mock.
-    # A steamroller edit hit this exact bug -- a latch declared below the
-    # closure reading it -- and nothing but this check would have seen it.
+    # Mods too. They are written against the same trap: mods_spec only reaches
+    # a bad line if the event that runs it fires under the mock. A steamroller
+    # edit hit this exact bug -- a latch declared below the closure reading it.
+    # `rsmm lint` now catches that shape without luac (`cli/_lua_scope.py`), but
+    # only for TOP-LEVEL locals; this luac pass is the exhaustive one.
     # mods/ is untracked, so it is simply absent on a fresh clone and in CI.
     files += sorted((REPO / "mods").glob("*/*.lua"))
     return files
@@ -155,4 +155,63 @@ def test_rsmm_lua_reads_no_accidental_globals():
         + "\n— these are almost certainly locals declared below the closure that "
         "uses them (or, in a submodule, a value the parent never passed in), "
         "which Lua compiles to a nil global read"
+    )
+
+
+#: Lua's hard cap on locals live at once in ONE function (MAXVARS, lparser.c).
+_LUA_MAXVARS = 200
+#: Fail while there is still this much room. rsmm.lua's main chunk hit 0 free
+#: slots before the 2026-08-23 module split; the split bought 86, and seven weeks
+#: later 68 were left. Hitting the cap means the next `local` fails to compile
+#: and `require "rsmm"` takes every mod down with it, so the warning has to come
+#: while lifting another namespace out (see `_submodule_fn`) is still a choice.
+_MIN_FREE_LOCALS = 40
+
+_FN_HEADER = re.compile(r"^(?:main|function) <([^:>]+):(\d+),\d+> \(.*? at (0x[0-9a-f]+)\)", re.M)
+_LOCALS = re.compile(r"^locals \(\d+\) for (0x[0-9a-f]+):\n((?:\t.*\n)*)", re.M)
+
+
+def _peak_live_locals(listing: str) -> list[tuple[int, int]]:
+    """`(first line, peak live locals)` per function in a `luac -l -l` listing.
+
+    Each local is listed with the pc range it is live over, `(for state)`
+    internals included, and the cap counts locals live at the same time — so
+    the peak overlap IS the number the compiler compares with 200. Checked on
+    2026-10-10 against binary-searching probe locals into rsmm.lua's main
+    chunk: both said 132 live, 68 free.
+    """
+    first_line = {addr: int(line) for _f, line, addr in _FN_HEADER.findall(listing)}
+    out = []
+    for addr, body in _LOCALS.findall(listing):
+        spans = [tuple(map(int, row.split("\t")[3:5])) for row in body.splitlines()]
+        peak = max((sum(1 for s, e in spans if s <= pc <= e) for pc, _ in spans),
+                   default=0)
+        out.append((first_line.get(addr, 0), peak))
+    return out
+
+
+def test_sdk_functions_keep_local_headroom():
+    luac = shutil.which("luac5.4") or shutil.which("luac54") or shutil.which("luac")
+    if luac is None:
+        pytest.skip("no luac on PATH (luac5.4/luac)")
+    submodules = REPO / "src" / "loader" / "lua" / "rsmm"
+    files = sorted(LIB.glob("*.lua")) + sorted(submodules.glob("*.lua"))
+    tight: list[str] = []
+    seen = 0
+    for path in files:
+        proc = subprocess.run([luac, "-p", "-l", "-l", str(path)],
+                              capture_output=True, text=True, cwd=str(REPO))
+        assert proc.returncode == 0, f"{path.name}: {proc.stderr}"
+        for line, peak in _peak_live_locals(proc.stdout):
+            seen += 1
+            free = _LUA_MAXVARS - peak
+            if free < _MIN_FREE_LOCALS:
+                where = "main chunk" if line == 0 else f"function at line {line}"
+                tight.append(f"{path.relative_to(REPO)} {where}: {peak} live, {free} free")
+    assert seen > len(files), "parsed no locals tables — the luac listing format changed"
+    assert not tight, (
+        f"Lua functions within {_MIN_FREE_LOCALS} of the {_LUA_MAXVARS}-local cap:\n  "
+        + "\n  ".join(tight)
+        + "\n— lift a namespace into src/loader/lua/rsmm/ (memory: sdk-lua-module-split) "
+        "or move values onto a table before the next `local` stops the SDK compiling"
     )

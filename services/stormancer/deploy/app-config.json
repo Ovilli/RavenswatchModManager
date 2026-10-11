@@ -1,0 +1,16 @@
+{
+  "steam": {
+    "appId": 2071280,
+    "backendIdentity": "Ravenswatch",
+    "apiKey": "darktales/steam/apiKey"
+  },
+  "rsmm": {
+    "ticketKeys": [
+      "darktales/rsmm/ticketKey"
+    ],
+    "requireVerifiedIdentity": false,
+    "enforceModPack": true,
+    "maxTicketAgeSeconds": 600,
+    "clockSkewSeconds": 60
+  }
+}

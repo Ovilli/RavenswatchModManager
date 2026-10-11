@@ -350,7 +350,7 @@ def test_clone_prop_entity_repoints_every_lod_mesh():
     raw = (UNCOOKED / ENT_DONOR).read_bytes()
     meshes = {s for _a, _b, s in ES.list_strings(raw) if s.lower().endswith(".fbx")}
     assert len(meshes) >= 2, "donor should have a LOD chain to exercise"
-    out = PC.clone_prop_entity(raw, {m: "Scenery\\DarkHills\\Mine.fbx" for m in meshes})
+    out = PC.clone_prop_entity(raw, dict.fromkeys(meshes, "Scenery\\DarkHills\\Mine.fbx"))
     after = {s for _a, _b, s in ES.list_strings(out) if s.lower().endswith(".fbx")}
     assert after == {"Scenery\\DarkHills\\Mine.fbx"}, \
         "a LOD left pointing at the donor pops back to the wall block at range"
@@ -1049,6 +1049,33 @@ def test_discover_rejects_bad_poi_toml(tmp_path, cfg, needle):
         poi.discover(tmp_path)
 
 
+def test_poi_schema_matches_what_discover_accepts(tmp_path):
+    """The editor schema (`rsmm docs-gen` -> poi.schema.json) must not drift
+    from the parser: every key it offers is one `discover` accepts, and every
+    shipped poi.toml uses only keys it offers."""
+    import tomllib
+    props = poi.poi_json_schema()["properties"]
+    toml = "\n".join(f"{k} = {v}" for k, v in {
+        "preset": '"clearing"', "id": '"x"', "base": '"Dark_Hills/6x6_Bleeding_01"',
+        "chapters": '["Dark_Hills"]', "kinds": '["Fountain"]', "weight": "0.15",
+        "copies": "1", "replace_base": "false", "own_level": "true",
+        "swaps": '{ "A.entity.ot" = "B.entity.ot" }',
+        "places": '[{ entity = "@prop", pos = [0.0, 0.0, 0.0] }]',
+        "icon": '"x"', "replaces": '"A.entity.ot"', "entity_base": '"B.entity.ot"',
+        "material_base": '"m"', "material": '"m"', "allow_shared_art": "false",
+        "interactive": "true", "components": "[]", "transform": '{ fit = "rig" }',
+        "slots": '{ albedo = "a" }', "marker": '{ reveal_radius = 1.0 }',
+    }.items())
+    assert set(tomllib.loads(toml)) == set(props), "test table is missing a schema key"
+    _poi_folder(tmp_path, cfg=toml)
+    poi.discover(tmp_path)        # raises on any key it does not know
+
+    repo = Path(__file__).resolve().parent.parent
+    for f in repo.glob("mods/*/pois/*/poi.toml"):
+        extra = set(tomllib.loads(f.read_text(encoding="utf-8"))) - set(props)
+        assert not extra, f"{f}: {extra} missing from poi_json_schema()"
+
+
 def test_a_model_with_no_textures_wears_the_donor_material(tmp_path):
     """Shipping a shape but no maps is a real choice, not a mistake: the prop
     keeps `material_base`. It is also the only configuration that exercises the
@@ -1284,6 +1311,7 @@ def test_discover_passes_copies_through(tmp_path):
 # Identity: a clone must not inherit its donor's level GUID
 # --------------------------------------------------------------------------- #
 
+@pytest.mark.slow   # whole-corpus scan
 @needs_prop_corpus
 def test_every_shipped_tile_level_has_a_distinct_guid():
     """The fact the whole fix rests on. If this ever stops holding, the field
@@ -1331,6 +1359,7 @@ def test_cloned_level_guid_is_deterministic_and_unique_per_name():
     assert a1 != b, "different levels must not collide with each other"
 
 
+@pytest.mark.slow   # whole-corpus scan
 @needs_prop_corpus
 def test_cloned_level_guid_does_not_collide_with_any_shipped_level():
     import glob

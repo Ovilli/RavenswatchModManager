@@ -918,6 +918,65 @@ if load_mod("steamroller") then
     R.stat.stick, R.stat.modify, R.entity.ready = _stick, _modify, _ready
 end
 
+-- ---------------------------------------------------------------------------
+-- bounty-board: clocks wait for the game's own; one-shot kinds post once a run
+-- ---------------------------------------------------------------------------
+if load_mod("bounty-board") then
+    local _publish = R.overlay.publish
+    local board
+    R.overlay.publish = function(spec) board = spec.rows; return true end
+    local function tick(n)
+        for _ = 1, n do advance(1); fire("tick") end
+    end
+    -- The first bounty row's clock, as the overlay shows it.
+    local function clock()
+        for _, r in ipairs(board or {}) do
+            if r.time and r.time ~= "" and r.count ~= "" then return r.time end
+        end
+    end
+
+    fire("run:start")
+    tick(2)
+    local held = clock()
+    tick(10)
+    ok(held == "waiting" and clock() == "waiting",
+       "bounty-board: clocks wait through the load, got " .. tostring(clock()))
+
+    fire("gameplay:GAME_CHRONO_START", { source = "gameplay" })
+    tick(2)
+    local t1 = clock()
+    tick(3)
+    ok(t1 ~= "waiting" and clock() ~= t1, "bounty-board: clocks run once the chapter clock starts")
+
+    -- Next chapter: its load fires GAME_START again, which must not restart them.
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    fire("gameplay:GAME_START", { source = "gameplay" })
+    tick(3)
+    ok(clock() == "waiting", "bounty-board: clocks wait through the next chapter's load, got "
+       .. tostring(clock()))
+    fire("gameplay:ENEMY_KILLED", { source = "gameplay" })
+    tick(2)
+    ok(clock() ~= "waiting", "bounty-board: a kill starts the clocks too")
+
+    -- Let every bounty expire, over and over: a `once` kind is posted at most once.
+    local before = #logs
+    tick(3000)
+    local levels, events = 0, 0
+    for i = before + 1, #logs do
+        if logs[i]:find("posted: Gain", 1, true) then levels = levels + 1 end
+        if logs[i]:find("posted: Win a world event", 1, true) then events = events + 1 end
+    end
+    ok(levels <= 1 and events <= 1,
+       ("bounty-board: level/event bounties post once a run, got %d/%d"):format(levels, events))
+
+    -- A new run may post them again.
+    fire("run:end")
+    fire("run:start")
+    fire("gameplay:GAME_CHRONO_START", { source = "gameplay" })
+    tick(1)
+    R.overlay.publish = _publish
+end
+
 io.write(("mods_spec: %d passed, %d failed, %d mod(s) skipped (not present)\n")
     :format(checks - fails, fails, skipped))
 os.exit(fails == 0 and 0 or 1)

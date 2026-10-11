@@ -65,14 +65,11 @@ def test_builder_patch_blocks(tmp_path, monkeypatch):
     monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
     b = ModBuilder("PatchMod", version="1.0.0", author="t", name="Patch")
     b.stat("Health", value=100, min=0, max=200)
-    b.text("UI/title", "Hello")
     b.commit()
     mf = (tmp_path / "PatchMod" / "manifest.toml").read_text()
     assert "[[patch]]" in mf
     assert 'kind = "stat"' in mf
-    assert 'kind = "text"' in mf
     assert "Health" in mf
-    assert "Hello" in mf
 
 
 def test_builder_texture_asset(tmp_path, monkeypatch):
@@ -128,3 +125,16 @@ def test_builder_missing_asset_source_raises(tmp_path):
     except FileNotFoundError:
         return
     raise AssertionError("expected FileNotFoundError")
+
+
+def test_mod_facade_forwards_every_public_builder_method():
+    """`sdk.Mod` is a hand-written facade over ModBuilder; a builder method it
+    forgets is one the docs can show and an author cannot call (`m.ot` was
+    missing while the guide used it)."""
+    from rsmm import sdk
+    from rsmm.sdk.builder import ModBuilder
+    internal = {"commit"}          # Mod.__exit__ calls it
+    public = {n for n in vars(ModBuilder)
+              if not n.startswith("_") and callable(getattr(ModBuilder, n))}
+    missing = sorted(public - internal - set(dir(sdk.Mod)))
+    assert not missing, f"sdk.Mod does not forward: {missing}"

@@ -2,7 +2,15 @@
   "extends": "@rsmm/tsconfig/library.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // schemas is isomorphic — api (node), www (both) and desktop (webview) all
+    // import it, so it may only use web-standard globals. `DOM` declares the
+    // ones it actually uses (TextEncoder, URL) without granting Node-only ones.
+    // Without this the package type-checks purely by accident: its __tests__
+    // import vitest, whose types dragged @types/node into the program and
+    // declared those globals for it. vitest 4 stopped doing that (PR #34),
+    // which surfaced as four bare "Cannot find name" errors in non-test files.
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*.ts"]
 }

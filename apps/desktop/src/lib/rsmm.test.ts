@@ -10,7 +10,13 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
 }));
 
 import { useApp } from '../store';
-import { formatBytes, parseProgressLine, rsmmEnv } from './rsmm';
+import {
+  formatBytes,
+  parseProgressLine,
+  profileEnabledMods,
+  rsmmEnv,
+  writesGameState,
+} from './rsmm';
 
 /**
  * `RSMM_MODS_DIR` is the directory the CLI creates, overwrites and DELETES in.
@@ -52,6 +58,48 @@ describe('rsmmEnv', () => {
     useApp.setState({ settings: { ...useApp.getState().settings, modsDir: '   ' } });
     expect(rsmmEnv('p1').RSMM_MODS_DIR).toMatch(/\/profiles\/p1$/);
     expect(rsmmEnv('p1').RSMM_MODS_DIR).not.toMatch(/^\s*\/profiles/);
+  });
+});
+
+/**
+ * What `apply` is told to install. The Library keeps enabled/disabled in the
+ * store while `apply` read only the manifests, so a mod switched off in the app
+ * was installed anyway (bug report 2026-10-06).
+ */
+describe('profileEnabledMods', () => {
+  const profile = (id: string, loadOrder: string[], disabled: string[]) => ({
+    id,
+    name: id,
+    loadOrder,
+    disabled: new Set(disabled),
+    createdAt: '2026-10-06T00:00:00.000Z',
+  });
+
+  it('lists the profile mods that are not switched off', () => {
+    useApp.setState({
+      profiles: [profile('default', [], []), profile('mine', ['a', 'b', 'c'], ['b'])],
+      activeProfileId: 'mine',
+    });
+    expect(profileEnabledMods()).toEqual(['a', 'c']);
+  });
+
+  it('is an empty list when every mod is switched off', () => {
+    useApp.setState({ profiles: [profile('mine', ['a'], ['a'])], activeProfileId: 'mine' });
+    expect(profileEnabledMods()).toEqual([]);
+  });
+
+  it('honours an explicit profile id', () => {
+    useApp.setState({
+      profiles: [profile('mine', ['a'], []), profile('other', ['x', 'y'], ['x'])],
+      activeProfileId: 'mine',
+    });
+    expect(profileEnabledMods('other')).toEqual(['y']);
+  });
+
+  it('leaves the manifests alone for the default profile and an unknown one', () => {
+    useApp.setState({ profiles: [profile('default', [], [])], activeProfileId: 'default' });
+    expect(profileEnabledMods()).toBeUndefined();
+    expect(profileEnabledMods('gone')).toBeUndefined();
   });
 });
 
@@ -100,6 +148,43 @@ describe('formatBytes', () => {
   it('reads a missing or nonsensical size as zero', () => {
     for (const n of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(formatBytes(n)).toBe('0 B');
+    }
+  });
+});
+
+describe('writesGameState', () => {
+  // The session cache trusts this: a command wrongly called a read would let a
+  // cached "all good" survive an apply or a repair.
+  it('treats reads, and --check probes, as reads', () => {
+    for (const args of [
+      ['list'],
+      ['list-profiles', 'coop', 'solo'],
+      ['overlays'],
+      ['loader-health'],
+      ['update-loader', '--check'],
+      ['update-data', '--check'],
+      ['doctor'],
+      ['config', 'get', 'some-mod'],
+      ['backend', 'get', '--check-server'],
+    ]) {
+      expect(writesGameState(args), args.join(' ')).toBe(false);
+    }
+  });
+
+  it('treats everything else, including a command it has never heard of, as a write', () => {
+    for (const args of [
+      ['apply'],
+      ['restore-all'],
+      ['install-mod', 'x'],
+      ['update-loader'],
+      ['update-data'],
+      ['doctor', '--fix'],
+      ['config', 'set', 'some-mod'],
+      ['backend', 'set', 'http://host:8090'],
+      ['backend', 'off'],
+      ['a-command-added-next-year'],
+    ]) {
+      expect(writesGameState(args), args.join(' ')).toBe(true);
     }
   });
 });

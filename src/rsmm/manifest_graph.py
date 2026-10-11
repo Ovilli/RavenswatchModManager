@@ -488,7 +488,7 @@ def validate_graph(records: dict[str, ManifestRecord]) -> list[GraphIssue]:
             severity="error",
             code="cycle",
             mods=tuple(cyc),
-            message="requires cycle: " + " -> ".join(cyc + [cyc[0]]),
+            message="requires cycle: " + " -> ".join([*cyc, cyc[0]]),
             fix="Break the cycle by removing one `requires` edge.",
         ))
 
@@ -581,7 +581,7 @@ def topo_order(records: dict[str, ManifestRecord]) -> list[str]:
     nodes = enabled_ids - cyclic
 
     # Build adjacency (only present, enabled, non-cyclic edges).
-    in_deg: dict[str, int] = {n: 0 for n in nodes}
+    in_deg: dict[str, int] = dict.fromkeys(nodes, 0)
     succs: dict[str, list[str]] = {n: [] for n in nodes}
     for n in nodes:
         rec = primary[n]
@@ -642,10 +642,7 @@ def format_issues(issues: Iterable[GraphIssue], *, color: bool = True) -> str:
     lines: list[str] = []
     for it in items:
         tag, col = _LABEL.get(it.severity, ("?    ", ""))
-        if color:
-            head = f"{col}{_C_BOLD}[{tag.strip()}]{_C_RESET}"
-        else:
-            head = f"[{tag.strip()}]"
+        head = f"{col}{_C_BOLD}[{tag.strip()}]{_C_RESET}" if color else f"[{tag.strip()}]"
         lines.append(f"  {head} {it.code:<17} {it.message}")
         if it.fix:
             lines.append(f"            fix: {it.fix}")

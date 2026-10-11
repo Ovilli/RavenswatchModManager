@@ -72,9 +72,6 @@ class ModBuilder:
     def stat(self, name: str, **fields) -> None:
         self._patch_blocks.append({"kind": "stat", "name": name, **fields})
 
-    def text(self, target: str, value: str, **fields) -> None:
-        self._patch_blocks.append({"kind": "text", "target": target, "value": value, **fields})
-
     @sdk_export("Mod.ot")
     def ot(self, selector: str, field: str, value, *,
            file: str | None = None, selector_field: str | None = None) -> None:
@@ -620,7 +617,7 @@ class ModBuilder:
                 elif isinstance(v, (int, float)):
                     out.append(f"{k} = {v}")
                 elif isinstance(v, list):
-                    rendered = ", ".join(f'"{str(x)}"' for x in v)
+                    rendered = ", ".join(f'"{x!s}"' for x in v)
                     out.append(f"{k} = [{rendered}]")
                 else:
                     out.append(f'{k} = "{v}"')

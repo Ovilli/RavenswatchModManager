@@ -180,6 +180,199 @@ def _scan_after_label(data: bytes, label: str, old_value: float,
     return None if k < 0 else region_start + k
 
 
+# Number parts that are not values a player tunes: the rarity, and the
+# per-item counters the game fills in at run time.
+_NOT_TUNABLE = {"Quality Value", "Current Value"}
+
+
+def item_numbers(data: bytes) -> tuple[list[dict], dict[str, dict]]:
+    """Every number an item's effects use, read structurally: each plain
+    number part (``Price Reduction``, ``Shield Gain``), each modifier's own
+    amount when it holds one (``Super Effect Modifier.amount``), and, per
+    modifier, where its amount comes from -- so an editor can put the amount
+    beside the stat it gives. The label scanner behind ``list_value_fields``
+    misses the first two on many items (Dreamcatcher, Goldilocks' Porridge)."""
+    from . import entity_fields as EF
+    from . import entity_graph as EG
+    g = EG.parse(data, "item")
+    by_guid = {c.guid.hex(): c for c in g.components}
+    names = g.components[0].classes if g.components else []
+    picker = names.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in names else -1
+
+    def literal(f) -> tuple[str, float] | None:
+        if f.kind != "value" or "<-" in f.text:
+            return None
+        kind, _, num = f.text.partition(" ")
+        if kind not in ("f32", "int"):
+            return None
+        try:
+            return ("int" if kind == "int" else "float"), float(num)
+        except ValueError:
+            return None
+
+    def links(c, f) -> list:
+        body = c.body[f.offset:f.offset + f.size]
+        return [by_guid.get(r.guid.hex()) for _o, r in EG._pickers(body, picker)]
+
+    # A math part keeps its steps in sub-objects (`oCEntityCpntNodeSettings`
+    # sections, each naming the next by u32 id), and those steps hold the
+    # references to the numbers it combines: Dreamcatcher's "Scalable Value
+    # Operation" reads "Price Reduction" two nodes down.
+    from . import cooked
+    cf = cooked.parse(data)
+    objs = cf.sections[1:-1]
+    node = "oCEntityCpntNodeSettings"
+    node_cls = names.index(node) if node in names else -1
+
+    def sub_payloads(payload: bytes, seen: set[int]) -> list[bytes]:
+        out = []
+        for i in range(len(payload) - 3):
+            v = int.from_bytes(payload[i:i + 4], "little")
+            if 0 <= v < len(objs) and v not in seen and node_cls >= 0 \
+                    and int.from_bytes(objs[v].payload[:4], "little") == node_cls:
+                seen.add(v)
+                out.append(objs[v].payload)
+                out += sub_payloads(objs[v].payload, seen)
+        return out
+
+    def reads_through(x, known_guids: dict[bytes, str]) -> str | None:
+        for pl in [objs[x.index - 1].payload, *sub_payloads(objs[x.index - 1].payload, set())]:
+            for gid, name in known_guids.items():
+                if gid in pl:
+                    return name
+        return None
+
+    values, users = [], {}
+    for c in g.components:
+        if c.cls != "oCEntityCpntValueSettings" or c.name in _NOT_TUNABLE:
+            continue
+        f = next((x for x in EF.fields(c) if x.name == "value"), None)
+        lit = f and literal(f)
+        if lit:
+            values.append({"label": c.name, "value": lit[1], "type": lit[0], "shadowed": False})
+    known = {v["label"] for v in values}
+    amounts: dict[str, dict] = {}
+    for c in g.components:
+        if c.cls != "oCEntityCpntModifierSettings":
+            continue
+        f = next((x for x in EF.fields(c) if x.name == "amount"), None)
+        if f is None:
+            continue
+        lit = literal(f)
+        if lit:
+            label = f"{c.name}.amount"
+            values.append({"label": label, "value": lit[1], "type": lit[0], "shadowed": False,
+                           "modifier": c.name})
+            amounts[c.name] = {"label": label}
+            continue
+        # Follows another part: a number part directly, or a math part whose
+        # inputs include one (Green Armor: Armor Gain Operation reads "Armor
+        # per Object Value"). The first such number is the one to change.
+        src = [x for x in links(c, f) if x is not None]
+        direct = next((x.name for x in src if x.name in known), None)
+        via = None
+        if direct is None:
+            guids = {c2.guid: c2.name for c2 in g.components if c2.name in known}
+            for x in src:
+                hit = reads_through(x, guids)
+                if hit:
+                    direct, via = hit, x.name
+                    break
+        amounts[c.name] = {"label": direct, "via": via} if direct else \
+            {"label": None, "via": src[0].name if src else None}
+        if direct:
+            users.setdefault(direct, []).append(c.name)
+    for v in values:
+        if v["label"] in users:
+            v["usedBy"] = users[v["label"]]
+    return values, amounts
+
+
+def part_literal(data: bytes, label: str) -> float | None:
+    """The number ``label`` names by PART, or None: ``Price Reduction`` (a
+    number part's value) or ``Super Effect Modifier.amount`` (one field of a
+    part). Read with the structured entity parser, so it reaches the numbers
+    the label scanner behind :func:`set_value_after_label` does not consider
+    value nodes -- on Dreamcatcher and Goldilocks' Porridge, every number that
+    matters. A linked field (one that follows another part) reads None: its
+    inline number is dead, so it has nothing to patch by value."""
+    hit = _part_field(data, label)
+    if hit is None:
+        return None
+    _ef, _c, f = hit
+    if "<-" in f.text:
+        return None
+    kind, _, num = f.text.partition(" ")
+    if kind not in ("f32", "int"):
+        return None
+    try:
+        return float(num)
+    except ValueError:
+        return None
+
+
+def _part_field(data: bytes, label: str):
+    from . import entity_fields as EF
+    from .entity_graph_edit import EntityEditError, EntityFile
+    part, dot, fld = label.rpartition(".")
+    if not dot or not fld or " " in fld:
+        part, fld = label, "value"
+    try:
+        ef = EntityFile(data, "item")
+        c = ef.component(part)
+    except (EntityEditError, ValueError):
+        return None
+    f = next((x for x in EF.fields(c) if x.name == fld), None)
+    return (ef, c, f) if f is not None and f.kind == "value" else None
+
+
+def _part_is_int(data: bytes, label: str) -> bool:
+    hit = _part_field(data, label)
+    return hit is not None and hit[2].text.partition(" ")[0] == "int"
+
+
+def set_part_value(data: bytes, label: str, old_value: float, new_value: float) -> bytes:
+    """Set the number ``label`` names by part (see :func:`part_literal`),
+    refusing when it does not hold ``old_value`` -- the same guard
+    :func:`set_value_after_label` gives a label patch."""
+    cur = part_literal(data, label)
+    if cur is None:
+        raise ValueError(f"value label {label!r} not found")
+    if struct.pack("<f", cur) != struct.pack("<f", float(old_value)):
+        raise ValueError(f"{label!r} holds {cur:g}, not {old_value:g}; "
+                         f"the patch was written against another value")
+    ef, c, f = _part_field(data, label)
+    ef.set_value(c.name, f.name, new_value)
+    return ef.to_bytes()
+
+
+def apply_value_patch(data: bytes, label: str, old_value: float, new_value: float,
+                      clear: bool = False) -> bytes:
+    """One ``value_patches`` entry: by label when the label scanner knows it
+    (with its overridden-value guard), otherwise by part."""
+    from .talent_values import clear_value_override, is_label_overridden, list_talent_values
+    if part_literal(data, label) is not None and (
+            label not in {tv.label for tv in list_talent_values(data)}
+            or _part_is_int(data, label)):
+        # The label scanner patches f32s only: an int part (Horn of Plenty's
+        # Spawn Count) is listed by it but can only be written by part.
+        return set_part_value(data, label, old_value, new_value)
+    if is_label_overridden(data, label):
+        if not clear:
+            raise ValueError(
+                f"{label!r} is shadowed: its value is sourced from a "
+                f"selector/reference, so editing the inline value has NO "
+                f"in-game effect. Add clear_override=true to this "
+                f"value_patches entry to disable the override first (this "
+                f"unbinds its selector/curve, e.g. card-count scaling "
+                f"becomes a flat value).")
+        # Disable the override so the inline value becomes authoritative.
+        # clear only flips the 0e flag; the old value bytes are unchanged,
+        # so the set below still anchors on `old`.
+        data = clear_value_override(data, label)
+    return set_value_after_label(data, label, old_value, new_value)
+
+
 def set_value_after_label(data: bytes, label: str, old_value: float,
                           new_value: float, *, within: int = 64) -> bytes:
     """Patch a value node's f32, anchored on its label + expected current value.
@@ -352,26 +545,35 @@ def remint_guids(cooked: bytes, corpus: list[bytes], salt: str) -> bytes:
     return out
 
 
-def find_identity_guid(cooked: bytes, id_name: str) -> bytes | None:
-    """Return the 16-byte ROOT IDENTITY GUID of the item, or None.
+#: The magical-object component every droppable item carries. Its node GUID is
+#: the item's runtime identity: the pool's def IS this component
+#: (oCDtEntityCpntMagicalObjectDataSettings), and def+0x88/0x90 read back as
+#: this GUID for every item checked in game (2026-10-01).
+MO_DATA_NODE = "Dt Magical Object Data"
 
-    The root node is laid out as ``<16-byte GUID><u32 namelen><name>`` where
-    ``name`` is the item id (the EntitySettingsResource's own name). The 16
-    bytes immediately before that length-prefixed id string are the resource's
-    identity GUID — the value the engine exposes at the runtime def+0x88/0x90,
-    which MagicalObjectPool_SourceLookup matches AND the hero owned-set dedups
-    on (MagicalObject_RegisterInstance). Returns the first match; None if the id
-    node isn't found or has no preceding GUID.
+
+def find_identity_guid(cooked: bytes, id_name: str) -> bytes | None:
+    """Return the 16-byte runtime IDENTITY GUID of the item, or None.
+
+    A node is laid out as ``<16-byte GUID><u32 namelen><name>``. The identity is
+    the GUID of the ``Dt Magical Object Data`` component — what the engine
+    exposes at def+0x88/0x90, matches in MagicalObjectPool_SourceLookup and
+    dedups the hero's owned set on. It is unique per item, occurs once in its
+    file and nowhere else in the corpus (114/114 shipped items, 11694 files).
+    A node named after ``id_name`` is tried first, for blobs that carry one; no
+    shipped item does, which is why this used to return None for every one of
+    them and ``unique_identity`` silently did nothing. None when neither node
+    is found or the bytes before it are not a GUID.
     """
-    name_b = id_name.encode("utf-8")
-    prefix = struct.pack("<I", len(name_b)) + name_b
-    idx = cooked.find(prefix)
-    if idx < 16:
-        return None
-    g = cooked[idx - 16: idx]
-    if g == b"\x00" * 16 or any(m in g for m in _MARKERS):
-        return None
-    return g
+    for name in (id_name, MO_DATA_NODE):
+        name_b = name.encode("utf-8")
+        idx = cooked.find(struct.pack("<I", len(name_b)) + name_b)
+        if idx < 16:
+            continue
+        g = cooked[idx - 16: idx]
+        if g != b"\x00" * 16 and not any(m in g for m in _MARKERS):
+            return g
+    return None
 
 
 def remint_identity_guid(cooked: bytes, id_name: str, salt: str) -> bytes:
@@ -441,6 +643,10 @@ def build_magic_item(
     icon: str | None = None,
     bank_base_gen: Path | None = None,
     remint_identity: bool = False,
+    modifier_stats: dict[str, str | int] | None = None,
+    super_description: str | None = None,
+    replace: bool = False,
+    bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     """Produce every file a new, distinct, named magical object needs.
 
@@ -455,52 +661,132 @@ def build_magic_item(
       inline float is overridden by a selector/reference) raises unless
       ``clear_override`` is truthy, in which case the override is disabled first
       so the inline edit takes effect (this unbinds the selector/curve);
-    * when ``name`` is given and ``bank_base_gen`` points at the live text
-      bank, the bank + every language sibling with ``<new_id>_Name`` /
-      ``_Description`` appended.
+    * ``modifier_stats`` maps a modifier's name to the stat it should change
+      instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
+      :mod:`rsmm.engine.item_modifier`;
+    * when ``name`` or ``super_description`` is given and ``bank_base_gen``
+      points at the live text bank, the bank + every language sibling with
+      ``<new_id>_Name`` / ``_Description`` / ``_SuperEffect`` appended. The
+      super-effect text is repointed at ``<new_id>_SuperEffect`` only when
+      ``super_description`` is given; otherwise the copy keeps the base's key.
 
     ``new_id`` may be any length — :func:`rename_id` re-emits the container
     when it differs from ``base_id``.
+
+    ``replace=True`` edits the base IN PLACE instead: no rename, the entity is
+    written at the base's own path (so apply backs the shipped file up and
+    replaces it), and name/description rewrite the text of the keys the base
+    already reads. The super-effect key is usually shared by several items
+    (``Armor_Per_Rare_Object_SuperEffect``), so new super text still goes to a
+    key of the item's own rather than changing every item that uses it.
+
+    ``bank_prior`` is the bank this mod's earlier blocks already wrote during
+    the same emit (see :func:`rsmm.engine.text_patches.patch_bank`).
     """
-    ent = ItemEdit(
-        base_id=base_id, new_id=new_id, corpus=corpus, remint_identity=remint_identity
-    ).apply(base_cooked)
-    from .talent_values import clear_value_override, is_label_overridden
+    if replace:
+        if new_id != base_id or remint_identity or corpus:
+            raise ValueError("a replacement keeps the base's id and identity")
+        ent = base_cooked
+    else:
+        ent = ItemEdit(
+            base_id=base_id, new_id=new_id, corpus=corpus,
+            remint_identity=remint_identity,
+        ).apply(base_cooked)
+    from . import item_modifier as IM
+    # A super key that embeds the base id (`Defense_To_Damage_SuperEffect`) was
+    # renamed with it, to a key no bank holds, which shows blank text. Put the
+    # base's key back unless the copy gets super text of its own.
+    base_super = IM.super_text_key(base_cooked)
+    if base_super is not None and super_description is None:
+        cur = IM.super_text_key(ent)
+        if cur is not None and cur != base_super:
+            ent = IM.set_super_text_key(ent, base_super)
+    # The same holds for the name and description keys (`Damage_Per_Vitality_Name`):
+    # a copy with no text of its own reads the base's, not a key nothing holds.
+    for suffix, own in (("Name", name), ("Description", description)):
+        renamed, base_key = f"{new_id}_{suffix}", f"{base_id}_{suffix}"
+        if own is None and renamed != base_key and struct.pack("<I", len(renamed)) \
+                + renamed.encode() in ent:
+            ent = replace_lstr_any(ent, renamed, base_key)
+    super_key = f"{new_id}_SuperEffect"
+    if super_description is not None:
+        if base_super is None:
+            raise ValueError(
+                f"{base_id} has no super effect text, so super_description has "
+                f"nothing to replace")
+        ent = IM.set_super_text_key(ent, super_key)
+    for modifier, stat in (modifier_stats or {}).items():
+        # A modifier name that embeds the base id was renamed with the item.
+        names = {m.name for m in IM.list_modifiers(ent)}
+        target = modifier if modifier in names else modifier.replace(base_id, new_id)
+        ent = IM.set_modifier_stat(ent, target, stat)
     for vp in (value_patches or []):
         label, old, new = vp[0], vp[1], vp[2]
         clear = len(vp) > 3 and bool(vp[3])
-        if is_label_overridden(ent, label):
-            if not clear:
-                raise ValueError(
-                    f"{label!r} is shadowed: its value is sourced from a "
-                    f"selector/reference, so editing the inline value has NO "
-                    f"in-game effect. Add clear_override=true to this "
-                    f"value_patches entry to disable the override first (this "
-                    f"unbinds its selector/curve, e.g. card-count scaling "
-                    f"becomes a flat value).")
-            # Disable the override so the inline value becomes authoritative.
-            # clear only flips the 0e flag; the old value bytes are unchanged,
-            # so the set below still anchors on `old`.
-            ent = clear_value_override(ent, label)
-        ent = set_value_after_label(ent, label, old, new)
+        # A part name that embeds the base id was renamed with the item.
+        if new_id != base_id and part_literal(ent, label) is None and base_id in label:
+            label = label.replace(base_id, new_id)
+        ent = apply_value_patch(ent, label, old, new, clear)
     if icon is not None:
         ent = set_icon(ent, icon)
 
-    files: dict[str, bytes] = {
-        f"EntitySettings/Objects/Magical_Objects/{rarity}/"
-        f"{new_id}.entity.ot.EntitySettingsResource.gen": ent
-    }
+    files_key = (f"EntitySettings/Objects/Magical_Objects/{rarity}/"
+                 f"{new_id}.entity.ot.EntitySettingsResource.gen")
+    files: dict[str, bytes] = {files_key: ent}
 
-    if name is not None and bank_base_gen is not None:
+    if (name is not None or description is not None or super_description is not None) \
+            and bank_base_gen is not None:
         from . import text_patches as T
-        pairs = {f"{new_id}_Name": name}
+        pairs = {}
+        # A copy writes keys of its own; a replacement rewrites the ones the
+        # base reads (a copy falling back to those would rename the base too).
+        key = (lambda sfx: _own_text_key(ent, new_id, sfx)) if replace \
+            else (lambda sfx: f"{new_id}_{sfx}")
+        if name is not None:
+            pairs[key("Name")] = name
         if description is not None:
-            pairs[f"{new_id}_Description"] = description
-        banks = T.append_bank_keys(bank_base_gen, pairs)
-        files[MAGIC_TEXT_BANK] = banks.pop("__base__")
+            pairs[key("Description")] = description
+        if super_description is not None:
+            pairs[super_key] = super_description
+        banks, rows = T.patch_bank(bank_base_gen, pairs, bank_prior)
+        # The entity caches each key's row beside it, and some readers go by
+        # the row, not the key: point the rows at where the text now is.
+        ent = T.repoint_text_rows(ent, _TEXT_BANK_NAME, rows)
+        files[files_key] = ent
+        if "__base__" in banks:
+            files[MAGIC_TEXT_BANK] = banks.pop("__base__")
         for lang_tok, blob in banks.items():
             files[MAGIC_TEXT_BANK + lang_tok] = blob
     return files
+
+
+_TEXT_BANK_NAME = "Magical_Objects~GAM.xls"
+
+
+def text_keys(cooked_bytes: bytes) -> list[str]:
+    """Every magical-objects text key the entity reads, in file order (a text
+    reference is ``lstr "Text" | lstr <bank> | u32 row | lstr <key>``)."""
+    head = struct.pack("<I", len(_TEXT_BANK_NAME)) + _TEXT_BANK_NAME.encode()
+    out, at = [], cooked_bytes.find(head)
+    while at != -1:
+        p = at + len(head) + 4
+        if p + 4 <= len(cooked_bytes):
+            n = struct.unpack_from("<I", cooked_bytes, p)[0]
+            key = cooked_bytes[p + 4:p + 4 + n]
+            if 0 < n < 256 and key.isascii():
+                out.append(key.decode())
+        at = cooked_bytes.find(head, at + 1)
+    return out
+
+
+def _own_text_key(ent: bytes, item_id: str, suffix: str) -> str:
+    """The key the item's ``suffix`` (Name/Description) text is read from:
+    the one the entity already references, else ``<id>_<suffix>``."""
+    want = f"{item_id}_{suffix}"
+    keys = text_keys(ent)
+    if want in keys:
+        return want
+    return next((k for k in keys if k.endswith("_" + suffix)), want)
 
 
 @dataclass
@@ -533,8 +819,9 @@ class ItemEdit:
     corpus: list[bytes] = field(default_factory=list)
     #: Re-mint ONLY the root identity GUID (the fix for the dedup collision
     #: above), leaving every other GUID intact so the entity still spawns. Safe
-    #: because registration is path-keyed and nothing references the root by
-    #: GUID; only the runtime identity changes. OPT-IN (default False) until
+    #: because registration is path-keyed and nothing references the identity
+    #: (the Dt Magical Object Data node's GUID) by GUID; only the runtime
+    #: identity changes. OPT-IN (default False) until
     #: verified in-game per item, since picking the wrong GUID would silently
     #: leave the collision or, worst case, touch a referenced node. Enable via
     #: the manifest item field ``unique_identity = true``.

@@ -498,6 +498,24 @@
    ]
   },
   {
+   "name": "DayNightCycle_InitCycle",
+   "kind": "function",
+   "category": "gameplay",
+   "va": "0x1401eca80",
+   "status": "unverified",
+   "note": "Per-CHAPTER setup of the day/night component (this = component in RCX), called from the level-load chain (FUN_14028e5f0, stage 'DayNightCycle InitCycle'). Static read 2026-10-08:\n  1. Walks AppSettings_SectionList, asking each section's type (vcall [*sec]+0 then [+0x58](tester @0x1414766b0)) for the DarkTalesAppSettingsSection; there is no not-found guard in practice (esi=0xff fallback would fault).\n  2. Copies that section's DayNightCycleParams into the component: sec+0x1a0 u8 StartDay -> +0xa8, +0x1a4 f32 DayDuration -> +0xac, +0x1a8 f32 NightDuration -> +0xb0, +0x1ac f32 DawnAndDuskHalfDuration -> +0xb4, +0x1b0 u32 HalfCycleCountBeforeBossAwakens -> +0xb8, +0x1b4 f32 BossTimeWarningDuration -> +0xbc, +0x1b8 f32 OvertimeDuration -> +0xc0. Field order is exactly ApplicationSettings.ot's m_oDayNightCycleParams block (180/180/5/6/60/180 shipped).\n  3. Applies the run modifiers read from the scene context: Day only 0x1a8b53b4 / Night only 0x1a8b53bc force +0xa8; 'Half Cycle Count Before Boss Awakens Modifier' 0x187443de is ADDED to +0xb8 and 'Less day/night half cycle' 0x1a77d42d SUBTRACTED (both clamped at 0).\n  4. Boss sleep duration = (night + day) * 0.5 (const @0x140fcbb74) * half_cycles + overtime -> +0x144, pushed as SceneContextValue_SetFloat(0x1cc8c666 'Boss sleep duration').\nCONSEQUENCE: the section is re-read on every chapter load, so R.daynight writing the section's fields between chapters changes the next chapter's timer with no engine call. Order CONFIRMED in game 2026-10-08: values written at run start reached the chapter's clock (MATCH). Status stays unverified only because no byte pattern is mined for it; nothing hooks or calls it."
+  },
+  {
+   "name": "AppSettings_SectionList",
+   "kind": "data",
+   "category": "engine-core",
+   "va": "0x1412f5aa8",
+   "status": "va",
+   "signature": null,
+   "refs": [],
+   "note": "Global list of application-settings SECTIONS: {void** data @+0x0, u32 count @+0x8}. Read by DayNightCycle_InitCycle (mov rbx,[rip->0x1412f5aa8]; mov eax,[rip->0x1412f5ab0]; end = data + count*8), which walks it for the oe::dt::DarkTalesAppSettingsSection that holds ApplicationSettings.ot's MAIN section (m_oDayNightCycleParams at +0x1a0..+0x1b8). R.daynight finds that entry by RTTI name rather than by index, so a section added or reordered by a patch does not misdirect a write. DYNAMIC PROOF 2026-10-08: chapter-timer set day/night 10 s through R.daynight and the chapter's own clock read day=10.0 night=10.0 boss_sleep=0.0 (MATCH)."
+  },
+  {
    "name": "DayNightCycle_PushValues",
    "kind": "function",
    "category": "gameplay",
@@ -3226,7 +3244,7 @@
    "category": "event",
    "raw": "FUN_1407276a0",
    "status": "ok",
-   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]",
+   "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]\n\n[2026-10-10 static re-read, for an R.damage.deal] Arguments are (source entity rcx, target entity rdx, oCEntityHitData* r8). A LOCAL target (no net component, or its +0x130 is-remote byte clear) gets Entity_DispatchHit(target, hit) directly at 0x14072772d; the network event is only built for a remote one. The event's f32 @+0x40 is NOT read from the hit: it is *(f32*)(*(source+0x30)+0x24) * 1000.0 (const @0x140fcbee8), i.e. most likely a source-side TIME in ms, so do not take +0x40 as the hit's damage without checking it against the damage meter's own decode. The hit is copied field by field: +0x10 instigator, +0x18..+0x6c floats/vectors, +0x70/+0x78/+0x80 u64, +0x88 u16, +0x90 ptr, +0xa0 ptr (an object whose +0x70 byte gates the network send). WHERE THE DAMAGE AMOUNT LIVES \u2014 answered by the damage meter, which is proven in game (src/loader/lua/rsmm/damage.lua, oCDtProcessedDamage): hit +0x10 is a POINTER to a hit-value object whose f32 at +0x08 is the damage (+0x1b = the 'game counts this hit' gate, +0x11 = the kill flag), and +0xa0 points to the hit def / source info (u16 attack type at +0xc8). So the +0x10 label in Entity_DispatchHit's note ('source/instigator entity*') is wrong for this struct. What still blocks R.damage.deal is not the amount but the replay: the value object is shared by pointer, so scaling a copied hit's amount mutates the original's, and its lifetime/refcount is unread. Build it as a copy of a live hit with its OWN value object, dispatched through Entity_DispatchHit on a LOCAL target, never a hit built from zero.",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ],
@@ -4120,6 +4138,57 @@
    }
   },
   {
+   "name": "SceneContextValue_SetInt",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_1402091a0",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, int32_t value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "int"
+    ]
+   },
+   "note": "Write an INT entity value into a SCENE CONTEXT by key - the write half of SceneContextValue_Find, and the engine's own setter (not a raw poke of record+0x30, which would skip the change signal every listener hangs off).\n\nWHAT IT DOES (read 2026-09-26, static): stack-builds an oCEntityValueUnion of the right type (EntityValueUnion_InitAsType: 1 = int, 0 = f32), writes the value inline, and hands it with the key to FUN_1407065d0. That looks the key up with FUN_1401c9670 (a byte twin of SceneContextValue_Find, returning the same RECORD) and, when the key is held, calls FUN_140716470 -> FUN_140706660(ctx, record, union). A key the context does not hold is a silent no-op: nothing is created.\n\nFUN_140706660 IS THE REPLICATION GATE, and it is why R.modifier writes are local-only: settings = *record (oCGlobalEntityValueSettings). If ctx+0xe0 is set, its vt[0x78]() is true, its vt[0xd8]() is false AND settings+0xbe != 0, the write is REFUSED without a word (a client may not set a replicated value). Otherwise, when the new union differs (EntityValueUnion_Compare), it is copied into record+0x30, the change signal at record+8 fires, and if ctx+0x78 is set and settings+0xbe != 0, ctx+0x78->vt[0x30](.., 1, 0) marks it for replication. So settings+0xbe is the value's REPLICATED flag. vt[0x78]/vt[0xd8] are unnamed (probably is-networked / is-authority) - not relied on.\n\nCallers: the engine's own gameplay code, e.g. the escape menu's 'Is game menu open' (UI controller activation). The SDK reaches it only through R.modifier.set, which refuses a replicated value unless the run is provably solo."
+  },
+  {
+   "name": "SceneContextValue_SetFloat",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_14020a580",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, float value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "float"
+    ]
+   },
+   "note": "Write an F32 entity value into a SCENE CONTEXT by key; the float twin of SceneContextValue_SetInt (value arrives in xmm2, `movaps xmm6, xmm2`, union type 0).\n\nWHAT IT DOES (read 2026-09-26, static): stack-builds an oCEntityValueUnion of the right type (EntityValueUnion_InitAsType: 1 = int, 0 = f32), writes the value inline, and hands it with the key to FUN_1407065d0. That looks the key up with FUN_1401c9670 (a byte twin of SceneContextValue_Find, returning the same RECORD) and, when the key is held, calls FUN_140716470 -> FUN_140706660(ctx, record, union). A key the context does not hold is a silent no-op: nothing is created.\n\nFUN_140706660 IS THE REPLICATION GATE, and it is why R.modifier writes are local-only: settings = *record (oCGlobalEntityValueSettings). If ctx+0xe0 is set, its vt[0x78]() is true, its vt[0xd8]() is false AND settings+0xbe != 0, the write is REFUSED without a word (a client may not set a replicated value). Otherwise, when the new union differs (EntityValueUnion_Compare), it is copied into record+0x30, the change signal at record+8 fires, and if ctx+0x78 is set and settings+0xbe != 0, ctx+0x78->vt[0x30](.., 1, 0) marks it for replication. So settings+0xbe is the value's REPLICATED flag. vt[0x78]/vt[0xd8] are unnamed (probably is-networked / is-authority) - not relied on.\n\nCallers: the engine's own gameplay code, e.g. the escape menu's 'Is game menu open' (UI controller activation). The SDK reaches it only through R.modifier.set, which refuses a replicated value unless the run is provably solo."
+  },
+  {
+   "name": "SceneContextValue_SetBool",
+   "kind": "function",
+   "category": "entity-values",
+   "raw": "FUN_140209010",
+   "status": "ok",
+   "signature": "void(void* sceneContext, uint32_t crcKey, bool value)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "bool"
+    ]
+   },
+   "note": "Write a BOOL entity value into a SCENE CONTEXT by key; the bool twin of SceneContextValue_SetInt (`movzx ebx, r8b`, EntityValueUnion_InitAsType(2), `mov byte [data], bl`, then FUN_1407065d0). Found 2026-09-26 as the only caller of that shared set path that builds a type-2 union, after a playtest showed the run-modifier TOGGLES (e.g. 'No minimap', 0x99f27eac) are type 2, which the int/float setters cannot write. Same replication gate as SceneContextValue_SetInt (see its note).\n\nUNION TYPE TABLE (EntityValueUnion_InitAsType jump table, {size, align} per case): 0 = f32 {4,4}; 1 = int {0x10,8}; 2 = bool {1,1}; 3 = {0xc,4}. Storage: tag at union+8 == 4 means the value is INLINE at union+0x10; any other non-zero tag is the storage ADDRESS with bit 0 as a flag (`and rax, ~1`). A 16-byte int never fits inline, so every int value is out of line - which is why 'Current chapter' and 'Hero Count' first read as 'did not come back inline'."
+  },
+  {
    "name": "Serializer_GetClassVersion",
    "kind": "function",
    "category": "engine-core",
@@ -4854,7 +4923,7 @@
      "uint32_t"
     ]
    },
-   "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13.",
+   "note": "Sets the XP component's current level and, on increase, dispatches the oCGameNamedEvent '_XP_LEVEL_UP' (string @0x140f22130) plus writes custom-flag key 0x12e831f2 (=level, f32) and updates the HUD mirror (*(f32*)(hud+0x238)). Early-outs if the level is unchanged. Decompile-verified live 2026-07-13. Backs R.xp.set_level (SetXp(0) then SetLevel(n), like the tail of Hero_GainExperience) \u2014 PROVEN IN GAME 2026-10-10: level 1 -> 10.",
    "refs": [
     "docs/_re/kinds/stats.md"
    ],
@@ -4880,7 +4949,7 @@
      "uint32_t"
     ]
    },
-   "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13.",
+   "note": "Sets the XP component's current-xp-within-level (*(xpComp+0x108)[+4]) and, when xp increased, writes custom-flag key 0x12e831f1 (=xp delta, f32). Decompile-verified live 2026-07-13. Backs R.xp.set_xp (kept below XpComponent_XpForLevel; not yet exercised in game).",
    "refs": [
     "docs/_re/kinds/stats.md"
    ],
@@ -5058,8 +5127,10 @@
    "category": "melodies",
    "va": "0x140f25c48",
    "status": "va",
-   "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. \u26a0 NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. Working hypothesis, untested: +0x38/+0x48 are the melody definition's 128-bit GUID halves (melodydefs carry one, e.g. Fully_Heal a284971b7ccb5f46a60c8eb637ce3a44) the way R.give's event carries a magical-object GUID. Backs the experimental R.melody.choose.",
-   "refs": []
+   "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. \u26a0 NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. DISPROVED 2026-10-10 (static read of the handler): the GUID-at-+0x38/+0x48 hypothesis was wrong. The hero handler 0x140399090 takes the oCString at +0x50 {ptr, len|flags @+0x58} and 0x1403afa90 compares it with each live MelodyDefinition's *(*(def+0x48)+0x18) name string; the match goes to the registry lookup 0x14025ac40, then 0x1403988c0 applies it. So the melody is named by that string. Backs R.melody.choose(name) (rsmm/melody.lua), which reads the live strings and sends one verbatim; the first R.melody.choose(lo, hi) left +0x50 empty and could never match.",
+   "refs": [
+    "src/loader/lua/rsmm/melody.lua"
+   ]
   },
   {
    "name": "oCGameNamedEventRemoveMelody_vftable",
@@ -5067,8 +5138,10 @@
    "category": "melodies",
    "va": "0x140f22608",
    "status": "va",
-   "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170.",
-   "refs": []
+   "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170. Hero handler 0x140399150 reads the same +0x50 name string as CHOOSE_MELODY. Backs R.melody.remove(name) (rsmm/melody.lua).",
+   "refs": [
+    "src/loader/lua/rsmm/melody.lua"
+   ]
   },
   {
    "name": "oCString_Dtor",
@@ -5077,79 +5150,653 @@
    "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
    "raw": "FUN_140111d90",
    "status": "ok"
-  }
- ],
- "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`.",
- "event_catalog": [
-  {
-   "name": "game_start",
-   "category": "run",
-   "note": "a game/session begins"
   },
   {
-   "name": "run_start",
+   "name": "Crt_Free",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140ce09b0",
+   "status": "unverified",
+   "signature": "void(void* p)",
+   "note": "CRT free (_free_base): HeapFree(DAT_14143cb18 crt heap,0,p), on failure maps GetLastError into errno. Called through thunk 0x140cc9100 (21277 refs) and 8 other thunks. Confidence: likely (decompile plain; name by shape). \u26a0 The Ghidra project flags it AND its thunks noreturn, which truncates every function that frees memory (4443 functions stopped at their first free); clearing the flags and re-flowing the 7220 call sites put 7104 back inside their caller and removed the spurious 'does not return' warnings (e.g. Hero_GrantMagicalObject 8 -> 0). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "Std_AllocateBytes",
+   "kind": "function",
+   "category": "library",
+   "raw": "FUN_140128090",
+   "status": "unverified",
+   "signature": "void*(size_t n)",
+   "note": "MSVC std::_Allocate path: n<0x1000 -> _malloc_base(n); else _malloc_base(n+0x27) aligned to 32 with the raw pointer stored at [ret-8] (the big-block layout oCString_Dtor undoes); overflow -> Rt_FailFast / length error. Bumps alloc counter DAT_1414442b4. Confidence: likely. \u26a0 Also wrongly flagged noreturn in the Ghidra project (657 truncated callers); clearing the flags and re-flowing the 7220 call sites put 7104 back inside their caller and removed the spurious 'does not return' warnings (e.g. Hero_GrantMagicalObject 8 -> 0). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_DestructInPlace",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a9530",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Generic in-place destructor stored at metaclass ops+0x90 (ops = desc+0x88) by EVERY class registrar: 1784/1787 registrars store this exact address (registrars.tsv). Body = obj->vftable[2](obj, 0), i.e. the scalar-deleting dtor with flags 0 (destroy, don't free). Was not a Ghidra function before the sweep (only LEA refs, 3568). Confidence: confirmed (decompile + registrar store site, e.g. oCEntityValueModifierMaxComputer registrar FUN_14017f981). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ],
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   }
+  },
+  {
+   "name": "MetaClass_GetObjectClass",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401b9850",
+   "status": "unverified",
+   "signature": "void*(void* obj)",
+   "note": "Generic adapter stored at class descriptor +0x80 (plVar2[0x10]) by all 1787 registrars: tail-jumps to obj->vftable[0] (the per-class virtual that returns the object's runtime metaclass). Undefined before the sweep (3574 LEA refs). Confidence: likely (store site certain; slot-0 meaning inferred). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_DestructInPlace_Slot0",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401aaf30",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Variant of MetaClass_DestructInPlace that calls obj->vftable[0](obj,0) \u2014 for class families whose deleting dtor is slot 0. 58 LEA refs from registrar-shaped functions (e.g. FUN_1402fa1a1, FUN_1403b9ff1). Undefined before the sweep. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_Construct_Zero16",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a96e0",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Placement-construct callback for 16-byte POD reflected types: zeroes two qwords. Stored at ops+0x80 by registrars (16 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MetaClass_Construct_Zero8",
+   "kind": "function",
+   "category": "engine-core",
+   "raw": "FUN_1401a9570",
+   "status": "unverified",
+   "signature": "void(void* obj)",
+   "note": "Placement-construct callback for 8-byte POD reflected types: zeroes one qword. Stored at ops+0x80 by registrars (12 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "HeroDefinition_Ctor",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_14031df10",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtHeroDefinition in-place ctor (size 0x908, hash 0x1768d0c9). Found via the class registrar at 0x1401957ac: metaclass ops+0x80 = 0x1401ae340 (sweep-defined JMP thunk) -> FUN_14031df10. Same ops+0x80 path independently lands on the already-confirmed EnemyDefinition_ctor (thunk 0x140249420) and NamedEvent_GiveMagicalObject_Ctor (thunk 0x140318cc0), which validates the slot. Supersedes the pre-patch FUN_14031d610 in docs/_re/kinds/skills-system.md. Confidence: likely (slot proven; body not read). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "RewardDefinition_Ctor",
+   "kind": "function",
+   "category": "rewards",
+   "raw": "FUN_1401c9b90",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtRewardDefinition in-place ctor, via registrar ops+0x80 thunk 0x1402480a0 -> FUN_1401c9b90 (same proof path as HeroDefinition_Ctor). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "SkillController_Ctor",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1402ecc40",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtEntityCpntSkillController in-place ctor (size 0x2a8, hash 0x15f639fc), via registrar 0x1402f97fb ops+0x80 thunk 0x140302db0 -> FUN_1402ecc40. This is the descriptor docs/_re/kinds/skills-system.md needed for a runtime-appended skill. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "MelodyDefinition_Ctor",
+   "kind": "function",
+   "category": "melodies",
+   "raw": "FUN_140326b20",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "MelodyDefinition in-place ctor via registrar ops+0x80 thunk 0x1401adfa0 -> FUN_140326b20. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "AbilityController_Ctor",
+   "kind": "function",
+   "category": "skill",
+   "raw": "FUN_1402c8db0",
+   "status": "unverified",
+   "signature": "void*(void* self)",
+   "note": "oCDtEntityCpntAbilityController in-place ctor via registrar ops+0x80 thunk 0x140302d80 -> FUN_1402c8db0. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "NamedEvent_GainDreamShards_Ctor",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402e6ce0",
+   "status": "unverified",
+   "signature": "void*(void* buf)",
+   "note": "oCDtNamedEventGainDreamShards in-place ctor via registrar ops+0x80 thunk 0x140303500 -> FUN_1402e6ce0. Sibling of NamedEvent_GiveMagicalObject_Ctor, i.e. a candidate for an R.* shards grant through the event bus. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "StringFormat_ArgString",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_14052c7d0",
+   "status": "unverified",
+   "signature": "void(oCString* arg, oCString* out, FormatSpec* spec)",
+   "note": "Per-type argument formatter for the engine's string-format: if spec text (spec+8) isn't a literal '%...', handles 'f' (quote), 'U' (toupper) and 'u' (tolower) on the oCString argument, else plain append. Reached via sweep-defined JMP thunk 0x14021e680 (128 LEA refs). Siblings: thunks 0x14021e6a0->FUN_14052c510, 0x14021e690->FUN_14052c760, 0x140166de0->FUN_14052c3d0, 0x1402b9d30->FUN_14052c650 (16-bit arg, 'x' hex). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "StringFormat_ArgPointer",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1402c44f0",
+   "status": "unverified",
+   "signature": "void(void** arg, oCString* out, FormatSpec* spec)",
+   "note": "Pointer argument formatter: default spec '0x%016p' unless the spec text starts with '%'. Undefined before the sweep (10 LEA refs). Confidence: confirmed (decompile + string). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "refs": [
+    "docs/_re"
+   ]
+  },
+  {
+   "name": "oCDtNamedEventGainReroll_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f263d0",
+   "status": "va",
+   "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs R.reroll.add, PROVEN IN GAME 2026-10-10 (counter 3 -> 6, rerolls usable on the offer screen).",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "oCNamedEventNetworkWithData_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f0f180",
+   "status": "va",
+   "note": "vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), the named event that carries ONE typed value: an oCEntityValueUnion embedded at +0x50 (union vft @+0x50, storage @+0x58 with 4 = inline, inline value @+0x60, type byte @+0x68: 0 = f32, 1 = int32, 2 = bool; read off the handlers, not the union symbol's note). Header as every named event, then +0x38 = -1, +0x40 = 0, +0x48 = -1; 0x70 bytes. Class chain oCGameNamedEvent (0x140f05aa8) -> oCGameNamedEventNetwork (0x140f09d98) -> this. Layout read off the game's own sender in HeroStats_OnDamageTaken (0x1403a6900..0x1403a6a80): it stack-builds one named CLEAR_PRIMARY_CD, InitAsType(union, 2), writes bool 1 and dispatches it to entity+0x4d8. The ability family subscribes to it in AbilityController_Ctor (0x1402c9e2c.., on owner+0x4d8, then a switch on the slot 0..6): CLEAR_CD / CLEAR_<SLOT>_CD -> 0x1402cce40 (IsKindOf this class, requires type 2 and a true byte), REDUCE_CD / REDUCE_<SLOT>_CD -> 0x1402cd140 (cooldown at controller+0x6c minus the f32 (type 0) or int (type 1) value), ADD_<SLOT>_CHARGE -> 0x1402ccf30 (int count, type 1; default 1, negative -> 0; only when the ability has charges), REMOVE_<SLOT>_CHARGE -> 0x1402cd040 (removes one, reads no payload). Activity events (ACTIVITY_*/SOLO_ACTIVITY_*) also use this class with type 5 (String). Backs R.ability. PROVEN IN GAME 2026-10-10: CLEAR_CD made the ultimate ready again at once. MEASURED in game: type 1 is a 16-byte type InitAsType allocates OUT of line (storage = heap pointer, not 4), and the charge handler reads its first int32 there.",
+   "refs": [
+    "src/loader/lua/rsmm/ability.lua"
+   ]
+  },
+  {
+   "name": "oCDtNamedEventGainDreamShards_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f224c0",
+   "status": "va",
+   "note": "vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0x60 bytes; ctor 0x1402e6ce0 (NamedEvent_GainDreamShards_Ctor): standard header, +0x38/+0x48 = -1, +0x40 = 0, then +0x50 u64 source net id = -1, +0x58 i32 amount = 0, +0x5c u8 picked-up = 1, +0x5d u8 purchase = 0. Hero handler 0x1403a72b0 (subscribed in NamedEvent_HeroSubscribeAll): a positive amount is multiplied by the hero's shard-gain values 0x173900d6 and 0x1d788952, tagged 'PickedUpByMyself' (+0x5c, when +0x50 is the hero's own id) and/or 'Purchase' (+0x5d), then passed to Hero_ModifyDreamShards with those tags. Backs R.shards.gain, PROVEN IN GAME 2026-10-10 (+50 took the counter 0 -> 50 in the same frame).",
+   "refs": [
+    "src/loader/lua/rsmm/resources.lua"
+   ]
+  },
+  {
+   "name": "oCGameEventGainIngredient_vftable",
+   "kind": "data",
+   "category": "event",
+   "va": "0x140f26460",
+   "status": "va",
+   "note": "vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x1402da4f0: standard header, +0x38/+0x48 = -1, +0x40 = 0, +0x50 u32 ingredient id = 0, +0x54 i16 count = 0. Hero handler 0x14039acc0 tail-calls 0x14039a970(hero, id, count), which finds the IngredientDefinition whose +0x290 u32 equals the id (name oCString at +0x298: Bean, Key, Note, Stone, Straw, Wood) and adds, or removes for a negative count, against the hero HUD mirror's list (hero+0x1d80, entries at +0x48/+0x50). Backs R.ingredient, PROVEN IN GAME 2026-10-10 (add(\"Key\", 2) showed two more keys; remove not yet exercised).",
+   "refs": [
+    "src/loader/lua/rsmm/resources.lua"
+   ]
+  },
+  {
+   "name": "Hero_GainRerollHandler",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1403aa9e0",
+   "status": "unverified",
+   "signature": "void(void* hero, void* ev)",
+   "note": "Hero-bound GAIN_REROLL handler: *(s16*)(*(hero+0x1d80)+0x16) += *(s16*)(ev+0x50), then publishes that value as the reroll_count game value (key 0x1a922cd6). So the hero's available offer rerolls live in the HUD mirror (hero+0x1d80, the same pointer the dream-shard code uses) at +0x16 as a signed 16-bit count; R.reroll.get reads it. Behaviour proven in game 2026-10-10: a +3 GAIN_REROLL took the s16 3 -> 6 and the published reroll_count followed; the address itself is still only pattern-matched, hence unverified.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "Reroll_GrantToHeroes",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402eb030",
+   "status": "unverified",
+   "note": "The game's own reroll grant: builds a GainReroll event on the stack with the count (an int truncated to u16) at +0x50, records it as a scene-context value (0x1bf49d2a for a gain, 0x1c036132 for a loss), accumulates it into this+0x68, then for each target hero either NamedEvent_Dispatch(entity+0x4d8, ev) (no net component, or locally owned) or NamedEvent_NetSendToPeer to the owning peer. The model for R.reroll.add (proven in game 2026-10-10). Static RE 2026-10-10.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "NamedEvent_ChooseMelody_Ctor",
+   "kind": "function",
+   "category": "melodies",
+   "raw": "FUN_1402da150",
+   "status": "ok",
+   "signature": "oe::dt::NamedEventChooseMelody*(void* buf)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "In-place ctor of NamedEventChooseMelody (0x60 bytes), reached from the class registrar's metaclass construct slot via thunk 0x140303080 (2026-10-10 sweep). Decompile: oCGameNamedEvent header (state 2 @+0x08, name 'CHOOSE_MELODY' @+0x20 via String_Assign, interned id @+0x30 from global 0x1412ef578), +0x38 = -1, +0x40 = 0, +0x48 = -1, second oCString @+0x50/+0x58/+0x5c empty. Pattern match_index 0 of 2. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch. [2026-10-10] No longer called by the SDK: rsmm/melody.lua builds the event by hand (the name string at +0x50 is the payload).",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "NamedEvent_GainReroll_Ctor",
+   "kind": "function",
+   "category": "event",
+   "raw": "FUN_1402e6eb0",
+   "status": "ok",
+   "signature": "oe::dt::NamedEventGainReroll*(void* buf)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "In-place ctor of oCDtNamedEventGainReroll (0x58 bytes), reached via thunk 0x140303560 from the class registrar's construct slot and called inline by the game's sender Reroll_GrantToHeroes. Decompile: oCGameNamedEvent header (name 'GAIN_REROLL' @+0x20, interned id @+0x30 from global 0x1412eec78), +0x38 = -1, +0x40 = 0, +0x48 = -1, +0x50 u16 count = 0. Pattern match_index 8 of 13. Named-event ctors share one template, so this pattern is NOT unique (the loader picks by match_index): callers MUST check the name string the ctor wrote at +0x20 before dispatching, which catches a resolve that landed on a sibling event's ctor after a game patch.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "CharacterController_ClearStagger",
+   "kind": "function",
+   "category": "combat",
+   "raw": "FUN_1403cc1d0",
+   "status": "ok",
+   "signature": "void(void* charController)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "The hero character controller's CLEAR_STAGGER handler (hero dispatcher channel map; see events-bus.md). Body: this+0x33c (f32, the accumulated stagger) = 0, then 0x1403c9ab0(this) returns the stagger threshold and, when it is > 0, pushes +0x33c / threshold to the gauge at this+0x8b0 via 0x1402f0890 (tail call). A .pdata function start. Its sibling RESET_STAGGER_RESILIENCE 0x1403cc1c0 is a two-instruction leaf (this+0x344 = 0; ret) with NO .pdata entry, so it is not hookable and is not mapped. Hooked read-only by R.status (rsmm/status.lua) to capture the controller and log +0x33c before and after a clear."
+  }
+ ],
+ "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`. Each entry's `fields` are the property names the emitter passes (literals in the emitting function, 2026-09-11 catalog); the loader decodes them onto the event table, so a handler reads ev.<field>. Entries with `confirmed` were seen firing in game with those fields (solo run, 2026-10-10); the rest are from the static catalog only.",
+ "event_catalog": [
+  {
+   "name": "active_boss",
    "category": "run",
-   "note": "a run begins"
+   "note": "a boss fight ended",
+   "fields": [
+    "time",
+    "success"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "altar_revive",
+   "category": "run",
+   "note": "the Altar of Heroes revived a player",
+   "fields": [
+    "count"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "blood_fountain",
+   "category": "run",
+   "note": "a blood fountain was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
   },
   {
    "name": "chapter_end",
    "category": "run",
-   "note": "a chapter ends"
-  },
-  {
-   "name": "matchmaking_start",
-   "category": "multiplayer",
-   "note": "matchmaking begins; payload {search_difficulty, current_party_size}"
-  },
-  {
-   "name": "matchmaking_end",
-   "category": "multiplayer",
-   "note": "matchmaking ends"
+   "note": "a chapter ends, with the run stats so far (seen: enemy_killed, damage_dealt, damage_received, dream_shard_collected, dream_shard_spend, level_reached, objects, reroll_used, revive_token, attack_power, armor, vitality; name and collection were not sent)",
+   "fields": [
+    "name",
+    "collection",
+    "enemy_killed",
+    "damage_dealt",
+    "damage_received",
+    "level_reached",
+    "dream_shard_collected",
+    "dream_shard_spend",
+    "attack_power",
+    "armor",
+    "vitality",
+    "reroll_used",
+    "revive_token",
+    "objects"
+   ],
+   "confirmed": "2026-10-10"
   },
   {
    "name": "enemy_killed",
    "category": "combat",
-   "note": "an enemy was killed"
-  },
-  {
-   "name": "level_up_reach",
-   "category": "progression",
-   "note": "hero reached a new level (telemetry name; the typed 'level_up' event carries {level})"
-  },
-  {
-   "name": "level_up_book",
-   "category": "progression",
-   "note": "level-up book / talent pick"
-  },
-  {
-   "name": "unlock_skill",
-   "category": "meta",
-   "note": "a skill was unlocked"
-  },
-  {
-   "name": "unlock_object",
-   "category": "meta",
-   "note": "an object was unlocked"
-  },
-  {
-   "name": "unlock_hero",
-   "category": "meta",
-   "note": "a hero was unlocked"
-  },
-  {
-   "name": "unlock_level_nightmare",
-   "category": "meta",
-   "note": "a nightmare difficulty was unlocked"
-  },
-  {
-   "name": "event_start",
-   "category": "run",
-   "note": "an in-run event begins"
+   "note": "\u26a0 NOT an event in practice: never fired in a full solo chapter with 127 kills (2026-10-10), and absent from the 33-call-site emitter table \u2014 `enemy_killed` is a FIELD of chapter_end (the chapter kill count). For kills use the gameplay bus (gameplay:ENEMY_KILLED)",
+   "fields": []
   },
   {
    "name": "event_end",
    "category": "run",
-   "note": "an in-run event ends"
+   "note": "an in-run event ends (status = success / failed; reward on activities)",
+   "fields": [
+    "event_name",
+    "type",
+    "reward",
+    "success",
+    "failed",
+    "status",
+    "refugee"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "event_start",
+   "category": "run",
+   "note": "an in-run event begins",
+   "fields": [
+    "event_name",
+    "type"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "game_start",
+   "category": "run",
+   "note": "a game/session begins",
+   "fields": [
+    "DLCs_owned",
+    "os_language",
+    "game_language",
+    "region",
+    "cpu_frequency",
+    "cpu_name",
+    "cpu_nb_core",
+    "cpu_nb_thread",
+    "gamepad",
+    "gpu_name",
+    "os_name",
+    "ram_size"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "health_fountain",
+   "category": "run",
+   "note": "a healing fountain was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hero_death",
+   "category": "combat",
+   "note": "the hero died, naming the killer (enemy_name, e.g. Standard_Undead_Hog_Reaper; enemy_type was not sent in solo play)",
+   "fields": [
+    "enemy_name",
+    "enemy_type"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hero_heal",
+   "category": "run",
+   "note": "the hero was healed (source unread; not the health fountain, which sends health_fountain)",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "hourglass",
+   "category": "run",
+   "note": "the hourglass was used",
+   "fields": [
+    "dream_shard",
+    "object_count"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "key_used",
+   "category": "run",
+   "note": "a key was used (locked chest)",
+   "fields": [],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "level_up_book",
+   "category": "progression",
+   "note": "level-up book / talent pick",
+   "fields": [
+    "hero_name",
+    "level_reached"
+   ]
+  },
+  {
+   "name": "levelup_run",
+   "category": "progression",
+   "note": "hero reached a new level in the run; level_up_reach = the new level (it is a FIELD, not an event name). The typed level_up event carries {level} too.",
+   "fields": [
+    "level_up_reach"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "matchmaking_end",
+   "category": "multiplayer",
+   "note": "matchmaking ends",
+   "fields": [
+    "search_difficulty",
+    "duration",
+    "found"
+   ]
+  },
+  {
+   "name": "matchmaking_start",
+   "category": "multiplayer",
+   "note": "matchmaking begins; payload {search_difficulty, current_party_size}",
+   "fields": [
+    "search_difficulty",
+    "current_party_size"
+   ]
+  },
+  {
+   "name": "note_gain",
+   "category": "run",
+   "note": "a melody note was gained",
+   "fields": [
+    "key_gain"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "object_proposed",
+   "category": "items",
+   "note": "a magical object was OFFERED",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "object_selected",
+   "category": "items",
+   "note": "a magical object was TAKEN",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "open_chest",
+   "category": "run",
+   "note": "a chest was opened; locked = the red key chest",
+   "fields": [
+    "locked"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "reconnect",
+   "category": "multiplayer",
+   "note": "a peer reconnect attempt, with network stats",
+   "fields": [
+    "heal_sum",
+    "heal_count",
+    "hero_heal",
+    "use_relay",
+    "peer_id",
+    "ping_min",
+    "ping_max",
+    "ping_average",
+    "resend_buffer_min",
+    "resend_buffer_max",
+    "resend_buffer_average",
+    "loss_average",
+    "network_stats",
+    "reason",
+    "duration",
+    "success"
+   ]
+  },
+  {
+   "name": "revive_token",
+   "category": "run",
+   "note": "a revive token was spent to bring a player back (the 2026-09-11 table had this as revive_player with a revive_token field; the game sends the name revive_token, with no fields)",
+   "fields": [],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "run_start",
+   "category": "run",
+   "note": "a run begins \u2014 not seen in a solo run (2026-10-10); may fire only for online / matchmade runs",
+   "fields": [
+    "player_count",
+    "player_heroes",
+    "custom_mode",
+    "challenge",
+    "use_relay",
+    "matchmaking",
+    "source",
+    "run_restart",
+    "voice_chat_mode"
+   ]
+  },
+  {
+   "name": "sandman_buy",
+   "category": "shop",
+   "note": "a Sandman shop purchase",
+   "fields": [
+    "article_name",
+    "article_price",
+    "article_rarity"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "skill_proposed",
+   "category": "progression",
+   "note": "a talent was OFFERED",
+   "fields": [
+    "skill_tier",
+    "skill_name",
+    "skill_rarity",
+    "skill_count"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "skill_selected",
+   "category": "progression",
+   "note": "a talent was TAKEN",
+   "fields": [
+    "skill_tier",
+    "skill_name",
+    "skill_rarity",
+    "skill_count"
+   ],
+   "confirmed": "2026-10-10"
+  },
+  {
+   "name": "unlock_hero",
+   "category": "meta",
+   "note": "a hero was unlocked",
+   "fields": [
+    "hero_name"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_level_nightmare",
+   "category": "meta",
+   "note": "a nightmare difficulty was unlocked",
+   "fields": [
+    "level"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_object",
+   "category": "meta",
+   "note": "an object was unlocked",
+   "fields": [
+    "object_name",
+    "object_quality"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "unlock_skill",
+   "category": "meta",
+   "note": "a skill was unlocked",
+   "fields": [
+    "skill_name"
+   ],
+   "confirmed": "2026-10-10 (user report; fields from the emitter, not seen in a log)"
+  },
+  {
+   "name": "use_teleportation",
+   "category": "run",
+   "note": "a teleporter was used",
+   "fields": [],
+   "confirmed": "2026-10-10"
   }
  ],
  "gameplay_event_catalog_doc": "Names dispatched on the oCGameNamedEvent bus, mined from the shipped exe by tools/mine_event_names.py (SCREAMING_CASE literal pools in .rdata, kept only where a pool contains an event name independently CONFIRMED in-game). Subscribe with R.on('gameplay:<NAME>', cb). The loader's bus detour reads the plaintext name off the event object, so this list is a browsable catalog, not a whitelist -- a name the game adds still fires. `category` groups by the engine's own naming, it is not semantics we verified. Regenerate after a game patch: python tools/mine_event_names.py --verify --json - .",

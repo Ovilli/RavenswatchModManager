@@ -73,14 +73,21 @@ def main(argv: list[str] | None = None) -> int:
     kept = [e for e in entries
             if not (isinstance(e, dict) and e.get("loader_version") == a.loader_version)]
     replaced = len(kept) != len(entries)
-    doc["entries"] = [entry, *kept]
+    # The client reads at most MAX_ENTRIES and silently drops the rest, and
+    # publish_changelog.sh refuses a feed it would truncate -- so a full feed
+    # (50 entries on 2026-10-08) failed the loader v29 publish AFTER the
+    # loader itself had shipped. Retire the OLDEST notes here instead: the
+    # feed is newest-first, so the tail is what no client would show anyway.
+    sys.path.insert(0, str(REPO / "src"))
+    from rsmm.engine.changelog_feed import MAX_ENTRIES
+    doc["entries"] = [entry, *kept][:MAX_ENTRIES]
+    retired = len(kept) + 1 - len(doc["entries"])
     doc["generated"] = a.date
 
     path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # Validate through the client parser, so a note that would be dropped on a
     # user's machine fails here instead of shipping.
-    sys.path.insert(0, str(REPO / "src"))
     from rsmm.engine.changelog_feed import ChangelogError, parse
 
     try:
@@ -93,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"{'replaced' if replaced else 'added'} loader v{a.loader_version} note in {path}")
+    if retired:
+        print(f"  retired the {retired} oldest note(s): the client shows {MAX_ENTRIES} at most")
     print(f"  {a.summary}")
     for h in a.highlight:
         print(f"  - {h[:96]}{'…' if len(h) > 96 else ''}")

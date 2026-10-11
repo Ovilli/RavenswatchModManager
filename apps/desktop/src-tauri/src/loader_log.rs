@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// Incremental reader for the in-game loader log.
 ///
@@ -166,6 +166,93 @@ pub fn read_loader_log_chunk(
     })
 }
 
+/// The loader's run archive, `<game>/rsmm/logs`, and nothing else.
+///
+/// The directory comes from the CLI (`loader-runs` owns game-dir resolution),
+/// but it is still a string from the webview that is about to be revealed or
+/// emptied, so its shape is checked twice: lexically before it may be created,
+/// and on the canonical path after, so a symlink cannot point it elsewhere.
+fn archive_dir(dir: &str, create: bool) -> Result<PathBuf, String> {
+    let is_archive = |p: &Path| {
+        p.file_name().and_then(|s| s.to_str()) == Some("logs")
+            && p.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str()) == Some("rsmm")
+    };
+    let raw = Path::new(dir);
+    if !raw.is_absolute() || raw.components().any(|c| c == Component::ParentDir) || !is_archive(raw) {
+        return Err("refusing a path that is not the loader's log archive".into());
+    }
+    if create {
+        std::fs::create_dir_all(raw).map_err(|e| format!("could not create {}: {e}", raw.display()))?;
+    }
+    let canonical = std::fs::canonicalize(raw).map_err(|e| format!("failed to resolve {dir}: {e}"))?;
+    if !is_archive(&canonical) {
+        return Err("refusing a path that is not the loader's log archive".into());
+    }
+    Ok(canonical)
+}
+
+/// Reveal the run archive in the file manager. Created first: before the
+/// game's second launch nothing has been archived, and a button that fails
+/// on a fresh install reads as broken.
+#[tauri::command]
+pub fn open_loader_logs_dir(app: tauri::AppHandle, dir: String) -> Result<(), String> {
+    let dir = archive_dir(&dir, true)?;
+    crate::profile_dir::reveal(&app, &dir)
+}
+
+#[derive(Serialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedLogs {
+    pub files: u32,
+    pub bytes: u64,
+    /// Files that could not be removed. On Windows that is the live log while
+    /// the game holds it open, which is not an error worth failing the rest on.
+    pub skipped: u32,
+}
+
+fn remove(path: &Path, out: &mut DeletedLogs) {
+    let Ok(meta) = std::fs::metadata(path) else { return };
+    if !meta.is_file() {
+        return;
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => {
+            out.files += 1;
+            out.bytes += meta.len();
+        }
+        Err(_) => out.skipped += 1,
+    }
+}
+
+/// Delete every archived run, and with `include_live` also the live log and
+/// its one-run-back alias (`<game>/mods/_log.txt`, `_log.prev.txt`).
+///
+/// The caller leaves `include_live` off while the game runs. The live log is
+/// found from the archive's own location rather than taken as a second path,
+/// so the delete can only ever reach the one install the archive belongs to.
+#[tauri::command]
+pub fn delete_loader_logs(dir: String, include_live: bool) -> Result<DeletedLogs, String> {
+    // Created rather than required: before the second launch nothing has been
+    // archived, but the live log already exists and is still deletable.
+    let archive = archive_dir(&dir, true)?;
+    let mut out = DeletedLogs::default();
+    let entries = std::fs::read_dir(&archive).map_err(|e| format!("failed to list {dir}: {e}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("log") {
+            remove(&path, &mut out);
+        }
+    }
+    if include_live {
+        if let Some(game) = archive.parent().and_then(Path::parent) {
+            let mods = game.join("mods");
+            remove(&mods.join("_log.txt"), &mut out);
+            remove(&mods.join("_log.prev.txt"), &mut out);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +276,68 @@ mod tests {
     fn append(path: &Path, body: &str) {
         let mut f = std::fs::OpenOptions::new().append(true).open(path).unwrap();
         f.write_all(body.as_bytes()).unwrap();
+    }
+
+    /// `<tmp>/<unique>/` laid out like a game install: `mods/` and `rsmm/logs/`.
+    fn game(name: &str) -> PathBuf {
+        let root = std::env::temp_dir()
+            .join(format!("rsmm-loader-logs-{}-{:?}", name, std::time::SystemTime::now()));
+        std::fs::create_dir_all(root.join("mods")).unwrap();
+        std::fs::create_dir_all(root.join("rsmm").join("logs")).unwrap();
+        root
+    }
+
+    #[test]
+    fn archive_dir_accepts_only_rsmm_logs() {
+        let root = game("archive");
+        assert!(archive_dir(root.join("rsmm").join("logs").to_str().unwrap(), false).is_ok());
+        assert!(archive_dir(root.join("mods").to_str().unwrap(), false).is_err());
+        assert!(archive_dir(root.to_str().unwrap(), false).is_err());
+        let sneaky = root.join("rsmm").join("logs").join("..").join("..").join("rsmm").join("logs");
+        assert!(archive_dir(sneaky.to_str().unwrap(), false).is_err());
+        assert!(archive_dir("rsmm/logs", false).is_err());
+    }
+
+    #[test]
+    fn delete_removes_runs_and_live_logs_but_nothing_else() {
+        let root = game("delete");
+        let logs = root.join("rsmm").join("logs");
+        let mods = root.join("mods");
+        write(&logs.join("2026-10-09_ab12.log"), "a\n");
+        write(&logs.join("2026-10-08_cd34.log"), "bb\n");
+        write(&logs.join("keep.txt"), "x\n");
+        write(&mods.join("_log.txt"), "live\n");
+        write(&mods.join("_log.prev.txt"), "prev\n");
+        write(&mods.join("manifest.toml"), "keep\n");
+
+        // Game running: the archive only.
+        let out = delete_loader_logs(logs.to_str().unwrap().into(), false).unwrap();
+        assert_eq!((out.files, out.bytes, out.skipped), (2, 5, 0));
+        assert!(logs.join("keep.txt").exists());
+        assert!(mods.join("_log.txt").exists());
+
+        let out = delete_loader_logs(logs.to_str().unwrap().into(), true).unwrap();
+        assert_eq!(out.files, 2);
+        assert!(!mods.join("_log.txt").exists() && !mods.join("_log.prev.txt").exists());
+        assert!(mods.join("manifest.toml").exists());
+    }
+
+    #[test]
+    fn delete_reaches_the_live_log_before_anything_is_archived() {
+        let root = game("fresh");
+        let logs = root.join("rsmm").join("logs");
+        std::fs::remove_dir(&logs).unwrap();
+        write(&root.join("mods").join("_log.txt"), "first run\n");
+        let out = delete_loader_logs(logs.to_str().unwrap().into(), true).unwrap();
+        assert_eq!(out.files, 1);
+    }
+
+    #[test]
+    fn delete_refuses_a_directory_that_is_not_the_archive() {
+        let root = game("refuse");
+        write(&root.join("mods").join("x.log"), "x\n");
+        assert!(delete_loader_logs(root.join("mods").to_str().unwrap().into(), true).is_err());
+        assert!(root.join("mods").join("x.log").exists());
     }
 
     #[test]

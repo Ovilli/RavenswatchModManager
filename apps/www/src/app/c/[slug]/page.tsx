@@ -24,7 +24,6 @@ import { use, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
-import { AdBanner } from '../../components/ad-banner';
 import { MDEditor } from '../../components/md-editor';
 import { ModCover } from '../../components/mod-cover';
 
@@ -643,14 +642,6 @@ export default function CollectionDetailPage({
           ))}
         </ul>
       )}
-
-      {/* AdSense "no ads on screens without publisher content": an empty or
-          undescribed collection is a near-empty page — skip the ad there. */}
-      {c.mods.length > 0 && c.description?.trim() ? (
-        <div className="mx-auto w-full max-w-2xl">
-          <AdBanner slot="1934448674" className="rounded-lg" />
-        </div>
-      ) : null}
 
       {/* ─── Reviews ─── */}
       <section className="space-y-4">

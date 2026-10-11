@@ -17,7 +17,6 @@ import pytest
 from rsmm.engine import cooked
 from rsmm.engine import entity_append as EA
 from rsmm.engine import entity_components as EC
-from rsmm.engine import mods_modal as MM
 
 HOST = "DarkHills\\SceneryObjects_DarkHills\\Menhir_Big_A.entity.ot"
 
@@ -49,7 +48,7 @@ def test_component_appends_and_round_trips(host, name):
     # the engine will not read back either.
     assert cooked.emit(after) == out
     _ref, cls = EC.DONORS[name]
-    assert MM._class_index_of(after, cls) is not None
+    assert EC._class_index_of(after, cls) is not None
 
 
 def test_class_closure_covers_more_than_the_component_itself(host):
@@ -82,7 +81,7 @@ def test_both_components_compose(host):
     cf = cooked.parse(out)
     assert EA.validate_layout(cf) == EA.validate_layout(cooked.parse(host)) + 2
     for _ref, cls in EC.DONORS.values():
-        assert MM._class_index_of(cf, cls) is not None
+        assert EC._class_index_of(cf, cls) is not None
 
 
 def test_unknown_component_is_refused(host):

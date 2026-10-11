@@ -8,6 +8,7 @@ import {
   outdatedCount,
   outdatedMods,
   splitProfileMods,
+  splitProfileModsAgainst,
   unadoptedMods,
   useApp,
 } from './index';
@@ -215,6 +216,48 @@ describe('importBackup treats the payload as untrusted', () => {
     );
     expect(res.ok).toBe(true);
     expect(useApp.getState().settings.sources).toEqual(['https://mirror.example/registry']);
+  });
+});
+
+describe('a malformed profile in a code cannot break the app', () => {
+  // Every screen walks `loadOrder`, and the bad profile is persisted, so a
+  // missing or non-array value used to throw on every render of every launch.
+  it('importBackup gives a profile with no usable loadOrder an empty one', () => {
+    const code = btoa(
+      JSON.stringify({
+        kind: 'rsmm-backup',
+        profiles: [
+          { id: 'a', name: 'No order' },
+          { id: 'b', name: 'String order', loadOrder: 'mod-a', disabled: 'mod-a' },
+          { id: 'c', loadOrder: ['mod-a', 7, null, 'mod-a', 'mod-b'], disabled: [1, 'mod-b'] },
+          null,
+          'not a profile',
+        ],
+      }),
+    );
+    expect(useApp.getState().importBackup(code).ok).toBe(true);
+
+    expect(profileById('a').loadOrder).toEqual([]);
+    expect(profileById('b').loadOrder).toEqual([]);
+    expect([...profileById('b').disabled]).toEqual([]);
+    expect(profileById('c').loadOrder).toEqual(['mod-a', 'mod-b']);
+    expect([...profileById('c').disabled]).toEqual(['mod-b']);
+    expect(typeof profileById('c').name).toBe('string');
+    for (const p of useApp.getState().profiles) {
+      expect(() => splitProfileMods(p)).not.toThrow();
+    }
+  });
+
+  it('importProfile does the same for a single profile code', () => {
+    const code = btoa(
+      JSON.stringify({ kind: 'rsmm-profile', profile: { loadOrder: { x: 1 }, disabled: 3 } }),
+    );
+    const id = useApp.getState().importProfile(code);
+    expect(id).not.toBeNull();
+    const p = profileById(id as string);
+    expect(p.loadOrder).toEqual([]);
+    expect([...p.disabled]).toEqual([]);
+    expect(p.name).toBe('Profile (imported)');
   });
 });
 
@@ -591,5 +634,97 @@ describe('adopting mods from disk', () => {
     useApp.getState().adoptMods(['off-x', 'off-y']);
     const p = profileById(pid);
     expect(detectConflicts(p)).toEqual([]);
+  });
+});
+
+describe('syncLocalMods across profile switches', () => {
+  // Every CLI call runs against the ACTIVE profile's directory, so a list only
+  // describes that one profile. Reading it as the whole truth made every other
+  // profile look stripped of its mods.
+  function twoProfiles() {
+    const mk = (id: string, loadOrder: string[]): Profile => ({
+      id,
+      name: id,
+      loadOrder,
+      disabled: new Set<string>(),
+      createdAt: new Date().toISOString(),
+    });
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x', 'y']), mk('B', ['z'])],
+      activeProfileId: 'A',
+      installed: [],
+      localMods: {},
+    });
+  }
+
+  it('keeps an inactive profile’s mods after switching away and re-listing', () => {
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().setActiveProfile('B');
+    useApp.getState().syncLocalMods([localMod({ id: 'z' })]);
+    expect(profileById('A').loadOrder).toEqual(['x', 'y']);
+    expect(profileById('B').loadOrder).toEqual(['z']);
+  });
+
+  it('leaves the active profile’s registry alone when listing another profile', () => {
+    // Browse installs into a profile that is not active and syncs that
+    // profile's own listing. It used to replace `localMods`/`installed` with
+    // it, so the active Library showed its own mods as "not on disk".
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().syncLocalMods([localMod({ id: 'z' }), localMod({ id: 'w' })], 'B');
+    const s = useApp.getState();
+    expect(Object.keys(s.localMods).sort()).toEqual(['x', 'y']);
+    expect([...s.installed].sort()).toEqual(['x', 'y']);
+    expect(splitProfileMods(profileById('A')).missing).toEqual([]);
+    expect(profileById('B').loadOrder).toEqual(['z']);
+  });
+
+  it('still prunes a mod confirmed gone from the profile the list describes', () => {
+    twoProfiles();
+    useApp.getState().syncLocalMods([localMod({ id: 'x' }), localMod({ id: 'y' })]);
+    useApp.getState().syncLocalMods([localMod({ id: 'x' })]);
+    expect(profileById('A').loadOrder).toEqual(['x']);
+  });
+});
+
+describe('profiles that are not active', () => {
+  const mk = (id: string, loadOrder: string[]): Profile => ({
+    id,
+    name: id,
+    loadOrder,
+    disabled: new Set<string>(),
+    createdAt: new Date().toISOString(),
+  });
+
+  it('splitProfileModsAgainst judges a profile by its OWN directory listing', () => {
+    const p = mk('B', ['a', 'b', 'gone']);
+    const split = splitProfileModsAgainst(p, [
+      localMod({ id: 'a' }),
+      localMod({ id: 'uuid-1', slug: 'b' }), // legacy id, matched by slug
+    ]);
+    expect(split.present).toEqual(['a', 'b']);
+    expect(split.missing).toEqual(['gone']);
+  });
+
+  it('never prunes an inactive profile against the active profile’s registry', () => {
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x']), mk('B', ['y', 'z'])],
+      activeProfileId: 'A',
+      localMods: {},
+    });
+    useApp.getState().syncLocalMods([localMod({ id: 'x' })]);
+    expect(useApp.getState().pruneMissingMods('B')).toBe(0);
+    expect(profileById('B').loadOrder).toEqual(['y', 'z']);
+  });
+
+  it('prunes an inactive profile against its own list when one is supplied', () => {
+    useApp.setState({
+      profiles: [freshDefault(), mk('A', ['x']), mk('B', ['y', 'z'])],
+      activeProfileId: 'A',
+      localMods: {},
+    });
+    expect(useApp.getState().pruneMissingMods('B', ['y'])).toBe(1);
+    expect(profileById('B').loadOrder).toEqual(['y']);
   });
 });

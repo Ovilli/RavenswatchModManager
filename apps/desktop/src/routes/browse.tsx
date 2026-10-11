@@ -29,8 +29,8 @@ import {
   filterMods,
 } from '../lib/browse-filter';
 import { TParts, useT } from '../lib/i18n-react';
+import { installModIntoProfile } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
-import { installModFromIndex, listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
 
@@ -65,9 +65,7 @@ function BrowsePage() {
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
-  const installMod = useApp((s) => s.installMod);
   const createProfile = useApp((s) => s.createProfile);
-  const syncLocalMods = useApp((s) => s.syncLocalMods);
   const profile = useApp(activeProfile);
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const view = useApp((s) => s.settings.browseView);
@@ -85,16 +83,10 @@ function BrowsePage() {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [slug]: true }));
     try {
-      // Already-on-disk path skips the network round-trip.
-      if (!installed.includes(slug)) {
-        const result = await installModFromIndex(slug, targetProfileId);
-        if (!result || !result.ok) {
-          throw new Error(result?.error ?? t('install failed'));
-        }
-        const local = await listLocalModsForProfile(targetProfileId);
-        if (local) syncLocalMods(local);
-      }
-      installMod(slug, targetProfileId);
+      // Downloads into the TARGET profile's folder unless that folder already
+      // has the mod. `installed` describes the active profile, which the
+      // target often is not (the picker offers every profile).
+      await installModIntoProfile(slug, targetProfileId);
       // Default profile installs create a new "My Mods" profile — read the
       // active profile after installMod, not the requested id.
       const { profiles, activeProfileId } = useApp.getState();
@@ -278,9 +270,7 @@ function BrowsePage() {
         {filtersOpen ? (
           <div id={filterBodyId} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <span className="text-ash text-xs">
-                {t('Category')}
-              </span>
+              <span className="text-ash text-xs">{t('Category')}</span>
               <div className="flex flex-wrap gap-1.5">
                 <FilterChip active={category === null} onClick={() => setCategory(null)}>
                   {t('any')}
@@ -304,9 +294,7 @@ function BrowsePage() {
 
             {facets.tags.length > 0 ? (
               <div className="flex flex-col gap-2">
-                <span className="text-ash text-xs">
-                  {t('Tags')}
-                </span>
+                <span className="text-ash text-xs">{t('Tags')}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {facets.tags.map(([name, count]) => (
                     <FilterChip
@@ -322,9 +310,7 @@ function BrowsePage() {
             ) : null}
 
             <label className="flex flex-col gap-2">
-              <span className="text-ash text-xs">
-                {t('Rating')}
-              </span>
+              <span className="text-ash text-xs">{t('Rating')}</span>
               <select
                 value={minRating}
                 onChange={(e) => setMinRating(Number(e.target.value))}
@@ -428,7 +414,7 @@ function BrowsePage() {
                 onChange={(e) => update({ showNsfw: e.target.checked })}
                 className="h-4 w-4 accent-crimson"
               />
-              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-widest text-crimson/80">
+              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-xs uppercase tracking-widest text-crimson/80">
                 <EyeOff className="h-3 w-3" /> NSFW
               </span>
             </label>
@@ -887,7 +873,7 @@ function ModRow({
             {m.name}
           </span>
           {m.nsfw ? (
-            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-[10px] uppercase tracking-widest text-crimson/80">
+            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-xs uppercase tracking-widest text-crimson/80">
               {t('nsfw')}
             </span>
           ) : null}

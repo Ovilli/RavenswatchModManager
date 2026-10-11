@@ -207,8 +207,17 @@ registrars:
 
 `*Settings` callbacks (`FUN_14031b550`/`FUN_14031d5b0`) only set the display
 description + file-glob + a flag — NOT the field list. Herodef ctor `FUN_14031d610`
-(desc `+0x80` thunk) has no fixed 28-element member, so the skill set is a
+(pre-2026-07-09 build) has no fixed 28-element member, so the skill set is a
 **dynamic** collection, not a baked array.
+
+> 2026-10-10 correction (undefined-code sweep): the ctor is reached through the
+> metaclass **ops** table, not desc `+0x80`. Every registrar stores the shared
+> `MetaClass_GetObjectClass` adapter at desc `+0x80`; the per-class construct
+> callback is at `ops+0x80` (ops = `*(desc+0x88)`), copy at `ops+0x88`, destruct at
+> `ops+0x90`. In the current build the herodef ctor is `FUN_14031df10`
+> (`HeroDefinition_Ctor`) and the SkillController's is `FUN_1402ecc40`
+> (`SkillController_Ctor`), both `unverified` in `data/symbols.json`. The
+> registrar addresses in the table above are pre-patch too.
 
 **Net-new verdict — HARDENED to NOT-FEASIBLE as a data mod.** New empirical proof
 beyond the single 28→29 brick: **all 12 heroes carry EXACTLY 28 `Skill Controller`

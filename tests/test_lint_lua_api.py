@@ -37,7 +37,7 @@ def test_unknown_event_warns(tmp_path):
 
 def test_unknown_engine_symbol_warns(tmp_path):
     d = _mod(tmp_path, 'R.engine.resolve("Not_A_Real_Function")\n')
-    errs, warns = lint._lint_lua_api("LuaMod", d)
+    _errs, warns = lint._lint_lua_api("LuaMod", d)
     assert warns == 1
 
 
@@ -54,7 +54,7 @@ def test_single_quotes_and_subdir_lua(tmp_path):
     d = _mod(tmp_path, "")
     (d / "sub").mkdir()
     (d / "sub" / "extra.lua").write_text("R.on('bogus_event', function() end)\n")
-    errs, warns = lint._lint_lua_api("LuaMod", d)
+    _errs, warns = lint._lint_lua_api("LuaMod", d)
     assert warns == 1
 
 
@@ -63,9 +63,32 @@ def test_analytics_firehose_events_recognised():
     fire even though no symbol carries them. Warning on those told authors a
     working handler was dead — and pushed them onto the typed event instead."""
     events, _ = lint._engine_vocab()
-    assert {"run_start", "level_up_reach", "level_up_book", "enemy_killed"} <= events
+    assert {"run_start", "levelup_run", "level_up_book", "enemy_killed"} <= events
+    # level_up_reach is a FIELD of levelup_run (seen in game 2026-10-10), so a
+    # handler on it would never fire and must keep warning.
+    assert "level_up_reach" not in events
 
 
 def test_analytics_event_does_not_warn(tmp_path):
-    d = _mod(tmp_path, 'R.on("level_up_reach", function() end)\n')
+    d = _mod(tmp_path, 'R.on("levelup_run", function() end)\n')
     assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_read_above_its_local_is_an_error(tmp_path, capsys):
+    """The closure reads a latch whose `local` is declared below it — nil at run
+    time, and silent until the line runs. Lint is the only net a mod has."""
+    d = _mod(
+        tmp_path,
+        'R.on("ready", function()\n'
+        '    if seen then return end\n'
+        'end)\n'
+        'local seen = false\n',
+    )
+    errs, _warns = lint._lint_lua_api("LuaMod", d)
+    assert errs == 1
+    assert "init.lua:2" in capsys.readouterr().out
+
+
+def test_unwalkable_lua_warns_instead_of_failing(tmp_path):
+    d = _mod(tmp_path, 'R.on("ready", function()\n')   # never closed
+    assert lint._lint_lua_api("LuaMod", d) == (0, 1)

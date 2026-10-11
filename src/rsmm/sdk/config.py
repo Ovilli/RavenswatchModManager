@@ -153,6 +153,25 @@ class Field:
             raise ConfigError(f"{self.name}: {v} > max {self.max}")
 
 
+def _choices(name: str, type_: str, body: dict) -> list[str]:
+    """A field's static option list.
+
+    `choices` is the documented key. `values` is accepted too because it is
+    what authors reach for — every enum in the repo's own mods used it, and the
+    parser read only `choices`, so each of those dropdowns rendered EMPTY in
+    the config panel and the overlay and could not change anything. An enum or
+    multiselect that ends up with no options and no `source` is now an error
+    instead of a dead control.
+    """
+    raw = body.get("choices")
+    if raw is None:
+        raw = body.get("values")
+    out = [str(c) for c in (raw or [])]
+    if type_ in ("enum", "multiselect") and not out and body.get("source") is None:
+        raise ConfigError(f"{name}: an {type_} needs its options: choices = [\"a\", \"b\", ...]")
+    return out
+
+
 @dataclass
 class ConfigSchema:
     fields: dict[str, Field] = field(default_factory=dict)
@@ -170,7 +189,7 @@ class ConfigSchema:
                 default=body.get("default"),
                 min=body.get("min"),
                 max=body.get("max"),
-                choices=list(body.get("choices", []) or []),
+                choices=_choices(name, t, body),
                 label=str(body.get("label", name)),
                 source=_check_source(name, body.get("source"), t),
             )
@@ -229,9 +248,20 @@ class ConfigStore:
         return dict(self._values)
 
     def schema_as_dict(self) -> dict[str, Any]:
-        return {
-            "fields": {name: field.as_dict() for name, field in self.schema.fields.items()}
-        }
+        # Labels in the client's language when the mod ships one
+        # (lang/<locale>.toml [config.<field>]); `choiceLabels` maps each
+        # stored value to what to show for it — the VALUE stays what is saved.
+        from .i18n import config_text, mod_text
+        text = mod_text(self.mod_dir)
+        fields: dict[str, Any] = {}
+        for name, f in self.schema.fields.items():
+            d = f.as_dict()
+            label, choice_labels = config_text(text, name)
+            if label:
+                d["label"] = label
+            d["choiceLabels"] = choice_labels
+            fields[name] = d
+        return {"fields": fields}
 
     @sdk_export("ConfigStore.get")
     def get(self, key: str, fallback: Any = None) -> Any:

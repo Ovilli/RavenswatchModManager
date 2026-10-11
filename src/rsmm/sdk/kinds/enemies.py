@@ -47,11 +47,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from ...engine import cooked
+from ...engine import cooked, corpus
 from ...engine import enemy_pools as EP
 from ...engine import rsc_cache as RC
 from ...engine.cooked_schemas import definitions as _defs
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
@@ -59,7 +58,7 @@ _log = logging.getLogger(__name__)
 
 #: Where the vanilla enemy definitions live in-repo (one cooked `.gen` per
 #: enemy id). The clone source for a custom enemy.
-_ENEMY_DIR = DATA_DIR / "uncooked" / "Definitions" / "Enemies"
+_ENEMY_DIR = "Definitions/Enemies"
 _ENEMY_GEN_SUFFIX = ".enemydef.ot.DtEnemyDefinition.gen"
 #: Decoded asset path (forward-slash) the apply pipeline registers in
 #: UsedRscList. The stem is the enemy's library identity.
@@ -68,23 +67,49 @@ _ENEMY_ASSET_SUBDIR = "Definitions/Enemies"
 #: Where the vanilla tribe definitions live in-repo — the set a custom enemy's
 #: ``tribe`` must name, or the runtime roster won't resolve it (it would load
 #: but never spawn). See :func:`_known_tribes`.
-_TRIBE_DIR = DATA_DIR / "uncooked" / "Definitions" / "EnemyTribes"
+_TRIBE_DIR = "Definitions/EnemyTribes"
+_TRIBE_SUFFIX = ".enemytribedef.ot.DtEnemyTribeDefinition.gen"
 
-#: ``spawn_weight`` guardrails. The weighted camp-roster selection overflowed
-#: and crashed the game at weight ``9999`` (enemy-spawn-model note). Vanilla
-#: weights are single- to low-double-digit (e.g. ``3.0``). Refuse anything
-#: extreme; warn on merely-high values that would dominate a camp.
-SPAWN_WEIGHT_MAX: Final[float] = 1000.0
-SPAWN_WEIGHT_WARN: Final[float] = 100.0
+#: ``power`` guardrails. Power (cooked +0x2dc, once mislabelled
+#: ``spawn_weight``) is what an enemy COSTS against a camp's power budget: the
+#: camp selector adds it up and its filter drops any def costing more than the
+#: budget has left. It is not pick odds. Vanilla camp enemies cost 0.1-20 and
+#: bosses 1000; ``9999`` crashed the game. A clone at 20 in a gnoll camp was
+#: priced out of every camp and never spawned (2026-09-24), which is what the
+#: warning is for.
+POWER_MAX: Final[float] = 1000.0
+POWER_WARN: Final[float] = 20.0
+
+
+def _power(defn: ContentDef, mod_id: str) -> float | None:
+    """``power`` (or its deprecated alias ``weight``), range-checked."""
+    fields = defn.fields
+    if "weight" in fields:
+        if "power" in fields:
+            raise ContentError(f"enemy {defn.id}: set 'power' only; 'weight' is its old name.")
+        _log.warning("enemy %s/%s: 'weight' is deprecated — it was always the enemy's "
+                     "power COST, not spawn odds. Rename it to 'power'.", mod_id, defn.id)
+    raw = fields.get("power", fields.get("weight"))
+    if raw is None:
+        return None
+    p = float(raw)
+    if p > POWER_MAX:
+        raise ContentError(
+            f"enemy {defn.id}: power {p:g} exceeds {POWER_MAX:g} (bosses cost 1000; "
+            f"9999 crashed the game).")
+    if p > POWER_WARN:
+        _log.warning(
+            "enemy %s/%s: power %g is above every vanilla camp enemy (max 20). Power is "
+            "the enemy's cost against a camp's budget, so camps that cannot afford it "
+            "will never spawn it.", mod_id, defn.id, p)
+    return p
 
 
 def _known_tribes() -> set[str]:
     """The vanilla tribe names a custom enemy may join (stems under
-    ``data/uncooked/Definitions/EnemyTribes``). Empty if the corpus is absent
-    (frozen builds that don't bundle it) — callers skip the check then."""
-    if not _TRIBE_DIR.is_dir():
-        return set()
-    return {p.name.split(".", 1)[0] for p in _TRIBE_DIR.glob("*.enemytribedef.*")}
+    ``Definitions/EnemyTribes``, read from the install or the mirror). Empty
+    only when neither is readable — callers skip the check then."""
+    return set(corpus.stems(_TRIBE_DIR, _TRIBE_SUFFIX))
 
 
 def _tribe_of_ref(ref_path: str) -> str | None:
@@ -176,14 +201,14 @@ ENEMY_DEF: Final = EnemyDefOffsets()
 # Fields accepted on a ContentDef.fields dict.
 _CLONE_FIELDS = (
     "base", "name", "display_name", "tribe", "flags", "add_flags",
-    "weight", "entity",
+    "power", "weight", "entity",
 )
 
 #: Fields accepted in ``mode = "override"``. Enforced (unknown key -> error),
 #: because every one of these is a silent no-op when misspelled: the emit
 #: succeeds, the assets install, and the run plays exactly like vanilla.
 _OVERRIDE_FIELDS = (
-    "mode", "pools", "enemies", "exclude", "entity", "mix", "seed", "weight",
+    "mode", "pools", "enemies", "exclude", "entity", "mix", "seed", "power", "weight",
     "cross_biome", "imports", "repoint_pools", "casts",
 )
 
@@ -232,7 +257,10 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                    ``EnemyTribes\\<tribe>.enemytribedef.ot``.
         ``flags``  replace the ``oCCustomFlagList`` tag list outright.
         ``add_flags`` extend the base's tag list (ignored if ``flags`` set).
-        ``weight`` spawn weight (float) the selector uses to bias picks.
+        ``power``  the enemy's cost (float) against a camp's power budget
+                   (vanilla 0.1-20; ``weight`` is the deprecated name). NOT
+                   spawn odds: raising it makes the enemy rarer, and above a
+                   camp's budget it never spawns.
         ``entity`` raw ``entity_ref`` path override (advanced; default
                    reuses the base's visual entity, so the clone looks
                    like its base). HP/damage/name live on that entity —
@@ -256,9 +284,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     base_cooked = _load_base_cooked(base)
     if base_cooked is None:
         raise SchemaNotMined(
-            f"enemy {defn.id}: base {base!r} not found under "
-            f"{_ENEMY_DIR} — pass a vanilla enemy id whose cooked def is "
-            f"bundled (run `rsmm enemies` to list bases)."
+            f"enemy {defn.id}: base {base!r} is not a shipped enemy "
+            f"({_ENEMY_DIR}) — list them with `rsmm schema enemy`."
         )
 
     spec = _defs._SPECS[_enemy_class()]
@@ -318,23 +345,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # de-dupe preserving order
     body["flags"] = list(dict.fromkeys(flags))
 
-    weight = defn.fields.get("weight")
-    if weight is not None:
-        w = float(weight)
-        if w > SPAWN_WEIGHT_MAX:
-            raise ContentError(
-                f"enemy {defn.id}: spawn weight {w:g} exceeds the safe ceiling "
-                f"{SPAWN_WEIGHT_MAX:g}. Extreme weights overflow the weighted "
-                f"camp-roster selection and crashed the game at 9999 — use "
-                f"single- to low-double-digit weights (vanilla is ~3)."
-            )
-        if w > SPAWN_WEIGHT_WARN:
-            _log.warning(
-                "enemy %s/%s: spawn weight %g is very high (vanilla ~3); it "
-                "will dominate the camp roster and may destabilise spawning.",
-                mod_id, defn.id, w,
-            )
-        body["spawn_weight"] = w
+    power = _power(defn, mod_id)
+    if power is not None:
+        body["power"] = power
 
     entity = defn.fields.get("entity")
     if entity is not None:
@@ -352,9 +365,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(new_cooked)
     _log.info(
-        "enemy %s/%s: emitted cooked def (base=%s, tribe=%s, flags=%s, weight=%s)",
+        "enemy %s/%s: emitted cooked def (base=%s, tribe=%s, flags=%s, power=%s)",
         mod_id, defn.id, base, body["tribe_ref"][1], body["flags"],
-        body["spawn_weight"],
+        body["power"],
     )
     return [dest, _emit_clone_cache(defn.id, base, decoded_rel, body, entity, out_dir)]
 
@@ -589,7 +602,7 @@ def _biome_casts(defn_id: str, groups: dict[str, list[str]], entity, seed,
     # pool, and each swap makes exactly one slot foreign on each side.
     if imports is not None:
         cast = {b: [index[i]["entity"] for i in ids] for b, ids in groups.items()}
-        movable = {b: [e for e in ents] for b, ents in cast.items()}
+        movable = {b: list(ents) for b, ents in cast.items()}
         biomes = [b for b in sorted(cast) if movable[b]]
         if len(biomes) >= 2 and imports > 0:
             rng = _rng(seed, "swap")
@@ -925,7 +938,7 @@ def _override_one(enemy_id: str, new_entity: str, weight, out_dir: Path,
     old_entity = body["entity_ref"][1] or ""
     body["entity_ref"] = [body["entity_ref"][0] or "EntitySettings", new_entity]
     if weight is not None:
-        body["spawn_weight"] = float(weight)
+        body["power"] = float(weight)
     cf.sections[-1] = cooked.Section(payload=spec.encode_body(body))
     new_bytes = cooked.emit(cf)
 
@@ -1012,8 +1025,9 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     ``rsmm apply`` time, not per run: the emitted assets are
                     the roll. That is what keeps co-op consistent — every peer
                     installs the same bytes. Re-roll by changing the seed.
-        ``weight``  uniform ``spawn_weight`` for every target, flattening the
-                    weighted pick to near-uniform.
+        ``power``   uniform power COST for every target (``weight`` is the
+                    deprecated name). This changes what camps can afford, not
+                    pick odds: it does NOT flatten the roster.
         ``cross_biome``
                     draw candidates from every creature in the game instead of
                     only the biome's own cast, and rewrite each biome's
@@ -1056,7 +1070,7 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     entity = defn.fields.get("entity")
     mix = defn.fields.get("mix")
     seed = defn.fields.get("seed")
-    weight = defn.fields.get("weight")
+    weight = _power(defn, mod_id)
     cross_biome = bool(defn.fields.get("cross_biome"))
     imports = defn.fields.get("imports")
     if imports is not None:
@@ -1126,17 +1140,6 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"roll happens once at apply time and is baked into the "
                 f"emitted assets, so the seed is what every peer must share."
             )
-    if weight is not None:
-        w = float(weight)
-        if w > SPAWN_WEIGHT_MAX:
-            raise ContentError(
-                f"enemy {defn.id}: spawn weight {w:g} exceeds the safe ceiling "
-                f"{SPAWN_WEIGHT_MAX:g} (9999 crashed the weighted camp-roster "
-                f"selection). Vanilla weights are ~1-20."
-            )
-        if w > SPAWN_WEIGHT_WARN:
-            _log.warning("enemy %s/%s: uniform weight %g is very high "
-                         "(vanilla ~1-20)", mod_id, defn.id, w)
 
     groups = _pool_groups(defn.id, defn.fields.get("pools"),
                           defn.fields.get("enemies"), defn.fields.get("exclude"))
@@ -1304,7 +1307,7 @@ def _emit_override(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             changed += 1
     _log.info(
         "enemy %s/%s: scope %d retail def(s) across %s — %d repointed, "
-        "%d file(s) (entity=%s, mix=%s, seed=%s, weight=%s)",
+        "%d file(s) (entity=%s, mix=%s, seed=%s, power=%s)",
         mod_id, defn.id, len(assignment), ", ".join(groups), changed,
         len(written), entity, mix, seed, weight,
     )

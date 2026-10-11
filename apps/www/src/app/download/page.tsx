@@ -101,7 +101,7 @@ export default async function DownloadPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--crimson)/0.1),transparent_40%),radial-gradient(circle_at_bottom_right,hsl(var(--oxblood)/0.08),transparent_32%)]" />
       <div className="relative container mx-auto px-6 py-16 lg:py-24">
         <section className="mx-auto max-w-4xl text-center">
-          <h1 className="font-fraktur text-6xl text-parchment sm:text-7xl">Download</h1>
+          <h1 className="font-display text-6xl text-parchment sm:text-7xl">Download</h1>
           <p className="mx-auto mt-6 max-w-2xl text-xl leading-relaxed text-parchment/80">
             Ravenswatch Mod Manager is free, for Windows 10 and 11 and for Linux, including Steam
             Deck. Once installed, it keeps itself up to date.

@@ -1,0 +1,270 @@
+---
+title: Set up the modding tools
+description: Install the rsmm command-line tool step by step, even if you've never used a terminal.
+sidebar:
+  label: Set up the modding tools
+---
+
+import { Tabs, TabItem, Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+The **modding tools** are a program called `rsmm` that you use by typing commands.
+You need them to make mods beyond what the [web editor](/guides/web-editor/) can
+do, to test mods quickly, and to publish them.
+
+**Only want to play with mods?** You don't need any of this. Use
+[the app](/getting-started/install/) instead.
+
+Setting up takes about 15 minutes the first time. You'll install two free
+programs (Python and Git), download RSMM's tools, and check that everything works.
+
+## Before you start: the terminal
+
+A **terminal** is a window where you type a command and press **Enter**, instead
+of clicking buttons. Every code box on this page is something to type (or paste)
+into it.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    Press the **Start** button, type `cmd`, and open **Command Prompt**.
+
+    Use Command Prompt for everything on this page. PowerShell works too, but it
+    blocks one of the steps by default (see the note in step 4).
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    Press **Ctrl+Alt+T**, or open **Terminal** (called **Konsole** on Steam Deck
+    and KDE) from your app menu. On Steam Deck, switch to Desktop mode first.
+  </TabItem>
+</Tabs>
+
+<Aside type="tip">
+To paste into a terminal, right-click it (Windows) or press **Ctrl+Shift+V**
+(Linux). Plain Ctrl+V doesn't always work.
+</Aside>
+
+## 1. Install Python
+
+`rsmm` is written in Python, so your computer needs Python **3.11 or newer**.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    <Steps>
+    1. Download the latest Python from
+       [python.org/downloads](https://www.python.org/downloads/).
+    2. Run the installer. On the first screen, **tick "Add python.exe to PATH"**
+       at the bottom. This is easy to miss and important.
+    3. Click **Install Now**.
+    4. Close any open Command Prompt windows and open a new one. Then check it
+       worked:
+       ```cmd
+       python --version
+       ```
+       You should see something like `Python 3.13.1`.
+    </Steps>
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    Most Linux systems already have Python. Check the version:
+    ```sh
+    python3 --version
+    ```
+    If it says 3.11 or higher, you're set. On **Debian or Ubuntu**, also install
+    the part that makes private Python environments, which step 4 needs:
+    ```sh
+    sudo apt install python3-venv
+    ```
+  </TabItem>
+</Tabs>
+
+## 2. Install Git
+
+Git downloads RSMM's tools and keeps them up to date.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    Download Git from [git-scm.com](https://git-scm.com/downloads/win) and run
+    the installer. The default answer on every screen is fine. Then open a
+    **new** Command Prompt.
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    Git is usually already installed. If `git --version` says *command not
+    found*, install it with your package manager, for example
+    `sudo apt install git` on Debian or Ubuntu.
+  </TabItem>
+</Tabs>
+
+## 3. Download RSMM's tools
+
+This makes a folder called `RavenswatchModManager` in your Documents folder and
+moves the terminal into it.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    ```cmd
+    cd %USERPROFILE%\Documents
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    ```
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    ```sh
+    cd ~/Documents
+    git clone https://github.com/Ovilli/RavenswatchModManager.git
+    cd RavenswatchModManager
+    ```
+  </TabItem>
+</Tabs>
+
+`cd` means "change directory", which is the terminal's way of opening a folder.
+
+## 4. Install the `rsmm` command
+
+This creates a private Python environment (a folder called `.venv`) so RSMM
+doesn't mix with anything else on your computer, then installs `rsmm` into it.
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    ```cmd
+    python -m venv .venv
+    .venv\Scripts\activate
+    pip install -e .
+    ```
+
+    <Aside type="caution" title="Using PowerShell?">
+    If `.venv\Scripts\activate` fails with *running scripts is disabled on this
+    system*, either switch to Command Prompt, or run this once and try again:
+    ```powershell
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+    ```
+    </Aside>
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    ```sh
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+    ```
+  </TabItem>
+</Tabs>
+
+When the environment is switched on, your terminal shows **`(.venv)`** at the
+start of the line.
+
+## 5. Check that it works
+
+```sh
+rsmm doctor
+```
+
+`rsmm doctor` is a health check. It looks for your game and checks your setup,
+then prints one line per check:
+
+- **`[OK]`** means that part is fine.
+- **`[WARN]`** is worth reading but won't stop you.
+- **`[FAIL]`** needs fixing. The line under it usually says how.
+
+**If it can't find your game**, tell it where Ravenswatch is. Use the folder that
+contains `Ravenswatch.exe` (in Steam: right-click **Ravenswatch** → **Manage** →
+**Browse local files**):
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    ```cmd
+    setx RSMM_GAME_DIR "D:\SteamLibrary\steamapps\common\Ravenswatch"
+    ```
+    Then close the terminal, open a new one, and repeat the "every time" steps
+    below.
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    ```sh
+    echo 'export RSMM_GAME_DIR="$HOME/.local/share/Steam/steamapps/common/Ravenswatch"' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+  </TabItem>
+</Tabs>
+
+Change the path in quotes to your own game folder.
+
+## Every time you come back
+
+A new terminal window starts fresh, so before using `rsmm` again, go back to the
+folder and switch the environment on:
+
+<Tabs syncKey="os">
+  <TabItem label="Windows" icon="seti:windows">
+    ```cmd
+    cd %USERPROFILE%\Documents\RavenswatchModManager
+    .venv\Scripts\activate
+    ```
+  </TabItem>
+  <TabItem label="Linux / Steam Deck" icon="linux">
+    ```sh
+    cd ~/Documents/RavenswatchModManager
+    source .venv/bin/activate
+    ```
+  </TabItem>
+</Tabs>
+
+If you see `'rsmm' is not recognized` or `rsmm: command not found`, this is
+almost always the step you skipped.
+
+## Get the newest tools
+
+From the `RavenswatchModManager` folder:
+
+```sh
+git pull
+```
+
+## Script (Lua) mods
+
+Mods that only change looks, numbers or text work as they are. Mods with a Lua
+script also need the **loader**, a small file that goes next to the game:
+
+```sh
+rsmm install-loader
+```
+
+On **Linux and Steam Deck**, Steam also needs a launch option to load it. Close
+Steam completely, then run:
+
+```sh
+rsmm run --set-launch-options --no-launch
+```
+
+## A good text editor
+
+A mod is mostly a text file called `manifest.toml`. Any text editor can open it,
+but [Visual Studio Code](https://code.visualstudio.com/) with the
+[Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)
+extension is worth it: it suggests the right names as you type and underlines
+mistakes before you even run the game.
+
+## Commands you'll use most
+
+| Command | What it does |
+| --- | --- |
+| `rsmm new MyMod` | Create a new, empty mod called `MyMod` |
+| `rsmm editor` | Open the item, talent and ability editor in your browser |
+| `rsmm lint MyMod` | Check `MyMod` for mistakes |
+| `rsmm apply` | Put every switched-on mod into the game |
+| `rsmm run` | Start the game through Steam |
+| `rsmm restore --all` | Undo every mod and put the original files back |
+| `rsmm watch` | Re-apply your mods every time you save a file |
+| `rsmm doctor` | Check that everything is set up |
+| `rsmm --help` | List every command |
+
+Every command explains itself with `--help`, for example `rsmm lint --help`. The
+full list is in the [CLI reference](/reference/cli/).
+
+<Aside type="note" title="Two separate mods folders">
+Mods you make with `rsmm` live in the `mods` folder inside `RavenswatchModManager`.
+The app keeps its own mods somewhere else. To try one of your mods in the app,
+copy its folder in as described in
+[Add a mod from a file](/getting-started/desktop-app/#add-a-mod-from-a-file).
+</Aside>
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Make your first mod" href="/getting-started/first-mod/" description="A step-by-step walkthrough that ends with your change in the game." />
+  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/#modding-tools" description="If a step on this page didn't work." />
+</CardGrid>

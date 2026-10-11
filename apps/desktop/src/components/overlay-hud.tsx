@@ -15,35 +15,26 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
-import {
-  Activity,
-  Flame,
-  Gauge,
-  Heart,
-  List,
-  Maximize2,
-  Minimize2,
-  MousePointerClick,
-  Pin,
-  Shield,
-  Skull,
-  Star,
-  Swords,
-  Timer,
-  Trophy,
-  X,
-  Zap,
-} from 'lucide-react';
+import { Maximize2, Minimize2, MousePointerClick, Pin, RotateCcw, X } from 'lucide-react';
 import { GripHorizontal } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useT } from '../lib/i18n-react';
-import { readOverlayLive } from '../lib/overlay-state';
-import { savePosition } from '../lib/overlay-windows';
 import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useT } from '../lib/i18n-react';
+import { gridTracks, readOverlayLive } from '../lib/overlay-state';
+import { overlayTransparent, resetOverlayWindow, savePosition } from '../lib/overlay-windows';
+import {
+  type ModConfigValue,
   type OverlayColumn,
+  type OverlayControl,
   type OverlayRecord,
   listOverlays,
   readOverlayState,
+  setModConfig,
 } from '../lib/rsmm';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
 
@@ -54,22 +45,6 @@ const STALE_AFTER_S = 20;
 
 /** Event the main window emits to hand input back after click-through. */
 export const OVERLAY_INTERACTIVE_EVENT = 'rsmm://overlay-interactive';
-
-/** The icon allowlist, mirroring `ICONS` in cmd_overlay.py. */
-const ICONS = {
-  activity: Activity,
-  flame: Flame,
-  gauge: Gauge,
-  heart: Heart,
-  list: List,
-  shield: Shield,
-  skull: Skull,
-  star: Star,
-  swords: Swords,
-  timer: Timer,
-  trophy: Trophy,
-  zap: Zap,
-} as const;
 
 /**
  * `?demo=1` fills the overlay with sample rows and skips the CLI. A HUD has to
@@ -102,6 +77,46 @@ const DEMO: OverlayRecord = {
   exists: true,
 };
 
+/**
+ * `?demo=list`: the other shape a board takes — rows in the mod's own order
+ * (no sort, so no rank numbers), several text columns, a highlighted row.
+ * Deliberately generic copy: the client never carries one mod's UI.
+ */
+const DEMO_LIST: OverlayRecord = {
+  ...DEMO,
+  title: 'Objectives',
+  icon: 'trophy',
+  columns: [
+    { key: 'task', label: 'Objective', type: 'text', format: 'plain', suffix: '' },
+    { key: 'progress', label: 'Progress', type: 'bar', format: 'plain', suffix: '' },
+    { key: 'count', label: '', type: 'text', format: 'plain', suffix: '' },
+    { key: 'time', label: 'Time', type: 'text', format: 'plain', suffix: '' },
+    { key: 'reward', label: 'Reward', type: 'text', format: 'plain', suffix: '' },
+  ],
+  sort: null,
+  highlight: 'done',
+  rows: [
+    {
+      task: 'Defeat 20 enemies',
+      progress: 0.65,
+      count: '13/20',
+      time: '1:12',
+      reward: '40 shards',
+      done: false,
+    },
+    { task: 'Open 2 chests', progress: 1, count: '', time: '', reward: 'Paid', done: true },
+    {
+      task: 'Win without a hit',
+      progress: 0.2,
+      count: '2/10',
+      time: '3:41',
+      reward: '60 shards + 1 reroll',
+      done: false,
+    },
+  ],
+  meta: { completed: 4, streak: 1 },
+};
+
 function compactNumber(n: number): string {
   if (!Number.isFinite(n)) return '0';
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
@@ -110,29 +125,47 @@ function compactNumber(n: number): string {
   return n.toFixed(0);
 }
 
+/** Numbers and percents read right-aligned, under a right-aligned header. */
+const RIGHT_ALIGNED = new Set<OverlayColumn['type']>(['number', 'percent']);
+
+// `.font-mono` is the app's LABEL style (upper-cased, tracked out). A value is
+// content, not a label: without the reset a mod's "/s" suffix rendered "/S"
+// and the meta footer shouted "84K TOTAL".
+const MONO_VALUE = 'font-mono normal-case tracking-normal';
+
 function Cell({
   column,
   value,
-}: { column: OverlayColumn; value: string | number | boolean | undefined }) {
-  if (value === undefined || value === null) return <span className="flex-1" />;
+  primary,
+  highlighted,
+}: {
+  column: OverlayColumn;
+  value: string | number | boolean | undefined;
+  /** The board's first text column: full size, everything else is secondary. */
+  primary: boolean;
+  highlighted: boolean;
+}) {
+  if (value === undefined || value === null || value === '') return <span />;
 
   if (column.type === 'bar') {
     const pct = Math.max(0, Math.min(1, Number(value) || 0));
     return (
-      <span className="relative h-1.5 w-12 shrink-0 overflow-hidden rounded-sm bg-char/40">
+      <span className="relative h-1.5 w-full overflow-hidden rounded-sm bg-char/40">
         <span
-          className="absolute inset-y-0 left-0 bg-crimson transition-[width] duration-500 ease-grimoire"
+          className={`absolute inset-y-0 left-0 transition-[width] duration-500 ease-grimoire ${
+            highlighted ? 'bg-gilt' : 'bg-crimson'
+          }`}
           style={{ width: `${pct * 100}%` }}
         />
       </span>
     );
   }
   if (column.type === 'text') {
-    // The name column takes the slack and is the LAST thing to be truncated:
-    // "Player" cut to "Play…" is useless, and a fixed-width number column
-    // stealing space from it is how that happened.
     return (
-      <span className="min-w-[4.5rem] flex-1 truncate text-sm" title={String(value)}>
+      <span
+        className={primary ? 'min-w-0 truncate text-sm' : 'min-w-0 truncate text-xs'}
+        title={String(value)}
+      >
         {String(value)}
       </span>
     );
@@ -143,12 +176,85 @@ function Cell({
       ? `${(num * 100).toFixed(0)}%`
       : (column.format === 'compact' ? compactNumber(num) : num.toLocaleString()) + column.suffix
     : String(value);
-  // No fixed width: a number column is exactly as wide as its widest value,
-  // so the name keeps everything left over.
   return (
-    <span className="font-mono shrink-0 whitespace-nowrap text-right text-[0.72rem] tabular-nums">
+    <span className={`${MONO_VALUE} whitespace-nowrap text-right text-xs tabular-nums`}>
       {text}
     </span>
+  );
+}
+
+/** Slider steps for a float control: fine enough to feel continuous. */
+const FLOAT_STEPS = 100;
+
+/**
+ * One live control: a field of the mod's own config schema, drawn by type.
+ * The label and range are the MOD's (from its schema), shown as declared.
+ */
+function ControlRow({
+  control,
+  value,
+  onChange,
+}: {
+  control: OverlayControl;
+  value: ModConfigValue;
+  onChange: (v: ModConfigValue) => void;
+}) {
+  if (control.type === 'bool') {
+    return (
+      <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+        <span className="flex-1 truncate">{control.label}</span>
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+          className="accent-crimson"
+        />
+      </label>
+    );
+  }
+  if (control.type === 'enum') {
+    return (
+      <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+        <span className="flex-1 truncate">{control.label}</span>
+        <select
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          className="max-w-[9rem] rounded-sm border border-border bg-pitch px-1 py-0.5 text-parchment"
+        >
+          {control.choices.map((c) => (
+            <option key={c} value={c}>
+              {control.choiceLabels?.[c] ?? c}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  const min = control.min ?? 0;
+  const max = control.max ?? 1;
+  const step = control.type === 'int' ? 1 : (max - min) / FLOAT_STEPS;
+  const num = Number(value ?? min);
+  return (
+    <label className="flex items-center gap-2 px-2 py-1 text-xs text-smoke">
+      <span className="w-20 shrink-0 truncate" title={control.label}>
+        {control.label}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={num}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          onChange(control.type === 'int' ? Math.round(v) : v);
+        }}
+        className="min-w-0 flex-1 accent-crimson"
+      />
+      <span className="font-mono w-10 shrink-0 text-right text-xs tabular-nums text-parchment">
+        {control.type === 'int' ? num.toFixed(0) : num.toFixed(Math.abs(max - min) >= 10 ? 0 : 2)}
+      </span>
+    </label>
   );
 }
 
@@ -159,24 +265,46 @@ export function OverlayHud({ modId }: { modId: string }) {
   const [compact, setCompact] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
   const inFlight = useRef(false);
+  // The last live payload rendered, to skip identical re-renders.
+  const lastLive = useRef<string | null>(null);
   // The declaration, cached for the session. Null means "ask the CLI on the
   // next tick" — the state of affairs on mount and after a live read failed.
   const declared = useRef<OverlayRecord | null>(null);
   const prevOrder = useRef<Record<string, number>>({});
-  // Height we asked the window for, so a resize event can be told apart from
-  // one the PLAYER performed. Once they size it by hand, auto-fit backs off
-  // for good — nothing is ruder than a window that fights the mouse.
-  const autoHeight = useRef<number | null>(null);
-  const [manualSize, setManualSize] = useState(false);
+  const prevLit = useRef<Record<string, boolean>>({});
   const body = useRef<HTMLDivElement | null>(null);
-  const demo = new URLSearchParams(window.location.search).get('demo') === '1';
+  // The card, and the body's content at its natural height (the body itself
+  // is a scroll box, so its own height says nothing about what it holds).
+  const card = useRef<HTMLDivElement | null>(null);
+  const content = useRef<HTMLDivElement | null>(null);
+  // Control values as the player set them. Seeded from the declaration and
+  // then owned here: the CLI reports the saved value only when re-asked, and a
+  // slider that snapped back between writes would fight the drag.
+  const [controlValues, setControlValues] = useState<Record<string, ModConfigValue>>({});
+  // The same values, readable synchronously: a change is computed from here
+  // and queued for writing in the same tick. Computing it inside a state
+  // updater did not work — React runs updaters later, at render, so the flush
+  // that followed found nothing queued and every write carried the PREVIOUS
+  // value (the camera trailed the slider by one move).
+  const controlValuesRef = useRef<Record<string, ModConfigValue>>({});
+  const pendingWrite = useRef<Record<string, ModConfigValue> | null>(null);
+  const writing = useRef(false);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const demoParam = new URLSearchParams(window.location.search).get('demo');
+  const demo = demoParam === '1' || demoParam === 'list';
   // Outside the Tauri shell there is no window to drive and no sidecar to
   // call; the component still renders so the design can be previewed.
   const native = isTauri();
 
   // The window paints its own card; the app's page background would otherwise
-  // fill the frame and defeat `transparent: true`.
+  // fill the frame and defeat `transparent: true`. Where the window is opaque
+  // (Linux, see openOverlay) the page background stays: clearing it would
+  // leave the area around the card undefined.
   useEffect(() => {
+    if (!overlayTransparent()) {
+      document.body.style.overflow = 'hidden';
+      return;
+    }
     const html = document.documentElement;
     const prevHtml = html.style.background;
     const prevBody = document.body.style.background;
@@ -207,9 +335,54 @@ export function OverlayHud({ modId }: { modId: string }) {
     return found;
   }, [native, modId]);
 
+  // Seed control values from the declaration the first time it arrives.
+  const declaredControls = record?.controls;
+  const controls = declaredControls ?? [];
+  useEffect(() => {
+    if (!declaredControls?.length || Object.keys(controlValuesRef.current).length > 0) return;
+    const seeded = Object.fromEntries(declaredControls.map((c) => [c.key, c.value]));
+    controlValuesRef.current = seeded;
+    setControlValues(seeded);
+  }, [declaredControls]);
+
+  /**
+   * Write control values to the mod's config, live. Each write spawns the
+   * CLI, so writes are COALESCED: one in flight at a time, and whatever the
+   * player did meanwhile goes out as one write when it lands. A drag across a
+   * slider is then two or three writes, not one per pixel.
+   */
+  const flushControls = useCallback(async () => {
+    if (writing.current || !pendingWrite.current || !native) return;
+    writing.current = true;
+    const values = pendingWrite.current;
+    pendingWrite.current = null;
+    try {
+      const res = await setModConfig(modId, values, { live: true, merge: true });
+      setControlError(res.ok === false ? (res.error ?? 'config write failed') : null);
+    } catch (e) {
+      setControlError(e instanceof Error ? e.message : String(e));
+    } finally {
+      writing.current = false;
+      if (pendingWrite.current) void flushControls();
+    }
+  }, [modId, native]);
+
+  const changeControl = useCallback(
+    (key: string, value: ModConfigValue) => {
+      const next = { ...controlValuesRef.current, [key]: value };
+      controlValuesRef.current = next;
+      // Every control's value, written with `merge` so the mod's fields that
+      // are NOT controls keep theirs.
+      pendingWrite.current = next;
+      setControlValues(next);
+      void flushControls();
+    },
+    [flushControls],
+  );
+
   const poll = useCallback(async () => {
     if (demo) {
-      setRecord(DEMO);
+      setRecord(demoParam === 'list' ? DEMO_LIST : DEMO);
       return;
     }
     if (!native || inFlight.current) return;
@@ -220,11 +393,19 @@ export function OverlayHud({ modId }: { modId: string }) {
       const declaration = declared.current ?? (await loadDeclaration());
       declared.current = declaration;
       if (!declaration?.statePath) return;
+      // A controls-only overlay publishes no rows: nothing to follow.
+      if (!declaration.columns?.length) return;
 
       const state = await readOverlayState(declaration.statePath);
       const live = state.exists
         ? readOverlayLive(state.content, declaration.sort ?? null)
         : { rows: [], meta: {}, updated: 0, exists: false };
+      // Re-render only when something changed. A new record every second
+      // repainted the window every second whether or not a number moved, and
+      // each repaint is a chance for an X11 webview to blank out.
+      const sig = JSON.stringify(live);
+      if (sig === lastLive.current) return;
+      lastLive.current = sig;
       setRecord((cur) => (cur ? { ...cur, ...live } : { ...declaration, ...live }));
       setError(null);
     } catch (e) {
@@ -237,7 +418,7 @@ export function OverlayHud({ modId }: { modId: string }) {
     } finally {
       inFlight.current = false;
     }
-  }, [demo, native, loadDeclaration]);
+  }, [demo, demoParam, native, loadDeclaration]);
 
   useEffect(() => {
     void poll();
@@ -265,35 +446,9 @@ export function OverlayHud({ modId }: { modId: string }) {
       }
     };
     const unlistenMove = win.onMoved(() => void persist());
-    const unlistenResize = win.onResized(({ payload }) => {
-      void (async () => {
-        const expected = autoHeight.current;
-        // Before the first auto-fit there is nothing to compare against, and
-        // the window manager raises a resize when the window is first shown.
-        // Treating THAT as "the player resized it" latched auto-fit off on
-        // frame one and left the empty pane this exists to remove — so a
-        // resize only counts as manual once we have sized it ourselves.
-        if (expected === null) {
-          void persist();
-          return;
-        }
-        try {
-          // The payload is PHYSICAL pixels while the size we asked for was
-          // LOGICAL: on any display that is not at 100% scaling a naive
-          // comparison reads every auto-fit as a manual resize.
-          const scale = await win.scaleFactor();
-          if (Math.abs(payload.height / scale - expected) <= 4) {
-            void persist();
-            return;
-          }
-        } catch {
-          // Fall through: an unreadable scale means we cannot tell, and
-          // fighting the player for control of the window is the worse error.
-        }
-        setManualSize(true);
-        void persist();
-      })();
-    });
+    // Width is the player's; height is not (see the fit below), so a resize
+    // only needs remembering.
+    const unlistenResize = win.onResized(() => void persist());
     return () => {
       void unlistenMove.then((f) => f());
       void unlistenResize.then((f) => f());
@@ -314,32 +469,90 @@ export function OverlayHud({ modId }: { modId: string }) {
     };
   }, [native]);
 
-  // Fit the window to its contents. A four-row board in a window sized for
-  // eight is mostly empty pane hanging over the game; the HUD should be as
-  // tall as it needs to be and no taller.
-  const rowCount = record?.rows?.length ?? 0;
+  // Fit the window to the card, exactly. The window used to be sized from
+  // guesses (header+footer "46px", "24px per row") that drifted with every
+  // style change — the card then ended above the window's bottom and, where
+  // the window is opaque (Linux), left a dark slab under the HUD. It also only
+  // re-measured when the ROW COUNT changed. Now the real heights are observed:
+  // natural height = the card minus its scroll box plus what the box holds.
+  //
+  // Height ALWAYS follows the content; only the width is the player's. When
+  // a hand-resize switched fitting off, a window dragged taller than the card
+  // kept the surplus, which on Linux (opaque window) is a grey box hanging
+  // off the HUD. The grip now drags width only, and a height change from
+  // anywhere else (a window-manager edge, a snap) settles back once the
+  // resizing stops.
   useEffect(() => {
-    if (!native || manualSize || !body.current) return;
-    const chrome = compact ? 26 : 46; // header (+ footer)
-    // Measured content, floored by the row count: `scrollHeight` is a frame
-    // behind on the render that adds a row, and a HUD that lags one player
-    // behind the fight looks broken.
-    const measured = body.current.scrollHeight;
-    const wanted = Math.round(Math.max(measured, rowCount * 24 + 8) + chrome);
-    const clamped = Math.max(72, Math.min(600, wanted));
-    if (autoHeight.current !== null && Math.abs(autoHeight.current - clamped) < 4) return;
-    autoHeight.current = clamped;
+    if (!native || !card.current || !body.current || !content.current) return;
+    const cardEl = card.current;
+    const bodyEl = body.current;
+    const contentEl = content.current;
     const win = getCurrentWindow();
-    void (async () => {
-      try {
-        const size = await win.outerSize();
-        const scale = await win.scaleFactor();
-        await win.setSize(new LogicalSize(Math.round(size.width / scale), clamped));
-      } catch {
-        // A window that will not resize is not a reason to stop drawing.
-      }
-    })();
-  }, [native, manualSize, compact, rowCount]);
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const natural = cardEl.offsetHeight - bodyEl.clientHeight + contentEl.offsetHeight;
+        const wanted = Math.max(40, Math.min(600, Math.ceil(natural)));
+        // Against the window's real height, not the last size we asked for:
+        // a window someone else resized must be caught too.
+        if (Math.abs(window.innerHeight - wanted) < 2) return;
+        void (async () => {
+          try {
+            const size = await win.outerSize();
+            const scale = await win.scaleFactor();
+            await win.setSize(new LogicalSize(Math.round(size.width / scale), wanted));
+          } catch {
+            // A window that will not resize is not a reason to stop drawing.
+          }
+        })();
+      });
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(cardEl);
+    observer.observe(contentEl);
+    // Settle a window resized from outside once the drag stops — snapping
+    // back on every frame of a drag would fight the window manager.
+    let settle = 0;
+    const onWindowResize = () => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(fit, 200);
+    };
+    window.addEventListener('resize', onWindowResize);
+    fit();
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+      window.removeEventListener('resize', onWindowResize);
+      observer.disconnect();
+    };
+  }, [native]);
+
+  // An overlay that comes up maximized (saved that way before maximizing was
+  // switched off) un-maximizes itself: there is no title bar to do it with.
+  useEffect(() => {
+    if (!native) return;
+    const win = getCurrentWindow();
+    void win
+      .isMaximized()
+      .then((max) => (max ? win.unmaximize() : undefined))
+      .catch(() => undefined);
+  }, [native]);
+
+  // Back to a fresh window: default width, centred (height re-fits itself).
+  const resetWindow = async () => {
+    if (!native) return;
+    await resetOverlayWindow(modId, getCurrentWindow());
+  };
+
+  // Drag from the title bar. Not `data-tauri-drag-region`: a DOUBLE-click on
+  // one maximizes the window, which is how an overlay ended up full-screen
+  // and stuck there. A plain mousedown drag has no double-click behaviour.
+  const dragFromHeader = (e: ReactMouseEvent) => {
+    if (!native || e.button !== 0 || e.detail > 1) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    void getCurrentWindow().startDragging();
+  };
 
   const toggleClickThrough = async () => {
     if (!native) return;
@@ -352,20 +565,40 @@ export function OverlayHud({ modId }: { modId: string }) {
   const columns = record?.columns ?? [];
   const rows = record?.rows ?? [];
   const highlight = record?.highlight ?? null;
+  const controlsOnly = columns.length === 0 && controls.length > 0;
   const stale =
-    !record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S);
+    !controlsOnly &&
+    (!record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S));
 
-  // Rank changes flash, so a takeover is visible without staring at numbers.
+  // A rank number only means something on a board the mod SORTS. On a list in
+  // the mod's own order (objectives, a checklist) "1 2 3" reads as a ranking
+  // that is not there.
+  const ranked = Boolean(record?.sort?.key);
+
+  // A row that changed state stamps, so it is seen without staring at
+  // numbers: on a ranked board, a row that moved (a takeover); on any board, a
+  // row that just became highlighted, or a row that is new since the last
+  // publish (but not on the first paint, where everything is new).
   const rowKey = (row: Record<string, string | number | boolean>, i: number) =>
     String(row[columns[0]?.key ?? ''] ?? i);
-  const moved: Record<string, boolean> = {};
+  const firstPaint = Object.keys(prevOrder.current).length === 0;
+  const stamped: Record<string, boolean> = {};
   rows.forEach((row, i) => {
     const key = rowKey(row, i);
-    moved[key] = prevOrder.current[key] !== undefined && prevOrder.current[key] !== i;
+    const before = prevOrder.current[key];
+    const lit = Boolean(highlight && row[highlight]);
+    stamped[key] =
+      (ranked && before !== undefined && before !== i) ||
+      (!firstPaint && before === undefined) ||
+      (lit && prevLit.current[key] === false);
   });
   prevOrder.current = Object.fromEntries(rows.map((row, i) => [rowKey(row, i), i]));
-
-  const Icon = ICONS[(record?.icon ?? 'list') as keyof typeof ICONS] ?? List;
+  prevLit.current = Object.fromEntries(
+    rows.map((row, i) => [rowKey(row, i), Boolean(highlight && row[highlight])]),
+  );
+  const tracks = gridTracks(columns, ranked);
+  const showHeader = !compact && columns.some((c) => c.label.trim() !== '');
+  const firstTextKey = columns.find((c) => c.type === 'text')?.key;
 
   // The card is sized by its CONTENT (max-h-screen, not h-screen). If the
   // window is taller than the board — before auto-fit runs, or when the player
@@ -373,133 +606,200 @@ export function OverlayHud({ modId }: { modId: string }) {
   // as an empty slab of card over the game.
   return (
     <div
-      className={`relative flex max-h-screen w-screen flex-col overflow-hidden rounded-md border border-crimson/40 bg-pitch/85 text-parchment shadow-lg backdrop-blur-sm ${
+      ref={card}
+      className={`group relative flex max-h-screen w-screen flex-col overflow-hidden rounded-md border border-crimson/40 bg-pitch/85 text-parchment shadow-lg backdrop-blur-sm ${
         stale ? 'opacity-70' : ''
       }`}
     >
       <header
-        data-tauri-drag-region
-        className="flex shrink-0 cursor-move items-center gap-2 border-b border-border/70 px-2 py-1"
+        onMouseDown={dragFromHeader}
+        className="flex shrink-0 cursor-move items-center gap-1 border-b border-border/70 py-1 pl-2.5 pr-1"
       >
-        <Icon className="pointer-events-none h-3.5 w-3.5 text-crimson" />
+        {/* The title alone. A wordmark and a 14px glyph beside it were chrome
+            competing with the one word that says what this board is. */}
         <span
-          data-tauri-drag-region
-          className="font-mono pointer-events-none text-[0.6rem] uppercase tracking-[0.2em] text-ash"
-        >
-          rsmm
-        </span>
-        <span
-          data-tauri-drag-region
-          className="font-fraktur pointer-events-none flex-1 truncate text-sm text-parchment"
+          className="font-fraktur pointer-events-none flex-1 truncate text-base leading-tight text-parchment"
           title={record?.modName ?? modId}
         >
           {record?.title ?? modId}
         </span>
-        <button
-          type="button"
-          onClick={() => setCompact((c) => !c)}
-          title={compact ? t('Show details') : t('Compact')}
-          className="text-ash transition-colors hover:text-parchment"
-        >
-          {compact ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
-        </button>
-        <button
-          type="button"
-          onClick={() => void toggleClickThrough()}
-          title={
+        {/* Window buttons are used a few times a session and read over the
+            game the whole time, so they only show while the mouse is on the
+            card. Click-through is the exception: then the card cannot be
+            hovered, so its pin stays visible as the reminder of how to undo. */}
+        <div
+          className={`flex items-center transition-opacity duration-150 ${
             clickThrough
-              ? t('Click-through on — press Ctrl+Alt+O (or use Settings) to undo')
-              : t('Let clicks pass through to the game')
-          }
-          className={`transition-colors hover:text-parchment ${
-            clickThrough ? 'text-gilt' : 'text-ash'
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
           }`}
         >
-          {clickThrough ? <Pin className="h-3 w-3" /> : <MousePointerClick className="h-3 w-3" />}
-        </button>
-        <button
-          type="button"
-          onClick={() => native && void getCurrentWindow().close()}
-          title={t('Close overlay')}
-          className="text-ash transition-colors hover:text-crimson"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+          {!clickThrough && (
+            <button
+              type="button"
+              onClick={() => void resetWindow()}
+              title={t('Reset size and position')}
+              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-parchment"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {!clickThrough && (
+            <button
+              type="button"
+              onClick={() => setCompact((c) => !c)}
+              title={compact ? t('Show details') : t('Compact')}
+              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-parchment"
+            >
+              {compact ? (
+                <Maximize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Minimize2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void toggleClickThrough()}
+            title={
+              clickThrough
+                ? t('Click-through on — press Ctrl+Alt+O (or use Settings) to undo')
+                : t('Let clicks pass through to the game')
+            }
+            className={`rounded-sm p-1 transition-colors hover:bg-char/40 hover:text-parchment ${
+              clickThrough ? 'text-gilt' : 'text-ash'
+            }`}
+          >
+            {clickThrough ? (
+              <Pin className="h-3.5 w-3.5" />
+            ) : (
+              <MousePointerClick className="h-3.5 w-3.5" />
+            )}
+          </button>
+          {!clickThrough && (
+            <button
+              type="button"
+              onClick={() => native && void getCurrentWindow().close()}
+              title={t('Close overlay')}
+              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-crimson"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </header>
 
       <div ref={body} className="min-h-0 flex-1 overflow-y-auto">
-        {record?.error ? (
-          <p className="px-3 py-4 text-center text-xs text-crimson">{record.error}</p>
-        ) : rows.length > 0 ? (
-          <ul className="py-1">
-            {rows.map((row, i) => {
-              const key = rowKey(row, i);
-              const isHighlighted = Boolean(highlight && row[highlight]);
-              return (
-                <li
-                  key={key}
-                  className={[
-                    'flex items-center gap-1.5 px-2 py-1',
-                    isHighlighted
-                      ? 'border-l-2 border-gilt bg-oxblood/20 text-parchment'
-                      : 'border-l-2 border-transparent text-smoke',
-                    moved[key] ? 'animate-ink-stamp' : '',
-                  ].join(' ')}
-                >
-                  <span className="font-mono w-3 shrink-0 text-right text-[0.7rem] text-ash">
-                    {i + 1}
-                  </span>
+        <div ref={content}>
+          {!record?.error && controls.length > 0 && (
+            <div className={`py-1 ${columns.length > 0 ? 'border-b border-border/70' : ''}`}>
+              {controls.map((c) => (
+                <ControlRow
+                  key={c.key}
+                  control={c}
+                  value={controlValues[c.key] ?? c.value}
+                  onChange={(v) => changeControl(c.key, v)}
+                />
+              ))}
+              {controlError ? (
+                <p className="px-2 pb-1 text-xs text-crimson">{controlError}</p>
+              ) : null}
+            </div>
+          )}
+          {record?.error ? (
+            <p className="px-3 py-4 text-center text-xs text-crimson">{record.error}</p>
+          ) : controlsOnly ? null : rows.length > 0 ? (
+            <ul className="grid gap-x-2 py-1" style={{ gridTemplateColumns: tracks }}>
+              {showHeader && (
+                // Column labels are the MOD's own copy, shown as declared.
+                <li className="col-span-full grid grid-cols-subgrid items-end border-l-2 border-transparent px-2 pb-0.5 text-[0.65rem] uppercase tracking-[0.12em] text-ash">
+                  {ranked ? <span /> : null}
                   {columns.map((col) => (
-                    <Cell key={col.key} column={col} value={row[col.key]} />
+                    <span
+                      key={col.key}
+                      className={`truncate ${RIGHT_ALIGNED.has(col.type) ? 'text-right' : ''}`}
+                    >
+                      {col.label}
+                    </span>
                   ))}
                 </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="px-3 py-4 text-center text-xs text-ash">
-            {/* `record.empty` is the MOD's own copy — shown as published. */}
-            {error ??
-              (record?.source === 'library'
-                ? t('This mod is not applied yet — run Apply, then start the game.')
-                : (record?.empty ?? t('No data yet.')))}
-          </p>
-        )}
+              )}
+              {rows.map((row, i) => {
+                const key = rowKey(row, i);
+                const isHighlighted = Boolean(highlight && row[highlight]);
+                return (
+                  <li
+                    key={key}
+                    className={[
+                      'col-span-full grid grid-cols-subgrid items-center px-2 py-1',
+                      isHighlighted
+                        ? 'border-l-2 border-gilt bg-oxblood/20 text-parchment'
+                        : 'border-l-2 border-transparent text-smoke',
+                      stamped[key] ? 'animate-ink-stamp' : '',
+                    ].join(' ')}
+                  >
+                    {ranked ? (
+                      <span className={`${MONO_VALUE} text-right text-xs text-ash`}>{i + 1}</span>
+                    ) : null}
+                    {columns.map((col) => (
+                      <Cell
+                        key={col.key}
+                        column={col}
+                        value={row[col.key]}
+                        primary={col.key === firstTextKey}
+                        highlighted={isHighlighted}
+                      />
+                    ))}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="px-3 py-4 text-center text-xs text-ash">
+              {/* `record.empty` is the MOD's own copy — shown as published. */}
+              {error ??
+                (record?.source === 'library'
+                  ? t('This mod is not applied yet — run Apply, then start the game.')
+                  : (record?.empty ?? t('No data yet.')))}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Undecorated windows get no OS resize border, so the HUD grows its
           own: drag the corner. `startResizeDragging` hands the drag to the
-          window manager, which is what makes it feel native. */}
+          window manager, which is what makes it feel native. WIDTH only
+          ('East'): the height is the content's, see the fit above. */}
       {native && (
         <button
           type="button"
           title={t('Drag to resize')}
           onMouseDown={(e) => {
             e.preventDefault();
-            setManualSize(true);
-            void getCurrentWindow().startResizeDragging('SouthEast');
+            void getCurrentWindow().startResizeDragging('East');
           }}
-          className="absolute bottom-0 right-0 cursor-nwse-resize p-0.5 text-char transition-colors hover:text-parchment"
+          className="absolute bottom-0 right-0 cursor-ew-resize p-0.5 text-char transition-colors hover:text-parchment"
         >
-          <GripHorizontal className="h-3 w-3 rotate-45" />
+          <GripHorizontal className="h-3 w-3 rotate-90" />
         </button>
       )}
 
       {!compact && (
-        <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-2 py-1 text-[0.68rem] text-ash">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-2 py-1 text-xs text-ash">
           {/* Footer values are whatever the mod published — key + value, in
               its own words, separated so two pairs never read as one. */}
           {Object.entries(record?.meta ?? {})
             .slice(0, 3)
             .map(([k, v], i) => (
-              <span key={k} className="font-mono truncate">
+              <span key={k} className={`${MONO_VALUE} truncate`}>
                 {i > 0 ? <span className="text-char"> · </span> : null}
                 {typeof v === 'number' ? `${compactNumber(v)} ${k}` : `${k} ${v}`}
               </span>
             ))}
           <span className="flex-1" />
           {clickThrough ? <span className="text-gilt">ctrl+alt+O</span> : null}
-          <span>{stale ? t('idle') : t('live')}</span>
+          {/* Only the exception is worth words: "live" on every frame was noise. */}
+          {stale ? <span>{t('idle')}</span> : null}
         </footer>
       )}
     </div>

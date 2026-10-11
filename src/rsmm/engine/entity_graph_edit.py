@@ -1,0 +1,999 @@
+"""Edit an entity-settings file as a graph: the ability editor's primitives.
+
+``EntityFile`` holds a cooked entity as its objects and lets you:
+
+* ``clone``     copy components (from this file or another entity) under new
+                names, with their own GUIDs, their links among themselves
+                rewired to the copies, and every sub-object they own copied too;
+* ``set_value`` change a field's literal (a value picker's union, or a raw
+                bool / u32 / f32);
+* ``set_ref``   point a reference field at another component (or at nothing);
+* ``add_ref`` / ``remove_ref``   grow or shrink a reference list (a State's
+                ``activates`` and friends).
+
+Fields are addressed by the names ``entity_fields`` gives them.
+
+Invariants every edit keeps (``to_bytes`` re-checks them):
+
+* the object table (section 0) lists every object with its class;
+* new components are appended to the trailer's component vector, or they are
+  orphans the engine never instantiates (see entity_append);
+* component GUIDs are unique in the file;
+* a class a copied record names exists in the class table.
+
+Sub-objects (RE 2026-09-25). A file's objects are its components (the
+trailer's vector; ids ``0..k-1`` in every shipped file) and SUB-OBJECTS a component owns: a
+Tester's conditions, an Fx's setups, a spawner's retrievers. 1615 of 4700
+shipped entities have them (Piper: 468). An owner points at one with a
+poly-pointer, which in a cooked file is the sub-object's u32 id: either a
+vector (``u32 count, count * u32 id``) or a single ``u32 id``. Ids are not
+allocated in any order a clone could rely on, so ownership is READ: every
+vector whose ids are all sub-object ids, and every single u32 equal to a
+sub-object id that occurs exactly once in the file outside strings, pickers and
+value unions. A sub-object whose pointer cannot be pinned down that way is
+AMBIGUOUS, and cloning anything that might own it is refused rather than
+guessed: a clone that shares a sub-object with its original, or remaps a
+number that was not a pointer, would load and misbehave with nothing logged.
+"""
+
+from __future__ import annotations
+
+import struct
+import uuid
+from collections import defaultdict
+from dataclasses import dataclass
+from functools import cache, lru_cache
+
+from . import cooked
+from . import entity_fields as EF
+from . import entity_graph as EG
+from .entity_append import (
+    EntityAppendError,
+    _Accessors,
+    _directory,
+    _label_kind,
+    component_vector,
+    fix_accessor,
+    fix_format_slot,
+    validate_layout,
+)
+from .entity_components import _remap_class_tags, class_closure, extend_class_table
+
+_B, _E = cooked.MARK_BEGIN, cooked.MARK_END
+_NS = uuid.UUID("5f0c6a2e-4a55-4f0e-9d0a-6c1b1f5e7a11")
+
+
+class EntityEditError(ValueError):
+    pass
+
+
+@dataclass
+class Pointer:
+    owner: int          # object id, or len(objects) for the trailer
+    offset: int         # of the u32 id within the owner's payload
+
+
+def _lstr(s: str) -> bytes:
+    b = s.encode("latin-1")
+    return struct.pack("<I", len(b)) + b
+
+
+class EntityFile:
+    def __init__(self, raw: bytes, name: str = ""):
+        self.cf = cooked.parse(raw)
+        validate_layout(self.cf)
+        self.objects = [bytearray(s.payload) for s in self.cf.sections[1:-1]]
+        self.trailer = bytearray(self.cf.sections[-1].payload)
+        self.name = name
+
+    # ---- reading ---------------------------------------------------------
+
+    @property
+    def component_ids(self) -> list[int]:
+        return component_vector(bytes(self.trailer))[1]
+
+    def to_bytes(self) -> bytes:
+        n = len(self.objects)
+        classes = [struct.unpack_from("<I", o, 0)[0] for o in self.objects]
+        directory = struct.pack(f"<I{n}I", n, *classes)
+        self.cf.sections = ([cooked.Section(directory)]
+                            + [cooked.Section(bytes(o)) for o in self.objects]
+                            + [cooked.Section(bytes(self.trailer))])
+        out = cooked.emit(self.cf)
+        self._check(out)
+        return out
+
+    def graph(self) -> EG.EntityGraph:
+        return EG.parse(self.to_bytes(), self.name)
+
+    def component(self, name: str) -> EG.Component:
+        """The unique component called ``name`` (or ``Group\\Name``)."""
+        hits = [c for c in self.graph().components if name in (c.name, c.path)]
+        if len(hits) != 1:
+            raise EntityEditError(f"{len(hits)} components named {name!r}")
+        return hits[0]
+
+    def _class(self, obj: int) -> str:
+        return self.cf.classes[struct.unpack_from("<I", self.objects[obj], 0)[0]].name
+
+    def _payload(self, obj: int) -> bytearray:
+        return self.trailer if obj == len(self.objects) else self.objects[obj]
+
+    # ---- sub-object ownership --------------------------------------------
+
+    def pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
+        """``(owned, ambiguous)``: each sub-object id's pointer, and the
+        candidates for those whose pointer could not be pinned down."""
+        n = len(self.objects)
+        comps = set(self.component_ids)
+        is_sub = [x not in comps for x in range(n)]
+        names = [c.name for c in self.cf.classes]
+        special = {names.index(x) for x in ("oCEntityCpntPicker", "oCEntityValueUnion")
+                   if x in names}
+        vec: dict[int, list[Pointer]] = defaultdict(list)
+        single: dict[int, list[Pointer]] = defaultdict(list)
+        for o in range(n + 1):
+            p = self._payload(o)
+            start = 4
+            if o == n:
+                voff, ids = component_vector(bytes(p))
+                start = voff + 4 + 4 * len(ids)
+            for a, b in _raw_spans(p, special):
+                i = max(a, start)
+                while i + 4 <= b:
+                    c = struct.unpack_from("<I", p, i)[0]
+                    if 1 <= c <= 4096 and i + 4 + 4 * c <= b:
+                        ids = struct.unpack_from(f"<{c}I", p, i + 4)
+                        if all(x < n and is_sub[x] for x in ids):
+                            for j, x in enumerate(ids):
+                                vec[x].append(Pointer(o, i + 4 + 4 * j))
+                            i += 4 + 4 * c
+                            continue
+                    if c < n and is_sub[c]:
+                        single[c].append(Pointer(o, i))
+                    i += 1
+        owned: dict[int, Pointer] = {}
+        ambiguous: dict[int, list[Pointer]] = {}
+        for x in (x for x in range(n) if is_sub[x]):
+            if len(vec[x]) == 1:
+                owned[x] = vec[x][0]
+            elif not vec[x] and len(single[x]) == 1:
+                owned[x] = single[x][0]
+            else:
+                ambiguous[x] = vec[x] + single[x]
+        # A class owns the same kinds of sub-object throughout a file (a
+        # Tester its conditions, an Fx its setups), so pairs read off the
+        # unambiguous pointers narrow a candidate list whose id also occurs as
+        # plain data (0x400 and 0x500 are common numbers).
+        pairs = {(self._owner_class(p.owner), self._class(x)) for x, p in owned.items()}
+        for x, cands in list(ambiguous.items()):
+            fit = [p for p in cands if (self._owner_class(p.owner), self._class(x)) in pairs]
+            if len(fit) == 1 and not (vec[x] and fit[0] not in vec[x]):
+                owned[x] = fit[0]
+                del ambiguous[x]
+        return owned, ambiguous
+
+    def _owner_class(self, obj: int) -> str:
+        return "(entity)" if obj == len(self.objects) else self._class(obj)
+
+    def subtree(self, objs: set[int]) -> list[int]:
+        """Every sub-object ``objs`` own, transitively. Fails closed when one
+        of them might own an ambiguous sub-object."""
+        owned, ambiguous = self.pointers()
+        for x, cands in ambiguous.items():
+            if any(p.owner in objs for p in cands):
+                raise EntityEditError(
+                    f"cannot tell whether sub-object #{x} ({self._class(x)}) belongs to "
+                    f"what is being copied ({len(cands)} candidate pointers)")
+        out: list[int] = []
+        todo = sorted(objs)
+        seen = set(objs)
+        while todo:
+            o = todo.pop(0)
+            for x, p in sorted(owned.items()):
+                if p.owner == o and x not in seen:
+                    seen.add(x)
+                    out.append(x)
+                    todo.append(x)
+        return out
+
+    # ---- clone -------------------------------------------------------------
+
+    def clone(self, names: list[str], *, rename: dict[str, str] | None = None,
+              group: dict[str, str] | None = None, seed: str = "",
+              source: EntityFile | None = None) -> dict[str, str]:
+        """Copy the named components (and everything they own) into this file.
+
+        ``rename`` maps old component names to new ones; ``group`` maps old
+        group names to new ones. Links among the copied components point at
+        the copies; links out of the set are left alone. ``source`` copies from
+        another entity (the class table is extended as needed). Returns
+        ``{old path: new path}``. Every copy gets a fresh GUID derived from
+        ``seed`` (keep it stable to rebuild byte-identically)."""
+        src = source or self
+        rename, group = rename or {}, group or {}
+        g = src.graph()
+        by_name = {}
+        for want in names:
+            hits = [c for c in g.components if want in (c.name, c.path)]
+            if len(hits) != 1:
+                raise EntityEditError(f"{len(hits)} components named {want!r}")
+            by_name[hits[0].index - 1] = hits[0]
+        comps = sorted(by_name)
+        subs = src.subtree(set(comps))
+        owned, _amb = src.pointers()
+
+        base = len(self.objects)
+        new_id = {old: base + i for i, old in enumerate(comps + subs)}
+        guid = {c.guid: _mint(seed, c.guid) for c in by_name.values()}
+        taken = {c.guid for c in self.graph().components}
+        if any(v in taken for v in guid.values()):
+            raise EntityEditError("a minted GUID collides; change the seed")
+        paths: dict[str, str] = {}
+        for c in by_name.values():
+            ng, nn = group.get(c.group, c.group), rename.get(c.name, c.name)
+            paths[c.path] = f"{ng}\\{nn}" if ng else nn
+
+        # A copy from another entity is referenced by THIS file's name: a link
+        # among the copies kept the donor's (`[State] Hero_Romeo_Juliet_Common\...`)
+        # in its label, which no reference in a shipped file ever carries.
+        scope = self._scope() if src is not self else None
+        payloads: list[bytearray] = []
+        for old in comps + subs:
+            p = bytearray(src.objects[old])
+            for x, ptr in owned.items():              # re-point owned sub-objects
+                if ptr.owner == old and x in new_id:
+                    struct.pack_into("<I", p, ptr.offset, new_id[x])
+            payloads.append(p)
+        for i, old in enumerate(comps + subs):
+            p = payloads[i]
+            for a, b in guid.items():                 # own GUID + links to copies
+                p[:] = p.replace(a, b)
+            p[:] = _rewrite_ref_paths(bytes(p), src.cf, paths, set(guid.values()), scope)
+            if old in by_name:
+                c = by_name[old]
+                p[:] = _rewrite_header(bytes(p), rename.get(c.name, c.name),
+                                       group.get(c.group, c.group))
+            if src is not self:
+                extend_class_table(self.cf, src.cf, class_closure(bytes(p), src.cf))
+                p[:] = _remap_class_tags(bytes(p), src.cf, self.cf)
+        self.objects.extend(payloads)
+        voff, ids = component_vector(bytes(self.trailer))
+        ids = ids + [new_id[o] for o in comps]
+        self.trailer[voff:voff + 4 + 4 * (len(ids) - len(comps))] = (
+            struct.pack("<I", len(ids)) + struct.pack(f"<{len(ids)}I", *ids))
+        self.to_bytes()
+        return paths
+
+    # ---- fields ------------------------------------------------------------
+
+    def _field(self, comp: str, field: str) -> tuple[EG.Component, EF.Field, int]:
+        c = self.component(comp)
+        fs = {f.name: f for f in EF.fields(c)}
+        base, _, idx = field.partition("[")
+        if base not in fs:
+            raise EntityEditError(f"{c.name!r} has no field {base!r}; have {', '.join(fs)}")
+        f = fs[base]
+        if idx:
+            f = f.items[int(idx.rstrip("]"))]
+        return c, f, len(self.objects[c.index - 1]) - len(c.body)
+
+    def set_value(self, comp: str, field: str, value) -> None:
+        """Set a literal: a raw bool/u32/f32 field, the union inside a value
+        field (keeping its type; ints and floats convert), or ``obj[n]``: the
+        n-th scalar literal inside an object field, e.g. a spawner's
+        ``position[8]`` (the spawn's yaw; see ``_set_obj_literal``)."""
+        base, _, idx = field.partition("[")
+        if idx and "][" in idx:
+            # `entries[0][1]`: the n-th literal inside one item of an object list,
+            # e.g. the number in a selector's entry (a projectile's stagger power).
+            c = self.component(comp)
+            f = next((x for x in EF.fields(c) if x.name == base), None)
+            i, n = (int(x) for x in idx.rstrip("]").split("]["))
+            if f is None or not 0 <= i < len(f.items) or f.items[i].kind != "obj":
+                raise EntityEditError(f"{field!r}: {c.name!r} has no object entry {i} in {base!r}")
+            self._set_obj_literal(c, f.items[i], n, value, field)
+            return
+        if idx:
+            c = self.component(comp)
+            f = next((x for x in EF.fields(c) if x.name == base), None)
+            if f is not None and f.kind == "obj" and not f.items:
+                if isinstance(value, str):
+                    self._set_obj_string(c, f, int(idx.rstrip("]")), value, field)
+                else:
+                    self._set_obj_literal(c, f, int(idx.rstrip("]")), value, field)
+                return
+        c, f, at = self._field(comp, field)
+        p = self.objects[c.index - 1]
+        if f.kind in EF._PRIM:
+            struct.pack_into({"bool": "<?", "u32": "<I", "f32": "<f"}[f.kind], p,
+                             at + f.offset, _as(f.kind, value))
+            return
+        if f.kind != "value":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a literal")
+        sub = EG.Component(0, c.cls, "", "", b"", None,
+                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+        u = next((t for t in EG.tokens(sub) if t.kind == "value"), None)
+        if u is None:
+            raise EntityEditError(f"{field!r} holds no literal")
+        kind = u.text.split()[0]
+        fmt = {"f32": "<f", "int": "<i", "bool": "<?", "vec2": "<2f", "vec3": "<3f",
+               "vec4": "<4f"}.get(kind)
+        if fmt is None:
+            raise EntityEditError(f"{field!r} is a {kind}; only numbers and vectors are set")
+        uoff = u.offset
+        if p[at + f.offset + 8]:
+            # A SOURCED picker reads its number from elsewhere and never reads
+            # its inline one, so writing that alone changes nothing in game.
+            # Make it a literal first: `00` + union is the shape of all 6490
+            # literal pickers in the corpus; a sourced one is `01 00` + picker
+            # + accessor, or `01 01` + a 4-byte global-value key, + union.
+            a, b = at + f.offset + 8, at + f.offset + u.offset
+            p[a:b] = b"\x00"
+            uoff = 9
+        vals = value if isinstance(value, (list, tuple)) else [value]
+        conv = {"f32": float, "int": int, "bool": bool}.get(kind, float)
+        struct.pack_into(fmt, p, at + f.offset + uoff + 16, *[conv(v) for v in vals])
+
+    def _obj_token_span(self, c: EG.Component, f: EF.Field, kind: str, n: int,
+                        label: str) -> tuple[int, int]:
+        """``(start, end)`` in ``c.body`` of the n-th ``kind`` token inside object
+        field ``f`` (a reference's span is its whole picker, a string's its
+        length-prefixed text)."""
+        sub = EG.Component(0, c.cls, "", "", b"", None,
+                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+        toks = [t for t in EG.tokens(sub) if t.kind == kind]
+        if not 0 <= n < len(toks):
+            raise EntityEditError(f"{label!r}: {f.name} holds {len(toks)} {kind}s, no index {n}")
+        t = toks[n]
+        return f.offset + t.offset, f.offset + t.offset + t.size
+
+    def _set_obj_string(self, c: EG.Component, f: EF.Field, n: int, text: str,
+                        label: str) -> None:
+        """Replace the n-th string inside an object field, e.g. a spawner's
+        ``template[1]`` (the entity it spawns). The payload may change length;
+        ``to_bytes`` re-frames it, as a clone's renamed paths already do."""
+        a, b = self._obj_token_span(c, f, "string", n, label)
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        old = bytes(p)
+        p[at + a:at + b] = _lstr(text)
+        try:
+            self._check(self.to_bytes())
+        except EntityEditError:
+            p[:] = old
+            raise
+
+    def _set_obj_literal(self, c: EG.Component, f: EF.Field, n: int, value, label: str) -> None:
+        """The n-th literal inside an object field, counted as ``--show`` prints
+        them. A spawner carries two transform-shaped blocks. ``position``:
+        vec3, vec3 (0 0 1), f32 x4 (offset in 3-5), vec3, rotation in
+        radians (7-9, yaw = 8), vec3, scale (11-13) -- the rotation is what
+        the shipped scrap spawners set (1.5708). ``transform``: offset (0-2),
+        vec3, rotation (4-6, yaw = 5), vec3, scale (8-10) -- 18 shipped
+        spawners set one; a hero ability spawn IGNORES its yaw (four
+        shockwaves turned by it all went the way the hero faced, 2026-09-26).
+        Every literal's data starts 16 bytes into its token, as in a value
+        field: a scalar there, a vecN's floats packed from there (read off
+        ``position``'s ``vec3 0 0 1``: its 1.0 sits at +24)."""
+        sub = EG.Component(0, c.cls, "", "", b"", None,
+                           body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+        lits = [t for t in EG.tokens(sub) if t.kind == "value"]
+        if not 0 <= n < len(lits):
+            raise EntityEditError(f"{label!r}: {f.name} holds {len(lits)} literals, "
+                                  f"no index {n}")
+        u = lits[n]
+        kind = u.text.split()[0]
+        fmt = {"f32": "<f", "int": "<i", "bool": "<?",
+               "vec2": "<2f", "vec3": "<3f", "vec4": "<4f"}.get(kind)
+        if fmt is None:
+            raise EntityEditError(f"{label!r} is a {kind} inside an object; only "
+                                  f"f32/int/bool/vecN literals there can be set")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        if kind.startswith("vec"):
+            vals = list(value) if isinstance(value, (list, tuple)) else []
+            if len(vals) != int(kind[3]):
+                raise EntityEditError(f"{label!r} is a {kind}; give {kind[3]} numbers")
+            struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *map(float, vals))
+            return
+        conv = {"f32": float, "int": int, "bool": bool}[kind]
+        struct.pack_into(fmt, p, at + f.offset + u.offset + 16, conv(value))
+
+    def set_ref(self, comp: str, field: str, target: str | None) -> None:
+        """Point a reference (``ref`` field, list element ``name[i]``, the
+        reference inside a value field, or ``obj[n]``: the n-th reference
+        inside an object field, counting the empty ones ``--tokens`` shows, or
+        ``list[i][n]``: the n-th reference inside item i of an object list, e.g.
+        a selector's ``entries[0][0]`` (its condition) and ``entries[0][1]``
+        (its value)) at component ``target`` or at nothing."""
+        base, _, idx = field.partition("[")
+        c = self.component(comp)
+        fo = next((x for x in EF.fields(c) if x.name == base), None)
+        item, _, nth = idx.partition("][")
+        if nth and fo is not None and fo.kind == "obj[]":
+            i, n = int(item), int(nth.rstrip("]"))
+            if not 0 <= i < len(fo.items):
+                raise EntityEditError(f"{c.name!r}: {base} has {len(fo.items)} items, no {i}")
+            f, at = fo.items[i], len(self.objects[c.index - 1]) - len(c.body)
+            a, b = self._obj_token_span(c, f, "ref", n, field)
+        elif idx and fo is not None and fo.kind == "obj" and not fo.items:
+            f, at = fo, len(self.objects[c.index - 1]) - len(c.body)
+            a, b = self._obj_token_span(c, f, "ref", int(idx.rstrip("]")), field)
+        else:
+            c, f, at = self._field(comp, field)
+            a, b = self._picker_span(c, f)
+        obj = c.index - 1
+        old = bytes(self.objects[obj][at + a:at + b])
+        new = self._picker(target)
+        self.objects[obj][at + a:at + b] = new
+        # A reference inside a value picker is followed by the ACCESSOR the
+        # target is read with, which depends on the target's class and value
+        # type; a stale one reads the new target with the wrong method and
+        # returns garbage (entity_append.fix_accessor has the RE).
+        label_end = at + a + len(new) - 4
+        p = bytes(self.objects[obj])
+        try:
+            acc = _Accessors(cooked.parse(self.to_bytes()))
+            p = fix_accessor(p, label_end, old[8:24], new[8:24], acc,
+                             _picker_path(old), _picker_path(new))
+            p = fix_format_slot(p, at + a, label_end, new[8:24], acc)
+        except (EntityAppendError, EntityEditError) as e:
+            self.objects[obj][at + a:at + a + len(new)] = old      # leave the file as it was
+            raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
+        self.objects[obj][:] = p
+
+    # ---- number slots (value pickers) ----------------------------------------
+    #
+    # A number slot is an `oCEntityCpntValuePicker`: `00` + a value union holds
+    # a literal; `01 00` + a reference + a 4-byte accessor + the union reads the
+    # number from another node. The accessor is how the target is read and
+    # depends on its class and value type; for an f32 it is one per class across
+    # every hero file (surveyed 2026-10-09), which is what lets a brand-new node,
+    # one no picker in this file reads yet, be sourced.
+    F32_ACCESSOR = {
+        "oCEntityCpntValueSettings": 0x0FD2C964,
+        "oCEntityCpntValueSelectorSettings": 0x0FD2C964,
+        "oCEntityCpntValueOperationsSettings": 0x17AE7811,
+        "oCEntityCpntGetValueSettings": 0x16ABF2EB,
+    }
+
+    def _value_pickers(self, c: EG.Component) -> list[EG.Token]:
+        return [t for t in EG.tokens(c)
+                if t.kind == "object" and t.text == "oCEntityCpntValuePicker"]
+
+    def source_value(self, comp: str, n: int, target: str) -> None:
+        """Make the n-th number slot of ``comp`` read component ``target`` (an f32
+        node of this file), literal or sourced before; its inline number goes."""
+        c = self.component(comp)
+        t = self.component(target)
+        acc = self.F32_ACCESSOR.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
+        vps = self._value_pickers(c)
+        if not 0 <= n < len(vps):
+            raise EntityEditError(f"{comp!r} has {len(vps)} number slots, no index {n}")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + vps[n].offset + 8          # just past BEGIN + class
+        union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+        u = p.find(union, at)
+        if u < 0:
+            raise EntityEditError(f"{comp!r}: number slot {n} has no value")
+        if struct.unpack_from("<I", p, u + 8)[0] != 0:
+            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal number")
+        p[at:u] = b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
+        u = p.find(union, at)
+        struct.pack_into("<f", p, u + 16, 0.0)
+
+    def append_operand(self, comp: str, target: str) -> None:
+        """Add ``target`` (an f32 node of this file) as one more operand of the
+        value operation ``comp``: on a multiply, the result is multiplied by it."""
+        c = self.component(comp)
+        if not c.cls.endswith("ValueOperationsSettings"):
+            raise EntityEditError(f"{comp!r} is not a value operation")
+        t = self.component(target)
+        acc = self.F32_ACCESSOR.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
+        toks = EG.tokens(c)
+        node = next((i for i, x in enumerate(toks)
+                     if x.kind == "object" and x.text == "oCEntityCpntNodeSettings"), None)
+        ends = [x for x in toks if x.kind == "end"]
+        if node is None or not ends:
+            raise EntityEditError(f"{comp!r}: no operation list found")
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body)
+        count_at = at + toks[node].offset + 8 + 4             # after BEGIN, class, op id
+        item = (struct.pack("<Ii", 0, -1)
+                + _B + struct.pack("<I", self._class_index("oCEntityCpntValuePicker"))
+                + b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
+                + self._f32_union() + _E)
+        last = at + ends[-1].offset
+        p[last:last] = item
+        struct.pack_into("<I", p, count_at, struct.unpack_from("<I", p, count_at)[0] + 1)
+
+    def _f32_union(self) -> bytes:
+        """A decimal value union holding 0, in this file's class numbering, copied
+        from one the file already has (BEGIN, class, type 0, u32, f32, END)."""
+        union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+        for p in self.objects:
+            i = p.find(union)
+            while i >= 0:
+                if struct.unpack_from("<I", p, i + 8)[0] == 0 and p[i + 20:i + 24] == _E:
+                    return bytes(p[i:i + 16]) + struct.pack("<f", 0.0) + _E
+                i = p.find(union, i + 1)
+        raise EntityEditError("this file holds no decimal number to copy the shape of")
+
+    #: How a true/false switch reads each kind of node (surveyed 2026-10-09 over
+    #: every damage debuff in the game: 76 read a [State], 56 a [Value], 41 an
+    #: [Entity Get Value], all with these accessors).
+    BOOL_ACCESSOR = {
+        "oCEntityCpntStateSettings": 0x0FD2832A,
+        "oCEntityCpntValueSettings": 0x0FD2832A,
+        "oCEntityCpntGetValueSettings": 0x16ABF2ED,
+    }
+
+    def add_subobject(self, owner: str, list_field: str, donor: EntityFile, obj: int, *,
+                      refs: dict[bytes, str] | None = None, switch: str | None = None) -> int:
+        """Copy sub-object ``obj`` of ``donor`` into this file, owned by ``owner``
+        through its id list ``list_field`` (``u32 count`` + ``count`` u32 ids, as a
+        damage record's debuffs). ``refs`` re-points the copy's references (donor
+        GUID -> a component of this file); ``switch`` makes its first number slot
+        a true/false read of that component (a debuff's "is it on"). Returns the
+        new sub-object's id. Fails closed on a donor that owns sub-objects."""
+        c = self.component(owner)
+        f = next((x for x in EF.fields(c) if x.name == list_field), None)
+        if f is None:
+            raise EntityEditError(f"{owner!r} has no field {list_field!r}")
+        n = struct.unpack_from("<I", c.body, f.offset)[0]
+        if f.size != 4 + 4 * n:
+            raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
+        if donor.subtree({obj}):
+            raise EntityEditError(f"sub-object #{obj} owns sub-objects of its own; not copied")
+        payload = bytes(donor.objects[obj])
+        extend_class_table(self.cf, donor.cf, class_closure(payload, donor.cf))
+        payload = bytearray(_remap_class_tags(payload, donor.cf, self.cf))
+        head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
+        for old, target in (refs or {}).items():
+            i = payload.find(head + old)
+            if i < 0:
+                raise EntityEditError(f"sub-object #{obj} does not reference the node to re-point")
+            end = i + 28 + struct.unpack_from("<I", payload, i + 24)[0] + 4
+            payload[i:end] = self._picker(target)
+        if switch is not None:
+            t = self.component(switch)
+            acc = self.BOOL_ACCESSOR.get(t.cls)
+            if acc is None:
+                raise EntityEditError(f"{switch!r} is a {t.cls}; no known way to read it as on/off")
+            vp = _B + struct.pack("<I", self._class_index("oCEntityCpntValuePicker"))
+            union = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+            a = payload.find(vp)
+            u = payload.find(union, a)
+            if a < 0 or u < 0:
+                raise EntityEditError(f"sub-object #{obj} has no number slot to switch")
+            payload[a + 8:u] = b"\x01\x00" + self._picker(switch) + struct.pack("<I", acc)
+        new_id = len(self.objects)
+        self.objects.append(payload)
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + f.offset
+        p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
+        struct.pack_into("<I", p, at, n + 1)
+        self.to_bytes()
+        return new_id
+
+    def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
+        """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
+        entity (``guid``, ``label`` = ``[Kind] Scope\\Group\\Name``) of the same
+        kind, keeping the accessor after it: a get-value node reading its owner."""
+        c = self.component(comp)
+        obj = c.index - 1
+        head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index("oCEntityCpntPicker"))
+        new = head + guid + _lstr(label) + _E
+        moved = 0
+        p = self.objects[obj]
+        i = p.find(head + old)
+        while i >= 0:
+            n = struct.unpack_from("<I", p, i + 24)[0]
+            end = i + 28 + n + 4
+            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(label):
+                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
+                                      f"the same kind of node as {label!r}")
+            p[i:end] = new
+            moved += 1
+            i = p.find(head + old, i + len(new))
+        return moved
+
+    def swap_refs(self, comp: str, old: bytes, target: str) -> int:
+        """Point every reference in ``comp`` to GUID ``old`` at ``target``, a
+        component of the SAME kind, keeping what follows each reference (a
+        skill controller's per-rarity accessor). For a copy whose links still
+        name its donor's component: :meth:`set_ref` cannot judge an accessor
+        for a target outside this file. Returns how many it moved."""
+        c = self.component(comp)
+        obj = c.index - 1
+        head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index(
+            "oCEntityCpntPicker"))
+        new = self._picker(target)
+        moved = 0
+        p = self.objects[obj]
+        i = p.find(head + old)
+        while i >= 0:
+            n = struct.unpack_from("<I", p, i + 24)[0]
+            end = i + 28 + n + 4
+            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(_picker_path(new)):
+                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
+                                      f"the same kind of node as {target!r}")
+            p[i:end] = new
+            moved += 1
+            i = p.find(head + old, i + len(new))
+        return moved
+
+    def add_ref(self, comp: str, field: str, target: str) -> None:
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        p = self.objects[c.index - 1]
+        n = struct.unpack_from("<I", p, at + f.offset)[0]
+        end = at + f.offset + f.size
+        p[end:end] = self._picker(target)
+        struct.pack_into("<I", p, at + f.offset, n + 1)
+
+    def insert_ref(self, comp: str, field: str, index: int, target: str) -> None:
+        """Put ``target`` into the reference list ``field`` at ``index`` (the
+        lists run in order: a state's ``activates`` switches nodes on one after
+        another, so a node must come before the ones that read it)."""
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        if not 0 <= index <= len(f.items):
+            raise EntityEditError(f"{field!r} has {len(f.items)} items, no index {index}")
+        if index == len(f.items):
+            self.add_ref(comp, field, target)
+            return
+        p = self.objects[c.index - 1]
+        pos = at + f.items[index].offset
+        p[pos:pos] = self._picker(target)
+        struct.pack_into("<I", p, at + f.offset, len(f.items) + 1)
+
+    def add_format_slot(self, comp: str, target: str, *, percent: bool = True) -> int:
+        """Append a value slot to the String Format ``comp``, reading ``target``.
+
+        Returns the new slot's index: the ``{N}`` the card text uses for it.
+
+        A String Format is ``value`` (the text key), a u32 slot count, then one
+        ``oCStringFormatEntryPicker`` object per slot (RE 2026-10-05)::
+
+            BEGIN oCStringFormatEntryPicker
+              u32 0
+              BEGIN oCEntityCpntValuePicker { flags, picker, accessor, union } END
+              u32 display mode      (1: shown x100, as a percentage; 0: plain;
+                                     2 on damage numbers)
+            END
+
+        The new slot is a copy of an existing one (this format's, else any
+        other format's in the file) re-pointed with :meth:`set_ref`, which also
+        rewrites the accessor for the target's class. ``percent`` sets the
+        trailing flag.
+        """
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, count_f = self._format_slots(c)
+        if count_f is None:
+            raise EntityEditError(f"{c.name!r}: cannot find its slot count")
+        template = None
+        if slots:
+            template = c.body[slots[-1].offset:slots[-1].offset + slots[-1].size]
+        else:
+            for other in self.graph().components:
+                if other.cls == c.cls and other.guid != c.guid:
+                    o_slots, _ = self._format_slots(other)
+                    if o_slots:
+                        f = o_slots[0]
+                        template = other.body[f.offset:f.offset + f.size]
+                        break
+        if template is None:
+            raise EntityEditError(f"{c.name!r}: no String Format slot in this file to copy")
+        # The trailing u32 is a small display mode (0 plain, 1 percent, 2 seen on
+        # damage numbers); anything else means the layout is not the one above.
+        if struct.unpack("<I", template[-8:-4])[0] > 15 or template[-4:] != _E:
+            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
+        slot = template[:-8] + struct.pack("<I", 1 if percent else 0) + template[-4:]
+
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        end = (slots[-1].offset + slots[-1].size) if slots else (count_f.offset + count_f.size)
+        p = self.objects[c.index - 1]
+        p[at + end:at + end] = slot
+        struct.pack_into("<I", p, at + count_f.offset, len(slots) + 1)
+
+        new_slots, _ = self._format_slots(self.component(comp))
+        if len(new_slots) != len(slots) + 1:
+            raise EntityEditError(f"{c.name!r}: the new slot did not parse back")
+        self.set_ref(comp, f"{new_slots[-1].name}[0]", target)
+        self._slot_accessor(comp, target)
+        return len(slots)
+
+    def _slot_accessor(self, comp: str, target: str) -> None:
+        """Give the newest slot of ``comp`` the accessor CARD SLOTS use for
+        ``target``'s kind.
+
+        An accessor depends on who reads, not only on what is read: the game's
+        card slots read a Value Selector with ``64 c9 d2 0f`` (236 of 236
+        shipped slots), while a calculation reading the same selector uses
+        ``11 78 ae 17``. ``set_ref`` learns accessors from the whole file, so a
+        slot copied from one that read a calculation kept the calculation's
+        accessor -- and the card showed 0 (a rebuilt Aladdin card, 2026-10-05).
+        Learned here from this file's own slots; left alone when none reads
+        that kind, rather than guessed."""
+        from collections import Counter
+
+        g = self.graph()
+        cls_of_path = {x.path: x.cls for x in g.components}
+        want_cls = next((x.cls for x in g.components if x.name == target), None)
+        if want_cls is None:
+            return
+
+        def slot_tokens(c: EG.Component, f: EF.Field) -> list[EG.Token]:
+            return EG.tokens(EG.Component(0, c.cls, "", "", b"", None,
+                                          body=c.body[f.offset:f.offset + f.size],
+                                          classes=c.classes))
+
+        votes: Counter = Counter()
+        for c in g.components:
+            if not c.cls.endswith("StringFormatValueSettings"):
+                continue
+            for f in self._format_slots(c)[0]:
+                toks = slot_tokens(c, f)
+                for i, t in enumerate(toks[:-1]):
+                    nxt = toks[i + 1]
+                    if t.kind != "ref" or nxt.kind != "bytes" or nxt.size != 4:
+                        continue
+                    path = t.text.split("] ", 1)[-1].split("\\", 1)[-1]
+                    if cls_of_path.get(path) == want_cls:
+                        votes[c.body[f.offset + nxt.offset:f.offset + nxt.offset + 4]] += 1
+        if not votes:
+            return
+        want = votes.most_common(1)[0][0]
+        c = self.component(comp)
+        f = self._format_slots(c)[0][-1]
+        toks = slot_tokens(c, f)
+        i = next(i for i, t in enumerate(toks) if t.kind == "ref")
+        acc = toks[i + 1]
+        if acc.kind != "bytes" or acc.size != 4:
+            return
+        at = len(self.objects[c.index - 1]) - len(c.body) + f.offset + acc.offset
+        self.objects[c.index - 1][at:at + 4] = want
+
+    def clear_format_slots(self, comp: str) -> int:
+        """Remove every value slot from the String Format ``comp``; returns how
+        many there were. Text that still says ``{0}`` then shows nothing there,
+        so the caller replaces the text too."""
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, count_f = self._format_slots(c)
+        if count_f is None:
+            raise EntityEditError(f"{c.name!r}: cannot find its slot count")
+        if not slots:
+            return 0
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        p = self.objects[c.index - 1]
+        del p[at + slots[0].offset:at + slots[-1].offset + slots[-1].size]
+        struct.pack_into("<I", p, at + count_f.offset, 0)
+        return len(slots)
+
+    def _format_slots(self, c: EG.Component) -> tuple[list[EF.Field], EF.Field | None]:
+        """A String Format's slot fields and the u32 field holding their count."""
+        tag = _B + struct.pack("<I", self._class_index("oCStringFormatEntryPicker"))
+        fs = EF.fields(c)
+        slots = [f for f in fs if f.kind == "obj"
+                 and c.body[f.offset:f.offset + len(tag)] == tag]
+        count_f = None
+        for f in fs:
+            if f.kind == "bytes" and f.size == 4 and \
+                    struct.unpack_from("<I", c.body, f.offset)[0] == len(slots):
+                count_f = f
+                if slots and f.offset + f.size == slots[0].offset:
+                    break
+        return slots, count_f
+
+    def _class_index(self, name: str) -> int:
+        for i, cls in enumerate(self.cf.classes):
+            if cls.name == name:
+                return i
+        return -1
+
+    def remove_ref(self, comp: str, field: str, index: int) -> None:
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        if not 0 <= index < len(f.items):
+            raise EntityEditError(f"{c.name}.{field}[{index}]: the list has "
+                                  f"{len(f.items)} element(s)")
+        e = f.items[index]
+        p = self.objects[c.index - 1]
+        del p[at + e.offset:at + e.offset + e.size]
+        struct.pack_into("<I", p, at + f.offset, len(f.items) - 1)
+
+    def _picker_span(self, c: EG.Component, f: EF.Field) -> tuple[int, int]:
+        """``(start, end)`` in the body of the oCEntityCpntPicker ``f`` is or holds."""
+        if f.kind == "ref":
+            return f.offset, f.offset + f.size
+        if f.kind == "value":
+            sub = EG.Component(0, c.cls, "", "", b"", None,
+                               body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+            r = next((t for t in EG.tokens(sub) if t.kind == "ref"), None)
+            if r is None:
+                raise EntityEditError(
+                    f"{f.name!r} holds a literal, not a reference; a value field only "
+                    "re-points a reference it already has")
+            return f.offset + r.offset, f.offset + r.offset + r.size
+        raise EntityEditError(f"{f.name!r} is a {f.kind}, not a reference")
+
+    def _picker(self, target: str | None) -> bytes:
+        names = [x.name for x in self.cf.classes]
+        head = _B + struct.pack("<I", names.index("oCEntityCpntPicker"))
+        if target is None:
+            return head + bytes(16) + _lstr("") + _E
+        t = self.component(target)
+        # A node with no group is named `Scope\Name` by every shipped reference
+        # (Melusine's caster reads `...Power_Caster_Model\Owner Skill ...`), not
+        # `Scope\\Name`, which is what its empty-group path would give.
+        path = t.path if t.group else t.name
+        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
+
+    def _label(self, cls: str) -> str:
+        """The ``[Kind]`` label for ``cls``: from this file's own references
+        when one names such a component, else learned from the corpus."""
+        g = self.graph()
+        idx = g.by_guid()
+        for c in g.components:
+            for r in c.refs:
+                t = idx.get(r.guid)
+                if t is not None and t.cls == cls and r.kind:
+                    return r.kind
+        return kind_label(cls)
+
+    def _scope(self) -> str:
+        """The scope this file's own references use (``Hero_Piper``)."""
+        g = self.graph()
+        mine = g.by_guid()
+        for c in g.components:
+            for r in c.refs:
+                if r.guid in mine and r.scope:
+                    return r.scope
+        if self.name:
+            return self.name
+        raise EntityEditError("cannot tell this entity's scope; pass name=")
+
+    def _splice(self, c: EG.Component, a: int, b: int, new: bytes) -> None:
+        self.objects[c.index - 1][a:b] = new
+
+    # ---- invariants --------------------------------------------------------
+
+    def _check(self, raw: bytes) -> None:
+        cf = cooked.parse(raw)
+        validate_layout(cf)
+        g = EG.parse(raw)
+        k = len(component_vector(cf.sections[-1].payload)[1])
+        if len(g.components) != k:
+            raise EntityEditError(f"{len(g.components)} components parse, vector has {k}")
+        guids = [c.guid for c in g.components]
+        if len(set(guids)) != len(guids):
+            raise EntityEditError("two components share a GUID")
+        n, _idx = _directory(cf)
+        if n != len(self.objects):
+            raise EntityEditError("object table and objects disagree")
+
+
+# --------------------------------------------------------------------------
+
+
+def _picker_path(picker: bytes) -> str:
+    n = struct.unpack_from("<I", picker, 24)[0]
+    return picker[28:28 + n].decode("latin-1")
+
+
+def _mint(seed: str, guid: bytes) -> bytes:
+    return uuid.uuid5(_NS, f"{seed}:{guid.hex()}").bytes
+
+
+def _as(kind: str, value):
+    return {"bool": bool, "u32": int, "f32": float}[kind](value)
+
+
+def _raw_spans(p: bytes, special: set[int]) -> list[tuple[int, int]]:
+    """Spans of ``p`` outside markers, lstrings, pickers and value unions —
+    where a poly-pointer id can sit."""
+    spans: list[tuple[int, int]] = []
+    i = start = 0
+    n = len(p)
+    while i < n:
+        mark = p[i:i + 4]
+        if mark in (_B, _E):
+            if i > start:
+                spans.append((start, i))
+            if mark == _B and i + 8 <= n and struct.unpack_from("<I", p, i + 4)[0] in special:
+                j = p.find(_E, i + 8)
+                i = j + 4 if j >= 0 else n
+            else:
+                i += 8 if mark == _B else 4
+            start = i
+            continue
+        if i + 4 <= n:
+            m = struct.unpack_from("<I", p, i)[0]
+            s = p[i + 4:i + 4 + m]
+            if 2 <= m <= 512 and len(s) == m and all(32 <= x < 127 for x in s):
+                if i > start:
+                    spans.append((start, i))
+                i += 4 + m
+                start = i
+                continue
+        i += 1
+    if start < n:
+        spans.append((start, n))
+    return spans
+
+
+def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
+                       new_guids: set[bytes], scope: str | None = None) -> bytes:
+    """Rename the ``Group\\Name`` tail of every picker that targets a copy, and
+    its ``scope`` (the entity's name) too when one is given."""
+    names = [x.name for x in cf.classes]
+    if "oCEntityCpntPicker" not in names:
+        return p
+    out, last = bytearray(), 0
+    for off, ref in EG._pickers(p, names.index("oCEntityCpntPicker")):
+        if ref.guid not in new_guids:
+            continue
+        m = EG._PATH.match(ref.path)
+        if not m or m["rest"] not in paths:
+            continue
+        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[m['rest']]}"
+        s = off + 8 + 16                              # BEGIN, class, GUID
+        n = struct.unpack_from("<I", p, s)[0]
+        out += p[last:s] + _lstr(new)
+        last = s + 4 + n
+    return bytes(out + p[last:])
+
+
+def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
+    """``p`` with the record header's name and group replaced."""
+    pk = EG._pickers(p, struct.unpack_from("<I", p, 8)[0])
+    first = pk[0][1] if pk and pk[0][0] == 4 else None
+    if first is None:
+        raise EntityEditError("record has no header picker")
+    at = 4 + 8 + 16 + 4 + len(first.path.encode("latin-1")) + 4 + 16
+    head = EG._header_strings(p, at)
+    if head is None:
+        raise EntityEditError("record header does not parse")
+    _old_name, _old_group, body = head
+    flags_at = at + 4 + struct.unpack_from("<I", p, at)[0]
+    return (p[:at] + _lstr(name) + p[flags_at:flags_at + 4] + _lstr(group) + p[body:])
+
+
+@cache
+def _kind_labels() -> dict[str, str]:
+    """Component class -> the ``[Kind]`` label references to it carry, learned
+    from the shipped corpus (the label is the editor's display name for the
+    class, which the exe does not hold)."""
+    from . import corpus
+    votes: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for rel in corpus.rels("EntitySettings/"):
+        if not rel.endswith(".EntitySettingsResource.gen"):
+            continue
+        g = EG.parse(corpus.read(rel))
+        idx = g.by_guid()
+        for c in g.components:
+            for r in c.refs:
+                t = idx.get(r.guid)
+                if t is not None and r.kind:
+                    votes[t.cls][r.kind] += 1
+    return {cls: max(v, key=v.get) for cls, v in votes.items()}
+
+
+def kind_label(cls: str) -> str:
+    got = _kind_labels().get(cls)
+    if got is None:
+        raise EntityEditError(f"no reference in the game names a {cls}; cannot label one")
+    return got

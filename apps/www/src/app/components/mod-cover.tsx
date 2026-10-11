@@ -3,7 +3,7 @@
  *
  * Most registry entries ship without an image, and a flat grey box repeated
  * across the grid made the registry read as broken. This draws a title-page
- * plate instead: the initial in fraktur on an oxblood ground. The tint and the
+ * plate instead: the initial in the display face on an oxblood ground. The tint and the
  * rule pattern are derived from the slug, so neighbouring cards differ while any
  * one mod always gets the same cover. Pure markup, so it renders on the server
  * and inside client components alike.
@@ -62,7 +62,7 @@ export function ModCover({
         <span className="pointer-events-none absolute inset-3 border border-gilt/15" />
       ) : null}
       <span
-        className={`font-fraktur ${letterSize} leading-none text-gilt/80 drop-shadow-[0_2px_8px_rgb(0_0_0/0.6)]`}
+        className={`font-display ${letterSize} leading-none text-gilt/80 drop-shadow-[0_2px_8px_rgb(0_0_0/0.6)]`}
       >
         {initial(name)}
       </span>

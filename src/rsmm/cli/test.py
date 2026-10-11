@@ -39,7 +39,7 @@ def _load_plan(build_py: Path) -> list[dict]:
     captured: list[list[dict]] = []
     orig_exit = sdk.Mod.__exit__
 
-    def patched_exit(self, exc_type, exc, tb):  # noqa: ANN001
+    def patched_exit(self, exc_type, exc, tb):
         captured.append(self.plan())
         self.dry_run = True   # avoid writing manifest in test mode
         return orig_exit(self, exc_type, exc, tb)
@@ -71,7 +71,7 @@ def _test_one(mod_dir: Path, record: bool, log) -> bool:
         return True
     try:
         plan = _load_plan(build)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - a mod's build.py can raise anything
         log(f"FAIL {name}: build.py raised {type(e).__name__}: {e}")
         return False
     fix = _fixture_path(mod_dir)
@@ -118,9 +118,11 @@ def main() -> int:
         print(s, flush=True)
 
     if args.mod_id:
-        targets = [MODS_DIR / args.mod_id]
-        if not targets[0].is_dir():
-            log(f"no such mod: {targets[0]}")
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        try:
+            targets = [MODS_DIR / resolve_mod(args.mod_id, MODS_DIR)]
+        except UnknownMod as e:
+            log(str(e))
             return 2
     elif not MODS_DIR.is_dir():
         log(f"mods dir does not exist: {MODS_DIR}")

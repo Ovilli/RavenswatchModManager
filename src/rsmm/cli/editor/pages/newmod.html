@@ -1,0 +1,42 @@
+<style>
+dialog#newmoddlg { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); padding: 18px 20px; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog#newmoddlg::backdrop { background: rgba(0,0,0,.45); }
+#newmoddlg h3 { margin: 0 0 4px; }
+.nmgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 12px 0; }
+.nmgrid label, .nmgrid > div { display: flex; flex-direction: column; gap: 3px; font-weight: 600; font-size: 13px; }
+.nmgrid .wide { grid-column: 1 / -1; }
+.nmgrid input, .nmgrid select, .nmgrid textarea { font-weight: 400; width: 100%; }
+.nmgrid .hint { font-weight: 400; }
+.nmlabel { font-weight: 600; }
+.nmtags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; font-weight: 400; }
+.nmtags label { flex-direction: row; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-weight: 400; cursor: pointer; }
+.nmtags label:has(input:checked) { border-color: var(--accentline); background: var(--accentbg); }
+.nmtags input { width: auto; margin: 0; }
+.nmacts { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 560px) { .nmgrid { grid-template-columns: 1fr; } }
+</style>
+<dialog id="newmoddlg" aria-labelledby="nm-title">
+  <form method="dialog" id="nmform">
+    <h3 id="nm-title">New mod</h3>
+    <p class="muted tiny">What people see about your mod in the desktop app and on the store. You can change all of it later in <code>manifest.toml</code>.</p>
+    <div class="nmgrid">
+      <label>Mod id<input id="nm-id" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]*" placeholder="stronger-items" spellcheck="false"><span class="hint">The folder name. Letters, digits, - and _.</span></label>
+      <label>Name<input id="nm-name" placeholder="Stronger Items"></label>
+      <label>Author<input id="nm-author" placeholder="Your name or handle"></label>
+      <label>Version<input id="nm-version" value="0.1.0" pattern="\d+\.\d+\.\d+.*"></label>
+      <label class="wide">Summary<input id="nm-summary" maxlength="512" placeholder="One line: what the mod does"></label>
+      <label class="wide">Description<textarea id="nm-desc" rows="4" maxlength="8192" placeholder="What changes, how to use it, anything players should know"></textarea></label>
+      <div class="wide"><span class="nmlabel">Tags</span><div id="nm-tags" class="nmtags"></div>
+        <input id="nm-moretags" placeholder="Other tags, separated by commas"></div>
+      <label>Licence<select id="nm-license">
+        <option value="">Choose…</option>
+        <option>MIT</option><option>CC-BY-4.0</option><option>CC-BY-NC-4.0</option><option>CC0-1.0</option>
+        <option>GPL-3.0-or-later</option><option value="All rights reserved">All rights reserved</option>
+      </select><span class="hint">Whether others may share or change your mod.</span></label>
+      <label>Homepage<input id="nm-home" type="url" placeholder="https://…"></label>
+      <label class="wide">Source code<input id="nm-repo" type="url" placeholder="https://github.com/…"></label>
+    </div>
+    <div id="nm-error" class="st-bad tiny"></div>
+    <div class="nmacts"><button value="cancel" formnovalidate>Cancel</button><button id="nm-ok" class="primary" value="ok">Create mod</button></div>
+  </form>
+</dialog>

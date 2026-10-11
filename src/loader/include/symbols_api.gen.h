@@ -10,7 +10,7 @@
 namespace engine {
 
 // Omitted as not status=ok (calling an unverified address is how a
-// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), Netcode_EntityReplSetup (unverified)
+// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified), Netcode_EntityReplSetup (unverified)
 
 // AchievementDef_PostLoad  (AchievementDef_PostLoad)
 //   bool(void* definition)
@@ -66,6 +66,13 @@ inline ChallengeDef_PostLoad_fn ChallengeDef_PostLoad() {
 using ChallengeUnlock_IsUnlocked_fn = uint32_t(*)(void*);
 inline ChallengeUnlock_IsUnlocked_fn ChallengeUnlock_IsUnlocked() {
     return reinterpret_cast<ChallengeUnlock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::ChallengeUnlock_IsUnlocked_Pattern));
+}
+
+// CharacterController_ClearStagger  (CharacterController_ClearStagger)
+//   void(void* charController)
+using CharacterController_ClearStagger_fn = void(*)(void*);
+inline CharacterController_ClearStagger_fn CharacterController_ClearStagger() {
+    return reinterpret_cast<CharacterController_ClearStagger_fn>(rsmm::fn_resolve(Sym::CharacterController_ClearStagger_Pattern));
 }
 
 // Definition_PostLoad  (Definition_PostLoad)
@@ -458,6 +465,13 @@ inline NamedEvent_ChannelMap_Find_fn NamedEvent_ChannelMap_Find() {
     return reinterpret_cast<NamedEvent_ChannelMap_Find_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChannelMap_Find_Pattern));
 }
 
+// NamedEvent_ChooseMelody_Ctor  (NamedEvent_ChooseMelody_Ctor)
+//   oe::dt::NamedEventChooseMelody*(void* buf)
+using NamedEvent_ChooseMelody_Ctor_fn = void*(*)(void*);
+inline NamedEvent_ChooseMelody_Ctor_fn NamedEvent_ChooseMelody_Ctor() {
+    return reinterpret_cast<NamedEvent_ChooseMelody_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_ChooseMelody_Ctor_Pattern));
+}
+
 // NamedEvent_Delete  (NamedEvent_Delete)
 //   void(oCGameNamedEvent* ev)
 using NamedEvent_Delete_fn = void(*)(void*);
@@ -470,6 +484,13 @@ inline NamedEvent_Delete_fn NamedEvent_Delete() {
 using NamedEvent_Dispatch_fn = void(*)(void*, void*);
 inline NamedEvent_Dispatch_fn NamedEvent_Dispatch() {
     return reinterpret_cast<NamedEvent_Dispatch_fn>(rsmm::fn_resolve(Sym::NamedEvent_Dispatch_Pattern));
+}
+
+// NamedEvent_GainReroll_Ctor  (NamedEvent_GainReroll_Ctor)
+//   oe::dt::NamedEventGainReroll*(void* buf)
+using NamedEvent_GainReroll_Ctor_fn = void*(*)(void*);
+inline NamedEvent_GainReroll_Ctor_fn NamedEvent_GainReroll_Ctor() {
+    return reinterpret_cast<NamedEvent_GainReroll_Ctor_fn>(rsmm::fn_resolve(Sym::NamedEvent_GainReroll_Ctor_Pattern));
 }
 
 // NamedEvent_GiveMagicalObject_Ctor  (NamedEvent_GiveMagicalObject_Ctor)
@@ -575,6 +596,27 @@ inline Resource_LookupByPath_fn Resource_LookupByPath() {
 using SceneContextValue_Find_fn = void*(*)(void*, uint32_t);
 inline SceneContextValue_Find_fn SceneContextValue_Find() {
     return reinterpret_cast<SceneContextValue_Find_fn>(rsmm::fn_resolve(Sym::SceneContextValue_Find_Pattern));
+}
+
+// SceneContextValue_SetBool  (SceneContextValue_SetBool)
+//   void(void* sceneContext, uint32_t crcKey, bool value)
+using SceneContextValue_SetBool_fn = void(*)(void*, uint32_t, bool);
+inline SceneContextValue_SetBool_fn SceneContextValue_SetBool() {
+    return reinterpret_cast<SceneContextValue_SetBool_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetBool_Pattern));
+}
+
+// SceneContextValue_SetFloat  (SceneContextValue_SetFloat)
+//   void(void* sceneContext, uint32_t crcKey, float value)
+using SceneContextValue_SetFloat_fn = void(*)(void*, uint32_t, float);
+inline SceneContextValue_SetFloat_fn SceneContextValue_SetFloat() {
+    return reinterpret_cast<SceneContextValue_SetFloat_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetFloat_Pattern));
+}
+
+// SceneContextValue_SetInt  (SceneContextValue_SetInt)
+//   void(void* sceneContext, uint32_t crcKey, int32_t value)
+using SceneContextValue_SetInt_fn = void(*)(void*, uint32_t, int);
+inline SceneContextValue_SetInt_fn SceneContextValue_SetInt() {
+    return reinterpret_cast<SceneContextValue_SetInt_fn>(rsmm::fn_resolve(Sym::SceneContextValue_SetInt_Pattern));
 }
 
 // SharedRef_Release  (SharedRef_Release)

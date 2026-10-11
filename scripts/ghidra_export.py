@@ -99,11 +99,19 @@ def main() -> int:
     gpr_files = list(proj.glob("*.gpr"))
     is_imported = any(p.stem == PROJECT_NAME for p in gpr_files)
 
+    # Auto-analysis flags free / std::_Allocate / oCString_Dtor (and more) as
+    # noreturn although they return, which cuts ~4,400 functions short at their
+    # first free — a corpus exported from that is missing the rest of every one
+    # of them, and the content-matching locators inherit the gap. RsmmNoReturnApply
+    # clears every noreturn function whose own body reaches a RET (rule-based, so
+    # it survives patches) and re-flows the call sites, BEFORE the export.
+    tools_scripts = Path(__file__).resolve().parent.parent / "tools" / "ghidra_scripts"
     cmd = [
         str(headless),
         str(proj),
         PROJECT_NAME,
-        "-scriptPath", str(script_dir),
+        "-scriptPath", f"{script_dir};{tools_scripts}",
+        "-postScript", "RsmmNoReturnApply.java", str(out.parent / "noreturn_fix.log"),
         "-postScript", "ExportDecompiled.java", str(out),
     ]
     if is_imported:

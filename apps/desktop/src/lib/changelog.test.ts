@@ -7,6 +7,7 @@ import {
   mergeEntries,
   pendingEntries,
 } from './changelog';
+import { compareVersions } from './version';
 
 /** Small fixed set, so these tests don't move every time a release ships. */
 const ENTRIES: ChangelogEntry[] = [
@@ -23,8 +24,9 @@ describe('bundled changelog data', () => {
     const dates = BUNDLED_CHANGELOG.map((e) => e.date);
     expect(dates).toEqual([...dates].sort((a, b) => (a > b ? -1 : 1)));
 
+    // As version numbers, not text: as text "5.9.10" sorts before "5.9.9".
     const versions = BUNDLED_CHANGELOG.filter((e) => e.version).map((e) => e.version);
-    expect(versions).toEqual([...versions].sort((a, b) => (a > b ? -1 : 1)));
+    expect(versions).toEqual([...versions].sort((a, b) => compareVersions(b, a)));
   });
 
   it('identifies every entry as either a release or a loader note', () => {

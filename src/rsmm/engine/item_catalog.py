@@ -60,29 +60,32 @@ def _cooked_path(game_dir: Path, asset_map: dict[str, str], decoded: str) -> Pat
     enc = asset_map.get(decoded)
     if not enc:
         return None
-    from rsmm.cli.apply_mods import COOKING_REL
+    from rsmm.engine.paths import COOKING_REL
     p = game_dir / COOKING_REL / Path(*enc.split("\\"))
     return p if p.is_file() else None
 
 
-def _text_values(game_dir: Path, asset_map: dict[str, str], lang: str = "EN") -> dict[str, str]:
+def _text_values(game_dir: Path, asset_map: dict[str, str], lang: str = "EN", *,
+                 pristine: bool = False) -> dict[str, str]:
     """``text key -> display string`` for the magical-object bank.
 
     The base ``.LocalText.gen`` holds the KEYS and the per-language sibling
     holds the VALUES at matching indices, so the two are zipped rather than
-    parsed as pairs.
+    parsed as pairs. ``pristine`` reads each file's ``.rsmm.bak`` when an apply
+    left one: the shipped text, not a mod's rewrite of it.
     """
     from rsmm.engine import text_patches as TP
 
     base = _cooked_path(game_dir, asset_map, _BANK)
     if base is None:
         return {}
+    pick = TP._pristine if pristine else (lambda f: f)
     try:
-        keys = TP.parse_text_file(base).entries
+        keys = TP.parse_text_file(pick(base)).entries
         sib = TP.lang_path_for(base, lang)
         if not sib.is_file():
             return {}
-        vals = TP.parse_text_file(sib).entries
+        vals = TP.parse_text_file(pick(sib)).entries
     except (OSError, ValueError) as e:
         _log.warning("item catalog: unreadable text bank: %s", e)
         return {}
@@ -128,37 +131,40 @@ def _entity_decoded(vector_path: str) -> str:
     return f"EntitySettings/{rel}.EntitySettingsResource.gen"
 
 
-def catalog(game_dir: Path | None = None, *, lang: str = "EN") -> list[ItemInfo]:
+def catalog(game_dir: Path | None = None, *, lang: str = "EN",
+            pristine: bool = False) -> list[ItemInfo]:
     """Every magical object the install's catalog lists, sorted by rarity+name.
+    ``pristine`` names them by the shipped text even while a mod renames one.
 
     Empty when no install is reachable — callers render an empty picker rather
     than a picker full of items the game does not have.
     """
     from rsmm.cli import apply_mods as A
     from rsmm.engine import magic_item_cook as cook
+    from rsmm.engine import versiondef as VD
 
     game_dir = game_dir or A.find_game_dir()
     if game_dir is None:
         return []
-    gen = A._locate_cooked_by_leaf(game_dir, A.VERSIONDEF_GEN_LEAF)
+    gen = VD._locate_cooked_by_leaf(game_dir, VD.VERSIONDEF_GEN_LEAF)
     if gen is None:
         return []
     # The pristine backup when one exists: the live file may already carry a
     # ban, and a picker that hides what you banned cannot un-ban it.
     bak = gen.with_name(gen.name + A.BACKUP_SUFFIX)
     blob = (bak if bak.exists() else gen).read_bytes()
-    loc = A._find_mo_vector(blob)
+    loc = VD._find_mo_vector(blob)
     if loc is None:
         return []
     co, _end, cnt = loc
-    entries = A._mo_vector_entries(blob, co, cnt)
+    entries = VD._mo_vector_entries(blob, co, cnt)
 
     asset_map = A.load_asset_map()
-    text = _text_values(game_dir, asset_map, lang)
+    text = _text_values(game_dir, asset_map, lang, pristine=pristine)
 
     out: list[ItemInfo] = []
     for _s, _e, ref in entries:
-        item_id = A._mo_entry_stem(ref)
+        item_id = VD._mo_entry_stem(ref)
         parts = ref.replace("/", "\\").split("\\")
         rarity = parts[-2] if len(parts) >= 2 else "Unknown"
         p = _cooked_path(game_dir, asset_map, _entity_decoded(ref))

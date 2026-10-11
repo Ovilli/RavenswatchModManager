@@ -41,14 +41,15 @@ import json
 import logging
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine.cooked_schemas.definitions import RewardDefinitionHandler
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_REWARD_DIR = DATA_DIR / "uncooked" / "Definitions" / "Rewards"
+#: Decoded directory of the retail reward defs (read through `engine.corpus`).
+_REWARD_DIR = "Definitions/Rewards"
 _ASSET_SUBDIR = "Definitions/Rewards"
 GEN_SUFFIX = ".rewarddef.ot.DtRewardDefinition.gen"
 
@@ -130,11 +131,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f'e.g. base="Camp_Rewards_Avalon". See docs/_re/kinds/rewards.md.'
         )
 
-    base_gen = _REWARD_DIR / f"{base}{GEN_SUFFIX}"
-    if not base_gen.is_file():
+    base_bytes = corpus.read(f"{_REWARD_DIR}/{base}{GEN_SUFFIX}")
+    if base_bytes is None:
         raise SchemaNotMined(
-            f"reward {defn.id}: base {base!r} not found under {_REWARD_DIR} — "
-            f"pass a retail rewarddef stem whose cooked def is present."
+            f"reward {defn.id}: base {base!r} is not a shipped rewarddef — pass a "
+            f"retail rewarddef stem (the game install, or data/uncooked, must be "
+            f"readable)."
         )
 
     # A base with an `_Update5` sibling is DEAD: only the LiveOps5 versiondef
@@ -142,8 +144,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # shipped corpus 2026-09-19 — Camp_Rewards_<Biome> is referenced by
     # nothing). Editing the dead one installs cleanly and changes nothing,
     # which is how an earlier ban read as "unreliable".
-    live = _REWARD_DIR / f"{base}_Update5{GEN_SUFFIX}"
-    if live.is_file():
+    if corpus.exists(f"{_REWARD_DIR}/{base}_Update5{GEN_SUFFIX}"):
         raise ContentError(
             f"reward {defn.id}: {base!r} is superseded and never loaded — the game "
             f"rolls from {base}_Update5. Use base = \"{base}_Update5\".")
@@ -168,7 +169,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         )
 
     h = RewardDefinitionHandler()
-    doc = json.loads(h.decode_cooked(base_gen.read_bytes()))
+    doc = json.loads(h.decode_cooked(base_bytes))
     banned: list[int] = []
     if ban:
         banned = _apply_ban(doc, list(ban), defn.id)

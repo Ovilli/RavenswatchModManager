@@ -1,5 +1,6 @@
-/* Fonts are loaded via next/font (see layout.tsx) and exposed as CSS vars
-   (--font-fraktur, --font-cormorant, --font-garamond, --font-mono). */
+/* Fonts are loaded via next/font (see layout.tsx) and exposed as CSS vars:
+   --font-display (headings), --font-body (text and UI), --font-fraktur (the
+   wordmark only) and --font-mono. */
 
 @tailwind base;
 @tailwind components;
@@ -64,9 +65,9 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: var(--font-garamond), Georgia, serif;
-    font-size: 16px;
-    line-height: 1.55;
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
     font-feature-settings: "liga" 1, "kern" 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -81,14 +82,23 @@
     background-blend-mode: normal, normal, normal;
   }
 
+  /* Blackletter: the wordmark only. Too hard to read for anything longer. */
   .font-fraktur {
     font-family: var(--font-fraktur), "UnifrakturMaguntia", serif;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
 
+  /* Headings. */
+  .font-display {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.08;
+  }
+
   .font-serif-italic {
-    font-family: var(--font-cormorant), Georgia, serif;
+    font-family: var(--font-display), Georgia, serif;
     font-style: italic;
     font-weight: 500;
   }
@@ -134,7 +144,7 @@
     align-items: center;
     gap: 0;
     color: hsl(var(--ash));
-    font-family: var(--font-garamond), serif;
+    font-family: var(--font-display), serif;
   }
   .rule-fleuron::before,
   .rule-fleuron::after {
@@ -421,10 +431,10 @@
     border-radius: calc(var(--radius) - 2px);
     color: hsl(var(--parchment));
     background-color: hsl(var(--char) / 0.22);
-    font-family: var(--font-cormorant), Georgia, serif;
+    font-family: var(--font-body), system-ui, sans-serif;
     font-style: normal;
-    font-weight: 600;
-    font-size: 0.95rem;
+    font-weight: 700;
+    font-size: 1rem;
     line-height: 1.1;
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms
       cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 80ms
@@ -476,8 +486,8 @@
     border-radius: calc(var(--radius) - 2px);
     background-color: hsl(var(--pitch) / 0.64);
     color: hsl(var(--parchment));
-    font-family: var(--font-cormorant), Georgia, serif;
-    font-style: italic;
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-style: normal;
     font-size: 1rem;
     transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms
       cubic-bezier(0.4, 0, 0.2, 1);
@@ -719,6 +729,133 @@
 .md-editor-themed .w-md-editor-preview code {
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
+}
+
+/* User-written Markdown rendered on the server (`ServerProse`): mod
+   descriptions, guide bodies, collection descriptions. Tailwind's preflight
+   strips every element back to plain text and this site has no typography
+   plugin, so without these rules a heading was the size of a paragraph, a list
+   had no bullets and a code block had no box. Every guide read as one wall of
+   text. `renderMarkdown` demotes headings one level, so h2 is the largest an
+   author can produce. */
+.user-prose {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.user-prose > * + * {
+  margin-top: 0.9em;
+}
+.user-prose > :first-child {
+  margin-top: 0;
+}
+.user-prose :is(h2, h3, h4, h5, h6) {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 700;
+  line-height: 1.25;
+  color: hsl(var(--parchment));
+}
+.user-prose > :is(h2, h3, h4, h5, h6):not(:first-child) {
+  margin-top: 1.5em;
+}
+.user-prose h2 {
+  font-size: 1.6rem;
+}
+.user-prose h3 {
+  font-size: 1.3rem;
+}
+.user-prose h4 {
+  font-size: 1.12rem;
+}
+.user-prose :is(h5, h6) {
+  font-size: 1rem;
+}
+.user-prose strong {
+  font-weight: 700;
+  color: hsl(var(--parchment));
+}
+.user-prose a {
+  color: hsl(var(--gilt));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.user-prose a:hover {
+  color: hsl(var(--parchment));
+}
+.user-prose ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.user-prose ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.user-prose li + li,
+.user-prose li > :is(ul, ol) {
+  margin-top: 0.3em;
+}
+.user-prose li::marker {
+  color: hsl(var(--smoke));
+}
+.user-prose blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1em;
+  color: hsl(var(--muted-foreground));
+}
+.user-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  background: hsl(var(--muted) / 0.6);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.user-prose pre {
+  overflow-x: auto;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm);
+  padding: 0.85em 1em;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.user-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+.user-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.user-prose hr {
+  border-top: 1px solid hsl(var(--border));
+  margin-block: 1.5em;
+}
+/* A wide table scrolls inside itself instead of widening the page. */
+.user-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.925em;
+}
+.user-prose :is(th, td) {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4em 0.75em;
+  text-align: left;
+  /* `anywhere` above would let a narrow screen squeeze a cell to one letter
+     per line; a table keeps its words and scrolls instead. */
+  overflow-wrap: normal;
+}
+.user-prose :is(th, td)[align="center"] {
+  text-align: center;
+}
+.user-prose :is(th, td)[align="right"] {
+  text-align: right;
+}
+.user-prose th {
+  background: hsl(var(--muted) / 0.35);
+  font-weight: 700;
 }
 
 /* An owner editing a guide or collection in place: hide the server-rendered

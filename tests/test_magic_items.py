@@ -57,17 +57,12 @@ def test_scan_one_missing_optionals_are_none(tmp_path):
 
 @pytest.fixture
 def fake_registry(tmp_path, monkeypatch):
-    """Build a 2-item fake _MAGIC_DIR and point the scanner at it."""
-    root = tmp_path / "Magical_Objects"
-    for rarity, item_id in [("Common", "Alpha"), ("Epic", "Beta")]:
-        d = root / rarity
-        d.mkdir(parents=True)
-        (d / f"{item_id}.entity.ot.EntitySettingsResource.gen.txt").write_text(
-            _gen_txt("Magical_Objects~GAM.xls", f"{item_id}_Name"), encoding="utf-8"
-        )
-    monkeypatch.setattr(magic_items, "_MAGIC_DIR", root)
+    """A 2-item fake corpus in place of the shipped magic items."""
+    items = [(item_id, rarity, ["Magical_Objects~GAM.xls", f"{item_id}_Name"])
+             for rarity, item_id in [("Common", "Alpha"), ("Epic", "Beta")]]
+    monkeypatch.setattr(magic_items, "_sources", lambda: iter(items))
     magic_items.registry.cache_clear()
-    yield root
+    yield items
     magic_items.registry.cache_clear()
 
 
@@ -83,8 +78,19 @@ def test_get_is_case_insensitive_fallback(fake_registry):
     assert magic_items.get("nope") is None
 
 
-def test_registry_empty_without_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(magic_items, "_MAGIC_DIR", tmp_path / "missing")
+def test_registry_empty_without_corpus(monkeypatch):
+    monkeypatch.setattr(magic_items, "_sources", lambda: iter(()))
     magic_items.registry.cache_clear()
     assert magic_items.registry() == {}
     magic_items.registry.cache_clear()
+
+
+def test_registry_reads_the_install_without_the_mirror(install_only):
+    """A player's machine has no mirror; this registry used to read only it."""
+    magic_items.registry.cache_clear()
+    try:
+        reg = magic_items.registry()
+        assert len(reg) >= 100
+        assert reg["Armor_Per_Object"].name_key == "Armor_Per_Object_Name"
+    finally:
+        magic_items.registry.cache_clear()

@@ -15,13 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.engine import cooked
+from rsmm.engine import cooked, corpus
 from rsmm.engine.cooked_schemas import definitions as D
 from rsmm.sdk.content import ContentDef, ContentError
 from rsmm.sdk.kinds import enemies
 
 _BASE = "Gnoll_Shielded"
-_BASE_GEN = enemies._ENEMY_DIR / f"{_BASE}{enemies._ENEMY_GEN_SUFFIX}"
+_BASE_GEN = corpus.CorpusFile(f"{enemies._ENEMY_DIR}/{_BASE}{enemies._ENEMY_GEN_SUFFIX}")
 
 
 def _require_corpus():
@@ -31,7 +31,8 @@ def _require_corpus():
 
 def _decode(path) -> dict:
     spec = D._SPECS["oCDtEnemyDefinition"]
-    return spec.decode_body(cooked.parse(Path(path).read_bytes()).sections[-1].payload)
+    src = path if hasattr(path, "read_bytes") else Path(path)   # CorpusFile or Path
+    return spec.decode_body(cooked.parse(src.read_bytes()).sections[-1].payload)
 
 
 def _emit(tmp_path: Path, *, id: str = "Clone", **fields) -> list[Path]:
@@ -47,8 +48,8 @@ def test_weight_only_clone_is_byte_identical_except_weight(tmp_path):
     clone = _decode(_emit(tmp_path, weight=20.0)[0])
     for k in ("tribe_ref", "entity_ref", "flags", "base_flags", "_tail_hex"):
         assert clone[k] == base[k], f"{k} changed unexpectedly"
-    assert clone["spawn_weight"] == 20.0
-    assert base["spawn_weight"] != 20.0  # the one field we did change
+    assert clone["power"] == 20.0
+    assert base["power"] != 20.0  # the one field we did change
 
 
 def test_unknown_tribe_rejected(tmp_path):
@@ -66,7 +67,7 @@ def test_known_tribe_accepted(tmp_path):
 
 def test_extreme_weight_rejected(tmp_path):
     _require_corpus()
-    with pytest.raises(ContentError, match="exceeds the safe ceiling"):
+    with pytest.raises(ContentError, match="exceeds 1000"):
         _emit(tmp_path, weight=9999)  # the value that crashed the game
 
 

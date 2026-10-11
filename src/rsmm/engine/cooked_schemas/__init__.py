@@ -38,7 +38,7 @@ def known() -> list[str]:
 
 
 # Side-effect imports — each module registers on import.
-from . import (  # noqa: E402,F401
+from . import (  # noqa: E402
     animation,
     asset_refs,
     definitions,

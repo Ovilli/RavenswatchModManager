@@ -213,11 +213,11 @@ void Loader::init(const fs::path& game_dir) {
     // removes `debug` and `io` from a mod state, and reaching for them there
     // broke every mod at load.
     {
-        std::error_code ec;
+        std::error_code sdk_ec;
         const auto sdk = game_dir_ / "rsmm" / "lib" / "rsmm.lua";
-        const auto sz = std::filesystem::file_size(sdk, ec);
+        const auto sz = std::filesystem::file_size(sdk, sdk_ec);
         log("sdk build: rsmm.lua "
-            + (ec ? std::string("MISSING - loader runtime not installed")
+            + (sdk_ec ? std::string("MISSING - loader runtime not installed")
                   : std::to_string(sz) + " bytes"));
     }
     log("game_dir=" + game_dir_.string());

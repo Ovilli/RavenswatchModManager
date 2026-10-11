@@ -27,21 +27,27 @@ import {
   resetPosition,
   toggleOverlay,
 } from '../lib/overlay-windows';
-import { listOverlays } from '../lib/rsmm';
+import { listOverlays, modLocale } from '../lib/rsmm';
+import { useApp } from '../store';
 import { Button } from './chrome';
 import { useToast } from './toast';
 
-/** Shared with the command palette, which asks the CLI the same question. */
-const DECLARED_KEY = ['overlays'] as const;
 /** Which overlay windows exist right now. */
 const OPEN_WINDOWS_KEY = ['overlay-windows'] as const;
 
-export function useDeclaredOverlays() {
+/**
+ * Every declared overlay, shared with the command palette. Keyed on the
+ * profile and language because the CLI answers for the active profile's folder
+ * in the app's language; under one global key a profile switch kept showing
+ * the previous profile's answer. Any CLI write also refetches it (main.tsx).
+ */
+export function useDeclaredOverlays(enabled = true) {
+  const profileId = useApp((s) => s.activeProfileId);
   return useQuery({
-    queryKey: DECLARED_KEY,
+    queryKey: ['overlays', profileId, modLocale()],
     queryFn: () => listOverlays(),
-    // A stale entry is harmless — a mod's declaration only changes on install.
     staleTime: 30_000,
+    enabled,
     // Outside Tauri (or with no game dir yet) this throws; a missing button is
     // the right outcome, so don't retry it on every mounted row.
     retry: false,
@@ -77,12 +83,18 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
       title={
         record.error
           ? t("This mod's overlay declaration is broken: {error}", { error: record.error })
-          : isOpen
-            ? t('Close the {name} overlay (shift-click to recentre it)', { name })
-            : t(
-                'Open the {name} overlay — an always-on-top HUD window (shift-click to open it at the default position)',
-                { name },
-              )
+          : [
+              isOpen
+                ? t('Close the {name} overlay (shift-click to recentre it)', { name })
+                : t(
+                    'Open the {name} overlay — an always-on-top HUD window (shift-click to open it at the default position)',
+                    { name },
+                  ),
+              // CLI text, deliberately untranslated (see apps/desktop/CLAUDE.md).
+              record.warning,
+            ]
+              .filter(Boolean)
+              .join('\n')
       }
       aria-pressed={isOpen}
       className={className}

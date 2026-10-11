@@ -99,6 +99,9 @@ struct ModScript {
     std::string id;
     std::filesystem::path root;
     std::filesystem::file_time_type init_mtime{};
+    // config.toml's mtime when the config table was last loaded (or written by
+    // the mod itself), so config_reload can tell an outside edit from none.
+    std::filesystem::file_time_type cfg_mtime{};
     // How many rsmm.on_event handlers this state registered, so closing it
     // can take them back out of the process-wide count.
     int handlers = 0;
@@ -245,24 +248,81 @@ int lua_health_checkpoint(lua_State* L) {
 // a missing locale falls back to EN, which is what the guide promises.
 // Parsed once per lua_State and cached in the registry.
 
+// Steam's language API names -> the SDK's locale codes (rsmm.sdk.i18n
+// SUPPORTED_LOCALES). Unlisted languages fall through to EN.
+const char* locale_from_steam(const std::string& lang) {
+    static const std::pair<const char*, const char*> kMap[] = {
+        {"english", "EN"},    {"schinese", "ZH-S"}, {"tchinese", "ZH-T"},
+        {"japanese", "JA"},   {"koreana", "KO"},    {"russian", "RU"},
+        {"spanish", "ES"},    {"latam", "ES"},      {"german", "DE"},
+        {"polish", "PL"},     {"french", "FR"},     {"italian", "IT"},
+        {"brazilian", "PT-BR"},
+    };
+    for (const auto& [steam, code] : kMap)
+        if (lang == steam) return code;
+    return nullptr;
+}
+
+// The game's language as Steam reports it (the player's per-game choice),
+// or "" while Steam has not answered — the API is only live after the game's
+// SteamAPI_Init, which a mod asking during load can beat.
+std::string steam_game_language() {
+    using GetAppsFn = void* (*)();
+    using LangFn    = const char* (*)(void*);
+    HMODULE m = GetModuleHandleA("steam_api64.dll");
+    if (!m) return {};
+    auto get_apps = reinterpret_cast<GetAppsFn>(
+        reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_SteamApps_v008")));
+    auto get_lang = reinterpret_cast<LangFn>(
+        reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_ISteamApps_GetCurrentGameLanguage")));
+    if (!get_apps || !get_lang) return {};
+    void* apps = get_apps();
+    if (!apps) return {};
+    const char* lang = get_lang(apps);
+    return lang ? std::string(lang) : std::string();
+}
+
+// The active locale: RSMM_LOCALE, else <game>/rsmm/locale.txt (both explicit
+// overrides), else the GAME's language from Steam, else EN. Following Steam is
+// what makes a mod's lang/ZH-S.toml reach a Chinese player with nothing to
+// set up. A Steam answer is cached; "Steam not ready yet" is not, so a mod
+// asking during load does not pin English for the whole session.
 const char* active_locale() {
-    static const std::string locale = []{
-        char buf[16] = {0};
-        DWORD n = GetEnvironmentVariableA("RSMM_LOCALE", buf, sizeof(buf));
-        if (n > 0 && n < sizeof(buf)) return std::string(buf);
-        std::error_code ec;
-        const auto p = Loader::get().game_dir() / "rsmm" / "locale.txt";
-        if (std::filesystem::exists(p, ec)) {
-            std::ifstream f(p);
-            std::string s;
-            if (std::getline(f, s)) {
-                while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
-                                      s.back() == ' ')) s.pop_back();
-                if (!s.empty() && s.size() < 16) return s;
+    static std::string locale;
+    static bool settled = false;
+    if (settled) return locale.c_str();
+
+    char buf[16] = {0};
+    DWORD n = GetEnvironmentVariableA("RSMM_LOCALE", buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) {
+        locale = buf;
+        settled = true;
+        return locale.c_str();
+    }
+    std::error_code ec;
+    const auto p = Loader::get().game_dir() / "rsmm" / "locale.txt";
+    if (std::filesystem::exists(p, ec)) {
+        std::ifstream f(p);
+        std::string s;
+        if (std::getline(f, s)) {
+            while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
+                                  s.back() == ' ')) s.pop_back();
+            if (!s.empty() && s.size() < 16) {
+                locale = s;
+                settled = true;
+                return locale.c_str();
             }
         }
-        return std::string("EN");
-    }();
+    }
+    const std::string steam = steam_game_language();
+    if (!steam.empty()) {
+        const char* code = locale_from_steam(steam);
+        locale = code ? code : "EN";
+        settled = true;
+        Loader::get().log("[i18n] game language " + steam + " -> " + locale);
+        return locale.c_str();
+    }
+    locale = "EN";   // for now; asked again on the next call
     return locale.c_str();
 }
 
@@ -306,8 +366,14 @@ void load_locale_file(lua_State* L, const std::filesystem::path& path) {
 }
 
 int lua_i18n_table(lua_State* L) {
+    // Cached per locale: a table built before Steam reported the game's
+    // language is English, and must be rebuilt once the real locale is known.
+    const char* want = active_locale();
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n_locale");
+    const bool same = lua_isstring(L, -1) && std::strcmp(lua_tostring(L, -1), want) == 0;
+    lua_pop(L, 1);
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
-    if (lua_istable(L, -1)) return 1;
+    if (same && lua_istable(L, -1)) return 1;
     lua_pop(L, 1);
 
     lua_newtable(L);
@@ -324,6 +390,8 @@ int lua_i18n_table(lua_State* L) {
     }
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
+    lua_pushstring(L, want);
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n_locale");
     return 1;
 }
 
@@ -373,28 +441,43 @@ int lua_state_write(lua_State* L) {
 // (consumed by the R.config Lua module). Loaded once per lua_State at
 // script_run_mod_init; a hot-reload of init.lua re-reads it.
 
-void load_mod_config(lua_State* L, const std::filesystem::path& root) {
-    lua_newtable(L);
+// Parse <root>/config.toml into a new table on the stack. Returns false (and
+// pushes nothing) when the file exists but does not parse, so a reload can keep
+// the values it has instead of blanking them over a half-written file.
+bool push_config_table(lua_State* L, const std::filesystem::path& root) {
     const auto cfg_path = root / "config.toml";
     std::error_code ec;
-    if (std::filesystem::exists(cfg_path, ec)) {
-        try {
-            toml::table doc = toml::parse_file(cfg_path.string());
-            const toml::table* section = doc["config"].as_table();
-            if (!section) section = &doc;  // tolerate flat files without [config]
-            for (auto&& [key, node] : *section) {
-                if (auto b = node.as_boolean())             lua_pushboolean(L, **b ? 1 : 0);
-                else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
-                else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
-                else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
-                else continue;
-                lua_setfield(L, -2, std::string(key.str()).c_str());
-            }
-        } catch (const std::exception& e) {
-            Loader::get().log_err(std::string("[config] parse fail ")
-                              + cfg_path.string() + ": " + e.what());
-        }
+    if (!std::filesystem::exists(cfg_path, ec)) { lua_newtable(L); return true; }
+    toml::table doc;
+    try {
+        doc = toml::parse_file(cfg_path.string());
+    } catch (const std::exception& e) {
+        Loader::get().log_err(std::string("[config] parse fail ")
+                          + cfg_path.string() + ": " + e.what());
+        return false;
     }
+    lua_newtable(L);
+    const toml::table* section = doc["config"].as_table();
+    if (!section) section = &doc;  // tolerate flat files without [config]
+    for (auto&& [key, node] : *section) {
+        if (auto b = node.as_boolean())             lua_pushboolean(L, **b ? 1 : 0);
+        else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
+        else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
+        else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
+        else continue;
+        lua_setfield(L, -2, std::string(key.str()).c_str());
+    }
+    return true;
+}
+
+std::filesystem::file_time_type config_mtime(const std::filesystem::path& root) {
+    std::error_code ec;
+    const auto mt = std::filesystem::last_write_time(root / "config.toml", ec);
+    return ec ? std::filesystem::file_time_type{} : mt;
+}
+
+void load_mod_config(lua_State* L, const std::filesystem::path& root) {
+    if (!push_config_table(L, root)) lua_newtable(L);
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
 }
 
@@ -474,7 +557,29 @@ int lua_config_set(lua_State* L) {
     lua_pushvalue(L, 2);
     lua_settable(L, -3);
     lua_pop(L, 1);
-    lua_pushboolean(L, config_write_file(L, m->root) ? 1 : 0);
+    const bool wrote = config_write_file(L, m->root);
+    // Our own write is not an outside edit: without this the next
+    // config_reload would re-read the file it just wrote.
+    if (wrote) m->cfg_mtime = config_mtime(m->root);
+    lua_pushboolean(L, wrote ? 1 : 0);
+    return 1;
+}
+
+// rsmm._internal.config_reload() -> bool
+//   Re-read <mod_dir>/config.toml if it changed since it was last loaded, so a
+//   value edited OUTSIDE the game (the desktop overlay's controls) reaches a
+//   running mod. true = the table was replaced (R.config then diffs it and
+//   fires on_change); false = unchanged, or the file did not parse (the old
+//   values are kept and the parse error is logged).
+int lua_config_reload(lua_State* L) {
+    auto* m = current_from_state(L);
+    if (!m) { lua_pushboolean(L, 0); return 1; }
+    const auto mt = config_mtime(m->root);
+    if (mt == m->cfg_mtime) { lua_pushboolean(L, 0); return 1; }
+    m->cfg_mtime = mt;
+    if (!push_config_table(L, m->root)) { lua_pushboolean(L, 0); return 1; }
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_config");
+    lua_pushboolean(L, 1);
     return 1;
 }
 
@@ -492,47 +597,6 @@ int lua_config_all(lua_State* L) {
         }
     }
     lua_pop(L, 1);
-    return 1;
-}
-
-// rsmm._internal.intent_write(op, mod_id) -> bool
-//   Append a mod-lifecycle intent for the HOST-side CLI to consume (the game
-//   runs under Proton; the loader cannot shell out to rsmm in-process). One
-//   JSON object per line in <cooking>/.rsmm_intents.jsonl, next to
-//   .rsmm_state.json; `rsmm intents apply` executes + clears it. The op
-//   allowlist and the mod-id shape are validated HERE so a misbehaving mod
-//   cannot turn the intent file into an arbitrary-write primitive.
-int lua_intent_write(lua_State* L) {
-    static const char* kOps[] = { "enable", "disable", "uninstall" };
-    const char* op = luaL_checkstring(L, 1);
-    const char* mod = luaL_checkstring(L, 2);
-    bool op_ok = false;
-    for (const char* k : kOps) op_ok = op_ok || std::strcmp(op, k) == 0;
-    size_t mlen = std::strlen(mod);
-    bool mod_ok = mlen > 0 && mlen < 64;
-    for (size_t i = 0; mod_ok && i < mlen; ++i) {
-        char c = mod[i];
-        mod_ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                 (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
-    }
-    if (mod_ok && (mod[0] == '.' || std::strstr(mod, "..") != nullptr)) mod_ok = false;
-    if (!op_ok || !mod_ok) {
-        Loader::get().log(std::string("[intents] rejected op='") + op + "' mod='" + mod + "'");
-        lua_pushboolean(L, 0);
-        return 1;
-    }
-    const auto path = Loader::get().game_dir() / "DarkTalesResources" / "_Cooking"
-                    / ".rsmm_intents.jsonl";
-    nlohmann::json line = {
-        {"op", op},
-        {"mod", mod},
-        {"ts", static_cast<std::uint64_t>(GetTickCount64())},
-    };
-    std::ofstream f(path, std::ios::binary | std::ios::app);
-    if (!f) { lua_pushboolean(L, 0); return 1; }
-    f << line.dump() << "\n";
-    lua_pushboolean(L, f.good() ? 1 : 0);
-    Loader::get().log(std::string("[intents] queued ") + op + " " + mod);
     return 1;
 }
 
@@ -1736,17 +1800,25 @@ int lua_shared_get(lua_State* L) {
 // of the session, with nothing in the log connecting the two. Read-only from
 // Lua, enforced here rather than by convention.
 constexpr int kSharedRingFirst = 8;
-constexpr int kSharedRingLast = 15;   // 16+ are native publishers, also read-only
+constexpr int kSharedRingLast = 15;   // 16..19 are native publishers, also read-only
+// 20..23 are LUA publishers: a handle one mod's capture hook finds, published
+// for every other mod's state. 0..7 were full; the rule above (grow, never
+// borrow a ring slot) is why this is a range of its own. First user: the XP
+// level component (progression.lua GROUP_LEVEL_SLOT) — a second mod calling
+// R.xp.arm() gets "already-hooked" and, without this, never saw a capture.
+constexpr int kSharedLuaFirst = 20;
 
 int lua_shared_set(lua_State* L) {
     auto slot = static_cast<int>(luaL_checkinteger(L, 1));
     if (slot < 0 || slot >= kSharedCount)
         return luaL_error(L, "rsmm.shared_set: slot must be 0..%d", kSharedCount - 1);
-    if (slot >= kSharedRingFirst)
-        return luaL_error(L, "rsmm.shared_set: slots %d+ are written by the "
+    if (slot >= kSharedRingFirst && slot < kSharedLuaFirst)
+        return luaL_error(L, "rsmm.shared_set: slots %d..%d are written by the "
                              "loader (the hero candidate ring at %d..%d, then "
-                             "native publishers) and are read-only from Lua",
-                          kSharedRingFirst, kSharedRingFirst, kSharedRingLast);
+                             "native publishers) and are read-only from Lua; "
+                             "Lua publishers use %d..%d",
+                          kSharedRingFirst, kSharedLuaFirst - 1, kSharedRingFirst,
+                          kSharedRingLast, kSharedLuaFirst, kSharedCount - 1);
     shared_set(slot, static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     return 0;
 }
@@ -1879,9 +1951,9 @@ void register_api(lua_State* L) {
         { "write_f64",               lua_write_f64 },
         { "state_read",              lua_state_read },
         { "state_write",             lua_state_write },
-        { "intent_write",            lua_intent_write },
         { "config_get",              lua_config_get },
         { "config_set",              lua_config_set },
+        { "config_reload",           lua_config_reload },
         { "config_all",              lua_config_all },
         { nullptr, nullptr }
     };
@@ -1991,6 +2063,7 @@ bool script_run_mod_init(const std::string& mod_id,
     s.id   = mod_id;
     s.root = mod_root;
     s.init_mtime = newest_lua_mtime(mod_root);
+    s.cfg_mtime  = config_mtime(mod_root);
 
     if (lua_dofile_traced(L, init_path.string().c_str()) != LUA_OK) {
         // lua_err_str, not lua_tostring: a mod that raises a TABLE (error{...})

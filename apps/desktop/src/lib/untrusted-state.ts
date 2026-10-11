@@ -35,6 +35,25 @@ export function isSafeProfileId(id: unknown): id is string {
 }
 
 /**
+ * A list of mod ids from a profile that did not come from this app's own UI.
+ *
+ * Every screen iterates `loadOrder` (`.filter`, `.includes`, `for … of`), so a
+ * missing or non-array value is not a cosmetic glitch: it throws on render.
+ * And because the bad profile is then persisted, the app threw again on every
+ * launch — one hand-edited backup code was enough to brick it until
+ * localStorage was cleared by hand. Non-strings and duplicates are dropped;
+ * order is kept, because for `loadOrder` the order is the point.
+ */
+export function sanitizeIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry && !out.includes(entry)) out.push(entry);
+  }
+  return out;
+}
+
+/**
  * Machine-local settings, which an import must never carry.
  *
  * These are absolute paths on one particular computer. A backup made on

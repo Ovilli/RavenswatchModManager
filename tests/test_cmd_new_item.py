@@ -110,9 +110,8 @@ def test_folder_kinds_scaffold_a_content_dir_not_a_manifest_block(scaffold):
     assert [(b["kind"], b["id"], b["base"]) for b in blocks] == [
         ("enemy", "demo_enemy_1", "Gnoll_Shielded")]
 
-    # Non-confirmed kinds ship opted-in and disabled.
-    assert doc["mod"]["experimental"] is True
-    assert doc["mod"]["enabled"] is False
+    # enemy is confirmed (2026-09-24), so no experimental opt-in.
+    assert "experimental" not in doc["mod"]
 
 
 def test_apostrophe_in_text_stays_parseable(scaffold):
@@ -137,3 +136,16 @@ def test_explicit_rarity_survives_an_unreadable_base(scaffold):
 def test_no_rarity_is_left_out_rather_than_guessed(scaffold):
     doc = scaffold("demo", "--kind", "item", "--base", "No_Such_Item")
     assert "rarity" not in doc["content"][0]
+
+
+@pytest.mark.parametrize("kind", ["item", "talent", "enemy", "boss", "map", "hero", "poi"])
+def test_every_scaffolded_content_block_is_well_formed(scaffold, kind):
+    """A scaffold is the first manifest an author ever sees; it must pass the
+    same shape rule the registry enforces. `--kind talent` used to emit a
+    block with no `id`, which `rsmm apply` skips — a fresh mod that could
+    never do anything."""
+    from rsmm.sdk.manifest_spec import content_fields, unknown_keys
+    doc = scaffold(f"Scaf_{kind}", "--kind", kind)
+    for block in doc.get("content") or []:
+        assert block.get("kind") and block.get("id"), block
+        assert not unknown_keys(block, content_fields(block["kind"])), block

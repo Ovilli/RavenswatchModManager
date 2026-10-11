@@ -26,7 +26,15 @@ import {
   parseLauncherLog,
   readLauncherLog,
 } from '../lib/launcher-log';
-import { type LoaderFlag, getLoaderFlags, setLoaderFlags } from '../lib/rsmm';
+import {
+  type BackendState,
+  type LoaderFlag,
+  clearBackend,
+  getBackend,
+  getLoaderFlags,
+  setBackend,
+  setLoaderFlags,
+} from '../lib/rsmm';
 import { useApp } from '../store';
 
 export const Route = createFileRoute('/settings')({
@@ -67,7 +75,7 @@ const TABS = [
     label: msg('Appearance'),
     hint: msg('Language, typeface, density, motion, content'),
   },
-  { id: 'game', label: msg('Game'), hint: msg('Loader features, graphics') },
+  { id: 'game', label: msg('Game'), hint: msg('Online server, loader features, graphics') },
   { id: 'diagnostics', label: msg('Diagnostics'), hint: msg('Launcher log, crash reports') },
   { id: 'about', label: msg('About'), hint: msg('Version, release notes, credits') },
 ] as const;
@@ -111,6 +119,7 @@ function SettingsPage() {
         {tab === 'appearance' ? <AppearancePanel /> : null}
         {tab === 'game' ? (
           <>
+            <OnlineServerPanel />
             <LoaderFlagsPanel />
             <GraphicsPanel />
           </>
@@ -401,7 +410,7 @@ function LauncherLogPanel() {
         </div>
         <div className="flex items-center gap-2">
           {launchBusy ? (
-            <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-[10px] text-gilt">
+            <span className="font-mono inline-flex items-center gap-1.5 border border-gilt/60 px-2 py-1 text-xs text-gilt">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gilt" aria-hidden />
               {t('live')}
             </span>
@@ -585,7 +594,7 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
           {entry.at ? new Date(entry.at).toLocaleTimeString(t.tag) : '—'}
         </span>
         <span
-          className={`font-mono shrink-0 border px-1.5 py-[1px] text-[10px] ${LOG_LEVEL_TONE[entry.level]}`}
+          className={`font-mono shrink-0 border px-1.5 py-[1px] text-xs ${LOG_LEVEL_TONE[entry.level]}`}
         >
           {entry.level}
         </span>
@@ -593,7 +602,7 @@ function LogRow({ entry }: { entry: LauncherLogEntry }) {
       </div>
       {entry.context ? (
         <details className="mt-1">
-          <summary className="font-mono cursor-pointer text-[10px] text-ash hover:text-parchment">
+          <summary className="font-mono cursor-pointer text-xs text-ash hover:text-parchment">
             {t('context')}
           </summary>
           <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-ash">
@@ -719,7 +728,7 @@ function TypographyControls() {
           onChange={(e) => update({ fontScale: normalizeFontScale(e.target.value) })}
           className="w-full accent-crimson"
         />
-        <div className="font-mono mt-1 flex justify-between text-[10px] text-ash">
+        <div className="font-mono mt-1 flex justify-between text-xs text-ash">
           <span>{MIN_FONT_SCALE}%</span>
           <span>100%</span>
           <span>{MAX_FONT_SCALE}%</span>
@@ -834,6 +843,225 @@ function GraphicsPanel() {
  * to winhttp.dll (so they work on native Windows too, where Steam launch
  * options cannot set environment variables). Only flags the bridge marks
  * `safe` are togglable here; locked ones are shown greyed-out with the reason. */
+/**
+ * Play through a community-hosted backend instead of the official servers.
+ *
+ * A front end for `rsmm backend`: saving runs the CLI command, which also
+ * installs a loader able to redirect and removes a leftover `setx
+ * RSMM_BACKEND_URL`. Before this existed, a tester needed `setx`, a Steam
+ * restart, `update-loader`, `install-loader` and a log hunt, across cmd and
+ * PowerShell, and still gave up.
+ */
+function OnlineServerPanel() {
+  const t = useT();
+  const toast = useToast();
+  const [state, setState] = useState<BackendState | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState<'save' | 'off' | 'check' | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getBackend().then(
+      (res) => {
+        if (cancelled) return;
+        setState(res);
+        setDraft(res?.url ?? '');
+      },
+      () => {
+        if (!cancelled) setLoadFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const run = async (kind: 'save' | 'off' | 'check') => {
+    setBusy(kind);
+    try {
+      const res =
+        kind === 'save'
+          ? await setBackend(draft.trim())
+          : kind === 'off'
+            ? await clearBackend()
+            : await getBackend({ checkServer: true });
+      if (!res?.ok) {
+        toast.push(res?.error ?? t('Could not save the server address.'), 'error');
+        return;
+      }
+      setState(res);
+      setDraft(res.url ?? '');
+      if (kind === 'save') toast.push(t('Server saved. Start the game to play on it.'), 'success');
+      if (kind === 'off') toast.push(t('Back to the official servers.'), 'success');
+    } catch {
+      toast.push(t('Could not save the server address.'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const server = state?.server ?? null;
+  const unchanged = draft.trim() === (state?.url ?? '');
+
+  return (
+    <Panel>
+      <h3 className="font-fraktur text-xl text-parchment">{t('Online server')}</h3>
+      <Fleuron className="my-3" />
+      <p className="font-serif-italic text-ash mb-3">
+        {t(
+          'Play online through a community-hosted server instead of the official one. Paste the address the host gave you; it is used from the next game start.',
+        )}
+      </p>
+      {loadFailed || (state && !state.ok) ? (
+        <p className="font-mono text-sm text-ash">
+          {t('Set your game install path under General first.')}
+        </p>
+      ) : !state ? (
+        <p className="font-mono text-sm text-ash">{t('Loading…')}</p>
+      ) : (
+        <div className="space-y-3">
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (draft.trim()) run('save').catch(() => undefined);
+            }}
+          >
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="http://host:8090"
+              aria-label={t('Server address')}
+              spellCheck={false}
+              className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={busy !== null || !draft.trim() || unchanged}
+              className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood disabled:opacity-40"
+            >
+              {busy === 'save' ? t('Saving…') : t('Use this server')}
+            </button>
+            {state.url ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run('check').catch(() => undefined)}
+                  className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40"
+                >
+                  {busy === 'check' ? t('Checking…') : t('Check server')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => run('off').catch(() => undefined)}
+                  className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40"
+                >
+                  {t('Use official servers')}
+                </button>
+              </>
+            ) : null}
+          </form>
+          {busy === 'save' ? (
+            <p className="font-serif-italic text-sm text-ash">
+              {t('Installing the loader if it is missing or too old — this can take a minute.')}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <StatusChip
+              label={t('Playing on')}
+              state="ok"
+              okText={state.url ?? t('official servers')}
+              missingText=""
+            />
+            <StatusChip
+              label={t('Loader')}
+              state={state.loaderCanRedirect ? 'ok' : 'missing'}
+              okText={t('ready')}
+              missingText={t('not ready — saving an address installs it')}
+            />
+            {server ? (
+              <StatusChip
+                label={t('Server')}
+                state={server.reachable && !server.advertisesLoopback ? 'ok' : 'missing'}
+                okText={t('reachable')}
+                missingText={server.reachable ? t('misconfigured') : t('not reachable')}
+              />
+            ) : null}
+          </div>
+
+          {state.gameDir ? (
+            <p className="font-mono text-xs text-ash">
+              {t('Game folder: {path}', { path: state.gameDir })}
+            </p>
+          ) : null}
+
+          {state.invalid ? (
+            <p className="font-mono text-sm text-crimson">
+              {t('The loader ignores the saved address: {reason}', { reason: state.invalid })}
+            </p>
+          ) : null}
+          {state.envOverride ? (
+            <p className="font-mono text-sm text-crimson">
+              {t(
+                'The RSMM_BACKEND_URL environment variable ({value}) overrides this setting. Saving an address removes it if it was set with setx — then restart Steam.',
+                { value: state.envOverride },
+              )}
+            </p>
+          ) : null}
+          {server && !server.reachable ? (
+            <p className="font-mono text-sm text-crimson">
+              {t('No answer from the server: {error}. Is it running?', {
+                error: server.error ?? '',
+              })}
+            </p>
+          ) : null}
+          {server?.advertisesLoopback ? (
+            <p className="font-mono text-sm text-crimson">
+              {t(
+                'The server answers, but tells players to connect to localhost — its publicIp is not set. Tell the host.',
+              )}
+            </p>
+          ) : null}
+
+          {state.url && state.logModified ? (
+            <div>
+              <p className="font-mono text-xs uppercase text-ash">
+                {t('Last launch ({when})', {
+                  when: new Date(state.logModified * 1000).toLocaleString(),
+                })}
+              </p>
+              {state.logLines?.length ? (
+                <pre className="font-mono mt-1 whitespace-pre-wrap break-all text-xs text-parchment">
+                  {state.logLines.join('\n')}
+                </pre>
+              ) : (
+                <p className="font-serif-italic mt-1 text-sm text-ash">
+                  {t('That launch did not use a server address. Start the game again.')}
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          {state.output ? (
+            <details>
+              <summary className="cursor-pointer font-mono text-xs text-ash">
+                {t('What was done')}
+              </summary>
+              <pre className="font-mono mt-1 whitespace-pre-wrap break-all text-xs text-ash">
+                {state.output}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function LoaderFlagsPanel() {
   const t = useT();
   const [available, setAvailable] = useState<LoaderFlag[]>([]);
@@ -947,7 +1175,7 @@ function LoaderFlagsPanel() {
                       {flag.label}
                     </span>
                     {!flag.safe ? (
-                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-[10px] uppercase text-crimson">
+                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-xs uppercase text-crimson">
                         {t('locked')}
                       </span>
                     ) : null}

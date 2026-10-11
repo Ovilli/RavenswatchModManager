@@ -18,6 +18,8 @@
  * is the part worth testing.
  */
 
+import type { OverlayColumn } from './rsmm';
+
 /** Matches `MAX_ROWS` in `cmd_overlay.py` — a HUD that long stops being one. */
 export const MAX_ROWS = 64;
 
@@ -161,4 +163,36 @@ export function readOverlayLive(text: string, sort?: OverlaySort | null): Overla
     updated: typeof updated === 'number' ? Math.trunc(updated) : 0,
     exists: true,
   };
+}
+
+/**
+ * Column tracks for the board's grid. Every row is a subgrid of ONE grid, so a
+ * column lines up down the whole board: when each row was its own flex line, a
+ * number column was as wide as THAT row's value and "4.1k" sat left of "48k".
+ *
+ * The first text column takes the slack and is the last thing to truncate
+ * ("Player" cut to "Play…" is useless); later text columns are as wide as
+ * their content but may shrink; bars get a range; numbers are exactly as wide
+ * as their widest value.
+ */
+export function gridTracks(columns: OverlayColumn[], ranked: boolean): string {
+  let firstText = true;
+  const tracks = columns.map((c) => {
+    // A bar shares the leftover with the first text column (0.6 : 1) instead
+    // of claiming a width up front, so in a narrow window it is the bar that
+    // gives way, not the reward or the time beside it.
+    if (c.type === 'bar') return 'minmax(2rem, 0.6fr)';
+    if (c.type === 'text') {
+      if (firstText) {
+        firstText = false;
+        // The grid grows every other track to its max BEFORE an `fr` track
+        // gets anything, so a bare `1fr` here was the FIRST thing truncated
+        // in a narrow window. A real minimum claims its space up front.
+        return 'minmax(min(9rem, 45%), 1fr)';
+      }
+      return 'minmax(0, max-content)';
+    }
+    return 'max-content';
+  });
+  return [...(ranked ? ['max-content'] : []), ...tracks].join(' ');
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { type Row, parseKv, readOverlayLive, sortRows } from './overlay-state';
+import { type Row, gridTracks, parseKv, readOverlayLive, sortRows } from './overlay-state';
+import type { OverlayColumn } from './rsmm';
 
 /** Build one `R.kv` line the way the Lua SDK writes it. */
 const line = (kind: string, key: string, value: string) => `${kind}\t${key}\t${value}`;
@@ -141,5 +142,40 @@ describe('readOverlayLive', () => {
 
   it('treats an empty file as nothing published', () => {
     expect(readOverlayLive('').exists).toBe(false);
+  });
+});
+
+describe('gridTracks', () => {
+  const col = (key: string, type: OverlayColumn['type']): OverlayColumn => ({
+    key,
+    label: key,
+    type,
+    format: 'plain',
+    suffix: '',
+  });
+
+  it('reserves real width for the first text column so it truncates last', () => {
+    const tracks = gridTracks([col('name', 'text'), col('note', 'text')], false).split(' ');
+    expect(tracks[0]).toBe('minmax(min(9rem,');
+    expect(gridTracks([col('name', 'text')], false)).toBe('minmax(min(9rem, 45%), 1fr)');
+    // later text columns may shrink to nothing rather than push the first out
+    expect(gridTracks([col('a', 'text'), col('b', 'text')], false)).toMatch(
+      /minmax\(0, max-content\)$/,
+    );
+  });
+
+  it('sizes numbers to content and lets bars give way', () => {
+    expect(
+      gridTracks(
+        [col('a', 'text'), col('n', 'number'), col('p', 'percent'), col('b', 'bar')],
+        false,
+      ),
+    ).toBe('minmax(min(9rem, 45%), 1fr) max-content max-content minmax(2rem, 0.6fr)');
+  });
+
+  it('adds a rank track only for a ranked board', () => {
+    const cols = [col('a', 'text')];
+    expect(gridTracks(cols, true).startsWith('max-content ')).toBe(true);
+    expect(gridTracks(cols, false).startsWith('max-content')).toBe(false);
   });
 });

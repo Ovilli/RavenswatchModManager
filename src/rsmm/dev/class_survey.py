@@ -88,7 +88,7 @@ def parse_root(path: Path) -> tuple[str | None, int]:
         if last_begin == -1 or last_end <= last_begin:
             return root, 0
         return root, last_end - last_begin - 4
-    except Exception:
+    except (struct.error, IndexError, ValueError, OSError):
         return None, 0
 
 

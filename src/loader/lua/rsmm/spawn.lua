@@ -139,6 +139,10 @@ return function(env)
         for _, a in ipairs(SCENE_CTX_ARRAYS) do
             if R.ptr.vector_valid(scene, a[1], a[2], { max = SCENE_CTX_MAX }) then
                 local data, n = I.read_u64(scene + a[1]), I.read_u32(scene + a[2])
+                -- Re-read after the check, so re-checked: a teardown in between
+                -- turns these into nil, and `n - 1` on nil raises.
+                if type(n) ~= "number" or n > SCENE_CTX_MAX
+                   or not R.ptr.plausible(data) then n = 0 end
                 for i = 0, n - 1 do
                     local ctx = I.read_u64(data + i * 8)
                     if is(ctx, "oCEntitySceneContext") then

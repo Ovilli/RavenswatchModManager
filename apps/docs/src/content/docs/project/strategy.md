@@ -127,7 +127,7 @@ Native = framework-author territory.
 
 **Most critical gap. Today: undefined behavior under any non-cosmetic mod.**
 
-**Scope taxonomy.** Manifest field `multiplayer_scope`:
+**Scope taxonomy.** Manifest field `multiplayer_scope`: the author's declaration. Online matching does not trust it: `rsmm.engine.mod_scope` derives *client-only* vs *gameplay* from the mod's contents (see the modding guide's [Online play](/guides/modding/#online-play-client-only-and-gameplay-mods)).
 
 - **cosmetic** — textures, audio, UI strings. Local-only.
 - **deterministic-shared** — stat tweaks. MUST be identical on every
@@ -284,7 +284,7 @@ graduates to SDK reference. Never forced to read INTERNALS.
 **First-class debugging.**
 - `rsmm doctor --mod <id>` scoped check.
 - `rsmm trace <id>` runs with `RSMM_TRACE=1` and surfaces log inline.
-- `rsmm diff <id>` shows which cooked files this mod would change.
+- `rsmm diff <id>` shows which cooked files this mod would change (shipped).
 
 **Empty-state UX.**
 - Fresh checkout + `rsmm doctor` → green or actionable WARNs only.
@@ -317,8 +317,9 @@ graduates to SDK reference. Never forced to read INTERNALS.
 - Best: registry call via SDK (`m.register_*`). Conflict-free by
   namespacing.
 
-`rsmm doctor` should nudge: "MyMod ships raw `Aladdin.gen` — consider
-switching to `m.stat(...)` to allow merging."
+`rsmm doctor` nudges: "MyMod: ships a whole copy of `Hero_SunWukong.entity...`",
+and `rsmm lint <id>` prints the `[[patch]]` / `[[content]]` block that rebuilds
+it (shipped; stat, `.ot` and hero talent values).
 
 **Lua mutator chains.**
 - All chain handlers run, ordered by priority.

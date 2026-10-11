@@ -83,3 +83,17 @@ def test_help_columns_align_because_padding_precedes_styling(monkeypatch):
     assert "\033" in coloured
     monkeypatch.setenv("NO_COLOR", "1")
     assert _ANSI.sub("", coloured) == D.render_help()
+
+
+def test_a_long_usage_never_runs_into_its_description(monkeypatch):
+    """`export-model <name|glob> | --all [-o dir]` is wider than the column;
+    it used to print as `…[-o dir]any 3D model as glTF`."""
+    monkeypatch.setenv("NO_COLOR", "1")
+    lines = D.render_help().splitlines()
+    for _group, rows in D.COMMAND_GROUPS:
+        for cmd, args, desc in rows:
+            usage = f"{cmd} {args}".rstrip()
+            at = next(i for i, ln in enumerate(lines)
+                      if ln.strip() == usage or ln.strip().startswith(usage + " "))
+            row = lines[at] if desc in lines[at] else lines[at + 1]
+            assert row.index(desc) == 4 + D._USAGE_COL, (cmd, row)

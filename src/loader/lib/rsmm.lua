@@ -64,7 +64,7 @@ end
 -- re-publishes EVERY event to this bus by its raw name — no per-event
 -- wiring, and new names the game adds appear automatically. Confirmed:
 --   "game_start" "run_start" "matchmaking_start" "matchmaking_end"
---   "chapter_end" "level_up_reach" "level_up_book" "enemy_killed"
+--   "chapter_end" "levelup_run" "level_up_book" "enemy_killed"
 --   "unlock_skill" "unlock_object" "unlock_hero" "unlock_level_nightmare"
 --   "event_start" "event_end"
 -- OBSERVATION-grade: they fire after the action and carry the analytics
@@ -614,6 +614,23 @@ function R.engine.call_safe(name, ptr_args, ...)
     return R.engine.call(name, ...)
 end
 
+-- The name a named-event ctor wrote into `ev` (the oCString at +0x20), or nil.
+--
+-- Every named-event ctor is the same template, so their byte patterns are not
+-- unique: GiveMagicalObject's is match 11 of 13, GainReroll's 8 of 13. The
+-- loader picks by rank, and a game patch can shift the rank onto a SIBLING
+-- event's ctor — which builds a perfectly valid event of the wrong kind, so
+-- nothing faults and the wrong thing happens. The name is what a sibling cannot
+-- fake, and unlike an address it survives patches: check it after every ctor
+-- call and before the event is dispatched. Reads only, page-guarded.
+function R.engine.event_name(ev)
+    if not _ptr_plausible(ev) then return nil end
+    local s = I.read_u64(ev + 0x20)
+    if not _ptr_plausible(s) then return nil end
+    local name = I.read_cstr(s, 64)
+    return type(name) == "string" and name or nil
+end
+
 -- Expose the primitives to advanced mods / the SDK's own paths.
 R.ptr = {
     plausible    = _ptr_plausible,
@@ -852,6 +869,19 @@ R.on("*", function(ev, name)
     end
 end)
 
+-- The dispatcher lives INSIDE the hero entity, and a new run, a run end and a
+-- chapter change destroy that entity. Kept across one, it points into freed
+-- memory the engine soon reuses — and the liveness check cannot catch it until
+-- this state has learned the dispatcher->entity offset (it then judges by the
+-- CURRENT hero, which is alive). 2026-09-26: a mod's R.stat.modify on the
+-- second run of a session dispatched ADD_MODIFIER into the previous run's
+-- dispatcher, which by then held animation data -> NamedEvent_Dispatch read a
+-- garbage pool pointer and the game crashed, twice. Drop it at every boundary;
+-- the next hero-anchored event re-captures it, as on a first run.
+R.on("run:start", function() _give_hero = nil end)
+R.on("run:end", function() _give_hero = nil end)
+R.on("gameplay:GAME_END_NEXT_CHAPTER", function() _give_hero = nil end)
+
 -- True once a hero dispatcher has been seen (i.e. give will work). Until the
 -- hero acts at least once in a run, grants are deferred.
 function R.give.ready() return _give_hero ~= nil end
@@ -920,6 +950,12 @@ function R.give.by_guid(lo, hi)
         R.log("[rsmm.give] GiveMagicalObject ctor failed (symbol unresolved?)")
         return false
     end
+    local built = R.engine.event_name(ev)
+    if built ~= "GIVE_MAGICAL_OBJECT" then
+        R.log("[rsmm.give] the GiveMagicalObject ctor built " .. tostring(built)
+            .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
+        return false
+    end
     I.poke(ev + 0x50, lo or 0, 8)
     I.poke(ev + 0x58, hi or 0, 8)
     -- Validate the dispatcher AT THE CALL, not just when it was captured.
@@ -955,77 +991,112 @@ function R.give.by_index(i)
     return R.give.by_guid(lo, hi)
 end
 
--- melodies (EXPERIMENTAL, UNPROVEN) ---------------------------------------
---
--- R.melody.choose(lo, hi) dispatches the game's own CHOOSE_MELODY named event
--- on the hero's bus, carrying a melody definition's 128-bit GUID. Same
--- machinery as R.give and R.talent.grant: build the event in scratch, put the
--- interned id at +0x30, dispatch on the captured hero dispatcher.
---
--- ⚠ THE PAYLOAD IS A HYPOTHESIS. The event class is only ever built by a
--- network-deserialisation factory (see oCGameNamedEventChooseMelody_vftable in
--- the symbol map), so no emitter exists to read the field meanings off. Its
--- ctor leaves +0x38 = -1, +0x40 = 0, +0x48 = -1 and an empty string at +0x50;
--- this writes the GUID halves into +0x38/+0x48 because that is the shape
--- R.give's event uses for a magical object. If a run shows the event firing
--- and nothing happening, the identity is one of the other fields.
---
--- Returns false (and logs) with no live hero dispatcher — the hero must act
--- once first. MAIN THREAD only, like every engine-mutating call.
+-- melodies: R.melody lives in rsmm/melody.lua, wired with the other game-event
+-- senders below (it names a melody by its definition's name string).
 R.melody = {}
 
-function R.melody.choose(lo, hi)
-    local MELODY_EVENT_VFT_VA = 0x140f25c48   -- oCGameNamedEventChooseMelody_vftable
-    local EVENT, EVENT_CRC = "CHOOSE_MELODY", 0xe311632b
-    if type(lo) ~= "number" or type(hi) ~= "number" then
-        R.log("[rsmm.melody] choose(lo, hi): the melody GUID halves must be numbers")
+-- R.reroll — the hero's offer rerolls. PROVEN IN GAME 2026-10-10: add(3) took
+-- the counter 3 -> 6 (get() and the `reroll_count` game value agree) and the
+-- extra rerolls showed on the offer screen and worked.
+--
+--   R.reroll.get()    -- rerolls the hero has, or nil (hero not captured yet)
+--   R.reroll.add(3)   -- grant 3 (1..32767); true once dispatched
+--
+-- add() sends the game's own GAIN_REROLL named event to the hero, exactly as the
+-- game's sender (0x1402eb030) does: event + 0x50 is a 16-bit count, dispatched
+-- to the hero's event dispatcher (entity + 0x4d8, the same one R.give and
+-- R.melody use). The hero-bound handler (0x1403aa9e0) adds it to the s16 at
+-- *(hero + 0x1d80) + 0x16 and publishes that as the `reroll_count` game value,
+-- which is what get() reads. Layout from the event's own ctor (0x1402e6eb0,
+-- 0x58 bytes): the standard named-event header, +0x38 = -1, +0x40 = 0,
+-- +0x48 = -1, +0x50 = count. Same scratch-block construction as R.melody.
+-- MAIN THREAD only (R.schedule.next_main), like every engine-mutating call.
+R.reroll = {}
+
+function R.reroll.get()
+    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if not hero then return nil end
+    local mirror = I.read_u64(hero + ENTITY_HUDMIRROR_OFF)
+    if not _ptr_plausible(mirror) then return nil end
+    local v = I.read_u16(mirror + 0x16)
+    if type(v) ~= "number" then return nil end
+    return v >= 0x8000 and v - 0x10000 or v
+end
+
+function R.reroll.add(n)
+    local REROLL_EVENT_VFT_VA = 0x140f263d0   -- oCDtNamedEventGainReroll_vftable
+    local EVENT, EVENT_CRC = "GAIN_REROLL", 0x96065360
+    if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 0x7fff then
+        R.log("[rsmm.reroll] add(n): n must be a whole number from 1 to 32767")
         return false
     end
-    if not _va_ok("R.melody") then return false end
     if not _give_hero then
-        R.log("[rsmm.melody] no hero dispatcher yet — the hero must act once first")
+        R.log("[rsmm.reroll] no hero dispatcher yet — the hero must act once first")
         return false
     end
-    if not (R.engine.resolve("NamedEvent_Id_FromCrc") and R.engine.resolve("NamedEvent_Dispatch")) then
-        R.log("[rsmm.melody] event primitives unresolved on this build — refusing")
-        return false
-    end
-    local base = I.module_base()
-    if not base or base == 0 then return false end
-    local vft = base + (MELODY_EVENT_VFT_VA - GIVE_IMG_BASE)
-    local slot0 = I.read_u64(vft)
-    if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
-        R.log("[rsmm.melody] event vftable implausible on this build — refusing")
+    if not R.engine.resolve("NamedEvent_Dispatch") then
+        R.log("[rsmm.reroll] event primitives unresolved on this build — refusing")
         return false
     end
     if not _dispatcher_live(_give_hero) then
-        R.log("[rsmm.melody] hero dispatcher is not live — refusing")
+        R.log("[rsmm.reroll] hero dispatcher is not live — refusing")
         return false
     end
-    -- ONE scratch block: event (0x60) + name tail. A second alloc while this
-    -- one is live can overlap and zero the front (see R.stat.modify).
-    local ev = I.scratch(0x80)
-    if not ev or ev == 0 then return false end
-    local tail = ev + 0x60
-    for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
-    I.write_u8(tail + #EVENT, 0)
-    I.write_u64(ev + 0x00, vft)
-    I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
-    I.write_u64(ev + 0x10, 0)
-    I.write_u64(ev + 0x18, 0)
-    I.write_u64(ev + 0x20, tail)                   -- name string
-    I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
-    I.write_u32(ev + 0x2c, 0)
-    I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
-    I.poke(ev + 0x38, lo, 8)                       -- melody GUID low  (hypothesis)
-    I.write_u32(ev + 0x40, 0)
-    I.poke(ev + 0x48, hi, 8)                       -- melody GUID high (hypothesis)
-    I.write_u64(ev + 0x50, tail + #EVENT)          -- second string: empty
-    I.write_u32(ev + 0x58, 0x80000000)
-    I.write_u32(ev + 0x5c, 0)
+    -- Prefer the event's own ctor (match 8 of 13 identical ctor templates, so
+    -- the name it wrote is checked before anything is sent).
+    local ev
+    if R.engine.resolve("NamedEvent_GainReroll_Ctor") then
+        local buf = I.scratch(0x58)
+        ev = buf and buf ~= 0 and R.engine.call("NamedEvent_GainReroll_Ctor", buf) or nil
+        if ev and ev ~= 0 and R.engine.event_name(ev) ~= EVENT then
+            R.log("[rsmm.reroll] the GainReroll ctor built " .. tostring(R.engine.event_name(ev))
+                .. " — the pattern resolved to a sibling event's ctor on this build; refusing")
+            return false
+        end
+    end
+    if not ev or ev == 0 then
+        -- Fallback for a pattern DB that predates the ctor symbol: build the
+        -- event by hand, the layout the ctor writes.
+        if not _va_ok("R.reroll") then return false end
+        if not R.engine.resolve("NamedEvent_Id_FromCrc") then
+            R.log("[rsmm.reroll] event primitives unresolved on this build — refusing")
+            return false
+        end
+        local base = I.module_base()
+        if not base or base == 0 then return false end
+        local vft = base + (REROLL_EVENT_VFT_VA - GIVE_IMG_BASE)
+        local slot0 = I.read_u64(vft)
+        if not slot0 or slot0 < base or slot0 >= base + 0x1600000 then
+            R.log("[rsmm.reroll] event vftable implausible on this build — refusing")
+            return false
+        end
+        -- ONE scratch block: event (0x58) + name tail.
+        ev = I.scratch(0x78)
+        if not ev or ev == 0 then return false end
+        local tail = ev + 0x58
+        for i = 1, #EVENT do I.write_u8(tail + i - 1, EVENT:byte(i)) end
+        I.write_u8(tail + #EVENT, 0)
+        I.write_u64(ev + 0x00, vft)
+        I.write_u32(ev + 0x08, 2)                      -- state, as the ctor leaves it
+        I.write_u64(ev + 0x10, 0)
+        I.write_u64(ev + 0x18, 0)
+        I.write_u64(ev + 0x20, tail)                   -- name string
+        I.write_u32(ev + 0x28, 0x80000000 + #EVENT)    -- unowned: never freed by the engine
+        I.write_u32(ev + 0x2c, 0)
+        I.write_u32(ev + 0x30, R.engine.call("NamedEvent_Id_FromCrc", 0, EVENT_CRC) or 0)
+        I.write_u64(ev + 0x38, 0xffffffffffffffff)     -- peer: -1 = local
+        I.write_u32(ev + 0x40, 0)
+        I.write_u32(ev + 0x44, 0)
+        I.write_u64(ev + 0x48, 0xffffffffffffffff)
+        I.write_u16(ev + 0x52, 0)
+        I.write_u32(ev + 0x54, 0)
+    end
+    I.write_u16(ev + 0x50, n)                      -- the count
+    local before = R.reroll.get()
     R.engine.call("NamedEvent_Dispatch", _give_hero, ev)
-    R.log(string.format("[rsmm.melody] dispatched %s guid=%016x%016x disp=0x%x id=0x%x",
-        EVENT, hi, lo, _give_hero, I.read_u32(ev + 0x30) or 0))
+    R.log(string.format("[rsmm.reroll] dispatched %s +%d disp=0x%x id=0x%x rerolls %s -> %s",
+        EVENT, n, _give_hero, I.read_u32(ev + 0x30) or 0,
+        tostring(before), tostring(R.reroll.get())))
     return true
 end
 
@@ -1036,6 +1107,70 @@ function R.give.random()
     local i = math.random(0, n - 1)
     if R.give.by_index(i) then return i end
     return nil
+end
+
+-- The identity GUID (lo, hi) of a loaded item by its id (`"Damage_Attack"`, the
+-- cooked file's stem), or nil. Each pool def keeps the oCEntitySettings it was
+-- spawned from at +0x48, whose +0x08 points at the bare id (read off a live
+-- pool in game 2026-10-01: "Gain_Passive_Heal", "Increase_Shield"). Reads
+-- only, page-guarded.
+function R.give.find(id)
+    assert(type(id) == "string" and id ~= "", "R.give.find: id must be a string")
+    local want = id:lower()
+    for i = 0, R.give.count() - 1 do
+        local lo, hi, def = R.give.guid_at(i)
+        local ent = def and I.read_u64(def + 0x48)
+        local name = _ptr_plausible(ent) and I.read_u64(ent + 0x08)
+        name = _ptr_plausible(name) and I.read_cstr(name, 96)
+        if type(name) == "string" and name:lower() == want then return lo, hi end
+    end
+    return nil
+end
+
+-- Log what pool item `i` points at, two pointer hops deep: class names and the
+-- strings found — the diagnostic for R.give.find not knowing where an item's
+-- name lives. Reads only.
+function R.give.describe(i)
+    local lo, hi, def = R.give.guid_at(i)
+    if not def then R.log("[rsmm.give] describe: no item " .. tostring(i)); return end
+    R.log(("[rsmm.give] item %d def=0x%x %s guid=%016x%016x"):format(
+        i, def, tostring(R.rtti.name(def)), hi or 0, lo or 0))
+    local seen = 0
+    local function strings(tag, obj)
+        for _, s in ipairs(R.debug.strings(obj, { log = false, max_off = 0x200 })) do
+            R.log(("[rsmm.give]   %s+0x%03x -> %q"):format(tag, s.off, s.text))
+        end
+        for _, s in ipairs(R.debug.strings_at(obj, { before = 0, after = 0x200, min_len = 6 })) do
+            R.log(("[rsmm.give]   %s inline+0x%03x %q"):format(tag, s.off, s.text))
+        end
+    end
+    strings("def", def)
+    for off = 0, 0x1f8, 8 do
+        local p = I.read_u64(def + off)
+        if p and p ~= def and _ptr_plausible(p) and seen < 24 then
+            local cls = R.rtti.name(p)
+            if cls then
+                seen = seen + 1
+                R.log(("[rsmm.give]  def+0x%03x -> 0x%x %s"):format(off, p, cls))
+                strings(("def+0x%03x"):format(off), p)
+            end
+        end
+    end
+end
+
+-- Grant a loaded item by id (see R.give.find). Returns true on dispatch.
+-- MAIN THREAD only, like R.give.by_guid: the grant builds the item's entity
+-- with the engine's per-thread allocator, which the timer thread does not have
+-- (R.schedule.every crashed the game in EntityComponent_Activate, 2026-10-01).
+-- Call it from R.schedule.next_main / every_main.
+function R.give.by_name(id)
+    local lo, hi = R.give.find(id)
+    if not lo then
+        R.log(("[rsmm.give] no loaded item named %s (%d loaded); R.give.describe(i) shows one")
+            :format(tostring(id), R.give.count()))
+        return false
+    end
+    return R.give.by_guid(lo, hi)
 end
 
 -- Number of magical objects currently in the runtime (owned/active) pool array.
@@ -1122,7 +1257,7 @@ end
 -- path calls them through those upvalues.
 local ENTITY_IMG_BASE, SHARED_HERO_SLOT, LOBBY_REFRESH_SLOT
 local ENTITY_VALCTX_OFF, EV_STORE_OFF
-local _native_capture_active, _hero_plausible, _ev_ctx, _ctx_chain_ok
+local _native_capture_active, _ev_ctx, _ctx_chain_ok
 do
     local ok, x = _submodule_fn("entity", {
         I = I, R = R,
@@ -1140,7 +1275,6 @@ do
     LOBBY_REFRESH_SLOT = x.LOBBY_REFRESH_SLOT
     ENTITY_VALCTX_OFF, EV_STORE_OFF = x.ENTITY_VALCTX_OFF, x.EV_STORE_OFF
     _native_capture_active = x._native_capture_active
-    _hero_plausible        = x._hero_plausible
     _ev_ctx                = x._ev_ctx
     _ctx_chain_ok          = x._ctx_chain_ok
     -- Into the forward declarations near the top of the chunk, not new locals.
@@ -1171,9 +1305,11 @@ end
 --   R.modifier.active("No minimap")      -- true if the toggle is on this run
 --   R.modifier.names()                   -- known modifier/scalar names (sorted)
 --
--- NOTE: read-only and pending in-game verification that the modifier state lives
--- on the hero's value store (vs a global game entity); a wrong store just makes
--- every read return 0/nil, never faults.
+-- These live in the GLOBAL scene context ("New Game Plus" group), not on the
+-- hero: read from the hero store, every one of them came back 0.0 in game
+-- (2026-09-19). So they go through R.game, and when that context is not
+-- reachable the answer is nil (R.modifier.why() says why) — never the hero
+-- store's confident, wrong 0.
 R.modifier = {}
 
 local _MODIFIER_KEYS = {
@@ -1206,8 +1342,16 @@ function R.modifier.value(name)
         R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
         return nil
     end
-    return R.entity.value(key)
+    return R.game.get_key(key)
 end
+
+-- Declared here, above every reader (why() below and set/clear further down):
+-- a local declared after a function that reads it is a GLOBAL inside it.
+local _modifier_write_why = nil
+
+-- Why the last R.modifier call failed: a refused set/clear, else the last
+-- read's reason (R.game's). nil when the last call worked.
+function R.modifier.why() return _modifier_write_why or R.game.why() end
 
 -- True if a toggle modifier is active this run (value present and non-zero).
 function R.modifier.active(name)
@@ -1224,7 +1368,7 @@ function R.modifier.names()
 end
 
 -- Read a raw entity-value key the name table doesn't cover (forward-compat).
-function R.modifier.value_by_key(key) return R.entity.value(key) end
+function R.modifier.value_by_key(key) return R.game.get_key(key) end
 
 -- HOW MANY MODIFIERS CAN ACTUALLY BE SELECTED — the cap probe.
 --
@@ -1423,60 +1567,110 @@ end
 
 -- WRITE side (EXPERIMENTAL, unproven in-game) ---------------------------
 --
--- A modifier is a CRC-keyed entry in the SAME entity-value store R.stat writes,
--- so setting one is R.stat.stick under a different name — no second write path,
--- no second set of guards. Registering the keys into R.stat.keys is what makes
--- that reuse legal: R.stat.set refuses a name it does not know.
+-- Writes go to the GLOBAL scene context the run modifiers live in, through the
+-- engine's own setter (SceneContextValue_SetInt / _SetFloat), so the value's
+-- change signal fires like any engine write. See R.game._write_key for the
+-- guards. Until 2026-09-26 this wrote the HERO's store, which the game never
+-- reads for these values -- every write "succeeded" and did nothing.
 --
--- Three honest caveats, none of which this code can check for you:
+-- Caveats this code cannot check for you:
 --
---  1. WHICH STORE. R.modifier.value already reads the HERO's store, and whether
---     run modifiers actually live there (rather than on a global game entity)
---     has never been proven in-game — a wrong store reads 0 and writes nowhere.
+--  1. LOCAL-ONLY. A value the engine replicates to peers is written only when
+--     the run is provably solo (Hero Count == 1); in co-op the write is
+--     refused. The engine would anyway refuse a client, silently.
 --  2. WHEN IT IS READ. Only a modifier the engine reads LIVE can be turned on
 --     mid-run. "One chapter", "Day only" and "Random hero at map start" are
 --     consumed at map generation, so setting them after a run has begun changes
 --     nothing; they have to be ticked in the Custom Mode screen.
---  3. NOT THE UI. This flips the state key the behaviour is gated on. The
+--  3. NOT THE UI. This sets the state value the behaviour is gated on. The
 --     challenge-select screen still shows nothing selected.
---
--- EVERY modifier is written as f32, toggles included, because that is how they
--- are READ: R.entity.value decodes the union's inline slot as a float for every
--- key, so an int-written toggle reads back as ~0 and R.modifier.active answers
--- no to a modifier it just set. Read and write have to agree before either can
--- be right. If a modifier turns out to be int-typed in the engine, BOTH sides
--- are wrong together and R.entity.value is the one place to fix it.
-local _modifier_keys_registered = false
-local function _register_modifier_keys()
-    if _modifier_keys_registered then return end
-    _modifier_keys_registered = true
-    for name, key in pairs(_MODIFIER_KEYS) do
-        R.stat.keys["modifier:" .. name] = { key = key, kind = "f32" }
-    end
-end
+--  4. NOT PINNED. The engine may re-seed these at a run start; a mod that wants
+--     a value for the whole run sets it again on "run:start" (next_main).
+
+-- key -> the value before this SDK first wrote it, for clear().
+local _modifier_orig = {}
 
 -- Opt in to modifier writes. Same consent flag as R.stat.enable_writes — this
 -- IS that flag, so enabling either enables both.
 function R.modifier.enable_writes() return R.stat.enable_writes() end
 
--- Set a named modifier and KEEP it set (R.stat.stick re-asserts after the
--- engine's next recompute wipes the override cache). MAIN THREAD only.
--- Returns the immediate-apply result; false when the name is unknown, writes
--- are off, or no value store is reachable.
+-- Set a named modifier in the global context. MAIN THREAD only (wrap in
+-- R.schedule.next_main). Returns true when the value reads back as written;
+-- false otherwise, with the reason in R.modifier.why().
 function R.modifier.set(name, value)
-    if not _MODIFIER_KEYS[name] then
-        R.log("[rsmm.modifier] unknown modifier name: " .. tostring(name))
+    local key = _MODIFIER_KEYS[name]
+    if not key then
+        _modifier_write_why = "unknown modifier name: " .. tostring(name)
+        R.log("[rsmm.modifier] " .. _modifier_write_why)
         return false
     end
-    _register_modifier_keys()
-    return R.stat.stick("modifier:" .. name, value or 1)
+    if not (R.stat.writes_enabled and R.stat.writes_enabled()) then
+        _modifier_write_why = "writes are off — call R.modifier.enable_writes() first"
+        R.log("[rsmm.modifier] " .. _modifier_write_why)
+        return false
+    end
+    if _modifier_orig[key] == nil then
+        _modifier_orig[key] = R.game.get_key(key)     -- nil if unreadable
+    end
+    local ok, why = R.game._write_key(key, value or 1)
+    _modifier_write_why = why
+    if not ok then
+        R.log(("[rsmm.modifier] set %s REFUSED: %s"):format(name, tostring(why)))
+    end
+    return ok
 end
 
--- Stop pinning a modifier. The engine's next recompute restores its own value.
+-- Put a modifier back to the value it had before this SDK first wrote it.
+-- False for an unknown name, or one this SDK never changed.
 function R.modifier.clear(name)
-    if not _MODIFIER_KEYS[name] then return false end
-    _register_modifier_keys()
-    return R.stat.unstick("modifier:" .. name)
+    local key = _MODIFIER_KEYS[name]
+    if not key then return false end
+    local orig = _modifier_orig[key]
+    if orig == nil then return false end
+    local ok, why = R.game._write_key(key, orig)
+    _modifier_write_why = why
+    if ok then _modifier_orig[key] = nil end
+    return ok
+end
+
+-- revive tokens ------------------------------------------------------------
+--
+-- The party's revive tokens are the scene-context value "Revive token"
+-- (0x1633db76): the world REVIVE_REQUEST handler (0x140287ef0) reads it, and
+-- only with a token left (> 0) decrements it and goes on to revive. So adding
+-- tokens is a write of that value, through the same guarded path as
+-- R.modifier.set — it refuses a value replicated to peers unless solo.
+-- PROVEN IN GAME 2026-10-10 (tokens 6 -> 8). Gated by R.stat.enable_writes();
+-- MAIN THREAD only.
+--
+--     R.revive.tokens()        -- tokens left, or nil
+--     R.revive.add_token(n)    -- n more (default 1)
+R.revive = {}
+do
+    local REVIVE_TOKEN_KEY = 0x1633db76
+
+    function R.revive.tokens() return R.game.get_key(REVIVE_TOKEN_KEY) end
+
+    function R.revive.add_token(n)
+        n = n == nil and 1 or n
+        if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 99 then
+            R.log("[rsmm.revive] add_token(n): n must be a whole number from 1 to 99")
+            return false
+        end
+        if not (R.stat.writes_enabled and R.stat.writes_enabled()) then
+            R.log("[rsmm.revive] add_token is a write — call R.stat.enable_writes() first")
+            return false
+        end
+        local cur = R.revive.tokens()
+        if type(cur) ~= "number" then
+            R.log("[rsmm.revive] the revive-token value is not readable yet (no run scene) — refusing")
+            return false
+        end
+        local ok, why = R.game._write_key(REVIVE_TOKEN_KEY, math.floor(cur) + n)
+        R.log(string.format("[rsmm.revive] add_token(%d): %s (tokens %s -> %s)", n,
+            ok and "ok" or ("REFUSED: " .. tostring(why)), tostring(cur), tostring(R.revive.tokens())))
+        return ok
+    end
 end
 
 -- Names this SDK can WRITE, sorted. Same set as R.modifier.names() today; kept
@@ -1773,6 +1967,31 @@ local function _generic(gp) return _is_generic(gp) end
 function R.hero.is(who)
     local n = R.hero.name()
     return n ~= nil and who ~= nil and n:lower() == tostring(who):lower()
+end
+
+-- The live hero's own entity name ("Hero_Gretel_Default"), read off the
+-- template it was built from: hero controller +0x08 = the oCEntity, whose
+-- +0x28 template names its resource (the hop R.interact.name proved on the
+-- hero in game, "Hero_Aladdin_Guardian"). Unlike R.hero.name(), which infers
+-- the hero from the events it fires, this tells a custom hero from its base:
+-- Gretel fires Beowulf's events, but every one of her entities is
+-- Hero_Gretel*. nil until a hero is captured.
+function R.hero.entity()
+    local ctrl = R.entity and R.entity.hero and R.entity.hero()
+    if type(ctrl) ~= "number" or ctrl == 0 or not R.ptr.has_vtable(ctrl) then return nil end
+    local e = I.read_u64(ctrl + 0x08)
+    if not e or e == 0 or R.rtti.name(e) ~= "oCEntity" then return nil end
+    local name = R.interact.name(e)
+    return type(name) == "string" and name or nil
+end
+
+-- True when the live hero's entity is `stem` or one of its skins
+-- ("Hero_Gretel" matches Hero_Gretel_Default, never Hero_Beowulf).
+function R.hero.entity_is(stem)
+    local n = R.hero.entity()
+    if not n or type(stem) ~= "string" then return false end
+    n = (n:match("([^\\/]+)$") or n):gsub("%.entity%.ot$", "")
+    return n == stem or n:sub(1, #stem + 1) == stem .. "_"
 end
 
 -- Dump the distinctive (non-generic) events seen for the current hero this
@@ -2179,6 +2398,19 @@ do
     if ok and type(x) == "table" then R.watch = x end
 end
 
+-- chapter timer -----------------------------------------------------------
+--
+-- Lives in rsmm/daynight.lua. Reads and sets the day/night cycle every
+-- chapter load copies (day/night lengths, half-cycles before the boss,
+-- overtime). Plain memory writes; a change lands at the NEXT chapter load.
+--
+--   R.daynight.get() / .set{ day = 120, half_cycles = 4 } / .restore()
+do
+    local ok, x = _submodule_fn("daynight", { R = R, I = I, _va_ok = _va_ok,
+                                              _ptr_plausible = _ptr_plausible })
+    if ok and type(x) == "table" then R.daynight = x end
+end
+
 -- map reveal ------------------------------------------------------------
 --
 -- Lives in rsmm/map.lua. Fires the game's own CROWS_MAP_REVEAL so POI markers
@@ -2196,6 +2428,78 @@ do
         obj_has_vtable = function(p) return _dispatcher_live(p) end,
     })
     if ok and type(x) == "table" then R.map = x end
+end
+
+-- game events sent to the hero: abilities, shards, ingredients -----------
+--
+-- rsmm/named_event.lua builds a game named event by hand and sends it to the
+-- same hero dispatcher R.give uses, with that dispatcher and its liveness
+-- check handed over like rsmm/map.lua. The two namespaces below share it.
+-- Proven in game 2026-10-10 (cooldown reset, shards.gain, ingredient.add).
+--
+-- rsmm/ability.lua — the game's own ability events (CLEAR_*_CD, REDUCE_*_CD,
+-- ADD_/REMOVE_*_CHARGE):
+--     R.ability.reset_cooldown("dash")      -- nil slot = every ability
+--     R.ability.reduce_cooldown(2.5)        -- seconds; optional slot
+--     R.ability.add_charge("dash", 2)
+--     R.ability.remove_charge("dash")
+-- rsmm/resources.lua — pickups (GAIN_DREAM_SHARDS, GAIN_INGREDIENT):
+--     R.shards.gain(20)                     -- shard-gain bonuses apply
+--     R.ingredient.add("Key", 2) / .remove("Key") / .names()
+local _named_event   -- rsmm/named_event.lua, also handed to talent_events below
+do
+    local ok, ne = _submodule_fn("named_event", {
+        R = R, I = I, img_base = GIVE_IMG_BASE, va_ok = _va_ok,
+        give_hero = function() return _give_hero end,
+        dispatcher_live = function(p) return _dispatcher_live(p) end,
+    })
+    if ok and type(ne) == "table" then
+        _named_event = ne
+        local ok_a, a = _submodule_fn("ability", { R = R, I = I, named_event = ne })
+        if ok_a and type(a) == "table" then R.ability = a end
+        local ok_r, r = _submodule_fn("resources", { R = R, I = I, named_event = ne })
+        if ok_r and type(r) == "table" then
+            if R.shards then R.shards.gain = r.shards.gain end
+            R.ingredient = r.ingredient
+        end
+        -- rsmm/melody.lua — CHOOSE_MELODY / REMOVE_MELODY by melody name
+        -- (choose() does not force a melody in game 2026-10-10): R.melody.choose("Fully_Heal") / .remove(...) / .names()
+        local ok_m, mel = _submodule_fn("melody", { R = R, I = I, named_event = ne })
+        if ok_m and type(mel) == "table" then
+            for k, v in pairs(mel) do R.melody[k] = v end
+        end
+        -- rsmm/control.lua — LOCK_CONTROL / UNLOCK_CONTROL, counted
+        -- (proven in game 2026-10-10): R.control.lock() / .unlock() / .release() / .held()
+        local ok_c, ctl = _submodule_fn("control", { R = R, named_event = ne })
+        if ok_c and type(ctl) == "table" then R.control = ctl end
+        -- rsmm/status.lua — CLEAR_STATUS / CLEAR_STAGGER / RESET_STAGGER_RESILIENCE
+        -- (clear() proven in game 2026-10-10): R.status.clear() / .clear_stagger() / .reset_stagger_resilience()
+        local ok_s, st = _submodule_fn("status", { R = R, I = I, named_event = ne })
+        if ok_s and type(st) == "table" then R.status = st end
+        -- rsmm/items.lua — REMOVE_RANDOM_* / REMOVE_ALL_* / DUPLICATE_RANDOM_*
+        -- (proven in game 2026-10-10): R.give.remove_random("cursed") / .remove_all / .duplicate_random
+        local ok_i, it = _submodule_fn("items", { R = R, named_event = ne })
+        if ok_i and type(it) == "table" then
+            for k, v in pairs(it) do R.give[k] = v end
+        end
+    end
+end
+
+-- top-down camera --------------------------------------------------------
+--
+-- Lives in rsmm/camera.lua. Reads and changes the hero's TopDown camera
+-- settings live (a literal field is re-read from its settings record on every
+-- update). Components are found by RTTI name; every write is record-checked.
+--
+--   R.camera.set("yaw", 135)   -- degrees; rotates every hero camera
+--   R.camera.get("yaw")        -- the default camera's value
+--   R.camera.reset()           -- put back what this session changed
+--   R.camera.describe()        -- log every camera's fields
+--
+-- yaw is proven; the other FIELDS are labelled experimental in the module.
+do
+    local ok, x = _submodule_fn("camera", { R = R, I = I })
+    if ok and type(x) == "table" then R.camera = x end
 end
 
 -- player identity -------------------------------------------------------
@@ -2746,6 +3050,19 @@ do
     end
 end
 
+-- Lives in rsmm/talent_events.lua. Reset or upgrade the hero's talents through
+-- the game's own events (RESET_SKILLS, UPGRADE_*_SKILL, ADD_RANDOM_ULTI_SKILL),
+-- sent by the shared builder above. Proven in game 2026-10-10.
+--
+--     R.talent.reset() / .upgrade_random(n) / .upgrade_lowest(to_legendary)
+--     R.talent.upgrade(i) / .add_random_ultimate() / .owned()
+if _named_event then
+    local ok, x = _submodule_fn("talent_events", { R = R, I = I, named_event = _named_event })
+    if ok and type(x) == "table" then
+        for k, v in pairs(x) do R.talent[k] = v end
+    end
+end
+
 -- counters --------------------------------------------------------------
 --
 -- The simplest demo of the SDK: bump a counter every time an event
@@ -2793,6 +3110,12 @@ if R.schedule and R.schedule._tick then
     R.on("tick", function() R.schedule._tick() end)
 end
 
+-- Live config: re-read this mod's config.toml when something outside the game
+-- (the desktop overlay's controls) changed it, and fire R.config.on_change.
+if R.config and R.config._poll then
+    R.on("tick", function() R.config._poll() end)
+end
+
 -- Drive the MAIN-thread schedule pump off the gameplay bus. Those handlers run
 -- inside the NamedEvent_Dispatch detour = the game's main thread, unlike "tick"
 -- (loader background thread). Gating on ev.source == "gameplay" is essential:
@@ -2804,13 +3127,7 @@ if R.schedule and R.schedule._main_tick then
     end)
 end
 
--- R.mods — mod list + host-side lifecycle intents (in-game mod menu) -----
---
--- The game runs under Proton while the rsmm CLI lives on the host, so the
--- loader cannot enable/disable/uninstall a mod itself. Instead an intent is
--- queued to <cooking>/.rsmm_intents.jsonl (next to .rsmm_state.json) and the
--- HOST consumes it: `rsmm intents apply` (or the desktop app) performs the
--- operation and re-runs apply. Ops take effect on the next apply+restart.
+-- R.mods — installed mod list -------------------------------------------
 
 R.mods = {}
 
@@ -2818,25 +3135,6 @@ R.mods = {}
 function R.mods.list()
     if not I.list_mods then return {} end
     return I.list_mods()
-end
-
-local _INTENT_OPS = { enable = true, disable = true, uninstall = true }
-
--- Queue a lifecycle intent for the host CLI. Returns true when queued.
-function R.mods.request(op, mod_id)
-    if not I.intent_write then
-        R.log("[mods] intent_write unavailable (loader too old)")
-        return false
-    end
-    if not _INTENT_OPS[op] then
-        R.log("[mods] bad intent op: " .. tostring(op))
-        return false
-    end
-    if type(mod_id) ~= "string" or mod_id == "" then
-        R.log("[mods] bad mod id: " .. tostring(mod_id))
-        return false
-    end
-    return I.intent_write(op, mod_id) and true or false
 end
 
 -- struct introspection (RE aid) -----------------------------------------
@@ -3343,7 +3641,6 @@ end
 -- first use: a Lua local is invisible to code written earlier in the file, and
 -- R.lobby sits ahead of the damage section that also wants it.
 local MEM_SCAN_MB = 4096
-local LOBBY_KEY_STRIDE = 0x20
 local LOBBY_VALUE_OFF = 0x10
 local LOBBY_ANCHOR_OFF = -0x60          -- "RequestedHero" relative to PlayerName
 
@@ -3939,6 +4236,13 @@ function R.lobby.members(all)
         local m = LOBBY_HOOK.read(va)
         -- NOT filtered on the record's InLobby byte either — same flag, same
         -- meaning ("in the lobby menu"), and it is false for everyone in a run.
+        --
+        -- Only a name some BLOB also said. `param_1` is not always a record,
+        -- and any short printable string reads as a name: Sky's 2026-10-06 log
+        -- has `roster: )[record], Jivil(hero 5)[hook], ...`. Every real member
+        -- is parsed from its blob in the same hook call that records the
+        -- pointer, so a record name no blob ever named is not a member.
+        if m and LOBBY_HOOK.by_name[m.name] == nil then m = nil end
         if m and not seen[m.name] then
             seen[m.name] = true
             out[#out + 1] = m
@@ -4353,18 +4657,10 @@ end
 -- not as a stable identifier to key persistent state on.
 local _SETTINGS_NAME_OFF = 0xa0
 
--- The entity's OWN resource path, measured in-game 2026-09-17: on a live
--- interaction target the cstr pointer at entity+0x220 read
--- `Objects\Melodies\Deal_Damage_Around_Zone_Attack.entity.ot`, while every
--- other reachable string in a 0x1000 window was a component name or a shader
--- uniform (`u_Mask`, `u_Fresnel`, `Velocity`). So this is the field that names
--- the object, and the string sweep below is the fallback rather than the method.
---
--- ⚠ DEMOTED 2026-09-17: this is NOT a general field. It held a path on one
--- object type and junk (`0nO:`) on another, and on the shrine it produced a
--- melody's path for an object that was almost certainly the pillar. It is kept
--- only as a late fallback, behind the RTTI walk, and every read is validated.
-local _ENTITY_PATH_OFF = 0x220
+-- entity+0x220 is NOT the entity's resource path, though it once looked like
+-- it (2026-09-17: a melody's path on one interaction target, junk `0nO:` on
+-- another, and a melody's path for what was almost certainly the shrine's
+-- pillar). R.interact.name no longer reads it; noted here so nobody re-adds it.
 
 function R.interact.name(ev)
     local entity = ev
@@ -4877,6 +5173,18 @@ function R.run.signalled() return R.run._signalled == true end
 
 --- When the current run started (I.now clock), or nil.
 function R.run.started_at() return R.run._started_at end
+
+-- Lives in rsmm/run_flow.lua. Ends the chapter or the run through the game's own
+-- GAME_END_* events, sent to the WORLD dispatcher (oCEntitySceneContext+0x340,
+-- learned from the bus) by the shared builder. Proven in game 2026-10-10.
+--
+--     R.run.next_chapter() / .win() / .lose() / .world_ready()
+if _named_event then
+    local ok, x = _submodule_fn("run_flow", { R = R, named_event = _named_event })
+    if ok and type(x) == "table" then
+        for k, v in pairs(x) do R.run[k] = v end
+    end
+end
 
 -- ── R.serialize ───────────────────────────────────────────────────────────
 --

@@ -136,7 +136,7 @@ def test_minhook_installs_go_through_the_guarded_helper(src: Path):
 
 # Env vars that carry a VALUE rather than a yes/no. flag_enabled only answers
 # "is this on", so these legitimately read the environment directly.
-_VALUED_ENV_VARS = {"RSMM_RECONNECT_SECONDS", "RSMM_LOCALE", "RSMM_DATA",
+_VALUED_ENV_VARS = {"RSMM_RECONNECT_SECONDS", "RSMM_BACKEND_URL", "RSMM_LOCALE", "RSMM_DATA",
                     "RSMM_GAME_DIR", "RSMM_MODS_DIR"}
 
 _RAW_ENV = re.compile(r'GetEnvironmentVariableA\(\s*"(RSMM_[A-Z0-9_]+)"')

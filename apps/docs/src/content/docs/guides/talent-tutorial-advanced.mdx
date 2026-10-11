@@ -502,10 +502,260 @@ the finisher attack has not been confirmed yet.
 
 ## Recipe 4: Add a stat bonus, with a new number on the card
 
-<Badge text="Not yet tested" variant="danger" />
+<Badge text="Tested in game" variant="success" />
 
 **Goal:** Sun Wukong's **Fiery Dragon** also reduces his TRAIT cooldown: −10 %
 Common, −15 % Rare, −20 % Epic, −25 % Legendary. The card shows the number.
+
+### The short way: `add_stats`
+
+<Badge text="Partly tested" variant="caution" />
+
+One field does all of the wiring below. In the editor, it is the **+ Add a stat**
+button under a talent card.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "fiery_dragon_cooldown"
+hero = "SunWukong"
+add_stats = [
+  { talent = "Trait Fire", stat = "CD reduce trait", values = [0.10, 0.15, 0.20, 0.25] },
+]
+```
+
+- `talent` is the card's row name (`Skill Controller Trait Fire` → `Trait Fire`).
+- `stat` is any stat from the stat list: the same names the item editor offers.
+- `values` is one number for every rarity, or four (Common, Rare, Epic, Legendary).
+  The number is in the stat's own unit: `0.25` on a cooldown stat is −25 %.
+- The card gets a new number slot, the next `{N}` after the ones it has. Write it in
+  the description with a `skill` block, for example `• #TRAIT@ cooldown &-{1}%~`.
+  `percent = false` shows the number as it is, without multiplying by 100.
+
+`add_stats` is not quite the hand-built version below. It adds the new modifier to
+the talent's own State instead of swapping that State for a copy, so talents whose
+State already does something keep doing it. The parts are the proven ones; this
+exact arrangement has not been played yet.
+
+Ultimates cannot take a stat this way: they have no State that marks them as owned.
+
+**Talents two heroes share.** Romeo and Juliet build their shared talents (Love
+Shield, Ignite, …) in one file both inherit, `Hero_Juliet/Hero_Romeo_Juliet_Common`;
+each hero's own file only overrides the card. `add_stats` and `include` find the
+talent there and write that file, so the change reaches **both** heroes. `during`
+and `after` then take the abilities that file builds (SPECIAL and TRAIT).
+`rebuild` is refused for these for now: the hero's own card would keep
+pointing at the old effect.
+
+<Badge text="Tested in game" variant="success" /> **Only while an ability is in use:** add `during = "DEFENSE"` (or `ATTACK`, `POWER`,
+`SPECIAL`, `TRAIT`, `DASH`) to an entry, e.g. "During #DEFENSE@, #ATTACK@ damage
+&+{0}%~". The bonus then reads a copy of a selector the game ships ("ability in use
+→ the number, else 0"). The ability is found through the hero's controller for that
+button, never by name. A hero whose ability only signals its start (Merlin's POWER,
+DEFENSE and TRAIT) cannot use `during` for it; the editor leaves those out.
+
+<Badge text="Tested in game" variant="success" /> **For a while after an ability:** add `after = "DEFENSE", seconds = 3`
+to an entry, e.g. "For #3@ second(s) after using #DEFENSE@, #ATTACK@ damage
+&+{0}%~". Each use of the ability restarts the 3 seconds. It is built the way
+Beowulf's **Defense Damage Aura** builds its window: using the ability fires an
+event that switches a new, empty State off and on again, that State runs a timer,
+and the timer switches the State off when the time is up. (A timer's State link only
+*ends* that State; it never switches it on.) The bonus is then "during" that State. Because it only needs the moment the
+ability starts, `after` also works for abilities that only signal their start
+(Merlin). In the editor, pick **For a while after …** under **When**.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE", seconds = 3 },
+]
+```
+
+<Badge text="Tested in game" variant="success" /> **At most once every N seconds:** add `cooldown = 8` to an
+`after` entry and a use only restarts the window when the last restart was at least
+8 seconds ago; uses in between do nothing. This is how Romeo's **Love Shield** limits
+itself ("every 3 s max"), and the gate is a copy of his: the ability fires a tester
+that passes only while a new Cooldown State is off, and that State then restarts the
+window and switches itself off after `cooldown` seconds. In the editor, fill in **At
+most once every … second(s)** under the "Lasts" box; leave it empty for every use.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.3, after = "DEFENSE", seconds = 3, cooldown = 8 },
+]
+```
+
+<Badge text="Tested in game" variant="success" /> **Your next ability after another:** add `next = "ATTACK"` to an
+`after` entry and the bonus ends once ATTACK has been used, like Beowulf's
+**Retaliation** ("your next ATTACK within … after DEFENSE"). The window is the same
+`after` window; ATTACK's in-use State ends it as it finishes, so the bonus covers that
+whole attack and is gone after it. `next` takes an ability whose use lasts (the same
+ones `during` takes) and must differ from `after`. In the editor, pick it under
+**Used up by**. `next` and `cooldown` can be combined.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.5, after = "DEFENSE", seconds = 4, next = "ATTACK" },
+]
+```
+
+**Stats that land on enemies are refused.** `add_stats` builds a modifier on the
+hero itself, so a stat the game only ever puts on whoever is hit (Ignite, Bleed,
+Chilled, Vulnerable, Weak, Marked, Rooted, …) would debuff your own hero. The list
+is read from the game's files; the editor shows those stats greyed out.
+
+### Give a talent another talent's effect: `include`
+
+<Badge text="Tested in game" variant="success" />
+
+Owning one talent can also switch on another of the same hero's talents. What a
+talent does hangs off its State, so `include` keeps the other talent's State on
+while this one is owned, and everything that State does or unlocks runs. In the
+editor, it is **Also gives the effect of** on a card.
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "shapeshifter_wick"
+hero    = "Red"
+include = [{ talent = "Trait Active", from = "Secondary Quick Bombs" }]
+```
+
+This gives Scarlet's **Shapeshifter** the bomb from **Short Wick** that explodes as
+soon as it hits the ground: that behaviour is a switch wired to Short Wick's State,
+which the bomb reads. You get all of the other talent, not a piece of it: here
+Short Wick's faster SPECIAL recharge comes too. Numbers that scale with the other
+card's rarity use their Common value, because that card is not owned. Mention the
+effect in the card's text with a `skill` block.
+
+#### From another hero
+
+<Badge text="Tested in game" variant="success" />
+
+Add `hero` to take a talent from another hero. Its effect is copied into your
+hero's file, and its numbers follow **your** card's rarity:
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "virtuoso_focus"
+hero    = "Piper"
+include = [{ talent = "Attack Move Speed", from = "Power Hold", hero = "SunWukong" }]
+```
+
+Owning Piper's **Virtuoso** now also gives Wukong's **Focused Strikes** bonus.
+
+Most talents cannot move. They work inside their hero's abilities: Aladdin's
+Defense Tornado is a number his DEFENSE tornado reads, and Piper has no such
+tornado. RSMM refuses those and says why. These 9 can be given to any hero:
+
+| Hero | Talent (card) | `from` |
+|------|---------------|--------|
+| Aladdin | Master Thief | `Passive Extra MO` |
+| Aladdin | Jinniya's Gift | `Trait Extra Wish` |
+| Carmilla | Bat Master | `Defense Master` |
+| Juliet | Wedding Gifts | `Passive Bonus Object` |
+| Melusine | Soothing Presence | `Passive Heal In Combat` |
+| Melusine | Dance Step | `Trait Dash` |
+| Merlin | Astrology | `Passive Gain Reroll High Talent` |
+| Piper | Virtuoso | `Attack Move Speed` |
+| Sun Wukong | Focused Strikes | `Power Hold` |
+
+In the editor, they are under **Other heroes** in the **Also gives the effect of**
+list.
+
+### Make an ability bigger: `scale`
+
+<Badge text="Tested in game" variant="success" />
+
+Range is not a stat: each ability works out its own size in its own files. `scale`
+grows one of those numbers (a radius, a length, a width) while the talent is
+owned, by `1 + amount`, so `0.3` is +30%:
+
+```toml
+[[content]]
+kind    = "talent"
+id      = "rising_tide"
+hero    = "Melusine"
+rebuild = ["Trait Dash"]
+scale   = [
+  { talent = "Trait Dash", node = "Primary Ability Radius Operation", file = "Hero_Melusine_Power_Caster_Model", values = [0.2, 0.3, 0.4, 0.5] },
+]
+```
+
+`node` is the number to grow and `file` the hero file it is in, which is needed
+only when the name is in more than one. The number can sit in an entity the hero
+spawns (Melusine's POWER caster, Piper's projectile), as long as that entity
+already reads values from the hero. The card gets a `{N}` for the amount. Only the
+hit area is sure to change; an ability's visual effect may keep its old size.
+
+In the editor, this is **Make an ability bigger** in the custom-talent builder: it
+lists each hero's sizes by ability.
+
+### Make hits put a status on enemies: `on_hit`
+
+<Badge text="Not yet tested" variant="danger" />
+
+While the talent is owned, one of the hero's hits also puts a status on whoever
+it hits: Chilled, Ignite, Bleed, Vulnerable, Weak or Rooted.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "fire_tide"
+hero = "Melusine"
+
+[[content.on_hit]]
+talent = "Attack Speed"
+damage = "Primary Ability Damage"
+status = "Ignite"
+```
+
+`damage` is one of the hero's damage records, the thing a hit deals: an ability
+can have more than one (Melusine's POWER has a normal and a geyser hit), so add
+an entry for each. `file` narrows it to one entity file when the name repeats.
+The status is copied from a hit in the game that already applies it, with its
+own duration and strength. Mention it in the card's text with a `skill` block.
+
+In the editor, this is **Hits apply a status** in the custom-talent builder: it
+lists each hero's hits by ability.
+
+### Rebuild a talent from scratch: `rebuild`
+
+<Badge text="Not yet tested" variant="danger" />
+
+The number of talents a hero has is fixed, so a new talent replaces one you pick.
+`rebuild` turns that talent's own effect off and keeps only its card slot; the
+stats you add are then all it does. In the editor, press **Build a custom talent**
+on the Talents tab (or **Replace with a custom talent** on a card): pick the talent
+to replace, name it, and add building blocks or start from an example. An idea the
+blocks can't build yet ("POWER spawns a tornado") can be sent from the same screen
+as a **Talent idea** on GitHub; that is how new blocks get made.
+
+```toml
+[[content]]
+kind = "talent"
+id   = "keen_eye"
+hero = "Beowulf"
+rebuild   = ["Attack Fire Cone"]
+add_stats = [
+  { talent = "Attack Fire Cone", stat = "Crit chance primary", values = [0.05, 0.10, 0.15, 0.20] },
+]
+
+[[content]]
+kind        = "skill"
+id          = "keen_eye_card"
+hero        = "Beowulf"
+source      = "Attack Fire Cone"
+name        = "Keen Eye"
+description = "• #POWER@ Crit Chance &+{0}%~"
+```
+
+How it works: the talent's controller is pointed at a new, empty State, so the
+State everything the talent did hangs off never switches on. The card's old
+numbers are removed too, which is why the first added stat is `{0}`. Give the card
+new text: without a `skill` block it keeps the old wording.
+
+### The long way: four clones
 
 This recipe needs four clones, because a stat bonus is a small chain of its own:
 
@@ -683,7 +933,7 @@ sdk_version = ">=3.0,<4"
 enabled     = true
 experimental = true
 tags        = ["talents", "piper"]
-multiplayer_scope = "local-only"
+multiplayer_scope = "deterministic-shared"
 
 [[content]]
 kind = "talent"
@@ -838,6 +1088,8 @@ block can point at them.
 | `value_patches` | Single numbers (beginner tutorial). Add `clear_override = true` to unlock a `LOCKED` one. |
 | `union_patches` | Per-rarity numbers (beginner tutorial). |
 | `int_patches` | An older way to write whole numbers inside a part. Use `union_patches` instead. |
+| `add_stats` | Give a talent a stat it does not have, with a number on its card ([Recipe 4](#the-short-way-add_stats)). |
+| `rebuild` | Turn a talent's own effect off, keeping its card: the start of a new talent ([Recipe 4](#rebuild-a-talent-from-scratch-rebuild)). |
 
 ## Rules that save hours
 

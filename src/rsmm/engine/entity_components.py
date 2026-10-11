@@ -9,9 +9,9 @@ work:
 * a cooked entity's section 0 is a component DIRECTORY and every component
   record is self-framed, so components append -- :mod:`entity_append`;
 * a class the host's table lacks can be copied in from the donor by name --
-  :func:`mods_modal.extend_class_table`;
+  :func:`extend_class_table`;
 * a cloned record's class indices are rewritten donor->host by
-  :func:`mods_modal._remap_class_tags`.
+  :func:`_remap_class_tags`.
 
 Pointing those three at an entity's components rather than a UI page is what
 :func:`add_components` does, and it is byte-stable (2026-09-04). It is NOT how
@@ -40,7 +40,6 @@ import struct
 from . import cooked
 from . import entity_append as EA
 from . import entity_strings as ES
-from . import mods_modal as MM
 
 #: The component class that puts an icon on the map.
 MARKER_CLASS = "oCDtEntityCpntMinimapMarkerSettings"
@@ -48,6 +47,70 @@ MARKER_CLASS = "oCDtEntityCpntMinimapMarkerSettings"
 
 class EntityComponentError(ValueError):
     pass
+
+
+def _class_index_of(cf: cooked.CookedFile, name: str) -> int | None:
+    for i, c in enumerate(cf.classes):
+        if c.name == name:
+            return i
+    return None
+
+
+def extend_class_table(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile,
+                       needed: set[str]) -> None:
+    """Add any ``needed`` classes missing from ``host_cf``, copied by name from
+    ``donor_cf``.  Their parent classes must already exist in the host (every
+    entity carries the ``oIEntityCpntSettings`` / ``oISerializable`` bases)."""
+    def add(name: str) -> None:
+        if _class_index_of(host_cf, name) is not None:
+            return
+        donor = donor_cf.classes[_class_index_of(donor_cf, name)]
+        if not any(c.class_id == donor.parent_id for c in host_cf.classes):
+            # A skin that only sets values has no 3D-object base classes; bring
+            # the donor's chain over, parents first.
+            parent = next((c for c in donor_cf.classes if c.class_id == donor.parent_id),
+                          None)
+            if parent is None:
+                raise EntityComponentError(
+                    f"cannot add {name!r}: its parent {donor.parent_id} is absent "
+                    f"from the host and the donor")
+            add(parent.name)
+        host_cf.classes.append(cooked.ClassDef(
+            donor.name, donor.class_id, donor.version_major,
+            donor.version_minor, donor.parent_id))
+
+    for name in sorted(needed):
+        add(name)
+
+
+def _remap_class_tags(record: bytes, donor_cf: cooked.CookedFile,
+                      host_cf: cooked.CookedFile) -> bytes:
+    """Rewrite a cloned record's class-table indices from donor to host.
+
+    Every inner ``BEGIN <u32>`` tag and the record's leading directory u32 is
+    an index into the file's OWN class table.  Each is rewritten to the host
+    index of the SAME class name; a name mismatch fails closed.
+    """
+    def _host_index(donor_idx: int) -> int:
+        name = donor_cf.classes[donor_idx].name
+        hi = _class_index_of(host_cf, name)
+        if hi is None:
+            raise EntityComponentError(f"class {name!r} absent from host after extend")
+        return hi
+
+    out = bytearray(record)
+    # Leading directory class index.
+    struct.pack_into("<I", out, 0, _host_index(struct.unpack_from("<I", out, 0)[0]))
+    # Every post-BEGIN class tag.
+    i = 0
+    while i + 4 <= len(out):
+        if out[i:i + 4] == cooked.MARK_BEGIN and i + 8 <= len(out):
+            struct.pack_into("<I", out, i + 4,
+                             _host_index(struct.unpack_from("<I", out, i + 4)[0]))
+            i += 8
+            continue
+        i += 1
+    return bytes(out)
 
 
 #: name -> the entity whose behaviour a host inherits by naming it as a PARENT.
@@ -177,7 +240,7 @@ def set_f32(record: bytes, old: float, new: float) -> bytes:
     layout is not what was measured, and several means the edit would be a
     guess about which one matters.
     """
-    hits = [o for o in range(0, len(record) - 3)
+    hits = [o for o in range(len(record) - 3)
             if abs(struct.unpack_from("<f", record, o)[0] - old) < 1e-4]
     if len(hits) != 1:
         raise EntityComponentError(
@@ -388,7 +451,7 @@ def _donor_records(donor_cf: cooked.CookedFile, cls: str) -> list[bytes]:
     the map screen and "Minimap Small Marker" for the HUD minimap -- so copying
     the first one alone lights at most half the UI.
     """
-    idx = MM._class_index_of(donor_cf, cls)
+    idx = _class_index_of(donor_cf, cls)
     if idx is None:
         return []
     out = []
@@ -434,8 +497,8 @@ def _splice(host_bytes: bytes, donor_cf, records: list[bytes],
     for record in records:
         host_cf = cooked.parse(out)
         EA.validate_layout(host_cf)
-        MM.extend_class_table(host_cf, donor_cf, class_closure(record, donor_cf))
-        remapped = MM._remap_class_tags(record, donor_cf, host_cf)
+        extend_class_table(host_cf, donor_cf, class_closure(record, donor_cf))
+        remapped = _remap_class_tags(record, donor_cf, host_cf)
         if string_swaps:
             # Per record, and only the keys this one actually carries: a donor
             # spreads its icons over several records (big here, small there)
@@ -443,7 +506,7 @@ def _splice(host_bytes: bytes, donor_cf, records: list[bytes],
             here = {k: v for k, v in string_swaps.items() if k.encode() in remapped}
             if here:
                 remapped = EA.replace_blob_strings(remapped, here)
-        remapped = EA.remint_guid(remapped)
+        remapped = EA.remint_guid(remapped, out)
         out = EA.append_components(cooked.emit(host_cf), [remapped])
         EA.validate_layout(cooked.parse(out))
     return out
@@ -520,7 +583,7 @@ def resource_refs(entity_bytes: bytes) -> list[str]:
     for sec in cooked.parse(entity_bytes).sections[1:-1]:
         for _off, text in ES._scan_payload(sec.payload):
             low = text.lower()
-            if (low.endswith(".entity.ot") or low.endswith(".png")) and text not in out:
+            if (low.endswith((".entity.ot", ".png"))) and text not in out:
                 out.append(text)
     return out
 
@@ -578,7 +641,7 @@ def has_marker(entity_bytes: bytes) -> bool:
 
 
 def _donor_record(donor_cf: cooked.CookedFile, cls: str, donor_ref: str) -> bytes:
-    idx = MM._class_index_of(donor_cf, cls)
+    idx = _class_index_of(donor_cf, cls)
     if idx is None:
         raise EntityComponentError(
             f"{donor_ref} has no {cls} in its class table")
@@ -608,17 +671,17 @@ def add_components(host_bytes: bytes, names: list[str], *,
         donor_ref, cls = DONORS[name]
         host_cf = cooked.parse(out)
         EA.validate_layout(host_cf)
-        if MM._class_index_of(host_cf, cls) is not None:
+        if _class_index_of(host_cf, cls) is not None:
             # Already present. Appending a second one would give the entity two
             # markers, which is a worse outcome than a no-op.
             continue
         donor_cf = cooked.parse(load_donor(donor_ref))
         record = _donor_record(donor_cf, cls, donor_ref)
-        MM.extend_class_table(host_cf, donor_cf, class_closure(record, donor_cf))
-        remapped = MM._remap_class_tags(record, donor_cf, host_cf)
+        extend_class_table(host_cf, donor_cf, class_closure(record, donor_cf))
+        remapped = _remap_class_tags(record, donor_cf, host_cf)
         # Fresh instance GUID: the donor's identity must not be duplicated, or
         # the engine sees two components claiming to be the same one.
-        remapped = EA.remint_guid(remapped)
+        remapped = EA.remint_guid(remapped, out)
         out = EA.append_components(cooked.emit(host_cf), [remapped])
         EA.validate_layout(cooked.parse(out))
     return out

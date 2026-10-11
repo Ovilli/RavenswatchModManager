@@ -6,6 +6,7 @@ import pkg from '../../package.json';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
+import { loaderStatus, noteLoaderResult } from '../lib/loader-status';
 import { quitApp } from '../lib/quit';
 import {
   type LoaderDownloadProgress,
@@ -653,7 +654,7 @@ export function VersionFooter() {
     void getAppVersion().then((v) => {
       if (alive && v) setAppVersion(v);
     });
-    void updateLoader({ checkOnly: true })
+    void loaderStatus()
       .then((r) => {
         if (alive && r?.installedVersion != null) setLoaderVersion(r.installedVersion);
       })
@@ -669,7 +670,7 @@ export function VersionFooter() {
     // `pointer-events-none`: this is a caption, not a control, and it sits over
     // the scrolling content — it must never eat a click meant for what is
     // underneath it.
-    <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-[10px] leading-tight text-ash/60">
+    <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-xs leading-tight text-ash/60">
       <span>{t('launcher v{version}', { version: appVersion })}</span>
       {loaderVersion != null ? (
         <span> · {t('loader v{version}', { version: loaderVersion })}</span>
@@ -766,7 +767,7 @@ export function UpdaterSettings() {
     // Read-only probe: reports the planted loader version without writing
     // anything into the game directory. Offline just leaves it unknown —
     // the button below still works once there is a connection.
-    void updateLoader({ checkOnly: true })
+    void loaderStatus()
       .then((r) => {
         if (alive) setLoader(r);
       })
@@ -785,6 +786,7 @@ export function UpdaterSettings() {
     setLoaderProgress(null);
     try {
       const r = await updateLoader({ onProgress: setLoaderProgress });
+      noteLoaderResult(r);
       setLoader(r);
       void appendLauncherLog('info', '[Updater] loader channel check', {
         status: r?.status ?? 'null',

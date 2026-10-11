@@ -33,12 +33,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 try:
-    import mine_fingerprints as fp  # noqa: E402
+    import mine_fingerprints as fp
 except ImportError:
     fp = None
 OLD_TEXT_BIN = REPO / "docs/_re/out/text_section.bin"
@@ -49,19 +49,9 @@ NEW_CORPUS = REPO / "docs/_re/out_new/decompiled_new.jsonl"
 PROLOGUE_TRY = (32, 48, 64, 96, 128)  # grow until unique in old .text
 
 
-def pattern_to_regex(pat: str) -> re.Pattern[bytes]:
-    parts: list[bytes] = []
-    for t in pat.split():
-        if t == "??":
-            parts.append(b".")
-        else:
-            b = int(t, 16)
-            if b in (0x5C, 0x5B, 0x5D, 0x5E, 0x24, 0x2E, 0x7C, 0x3F,
-                     0x2A, 0x2B, 0x28, 0x29, 0x7B, 0x7D):
-                parts.append(b"\\" + bytes([b]))
-            else:
-                parts.append(bytes([b]))
-    return re.compile(b"".join(parts), re.DOTALL)
+def pattern_to_regex(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 def collect_targets(symbols: list[dict]) -> dict[int, list[str]]:
@@ -212,7 +202,7 @@ def main() -> int:
             corpus = fp.load_corpus(NEW_CORPUS)
             # addr2name for the NEW build from what passes 1-2 already mapped.
             addr2name: dict[int, str] = {}
-            for _old, v in mapping.items():
+            for v in mapping.values():
                 na = int(v["new_addr"], 16)
                 for nm in v["symbols"]:
                     addr2name.setdefault(na, nm)

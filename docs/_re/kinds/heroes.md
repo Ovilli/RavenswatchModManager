@@ -361,3 +361,65 @@ exception: it is additionally mirrored to the plain f32 at +0x15c8 for the hot
 path, which is exactly why `R.combat` can read/write HP directly while other
 stats (energy, cooldowns, speed) live inside signal objects with no fixed
 plain-float offset. Reaching those is a per-signal RE job, not a constant lookup.
+
+## How a hero is assembled from data (static RE, 2026-09-25)
+
+This is what a custom hero has to supply. Every link below was read from shipped
+files; none of it needs the (still speculative) in-memory layout above.
+
+```
+LiveOps5.versiondef hero vector ──► <Hero>.herodef          (roster; proven 2026-09-24)
+<Hero>.herodef, root section    ──► Hero_Name / Hero_Desc text keys (Hero_<X>_Common~GAM.xls)
+                                    Portrait_<X>_01, UI_HeroPortrait_<X>_{Standard,Active,Unavailable}
+                                    codex illustrations, alternate-abilities book frame
+                                    <X>_Default_LowRes entity (menu preview)
+<Hero>.herodef, skin sections   ──► one per skin: title/desc keys, icon, Hero_<X>_<Skin>.entity.ot
+                                    (the first is Default: the hero's everyday look)
+<Hero>.herodef, sections 1..28  ──► "Skill Controller …" names (talent cards) + memoirs
+skin entity (no parent list!)   ──► AliasPicker GUID ──► ApplicationSettings.ot alias table
+                                                          ──► Heroes\Hero_<X>\Hero_<X>.entity.ot
+                                                              (the gameplay entity: abilities,
+                                                               controller, life bar, anims)
+```
+
+**Skins are overlays, not children.** A skin entity carries no parent list
+(`entity_components.parents()` is empty for every Default/skin). Its only link to
+the hero is an `AliasPicker` section holding a 16-byte GUID; every skin of one
+hero carries the same GUID, every `Hero_<X>_FX` carries `Hero_Common`'s. Its
+components are overrides addressed into the base entity's namespace, e.g.
+`[3d graphic object] Hero_Juliet\Base\Character Mesh` re-pointed at
+`Skin\Juliet_Bride_Skin_GEO.fbx`, plus `[Value] …\Character Mesh Material Value`
+for the `.mat`. The smallest body-swap skins (`Hero_Juliet_Bride`,
+`Hero_Romeo_Groom`: 6 sections) are the template for a custom look.
+
+**The alias table is plaintext.** `DarkTalesResources/ApplicationSettings.ot`,
+object `DtAliasAppSettingsSection` (class 43): a `Vector<AliasDesc>` of 14
+entries, each `m_u32Val1..4` (the GUID as four LE u32: `404451935` =
+`0x181b725f` = the `5f721b18…` in Piper's skins) + `m_sName` +
+`m_sArchive=EntitySettings` + `m_sStream=Heroes\Hero_<X>\Hero_<X>.entity.ot`.
+Entries: Hero_Common, the 12 heroes, and **Hero_Kintaro**, whose entity does
+not exist in the shipped data. The game boots with that dangling alias, so an
+alias is only resolved when something picks it. The GUID appears nowhere else
+in 42,997 files, so this table is the ONLY place a base entity is bound to a
+skin. Nothing else names `Hero_<X>.entity.ot` except that hero's own
+sub-entities (projectiles, pets) and one book page.
+
+**Consequences for a custom hero**, in increasing order of cost:
+
+1. *Look*: a new skin entity cloned from a body-swap template, with the base's
+   alias GUID, re-pointed at the mod's own `.fbx`/`.mat`; the herodef's Default
+   skin + LowRes paths re-pointed at it. Gameplay is the base's. The mesh
+   pipeline (`geometry_cook`, `skin = "gltf"`) and `export-character` already
+   cover the art.
+2. *Identity*: rewrite the herodef's text keys (`entity_strings.replace_strings`
+   is length-safe) to keys appended with `text_patches.append_bank_keys`, as
+   items do. ⚠ Portraits: a **UI** texture under a name the game does not
+   ship hung level load in the POI work (2026-09-05), so custom portraits
+   either repaint an unused shipped UI texture or need that hang understood
+   first.
+3. *Own gameplay entity* (own abilities, stats, life bar): clone
+   `Hero_<Base>.entity.ot` under a new name, append an `AliasDesc` with a fresh
+   GUID to the alias vector (bump `Vector.Length`), and give the new skins that
+   GUID. The base entity pulls its sub-entities by path, so a deep clone is the
+   ~60-entity footprint measured earlier. Mixing abilities between heroes means
+   re-pointing those sub-entity paths, and is the real frontier.

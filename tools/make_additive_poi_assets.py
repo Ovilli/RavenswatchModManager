@@ -45,12 +45,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from rsmm.engine import gltf  # noqa: E402
-from rsmm.engine import image as IMG  # noqa: E402
-from rsmm.engine.paths import REPO_ROOT  # noqa: E402
+from rsmm.engine import gltf
+from rsmm.engine import image as IMG
+from rsmm.engine.paths import REPO_ROOT
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import authoring_art as art  # noqa: E402
+import authoring_art as art
 
 Vec3 = tuple[float, float, float]
 

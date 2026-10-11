@@ -12,7 +12,6 @@ from rsmm.sdk.config import ConfigError, ConfigSchema, ConfigStore
 from rsmm.sdk.content import ContentError, ContentRegistry, SchemaNotMined
 from rsmm.sdk.health import DEFAULT_THRESHOLD, Health
 from rsmm.sdk.i18n import I18nBundle, merge_bundles
-from rsmm.sdk.intermod import InterModError, InterModRegistry
 from rsmm.sdk.transaction import ApplyTransaction
 from rsmm.sdk.versioning import check_compat
 
@@ -209,47 +208,21 @@ def test_i18n_merge_no_collision(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# intermod
-# ---------------------------------------------------------------------------
-
-
-def test_intermod_expose_require():
-    r = InterModRegistry()
-    r.expose("ItemPack", {"add": lambda x: x + 1}, version="1.0.0",
-             api_name="itempack")
-    p = r.require("itempack", ">=1.0")
-    assert p.add(2) == 3
-    with pytest.raises(InterModError):
-        r.require("itempack", ">=2")
-    with pytest.raises(InterModError):
-        r.require("missing")
-
-
-def test_intermod_proxy_catches():
-    def boom(*_):
-        raise RuntimeError("oops")
-    r = InterModRegistry()
-    r.expose("X", {"go": boom}, version="0.1.0", api_name="x")
-    p = r.require("x")
-    with pytest.raises(InterModError):
-        p.go()
-    with pytest.raises(InterModError):
-        p.something = 1
-
-
-# ---------------------------------------------------------------------------
 # content
 # ---------------------------------------------------------------------------
 
 
-def test_content_register_and_emit(tmp_path: Path):
+def test_content_register_and_emit_unknown_base(tmp_path: Path):
+    """An item cloned from a base the game doesn't ship emits nothing and says
+    so — with or without an install to check it against."""
     cr = ContentRegistry(mod_id="MM")
     cr.register("item", id="FrostBlade", base="VanillaSword",
-                stats={"damage": 50})
+                rarity="Epic")
     out = tmp_path / "out"
     out.mkdir()
-    written = cr.emit(out)
-    assert any(p.name == "FrostBlade.json" for p in written)
+    with pytest.raises((ContentError, SchemaNotMined), match="VanillaSword"):
+        cr.emit(out)
+    assert not any(out.iterdir())
 
 
 def test_content_unknown_kind_rejected():
@@ -406,24 +379,62 @@ def test_all_repo_mods_are_v3(tmp_path: Path):
     assert not bad, "non-v3 manifests still present: " + ", ".join(bad)
 
 
+#: An item ban: the one content block that emits without a game install.
+_BAN_BLOCK = '[[content]]\nkind = "item"\nid = "X"\nmode = "ban"\nitems = ["Foo"]\n'
+
+
+def _unvalidated_bans(monkeypatch):
+    """Let `Foo` through ban validation whether or not an install is readable."""
+    from rsmm.sdk.kinds import items
+    monkeypatch.setattr(items, "_catalog_item_ids", lambda: None)
+    monkeypatch.setattr(items, "_vanilla_item_ids", set)
+
+
 def test_content_block_emission_via_applier(tmp_path: Path, monkeypatch):
     """`[[content]]` blocks in a manifest produce per-kind emit markers."""
+    _unvalidated_bans(monkeypatch)
     mods_dir = tmp_path / "mods"
     mod = mods_dir / "T"
     mod.mkdir(parents=True)
     (mod / "manifest.toml").write_text(
         '[mod]\nid = "T"\nname = "T"\nversion = "1"\nenabled = true\n'
-        'sdk_version = ">=3.0,<4"\n\n'
-        '[[content]]\nkind = "item"\nid = "X"\nbase = "Common/Foo"\n',
+        'sdk_version = ">=3.0,<4"\n\n' + _BAN_BLOCK,
         encoding="utf-8",
     )
     from rsmm.cli.apply_mods import Mod, emit_content_blocks
     m = Mod(mod)
     assert m.content_blocks and m.content_blocks[0]["id"] == "X"
     emit_content_blocks([m])
-    assert (mod / "assets" / "_pending_items" / "X.json").exists()
+    assert (mod / "assets" / "_pending_bans" / "X.json").exists()
     # Filtered from the asset walk.
     assert m.files() == []
+
+
+def test_item_with_unknown_base_fails_loudly(tmp_path: Path, monkeypatch):
+    """A `base` that names no shipped item is an error, not a silent no-op.
+
+    It used to write a `_pending_items/<id>.json` that nothing read, so the mod
+    applied cleanly and the item never existed in game.
+    """
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import items
+
+    monkeypatch.setattr(items, "_vanilla_item_ids",
+                        lambda: {"Armor_Per_Object", "Balor_Eye"})
+    monkeypatch.setattr(items, "_find_base", lambda base: None)
+    defn = ContentDef(kind="item", id="X", fields={"base": "Armor_Per_Objct"})
+    with pytest.raises(ContentError, match="did you mean Armor_Per_Object"):
+        items.emit("T", defn, tmp_path)
+    assert not any(tmp_path.rglob("*")), "a failed emit wrote files"
+
+    # A real item under the wrong rarity folder names the right spelling.
+    wrong = ContentDef(kind="item", id="X", fields={"base": "Rare/Armor_Per_Object"})
+    with pytest.raises(ContentError, match="wrong rarity folder"):
+        items.emit("T", wrong, tmp_path)
+
+    monkeypatch.setattr(items, "_vanilla_item_ids", set)
+    with pytest.raises(SchemaNotMined, match="RSMM_GAME_DIR"):
+        items.emit("T", defn, tmp_path)
 
 
 def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
@@ -439,16 +450,16 @@ def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
     """
     from rsmm.cli.apply_mods import Mod, emit_content_blocks
 
+    _unvalidated_bans(monkeypatch)
     mod = tmp_path / "mods" / "T"
     mod.mkdir(parents=True)
     manifest = (
         '[mod]\nid = "T"\nname = "T"\nversion = "1"\nenabled = true\n'
-        'sdk_version = ">=3.0,<4"\n\n'
-        '[[content]]\nkind = "item"\nid = "X"\nbase = "Common/Foo"\n'
+        'sdk_version = ">=3.0,<4"\n\n' + _BAN_BLOCK
     )
     (mod / "manifest.toml").write_text(manifest, encoding="utf-8")
     emit_content_blocks([Mod(mod)])
-    emitted = mod / "assets" / "_pending_items" / "X.json"
+    emitted = mod / "assets" / "_pending_bans" / "X.json"
     assert emitted.exists(), "precondition: the good manifest emits"
     marker = mod / ".rsmm_emitted.json"
     assert marker.exists()
@@ -461,6 +472,9 @@ def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
         raise ValueError("emit exploded")
 
     monkeypatch.setattr(ContentRegistry, "emit", boom)
+    # The manifest changes too, as it did in the incident: with identical inputs
+    # the emit cache would rightly keep the last good emit and never run this.
+    (mod / "manifest.toml").write_text(manifest + 'name = "X2"\n', encoding="utf-8")
     emit_content_blocks([Mod(mod)])
 
     assert not emitted.exists(), (
@@ -574,33 +588,31 @@ def test_content_ref_handle_and_namespacing(tmp_path: Path, monkeypatch):
 def test_content_ref_deref_in_fields(tmp_path: Path, monkeypatch):
     # boss is an 'experimental' kind, so opt into experimental to register it.
     m = _builder(tmp_path, monkeypatch, experimental=True)
-    blade = m.item("FrostBlade", base="VanillaSword")
-    m.boss("IceLord", base="BabaYaga", drops=[blade])
+    crab = m.enemy("IceCrab", base="Crab")
+    m.boss("IceLord", base="BabaYaga", becomes=crab)
     bdef = next(d for d in m._content.defs if d.id == "IceLord")
-    assert bdef.fields["drops"] == ["FrostBlade"]  # ref -> raw id
+    assert bdef.fields["becomes"] == "IceCrab"  # ref -> raw id
 
 
 def test_unverified_kind_blocked_without_optin(tmp_path: Path, monkeypatch):
-    """Non-confirmed kinds (enemy/hero/map) raise unless the mod opts
+    """Non-confirmed kinds (e.g. map) raise unless the mod opts
     into experimental — so nobody ships speculative content unknowingly."""
     from rsmm.sdk.content import ContentError, kind_confidence
     m = _builder(tmp_path, monkeypatch)
     assert kind_confidence("item") == "confirmed"
-    assert kind_confidence("hero") == "experimental"
+    assert kind_confidence("map") == "experimental"
     with pytest.raises(ContentError, match="experimental"):
-        m.enemy("Goblin", base="Gnoll")
-    with pytest.raises(ContentError, match="experimental"):
-        m.hero("IceLord", base="Aladdin")
+        m.map("DarkRemix", base="Dark_Hills")
     # confirmed kinds never need the opt-in.
     m.item("Sword", base="Knife")
 
 
 def test_unverified_kind_allowed_with_optin(tmp_path: Path, monkeypatch):
     m = _builder(tmp_path, monkeypatch, experimental=True)
-    ref = m.enemy("Goblin", base="Gnoll")
-    assert ref.id == "Goblin"
+    ref = m.map("DarkRemix", base="Dark_Hills")
+    assert ref.id == "DarkRemix"
     assert m.summary()["experimental"] is True
-    assert m.summary()["content_confidence"]["enemy"] == "experimental"
+    assert m.summary()["content_confidence"]["map"] == "experimental"
 
 
 def test_duplicate_content_id_rejected(tmp_path: Path, monkeypatch):
@@ -626,6 +638,9 @@ def test_bad_tag_id_rejected(tmp_path: Path, monkeypatch):
 
 
 def test_tags_written_on_commit(tmp_path: Path, monkeypatch):
+    from rsmm.sdk.kinds import items
+    # No vanilla `Sword` to cook from; this is about tags.json, not the item.
+    monkeypatch.setattr(items, "emit", lambda mod_id, defn, out_dir: [])
     m = _builder(tmp_path, monkeypatch)
     blade = m.item("FrostBlade", base="Sword")
     m.tag("weapons/all", [blade])
@@ -715,14 +730,14 @@ def test_testkit_conflicts(tmp_path: Path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _has_uncooked() -> bool:
-    from rsmm.cli import cmd_schema
-    return cmd_schema._UNCOOKED.is_dir()
+def _has_corpus() -> bool:
+    from rsmm.engine import corpus
+    return corpus.source() != "none"
 
 
-# Uncooked game assets are gitignored (not on CI runners) — skip when absent.
+# Needs the game install or the (gitignored) mirror — neither is on CI runners.
 _needs_uncooked = pytest.mark.skipif(
-    not _has_uncooked(), reason="data/uncooked not present (run `rsmm uncook`)")
+    not _has_corpus(), reason="no game install or data/uncooked mirror")
 
 
 @_needs_uncooked
@@ -732,9 +747,19 @@ def test_schema_lists_known_bases():
     assert "Aladdin" in heroes and "Melusine" in heroes
     bosses = cmd_schema.ids_for("boss")
     enemies = cmd_schema.ids_for("enemy")
-    assert all("Boss" in b for b in bosses)        # boss = enemies w/ 'Boss'
-    assert all("Boss" not in e for e in enemies)   # enemy = the rest
+    assert "Boss_Crab" in bosses
+    assert not set(bosses) & set(enemies)          # boss = flagged Boss; enemy = the rest
     assert cmd_schema.ids_for("item")              # non-empty
+    assert "Dark_Hills/6x6_Crystal_01" in cmd_schema.ids_for("poi")
+
+
+@_needs_uncooked
+def test_schema_answers_the_same_without_the_mirror(install_only):
+    """A player's machine has no mirror; the listing must not depend on it."""
+    from rsmm.cli import cmd_schema
+    assert "Aladdin" in cmd_schema.ids_for("hero")
+    assert "Fully_Heal" in cmd_schema.ids_for("melody")
+    assert "Camp_Rewards_Dark_Hills_Update5" in cmd_schema.ids_for("reward")
 
 
 @_needs_uncooked
@@ -749,9 +774,11 @@ def test_schema_cli_summary_and_grep(capsys):
 
 
 def test_schema_missing_uncooked_returns_error(tmp_path, monkeypatch):
-    """With no uncooked data, the command exits non-zero with guidance."""
+    """With neither a game install nor the mirror, it exits non-zero with
+    guidance instead of printing empty lists."""
     from rsmm.cli import cmd_schema
-    monkeypatch.setattr(cmd_schema, "_UNCOOKED", tmp_path / "nope")
+    from rsmm.engine import corpus
+    monkeypatch.setattr(corpus, "source", lambda: "none")
     assert cmd_schema.main([]) == 1
 
 

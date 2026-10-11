@@ -12,20 +12,29 @@ from pathlib import Path
 
 import pytest
 
+from rsmm.engine import corpus
 from rsmm.sdk.content import KIND_CONFIDENCE, KINDS, ContentDef, ContentError, _load_kind
 from rsmm.sdk.kinds import melodies
 
 _BASE = "Fully_Heal"
-_BASE_GEN = melodies._MELODY_DIR / f"{_BASE}{melodies.GEN_SUFFIX}"
+_BASE_GEN = f"{melodies._MELODY_DIR}/{_BASE}{melodies.GEN_SUFFIX}"
+
+
+def _retail_gens() -> list[str]:
+    """Decoded paths of every retail melodydef (mirror or install)."""
+    return [f"{melodies._MELODY_DIR}/{st}{melodies.GEN_SUFFIX}"
+            for st in melodies.known_melodies()]
 
 
 def _require_corpus():
-    if not _BASE_GEN.is_file():
+    if not corpus.exists(_BASE_GEN):
         pytest.skip("vanilla melodies corpus not present")
 
 
-def _decode(path: Path) -> dict:
-    return json.loads(melodies.handler().decode_cooked(path.read_bytes()))
+def _decode(src: Path | str) -> dict:
+    """Decode an emitted file (a Path) or a shipped def (a decoded path)."""
+    raw = src.read_bytes() if isinstance(src, Path) else corpus.read(src)
+    return json.loads(melodies.handler().decode_cooked(raw))
 
 
 def _emit(tmp_path: Path, *, id: str = "Edit", **fields) -> list[Path]:
@@ -50,11 +59,11 @@ def test_kind_confidence_is_honest():
 def test_all_retail_melodydefs_round_trip_byte_for_byte():
     _require_corpus()
     h = melodies.handler()
-    gens = sorted(melodies._MELODY_DIR.glob(f"*{melodies.GEN_SUFFIX}"))
+    gens = _retail_gens()
     assert len(gens) == 12, "retail corpus is exactly 12 melodies"
     for g in gens:
-        raw = g.read_bytes()
-        assert h.encode_container(h.decode_cooked(raw)) == raw, g.name
+        raw = corpus.read(g)
+        assert h.encode_container(h.decode_cooked(raw)) == raw, g
 
 
 def test_field_a_is_a_dense_unique_enum_index():
@@ -62,16 +71,16 @@ def test_field_a_is_a_dense_unique_enum_index():
     so there is no free index for a 13th melody."""
     _require_corpus()
     idx = sorted(_decode(g)["field_a"]
-                 for g in melodies._MELODY_DIR.glob(f"*{melodies.GEN_SUFFIX}"))
+                 for g in _retail_gens())
     assert idx == list(range(12))
 
 
 def test_exclusion_split_join_is_identity_on_whole_corpus():
     _require_corpus()
-    for g in melodies._MELODY_DIR.glob(f"*{melodies.GEN_SUFFIX}"):
+    for g in _retail_gens():
         tail = bytes.fromhex(_decode(g)["_tail_hex"])
         prefix, names, suffix = melodies.split_exclusions(tail)
-        assert melodies.join_exclusions(prefix, names, suffix) == tail, g.name
+        assert melodies.join_exclusions(prefix, names, suffix) == tail, g
 
 
 def test_every_retail_exclusion_is_a_real_modifier_stem():
@@ -79,7 +88,7 @@ def test_every_retail_exclusion_is_a_real_modifier_stem():
     valid = set(melodies.known_modifiers())
     assert valid, "GameModifiers corpus should be present alongside melodies"
     seen: set[str] = set()
-    for g in melodies._MELODY_DIR.glob(f"*{melodies.GEN_SUFFIX}"):
+    for g in _retail_gens():
         _, names, _ = melodies.split_exclusions(bytes.fromhex(_decode(g)["_tail_hex"]))
         seen |= set(names)
     assert seen and seen <= valid

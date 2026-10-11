@@ -4,11 +4,12 @@ import { Search } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
-import { toggleOverlay } from '../lib/overlay-windows';
+import { closeOverlay, openOverlay, resetPosition, toggleOverlay } from '../lib/overlay-windows';
 import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
-import { listOverlays, restoreAll } from '../lib/rsmm';
+import { restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
 import { useLaunch } from './launch';
+import { useDeclaredOverlays } from './overlay-button';
 import { useDialog, useToast } from './toast';
 
 interface Hit {
@@ -127,13 +128,8 @@ export function CommandPalette() {
     return [...local, ...remote];
   }, [trimmedQ, installed, localMods, remoteData, t]);
 
-  const { data: overlayList } = useQuery({
-    queryKey: ['overlays'],
-    queryFn: () => listOverlays(),
-    // Only needed while the palette is open, and a stale entry is harmless.
-    staleTime: 30_000,
-    enabled: open,
-  });
+  // Only needed while the palette is open.
+  const { data: overlayList } = useDeclaredOverlays(open);
 
   const overlayActions = useMemo<PaletteAction[]>(
     () =>
@@ -167,7 +163,38 @@ export function CommandPalette() {
               }
             })();
           },
-        })),
+        }))
+        // A second entry per overlay: the way back for a window that was
+        // maximized or dragged somewhere it cannot be grabbed from.
+        .flatMap((toggle) => {
+          const o = (overlayList?.overlays ?? []).find((r) => `overlay:${r.modId}` === toggle.id);
+          if (!o) return [toggle];
+          const name = o.title ?? o.modId;
+          return [
+            toggle,
+            {
+              id: `overlay-reset:${o.modId}`,
+              label: t('Reset {name} overlay size and position', { name }),
+              keywords: `overlay hud window reset recentre fullscreen maximized ${o.modId}`,
+              hint: t('action'),
+              run: () => {
+                void (async () => {
+                  resetPosition(o.modId);
+                  await closeOverlay(o.modId);
+                  await openOverlay(o.modId);
+                  toast.push(t('{name} overlay reset.', { name }), 'success');
+                })().catch((e) =>
+                  toast.push(
+                    t('Overlay failed: {error}', {
+                      error: e instanceof Error ? e.message : String(e),
+                    }),
+                    'error',
+                  ),
+                );
+              },
+            },
+          ];
+        }),
     [overlayList, t, toast],
   );
 

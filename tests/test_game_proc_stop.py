@@ -45,7 +45,9 @@ def test_stop_kills_a_process_that_ignores_the_polite_ask(monkeypatch):
     monkeypatch.setattr(gp, "is_game_running", lambda: True)   # never exits
     monkeypatch.setattr(gp, "_pids", lambda: [4242])
     monkeypatch.setattr(gp.os, "kill", lambda pid, sig: signals.append(sig))
-    monkeypatch.setattr(gp.time, "sleep", lambda _s: None)
+    now = [0.0]      # fake clock: sleeping advances it, so the 5 s hard wait is free
+    monkeypatch.setattr(gp.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(gp.time, "sleep", lambda s: now.__setitem__(0, now[0] + s))
 
     assert gp.stop_game(grace_sec=0.01) is False   # honest: it is still there
     # Referenced through the module's own constants: Windows has no SIGKILL,

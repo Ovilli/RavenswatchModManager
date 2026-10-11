@@ -75,7 +75,7 @@ export default function ModdingGuidePage() {
 
       <div className="mx-auto max-w-3xl">
         <header className="space-y-3">
-          <h1 className="font-fraktur text-5xl text-parchment sm:text-6xl">Modding guide</h1>
+          <h1 className="font-display text-5xl text-parchment sm:text-6xl">Modding guide</h1>
           <p className="text-base text-muted-foreground">
             Everything you need to start modding Ravenswatch — how mods work, how to install them
             safely in a single click, how to make your own, and how to fix the problems people hit

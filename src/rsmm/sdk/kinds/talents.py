@@ -57,6 +57,66 @@ Fields:
                                Nothing uses the copy until a ``rewires`` entry
                                points an existing reference at it (``action`` =
                                the new name). Needs ``file``.
+    ``stats``                  table of modifier name -> the stat it changes
+                               instead (a ``data/stat_keys.json`` name or a
+                               ``0x`` key), as the item kind's ``stats``. The
+                               amount keeps its old unit. Needs ``file``.
+    ``add_stats``              list of ``{talent, stat, values, percent}``: give
+                               the talent a stat bonus it does not have, e.g.
+                               ``{talent = "Trait Fire", stat = "CD reduce
+                               trait", values = [0.10, 0.15, 0.20, 0.25]}``.
+                               ``values`` is one number, four (Common, Rare,
+                               Epic, Legendary) or a table by rarity, in the
+                               stat's own unit (0.25 on a CD stat = -25%). The
+                               card gains a ``{N}`` slot showing it (``percent``,
+                               default true, shows it x100). ``during = "DEFENSE"``
+                               (or ATTACK, POWER, SPECIAL, TRAIT, DASH) applies it
+                               only while that ability is in use; ``after =
+                               "DEFENSE", seconds = 3`` applies it for 3 s each
+                               time that ability is used (restarting on every
+                               use); add ``cooldown = 8`` to let it restart at
+                               most once every 8 s, or ``next = "ATTACK"`` to end
+                               it once ATTACK has been used ("your next ATTACK").
+                               No ``file`` needed; see
+                               ``rsmm.engine.talent_add_stat``.
+    ``scale``                  list of ``{talent, node, values, file?,
+                               percent?}``: while ``talent`` is owned, the
+                               number ``node`` (an ability's radius, length,
+                               width ...) is multiplied by ``1 + amount``,
+                               ``values`` per rarity (``0.3`` = +30%). ``node``
+                               is a value node or a multiply operation in any
+                               of the hero's entity files (``file`` narrows
+                               it); the card gains a ``{N}`` slot. When the
+                               number is in an entity the hero spawns, that
+                               entity's look grows with it (its root node's
+                               ground scale); ``visual = false`` keeps it. See
+                               ``rsmm.engine.talent_range``.
+    ``on_hit``                 list of ``{talent, damage, status, file?}``: while
+                               ``talent`` is owned, the damage record ``damage``
+                               (one of an ability's hits) also puts ``status``
+                               (Chilled, Ignite, Bleed, Vulnerable, Weak,
+                               Rooted) on whoever it hits. See
+                               ``rsmm.engine.talent_status``.
+    ``rebuild``                list of talent names whose own effect is turned
+                               OFF, keeping the card: the talent builder's blank
+                               slot. The card's number slots are cleared too, so
+                               ``add_stats`` numbers start at ``{0}``; give the
+                               card new text with a ``skill`` block. Runs before
+                               ``add_stats``.
+    ``include``                list of ``{talent, from}``: owning ``talent``
+                               also switches on ``from``'s effect (same hero),
+                               e.g. ``{talent = "Trait Active", from =
+                               "Secondary Quick Bombs"}`` gives Red's
+                               Shapeshifter Short Wick's bomb that explodes on
+                               landing. ``from``'s rarity numbers take their
+                               Common value. Add ``hero = "SunWukong"`` to take
+                               ANOTHER hero's talent: its effect is copied in
+                               and its numbers follow ``talent``'s rarity. Only
+                               talents whose effect hangs off their own state
+                               can move (9 shipped, e.g. Wukong's Power Hold,
+                               Piper's Attack Move Speed); the rest work inside
+                               their hero's abilities and are refused. Runs
+                               after ``rebuild``.
     ``int_patches``            list of ``{label, end_index, old, new}`` int32
                                writes for selector / value-union tier entries
                                that ``value_patches`` (f32, first-END only)
@@ -71,35 +131,78 @@ byte-edited entity copy). See ``docs/MOD_AUTHORING.md`` and the
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import entity_append as EA
 from ...engine import talent_values as TV
 from ...engine.entity_edit import EntityEdit
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
 #: Where vanilla hero entity files live in-repo (one subdir per hero).
-_HEROES_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
-_GEN_GLOB = "*.entity.ot.EntitySettingsResource.gen"
+_HEROES_DIR = "EntitySettings/Heroes"
+_GEN_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 #: Decoded asset-path prefix (forward-slash) the patched override is written at.
 _ASSET_PREFIX = "EntitySettings/Heroes"
 
 
-def _resolve_hero_dir(hero: str) -> Path | None:
-    """Return the ``Hero_<hero>`` dir for a hero name, case-insensitively."""
-    if not _HEROES_DIR.is_dir():
-        return None
-    low = hero.lower()
-    for d in _HEROES_DIR.glob("Hero_*"):
-        if not d.is_dir():
+@dataclass(frozen=True)
+class _HeroDir:
+    """A shipped ``EntitySettings/Heroes/Hero_<hero>`` directory, read from the
+    mirror or the install (`engine.corpus`)."""
+
+    name: str
+
+    def entity_files(self) -> list[corpus.CorpusFile]:
+        return corpus.files(f"{_HEROES_DIR}/{self.name}", _GEN_SUFFIX)
+
+
+def _inherited_files(hero_dir: _HeroDir) -> list[corpus.CorpusFile]:
+    """Hero entity files ``hero_dir``'s main entity inherits from, transitively,
+    outside its own folder.
+
+    Some talents live there and not in the hero's own files: Romeo's and
+    Juliet's shared talents (Love Shield, ...) are built in
+    ``Hero_Juliet/Hero_Romeo_Juliet_Common``, which both inherit through their
+    FX entity; the hero's own file only overrides the card's controller."""
+    from ...engine import entity_components as ECM
+    mine = {p.rel for p in hero_dir.entity_files()}
+    main = next((p for p in hero_dir.entity_files()
+                 if p.name == f"{hero_dir.name}{_GEN_SUFFIX}"), None)
+    out: list[corpus.CorpusFile] = []
+    todo, seen = ([main] if main else []), set()
+    while todo:
+        f = todo.pop()
+        try:
+            refs = ECM.parents(f.read_bytes())
+        except (OSError, ValueError):
             continue
-        stem = d.name[len("Hero_"):]
-        if stem.lower() == low or d.name.lower() == low:
-            return d
+        for ref in refs:
+            rel = ref.replace("\\", "/")
+            if not rel.startswith("Heroes/") or not rel.endswith(".entity.ot") or rel in seen:
+                continue
+            seen.add(rel)
+            parent = corpus.CorpusFile(f"EntitySettings/{rel[:-len('.entity.ot')]}{_GEN_SUFFIX}")
+            if not parent.is_file():
+                continue
+            todo.append(parent)
+            if parent.rel not in mine:
+                out.append(parent)
+    return out
+
+
+def _resolve_hero_dir(hero: str) -> _HeroDir | None:
+    """Return the ``Hero_<hero>`` dir for a hero name, case-insensitively."""
+    low = hero.lower()
+    for name in corpus.subdirs(_HEROES_DIR):
+        if not name.startswith("Hero_"):
+            continue
+        if name[len("Hero_"):].lower() == low or name.lower() == low:
+            return _HeroDir(name)
     return None
 
 
@@ -157,7 +260,7 @@ def _modifier_stat_from(hero: str, node: str) -> bytes:
     if hero_dir is None:
         raise ContentError(f"modifier_stat: no vanilla hero dir for {hero!r}")
     found = []
-    for p in sorted(hero_dir.glob(_GEN_GLOB)):
+    for p in hero_dir.entity_files():
         blob = p.read_bytes()
         if node.encode("ascii") not in blob:
             continue
@@ -174,7 +277,8 @@ def _modifier_stat_from(hero: str, node: str) -> bytes:
 
 def _label_in(cooked: bytes, label: str) -> bool:
     return any(tv.label == label
-               for tv in TV.list_talent_values(cooked, include_spawner=True))
+               for tv in TV.list_talent_values(cooked, include_spawner=True,
+                                               extra_labels=(label,)))
 
 
 def _apply_patch(cooked: bytes, label: str, old: float, new: float,
@@ -229,6 +333,219 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
                 f"rewires entry needs trigger/action (from/to), got {rw!r}")
         opts["count"] = count
         out.append((str(frm), str(to), opts))
+    return out
+
+
+def _owns_talent(raw: bytes, talent: str) -> bool:
+    """Whether ``raw`` holds ``talent``'s owned state, not only its controller."""
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    try:
+        graph = EG.parse(raw)
+        ctl = next((c for c in graph.components if c.name == f"Skill Controller {talent}"), None)
+        return ctl is not None and TA.owned_state(graph, ctl, talent) is not None
+    except (TA.AddStatError, ValueError):
+        return False
+
+
+def _coerce_add_stats(raw) -> list[dict]:
+    """Normalise ``add_stats`` entries; the values are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"add_stats must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or "stat" not in e or "values" not in e:
+            raise ContentError(f"add_stats entry needs talent, stat and values, got {e!r}")
+        during = e.get("during")
+        if during is not None and not isinstance(during, str):
+            raise ContentError(f"add_stats: during must be an ability name, got {during!r}")
+        after = e.get("after")
+        if after is not None and not isinstance(after, str):
+            raise ContentError(f"add_stats: after must be an ability name, got {after!r}")
+        nxt = e.get("next")
+        if nxt is not None and not isinstance(nxt, str):
+            raise ContentError(f"add_stats: next must be an ability name, got {nxt!r}")
+        out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
+                    "percent": bool(e.get("percent", True)), "during": during,
+                    "after": after, "seconds": e.get("seconds"),
+                    "cooldown": e.get("cooldown"), "next": nxt})
+    return out
+
+
+def _donor_file(hero: str, file: str, what: str) -> bytes:
+    d = _resolve_hero_dir(hero)
+    p = next((p for p in (d.entity_files() if d else []) if p.name == f"{file}{_GEN_SUFFIX}"), None)
+    if p is None:
+        raise ContentError(f"{what} needs the game's {file} file to copy from")
+    return p.read_bytes()
+
+
+def _apply_scale(defn, mod_id, hero_dir, scale, files, edited, home) -> None:
+    """``scale``: grow a number of an ability while a talent is owned
+    (rsmm.engine.talent_range). The factor goes in the talent's file; the number
+    may sit in another entity of the hero (a caster, a projectile), which then
+    reads the factor through a get-value node."""
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    from ...engine import talent_range as TR
+    during = _donor_file(TA.DONOR_DURING_HERO, f"Hero_{TA.DONOR_DURING_HERO}", "scale")
+    factor = _donor_file(TR.DONOR_FACTOR_HERO, TR.DONOR_FACTOR_FILE, "scale")
+    getter = _donor_file(TR.DONOR_FACTOR_HERO, TR.DONOR_GET_FILE, "scale")
+    mul = _donor_file(TR.DONOR_MUL_HERO, TR.DONOR_MUL_FILE, "scale")
+    seed = f"{mod_id}:{defn.id}"
+    main = f"{hero_dir.name}{_GEN_SUFFIX}"
+    for e in scale:
+        p = home(e["talent"])
+        want = e["file"].lower() if e["file"] else None
+        hosts = [q for q in files if (want is None or want in q.name.lower())
+                 and any(c.name == e["node"]
+                         for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
+        if len(hosts) != 1:
+            raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
+                               f"files hold a node named {e['node']!r}"
+                               + ("; give `file`" if hosts else ""))
+        q = hosts[0]
+        try:
+            TR.how_scaled(edited.get(q) or q.read_bytes(), e["node"])
+            edited[p], fac = TR.add_factor(edited.get(p) or p.read_bytes(), during, factor,
+                                           talent=e["talent"], values=e["values"], tag=e["node"],
+                                           percent=e["percent"], seed=seed)
+            name = fac.name
+            if q is not p:
+                owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
+                if not TR.reads_owner(q.read_bytes(), owner):
+                    raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
+                                       f"{hero_dir.name}, so it could not read the talent's factor")
+                if p.name != main:
+                    raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
+                                       f"scaling a number in {q.name} from there is not supported")
+                fg = next(c for c in EG.parse(edited[p]).components if c.name == fac.name)
+                name = f"Owner {fac.name}"
+                label = f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}"
+                edited[q] = TR.reader(edited.get(q) or q.read_bytes(), getter, factor_guid=fg.guid,
+                                      factor_label=label, owner_resource=owner, name=name,
+                                      seed=seed)
+            edited[q] = TR.scale_node(edited.get(q) or q.read_bytes(), mul, node=e["node"],
+                                      factor=name, seed=seed,
+                                      activate=(name,) if q is not p else ())
+            if q is not p and e["visual"]:
+                # What the spawned entity draws grows too; never the hero itself.
+                edited[q], root = TR.scale_visual(edited[q], name)
+                if root is None:
+                    _log.warning("talent %s/%s: %s has no single plain root node; only "
+                                 "the number grows, not what it draws", mod_id, defn.id, q.name)
+        except (TR.RangeError, TA.AddStatError) as err:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
+        _log.info("talent %s/%s: %s grows %s (%s); card slot {%s}", mod_id, defn.id,
+                  e["talent"], e["node"], q.name, fac.slot)
+
+
+def _coerce_on_hit(raw) -> list[dict]:
+    """Normalise ``on_hit`` entries; the damage and status are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"on_hit must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or not e.get("damage") \
+                or not e.get("status"):
+            raise ContentError(f"on_hit entry needs talent, damage and status, got {e!r}")
+        f = e.get("file")
+        if f is not None and not isinstance(f, str):
+            raise ContentError(f"on_hit: file must be an entity file name, got {f!r}")
+        out.append({"talent": str(e["talent"]), "damage": str(e["damage"]),
+                    "status": str(e["status"]), "file": f})
+    return out
+
+
+def _apply_on_hit(defn, mod_id, hero_dir, entries, files, edited, home) -> None:
+    """``on_hit``: an ability's hits also put a status on enemies while a talent
+    is owned (rsmm.engine.talent_status). A damage in the talent's own file
+    switches on the talent's owned state; one in another entity of the hero (a
+    caster, a projectile) reads an owned flag from the hero file."""
+    from ...engine import corpus
+    from ...engine import entity_graph as EG
+    from ...engine import talent_add_stat as TA
+    from ...engine import talent_range as TR
+    from ...engine import talent_status as TS
+    flag_donor = _donor_file("Melusine", TS.FLAG_DONOR_FILE, "on_hit")
+    reader_donor = _donor_file("Melusine", TS.READER_DONOR_FILE, "on_hit")
+    seed = f"{mod_id}:{defn.id}"
+    main = f"{hero_dir.name}{_GEN_SUFFIX}"
+    owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
+    for e in entries:
+        if e["status"] not in TS.DONORS:
+            raise ContentError(f"talent {defn.id}: unknown status {e['status']!r}; one of "
+                               + ", ".join(TS.STATUSES))
+        donor = corpus.read(TS.DONORS[e["status"]].rel)
+        if donor is None:
+            raise ContentError(f"talent {defn.id}: on_hit needs the game's files to copy "
+                               f"{e['status']} from")
+        p = home(e["talent"])
+        want = e["file"].lower() if e["file"] else None
+        hosts = [q for q in files if (want is None or want in q.name.lower())
+                 and any(c.name == e["damage"] and c.cls.endswith("CpntDamageSettings")
+                         for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
+        if len(hosts) != 1:
+            raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
+                               f"files hold a damage named {e['damage']!r}"
+                               + ("; give `file`" if hosts else ""))
+        q = hosts[0]
+        try:
+            if q is p:
+                g = EG.parse(edited.get(p) or p.read_bytes())
+                ctl = next(c for c in g.components
+                           if c.name == f"Skill Controller {e['talent']}")
+                switch = TA.owned_state(g, ctl, e["talent"]).name
+            else:
+                if not TR.reads_owner(q.read_bytes(), owner):
+                    raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
+                                       f"{hero_dir.name}, so it could not tell the talent is owned")
+                if p.name != main:
+                    raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
+                                       f"a status on a hit in {q.name} from there is not supported")
+                edited[p], flag = TS.add_flag(edited.get(p) or p.read_bytes(), flag_donor,
+                                              talent=e["talent"], seed=seed)
+                fg = next(c for c in EG.parse(edited[p]).components if c.name == flag)
+                switch = f"Owner {flag}"
+                edited[q] = TS.reader(edited.get(q) or q.read_bytes(), reader_donor,
+                                      flag_guid=fg.guid,
+                                      flag_label=f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}",
+                                      owner_resource=owner, name=switch, seed=seed)
+            edited[q] = TS.apply_status(edited.get(q) or q.read_bytes(), donor,
+                                        damage=e["damage"], status=e["status"], switch=switch,
+                                        talent=e["talent"], seed=seed)
+        except (TS.StatusError, TA.AddStatError) as err:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
+        _log.info("talent %s/%s: %s makes %s apply %s (%s)", mod_id, defn.id, e["talent"],
+                  e["damage"], e["status"], q.name)
+
+
+def _coerce_scale(raw) -> list[dict]:
+    """Normalise ``scale`` entries; the node and values are checked when applied."""
+    if raw is None:
+        return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ContentError(f"scale must be a list of tables, got {raw!r}")
+    out = []
+    for e in raw:
+        if not isinstance(e, dict) or not e.get("talent") or not e.get("node") or "values" not in e:
+            raise ContentError(f"scale entry needs talent, node and values, got {e!r}")
+        f = e.get("file")
+        if f is not None and not isinstance(f, str):
+            raise ContentError(f"scale: file must be an entity file name, got {f!r}")
+        out.append({"talent": str(e["talent"]), "node": str(e["node"]), "values": e["values"],
+                    "file": f, "percent": bool(e.get("percent", True)),
+                    "visual": bool(e.get("visual", True))})
     return out
 
 
@@ -287,7 +604,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if hero_dir is None:
         raise ContentError(
             f"talent {defn.id}: no vanilla hero dir for {hero!r} under "
-            f"EntitySettings/Heroes (is data/uncooked present?)")
+            f"EntitySettings/Heroes — is the game install readable?")
 
     file_filter = defn.fields.get("file")
     file_filter = str(file_filter).lower() if file_filter else None
@@ -296,13 +613,33 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     int_patches = _coerce_int_patches(defn.fields.get("int_patches"))
     union_patches = _coerce_union_patches(defn.fields.get("union_patches"))
     clone_nodes = _coerce_clone_nodes(defn.fields.get("clone_nodes"))
-    if not (patches or rewires or int_patches or union_patches or clone_nodes):
+    from .items import _coerce_stats
+    stats = _coerce_stats(defn.id, defn.fields.get("stats"))
+    add_stats = _coerce_add_stats(defn.fields.get("add_stats"))
+    scale = _coerce_scale(defn.fields.get("scale"))
+    on_hit = _coerce_on_hit(defn.fields.get("on_hit"))
+    rebuild = defn.fields.get("rebuild") or []
+    if isinstance(rebuild, str):
+        rebuild = [rebuild]
+    if not isinstance(rebuild, list) or not all(isinstance(t, str) and t for t in rebuild):
+        raise ContentError(f"talent {defn.id}: rebuild must be a list of talent names")
+    include = defn.fields.get("include") or []
+    if isinstance(include, dict):
+        include = [include]
+    if not isinstance(include, list) or not all(
+            isinstance(e, dict) and isinstance(e.get("talent"), str) and e["talent"]
+            and isinstance(e.get("from"), str) and e["from"]
+            and isinstance(e.get("hero", ""), str) for e in include):
+        raise ContentError(f"talent {defn.id}: include must be a list of "
+                           "{talent, from[, hero]} talent names")
+    if not (patches or rewires or int_patches or union_patches or clone_nodes or stats
+            or add_stats or rebuild or include or scale or on_hit):
         raise ContentError(
-            f"talent {defn.id}: no value_patches, union_patches, rewires, "
-            f"clone_nodes or int_patches given")
+            f"talent {defn.id}: no value_patches, union_patches, rewires, clone_nodes, "
+            f"stats, add_stats, scale, on_hit, rebuild, include or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
-    candidates = [p for p in sorted(hero_dir.glob(_GEN_GLOB))
+    candidates = [p for p in hero_dir.entity_files()
                   if file_filter is None or file_filter in p.name.lower()]
     if not candidates:
         raise ContentError(
@@ -315,11 +652,137 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # Another talent block in this mod may already have written the same entity
     # during this emit (the previous emit's files are removed before any block
     # runs). Start from that copy, or this block silently discards its edits.
-    edited: dict[Path, bytes] = {}
-    for p in candidates:
-        earlier = out_dir / Path(*f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}".split("/"))
+    # The talent builder (add_stats / include / rebuild) also reaches the hero
+    # files this hero inherits (see _inherited_files); the label-based patches
+    # keep to the hero's own files, as before.
+    builder_files = candidates + ([] if file_filter else
+                                  [p for p in _inherited_files(hero_dir)
+                                   if add_stats or rebuild or include or scale
+                                   or on_hit])
+    edited: dict[corpus.CorpusFile, bytes] = {}
+    for p in builder_files:
+        earlier = out_dir / Path(*p.rel.split("/"))
         if earlier.is_file():
             edited[p] = earlier.read_bytes()
+
+    # add_stats find their own file (the one holding the talent's controller),
+    # and like clones they grow the file, so they run before the length-
+    # preserving edits.
+    def _home(talent: str):
+        ctl = f"Skill Controller {talent}".encode()
+        homes = [p for p in builder_files if ctl in (edited.get(p) or p.read_bytes())]
+        if len(homes) > 1:
+            # A hero's own file can override an inherited talent's controller
+            # (Romeo's Love Shield); the talent is built where its owned state is.
+            homes = [p for p in homes if _owns_talent(edited.get(p) or p.read_bytes(), talent)]
+        if len(homes) != 1:
+            raise ContentError(f"talent {defn.id}: {len(homes)} of {hero}'s entity files "
+                               f"hold a talent named {talent!r}")
+        return homes[0]
+
+    if rebuild:
+        from ...engine import talent_add_stat as TA
+        for talent in rebuild:
+            p = _home(talent)
+            overrides = [q.name for q in candidates if q is not p
+                         and f"Skill Controller {talent}".encode() in (edited.get(q)
+                                                                         or q.read_bytes())]
+            if p not in candidates and overrides:
+                raise ContentError(
+                    f"talent {defn.id}: {talent!r} is built in {p.name} and its card is "
+                    f"overridden in {', '.join(overrides)}, which would keep its effect on; "
+                    "rebuild cannot turn an inherited talent off yet")
+            try:
+                edited[p], cleared = TA.rebuild_talent(edited.get(p) or p.read_bytes(),
+                                                       talent=talent, seed=f"{mod_id}:{defn.id}")
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s rebuilt (its effect is off; %d card number(s) "
+                      "cleared)", mod_id, defn.id, talent, cleared)
+
+    for entry in include:
+        from ...engine import talent_add_stat as TA
+        p = _home(entry["talent"])
+        donor_dir = _resolve_hero_dir(entry["hero"]) if entry.get("hero") else hero_dir
+        if donor_dir is None:
+            raise ContentError(f"talent {defn.id}: no hero {entry['hero']!r} to include from")
+        if donor_dir != hero_dir:
+            # Another hero's talent: its effect is copied into this file.
+            donor_files = donor_dir.entity_files() + _inherited_files(donor_dir)
+            ctl = f"Skill Controller {entry['from']}".encode()
+            homes = [q for q in donor_files if ctl in q.read_bytes()
+                     and _owns_talent(q.read_bytes(), entry["from"])]
+            if len(homes) != 1:
+                raise ContentError(f"talent {defn.id}: {len(homes)} of {donor_dir.name}'s "
+                                   f"entity files hold a talent named {entry['from']!r}")
+            try:
+                edited[p] = TA.borrow_talent(
+                    edited.get(p) or p.read_bytes(), homes[0].read_bytes(),
+                    talent=entry["talent"], other=entry["from"],
+                    hero=donor_dir.name[len("Hero_"):], seed=f"{mod_id}:{defn.id}",
+                    readers=[q.read_bytes() for q in donor_files if q is not homes[0]])
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s now also runs %s's %s", mod_id, defn.id,
+                      entry["talent"], donor_dir.name, entry["from"])
+            continue
+        if _home(entry["from"]) != p:
+            raise ContentError(f"talent {defn.id}: {entry['talent']!r} and {entry['from']!r} "
+                               "are in different entity files")
+        try:
+            edited[p] = TA.include_talent(edited.get(p) or p.read_bytes(),
+                                          talent=entry["talent"], other=entry["from"])
+        except TA.AddStatError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+        _log.info("talent %s/%s: %s now also runs %s", mod_id, defn.id,
+                  entry["talent"], entry["from"])
+
+    if add_stats:
+        from ...engine import talent_add_stat as TA
+        donor_dir = _resolve_hero_dir(TA.DONOR_HERO)
+        donor = next((p for p in (donor_dir.entity_files() if donor_dir else [])
+                      if p.name == f"Hero_{TA.DONOR_HERO}{_GEN_SUFFIX}"), None)
+        if donor is None:
+            raise ContentError(f"talent {defn.id}: add_stats needs the game's "
+                               f"{TA.DONOR_HERO} files to copy a modifier from")
+        during_donor = None
+        if any(e["during"] or e["after"] for e in add_stats):
+            ddir = _resolve_hero_dir(TA.DONOR_DURING_HERO)
+            during_donor = next((p for p in (ddir.entity_files() if ddir else [])
+                                 if p.name == f"Hero_{TA.DONOR_DURING_HERO}{_GEN_SUFFIX}"), None)
+            if during_donor is None:
+                raise ContentError(f"talent {defn.id}: 'during'/'after' need the game's "
+                                   f"{TA.DONOR_DURING_HERO} files to copy a selector from")
+        limiter_donor = None
+        if any(e["cooldown"] is not None for e in add_stats):
+            ldir = _resolve_hero_dir(TA.DONOR_LIMITER_HERO)
+            limiter_donor = next((p for p in (ldir.entity_files() if ldir else [])
+                                  if p.name == f"{TA.DONOR_LIMITER_FILE}{_GEN_SUFFIX}"), None)
+            if limiter_donor is None:
+                raise ContentError(f"talent {defn.id}: 'cooldown' needs the game's "
+                                   f"{TA.DONOR_LIMITER_FILE} file to copy a gate from")
+        for entry in add_stats:
+            p = _home(entry["talent"])
+            try:
+                edited[p], added = TA.add_stat(
+                    edited.get(p) or p.read_bytes(), donor.read_bytes(),
+                    talent=entry["talent"], stat=entry["stat"], values=entry["values"],
+                    percent=entry["percent"], seed=f"{mod_id}:{defn.id}",
+                    during=entry["during"], after=entry["after"], seconds=entry["seconds"],
+                    during_donor_raw=(during_donor.read_bytes()
+                                      if entry["during"] or entry["after"] else None),
+                    cooldown=entry["cooldown"], next_ability=entry["next"],
+                    limiter_donor_raw=(limiter_donor.read_bytes()
+                                       if entry["cooldown"] is not None else None))
+            except TA.AddStatError as e:
+                raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            _log.info("talent %s/%s: %s gets %s; card slot {%s}", mod_id, defn.id,
+                      entry["talent"], entry["stat"], added.slot)
+
+    if scale:
+        _apply_scale(defn, mod_id, hero_dir, scale, builder_files, edited, _home)
+    if on_hit:
+        _apply_on_hit(defn, mod_id, hero_dir, on_hit, builder_files, edited, _home)
 
     # Clones change the file's structure (a new record, a longer component
     # vector), so they go first: every later edit re-reads the grown file, and
@@ -337,6 +800,23 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 key = _modifier_stat_from(*stat) if stat else None
                 cur = EA.clone_component(cur, source, name, retarget, rename, key)
         except EA.EntityAppendError as e:
+            raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+        edited[p] = cur
+    # Which stat a modifier changes: 4 bytes inside the modifier, so any order
+    # works; it is pinned to one file because modifier names repeat across them.
+    if stats:
+        if len(candidates) != 1:
+            raise ContentError(
+                f"talent {defn.id}: stats need `file` to select exactly one "
+                f"entity file (matched {len(candidates)}: "
+                f"{[p.name for p in candidates]})")
+        from ...engine import item_modifier as IM
+        p = candidates[0]
+        cur = edited.get(p) or p.read_bytes()
+        try:
+            for modifier, stat in stats.items():
+                cur = IM.set_modifier_stat(cur, modifier, stat)
+        except IM.ItemModifierError as e:
             raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
         edited[p] = cur
     for label, old, new, clear in patches:
@@ -395,7 +875,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     written: list[Path] = []
     for p, blob in edited.items():
-        decoded = f"{_ASSET_PREFIX}/{hero_dir.name}/{p.name}"
+        decoded = p.rel
         dest = out_dir / Path(*decoded.split("/"))
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)

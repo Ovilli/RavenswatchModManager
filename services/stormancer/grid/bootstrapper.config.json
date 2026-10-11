@@ -1,0 +1,11 @@
+{
+  "includePrereleases": false,
+  "packageSources": [
+    "https://api.nuget.org/v3/index.json"
+  ],
+  "plugins": {
+    "Stormancer.Server.Node": "9.2.2.4",
+    "Stormancer.Logging.Nlog": "1.2.2.2",
+    "Stormancer.Management.CLI": "1.0.0.3"
+  }
+}

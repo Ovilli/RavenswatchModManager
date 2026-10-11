@@ -47,6 +47,7 @@ from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
+    BACKUP_SUFFIX,
     COOKING_SUBDIR,
     DATA_DIR,
     DIST_DIR,
@@ -182,7 +183,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
     # first registration, which is the thing whose age actually answers "did the
     # game update". Same source `find_iyg` and `game_fingerprint` already prefer.
     used = game_dir / "DarkTalesResources" / "UsedRscList.ot"
-    pristine = used.with_name(used.name + ".rsmm.bak")
+    pristine = used.with_name(used.name + BACKUP_SUFFIX)
     probe = pristine if pristine.exists() else used
     # An mtime is only a TRIGGER, never the verdict. A Steam verify touches every
     # game file without changing a byte, so the timestamp alone reported a stale
@@ -205,8 +206,7 @@ def check_asset_map(game_dir: Path) -> list[Result]:
         else:
             out.append(Result("OK", "asset_map.json covers the game's manifest"))
         return out
-    else:
-        out.append(Result("OK", "asset_map.json is fresh"))
+    out.append(Result("OK", "asset_map.json is fresh"))
     return out
 
 
@@ -761,6 +761,39 @@ def check_mods() -> list[Result]:
     return out
 
 
+def check_raw_overrides(game_dir: Path | None = None) -> list[Result]:
+    """Enabled mods shipping a whole game file a declarative block could
+    replace (STRATEGY §8's override ladder). `rsmm lint <id>` prints the block.
+    """
+    from rsmm.cli.patch_suggest import suggest_for_mod
+
+    if not MODS_DIR.is_dir():
+        return []
+    if game_dir is not None and not game_dir.is_dir():
+        game_dir = None
+    out: list[Result] = []
+    for entry in sorted(MODS_DIR.iterdir()):
+        if not entry.is_dir() or entry.name.startswith(("_", ".")):
+            continue
+        try:
+            meta = _toml_load(entry / "manifest.toml").get("mod", {})
+        except (OSError, ValueError):
+            continue                       # check_mods reports a bad manifest
+        raw = meta.get("enabled", True) if isinstance(meta, dict) else True
+        if not (raw if isinstance(raw, bool)
+                else str(raw).lower() in ("1", "true", "yes", "on")):
+            continue
+        for sg in suggest_for_mod(entry, game_dir=game_dir):
+            name = sg.decoded.rsplit("/", 1)[-1]
+            how = (f"`rsmm lint {entry.name}` prints the exact block" if sg.exact
+                   else "use " + sg.note)
+            out.append(Result("WARN", f"{entry.name}: ships a whole copy of {name}",
+                              f"{sg.note}; {how}" if sg.exact else how,
+                              code="raw-overrides.patchable"))
+    return out or [Result("OK", "no whole-file override a [[patch]] or "
+                                "[[content]] block could replace")]
+
+
 def check_patch_conflicts() -> list[Result]:
     out: list[Result] = []
     patches = collect_patches()
@@ -777,11 +810,6 @@ def check_patch_conflicts() -> list[Result]:
         elif p.kind == "texture":
             key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
             by_key.setdefault(key, {})[p.mod_id] = p.data.get("donor")
-        elif p.kind in {"url", "text"}:
-            key = (p.kind,) + tuple(
-                str(p.data.get(k, "")) for k in
-                (["field"] if p.kind == "url" else ["bank", "lang", "key"]))
-            by_key.setdefault(key, {})[p.mod_id] = p.data.get("value")
     n_total = sum(1 for v in by_key.values() if len({repr(x) for x in v.values()}) > 1)
     if n_total == 0:
         out.append(Result("OK", f"{len(patches)} [[patch]] block(s), no same-field conflicts"))
@@ -945,7 +973,8 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
     desync (e.g. a partial write or hand-edit) hard-crashes the game at boot.
     Also reports how many custom record lines rsmm has registered on top of
     the pristine backup, and flags drift that rsmm did not produce."""
-    from rsmm.cli.apply_mods import BACKUP_SUFFIX, USEDRSCLIST_REL, _read_usedrsclist
+    from rsmm.engine.paths import USEDRSCLIST_REL
+    from rsmm.engine.usedrsclist import _read_usedrsclist
     path = game_dir / USEDRSCLIST_REL
     if not path.exists():
         return [Result("WARN", f"UsedRscList.ot not found: {path}",
@@ -969,7 +998,7 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
         try:
             _bh, base = _read_usedrsclist(bak)
         except (OSError, ValueError) as e:
-            return out + [Result("WARN", "UsedRscList.ot backup unreadable", str(e))]
+            return [*out, Result("WARN", "UsedRscList.ot backup unreadable", str(e))]
         extra = len(lines) - len(base)
         if extra < 0:
             out.append(Result("WARN",
@@ -1031,6 +1060,7 @@ def _checks() -> list[Check]:
         Check("patch-conflicts", "patch conflicts",
               lambda _g: check_patch_conflicts() or
               [Result("OK", "no [[patch]] blocks in any mod")]),
+        Check("raw-overrides", "whole-file overrides", check_raw_overrides),
         Check("compat-graph", "compatibility graph", lambda _g: check_compat_graph()),
         Check("exe-hash", "game executable", check_exe_hash),
         Check("state", "applier state", check_state),

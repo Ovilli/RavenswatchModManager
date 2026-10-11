@@ -65,8 +65,12 @@ def test_emit_writes_clone_cache_and_chapter(tmp_path):
         f"Definitions/GameModes/All_Chapters{MC.MODE_GEN_SUFFIX}",
         "Definitions/Maps/Twilight_Hills.mapdef.UsedRscCache.ot",
         f"Definitions/Maps/Twilight_Hills{MC.MAP_GEN_SUFFIX}",
+        "Ot/DarkHills/Map_Twilight_Hills.level.ot.GameStream.gen",
+        "Ot/DarkHills/Map_Twilight_Hills_TileGeneration.level.ot.GameStream.gen",
     ]
     cache = RC.parse((tmp_path / rel[2]).read_bytes())
+    assert "Ot|DarkHills\\Map_Twilight_Hills_TileGeneration.level.ot|oCGameStream" in cache
+    assert not any("Map_Dark_Hills_LiveOps_Update5" in ln for ln in cache)
     assert cache == sorted(cache), "the engine looks lines up; the cache must stay sorted"
     assert "Definitions|Maps\\Twilight_Hills.mapdef.ot|oCDtMapDefinition" in cache
     assert "Definitions|Maps\\Dark_Hills_LiveOps_Update5.mapdef.ot|oCDtMapDefinition" not in cache
@@ -97,3 +101,45 @@ def test_shipped_names_cannot_be_reused(tmp_path):
     with pytest.raises(ContentError):
         maps.emit("m", ContentDef(kind="map", id="Dark_Hills_LiveOps_Update5",
                                   fields={"base": "Dark_Hills"}), tmp_path)
+
+
+@needs_corpus
+def test_clone_generates_from_its_own_pool(tmp_path):
+    """mapdef -> own root level -> own tilegen level -> backref to the CLONE.
+    Reusing the base's tilegen level made the clone place the base's pool."""
+    from rsmm.engine import prop_cook as PC
+
+    maps.emit("m", ContentDef(kind="map", id="Twilight_Hills",
+                              fields={"base": "Dark_Hills"}), tmp_path)
+
+    def refs(rel):
+        return PC._refs_doc("oCGameStream", (tmp_path / rel).read_bytes())[1]["asset_refs"]
+
+    mapdef = MC.read_mapdef((tmp_path / "Definitions/Maps" /
+                             f"Twilight_Hills{MC.MAP_GEN_SUFFIX}").read_bytes())
+    root_ref = "DarkHills\\Map_Twilight_Hills.level.ot"
+    tg_ref = "DarkHills\\Map_Twilight_Hills_TileGeneration.level.ot"
+    assert mapdef["level_ref"] == ["Ot", root_ref]
+    root = refs(PC.level_cooked_path(root_ref))
+    assert root[0] == root_ref and tg_ref in root
+    assert "DarkHills\\Map_Dark_Hills_Terrain.level.ot" not in root  # via tilegen
+    tg = refs(PC.level_cooked_path(tg_ref))
+    assert "Maps\\Twilight_Hills.mapdef.ot" in tg
+    assert "Maps\\Dark_Hills_LiveOps_Update5.mapdef.ot" not in tg
+    assert "DarkHills\\Map_Dark_Hills_Terrain.level.ot" in tg        # terrain shared
+    # Own identity: a level keeping its donor's GUID never registers.
+    for ref in (root_ref, tg_ref):
+        assert PC.level_guid((tmp_path / PC.level_cooked_path(ref)).read_bytes()) \
+            not in {PC.level_guid(b) for b in (
+                DATA_DIR.joinpath("uncooked", PC.level_cooked_path(
+                    "DarkHills\\Map_Dark_Hills_LiveOps_Update5.level.ot")).read_bytes(),
+                DATA_DIR.joinpath("uncooked", PC.level_cooked_path(
+                    "DarkHills\\Map_Dark_Hills_LiveOps_Update5_TileGeneration.level.ot"
+                )).read_bytes())}
+
+
+@needs_corpus
+def test_a_map_without_tile_generation_reuses_its_levels(tmp_path):
+    files = maps.emit("m", ContentDef(kind="map", id="Other_Hut",
+                                      fields={"base": "Baba_Yaga"}), tmp_path)
+    assert not any(f.name.endswith(".level.ot.GameStream.gen") for f in files)

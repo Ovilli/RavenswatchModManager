@@ -1,6 +1,6 @@
 import starlight from '@astrojs/starlight';
-import { defineConfig, passthroughImageService } from 'astro/config';
 import mermaid from 'astro-mermaid';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
 
 export default defineConfig({
@@ -45,25 +45,60 @@ export default defineConfig({
         // AI-assistant ingestion (https://llmstxt.org/). `llms-mods.txt` is
         // advertised alongside the index because it, not the full corpus, is
         // what an assistant building a mod should actually pull.
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' } },
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-mods.txt', href: '/llms-mods.txt' } },
-        { tag: 'link', attrs: { rel: 'alternate', type: 'text/plain', title: 'llms-full.txt', href: '/llms-full.txt' } },
+        {
+          tag: 'link',
+          attrs: { rel: 'alternate', type: 'text/plain', title: 'llms.txt', href: '/llms.txt' },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'text/plain',
+            title: 'llms-mods.txt',
+            href: '/llms-mods.txt',
+          },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'text/plain',
+            title: 'llms-full.txt',
+            href: '/llms-full.txt',
+          },
+        },
       ],
       editLink: {
         baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
       },
-      social: {
-        github: 'https://github.com/Ovilli/RavenswatchModManager',
-      },
-      plugins: [starlightLinksValidator({ errorOnRelativeLinks: false })],
+      social: [
+        {
+          icon: 'github',
+          label: 'GitHub',
+          href: 'https://github.com/Ovilli/RavenswatchModManager',
+        },
+      ],
+      // /editor/ is a standalone Astro page (the web editor), not a Starlight doc.
+      plugins: [starlightLinksValidator({ errorOnRelativeLinks: false, exclude: ['/editor/'] })],
       sidebar: [
         {
-          label: 'Getting started',
+          label: 'Playing with mods',
           items: [
-            { label: 'Installation', slug: 'getting-started/install' },
-            { label: 'Desktop app guide', slug: 'getting-started/desktop-app' },
-            { label: 'Your first mod', slug: 'getting-started/first-mod' },
+            { label: 'Start here', slug: 'getting-started/start-here' },
+            { label: 'Install the app', slug: 'getting-started/install' },
+            { label: 'Using the app', slug: 'getting-started/desktop-app' },
+            { label: 'FAQ', slug: 'getting-started/faq' },
             { label: 'Troubleshooting', slug: 'getting-started/troubleshooting' },
+          ],
+        },
+        {
+          label: 'Making mods',
+          items: [
+            { label: 'Make your first mod', slug: 'getting-started/first-mod' },
+            { label: 'Set up the modding tools', slug: 'getting-started/modding-tools' },
+            { label: 'Web editor (in your browser)', slug: 'guides/web-editor' },
+            { label: 'First mod, by kind', slug: 'guides/first-mod-by-kind' },
+            { label: 'Example mods', slug: 'guides/examples' },
           ],
         },
         {
@@ -82,7 +117,6 @@ export default defineConfig({
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
             { label: 'Build a mod with an AI assistant', slug: 'guides/ai-assistant' },
-            { label: 'Example mods', slug: 'guides/examples' },
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
             { label: 'Talent modding, step by step', slug: 'guides/talent-tutorial' },
@@ -105,15 +139,15 @@ export default defineConfig({
           items: [
             { label: 'CLI commands', slug: 'reference/cli' },
             { label: 'Conventions & best practices', slug: 'reference/conventions' },
+            { label: 'Lua gameplay API', slug: 'reference/lua-api' },
             { label: 'Engine symbols', slug: 'reference/symbols' },
             { label: 'Glossary', slug: 'reference/glossary' },
-            { label: 'Enemy encyclopedia', slug: 'reference/enemy-catalog' },
             { label: 'Talent name lookup', slug: 'reference/talent-names' },
             { label: 'Security', slug: 'reference/security' },
             {
               label: 'SDK API (generated)',
               collapsed: true,
-              autogenerate: { directory: 'reference/sdk-api' },
+              items: [{ autogenerate: { directory: 'reference/sdk-api' } }],
             },
           ],
         },

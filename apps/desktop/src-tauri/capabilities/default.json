@@ -33,17 +33,6 @@
     "core:webview:allow-create-webview-window",
     "core:event:default",
     {
-      "identifier": "shell:allow-open",
-      "allow": [
-        {
-          "url": "https://github.com/Ovilli/RavenswatchModManager/**"
-        },
-        {
-          "url": "https://api.rsmm.me/**"
-        }
-      ]
-    },
-    {
       "identifier": "shell:allow-execute",
       "allow": [
         {

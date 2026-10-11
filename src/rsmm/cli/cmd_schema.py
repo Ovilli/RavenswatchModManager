@@ -1,10 +1,13 @@
-"""rsmm schema — list cloneable vanilla content ids.
+"""rsmm schema — list the vanilla ids a content kind's ``base`` accepts.
 
-The typed SDK builders (``m.item``/``m.enemy``/``m.boss``/``m.map``/
-``m.hero``) all clone a vanilla ``base``. This command enumerates the
-valid ``base`` ids by scanning ``data/uncooked`` so authors don't have to
-guess. Ids are the uncooked definition/entity filenames with their
-type suffix stripped.
+Every kind that clones or edits a shipped definition names it with ``base``.
+This command lists the valid values so authors don't have to guess, and
+`rsmm lint` checks ``base`` against the same lists.
+
+The ids come from the same lookups the kinds use, read through
+`rsmm.engine.corpus` — the ``data/uncooked`` mirror on an authoring checkout,
+the game install everywhere else. (This command used to read only the mirror's
+decoded ``*.json`` files, so on a player's machine it listed nothing.)
 
     rsmm schema                 # counts per kind
     rsmm schema hero            # every hero base id
@@ -14,52 +17,77 @@ type suffix stripped.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
-from rsmm.engine.paths import DATA_DIR
+from rsmm.engine import corpus
 
-_UNCOOKED = DATA_DIR / "uncooked"
+_MO_DIR = "EntitySettings/Objects/Magical_Objects/"
+_MO_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 
-# kind -> (glob under data/uncooked, suffix to strip from the stem, filter fn)
-_SOURCES: dict[str, tuple[str, str]] = {
-    "hero":  ("Definitions/Heroes/*.herodef.json",   ".herodef"),
-    "enemy": ("Definitions/Enemies/*.enemydef.json", ".enemydef"),
-    "boss":  ("Definitions/Enemies/*.enemydef.json", ".enemydef"),
-    "map":   ("Definitions/Maps/*.mapdef.json",      ".mapdef"),
-    "item":  ("EntitySettings/Objects/Magical_Objects/**/*.entity.entitysettings.json",
-              ".entity.entitysettings"),
+
+def _heroes() -> list[str]:
+    return corpus.stems("Definitions/Heroes", ".herodef.ot.DtHeroDefinition.gen")
+
+
+def _bosses() -> list[str]:
+    from rsmm.sdk.kinds import bosses
+    return sorted(bosses._boss_defs())
+
+
+def _enemies() -> list[str]:
+    from rsmm.engine import enemy_pools as EP
+    return sorted(set(EP.enemy_index()) - set(_bosses()))
+
+
+def _maps() -> list[str]:
+    from rsmm.sdk.kinds import maps
+    return sorted(maps.BASES)
+
+
+def _items() -> list[str]:
+    return sorted({r.rsplit("/", 1)[-1][: -len(_MO_SUFFIX)]
+                   for r in corpus.rels(_MO_DIR, _MO_SUFFIX)})
+
+
+def _tiles() -> list[str]:
+    from rsmm.sdk.kinds import poi
+    return poi.known_tiles()
+
+
+def _stems(directory: str, suffix: str) -> Callable[[], list[str]]:
+    return lambda: corpus.stems(directory, suffix)
+
+
+#: kind -> the ids its ``base`` field accepts.
+SOURCES: dict[str, Callable[[], list[str]]] = {
+    "hero": _heroes,
+    "enemy": _enemies,
+    "boss": _bosses,
+    "map": _maps,
+    "item": _items,
+    "poi": _tiles,
+    "game_mode": _stems("Definitions/GameModes",
+                        ".gamemodedefaultdef.ot.meModeDefaultDefinition.gen"),
+    "reward": _stems("Definitions/Rewards", ".rewarddef.ot.DtRewardDefinition.gen"),
+    "melody": _stems("Definitions/Melodies", ".melodydef.ot.lodyDefinition.gen"),
+    "modifier": _stems("Definitions/GameModifiers",
+                       ".gamemodifierdef.ot.meModifierDefinition.gen"),
 }
 
-_KINDS = tuple(_SOURCES)
+_KINDS = tuple(SOURCES)
 
 _USAGE = (
     f"usage: rsmm schema [{'|'.join(_KINDS)}] [--grep TEXT]\n"
     "\n"
-    "List cloneable vanilla `base` ids for the typed SDK builders.\n"
+    "List the vanilla ids each content kind's `base` accepts.\n"
     "No kind => a per-kind count summary.\n"
 )
 
 
-def _clean(stem: str, strip: str) -> str:
-    name = stem
-    # ``*.entity.entitysettings.json`` -> Path.stem is ``*.entity.entitysettings``
-    if name.endswith(strip):
-        name = name[: -len(strip)]
-    return name
-
-
 def ids_for(kind: str) -> list[str]:
-    """Sorted base ids for one kind. ``boss`` = enemies whose id contains
-    'Boss'; ``enemy`` = the rest."""
-    glob, strip = _SOURCES[kind]
-    out: set[str] = set()
-    for p in _UNCOOKED.glob(glob):
-        name = _clean(p.name[: -len(".json")] if p.name.endswith(".json") else p.stem, strip)
-        out.add(name)
-    if kind == "boss":
-        out = {n for n in out if "Boss" in n}
-    elif kind == "enemy":
-        out = {n for n in out if "Boss" not in n}
-    return sorted(out)
+    """Sorted valid ``base`` ids for one kind; empty when neither the game
+    install nor the mirror is readable."""
+    return SOURCES[kind]()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,15 +112,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         i += 1
 
-    if not _UNCOOKED.is_dir():
-        print(f"no uncooked data at {_UNCOOKED} — run `rsmm uncook` first?",
-              file=sys.stderr)
+    if corpus.source() == "none":
+        print("no game install found (and no data/uncooked mirror) — set "
+              "RSMM_GAME_DIR to your Ravenswatch folder.", file=sys.stderr)
         return 1
 
     if kind is None:
-        print("Cloneable vanilla base ids (use `rsmm schema <kind>`):\n")
+        print("Valid `base` ids per content kind (use `rsmm schema <kind>`):\n")
         for k in _KINDS:
-            print(f"  {k:6} {len(ids_for(k)):>4}")
+            print(f"  {k:9} {len(ids_for(k)):>4}")
         return 0
 
     ids = ids_for(kind)

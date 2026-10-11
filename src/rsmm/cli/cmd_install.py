@@ -75,7 +75,7 @@ def _fetch(url_or_path: str) -> bytes:
             with open(url_or_path, "rb") as f:
                 return net.read_capped(f, url_or_path)
         _check_url(url_or_path)
-        with urllib.request.urlopen(  # noqa: S310 — scheme checked by _check_url
+        with urllib.request.urlopen(
             url_or_path, timeout=net.DEFAULT_TIMEOUT
         ) as r:
             return net.read_capped(r, url_or_path)

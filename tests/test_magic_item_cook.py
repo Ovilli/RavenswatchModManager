@@ -80,7 +80,7 @@ def test_replace_lstr_unanchored_substring_not_matched():
 
 
 def test_find_lstrings():
-    found = dict((t, off) for off, t in C.find_lstrings(_blob()))
+    found = {t: off for off, t in C.find_lstrings(_blob())}
     assert "Green_Armor" in found
     assert "Objects\\UI_Object_GreenArmor.png" in found
     icons = C.find_lstrings(_blob(), contains="png")
@@ -318,16 +318,17 @@ def test_sdk_custom_png_icon_cooks_texture(tmp_path):
     icon repointed at it."""
     pytest.importorskip("rsmm.sdk.content")
     from rsmm.engine.image import encode_png
-    from rsmm.sdk.content import ContentRegistry
+    from rsmm.sdk.content import ContentRegistry, SchemaNotMined
     root = tmp_path / "mod"
     root.mkdir()
     (root / "myicon.png").write_bytes(encode_png(4, 4, bytes([0, 0, 200, 255]) * 16))
     cr = ContentRegistry(mod_id="IconMod")
     cr.register("item", id="Custom_Icon_Item", base="Armor_Per_Object",
                 icon="myicon.png")
-    written = cr.emit(root / "assets")
-    if not any("Custom_Icon_Item.entity" in p.name for p in written):
-        pytest.skip("data/uncooked base not available")
+    try:
+        written = cr.emit(root / "assets")
+    except SchemaNotMined:
+        pytest.skip("no game install or mirror to clone the base from")
     tex = [p for p in written if "Texture.dxt" in p.name]
     assert tex, "custom PNG should cook into a Texture.dxt"
     ent = next(p for p in written if "Custom_Icon_Item.entity" in p.name)
@@ -382,3 +383,132 @@ def test_remint_identity_noop_when_absent():
     blob = _blob_with_identity(bytes(range(0x40, 0x50)), "Armor_Per_Object")
     # id not present -> unchanged, never raises
     assert C.remint_identity_guid(blob, "Missing_Id", salt="x") == blob
+
+
+def _text_ref(key: str, row: int) -> bytes:
+    return (_lstr("Text") + _lstr("Magical_Objects~GAM.xls") + struct.pack("<I", row)
+            + _lstr(key))
+
+
+def _named_item(item_id: str) -> bytes:
+    return (_node(_guid(0xAA), "oCEntitySettingsResource")
+            + _node(_guid(0xB4), f"[Value] {item_id}\\X")
+            + _node(_guid(0xB5), "Armor per Object Value")
+            + struct.pack("<f", 2.0) + b"\x22\x22\xbb\xaa"
+            + _text_ref(f"{item_id}_Name", 0) + _text_ref(f"{item_id}_Description", 1))
+
+
+def _install_bank(tmp_path):
+    from rsmm.engine.text_patches import lang_path_for
+    base = tmp_path / "Magical_Objects~GAM.xls.LocalText.gen"
+    _write_bank(base, ["Base_Item_Idxx_Name", "Base_Item_Idxx_Description"])
+    _write_bank(lang_path_for(base, "EN"), ["Old Name", "Old Desc"])
+    return base
+
+
+def test_a_replacement_keeps_the_id_and_rewrites_the_bases_own_text(tmp_path):
+    from rsmm.engine.text_patches import parse_text_bytes
+    bank = _install_bank(tmp_path)
+    ent = _named_item("Base_Item_Idxx")
+    files = C.build_magic_item(
+        new_id="Base_Item_Idxx", base_id="Base_Item_Idxx", base_cooked=ent, corpus=[],
+        rarity="Epic", name="New Name",
+        value_patches=[("Armor per Object Value", 2.0, 50.0)],
+        bank_base_gen=bank, replace=True)
+    out = files["EntitySettings/Objects/Magical_Objects/Epic/"
+                "Base_Item_Idxx.entity.ot.EntitySettingsResource.gen"]
+    assert out == ent.replace(struct.pack("<f", 2.0), struct.pack("<f", 50.0))
+    # No key was added, so the keys file is not rewritten; the value is, in place.
+    assert C.MAGIC_TEXT_BANK not in files
+    en = parse_text_bytes(files[C.MAGIC_TEXT_BANK + ".LangEN"], bank)
+    assert en.entries == ["New Name", "Old Desc"]
+
+
+def test_a_replacement_refuses_a_new_id():
+    with pytest.raises(ValueError, match="keeps the base"):
+        C.build_magic_item(new_id="Other_Item_Idx", base_id="Base_Item_Idxx",
+                           base_cooked=_named_item("Base_Item_Idxx"), corpus=[],
+                           replace=True)
+
+
+def test_a_second_item_builds_on_the_bank_the_first_wrote(tmp_path):
+    # Two named items in one mod each rebuilt the bank from vanilla, so the
+    # second one's file dropped the first one's name.
+    from rsmm.engine.text_patches import parse_text_bytes
+    bank = _install_bank(tmp_path)
+    first = C.build_magic_item(
+        new_id="Copy_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Copy",
+        bank_base_gen=bank)
+    prior = {"__base__": first[C.MAGIC_TEXT_BANK],
+             ".LangEN": first[C.MAGIC_TEXT_BANK + ".LangEN"]}
+    second = C.build_magic_item(
+        new_id="Base_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Changed",
+        bank_base_gen=bank, replace=True, bank_prior=prior)
+    keys = parse_text_bytes(second[C.MAGIC_TEXT_BANK], bank)
+    en = parse_text_bytes(second[C.MAGIC_TEXT_BANK + ".LangEN"], bank)
+    assert keys.entries == ["Base_Item_Idxx_Name", "Base_Item_Idxx_Description",
+                            "Copy_Item_Idxx_Name"]
+    assert en.entries == ["Changed", "Old Desc", "Copy"]
+
+
+def test_a_copys_text_rows_point_at_its_appended_keys(tmp_path):
+    bank = _install_bank(tmp_path)
+    files = C.build_magic_item(
+        new_id="Copy_Item_Idxx", base_id="Base_Item_Idxx",
+        base_cooked=_named_item("Base_Item_Idxx"), corpus=[], name="Copy",
+        bank_base_gen=bank)
+    ent = next(v for k, v in files.items() if k.endswith(".gen") and "Entity" in k)
+    assert _text_ref("Copy_Item_Idxx_Name", 2) in ent
+
+
+def test_text_keys_lists_every_key_the_item_reads():
+    assert C.text_keys(_named_item("Base_Item_Idxx")) == [
+        "Base_Item_Idxx_Name", "Base_Item_Idxx_Description"]
+
+
+def test_the_bank_merge_keeps_a_row_rewritten_in_place(tmp_path, monkeypatch):
+    from rsmm.engine import content_merge
+    from rsmm.engine.text_patches import parse_text_file
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+    vanilla, a, b = (tmp_path / n for n in ("van", "a", "b"))
+    _write_bank(vanilla, ["one", "two"])
+    _write_bank(a, ["one", "TWO"])                 # a replaced item's name
+    _write_bank(b, ["one", "two", "three"])        # a copy's appended name
+    out = content_merge._merge_text_bank("x", [a, b], vanilla)
+    assert parse_text_file(out).entries == ["one", "TWO", "three"]
+
+
+def test_find_identity_guid_from_magical_object_component():
+    # Shipped items have no node named after their id: the identity is the GUID
+    # of the "Dt Magical Object Data" component (the pool def), and before this
+    # every shipped item came back None, so `unique_identity` did nothing.
+    guid = bytes(range(0x40, 0x50))
+    sibling = bytes(range(0x20, 0x30))
+    blob = (b"\x11\x11\xbb\xaa" + sibling + _lstr("Child State Equiped")
+            + guid + _lstr(C.MO_DATA_NODE) + b"\x22\x22\xbb\xaa")
+    assert C.find_identity_guid(blob, "Damage_Attack") == guid
+    out = C.remint_identity_guid(blob, "Damage_Attack", salt="Clone0")
+    assert len(out) == len(blob) and guid not in out and sibling in out
+    assert C.find_identity_guid(out, "Damage_Attack") not in (None, guid)
+
+
+def test_every_shipped_item_has_one_unique_identity():
+    from rsmm.engine import corpus
+    rels = [r for r in corpus.rels("EntitySettings/Objects/Magical_Objects")
+            if r.endswith(".EntitySettingsResource.gen")]
+    node = _lstr(C.MO_DATA_NODE)
+    found = {}
+    for rel in rels:
+        data = corpus.read(rel)
+        if data is None or node not in data:
+            continue  # templates / power-up models carry no MO component
+        item = rel.rsplit("/", 1)[1].split(".")[0]
+        g = C.find_identity_guid(data, item)
+        assert g is not None, item
+        assert data.count(g) == 1, f"{item}: identity occurs {data.count(g)}x"
+        found[item] = g
+    if not found:
+        pytest.skip("no magical-object corpus reachable")
+    assert len(set(found.values())) == len(found), "two items share an identity"

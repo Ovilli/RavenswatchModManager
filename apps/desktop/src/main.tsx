@@ -1,3 +1,13 @@
+// Bundled, not fetched: the app used to @import its fonts from Google on every
+// launch, so an offline or firewalled install silently fell back to Georgia and
+// every start told Google about the user.
+import '@fontsource-variable/alegreya/wght.css';
+import '@fontsource-variable/alegreya/wght-italic.css';
+import '@fontsource-variable/jetbrains-mono/wght.css';
+import '@fontsource/alegreya-sans/latin-400.css';
+import '@fontsource/alegreya-sans/latin-400-italic.css';
+import '@fontsource/alegreya-sans/latin-500.css';
+import '@fontsource/alegreya-sans/latin-700.css';
 import '@rsmm/ui/styles.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
@@ -9,8 +19,9 @@ import { OverlayHud } from './components/overlay-hud';
 import { RouteErrorComponent } from './components/route-error';
 import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
-import { reportDesktopAuthFailure } from './lib/desktop-auth';
+import { firstSightOfDeepLink, reportDesktopAuthFailure } from './lib/desktop-auth';
 import { setLocale, t } from './lib/i18n';
+import { onGameStateChanged } from './lib/session-cache';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 import { useApp } from './store';
@@ -49,6 +60,9 @@ async function handleAuthDeepLink(urls: string[] | null) {
     const url = new URL(raw);
     // rsmm://desktop-auth?token=…  → host is "desktop-auth"
     if (url.host !== 'desktop-auth' && !url.pathname.includes('desktop-auth')) return;
+    // Already handled in this window: the reload after a successful sign-in
+    // gets the same link back from `getCurrent()`. See firstSightOfDeepLink.
+    if (!firstSightOfDeepLink(raw)) return;
     // Login-CSRF guard: only accept tokens from a flow THIS install started.
     // signin.tsx minted the nonce and the relay echoed it back; a deep link
     // someone else crafted (their own OAuth flow → their token) won't match.
@@ -150,6 +164,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
+});
+
+// An install, apply or config write changes what `rsmm overlays` reports, and
+// that answer decides whether each mod's Overlay button is enabled.
+onGameStateChanged(() => {
+  void queryClient.invalidateQueries({ queryKey: ['overlays'] });
 });
 
 const router = createRouter({

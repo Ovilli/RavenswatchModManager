@@ -19,7 +19,7 @@ R.counter.on("enemy_killed")
 -- Or handle events directly. Subscribe to as many as you like.
 local watched = {
     "game_start", "run_start", "enemy_killed",
-    "level_up_reach", "unlock_hero", "run_end",
+    "levelup_run", "unlock_hero", "run_end",
 }
 
 for _, name in ipairs(watched) do

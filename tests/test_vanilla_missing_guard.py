@@ -269,7 +269,7 @@ def test_mod_added_path_is_never_backed_up_over_itself(tmp_path, state):
 def test_a_real_override_still_gets_its_backup(tmp_path, state):
     """The other direction, so the fix cannot be over-applied: a path the game
     ships keeps its backup and a real `orig_sha256`."""
-    dest, bak = _apply_existing(tmp_path, state, mod_added=False,
+    _dest, bak = _apply_existing(tmp_path, state, mod_added=False,
                                 prior_bytes=b"vanilla bytes")
     assert bak.exists() and bak.read_bytes() == b"vanilla bytes"
     assert state.active["Synth\\generated.bin"]["orig_sha256"] != ""

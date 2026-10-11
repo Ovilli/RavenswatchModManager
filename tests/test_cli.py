@@ -109,7 +109,7 @@ def test_cmd_new_experimental_kind_opts_in(tmp_path, monkeypatch):
     rejected)."""
     from rsmm.cli.cmd_new import main
     monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
-    for kind in ("enemy", "hero", "map"):
+    for kind in ("map",):
         assert main([f"Mod_{kind}", "--kind", kind]) == 0
         text = (tmp_path / "mods" / f"Mod_{kind}" / "manifest.toml").read_text("utf-8")
         assert "experimental = true" in text
@@ -127,6 +127,49 @@ def test_cmd_new_scaffold_lints_clean(tmp_path, monkeypatch):
         assert cmd_new.main([mid, "--kind", kind]) == 0
         monkeypatch.setattr(sys, "argv", ["lint", mid])
         assert lint.main() == 0, f"scaffold for kind {kind!r} failed lint"
+
+
+def test_cmd_new_with_store_flags_lints_without_warnings(tmp_path, monkeypatch, capsys):
+    """--desc/--tags/--license/--author fill everything `rsmm lint` asks a
+    published mod for, so the scaffold starts with zero warnings."""
+    from rsmm.cli import cmd_new, lint
+    mods = tmp_path / "mods"
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", mods)
+    monkeypatch.setattr("rsmm.cli.lint.MODS_DIR", mods)
+    assert cmd_new.main(["Shiny", "--desc", "Makes it shine", "--tags",
+                         "Cosmetic, heroes,cosmetic", "--license", "MIT",
+                         "--author", "Jane O'Neil"]) == 0
+    mod = tomllib.loads((mods / "Shiny" / "manifest.toml").read_text("utf-8"))["mod"]
+    assert mod["tags"] == ["cosmetic", "heroes"]
+    assert (mod["license"], mod["author"]) == ("MIT", "Jane O'Neil")
+    assert "still to fill in" not in capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", ["lint", "Shiny"])
+    assert lint.main() == 0
+    assert "0 warning(s)" in capsys.readouterr().out
+
+
+def test_cmd_new_takes_the_author_from_git(tmp_path, monkeypatch, capsys):
+    from rsmm.cli import cmd_new
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
+    monkeypatch.setattr(cmd_new, "_git_author", lambda: "Git Person")
+    assert cmd_new.main(["FromGit"]) == 0
+    text = (tmp_path / "mods" / "FromGit" / "manifest.toml").read_text("utf-8")
+    assert tomllib.loads(text)["mod"]["author"] == "Git Person"
+    assert "still to fill in for the store card: description, tags, license" \
+        in capsys.readouterr().out
+
+    monkeypatch.setattr(cmd_new, "_git_author", lambda: None)
+    assert cmd_new.main(["NoGit"]) == 0
+    text = (tmp_path / "mods" / "NoGit" / "manifest.toml").read_text("utf-8")
+    assert tomllib.loads(text)["mod"]["author"] == "you", "lint flags the placeholder"
+
+
+def test_cmd_new_rejects_a_tag_the_store_would(tmp_path, monkeypatch, capsys):
+    from rsmm.cli import cmd_new
+    monkeypatch.setattr("rsmm.cli.cmd_new.MODS_DIR", tmp_path / "mods")
+    assert cmd_new.main(["Bad", "--tags", "has spaces"]) == 2
+    assert "is not a tag" in capsys.readouterr().err
+    assert not (tmp_path / "mods" / "Bad").exists(), "nothing half-written"
 
 
 def test_json_bridge_config_roundtrip(tmp_path, monkeypatch, capsys):

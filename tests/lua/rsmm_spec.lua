@@ -294,6 +294,19 @@ engine["Hero_GainExperience"] = function(comp, gain)
     return 0
 end
 
+-- Models FUN_1402e3630 / FUN_1402e3190: plain writes into the progress block
+-- (the engine also fires _XP_LEVEL_UP on a raise; not modeled). The counters
+-- let a test see which routine was called, and in what order.
+local xp_set_calls = {}
+engine["XpComponent_SetXp"] = function(comp, xp)
+    xp_set_calls[#xp_set_calls + 1] = "xp"
+    wint(rint(comp + XP_PROGRESS_OFF, 8) + 4, xp, 4)
+end
+engine["XpComponent_SetLevel"] = function(comp, level)
+    xp_set_calls[#xp_set_calls + 1] = "level"
+    wint(rint(comp + XP_PROGRESS_OFF, 8), level, 4)
+end
+
 -- ---------------------------------------------------------------------------
 -- mock native bindings (the `rsmm` global rsmm.lua reads at load)
 -- ---------------------------------------------------------------------------
@@ -357,9 +370,10 @@ function I.shared_get(slot) return shared[slot] end
 -- slot 9 passed 628 assertions here and then silently evicted hero spawn
 -- candidates in-game — `hero CAPTURED` simply stopped happening, with nothing
 -- in the log tying it to the probe.
+-- 20..23 are the Lua-publisher range (script_lua.cpp kSharedLuaFirst).
 function I.shared_set(slot, v)
-    assert(slot < 8, ("rsmm.shared_set: slot %d is the native hero ring (8..15) "
-        .. "and is read-only from Lua"):format(slot))
+    assert(slot < 8 or (slot >= 20 and slot < 24), ("rsmm.shared_set: slot %d is "
+        .. "written by the loader (8..19) and is read-only from Lua"):format(slot))
     shared[slot] = v
 end
 function I.list_mods() return {} end
@@ -574,13 +588,9 @@ local function about(a, b) return math.abs(a - b) < 1e-3 end
 
 -- 1. stat catalog integrity ------------------------------------------------
 do
-    -- Two per-slot families share their base key with the hero-wide stat: the
-    -- registry's crit / cooldown families START at the hero-wide key, so
-    -- `<stat>_primary` is genuinely the same id. attack_power does NOT alias.
-    local allowed_alias = {
-        crit_chance_primary        = "crit_chance",
-        cooldown_reduction_primary = "cooldown_reduction",
-    }
+    -- No name may share a key: crit / cooldown `_primary` once aliased the
+    -- hero-wide key, which was the off-by-two-slots bug, not the registry.
+    local allowed_alias = {}
     local seen = {}
     for name, spec in pairs(R.stat.keys) do
         check(type(spec.key) == "number", "key not number: " .. name)
@@ -600,8 +610,10 @@ end
 
 -- 1b. per-slot + status keys -----------------------------------------------
 do
-    local fam = { attack_power = 0x15a5cf40, crit_chance = 0x15c7d482,
-                  cooldown_reduction = 0x15b45d80 }
+    -- Crit / cooldown slot bases are hero-wide + 4 (hero-wide, basic, then the
+    -- five slots), per the engine registry labels in data/stat_keys.json.
+    local fam = { attack_power = 0x15a5cf40, crit_chance = 0x15c7d486,
+                  cooldown_reduction = 0x15b45d84 }
     local order = { "primary", "secondary", "defensive", "trait", "ultimate" }
     for family, base in pairs(fam) do
         for i, slot in ipairs(order) do
@@ -613,6 +625,10 @@ do
         end
     end
     check(R.stat.keys.attack_power_basic.key == 0x15a5cf51, "attack_power_basic key")
+    check(R.stat.keys.crit_chance_basic.key == 0x15c7d484, "crit_chance_basic key")
+    check(R.stat.keys.cooldown_reduction_basic.key == 0x15b45d82, "cooldown_reduction_basic key")
+    check(R.stat.keys.cooldown_reduction_secondary.key == 0x15b45d86,
+          "cooldown_reduction_secondary is the registry's 'CD reduce secondary'")
     check(R.stat.keys.attack_power_dash.key == 0x183a609a, "attack_power_dash key")
     check(R.stat.keys.crit_chance_dash.key == 0x183a60b6, "crit_chance_dash key")
     check(R.stat.keys.cooldown_reduction_dash.key == 0x183a5fc9, "cooldown_reduction_dash key")
@@ -746,38 +762,17 @@ do
     R.stat.set("attack_power", 500)
 end
 
--- 4c. R.modifier writes ride the same store, under their own names ---------
+-- 4c. R.modifier name checks ----------------------------------------------
 --
--- A run modifier is a CRC-keyed entry in the very store R.stat writes, so the
--- write path is R.stat.stick and the only new thing is the name registration.
--- That registration is what this pins: without it R.stat.set refuses the name
--- and every modifier write silently returns false.
+-- The write itself goes to the GLOBAL scene context through the engine's own
+-- setter and is exercised with that context in the R.game block below. Here:
+-- the name table, which is what refuses a typo before anything is touched.
 do
     check(R.modifier.set("Not A Modifier", 1) == false, "unknown modifier must fail")
-    check(R.modifier.set("No minimap", 1) == true, "a known toggle should apply")
-    check(R.modifier.value("No minimap") == 1, "...and read back through R.modifier")
-    check(R.modifier.active("No minimap") == true, "an applied toggle reads active")
-
-    -- Scalars are f32 and toggles int; writing a ratio through an int field is
-    -- how 1.5 becomes 1, so the kind is listed per modifier rather than guessed.
-    check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a scalar should apply")
-    check(about(R.modifier.value("Global Xp Modifier"), 1.5),
-          "a scalar keeps its fraction")
-
-    -- set() is stick(), so a recompute clobber is re-asserted on the next
-    -- gameplay event — a modifier that lasted until the first item pickup
-    -- would be worse than one that never applied.
-    local e = ovr_entry(0x99f27eac)              -- "No minimap"
-    assert(e, "expected an override entry for the modifier")
-    I.write_u32(e + 0x08 + 0x10, 0)              -- clobber -> off
-    check(R.modifier.value("No minimap") == 0, "clobber should be visible")
-    fire("*", { source = "gameplay" })
-    check(R.modifier.value("No minimap") == 1, "modifier must re-assert after clobber")
-
-    check(R.modifier.clear("No minimap") == true, "clear should report it was pinned")
+    check((R.modifier.why() or ""):find("unknown modifier", 1, true) ~= nil,
+          "...and why() names it")
     check(R.modifier.clear("Not A Modifier") == false, "clearing an unknown name fails")
-    R.modifier.clear("Global Xp Modifier")
-
+    check(R.modifier.clear("No minimap") == false, "clearing a never-written modifier fails")
     local w = {}
     for _, n in ipairs(R.modifier.writable()) do w[n] = true end
     check(w["No boss timer"] and w["Dream Shard Costs Modifier"],
@@ -941,6 +936,14 @@ do
     check(hooks[ctor_va] ~= nil,
           "setup arms the ctor hook without anything having read xp")
     check(hooks[ctor_va].sig == "pp", "armed with the void*(void*) signature")
+    -- Second capture point (2026-09-25: the ctor hook never went in on the
+    -- live build): the gain-experience handler's first argument IS the level
+    -- component, so the first XP the game hands out captures it.
+    local gain_va = I.resolve("Hero_GainExperience")
+    check(gain_va and hooks[gain_va] ~= nil, "setup also hooks Hero_GainExperience")
+    check(hooks[gain_va] and hooks[gain_va].sig == "vpp", "as void(comp, gain)")
+    check(type(R.xp.arm) == "function" and R.xp.arm() == true,
+          "R.xp.arm() is callable from init.lua and idempotent")
 end
 
 -- 8. R.xp: level / xp read + grant -----------------------------------------
@@ -1046,6 +1049,33 @@ do
     check(R.xp.grant(100) == true, "grant lands once a level curve exists")
     check(R.xp.xp() == 440, "granted xp is credited through the engine call")
 
+    -- set_level raises the party level the way a gain ends: SetXp(0), then
+    -- ONE SetLevel (which is what fires the game's _XP_LEVEL_UP).
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    check(R.xp.set_level(10) == true and R.xp.level() == 10, "set_level raises the level (7 -> 10)")
+    check(R.xp.xp() == 0, "...and starts the new level at 0 xp")
+    check(table.concat(xp_set_calls, ",") == "xp,level", "...through SetXp then SetLevel, like a gain")
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    for _, bad in ipairs({ 10, 9, 0, 21, 2.5, "12" }) do
+        check(R.xp.set_level(bad) == false, "set_level refuses " .. tostring(bad))
+    end
+    check(#xp_set_calls == 0 and R.xp.level() == 10, "...without calling the engine")
+
+    -- set_xp stays below the level's threshold: only a gain levels up.
+    local XPCFG, XPARR = 0x1b900000, 0x1ba00000
+    I.write_u64(GLCOMP + 0x10, XPCFG)
+    I.write_u8(XPCFG + 0x1d0, 1)
+    I.write_u64(XPCFG + 0x1d8, XPARR)
+    I.write_u32(XPCFG + 0x1e0, 20)
+    for lv = 1, 20 do I.write_u32(XPARR + (lv - 1) * 4, lv * 100) end   -- level 10 needs 1000
+    check(R.xp.set_xp(999) == true and R.xp.xp() == 999, "set_xp sets the xp within the level")
+    for k in pairs(xp_set_calls) do xp_set_calls[k] = nil end
+    for _, bad in ipairs({ 1000, 5000, -1, 1.5 }) do
+        check(R.xp.set_xp(bad) == false, "set_xp refuses " .. tostring(bad))
+    end
+    check(#xp_set_calls == 0 and R.xp.xp() == 999, "...without calling the engine")
+
+
     -- A torn-down entity must not keep serving stale numbers.
     I.write_u64(GLCOMP, 0)
     check(R.xp.level() == nil, "capture is dropped once the object stops validating")
@@ -1073,6 +1103,30 @@ do
     I.write_u32(GL_LIVE_CFG + 0x1e0, 20)
     check(R.xp.level() == 4, "instance WITH a curve beats a newer curve-less one")
     check(R.xp.xp() == 250, "xp reads through the curve-bearing instance")
+
+    -- 8e. A hook belongs to the one Lua state that installed it; a second
+    -- mod's R.xp.arm() gets "already-hooked" and its own capture list stays
+    -- empty (2026-09-26: Gretel's grant found nothing while Nyx's state had
+    -- the component). The capture is published in Lua-publisher slot 20.
+    shared[20] = 0                                   -- a fresh session
+    hooks[ctor_va].cb(GL_LIVE)
+    check(shared[20] == GL_LIVE, "the first construction is published for every mod")
+    check(hooks[ctor_va].cb(GL_TMPL) == nil and shared[20] == GL_LIVE,
+          "a later construction does not overwrite a published one")
+    local gain_va = I.resolve("Hero_GainExperience")
+    local GL_GAIN, GL_GAIN_PROG, GL_GAIN_CFG = 0x21800000, 0x22800000, 0x23800000
+    hooks[gain_va].cb(GL_GAIN, 10)
+    check(shared[20] == GL_GAIN, "the component XP flows into is published over it")
+    -- As another mod sees it: none of its own captures validate, only the
+    -- published one does.
+    for _, p in ipairs({GL_LIVE, GL_TMPL, GLCOMP}) do I.write_u64(p, 0) end
+    I.write_u64(GL_GAIN, XP_VFTABLE_VA)
+    I.write_u64(GL_GAIN + XP_PROGRESS_OFF, GL_GAIN_PROG)
+    I.write_u64(GL_GAIN + 0x10, GL_GAIN_CFG)
+    I.write_u8(GL_GAIN_CFG + 0x1d0, 1)
+    I.write_u32(GL_GAIN_CFG + 0x1e0, 20)
+    I.write_u32(GL_GAIN_PROG + 0, 9)
+    check(R.xp.level() == 9, "a mod reads the component another mod's hook captured")
 
     shared[0] = HERO                                    -- restore for later sections
 end
@@ -1123,8 +1177,20 @@ do
     check(R.give.ready(), "spec fixture: a live dispatcher is captured")
 
     -- The grant path builds an event object first; give it one so the test
-    -- exercises the dispatcher guard rather than bailing before it.
-    engine["NamedEvent_GiveMagicalObject_Ctor"] = function(buf) return buf end
+    -- exercises the dispatcher guard rather than bailing before it. Like the
+    -- real ctor it writes the event's name at +0x20: callers check it, because
+    -- named-event ctor patterns are one shared template and a patch can move
+    -- the resolve onto a sibling's ctor (R.engine.event_name).
+    local function named_ctor(name)
+        return function(buf)
+            local s = scratch(#name + 1)
+            for i = 1, #name do I.write_u8(s + i - 1, name:byte(i)) end
+            I.write_u8(s + #name, 0)
+            I.write_u64(buf + 0x20, s)
+            return buf
+        end
+    end
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
 
     -- Sanity: with a LIVE dispatcher the grant goes through. Without this the
     -- refusal below could pass for the wrong reason.
@@ -1133,20 +1199,462 @@ do
     check(R.give.by_guid(0xA001, 0xB001) == true, "a live dispatcher grants")
     check(dispatched, "and the engine call is made")
 
-    -- R.melody.choose rides the same dispatcher. EXPERIMENTAL: the payload is a
-    -- hypothesis, but its guards must hold — the event's own vftable has to be
-    -- plausible on this build, and bad arguments never reach the engine.
+    -- A ctor pattern that resolved to a SIBLING event's ctor builds a valid
+    -- event of the wrong kind; the name check refuses it before dispatch.
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GAIN_REROLL")
+    dispatched = false
+    check(R.give.by_guid(0xA001, 0xB001) == false, "a give whose ctor built a sibling event is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["NamedEvent_GiveMagicalObject_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
+
+    -- R.melody names a melody by its DEFINITION'S NAME STRING: both hero
+    -- handlers compare the oCString at +0x50 with *(*(def+0x48)+0x18). The SDK
+    -- reads that string from the live defs and sends it verbatim; a bare stem
+    -- ("Fully_Heal") or the exact string both resolve.
     local MELODY_VFT = I.module_base() + (0x140f25c48 - 0x140000000)
+    local MELODY_RM_VFT = I.module_base() + (0x140f22608 - 0x140000000)
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)   -- a plausible slot 0
-    dispatched = false
-    check(R.melody.choose(0x1122, 0x3344) == true, "melody choose dispatches")
-    check(dispatched, "...through the engine")
-    dispatched = false
-    check(R.melody.choose("x", 1) == false, "a non-numeric guid is refused")
-    check(not dispatched, "...and never reaches the engine")
+    I.write_u64(MELODY_RM_VFT, I.module_base() + 0x1000)
+    local MEL_PATH = "Objects\\Melodies\\Fully_Heal.entity.ot"
+    local MEL_DEF, MEL_OBJ, MEL_STR = scratch(0x80), scratch(0x40), scratch(#MEL_PATH + 1)
+    for i = 1, #MEL_PATH do I.write_u8(MEL_STR + i - 1, MEL_PATH:byte(i)) end
+    I.write_u64(MEL_DEF + 0x48, MEL_OBJ); I.write_u64(MEL_OBJ + 0x18, MEL_STR)
+    local real_mel_instances = R.defs.instances
+    R.defs.instances = function(which) return which == "MelodyDefinition" and { MEL_DEF } or {} end
+    local mel_sent
+    local function cstr(p, n)
+        local out = ""
+        for i = 0, (n or 128) - 1 do
+            local c = I.read_u8(p + i); if not c or c == 0 then break end; out = out .. string.char(c)
+        end
+        return out
+    end
+    engine["NamedEvent_Dispatch"] = function(_, ev)
+        dispatched = true
+        mel_sent = { vft = I.read_u64(ev), event = cstr(I.read_u64(ev + 0x20)),
+                     name = cstr(I.read_u64(ev + 0x50)), len = I.read_u32(ev + 0x58) }
+    end
+    check(R.melody.names()[1] == "Fully_Heal", "melody names come from the live defs, as stems")
+    dispatched, mel_sent = false, nil
+    check(R.melody.choose("fully_heal") == true, "melody choose dispatches (stem, case-insensitive)")
+    check(mel_sent.vft == MELODY_VFT and mel_sent.event == "CHOOSE_MELODY", "...a ChooseMelody event")
+    check(mel_sent.name == MEL_PATH and mel_sent.len == 0x80000000 + #MEL_PATH,
+          "...carrying the def's own name string at +0x50, unowned")
+    check(R.melody.remove(MEL_PATH) == true and mel_sent.vft == MELODY_RM_VFT
+          and mel_sent.event == "REMOVE_MELODY" and mel_sent.name == MEL_PATH,
+          "melody remove accepts the exact string and sends a RemoveMelody event")
+    for _, bad in ipairs({ "Reveal_Map", "", 7 }) do
+        dispatched = false
+        check(R.melody.choose(bad) == false and not dispatched, "melody choose refuses " .. tostring(bad))
+    end
     I.write_u64(MELODY_VFT, 0)
-    check(R.melody.choose(1, 2) == false, "an implausible event vftable is refused")
+    dispatched = false
+    check(R.melody.choose("Fully_Heal") == false and not dispatched, "an implausible event vftable is refused")
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)
+    R.defs.instances = real_mel_instances
+    engine["NamedEvent_Dispatch"] = function() dispatched = true end
+    dispatched = false
+
+    -- R.reroll.add rides it too. Proven in game 2026-10-10: the layout
+    -- is the GainReroll ctor's, the count is a u16 at +0x50 as the game's own
+    -- sender writes it, and bad counts never reach the engine.
+    local REROLL_VFT = I.module_base() + (0x140f263d0 - 0x140000000)
+    I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
+    local sent
+    engine["NamedEvent_Dispatch"] = function(_, ev)
+        dispatched = true
+        sent = { vft = I.read_u64(ev), count = I.read_u16(ev + 0x50),
+                 peer = I.read_u64(ev + 0x38), state = I.read_u32(ev + 0x08) }
+    end
+    dispatched = false
+    check(R.reroll.add(3) == true, "reroll add dispatches")
+    check(dispatched and sent.vft == REROLL_VFT, "...a GainReroll event")
+    check(sent.count == 3, "...carrying the count at +0x50")
+    check(sent.peer == -1 or sent.peer == 0xffffffffffffffff, "...with the peer field at -1 (local)")
+    check(sent.state == 2, "...and the header state the ctor leaves")
+    for _, bad in ipairs({ 0, -2, 1.5, 0x8000, "3" }) do
+        dispatched = false
+        check(R.reroll.add(bad) == false, "reroll add refuses " .. tostring(bad))
+        check(not dispatched, "...without reaching the engine")
+    end
+    I.write_u64(REROLL_VFT, 0)
+    check(R.reroll.add(1) == false, "an implausible GainReroll vftable is refused")
+
+    -- With the ctor symbols in the pattern DB, both use the engine's own ctor
+    -- and need no vftable address at all (the vftable stays implausible here).
+    engine["NamedEvent_GainReroll_Ctor"] = named_ctor("GAIN_REROLL")
+    dispatched, sent = false, nil
+    check(R.reroll.add(2) == true, "reroll add uses the GainReroll ctor when it resolves")
+    check(dispatched and sent.count == 2, "...and still writes the count at +0x50")
+    engine["NamedEvent_GainReroll_Ctor"] = named_ctor("GIVE_MAGICAL_OBJECT")
+    dispatched = false
+    check(R.reroll.add(2) == false, "a GainReroll ctor that built a sibling event is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["NamedEvent_GainReroll_Ctor"] = nil
+    I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
+
+    -- R.ability sends the game's own ability events, oCNamedEventNetworkWithData
+    -- with ONE typed value in an oCEntityValueUnion at +0x50 (storage @+0x58,
+    -- 4 = inline; value @+0x60; type @+0x68: 0 f32, 1 int32, 2 bool). The
+    -- handlers check the type, so each call must carry the right one, and the
+    -- union must come from the engine's routines (the bus clones the event
+    -- through the union's vftable). Mocks behave like the real union ctor.
+    local WD_VFT = I.module_base() + (0x140f0f180 - 0x140000000)
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+    local UNION_VFT = I.module_base() + 0x2000
+    engine["EntityValueUnion_DefaultCtor"] = function(u)
+        I.write_u64(u, UNION_VFT); I.write_u64(u + 0x08, 4)
+        I.write_u64(u + 0x10, 0); I.write_u8(u + 0x18, 0)
+        return u
+    end
+    -- Like the engine: type 1 is a 16-byte type stored OUT of line (measured
+    -- in game 2026-10-10), so its storage is a heap pointer, not 4.
+    local union_freed = 0
+    local function init_as_type(u, t)
+        I.write_u8(u + 0x18, t)
+        if t == 1 then I.write_u64(u + 0x08, scratch(0x10)) end
+    end
+    engine["EntityValueUnion_InitAsType"] = init_as_type
+    engine["EntityValueUnion_Destruct"] = function() union_freed = union_freed + 1 end
+    local name_at = function(ev)
+        local p, s = I.read_u64(ev + 0x20), ""
+        for i = 0, 63 do
+            local c = I.read_u8(p + i); if c == 0 then break end; s = s .. string.char(c)
+        end
+        return s
+    end
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev),
+                 uvft = I.read_u64(ev + 0x50), storage = I.read_u64(ev + 0x58),
+                 type = I.read_u8(ev + 0x68), f = I.read_f32(ev + 0x60),
+                 i = I.read_u64(ev + 0x58) ~= 4 and I.read_u32(I.read_u64(ev + 0x58) & ~1)
+                     or I.read_u32(ev + 0x60),
+                 b = I.read_u8(ev + 0x60),
+                 peer = I.read_u64(ev + 0x38), state = I.read_u32(ev + 0x08) }
+    end
+    dispatched, sent = false, nil
+    check(R.ability and R.ability.reset_cooldown("dash") == true, "ability reset_cooldown dispatches")
+    check(sent.disp == DISP and sent.vft == WD_VFT, "...a with-data event on the hero dispatcher")
+    check(sent.name == "CLEAR_DASH_CD", "...named for the slot")
+    check(sent.uvft == UNION_VFT and sent.storage == 4, "...with an engine-built inline union")
+    check(sent.type == 2 and sent.b == 1, "...carrying bool true, the type the CLEAR handler requires")
+    check(sent.state == 2 and (sent.peer == -1 or sent.peer == 0xffffffffffffffff),
+          "...and the header the game's sender writes")
+    check(R.ability.reset_cooldown() == true and sent.name == "CLEAR_CD", "no slot clears every ability")
+    check(R.ability.reduce_cooldown(2.5, "ULTIMATE") == true and sent.name == "REDUCE_ULTIMATE_CD",
+          "reduce_cooldown names the slot (case-insensitive)")
+    check(sent.type == 0 and about(sent.f, 2.5), "...and carries the seconds as f32")
+    check(R.ability.reduce_cooldown(1) == true and sent.name == "REDUCE_CD", "no slot reduces every ability")
+    check(R.ability.add_charge("primary", 2) == true and sent.name == "ADD_PRIMARY_CHARGE",
+          "add_charge names the slot")
+    check(sent.type == 1 and sent.i == 2, "...and carries the count as int32 in the out-of-line storage")
+    check(union_freed > 0, "...and frees the union's allocation after dispatch")
+    check(R.ability.add_charge("trait") == true and sent.i == 1, "add_charge defaults to one")
+    check(R.ability.remove_charge("basic") == true and sent.name == "REMOVE_BASIC_CHARGE",
+          "remove_charge names the slot")
+    for _, bad in ipairs({
+        { "reset_cooldown", "wings" }, { "reduce_cooldown", 0 }, { "reduce_cooldown", -1 },
+        { "reduce_cooldown", "2" }, { "add_charge", nil, 1 }, { "add_charge", "dash", 0 },
+        { "add_charge", "dash", 1.5 }, { "remove_charge" }, { "remove_charge", 3 },
+    }) do
+        dispatched = false
+        check(R.ability[bad[1]](bad[2], bad[3]) == false,
+              "ability " .. bad[1] .. " refuses " .. tostring(bad[2]) .. "/" .. tostring(bad[3]))
+        check(not dispatched, "...without reaching the engine")
+    end
+    -- A union whose storage is neither inline nor a plausible pointer, or
+    -- whose type did not take, would hand the handler garbage: refuse.
+    engine["EntityValueUnion_InitAsType"] = function(u, t)
+        I.write_u8(u + 0x18, t); I.write_u64(u + 0x08, 0x10)
+    end
+    dispatched = false
+    check(R.ability.add_charge("dash") == false, "an implausible out-of-line union storage is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["EntityValueUnion_InitAsType"] = function() end
+    dispatched = false
+    check(R.ability.reset_cooldown("dash") == false, "a union whose type did not take is refused")
+    check(not dispatched, "...and never dispatched")
+    engine["EntityValueUnion_InitAsType"] = init_as_type
+    I.write_u64(WD_VFT, 0)
+    dispatched = false
+    check(R.ability.reset_cooldown("dash") == false, "an implausible with-data vftable is refused")
+    check(not dispatched, "...and never dispatched")
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+
+    -- R.shards.gain sends GAIN_DREAM_SHARDS as a pickup would (the handler
+    -- applies the hero's shard-gain bonuses); R.ingredient sends
+    -- GAIN_INGREDIENT with the id read from the live IngredientDefinition.
+    local SHARD_VFT = I.module_base() + (0x140f224c0 - 0x140000000)
+    local ING_VFT = I.module_base() + (0x140f26460 - 0x140000000)
+    I.write_u64(SHARD_VFT, I.module_base() + 0x1000)
+    I.write_u64(ING_VFT, I.module_base() + 0x1000)
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev),
+                 src = I.read_u64(ev + 0x50), amount = I.read_u32(ev + 0x58),
+                 picked = I.read_u8(ev + 0x5c), purchase = I.read_u8(ev + 0x5d),
+                 ing = I.read_u32(ev + 0x50), count = I.read_u16(ev + 0x54) }
+    end
+    dispatched, sent = false, nil
+    check(R.shards.gain and R.shards.gain(25) == true, "shards gain dispatches")
+    check(sent.disp == DISP and sent.vft == SHARD_VFT and sent.name == "GAIN_DREAM_SHARDS",
+          "...a GainDreamShards event on the hero dispatcher")
+    check(sent.amount == 25 and sent.picked == 1 and sent.purchase == 0,
+          "...as a pickup: amount at +0x58, picked-up flag set, not a purchase")
+    check(sent.src == -1 or sent.src == 0xffffffffffffffff, "...with the ctor's source id")
+    for _, bad in ipairs({ 0, -5, 2.5, "3" }) do
+        dispatched = false
+        check(R.shards.gain(bad) == false, "shards gain refuses " .. tostring(bad))
+        check(not dispatched, "...without reaching the engine")
+    end
+
+    local KEY_DEF = scratch(0x300)
+    local key_name = scratch(8)
+    for i, c in ipairs({ ("Key"):byte(1, -1) }) do I.write_u8(key_name + i - 1, c) end
+    I.write_u32(KEY_DEF + 0x290, 0x5eed)
+    I.write_u64(KEY_DEF + 0x298, key_name)
+    local real_instances = R.defs.instances
+    R.defs.instances = function(which)
+        return which == "IngredientDefinition" and { KEY_DEF } or {}
+    end
+    check(R.ingredient.names()[1] == "Key", "ingredient names come from the live defs")
+    dispatched, sent = false, nil
+    check(R.ingredient.add("key", 2) == true, "ingredient add dispatches (name is case-insensitive)")
+    check(sent.vft == ING_VFT and sent.name == "GAIN_INGREDIENT", "...a GainIngredient event")
+    check(sent.ing == 0x5eed and sent.count == 2, "...with the def's id and the count")
+    check(R.ingredient.remove("Key") == true and sent.count == 0xffff,
+          "remove sends a negative count (-1)")
+    for _, bad in ipairs({ { "Wood", 1 }, { 3, 1 }, { "Key", 0 }, { "Key", 0x8000 }, { "Key", 1.5 } }) do
+        dispatched = false
+        check(R.ingredient.add(bad[1], bad[2]) == false,
+              "ingredient add refuses " .. tostring(bad[1]) .. " x" .. tostring(bad[2]))
+        check(not dispatched, "...without reaching the engine")
+    end
+    I.write_u64(ING_VFT, 0)
+    dispatched = false
+    check(R.ingredient.add("Key") == false and not dispatched,
+          "an implausible GainIngredient vftable is refused")
+    R.defs.instances = real_instances
+
+    -- R.give.remove_random / remove_all / duplicate_random send the item
+    -- events, whose handlers read no payload, in the with-data shape.
+    I.write_u64(WD_VFT, I.module_base() + 0x1000)
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, vft = I.read_u64(ev), name = name_at(ev), type = I.read_u8(ev + 0x68) }
+    end
+    for _, case in ipairs({
+        { "remove_random", "cursed", "REMOVE_RANDOM_CURSED_OBJECT" },
+        { "remove_random", nil, "REMOVE_RANDOM_MAGICAL_OBJECT" },
+        { "remove_random", "Legendary", "REMOVE_RANDOM_LEGENDARY_OBJECT" },
+        { "remove_all", "common", "REMOVE_ALL_COMMON_OBJECT" },
+        { "remove_all", nil, "REMOVE_ALL_MAGICAL_OBJECT" },
+        { "duplicate_random", "epic", "DUPLICATE_RANDOM_EPIC_OBJECT" },
+        { "duplicate_random", nil, "DUPLICATE_RANDOM_MAGICAL_OBJECT" },
+    }) do
+        dispatched, sent = false, nil
+        check(R.give[case[1]](case[2]) == true and sent.name == case[3],
+              "give." .. case[1] .. "(" .. tostring(case[2]) .. ") sends " .. case[3])
+        check(sent.disp == DISP and sent.vft == WD_VFT and sent.type == 2,
+              "...as a with-data event on the hero dispatcher")
+    end
+    for _, case in ipairs({ { "remove_random", "shiny" }, { "remove_all", 3 },
+                            { "duplicate_random", "legendary" }, { "duplicate_random", "cursed" } }) do
+        dispatched = false
+        check(R.give[case[1]](case[2]) == false, "give." .. case[1] .. " refuses " .. tostring(case[2]))
+        check(not dispatched, "...without reaching the engine")
+    end
+
+    -- R.status: payload-free cleanse events, in the with-data shape.
+    for fn, name in pairs({ clear = "CLEAR_STATUS", clear_stagger = "CLEAR_STAGGER",
+                            reset_stagger_resilience = "RESET_STAGGER_RESILIENCE" }) do
+        dispatched, sent = false, nil
+        check(R.status[fn]() == true and sent.name == name and sent.type == 2,
+              "status." .. fn .. " sends " .. name)
+    end
+
+    -- R.status.watch_stagger: a read-only hook on the CLEAR_STAGGER handler that
+    -- captures the controller and logs the gauge (+0x33c) before and after.
+    do
+        check(R.status.stagger() == nil, "stagger() is nil before any clear has run")
+        check(R.status.watch_stagger() == true, "watch_stagger arms the hook")
+        local h = hooks[I.resolve("CharacterController_ClearStagger")]
+        check(h and h.sig == "vp", "...on CharacterController_ClearStagger, void(ptr)")
+        local CTL = scratch(0x400)
+        I.write_f32(CTL + 0x33c, 42.5); I.write_f32(CTL + 0x344, 3.5)
+        local ran = false
+        h.cb(CTL, function(c) ran = true; I.write_f32(c + 0x33c, 0) end)
+        check(ran, "the hook calls the original handler")
+        local g, r = R.status.stagger()
+        check(g == 0 and r == 3.5, "stagger() reads the captured controller after the clear")
+        check(R.status.watch_stagger() == true, "watch_stagger is idempotent")
+    end
+
+    -- R.talent event senders. Two engine handlers crash in states they do not
+    -- guard, so upgrade(i) and add_random_ultimate() check the hero first.
+    check(R.entity.hero() == HERO, "the hero is captured for the talent guards")
+    local saved_slots = {}
+    for k = 0, 9 do
+        saved_slots[k] = I.read_u64(HERO + 0xff0 + k * 0x20)
+        I.write_u64(HERO + 0xff0 + k * 0x20, 0)
+    end
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        local st = I.read_u64(ev + 0x58)
+        sent = { disp = disp, name = name_at(ev), type = I.read_u8(ev + 0x68),
+                 i = st ~= 4 and I.read_u32(st & ~1) or I.read_u32(ev + 0x60) }
+    end
+    for _, case in ipairs({
+        { function() return R.talent.reset() end, "RESET_SKILLS" },
+        { function() return R.talent.upgrade_lowest() end, "UPGRADE_LOWER_SKILL" },
+        { function() return R.talent.upgrade_lowest(true) end, "UPGRADE_LOWER_SKILL_TO_LEGENDARY" },
+    }) do
+        dispatched, sent = false, nil
+        check(case[1]() == true and sent.name == case[2] and sent.disp == DISP, "talent sends " .. case[2])
+    end
+    check(R.talent.upgrade_random(2) == true and sent.name == "UPGRADE_RANDOM_SKILL"
+          and sent.type == 1 and sent.i == 2, "upgrade_random(2) sends the count as int")
+    check(R.talent.upgrade_random() == true and sent.i == 1, "upgrade_random defaults to one")
+    for _, bad in ipairs({ 0, 11, 1.5 }) do
+        dispatched = false
+        check(R.talent.upgrade_random(bad) == false and not dispatched, "upgrade_random refuses " .. tostring(bad))
+    end
+
+    check(R.talent.owned() == 0, "owned() counts the talent slots (none)")
+    dispatched = false
+    check(R.talent.upgrade(1) == false and not dispatched,
+          "upgrade with NO talent owned is refused (the engine would index a null list)")
+    I.write_u64(HERO + 0xff0 + 2 * 0x20, scratch(0x80))
+    I.write_u64(HERO + 0xff0 + 5 * 0x20, scratch(0x80))
+    check(R.talent.owned() == 2, "owned() counts filled slots")
+    check(R.talent.upgrade(2) == true and sent.name == "UPGRADE_SPECIFIC_SKILL" and sent.i == 1,
+          "upgrade(2) sends the 0-based index of the 2nd talent owned")
+    dispatched = false
+    check(R.talent.upgrade(3) == false and not dispatched, "upgrade past the talents owned is refused")
+
+    -- add_random_ultimate replays the engine's candidate test.
+    local function ulti_cand(active, is_ulti)
+        local c, a, d = scratch(0x80), scratch(0x60), scratch(0xd0)
+        I.write_u64(c + 0x70, a); I.write_u64(a + 0x10, d)
+        I.write_u8(d + 0xc0, active and 1 or 0); I.write_u8(a + 0x40, is_ulti and 1 or 0)
+        return c
+    end
+    local ULIST = scratch(0x20)
+    I.write_u64(HERO + 0xfb8, ULIST)
+    I.write_u32(HERO + 0xfc0, 0)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "no ultimate candidates is refused (the engine would divide by zero)")
+    I.write_u64(ULIST, ulti_cand(true, true)); I.write_u64(ULIST + 8, ulti_cand(false, false))
+    I.write_u32(HERO + 0xfc0, 2)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "no QUALIFYING candidate is refused (divide by zero after the re-rolls)")
+    I.write_u64(ULIST + 8, ulti_cand(false, true))
+    dispatched, sent = false, nil
+    check(R.talent.add_random_ultimate() == true and sent.name == "ADD_RANDOM_ULTI_SKILL",
+          "one qualifying candidate sends ADD_RANDOM_ULTI_SKILL")
+    local bad = ulti_cand(false, true); I.write_u64(I.read_u64(bad + 0x70) + 0x10, 0)
+    I.write_u64(ULIST, bad)
+    dispatched = false
+    check(R.talent.add_random_ultimate() == false and not dispatched,
+          "a candidate the engine would read through address 0xc8 is refused")
+    I.write_u32(HERO + 0xfc0, 0)
+    for k = 0, 9 do I.write_u64(HERO + 0xff0 + k * 0x20, saved_slots[k] or 0) end
+
+    -- R.control: the game COUNTS locks, so the SDK counts its own and never
+    -- sends an unlock it does not owe.
+    dispatched, sent = false, nil
+    check(R.control.unlock() == false and not dispatched, "unlock with no lock held is refused")
+    check(R.control.lock() == true and sent.name == "LOCK_CONTROL" and R.control.held() == 1, "lock sends LOCK_CONTROL")
+    check(R.control.lock() == true and R.control.held() == 2, "locks are counted")
+    local unlocks = 0
+    engine["NamedEvent_Dispatch"] = function(_, ev) if name_at(ev) == "UNLOCK_CONTROL" then unlocks = unlocks + 1 end end
+    check(R.control.release() == 2 and unlocks == 2 and R.control.held() == 0,
+          "release sends exactly the unlocks this SDK owes")
+    check(R.control.release() == 0 and unlocks == 2, "...and nothing more")
+
+    -- R.run: WORLD events, sent to the oCEntitySceneContext's dispatcher at
+    -- +0x340, learned from the bus with an RTTI check — and only for the
+    -- CURRENT chapter: the dispatcher outlives the chapter, so an end sent while
+    -- one closes or loads would land on the next one.
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        sent = { disp = disp, name = name_at(ev) }
+    end
+    dispatched = false
+    check(R.run.next_chapter() == false and not dispatched, "run.next_chapter before any chapter is refused")
+    local SCENE = scratch(0x400)
+    I.write_u64(SCENE, 0x140f00000)                    -- a vtable, like HERO's
+    local WORLD = SCENE + 0x340
+    local real_rtti_name = R.rtti.name
+    R.rtti.name = function(o) if o == SCENE then return "oCEntitySceneContext" end return real_rtti_name(o) end
+    local function world_ev(name)
+        fire("gameplay:" .. name, { source = "gameplay", dispatcher = string.format("0x%x", WORLD) })
+    end
+    world_ev("SHOW_MAIN_MENU")
+    check(not R.run.world_ready(), "a world event OUTSIDE a chapter (main menu) is not captured")
+    world_ev("GAME_CHRONO_START")
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay", dispatcher = string.format("0x%x", DISP) })
+    check(R.run.world_ready(), "inside a chapter, the scene context's dispatcher is the world (the hero's is not)")
+    dispatched, sent = false, nil
+    check(R.run.next_chapter() == true and sent.name == "GAME_END_SUCCESS" and sent.disp == WORLD,
+          "run.next_chapter sends GAME_END_SUCCESS on the world dispatcher")
+    dispatched = false
+    check(R.run.win() == false and not dispatched,
+          "a SECOND end in the same chapter is refused (it would land on the next chapter)")
+    world_ev("GAME_END_SUCCESS")                       -- the engine's chapter end reaches the bus
+    check(not R.run.world_ready(), "a chapter end forgets the world dispatcher")
+    dispatched = false
+    check(R.run.lose() == false and not dispatched, "between chapters nothing is sent")
+    world_ev("MAP_GENERATION_DONE")                    -- the next chapter
+    dispatched, sent = false, nil
+    check(R.run.win() == true and sent.name == "GAME_END_SUCCESS_SKIP_NEXT" and sent.disp == WORLD,
+          "the next chapter re-learns the dispatcher and takes its own end (win)")
+    world_ev("GAME_END_SUCCESS_SKIP_NEXT"); world_ev("GAME_START")
+    local real_game_get, real_game_ready = R.game.get, R.game.ready
+    R.game.ready = function() return true end
+    R.game.get = function(k) return k == "is_in_loading_screen" and 1 or 0 end
+    dispatched = false
+    check(R.run.lose() == false and not dispatched, "the game's own loading-screen value blocks an end")
+    R.game.get = function() return 0 end
+    dispatched, sent = false, nil
+    check(R.run.lose() == true and sent.name == "GAME_END_FAILED", "run.lose sends GAME_END_FAILED")
+    R.game.get, R.game.ready = real_game_get, real_game_ready
+    world_ev("GAME_END_FAILED"); world_ev("GAME_START")
+    check(R.run.world_ready(), "a fresh chapter captures the world again")
+
+    -- R.revive: the party's tokens are the scene-context value 0x1633db76,
+    -- written through R.game's guarded path (refuses replicated unless solo).
+    do
+        local real_get_key, real_write = R.game.get_key, R.game._write_key
+        local tokens, wrote = 2, nil
+        R.game.get_key = function(k) if k == 0x1633db76 then return tokens end return real_get_key(k) end
+        R.game._write_key = function(k, v) wrote = { k = k, v = v }; tokens = v; return true end
+        check(R.revive.tokens() == 2, "revive.tokens reads the Revive token value")
+        local was_on = R.stat.writes_enabled()
+        check(R.revive.add_token(0) == false and wrote == nil, "add_token(0) is refused")
+        if was_on then
+            check(R.revive.add_token(3) == true and wrote.k == 0x1633db76 and wrote.v == 5
+                  and R.revive.tokens() == 5, "add_token(3) writes tokens + 3")
+        end
+        tokens, wrote = nil, nil
+        check(R.revive.add_token(1) == false and wrote == nil,
+              "with no readable token value (no run scene) nothing is written")
+        R.game.get_key, R.game._write_key = real_get_key, real_write
+    end
+    R.rtti.name = real_rtti_name
+    dispatched = false
+    check(R.run.win() == false and not dispatched, "a world dispatcher whose owner is no longer the scene context is refused")
+    engine["NamedEvent_Dispatch"] = function(disp, ev)
+        dispatched = true
+        local st = I.read_u64(ev + 0x58)
+        sent = { disp = disp, name = name_at(ev), type = I.read_u8(ev + 0x68),
+                 i = st ~= 4 and I.read_u32(st & ~1) or I.read_u32(ev + 0x60) }
+    end
+
+    engine["NamedEvent_Dispatch"] = function() dispatched = true end
     dispatched = false
 
     -- Now make it look dead, and do it the way it actually dies: the HERO is
@@ -1167,6 +1675,27 @@ do
     I.write_u64(HERO, 0x140f00000)
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
                                     dispatcher = string.format("0x%x", DISP) })
+
+    -- A run boundary destroys the hero entity the dispatcher lives in. Kept
+    -- across one it pointed into freed memory, and while the offset is not
+    -- learned the liveness check judges by the CURRENT hero, which is alive:
+    -- 2026-09-26 a second-run R.stat.modify dispatched ADD_MODIFIER into the
+    -- previous run's dispatcher and crashed the game, twice.
+    -- run:end / NEXT_CHAPTER also retire R.entity's hero capture; put it back
+    -- for the later sections, as a fresh spawn would.
+    local saved_capture = { shared[0], shared[1], shared[3] }
+    for _, b in ipairs({ { "run:end", "derived" }, { "run:start", "derived" },
+                         { "gameplay:GAME_END_NEXT_CHAPTER", "gameplay" } }) do
+        fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                        dispatcher = string.format("0x%x", DISP) })
+        check(R.give.ready(), "captured before " .. b[1])
+        fire(b[1], { source = b[2] })
+        check(not R.give.ready(), b[1] .. " drops the hero dispatcher")
+    end
+    fire("gameplay:ABILITY_EXIT", { source = "gameplay",
+                                    dispatcher = string.format("0x%x", DISP) })
+    check(R.give.ready(), "the next hero-anchored event re-captures it")
+    shared[0], shared[1], shared[3] = saved_capture[1], saved_capture[2], saved_capture[3]
 end
 
 -- 10. fail-closed guards: the safety net that makes engine writes acceptable --
@@ -1501,6 +2030,28 @@ do
     check(not main_ran, "next_main does not run on the background tick")
     R.schedule._main_tick()
     check(main_ran, "next_main runs on the main-thread pump")
+
+    -- The main pump is not re-entered: main work that dispatches on the bus
+    -- reaches _main_tick synchronously, and a repeater still due re-fired
+    -- itself 66 times in one frame (an item grant, 2026-10-01).
+    local fires = 0
+    local rep = R.schedule.every_main(1, function()
+        fires = fires + 1
+        R.schedule._main_tick()          -- what a synchronous dispatch does
+    end)
+    fake_clock = fake_clock + 5
+    R.schedule._main_tick()
+    check(fires == 1, "a nested main tick does not re-run a due repeater, got " .. fires)
+    local nested_ran = false
+    R.schedule.next_main(function()
+        R.schedule.next_main(function() nested_ran = true end)
+        R.schedule._main_tick()
+    end)
+    R.schedule._main_tick()
+    check(not nested_ran, "work queued during a main tick waits for the next one")
+    R.schedule._main_tick()
+    check(nested_ran, "and runs on that next tick")
+    R.schedule.cancel(rep)
 
     check(R.schedule.pending().timers == 0, "pending() reports a drained timer list")
     local ok = pcall(R.schedule.after, 1.0, "not a function")
@@ -6380,6 +6931,20 @@ do
     -- A length that disagrees with the bytes is refused rather than smeared.
     I.write_u32(REC2, 40)
     check(H.read(REC2) == nil, "a length that does not match the text is refused")
+
+    -- A "record" no blob ever named is not a member. Sky's 2026-10-06 log:
+    -- `roster: )[record], Jivil(hero 5)[hook], ...` -- param_1 was not a
+    -- record, and ")" read back as a perfectly printable name.
+    local JUNK = 0x1f003000
+    put_inline(JUNK, ")")
+    I.write_u8(JUNK + 0xc5, 1)
+    Rr.lobby._note_blob('{"PlayerName":"Akaza","RequestedHero":7}')
+    H.records[#H.records + 1] = REC
+    H.records[#H.records + 1] = JUNK
+    local names = {}
+    for _, mm in ipairs(Rr.lobby.members()) do names[mm.name] = mm.src end
+    check(names.Akaza == "record", "a record whose name a blob gave is read back")
+    check(names[")"] == nil, "a record no blob ever named stays off the roster")
 end
 
 -- N2. R.lobby: a completed roster is not the final roster ------------------
@@ -7585,6 +8150,141 @@ do  -- 9l. TWO stale ally rows are ambiguous, so it refuses instead of guessing
     check(said, "and says why, so a split board is not a mystery")
 
     I.is_grant_target = saved_grant
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+-- Give `ent` an owner GUID the way the engine lays it out: net component
+-- +0xb8 -> +0x100 -> +0x28 (see F._dmg_controller_guid). `ncmap` backs the
+-- R.net.component stub.
+local function _guid_on(ncmap, ent, scratch, g)
+    I.write_u64(scratch + 0xb8, scratch + 0x1000)
+    I.write_u64(scratch + 0x1000 + 0x100, scratch + 0x2000)
+    I.write_u64(scratch + 0x2000 + 0x28, g)
+    ncmap[ent] = scratch
+end
+
+do  -- 9l2. two stale ally rows: the OWNER GUID says which one came back
+    -- 2026-10-07 (Sky's log): both allies' controllers died over a chapter
+    -- change, Jivil's new controller forked a fourth row, the name guess gave
+    -- it "MaxS394" (who had left before the run), and Jivil's real total
+    -- stopped growing. The GUID that rebinds it was already on his row.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved_grant, saved_nc = I.is_grant_target, Rk.net.component
+    local ncmap = {}
+    Rk.net.component = function(ent) return ncmap[ent] end
+
+    Rk.damage.enable{ window = 10 }
+    local B = 0xbc000000
+    local ctrl, deal = _own_world(B, { "me", "a1", "a2" })
+    local G1, G2 = 0xbb0001411378f61, 0x79000baa7e71ce1
+    _guid_on(ncmap, ctrl[2] + 0x8000, B + 0x50000, G1)
+    _guid_on(ncmap, ctrl[3] + 0x8000, B + 0x54000, G2)
+    local alive = {}
+    for _, c in ipairs(ctrl) do alive[c] = true end
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0); deal(ctrl[2], 50.0); deal(ctrl[3], 40.0)
+    check(#Rk.damage.board() == 3, "three players, three rows")
+
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ctrl[2]], alive[ctrl[3]] = nil, nil
+    local NEW = B + 0x900000
+    local NENT = NEW + 0x10000
+    alive[NEW], alive[NENT] = true, true
+    I.write_u64(NEW + 0x08, NENT)
+    I.write_u8(NEW + 0x1d88, 0)
+    _guid_on(ncmap, NENT, B + 0x58000, G2)     -- a2 came back
+    deal(NEW, 25.0)
+
+    local board = Rk.damage.board()
+    check(#board == 3, "the GUID rebinds the row instead of forking a fourth")
+    local dealt = {}
+    for _, row in ipairs(board) do dealt[#dealt + 1] = row.dealt end
+    table.sort(dealt)
+    check(dealt[1] == 50.0 and dealt[2] == 65.0 and dealt[3] == 100.0,
+          "and the damage lands on a2's row (40 + 25), not a1's")
+
+    I.is_grant_target, Rk.net.component = saved_grant, saved_nc
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9l3. ONE stale row with a DIFFERENT owner GUID is a different player
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved_grant, saved_nc = I.is_grant_target, Rk.net.component
+    local ncmap = {}
+    Rk.net.component = function(ent) return ncmap[ent] end
+
+    Rk.damage.enable{ window = 10 }
+    local B = 0xbd000000
+    local ctrl, deal = _own_world(B, { "me", "a1" })
+    _guid_on(ncmap, ctrl[2] + 0x8000, B + 0x50000, 0x1111)
+    local alive = { [ctrl[1]] = true, [ctrl[2]] = true }
+    I.is_grant_target = function(e) return alive[e] == true end
+    deal(ctrl[1], 100.0); deal(ctrl[2], 50.0)
+
+    fire("gameplay:GAME_END_NEXT_CHAPTER", { source = "gameplay" })
+    alive[ctrl[2]] = nil
+    local NEW = B + 0x900000
+    local NENT = NEW + 0x10000
+    alive[NEW], alive[NENT] = true, true
+    I.write_u64(NEW + 0x08, NENT)
+    I.write_u8(NEW + 0x1d88, 0)
+    _guid_on(ncmap, NENT, B + 0x58000, 0x2222)
+    deal(NEW, 25.0)
+
+    check(#Rk.damage.board() == 3,
+          "a new machine's controller does not inherit the leaver's row")
+
+    I.is_grant_target, Rk.net.component = saved_grant, saved_nc
+    Rk.damage.disable(); Rk.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9l4. a lobby member who LEFT gets no placeholder row
+    -- 2026-10-07: "MaxS394" sat on a three-player board at 0 from the start.
+    package.loaded["rsmm"] = nil
+    local Rk = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+    local saved = { Rk.lobby.members, Rk.net.peers, Rk.player.name }
+    Rk.lobby.members = function()
+        return { { name = "Sky" }, { name = "Jivil" }, { name = "MaxS394" } }
+    end
+    Rk.player.name = function() return "Sky" end
+    Rk.net.peers = function() return { { name = "Jivil" } } end
+
+    Rk.damage.enable{ window = 10, roster_rows = true }
+    local ctrl, deal = _own_world(0xbe000000, { "me" })
+    I.is_grant_target = function(e) return e == ctrl[1] end
+    deal(ctrl[1], 100.0)
+    local names = {}
+    for _, row in ipairs(Rk.damage.board()) do names[row.label] = true end
+    check(names.Jivil and not names.MaxS394,
+          "the connected ally is listed, the one who left is not")
+
+    -- An unreadable peer table filters nothing: never drop a real player.
+    Rk.net.peers = function() return { { name = "Jivil" }, { name = nil } } end
+    names = {}
+    for _, row in ipairs(Rk.damage.board()) do names[row.label] = true end
+    check(names.MaxS394, "a partial peer table leaves the roster alone")
+
+    Rk.lobby.members, Rk.net.peers, Rk.player.name = saved[1], saved[2], saved[3]
     Rk.damage.disable(); Rk.damage.reset()
     rsmm.log = saved_log
     package.loaded["rsmm"] = nil
@@ -9028,17 +9728,176 @@ do
     wint(CTX + SC_MAP, MAP, 8)
     wint(CTX + SC_BASE, 0x1ff, 8)
     for i = 0, 0x200, 8 do wint(MAP + i, 0, 8) end   -- readable through the extent
-    wint(UNION + 0x08, 4, 4)              -- inline sentinel
-    wint(UNION + 0x10, 1, 4)              -- the value
+    -- The engine returns the map entry's RECORD, not a union (read off its
+    -- own setter 2026-09-26): settings ptr at +0, signal at +8, union at
+    -- +0x30 with the tag at +0x08, value at +0x10, type byte at +0x18. The
+    -- first two words carry the live values a 2026-09-19 dump showed, so a
+    -- reader that looks for the tag at +0x08 fails here exactly as it did in
+    -- game.
+    local REC = UNION
+    for i = 0, 0x58, 8 do wint(REC + i, 0, 8) end
+    wint(REC + 0x00, 0x64000000, 8)       -- oCGlobalEntityValueSettings*
+    wint(REC + 0x08, 0x140f10f48, 8)      -- signal vftable, NOT the tag
+    wint(REC + 0x38, 4, 8)                -- union: inline tag
+    wint(REC + 0x40, 1, 4)                -- union: value
+    wint(REC + 0x48, 1, 1)                -- union: type 1 = int
     shared[17] = CTX
     check(R.game.flag("is_in_overtime") == true,
           "a scene context reads through the matching reader, why: "
           .. tostring(R.game.why()))
     check(asked == 0x1cd79255, "...with the engine's own key for that value")
 
+    -- The union's own type decides the decode, not the harvested table:
+    -- is_in_overtime is listed as int, but a float union reads as a float.
+    wint(REC + 0x48, 0, 1)                -- type 0 = f32
+    I.write_f32(REC + 0x40, 1.5)
+    check(R.game.get("is_in_overtime") == 1.5, "a float union decodes as a float")
+    -- A negative int comes back signed.
+    wint(REC + 0x48, 1, 1)
+    wint(REC + 0x40, 0xffffffff, 4)
+    check(R.game.get("is_in_overtime") == -1, "an int union decodes signed")
+    -- An unset union (type 10, what the engine's ctor writes) is not a zero.
+    wint(REC + 0x48, 10, 1)
+    check(R.game.get("is_in_overtime") == nil, "an unset union reads nil")
+    check((R.game.why() or ""):find("union type 10", 1, true) ~= nil,
+          "...and why() names the type: " .. tostring(R.game.why()))
+    wint(REC + 0x48, 1, 1)
+    wint(REC + 0x40, 1, 4)
+
     -- A key this context does not hold comes back nil, not a wrong number.
     check(R.game.get("reroll_count") == nil, "an unheld key reads nil")
 
+    -- R.game.cached: the same value with NO engine call, for a timer thread
+    -- that must notice the pause while main-thread callbacks are stopped.
+    check(R.game.cached("is_in_pause") == nil, "cached() of a value never got on the main thread is nil")
+    asked = nil
+    check(R.game.cached("is_in_overtime") == 1, "cached() re-reads a value get() already found")
+    check(asked == nil, "...without asking the engine")
+    wint(REC + 0x40, 0, 4)
+    check(R.game.cached("is_in_overtime") == 0, "...and follows the live value")
+    wint(REC + 0x40, 1, 4)
+    shared[17] = JUNK
+    check(R.game.cached("is_in_overtime") == nil, "cached() is nil once the context is gone")
+    shared[17] = CTX
+
+    -- R.modifier reads THIS context by raw key (run modifiers are global, not
+    -- on the hero), and a modifier it does not hold is nil -- not the hero
+    -- store's 0.0, which read as "off" for every modifier in game.
+    check(R.game.get_key(0x1cd79255) == 1, "get_key reads the same record by raw key")
+    check(R.modifier.value("No minimap") == nil, "an unheld modifier reads nil, not 0")
+    check(R.modifier.why() ~= nil, "...and R.modifier.why() says why")
+
+    -- WRITES, through a setter faithful to FUN_1402091a0/FUN_14020a580 ->
+    -- FUN_140706660: an unheld key is a silent no-op, a CLIENT's write to a
+    -- replicated value (settings+0xbe) is refused silently, otherwise the
+    -- value is written by type into record+0x30.
+    local records = { [0x1cd79255] = REC }
+    local next_rec = 0x65000000
+    local function record(key, settings, typ, val)
+        local r = next_rec
+        next_rec = next_rec + 0x100
+        for i = 0, 0x58, 8 do wint(r + i, 0, 8) end
+        wint(r + 0x00, settings, 8)
+        wint(r + 0x48, typ, 1)
+        if typ == 1 then
+            -- A 16-byte int never fits inline: the tag IS the data's address,
+            -- with bit 0 set as the engine's flag bit may be.
+            local slot = r + 0x80
+            wint(slot, val, 4); wint(slot + 8, 0, 8)
+            wint(r + 0x38, slot | 1, 8)
+        else
+            wint(r + 0x38, 4, 8)
+            if typ == 0 then I.write_f32(r + 0x40, val) else wint(r + 0x40, val, 1) end
+        end
+        records[key] = r
+        return r
+    end
+    -- Where a record's data lives, as the engine resolves it.
+    local function data_of(r)
+        local tag = rint(r + 0x38, 8)
+        if tag == 4 then return r + 0x40 end
+        return tag & ~1
+    end
+    local SET_REP, SET_LOCAL = 0x66000000, 0x66001000
+    for i = 0, 0x100, 8 do wint(SET_REP + i, 0, 8); wint(SET_LOCAL + i, 0, 8) end
+    wint(SET_REP + 0xbe, 1, 1)                       -- replicated
+    wint(REC + 0x00, SET_LOCAL, 8)                   -- is_in_overtime: local
+    local HERO_COUNT = record(0x1599ae4c, SET_LOCAL, 1, 1)     -- int: out of line
+    local NO_MINIMAP = record(0x99f27eac, SET_REP, 2, 0)       -- bool toggle
+    local XP_MOD     = record(0x187afd1d, SET_REP, 0, 1.0)     -- f32 scalar
+    engine["SceneContextValue_Find"] = function(ctx, key)
+        if rint(ctx + SC_MAP, 8) ~= MAP then
+            error(string.format("SceneContextValue_Find: 0x%x is not a scene context", ctx))
+        end
+        asked = key
+        return records[key] or 0
+    end
+    local is_client, set_calls = false, 0
+    local function setter(kind)
+        return function(ctx, key, v)
+            set_calls = set_calls + 1
+            if rint(ctx + SC_MAP, 8) ~= MAP then error("setter: not a scene context") end
+            local r = records[key]
+            if not r then return end                              -- never creates
+            local settings = rint(r, 8)
+            if is_client and rint(settings + 0xbe, 1) ~= 0 then return end  -- silent refusal
+            local d = data_of(r)
+            if kind == "f32" then I.write_f32(d, v)
+            elseif kind == "bool" then wint(d, (v ~= 0 and v ~= false) and 1 or 0, 1)
+            else wint(d, v, 4) end
+        end
+    end
+    engine["SceneContextValue_SetInt"] = setter("int")
+    engine["SceneContextValue_SetFloat"] = setter("f32")
+    engine["SceneContextValue_SetBool"] = setter("bool")
+
+    R.stat.enable_writes()
+    check(R.modifier.set("No minimap", 1) == true,
+          "solo: a replicated toggle is written, why: " .. tostring(R.modifier.why()))
+    check(R.modifier.active("No minimap") == true, "...and reads back active from the global context")
+    check(R.modifier.set("Global Xp Modifier", 1.5) == true, "a float scalar is written")
+    check(R.modifier.value("Global Xp Modifier") == 1.5, "...keeping its fraction (SetFloat, not SetInt)")
+    check(R.modifier.set("No minimap", 0.5) == false, "a bool takes 0 or 1 only")
+    -- Ints live OUT OF LINE (the tag is their address): hero_count reads
+    -- through the pointer, which is what "Current chapter" needed in game.
+    check(R.game.get("hero_count") == 1, "an out-of-line int reads through the tag pointer")
+    wint(data_of(HERO_COUNT), 0xfffffffe, 4)
+    check(R.game.get("hero_count") == -2, "...signed")
+    wint(data_of(HERO_COUNT), 1, 4)
+
+    -- Co-op: a replicated value is not written at all.
+    wint(data_of(HERO_COUNT), 2, 4)
+    local calls = set_calls
+    check(R.modifier.set("No minimap", 0) == false, "co-op: a replicated value is refused")
+    check(set_calls == calls, "...before the engine is called")
+    check((R.modifier.why() or ""):find("not provably solo", 1, true) ~= nil,
+          "...and why() says so: " .. tostring(R.modifier.why()))
+    -- An unreadable hero count is not solo either.
+    records[0x1599ae4c] = nil
+    check(R.modifier.set("No minimap", 0) == false, "unknown player count: refused")
+    records[0x1599ae4c] = HERO_COUNT
+    wint(data_of(HERO_COUNT), 1, 4)
+
+    -- The engine's own silent refusal is caught by the read-back.
+    is_client = true
+    check(R.modifier.set("No minimap", 0) == false, "a write the engine silently dropped reports false")
+    check((R.modifier.why() or ""):find("reads", 1, true) ~= nil,
+          "...and why() gives the read-back: " .. tostring(R.modifier.why()))
+    is_client = false
+
+    -- A key the context does not hold is refused, not "written".
+    check(R.modifier.set("No boss timer", 1) == false, "an unheld modifier is refused")
+
+    -- clear() restores the value from before the SDK's first write.
+    check(R.modifier.clear("No minimap") == true, "clear restores the original")
+    check(R.modifier.value("No minimap") == 0, "...which was 0")
+    check(R.modifier.clear("No minimap") == false, "a second clear has nothing to restore")
+    check(R.modifier.clear("Global Xp Modifier") == true and R.modifier.value("Global Xp Modifier") == 1.0,
+          "a scalar clears back to 1.0")
+
+    engine["SceneContextValue_SetInt"] = nil
+    engine["SceneContextValue_SetFloat"] = nil
+    engine["SceneContextValue_SetBool"] = nil
     shared[17] = nil
     engine["SceneContextValue_Find"] = nil
     package.loaded["rsmm.gamevalues"] = nil
@@ -9488,6 +10347,248 @@ do
     check(s and s.entity == TARGET and s.interactor == ENT_H,
           "success inherits both ends from its request")
     R.entity.hero, R.rtti.name = real_hero, real_rtti
+end
+
+-- R.camera: the hero's TopDown cameras, found by RTTI name through the entity's
+-- component array; a literal f32 record is written in place, anything else is
+-- refused. Layout as read off the settings ctor/deserializer (2026-10-02):
+-- records at settings+0xf8+0x80*i, union at record+0x60 (sentinel +0x68 == 4,
+-- value +0x70, type byte +0x78), record+0x58 == -1 for a literal.
+do
+    check(R.camera ~= nil, "R.camera loaded")
+    local HERO_C, ARR = 0x12d00000, 0x12d10000
+    local CAM = { 0x12d20000, 0x12d30000 }             -- default, zoom
+    local SET = { 0x12d40000, 0x12d50000 }
+    local real_hero, real_rtti = R.entity.hero, R.rtti.name
+    local function rec(s, off, v, opts)
+        opts = opts or {}
+        local r = s + off
+        I.write_u32(r + 0x58, opts.linked and 3 or 0xffffffff)
+        I.write_u64(r + 0x68, 4)
+        mem[r + 0x78] = opts.type or 0
+        if opts.type == 2 then mem[r + 0x70] = v else I.write_f32(r + 0x70, v) end
+    end
+    for i = 1, 2 do
+        I.write_u64(CAM[i] + 0x10, SET[i])
+        rec(SET[i], 0x3f8, math.rad(45))                -- yaw
+        rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
+        rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
+        rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
+    end
+    I.write_u64(HERO_C + 0x190, ARR)
+    I.write_u32(HERO_C + 0x198, 2)
+    I.write_u64(ARR, CAM[1]); I.write_u64(ARR + 8, CAM[2])
+    R.entity.hero = function() return HERO_C end
+    R.rtti.name = function(p)
+        if p == CAM[1] or p == CAM[2] then return "oe::oCEntityCpntTopDownCamera" end
+        if p == SET[1] or p == SET[2] then return "oe::oCEntityCpntTopDownCameraSettings" end
+        return real_rtti(p)
+    end
+
+    local cams = R.camera.cameras()
+    check(cams and #cams == 2, "both hero cameras found by class name")
+    check(cams and cams[1].default and not cams[2].default, "the default flag picks Default Camera")
+    check(about(R.camera.get("yaw"), 45), "yaw reads in degrees")
+
+    check(R.camera.set("yaw", 135) == 2, "yaw moves every camera, so zooming keeps it")
+    check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "zoom camera yaw written in radians")
+    check(R.camera.set("distance", 50) == 1, "other fields change the default camera only")
+    check(about(I.read_f32(SET[2] + 0x2f8 + 0x70), 9.05), "zoom distance untouched")
+
+    local n, why = R.camera.set("fov", 40)
+    check(n == nil and why:find("linked"), "a linked field is refused, not written")
+    check(about(I.read_f32(SET[1] + 0x378 + 0x70), 31), "linked fov left alone")
+
+    I.write_u64(SET[2] + 0x3f8 + 0x68, 0x5550)          -- yaw no longer inline
+    check(R.camera.set("yaw", 90) == 1, "a record that fails the check is skipped")
+    check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "skipped record not written")
+    I.write_u64(SET[2] + 0x3f8 + 0x68, 4)
+
+    check(R.camera.reset() >= 3, "reset restores every changed value")
+    check(about(R.camera.get("yaw"), 45) and about(I.read_f32(SET[1] + 0x2f8 + 0x70), 33),
+          "originals back after reset")
+
+    -- In game the cameras were on none of hero / ctx / owner: they sit on an
+    -- entity a hero FIELD points at, accepted only if every component points
+    -- back at it.
+    local HERO_F, OWNER = 0x12d60000, 0x12d70000
+    I.write_u64(HERO_F + 0x40, OWNER)
+    I.write_u64(OWNER + 0x190, ARR)
+    I.write_u32(OWNER + 0x198, 2)
+    I.write_u64(CAM[1] + 0x08, OWNER)
+    I.write_u64(CAM[2] + 0x08, 0x12d80000)               -- not ours
+    R.entity.hero = function() return HERO_F end
+    local found = R.camera.cameras()
+    check(found and #found == 2,
+          "a probed array that fails the back-pointer check is not trusted, but the search still finds the cameras by class")
+    I.write_u64(CAM[2] + 0x08, OWNER)
+    local probed = R.camera.cameras()
+    check(probed and #probed == 2, "cameras found on an entity a hero field points at")
+
+    -- Third launch's finding: the cameras are in the oCEntity's CLASS-ID MAP
+    -- (slots {u32 id; u64 cpnt} @+0x5f0, mask @+0x600), not the +0x190 array.
+    local HERO_M, ENT_M, SLOTS = 0x12d90000, 0x12da0000, 0x12db0000
+    I.write_u64(HERO_M + 0x08, ENT_M)
+    I.write_u64(ENT_M + 0x5f0, SLOTS)
+    I.write_u64(ENT_M + 0x600, 3)                         -- 4 buckets
+    I.write_u32(SLOTS + 0x10, 0x1111); I.write_u64(SLOTS + 0x18, CAM[1])
+    I.write_u32(SLOTS + 0x30, 0x1112); I.write_u64(SLOTS + 0x38, CAM[2])
+    local rtti_cam = R.rtti.name
+    R.rtti.name = function(p)
+        if p == ENT_M then return "oe::oCEntity" end
+        return rtti_cam(p)
+    end
+    R.entity.hero = function() return HERO_M end
+    local mapped = R.camera.cameras()
+    check(mapped and #mapped == 2, "cameras found in the entity's class-id map")
+    R.rtti.name = function(p)
+        if p == ENT_M then return "oe::oCSomethingElse" end
+        return rtti_cam(p)
+    end
+    R.rtti.name = rtti_cam
+
+    -- Fourth launch: the cameras hang three hops off the hero through heap
+    -- objects (hero+0x1e0+0x2b0+0x548). Found by pointer search; only objects
+    -- whose RTTI says TopDownCamera are kept, and the component's own entity
+    -- (+0x08) is read for its siblings.
+    local HERO_P, A, B, CAM_ENT, CARR = 0x12dd0000, 0x12de0000, 0x12df0000, 0x12e00000, 0x12e10000
+    I.write_u64(HERO_P + 0x1e0, A)
+    I.write_u64(A + 0x2b0, B)
+    I.write_u64(B + 0x548, CAM[1])
+    I.write_u64(CAM[1] + 0x08, CAM_ENT)
+    I.write_u64(CAM_ENT + 0x190, CARR); I.write_u32(CAM_ENT + 0x198, 2)
+    I.write_u64(CARR, CAM[1]); I.write_u64(CARR + 8, CAM[2])
+    R.entity.hero = function() return HERO_P end
+    local chained = R.camera.cameras()
+    check(chained and #chained == 2, "camera three hops out found, sibling read off its own entity")
+    check(chained and (chained[1].default or chained[2].default), "the default camera is among them")
+
+    local FAKE, HERO_X = 0x12e20000, 0x12e30000
+    I.write_u64(HERO_X + 0x40, FAKE)
+    local BLOB = 0x12e40000                            -- a settings-shaped block, no RTTI
+    I.write_u64(FAKE + 0x10, BLOB)
+    I.write_u32(BLOB + 0x3f8 + 0x58, 0xffffffff); I.write_u64(BLOB + 0x3f8 + 0x68, 4)
+    R.entity.hero = function() return HERO_X end
+    check(R.camera.cameras() == nil, "an object is never taken for a camera without its class name")
+
+    R.entity.hero = function() return nil end
+    local none, reason = R.camera.cameras()
+    check(none == nil and reason:find("hero"), "no hero: nil plus why")
+    R.entity.hero, R.rtti.name = real_hero, real_rtti
+end
+
+-- Live config: a value written to config.toml OUTSIDE the game (the desktop
+-- overlay's controls) reaches R.config.on_change on the next tick. The native
+-- config_reload replaces the table only when the file changed; R.config diffs
+-- it and fires each changed key once with (new, old).
+do
+    local saved = { I.config_get, I.config_set, I.config_all, I.config_reload }
+    local cfg, file, dirty = { yaw = 45 }, nil, false
+    I.config_get = function(k) return cfg[k] end
+    I.config_set = function(k, v) cfg[k] = v; return true end
+    I.config_all = function() local t = {}; for k, v in pairs(cfg) do t[k] = v end; return t end
+    I.config_reload = function()
+        if not dirty then return false end
+        dirty = false; cfg = file; return true
+    end
+    local function outside(t) file = t; dirty = true end
+
+    local got = {}
+    R.config.on_change("yaw", function(new, old) got[#got + 1] = { new, old } end)
+    fire("tick")                                          -- takes the snapshot
+    check(#got == 0, "no change, no callback")
+    outside({ yaw = 135 })
+    fire("tick")
+    check(#got == 1 and got[1][1] == 135 and got[1][2] == 45, "outside edit fires on_change(new, old)")
+    fire("tick")
+    check(#got == 1, "fired once, not on every tick")
+
+    R.config.set("yaw", 200)                              -- the mod's own change
+    check(#got == 2, "R.config.set still fires its watcher")
+    outside({ yaw = 200, other = true })
+    fire("tick")
+    check(#got == 2, "a reload that leaves yaw as the mod set it does not re-fire yaw")
+
+    outside({ other = true })
+    fire("tick")
+    check(#got == 3 and got[3][1] == nil and got[3][2] == 200, "a removed key fires with nil")
+
+    I.config_reload = nil                                 -- older DLL
+    outside({ yaw = 1 })
+    fire("tick")
+    check(#got == 3, "no config_reload native: polling is a no-op, not an error")
+
+    -- A watcher that clamps by writing its own key back. Before the change
+    -- check it re-entered itself until the C stack overflowed.
+    cfg = { speed = 1 }
+    local calls = 0
+    R.config.on_change("speed", function(new)
+        calls = calls + 1
+        if calls > 50 then error("runaway watcher") end
+        R.config.set("speed", math.min(new, 10))
+    end)
+    R.config.set("speed", 30)
+    check(cfg.speed == 10 and calls == 2,
+          "a clamping watcher settles instead of recursing")
+    R.config.set("speed", 10)
+    check(calls == 2, "setting the value it already has fires nothing")
+    I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
+end
+
+-- R.daynight: the chapter timer lives in the DarkTalesAppSettingsSection that
+-- DayNightCycle_InitCycle copies on every chapter load. Found by RTTI name in
+-- AppSettings_SectionList, range-checked before any write.
+do
+    package.loaded["rsmm"] = nil
+    local Rd = require "rsmm"
+    local LIST, DATA = 0x1412f5aa8, 0x1f100000
+    local OTHER, SEC = 0x1f110000, 0x1f120000
+    I.write_u64(LIST, DATA); I.write_u32(LIST + 8, 2)
+    I.write_u64(DATA, OTHER); I.write_u64(DATA + 8, SEC)
+    -- The shipped block: 1 / 180 / 180 / 5 / 6 / 60 / 180.
+    I.write_u8(SEC + 0x1a0, 1)
+    I.write_f32(SEC + 0x1a4, 180); I.write_f32(SEC + 0x1a8, 180)
+    I.write_f32(SEC + 0x1ac, 5);   I.write_u32(SEC + 0x1b0, 6)
+    I.write_f32(SEC + 0x1b4, 60);  I.write_f32(SEC + 0x1b8, 180)
+    local real_name = Rd.rtti.name
+    Rd.rtti.name = function(p)
+        if p == SEC then return "oe::dt::DarkTalesAppSettingsSection" end
+        if p == OTHER then return "oe::dt::SomeOtherSection" end
+        return nil
+    end
+
+    check(Rd.daynight.section() == SEC, "the section is found by RTTI name, not by index")
+    local t = Rd.daynight.get()
+    check(t and t.day == 180 and t.night == 180 and t.half_cycles == 6
+          and t.overtime == 180 and t.start_day == true, "the shipped values read back")
+    check(Rd.daynight.boss_time() == 1260, "boss time is the engine's formula (21 min shipped)")
+
+    check(Rd.daynight.set{ day = 120, night = 90, half_cycles = 4 }, "a valid set lands")
+    check(I.read_f32(SEC + 0x1a4) == 120 and I.read_u32(SEC + 0x1b0) == 4,
+          "and writes the section's own fields")
+
+    local ok = Rd.daynight.set{ day = 60, half_cycles = 2.5 }
+    check(not ok and I.read_f32(SEC + 0x1a4) == 120,
+          "a bad value refuses the WHOLE table: nothing is half-written")
+    check(not Rd.daynight.set{ dya = 1 }, "an unknown field is refused, not ignored")
+    check(not Rd.daynight.set{ day = 0 }, "a zero-length day is refused")
+
+    check(Rd.daynight.restore() and I.read_f32(SEC + 0x1a4) == 180
+          and I.read_u32(SEC + 0x1b0) == 6, "restore puts the game's own values back")
+
+    -- A section whose block reads as garbage is NOT written into.
+    I.write_f32(SEC + 0x1a4, -5)
+    check(not Rd.daynight.set{ day = 100 } and I.read_f32(SEC + 0x1a4) == -5,
+          "an implausible block refuses instead of writing")
+    I.write_f32(SEC + 0x1a4, 180)
+
+    va_trusted_val = false
+    check(not Rd.daynight.set{ day = 100 }, "a closed va gate refuses")
+    va_trusted_val = true
+
+    Rd.rtti.name = real_name
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

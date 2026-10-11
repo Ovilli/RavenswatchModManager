@@ -50,24 +50,25 @@ import logging
 import struct
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import text_patches as TP
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
 
 _log = logging.getLogger(__name__)
 
-_HERODEF_DIR = DATA_DIR / "uncooked" / "Definitions" / "Heroes"
+#: Decoded directories read through `engine.corpus` (mirror or install).
+_HERODEF_DIR = "Definitions/Heroes"
+_HERODEF_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 
 
 def _hero_token(hero: str) -> str | None:
     """Canonical herodef stem for a hero name (e.g. ``Snow_Queen``)."""
-    if not _HERODEF_DIR.is_dir():
-        return None
-    low = hero.lower().replace(" ", "_")
-    for p in _HERODEF_DIR.glob("*.herodef.ot.DtHeroDefinition.gen"):
-        stem = p.name.split(".", 1)[0]
-        if stem.lower() == low:
+    # `Sun_Wukong`, `Sun Wukong` and the folder spelling `SunWukong` are all
+    # the same hero.
+    low = hero.lower().replace(" ", "").replace("_", "")
+    for stem in corpus.stems(_HERODEF_DIR, _HERODEF_SUFFIX):
+        if stem.lower().replace("_", "") == low:
             return stem
     return None
 
@@ -93,26 +94,59 @@ def _key_base_candidates(source: str) -> list[str]:
         s = s[len("skill controller "):]
     if s.lower().startswith("skill_"):
         return [s]
+    # Row names carry typos and filler the keys do not: `Utimate 1 Immolation`,
+    # `Attack Controller Burst`, `Special Special Missiles`.
+    words = ["Ultimate" if w == "Utimate" else w for w in s.split() if w != "Controller"]
+    if len(words) > 1 and words[0] == words[1]:
+        words = words[1:]
+    s = " ".join(words)
     out = ["Skill_" + s.replace(" ", "_")]
     head, _, tail = s.partition(" ")
     alias = _KEY_PREFIX_ALIASES.get(head)
     if alias and tail:
         out.append("Skill_" + f"{alias} {tail}".replace(" ", "_"))
+    # An ultimate's upgrade card is keyed `Skill_Ultimate_2_Upgrade_Volcanic`
+    # while its row is `Ultimate 2 Volcanic`.
+    if (len(words) > 2 and words[0] == "Ultimate" and words[1] in ("1", "2")
+            and words[2] != "Upgrade"):
+        out.append("Skill_" + " ".join([*words[:2], "Upgrade", *words[2:]]).replace(" ", "_"))
+    # `Defense More Shot` -> `Skill_Defense_More_Shots`.
+    out.append(out[0] + "s")
     return out
 
 
-def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
+#: Suffixes a card's NAME key carries, in the order tried. Most banks say
+#: ``_Name``; Juliet's says ``_Title`` (and once ``_Tilte``), Snow Queen's once
+#: ``_Names``. Writing ``_Name`` into a bank that has ``_Title`` failed the
+#: relabel outright, so the key is looked up, never composed.
+_NAME_SUFFIXES = ("_Name", "_Title", "_Tilte", "_Names")
+_DESC_SUFFIXES = ("_Desc", "_desc")
+
+
+def card_keys(key_base: str, bank_keys) -> tuple[str | None, str | None]:
+    """``(name key, description key)`` the bank really holds for ``key_base``."""
+    keys = set(bank_keys)
+    name = next((key_base + s for s in _NAME_SUFFIXES if key_base + s in keys), None)
+    desc = next((key_base + s for s in _DESC_SUFFIXES if key_base + s in keys), None)
+    return name, desc
+
+
+def _text_key_base(source: str, bank_keys: list[str] | None = None,
+                   own: list[str] | None = None) -> str:
     """``Attack Dive`` -> ``Skill_Attack_Dive``; ``Primary Bleed`` ->
     ``Skill_Power_Bleed`` when the bank says so.
 
-    With ``bank_keys`` the answer is CHECKED against the hero's actual keys
-    rather than assumed, so a wrong guess fails naming what it looked for.
+    ``own`` is what the controller row itself names (``controller_key_bases``);
+    it wins over any guess from the row's name, which rows spell by slot,
+    ability or with typos. With ``bank_keys`` the answer is CHECKED against the
+    hero's actual keys rather than assumed, so a wrong guess fails naming what
+    it looked for.
     """
-    cands = _key_base_candidates(source)
+    cands = [*(own or ()), *_key_base_candidates(source)]
     if bank_keys is None:
         return cands[0]
     for c in cands:
-        if f"{c}_Name" in bank_keys or f"{c}_Desc" in bank_keys:
+        if any(k is not None for k in card_keys(c, bank_keys)):
             return c
     raise ContentError(
         f"skill: no text key for {source!r} — tried "
@@ -120,11 +154,56 @@ def _text_key_base(source: str, bank_keys: list[str] | None = None) -> str:
         + ". Check the controller name against the hero's bank.")
 
 
+def controller_key_bases(hero_token: str) -> dict[str, list[str]]:
+    """Controller row (``Ultimate 1 Upgrade 1``) -> the card text-key bases the
+    row itself names (``Skill_Ultimate_1_Better_Wish``).
+
+    A row holds its card's key in a text field, or links to a ``String Format``
+    part that does (the base ultimates ``Ultimate Power 1/2`` do). Empty for a
+    hero with no entity in the corpus."""
+    import re
+
+    from ...engine import entity_fields as EF
+    from ...engine import entity_graph as EG
+
+    low = hero_token.replace("_", "").lower()
+    for d in corpus.subdirs(_ENTITY_DIR):
+        if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low:
+            raw = corpus.read(f"{_ENTITY_DIR}/{d}/{d}.entity.ot.EntitySettingsResource.gen")
+            break
+    else:
+        return {}
+    if raw is None:
+        return {}
+    comps = EG.parse(raw, d).components
+    by_name: dict[str, list] = {}
+    for c in comps:
+        by_name.setdefault(c.name, []).append(c)
+
+    def bases(c, follow: bool) -> list[str]:
+        out = []
+        for f in EF.fields(c):
+            text = f.text or ""
+            for key in re.findall(r"'(Skill_\w+)'", text):
+                for suf in (*_NAME_SUFFIXES, *_DESC_SUFFIXES):
+                    if key.endswith(suf):
+                        out.append(key[:-len(suf)])
+            if follow:
+                for target in re.findall(r"<- \[String Format\] (.+)$", text):
+                    for t in by_name.get(target.rsplit("\\", 1)[-1], ()):
+                        out += bases(t, False)
+        return out
+
+    return {c.name[len("Skill Controller "):].removesuffix(" Skills"): bases(c, True)
+            for c in comps if c.name.startswith("Skill Controller ")}
+
+
 def _install_bank(hero_token: str):
     """Return ``(install_base_gen, decoded_path)`` for a hero's Common text bank
     in the live game install, or ``None`` when no install is reachable."""
     try:
-        from rsmm.cli.apply_mods import COOKING_REL, find_game_dir, load_asset_map
+        from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+        from rsmm.engine.paths import COOKING_REL
     except ImportError:
         return None
     game = find_game_dir()
@@ -180,12 +259,15 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
     if display_name is None and description is None:
         return []
     base_gen, decoded_bank = _require_bank(hero_token)
-    key_base = _text_key_base(source, TP.parse_text_file(base_gen).entries)
+    bank_keys = TP.parse_text_file(base_gen).entries
+    own = controller_key_bases(hero_token).get(source.strip().removeprefix("Skill Controller "))
+    key_base = _text_key_base(source, bank_keys, own)
+    name_key, desc_key = card_keys(key_base, bank_keys)
     overrides: dict[str, str] = {}
     if display_name is not None:
-        overrides[f"{key_base}_Name"] = str(display_name)
+        overrides[name_key or f"{key_base}_Name"] = str(display_name)
     if description is not None:
-        overrides[f"{key_base}_Desc"] = str(description)
+        overrides[desc_key or f"{key_base}_Desc"] = str(description)
     # Another relabel in this mod may already have written this bank during the
     # same emit (the previous emit's files are removed before any block runs);
     # build on it, or the later block silently erases the earlier one's text.
@@ -209,8 +291,7 @@ def _require_bank(hero_token: str) -> tuple[Path, str]:
     return bank
 
 
-_ENTITY_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
-_UI_MIRROR = DATA_DIR / "uncooked"
+_ENTITY_DIR = "EntitySettings/Heroes"
 
 
 def _slot_icon_texture(hero_token: str, controller: str) -> str:
@@ -229,10 +310,14 @@ def _slot_icon_texture(hero_token: str, controller: str) -> str:
     if not name.lower().startswith("skill controller "):
         name = f"Skill Controller {name}"
     pat = struct.pack("<I", len(name)) + name.encode("ascii")
-    low = hero_token.lower()
-    dirs = [d for d in _ENTITY_DIR.glob("Hero_*") if d.name[5:].lower() == low]
+    # The herodef token and the entity folder can spell a hero differently
+    # (herodef `Sun_Wukong`, folder `Hero_SunWukong`), so compare without `_`.
+    low = hero_token.replace("_", "").lower()
+    dirs = [d for d in corpus.subdirs(_ENTITY_DIR)
+            if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low]
     for d in dirs:
-        for gen in sorted(d.glob("*.entity.ot.EntitySettingsResource.gen")):
+        for gen in corpus.files(f"{_ENTITY_DIR}/{d}",
+                                ".entity.ot.EntitySettingsResource.gen"):
             blob = gen.read_bytes()
             at = blob.find(pat)
             if at < 0:
@@ -286,11 +371,15 @@ def _emit_icon(hero_token: str, controller: str, icon: str,
     decoded = _slot_icon_texture(hero_token, controller)
     png = src.read_bytes()
     w, h, rgba = IMG.decode_png(png)
-    # Match the vanilla texture's size when the mirror has it, so the cooked
-    # icon occupies the same memory and layout as the one it replaces.
-    mirror = _UI_MIRROR / decoded.removesuffix(".Texture.dxt")
-    if mirror.is_file():
-        vw, vh, _ = IMG.decode_png(mirror.read_bytes())
+    # Match the vanilla texture's size, so the cooked icon occupies the same
+    # memory and layout as the one it replaces. Read from the cooked header:
+    # the install has no decoded PNG, only the mirror does.
+    from ...engine.cooked_schemas.texture import cooked_dimensions
+
+    vanilla = corpus.read(decoded)
+    dims = cooked_dimensions(vanilla) if vanilla else None
+    if dims is not None:
+        vw, vh = dims
         if (vw, vh) != (w, h):
             rgba, w, h = _scale_rgba(w, h, rgba, vw, vh), vw, vh
             png = IMG.encode_png(w, h, rgba)
@@ -314,8 +403,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     hero_token = _hero_token(hero)
     if hero_token is None:
         raise ContentError(
-            f"skill {defn.id}: no herodef for {hero!r} under Definitions/Heroes "
-            f"(is data/uncooked present?)")
+            f"skill {defn.id}: no herodef for {hero!r} under Definitions/Heroes — "
+            f"is the game install readable?")
 
     mode = (defn.fields.get("mode") or "relabel").lower()
     # Only RELABEL is emitted. The two herodef modes are refused, each for a

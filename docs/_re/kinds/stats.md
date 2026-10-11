@@ -141,11 +141,11 @@ each stores its key at `def+0x6c` via `FUN_1406de840(list, KEY, name, …)`.
 | attack power (base) | `0x15a486c4` | f32 |
 | attack power per slot | `0x15a5cf40 + 2·slot` (basic `0x15a5cf51`, dash `0x183a609a`) | f32 |
 | crit chance (base) | `0x15c7d482` | f32 |
-| crit chance per slot | `0x15c7d482 + 2·slot` (dash `0x183a60b6`) | f32 |
+| crit chance per slot | `0x15c7d486 + 2·slot` (basic `0x15c7d484`, dash `0x183a60b6`) | f32 |
 | crit damage | `0x15c82d13` | f32 |
 | move speed ("Move Speed Ratio") | `0x044dadde` | f32 |
 | cooldown reduction (base) | `0x15b45d80` | f32 |
-| cooldown reduction per slot | `0x15b45d80 + 2·slot` (dash `0x183a5fc9`) | f32 |
+| cooldown reduction per slot | `0x15b45d84 + 2·slot` (basic `0x15b45d82`, dash `0x183a5fc9`) | f32 |
 | life steal | `0x15c028c2` | f32 |
 | life on hit (base) | `0x1894f1a2` | f32 |
 | dream shards (currency count) | `0x171c27b5` | int |
@@ -323,9 +323,14 @@ string's real length.
 What it settled:
 
 * **Armour is registered with key `0`** — a definition, a display name and an
-  editor icon, but no id. It is genuinely unaddressable through the store, so no
-  `R.stat` call can read or write it; its live value is a plain field at
-  `hero+0x31c` (written by `0x1403aab60`, beside the attack cache at `+0x318`).
+  editor icon, but no id string, so `R.stat` has no name to address it by; its
+  live value is a plain field at `hero+0x31c` (written by `0x1403aab60`, beside
+  the attack cache at `+0x318`). ⚠ Key `0` IS a live store key all the same:
+  `0x1403aab60` opens with `EntityValue_Lookup(store, out, 0)` (`xor r8d, r8d`)
+  and folds that into the field, and every shipped armour modifier (8 items)
+  stores stat `0`. So item/talent modifiers fold into armour through the store
+  like any other stat, and repointing one from `0` to another key is not a
+  special case (2026-10-02).
   Five armour *effects* are keyed and usable: "Armour per missing health"
   (`0x16917db7`), "Armour increase crit damage" (`0x16917ec8`), "Armour into AP"
   (`0x174a0363`), "Armour per ability under cooldown" (`0x170329b8`) and

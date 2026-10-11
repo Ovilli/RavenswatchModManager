@@ -67,6 +67,13 @@ def main(argv: list[str] | None = None) -> int:
         # exactly what sent a 2026-08-24 debugging session looking for the bug
         # in the mod instead of in the plant. The channel cannot fix this one:
         # what is behind is the game dir, not the download.
+        # Before everything, including "up to date": that line is about version numbers, and a
+        # game dir with no winhttp.dll at all is running no loader whatever they say. Seen on a
+        # tester's Windows install, where it read "up to date (v26)" over an empty folder.
+        if state.get("not_planted"):
+            print(f"note: there is NO loader in {game_dir} (no winhttp.dll), so the game is "
+                  f"running without it, whatever the version below says. Run "
+                  f"`rsmm install-loader \"{game_dir}\"` to put it there.", file=sys.stderr)
         if state.get("plant_stale"):
             planted = state.get("planted_version")
             if planted is None:

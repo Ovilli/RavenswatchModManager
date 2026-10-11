@@ -2,8 +2,6 @@
    Reference values from design brief: Pitch, Oxblood, Crimson, Char,
    Ash, Smoke, Parchment. State colours stay inside this set. */
 
-@import url("https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500;700&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -85,10 +83,10 @@
        these four vars, and every size is rem-relative to `--ui-scale`, so
        the Settings → Appearance controls can restyle the whole app by
        overriding them on <html>. Defaults = the Grimoire brand faces. */
-    --font-body: "EB Garamond", Georgia, serif;
-    --font-display: "UnifrakturCook", "UnifrakturMaguntia", serif;
-    --font-accent: "Cormorant Garamond", Georgia, serif;
-    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --font-body: "Alegreya Sans", system-ui, sans-serif;
+    --font-display: "Alegreya Variable", Georgia, serif;
+    --font-accent: "Alegreya Sans", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
     --ui-scale: 100%;
 
     /* The app is dark-only, so say so once at the root. Without it the UA
@@ -146,12 +144,13 @@
     background-blend-mode: normal, normal, normal;
   }
 
-  /* Headlines — blackletter Fraktur for the German-feel wordmark / section
-     titles. Used sparingly per brief. */
+  /* Headlines. The class keeps its old name so no component changes; the face
+     behind it is the display serif (Alegreya), which stays legible at small
+     heading sizes where the old blackletter did not. */
   .font-fraktur {
     font-family: var(--font-display);
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: 0;
   }
 
   /* The upright cut of the accent face. Italic is a voice, not a default:
@@ -164,10 +163,13 @@
     font-weight: 600;
   }
 
-  /* Hero serif italic for occasional flourishes (mod titles, hero copy). */
+  /* The accent voice, used on 144 nav entries, labels and summaries. It used
+     to be italic; small slanted text was the hardest thing in the app to read,
+     so it is upright and the weight carries the difference. The class keeps its
+     name so no component has to change. */
   .font-serif-italic {
     font-family: var(--font-accent);
-    font-style: italic;
+    font-style: normal;
     font-weight: 500;
   }
 
@@ -179,7 +181,20 @@
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
+  }
+
+  /* A field holds CONTENT, never a label: a path, a URL or a mod id typed into a
+     `font-mono` input must show exactly what it is. Left to the label style it
+     was upper-cased (`~/.STEAM/STEAM/STEAMAPPS/...`), which is unreadable and,
+     on Linux, reads as a different path. */
+  input.font-mono,
+  textarea.font-mono,
+  select.font-mono,
+  input.font-mono::placeholder,
+  textarea.font-mono::placeholder {
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   /* Monospace for CONTENT — log lines, file paths, mod ids, CLI output, hashes.
@@ -292,7 +307,7 @@
     align-items: center;
     justify-content: center;
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     letter-spacing: 0.1em;
     text-transform: lowercase;
   }
@@ -512,7 +527,7 @@
     color: hsl(var(--ash));
     background-color: hsl(var(--pitch) / 0.6);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     letter-spacing: 0;
     font-variant-ligatures: none;
   }

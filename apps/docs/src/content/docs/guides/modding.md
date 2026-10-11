@@ -7,6 +7,13 @@ This is the **single** authoring guide — scaffolding a mod through shipping a
 finished `.zip`. For CLI command details, see the [CLI Reference](/reference/cli/);
 for the SDK design rationale, [SDK_V3.md](/guides/sdk/).
 
+:::tip[New to modding?]
+This page is the complete reference, and it gets technical fast. If you haven't
+made a mod before, start with [Make your first mod](/getting-started/first-mod/),
+which walks you through one from start to finish, then come back here when you
+want to know what else a mod can do.
+:::
+
 ```mermaid
 flowchart LR
     N["rsmm new"] --> E["edit manifest.toml<br/>+ drop assets"]
@@ -18,12 +25,13 @@ flowchart LR
     P --> U["upload via Registry"]
 ```
 
-> **One output, two ways to produce it.** Every mod ships the *same* thing: a
-> declarative `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets. You can
-> hand-write that TOML, **or** generate it with the typed Python SDK
-> (`with sdk.Mod(...)`) — the SDK is an author-time *generator* that emits the
-> manifest for you (validated, with handles/tags/an offline testkit). Your
-> `build.py` is a tool you run; it is **not** shipped inside the mod. See
+> **Write the manifest.** Every mod ships the same thing: a declarative
+> `manifest.toml` (`[[content]]` / `[[patch]]`) plus assets, and writing that
+> file by hand is the normal way to make a mod. `rsmm new` scaffolds it, the
+> editor schema autocompletes it, and `rsmm lint` checks it. The Python SDK
+> (`with sdk.Mod(...)`) is an optional *generator* for the same file, useful
+> when a mod has many similar entries to produce. Your `build.py` is a tool you
+> run; it is **not** shipped inside the mod. See
 > [Authoring with the Python SDK](#authoring-with-the-python-sdk) below.
 
 > **A mod is data, not code.** The shipped artifact is `manifest.toml` + assets
@@ -104,8 +112,12 @@ five engine paths. A `poi.toml` usually only has to say which chapters it
 appears in:
 
 ```toml
+#:schema https://docs.rsmm.me/poi.schema.json
 chapters = ["Dark_Hills", "Avalon", "Storm_Island"]
 ```
+
+The `#:schema` line gives Taplo / Even Better TOML completion and flags a
+misspelled key before `apply` does.
 
 Everything else — which tile it stands in, which object it takes the place of,
 which prop and material it inherits structure from, its kind and spawn weight —
@@ -127,13 +139,33 @@ Mirror decoded paths under `assets/`. Full control, byte-for-byte. One mod owns 
 
 ### 2. Compose `[[patch]]` blocks (recommended)
 
-Write declarative blocks in `manifest.toml` for stats, text, URLs, textures, and
-plaintext `.ot` fields. The applier composes every mod's patches into a single
+Write declarative blocks in `manifest.toml` for numeric values (`stat`), texture
+swaps (`texture`), and plaintext `.ot` fields (`ot`). The applier composes every mod's patches into a single
 cooked file per target. Two mods touching *different* fields of the same file
 both take effect; conflicts on the *same* field resolve by `load_order` (lower =
 applies first; later wins on overlap).
 
-Example using the Python SDK:
+```toml
+[[patch]]
+kind  = "stat"
+name  = "Bleed_Duration_Value"
+value = 10
+
+[[patch]]
+kind = "stat"
+name = "Easy"
+min  = 5
+max  = 10
+
+[[patch]]
+kind     = "ot"
+selector = "Merlin DMG Zone"
+field    = "m_eComputerType"
+value    = 0
+```
+
+The same blocks from the optional Python SDK — `python3 mods/MyMod/build.py`
+writes the manifest above:
 
 ```python
 # mods/MyMod/build.py
@@ -142,14 +174,8 @@ from rsmm import sdk
 with sdk.Mod("MyMod", author="me", load_order=50) as m:
     m.stat("Bleed_Duration_Value", value=10)
     m.stat("Easy", min=5, max=10)
-    m.text("Common", lang="EN", key="Menu_Discord", value="Mods")
-    m.url("DiscordUrl", "https://example.com")
-    m.texture("hero.romeo.portrait_active",
-              donor="hero.sunwukong.portrait_active")
     m.ot("Merlin DMG Zone", "m_eComputerType", 0)
 ```
-
-Run `python3 mods/MyMod/build.py` to emit `manifest.toml`. Friendly aliases (`hero.<name>.portrait_<state>`) hide the cooked-path lookups.
 
 #### Editing a plaintext `.ot` (`kind = "ot"`)
 
@@ -233,6 +259,8 @@ mods/MyMod/
 ### manifest.toml
 
 ```toml
+#:schema https://docs.rsmm.me/manifest.schema.json
+
 [mod]
 id          = "MyMod"
 name        = "My Mod"
@@ -242,9 +270,28 @@ description = "what it does"
 enabled     = true
 ```
 
+**Every key must be one something reads.** A misspelled key used to install a
+mod that did nothing, so now:
+
+- `rsmm lint` fails on an unknown key in `[[content]]` or `[[patch]]` and names
+  the closest valid one (`unknown key 'valeu' (did you mean 'value'?)`). An
+  unknown `[mod]` key is a warning.
+- It also fails a patch that would change nothing: a stat name that does not
+  exist, a field that value does not have (`Easy` has `min`/`max`, not
+  `value`), a non-number, or a texture path the game does not ship.
+- `rsmm apply` and the Python SDK refuse an unknown content field outright.
+
+The `#:schema` line (which `rsmm new` writes for you) lets
+[Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)
+or any Taplo-based editor autocomplete keys and underline the same mistakes as
+you type. The schema is generated from the same list lint uses, so the two
+never disagree.
+
 ### on_disable.py (optional)
 
 Place next to `manifest.toml`. Fires from `./rsmm apply` when the mod flips `enabled = true → false`. Subprocess with 30s timeout; receives `RSMM_GAME_DIR`, `RSMM_COOKING`, `RSMM_MOD_DIR` env vars.
+
+The hook runs as the player, outside the game, with no sandbox, so it never runs unasked: `rsmm apply` lists the pending hooks and waits for a yes (or `--yes`), and uninstalling from the desktop app asks whether to run it before removing the mod.
 
 Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
 
@@ -260,10 +307,17 @@ Toggle: edit `mods/ConsoleRuntime/manifest.toml`, set `dev_mode = true`, then `.
 
 ## Authoring with the Python SDK
 
-The recommended way to *produce* a mod's `manifest.toml`. You describe the mod
-in Python; `rsmm.sdk` writes the `mods/<id>/` tree atomically. Typed builders,
-cross-mod handles/tags, and an offline testkit make it harder to ship a broken
-manifest by hand. Design rationale: [SDK_V3.md](/guides/sdk/).
+**Optional.** The manifest is the main way to write a mod; the Python SDK
+*generates* one. Reach for it when a mod has many similar entries — fifty stat
+tweaks, a table of item variants — that are easier to produce in a loop than to
+type out. You describe the mod in Python and `rsmm.sdk` writes the
+`mods/<id>/` tree atomically. It applies the same checks as `rsmm lint`: an
+unknown field is refused, with the nearest valid name.
+
+Every content kind is reachable with one call, `m.content(kind, id=..., **fields)`,
+whose fields are exactly the manifest's. Five kinds also have a named shortcut
+(`m.item`, `m.enemy`, `m.boss`, `m.map`, `m.hero`); the rest use `m.content`.
+Design rationale: [SDK_V3.md](/guides/sdk/).
 
 ### First mod
 
@@ -286,8 +340,9 @@ rsmm apply                       # install into the game
 
 ### Typed content + handles
 
-`m.item / m.enemy / m.boss / m.map / m.hero` clone a vanilla **base** and return
-a `ContentRef` (like Forge's `RegistryObject`). Pass a handle anywhere another
+`m.content(kind, id=..., **fields)` registers any kind; `m.item / m.enemy /
+m.boss / m.map / m.hero` are shortcuts for five of them. Each returns a
+`ContentRef` (like Forge's `RegistryObject`). Pass a handle anywhere another
 content id is expected — it resolves to the raw id automatically. Find valid
 bases with `rsmm schema [kind] [--grep T]`.
 
@@ -295,8 +350,11 @@ bases with `rsmm schema [kind] [--grep T]`.
 with sdk.Mod("FrostPack", version="1.0.0", author="you",
              experimental=True) as m:           # required for non-confirmed kinds
     blade = m.item("FrostBlade", base="Orb_Grants_Strength", name="Frost Blade")
-    m.enemy("FrostGhoul", base="Marsh_Ghoul", add_flags=["Elite"])
+    m.enemy("FrostGhoul", base="Sling_Ghoul", add_flags=["Elite"])
     m.boss("CrabDen", base="Boss_Marsh_Ghoul", becomes="Boss_Crab")
+    # every other kind: the same fields as its [[content]] block
+    m.content("reward", id="MoreChests", base="Camp_Rewards_Dark_Hills_Update5",
+              counts={"2": [3, 3]})
 ```
 
 > Kinds below `confirmed` need `experimental=True`. Which ones those are is
@@ -451,7 +509,8 @@ def test_no_clashes():
 
 | Goal | Call / command |
 |------|----------------|
-| New content (handle) | `m.item/enemy/boss/map/hero(id, base=…)` |
+| New content (handle), any kind | `m.content(kind, id=…, **fields)` |
+| Shortcut for five kinds | `m.item/enemy/boss/map/hero(id, base=…)` |
 | Find base ids | `rsmm schema [kind] [--grep T]` |
 | Group content | `m.tag(id, [refs…])` |
 | Override asset | `m.texture/model/asset(decoded, src)` |
@@ -481,14 +540,19 @@ cp /path/to/donor.dxt \
 
 ### Texture swap (donor reference)
 
-```sh
-./rsmm texture --list --grep Hero_Romeo
-./rsmm texture --mod-id RomeoIsMonkey \
-    'Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt=Ui/BookMenu/Heroes/UI_HeroPortrait_SunWukong_Active.png.Texture.dxt'
-./rsmm apply
+Point one shipped texture at another shipped texture, with no image file of
+your own. There is no SDK method for this; declare it in the manifest:
+
+```toml
+[[patch]]
+kind   = "texture"
+target = "Ui/BookMenu/Heroes/UI_HeroPortrait_Romeo_Active.png.Texture.dxt"
+donor  = "Ui/BookMenu/Heroes/UI_HeroPortrait_SunWukong_Active.png.Texture.dxt"
 ```
 
-Donor-swap only. PNG → cooked texture cooker needs the `oCTexture` container RE'd (see [Roadmap](/project/roadmap/)).
+Both are decoded paths — find them with `./rsmm assets search Heroes Portrait png`.
+`rsmm apply` copies the donor's pristine bytes to the target. To use your own
+image instead, call `m.texture(path, "art/my.png")`.
 
 ### Custom 3D mesh (`.glb`)
 
@@ -559,15 +623,31 @@ animates is the supported path.
 
 ### Numeric balance / modifier / camp difficulty
 
-```sh
-./rsmm stat --list                    # See all available stats
-./rsmm stat --list --grep Bleed       # Search
-./rsmm stat --mod-id LongerStatusEffects \
-    Bleed_Duration_Value=10 \
-    Ignite_Duration_Value=11 \
-    Easy:min=5 Easy:max=10
-./rsmm apply
+Three families of numeric values are editable by name: global values
+(`*.globalvalue.ot`, e.g. `Bleed_Duration_Value`), game-modifier definitions,
+and enemy-camp difficulty bands (`Easy`, …). The name is the asset's file name
+without extensions — `./rsmm assets search globalvalue Bleed` lists them.
+
+```python
+with sdk.Mod("LongerStatusEffects") as m:
+    m.stat("Bleed_Duration_Value", value=10)
+    m.stat("Ignite_Duration_Value", value=11)
+    m.stat("Easy", min=5, max=10)      # multi-field: one keyword per field
 ```
+
+or directly in `manifest.toml`:
+
+```toml
+[[patch]]
+kind  = "stat"
+name  = "Bleed_Duration_Value"
+value = 10
+```
+
+`rsmm apply` merges every enabled mod's `stat` patches into one file per value:
+two mods changing different fields both take effect, and two mods changing the
+same field log a conflict (the later mod by `load_order` wins). An unknown name
+is reported and skipped.
 
 ### Randomise or replace a monster population (`kind="enemy"`, `mode="override"`)
 
@@ -584,8 +664,14 @@ cross_biome = true     # draw from every creature in the game, and repoint each
                        # biome's EntityPooling asset so they are streamed there
 mix         = "shuffle"  # each biome gets as many distinct creatures as it has
 seed        = 1337       # pool slots, each used once ("random" draws with
-weight      = 5.0        # replacement and leaves ~a third of the slots unused)
+                         # replacement and leaves ~a third of the slots unused)
 ```
+
+`power` (optional) sets one power **cost** for every overridden enemy. It is
+not spawn odds: a camp spends a power budget, so raising it makes each camp
+field fewer, pricier enemies, and a cost above the budget means the enemy is
+never picked. Vanilla camp enemies cost 0.1-20. `weight` is its old,
+misleading name and still works with a warning.
 
 **`cross_biome` is the load-bearing flag.** Without it a swap must stay inside
 the biome's own entity pool, so the randomiser can only permute the cast that
@@ -903,32 +989,53 @@ inline float is a silent no-op. `rsmm items show` / `rsmm talents` tag these
 authoritative but unbinds the selector — e.g. per-card-stack scaling becomes a
 flat value. That trade-off is intentional; pick the flat number you want.
 
-### Translation strings
+### Which stat an item's effect gives (`stats`)
 
-```sh
-./rsmm text --list Common --lang EN
-./rsmm text --list Common --grep Menu_
-./rsmm text --mod-id Relabel 'Common~EN:Menu_Discord=Mods'
-./rsmm apply
+Each effect of a magical object (its always-on effect and its super effect)
+changes one stat. `stats` points an effect at a different one, by the effect's
+name. `rsmm items show <base>` lists the effects, the stat each one gives, and
+whether it is the super effect:
+
+```toml
+[[content]]
+kind = "item"
+id   = "Damage_Per_Vitalitz"
+base = "Damage_Per_Vitality"
+name = "Ogre Crit"
+stats = { "Super Effect Modifier" = "Crit damage" }
+value_patches = [["Super Effect Crit Chance Value", 0.2, 0.3]]
+super_description = "#Crit Damage@ &+{0}%~"
 ```
 
-Languages: `EN JA KO RU ES DE PL FR IT PT-BR ZH-S ZH-T RO`.
+- **Stat names** are the engine's own (`Attack power`, `Crit chance`,
+  `Crit damage`, `Armour`, `Vitality`, `Move Speed Ratio`, …); the full list is
+  `data/stat_keys.json`. A few stats have no name yet; give those by key
+  (`"0x58e0a5c"`), as `rsmm items show` prints them.
+- **The amount keeps its old unit.** 0.2 crit chance becomes 0.2 of the new
+  stat, so change the number with `value_patches` too.
+- **`super_description`** gives the copy super-effect text of its own (the base's
+  text still names the old stat). Items without a super effect (cursed,
+  legendary, power-ups) refuse it.
+- **Some stats need more than the stat.** Plain numbers (attack power, armour,
+  crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
+  the instant-kill thresholds only do something with the components the item
+  that ships them carries.
 
-### Main-menu URLs
+A **talent** takes the same `stats` table, next to its `file` (effect names
+repeat across a hero's files):
 
-```sh
-./rsmm url --list
-./rsmm url --mod-id MyHub DiscordUrl=https://my-mods-site.example/
-./rsmm apply
+```toml
+[[content]]
+kind  = "talent"
+id    = "aladdin_wish_armour"
+hero  = "Aladdin"
+file  = "Hero_Aladdin.entity"
+stats = { "Ability Trait Wish 3 Shield Gain Modifier" = "Armour" }
 ```
 
-### In-game UI tweaks
-
-```sh
-./rsmm menu-button        # Add a "Mods" entry to the title menu
-./rsmm social-tab         # Add a Mods tab to the in-game Social book
-./rsmm mods-list          # Ship a Mods_List entity for the social tab
-```
+The **Items** and **Talents** tabs of `rsmm editor` and the
+[web editor](/guides/web-editor/) show the same thing as a stat picker per
+effect.
 
 ### Lua-scripted mod
 
@@ -963,6 +1070,8 @@ rsmm.read_u8/u16/u32/u64/f32/f64(va) -- raw memory read
 rsmm.read_cstr(va, max)              -- read NUL-terminated string
 rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 ```
+
+To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/); the primitives above are the layer underneath.
 
 See `mods/ExampleLuaMod/init.lua` and `mods/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [docs/_re/CALLING_GAME_FUNCTIONS.md](/reverse-engineering/calling-game-functions/).
 
@@ -1245,8 +1354,10 @@ its author felt like that day. `rsmm lint` rejects a malformed declaration.
 
 Run `./rsmm watch` in a side terminal while the game runs. On any save under `mods/`:
 
-1. Re-applies cooked overrides.
-2. Syncs `manifest.toml` + `init.lua` into the game-dir `mods/<id>/`.
+1. Lints the mods you changed. A lint error holds the apply back and is printed, so a typo
+   never reaches the game (`--no-lint` skips this).
+2. Re-applies cooked overrides and syncs each enabled mod's `manifest.toml`, `init.lua` and
+   other top-level Lua/data files into the game-dir `mods/<id>/`.
 3. The loader polls those files every ~1 second, tears down the changed mod's `lua_State`, and re-runs `init.lua`.
 
 Tweak a number, hit save, see the result in-game without restarting.
@@ -1283,6 +1394,27 @@ Lua errors print as `[lua] <mod-id> ...`; `rsmm.log("msg")` calls land in the sa
 
 ---
 
+## Loader features a mod needs
+
+Some loader features are off until switched on, because they hook the engine
+more deeply. The one mods need most is **hero capture**: without it `R.entity`,
+`R.stat`, `R.combat`, `R.xp`, `R.camera` and the talent grants never find your
+hero, and a mod that uses them silently does nothing. Declare what your mod needs
+and `rsmm apply` switches it on while the mod is enabled (and off again when no
+enabled mod needs it, leaving flags the player set alone):
+
+```toml
+[mod]
+id           = "camera-control"
+loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]
+```
+
+Only the flags the app's **Loader features** panel lets a player switch on are
+accepted; `rsmm lint` names them. In Lua, `R.entity.capture_enabled()` tells "the
+player turned it off" apart from "the hero is not found yet" (loading, menus).
+
+---
+
 ## Don't ship vanilla bytes
 
 `rsmm pack <id>` hashes every file against the original cooked asset. If any file is byte-identical to the original, pack **refuses** — shipping unmodified game bytes is redistribution of copyrighted game content, not a mod.
@@ -1298,6 +1430,32 @@ Fix: replace the listed files with your own modified bytes. `--allow-vanilla` by
 The `data/uncooked/` mirror is git-ignored for the same reason — it exists for local reference only (see [Uncooked Assets](/guides/uncooked-assets/)).
 
 ---
+
+## Online play: client-only and gameplay mods
+
+For online play, RSMM sorts every running mod into one of two groups:
+
+- **Client-only** mods change what *you* see or read, never the game the party plays:
+  a damage meter or other overlay, a camera change, a texture or sound swap, new UI text.
+- **Gameplay** mods change the game: new or edited content (`[[content]]`), data
+  patches (`[[patch]]`), overrides of game data, or Lua that does more than read
+  (`R.give`, `R.stat.modify`, `R.hp.set`, `R.talent.grant`, `R.emit`, …).
+
+An install that runs only client-only mods counts as **vanilla** online. Run
+`rsmm modpack` to see which group each of your mods is in, and why.
+
+RSMM decides the group from what the mod contains, not from its
+`multiplayer_scope`, so a wrong declaration cannot move a mod into the
+client-only group. Lint warns when a mod declares `cosmetic` or `local-only` (or
+nothing) but changes the game. Declare `deterministic-shared` or
+`host-authoritative` for those.
+
+For Lua, the client-only calls are the whole of `R.log`, `R.on`/`R.off`/`R.once`,
+`R.overlay`, `R.config`, `R.kv`, `R.schedule`, `R.exp`, `R.health`, `R.i18n`,
+`R.damage` and `R.camera`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
+`R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max`,
+`R.events.known`/`count`/`category` and `R.net.peers`. Anything else, including `R[...]` lookups or
+passing `R` to another function, counts as gameplay.
 
 ## Load order
 
@@ -1324,10 +1482,13 @@ kind's rating is the weakest mode it ships, so read these alongside it:
   `cross_biome` placed chapter-2/3 creatures in an earlier chapter. What's still
   unknown is an imported creature's projectiles and attack zones (see the
   caution above).
-- `kind="enemy"`, `mode="clone"`: the codec round-trips and the def
-  self-registers at load (`EnemyDef_PostLoad` push_backs onto the tribe
-  roster), so `UsedRscList` registration is the whole contract. Nobody has seen
-  a clone spawn in-game yet. This mode is what holds `enemy` at experimental.
+- `kind="enemy"`, `mode="clone"`: proven in-game 2026-09-24. A Gnolls-tribe
+  clone with a Mud Crab body spawned in Storm Island gnoll camps. The def
+  self-registers onto its tribe's roster at load, so `UsedRscList` registration
+  is the whole contract. The trap: `power` (formerly `weight`) is the clone's
+  **cost** against the camp's power budget. At 20, the first attempt was priced
+  out of every gnoll camp and never appeared. Leave it unset to keep the base's
+  cost.
 - `kind="item"`, `mode="ban"`: the exact inverse of the proven catalog write. It
   drops entries from the same LiveOps MO vector. It hasn't been confirmed
   in-game yet.
@@ -1352,8 +1513,8 @@ otherwise the SDK raises and `rsmm lint` fails. This is deliberate — a ⚠️/
 kind is a known guess, not a finished feature.
 
 ```python
-with sdk.Mod("MyEnemyMod", experimental=True) as m:   # required for any non-confirmed kind
-    m.enemy("Dreadgnoll", base="Gnoll_Shielded", tribe="Gnolls")
+with sdk.Mod("MyMapMod", experimental=True) as m:   # required for any non-confirmed kind
+    m.map("Twilight_Hills", base="Dark_Hills")
 ```
 
 See [docs/INTERNALS.md](/architecture/internals/) for the engine notes that ground all of the above, and [docs/ROADMAP.md](/project/roadmap/) for open work.

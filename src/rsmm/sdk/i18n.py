@@ -75,7 +75,7 @@ class I18nBundle:
 
     def all_keys(self) -> set[str]:
         keys: set[str] = set()
-        for _loc, table in self.by_locale.items():
+        for table in self.by_locale.values():
             keys.update(table.keys())
         return keys
 
@@ -105,3 +105,55 @@ def merge_bundles(bundles: list[I18nBundle]) -> dict[str, dict[str, str]]:
         for loc in SUPPORTED_LOCALES:
             out[loc].update(b.namespaced(loc))
     return out
+
+
+# -- text the CLIENT shows ---------------------------------------------------
+#
+# `[strings]` is for the mod's own Lua (R.i18n.t, resolved in game). The text
+# the desktop app and `rsmm overlay` show comes from the manifest and the
+# config schema instead, so a lang file may also carry:
+#
+#   [manifest]                 name / summary / description
+#   [overlay]                  title / empty
+#   [overlay.columns]          <column key> = "header"
+#   [config.<field>]           label = "..."
+#   [config.<field>.choices]   <value> = "shown for that value"
+#
+# Each is optional and falls back to the manifest/schema's own (English) text.
+
+_LOCALE_ALIASES = {"ZH": "ZH-S", "ZH-CN": "ZH-S", "ZH-HANS": "ZH-S",
+                   "ZH-TW": "ZH-T", "ZH-HANT": "ZH-T", "PT": "PT-BR"}
+
+
+def active_locale() -> str:
+    """The locale the CLI renders client-side text in: `RSMM_LOCALE` (the
+    desktop app passes its own language), normalised, else EN."""
+    import os
+    raw = (os.environ.get("RSMM_LOCALE") or "").strip().upper().replace("_", "-")
+    raw = _LOCALE_ALIASES.get(raw, raw)
+    return raw if raw in SUPPORTED_LOCALES else FALLBACK_LOCALE
+
+
+def mod_text(mod_dir: Path, locale: str | None = None) -> dict:
+    """The client-side sections of `<mod>/lang/<locale>.toml`, or {} (EN, no
+    file, or a file that does not parse — a bad translation must never hide
+    the mod)."""
+    loc = locale or active_locale()
+    if loc == FALLBACK_LOCALE:
+        return {}
+    path = mod_dir / "lang" / f"{loc}.toml"
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return {}
+    return {k: raw[k] for k in ("manifest", "overlay", "config") if isinstance(raw.get(k), dict)}
+
+
+def config_text(text: dict, field: str) -> tuple[str | None, dict[str, str]]:
+    """(label, {choice value: shown label}) for one config field."""
+    entry = (text.get("config") or {}).get(field)
+    if not isinstance(entry, dict):
+        return None, {}
+    label = entry.get("label")
+    choices = entry.get("choices") if isinstance(entry.get("choices"), dict) else {}
+    return (str(label) if label else None), {str(k): str(v) for k, v in choices.items()}

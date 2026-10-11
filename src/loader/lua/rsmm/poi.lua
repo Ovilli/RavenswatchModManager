@@ -70,7 +70,13 @@ function M.on_generated(cb)
         -- 15, and a 7 that was read as "the vanilla Blocker pool" purely
         -- because the number matched. Both snapshots are handed over — the
         -- difference between them is itself a measurement.
-        local before = M.kinds(this)
+        -- Guarded: this is BEFORE next(), so an error escaping here would skip
+        -- the original -- no map at all -- in the middle of level load.
+        local got, before = pcall(M.kinds, this)
+        if not got then
+            R.log("[rsmm.poi] kind table read failed: " .. tostring(before))
+            before = {}
+        end
         next(this)
         for i = 1, #_cbs do
             -- One mod's bad handler must not take down map generation. This
@@ -285,9 +291,6 @@ local S_KINDS, S_KIND_N, K_COUNT = 0x170, 0x178, 0x50
 local E_OWNER = 0x48
 local TIER1, TIER2, TIER3 = 0x2fc, 0x300, 0x304
 
---- `{ {count = n, name = "..."|nil}, ... }` for every tile kind this map's
---- spawner knows about. `name` is best-effort (a strings walk over the entry);
---- `count` is the field the engine's own empty-pool check reads.
 --- A kind's NAME, which `R.debug.strings` alone cannot find.
 ---
 --- ⚠ Every kind reported `?` for as long as this function has existed, and the
@@ -315,6 +318,9 @@ local function _kind_name(e)
     return nil
 end
 
+--- `{ {count = n, name = "..."|nil, entry = ptr}, ... }` for every tile kind
+--- this map's spawner knows about. `name` is best-effort (see _kind_name);
+--- `count` is the field the engine's own empty-pool check reads.
 function M.kinds(spawner)
     local out = {}
     if not (I.read_u64 and I.read_u32 and R.ptr) then return out end
@@ -378,7 +384,7 @@ function M.placed(spawner)
                     local owner = I.read_u64(e + E_OWNER)
                     local slots, slots_class
                     if owner and owner ~= 0 and R.ptr.plausible(owner) then
-                        slots_class = R.rtti.name(owner)
+                        slots_class = R.rtti and R.rtti.name(owner) or nil
                         slots = { I.read_u32(owner + TIER1),
                                   I.read_u32(owner + TIER2),
                                   I.read_u32(owner + TIER3) }
@@ -423,11 +429,12 @@ end
 local _deep_done = false
 local function _deep_probe(payload)
     if _deep_done or not payload or payload == 0 then return end
+    if not (R.debug and R.debug.strings) then return end
     _deep_done = true
     R.log("[rsmm.poi] deep probe of one oCEntitySettingsResource — raw, "
           .. "pointer-strings, then inline strings")
     if R.debug.dump then R.debug.dump(payload, 0x80, "settings-resource") end
-    local hops = R.debug.strings(payload, { max_off = 0x800, log = true })
+    local hops = R.debug.strings(payload, { max_off = 0x800, log = true }) or {}
     if #hops == 0 then
         R.log("[rsmm.poi]   no pointer-reachable string in 0x800")
     end

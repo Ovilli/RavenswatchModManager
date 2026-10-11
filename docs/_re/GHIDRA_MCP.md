@@ -1,4 +1,4 @@
-# GhidraMCP — interactive RE via MCP
+# Ghidra MCP (pyghidra-mcp) — interactive RE via MCP
 
 📖 This document now lives on the docs site: **https://docs.rsmm.me/reverse-engineering/ghidra-mcp/**
 

@@ -135,6 +135,9 @@ return function(env)
             local off = CAT_BASE + cat * CAT_STRIDE
             if R.ptr.vector_valid(h, off, off + 8, { max = MAX_PER_CATEGORY }) then
                 local data, n = I.read_u64(h + off), I.read_u32(h + off + 8)
+                -- Re-read after the check, so re-checked (nil `n` raises).
+                if type(n) ~= "number" or n > MAX_PER_CATEGORY
+                   or not R.ptr.plausible(data) then n = 0 end
                 for i = 0, n - 1 do
                     local c = I.read_u64(data + i * 8)
                     if c and c ~= 0 and controller_ok(c, h) then
@@ -326,6 +329,13 @@ return function(env)
         if not buf or buf == 0 then return false end
         local ev = R.engine.call("NamedEvent_GiveMagicalObject_Ctor", buf)
         if not ev or ev == 0 then return false end
+        -- Before the name is overwritten below: catches a ctor pattern that
+        -- resolved to a sibling event's ctor (see R.engine.event_name).
+        if R.engine.event_name(ev) ~= "GIVE_MAGICAL_OBJECT" then
+            R.log("[rsmm.talent] the GiveMagicalObject ctor built "
+                .. tostring(R.engine.event_name(ev)) .. " on this build — refusing")
+            return false
+        end
         -- The give subclass is the one event ctor with an ok pattern. Dispatch
         -- routes by the id at +0x30; ADD_ALL_SKILLS reads a tier only from the
         -- value-event subclass, which this is not, so every talent lands at

@@ -112,10 +112,13 @@ def test_journal_survives_a_torn_final_line(install):
     assert [p["enc"] for p in pending] == ["a\\one.bin"]
 
 
-def test_apply_refuses_when_another_process_holds_the_lock(install, capsys):
+def test_apply_refuses_when_another_process_holds_the_lock(install, capsys, monkeypatch):
     """Two writers can capture a MODDED file as the "original" backup —
     the one corruption no restore can undo."""
     from rsmm.engine.safeio import install_lock
+    # Skip the real 10 s wait for the holder to let go.
+    monkeypatch.setattr(apply_mods, "install_lock",
+                        lambda c, op, timeout: install_lock(c, op))
 
     with install_lock(install.cooking, "apply"):
         with apply_mods._install_lock_or_fail(install.cooking, "apply") as held:

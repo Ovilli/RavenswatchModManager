@@ -64,7 +64,9 @@ re-cook).
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 
 from . import cooked
 
@@ -139,8 +141,17 @@ def class_names(data: bytes) -> list[str] | None:
     Every ``1111bbaa`` BEGIN marker is followed by an index into this list, so
     nothing in a cooked body can be identified without it.
     """
+    names = _class_names(data)
+    return None if names is None else list(names)
+
+
+@lru_cache(maxsize=32)
+def _class_names(data: bytes) -> tuple[str, ...] | None:
+    # A hero's talent cards ask for the same few files' tables dozens of times
+    # (45 calls over 19 files for one hero, ~0.3 s). `class_names` hands out a
+    # fresh list so a caller cannot change the cached one.
     try:
-        return [c.name for c in cooked.parse(data).classes]
+        return tuple(c.name for c in cooked.parse(data).classes)
     except (ValueError, IndexError, struct.error):
         return None
 
@@ -218,9 +229,18 @@ def _iter_lstrings(data: bytes):
         i += 1
 
 
-def _iter_value_nodes(data: bytes, names: list[str]):
+def _iter_value_nodes(data: bytes, names: list[str],
+                      extra: frozenset[str] = frozenset()):
     """Yield ``(label, offset, type_code, value_off, size, shadowed)`` for every
     resolvable numeric value node, in file order.
+
+    ``extra`` names labels to admit even though :func:`_is_authored_value_label`
+    would not: the suffix filter exists to keep ~6000 effect/animation/flag
+    nodes out of a LISTING, but a label somebody asked for BY NAME (a card's
+    placeholder, a manifest patch) is authored by definition, and the same
+    structural checks (picker -> union, fixed-width numeric) still guard it. A
+    suffix list cannot do this job: the cards alone reference 25 different
+    endings (``Lifetime``, ``Proc``, ``Delay``, ``Targets`` ...).
 
     De-duped by label *and* by the value's offset. The offset half matters
     because a node is laid out as ``<own name> <header> <scope name> <header>
@@ -232,7 +252,7 @@ def _iter_value_nodes(data: bytes, names: list[str]):
     seen: set[str] = set()
     claimed: set[int] = set()
     for off, s in _iter_lstrings(data):
-        if s in seen or not _is_authored_value_label(s):
+        if s in seen or not (s in extra or _is_authored_value_label(s)):
             continue
         node = _resolve_value_node(data, names, off + 4 + len(s.encode("ascii")))
         if node is None or node[1] in claimed:
@@ -242,7 +262,8 @@ def _iter_value_nodes(data: bytes, names: list[str]):
         yield (s, off, *node)
 
 
-def list_talent_values(data: bytes, *, include_spawner: bool = False) -> list[TalentValue]:
+def list_talent_values(data: bytes, *, include_spawner: bool = False,
+                       extra_labels: Iterable[str] = ()) -> list[TalentValue]:
     """Discover editable talent magnitudes in one cooked hero-entity file.
 
     Only nodes that genuinely resolve to ``oCEntityCpntValuePicker`` ->
@@ -251,13 +272,15 @@ def list_talent_values(data: bytes, *, include_spawner: bool = False) -> list[Ta
     skipped rather than reported as ``0.0``. Returns ``[]`` when the container's
     class table cannot be parsed, because without it no node can be identified.
     By default drops ``... Spawner Value`` runtime slots (always 0.0). De-dupes
-    by label, first occurrence wins.
+    by label, first occurrence wins. ``extra_labels`` are admitted whatever
+    their name ends in (see :func:`_iter_value_nodes`).
     """
     names = class_names(data)
     if names is None:
         return []
     out: list[TalentValue] = []
-    for label, _off, tc, voff, _size, shadowed in _iter_value_nodes(data, names):
+    for label, _off, tc, voff, _size, shadowed in _iter_value_nodes(
+            data, names, frozenset(extra_labels)):
         is_spawner = label.endswith("Spawner Value")
         if is_spawner and not include_spawner:
             continue
@@ -287,7 +310,8 @@ def is_label_overridden(data: bytes, label: str) -> bool:
     names = class_names(data)
     if names is None:
         return False
-    for lbl, _off, _tc, _voff, _size, shadowed in _iter_value_nodes(data, names):
+    for lbl, _off, _tc, _voff, _size, shadowed in _iter_value_nodes(
+            data, names, frozenset((label,))):
         if lbl == label:
             return shadowed
     return False
@@ -314,7 +338,8 @@ def set_talent_value(data: bytes, label: str, new_value: float,
     names = class_names(data)
     if names is None:
         raise ValueError("not a parseable cooked container (no class table)")
-    for lbl, _off, tc, voff, size, shadowed in _iter_value_nodes(data, names):
+    for lbl, _off, tc, voff, size, shadowed in _iter_value_nodes(
+            data, names, frozenset((label,))):
         if lbl != label:
             continue
         cur = _read_value(data, tc, voff)
@@ -447,3 +472,47 @@ def clear_value_override(data: bytes, label: str) -> bytes:
         raise ValueError(f"{label!r} is not overridden (nothing to clear)")
     ed.queue(p1 + 8, len(payload), b"\x00")  # collapse to the disabled form
     return ed.emit()
+
+
+#: The skill controller's per-tier flags, as a value selector entry reads them
+#: (the picker accessor after a ``[Dt Skill Controller]`` condition). The
+#: controller's accessor table (FUN_1402ed160) maps them to +0x120/+0x140/
+#: +0x160/+0x180, the tier bools in rarity order.
+TIER_KEYS: dict[int, str] = {0x15FC6BEB: "Common", 0x15FC6BF7: "Rare",
+                             0x15FC6BF1: "Epic", 0x15FC6BF9: "Legendary"}
+TIERS = ("Common", "Rare", "Epic", "Legendary")
+
+
+def tier_values(data: bytes, label: str) -> dict[str, tuple[int, float, int]]:
+    """A talent's per-rarity numbers: ``tier -> (union index, value, type)``.
+
+    A tier selector holds one entry per rarity it names -- a condition on the
+    card's own controller, an enabled bool, the number -- and then its default,
+    which is what a card of any other rarity (in practice Common) reads. The
+    index is the one :func:`set_union_value` (and ``union_patches``) takes.
+    Empty for a node that is not a tier selector.
+    """
+    try:
+        unions = list_union_values(data, label)
+    except ValueError:
+        return {}
+    keys = {struct.pack("<I", k): name for k, name in TIER_KEYS.items()}
+    prev = data.find(struct.pack("<I", len(label)) + label.encode("ascii"))
+    out: dict[str, tuple[int, float, int]] = {}
+    default = None
+    for index, (off, value, type_code) in enumerate(unions):
+        if type_code == TYPE_BOOL:
+            continue
+        seg = data[prev:off]
+        prev = off
+        found = [(seg.rfind(k), name) for k, name in keys.items() if k in seg]
+        if found:
+            out.setdefault(max(found)[1], (index, value, type_code))
+        elif default is None:
+            default = (index, value, type_code)
+    if not out:
+        return {}
+    if default is not None:
+        for tier in TIERS:
+            out.setdefault(tier, default)
+    return out

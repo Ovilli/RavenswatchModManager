@@ -17,6 +17,5 @@ API version: see `rsmm.sdk.api.API_VERSION`
 - [content](content.md)
 - [health](health.md)
 - [i18n](i18n.md)
-- [intermod](intermod.md)
 - [repo](repo.md)
 - [testkit](testkit.md)

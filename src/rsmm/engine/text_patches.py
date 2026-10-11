@@ -1,8 +1,8 @@
 """
 Text-bank primitives: parse/write Ravenswatch cooked text files.
 
-Library used by `rsmm.cli.merge` and `rsmm.engine.heroes`. Not user-facing;
-mod authors call the SDK (`m.text(bank, lang, key, value)`).
+Library used by the text-bank merge in `rsmm.cli.apply_mods` and by the
+content cookers. Not user-facing.
 
 Format (both base `.LocalText.gen` and per-language `.Ggzy<XX>` sibling):
 
@@ -24,6 +24,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+
+from rsmm.engine.paths import BACKUP_SUFFIX
 
 HEADER_SIZE = 0x14
 
@@ -119,7 +121,7 @@ def lang_path_for(base: Path, lang_decoded: str) -> Path:
 def _pristine(path: Path) -> Path:
     """Return the vanilla copy of a bank file: its ``.rsmm.bak`` sibling when a
     prior apply backed it up, otherwise the file itself."""
-    bak = path.with_name(path.name + ".rsmm.bak")
+    bak = path.with_name(path.name + BACKUP_SUFFIX)
     return bak if bak.exists() else path
 
 
@@ -176,6 +178,39 @@ def override_bank_values(base_gen: Path, overrides: dict[str, str],
     return out
 
 
+def appended_rows(base_gen: Path, new_keys) -> dict[str, int]:
+    """The row each key of ``new_keys`` takes when :func:`append_bank_keys`
+    appends them (in order) to the pristine bank."""
+    n = len(parse_text_file(_pristine(base_gen)).entries)
+    return {k: n + i for i, k in enumerate(new_keys)}
+
+
+def repoint_text_rows(blob: bytes, bank: str, rows: dict[str, int]) -> bytes:
+    """Point every cooked text reference to ``bank``/``key`` at ``rows[key]``.
+
+    A cooked text reference is ``lstr "Text" | lstr <bank> | u32 row | lstr
+    <key>``: the row is the key's index in the bank, cached at cook time. Some
+    readers look text up by key (the level-up cards) and others by the cached
+    row (the hero book and the HUD), so a reference re-pointed at an appended
+    key but left on the old row shows the OLD text there (2026-09-26: Gretel's
+    ability names read Beowulf's in the book and HUD, her talents read hers on
+    the cards). Same length in and out; nothing else moves.
+    """
+    out = bytearray(blob)
+    b = bank.encode("utf-8")
+    head = b"\x04\x00\x00\x00Text" + struct.pack("<I", len(b)) + b
+    for key, row in rows.items():
+        k = key.encode("utf-8")
+        tail = struct.pack("<I", len(k)) + k
+        at = out.find(head)
+        while at != -1:
+            r = at + len(head)
+            if out[r + 4:r + 4 + len(tail)] == tail:
+                struct.pack_into("<I", out, r, row)
+            at = out.find(head, at + 1)
+    return bytes(out)
+
+
 def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, bytes]:
     """Append new key/value text entries to a `~GAM.xls.LocalText` bank.
 
@@ -228,3 +263,63 @@ def append_bank_keys(base_gen: Path, new_pairs: dict[str, str]) -> dict[str, byt
             f"keys would have no text and crash the game. Pass the bank from the "
             f"game install (its .Ggzy<XX> siblings), not the uncooked mirror.")
     return out
+
+
+def patch_bank(base_gen: Path, values: dict[str, str],
+               prior: dict[str, bytes] | None = None
+               ) -> tuple[dict[str, bytes], dict[str, int]]:
+    """Set the text of each key in ``values``: an existing key's value is
+    rewritten in place, a missing one is appended (keys file + every language).
+
+    ``prior`` is an earlier result of this function for the same bank in the
+    same emit (``{"__base__" | ".Lang<XX>": bytes}``); the patch builds on it,
+    so a second block writing the bank keeps the first one's text instead of
+    rebuilding from vanilla and dropping it.
+
+    Returns ``(files, rows)``: ``files`` as :func:`append_bank_keys` returns
+    them (``__base__`` present only when keys were appended, here or in
+    ``prior``) and ``rows`` = each key of ``values`` -> its row in the bank,
+    for :func:`repoint_text_rows`.
+    """
+    prior = prior or {}
+    if "__base__" in prior:
+        keys = parse_text_bytes(prior["__base__"], base_gen)
+    else:
+        keys = parse_text_file(_pristine(base_gen))
+    appended = "__base__" in prior
+    rows: dict[str, int] = {}
+    for key in values:
+        try:
+            rows[key] = keys.entries.index(key)
+        except ValueError:
+            rows[key] = len(keys.entries)
+            keys.entries.append(key)
+            appended = True
+
+    out: dict[str, bytes] = {"__base__": write_text_file(keys)} if appended else {}
+    for lang in ALL_LANGS:
+        sib = lang_path_for(base_gen, lang)
+        earlier = prior.get(f".Lang{lang}")
+        if earlier is not None:
+            vf = parse_text_bytes(earlier, sib)
+        elif _pristine(sib).exists():
+            vf = parse_text_file(_pristine(sib))
+        else:
+            continue
+        for key, row in rows.items():
+            if row == len(vf.entries):
+                vf.entries.append(values[key])
+            elif row < len(vf.entries):
+                vf.entries[row] = values[key]
+        if len(vf.entries) != len(keys.entries):
+            raise ValueError(
+                f"{sib.name}: {len(vf.entries)} values != {len(keys.entries)} "
+                f"keys; bank is misaligned, refusing to patch")
+        out[f".Lang{lang}"] = write_text_file(vf)
+    if not any(k.startswith(".Lang") for k in out):
+        # Same crash as append_bank_keys guards: keys with no value file.
+        raise ValueError(
+            f"{base_gen.name}: no language value file found beside it. Pass the "
+            f"bank from the game install (its .Ggzy<XX> siblings), not the "
+            f"uncooked mirror.")
+    return out, rows

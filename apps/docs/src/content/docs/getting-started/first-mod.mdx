@@ -1,71 +1,257 @@
 ---
-title: Your first mod
-description: Install a mod from the Registry — then build your own.
+title: Make your first mod
+description: A beginner's walkthrough. Rename an item, see it in the game, and undo it, in your browser or with the modding tools.
+sidebar:
+  label: Make your first mod
 ---
 
 import { Steps, Aside, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-## Install a mod (desktop app)
+In this tutorial you'll make a small mod that **renames a magical object** and
+then see your new name in the game. It's a tiny change, but it's the whole journey
+every mod takes: make a change, put it in the game, check it worked, undo it.
+
+There are two ways to do it. Pick one:
+
+| | **Way 1: in your browser** | **Way 2: with the modding tools** |
+| --- | --- | --- |
+| What you need | A web browser on a computer, and the [RSMM app](/getting-started/install/) | The [modding tools](/getting-started/modding-tools/) |
+| Typing commands | None | A few |
+| What it can make | Items, talents, abilities, maps | Everything RSMM supports |
+| Best for | Trying it out, quick balance changes | Bigger mods, sharing on rsmm.me |
+
+You can start with Way 1 and move to Way 2 later. The mods are the same either way.
+
+## Way 1: In your browser
+
+The **web editor** runs on this website and reads the game files straight from
+your computer. Nothing gets uploaded and nothing needs installing.
 
 <Steps>
-1. **Open** Ravenswatch Mod Manager.
-2. **Go to the Registry tab** — browse mods uploaded by the community.
-3. **Click a mod** to view its details, screenshots, and description.
-4. **Click Install** — the mod downloads into your local collection.
-5. **Click Apply** — RSMM copies the mod's files into your Ravenswatch install.
-6. **Launch the game** and enjoy.
+1. **Open the [web editor](/editor/).** The first visit downloads about 12 MB, so
+   give it a moment. It works in Chrome, Edge, Firefox and Safari on a computer,
+   but not on a phone.
+
+2. **Choose your Ravenswatch folder.** To find it, in Steam right-click
+   **Ravenswatch** → **Manage** → **Browse local files**.
+
+   Your browser will ask whether to "upload" the folder. That's just the
+   browser's standard wording for letting a page *read* a folder. The files stay
+   on your computer.
+
+3. **Pick an item.** The **Items** tab opens first. Search the list on the left
+   for an item you know from the game and click it.
+
+4. **Rename it.** Leave **Replace this item** selected. That changes the real
+   item rather than adding a new one. In **Name**, type something you'll
+   recognise instantly, like `My Very First Item`.
+
+   Want to change what it does too? Each of the item's numbers is listed below
+   the name. Change one and the card preview updates as you type.
+
+5. **Check it.** Press **Check** at the bottom. You should see *Everything
+   builds*.
+
+6. **Save it as a mod.** At the bottom, the mod list says **New mod…**. Press
+   **Create mod…** and fill in the form:
+   - **Mod id**: a short name with no spaces, like `my-first-mod`.
+   - **Name**: the name people will see, like `My First Mod`.
+   - **Author**: your name or nickname.
+
+   Press **Create mod**. Your browser downloads `my-first-mod.zip`.
+
+7. **Add it to the app.** Unzip the file, then follow
+   [Add a mod from a file](/getting-started/desktop-app/#add-a-mod-from-a-file).
+   In short: **Profiles** → **Open folder** → move the `my-first-mod` folder in →
+   **Library** → **Add to profile**.
+
+8. **Play.** Press **Launch Modded**. In the game, open the compendium and find
+   your item. It now has your name. 🎉
 </Steps>
 
-<Aside type="tip">
-To uninstall: open the **Installed** tab, find the mod, click **Uninstall**, then **Apply** to revert.
+**To undo it**, switch the mod off in the **Library**, or just press **Launch
+Vanilla**.
+
+To keep working on the mod later, open the web editor and press **Open a mod
+folder…**. More in the [web editor guide](/guides/web-editor/).
+
+## Way 2: With the modding tools
+
+This way you'll write the mod yourself. It's still only a few lines of text.
+
+**Before you start**, follow [Set up the modding tools](/getting-started/modding-tools/).
+Open a terminal in the `RavenswatchModManager` folder with the environment
+switched on, so the line starts with `(.venv)`.
+
+### 1. Create the mod
+
+```sh
+rsmm new MyFirstMod
+```
+
+This makes a new folder, `mods/MyFirstMod/`, with a few starter files:
+
+| File | What it's for |
+| --- | --- |
+| `manifest.toml` | **The important one.** Says what your mod is called and what it changes. |
+| `init.lua` | A script, for mods that need one. Ours doesn't, so you can ignore it. |
+| `config_schema.toml` | Settings players can change in the app. Optional. |
+| `lang/EN.toml` | Text in different languages. Optional. |
+| `README.md` | A description for people reading your mod's files. |
+
+### 2. Fill in the basics
+
+Open `mods/MyFirstMod/manifest.toml` in a text editor. It looks something like this:
+
+```toml title="mods/MyFirstMod/manifest.toml"
+#:schema https://docs.rsmm.me/manifest.schema.json
+
+[mod]
+id          = "MyFirstMod"
+name        = 'MyFirstMod'
+version     = "0.1.0"
+author      = "you"
+description = ''
+enabled     = true
+sdk_version = ">=3.0,<4"
+tags        = []
+license     = ""
+```
+
+Change `name`, `author` and `description` to your own. Everything else can stay.
+
+<Aside type="tip" title="How to read this file">
+Each line is `setting = value`. Text goes in quotes. Lines starting with `#` are
+notes for humans and are ignored. `[mod]` starts the section that describes the
+mod itself.
 </Aside>
 
-## Create your own mod (CLI)
+### 3. Add your change
 
-Mods ship **data, not code** — a declarative `manifest.toml` plus assets the SDK emits. No bespoke scripts.
+Add these lines to the **end** of the file:
 
-<Steps>
-1. **Scaffold** a new mod:
-   ```sh
-   ./rsmm new MyMod
-   ```
-   This creates `mods/MyMod/manifest.toml`.
+```toml
+multiplayer_scope = "deterministic-shared"
 
-2. **Describe** your mod — edit `manifest.toml` and drop overrides under `mods/MyMod/assets/`:
-   ```toml
-   [mod]
-   id = "MyMod"
-   name = "My First Mod"
-   version = "0.1.0"
+[[content]]
+kind = "item"
+mode = "replace"
+id   = "Damage_Attack"
+base = "Damage_Attack"
+name = "My Very First Item"
+```
 
-   [[content]]
-   kind = "texture"
-   target = "path/to/original.png"
-   source = "assets/my-texture.png"
-   ```
+Line by line:
 
-3. **Apply** your changes to the game:
-   ```sh
-   ./rsmm apply
-   ```
+- `multiplayer_scope` tells co-op players that everyone in the game needs this mod,
+  because it changes how an item works. It belongs to `[mod]`, so it goes right
+  under the lines you just edited.
+- `[[content]]` starts a block that changes one thing in the game.
+- `kind = "item"` says that thing is a magical object.
+- `mode = "replace"` changes the real item instead of adding a new one.
+- `id` and `base` say which item. `Damage_Attack` is the game's internal name for
+  **Ace of Spades**.
+- `name` is the new name the game will show.
 
-4. **Package** for sharing:
-   ```sh
-   ./rsmm pack MyMod        # produces dist/MyMod.zip
-   ```
-</Steps>
+Your whole file should now look like this:
 
-Upload `dist/MyMod.zip` via the Registry tab to share it with the community.
+```toml title="mods/MyFirstMod/manifest.toml"
+#:schema https://docs.rsmm.me/manifest.schema.json
 
-<Aside type="caution">
-Don't author mods as Python scripts — `rsmm lint` (and CI) reject stray `*.py` in a mod that isn't a sanctioned lifecycle hook. If you need new capability, it graduates into the SDK. See [Authoring mods](/guides/modding/).
+[mod]
+id          = "MyFirstMod"
+name        = "My First Mod"
+version     = "0.1.0"
+author      = "Sam"
+description = "Renames Ace of Spades so I can see my mod working."
+enabled     = true
+sdk_version = ">=3.0,<4"
+tags        = ["items"]
+license     = "MIT"
+multiplayer_scope = "deterministic-shared"
+
+[[content]]
+kind = "item"
+mode = "replace"
+id   = "Damage_Attack"
+base = "Damage_Attack"
+name = "My Very First Item"
+```
+
+<Aside type="tip" title="Want a different item?">
+`rsmm items list` shows every item's internal name. Or skip the typing entirely:
+`rsmm editor` opens the same editor as Way 1, and its **Add to mod** button writes
+this block into your mod for you.
 </Aside>
 
-## Next steps
+### 4. Check it for mistakes
+
+```sh
+rsmm lint MyFirstMod
+```
+
+`lint` reads your mod and points out problems before you start the game:
+
+- **`[OK]   MyFirstMod`** at the end means it's ready.
+- **`[WARN]`** lines are suggestions, such as a missing description. Your mod still
+  works.
+- **`[FAIL]`** lines must be fixed. They say what's wrong, and often suggest the
+  right spelling (`did you mean …?`).
+
+### 5. Put it in the game and play
+
+```sh
+rsmm apply
+rsmm run
+```
+
+`apply` writes your mod into the game's files, keeping a copy of each original.
+`run` starts Ravenswatch through Steam. Open the compendium and look for
+**My Very First Item**. 🎉
+
+### 6. Undo it
+
+```sh
+rsmm restore --all
+```
+
+This puts every original file back. The game is vanilla again, and your mod is
+still safe in `mods/MyFirstMod/` for next time.
+
+### Changing things and trying again
+
+Edit `manifest.toml`, then run `rsmm apply` again and restart the game. Or leave
+this running in a second terminal, and it re-applies every time you save:
+
+```sh
+rsmm watch
+```
+
+## Share your mod
+
+When you're happy with it:
+
+1. Pack it into a single file:
+   ```sh
+   rsmm pack MyFirstMod
+   ```
+   This creates `dist/MyFirstMod.zip`.
+2. Upload it on [rsmm.me/publish](https://rsmm.me/publish) (you'll need an
+   account). Every upload is scanned for malware before it appears on the site.
+
+Prefer the command line? Create an API token on your
+[account page](https://rsmm.me/account), then:
+
+```sh
+rsmm publish login
+rsmm publish MyFirstMod
+```
+
+## What next?
 
 <CardGrid>
-  <LinkCard title="Authoring mods" href="/guides/modding/" description="The full mod-authoring guide." />
-  <LinkCard title="SDK (v3)" href="/guides/sdk/" description="The Python SDK that emits mod assets." />
-  <LinkCard title="CLI reference" href="/reference/cli/" description="All available commands." />
-  <LinkCard title="Build a mod with an AI assistant" href="/guides/ai-assistant/" description="Point ChatGPT, Claude, or a coding agent at the real docs." />
+  <LinkCard title="First mod, by kind" href="/guides/first-mod-by-kind/" description="A small, working example for every kind of change: talents, enemies, maps, and more." />
+  <LinkCard title="Example mods" href="/guides/examples/" description="Complete mods to copy, including script (Lua) mods." />
+  <LinkCard title="Modding guide" href="/guides/modding/" description="Everything a manifest can do, in detail." />
+  <LinkCard title="Build a mod with an AI assistant" href="/guides/ai-assistant/" description="Point ChatGPT, Claude or a coding agent at the real docs." />
 </CardGrid>

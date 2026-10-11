@@ -21,19 +21,6 @@ from rsmm.sdk.content import ContentDef
 from rsmm.sdk.kinds import enemies
 
 
-@pytest.fixture
-def install_only(monkeypatch):
-    """Hide the uncooked mirror so every read falls through to the install."""
-    if EP._cooking_dir() is None:
-        pytest.skip("no game install to read the cooked corpus from")
-    missing = Path("/nonexistent/uncooked")
-    monkeypatch.setattr(EP, "UNCOOKED", missing)
-    monkeypatch.setattr(EP, "OT_DIR", missing / "Ot")
-    monkeypatch.setattr(EP, "ENEMY_DIR", missing / "Definitions" / "Enemies")
-    assert EP.corpus_source() == "install"
-    yield
-
-
 def _fingerprint(paths: list[Path]) -> str:
     rows = sorted((p.name, hashlib.sha256(p.read_bytes()).hexdigest()) for p in paths)
     return hashlib.sha256(repr(rows).encode()).hexdigest()
@@ -43,7 +30,7 @@ def _emit(out: Path, defn_id: str) -> list[Path]:
     defn = ContentDef(kind="enemy", id=defn_id,
                       fields={"mode": "override", "cross_biome": True,
                               "repoint_pools": False, "mix": "shuffle",
-                              "seed": 1337, "weight": 5.0})
+                              "seed": 1337, "power": 5.0})
     return enemies.emit("TestCorpusSourceMod", defn, out)
 
 
@@ -66,6 +53,8 @@ def test_emit_is_byte_identical_from_either_store(tmp_path, monkeypatch):
     if EP._cooking_dir() is None:
         pytest.skip("no game install to compare against")
     missing = Path("/nonexistent/uncooked")
+    from rsmm.engine import corpus
+    monkeypatch.setattr(corpus, "UNCOOKED", missing)
     monkeypatch.setattr(EP, "UNCOOKED", missing)
     monkeypatch.setattr(EP, "OT_DIR", missing / "Ot")
     monkeypatch.setattr(EP, "ENEMY_DIR", missing / "Definitions" / "Enemies")

@@ -14,7 +14,7 @@ if sys.version_info < (3, 11):  # noqa: UP036
         "Upgrade Python and reinstall rsmm."
     )
 
-import rsmm.engine.paths  # noqa: E402 — ensures package is importable
+import rsmm.engine.paths
 
 # Replaced by the entrypoint script (./rsmm) at import time so `--help`
 # shows the rich top-level overview, not this dispatch module's docstring.
@@ -47,35 +47,47 @@ LEGACY = {
     "compat":        ("rsmm.cli.compat",                     []),
     "lint":          ("rsmm.cli.lint",                       []),
     "test":          ("rsmm.cli.test",                       []),
+    # The four editors became tabs of one `rsmm editor`; their old names open it
+    # on their tab.
+    "item-editor":    ("rsmm.cli.cmd_editor",                ["--tab", "items"]),
+    "talent-editor":  ("rsmm.cli.cmd_editor",                ["--tab", "talents"]),
+    "ability-editor": ("rsmm.cli.cmd_editor",                ["--tab", "abilities"]),
+    "map-editor":     ("rsmm.cli.cmd_editor",                ["--tab", "map"]),
 }
 
 BUILTIN = {
     "new":               "rsmm.cli.cmd_new",
+    "diff":              "rsmm.cli.cmd_diff",
     "items":             "rsmm.cli.cmd_items",
     "enemies":           "rsmm.cli.cmd_enemies",
     "talents":           "rsmm.cli.cmd_talents",
-    "map-editor":        "rsmm.cli.cmd_map_editor",
+    "editor":            "rsmm.cli.cmd_editor",
     "poi":               "rsmm.cli.cmd_poi",
     "schema":            "rsmm.cli.cmd_schema",
     "install":           "rsmm.cli.cmd_install",
     "pack":              "rsmm.cli.cmd_pack",
+    "modpack":           "rsmm.cli.cmd_modpack",
+    "backend":           "rsmm.cli.cmd_backend",
     "publish":           "rsmm.cli.cmd_publish",
     "log":               "rsmm.cli.cmd_log",
     "overlay":           "rsmm.cli.cmd_overlay",
     "exp":               "rsmm.cli.cmd_exp",
     "save":              "rsmm.cli.cmd_save",
+    "values":            "rsmm.cli.cmd_values",
     # The module already declares prog="rsmm cmd"; it was simply never routed.
     "cmd":               "rsmm.cli.console_cmd",
-    # `menu` is the in-game mod menu; `home` is this CLI's own home screen.
-    "menu":              "rsmm.cli.cmd_menu",
     "home":              "rsmm.cli.cmd_shell",
-    "intents":           "rsmm.cli.cmd_intents",
     "assets":            "rsmm.cli.cmd_assets",
     "decode":            "rsmm.engine.ot_decoder",
     "rebuild-asset-map": "rsmm.engine.find_iyg",
+    "rebuild-fn-patterns": "rsmm.cli.cmd_rebuild_patterns",
     "install-loader":    "rsmm.cli.install_loader",
     "cook":              "rsmm.cli.cook",
     "uncook":            "rsmm.cli.uncook",
+    "export-character":  "rsmm.cli.cmd_export_character",
+    "export-model":      "rsmm.cli.cmd_export_model",
+    "import-character":  "rsmm.cli.cmd_import_character",
+    "entity-graph":      "rsmm.cli.cmd_entity_graph",
     "unify":             "rsmm.cli.unify",
     "symbols":           "rsmm.cli.cmd_symbols",
     "update-data":       "rsmm.cli.cmd_update_data",
@@ -144,6 +156,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("lint",     "[<id>]",                     "validate manifests + asset paths"),
         ("test",     "[<id>] [--record]",          "diff build.py output vs checked-in fixture"),
         ("compat",   "",                           "analyze requires/conflicts/replaces graph"),
+        ("diff",     "<id> [--all] [--json]",      "game files a mod changes + overlaps"),
         ("pack",     "<id> [--allow-vanilla]",     "bundle mods/<id>/ into a zip"),
         ("publish",  "<id> | login | whoami",      "upload a mod to the store with an API token"),
         ("build",    "[--skip-loader]",            "asset map + loader + merge + apply"),
@@ -152,7 +165,11 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("enemies",  "",                           "browse the enemy corpus"),
         ("talents",  "",                           "browse the talent corpus"),
         ("poi",      "[list|kinds|show]",          "browse map tiles / POIs"),
-        ("map-editor", "[--port N]",               "edit a chapter's map generation"),
+        ("editor",   "[--tab T] [--port N]",       "edit items, talents, abilities, maps"),
+        ("item-editor", "",                        "= editor --tab items"),
+        ("talent-editor", "",                      "= editor --tab talents"),
+        ("ability-editor", "",                     "= editor --tab abilities"),
+        ("map-editor", "",                         "= editor --tab map"),
     )),
     ("game", (
         ("run",      "[--set-launch-options]",     "launch Ravenswatch via Steam"),
@@ -161,18 +178,24 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("overlay",  "[<mod>] [--watch]",          "live HUD data a mod publishes"),
         ("exp",      "[<mod>] [--json]",           "hypotheses a mod answered during a playtest"),
         ("cmd",      "['/command'] [--tail]",      "send /commands to the in-game console"),
-        ("menu",     "",                           "drive the in-game mod menu"),
-        ("intents",  "",                           "apply queued in-game menu intents"),
         ("save",     "[path]... [--classes]",      "inspect profile saves (read-only)"),
+        ("values",   "<snapshot|list|diff|extract>", "back up a patch's values, diff an update"),
+        ("modpack",  "[--json]",                   "fingerprint of applied mods, for online play"),
+        ("backend",  "[URL|off]",                  "point the game at a self-hosted server"),
     )),
     ("assets & engine", (
         ("assets",   "search <text> | show <path>", "find a cooked asset by readable path"),
         ("cook",     "<file>",                     "encode an uncooked asset"),
         ("uncook",   "<file>",                     "decode a cooked asset"),
+        ("export-character", "<hero> [-o out.glb]", "rigged mesh + animations for Blender"),
+        ("export-model", "<name|glob> | --all [-o dir]", "any 3D model as glTF"),
+        ("import-character", "<edited.glb> --mod <id>", "edited clips + body back into a mod"),
+        ("entity-graph", "<hero|entity> [--group G]", "an entity's components and links"),
         ("unify",    "",                           "normalize an asset tree"),
         ("decode",   "<cooked-file>",              "dump oCTextSaver structure"),
         ("symbols",  "<gen|list|audit|events|…>",  "the engine symbol map"),
         ("rebuild-asset-map", "",                  "re-run find_iyg.py from UsedRscList.ot"),
+        ("rebuild-fn-patterns", "[--force] [--ghidra]", "rebuild the byte-pattern DB for this exe"),
         ("update-data", "",                        "fetch the rolling pattern DB"),
         ("update-loader", "",                      "fetch the loader DLL + Lua SDK"),
     )),
@@ -201,7 +224,11 @@ PREAMBLE = """rsmm — single CLI for Ravenswatch mod install + lifecycle.
 
 Mods are written in Lua against the SDK. Drop a mod under `mods/<id>/`,
 start its `init.lua` with `local R = require "rsmm"`, and use the
-documented `R.*` API. See `docs/MODDING.md`."""
+documented `R.*` API. See https://docs.rsmm.me/guides/modding/."""
+
+
+#: Width of the usage column in `render_help`; descriptions start after it.
+_USAGE_COL = 36
 
 
 def render_help() -> str:
@@ -229,9 +256,16 @@ def render_help() -> str:
         out.append(st.heading(f"  {title}"))
         for cmd, args, desc in shown:
             usage = f"{cmd} {args}".rstrip()
+            if len(usage) >= _USAGE_COL:
+                # Too long for the column: it ran straight into its own
+                # description (`[-o out.glb]rigged mesh…`). Give the
+                # description the next line, still in the column.
+                out.append(f"    {st.bold(usage)}")
+                out.append(f"    {' ' * _USAGE_COL}{st.dim(desc)}")
+                continue
             # Pad the PLAIN string: padding a styled one counts the ANSI
             # escapes as width and mis-aligns every row.
-            padded = f"{usage:<36}"
+            padded = f"{usage:<{_USAGE_COL}}"
             out.append(f"    {st.bold(padded)}{st.dim(desc)}")
         out.append("")
 
@@ -290,8 +324,12 @@ def main(argv: list[str] | None = None) -> int:
         mod, prefix = LEGACY[sub]
         return _dispatch_module(mod, [*prefix, *rest])
 
-    print(f"unknown subcommand: {sub}", file=sys.stderr)
-    print(render_help(), file=sys.stderr)
+    # One line, not the whole listing: the listing buried the typo it was
+    # answering under seventy lines of commands.
+    from rsmm.cli._suggest import did_you_mean
+    routed = [name for name, _mod in iter_commands()]
+    print(f"unknown subcommand: {sub}{did_you_mean(sub, routed)}", file=sys.stderr)
+    print("`rsmm --help` lists every command.", file=sys.stderr)
     return 2
 
 

@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli.apply_mods import find_game_dir
-from rsmm.engine.paths import DIST_DIR, REPO_ROOT, self_cmd
+from rsmm.engine.paths import BACKUP_SUFFIX, DIST_DIR, REPO_ROOT, self_cmd
 
 RAVENSWATCH_APP_ID = "2071280"
 REQUIRED_OVERRIDE = "winhttp=n,b"            # what we want to see
@@ -166,6 +166,84 @@ def _override_present(launch_options: str) -> bool:
     return any(o in lo for o in ACCEPTED_OVERRIDES)
 
 
+#: `NAME=value` before %command%: a double-quoted value (escapes allowed), a
+#: single-quoted one, or a bare word.
+_ENV_TOKEN = re.compile(
+    r"""(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<val>"(?:[^"\\]|\\.)*"|'[^']*'|\S*)""")
+
+
+def strip_rsmm_launch_options(value: str) -> str:
+    """`value` with only what the mod manager put there taken out.
+
+    Removed: the `winhttp` entry of WINEDLLOVERRIDES (other DLL overrides in
+    the same variable are kept) and any `RSMM_*` loader-flag variable. Kept:
+    everything else — the player's own variables (a PRIME-offload set that is
+    the only thing letting DX12 start on a hybrid laptop, `gamemoderun`, ...)
+    and the game arguments after %command%. A value left holding nothing but
+    `%command%` becomes "" (Steam's own default), as before.
+
+    `restore --all` used to write "" unconditionally, which wiped those player
+    settings along with ours; on 2026-10-11 that took a working launch back
+    to "DX12 Error 0x80004005".
+    """
+    head, sep, tail = value.partition("%command%")
+    if not sep:
+        head, tail = value, ""
+    kept: list[str] = []
+    pos = 0
+    for m in _ENV_TOKEN.finditer(head):
+        kept.append(head[pos:m.start()])
+        pos = m.end()
+        name, val = m.group("name"), m.group("val")
+        if name.startswith("RSMM_"):
+            continue
+        if name == "WINEDLLOVERRIDES":
+            inner = val[1:-1] if val[:1] in "\"'" and len(val) >= 2 else val
+            rest = [e for e in inner.split(";")
+                    if e.strip() and not e.strip().lower().startswith("winhttp=")]
+            if not rest:
+                continue
+            kept.append(f'WINEDLLOVERRIDES="{";".join(rest)}"')
+            continue
+        kept.append(m.group(0))
+    kept.append(head[pos:])
+    out = " ".join("".join(kept).split())
+    if sep:
+        out = f"{out} %command%{tail}".strip()
+    return "" if out == "%command%" else out
+
+
+def add_rsmm_launch_options(value: str) -> str:
+    """`value` with the loader override added, everything else kept.
+
+    The override goes into an existing WINEDLLOVERRIDES when there is one,
+    else at the very front (before any wrapper such as gamemoderun). Options
+    with no %command% are game ARGUMENTS to Steam, so they move after it.
+
+    This used to REPLACE anything without the override with the bare
+    recommended string; on 2026-10-11 that dropped a player's PRIME-offload
+    variables and the game failed DX12 init again.
+    """
+    value = (value or "").strip()
+    if not value:
+        return RECOMMENDED_LAUNCH_OPTIONS
+    if _override_present(value):
+        return value
+    head, sep, tail = value.partition("%command%")
+    if not sep:
+        return f"{RECOMMENDED_LAUNCH_OPTIONS} {value}"
+    for m in _ENV_TOKEN.finditer(head):
+        if m.group("name") == "WINEDLLOVERRIDES":
+            val = m.group("val")
+            inner = val[1:-1] if val[:1] in "\"'" and len(val) >= 2 else val
+            merged = f'WINEDLLOVERRIDES="{inner};{REQUIRED_OVERRIDE}"'
+            return (head[:m.start()] + merged + head[m.end():] + sep + tail).strip()
+    # At the FRONT: an assignment only sets the environment before the first
+    # word, so `gamemoderun VAR=x %command%` would try to run "VAR=x".
+    prefix = " ".join(f'WINEDLLOVERRIDES="{REQUIRED_OVERRIDE}" {head.strip()}'.split())
+    return f"{prefix} %command%{tail}".strip()
+
+
 def _is_steam_running() -> bool:
     if sys.platform == "win32":
         try:
@@ -269,7 +347,7 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
         new_body = f'\n{indent}"LaunchOptions"\t\t"{escaped}"' + body
     new_text = (text[:open_brace] + '{' + new_body + '}' + text[body_end + 1:])
 
-    bak = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.bak")
+    bak = vdf_path.with_suffix(vdf_path.suffix + BACKUP_SUFFIX)
     if not bak.exists():
         bak.write_text(text, errors="replace")
     # Atomic write: a Steam crash mid-write was previously enough to
@@ -292,56 +370,74 @@ def _rsmm_subcommand(args: list[str], /) -> bool:
         return False
 
 
+#: How long a launcher gets to fail before it counts as started. `flatpak run`
+#: and `steam` hand off to a running Steam and exit 0 within a second; when
+#: Steam was not running they BECOME Steam and keep running, which is success.
+#: A broken environment fails in milliseconds (exit 127, symbol lookup error).
+_LAUNCHER_GRACE_S = 4.0
+
+
+def _spawn_launcher(argv: list[str]) -> str | None:
+    """Start one launcher. None when it started; otherwise why it did not.
+
+    Started in its own session with the host environment: it may become Steam
+    itself, which must outlive this process and the desktop app that spawned
+    it, and must not load the AppImage's libraries (see rsmm.engine.host_env).
+    """
+    import tempfile
+
+    from rsmm.engine.host_env import host_env
+
+    with tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=err,
+                                    env=host_env(), start_new_session=True)
+        except OSError as e:
+            return str(e)
+        try:
+            code = proc.wait(timeout=_LAUNCHER_GRACE_S)
+        except subprocess.TimeoutExpired:
+            return None  # still running: it is Steam now
+        if code == 0:
+            return None
+        err.seek(0)
+        detail = err.read().decode("utf-8", errors="replace").strip().splitlines()
+        return f"exit {code}" + (f": {detail[-1]}" if detail else "")
+
+
+def _linux_launchers(app_id: str, url: str) -> list[list[str]]:
+    """Ways to reach Steam, most direct first."""
+    out = []
+    if shutil.which("steam"):
+        out.append(["steam", "-applaunch", app_id])
+    if shutil.which("flatpak"):
+        out.append(["flatpak", "run", "com.valvesoftware.Steam", "-applaunch", app_id])
+    if Path("/.flatpak-info").exists() and shutil.which("flatpak-spawn"):
+        # rsmm itself sandboxed: only the host can start the Steam flatpak.
+        out.append(["flatpak-spawn", "--host", "flatpak", "run",
+                    "com.valvesoftware.Steam", "-applaunch", app_id])
+    if shutil.which("xdg-open"):
+        out.append(["xdg-open", url])
+    return out
+
+
 def _open_steam_url(url: str) -> int:
     if sys.platform == "win32":
         os.startfile(url)  # type: ignore[attr-defined]
         return 0
-    # Linux
-    if shutil.which("steam"):
-        print(f"==> steam -applaunch {url.rsplit('/', 1)[-1]}")
-        try:
-            subprocess.Popen(["steam", "-applaunch", url.rsplit('/', 1)[-1]],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+    app_id = url.rsplit("/", 1)[-1]
+    failures = []
+    for argv in _linux_launchers(app_id, url):
+        print(f"==> {' '.join(argv)}", flush=True)
+        why = _spawn_launcher(argv)
+        if why is None:
             return 0
-        except OSError as e:
-            print(f"Could not launch via steam: {e}", file=sys.stderr)
-            return 1
-    if shutil.which("flatpak"):
-        print(f"==> flatpak run com.valvesoftware.Steam -applaunch {url.rsplit('/', 1)[-1]}")
-        try:
-            if shutil.which("flatpak-spawn"):
-                subprocess.Popen(
-                    [
-                        "flatpak-spawn",
-                        "--host",
-                        "flatpak",
-                        "run",
-                        "com.valvesoftware.Steam",
-                        "-applaunch",
-                        url.rsplit('/', 1)[-1],
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            else:
-                subprocess.Popen(
-                    [
-                        "flatpak",
-                        "run",
-                        "com.valvesoftware.Steam",
-                        "-applaunch",
-                        url.rsplit("/", 1)[-1],
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            return 0
-        except OSError as e:
-            print(f"Could not launch via flatpak Steam: {e}", file=sys.stderr)
-            return 1
-    print(f"Could not find a working Steam launcher or URL handler. Open this URL manually: {url}",
-          file=sys.stderr)
+        failures.append(f"{argv[0]}: {why}")
+        print(f"    failed ({why}), trying the next way", file=sys.stderr)
+    if failures:
+        print("Could not start Steam:\n  " + "\n  ".join(failures), file=sys.stderr)
+    print(f"Open this URL manually: {url}", file=sys.stderr)
     return 1
 
 
@@ -424,9 +520,11 @@ def main() -> int:
         changed = 0
         for vdf in vdfs:
             try:
-                if _write_launch_options(vdf, args.app_id, ""):
+                # Only OUR part comes out; the player's own options stay.
+                current = _read_launch_options(vdf, args.app_id) or ""
+                if _write_launch_options(vdf, args.app_id, strip_rsmm_launch_options(current)):
                     changed += 1
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"Failed to clear launch options in {vdf}: {e}", file=sys.stderr)
         print(f"cleared launch options in {changed}/{len(vdfs)} Steam user config(s)")
         return _open_steam_url(url)
@@ -454,9 +552,7 @@ def main() -> int:
             print("Refusing to write while Steam is running — close Steam, "
                   "then re-run with --set-launch-options.", file=sys.stderr)
             return 1
-        existing = lo or ""
-        merged = (existing + " " + RECOMMENDED_LAUNCH_OPTIONS).strip() \
-                 if existing and "%command%" not in existing else RECOMMENDED_LAUNCH_OPTIONS
+        merged = add_rsmm_launch_options(lo or "")
         if _write_launch_options(primary, args.app_id, merged):
             print(f"wrote launch options into {primary}")
             print(f"backup: {primary}.rsmm.bak")
@@ -474,16 +570,14 @@ def main() -> int:
         # actually works on Linux/Wine. If Steam is running or the
         # write fails, warn but proceed.
         if lo is None or not _override_present(lo):
-            merged = (lo or "") + " " + RECOMMENDED_LAUNCH_OPTIONS \
-                     if (lo or "") and "%command%" not in (lo or "") \
-                     else RECOMMENDED_LAUNCH_OPTIONS
+            merged = add_rsmm_launch_options(lo or "")
             try:
                 if _write_launch_options(primary, args.app_id, merged):
                     print(f"wrote launch options into {primary}")
                 else:
                     print("could not write launch options; loader may not load.",
                           file=sys.stderr)
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 print(f"failed to write launch options: {e}; loader may not load.",
                       file=sys.stderr)
         return _open_steam_url(url)

@@ -6,8 +6,9 @@ sites in the corpus — every function near a hook has ~7 opaque
 `(**(code **)(*obj + 0xNN))()` dispatches. Offline resolution is IMPOSSIBLE
 (measured: 0/55k statically resolvable — the vtable pointer flows through
 struct/memory, not local vars, so only Ghidra's decompiler with applied struct
-TYPES can follow it). data/vftables.jsonl already holds 5993 vtables with their
-slot functions, sitting unused.
+TYPES can follow it). docs/_re/out_new/vftables.jsonl already holds 5993 vtables
+with their slot functions, sitting unused. (Not data/vftables.jsonl: that copy
+predated the 2026-07-09 patch and most of its slots landed mid-function.)
 
 This generates a Ghidra Jython script that runs THREE phases:
   1. per vtable, build a struct `<Class>_vtbl` whose fields are pointers named

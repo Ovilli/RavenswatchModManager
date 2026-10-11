@@ -10,6 +10,7 @@ from pathlib import Path
 from rsmm.engine.asset_map import decoded_to_encoded
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
+    BACKUP_SUFFIX,
     COOKING_SUBDIR,
     DATA_DIR,
     DEFAULT_GAME_DIR,
@@ -79,7 +80,8 @@ def _is_local_only(rel: Path) -> bool:
     config.toml holds the packing user's edited values (config_schema.toml
     ships the defaults); .rsmm_state* is the runtime KV store the loader
     writes next to init.lua; .rsmm_emitted.json is apply-time bookkeeping
-    for stale-asset GC, regenerated on the installing machine.
+    for stale-asset GC and .rsmm_emit_cache.json the emit cache's key, both
+    regenerated on the installing machine.
     """
     if "__pycache__" in rel.parts:
         return True
@@ -87,6 +89,7 @@ def _is_local_only(rel: Path) -> bool:
     return (
         name == "config.toml"
         or name == ".rsmm_emitted.json"
+        or name == ".rsmm_emit_cache.json"
         or name.startswith(".rsmm_state")
         or name.endswith(".tmp")
     )
@@ -153,7 +156,7 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
             encoded = enc_map.get(rel)
             if encoded:
                 orig = cooking / encoded.replace("\\", "/")
-                bak = orig.with_suffix(orig.suffix + ".rsmm.bak")
+                bak = orig.with_suffix(orig.suffix + BACKUP_SUFFIX)
                 src = bak if bak.exists() else orig
                 if src.exists() and sha256(src) == mod_hash:
                     offenders.append((f"assets/{rel}", "matches original cooked asset"))
@@ -192,14 +195,16 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) != 1:
         print(_USAGE, file=sys.stderr)
         return 2
-    mod_id = args[0]
+    from rsmm.cli._suggest import UnknownMod, resolve_mod
+    try:
+        mod_id = resolve_mod(args[0], MODS_DIR)
+    except UnknownMod as e:
+        print(e, file=sys.stderr)
+        return 1
     if not _ID_RE.match(mod_id):
         print(f"invalid mod id: {mod_id!r}", file=sys.stderr)
         return 1
     src = MODS_DIR / mod_id
-    if not src.is_dir():
-        print(f"no such mod: {src}", file=sys.stderr)
-        return 1
     if not allow_vanilla:
         offenders = _vanilla_offenders(src)
         if offenders:

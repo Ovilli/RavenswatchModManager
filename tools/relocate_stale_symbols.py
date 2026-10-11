@@ -310,7 +310,7 @@ def assert_corpus_matches_exe(exe: Path | None = None) -> str:
 
     if exe is None:
         sys.path.insert(0, str(REPO / "scripts"))
-        import gen_function_patterns as gen  # noqa: E402, I001
+        import gen_function_patterns as gen
         exe = Path(gen.DEFAULT_EXE)
     if not exe.exists():
         # No exe to compare against (CI, a fresh clone). Say so rather than
@@ -471,7 +471,7 @@ def main() -> int:
         loc = s.get("locator")
         if loc:
             try:
-                from symbol_locate import Build, resolve_locator  # noqa: PLC0415
+                from symbol_locate import Build, resolve_locator
             except ImportError:
                 pass
             else:

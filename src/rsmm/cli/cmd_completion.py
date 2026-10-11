@@ -33,7 +33,7 @@ from rsmm.cli._dispatch import iter_commands
 
 # Subcommands whose positional argument is a mod id. Completion offers live
 # mod ids for these; everything else falls back to filename completion.
-_MOD_COMMANDS = ("enable", "disable", "pack", "lint", "test")
+_MOD_COMMANDS = ("enable", "disable", "pack", "lint", "test", "diff")
 
 # One-line descriptions shown next to each command. Keep terse.
 _DESC: dict[str, str] = {
@@ -44,6 +44,7 @@ _DESC: dict[str, str] = {
     "completion": "emit a shell tab-completion script",
     "cook": "cook an asset into the game format",
     "decode": "dump an oCTextSaver cooked file",
+    "diff": "game files a mod changes + overlaps",
     "disable": "disable mods",
     "docs-gen": "regenerate SDK/CLI reference docs",
     "doctor": "system health check",
@@ -52,18 +53,19 @@ _DESC: dict[str, str] = {
     "help": "show top-level help",
     "install": "install a packaged mod zip",
     "install-loader": "copy winhttp.dll + SDK lib into the game",
-    "intents": "inspect/emit loader intent files",
     "items": "magic-item tools",
     "json": "JSON bridge for the desktop app",
     "keygen": "generate a signing keypair",
     "lint": "validate manifests + asset paths",
     "list": "show installed mods + their files",
     "log": "read the loader log",
-    "menu": "in-game menu tools",
     "merge": "compose [[patch]] blocks into mods/_merged",
     "new": "scaffold a new mod",
     "pack": "bundle a mod into a zip",
+    "modpack": "fingerprint of the applied mods, for online play",
+    "backend": "point the game at a self-hosted online server",
     "rebuild-asset-map": "re-run find_iyg from UsedRscList.ot",
+    "rebuild-fn-patterns": "rebuild the byte-pattern DB for this exe",
     "repo": "mod-repo signing/publishing",
     "restore": "roll back active overrides",
     "run": "launch Ravenswatch via Steam",
@@ -98,9 +100,14 @@ _FLAGS: dict[str, tuple[str, ...]] = {
     "enable": ("--only", "--all"),
     "disable": ("--all",),
     "pack": ("--allow-vanilla",),
+    "modpack": ("--game-dir", "--json"),
+    "backend": ("--game-dir", "--no-check", "--no-install"),
     "build": ("--skip-loader",),
+    "editor": ("--tab", "--port", "--no-browser", "--game-dir"),
     "run": ("--set-launch-options",),
-    "watch": ("--interval",),
+    "watch": ("--interval", "--once", "--no-lint", "--dry-run", "--game-dir"),
+    "new": ("--kind", "--base", "--name", "--desc", "--icon", "--rarity",
+            "--author", "--tags", "--license"),
     "test": ("--record",),
     "log": ("-f", "--follow", "-n", "--lines", "--grep", "--all", "--prev",
             "--sessions", "--clear", "--path"),

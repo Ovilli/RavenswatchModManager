@@ -103,7 +103,7 @@ export default function NewGuidePage() {
       >
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Guides
       </Link>
-      <h1 className="font-fraktur text-5xl text-parchment">Write a guide</h1>
+      <h1 className="font-display text-5xl text-parchment">Write a guide</h1>
       <p className="text-sm text-muted-foreground">
         Guides are reviewed by a maintainer before they go public. Save a draft anytime.
       </p>

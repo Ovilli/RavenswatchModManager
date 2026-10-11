@@ -71,8 +71,8 @@ def test_rewire_ref_repoints_picker_by_name():
     ed.rewire_ref("Trigger Proc", "Target State")
     out = EntityEdit(ed.emit())
     # the trigger picker now carries the target node's GUID
-    o = [off for off, t in out.find_lstrings_containing("Trigger Proc")
-         if t.startswith("[")][0] - 16
+    o = next(off for off, t in out.find_lstrings_containing("Trigger Proc")
+         if t.startswith("[")) - 16
     assert out.concat[o:o + 16] == src
 
 
@@ -162,8 +162,8 @@ def test_piper_ghost_horde_emit_round_trips():
     assert len(patched) == len(raw)
 
     out = EntityEdit(patched)
-    guid_off = [o for o, t in out.find_lstrings_containing(
-        "Event Skill Attack Ghost Notes Proc") if t.startswith("[")][0] - 16
+    guid_off = next(o for o, t in out.find_lstrings_containing(
+        "Event Skill Attack Ghost Notes Proc") if t.startswith("[")) - 16
     assert out.concat[guid_off:guid_off + 16].hex() == \
         "db41bfd8eb24854988cee729faf22097"
     assert _nth_int(out.concat, "Skill Attack Ghost Notes Counter", 5) == 10

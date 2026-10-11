@@ -13,6 +13,8 @@ export interface ReleaseAsset {
 export interface LatestRelease {
   /** Tag of the latest published release, e.g. `v5.1.0`. */
   tag: string | null;
+  /** When that release was published (ISO string), for the sitemap's lastmod. */
+  publishedAt?: string | null;
   /** Direct download for each platform's preferred installer, when present. */
   windows: string | null;
   linux: string | null;
@@ -69,7 +71,13 @@ export function formatBytes(bytes: number): string {
  * page, which always exists.
  */
 export async function getLatestRelease(): Promise<LatestRelease> {
-  const empty: LatestRelease = { tag: null, windows: null, linux: null, assets: [] };
+  const empty: LatestRelease = {
+    tag: null,
+    publishedAt: null,
+    windows: null,
+    linux: null,
+    assets: [],
+  };
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       next: { revalidate: 3600 },
@@ -84,6 +92,7 @@ export async function getLatestRelease(): Promise<LatestRelease> {
       .map((a) => ({ name: a.name, url: a.browser_download_url, size: a.size ?? 0 }));
     return {
       tag: typeof data?.tag_name === 'string' ? data.tag_name : null,
+      publishedAt: typeof data?.published_at === 'string' ? data.published_at : null,
       windows: pickAsset(assets, PICKERS.windows)?.url ?? null,
       linux: pickAsset(assets, PICKERS.linux)?.url ?? null,
       assets,

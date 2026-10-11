@@ -741,3 +741,17 @@ def test_unstamped_channel_dll_gets_adopted(tmp_path, channel, monkeypatch):
     assert install_loader.ensure_loader_dll() is True
     assert lu.prebuilt_version(dest) == 1
     assert dest.read_bytes() == PAYLOAD["winhttp.dll"]
+
+
+def test_check_reports_a_game_dir_with_no_loader_at_all(tmp_path, channel):
+    """`plant_stale` is None-blind ("cannot be told") when the DLL is gone, so
+    after a `restore --all` or a Steam verify `update-loader` printed "up to
+    date" over a game running no loader. Seen on a tester's Windows install.
+    """
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    assert lu.check(game)["not_planted"] is False
+
+    (game / "winhttp.dll").unlink()
+
+    assert lu.check(game)["not_planted"] is True

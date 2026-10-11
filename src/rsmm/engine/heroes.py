@@ -107,7 +107,7 @@ def _parse(bank_base: Path, lang_path: Path) -> tuple[list[str], list[str]]:
     """Return (keys, values_en). Missing files -> empty lists."""
     try:
         from rsmm.engine.text_patches import parse_text_file
-    except Exception:
+    except ImportError:
         return [], []
     keys = parse_text_file(bank_base).entries if bank_base.is_file() else []
     vals = parse_text_file(lang_path).entries if lang_path.is_file() else []

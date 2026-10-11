@@ -196,7 +196,14 @@ function M.pending()
 end
 
 -- Main-thread pump. Driven by rsmm.lua from gameplay-bus events only.
-function M._main_tick()
+--
+-- Never re-entered. Main work typically dispatches on that same bus (a grant
+-- fires GIVE_MAGICAL_OBJECT), the dispatch reaches the pump SYNCHRONOUSLY, and
+-- a repeater not yet re-armed is still due — so `every_main(3, grant)` granted
+-- the item 66 times in one frame and overflowed the C stack (2026-10-01). A
+-- nested call returns at once; what it would have run waits for the next event.
+local _in_main = false
+local function _main_body()
     if #_main_q > 0 then
         local cur = _main_q
         _main_q = {}
@@ -205,6 +212,13 @@ function M._main_tick()
         end
     end
     _drain(_main_timers, "after_main", function(t) _main_timers = t end)
+end
+function M._main_tick()
+    if _in_main then return end
+    _in_main = true
+    local ok, err = pcall(_main_body)
+    _in_main = false
+    if not ok then error(err, 0) end
 end
 
 -- Frame pump. rsmm.lua subscribes this to the "tick" event so timers fire

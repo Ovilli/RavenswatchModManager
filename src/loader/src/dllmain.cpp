@@ -35,6 +35,7 @@
 #include "hook_gamevalues.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
+#include "hook_backend.h"
 #include "script_lua.h"
 
 namespace fs = std::filesystem;
@@ -172,6 +173,7 @@ static void loader_thread_cxx() {
         install_guarded("hero_capture", rsmm::install_hero_capture);
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
         install_guarded("netcode",      rsmm::install_netcode_patches);
+        install_guarded("backend",      rsmm::install_backend_redirect);
 
         // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every
         // semantic pattern against the live exe and writes

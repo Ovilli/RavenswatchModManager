@@ -83,16 +83,72 @@ identity + `Difficulty`, register via `UsedRscList`. No versioned-reader wall
 
 ## Lua API (shipped)
 
-`R.modifier` reads modifier/difficulty state by name through the entity-value
-store (`R.entity.value(key)` → `EntityValue_Get(hero+0x2f8, out, key)`, inline f32):
+`R.modifier` reads modifier/difficulty state by name. The values live in the
+**global scene context** (the "New Game Plus" group of the entity-value
+registry), not on the hero — read from the hero's store every one of them came
+back `0.0` in game. So `R.modifier` goes through `R.game`:
 
 ```lua
 R.modifier.active("No minimap")        -- true if the toggle is on this run
-R.modifier.value("Game Difficulty")    -- numeric value (or nil)
+R.modifier.value("Game Difficulty")    -- numeric value, or nil
+R.modifier.why()                       -- why the last read was nil
 R.modifier.names()                     -- known modifier/scalar names
 ```
 
-Read-only — it lets a mod gate custom logic on modifier state.
+`SceneContextValue_Find(ctx, key)` returns the map entry's **record**, not a
+value union. Read off the engine's own setter (`FUN_1402091a0` →
+`FUN_140716470` → `FUN_140706660`) and named by RTTI:
+
+| Offset | Field |
+|--------|-------|
+| `+0x00` | `oCGlobalEntityValueSettings*` |
+| `+0x08` | `EntityCpntValueSignal<oCEntityValueUnion const&>` (change signal) |
+| `+0x30` | `oCEntityValueUnion` — `+0x08` storage tag, `+0x10` inline data, `+0x18` type byte |
+
+Storage: tag `4` means the data is **inline** at `union+0x10`; any other
+non-zero tag is the data's **address** with bit 0 used as a flag (`tag & ~1`).
+The type byte, from `EntityValueUnion_InitAsType`'s jump table:
+
+| Type | Value | Size / align | Stored |
+|------|-------|--------------|--------|
+| `0` | f32 | 4 / 4 | inline |
+| `1` | int32 (first dword of the slot) | 16 / 8 | always out of line |
+| `2` | bool | 1 / 1 | inline — the modifier **toggles** |
+| `10` | unset | — | — |
+
+The decode follows the union's own type byte. Measured in game at a run start:
+`Global Xp Modifier` 0.25, `Difficulty Xp Modifier` 1.25, `Current chapter` 0.
+
+### Writing (experimental, local-only)
+
+```lua
+R.schedule.next_main(function()          -- engine-mutating: main thread only
+  R.modifier.enable_writes()             -- opt-in, shared with R.stat
+  R.modifier.set("Global Xp Modifier", 1.5)   -- true when it reads back
+  R.modifier.clear("Global Xp Modifier")      -- restores the pre-write value
+end)
+```
+
+`R.modifier.set` calls the engine's own setter — `SceneContextValue_SetFloat`
+(`FUN_14020a580`), `SceneContextValue_SetInt` (`FUN_1402091a0`) or
+`SceneContextValue_SetBool` (`FUN_140209010`), picked by the value's type byte —
+so the change signal fires like any engine write. **Proven in game:** setting
+`No minimap` to 1 mid-run removed the minimap immediately. Both land in `FUN_140706660`, which is the replication
+gate: `settings+0xbe` marks a value as **replicated**, a client's write to one is
+dropped silently, and a host's is queued for peers. So:
+
+- a **replicated** value is written only when the run is provably solo
+  (`Hero Count` reads exactly 1) — refused in co-op and when the count is
+  unreadable. ⚠ `Hero Count` read **0** at the start of a solo run, so this gate
+  currently refuses replicated values even solo; the two values tested so far
+  are not replicated;
+- every write is **read back**, because the engine's refusal returns normally;
+- a key the context does not hold is refused (the setter never creates one);
+- `R.modifier.why()` gives the reason for any `false`.
+
+Modifiers consumed at map generation ("One chapter", "Day only", "Random hero
+at map start") change nothing when set mid-run, and the challenge screen does
+not show a value set this way.
 
 ## SDK kind (shipped)
 

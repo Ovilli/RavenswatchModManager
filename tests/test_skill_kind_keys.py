@@ -14,7 +14,7 @@ and was told the hero has no such skill.
 import pytest
 
 from rsmm.sdk.content import ContentError
-from rsmm.sdk.kinds.skills import _key_base_candidates, _text_key_base
+from rsmm.sdk.kinds.skills import _key_base_candidates, _text_key_base, card_keys
 
 
 def test_ability_named_row_needs_no_alias():
@@ -59,3 +59,24 @@ def test_without_a_bank_it_still_guesses():
     """`bank_keys=None` keeps the old best-guess behaviour for callers that have
     no bank to check against."""
     assert _text_key_base("Primary Finisher") == "Skill_Primary_Finisher"
+
+
+@pytest.mark.parametrize("keys, want", [
+    (["Skill_Attack_Dive_Name", "Skill_Attack_Dive_Desc"],
+     ("Skill_Attack_Dive_Name", "Skill_Attack_Dive_Desc")),
+    # Juliet's bank names every card `_Title`, and one of them `_Tilte`.
+    (["Skill_Attack_Dive_Title", "Skill_Attack_Dive_Desc"],
+     ("Skill_Attack_Dive_Title", "Skill_Attack_Dive_Desc")),
+    (["Skill_Attack_Dive_Tilte", "Skill_Attack_Dive_Desc"],
+     ("Skill_Attack_Dive_Tilte", "Skill_Attack_Dive_Desc")),
+    (["Skill_Attack_Dive_Names", "Skill_Attack_Dive_desc"],
+     ("Skill_Attack_Dive_Names", "Skill_Attack_Dive_desc")),
+    (["Skill_Attack_Dive_Desc"], (None, "Skill_Attack_Dive_Desc")),
+])
+def test_card_keys_are_read_from_the_bank(keys, want):
+    assert card_keys("Skill_Attack_Dive", keys) == want
+
+
+def test_a_title_keyed_bank_resolves():
+    """Writing `_Name` into a bank that holds `_Title` failed the relabel."""
+    assert _text_key_base("Attack Power", ["Skill_Attack_Power_Tilte"]) == "Skill_Attack_Power"

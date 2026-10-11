@@ -50,7 +50,7 @@ def _entity_of(path: Path) -> str:
 def _weight_of(path: Path) -> float:
     spec = _defs._SPECS["oCDtEnemyDefinition"]
     body = spec.decode_body(cooked.parse(path.read_bytes()).sections[-1].payload)
-    return body["spawn_weight"]
+    return body["power"]
 
 
 def _gens(paths: list[Path]) -> dict[str, Path]:
@@ -231,7 +231,7 @@ def test_weight_ceiling_is_enforced(tmp_path):
     """9999 overflowed the weighted camp-roster selection and crashed the
     game (enemy-spawn-model)."""
     _require_corpus()
-    with pytest.raises(ContentError, match="exceeds the safe ceiling"):
+    with pytest.raises(ContentError, match="exceeds 1000"):
         _emit(tmp_path, pools=["Avalon"], mix="random", seed=1, weight=9999)
 
 

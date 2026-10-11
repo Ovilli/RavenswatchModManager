@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://docs.rsmm.me/poi.schema.json",
+  "title": "RSMM poi.toml",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chapters"
+  ],
+  "properties": {
+    "preset": {
+      "enum": [
+        "clearing",
+        "standing_stone"
+      ],
+      "default": "clearing"
+    },
+    "id": {
+      "type": "string"
+    },
+    "base": {
+      "type": "string",
+      "description": "<Chapter>/<tile> the clone starts from"
+    },
+    "chapters": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "Avalon",
+          "Dark_Hills",
+          "Storm_Island"
+        ]
+      }
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "weight": {
+      "type": "number",
+      "minimum": 0
+    },
+    "copies": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "replace_base": {
+      "type": "boolean"
+    },
+    "own_level": {
+      "type": "boolean"
+    },
+    "swaps": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "(?i)\\.entity\\.ot$"
+      }
+    },
+    "places": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "entity"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entity": {
+            "anyOf": [
+              {
+                "const": "@prop"
+              },
+              {
+                "type": "string",
+                "pattern": "(?i)\\.entity\\.ot$"
+              }
+            ]
+          },
+          "pos": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "scale": {
+            "type": "number"
+          },
+          "yaw": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "icon": {
+      "type": "string"
+    },
+    "replaces": {
+      "type": "string",
+      "pattern": "(?i)\\.entity\\.ot$"
+    },
+    "entity_base": {
+      "type": "string",
+      "pattern": "(?i)\\.entity\\.ot$"
+    },
+    "material_base": {
+      "type": "string"
+    },
+    "material": {
+      "type": "string"
+    },
+    "allow_shared_art": {
+      "type": "boolean"
+    },
+    "interactive": {
+      "type": "boolean"
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fit": {
+          "enum": [
+            "height",
+            "none",
+            "rig"
+          ]
+        },
+        "scale": {
+          "type": "number"
+        },
+        "rotate_deg": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "skin": {
+          "enum": [
+            "transfer",
+            "rigid",
+            "gltf"
+          ]
+        },
+        "submeshes": {
+          "enum": [
+            "merge",
+            "map"
+          ]
+        },
+        "bones": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "drop_bones": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "albedo": {
+          "type": "string"
+        },
+        "mra": {
+          "type": "string"
+        },
+        "normal": {
+          "type": "string"
+        }
+      }
+    },
+    "marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "icon": {
+          "type": "string"
+        },
+        "icon_high": {
+          "type": "string"
+        },
+        "reveal_radius": {
+          "type": "number"
+        },
+        "donor": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

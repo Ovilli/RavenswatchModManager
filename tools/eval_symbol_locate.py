@@ -23,8 +23,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from relocate_stale_symbols import CONFIRMED  # noqa: E402
-from symbol_locate import Build, locate  # noqa: E402
+from relocate_stale_symbols import CONFIRMED
+from symbol_locate import Build, locate
 
 REPO = Path(__file__).resolve().parent.parent
 SYM = REPO / "data" / "symbols.json"

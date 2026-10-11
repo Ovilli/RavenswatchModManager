@@ -8,11 +8,16 @@ on:
   release:
     types: [published]
 
+# Read-only token: nothing here writes to the repo, so a compromised step
+# or action cannot push, tag or edit releases with it.
+permissions:
+  contents: read
+
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Send Discord webhook
         env:

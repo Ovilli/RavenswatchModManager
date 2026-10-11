@@ -64,6 +64,13 @@ DANGEROUS_EXTENSIONS = frozenset({
     ".jar",
     ".pyc", ".pyd",
     ".wasm", ".php", ".asp", ".aspx", ".jsp",
+    # Also run by Windows on a double-click, or loaded as code: the old list
+    # stopped `.bat` but let `.com`, `.pif`, `.hta`, `.msi` and `.reg` through,
+    # and a `.lnk`/`.url` shortcut can point at anything. `.ocx` is a DLL, and
+    # `.asi` is the plugin type game ASI loaders inject from the install root.
+    ".com", ".pif", ".hta", ".msi", ".msp", ".mst", ".reg", ".inf",
+    ".lnk", ".url", ".scf", ".ocx", ".asi", ".msc", ".chm", ".gadget",
+    ".application", ".appref-ms", ".settingcontent-ms", ".pyw",
 })
 
 #: Prefix marking an overlay copied into the game install root rather than

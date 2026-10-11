@@ -166,7 +166,10 @@ _TRIBE = _DefSpec(
 #   2. TResourcePtr entity_ref (FUN_1401c8720) at +0x288: 2 lstrings
 #      (settings-class-name + entity asset path)
 #   3. SubObject<oCCustomFlagList> at +0x2c0: combat/role flag names
-#   4. f32 spawn_weight at +0x2dc
+#   4. f32 power at +0x2dc — the enemy's COST against a camp's power budget,
+#      not its pick odds (EnemyCamp_TierSelector sums it; the filter drops a
+#      def costing more than what is left). Pick odds live in the tail's
+#      tier-weight tables. Proven in game 2026-09-24.
 #   5. TResourcePtr tribe_ref (FUN_1401c8720) at +0x2e8: 2 lstrings
 #   6. trailing version-gated scalars + sub-object vectors (MaxOccurence,
 #      FUN_140337e50). Preserved verbatim as an opaque `_tail` — byte-stable
@@ -195,7 +198,7 @@ def _enemy_decode(body: bytes) -> dict:
     if body[o:o + 4] != MARK_END:
         raise ValueError("oCDtEnemyDefinition: expected flag-list END")
     o += 4
-    spawn_weight = struct.unpack_from("<f", body, o)[0]
+    power = struct.unpack_from("<f", body, o)[0]
     o += 4
     t1, o = _rd_lstr(body, o)
     t2, o = _rd_lstr(body, o)
@@ -204,7 +207,7 @@ def _enemy_decode(body: bytes) -> dict:
         "entity_ref": [e1, e2],
         "tribe_ref": [t1, t2],
         "flags": flags,
-        "spawn_weight": spawn_weight,
+        "power": power,
         "base_flags": [base_a, base_b],
         "_res": res,
         "_flaglist_ver": list_ver,
@@ -223,7 +226,8 @@ def _enemy_encode(d: dict) -> bytes:
     for s in d["flags"]:
         out += _wr_lstr(s)
     out += MARK_END
-    out += struct.pack("<f", float(d["spawn_weight"]))
+    # `spawn_weight` is the pre-2026-09-24 name of the same field.
+    out += struct.pack("<f", float(d["power"] if "power" in d else d["spawn_weight"]))
     out += _wr_lstr(d["tribe_ref"][0]) + _wr_lstr(d["tribe_ref"][1])
     out += bytes.fromhex(d.get("_tail_hex", ""))
     return bytes(out)

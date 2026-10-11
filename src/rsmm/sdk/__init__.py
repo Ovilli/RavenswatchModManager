@@ -1,20 +1,27 @@
-"""RSMM SDK v3 — Python-side public surface.
+"""RSMM SDK v3 — an optional Python generator for a mod's `manifest.toml`.
 
-Mod authors do:
+The manifest is the main way to write a mod: `rsmm new` scaffolds it, the
+editor schema autocompletes it, `rsmm lint` checks it. This SDK writes the same
+file from Python, which pays off when a mod has many similar entries to
+produce. It applies the same field checks as lint (`manifest_spec`).
+
+Usage:
 
     from rsmm import sdk
     with sdk.Mod("MyMod") as m:
-        m.stat(...)               # legacy v1 surface (delegated to cli.stat)
-        m.text(...)               # legacy v1 surface (delegated to cli.text)
+        m.stat("Easy", min=5, max=10)  # numeric value, merged across mods
         m.config({"damage": {"type": "float", "default": 1.0}})
         m.i18n("EN", {"hello": "Hi"})
-        # Typed registry builders return a ContentRef handle (Forge
-        # RegistryObject analog) you can reference in other defs:
+        # Any content kind, with exactly its [[content]] fields; returns a
+        # ContentRef handle (Forge RegistryObject analog) usable in other defs:
+        chest = m.content("reward", id="MoreChests",
+                          base="Camp_Rewards_Dark_Hills_Update5",
+                          counts={"2": [3, 3]})
+        # item/enemy/boss/map/hero also have shortcuts. No more are planned:
+        # m.content reaches every kind, so a shortcut is only a spelling.
         blade = m.item("FrostBlade", base="VanillaSword", name="Frost Blade")
-        m.boss("IceLord", base="BabaYaga", drops=[blade])  # ref deref'd to id
         m.tag("daggers", [blade])  # cross-mod-extensible group
         print(m.summary())         # preview everything staged, no disk write
-        # m.content("item", id=...) is the low-level form if you need it.
 
 Everything below is a thin facade over the submodules so the mental
 model is one import. See `docs/SDK_V3.md` for the full design.
@@ -37,7 +44,6 @@ from .content import (
 )
 from .health import Health
 from .i18n import I18nBundle
-from .intermod import InterModRegistry
 from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
 from .testkit import ModExpect, assert_no_conflicts, conflicts, expect
@@ -49,7 +55,7 @@ _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 __all__ = [
     "API_VERSION", "sdk_export", "require_api",
     "Health", "ConfigSchema", "ConfigStore", "I18nBundle",
-    "ContentRegistry", "ContentDef", "ContentRef", "InterModRegistry",
+    "ContentRegistry", "ContentDef", "ContentRef",
     "KIND_CONFIDENCE", "kind_confidence",
     "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
@@ -71,7 +77,7 @@ class Mod:
             m.config({...})
             m.i18n("EN", {...})
             m.content("item", id="FrostBlade", base="VanillaSword",
-                      stats={"damage": 50})
+                      rarity="Epic")
 
     `__exit__` materializes everything to `mods/<id>/` on disk in one
     transactional pass.
@@ -133,15 +139,16 @@ class Mod:
                         "ext": self._b._assets[decoded].suffix.lower()})
         return out
 
-    # --- legacy v1 surface (delegated) ---------------------------------
+    # --- patch blocks ---------------------------------------------------
 
     def stat(self, *args, **kwargs):
         return self._b.stat(*args, **kwargs)
 
-    def text(self, *args, **kwargs):
-        return self._b.text(*args, **kwargs)
-
     # --- v3 surface ----------------------------------------------------
+
+    def ot(self, selector: str, field: str, value, *,
+           file: str | None = None, selector_field: str | None = None) -> None:
+        self._b.ot(selector, field, value, file=file, selector_field=selector_field)
 
     def config(self, schema: dict) -> None:
         self._b.config(schema)
@@ -150,6 +157,9 @@ class Mod:
         self._b.i18n(locale, strings)
 
     def content(self, kind: str, **fields):
+        """Register one def of any content ``kind`` (``id=`` plus the same
+        fields its ``[[content]]`` block takes) and return its ContentRef.
+        The general form; the named methods below are shortcuts for it."""
         return self._b.content(kind, **fields)
 
     def item(self, id: str, *, base: str, name: str | None = None, **fields):

@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -54,11 +55,28 @@ from pathlib import Path
 
 from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
+
+# Moved to the engine (2026-09-26); re-exported for existing callers and tests.
+from rsmm.engine.content_merge import (
+    _merge_app_settings,
+    _merge_map_pool,
+    _merge_rsc_cache,
+    _merge_text_bank,
+    _text_merge_dir,
+    check_tile_cache_gates,
+    is_app_settings,
+    is_map_def,
+    is_rsc_cache,
+    is_text_bank,
+)
 from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
+    BACKUP_SUFFIX,
+    COOKING_REL,
     MODS_DIR,
+    USEDRSCLIST_REL,
     _game_dir_candidates,
     game_fingerprint,
     load_stored_fingerprint,
@@ -78,17 +96,42 @@ from rsmm.engine.safeio import (
     install_lock,
     sweep_temp_files,
 )
-from rsmm.sdk.transaction import ApplyTransaction  # noqa: E402 — see module docstring
+from rsmm.engine.usedrsclist import (
+    _asset_id_and_suffix,
+    _read_usedrsclist,
+    _swap_last_component,
+    build_usedrsc_record,
+    restore_usedrsclist,
+    sync_usedrsclist,
+)
+from rsmm.engine.versiondef import (
+    VERSIONDEF_CACHE_LEAF,
+    VERSIONDEF_GEN_LEAF,
+    _clamp_bans,
+    _find_hero_vector,
+    _find_mo_vector,
+    _hero_versiondef_path,
+    _locate_cooked_by_leaf,
+    _mo_entry_rarity,
+    _mo_entry_stem,
+    _mo_vector_entries,
+    _mo_versiondef_path,
+    _patch_versiondef_gen,
+    _patch_versiondef_heroes,
+    _warn_unmatched_bans,
+    collect_item_bans,
+    sync_versiondef,
+)
+from rsmm.sdk.archive import DANGEROUS_EXTENSIONS
+from rsmm.sdk.transaction import ApplyTransaction
 
 
 def parse_toml(p: Path) -> dict:
     return tomllib.loads(p.read_text(encoding="utf-8"))
 
 
-COOKING_REL = Path("DarkTalesResources/_Cooking")
 JOURNAL_FILE_NAME = ".rsmm_journal.jsonl"
 STATE_FILE_NAME = ".rsmm_state.json"
-BACKUP_SUFFIX = ".rsmm.bak"
 
 
 def find_game_dir() -> Path | None:
@@ -352,6 +395,13 @@ class Mod:
             else str(raw_enabled).lower() in ("1", "true", "yes", "on")
         )
         self.experimental: bool = bool(m.get("experimental", False))
+        # Loader features this mod needs switched on while it is enabled
+        # (rsmm.engine.loader_flags), e.g. RSMM_ENABLE_HERO_CAPTURE for a mod
+        # that moves the camera.
+        flags = m.get("loader_flags", []) or []
+        if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
+            raise ValueError("mod.loader_flags must be a list of flag names")
+        self.loader_flags: list[str] = list(flags)
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
@@ -386,6 +436,39 @@ class Mod:
                 continue
             out.append((f, decoded))
         return out
+
+
+def _sync_loader_flags(game_dir: Path, mods: list[Mod], state: State) -> None:
+    """Switch on the loader features the enabled mods ask for (``[mod]
+    loader_flags``) and off the ones only a now-disabled mod asked for.
+
+    A mod that needs hero capture (the camera, R.stat) did nothing for every
+    player who had not switched it on by hand, and the app offered no switch
+    (bug report 2026-10-06: the camera mod saved slider changes and never
+    applied one). Flags the player set themselves are never touched; what was
+    switched on for mods is kept in the state file to tell the two apart."""
+    from rsmm.engine import loader_flags as LF
+
+    requested: set[str] = set()
+    for m in mods:
+        if not m.enabled:
+            continue
+        for f in m.loader_flags:
+            if f in LF.SAFE_FLAG_NAMES:
+                requested.add(f)
+            else:
+                print(f"  [warn] {m.id}: loader flag {f!r} is unknown or locked; "
+                      "not switched on", file=sys.stderr)
+    before = set(state.data.get("mod_loader_flags", []))
+    try:
+        _new, added = LF.sync_mod_flags(game_dir / LF.FLAGS_FILE, requested, before)
+    except OSError as e:
+        print(f"  [warn] could not update {LF.FLAGS_FILE}: {e}", file=sys.stderr)
+        return
+    state.data["mod_loader_flags"] = sorted(added)
+    if added != before:
+        print("Loader features the enabled mods need: "
+              + (", ".join(sorted(added)) or "none"))
 
 
 def load_asset_map(_repo: Path | None = None) -> dict[str, str]:
@@ -432,9 +515,7 @@ def is_skippable_asset(decoded: str) -> bool:
         return True
     # Cook sidecars (orientation transforms) travel next to a custom mesh but
     # are consumed by the cooker, not installed into the game.
-    if decoded.endswith(".rsmmcook"):
-        return True
-    return False
+    return decoded.endswith(".rsmmcook")
 
 
 #: FMOD sound banks live under `Audio/` as opaque containers. Unlike every
@@ -611,15 +692,63 @@ _WARN_TOK = "!"
 #: piping `rsmm apply` into a file still yields clean text.
 _ST = _term.Style()
 
-ROOT_PREFIX = "_root\\"
+# --- output ------------------------------------------------------------------
+#
+# A mod with a custom hero installs hundreds of files, and one line each buried
+# the few lines that matter (warnings, merges, the summary). Per-file lines now
+# print only with --verbose (or RSMM_VERBOSE=1, e.g. from the desktop); the
+# default is one summary line per mod, and a live counter on a terminal.
+_VERBOSE = os.environ.get("RSMM_VERBOSE", "") not in ("", "0")
 
-# UsedRscList.ot is the engine's master manifest: a newline list of
-# cipher-encoded cooked paths. The engine only loads a resource if its
-# encoded path appears here, so a brand-new asset (custom item / enemy /
-# texture not present in the vanilla tree) must be *registered* by
-# appending its encoded line, or it is silently never loaded.
-# `asset_map.json` is itself derived from this file (see find_iyg.py).
-USEDRSCLIST_REL = Path("DarkTalesResources/UsedRscList.ot")
+
+def _detail(msg: str) -> None:
+    """A per-file line: printed only with --verbose."""
+    if _VERBOSE:
+        print(msg)
+
+
+class _Progress:
+    """One self-overwriting counter line, only on an interactive terminal and
+    only when per-file lines are off (they would interleave with it)."""
+
+    def __init__(self, label: str, total: int):
+        self.label, self.total, self.n = label, total, 0
+        self.live = total > 1 and not _VERBOSE and sys.stdout.isatty()
+
+    def step(self) -> None:
+        self.n += 1
+        if self.live:
+            frac = self.n / self.total
+            line = f"  {self.label} {_term.bar(frac, 24, _ST)} {self.n}/{self.total}"
+            print("\r" + _term.truncate(line, _term.width() - 1), end="", flush=True)
+
+    def done(self) -> None:
+        if self.live:
+            print("\r" + " " * (_term.width() - 1) + "\r", end="", flush=True)
+
+
+#: The mod whose content is being built, so a cooker warning can name it.
+_CURRENT_MOD: list[str | None] = [None]
+
+
+class _ModWarnings(logging.Handler):
+    """Engine warnings (a mesh that will tear, a bone the rig lacks) were
+    printed bare by Python's last-resort handler, naming no mod or file.
+    This prints them as `[warn] <mod>: <message>`, like apply's own."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        mod = _CURRENT_MOD[0]
+        where = f"{mod}: " if mod else ""
+        print(f"  {_ST.warn('[warn]')} {where}{record.getMessage()}", file=sys.stderr)
+
+
+def _install_warning_handler() -> None:
+    log = logging.getLogger("rsmm")
+    if not any(isinstance(h, _ModWarnings) for h in log.handlers):
+        h = _ModWarnings(level=logging.WARNING)
+        log.addHandler(h)
+
+ROOT_PREFIX = "_root\\"
 
 # `*.UsedRscCache.ot` files are found by convention, never listed in
 # UsedRscList.ot, so none of the 575 shipped ones appears in `asset_map` and
@@ -660,70 +789,6 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
         if cut == -1:
             continue
         return enc[: cut + 1] + cipher.encode(fname)
-    return None
-
-
-def _asset_id_and_suffix(filename: str) -> tuple[str, str]:
-    """Split a cooked filename into (id, suffix) at the first dot.
-
-    e.g. ``Armor_Per_Object.entity.ot.EntitySettingsResource.gen`` ->
-    ``("Armor_Per_Object", ".entity.ot.EntitySettingsResource.gen")``.
-    Resource ids never contain a dot; everything from the first dot on is
-    the kind/cook suffix that two siblings of the same kind share.
-    """
-    dot = filename.find(".")
-    if dot == -1:
-        return filename, ""
-    return filename[:dot], filename[dot:]
-
-
-def build_usedrsc_record(decoded: str, pristine_lines: list[str],
-                         dec2enc: dict[str, str]) -> list[str] | None:
-    """Build the 3-line UsedRscList.ot record for a new cooked asset.
-
-    The engine parses UsedRscList.ot in fixed groups of THREE lines per
-    resource (see FUN_140488f50): line 1 is the type root (e.g.
-    ``EntitySettings``), line 2 the logical resource name, line 3 the
-    cooked file path. Appending fewer than three lines desynchronises the
-    reader and it runs off the end into an ``int3`` (hard crash).
-
-    Rather than re-encode all three (each line collapses ``\\``/``!``
-    differently per namespace), clone a same-kind sibling's actual record
-    from the pristine manifest and swap the encoded id token. ``decoded``
-    is the new asset's decoded cooked path (forward slashes). Returns the
-    three encoded lines, or None if no structural sibling exists.
-    """
-    decoded = decoded.replace("\\", "/")
-    if "/" not in decoded:
-        return None
-    parent, new_fname = decoded.rsplit("/", 1)
-    new_id, new_suffix = _asset_id_and_suffix(new_fname)
-    if not new_id:
-        return None
-
-    for dec, enc in dec2enc.items():
-        sib = dec.replace("\\", "/")
-        if sib == decoded or "/" not in sib:
-            continue
-        sib_parent, sib_fname = sib.rsplit("/", 1)
-        if sib_parent != parent:
-            continue
-        old_id, old_suffix = _asset_id_and_suffix(sib_fname)
-        # Same parent dir AND same kind/cook suffix => structurally
-        # identical 3-line record we can clone.
-        if old_suffix != new_suffix or not old_id:
-            continue
-        try:
-            idx = pristine_lines.index(enc)
-        except ValueError:
-            continue
-        if idx < 2:
-            continue
-        triple = pristine_lines[idx - 2: idx + 1]
-        enc_old = cipher.encode(old_id)
-        enc_new = cipher.encode(new_id)
-        # Line 1 (type root) carries no id; lines 2/3 carry the encoded id.
-        return [line.replace(enc_old, enc_new) for line in triple]
     return None
 
 
@@ -831,7 +896,115 @@ def _drop_emitted(m: Mod) -> None:
         pass
 
 
-def emit_content_blocks(mods: list[Mod]) -> int:
+#: Per-mod record of the last successful content emit: the key of everything
+#: that went into it and the size/mtime of every file it wrote.
+_EMIT_CACHE = ".rsmm_emit_cache.json"
+#: Mod-root files that are not emit INPUTS: apply's own bookkeeping, and what
+#: the loader rewrites during play (an emit key that moved every time the game
+#: ran would never hit).
+_EMIT_NOT_INPUT = (".rsmm_emitted.json", _EMIT_CACHE)
+
+
+def _game_stamp(game_dir: Path | None) -> str:
+    """What an emit reads from outside the mod: the game build
+    (`game_fingerprint`), the asset map derived from it, and the dev corpus
+    mirror. A game update or a
+    re-extracted mirror therefore re-emits every mod."""
+    h = hashlib.sha256()
+    if game_dir is not None:
+        try:
+            # Content-based, and blind to rsmm's own UsedRscList edits.
+            h.update(game_fingerprint(game_dir).encode())
+        except OSError:
+            h.update(b"game:none")
+    try:
+        h.update(ASSET_MAP_JSON.read_bytes())
+    except OSError:
+        h.update(b"map:none")
+    try:
+        from rsmm.engine import corpus, corpus_cache
+        if corpus.UNCOOKED.is_dir():
+            h.update(corpus_cache._fingerprint(corpus.UNCOOKED).encode())
+    except (ImportError, OSError):
+        pass
+    return h.hexdigest()
+
+
+def _emit_key(m: Mod, emitted: list[str], game_stamp: str) -> str:
+    """Key of everything a mod's content emit depends on: its blocks, every
+    file in the mod other than the emit's own output (by size + mtime), the
+    rsmm code and the game. Equal key = the emit would write the same bytes."""
+    from rsmm.engine.cook_memo import code_fingerprint
+    h = hashlib.sha256(code_fingerprint().encode())
+    h.update(game_stamp.encode())
+    h.update(json.dumps([m.id, m.experimental, m.content_blocks],
+                        sort_keys=True, default=str).encode())
+    own = {(m.assets_dir / Path(r)).resolve() for r in emitted}
+    files = []
+    for dirpath, dirs, names in os.walk(m.root):
+        dirs[:] = sorted(d for d in dirs if d not in (".git", "__pycache__"))
+        for name in names:
+            if (name in _EMIT_NOT_INPUT or name.startswith(".rsmm_state")
+                    or name.endswith(".tmp")):
+                continue
+            p = Path(dirpath) / name
+            if p.resolve() in own:
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            files.append((p.relative_to(m.root).as_posix(), st.st_size, st.st_mtime_ns))
+    h.update(json.dumps(sorted(files)).encode())
+    return h.hexdigest()
+
+
+def _file_sig(p: Path) -> list[int] | None:
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _emit_cache_hit(m: Mod, key: str, emitted: list[str]) -> list | None:
+    """The log records to replay when the last emit had this key and every file
+    it wrote is still exactly where it left it; else None (emit again)."""
+    if os.environ.get("RSMM_NO_COOK_CACHE", "").strip() in ("1", "true", "yes"):
+        return None
+    try:
+        rec = json.loads((m.root / _EMIT_CACHE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rec, dict) or rec.get("key") != key:
+        return None
+    files = rec.get("files") or {}
+    if sorted(files) != sorted(emitted):
+        return None
+    for rel, sig in files.items():
+        p = _emitted_stale_path(m.assets_dir, rel)
+        if p is None or _file_sig(p) != sig:
+            return None
+    return rec.get("log") or []
+
+
+def _emit_cache_store(m: Mod, key: str, emitted: list[str], log: list) -> None:
+    files = {rel: _file_sig(m.assets_dir / Path(rel)) for rel in emitted}
+    try:
+        (m.root / _EMIT_CACHE).write_text(
+            json.dumps({"key": key, "files": files, "log": log}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _emit_cache_drop(m: Mod) -> None:
+    try:
+        (m.root / _EMIT_CACHE).unlink()
+    except OSError:
+        pass
+
+
+def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
     """Materialize every mod's [[content]] block declarations under its
     own `assets/` tree. Idempotent — re-running just refreshes the
     emitted marker JSON files.
@@ -857,7 +1030,9 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         print(f"  [content] sdk import failed: {e}", file=sys.stderr)
         return 0
     total = 0
+    stamp = _game_stamp(game_dir) if any(m.enabled and m.content_blocks for m in mods) else ""
     for m in mods:
+        _CURRENT_MOD[0] = m.id
         if not m.enabled or not m.content_blocks:
             # A mod that USED to emit content still has to be cleaned up:
             # dropping its last `[[content]]` block (or disabling the mod)
@@ -867,10 +1042,12 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             # behind and `apply` went on banning 103 items after the list was
             # cleared, which crashed the game.
             _drop_emitted(m)
+            _emit_cache_drop(m)
             continue
         # Honor the manifest's `experimental = true` so non-confirmed content
         # kinds the author opted into actually emit (lint already respects it).
         cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        clean = True            # only a fully clean emit is worth caching
         for block in m.content_blocks:
             kind = block.get("kind")
             cid = block.get("id")
@@ -884,6 +1061,7 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                                if k not in ("kind", "id")})
             except ContentError as e:
                 print(f"  [content] {m.id}: {e}", file=sys.stderr)
+                clean = False
         out_dir = m.assets_dir
         # Track what content-emit produced so a later emit (e.g. after the
         # author renames/removes a content def) can delete the files it wrote
@@ -894,6 +1072,21 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             prev = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else []
         except (OSError, ValueError):
             prev = []
+        if not isinstance(prev, list):
+            prev = []
+        # Nothing the emit depends on changed since it last ran clean, and its
+        # files are untouched: keep them. A custom hero costs ~40 s to emit,
+        # and most applies change some OTHER mod. Its warnings are replayed so
+        # a kept emit reports what a fresh one would.
+        key = _emit_key(m, prev, stamp) if clean else None
+        replay = _emit_cache_hit(m, key, prev) if key else None
+        if replay is not None:
+            for name, level, msg in replay:
+                logging.getLogger(name).log(level, msg)
+            total += len(prev)
+            print(f"  [content] {m.id}: unchanged, kept {len(prev)} file(s)")
+            continue
+        _emit_cache_drop(m)
         # Last run's emitted files go BEFORE this run emits, not after.
         #
         # Several of them ACCUMULATE by design: a mapdef's tile pool and a
@@ -925,6 +1118,9 @@ def emit_content_blocks(mods: list[Mod]) -> int:
                     dropped += 1
             except OSError:
                 pass
+        from rsmm.engine.cook_memo import _Capture
+        cap = _Capture()
+        logging.getLogger("rsmm").addHandler(cap)
         try:
             written = cr.emit(out_dir)
             total += len(written)
@@ -934,13 +1130,17 @@ def emit_content_blocks(mods: list[Mod]) -> int:
             )
             gone = sorted(set(prev if isinstance(prev, list) else []) - set(new_rel))
             for rel in gone:
-                print(f"  [content] {m.id}: removed stale {rel}")
+                _detail(f"  [content] {m.id}: removed stale {rel}")
             try:
                 marker.write_text(json.dumps(new_rel, indent=2), encoding="utf-8")
             except OSError:
                 pass
             if written:
                 print(f"  [content] {m.id}: emitted {len(written)} file(s)")
+            if clean:
+                # Keyed on the inputs as they were BEFORE the emit: what it
+                # wrote is excluded from the key by `new_rel`.
+                _emit_cache_store(m, _emit_key(m, new_rel, stamp), new_rel, cap.records)
         except SchemaNotMined as e:
             print(f"  [content] {m.id}: schema not mined yet: {e}",
                   file=sys.stderr)
@@ -948,6 +1148,8 @@ def emit_content_blocks(mods: list[Mod]) -> int:
         except (OSError, ValueError) as e:
             print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
             _drop_emitted(m)
+        finally:
+            logging.getLogger("rsmm").removeHandler(cap)
     return total
 
 
@@ -974,248 +1176,6 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
             m.enabled = False
         out.append(m)
     return out
-
-
-_TEXT_BANK_RE = re.compile(r"\.LocalText\.gen(\.Lang.+)?$")
-
-
-def is_text_bank(decoded: str) -> bool:
-    """True for a `~GAM.xls.LocalText.gen` base or a `.Lang<XX>` sibling — the
-    index-aligned key/value text files that multiple item mods append to."""
-    return bool(_TEXT_BANK_RE.search(decoded))
-
-
-# Staging dir for merged text banks (one writer per apply; src must outlive the
-# plan→copy step). Lives under the mods dir so it's cleaned by `restore --all`.
-_TEXT_MERGE_DIR_NAME = ".rsmm_text_merge"
-
-
-def _text_merge_dir() -> Path:
-    """Where merged text banks are staged, resolved at CALL time.
-
-    ⚠ NOT `MODS_DIR / _TEXT_MERGE_DIR_NAME`. `MODS_DIR` is a PEP 562 lazy attr
-    bound when this module is IMPORTED, so a later `RSMM_MODS_DIR` override
-    never reaches it — and the three merge sites that used it wrote into the
-    developer's (and CI's) REAL `mods/` directory no matter what a test set.
-    That surfaced as `.rsmm_text_merge` appearing in the repo and the
-    `_guard_real_mods_dir` conftest guard failing four unrelated tests at
-    teardown, in whichever worker happened to be running when it appeared.
-    `paths.mods_dir()` reads the override every time, which is the whole reason
-    it exists.
-    """
-    from rsmm.engine import paths as _paths
-    return _paths.mods_dir() / _TEXT_MERGE_DIR_NAME
-
-
-def _merge_text_bank(enc: str, srcs: list[Path],
-                     vanilla: Path | None) -> Path | None:
-    """Merge several mods' versions of ONE text-bank file into vanilla + the
-    union of each mod's appended tail, preserving index alignment.
-
-    Each mod's file is vanilla + that mod's appended entries (``append_bank_keys``
-    appends the same count to the base keys file and every language sibling), so
-    concatenating each mod's tail — in a fixed mod order applied identically to
-    the base and every sibling — keeps keys and values aligned. Returns the path
-    to the written merged file, or ``None`` if it can't be parsed as a bank.
-    """
-    from rsmm.engine import text_patches as TP
-    if vanilla is None:
-        return None                     # a text bank is always a shipped file
-    try:
-        van = TP.parse_text_file(vanilla)
-    except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
-        return None
-    n = len(van.entries)
-    merged = list(van.entries)
-    for src in srcs:
-        try:
-            tf = TP.parse_text_file(src)
-        except Exception:  # noqa: BLE001 — not a parseable bank; skip merge
-            return None
-        if len(tf.entries) >= n:
-            merged.extend(tf.entries[n:])
-    out_tf = TP.TextFile(path=vanilla, header=van.header, entries=merged,
-                         footer=van.footer)
-    out_dir = _text_merge_dir()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Encode the enc path into a flat, unique filename.
-    flat = enc.replace("\\", "__").replace("/", "__")
-    out_path = out_dir / flat
-    out_path.write_bytes(TP.write_text_file(out_tf))
-    return out_path
-
-
-#: Cooked suffix of a chapter's map definition (see `rsmm.engine.map_pool`).
-_MAPDEF_GEN_SUFFIX = ".mapdef.ot.DtMapDefinition.gen"
-
-
-def is_map_def(decoded: str) -> bool:
-    """True for a `*.mapdef.ot.DtMapDefinition.gen` — the per-chapter def whose
-    trailing tile pool several `poi` mods may each want to extend."""
-    return decoded.endswith(_MAPDEF_GEN_SUFFIX)
-
-
-def is_rsc_cache(decoded: str) -> bool:
-    """True for a `*.UsedRscCache.ot` — a definition's preload manifest, which
-    several mods editing the same definition may each want to extend."""
-    return decoded.endswith(rsc_cache.CACHE_SUFFIX)
-
-
-def _merge_rsc_cache(enc: str, srcs: list[Path],
-                     vanilla: Path | None) -> Path | None:
-    """Union several mods' additions to ONE resource cache.
-
-    Exactly the same problem as the tile pool, on the file that decides whether
-    a pooled tile is ever loaded: two `poi` mods targeting one chapter each emit
-    vanilla-plus-their-own-lines, so last-writer-wins would drop the other mod's
-    resources and its POI would be pooled but unloadable — invisible short of a
-    full playthrough. The union is de-duplicated and re-sorted: the engine
-    looks a resource up in this file rather than scanning it, so a line out of
-    ascending order is a line that is never found (see
-    :func:`rsmm.engine.rsc_cache.extend`).
-    """
-    # `vanilla is None` = a cache this mod introduced, so there is no shipped
-    # baseline and the union IS the file.
-    try:
-        base = rsc_cache.parse(vanilla.read_bytes()) if vanilla else []
-    except (OSError, UnicodeDecodeError):
-        return None
-    merged, have = list(base), set(base)
-    for src in srcs:
-        try:
-            lines = rsc_cache.parse(src.read_bytes())
-        except (OSError, UnicodeDecodeError) as e:
-            # Skip the unreadable source, keep everyone else's lines. Failing
-            # the whole merge drops the union back to last-writer-wins, which
-            # silently deletes the OTHER mods' preloads — and a missing cache
-            # line is a tile that is registered and never placed, or a null the
-            # teardown loop destroys unchecked. One broken file must not cost
-            # the rest their content.
-            print(f"  [warn] resource cache '{enc}': skipping unreadable "
-                  f"source {src}: {e}", file=sys.stderr)
-            continue
-        for ln in lines:
-            if ln not in have:
-                merged.append(ln)
-                have.add(ln)
-    out_dir = _text_merge_dir()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / enc.replace("\\", "__").replace("/", "__")
-    out_path.write_bytes(rsc_cache.render(sorted(merged)))
-    return out_path
-
-
-def _merge_map_pool(enc: str, srcs: list[Path],
-                    vanilla: Path | None) -> Path | None:
-    """Union several mods' tile-pool additions to ONE mapdef.
-
-    Each `poi` mod emits vanilla-plus-its-own-tiles, so without this the last
-    writer wins and every other mod's POI is registered as an asset but never
-    pooled — it loads and is never placed, which is invisible until someone
-    plays a full run looking for it. Merging takes the vanilla pool and appends
-    whatever each mod added, in a fixed mod order, de-duplicated.
-
-    Returns the merged file's path, or ``None`` when any input isn't a parseable
-    mapdef (caller then falls back to the last-writer-wins warning).
-    """
-    from rsmm.engine import map_pool as MP
-    if vanilla is None:
-        return None                     # a mapdef is always a shipped file
-    try:
-        base = MP.read_pool(vanilla.read_bytes())
-    except Exception:  # noqa: BLE001 — not a parseable mapdef; skip merge
-        return None
-    if base is None:
-        return None
-    merged = list(base)
-    have = set(base)
-    for src in srcs:
-        try:
-            pool = MP.read_pool(src.read_bytes())
-        except Exception:  # noqa: BLE001
-            return None
-        if pool is None:
-            return None
-        for p in pool:
-            if p not in have:
-                merged.append(p)
-                have.add(p)
-    try:
-        out_bytes = MP.set_pool(vanilla.read_bytes(), merged)
-    except Exception:  # noqa: BLE001
-        return None
-    out_dir = _text_merge_dir()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    flat = enc.replace("\\", "__").replace("/", "__")
-    out_path = out_dir / flat
-    out_path.write_bytes(out_bytes)
-    return out_path
-
-
-_TILEDEF_CACHE_CLASS = "oCDtTileDefinition"
-
-
-def check_tile_cache_gates(mapdef_decoded: str,
-                           read: Callable[[str], bytes | None],
-                           vanilla_pool: Collection[str] = ()) -> list[str]:
-    """Problems with the two cache gates of one tile-generated map.
-
-    A pooled tile is only ever placed when BOTH hold, and each fails silently
-    in game (registered, never placed, nothing logged):
-
-    1. the mapdef's own cache lists every pooled tiledef, one for one;
-    2. every pooled tiledef has a sibling ``.tiledef.UsedRscCache.ot``.
-
-    Both caches must also be in ascending order: the engine looks lines up
-    rather than scanning, so an out-of-order line is never found (and in a
-    tile cache that is a null the level teardown destroys unchecked).
-
-    ``read(decoded)`` returns the bytes the game will see at that decoded path
-    after this apply, or ``None`` when nothing will be there. Tiles in
-    ``vanilla_pool`` skip the per-tile checks: the shipped Avalon pool names
-    two tiledefs the game does not ship at all, and it runs fine.
-    """
-    from rsmm.engine import map_pool as MP
-    raw = read(mapdef_decoded)
-    if raw is None:
-        return []
-    try:
-        pool = MP.read_pool(raw)
-    except Exception:  # noqa: BLE001 — unparseable mapdef is reported elsewhere
-        return []
-    if not pool:
-        return []
-    problems: list[str] = []
-    map_cache = rsc_cache.cache_path_for(mapdef_decoded)
-    cache_raw = read(map_cache)
-    if cache_raw is None:
-        return [f"map cache '{map_cache}' is missing, so none of its "
-                f"{len(pool)} pooled tiles is preloaded"]
-    lines = rsc_cache.parse(cache_raw)
-    if lines != sorted(lines):
-        problems.append(f"map cache '{map_cache}' is not sorted")
-    listed = {ln.split("|")[1] for ln in lines
-              if ln.endswith("|" + _TILEDEF_CACHE_CLASS) and ln.count("|") == 2}
-    for tile in pool:
-        if tile not in listed:
-            problems.append(f"pooled tile '{tile}' has no line in map cache "
-                            f"'{map_cache}' (never preloaded, never placed)")
-        if tile in vanilla_pool:
-            continue
-        tile_cache = "Definitions/" + tile.replace("\\", "/")
-        tile_cache = tile_cache[: -len(".ot")] + rsc_cache.CACHE_SUFFIX
-        tile_raw = read(tile_cache)
-        if tile_raw is None:
-            problems.append(f"pooled tile '{tile}' has no resource cache "
-                            f"'{tile_cache}' (nothing preloaded, never placed)")
-            continue
-        tl = rsc_cache.parse(tile_raw)
-        if tl != sorted(tl):
-            problems.append(f"tile cache '{tile_cache}' is not sorted")
-    if len(listed) != len(set(pool)):
-        problems.append(f"map cache '{map_cache}' lists {len(listed)} tiledefs "
-                        f"but the pool has {len(set(pool))}")
-    return problems
 
 
 def plan_apply(mods: list[Mod],
@@ -1249,6 +1209,7 @@ def plan_apply(mods: list[Mod],
     registrations: dict[str, str] = {}        # encoded -> decoded
     synthesized: set[str] = set()             # encoded paths the game does not ship
     for m in mods:
+        _CURRENT_MOD[0] = m.id
         if not m.enabled:
             continue
         for src, decoded in m.files():
@@ -1272,11 +1233,11 @@ def plan_apply(mods: list[Mod],
                     # UsedRscList — none of the 575 shipped caches has a record
                     # there. Registering one would append a 3-line group cloned
                     # from a sibling that isn't in the manifest either.
-                    print(f"  [new] {m.id}: new resource cache '{decoded}' "
-                          f"(convention-loaded, not registered)")
+                    _detail(f"  [new] {m.id}: new resource cache '{decoded}' "
+                            f"(convention-loaded, not registered)")
                 else:
                     registrations[enc] = decoded
-                    print(f"  [new] {m.id}: registering new asset '{decoded}'")
+                    _detail(f"  [new] {m.id}: registering new asset '{decoded}'")
             collected.setdefault(enc, []).append((src, m.id, decoded))
 
     wanted: dict[str, tuple[Path, str]] = {}  # encoded -> (src, mod_id)
@@ -1296,6 +1257,7 @@ def plan_apply(mods: list[Mod],
             (is_text_bank,  _merge_text_bank,  "text bank"),
             (is_map_def,    _merge_map_pool,   "tile pool"),
             (is_rsc_cache,  _merge_rsc_cache,  "resource cache"),
+            (is_app_settings, _merge_app_settings, "alias table"),
         )
         merger = next(((fn, label) for pred, fn, label in mergers if pred(decoded)),
                       None)
@@ -1427,10 +1389,9 @@ def plan_apply(mods: list[Mod],
     return additions, removals, registrations, synthesized
 
 
-_DANGEROUS_ROOT_EXTS = frozenset({
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl",
-    ".vbs", ".vbe", ".ps1", ".bat", ".cmd", ".sh",
-})
+# The extractor's list: a local mod is warned about exactly what a downloaded
+# one is refused for, rather than a shorter copy that had drifted from it.
+_DANGEROUS_ROOT_EXTS = DANGEROUS_EXTENSIONS
 
 
 class VanillaMissing(RuntimeError):
@@ -1534,7 +1495,7 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
                 bak.unlink()
         elif not bak.exists():
             orig_sha = sha256(dest)
-            print(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
+            _detail(f"  {_ST.ok(_ADD)} backup {_ST.dim(dest.name)}")
             if not dry_run:
                 # Atomic: a torn backup is worse than no backup — restore
                 # would put truncated bytes back over a working install.
@@ -1567,9 +1528,9 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
         # Genuinely new asset (custom item, enemy, texture) — nothing here to
         # back up, and dropping it on restore is the correct behaviour.
         orig_sha = ""
-        print(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
+        _detail(f"  {_ST.ok(_ADD)} new file {_ST.dim(f'(no original) {dest}')}")
 
-    print(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
+    _detail(f"  {_ST.ok(_ADD)} apply  {enc}  {_ST.dim(f'<- {mod_id}/{src.name}')}")
     src_sha = sha256(src)
     if not dry_run:
         # Journal BEFORE anything is written: if we die between here and the
@@ -1622,8 +1583,8 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
     # this only widens the delete path to files the map says are not the
     # game's.
     if not orig_sha and not is_vanilla_encoded(enc) and _CACHE_ENC_TOKEN not in enc:
-        print(f"  {_ST.accent(_DEL)} drop    {enc}  "
-              + _ST.dim("(mod-added -> removed with its rollback copy)"))
+        _detail(f"  {_ST.accent(_DEL)} drop    {enc}  "
+                + _ST.dim("(mod-added -> removed with its rollback copy)"))
         if not dry_run:
             try:
                 if dest.exists():
@@ -1637,7 +1598,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
         return True
 
     if bak.exists():
-        print(f"  {_ST.accent(_DEL)} restore {enc}")
+        _detail(f"  {_ST.accent(_DEL)} restore {enc}")
         if not dry_run:
             # Two-phase: copy then remove — a crash mid-copy preserves the
             # backup, and the copy itself is atomic so `dest` is never a
@@ -1664,7 +1625,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
             print(f"  [WARN] {enc}: backup missing (orig_sha1 recorded); "
                   f"keeping destination", file=sys.stderr)
         else:
-            print(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
+            _detail(f"  {_ST.dim(_DEL)} skip    {enc}  {_ST.dim('(no backup, no destination)')}")
             state.active.pop(enc, None)
         return True
 
@@ -1685,7 +1646,7 @@ def restore_one(enc: str, cooking: Path, game_dir: Path,
         return True
 
     # No backup, no orig_sha1 → mod added this file. Safe to remove.
-    print(f"  {_ST.accent(_DEL)} drop    {enc}  {_ST.dim('(no backup -> added file removed)')}")
+    _detail(f"  {_ST.accent(_DEL)} drop    {enc}  {_ST.dim('(no backup -> added file removed)')}")
     if not dry_run and dest.exists():
         try:
             dest.unlink()
@@ -1743,6 +1704,20 @@ def run_disable_hook(mod_root: Path,
     )
 
 
+def uninstall_hook_pending(mod_root: Path, mod_id: str, state: State) -> bool:
+    """Whether uninstalling `mod_id` would run its `on_disable.py`.
+
+    The same gate `run_uninstall_hook` applies (the mod ships a hook and was
+    applied as enabled), asked without running anything, so a caller with no
+    terminal to prompt on — the desktop bridge — can get the user's consent
+    first. `_run_deactivation_hooks` never runs a hook unasked; uninstall must
+    not either, because the hook came in the mod's archive and runs as the
+    user with no sandbox.
+    """
+    return ((mod_root / DEACTIVATION_SCRIPT_NAME).is_file()
+            and mod_id in set(state.enabled_mods))
+
+
 def run_uninstall_hook(mod_root: Path,
                        mod_id: str,
                        game_dir: Path,
@@ -1763,6 +1738,10 @@ def run_uninstall_hook(mod_root: Path,
     is unsandboxed Python, and a mod that was never enabled never ran, so it
     can have no runtime state to undo — without this gate, "install a mod and
     uninstall it without ever turning it on" would be an arbitrary-code path.
+    That gate is not consent, though: an asset-only mod never runs any code
+    while enabled, so enabling it is not agreeing to run its Python. Callers
+    ask first (`uninstall_hook_pending`) and only call this once the user has
+    said yes.
 
     Returns (status, detail) where status is one of:
       ok / failed / timeout / error   — the hook ran (or tried to)
@@ -1991,7 +1970,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 
         # Sync top-level auxiliary files so mods can ship data alongside
         # init.lua (pointer tables, embedded configs, secondary scripts).
-        # Only top-level — never recurse into assets/, _root/, lang/, etc.
+        # Only top-level — never recurse into assets/ or _root/ (lang/ is
+        # copied below, on its own).
         for src in mod_dir.iterdir():
             if not src.is_file():
                 continue
@@ -2001,6 +1981,16 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
                 continue
             if _sync_one_file(src, dst_dir / src.name, dry_run):
                 synced += 1
+
+        # lang/ — the mod's translations. The loader reads
+        # <game>/mods/<mod>/lang/<LOCALE>.toml|json for R.i18n.t; without this
+        # copy every translated mod spoke English in game.
+        lang_src = mod_dir / "lang"
+        if lang_src.is_dir():
+            for src in lang_src.iterdir():
+                if src.is_file() and src.suffix.lower() in (".toml", ".json"):
+                    if _sync_one_file(src, dst_dir / "lang" / src.name, dry_run):
+                        synced += 1
 
     return synced
 
@@ -2014,8 +2004,11 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 #: iterate cycle, and the archive it was supposed to produce never had an input.
 #: `_health.json` is the same shape of thing — the boot canary and the
 #: three-strike crash history, which exist precisely to survive a bad run.
+#: `.rsmm_backend` is the player's own setting (`rsmm backend <url>`), not a mod's
+#: output: wiping it on every apply silently sent the game back to the official
+#: servers, and a player who had just set a private backend saw "it stopped working".
 _LOADER_OWNED_RUNTIME_FILES = frozenset({
-    "_log.txt", "_log.prev.txt", "_health.json",
+    "_log.txt", "_log.prev.txt", "_health.json", ".rsmm_backend",
 })
 
 
@@ -2046,7 +2039,7 @@ def clear_runtime_mods(game_dir: Path, dry_run: bool = False) -> int:
             else:
                 child.unlink()
         if kept:
-            print(f"  kept {kept} loader file(s) (log + health history)")
+            print(f"  kept {kept} loader file(s) (log, health history, backend address)")
     except OSError as e:
         print(f"  [warn] failed to clear {game_mods}: {e}", file=sys.stderr)
         return 0
@@ -2125,8 +2118,10 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
             RAVENSWATCH_APP_ID,
             _is_steam_running,
             _localconfig_paths,
+            _read_launch_options,
             _steam_root,
             _write_launch_options,
+            strip_rsmm_launch_options,
         )
     except ImportError as e:
         print(f"  [warn] could not import Steam launch-option helpers: {e}", file=sys.stderr)
@@ -2149,15 +2144,26 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
     changed = 0
     for vdf in vdfs:
         try:
+            current = _read_launch_options(vdf, RAVENSWATCH_APP_ID)
+            if not current:
+                changed += 1          # nothing of ours there: already vanilla
+                continue
+            # Only OUR parts come out; the player's own settings stay.
+            wanted = strip_rsmm_launch_options(current)
+            if wanted == current:
+                changed += 1
+                continue
+            if wanted:
+                print(f"  kept your own launch options: {wanted}")
             if dry_run:
                 changed += 1
                 continue
-            if _write_launch_options(vdf, RAVENSWATCH_APP_ID, ""):
+            if _write_launch_options(vdf, RAVENSWATCH_APP_ID, wanted):
                 changed += 1
         except OSError as e:
             print(f"  [warn] failed to clear launch options in {vdf}: {e}", file=sys.stderr)
 
-    print(f"Cleared Steam launch options in {changed}/{len(vdfs)} config(s).")
+    print(f"Removed the mod manager's Steam launch options in {changed}/{len(vdfs)} config(s).")
     return 1
 
 
@@ -2242,450 +2248,6 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     return True
 
 
-# --- magical-object catalog (LiveOps version manifest) -------------------
-#
-# A new magical-object entity is only LOADED + SPAWNED into the in-game pool
-# (so it drops and shows in the compendium) if it is referenced by the active
-# LiveOps version manifest. UsedRscList.ot only makes the file loadable-by-path;
-# the manifest is what triggers the load. Two install files must list it:
-#   * LiveOps5.versiondef.ot.rsionDefinition.gen — a vector<TResourcePtr> of
-#     magical-object refs (u32 count, then count x <lstr type><lstr path>).
-#   * LiveOps5.versiondef.UsedRscCache.ot — plain text, one line per resource
-#     ``<category>|<path>|<class>`` so the manifest's ref resolves at load.
-# Verified in-game 2026-06-02 (pool count 104 -> 105, item visible).
-VERSIONDEF_GEN_LEAF = "LiveOps5.versiondef.ot.rsionDefinition.gen"
-VERSIONDEF_CACHE_LEAF = "LiveOps5.versiondef.UsedRscCache.ot"
-
-
-def _locate_cooked_by_leaf(game_dir: Path, decoded_leaf: str) -> Path | None:
-    """Find the real loose ``_Cooking`` file whose decoded *filename* equals
-    ``decoded_leaf``. Matches on the decoded leaf rather than re-encoding the
-    path: ``cipher.encode`` is ~98% accurate but four letters are genuinely
-    ambiguous (``v``/``I``/``Y`` and the ``\\``-collapse), so for an *existing*
-    file we decode-and-compare to be exact. (For a *new* asset with no shipped
-    file, ``synthesize_encoded`` must rely on ``cipher.encode``.) Skips
-    backups."""
-    cooking = game_dir / COOKING_REL
-    if not cooking.is_dir():
-        return None
-    for p in cooking.rglob("*"):
-        if not p.is_file() or p.name.endswith(BACKUP_SUFFIX):
-            continue
-        try:
-            if cipher.decode(p.name) == decoded_leaf:
-                return p
-        except (ValueError, KeyError):
-            continue
-    return None
-
-
-def _mo_versiondef_path(decoded: str) -> str | None:
-    """Map a magical-object entity's decoded cooked path to its versiondef
-    reference form, or None if it isn't a magical-object entity.
-
-    ``EntitySettings/Objects/Magical_Objects/<R>/<id>.entity.ot.EntitySettingsResource.gen``
-    -> ``Objects\\Magical_Objects\\<R>\\<id>.entity.ot``
-    """
-    d = decoded.replace("/", "\\")
-    if "Magical_Objects\\" not in d or ".entity.ot.EntitySettingsResource.gen" not in d:
-        return None
-    d = d.split("EntitySettings\\", 1)[-1]                 # drop leading EntitySettings\
-    return d[: d.index(".entity.ot") + len(".entity.ot")]  # keep ...entity.ot
-
-
-def _find_mo_vector(b: bytes) -> tuple[int, int, int] | None:
-    """Locate the magical-object ``vector<TResourcePtr>`` in a versiondef .gen.
-
-    Returns ``(count_off, vec_end, count)``: ``count_off`` is the u32 count
-    field, entries (``<lstr type><lstr path>`` pairs) run to ``vec_end``. The
-    vector is identified by structure (a sizable run whose every entry path
-    contains ``Magical_Objects``), so it survives offset shifts across builds.
-    """
-    N = len(b)
-
-    def rd(o: int):
-        if o + 4 > N:
-            return None
-        ln = struct.unpack_from("<I", b, o)[0]
-        if ln <= 0 or ln > 300 or o + 4 + ln > N:
-            return None
-        s = b[o + 4 : o + 4 + ln]
-        if not all(32 <= c < 127 or c == 92 for c in s):
-            return None
-        return s, o + 4 + ln
-
-    for co in range(0, N - 4):
-        cnt = struct.unpack_from("<I", b, co)[0]
-        if not (20 <= cnt <= 2000):
-            continue
-        o = co + 4
-        ok = all_mo = True
-        for _ in range(cnt):
-            a = rd(o)
-            if not a:
-                ok = False
-                break
-            _t, o = a
-            a = rd(o)
-            if not a:
-                ok = False
-                break
-            p, o = a
-            if b"Magical_Objects" not in p:
-                all_mo = False
-                break
-        if ok and all_mo:
-            return co, o, cnt
-    return None
-
-
-def _mo_vector_entries(b: bytes, co: int, cnt: int) -> list[tuple[int, int, str]]:
-    """Split the MO vector into ``(start, end, path)`` per entry.
-
-    Offsets are absolute and span the whole ``<lstr type><lstr path>`` pair, so
-    an entry can be dropped by simply not copying its slice.
-    """
-    def rd(o: int) -> tuple[str, int]:
-        ln = struct.unpack_from("<I", b, o)[0]
-        return b[o + 4 : o + 4 + ln].decode("latin1"), o + 4 + ln
-
-    out: list[tuple[int, int, str]] = []
-    o = co + 4
-    for _ in range(cnt):
-        start = o
-        _type, o = rd(o)          # "EntitySettings"
-        path, o = rd(o)
-        out.append((start, o, path))
-    return out
-
-
-def _mo_entry_stem(path: str) -> str:
-    """``Objects\\Magical_Objects\\Common\\Armor_Per_Object.entity.ot`` ->
-    ``Armor_Per_Object``."""
-    leaf = path.replace("/", "\\").rsplit("\\", 1)[-1]
-    return leaf.split(".entity.ot", 1)[0]
-
-
-def _patch_versiondef_gen(pristine: bytes, paths: list[str],
-                          bans: set[str] | None = None) -> bytes | None:
-    """Return ``pristine`` with the MO vector rebuilt: every ``bans`` entry
-    dropped, then each ``paths`` entry appended, count set to what survived.
-    None if the vector can't be located.
-
-    Both edits go through one rebuild rather than an append plus a separate
-    delete, so the count field can never disagree with the entries actually
-    present — a mismatch the engine reads as a truncated or over-long vector.
-    """
-    loc = _find_mo_vector(pristine)
-    if loc is None:
-        return None
-    co, vec_end, cnt = loc
-    entries = _mo_vector_entries(pristine, co, cnt)
-    banned = {b.lower() for b in (bans or ())}
-    kept = [e for e in entries if _mo_entry_stem(e[2]).lower() not in banned]
-    have = {e[2] for e in kept}
-
-    add = b""
-    added = 0
-    for path in paths:
-        if path in have:
-            continue  # already referenced
-        pb = path.encode("latin1")
-        add += struct.pack("<I", len(b"EntitySettings")) + b"EntitySettings"
-        add += struct.pack("<I", len(pb)) + pb
-        added += 1
-    if added == 0 and len(kept) == len(entries):
-        return pristine
-    body = b"".join(pristine[s:e] for s, e, _ in kept)
-    return (pristine[:co] + struct.pack("<I", len(kept) + added)
-            + body + add + pristine[vec_end:])
-
-
-def _mo_entry_rarity(path: str) -> str:
-    """``Objects\\Magical_Objects\\Common\\X.entity.ot`` -> ``Common``."""
-    parts = path.replace("/", "\\").split("\\")
-    return parts[-2] if len(parts) >= 2 else ""
-
-
-def _clamp_bans(pristine: bytes, bans: set[str]) -> set[str]:
-    """Refuse a ban set that would empty any rarity in the catalog.
-
-    The engine picks an offer with `rand() % candidate_count`, so a pool that
-    reaches zero is not an empty shop — it is an INT_DIVIDE_BY_ZERO that kills
-    the process (observed 2026-08-28: 103 of 104 items banned, crash at
-    0x1405183dd on opening the shop).
-
-    Rarity is the grouping the catalog itself is organised by, and the small
-    ones are small — Common and Rare ship 10 items each — so a single global
-    floor would happily allow wiping one out. This does NOT prove a ban is
-    safe: the per-slot candidate sets are not mapped, and a slot that only ever
-    offers one specific item would still break. It rules out the whole-pool
-    case, which is the one that has actually been seen.
-
-    The set is refused whole rather than partially applied: choosing which of
-    the user's picks to honour would be inventing intent, and a loud no-op they
-    can act on beats a half-applied edit they cannot see.
-    """
-    if not bans:
-        return bans
-    loc = _find_mo_vector(pristine)
-    if loc is None:
-        return bans
-    co, _vec_end, cnt = loc
-    entries = _mo_vector_entries(pristine, co, cnt)
-    lowered = {b.lower() for b in bans}
-
-    total: dict[str, int] = {}
-    banned: dict[str, int] = {}
-    for _s, _e, ref in entries:
-        rarity = _mo_entry_rarity(ref) or "?"
-        total[rarity] = total.get(rarity, 0) + 1
-        if _mo_entry_stem(ref).lower() in lowered:
-            banned[rarity] = banned.get(rarity, 0) + 1
-
-    emptied = sorted(r for r, n in total.items() if banned.get(r, 0) >= n)
-    if not emptied:
-        return bans
-    detail = ", ".join(f"{r} ({total[r]})" for r in emptied)
-    print(f"  [warn] ban: refusing the whole ban list — it would leave no items "
-          f"at all in: {detail}. The game picks offers with a modulo over the "
-          f"candidate count, so an empty pool is a divide-by-zero crash, not an "
-          f"empty shop. Nothing banned.", file=sys.stderr)
-    return set()
-
-
-def _warn_unmatched_bans(pristine: bytes, bans: set[str]) -> None:
-    """Report ban ids that match no entry in the install's own MO vector.
-
-    Banning a name no item has is a well-formed no-op that emits, installs and
-    reports success, and only shows up as "the banned item still dropped" a
-    playtest later — so it is called out loudly here even though it cannot fail
-    the apply.
-    """
-    if not bans:
-        return
-    loc = _find_mo_vector(pristine)
-    if loc is None:
-        return
-    co, _vec_end, cnt = loc
-    have = {_mo_entry_stem(e[2]).lower()
-            for e in _mo_vector_entries(pristine, co, cnt)}
-    missing = sorted(b for b in bans if b.lower() not in have)
-    if missing:
-        print(f"  [warn] ban: no item named {', '.join(missing)} in the "
-              f"LiveOps manifest ({cnt} items); nothing banned for those",
-              file=sys.stderr)
-
-
-def collect_item_bans(mods: list[Mod]) -> set[str]:
-    """Union the item ids every enabled mod stages under ``_pending_bans/``.
-
-    Unioned rather than last-one-wins for the same reason mod content merges
-    elsewhere do: two mods each banning a different item must yield both bans,
-    and a ban is idempotent, so a union can never produce a worse result than
-    either mod alone.
-    """
-    out: set[str] = set()
-    for m in mods:
-        if not m.enabled:
-            continue
-        d = m.assets_dir / "_pending_bans"
-        if not d.is_dir():
-            continue
-        for f in sorted(d.glob("*.json")):
-            try:
-                doc = json.loads(f.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as e:
-                print(f"  [warn] {m.id}: unreadable ban file {f.name}: {e}",
-                      file=sys.stderr)
-                continue
-            out.update(str(x) for x in (doc.get("items") or []))
-    return out
-
-
-def sync_versiondef(game_dir: Path, registrations: dict[str, str],
-                    dry_run: bool, bans: set[str] | None = None) -> int:
-    """Ensure every new magical-object entity in ``registrations`` is listed in
-    the active LiveOps version manifest (.gen vector) AND its resource cache,
-    so the engine loads + spawns it, and that every id in ``bans`` is NOT — so
-    the engine never pools it and no draw can offer it. Both files are backed
-    up once and rebuilt from the pristine backup each apply (idempotent; clean
-    drop on removal). Returns the number of files changed.
-
-    A ban touches only the .gen vector, never the resource cache: the banned
-    entity's file is still on disk and other assets may still reference it, and
-    a surplus cache line only wastes a preload while a missing one crashes the
-    load (see the ``UsedRscCache`` invariant in CLAUDE.md).
-    """
-    bans = bans or set()
-    mo_paths = sorted(
-        {p for d in registrations.values() if (p := _mo_versiondef_path(d))}
-    )
-    gen = _locate_cooked_by_leaf(game_dir, VERSIONDEF_GEN_LEAF)
-    cache = _locate_cooked_by_leaf(game_dir, VERSIONDEF_CACHE_LEAF)
-
-    changed = 0
-    # --- .gen vector ---
-    if gen is not None:
-        bak = gen.with_name(gen.name + BACKUP_SUFFIX)
-        if not mo_paths and not bans:
-            if bak.exists() and not dry_run:
-                shutil.copy2(bak, gen)
-                bak.unlink()
-                changed += 1
-                print("  [versiondef] restored pristine manifest")
-        else:
-            if not bak.exists() and not dry_run:
-                shutil.copy2(gen, bak)
-            pristine = (bak if bak.exists() else gen).read_bytes()
-            _warn_unmatched_bans(pristine, bans)
-            bans = _clamp_bans(pristine, bans)
-            patched = _patch_versiondef_gen(pristine, mo_paths, bans)
-            if patched is None:
-                print("  [warn] could not locate magical-object vector in "
-                      f"{gen.name}; new item won't spawn", file=sys.stderr)
-            elif patched != gen.read_bytes():
-                what = []
-                if mo_paths:
-                    what.append(f"registering {len(mo_paths)} item(s)")
-                if bans:
-                    what.append(f"banning {len(bans)} item(s)")
-                print(f"  [versiondef] {' + '.join(what)} in LiveOps manifest")
-                if not dry_run:
-                    gen.write_bytes(patched)
-                changed += 1
-    elif mo_paths:
-        print("  [warn] LiveOps versiondef .gen not found; new magical object "
-              "won't enter the pool", file=sys.stderr)
-
-    # --- UsedRscCache text ---
-    if cache is not None:
-        bak = cache.with_name(cache.name + BACKUP_SUFFIX)
-        lines = [f"EntitySettings|{p}|oCEntitySettingsResource" for p in mo_paths]
-        if not mo_paths:
-            if bak.exists() and not dry_run:
-                shutil.copy2(bak, cache)
-                bak.unlink()
-                changed += 1
-        else:
-            if not bak.exists() and not dry_run:
-                shutil.copy2(cache, bak)
-            pristine = (bak if bak.exists() else cache).read_bytes()
-            add = b"".join(
-                b"\n" + ln.encode("latin1") for ln in lines
-                if ln.encode("latin1") not in pristine
-            )
-            if add:
-                body = pristine + add + (b"" if pristine.endswith(b"\n") else b"\n")
-                if body != cache.read_bytes():
-                    if not dry_run:
-                        cache.write_bytes(body)
-                    changed += 1
-    return changed
-
-
-def _read_usedrsclist(path: Path) -> tuple[str | None, list[str]]:
-    """Parse UsedRscList.ot into (header, lines).
-
-    The first line is a lone-digit format marker (observed value ``1``)
-    that the engine expects to stay in place; everything after it is one
-    obfuscated resource path per line. Returns the header verbatim (or
-    None if absent) and the list of path lines with surrounding
-    whitespace stripped and blanks dropped.
-    """
-    raw = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()]
-    raw = [ln for ln in raw if ln]
-    header: str | None = None
-    if raw and raw[0].isdigit():
-        header, raw = raw[0], raw[1:]
-    return header, raw
-
-
-def sync_usedrsclist(game_dir: Path, registrations: dict[str, str],
-                     dec2enc: dict[str, str], dry_run: bool) -> int:
-    """Ensure UsedRscList.ot registers exactly `registrations` on top of
-    the pristine vanilla manifest.
-
-    `registrations` maps encoded-cooked-path -> decoded-path. The engine
-    reads UsedRscList.ot in fixed groups of THREE lines per resource, so
-    each new asset is appended as a full cloned 3-line record (see
-    :func:`build_usedrsc_record`) — appending a single line desyncs the
-    reader and crashes the game.
-
-    The original file is backed up once as ``UsedRscList.ot.rsmm.bak`` and
-    every rewrite is computed from that pristine copy, so disabling a
-    custom mod cleanly drops its records. When `registrations` is empty
-    the backup is restored and removed (see :func:`restore_usedrsclist`).
-    Returns the number of resources newly registered.
-    """
-    path = game_dir / USEDRSCLIST_REL
-    if not path.exists():
-        if registrations:
-            print(f"  [warn] cannot register {len(registrations)} new asset(s): "
-                  f"{path} not found", file=sys.stderr)
-        return 0
-    if not registrations:
-        return restore_usedrsclist(game_dir, dry_run)
-
-    bak = path.with_name(path.name + BACKUP_SUFFIX)
-    if not bak.exists() and not dry_run:
-        shutil.copy2(path, bak)
-    pristine = bak if bak.exists() else path
-    header, base_lines = _read_usedrsclist(pristine)
-    have = set(base_lines)
-
-    new_lines: list[str] = []
-    added = 0
-    for enc in sorted(registrations):
-        if enc in have:
-            continue  # already a vanilla/registered resource
-        record = build_usedrsc_record(registrations[enc], base_lines, dec2enc)
-        if record is None:
-            print(f"  [warn] cannot build UsedRscList record for "
-                  f"'{registrations[enc]}' (no same-kind sibling); skipping",
-                  file=sys.stderr)
-            continue
-        new_lines.extend(record)
-        added += 1
-
-    desired = ([header] if header is not None else []) + base_lines + new_lines
-
-    # Idempotent: if the manifest already reads exactly as desired, do
-    # nothing (don't rewrite ~64k lines every apply / report false work).
-    cur_header, cur_lines = _read_usedrsclist(path)
-    current = ([cur_header] if cur_header is not None else []) + cur_lines
-    if current == desired:
-        return 0
-
-    print(f"  [usedrsc] registering {added} new asset(s) "
-          f"({len(new_lines)} lines) in UsedRscList.ot")
-    if not dry_run:
-        body = "\n".join(desired) + "\n"
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(body, encoding="utf-8")
-        tmp.replace(path)
-    return added or 1
-
-
-def restore_usedrsclist(game_dir: Path, dry_run: bool) -> int:
-    """Roll UsedRscList.ot back to its pristine backup, dropping every
-    custom registration. No-op if no backup exists. Returns 1 if a
-    restore happened, else 0."""
-    path = game_dir / USEDRSCLIST_REL
-    bak = path.with_name(path.name + BACKUP_SUFFIX)
-    if not bak.exists():
-        return 0
-    print("  [usedrsc] restoring pristine UsedRscList.ot")
-    if not dry_run:
-        try:
-            shutil.copy2(bak, path)
-            bak.unlink()
-        except OSError as e:
-            print(f"  [ERROR] failed to restore UsedRscList.ot: {e}",
-                  file=sys.stderr)
-    return 1
-
-
 def _refuse_if_game_running(operation: str, force: bool) -> bool:
     """True when the caller should stop.
 
@@ -2727,6 +2289,29 @@ def _install_lock_or_fail(cooking: Path, operation: str):
         yield False
 
 
+def _print_apply_summary(additions, removals, synthesized, blocked: int,
+                         dry_run: bool) -> None:
+    """One line per mod instead of one per file (`--verbose` has those)."""
+    per_mod: dict[str, list[int]] = {}               # mod -> [files, new]
+    for enc, _src, _dest, mod_id in additions:
+        n = per_mod.setdefault(mod_id, [0, 0])
+        n[0] += 1
+        n[1] += enc in synthesized
+    width = max((len(m) for m in per_mod), default=0)
+    verb = "would install" if dry_run else "installed"
+    for mod_id in sorted(per_mod):
+        files, new = per_mod[mod_id]
+        extra = _ST.dim(f", {new} new") if new else ""
+        print(f"  {_ST.ok(_ADD)} {mod_id:<{width}}  {verb} {files} file(s){extra}")
+    if removals:
+        what = "would restore" if dry_run else "restored"
+        print(f"  {_ST.accent(_DEL)} {what} {len(removals)} original file(s)")
+    if blocked:
+        return                                        # the caller reports these
+    if not _VERBOSE and (additions or removals):
+        print(_ST.dim("  (--verbose lists every file)"))
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
     dec2enc = load_asset_map(repo)
@@ -2734,7 +2319,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     mods = apply_health_quarantine(mods, cooking)
     # Materialize [[content]] declarations before computing the asset
     # plan so the emitted files are picked up like any other asset.
-    emit_content_blocks(mods)
+    emit_content_blocks(mods, game_dir)
     state = State(cooking)
 
     # If a previous apply crashed mid-write, the stage dir may still be
@@ -2802,9 +2387,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
             ensure_free_space(cooking, need)
         failed_removals = 0
+        prog = _Progress("restoring", len(removals))
         for enc in removals:
             if not restore_one(enc, cooking, game_dir, state, args.dry_run):
                 failed_removals += 1
+            prog.step()
+        prog.done()
         if failed_removals:
             print(f"  [WARN] {failed_removals} removal(s) failed; "
                   f"state entries preserved for retry", file=sys.stderr)
@@ -2815,7 +2403,9 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         # instead of half-modded. Dry runs stage nothing.
         tx = None if args.dry_run else ApplyTransaction(cooking)
         staged: list[tuple[str, str, Path, str]] = []   # enc, mod_id, dest, src_sha
+        prog = _Progress("installing", len(additions))
         for enc, src, dest, mod_id in additions:
+            prog.step()
             try:
                 apply_one(enc, src, dest, mod_id, state, args.dry_run,
                           force=bool(getattr(args, "force", False)),
@@ -2830,6 +2420,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 # safe direction (the override simply isn't installed).
                 blocked += 1
                 print(f"  {_ST.err(_WARN_TOK)} {e}", file=sys.stderr)
+        prog.done()
+        _print_apply_summary(additions, removals, synthesized, blocked, args.dry_run)
         if blocked:
             print(f"  {_ST.err(_WARN_TOK)} "
                   f"{_ST.err(f'{blocked} file(s) NOT applied')} — the vanilla "
@@ -2854,6 +2446,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])
+        _sync_loader_flags(game_dir, mods, state)
         try:
             state.save()
             print(f"State written: {state.path}")
@@ -2920,7 +2513,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             if enc_key in state.active:
                 continue
             dest = bak.with_name(bak.name[: -len(BACKUP_SUFFIX)])
-            print(f"  - restore {dest.relative_to(cooking)} (stale backup)")
+            _detail(f"  - restore {dest.relative_to(cooking)} (stale backup)")
             if not args.dry_run:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 try:
@@ -2940,10 +2533,13 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         if state.active:
             print(f"Restoring {len(state.active)} overrides...")
             failed: list[str] = []
+            prog = _Progress("restoring", len(state.active))
             for enc in list(state.active):
                 ok = restore_one(enc, cooking, game_dir, state, args.dry_run)
                 if not ok:
                     failed.append(enc)
+                prog.step()
+            prog.done()
             if failed and not args.dry_run:
                 print(f"  [WARN] {len(failed)} file(s) could not be restored; "
                       f"their state entries are preserved for retry.",
@@ -2981,7 +2577,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     continue
 
                 if bak.exists():
-                    print(f"  - restore {enc}  (residue via source hash + backup)")
+                    _detail(f"  - restore {enc}  (residue via source hash + backup)")
                     if not args.dry_run:
                         try:
                             shutil.copy2(bak, dest)
@@ -3002,7 +2598,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                     # gone. Observed on the three Dark Hills / Avalon caches.
                     if is_vanilla_encoded(enc):
                         continue
-                    print(f"  - drop    {enc}  (residue via source hash)")
+                    _detail(f"  - drop    {enc}  (residue via source hash)")
                     if not args.dry_run:
                         try:
                             dest.unlink()
@@ -3027,7 +2623,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                         continue
                     bak = dest.parent / (dest.name + BACKUP_SUFFIX)
                     if bak.exists():
-                        print(f"  - restore {enc}  (aggressive purge + backup)")
+                        _detail(f"  - restore {enc}  (aggressive purge + backup)")
                         if not args.dry_run:
                             try:
                                 shutil.copy2(bak, dest)
@@ -3046,7 +2642,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                         continue
                     try:
                         if src.exists() and sha256(dest) == sha256(src):
-                            print(f"  - drop    {enc}  (aggressive purge + source hash)")
+                            _detail(f"  - drop    {enc}  (aggressive purge + source hash)")
                             if not args.dry_run:
                                 dest.unlink()
                             purged_known += 1
@@ -3229,6 +2825,9 @@ def main() -> int:
                     help="Ravenswatch install dir (autodetected if omitted)")
     ap.add_argument("--dry-run", action="store_true",
                     help="show what would happen; touch nothing")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="list every file installed, restored or registered "
+                         "(default: one summary line per mod)")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--restore-all", action="store_true",
                    help="restore every active override and clear state")
@@ -3243,6 +2842,9 @@ def main() -> int:
                          "known mod assets during restore")
     ap.add_argument("--no-merge", action="store_true",
                     help="skip auto-merging [[patch]] blocks into mods/_merged/")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="re-emit every mod's content and re-cook every model "
+                         "and texture, ignoring the emit and cook caches")
     ap.add_argument("--force", action="store_true",
                     help="apply even if the compatibility graph has errors")
     ap.add_argument("--yes", action="store_true",
@@ -3250,6 +2852,11 @@ def main() -> int:
                          "(otherwise prompts interactively; set "
                          "RSMM_NONINTERACTIVE=1 to require --yes)")
     args = ap.parse_args()
+    if args.no_cache:
+        os.environ["RSMM_NO_COOK_CACHE"] = "1"      # read by both caches
+    global _VERBOSE
+    _VERBOSE = _VERBOSE or args.verbose
+    _install_warning_handler()
 
     repo = REPO_DIR
     game_dir = args.game_dir or find_game_dir()

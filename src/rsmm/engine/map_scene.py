@@ -1,10 +1,12 @@
 """What a chapter LOOKS like: placed entities resolved down to meshes and textures.
 
 Read-only, for the map editor's renderer. Nothing here is shipped: every byte is
-read from the user's own install (or the dev `data/uncooked` mirror) on request,
-and the meshes and textures the page draws are the `data/uncooked` conversions
-`scripts/extract_uncooked.py` makes locally (`*.fbx.glb`, `*.png`). Without that
-mirror the editor still works; it just draws spots on bare terrain.
+read from the user's own install (or the dev `data/uncooked` mirror) on request.
+The meshes and textures the page draws (`*.fbx.glb`, `*.png`) are the mirror's
+copies when a dev checkout has them, else converted from the cooked install
+files on request by :func:`asset_bytes` — a player's machine and the web editor
+have only the install. Textures from the install are cut to about
+:data:`TEXTURE_EDGE` pixels, which is all a map preview needs.
 
 **Resource references.** Cooked entities, materials and levels name other
 resources as two length-prefixed strings, ``u32 n, root, u32 m, path`` — the same
@@ -144,8 +146,126 @@ def resource_refs(data: bytes) -> list[tuple[str, str]]:
 
 
 def _uncooked(rel: str) -> Path | None:
-    p = DATA_DIR / "uncooked" / Path(*rel.split("/"))
-    return p if p.is_file() else None
+    """The dev mirror's copy of ``rel``, kept inside the mirror: the editor's
+    file route passes page-supplied paths here, and on Windows a segment like
+    ``C:`` re-anchors a join."""
+    base = (DATA_DIR / "uncooked").resolve()
+    p = base.joinpath(*rel.split("/")).resolve()
+    return p if p.is_relative_to(base) and p.is_file() else None
+
+
+#: Longest edge of a texture decoded from the install. The page only tints
+#: instanced scenery with it, and a 2048 albedo costs seconds of pure-Python
+#: block decoding for nothing visible, so the smallest mip at least this big wins.
+TEXTURE_EDGE = 256
+
+
+def _cooked_key(rel: str) -> str | None:
+    """Decoded key of the cooked file a page path (``3D/...fbx.glb`` or
+    ``3D/....png``) is converted from, when the game ships one."""
+    if not rel.startswith("3D/"):
+        return None
+    path = rel[3:].replace("/", "\\")
+    if path.endswith(".fbx.glb"):
+        return _decoded("3D", path[:-4])
+    if path.endswith(".png"):
+        # The page path drops the source extension; albedos are .tga or .png.
+        # Textures cook to `.Texture.dxt`, which `_index` (the `.gen` files) skips.
+        from .asset_map import decoded_to_encoded
+
+        shipped = decoded_to_encoded()
+        for ext in (".tga", ".png"):
+            key = rel[:-4] + ext + ".Texture.dxt"
+            if key in shipped:
+                return key
+    return None
+
+
+def available(rel: str) -> bool:
+    """Can :func:`asset_bytes` produce ``rel``? Cheap: no file is decoded."""
+    return _uncooked(rel) is not None or _cooked_key(rel) is not None
+
+
+def _texture_png(cooked_bytes: bytes) -> bytes:
+    from . import cooked
+    from . import icon_decode as ID
+    from .cooked_schemas.texture import TextureHandler
+
+    t = TextureHandler.parse_payload(cooked.parse(cooked_bytes).sections[-1].payload)
+    level, w, h = t.pixels, t.width, t.height
+    for i, mip in enumerate(t.mips, 1):
+        mw, mh = max(1, t.width >> i), max(1, t.height >> i)
+        if max(mw, mh) < TEXTURE_EDGE or min(mw, mh) < 4:
+            break
+        level, w, h = mip, mw, mh
+    level, w, h = _skip_blocks(level, w, h, t.format_name)
+    rgba, w, h = ID.resize_to_max(ID.decode_to_rgba(level, w, h, t.format_name), w, h,
+                                  TEXTURE_EDGE)
+    return ID.rgba_to_png(rgba, w, h)
+
+
+#: Bytes per 4x4 block of the block-compressed formats `icon_decode` reads.
+_BLOCK_BYTES = {"BC1": 8, "BC3": 16}
+
+
+def _skip_blocks(px: bytes, w: int, h: int, fmt: str | None) -> tuple[bytes, int, int]:
+    """Keep every n-th 4x4 block of a block-compressed level so it decodes at
+    about :data:`TEXTURE_EDGE`.
+
+    Most scenery textures ship WITHOUT mips (six 2048x2048 BC1 albedos in Dark
+    Hills alone), and decoding one whole in pure Python took ~2 s. Copying blocks
+    is a byte slice per block, and the decoder then touches only what is kept.
+    """
+    size = _BLOCK_BYTES.get(fmt or "")
+    step = max(w, h) // TEXTURE_EDGE
+    if not size or step < 2:
+        return px, w, h
+    bw, bh = (w + 3) // 4, (h + 3) // 4
+    if len(px) < bw * bh * size:
+        return px, w, h                   # let the decoder report the short payload
+    keep_x, keep_y = range(0, bw, step), range(0, bh, step)
+    out = bytearray()
+    for by in keep_y:
+        row = by * bw
+        for bx in keep_x:
+            o = (row + bx) * size
+            out += px[o:o + size]
+    return bytes(out), len(keep_x) * 4, len(keep_y) * 4
+
+
+@functools.lru_cache(maxsize=128)
+def asset_bytes(rel: str) -> bytes | None:
+    """The glb or png the page draws: the dev mirror's copy when there is one,
+    else converted from the cooked file in the user's install — which is all a
+    player's machine and the web editor have. None when neither can make it.
+
+    A texture from the install decodes with its real colours, so it never needs
+    the page's R/B swap; :func:`material_albedo` reports ``swap_rb`` to match.
+    """
+    if p := _uncooked(rel):
+        return p.read_bytes()
+    key = _cooked_key(rel)
+    data = _shipped_key(key) if key else None
+    if not data:
+        return None
+    try:
+        if rel.endswith(".glb"):
+            from . import cooked
+            from .cooked_schemas import geometry as GEO
+
+            cf = cooked.parse(data)
+            g = GEO.parse_payload(b"".join(s.payload for s in cf.sections),
+                                  [len(s.payload) for s in cf.sections])
+            return GEO._build_glb_preview(g)
+        return _texture_png(data)
+    except Exception:  # noqa: BLE001 — an undecodable asset only means less is drawn
+        return None
+
+
+def _shipped_key(key: str) -> bytes | None:
+    from .map_editor import _shipped
+
+    return _shipped(key)
 
 
 # --------------------------------------------------------------------------
@@ -174,7 +294,7 @@ def material_color(mat_path: str) -> str | None:
 
 @functools.lru_cache(maxsize=4096)
 def material_albedo(mat_path: str) -> tuple[str | None, bool]:
-    """``(png path, swap_rb)`` of a material's albedo texture, when one is on disk."""
+    """``(png path, swap_rb)`` of a material's albedo texture, when one can be drawn."""
     data = _bytes("3D", mat_path)
     if not data:
         return None, False
@@ -196,6 +316,8 @@ def material_albedo(mat_path: str) -> tuple[str | None, bool]:
         rel = "3D/" + p.replace("\\", "/").rsplit(".", 1)[0] + ".png"
         if _uncooked(rel):
             return rel, _texture_uncompressed(p)
+        if _cooked_key(rel):
+            return rel, False            # decoded from the install, true colours
     return None, False
 
 
@@ -262,7 +384,7 @@ def entity_parts(ref: str, depth: int = 0) -> tuple[tuple[Part, Matrix], ...]:
             name = low.rsplit("\\", 1)[-1]
             skip = ("_lod" in name or "_anim_" in name or "\\animations\\" in low
                     or rel.startswith(_HELPER_MESHES))
-            mesh = rel if not skip and _uncooked(rel) else None
+            mesh = rel if not skip and available(rel) else None
             tex, color = (None, False), None
         elif root == "3D" and low.endswith(".mat.ot") and mesh and tex[0] is None:
             tex = material_albedo(path)

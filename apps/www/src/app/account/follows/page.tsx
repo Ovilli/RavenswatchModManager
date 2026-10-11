@@ -40,9 +40,7 @@ export default function FollowedModsPage() {
       <main className="container mx-auto px-6 py-16">
         <div className="mx-auto max-w-md text-center">
           <h1 className="text-3xl font-bold tracking-tight">Sign in required</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to see the mods you follow.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Sign in to see the mods you follow.</p>
           <Link
             href={{ pathname: '/auth/signin' }}
             className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -60,7 +58,7 @@ export default function FollowedModsPage() {
     <main className="relative overflow-hidden animate-page-in">
       <div className="container mx-auto space-y-6 px-6 py-12">
         <header className="space-y-2">
-          <h1 className="font-fraktur text-5xl text-parchment">Followed mods</h1>
+          <h1 className="font-display text-5xl text-parchment">Followed mods</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
             You get a notification whenever one of these mods publishes a new version.
           </p>

@@ -11,14 +11,16 @@ emit, so authors see exactly which class needs RE work next.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
 
 from .api import sdk_export
 
-KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "skill", "modifier",
-         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop")
+KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
+         "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
+         "entity")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -43,11 +45,18 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # confirmed because downgrading it would newly require
                               # experimental=true from every working clone mod.
     "talent": "confirmed",    # plain in-place magnitude override, tested
-    "enemy": "experimental",  # mode="override" is PROVEN in-game 2026-08-28 (entity_ref is
-                              # what the camp instantiates; cross_biome pool repoint places
-                              # foreign-chapter creatures). mode="clone" — adding a NEW def —
-                              # is still unproven, and the rating covers the whole kind.
-    "hero": "experimental",   # clones, but roster detour + library unproven
+    "ability": "experimental",  # the same in-place file write as `talent`, but the edits are
+                              # ability_edit steps (set/link) whose in-game effect is unproven
+    "enemy": "confirmed",     # mode="override" PROVEN in game 2026-08-28 (entity_ref is what
+                              # the camp instantiates; cross_biome pool repoint places
+                              # foreign-chapter creatures). mode="clone" PROVEN 2026-09-24: a
+                              # Gnoll clone with a Mud Crab body spawned in Storm Island gnoll
+                              # camps once its `power` (cost) stayed within the camp budget.
+    "hero": "confirmed",      # PROVEN IN GAME 2026-09-24: a Piper clone (herodef + own cache +
+                              # versiondef hero-vector entry) showed as a 13th hero on the
+                              # select screen, was picked, and a run started as it with no crash
+                              # and a valid save. A clone is its base; rename/abilities are not
+                              # built yet.
     "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
                               # resolved to the clone and the run started in it); the clone
                               # still generates from the base's pool (tilegen backref) and
@@ -65,6 +74,10 @@ KIND_CONFIDENCE: dict[str, str] = {
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
+    "entity": "confirmed",    # in-place graph edit of any shipped entity (the
+                              # ability kind's steps, not tied to a hero). PROVEN
+                              # IN GAME 2026-10-08: no-overtime-tint's three
+                              # remove_link steps took the overtime tint away.
     "game_mode": "confirmed", # PROVEN IN GAME: skipping (SeedRunsChapter3 [2,3], 2026-07-11) and a
                               # DESCENDING order ([1,0] played Storm Island then Dark Hills,
                               # 2026-09-19). Repeats are refused: [0,0,1] skipped the duplicate.
@@ -75,6 +88,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # 2026-07-12 "ban unreliable" result edited the plain
                               # Camp_Rewards_<Biome> defs too, which nothing references; emit now
                               # refuses those and names the _Update5 def the game rolls from.
+    "animation": "confirmed",  # PROVEN IN GAME 2026-09-24: a generated clip (Piper's spine
+                              # spinning through her dash) played in place of the shipped dash.
+                              # export->cook is byte-identical on all 2240 shipped clips.
     "mesh": "confirmed",      # in-place override of a shipped mesh: one cooked file, no new
                               # resource name, so nothing but the geometry cook is exercised.
                               # PROVEN IN-GAME TWICE, by both routes the cook has:
@@ -118,11 +134,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # four), and this works on a `SceneryObjects_*` host, so the
                               # "scenery is never interactive" corpus rule describes shipped
                               # content rather than an engine gate.
-    "tilegen": "experimental",  # 2026-09-19: Dark Hills with Camp 5 -> 8 generated 7-8 camps,
-                              # BUT an unedited Storm Island (recipe 5) generated 8 in the same
-                              # session, so a high count proves nothing. Re-testing with a LOW
-                              # count (2). The codec round-trips all 494 shipped tilegen objects
-                              # byte-exactly and validate() enforces every cross-dimension.
+    "tilegen": "confirmed",   # PROVEN IN GAME 2026-09-24: Camp count 2 + no 40x40/64x64 fill
+                              # gave exactly 2 recipe camps (was 8-9) and left the spare slots
+                              # empty. Camps have THREE sources (TileSpawn_PlaceTiles): the kind
+                              # pass (count), the footprint-group FILL pass, and tile distance
+                              # constraints (a story tile like Wood_House forces 3 Treant camps).
+                              # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit
@@ -205,6 +222,29 @@ def _deref(value):
     return value
 
 
+#: Files written so far by the ContentRegistry.emit in progress (None outside one).
+_EMITTED_THIS_RUN: ContextVar[set[Path] | None] = ContextVar("rsmm_emitted_this_run",
+                                                             default=None)
+
+
+def written_this_run(path: Path) -> bool:
+    """True when an earlier def of this emit already wrote ``path``, so a kind
+    that lets several defs edit one file should build on it.
+
+    A file merely being on disk is not that. A packed mod ships its emitted
+    files but not ``.rsmm_emitted.json`` (cmd_pack strips it), so on the
+    installing player's machine apply never deletes them first, and a kind
+    that read them back re-ran its steps over its own output:
+    no-overtime-tint's ``remove_link while_active[2]`` hit a list already cut
+    to two (IndexError in remove_ref, 2026-10-09). Outside a registry emit (a
+    kind called directly) any file on disk still counts.
+    """
+    run = _EMITTED_THIS_RUN.get()
+    if run is None:
+        return path.is_file()
+    return path.resolve() in run and path.is_file()
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -242,6 +282,17 @@ class ContentRegistry:
             raise ContentError(f"{kind}: id must be a non-empty string")
         if any(d.kind == kind and d.id == id for d in self.defs):
             raise ContentError(f"{kind}: duplicate id {id!r}")
+        # A field the kind does not read is a typo, and a typo here used to be
+        # a mod that installs and silently does nothing.
+        from .manifest_spec import content_fields, describe_unknown, unknown_keys
+        allowed = content_fields(kind)
+        if allowed is not None:
+            bad = unknown_keys(fields, allowed)
+            if bad:
+                raise ContentError(
+                    f"{kind} {id}: unknown field(s) {describe_unknown(bad)}; "
+                    f"{kind} accepts: {', '.join(sorted(allowed - {'kind', 'id'}))}"
+                )
         d = ContentDef(kind=kind, id=id, fields=_deref(fields),
                        schema_version=schema_version)
         self.defs.append(d)
@@ -250,18 +301,27 @@ class ContentRegistry:
     def emit(self, out_dir: Path) -> list[Path]:
         """Materialize every registered def into `out_dir`. Returns written paths."""
         written: list[Path] = []
-        for d in self.defs:
-            mod = _load_kind(d.kind)
-            # Check for emit() instead of catching AttributeError around the
-            # call: an AttributeError raised INSIDE a builder (a typo, a None
-            # where a def was expected) is a bug in that builder, and
-            # reporting it as "this kind has no emit()" sent authors hunting
-            # for a missing function that was there all along.
-            emit = getattr(mod, "emit", None)
-            if not callable(emit):
-                raise ContentError(f"kind {d.kind!r} module has no emit()")
-            written.extend(emit(self.mod_id, d, out_dir))
+        run: set[Path] = set()
+        token = _EMITTED_THIS_RUN.set(run)
+        try:
+            for d in self.defs:
+                written.extend(self._emit_one(d, out_dir))
+                run.update(p.resolve() for p in written)
+        finally:
+            _EMITTED_THIS_RUN.reset(token)
         return written
+
+    def _emit_one(self, d: ContentDef, out_dir: Path) -> list[Path]:
+        mod = _load_kind(d.kind)
+        # Check for emit() instead of catching AttributeError around the
+        # call: an AttributeError raised INSIDE a builder (a typo, a None
+        # where a def was expected) is a bug in that builder, and
+        # reporting it as "this kind has no emit()" sent authors hunting
+        # for a missing function that was there all along.
+        emit = getattr(mod, "emit", None)
+        if not callable(emit):
+            raise ContentError(f"kind {d.kind!r} module has no emit()")
+        return emit(self.mod_id, d, out_dir)
 
 
 _KIND_MODULES = {
@@ -271,11 +331,14 @@ _KIND_MODULES = {
     "map": "maps",
     "hero": "heros",
     "talent": "talents",
+    "ability": "hero_abilities",
+    "entity": "entities",
     "skill": "skills",
     "modifier": "modifiers",
     "game_mode": "game_modes",
     "melody": "melodies",
     "mesh": "meshes",
+    "animation": "animations",
     "poi": "poi",
     "tilegen": "tilegen",
     "shop": "shops",

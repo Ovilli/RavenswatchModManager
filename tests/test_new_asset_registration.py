@@ -202,3 +202,25 @@ def test_apply_registers_new_asset_then_restore_drops_it(tmp_path, monkeypatch, 
     _, lines = apply_mods._read_usedrsclist(usedrsc)
     assert lines == [_LINE1, _LINE2, _LINE3]
     assert not usedrsc.with_name(usedrsc.name + apply_mods.BACKUP_SUFFIX).exists()
+
+
+def test_a_record_cloned_from_a_sibling_named_like_its_folder_keeps_the_folder():
+    """`Heroes\\Hero_Piper\\Hero_Piper.entity.ot` is a sibling whose id IS its
+    folder's name. Swapping the id everywhere re-registered every new file in
+    that folder under `Heroes\\Hero_<new>\\...`, a directory that does not
+    exist: the custom hero's entities installed and were never found (2026-09-25,
+    three dark playtests)."""
+    from rsmm.cli import apply_mods as A
+    from rsmm.engine import cipher
+    enc = cipher.encode
+    lines = ["EntitySettings",
+             f"{enc('Heroes')}\\{enc('Hero_Piper')}\\{enc('Hero_Piper')}.qzidis.ri",
+             f"{enc('EntitySettings')}\\{enc('Heroes')}\\{enc('Hero_Piper')}!"
+             f"{enc('Hero_Piper')}.qzidis.ri.suffix"]
+    dec2enc = {"EntitySettings/Heroes/Hero_Piper/Hero_Piper.entity.ot.X.gen": lines[2]}
+    rec = A.build_usedrsc_record(
+        "EntitySettings/Heroes/Hero_Piper/Hero_Nyx.entity.ot.X.gen", lines, dec2enc)
+    assert rec == [lines[0],
+                   f"{enc('Heroes')}\\{enc('Hero_Piper')}\\{enc('Hero_Nyx')}.qzidis.ri",
+                   f"{enc('EntitySettings')}\\{enc('Heroes')}\\{enc('Hero_Piper')}!"
+                   f"{enc('Hero_Nyx')}.qzidis.ri.suffix"]

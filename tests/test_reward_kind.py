@@ -12,21 +12,24 @@ from pathlib import Path
 
 import pytest
 
+from rsmm.engine import corpus
 from rsmm.engine.cooked_schemas.definitions import RewardDefinitionHandler
 from rsmm.sdk.content import ContentDef, ContentError
 from rsmm.sdk.kinds import rewards
 
 _BASE = "Camp_Rewards_Avalon_Update5"
-_BASE_GEN = rewards._REWARD_DIR / f"{_BASE}{rewards.GEN_SUFFIX}"
+_BASE_GEN = f"{rewards._REWARD_DIR}/{_BASE}{rewards.GEN_SUFFIX}"
 
 
 def _require_corpus():
-    if not _BASE_GEN.is_file():
+    if not corpus.exists(_BASE_GEN):
         pytest.skip("vanilla rewards corpus not present")
 
 
-def _decode(path: Path) -> dict:
-    return json.loads(RewardDefinitionHandler().decode_cooked(path.read_bytes()))
+def _decode(src: Path | str) -> dict:
+    """Decode an emitted file (a Path) or a shipped def (a decoded path)."""
+    raw = src.read_bytes() if isinstance(src, Path) else corpus.read(src)
+    return json.loads(RewardDefinitionHandler().decode_cooked(raw))
 
 
 def _emit(tmp_path: Path, *, id: str = "Edit", **fields) -> list[Path]:
@@ -120,8 +123,8 @@ def test_superseded_base_is_refused(tmp_path):
     """The plain Camp_Rewards_<Biome> defs are referenced by nothing; only the
     LiveOps5 versiondef names reward defs, and it names the _Update5 ones. An
     edit to the dead def installs cleanly and changes nothing."""
-    dead = rewards._REWARD_DIR / f"Camp_Rewards_Avalon{rewards.GEN_SUFFIX}"
-    if not dead.is_file():
+    dead = f"{rewards._REWARD_DIR}/Camp_Rewards_Avalon{rewards.GEN_SUFFIX}"
+    if not corpus.exists(dead):
         pytest.skip("vanilla rewards corpus not present")
     defn = ContentDef(kind="reward", id="Dead", fields={
         "base": "Camp_Rewards_Avalon", "ban": ["Astrolab"]})

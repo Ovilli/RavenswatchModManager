@@ -180,7 +180,7 @@ def test_texture_donor_reads_the_vanilla_backup(tmp_path, monkeypatch):
     )
     # Guard the real implementation still contains the preference.
     impl = Path(merge.__file__).read_text()
-    assert '".rsmm.bak"' in impl and "pristine" in impl, (
+    assert ("BACKUP_SUFFIX" in impl or '".rsmm.bak"' in impl) and "pristine" in impl, (
         "merge.py no longer prefers the vanilla backup for texture donors"
     )
 

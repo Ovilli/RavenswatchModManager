@@ -10,6 +10,11 @@ All commands are run via the `rsmm` entry point:
 rsmm <command> [options]       # Windows
 ```
 
+Commands that take a mod id (`enable`, `disable`, `lint`, `diff`, `pack`, `publish`,
+`test`) accept the folder name under `mods/` in any case, with the trailing slash tab
+completion adds, or as a path (`mods/MyMod`). A misspelled id or subcommand gets a
+"did you mean …?" instead of a list.
+
 ---
 
 ## Core commands
@@ -21,7 +26,14 @@ Install all enabled mods into the game directory. Backs up originals, applies pa
 ```sh
 ./rsmm apply
 ./rsmm apply --game-dir /custom/path
+./rsmm apply --verbose        # list every file installed, restored or registered
 ```
+
+By default it prints one line per mod (`+ nyx  installed 359 file(s), 345 new`)
+plus any warnings, merges and errors, with a live counter while it works on a
+terminal. `-v` / `--verbose` (or `RSMM_VERBOSE=1`) lists every file instead;
+`restore --all` follows the same rule. Warnings raised while a mod's content is
+built name that mod (`[warn] custom-hero-test: custom mesh does not overlap…`).
 
 Rollback: `./rsmm restore --all`
 
@@ -66,8 +78,19 @@ version drift, the loader (DLL bytes by hash, the disk-loaded Lua SDK under
 `<game>/rsmm/lib`, the planted pattern DB, dangerous feature flags left armed,
 and — on Proton — whether Steam's launch options still carry the
 `WINEDLLOVERRIDES` the loader needs), mod manifests and asset paths, raw-file
-and `[[patch]]` conflicts, the dependency graph, applier state versus what is
-actually on disk, `UsedRscList.ot` record alignment, and recent crash dumps.
+and `[[patch]]` conflicts, whole-file overrides a declarative block could
+replace, the dependency graph, applier state versus what is actually on disk,
+`UsedRscList.ot` record alignment, and recent crash dumps.
+
+A whole-file override is a mod shipping a complete game file where a
+`[[patch]] kind = "stat"` (stat files), `[[patch]] kind = "ot"`
+(`ApplicationSettings.ot` via `_root/`) or `[[content]] kind = "talent"` (hero
+talent values) would do. The copy works, but it cannot merge with another mod
+and it silently reverts whatever the next game patch changes in that file.
+`rsmm lint <id>` prints the replacement block. It only offers one it has proven:
+the block is parsed back and run through the same code `apply` uses, and must
+rebuild the mod's file byte for byte. Without a readable game copy it names the
+route but cannot write the block.
 
 :::tip
 A planted `winhttp.dll` is only half an install. The Lua SDK and pattern DB are
@@ -91,7 +114,15 @@ Re-apply mods automatically whenever a file changes under `mods/`. Keeps running
 
 ```sh
 ./rsmm watch
+./rsmm watch --no-lint             # apply even when a changed mod has lint errors
 ```
+
+Each save prints which mods and files changed, then lints those mods before applying. A
+changed mod with lint errors is not applied: the errors are printed and the game keeps the
+last good apply until you fix them and save again. Without that, a manifest caught
+half-written would be skipped by `apply`, which takes the mod out of the game until the
+next save. Files `apply` writes itself (emitted content, its caches, `mods/_merged/`) and
+editor swap files don't count as changes.
 
 ### `rsmm restore`
 
@@ -143,7 +174,12 @@ Scaffold a new mod directory:
 # Creates: mods/MyMod/manifest.toml
 
 ./rsmm new MyMod --kind item        # also seeds a [[content]] block
+./rsmm new MyMod --desc "Faster dodges" --tags balance,heroes --license MIT
 ```
+
+The author comes from `--author`, else your `git config user.name`. Fill in
+`--desc`, `--tags` and `--license` too and the new mod passes `rsmm lint` with no
+warnings; leave them out and the scaffold says what is still missing.
 
 `--kind` takes `item`, `talent`, `enemy`, `boss`, `map` or `hero`. Kinds that
 aren't confirmed are scaffolded with `experimental = true` and `enabled = false`.
@@ -161,9 +197,12 @@ current value, so the scaffold applies without hand-editing:
 |------|---------|
 | `--base ID` | Vanilla id to clone. Bare (`Armor_Per_Object`) or rarity-qualified (`Common/Armor_Per_Object`). Omit it at a terminal to get a searchable picker. |
 | `--name TEXT` | Display name for the mod and its content. |
-| `--desc TEXT` | Description shown in-game. |
+| `--desc TEXT` | Description shown in-game and on the store card. |
 | `--icon ID` | Vanilla icon stem (`rsmm items icons`) or `assets/<file>.png`. Defaults to the base's own icon. |
 | `--rarity R` | `Common`, `Rare`, `Epic`, `Legendary`, `Cursed` or `Powerups`. Defaults to the base's rarity. |
+| `--author NAME` | Who made it. Defaults to `git config user.name`. |
+| `--tags a,b` | Store tags, comma-separated: lower-case letters, digits and `-`, at most 16. |
+| `--license ID` | SPDX id (`MIT`, `CC-BY-4.0`) or a licence name. |
 
 See [Custom items](/guides/custom-items/) for the full walkthrough.
 
@@ -286,107 +325,99 @@ bytes verbatim as section payload, giving a byte-level edit path today.
 ./rsmm cook --from ref.yqz model.gltf -o out.yqz
 ```
 
-### `rsmm texture`
+### `rsmm editor`
 
-Swap a texture by donor reference.
+One local page with four editors, each on its own tab. Each one reads your own
+install when the page asks for something, and each saves an ordinary mod that
+`rsmm apply` installs. Nothing from the game is bundled with the editor. The
+same editors also run in the browser with no install:
+[the web editor](/guides/web-editor/).
 
-```sh
-./rsmm texture --list                              # List all textures
-./rsmm texture --list --grep Hero_Romeo           # Search
-./rsmm texture --mod-id MyMod                      \
-    'Ui/path/to/target.dxt=Ui/path/to/donor.dxt'  # Assign
-./rsmm apply                                       # Apply
-```
-
-### `rsmm map-editor`
-
-Edit a chapter's map-generation recipe in the browser: how many of each tile
-kind the generator places, their minimum spacing, which footprints each kind
-fits, the per-flag quotas, and which kinds each slot may hold. Spots are drawn
-on a 3D (or top-down) view of the chapter's painted terrain — height, design
-paths, blocked ground and water — coloured by whether the selected tile can land
-there in the selected scenario. The terrain is read from your own install (or a
-local `data/uncooked` mirror) when the page asks for it; nothing from the game is
-bundled with the editor.
+| Tab | What it builds |
+|---|---|
+| **Items** | a copy of a shipped magical item with its own id, name, text, rarity, icon, values and the stat each effect gives (`kind = "item"`) |
+| **Talents** | changed talent values (`kind = "talent"`, one block per entity file) and renamed talent cards (`kind = "skill"`) |
+| **Abilities** | `[[content.abilities]]` steps for a custom hero: every number an ability uses, plus a graph for re-pointing links and copying parts |
+| **Map** | a chapter's map-generation recipe (`kind = "tilegen"`) on a 3D view of its terrain |
 
 ```sh
-./rsmm map-editor                  # serve on 127.0.0.1:8765 and open a browser
-./rsmm map-editor --port 9000      # pick the port (falls back to a free one)
-./rsmm map-editor --no-browser     # just print the URL
+./rsmm editor                      # serve on 127.0.0.1:8765 and open a browser
+./rsmm editor --tab map            # open on another tab: items, talents, abilities, map
+./rsmm editor --port 9000          # pick the port (falls back to a free one)
+./rsmm editor --no-browser         # just print the URL
+./rsmm editor --game-dir "D:\SteamLibrary\steamapps\common\Ravenswatch"   # when it isn't found
 ./rsmm restore --all && ./rsmm apply   # install what you saved
 ```
 
-Saving writes `mods/<id>/manifest.toml` with one `tilegen` declaration, which
-reopens in the editor. The `tilegen` kind is ⚠️ experimental: the recipe
-round-trips byte-identically, but an edited recipe has not yet been shown to
-change what generates.
+`item-editor`, `talent-editor`, `ability-editor` and `map-editor` still work:
+each opens this editor on its tab.
+
+The tab bar names the install the editor reads. When none is found, every tab
+says so and shows the `--game-dir` command to start it with; the folder can be
+Ravenswatch itself or `DarkTalesResources` inside it (`RSMM_GAME_DIR` works
+too). A dot on a tab means it holds changes that are in no mod yet. Item,
+talent, test-grant and ability changes are kept in your browser until you save
+them; Map changes are not, so closing the page with unsaved Map changes asks
+first.
+
+**Items and Talents.** *Check* builds the blocks with the real kind builders,
+so it reports exactly what `rsmm apply` would refuse. *Add to mod* appends them
+to a mod's `manifest.toml`, or creates the mod. An item copy's id must be as
+long as its base's: the copy keeps every byte offset. A hero's number of
+talents is fixed, so the Talents tab edits existing talents rather than adding
+new ones.
+
+**Abilities.** The page never writes a mod: press *Copy manifest code* and paste
+the steps under your custom hero's `[[content]]` block (`kind = "hero"`).
+
+**Map.** The page shows every tile slot of a chapter on a 3D (or top-down) view of
+its painted terrain: height, design paths, blocked ground and water. Each slot
+is coloured by whether the selected tile can land there in the selected
+scenario. You can change how many of each tile kind the generator places,
+their minimum spacing, which footprints each kind fits, the per-flag quotas,
+and which kinds each slot may hold. Saving writes `mods/<id>/manifest.toml` with
+one `tilegen` declaration, which reopens in the editor. The `tilegen` kind is
+⚠️ experimental: the recipe round-trips byte-identically, but an edited recipe
+has not yet been shown to change what generates.
+
 The server answers only loopback hosts, and every write needs a token that
-exists only in the page it served.
+exists only in the pages it served.
 
-### `rsmm stat`
+### Numeric values and texture swaps
 
-Edit numeric game values (globals, modifiers, camp difficulty).
-
-```sh
-./rsmm stat --list                                 # List all stats (143 globals + 19 modifiers + 6 camp bands)
-./rsmm stat --list --grep Bleed                   # Search
-./rsmm stat --mod-id LongerStatusEffects           \
-    Bleed_Duration_Value=10                        \
-    Ignite_Duration_Value=11                       \
-    Easy:min=5 Easy:max=10                         # Assign
-./rsmm apply                                       # Apply
-```
-
-Syntax: `<short_name>[:field]=<value>`. Multi-field classes use the `:field` suffix.
-
-### `rsmm text`
-
-Override translation strings.
+There is no dedicated command for these. A mod declares them as `[[patch]]`
+blocks in its manifest (or with `m.stat(...)` from the SDK), and `rsmm apply`
+merges every enabled mod's patches — see
+[Numeric balance](/guides/modding/#numeric-balance--modifier--camp-difficulty)
+and [Texture swap](/guides/modding/#texture-swap-donor-reference). Find the
+names with `rsmm assets search`:
 
 ```sh
-./rsmm text --list Common --lang EN                # List keys
-./rsmm text --list Common --grep Menu_            # Search
-./rsmm text --mod-id Relabel                       \
-    'Common~EN:Menu_Discord=Mods'                  # Assign
-./rsmm apply                                       # Apply
+./rsmm assets search globalvalue Bleed     # a global value: Bleed_Duration_Value
+./rsmm assets search enemycampdifficultydef  # camp difficulty bands (Easy, …)
+./rsmm assets search Heroes Portrait png   # texture paths
 ```
 
-Languages: `EN`, `JA`, `KO`, `RU`, `ES`, `DE`, `PL`, `FR`, `IT`, `PT-BR`, `ZH-S`, `ZH-T`, `RO`.
+### `rsmm values` — back up a patch before a game update
 
-### `rsmm url`
-
-Redirect main-menu URLs.
+A game update rebalances values in place, and afterwards the old ones exist
+nowhere: the update overwrites the files `apply` backed up from. Take a
+snapshot while the current patch is still installed:
 
 ```sh
-./rsmm url --list                                  # List all URLs
-./rsmm url --mod-id MyHub                          \
-    DiscordUrl=https://my-mods-site.example/       # Assign
-./rsmm apply                                       # Apply
+./rsmm values snapshot                     # saves <date>-build<steam build id>
+./rsmm values list
+./rsmm values diff 2026-10-01-build23766761              # vs the install now
+./rsmm values diff <old> <new> --filter Snow_Queen       # two snapshots
+./rsmm values extract <old> EntitySettings/Heroes/Hero_Snow_Queen/Hero_Snow_Queen_Ice_Clone.entity.ot.EntitySettingsResource.gen -o old.gen
 ```
 
-### `rsmm menu-button`
-
-Add a "Mods" entry to the title menu.
-
-```sh
-./rsmm menu-button
-```
-
-### `rsmm social-tab`
-
-Add a Mods tab to the in-game Social book.
-
-```sh
-./rsmm social-tab
-```
-
-### `rsmm mods-list`
-
-Ship a Mods_List cooked entity for the social tab.
-
-```sh
-./rsmm mods-list
-```
+A snapshot holds every entity field as the editors show it, each magical
+object's values and modifiers, and the pristine cooked bytes of
+`EntitySettings/`, `Definitions/` and `GlobalValues/` (about 9 MB). It is read
+from the install, never the authoring mirror, and stored in the per-user data
+directory (`~/.local/share/rsmm/snapshots`, `%LOCALAPPDATA%\rsmm\snapshots`),
+so `restore --all` and Steam's file check leave it alone.
 
 ---
 
@@ -396,21 +427,35 @@ Ship a Mods_List cooked entity for the social tab.
 
 See [Core commands](#core-commands).
 
-### `rsmm trace <id>`
+### `rsmm apply --dry-run`
 
-Run a specific mod with `RSMM_TRACE=1` and surface the log output inline.
+Show which cooked files the enabled mods would change, touching nothing.
+See [`rsmm apply`](#rsmm-apply).
 
 ```sh
-./rsmm trace MyMod
+./rsmm apply --dry-run
 ```
 
 ### `rsmm diff <id>`
 
-Show which cooked files a mod would change (dry-run).
+Show what applying one mod changes, without touching anything. Every file the
+mod ships is listed as replacing a game file (`~`), adding a new one (`+`), or
+being skipped because no game path can be derived for it (`?`). A file another
+enabled mod also writes is marked as merged (text banks, tile pools, resource
+caches and alias tables combine) or as a conflict naming the mod whose copy
+lands. `[[patch]]` fields set to a different value by another mod say which one
+wins under `load_order`. When the game is found, the summary also counts files
+that are installed and files that still need `rsmm apply`.
 
 ```sh
-./rsmm diff MyMod
+./rsmm diff my-mod            # first 15 files per section; conflicts always shown
+./rsmm diff my-mod --all      # every file
+./rsmm diff my-mod --json     # for scripts
 ```
+
+### Reading the loader log
+
+Read the loader log of the last game launch. See [`rsmm log`](#rsmm-log).
 
 ### `rsmm decode <file>`
 

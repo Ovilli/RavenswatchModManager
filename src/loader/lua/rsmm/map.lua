@@ -63,14 +63,15 @@ return function(env)
         return d ~= nil and d ~= 0
     end
 
+    --- Clear the once-per-map diagnostic latch.
+    function M.rearm() _warned_vtable = false end
+
     --- Fire CROWS_MAP_REVEAL. Returns true when the event was dispatched.
     ---
     --- MAIN THREAD ONLY — this calls into the engine, so a caller off the game
     --- thread must wrap it in `R.schedule.next_main`.
-    --- Clear the once-per-map diagnostic latch.
-    function M.rearm() _warned_vtable = false end
-
-    --- Fire the reveal on `disp_override` instead of the hero's dispatcher.
+    ---
+    --- `disp_override` fires it on that dispatcher instead of the hero's.
     ---
     --- `NamedEvent_Dispatch` is ENTITY-SCOPED: it reaches the listeners
     --- registered on the dispatcher it is handed. POI markers sit on their own
@@ -123,6 +124,13 @@ return function(env)
         local ev = R.engine.call("NamedEvent_GiveMagicalObject_Ctor", buf)
         if not ev or ev == 0 then
             R.log("[rsmm.map] event ctor failed"); return false
+        end
+        -- Checked before the name is overwritten below: a ctor pattern that
+        -- landed on a sibling event's ctor is caught here (R.engine.event_name).
+        if R.engine.event_name(ev) ~= "GIVE_MAGICAL_OBJECT" then
+            R.log("[rsmm.map] the GiveMagicalObject ctor built "
+                .. tostring(R.engine.event_name(ev)) .. " on this build — refusing")
+            return false
         end
 
         -- Constructed through the GiveMagicalObject ctor because it is the one

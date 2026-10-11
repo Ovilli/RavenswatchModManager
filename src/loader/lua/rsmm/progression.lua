@@ -92,14 +92,15 @@ R.stat.slots = { primary = 0, secondary = 1, defensive = 2, trait = 3, ultimate 
 -- crit / cooldown instead of the hero-wide stat.
 --
 -- NOTE for attack_power: the hero-wide key (0x15a486c4) is NOT this family's
--- base -- the per-slot family starts at 0x15a5cf40. For crit_chance and
--- cooldown_reduction the family base IS the hero-wide key, so `*_primary`
--- resolves to the same key as the bare name; that mirrors the registry and is
--- not a bug.
+-- base -- the per-slot family starts at 0x15a5cf40. crit_chance and
+-- cooldown_reduction register as one run of eight: hero-wide, basic, then the
+-- five slots, so `*_primary` is hero-wide + 4 (engine registry labels in
+-- data/stat_keys.json; deriving from the hero-wide key named every slot two
+-- places off -- `cooldown_reduction_secondary` read "CD reduce basic").
 local _slot_families = {
     attack_power       = 0x15a5cf40,
-    crit_chance        = 0x15c7d482,
-    cooldown_reduction = 0x15b45d80,
+    crit_chance        = 0x15c7d482 + 4,
+    cooldown_reduction = 0x15b45d80 + 4,
 }
 for family, base in pairs(_slot_families) do
     for slot_name, slot in pairs(R.stat.slots) do
@@ -107,10 +108,13 @@ for family, base in pairs(_slot_families) do
     end
 end
 
--- Off-family specials. `basic` sits +0x11 from the attack-power family base
--- (NOT a `+2*slot` member), and the dash keys live in a different range
--- entirely, so they are listed explicitly rather than derived.
-R.stat.keys.attack_power_basic      = { key = 0x15a5cf51, kind = "f32" }
+-- Off-family specials. Attack power's `basic` sits +0x11 from its family base
+-- (NOT a `+2*slot` member); crit / cooldown `basic` sit between the hero-wide
+-- key and primary; the dash keys live in a different range entirely. All are
+-- listed explicitly rather than derived.
+R.stat.keys.attack_power_basic       = { key = 0x15a5cf51, kind = "f32" }
+R.stat.keys.crit_chance_basic        = { key = 0x15c7d484, kind = "f32" }
+R.stat.keys.cooldown_reduction_basic = { key = 0x15b45d82, kind = "f32" }
 R.stat.keys.attack_power_dash       = { key = 0x183a609a, kind = "f32" }
 R.stat.keys.crit_chance_dash        = { key = 0x183a60b6, kind = "f32" }
 R.stat.keys.cooldown_reduction_dash = { key = 0x183a5fc9, kind = "f32" }
@@ -253,6 +257,11 @@ local function _published_ctx()
     end
     -- Semantic gate: a hero's store answers with a positive, finite max health.
     local out = I.scratch(0x20)
+    -- The engine WRITES through `out`: no arena, no call.
+    if not out or out == 0 then
+        _ctx_why = "no scratch memory for the read buffer"
+        return nil
+    end
     local okc = pcall(R.engine.call, "EntityValue_Get", ctx, out,
                       R.stat.keys.max_health and R.stat.keys.max_health.key
                           or R.stat.keys.attack_power.key)
@@ -298,10 +307,15 @@ end
 local function _stat_read(spec)
     local ctx = _stat_ctx(R.entity.hero()); if not ctx then return nil end
     local out = I.scratch(0x20)                               -- zeroed union buffer
+    if not out or out == 0 then return nil end                -- engine writes here
     local ok = pcall(R.engine.call, "EntityValue_Get", ctx, out, spec.key)
     if not ok then return nil end
     if I.read_u32(out + EV_INLINE_OFF) ~= EV_INLINE then return nil end
-    if spec.kind == "int" then return I.read_u32(out + EV_VALUE_OFF) end
+    if spec.kind == "int" then
+        -- int32, SIGNED: read_u32 alone turned -1 into 4294967295.
+        local n = I.read_u32(out + EV_VALUE_OFF)
+        return n and ((n >= 0x80000000) and (n - 0x100000000) or n)
+    end
     return I.read_f32(out + EV_VALUE_OFF)
 end
 
@@ -389,6 +403,10 @@ function R.stat.enable_writes()
     return true
 end
 
+-- Whether the write opt-in is on. R.modifier's global-context writes live in
+-- another module and share this one consent flag, so they need to read it.
+function R.stat.writes_enabled() return _stat_writes_enabled end
+
 -- Find the override entry for `key` in the store (entry addr, or nil).
 local function _stat_find_entry(store, key)
     local data  = I.read_u64(store + OVR_DATA_OFF)
@@ -426,6 +444,12 @@ end
 -- closed (logs, no-op) if writes aren't enabled, the hero/store is implausible,
 -- or a symbol is unresolved.
 function R.stat.set(name, value)
+    return R.stat._set(name, value, false)
+end
+
+-- `quiet` drops the success line: R.stat.stick's re-assert runs on every
+-- gameplay event, and one "set ... TRANSIENT" line per event buried the log.
+function R.stat._set(name, value, quiet)
     local spec = R.stat.keys[name]
     if not spec then R.log("[rsmm.stat] unknown stat: " .. tostring(name)); return false end
     if not _stat_writes_enabled then
@@ -462,8 +486,10 @@ function R.stat.set(name, value)
         entry = slot
     end
     _stat_write_union(entry, spec, value)
-    R.log(string.format("[rsmm.stat] set %s = %s (override cache — TRANSIENT; use R.stat.stick to keep it)",
-        name, tostring(value)))
+    if not quiet then
+        R.log(string.format("[rsmm.stat] set %s = %s (override cache — TRANSIENT; use R.stat.stick to keep it)",
+            name, tostring(value)))
+    end
     return true
 end
 
@@ -551,6 +577,9 @@ function R.stat.modify(name, amount, duration, opts)
     if not spec then R.log("[rsmm.stat] unknown stat: " .. tostring(name)); return false end
     if type(amount) ~= "number" then
         R.log("[rsmm.stat] modify: amount must be a number"); return false
+    end
+    if duration ~= nil and type(duration) ~= "number" then
+        R.log("[rsmm.stat] modify: duration must be a number of seconds (or nil)"); return false
     end
     if not _stat_writes_enabled then
         R.log("[rsmm.stat] writes are experimental and off — call R.stat.enable_writes() first")
@@ -716,7 +745,7 @@ local function _stat_reassert()
     for name, value in pairs(_stat_sticky) do
         local cur = R.stat.get(name)
         if cur == nil or math.abs(cur - value) > _STAT_DRIFT then
-            R.stat.set(name, value)
+            R.stat._set(name, value, true)
         end
     end
 end
@@ -843,9 +872,14 @@ local function _xp_heuristic(hero, mbase)
     for _, entity in ipairs(_xp_entities(hero)) do
         local arr = I.read_u64(entity + XP_ARR_OFF)
         local n   = I.read_u32(entity + XP_ARR_COUNT_OFF)
+        -- Re-checked here, as _xp_scan does: the owner list is CACHED per
+        -- hero, so the array it validated may since have been torn down -- a
+        -- nil count raised in the `for`, a garbage one walked millions of
+        -- entries, and a nil entry raised on the `+`.
+        if not _ptr_plausible(arr) or type(n) ~= "number" or n > 0x400 then n = 0 end
         for i = 0, n - 1 do
             local comp = I.read_u64(arr + i * 8)
-            local prog = I.read_u64(comp + XP_PROGRESS_OFF)
+            local prog = _ptr_plausible(comp) and I.read_u64(comp + XP_PROGRESS_OFF)
             if prog and prog ~= 0 and _ptr_plausible(prog)
                and _ptr_plausible(I.read_u64(comp + 0x10)) then
                 local lvl = I.read_u32(prog)
@@ -969,6 +1003,28 @@ local _gl_seen, _gl_comp = {}, nil
 local _gl_armed = false
 local GL_SEEN_MAX = 8
 
+-- A hook belongs to the ONE Lua state that installed it: a second mod calling
+-- R.xp.arm() gets "already-hooked" and its own `_gl_seen` stays empty forever
+-- (2026-09-26: Gretel's grant said "XP component not found" in the same second
+-- Nyx's state captured it). So the capturing state publishes the pointer in a
+-- process-wide Lua-publisher slot and every state reads it back, validating
+-- it like its own. Needs a loader with Lua-writable slots 20..23; on an older
+-- DLL the write raises, pcall swallows it, and R.xp behaves as before.
+local GROUP_LEVEL_SLOT = 20
+local function _gl_publish(p, only_if_empty)
+    if not I.shared_set or not p or p == 0 then return end
+    if only_if_empty and I.shared_get then
+        local ok, cur = pcall(I.shared_get, GROUP_LEVEL_SLOT)
+        if ok and type(cur) == "number" and cur ~= 0 then return end
+    end
+    pcall(I.shared_set, GROUP_LEVEL_SLOT, p)
+end
+local function _gl_shared()
+    if not I.shared_get then return nil end
+    local ok, p = pcall(I.shared_get, GROUP_LEVEL_SLOT)
+    return (ok and type(p) == "number" and p ~= 0) and p or nil
+end
+
 --- Pure-memory (tick-thread-safe) probe: does this component have a level
 -- curve the engine would actually honor? Mirrors what XpForLevel/GetMaxLevel
 -- read: curve table at *(comp+0x10)+0x1d8 (enable flag +0x1d0, count +0x1e0)
@@ -1021,7 +1077,13 @@ end
 -- abort require"rsmm" for every mod, which is why the other hooks are lazy.
 local function _arm_group_level_capture()
     if _gl_armed then return end
-    if not R.hook or not I.resolve then return end
+    if not R.hook or not I.resolve then
+        -- Said out loud: a silent return here is how R.xp stayed dead on the
+        -- 2026-09-25 build with nothing in the log to say why.
+        R.log(string.format("[rsmm.xp] cannot arm level capture yet (hook=%s resolve=%s)",
+            tostring(R.hook ~= nil), tostring(I.resolve ~= nil)))
+        return
+    end
     _gl_armed = true
     -- nil when the symbol is unverified for this build — fail closed rather
     -- than hooking a stale VA (a mid-function detour corrupts the stream).
@@ -1050,18 +1112,65 @@ local function _arm_group_level_capture()
             end
             table.insert(_gl_seen, 1, self)
             for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
+            -- Raw memory until the original runs; readers validate lazily.
+            -- Only into an EMPTY slot: menu/template instances are built too.
+            _gl_publish(self, true)
         end
         return nil
     end)
     -- (nil, "already-hooked") means another mod's state armed the same ctor
-    -- hook first. The hook is live and its captures land in this state too, so
-    -- that is a success — reporting it as "level/xp unavailable" once per extra
-    -- mod is how a working four-mod install came to look like three broken ones.
+    -- hook first. The hook is live but its callback fills THAT state's list,
+    -- not this one: this state sees the capture through GROUP_LEVEL_SLOT
+    -- (_gl_shared). Still a success, not "level/xp unavailable" — reporting it
+    -- that way once per extra mod made a working four-mod install look like
+    -- three broken ones.
     if ok and slot == nil and why == "already-hooked" then return end
-    if not ok or slot == nil then
-        R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook; "
-            .. "level/xp unavailable this run")
+    if ok and slot ~= nil then
+        R.log("[rsmm.xp] level capture armed (GroupLevelComponent_Ctor hooked)")
     end
+    if not ok or slot == nil then
+        -- Not armed after all: let a later call (setup, or the next R.xp use)
+        -- try again instead of one early failure disabling it for the session.
+        _gl_armed = false
+        R.log("[rsmm.xp] could not install GroupLevelComponent_Ctor hook ("
+            .. tostring(ok and why or slot) .. "); will retry")
+        return
+    end
+
+    -- Second capture point: the engine's own gain-experience handler takes the
+    -- level component as its FIRST argument, so the first XP the game hands
+    -- out (a kill) captures it even if the constructor ran before this hook
+    -- was live (a late arm, a component built at the main menu). Stash only,
+    -- same as the ctor: the original must run exactly once.
+    local gva = I.resolve("Hero_GainExperience")
+    if gva and gva ~= 0 then
+        local gok, gslot, gwhy = pcall(R.hook, gva, "vpp", function(comp, _gain)
+            if comp and comp ~= 0 and _gl_seen[1] ~= comp then
+                for i = #_gl_seen, 1, -1 do
+                    if _gl_seen[i] == comp then table.remove(_gl_seen, i) end
+                end
+                table.insert(_gl_seen, 1, comp)
+                for i = #_gl_seen, GL_SEEN_MAX + 1, -1 do table.remove(_gl_seen, i) end
+            end
+            -- XP flowing into it: this is the live one, for every mod.
+            if comp and comp ~= 0 then _gl_publish(comp, false) end
+            return nil
+        end)
+        if gok and gslot ~= nil then
+            R.log("[rsmm.xp] level capture also on Hero_GainExperience")
+        elseif not (gok and gwhy == "already-hooked") then
+            R.log("[rsmm.xp] could not hook Hero_GainExperience: " .. tostring(gwhy or gslot))
+        end
+    end
+end
+
+--- Arm the level/XP capture now. Mods that grant XP call this from init.lua:
+-- the capture must be live before the run builds the level component, and a
+-- mod's init runs before any run. (It is also armed at `setup`.)
+function R.xp.arm()
+    local ok, err = pcall(_arm_group_level_capture)
+    if not ok then R.log("[rsmm.xp] arming level capture failed: " .. tostring(err)) end
+    return ok
 end
 
 --- The live party-wide level/XP component, or nil.
@@ -1077,11 +1186,20 @@ local function _group_level()
     end
     _arm_group_level_capture()
     local fallback = nil
-    for _, p in ipairs(_gl_seen) do
+    -- This state's own captures, then whatever the capturing state published.
+    local cands = { table.unpack(_gl_seen) }
+    local shared = _gl_shared()
+    if shared then
+        local dup = false
+        for _, q in ipairs(cands) do if q == shared then dup = true end end
+        if not dup then cands[#cands + 1] = shared end
+    end
+    for _, p in ipairs(cands) do
         if _gl_valid(p) then
             if _gl_curve_usable(p) then
                 if _gl_comp ~= p then
                     _gl_comp = p
+                    _gl_publish(p, false)
                     R.log(string.format("[rsmm.xp] group-level component "
                         .. "captured @0x%x (level %d, curve present)", p,
                         I.read_u32(I.read_u64(p + XP_PROGRESS_OFF)) or 0))
@@ -1108,7 +1226,10 @@ end
 -- Arm at `setup` so the hook is live before the run builds the component.
 -- Subscribing cannot fail the way hooking can, and the arm itself is
 -- pcall-guarded internally, so this cannot abort require"rsmm".
-native.on_event("setup", function() pcall(_arm_group_level_capture) end)
+native.on_event("setup", function()
+    local ok, err = pcall(_arm_group_level_capture)
+    if not ok then R.log("[rsmm.xp] arming level capture failed: " .. tostring(err)) end
+end)
 
 -- Locate the hero's XpComponent. `allow_engine` (MAIN THREAD ONLY — the
 -- engine walk calls each component's virtual IsKindOf) uses the engine's own
@@ -1177,8 +1298,10 @@ function R.xp.grant(amount)
         return false
     end
     if not _va_ok("R.xp") then return false end
-    amount = math.floor(amount or 0)
-    if amount <= 0 then return false end
+    amount = math.floor(tonumber(amount) or 0)
+    -- The engine reads an int32 (*(int*)(gain+0x50)): past 2^31 write_u32 would
+    -- hand it a different -- possibly negative -- number than the one asked for.
+    if amount <= 0 or amount > 0x7fffffff then return false end
     local hero = R.entity.hero()
     if not hero then _log_throttled("xp.nohero", "[rsmm.xp] no hero captured yet"); return false end
     -- grant runs on the MAIN thread (schedule.next_main contract) — the only
@@ -1227,6 +1350,90 @@ function R.xp.grant(amount)
     R.log(string.format("[rsmm.xp] granted %d xp (level %s->%s, xp %s->%s)",
         amount, tostring(lvl0), tostring(lvl1), tostring(xp0), tostring(xp1)))
     return true
+end
+
+-- Shared guards for set_level / set_xp: writes enabled, the party's level
+-- component found, its progress pointer live. Returns comp, prog, level, xp.
+local function _xp_set_target(fn)
+    if not _stat_writes_enabled then
+        R.log("[rsmm.xp] " .. fn .. " is experimental and off — call R.stat.enable_writes() first")
+        return nil
+    end
+    if not _va_ok("R.xp") then return nil end
+    local comp = _xp_component(R.entity.hero(), true)
+    if not comp then
+        _log_throttled("xp.nocomp", "[rsmm.xp] " .. fn .. ": level component not found yet")
+        return nil
+    end
+    local prog = I.read_u64(comp + XP_PROGRESS_OFF)
+    if not _ptr_plausible(prog) then
+        R.log("[rsmm.xp] " .. fn .. ": level progress not live — refusing")
+        return nil
+    end
+    return comp, prog, I.read_u32(prog), I.read_u32(prog + 4)
+end
+
+-- Raise the party level to `n` directly, the way Hero_GainExperience finishes
+-- a gain: XpComponent_SetXp(comp, 0) then XpComponent_SetLevel(comp, n) — one
+-- SetLevel even across several levels, exactly like a big XP gain, and it is
+-- SetLevel that fires the game's own _XP_LEVEL_UP. Only RAISES: lowering would
+-- leave talents already picked for levels the party no longer has.
+-- PROVEN IN GAME 2026-10-10 (level 1 -> 10, max 20, ultimate unlocked).
+-- MAIN-THREAD ONLY, gated by R.stat.enable_writes().
+function R.xp.set_level(n)
+    if type(n) ~= "number" or n ~= math.floor(n) or n < 1 then
+        R.log("[rsmm.xp] set_level(n): n must be a whole number >= 1")
+        return false
+    end
+    local comp, prog, lvl0, xp0 = _xp_set_target("set_level")
+    if not comp then return false end
+    if lvl0 and n <= lvl0 then
+        R.log(string.format("[rsmm.xp] set_level(%d): the party is already level %d — only raises", n, lvl0))
+        return false
+    end
+    local okm, maxl = pcall(R.engine.call, "XpComponent_GetMaxLevel", comp)
+    if not okm or type(maxl) ~= "number" or maxl < 1 then
+        R.log("[rsmm.xp] set_level: max level unreadable — refusing")
+        return false
+    end
+    if n > maxl then
+        R.log(string.format("[rsmm.xp] set_level(%d): above the max level %d — refusing", n, maxl))
+        return false
+    end
+    R.engine.call("XpComponent_SetXp", comp, 0)
+    R.engine.call("XpComponent_SetLevel", comp, n)
+    local lvl1 = I.read_u32(prog)
+    R.log(string.format("[rsmm.xp] set_level %s->%s (xp %s->0, max %d)",
+        tostring(lvl0), tostring(lvl1), tostring(xp0), maxl))
+    return lvl1 == n
+end
+
+-- Set the XP within the current level. Must stay below that level's threshold
+-- (XpComponent_XpForLevel): only a GAIN runs the level-up loop, so a value at
+-- or past it would sit there without ever levelling. Use R.xp.grant to level
+-- through XP. EXPERIMENTAL, MAIN-THREAD ONLY, gated by R.stat.enable_writes().
+function R.xp.set_xp(x)
+    if type(x) ~= "number" or x ~= math.floor(x) or x < 0 or x > 0x7fffffff then
+        R.log("[rsmm.xp] set_xp(x): x must be a whole number >= 0")
+        return false
+    end
+    local comp, prog, lvl0, xp0 = _xp_set_target("set_xp")
+    if not comp then return false end
+    local okn, need = pcall(R.engine.call, "XpComponent_XpForLevel", comp, lvl0 or 1)
+    if not okn or type(need) ~= "number" or need == 0 or need == 0xffffffff then
+        R.log("[rsmm.xp] set_xp: this level's threshold is unreadable — refusing")
+        return false
+    end
+    if x >= need then
+        R.log(string.format("[rsmm.xp] set_xp(%d): level %s needs %d to complete; "
+            .. "set below it, or use R.xp.grant to level up", x, tostring(lvl0), need))
+        return false
+    end
+    R.engine.call("XpComponent_SetXp", comp, x)
+    local xp1 = I.read_u32(prog + 4)
+    R.log(string.format("[rsmm.xp] set_xp %s->%s (level %s, needs %d)",
+        tostring(xp0), tostring(xp1), tostring(lvl0), need))
+    return xp1 == x
 end
 
 end

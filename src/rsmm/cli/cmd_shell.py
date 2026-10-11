@@ -533,10 +533,7 @@ def pager(title: str, lines: list[str], *, colorize=None,
                 # Styling is prefix-based (timestamp, tag), so it only applies
                 # to a line's first row; continuations render dim so the eye
                 # can still tell where one log line ends and the next begins.
-                if is_head:
-                    body = colorize(text) if colorize else text
-                else:
-                    body = _ST.dim(text)
+                body = (colorize(text) if colorize else text) if is_head else _ST.dim(text)
                 _out("  " + body)
             _out()
             if note:

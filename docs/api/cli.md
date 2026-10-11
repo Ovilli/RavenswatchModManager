@@ -6,12 +6,14 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**53 commands.**
+**64 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
+| `rsmm ability-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm apply` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm assets` | `rsmm.cli.cmd_assets` | `rsmm assets` — find a cooked asset by its readable path. |
+| `rsmm backend` | `rsmm.cli.cmd_backend` | rsmm backend - point the game at a self-hosted online backend. |
 | `rsmm build` | `rsmm.cli.build` | rsmm build — full pipeline. |
 | `rsmm changelog` | `rsmm.cli.cmd_changelog` | `rsmm changelog` — read the release-notes channel. |
 | `rsmm cmd` | `rsmm.cli.console_cmd` | rsmm cmd — send /commands to the in-game console runtime. |
@@ -20,40 +22,48 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm completion` | `rsmm.cli.cmd_completion` | rsmm completion — emit a shell tab-completion script. |
 | `rsmm cook` | `rsmm.cli.cook` | rsmm cook — pack an editable source-format file into a cooked asset. |
 | `rsmm decode` | `rsmm.engine.ot_decoder` | oCTextSaver binary decoder. |
+| `rsmm diff` | `rsmm.cli.cmd_diff` | `rsmm diff <mod>` — what applying one mod changes in the game. |
 | `rsmm disable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm docs-gen` | `rsmm.cli.docs_gen_cmd` | `rsmm docs-gen` — write the SDK/CLI reference from @sdk_export registrations. |
 | `rsmm doctor` | `rsmm.cli.doctor` | rsmm doctor — system health check, and the repair path for what it finds. |
+| `rsmm editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm enable` | `rsmm.cli.cmd_mods` | `rsmm enable` / `rsmm disable` — toggle mods from the terminal. |
 | `rsmm enemies` | `rsmm.cli.cmd_enemies` | `rsmm enemies` — discover vanilla enemies for enemy modding. |
+| `rsmm entity-graph` | `rsmm.cli.cmd_entity_graph` | `rsmm entity-graph` — read an entity's components and their links. |
 | `rsmm exp` | `rsmm.cli.cmd_exp` | rsmm exp — read back the hypotheses a mod answered during a playtest. |
+| `rsmm export-character` | `rsmm.cli.cmd_export_character` | `rsmm export-character` — a hero as one rigged glTF for Blender / Maya. |
+| `rsmm export-model` | `rsmm.cli.cmd_export_model` | `rsmm export-model` — any of the game's 3D models as a textured glTF. |
 | `rsmm home` | `rsmm.cli.cmd_shell` | Interactive home screen — what bare `rsmm` opens in a terminal. |
+| `rsmm import-character` | `rsmm.cli.cmd_import_character` | `rsmm import-character` — turn a character .glb edited in Blender into a mod. |
 | `rsmm install` | `rsmm.cli.cmd_install` | rsmm install — fetch, verify, and unpack a packed mod. |
 | `rsmm install-loader` | `rsmm.cli.install_loader` | rsmm install-loader — copy winhttp.dll + SDK lib into the game install. |
-| `rsmm intents` | `rsmm.cli.cmd_intents` | `rsmm intents` — consume in-game mod-menu intents written by the loader. |
+| `rsmm item-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm items` | `rsmm.cli.cmd_items` | `rsmm items` — discover vanilla magical objects for item modding. |
 | `rsmm json` | `rsmm.cli.json_bridge` | rsmm json — machine-readable bridge for the desktop / web UI. |
 | `rsmm keygen` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm lint` | `rsmm.cli.lint` | rsmm lint — per-mod manifest + assets validator. |
 | `rsmm list` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm log` | `rsmm.cli.cmd_log` | rsmm log — read the loader log from the game install directory. |
-| `rsmm map-editor` | `rsmm.cli.cmd_map_editor` | `rsmm map-editor` — edit a chapter's map-generation recipe in the browser. |
-| `rsmm menu` | `rsmm.cli.cmd_menu` | `rsmm menu` — generate and inspect the in-game mod-list page (native book UI). |
+| `rsmm map-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm merge` | `rsmm.cli.merge` | Patch-merge layer. |
+| `rsmm modpack` | `rsmm.cli.cmd_modpack` | rsmm modpack — the identity of this install's applied mod set. |
 | `rsmm new` | `rsmm.cli.cmd_new` | rsmm new — scaffold a mod directory. |
 | `rsmm overlay` | `rsmm.cli.cmd_overlay` | rsmm overlay — read the live HUD data a mod publishes. |
 | `rsmm pack` | `rsmm.cli.cmd_pack` | rsmm pack — bundle a mod for distribution. |
 | `rsmm poi` | `rsmm.cli.cmd_poi` | `rsmm poi` — browse the tiles and kinds a `poi` content def can use. |
 | `rsmm publish` | `rsmm.cli.cmd_publish` | rsmm publish — upload a mod to the store from the command line. |
 | `rsmm rebuild-asset-map` | `rsmm.engine.find_iyg` | Ravenswatch Asset Decrypter — builds a full obfuscated -> plaintext |
+| `rsmm rebuild-fn-patterns` | `rsmm.cli.cmd_rebuild_patterns` | `rsmm rebuild-fn-patterns` — regenerate the byte-pattern DB for the installed game. |
 | `rsmm repo` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm restore` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
 | `rsmm run` | `rsmm.cli.run` | rsmm run — launch Ravenswatch via Steam, ensuring the WINEDLLOVERRIDES |
 | `rsmm safe-mode` | `rsmm.cli.safe_mode` | `rsmm safe-mode` — drive the SDK health quarantine. |
 | `rsmm save` | `rsmm.cli.cmd_save` | `rsmm save` — inspect Ravenswatch profile saves. |
-| `rsmm schema` | `rsmm.cli.cmd_schema` | rsmm schema — list cloneable vanilla content ids. |
+| `rsmm schema` | `rsmm.cli.cmd_schema` | rsmm schema — list the vanilla ids a content kind's ``base`` accepts. |
 | `rsmm sdk-doctor` | `rsmm.cli.sdk_doctor` | `rsmm sdk-doctor` — SDK v3 self-check. |
 | `rsmm sign` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm symbols` | `rsmm.cli.cmd_symbols` | ``rsmm symbols`` — the engine symbol map (Minecraft-style mappings). |
+| `rsmm talent-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm talents` | `rsmm.cli.cmd_talents` | `rsmm talents` — discover + edit hero talent ("Skill") values. |
 | `rsmm test` | `rsmm.cli.test` | rsmm test — diff a mod's patch plan against a checked-in fixture. |
 | `rsmm uncook` | `rsmm.cli.uncook` | rsmm uncook — extract a cooked asset to an editable source-format file. |
@@ -61,5 +71,6 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm update` | `rsmm.cli.update_cmd` | `rsmm update` — pull updates for installed mods from configured repos. |
 | `rsmm update-data` | `rsmm.cli.cmd_update_data` | `rsmm update-data` — pull the latest pattern DB without an app release. |
 | `rsmm update-loader` | `rsmm.cli.cmd_update_loader` | `rsmm update-loader` — pull the loader DLL + Lua SDK without an app release. |
+| `rsmm values` | `rsmm.cli.cmd_values` | `rsmm values` — back up a game patch's values and see what an update changed. |
 | `rsmm verify` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm watch` | `rsmm.cli.watch` | rsmm watch — live re-apply on mods/ change. |

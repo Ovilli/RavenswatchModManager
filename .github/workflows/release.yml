@@ -16,11 +16,52 @@ jobs:
   # waits on it, so a red tree costs a minute instead of a release.
   gate:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      # The two suites below are Linux-only and Python/Lua-only. CI covers the
+      # rest — Windows pytest, both frozen sidecars, typescript, the loader
+      # cross-compile — and v5.9.10 shipped from a commit whose CI was red
+      # (typescript), because nothing here looked at it. Wait for CI on this
+      # exact commit and refuse anything but green. A tag on a commit that was
+      # never pushed to main has no CI run and is refused too. Only the external
+      # link check is exempt: a third-party site being down says nothing about
+      # the build.
+      - name: CI green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          id=""
+          for _ in $(seq 1 20); do
+            id=$(gh run list --workflow ci.yml --commit "$SHA" --event push \
+                   --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$id" ] && break
+            echo "no CI run for $SHA yet; waiting"; sleep 30
+          done
+          if [ -z "$id" ]; then
+            echo "::error::no CI run for $SHA — push the commit to main and let CI finish before tagging"
+            exit 1
+          fi
+          gh run watch "$id" --interval 30 > /dev/null
+          bad=$(gh run view "$id" --json jobs --jq \
+            '.jobs[] | select(.name | startswith("docs external links") | not)
+                     | select(.conclusion != "success" and .conclusion != "skipped")
+                     | "\(.name): \(.conclusion)"')
+          if [ -n "$bad" ]; then
+            echo "::error::CI is not green on $SHA (run $id):"
+            echo "$bad"
+            exit 1
+          fi
+          echo "CI run $id is green on $SHA"
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -91,15 +132,15 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5.0.0
         with:
           version: 9.12.0
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -121,7 +162,7 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -176,86 +217,17 @@ jobs:
             --pattern 'function_patterns*' --dir data --clobber
           ls -la data/function_patterns* || true
 
-      - name: Build rsmm sidecar (PyInstaller)
+      # scripts/build-sidecar.py is the one definition of what the frozen CLI
+      # bundles; it then runs the binary from an empty folder and fails the
+      # leg if a bundled file is missing or a command crashes, so a sidecar
+      # that would break on a fresh install never reaches the installer.
+      # --require-loader: the DLL built above must be inside it.
+      - name: Build rsmm sidecar (PyInstaller) and check it
         shell: bash
         run: |
           python -m pip install --upgrade pip pyinstaller
           pip install -e .
-          OUT=apps/desktop/src-tauri/binaries
-          mkdir -p "$OUT"
-          # Keep PyInstaller paths inside the workspace so Windows runners
-          # (workspace on D:, system temp on C:) don't hit cross-drive relpath errors.
-          PYI_DIST="$PWD/.pyi-build/dist"
-          PYI_WORK="$PWD/.pyi-build/work"
-          PYI_SPEC="$PWD/.pyi-build"
-          mkdir -p "$PYI_DIST" "$PYI_WORK" "$PYI_SPEC"
-          # Subcommands are loaded dynamically via importlib, so PyInstaller's
-          # static analyzer cannot find them. Use --collect-submodules to walk
-          # the rsmm.cli and rsmm.engine packages and pull in every module —
-          # this avoids the maintenance burden of an explicit hidden-import
-          # list that has to be kept in sync with every new subcommand.
-          HIDDEN_IMPORTS=(
-            --collect-submodules=rsmm.cli
-            --collect-submodules=rsmm.engine
-            --collect-submodules=rsmm.sdk
-          )
-          # PyInstaller's --add-data separator is ':' on Unix, ';' on Windows.
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then SEP=';'; else SEP=':'; fi
-          # PyInstaller resolves relative --add-data SRC paths against the
-          # --specpath dir, not the cwd. We use a separate spec dir so use
-          # absolute paths here to keep the source unambiguous.
-          # On git-bash (windows-latest) `$PWD` returns the MSYS-style
-          # `/d/a/...` which PyInstaller misreads as `\d\a\...`. Use
-          # `pwd -W` to get a real `D:/a/...` Windows path.
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            ROOT="$(pwd -W)"
-          else
-            ROOT="$PWD"
-          fi
-          # Bundle every runtime file the CLI reads from the repo tree.
-          # The frozen binary resolves REPO_ROOT to _MEIPASS, so anything
-          # listed here is reachable at the same relative path it had in
-          # source. Skipping any of these makes apply/doctor/install-loader
-          # crash on a fresh user install (we hit this in public tests).
-          ADD_DATA=(
-            --add-data "${ROOT}/pyproject.toml${SEP}."
-            --add-data "${ROOT}/data/asset_map.json${SEP}data"
-            --add-data "${ROOT}/data/asset_map.csv${SEP}data"
-            --add-data "${ROOT}/data/loader_version.json${SEP}data"
-            --add-data "${ROOT}/data/changelog.json${SEP}data"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.sh${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.ps1${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/install_loader.bat${SEP}src/rsmm/cli"
-            --add-data "${ROOT}/src/rsmm/cli/map_editor_static${SEP}src/rsmm/cli/map_editor_static"
-            --add-data "${ROOT}/src/loader/lua${SEP}src/loader/lua"
-            --add-data "${ROOT}/src/loader/lib${SEP}src/loader/lib"
-          )
-          # function_patterns.json is gitignored (game-derived, ~14MB) —
-          # fetched from the rolling pattern-db release in the step above;
-          # bundle it + its meta stamp if the fetch succeeded.
-          if [ -f "${ROOT}/data/function_patterns.json" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.json${SEP}data")
-          fi
-          if [ -f "${ROOT}/data/function_patterns.meta.json" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/function_patterns.meta.json${SEP}data")
-          fi
-          # schemas/ + templates/ are optional dev assets — bundle if present.
-          if [ -d "${ROOT}/data/schemas" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/schemas${SEP}data/schemas")
-          fi
-          if [ -d "${ROOT}/data/templates" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/data/templates${SEP}data/templates")
-          fi
-          # Ship the prebuilt Windows loader DLL when we just built it.
-          if [ -f "${ROOT}/dist/winhttp.dll" ]; then
-            ADD_DATA+=(--add-data "${ROOT}/dist/winhttp.dll${SEP}dist")
-          fi
-          TRIPLE=$(rustc -vV | sed -n 's/host: //p')
-          pyinstaller --onefile --name "rsmm-$TRIPLE" \
-            --distpath "$OUT" --workpath "$PYI_WORK" --specpath "$PYI_SPEC" \
-            "${HIDDEN_IMPORTS[@]}" "${ADD_DATA[@]}" \
-            ./rsmm
-          ls -la "$OUT"
+          python scripts/build-sidecar.py --require-loader
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -430,7 +402,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Assemble latest.json from release artifacts
         env:
@@ -528,7 +500,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Publish the draft release
         env:

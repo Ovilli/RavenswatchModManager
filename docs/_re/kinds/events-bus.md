@@ -390,3 +390,207 @@ name/string offset verified live before it can ship.
 - Whether a brand-new event id (one no entity subscribes to) is safe to dispatch
   is untested; unknown ids just miss the channel map (no-op), which should be
   safe but is unverified in-game.
+
+## Who handles each event (static sweep, 2026-10-10)
+
+How the table was made, so it can be redone after a patch: every event name is
+interned once per compilation unit (8 static initializers each, found by the
+name's image-base RVA — the strings are reached as `lea rax,[rbx+rva]` off
+`lea rbx,[image base]`, which is why a `lea [rip+str]` scan finds none). Each
+initializer stores the id in its own global; the code that loads one of those
+globals is either a sender (writes it to ev+0x30) or a subscriber. Subscribers
+come in two shapes, both ending in a thunk `jmp [rip+X]` whose target qword is
+the handler:
+
+* **Hero controller** — `NamedEvent_HeroSubscribeAll` inlines each subscription:
+  id → `[rbp+..]`, `Netcode_Channel_LookupById`, then `lea rax,[rip+thunk]`.
+  Validated: this resolves GAIN_REROLL to 0x1403aa9e0 (the proven handler),
+  GIVE_MAGICAL_OBJECT to 0x1403a88f0 and CHOOSE_MELODY to 0x140399090.
+* **Ability controller** — `AbilityController_Ctor` calls a per-handler
+  template (0x1402f1bb0 / 0x1402f1cb0 / …) on owner+0x4d8; the template holds
+  the thunk. A jump-table tail shares one template call across slots (all
+  `REDUCE_<SLOT>_CD` reach 0x1402cd140 through 0x1402ca1ce), so read the call
+  that the id-load FLOWS into, not the next call in address order.
+
+Ability family (payload = `oCNamedEventNetworkWithData`, one typed value; see
+the `oCNamedEventNetworkWithData_vftable` symbol): CLEAR_CD / CLEAR_<SLOT>_CD →
+0x1402cce40 (bool true), REDUCE_CD / REDUCE_<SLOT>_CD → 0x1402cd140 (f32 or
+int seconds), ADD_<SLOT>_CHARGE → 0x1402ccf30 (int, default 1),
+REMOVE_<SLOT>_CHARGE → 0x1402cd040 (no payload). Slots: BASIC PRIMARY
+SECONDARY DEFENSIVE TRAIT ULTIMATE DASH. Backs `R.ability` (CLEAR_CD proven in game 2026-10-10).
+
+Hero-controller handlers (handler payloads unread unless noted — read each
+handler before building on it):
+
+| event | handler |
+|---|---|
+| ABILITY_EXIT | 0x1402cca20, 0x1403cf910 |
+| ADD_ALL_SKILLS | 0x1402eef80 |
+| ADD_RANDOM_ULTI_SKILL | 0x1403a75d0 |
+| ALTAR_HERO_REVIVE_STAT | 0x1401f9350 |
+| BABAYAGA_HOUSE_DEFEATED | 0x140293d00 |
+| BOSS_FIGHTING_START | 0x1401f90c0, 0x1402888b0, 0x140293cb0 |
+| BOSS_FIGHTING_STOP | 0x1401f9150, 0x140288a50 |
+| CHARGE_LINK | 0x1403cf8c0 |
+| CHOOSE_MELODY | 0x140399090 |
+| CINE_ASK_SKIP | 0x140288680 |
+| CINE_START | 0x1402885a0 |
+| CINE_STOP | 0x140288610 |
+| CLEAR_CHILLED | 0x1403cbc40 |
+| CLEAR_ROSE_SEED | 0x1403cbc60 |
+| CLEAR_STAGGER | 0x1403cc1d0 |
+| CLEAR_STATUS | 0x1403bfb00 |
+| COMBO_LINK | 0x1403cf900 |
+| DEATHDOOR_TIMER_END | 0x1403a8040 |
+| DUPLICATE_RANDOM_COMMON_OBJECT | 0x1403a8260 |
+| DUPLICATE_RANDOM_EPIC_OBJECT | 0x1403a8560 |
+| DUPLICATE_RANDOM_MAGICAL_OBJECT | 0x1403a80c0 |
+| DUPLICATE_RANDOM_RARE_OBJECT | 0x1403a83e0 |
+| FIRING_EXPLODE | 0x1403dc610, 0x1403dd120 |
+| FORCE_DEATH | 0x1403cbc80 |
+| GAIN_DREAM_SHARDS | 0x1403a72b0 |
+| GAIN_INGREDIENT | 0x14039acc0 |
+| GAIN_REROLL | 0x1403aa9e0 |
+| GAME_CHRONO_START | 0x140287eb0 |
+| GAME_END_CHANGE_STATE | 0x1402890b0 |
+| GAME_END_FAILED | 0x140289020 |
+| GAME_END_NEXT_CHAPTER | 0x140293d20 |
+| GAME_END_SUCCESS | 0x140289000 |
+| GAME_END_SUCCESS_SKIP_NEXT | 0x140289010 |
+| GIVE_MAGICAL_OBJECT | 0x1403a88f0 |
+| HERO_REVIVE | 0x1403a2700 |
+| HOURGLASS_STATS | 0x1401f8cd0 |
+| INTERACTION_CANCELED | 0x1402e5d20 |
+| INTERACTION_FAILED | 0x1403a21f0, 0x1403a2270 |
+| INTERACTION_REJECT | 0x1403a2170 |
+| INTERACTION_REQUEST | 0x1402e5740 |
+| INTERACTION_VALIDATE | 0x1403a2110 |
+| LOCAL_INTERACTION_SUCCESS | 0x140305910 |
+| OPEN_CHEST | 0x1401f8f30 |
+| POWER_UP_COLLECT_REQUEST | 0x1402e8330 |
+| REMOVE_ALL_COMMON_OBJECT | 0x1403a8c80 |
+| REMOVE_ALL_CURSED_OBJECT | 0x1403a8cc0 |
+| REMOVE_ALL_EPIC_OBJECT | 0x1403a8ca0 |
+| REMOVE_ALL_LEGENDARY_OBJECT | 0x1403a8cb0 |
+| REMOVE_ALL_MAGICAL_OBJECT | 0x1403a8c70 |
+| REMOVE_ALL_RARE_OBJECT | 0x1403a8c90 |
+| REMOVE_MAGICAL_OBJECT_FROM_ID | 0x1403a8b70 |
+| REMOVE_MELODY | 0x140399150 |
+| REMOVE_NEWLY_UNLOCK | 0x140359bf0 |
+| REMOVE_RANDOM_COMMON_OBJECT | 0x1403a8a80 |
+| REMOVE_RANDOM_CURSED_OBJECT | 0x1403a8b40 |
+| REMOVE_RANDOM_EPIC_OBJECT | 0x1403a8ae0 |
+| REMOVE_RANDOM_LEGENDARY_OBJECT | 0x1403a8b10 |
+| REMOVE_RANDOM_MAGICAL_OBJECT | 0x1403a8a50 |
+| REMOVE_RANDOM_RARE_OBJECT | 0x1403a8ab0 |
+| RESET_SKILLS | 0x1403a7f60 |
+| RESET_STAGGER_RESILIENCE | 0x1403cc1c0 |
+| REVIVE_RELEASE_TOKEN | 0x140288590 |
+| REVIVE_REQUEST | 0x140287ef0 |
+| REVIVE_VALIDATE | 0x1403a26b0 |
+| STARTUP_LINK | 0x1403cf880 |
+| START_DAYMARE | 0x1401ee4e0 |
+| START_NIGHTMARE | 0x1401ee590 |
+| TELEPORT_SUBMAP_ENTER | 0x140288b50 |
+| TELEPORT_SUBMAP_EXIT | 0x140288c10 |
+| TUMOR_FIGHTING_START | 0x1402886b0 |
+| TUMOR_FIGHTING_STOP | 0x1402887a0 |
+| UPDATE_OBJECT_UI | 0x1403a86e0 |
+| UPGRADE_LOWER_SKILL | 0x1403a7ba0 |
+| UPGRADE_LOWER_SKILL_TO_LEGENDARY | 0x1403a7d80 |
+| UPGRADE_RANDOM_SKILL | 0x1403a77e0 |
+| UPGRADE_SPECIFIC_SKILL | 0x1403a79e0 |
+| USE_BLOOD_FOUNTAIN | 0x1401f9070 |
+| USE_HEAL_FOUNTAIN | 0x1401f9020 |
+
+Item family (read 2026-10-10; back `R.give.remove_random` / `remove_all` /
+`duplicate_random`, all three proven in game the same day): none of these handlers reads the event payload.
+REMOVE_RANDOM_<R>_OBJECT (0x1403a8a50..0x1403a8b40) calls the picker
+0x14039bb60(hero, &guid, rarity, 0) — it walks the owned items at hero+0xd80
+(count +0xd88), filters by the item's quality (clamped 0..5), and returns a
+random one's def GUID (entry+0x280 -> +0x10 def, +0x88/+0x90) — then the
+remover 0x1403985a0(hero, &guid). REMOVE_ALL_<R>_OBJECT (0x1403a8c70..0x1403a8cc0)
+passes the rarity to 0x1403a8bf0. DUPLICATE_RANDOM_<R>_OBJECT collects through
+0x14039be20 and re-grants through Hero_GrantMagicalObject tagged "Duplicate";
+the MAGICAL variant collects rarities 0, 1 and 2 only. Rarity codes: 0 common,
+1 rare, 2 epic, 3 legendary, 4 cursed, 6 any (MAGICAL). Not wrapped:
+REMOVE_MAGICAL_OBJECT_FROM_ID — it reads a type-1 value but copies only its
+first u32 into the GUID it removes, so it cannot name an arbitrary item.
+
+Talent family (read 2026-10-10; backs `R.talent.reset` / `upgrade_random` /
+`upgrade_lowest` / `upgrade` / `add_random_ultimate`, rsmm/talent_events.lua;
+all five proven in game the same day — the added ultimate is not in the 10
+slots, and reset leaves the hero's starting talent):
+hero-bound; 10 talent slots at hero+0xff0 (stride 0x20), tier = *(*(slot+0x68)),
+0..3, changed through SkillController_SetTier. RESET_SKILLS 0x1403a7f60 (no
+payload; HeroController_RemoveSkill on each slot, count into hero+0x1374).
+UPGRADE_RANDOM_SKILL 0x1403a77e0 — subscribed with its thunk 0x4f bytes past
+the id load, which is why the first sweep missed it — upgrades `count`
+(with-data int, default 1) distinct talents below tier 3. UPGRADE_LOWER_SKILL
+0x1403a7ba0 / _TO_LEGENDARY 0x1403a7d80: no payload, a random lowest-tier
+talent +1 / set to 3. UPGRADE_SPECIFIC_SKILL 0x1403a79e0: with-data int index
+into the owned talents (default the last) — **crashes with no talent owned**
+(index -1 of a null list). ADD_RANDOM_ULTI_SKILL 0x1403a75d0: draws from
+hero+0xfb8 (count +0xfc0), re-rolling `div count` with no zero check — **divides
+by zero when no candidate qualifies** (the Sandman-shop rand); qualifying =
+*(cand+0x70)+0x10 object's +0xc0 byte == 0 and the +0x70 object's +0x40 byte
+!= 0, and a null +0x10 makes the engine read address 0xc8. The SDK checks both
+before sending.
+
+Status family (backs `R.status`, rsmm/status.lua): subscribed by the hero's
+character controller on the hero dispatcher's channel map (entity+0x500 =
+0x4d8+0x28). CLEAR_STATUS 0x1403bfb00 → 0x1403c8d40 clears the listed status
+keys from the value store at this+0x4c8 and checks that store for null;
+CLEAR_STAGGER 0x1403cc1d0 zeroes this+0x33c; RESET_STAGGER_RESILIENCE 0x1403cc1c0
+zeroes this+0x344. Not wrapped: CLEAR_CHILLED / CLEAR_ROSE_SEED (0x1403cbc40 /
+0x1403cbc60) hand the same this+0x4c8 to 0x140749720 WITHOUT the null check;
+FORCE_DEATH 0x1403cbc80 activates this+0x588.
+
+Revive (not wrapped, parked): REVIVE_VALIDATE 0x1403a26b0 activates hero+0x13f0
+and increments the u16 at HUD-mirror (hero+0x1d80) +0x14, beside the reroll
+count at +0x16 — most likely the revive-token count, unconfirmed. HERO_REVIVE
+0x1403a2700 (hero) / 0x1403cbbb0 (character) is a long scene-context routine in
+the multiplayer revive flow; read it in full before sending it.
+
+Melody, control, run flow (read 2026-10-10):
+* CHOOSE_MELODY 0x140399090 / REMOVE_MELODY 0x140399150 (hero) name the melody
+  by the oCString at +0x50, compared with *(*(def+0x48)+0x18) of each live
+  MelodyDefinition — NOT a GUID (the first R.melody.choose guessed +0x38/+0x48
+  and could never match). Backs `R.melody.choose/remove/names` (rsmm/melody.lua).
+* LOCK_CONTROL 0x1403a7580 / UNLOCK_CONTROL 0x1403a75a0 (hero, no payload): a
+  counter at hero+0xc50; the apply/release branches test byte hero+0xc54 in
+  opposite senses, meaning unestablished. Backs `R.control` (counts its own locks).
+* GAME_END_SUCCESS / _SUCCESS_SKIP_NEXT / _FAILED (0x140289000 / 0x140289010 /
+  0x140289020, no payload) are WORLD events: subscribed by the game-mode
+  controller (0x140284db0) on oCEntitySceneContext+0x340's channel map. Guarded
+  by an already-ended byte (this+0x213) and a context vtable slot +0xd8 (likely
+  authority). Backs `R.run.next_chapter/win/lose` (rsmm/run_flow.lua), which
+  learns the world dispatcher from the bus by RTTI — only inside a live chapter,
+  since the same dispatcher survives the chapter switch (an end sent during the
+  transition would hit the next chapter); one end per chapter. Not wrapped:
+  GAME_END_NEXT_CHAPTER (level load's follow-up step), TELEPORT_SUBMAP_ENTER/EXIT
+  (they only set the player-location flags after a move), START_DAYMARE /
+  START_NIGHTMARE (0x1401ee4e0 / 0x1401ee590: on the day/night component they
+  set flag +0x148 and the timer +0x13c, only when the phase matches, then
+  schedule 0x1401ed010 through 0x140205120 — a TRANSITION tick: it counts +0x140
+  down against the dawn/dusk half-length (+0xb4) and then flips the phase byte
+  +0x134 (0 day / 1 night). Reading: DAYMARE (day only) starts the day->night
+  transition early, NIGHTMARE (night only) the reverse — "force night/day now".
+  Unconfirmed: +0x13c being set to the day/night LENGTH does not fit cleanly,
+  and the dispatcher (subscribed in 0x1401eca80) is unread. Test before an API).
+
+World-interaction events are NOTIFICATIONS: OPEN_CHEST, USE_HEAL_FOUNTAIN,
+USE_BLOOD_FOUNTAIN, HOURGLASS_STATS and ALTAR_HERO_REVIVE_STAT are subscribed
+only by the analytics emitters (Analytics_EmitOpenChest..+0x190) — sending one
+opens nothing and fakes an analytics event. WISHING_WELL_FILLED,
+ALTAR_OF_HEROES_PAID and BOSS_ACTIVATED have no code subscriber at all.
+CINE_ASK_SKIP (world, 0x140288680) is the cutscene SKIP VOTE: ++this+0x204, then
+0x1402742e0 with the count — a candidate for an auto-skip mod, untested.
+REVIVE: the party's tokens are the scene-context int 0x1633db76; REVIVE_REQUEST
+(world, 0x140287ef0) revives only with a token left and decrements it. Backs
+`R.revive.add_token` (a guarded game-value write).
+
+Read so far: GAIN_DREAM_SHARDS 0x1403a72b0 and GAIN_INGREDIENT 0x14039acc0
+(layouts in their vftable symbols; back `R.shards.gain` / `R.ingredient`).
+Not in this table: the skill/item events that subscribe through another path
+(UPGRADE_RANDOM_SKILL), and events with no subscriber found by either shape.

@@ -134,16 +134,16 @@ python3 scripts/gen_function_patterns.py
 
 ## Anti-tamper caveat
 
-`rsmm.call` invokes game functions via a normal indirect call. The
-anti-tamper layer in this title is sensitive to *hooks* (CreateFileW,
-present-time Vulkan), not to direct calls — so calling is safe.
+`rsmm.call` invokes game functions via a normal indirect call, which is
+safe. Hooks work too: `rsmm.hook(...)` and the loader's own detours install
+through MinHook once the loader has settled. The earlier crashes came from two
+specific targets (a `CreateFileW` prologue rewrite under Wine and a D3D
+`Present` hook on a Vulkan game), not from an integrity check; see
+[Anti-tamper protector](/reverse-engineering/protector/).
 
-`rsmm.hook(...)` is **deliberately not exposed**. The MinHook engine
-in `src/loader/` is wired for it, but every hookpoint we've tried so
-far (CreateFileW, IDXGISwapChain::Present analogues) crashes the
-process at startup. Until we have an injection mechanism that survives
-the anti-tamper integrity check, mods can read + call but not
-intercept.
+A hook target must be a real function entry (the loader checks `.pdata`).
+Mod-supplied addresses get a warning rather than a refusal, and the mod author
+owns that risk.
 
 ## Memory access discipline
 
@@ -176,7 +176,8 @@ authoritative reference for what each address means.
   `src/loader/src/script_lua.cpp`. Build the loader (`src/loader/build.sh`)
   and `./rsmm install-loader` to deploy.
 - **Pattern database** — 53,427 entries, regen'd from current exe.
-- **Aliases** (friendly names instead of `FUN_xxx`) — not yet shipped.
-  Today modders look up symbols via grep on `symbols.json` and the
-  decompiled C; aliases land when we hand-RE more subsystems.
-- **Hook API** — blocked on anti-tamper; not on the surface.
+- **Aliases** (friendly names instead of `FUN_xxx`) — shipped for the
+  subsystems that have been reverse-engineered: they are the named entries in
+  `data/symbols.json`. Everything else is still looked up by `FUN_xxx` via
+  `symbols.json` and the decompiled C.
+- **Hook API** — shipped (`rsmm.hook`, plus the loader's own detours).

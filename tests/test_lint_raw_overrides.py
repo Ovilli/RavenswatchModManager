@@ -61,7 +61,7 @@ def test_live_value_edit_is_clean(tmp_path, capsys):
 def test_shadowed_value_edit_errors(tmp_path, capsys):
     entry = _mod(tmp_path, _ENT, _node("Damage Value", 0.5, shadowed=True))
     root = _vanilla(tmp_path, _ENT, _node("Damage Value", 0.2, shadowed=True))
-    errs, warns = _lint_raw_overrides("M", entry, vanilla_root=root)
+    errs, _warns = _lint_raw_overrides("M", entry, vanilla_root=root)
     assert errs == 1
     assert "shadowed" in capsys.readouterr().out
 
@@ -69,7 +69,7 @@ def test_shadowed_value_edit_errors(tmp_path, capsys):
 def test_length_change_warns(tmp_path, capsys):
     entry = _mod(tmp_path, _ENT, _node("Crit Chance Value", 0.15) + b"\x00\x00")
     root = _vanilla(tmp_path, _ENT, _node("Crit Chance Value", 0.1))
-    errs, warns = _lint_raw_overrides("M", entry, vanilla_root=root)
+    _errs, warns = _lint_raw_overrides("M", entry, vanilla_root=root)
     assert warns == 1
     assert "structural override" in capsys.readouterr().out
 

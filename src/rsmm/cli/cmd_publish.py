@@ -122,6 +122,29 @@ def mask(token: str) -> str:
 
 # --- HTTP ---------------------------------------------------------------------
 
+class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect while carrying the API token.
+
+    urllib copies every header except the content ones onto the redirected
+    request, ``Authorization`` included, and does not care which host the
+    ``Location`` names or whether it is still https. One 3xx from in front of
+    the API (a proxy rule, a ``RSMM_INDEX_URL`` that points at the website)
+    would hand the token to whatever it points at. No token route redirects,
+    so a redirect is refused outright rather than followed without the header.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        with contextlib.suppress(Exception):
+            fp.close()
+        shown = newurl.split("?", 1)[0]
+        raise PublishError(
+            f"the API answered {req.full_url.split('?', 1)[0]} with a redirect (HTTP {code}) "
+            f"to {shown}; refusing to send your API token there. Check RSMM_INDEX_URL")
+
+
+_OPENER = urllib.request.build_opener(_RefuseRedirect)
+
+
 def _request(method: str, path: str, token: str, body: dict | None = None,
              timeout: float = 60) -> tuple[int, Any]:
     base = api_base()
@@ -134,7 +157,7 @@ def _request(method: str, path: str, token: str, body: dict | None = None,
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             raw = resp.read()
             return resp.status, (json.loads(raw) if raw else {})
     except urllib.error.HTTPError as e:
@@ -294,7 +317,15 @@ def main(argv: list[str] | None = None) -> int:
             me = whoami(token)
             print(f"{me.get('name') or '?'} ({me.get('id')}) via {mask(token)} on {api_base()}")
             return 0
-        return publish(args.target, wait=not args.no_wait, timeout=args.timeout)
+        # Resolve the id before anything touches the network or the token, so
+        # a typo is answered at once and the upload names the real folder.
+        from rsmm.cli._suggest import UnknownMod, resolve_mod
+        from rsmm.engine.paths import mods_dir
+        try:
+            mod_id = resolve_mod(args.target, mods_dir())
+        except UnknownMod as e:
+            raise PublishError(str(e)) from None
+        return publish(mod_id, wait=not args.no_wait, timeout=args.timeout)
     except PublishError as e:
         print(f"rsmm publish: {e}", file=sys.stderr)
         return 1

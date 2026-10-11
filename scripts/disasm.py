@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 SYM = REPO / "data/symbols.json"
@@ -34,10 +34,9 @@ DB = REPO / "data/function_patterns.json"
 _ADDR_RE = re.compile(r"0x1[0-9a-fA-F]{7,9}")
 
 
-def _rx(pat: str) -> re.Pattern[bytes]:
-    return re.compile(
-        b"".join(b"." if t == "??" else re.escape(bytes([int(t, 16)])) for t in pat.split()),
-        re.DOTALL)
+def _rx(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 class Image:
@@ -138,7 +137,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     try:
-        import capstone  # noqa: F401
+        import capstone
     except ImportError:
         print("capstone not installed (pip install capstone)", file=sys.stderr)
         return 2

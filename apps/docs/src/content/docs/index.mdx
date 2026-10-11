@@ -1,55 +1,79 @@
 ---
 title: Ravenswatch Mod Manager
-description: Browser + desktop mod manager for Ravenswatch.
+description: Install, manage and make mods for Ravenswatch. Free, open source, for Windows, Linux and Steam Deck.
 template: splash
 hero:
-  tagline: One toolkit. Browser. Windows. Linux.
+  tagline: Install mods for Ravenswatch in a few clicks, and make your own. Free, for Windows, Linux and Steam Deck.
   image:
     file: ../../assets/app-library.jpg
     alt: The Ravenswatch Mod Manager library, listing installed mods by category
   actions:
-    - text: Install
-      link: /getting-started/install/
+    - text: New here? Start here
+      link: /getting-started/start-here/
       icon: right-arrow
       variant: primary
-    - text: Author a mod
-      link: /guides/modding/
+    - text: Install the app
+      link: /getting-started/install/
+      icon: download
+      variant: secondary
+    - text: Make a mod
+      link: /getting-started/first-mod/
       icon: pencil
       variant: minimal
     - text: View on GitHub
       link: https://github.com/Ovilli/RavenswatchModManager
       icon: external
-    - text: Support on Ko-fi
-      link: https://ko-fi.com/W7W41FW3YE
-      icon: heart
       variant: minimal
 ---
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
+## Play with mods
+
 <CardGrid>
-  <Card title="Cooked asset overrides" icon="seti:default">
-    Swap textures, audio banks, meshes — anything cooked under `mods/<id>/assets/`.
+  <Card title="1. Install the app" icon="download">
+    Download it for Windows, Linux or Steam Deck. No commands to type.
+    [How to install →](/getting-started/install/)
   </Card>
-  <Card title="Lua scripting" icon="seti:lua">
-    Author behaviour in Lua. Call any of 53k game functions via `rsmm.call`.
+  <Card title="2. Pick some mods" icon="magnifier">
+    Browse mods shared by the community and install one with a single click.
+    [Using the app →](/getting-started/desktop-app/)
   </Card>
-  <Card title="Conflict-free merging" icon="approve-check">
-    Multiple mods can patch the same file without overwriting each other.
+  <Card title="3. Press Launch Modded" icon="rocket">
+    The game starts through Steam with your mods switched on.
   </Card>
-  <Card title="Cross-platform UI" icon="laptop">
-    Tauri desktop app + Next.js web app — same UI everywhere.
+  <Card title="4. Back to normal any time" icon="approve-check">
+    When you quit, RSMM puts the original game files back. **Launch Vanilla** plays
+    without mods.
   </Card>
 </CardGrid>
 
-## Start here
+## Make mods
 
 <CardGrid>
-  <LinkCard title="Your first mod" href="/getting-started/first-mod/" description="Install one from the Registry, then scaffold your own." />
-  <LinkCard title="Coming from Minecraft?" href="/concepts/from-minecraft/" description="Map Forge/Fabric concepts (registries, tags, mappings, mixins) to RSMM." />
-  <LinkCard title="Authoring mods" href="/guides/modding/" description="The full guide: manifest, content kinds, packaging." />
-  <LinkCard title="Example mods" href="/guides/examples/" description="Real, copy-pasteable mods from a one-liner to a custom item." />
-  <LinkCard title="Custom enemies" href="/guides/custom-enemies/" description="Clone, restat, and spawn your own enemies and bosses." />
-  <LinkCard title="CLI reference" href="/reference/cli/" description="Every rsmm subcommand." />
-  <LinkCard title="Roadmap" href="/project/roadmap/" description="What's shipped, in progress, and blocked." />
+  <Card title="In your browser" icon="laptop">
+    Change items, talents and abilities with the [web editor](/editor/). Nothing to
+    install.
+  </Card>
+  <Card title="With the modding tools" icon="pencil">
+    Change looks, numbers, text and add new content with a short text file. Add
+    Lua scripts for new gameplay.
+  </Card>
 </CardGrid>
+
+<CardGrid>
+  <LinkCard title="Make your first mod" href="/getting-started/first-mod/" description="A beginner walkthrough, from nothing to your change in the game." />
+  <LinkCard title="Example mods" href="/guides/examples/" description="Complete mods to copy and change." />
+  <LinkCard title="Coming from Minecraft?" href="/concepts/from-minecraft/" description="How Forge and Fabric ideas map to RSMM." />
+  <LinkCard title="Modding guide" href="/guides/modding/" description="Everything a mod can do, in detail." />
+</CardGrid>
+
+## Need help?
+
+<CardGrid>
+  <LinkCard title="Frequently asked questions" href="/getting-started/faq/" description="Safety, co-op, Steam Deck, saves and game updates." />
+  <LinkCard title="Troubleshooting" href="/getting-started/troubleshooting/" description="Fixes for the most common problems." />
+</CardGrid>
+
+RSMM is free and open source. If you'd like to support it, you can
+[buy the developer a coffee on Ko-fi](https://ko-fi.com/W7W41FW3YE).

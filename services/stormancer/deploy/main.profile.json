@@ -1,0 +1,1 @@
+{"Cluster":"local","Account":"darktales","App":"main","Config":{"Type":"file","Value":"../deploy/app-config.json"},"Deployment":{"Type":"directory","Value":"../server/"}}

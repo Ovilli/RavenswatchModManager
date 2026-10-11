@@ -187,6 +187,7 @@ export function AboutPanels() {
           <p className="text-smoke font-serif-italic">
             {t('Created by the RSMM community · Licensed under the project license')}
           </p>
+          <p className="text-smoke font-serif-italic text-xs">{t('Logo by Arch')}</p>
         </div>
         <div className="flex items-center gap-3">
           <MonoTag>v{version}</MonoTag>

@@ -20,6 +20,7 @@ import {
   isSafeProfileId,
   sanitizeDirInput,
   sanitizeDirSetting,
+  sanitizeIdList,
   sanitizeSources,
 } from '../lib/untrusted-state';
 import { compareVersions } from '../lib/version';
@@ -134,14 +135,17 @@ interface State {
   updateSettings: (patch: Partial<AppSettings>) => void;
   /** Sync the live rsmm list into the store and keep profiles in sync
    * with what is actually present on disk. */
-  syncLocalMods: (mods: LocalMod[]) => void;
+  /** `listedProfileId` = the profile the list was read from; defaults to the active one. */
+  syncLocalMods: (mods: LocalMod[], listedProfileId?: string) => void;
   /**
    * Drop every entry in a profile that has no mod on disk, and return how
    * many were removed. Explicit and user-triggered: the sync path keeps
    * unknown ids on purpose (a half-finished install must not be erased by
    * the next poll), so this is the escape hatch when they're truly stale.
+   * `onDiskIds` = ids read from THAT profile's own directory; required for any
+   * profile that is not active, which is otherwise left alone.
    */
-  pruneMissingMods: (profileId: string) => number;
+  pruneMissingMods: (profileId: string, onDiskIds?: string[]) => number;
   /** Add on-disk mods to a profile (the Library's "adopt" action). */
   adoptMods: (ids: string[], profileId?: string) => void;
   /** Patch latestVersion + image/summary onto local mods after polling the API. */
@@ -202,8 +206,8 @@ const CHAOS_PROFILE: Profile = {
   createdAt: new Date().toISOString(),
 };
 
-function normalizeDisabled(disabled: Profile['disabled'] | string[] | undefined): Set<string> {
-  if (disabled instanceof Set) return new Set(disabled);
+function normalizeDisabled(disabled: unknown): Set<string> {
+  if (disabled instanceof Set) return new Set([...disabled].filter((x) => typeof x === 'string'));
   if (Array.isArray(disabled)) return new Set(disabled.filter((x) => typeof x === 'string'));
   return new Set<string>();
 }
@@ -272,7 +276,12 @@ function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
     // that keeps the user's mod list, and for a hostile import the profile is
     // inert either way.
     id: isSafeProfileId(p.id) ? p.id : uid(),
-    disabled: normalizeDisabled(p.disabled as Profile['disabled'] | string[] | undefined),
+    // Same boundary, the shape half: a profile from a backup code or a
+    // corrupt store can be missing any field, and these two are read on
+    // every render.
+    name: typeof p.name === 'string' ? p.name : 'Profile',
+    loadOrder: sanitizeIdList(p.loadOrder),
+    disabled: normalizeDisabled(p.disabled),
   }));
 
   const byId = new Map(list.map((p) => [p.id, p]));
@@ -607,16 +616,19 @@ export const useApp = create<State>()(
           return null;
         }
         try {
-          const incoming = parsed.profile as ProfileSerialized;
+          // Untrusted, like a backup code: any field can be missing or the
+          // wrong type, and `loadOrder` is read on every render.
+          const incoming = parsed.profile as Partial<Record<keyof ProfileSerialized, unknown>>;
           const id = uid();
+          const name = typeof incoming.name === 'string' ? incoming.name : 'Profile';
           set((s) => ({
             profiles: [
               ...s.profiles,
               {
                 id,
-                name: `${incoming.name} (imported)`,
-                loadOrder: incoming.loadOrder ?? [],
-                disabled: new Set(incoming.disabled ?? []),
+                name: `${name} (imported)`,
+                loadOrder: sanitizeIdList(incoming.loadOrder),
+                disabled: normalizeDisabled(incoming.disabled),
                 createdAt: new Date().toISOString(),
               },
             ],
@@ -640,11 +652,12 @@ export const useApp = create<State>()(
           return { ok: false, reason: 'Backup contains no profiles.' };
         }
         try {
+          // `normalizeProfiles` validates every field; only a row that is not
+          // an object at all has nothing worth keeping.
           const profiles = normalizeProfiles(
-            parsed.profiles.map((p: ProfileSerialized) => ({
-              ...p,
-              disabled: new Set(p.disabled ?? []),
-            })),
+            parsed.profiles.filter(
+              (p): p is Profile => typeof p === 'object' && p !== null && !Array.isArray(p),
+            ),
           );
           set({
             profiles,
@@ -679,40 +692,64 @@ export const useApp = create<State>()(
           return { settings: { ...s.settings, ...clean } };
         }),
 
-      syncLocalMods: (mods) =>
+      syncLocalMods: (mods, listedProfileId) =>
         set((s) => {
+          // A list describes ONE profile's directory (every CLI call runs with
+          // RSMM_MODS_DIR at the active profile's folder), so only that profile
+          // may be reconciled against it. Reconciling the others read "not in
+          // this list" as "removed from disk" and emptied a profile the moment
+          // the user switched away from it.
+          const owner = listedProfileId ?? s.activeProfileId;
+          // `localMods` and `installed` describe the ACTIVE profile's folder
+          // (the Library, the Browse badges and `pruneMissingMods` all read
+          // them that way). A list of another profile's folder — Browse
+          // installing into a profile that is not active — used to replace
+          // them too, so the active profile's mods showed as "not on disk"
+          // until the next re-list, and a prune in that window removed them.
+          const ownerIsActive = owner === s.activeProfileId;
           const localMods: Record<string, Mod> = {};
           for (const m of mods) {
             localMods[m.id] = toMod(m, s.localMods[m.id]);
           }
+          // What was on disk before, for spotting a confirmed removal. Only the
+          // active profile's previous listing is known; for any other profile
+          // nothing counts as removed, which keeps its entries.
+          const previous = ownerIsActive ? s.localMods : {};
           const installedSet = new Set(mods.map((m) => m.id));
           const profiles = s.profiles.map((p) => {
             if (p.id === 'default') {
               return { ...p, loadOrder: [], disabled: new Set<string>() };
             }
+            if (p.id !== owner) return p;
             const loadOrder = reconcileProfileModIds(
               p.loadOrder,
               localMods,
-              s.localMods,
+              previous,
               installedSet,
             );
             // Don't augment installedSet with loadOrder entries — it should
             // reflect only what's actually on disk, not what profiles expect.
             // Profile mods are kept by reconcileProfileModIds regardless.
             const disabled = new Set(
-              reconcileProfileModIds(p.disabled, localMods, s.localMods, installedSet),
+              reconcileProfileModIds(p.disabled, localMods, previous, installedSet),
             );
             return { ...p, loadOrder, disabled };
           });
+          if (!ownerIsActive) return { profiles };
           const installed = [...installedSet];
           return { localMods, installed, profiles };
         }),
 
-      pruneMissingMods: (profileId) => {
+      pruneMissingMods: (profileId, onDiskIds) => {
         const s = get();
         const profile = s.profiles.find((p) => p.id === profileId);
         if (!profile) return 0;
-        const onDisk = new Set(Object.keys(s.localMods));
+        // `localMods` is the ACTIVE profile's directory only. Pruning another
+        // profile against it would delete every one of its mods, so an
+        // inactive profile is only pruned against a list read from its own
+        // directory, and not at all when the caller has none.
+        if (!onDiskIds && profileId !== s.activeProfileId) return 0;
+        const onDisk = new Set(onDiskIds ?? Object.keys(s.localMods));
         const keep = profile.loadOrder.filter((id) => onDisk.has(id));
         const removed = profile.loadOrder.length - keep.length;
         if (removed === 0) return 0;
@@ -919,6 +956,28 @@ export function splitProfileMods(profile: Profile): { present: string[]; missing
   const missing: string[] = [];
   for (const id of profile.loadOrder) {
     (getMod(id) ? present : missing).push(id);
+  }
+  return { present, missing };
+}
+
+/**
+ * `splitProfileMods` for a profile that is NOT active: the same split, judged
+ * against the list read from THAT profile's own directory rather than the
+ * active profile's registry, which knows nothing about it.
+ */
+export function splitProfileModsAgainst(
+  profile: Profile,
+  listed: ReadonlyArray<{ id: string; slug: string }>,
+): { present: string[]; missing: string[] } {
+  const onDisk = new Set<string>();
+  for (const m of listed) {
+    onDisk.add(m.id);
+    onDisk.add(m.slug);
+  }
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const id of profile.loadOrder) {
+    (onDisk.has(id) ? present : missing).push(id);
   }
   return { present, missing };
 }

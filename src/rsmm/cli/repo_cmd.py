@@ -29,7 +29,7 @@ def _load_repos() -> list[str]:
         return []
     try:
         return list(json.loads(REPOS_FILE.read_text(encoding="utf-8")).get("urls", []))
-    except Exception:
+    except (OSError, ValueError, AttributeError):   # unreadable, bad JSON, not an object
         return []
 
 

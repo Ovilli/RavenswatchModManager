@@ -1,0 +1,3039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Item &amp; Talent Editor</title>
+<style>{{common.css}}</style>
+<style>
+html.embedded .tab { display: none; }
+/* Inside `rsmm editor` or the web editor the host's own bar names the tab,
+   and this page's header would be an empty strip. */
+html.embedded body > header { display: none; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink);
+       display: grid; grid-template: "top top" auto "left main" 1fr "left bar" auto / 280px 1fr; height: 100vh; }
+header { grid-area: top; display: flex; gap: 14px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0 10px 0 0; }
+textarea { width: 100%; resize: vertical; min-height: 58px; }
+.tab { border: none; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); }
+.tab.on { border-bottom-color: var(--accentline); color: var(--ink); font-weight: 600; }
+code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
+#left { grid-area: left; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
+#left .filters { padding: 10px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+#left .filters input, #left .filters select { width: 100%; }
+#list { overflow: auto; padding: 6px; flex: 1; }
+.pick { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+.pick:hover { background: var(--chip); } .pick.on { background: var(--accent); color: var(--onaccent); }
+.pick .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .sub { font-size: 12px; opacity: .7; margin-left: auto; flex: none; }
+.pick img, .ico { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.ico { border-radius: 6px; background: var(--chip); }
+#main { grid-area: main; overflow: auto; padding: 16px 22px 30px; min-width: 0; }
+.wrap { max-width: 900px; }
+.wrap:has(.split) { max-width: 1320px; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start; }
+.split > aside { position: sticky; top: 0; }
+@media (max-width: 1280px) { .split { grid-template-columns: minmax(0, 1fr); } .split > aside { position: static; order: -1; } }
+.help { background: var(--accentbg); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.head { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.head img { width: 64px; height: 64px; object-fit: contain; }
+.head h2 { margin: 0; font-size: 20px; }
+.sect { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 20px 0 8px; }
+.form { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: start; }
+.form label { padding-top: 6px; font-weight: 600; }
+.form input, .form select { width: 100%; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.hint.bad, .tiny.bad { color: var(--bad); }
+.own { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.own .ownimg { width: 48px; height: 48px; object-fit: contain; border-radius: 6px; background: var(--chip); }
+.own span { font-size: 12px; color: var(--muted); max-width: 360px; }
+.tsrc .own { margin: 0 6px 0 0; }
+.upbtn { display: inline-block; cursor: pointer; border: 1px dashed var(--line); border-radius: 7px; padding: 4px 10px; font-size: 13px; background: var(--panel); }
+.upbtn:hover, .upbtn:focus-visible { border-color: var(--accentline); color: var(--accentink); }
+.icons { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px; overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.icons button { padding: 2px; border-radius: 6px; }
+.icons button.on { border-color: var(--accentline); background: var(--accentbg); }
+.icons img { width: 40px; height: 40px; display: block; }
+.row { display: grid; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; }
+.row:nth-child(odd) { background: var(--panel); }
+.row.changed { border-color: var(--accentline); background: var(--accentbg); }
+.row .lbl { font-weight: 600; word-break: break-word; }
+.row .was { font-size: 12px; color: var(--muted); text-align: right; }
+.row input[type=number] { width: 100%; }
+.tag { font-size: 11px; border-radius: 5px; padding: 0 5px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
+.tag.shadow { background: var(--warnbg); color: var(--warn); }
+.tag.type { background: var(--chip); color: var(--muted); }
+.tag.super { background: var(--accentbg); color: var(--accentink); }
+.row { grid-template-columns: 1fr 110px 130px 26px; }
+.row.stat { grid-template-columns: 1fr 150px 240px 26px; }
+.reset { visibility: hidden; border: none; background: none; padding: 0 4px; color: var(--muted); font-size: 15px; line-height: 1; }
+.reset:hover { color: var(--accentink); }
+.changed > .reset, .changed .reset.own, label .reset.on, .grant .reset.on { visibility: visible; }
+.form label { display: flex; align-items: center; gap: 2px; }
+.pickbox { position: relative; }
+.pickbox input { width: 100%; }
+.picklist { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 2px); max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 4px; }
+.picklist .grp { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px 2px; }
+.picklist .opt { padding: 4px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; }
+.picklist .opt .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.picklist .opt .aka { font-size: 11px; color: var(--muted); }
+.picklist .opt.off { opacity: .5; cursor: not-allowed; }
+.picklist .opt.off:hover { background: none; }
+.picklist .opt.on, .picklist .opt:hover { background: var(--accentbg); }
+.picklist .none { padding: 6px 8px; color: var(--muted); }
+.card { background: #1c1b1a; color: #ecebe6; border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 56px 1fr; gap: 4px 12px; max-width: 520px; box-sizing: border-box; }
+.card .ci img, .card .ci .ico { width: 56px; height: 56px; }
+.card .ct { font-weight: 700; font-size: 16px; }
+.card .cr { font-size: 12px; opacity: .6; }
+.card .cd, .card .cs { grid-column: 1 / -1; white-space: pre-wrap; }
+.card .cs { border-top: 1px solid rgba(255,255,255,.12); padding-top: 6px; margin-top: 4px; }
+.card .cs .sl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #f2c14e; display: block; }
+.kw { color: #f2c14e; font-weight: 600; }
+.val { color: #7ee08a; font-weight: 600; }
+.neg { color: #ff7a7a; font-weight: 600; }
+.ph { border-bottom: 1px dotted currentColor; cursor: help; }
+.legend { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 520px; }
+.legend div { padding: 1px 0; }
+.legend b { color: var(--ink); font-weight: 600; }
+/* The compendium card, drawn with the game's own textures and bitmap fonts.
+   Colours are the ones Item_Description_Model sets: text #ede9c1, the markup
+   palette (#f9f6c4 keyword, #1cd92a number, #ff5e5e drawback), one name
+   colour per rarity. */
+.gcard { position: relative; color: #ede9c1; padding: 20px 22px 18px; background: var(--back) center / cover no-repeat; max-width: 520px; box-sizing: border-box; }
+.gcard::after { content: ""; position: absolute; inset: 0; pointer-events: none; border: 20px solid transparent; border-image: var(--frame) 40 / 20px stretch; }
+.gcard .kw { color: #f9f6c4; font-weight: normal; }
+.gcard .val { color: #1cd92a; font-weight: normal; }
+.gcard .neg { color: #ff5e5e; font-weight: normal; }
+.gc-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.gc-icon { position: relative; width: 66px; height: 66px; flex: none; }
+.gc-icon > * { position: absolute; }
+.gc-icon .bg { inset: 11%; width: 78%; height: 78%; }
+.gc-icon .it, .gc-icon .ico { inset: 12%; width: 76%; height: 76%; }
+.gc-icon .fr { inset: 0; width: 100%; height: 100%; }
+.gc-name { color: var(--rarity); }
+.gc-plate { display: inline-block; margin-top: 3px; padding: 3px 14px 1px; background: var(--plate) center / 100% 100% no-repeat; color: var(--rarity); }
+.gc-super { position: relative; margin-top: 10px; padding: 9px 12px 8px; background: var(--sbg) center / 100% 100% no-repeat; }
+.gc-super::before, .gc-super::after { content: ""; position: absolute; width: 60%; height: 100%; background: var(--sborder) left top / 100% 100% no-repeat; pointer-events: none; }
+.gc-super::before { left: 0; top: 0; }
+.gc-super::after { right: 0; bottom: 0; transform: rotate(180deg); }
+.gc-slabel { display: block; color: #f9f6c4; margin-bottom: 2px; }
+.gw { display: inline-block; white-space: nowrap; }
+.g { display: inline-block; position: relative; vertical-align: top; }
+.g > i { position: absolute; background: currentColor; -webkit-mask: var(--atlas) no-repeat; mask: var(--atlas) no-repeat; -webkit-mask-size: var(--msize); mask-size: var(--msize); }
+.wrap:has(.tpage) { max-width: 1320px; }
+.gc-icon.sq .bg { inset: 6%; width: 88%; height: 88%; }
+.gc-icon.sq .it, .gc-icon.sq .ico { inset: 14%; width: 72%; height: 72%; }
+.thead { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.thead .portrait, .thead > .ico { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; background: var(--chip); flex: none; }
+.thead h2 { margin: 0; font-size: 22px; }
+.tname { flex: 1; min-width: 0; }
+.tprefix { display: flex; flex-direction: column; gap: 2px; }
+.tprefix input { width: 190px; }
+.ttools { position: sticky; top: -16px; z-index: 5; display: flex; gap: 10px; align-items: center; padding: 8px 0; background: var(--bg); margin-bottom: 6px; }
+.ttools input[type=search] { flex: 1; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: #1c1b1a; color: var(--rc, #f4f3ef); font-weight: 600; }
+.tgrid { display: grid; gap: 12px; }
+.tcard { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel); align-items: start; }
+.tcard.changed { border-color: var(--accentline); }
+.tside { display: grid; gap: 6px; min-width: 0; }
+.tside input, .tside textarea { width: 100%; box-sizing: border-box; }
+.tside .sect { margin: 8px 0 2px; }
+.sectrow { display: flex; align-items: center; justify-content: space-between; }
+.linkbtn { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--accentline, var(--ink)); cursor: pointer; text-decoration: underline; }
+.linkbtn:hover { color: var(--ink); }
+.tsrc { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+.tsrc span { flex: 1; }
+.tnums { display: grid; gap: 4px; }
+.tnums .row { padding: 4px 8px; }
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) repeat(4, 76px) 26px; gap: 6px; align-items: end; padding: 4px 8px; border-radius: 8px; background: var(--bg); }
+.trow .lbl { font-weight: 600; word-break: break-word; align-self: center; }
+.tier { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 1px; }
+.tier input { width: 100%; box-sizing: border-box; padding: 3px 6px; }
+.tier input.on { box-shadow: 0 0 0 2px var(--gilt); }
+.tier input.ed { background: var(--accentbg); }
+.trow .reset.on { visibility: visible; }
+.tnote { font-size: 12px; color: var(--muted); padding: 2px 8px; }
+.addstat .secs { width: 5em; }
+.addstat { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 6px; }
+.addstat .sectrow .pickbox { flex: 1; min-width: 0; }
+.addnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.addnums label { display: grid; gap: 2px; }
+.addnums input { width: 100%; min-width: 0; }
+.addpct { display: flex; align-items: center; gap: 6px; }
+.rebuild { padding: 6px 8px; border-radius: 6px; background: var(--chip); }
+.tcard.rebuilt .rebuild { outline: 1px solid var(--accent, #c33); }
+.addpct input { width: auto; margin: 0; }
+.phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
+details.allv { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel); }
+details.allv > summary { cursor: pointer; font-weight: 600; }
+/* The custom-talent builder. */
+.tb-promo { display: flex; gap: 16px; align-items: center; padding: 12px 16px; margin-bottom: 12px; border-radius: 12px; background: var(--accentbg); border: 1px solid var(--line); }
+.tb-promotext { flex: 1; display: grid; gap: 2px; }
+.tb-promotext span { font-size: 13px; color: var(--muted); }
+.tb-promo button { flex: none; }
+.tb-rowbtn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tb-rowbtn.on > button:first-child { border-color: var(--accentline); color: var(--accentink); }
+.tbuild h3 { margin: 18px 0 6px; font-size: 15px; }
+.tbuild .thead .linkbtn { font-size: 13px; }
+.tb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.tb-tile { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; padding: 8px; }
+.tb-tile .ico { grid-row: 1 / 3; width: 40px; height: 40px; }
+.tb-tile .n { font-weight: 600; overflow-wrap: anywhere; }
+.tb-tile .s { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.tb-tile.on { border-color: var(--accentline); background: var(--accentbg); }
+.tb-tile[disabled] { opacity: .45; cursor: not-allowed; }
+.tb-grid { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 24px; align-items: start; }
+.tb-left { position: sticky; top: 0; display: grid; gap: 10px; justify-items: start; }
+.tb-card { width: 100%; }
+.tb-segrow { display: flex; gap: 8px; align-items: center; }
+.tb-right { display: grid; gap: 8px; min-width: 0; }
+.tb-right > input, .tb-right > textarea { width: 100%; box-sizing: border-box; }
+.tb-right > h3:first-child { margin-top: 0; }
+.tb-iconrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tb-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 10px; }
+.tb-palette, .tb-recipes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.tb-block, .tb-recipe { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 10px; }
+.tb-block .t, .tb-recipe .t { font-weight: 600; }
+.tb-block .b, .tb-recipe .b { font-size: 12px; color: var(--muted); }
+.tb-block[disabled] { opacity: .45; cursor: not-allowed; }
+.tb-recipe { border-style: dashed; }
+.tb-palette.wish .tb-block { background: var(--bg); border-style: dashed; }
+.tb-palette.wish .tb-block .b { font-style: italic; }
+.tb-borrow { padding: 8px; border-radius: 8px; background: var(--chip); }
+.tb-include { display: grid; gap: 6px; }
+.tb-incnums:not(:empty) { display: grid; gap: 4px; padding: 6px 8px; border-left: 2px solid var(--line); }
+.tb-idea { margin-top: 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--accentline); background: var(--panel); display: grid; gap: 8px; }
+.tb-idea h3 { margin: 0; }
+.tb-idea p { margin: 0; }
+.tb-idea textarea { width: 100%; box-sizing: border-box; }
+.tb-ideabtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+a.btnlike { display: inline-block; text-decoration: none; border: 1px solid var(--line); border-radius: 7px; padding: 5px 12px; color: inherit; background: var(--panel); }
+a.btnlike.primary { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
+a.btnlike.off { opacity: .5; pointer-events: none; }
+@media (max-width: 1000px) { .tb-grid { grid-template-columns: minmax(0, 1fr); } .tb-left { position: static; } .tb-promo { flex-direction: column; align-items: stretch; } }
+@media (max-width: 1150px) { .tcard { grid-template-columns: minmax(0, 1fr); } .trow { grid-template-columns: minmax(0, 1fr) repeat(4, 64px) 26px; } }
+.mini { background: #1c1b1a; color: #ecebe6; border-radius: 8px; padding: 6px 10px; font-size: 13px; white-space: pre-wrap; }
+.mini .t { font-weight: 700; display: block; }
+.draft { display: flex; gap: 10px; align-items: center; background: var(--warnbg); color: var(--warn); border-radius: 10px; padding: 6px 12px; margin-bottom: 10px; font-size: 13px; }
+.draft button { padding: 2px 8px; font-size: 12px; }
+.headacts { margin-left: auto; }
+.pick .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+details.file { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--bg); }
+details.file > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
+details.file > summary span { font-weight: 400; }
+details.file .rows { padding: 0 6px 8px; }
+.cardbox { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel); }
+.cardbox.changed { border-color: var(--accentline); }
+.cardbox .src { font-size: 12px; color: var(--muted); }
+.cardbox input { width: 100%; margin: 6px 0; font-weight: 600; }
+.loading { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 40px 20px; color: var(--muted); }
+.loading.small { padding: 20px; justify-content: flex-start; }
+.spin { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#bar .left { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+#pending { display: flex; flex-wrap: wrap; gap: 6px; }
+#pending:empty { display: none; }
+.pchip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; padding: 0 2px 0 10px; }
+.pchip.open { border-color: var(--accentline); }
+.resetall { font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--bad); color: var(--bad); background: transparent; cursor: pointer; }
+.resetall:hover { background: var(--bad); color: var(--bg); }
+.pchip.bad { border-color: var(--bad); color: var(--bad); }
+.pchip button { border: none; background: none; padding: 2px 6px; font-size: 12px; }
+.pchip .x { color: var(--muted); font-size: 14px; line-height: 1; }
+.pchip .x:hover { color: var(--bad); }
+.errs div { color: var(--bad); font-size: 12px; }
+.row.stat .statnote { grid-column: 1 / -1; margin: 2px 0 0; }
+.effect { border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin: 6px 0; background: var(--panel); }
+.effect .row:nth-child(odd) { background: none; }
+.effect > .row:not(.stat) { margin-left: 18px; }
+#bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
+#bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
+#bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
+#bar .acts .line { display: flex; gap: 6px; }
+#bar .acts .line > * { flex: 1; }
+#status { grid-column: 1 / -1; font-size: 13px; }
+.st-ok { color: var(--ok); } .st-bad { color: var(--bad); } .st-warn { color: var(--warn); }
+.results div { padding: 2px 0; }
+.empty { padding: 30px; text-align: center; color: var(--muted); }
+.grant { display: grid; grid-template-columns: 1fr 120px 26px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.blockly-host { height: max(380px, calc(100vh - 360px)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 8px; }
+body.wide .blockly-host { height: max(420px, calc(100vh - 190px)); }
+.blockly-warn { margin-top: 6px; }
+.wrap.blocks { max-width: none; }
+.blocksbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.blocksbar .grow { flex: 1; }
+.blockshelp { margin-top: 8px; } .blockshelp summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+body.wide { grid-template-columns: 0 1fr; }
+body.wide #left { display: none; }
+body.wide #main { padding: 10px 14px 14px; }
+body.wide #bar pre { display: none; }
+body.wide #bar { max-height: none; }
+.openline { display: flex; gap: 6px; } .openline select { flex: 1; min-width: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Item &amp; Talent Editor</h1>
+  <button class="tab" data-tab="items">Items</button>
+  <button class="tab" data-tab="talents">Talents</button>
+  <button class="tab" data-tab="scripts">Scripts</button>
+</header>
+
+<aside id="left">
+  <div class="filters">
+    <input id="q" type="search" placeholder="Search">
+    <select id="rarity"><option value="">All rarities</option></select>
+  </div>
+  <div id="list"></div>
+</aside>
+
+<main id="main"><div class="wrap" id="view"><div class="empty">Loading…</div></div></main>
+
+<section id="bar">
+  <div class="left">
+    <div id="pending" aria-label="Everything changed so far"></div>
+    <pre id="toml" class="muted">Pick something on the left to start.</pre>
+  </div>
+  <div class="acts">
+    <div class="line"><button id="check">Check</button><button id="copy">Copy</button></div>
+    <div class="openline"><select id="mod"></select><button id="open" type="button" title="Open this mod to keep working on it">Open</button></div>
+    <button id="import" type="button" hidden title="Bring a mod you saved before back into the editor">Open a mod folder…</button>
+    <input id="importdir" type="file" hidden>
+    <button id="save" class="primary">Add to mod</button>
+    <div class="tiny muted">Nothing touches the game until you run <code>rsmm apply</code>.</div>
+  </div>
+  <div id="status" class="muted"></div>
+</section>
+
+{{newmod.html}}
+
+<script>{{common.js}}</script>
+<script>
+"use strict";
+// The tab to open on: named by the web editor's host (a srcdoc frame has no
+// query), else by ?tab= in `rsmm editor`, else Items.
+const START_TAB = window.RSMM_TAB || new URLSearchParams(location.search).get("tab") || "items";
+const $ = s => document.querySelector(s);
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "text") e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+const get = (url) => api(url);
+const post = (url, body) => api(url, body);
+// Icons are fetched rather than linked, so they reach the API the same way
+// every other request does: over HTTP locally, through the in-browser engine
+// on the docs site. Each is fetched once.
+const iconUrls = new Map();
+function iconUrl(stem) {
+  if (!iconUrls.has(stem)) {
+    iconUrls.set(stem, fetch("api/icon?stem=" + encodeURIComponent(stem))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null));
+  }
+  return iconUrls.get(stem);
+}
+function iconImg(stem, cls) {
+  const hole = el("span", { class: "ico" });
+  if (!stem) return hole;
+  iconUrl(stem).then(url => {
+    if (!url) return;
+    const img = el("img", { src: url, alt: "" });
+    if (cls) img.className = cls;
+    hole.replaceWith(img);
+  });
+  return hole;
+}
+function status(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "muted"; }
+function fmt(v) { return typeof v === "number" ? String(Math.round(v * 10000) / 10000) : String(v); }
+
+// Per-viewer drafts. Storage can be missing or throw (a private window, a
+// sandboxed frame), and the page must work the same without it.
+const store = {
+  get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* no storage */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* no storage */ } },
+  keys(prefix) { try { return Object.keys(localStorage).filter(k => k.startsWith(prefix)); } catch { return []; } },
+};
+const DRAFT = { items: "rsmm.editor.draft.item.", talents: "rsmm.editor.draft.talent." };
+
+// The game's card markup: #word@ is a highlighted keyword, &value~ a number
+// (it scales with rarity), $word* a drawback, {N} a value the game fills in. `fill(n, next)` renders
+// {N}; `next` is the character after it, so a fraction before "%" can show as one.
+// Opening mark -> [closing mark, class]: the game's three text styles.
+const MARKUP = { "#": ["@", "kw"], "&": ["~", "val"], "$": ["*", "neg"] };
+// "{}" with no number takes the next value in order, as in "cooldown by &{}%~".
+function markup(text, fill) {
+  let next = 0;
+  return markupRuns(text.replace(/\{\}/g, () => "{" + next++ + "}"), fill);
+}
+function markupRuns(text, fill) {
+  const frag = document.createDocumentFragment();
+  let i = 0, plain = "";
+  const flush = () => { if (plain) { frag.append(plain); plain = ""; } };
+  while (i < text.length) {
+    const c = text[i];
+    if (MARKUP[c]) {
+      const close = text.indexOf(MARKUP[c][0], i + 1);
+      if (close > i) {
+        flush();
+        const span = el("span", { class: MARKUP[c][1] });
+        span.append(markupRuns(text.slice(i + 1, close), fill));
+        frag.append(span); i = close + 1; continue;
+      }
+    }
+    if (c === "{") {
+      const m = /^\{(\d+)\}/.exec(text.slice(i));
+      if (m) { flush(); frag.append(fill(Number(m[1]), text[i + m[0].length] || "")); i += m[0].length; continue; }
+    }
+    plain += c; i++;
+  }
+  flush();
+  return frag;
+}
+// Your own icon: any image the browser can read, scaled to `size` square
+// (transparent margins keep its shape) and kept as a PNG data URL, which is
+// what the page sends and what a draft stores.
+function readIcon(file, size) {
+  return new Promise((ok, bad) => {
+    if (!file || !/^image\//.test(file.type)) { bad(new Error("pick an image file (PNG works best)")); return; }
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas"); c.width = c.height = size;
+      const k = Math.min(size / img.width, size / img.height), w = img.width * k, h = img.height * k;
+      c.getContext("2d").drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      URL.revokeObjectURL(url); ok(c.toDataURL("image/png"));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("that file is not an image this browser can read")); };
+    img.src = url;
+  });
+}
+// The page may show images from blob: URLs only, so an uploaded icon is shown
+// through one made from its data URL (once per upload).
+const uploadUrls = new Map();
+function uploadUrl(dataUrl) {
+  if (!uploadUrls.has(dataUrl)) {
+    const bin = atob(dataUrl.split(",", 2)[1] || ""), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    uploadUrls.set(dataUrl, URL.createObjectURL(new Blob([bytes], { type: "image/png" })));
+  }
+  return uploadUrls.get(dataUrl);
+}
+function uploadImg(dataUrl, cls) { return el("img", { class: cls || "", alt: "", src: uploadUrl(dataUrl) }); }
+// "Upload your own" as a button: a hidden file input behind a label.
+function uploadButton(text, size, onicon) {
+  const inp = el("input", { type: "file", accept: "image/png,image/*", hidden: "" });
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0];
+    inp.value = "";
+    if (!file) return;
+    try { onicon(await readIcon(file, size)); status(""); }
+    catch (e) { status(e.message, "st-bad"); }
+  };
+  return el("label", { class: "upbtn", tabindex: "0", onkeydown: ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); inp.click(); } } }, text, inp);
+}
+function resetBtn(onclick, title) {
+  return el("button", { class: "reset", type: "button", title: title || "Undo this change", onclick }, "↺");
+}
+
+// A row's remove button: always shown, unlike the undo arrow that waits for a change.
+function removeBtn(onclick) {
+  return el("button", { class: "reset on", type: "button", title: "Remove", "aria-label": "Remove", onclick }, "\u2715");
+}
+
+// ---- state ------------------------------------------------------------------
+const S = {
+  tab: ["talents", "scripts"].includes(START_TAB) ? START_TAB : "items",
+  items: [], icons: [], stats: [], heroes: [], mods: [], modTags: [], portraits: {},
+  drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
+  restored: "",      // the tab whose open edit came from a draft
+  item: null,     // detail of the chosen base
+  itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
+  hero: null, talents: null,
+  talentEdit: { prefix: "", values: {}, cards: {} },   // values key: file + "\u0000" + label
+  script: null, scriptSaved: "",   // the Scripts tab's test grants, and what the mod holds
+  program: null, programSaved: "", // the Scripts tab's block program (Blockly's saved state), and what the mod holds
+  scriptMode: "grants",            // which half of the Scripts tab is open: grants | blocks
+  wide: false, ws: null, programWarn: [],       // the live Blockly workspace, and the compiler's notes on the program
+  loaded: null,   // the opened mod: {id, name, entries: {tab \0 key: {blocks, json}}}
+};
+
+// ---- tabs + left list ----------------------------------------------------------
+function setTab(t) {
+  if (t !== S.tab) pickSeq++;     // a pick still loading belongs to the tab being left
+  saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
+  S.tab = t;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("#rarity").hidden = t !== "items";
+  $("#q").hidden = t === "scripts";
+  $("#q").value = "";
+  renderList(); renderView(); refresh();
+}
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+$("#q").oninput = renderList;
+$("#rarity").onchange = renderList;
+
+function renderList() {
+  const list = $("#list"); list.textContent = "";
+  const q = $("#q").value.toLowerCase();
+  if (S.tab === "items") {
+    const r = $("#rarity").value;
+    const rows = S.items.filter(i => (!r || i.rarity === r) && (!q || (i.name + " " + i.id).toLowerCase().includes(q)));
+    if (!rows.length) list.append(el("div", { class: "empty", text: S.items.length ? "No match." : "No items found. Is the game install readable?" }));
+    for (const i of rows) {
+      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
+        iconImg(i.icon), el("span", { class: "nm", text: i.name }),
+        S.drafts.items.has(i.id) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null,
+        el("span", { class: "sub", text: i.rarity })));
+    }
+  } else if (S.tab === "scripts") {
+    list.append(el("div", { class: "empty", text: "Test grants are set on the right. They go into whichever mod you save to." }));
+  } else {
+    if (!S.heroes.length) list.append(el("div", { class: "empty", text: "No heroes found. Is the game install readable?" }));
+    for (const h of S.heroes.filter(h => !q || h.toLowerCase().includes(q))) {
+      list.append(el("div", { class: "pick" + (S.hero === h ? " on" : ""), onclick: () => pickHero(h) },
+        heroImg(h, S.portraits[h]), el("span", { class: "nm", text: h.replace(/_/g, " ") }),
+        S.drafts.talents.has(h) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null));
+    }
+  }
+}
+
+// ---- items ------------------------------------------------------------------------
+// The newest pick and the tab it was made on. A slow answer for an earlier pick,
+// or for a tab the user has since left, must not overwrite what is on screen.
+let pickSeq = 0;
+const stale = (me, tab) => me !== pickSeq || S.tab !== tab;
+async function pickItem(id) {
+  const meta = S.items.find(i => i.id === id), me = ++pickSeq;
+  $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
+  let got;
+  try { got = await get("api/item?id=" + encodeURIComponent(id)); }
+  catch (e) { if (!stale(me, "items")) { status(e.message, "st-bad"); renderView(); } return; }
+  if (stale(me, "items")) return;
+  S.item = got;
+  const draft = store.get(DRAFT.items + id);
+  S.restored = draft ? "items" : "";
+  // A draft from before the switch existed was a copy.
+  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {});
+  renderList(); renderView(); refresh();
+}
+function freshItemEdit() {
+  // "replace" changes the shipped item itself; "clone" makes a new one beside it.
+  return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
+    autoDesc: false, autoSuper: false, textMiss: [] };
+}
+function itemChanged(E) {
+  return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
+    || Object.keys(E.values).length || Object.keys(E.stats).length);
+}
+function talentChanged(E) {
+  return !!(Object.keys(E.values).length || Object.keys(E.cards).length
+    || Object.keys(E.tiers || {}).length || Object.keys(E.stats || {}).length
+    || Object.keys(E.addStats || {}).length || Object.keys(E.rebuild || {}).length
+    || Object.keys(E.include || {}).length || Object.keys(E.scale || {}).length
+    || Object.keys(E.onHit || {}).length);
+}
+// Keep (or drop) the open edit's draft; called on every change.
+function saveDraft() {
+  if (S.tab === "scripts") return;
+  const items = S.tab === "items";
+  const id = items ? S.item && S.item.id : S.hero;
+  if (!id) return;
+  const E = items ? S.itemEdit : S.talentEdit, set = S.drafts[S.tab];
+  const had = set.has(id);
+  if (items ? itemChanged(E) : talentChanged(E)) {
+    const payload = editPayload();
+    store.set(DRAFT[S.tab] + id, Object.assign({}, E, { payload }));
+    S.pending[S.tab].set(id, payload); set.add(id);
+  } else { store.del(DRAFT[S.tab] + id); S.pending[S.tab].delete(id); set.delete(id); }
+  if (had !== set.has(id)) renderList();
+}
+function loadingView(text, small) {
+  return el("div", { class: "loading" + (small ? " small" : ""), role: "status" }, el("span", { class: "spin" }), el("span", { text }));
+}
+
+// ---- every pending change -----------------------------------------------------------
+// Each changed item and hero is kept with the payload it sends, so the bar shows
+// and saves all of them together, not only the one that is open. Kept in memory
+// always and in the browser as a draft where it can be.
+S.pending = { items: new Map(), talents: new Map() };
+function pendingName(tab, id) {
+  if (tab === "items") {
+    const name = (S.items.find(i => i.id === id) || {}).name || id;
+    const edit = S.pending.items.get(id) || (isOpen(tab, id) && editPayload());
+    return edit && edit.mode === "clone" ? name + " (copy)" : name;
+  }
+  return id.replace(/_/g, " ") + " talents";
+}
+function pendingEdits() {
+  const out = [];
+  for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
+    out.push({ tab, id, edit, name: pendingName(tab, id) });
+  }
+  // The open item shows before it has a change: its block alone makes the copy.
+  // A replacement with nothing changed writes nothing.
+  if (S.tab === "items" && S.item && S.itemEdit.mode === "clone" && !S.pending.items.has(S.item.id)) {
+    out.unshift({ tab: "items", id: S.item.id, edit: editPayload(), name: pendingName("items", S.item.id) });
+  }
+  return out;
+}
+function isOpen(tab, id) { return tab === S.tab && id === (tab === "items" ? S.item && S.item.id : S.hero); }
+function dropPending(tab, id) {
+  store.del(DRAFT[tab] + id); S.pending[tab].delete(id); S.drafts[tab].delete(id);
+  if (isOpen(tab, id)) {
+    if (tab === "items") S.itemEdit = freshItemEdit(); else S.talentEdit = freshTalentEdit();
+    S.restored = ""; renderView();
+  }
+  renderList(); refresh();
+}
+// Inside the editor's shell every tab is its own frame with its own tab bar hidden,
+// so a chip for another tab must move the shell, not turn this frame into that tab.
+function elsewhere(tab) {
+  if (!document.documentElement.classList.contains("embedded") || tab === START_TAB) return false;
+  try { window.top.location.hash = "#" + tab; return true; } catch { return false; }
+}
+async function openPending(tab, id) {
+  if (elsewhere(tab)) return;
+  if (tab !== S.tab) setTab(tab);
+  if (tab === "items") await pickItem(id); else await pickHero(id);
+}
+function renderPending(edits, errors) {
+  tellShell();
+  const box = $("#pending"); box.textContent = "";
+  const bad = new Set((errors || []).map(e => e.name));
+  const grants = scriptChanged(), prog = programChanged(), abil = abilityPending();
+  const total = resetCount(edits);
+  if (!total) return;
+  // One button for all of it: every item, hero, test grant and block change at once.
+  const everything = el("button", { type: "button", class: "resetall", title: "Drop every change in every tab, back to what the game ships",
+    onclick: resetEverything }, total > 1 ? `Reset everything (${total} changes)` : "Reset everything");
+  if (total < 2 && !bad.size) { box.append(everything); return; }
+  for (const e of edits) {
+    const chip = el("span", { class: "pchip" + (isOpen(e.tab, e.id) ? " open" : "") + (bad.has(e.name) ? " bad" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => openPending(e.tab, e.id) }, e.name));
+    if (S.pending[e.tab].has(e.id)) {
+      chip.append(el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop " + e.name, onclick: () => dropPending(e.tab, e.id) }, "×"));
+    }
+    box.append(chip);
+  }
+  if (abil) {
+    box.append(el("span", { class: "pchip" },
+      el("button", { type: "button", title: "Open it", onclick: () => { try { window.top.location.hash = "#abilities"; } catch {} } },
+        `${abil.hero.replace(/_/g, " ")} abilities (${abil.steps.length})`)));
+  }
+  if (grants) {
+    box.append(el("span", { class: "pchip" + (S.tab === "scripts" ? " open" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => { if (!elsewhere("scripts")) setTab("scripts"); } }, "Test grants"),
+      el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the test grants",
+        onclick: () => { S.script = JSON.parse(S.scriptSaved); saveScript(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
+  }
+  if (prog) {
+    box.append(el("span", { class: "pchip" + (S.tab === "scripts" && S.scriptMode === "blocks" ? " open" : "") },
+      el("button", { type: "button", title: "Open it", onclick: () => { if (elsewhere("scripts")) return; S.scriptMode = "blocks"; if (S.tab === "scripts") renderView(); else setTab("scripts"); } }, "Blocks"),
+      el("button", { type: "button", class: "x", title: "Drop these changes", "aria-label": "Drop the block changes",
+        onclick: () => { S.program = JSON.parse(S.programSaved); saveProgram(); if (S.tab === "scripts") renderView(); refresh(); } }, "×")));
+  }
+  box.append(everything);
+}
+// What "Reset everything" would drop. Test grants and blocks count when they differ
+// from the opened mod's OR are not empty: a mod's own grants are reset too.
+function resetCount(edits) {
+  const grants = scriptChanged() || scriptNorm(S.script) !== NO_GRANTS;
+  const prog = programChanged() || programUsed();
+  return edits.length + (grants ? 1 : 0) + (prog ? 1 : 0) + (abilityPending() ? 1 : 0);
+}
+// "Actually reset everything": the per-view Reset all only undoes the item or hero
+// that is open; this drops every pending change in every tab, back to what the game
+// ships. Test grants and blocks are EMPTIED, not put back to the opened mod's: going
+// back to the mod's copy kept a mod's item grant, so a reset still handed the item
+// out (saving then takes the editor's init.lua section out).
+function resetEverything() {
+  const edits = pendingEdits(), abil = abilityPending();
+  const n = resetCount(edits);
+  if (!n || !confirm(`Drop all ${n} change${n > 1 ? "s" : ""} in every tab (items, talents, abilities, test grants and blocks)? This cannot be undone.`)) return;
+  if (abil) { try { window.top.rsmmReset("abilities"); } catch {} }
+  for (const t of ["items", "talents"]) {
+    for (const id of [...S.pending[t].keys()]) store.del(DRAFT[t] + id);
+    S.pending[t].clear(); S.drafts[t].clear();
+  }
+  if (S.item) S.itemEdit = freshItemEdit();
+  if (S.hero) S.talentEdit = freshTalentEdit();
+  S.script = emptyScript(); saveScript();
+  S.program = emptyProgram(); saveProgram();
+  S.restored = "";
+  renderView(); renderList(); refresh();
+  flash("Every change dropped.", "muted");
+}
+
+// A message that answers a button press goes away by itself; any edit clears it too.
+let statusTimer = 0;
+function flash(text, cls, ms) {
+  status(text, cls);
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => status(""), ms || 5000);
+}
+
+function draftBanner(onDiscard) {
+  if (S.restored !== S.tab) return null;
+  return el("div", { class: "draft" }, el("span", { text: "Picked up your unfinished edit from last time." }),
+    el("button", { type: "button", onclick: onDiscard }, "Start over"));
+}
+function suggestId(base) {
+  // Same length as the base, and different from it.
+  const tail = base.slice(-2) === "_M" ? "_N" : "_M";
+  return base.length > 2 ? base.slice(0, -2) + tail : base;
+}
+
+function itemView() {
+  const it = S.item, E = S.itemEdit, v = el("div");
+  const replace = E.mode !== "clone";
+  v.append(el("div", { class: "help", text: replace
+    ? "Change a shipped item itself: its name, text, icon, values or the stats its effects give. The game's own item is replaced while the mod is on, and put back when it is off. Only what you change is written."
+    : "Copy a shipped item into a new one, next to the original. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
+  if (!it) { v.append(el("div", { class: "empty", text: "Pick an item on the left." })); return v; }
+  const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
+  const banner = draftBanner(resetAll);
+  if (banner) v.append(banner);
+  v.append(el("div", { class: "head" }, itemIcon(E, it),
+    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
+    el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item (other items and heroes keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this item"))));
+
+
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Replace the item or make a copy" });
+  for (const [mode, label, title] of [["replace", "Replace this item", "Change the shipped item itself"],
+    ["clone", "Make a copy", "Add a new item next to the shipped one"]]) {
+    seg.append(el("button", { type: "button", class: (replace ? "replace" : "clone") === mode ? "on" : "", title,
+      "aria-pressed": String((replace ? "replace" : "clone") === mode),
+      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } }, label));
+  }
+  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }), seg);
+  const f = el("div", { class: "form" });
+  const idHint = el("div", { class: "hint" });
+  const idIn = el("input", { value: E.id, spellcheck: "false" });
+  const checkId = () => {
+    const n = idIn.value.length, want = it.id.length;
+    idHint.textContent = n === want ? `${n} / ${want} characters` : `${n} / ${want} characters. The id must be exactly as long as the base's.`;
+    idHint.className = "hint" + (n === want && idIn.value !== it.id ? "" : " bad");
+  };
+  idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
+  checkId();
+  if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
+  const nameIn = el("input", { placeholder: it.name, value: E.name });
+  // A copy left with the base's name and icon cannot be told apart from the
+  // original in game: testers pick up the shipped item and see "no change".
+  const twin = el("div", { class: "hint bad" });
+  const checkTwin = () => { twin.textContent = !replace && !E.name.trim() && !E.icon && !E.iconUpload
+    ? `Your copy will look exactly like ${it.name} in game. Give it its own name (or icon) so you can tell which one you picked up.` : ""; };
+  nameIn.addEventListener("input", checkTwin); checkTwin();
+  f.append(textLabel("Name", nameIn, v => { E.name = v; }), el("div", {}, nameIn, twin));
+  const card = it.card || {};
+  const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
+  descIn.value = E.description;
+  f.append(textLabel("Description", descIn, v => { E.description = v; E.autoDesc = false; }), el("div", {}, descIn,
+    el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number, $word* marks a drawback. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
+  const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
+  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
+  rar.value = E.rarity;
+  rar.onchange = () => { E.rarity = rar.value; refresh(); };
+  if (!replace) f.append(el("label", { text: "Rarity" }), rar);
+  const icons = el("div", { class: "icons" });
+  for (const s of S.icons) {
+    const b = el("button", { class: !E.iconUpload && (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
+      E.icon = s === it.icon ? "" : s; E.iconUpload = ""; renderView(); refresh(); } }, iconImg(s));
+    icons.append(b);
+  }
+  const own = el("div", { class: "own" });
+  if (E.iconUpload) {
+    own.append(uploadImg(E.iconUpload, "ownimg"), el("span", { text: "Your own icon (192×192). It becomes a new texture named after the item." }),
+      el("button", { type: "button", onclick: () => { E.iconUpload = ""; renderView(); refresh(); } }, "Remove"));
+  }
+  own.append(uploadButton(E.iconUpload ? "Replace…" : "Upload your own icon…", 192, d => { E.iconUpload = d; E.icon = ""; renderView(); refresh(); }));
+  f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
+  v.append(f);
+
+  // One number row; the same edit state whichever section shows it.
+  const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
+    nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); if (after) after(); });
+  const byLabel = new Map(it.values.map(r => [r.label, r]));
+
+  // Each effect: the stat it gives, and right under it the number that sets
+  // how much, so changing the stat and its amount happen in one place.
+  v.append(el("div", { class: "sect", text: `Effects (${it.modifiers.length})` }));
+  if (!it.modifiers.length) v.append(el("div", { class: "muted", text: "This item has no stat effects." }));
+  else v.append(el("div", { class: "hint", style: "margin-bottom:6px", text: "Pick the stat each effect gives, and set how much under it. The amount keeps its old unit (0.05 crit chance is 5%), so change it when you change the stat." }));
+  const stats = el("div"), shown = new Set();
+  for (const m of it.modifiers) {
+    const row = statRow(m, E.stats[m.name], val => {
+      if (val === undefined) delete E.stats[m.name]; else E.stats[m.name] = val;
+      applyStatText();
+      renderView(); refresh();
+    });
+    const miss = (E.textMiss || []).includes(m.name);
+    if (miss) row.append(el("div", { class: "hint bad statnote", text: "The card text does not name this stat in a way the editor can swap. Write the new wording in the " + (m.super ? "super effect text" : "description") + " below." }));
+    const box = el("div", { class: "effect" }, row);
+    const a = m.amount || {}, r = a.label && byLabel.get(a.label);
+    if (r) {
+      shown.add(r.label);
+      const warn = el("div", { class: "hint bad", style: "margin:2px 0 6px 12px" });
+      const check = () => { warn.textContent = unitWarning(E.stats[m.name], E.values[r.label] ?? r.value, m.stat); warn.hidden = !warn.textContent; };
+      const nr = numRow(r, "Amount", check);
+      const others = (r.usedBy || []).filter(n => n !== m.name);
+      nr.querySelector(".lbl").append(el("span", { class: "tag type", text: a.label.endsWith(".amount") ? "own number" : r.label,
+        title: (a.via ? `Scaled by “${a.via}” in game (e.g. per object owned).` : "") + (others.length ? ` Also used by: ${others.join(", ")}.` : "") }));
+      check();
+      box.append(nr, warn);
+    } else {
+      box.append(el("div", { class: "hint", style: "margin:2px 0 6px 12px", text: a.via ? `Its amount is worked out by “${a.via}” in game, from no single number this editor can change.` : "This effect has no amount to change." }));
+    }
+    stats.append(box);
+  }
+  v.append(stats);
+
+  const rest = it.values.filter(r => !shown.has(r.label));
+  v.append(el("div", { class: "sect", text: `Other values (${rest.length})` }));
+  if (!rest.length) v.append(el("div", { class: "muted", text: "Every number this item has is under its effect above." }));
+  const rows = el("div");
+  for (const r of rest) rows.append(numRow(r));
+  v.append(rows);
+  if (it.superKey) {
+    v.append(el("div", { class: "sect", text: "Super effect text" }));
+    if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+      text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
+    const sup = el("textarea", { placeholder: it.superText || it.superKey });
+    sup.value = E.superDescription;
+    const f2 = el("div", { class: "form" });
+    f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
+      el("div", {}, sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
+    v.append(f2);
+  }
+  // The preview stays in view beside the form while values change below.
+  const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
+  return el("div", { class: "split" }, v, aside);
+}
+
+// A form label with an undo button for a free-text field.
+function textLabel(text, input, set) {
+  const btn = resetBtn(() => { input.value = ""; set(""); btn.classList.remove("on"); refresh(); });
+  const sync = () => btn.classList.toggle("on", input.value !== "");
+  input.addEventListener("input", () => { set(input.value); sync(); refresh(); });
+  sync();
+  return el("label", {}, text, btn);
+}
+
+// ---- card text that follows the stats ------------------------------------------------
+// How shipped cards name a stat: the word between #…@ on the card. Alternatives
+// are what shipped cards also use (Crit damage reads "Critical Hits"); one that
+// holds "@" also takes the words after the mark (Ace of Spades: "#ATTACK@ speed").
+const STAT_WORDS = {
+  "Attack power": ["DMG"], "Armour": ["ARMOR"], "Vitality": ["VITALITY"],
+  "Crit chance": ["Crit Chance"], "Crit damage": ["Crit Damage", "Critical Hits"],
+  "Move Speed Ratio": ["Move Speed"], "Shield": ["SHIELD"], "Strength": ["STRENGTH"],
+  "Basic Attack Speed": ["Attack Speed", "ATTACK@ speed"], "Regeneration": ["REGENERATION"],
+  "Healing effect": ["Healing"], "Life steal": ["Life Steal"],
+  "Attack power primary": ["POWER"], "Attack power secondary": ["SPECIAL"],
+  "Attack power defensive": ["DEFENSE"], "Attack power ultimate": ["ULTIMATE"],
+  "Crit chance primary": ["Crit Chance"], "Crit chance secondary": ["Crit Chance"],
+};
+function statWords(stat) { return STAT_WORDS[stat] || [stat]; }
+// Whole phrases shipped cards use for a stat, {N} standing for the styled number
+// (&+{0}%~). A swap rewrites the phrase, not just its word: Ace of Spades'
+// "#ATTACK@ deals &+{}%~ damage" becomes "#ATTACK@ speed &+{}%~", where a word
+// swap would leave "#Attack Speed@ deals … damage". The first one is what a
+// swap writes; the number keeps its own markup.
+const ABILITY = { primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE", ultimate: "ULTIMATE" };
+const STAT_PHRASES = {
+  "Attack power": ["#DMG@ {N}", "{N} #DMG@"],
+  "Attack power basic": ["#ATTACK@ deals {N} damage"],
+  "Basic Attack Speed": ["#ATTACK@ speed {N}", "#Attack Speed@ {N}"],
+  "Armour": ["#ARMOR@ {N}", "{N} #ARMOR@"], "Vitality": ["#VITALITY@ {N}", "{N} #VITALITY@"],
+  "Crit chance": ["#Crit Chance@ {N}", "Gain {N} #Crit Chance@"],
+  "Crit damage": ["#Critical Hits@ deal {N} damage", "Critical hits deal {N} damage"],
+  "Move Speed Ratio": ["Move Speed {N}", "{N} Move Speed"],
+  "Healing effect": ["{N} to any healing effect provided or received"],
+  "Shield increase": ["{N} to any #SHIELD@ applied or received"],
+  "Increase damage to boss": ["Deal {N} damage to bosses"],
+  "CD reduce dash": ["Reduces #DASH@'s cooldown by {N}"],
+  "Ability_Charge_Dash": ["#DASH@ gains {N} charge(s)"],
+};
+for (const [k, w] of Object.entries(ABILITY)) {
+  STAT_PHRASES["Attack power " + k] = ["#" + w + "@ deals {N} damage"];
+  STAT_PHRASES["CD reduce " + k] = ["Reduces #" + w + "@'s cooldown by {N}"];
+  STAT_PHRASES["Ability_Charge_" + k[0].toUpperCase() + k.slice(1)] = ["#" + w + "@ gains {N} charge(s)"];
+}
+for (const k of ["primary", "secondary"]) STAT_PHRASES["Crit chance " + k] = ["#" + ABILITY[k] + "@ has {N} #Crit Chance@"];
+// A phrase as a pattern: its text literal (any case), {N} capturing the number.
+function phraseRe(phrase) {
+  return new RegExp(phrase.split("{N}").map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(&[^~]*~)"), "i");
+}
+// `text` with `from`'s phrase rewritten as `to`'s, or null when no phrase of `from` is on it.
+function swapPhrase(text, from, to) {
+  const target = (STAT_PHRASES[to] || ["#" + statWords(to)[0] + "@ {N}"])[0];
+  for (const p of STAT_PHRASES[from] || []) {
+    const re = phraseRe(p);
+    if (re.test(text)) return text.replace(re, (_m, num) => target.replace("{N}", num));
+  }
+  return null;
+}
+// Rewrite the shipped card text for every changed stat: the old stat's #word@
+// becomes the new one's. Only a text you have not written yourself follows; a
+// stat whose word is not on the card is listed in E.textMiss for a note.
+function applyStatText() {
+  const it = S.item, E = S.itemEdit, card = it.card || {};
+  E.textMiss = [];
+  for (const [part, field, auto] of [["description", "description", "autoDesc"], ["super", "superDescription", "autoSuper"]]) {
+    if (!card[part]) continue;
+    const mine = E[field] && !E[auto];
+    if (mine) continue;
+    let text = card[part].text, changed = false;
+    for (const m of it.modifiers.filter(m => (part === "super") === m.super)) {
+      const to = E.stats[m.name];
+      if (!to) continue;
+      const swapped = swapPhrase(text, m.stat, to);
+      if (swapped !== null) { text = swapped; changed = true; continue; }
+      let hit = false;
+      for (const word of statWords(m.stat)) {
+        const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("#" + esc + (word.includes("@") ? "" : "@"), "i");
+        if (re.test(text)) { text = text.replace(re, "#" + statWords(to)[0] + "@"); hit = changed = true; break; }
+      }
+      if (!hit) E.textMiss.push(m.name);
+    }
+    E[field] = changed ? text : "";
+    E[auto] = changed;
+  }
+}
+
+// The icon the new item will have: an uploaded one, a picked one, or the base's.
+function itemIcon(E, it, cls) {
+  return E.iconUpload ? uploadImg(E.iconUpload, cls) : iconImg(E.icon || it.icon, cls);
+}
+
+// ---- card preview ---------------------------------------------------------------
+// What fills {N}: a plain value is shown as its (edited) number, a computed one
+// by what it is worked out from. The game may still scale a raw number (0.2 can
+// show as 20%), so the legend says which is which.
+function currentValue(label) {
+  const E = S.itemEdit, r = S.item.values.find(x => x.label === label);
+  if (!r) return undefined;
+  return E.values[label] !== undefined ? E.values[label] : r.value;
+}
+// What one {N} shows. A plain value is its (edited) number. A computed one
+// (a "Multi values operations" node) is worked out in game from the values it
+// reads, times the item's amount -- 1 for a single copy -- so the first value
+// it reads is the number the card shows: Dash Crit Chance's "+{0}% Crit Chance"
+// is Crit Chance Value 0.15, i.e. +15%. The tooltip says it is an estimate.
+// A "currently …" selector only says something during a run: it shows nothing.
+function placeholder(n, next, e, valueOf) {
+  const chip = el("span", { class: "ph" });
+  if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
+  if (e.kind === "Value Selector" && /description|desc/i.test(e.node)) {
+    chip.title = "{" + n + "}: " + e.node + " (shown in a run only)";
+    return chip;
+  }
+  let v, from = "";
+  if (e.kind === "Value") v = valueOf(e.node);
+  else if (e.kind !== "Value Selector" && e.sources) {
+    const src = e.sources.find(x => typeof valueOf(x) === "number");
+    if (src !== undefined) { v = valueOf(src); from = src; }
+  }
+  if (typeof v !== "number") {
+    chip.textContent = "{" + n + "}";
+    chip.title = "{" + n + "}: " + e.node + " (worked out in game)";
+    return chip;
+  }
+  // The game stores a percent as a fraction (0.2 = 20%, a 4.0 damage
+  // multiplier = 400%); across every shipped card a number before "%" reads
+  // that way. The legend keeps the raw number.
+  const pct = next === "%";
+  chip.textContent = fmt(pct ? v * 100 : v);
+  chip.title = "{" + n + "}: " + e.node + (from ? ", estimated from " + from + " = " + fmt(v) : "")
+    + (pct ? " (shown as a percent)" : "");
+  return chip;
+}
+function entryFill(entries) {
+  return (n, next) => placeholder(n, next, entries && entries[n], currentValue);
+}
+function legend(entries) {
+  const box = el("div", { class: "legend" });
+  (entries || []).forEach((e, n) => {
+    let what;
+    if (!e) what = "a value set inside the item";
+    else if (e.kind === "Value") {
+      const v = currentValue(e.node);
+      what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; before a % it shows ×100)" : "");
+    } else {
+      const src = e.sources.filter(x => currentValue(x) !== undefined).map(x => x + " = " + fmt(currentValue(x)));
+      what = e.node + (src.length ? " — worked out from " + src.join(", ") : " — worked out in game");
+    }
+    box.append(el("div", {}, el("b", { text: "{" + n + "} " }), what));
+  });
+  return box;
+}
+// ---- the game's card assets ------------------------------------------------------
+// Textures and the two bitmap fonts come from the player's install; until they
+// load (or when there is no install) the preview is drawn with plain CSS.
+const CARD = { fonts: {}, ready: null, ok: false };
+const cardTexUrls = new Map();
+function cardTex(name) {
+  if (!cardTexUrls.has(name)) {
+    cardTexUrls.set(name, fetch("api/cardtex?name=" + encodeURIComponent(name))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null));
+  }
+  return cardTexUrls.get(name);
+}
+const CARD_TEX = ["back", "super_bg", "super_border", "icon_bg", "powerup_bg",
+  ...["Common", "Rare", "Epic", "Legendary", "Cursed"].flatMap(r => ["frame_" + r, "plate_" + r]),
+  ...["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"].map(r => "diamond_" + r),
+  ...["Common", "Rare", "Epic", "Legendary", "Ultimate"].map(r => "skill_" + r), "skill_slot"];
+function cardAssets() {
+  if (!CARD.ready) {
+    const fonts = ["title", "body"].map(n => get("api/cardfont?name=" + n)
+      .then(f => cardTex("font_" + n).then(url => { if (url) { f.url = url; CARD.fonts[n] = f; } }))
+      .catch(() => {}));
+    CARD.ready = Promise.all([...fonts, ...CARD_TEX.map(cardTex)]).then(async () => {
+      CARD.tex = {};
+      for (const n of CARD_TEX) CARD.tex[n] = await cardTex(n);
+      CARD.ok = !!(CARD.fonts.title && CARD.fonts.body && CARD.tex.back && CARD.tex.frame_Common);
+      CARD.done = true;
+      return CARD.ok;
+    }).catch(() => { CARD.done = true; return false; });
+  }
+  return CARD.ready;
+}
+// Swap every text node under `root` for glyphs of `font`, `px` tall per line.
+// Each glyph is a slice of the font page used as a mask over currentColor, so
+// .kw/.val colours apply; words stay whole and wrap at spaces like text does.
+function glyphify(root, font, px) {
+  const s = px / font.lineHeight;
+  // The font page and its drawn size are the same for every glyph of this
+  // block, so they are set once here and read through CSS variables.
+  root.style.setProperty("--atlas", "url(" + font.url + ")");
+  root.style.setProperty("--msize", font.pageW * s + "px " + font.pageH * s + "px");
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const holder = document.createElement("span");
+  for (const t of nodes) {
+    let html = "", word = "";
+    const flush = () => { if (word) { html += '<span class="gw">' + word + "</span>"; word = ""; } };
+    for (const ch of t.data) {
+      if (ch === "\n") { flush(); html += "<br>"; continue; }
+      if (ch === " ") { flush(); html += glyphHtml(font, px, s, 32, ch) + "<wbr>"; continue; }
+      word += glyphHtml(font, px, s, ch.codePointAt(0), ch);
+    }
+    flush();
+    holder.innerHTML = html;
+    t.replaceWith(...holder.childNodes);
+  }
+  return root;
+}
+// One glyph as HTML, memoised per font, size and character: a card redraw
+// then costs one string join and one parse instead of thousands of style writes.
+const glyphCache = new Map();
+function glyphHtml(font, px, s, cp, ch) {
+  const key = font.url + "|" + px + "|" + cp;
+  let html = glyphCache.get(key);
+  if (html !== undefined) return html;
+  const g = font.glyphs[cp];
+  if (!g) {
+    html = ch.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  } else {
+    const [x, y, w, h, xo, yo, adv] = g, r = v => Math.round(v * s * 100) / 100 + "px";
+    const blank = cp === 32 || !w || !h;
+    html = '<span class="g" style="width:' + r(adv) + ";height:" + px + 'px">' + (blank ? "" :
+      '<i style="left:' + r(xo) + ";top:" + r(yo) + ";width:" + r(w) + ";height:" + r(h)
+      + ";-webkit-mask-position:" + r(-x) + " " + r(-y) + ";mask-position:" + r(-x) + " " + r(-y) + '"></i>') + "</span>";
+  }
+  glyphCache.set(key, html);
+  return html;
+}
+// Name colour per rarity (Item_Description_Model's rarity colour table). Cursed
+// is not in that table; the markup palette's red stands in for it.
+const RARITY_COLOUR = { Common: "#edeac2", Rare: "#9accf3", Epic: "#cab3ff", Legendary: "#ffe187", Cursed: "#ff5e5e", Powerups: "#edeac2" };
+// The card frame every compendium card shares: back, rarity frame, icon, name
+// and rarity plate. `rarity` picks colours and textures; `icon` is the icon box.
+function cardFrame(rarity, icon, nameText, plateText) {
+  const tier = RARITY_COLOUR[rarity] && rarity !== "Powerups" ? rarity : "Common";
+  const T = CARD.tex, F = CARD.fonts;
+  const box = el("div", { class: "gcard" });
+  box.style.setProperty("--back", "url(" + T.back + ")");
+  box.style.setProperty("--frame", "url(" + (T["frame_" + tier] || T.frame_Common) + ")");
+  box.style.setProperty("--plate", "url(" + (T["plate_" + tier] || T.plate_Common) + ")");
+  box.style.setProperty("--sbg", "url(" + T.super_bg + ")");
+  box.style.setProperty("--sborder", "url(" + T.super_border + ")");
+  box.style.setProperty("--rarity", RARITY_COLOUR[rarity] || RARITY_COLOUR.Common);
+  const name = glyphify(el("div", { class: "gc-name" }, nameText), F.title, 30);
+  const plate = glyphify(el("div", { class: "gc-plate" }, plateText), F.body, 15);
+  box.append(el("div", { class: "gc-head" }, icon, el("div", {}, name, el("div", {}, plate))));
+  return box;
+}
+function gameCard(it, E, card) {
+  const rarity = E.rarity || it.rarity, T = CARD.tex, F = CARD.fonts;
+  const iconBox = el("div", { class: "gc-icon" },
+    el("img", { class: "bg", alt: "", src: rarity === "Powerups" ? T.powerup_bg : T.icon_bg }),
+    itemIcon(E, it, "it"),
+    el("img", { class: "fr", alt: "", src: T["diamond_" + rarity] || T.diamond_Common }));
+  const box = cardFrame(rarity, iconBox, E.name || it.name, rarity === "Powerups" ? "Power-up" : rarity);
+  const d = card.description, sp = card.super;
+  const descText = E.description || (d && d.text) || it.description || "";
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(d && d.entries))), F.body, 19));
+  const supText = E.superDescription || (sp && sp.text) || "";
+  if (supText) {
+    box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
+      markup(supText, entryFill(sp && sp.entries))), F.body, 18));
+  }
+  return box;
+}
+
+function renderPreview() {
+  const host = document.getElementById("preview");
+  if (!host || S.tab !== "items" || !S.item) return;
+  const it = S.item, E = S.itemEdit, card = it.card || {};
+  if (!CARD.ready) cardAssets().then(() => renderPreview());
+  host.textContent = "";
+  const d = card.description, sp = card.super;
+  if (CARD.ok) host.append(gameCard(it, E, card));
+  else if (!CARD.done) host.append(loadingView("Loading the game's card art…", true));
+  else host.append(cssCard(it, E, card));
+  const parts = [];
+  if (d && d.entries.length) parts.push(["Description", d.entries]);
+  if (sp && sp.entries.length) parts.push(["Super effect", sp.entries]);
+  for (const [name, entries] of parts) {
+    host.append(el("div", { class: "legend" }, el("b", { text: name + ":" })), legend(entries));
+  }
+  if (!card.description) host.append(el("div", { class: "legend", text: "Card text needs a readable game install." }));
+}
+// The same card in plain CSS, for when the game's textures are not readable.
+function cssCard(it, E, card) {
+  const d = card.description, sp = card.super;
+  const box = el("div", { class: "card" },
+    el("div", { class: "ci" }, itemIcon(E, it)),
+    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
+  const descText = E.description || (d && d.text) || it.description || "";
+  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
+  const supText = E.superDescription || (sp && sp.text) || "";
+  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
+  return box;
+}
+
+// One effect: which stat it changes.
+// Stats differ in unit (armour is flat points, crit chance a fraction), and a
+// swapped effect keeps its old number. Say so when that number is far from
+// every amount shipped effects give the new stat: Armour's 2 as crit chance is
+// +200%, while 0.05 armour is nothing. "" when it is in range or unknown.
+function unitWarning(stat, amount, was) {
+  if (!stat || stat === was || typeof amount !== "number" || !amount) return "";
+  const span = (S.stats.find(s => s.name === stat) || {}).amounts;
+  if (!span) return "";
+  const [lo, hi] = span, n = Math.abs(amount);
+  if (n >= lo / 2 && n <= hi * 2) return "";
+  const range = lo === hi ? `${lo}` : `${lo} to ${hi}`;
+  return `Shipped effects that give ${stat} use ${range}; this one still gives ${amount}, its ${was} amount. Change the amount to match the new stat.`;
+}
+
+// One effect: which stat it changes. `onset(undefined)` means "back to the original".
+function statRow(m, cur, onset) {
+  const row = el("div", { class: "row stat" + (cur !== undefined ? " changed" : "") });
+  const lbl = el("div", { class: "lbl", text: m.name });
+  lbl.append(el("span", { class: "tag " + (m.super ? "super" : "type"), text: m.super ? "super effect" : "effect" }));
+  const set = val => {
+    const same = val === m.stat;
+    onset(same ? undefined : val);
+    row.classList.toggle("changed", !same);
+  };
+  const picker = statPicker(cur !== undefined ? cur : m.stat, m.named ? null : m.stat, set);
+  row.append(lbl, el("div", { class: "was", text: "was " + (m.named ? m.stat : "unnamed") }), picker.el,
+    resetBtn(() => { picker.set(m.stat); set(m.stat); }));
+  return row;
+}
+
+// Type to find a stat. The stats shipped items give are listed first, with how
+// many effects use each; `unnamed` is an extra key offered as itself.
+// `selfOnly`: the stat lands on the hero itself (a talent's added stat), so stats the
+// game only puts on whoever is hit are listed apart and can't be picked.
+function statPicker(value, unnamed, onpick, selfOnly) {
+  let cur = value, open = false, hi = 0, shown = [];
+  const input = el("input", { value: label(cur), spellcheck: "false", "aria-label": "Stat" });
+  const list = el("div", { class: "picklist", role: "listbox" });
+  list.hidden = true;
+  const box = el("div", { class: "pickbox" }, input, list);
+  function label(v) { return v === unnamed ? "unnamed (" + v + ")" : v; }
+  function options(q) {
+    q = q.toLowerCase();
+    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
+    // A stat is found by its name, its key (0x058e0a5c, as a manifest may name
+    // either) or the card's wording ("trait cooldown" for CD reduce trait); every
+    // word typed must match, in any order.
+    const words = q.split(/\s+/).filter(Boolean);
+    const hit = all.filter(o => {
+      const hay = [o.name, o.aka || "", o.key || "", o.unnamed ? "unnamed" : ""].join(" ").toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+    const ok = hit.filter(o => !(selfOnly && o.onHit));
+    // Tallies ("Defensive Object Count") are counters other effects read, not
+    // stats: listed apart so a +1 is not mistaken for a bonus.
+    const plain = ok.filter(o => !o.tally), tallies = ok.filter(o => o.tally);
+    const used = plain.filter(o => o.used > 0).sort((a, b) => b.used - a.used || a.name.localeCompare(b.name));
+    const rest = plain.filter(o => o.used === 0);
+    return { used, rest, tallies, blocked: selfOnly ? hit.filter(o => o.onHit) : [] };
+  }
+  function draw() {
+    list.textContent = "";
+    const q = input.value === label(cur) ? "" : input.value;
+    const { used, rest, tallies, blocked } = options(q);
+    shown = [...used, ...rest, ...tallies];
+    hi = Math.max(0, Math.min(hi, shown.length - 1));
+    if (!shown.length && !blocked.length) { list.append(el("div", { class: "none", text: "No stat matches." })); return; }
+    let k = 0;
+    const add = (title, opts) => {
+      if (!opts.length) return;
+      list.append(el("div", { class: "grp", text: title }));
+      for (const o of opts) {
+        const idx = k++;
+        const row = el("div", { class: "opt" + (idx === hi ? " on" : ""), role: "option",
+          onmousedown: ev => { ev.preventDefault(); pick(o.name); } },
+          el("span", { text: label(o.name) }), o.aka ? el("span", { class: "aka", text: o.aka }) : null,
+          o.used && !o.unnamed ? el("span", { class: "n", text: o.used + "×" }) : null);
+        list.append(row);
+      }
+    };
+    add("Given by shipped items", used);
+    add("Every other stat", rest);
+    add("Tallies: only matter if something counts them", tallies);
+    if (blocked.length) {
+      list.append(el("div", { class: "grp", text: "Put on enemies hit — would debuff your own hero" }));
+      for (const o of blocked) list.append(el("div", { class: "opt off", "aria-disabled": "true", onmousedown: ev => ev.preventDefault(),
+        title: "The game puts this on whoever an attack hits. A stat added to a talent applies to the hero itself, so it can't be added here." },
+        el("span", { text: o.name }), o.aka ? el("span", { class: "aka", text: o.aka }) : null));
+    }
+    const on = list.querySelector(".opt.on");
+    if (on) on.scrollIntoView({ block: "nearest" });
+  }
+  function show() { open = true; list.hidden = false; draw(); }
+  function hide() { open = false; list.hidden = true; input.value = label(cur); }
+  function pick(name) { cur = name; hide(); onpick(name); }
+  input.onfocus = () => { input.select(); hi = 0; show(); };
+  input.oninput = () => { hi = 0; show(); };
+  input.onblur = () => hide();
+  input.onkeydown = ev => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      if (!open) show();
+      hi += ev.key === "ArrowDown" ? 1 : -1; draw(); ev.preventDefault();
+    } else if (ev.key === "Enter") {
+      if (open && shown[hi]) pick(shown[hi].name); ev.preventDefault();
+    } else if (ev.key === "Escape") { hide(); input.blur(); }
+  };
+  return { el: box, set(v) { cur = v; input.value = label(v); } };
+}
+
+// One editable value. `onset(undefined)` means "back to the original".
+function valueRow(label, value, type, shadowed, cur, onset) {
+  const row = el("div", { class: "row" + (cur !== undefined ? " changed" : "") });
+  const lbl = el("div", { class: "lbl", text: label });
+  if (type !== "float") lbl.append(el("span", { class: "tag type", text: type }));
+  if (shadowed) lbl.append(el("span", { class: "tag shadow", title: "Another part overrides this value in game. Changing it also clears that override, so your value takes effect.", text: "overridden" }));
+  let input;
+  if (type === "bool") {
+    input = el("input", { type: "checkbox" });
+    input.checked = cur !== undefined ? cur : !!value;
+    input.onchange = () => { const nv = input.checked; row.classList.toggle("changed", nv !== !!value); onset(nv === !!value ? undefined : nv); };
+  } else {
+    input = el("input", { type: "number", step: type === "int" ? "1" : "any", value: fmt(cur !== undefined ? cur : value) });
+    input.oninput = () => {
+      const nv = input.value === "" ? NaN : Number(input.value);
+      const same = Number.isNaN(nv) || nv === value;
+      row.classList.toggle("changed", !same);
+      onset(same ? undefined : nv);
+    };
+  }
+  const undo = resetBtn(() => {
+    if (type === "bool") input.checked = !!value; else input.value = fmt(value);
+    row.classList.remove("changed"); onset(undefined);
+  });
+  row.append(lbl, el("div", { class: "was", text: "was " + fmt(type === "bool" ? !!value : value) }), input, undo);
+  return row;
+}
+
+// ---- talents ----------------------------------------------------------------------
+const TIERS = ["Common", "Rare", "Epic", "Legendary"];
+async function pickHero(h) {
+  const me = ++pickSeq;
+  $("#view").replaceChildren(loadingView("Loading " + h.replace(/_/g, " ") + "'s talents…"));
+  let got;
+  try { got = await get("api/talents?hero=" + encodeURIComponent(h)); }
+  catch (e) { if (!stale(me, "talents")) { status(e.message, "st-bad"); renderView(); } return; }
+  if (stale(me, "talents")) return;
+  S.talents = got;
+  S.hero = h;
+  const draft = store.get(DRAFT.talents + h);
+  S.restored = draft ? "talents" : "";
+  S.talentEdit = Object.assign(freshTalentEdit(), draft || {});
+  status("");
+  renderList(); renderView(); refresh();
+}
+
+function freshTalentEdit() {
+  return { prefix: S.hero.toLowerCase().replace(/[^a-z0-9_]/g, "_") + "_talents",
+    values: {}, cards: {}, tiers: {}, stats: {}, addStats: {}, rebuild: {}, include: {}, scale: {}, onHit: {}, rarity: "Common", q: "" };
+}
+
+// A texture the hero's own entity names (talent icons, the portrait).
+const heroPngUrls = new Map();
+function heroPng(hero, path) {
+  const key = hero + "\u0000" + path;
+  if (!heroPngUrls.has(key)) {
+    // A failed load is forgotten, so the next draw asks again instead of
+    // showing a blank for the rest of the session.
+    const p = fetch("api/heropng?hero=" + encodeURIComponent(hero) + "&path=" + encodeURIComponent(path))
+      .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null);
+    heroPngUrls.set(key, p);
+    p.then(url => { if (!url && heroPngUrls.get(key) === p) heroPngUrls.delete(key); });
+  }
+  return heroPngUrls.get(key);
+}
+function heroImg(hero, path, cls) {
+  const hole = el("span", { class: "ico " + (cls || "") });
+  if (!path) return hole;
+  heroPng(hero, path).then(url => { if (url) hole.replaceWith(el("img", { class: cls || "", alt: "", src: url })); });
+  return hole;
+}
+
+// The value row behind a label in one of the hero's files, and its edited value.
+function talentValue(file, label) {
+  const f = S.talents.files.find(x => x.file === file);
+  return f && f.values.find(r => r.label === label);
+}
+function talentCurrent(file, label) {
+  const r = talentValue(file, label), e = S.talentEdit.values[file + "\u0000" + label];
+  return e ? e.new : r ? r.value : undefined;
+}
+function tierKey(file, label, index) { return file + "\u0000" + label + "\u0000" + index; }
+// A computed node ("Supposed Damage Operation") reads a selector; the indices of
+// its numbers belong to THAT node, not to the placeholder's own.
+function tierNode(e) { return e.tierNode || e.node; }
+function tierCurrent(file, e, tier) {
+  const t = e.tiers[tier];
+  if (!t) return undefined;
+  const ed = S.talentEdit.tiers[tierKey(file, tierNode(e), t.index)];
+  return ed ? ed.new : t.value;
+}
+function singleCurrent(file, e) {
+  const ed = S.talentEdit.tiers[tierKey(file, tierNode(e), e.single.index)];
+  return ed ? ed.new : e.single.value;
+}
+function talentFill(c) {
+  const rarity = S.talentEdit.rarity || "Common";
+  return (n, next) => {
+    const added = addedAt(c, n);
+    if (added) {
+      const v = added.values[TIERS.indexOf(rarity)];
+      const chip = el("span", { class: "ph" });
+      chip.textContent = typeof v === "number" ? fmt(added.percent !== false ? v * 100 : v) : "{" + n + "}";
+      chip.title = "{" + n + "}: added " + (added.stat || "stat") + " (" + rarity + ")";
+      return chip;
+    }
+    if (isRebuilt(c)) return el("span", { class: "ph", text: "{" + n + "}", title: "{" + n + "}: no added stat has this number" });
+    const e = c.entries[n];
+    if (e && (e.tiers || e.single)) {
+      const v = e.tiers ? tierCurrent(c.file, e, rarity) : singleCurrent(c.file, e);
+      const chip = el("span", { class: "ph" });
+      chip.textContent = typeof v === "number" ? fmt(next === "%" ? v * 100 : v) : "{" + n + "}";
+      chip.title = "{" + n + "}: " + e.node + (e.tiers ? " (" + rarity + ")" : "")
+        + (tierNode(e) !== e.node ? ", estimated from " + tierNode(e) : "");
+      return chip;
+    }
+    if (!e) {
+      const chip = el("span", { class: "ph", text: "{" + n + "}" });
+      chip.title = "{" + n + "}: set inside the talent";
+      return chip;
+    }
+    return placeholder(n, next, e, label => talentCurrent(c.file, label));
+  };
+}
+// The added stat a card's {n} shows, if n is past the card's own numbers.
+function addedAt(c, n) {
+  const info = c.addStat, list = (S.talentEdit.addStats || {})[c.source], base = firstSlot(c);
+  if (!info || base == null || !list || n < base) return null;
+  return list[n - base] || null;
+}
+// The {N} the first added stat takes: right after the card's own numbers, or 0
+// when the talent is rebuilt (rebuilding clears the card's old numbers).
+function firstSlot(c) {
+  if (!c.addStat || c.addStat.nextSlot == null) return null;
+  return isRebuilt(c) ? 0 : c.addStat.nextSlot;
+}
+function isRebuilt(c) { return !!(S.talentEdit.rebuild || {})[c.source]; }
+
+// The card line for an added stat, in the game's own markup. The ability is the
+// stat's last word, named as the cards name it (the CD stat keys run primary,
+// secondary, defensive, trait = POWER, SPECIAL, DEFENSE, TRAIT).
+const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", defensive: "DEFENSE",
+  trait: "TRAIT", dash: "DASH", ultimate: "ULTIMATE" };
+// `a` is an added stat: its stat, percent switch and when it applies (`during`
+// an ability, or for `seconds` `after` one, at most once every `cooldown` s,
+// used up by the `next` use of another ability).
+function statLine(a, n) {
+  const line = statPhrase(a.stat, n, a.percent !== false);
+  const lead = a.during ? `During #${a.during}@`
+    : a.after && a.next ? `Within #${fmt(a.seconds)}@ second(s) after using #${a.after}@, your next #${a.next}@ gets`
+    : a.after ? `For #${fmt(a.seconds)}@ second(s) after using #${a.after}@` : "";
+  const sep = a.after && a.next ? " " : ", ";
+  const out = lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}${sep}${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
+  return a.after && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
+}
+function statPhrase(stat, n, percent) {
+  const num = "{" + n + "}" + (percent ? "%" : "");
+  const tally = (S.stats.find(s => s.name === stat) || {}).tally;
+  if (tally) return `• Counts as #+${num}@ more ${tally}(s)`;
+  const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
+  const ab = m && m[2] ? "#" + (ABILITY_WORD[m[2]] || m[2].toUpperCase()) + "@ " : "";
+  if (m && m[1] === "CD reduce") return `• ${ab}cooldown &-${num}~`;
+  if (m && m[1] === "Attack power") return `• ${ab || ""}${ab ? "damage" : "Damage"} &+${num}~`;
+  if (m && m[1] === "Crit chance") return `• ${ab}Crit Chance &+${num}~`;
+  if (m && m[1] === "Life on hit") return `• ${ab}Life on hit &+${num}~`;
+  if (stat === "Crit damage") return `• Crit Damage &+${num}~`;
+  return `• ${stat || "New stat"} &+${num}~`;
+}
+
+// New stats a talent did not have (add_stats), e.g. Fiery Dragon also lowering
+// TRAIT cooldown. Each one gets the next {N} on the card so its text can show the
+// number, and the number scales with the card's rarity like the others.
+function addedStats(c, redraw, desc) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  const info = c.addStat || { ok: false, why: "" };
+  if (!info.ok) {
+    box.append(el("div", { class: "tnote", text: "A new stat can't be added to this card: " + info.why }));
+    return box;
+  }
+  E.addStats = E.addStats || {};
+  const list = E.addStats[c.source] || [];
+  // Keep each added stat's card line in step with it: write it when the stat is
+  // picked, rewrite it when the stat, the percent switch or its {N} changes, drop
+  // it when the stat goes. A line you have edited by hand is left alone.
+  const syncLines = removed => {
+    if (!desc || !c.hasDescription) return;
+    let text = desc.get();
+    if (removed && removed.line && text.includes(removed.line))
+      text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+    const base = firstSlot(c);
+    list.forEach((a, i) => {
+      if (!a.stat || base == null) return;
+      const want = statLine(a, base + i);
+      if (a.line && text.includes(a.line)) text = text.replace(a.line, want);
+      else if (!a.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
+      else return;                       // edited by hand: theirs now
+      a.line = want;
+    });
+    desc.set(text);
+  };
+  const save = removed => {
+    syncLines(removed);
+    if (list.length) E.addStats[c.source] = list; else delete E.addStats[c.source];
+    redraw(); refresh();
+  };
+  list.forEach((a, i) => {
+    const n = firstSlot(c) != null ? firstSlot(c) + i : null;
+    const picker = statPicker(a.stat, null, st => {
+      a.stat = st;
+      // A tally counts things: a whole number, never a percentage.
+      const tally = (S.stats.find(s => s.name === st) || {}).tally;
+      if (tally) a.percent = false;
+      save();
+      if (tally) renderView();
+    }, true);
+    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
+      const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
+      inp.oninput = () => {
+        const v = Number(inp.value);
+        if (inp.value !== "" && !Number.isNaN(v)) { a.values[k] = v; save(); }
+      };
+      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
+    }));
+    const pct = el("input", { type: "checkbox", ...(a.percent !== false ? { checked: "" } : {}) });
+    pct.onchange = () => { a.percent = pct.checked; save(); };
+    // When the bonus applies: always while the talent is owned, only while one of
+    // the hero's abilities is in use, or for some seconds each time one is used
+    // (abilities this hero cannot signal are left out of each list).
+    const when = el("select", { "aria-label": "When it applies" },
+      el("option", { value: "", text: "Always" }),
+      ...(info.during || []).map(ab => el("option", { value: "during:" + ab, text: "During " + ab })),
+      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })));
+    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : "";
+    const secs = el("input", { type: "number", step: "any", min: "0", value: fmt(a.seconds ?? 3),
+      "aria-label": "Seconds", class: "secs" });
+    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting on each use");
+    secsBox.hidden = !a.after;
+    // Empty = every use restarts it; a number = at most once every that many seconds.
+    const cd = el("input", { type: "number", step: "any", min: "0", value: a.cooldown > 0 ? fmt(a.cooldown) : "",
+      placeholder: "every use", "aria-label": "Cooldown seconds", class: "secs" });
+    const cdBox = el("label", { class: "tiny addpct" }, "At most once every", cd, "second(s)");
+    cdBox.hidden = !a.after;
+    // "Your next X": the bonus ends once X has been used (X's in-use state ends).
+    const nxt = el("select", { "aria-label": "Used up by" }, el("option", { value: "", text: "nothing (lasts the full time)" }),
+      ...(info.during || []).map(ab => el("option", { value: ab, text: "the next " + ab })));
+    nxt.value = a.next || "";
+    const nxtBox = el("label", { class: "tiny addpct" }, "Used up by", nxt);
+    nxtBox.hidden = !a.after;
+    nxt.onchange = () => { if (nxt.value && nxt.value !== a.after) a.next = nxt.value; else { delete a.next; nxt.value = ""; } save(); };
+    cd.oninput = () => {
+      const v = Number(cd.value);
+      if (cd.value === "") { delete a.cooldown; save(); } else if (v > 0) { a.cooldown = v; save(); }
+    };
+    when.onchange = () => {
+      const [kind, ab] = when.value.split(":");
+      a.during = kind === "during" ? ab : undefined;
+      a.after = kind === "after" ? ab : undefined;
+      if (a.after && !(a.seconds > 0)) a.seconds = 3;
+      if (!a.after) delete a.cooldown;
+      if (!a.after || a.next === a.after) { delete a.next; nxt.value = ""; }
+      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !a.after;
+      save();
+    };
+    secs.oninput = () => {
+      const v = Number(secs.value);
+      if (secs.value !== "" && v > 0) { a.seconds = v; save(); }
+    };
+    const del = el("button", { type: "button", title: "Remove this added stat and its card line",
+      onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    box.append(el("div", { class: "addstat" },
+      el("div", { class: "sectrow" }, el("span", { class: "phn", text: n != null ? "{" + n + "}" : "+" }), picker.el, del),
+      nums,
+      el("label", { class: "tiny addpct" }, "When", when),
+      secsBox,
+      cdBox,
+      nxtBox,
+      el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
+      el("div", { class: "tiny muted", text: n != null
+        ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
+        : "This card has no text format, so the number can't be shown on it." })));
+  });
+  box.append(el("button", { type: "button",
+    title: "Give this talent a stat it does not have, e.g. -25% TRAIT cooldown",
+    onclick: () => { list.push({ stat: "", values: [0, 0, 0, 0], percent: true }); save(); renderView(); } },
+    "+ Add a stat"));
+  return box;
+}
+
+// Owning this talent also switches on another talent (`include`): that talent's
+// own effect runs, e.g. Short Wick's bomb that explodes on landing given to
+// Shapeshifter (its rarity numbers take their Common value). Another hero's
+// talent is copied in (`hero`), and only the few whose effect does not live in
+// their hero's abilities can be: the server lists them. Their numbers follow
+// this card's rarity. Another hero's pick is kept as "hero\u0000source".
+let borrowable = null;
+function includeControl(c, redraw) {
+  const E = S.talentEdit;
+  E.include = E.include || {};
+  const others = S.talents.cards.filter(o => o.source !== c.source);
+  const label = o => (o.name || o.source) + (o.name ? " (" + o.source + ")" : "");
+  const sel = el("select", { "aria-label": "Also gives the effect of" },
+    el("option", { value: "", text: "(nothing)" }),
+    el("optgroup", { label: S.hero.replace(/_/g, " ") }, ...others.map(o => el("option", { value: o.source, text: label(o) }))));
+  const fill = list => {
+    const theirs = list.filter(o => o.hero !== S.hero);
+    if (theirs.length) sel.append(el("optgroup", { label: "Other heroes" },
+      ...theirs.map(o => el("option", { value: o.hero + "\u0000" + o.source, text: o.hero.replace(/_/g, " ") + ": " + label(o) }))));
+    sel.value = E.include[c.source] || "";
+  };
+  borrowable = borrowable || get("api/talents/borrowable").then(j => j.talents || []).catch(() => []);
+  borrowable.then(fill);
+  sel.value = E.include[c.source] || "";
+  // A talent of this hero runs with its OWN numbers, which live on its own card:
+  // they are shown here to edit (the Common column is what this card gets, as the
+  // included card is not owned). Another hero's are copies and follow this card.
+  const nums = el("div", { class: "tb-incnums" });
+  const drawNums = () => {
+    nums.textContent = "";
+    const pick = E.include[c.source] || "";
+    const o = !pick.includes("\u0000") && S.talents.cards.find(x => x.source === pick);
+    if (!o || !o.entries.length) return;
+    nums.append(el("div", { class: "tiny muted", text: `${o.name || o.source}'s numbers. Through this card the Common value applies; changing them also changes ${o.name || o.source}'s own card.` }),
+      talentNumbers(o, redraw));
+  };
+  sel.onchange = () => {
+    if (sel.value) E.include[c.source] = sel.value; else delete E.include[c.source];
+    drawNums(); redraw(); refresh();
+  };
+  drawNums();
+  return el("div", { class: "tb-include" },
+    el("label", { class: "tiny addpct", title: "While this talent is owned, the chosen talent's own effect also runs. A talent of this hero uses the Common value of its numbers that scale with rarity; another hero's talent follows this card's rarity. Only a few other heroes' talents can be given: most work inside their own hero's abilities. Mention it in this card's text." },
+      "Also gives the effect of", sel),
+    nums);
+}
+
+// The talent builder: turn a talent's own effect off and make the card a new
+// talent from the stats added to it (`rebuild` in the talent kind). The card's old
+// numbers go too, so its text starts again from the added stats' lines.
+function rebuildSwitch(c, desc, onchange) {
+  const E = S.talentEdit;
+  E.rebuild = E.rebuild || {};
+  const info = c.addStat || { ok: false };
+  const can = info.ok && info.rebuild !== false;
+  const box = el("label", { class: "tiny addpct rebuild" });
+  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
+  cb.onchange = () => {
+    if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
+    const list = (E.addStats || {})[c.source] || [];
+    const base = firstSlot(c);
+    const lines = list.filter(a => a.stat).map((a, i) => (a.line = statLine(a, base + i)));
+    if (desc && c.hasDescription)
+      desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
+    onchange();
+  };
+  box.append(cb, can
+    ? "Rebuild this talent: turn off what it does now and make it a new talent from the stats you add below"
+    : "Can't be rebuilt: " + (info.ok ? info.rebuildWhy : info.why));
+  return box;
+}
+
+// A talent card's icon: the one you uploaded for it, else its own.
+function cardIcon(c, cls) {
+  const up = (S.talentEdit.cards[c.source] || {}).iconUpload;
+  return up ? uploadImg(up, cls) : heroImg(S.hero, c.icon, cls);
+}
+function talentCard(c, nameText, descText) {
+  const rarity = S.talentEdit.rarity || "Common";
+  if (!CARD.ok && !CARD.done) return loadingView("Loading the game's card art…", true);
+  if (!CARD.ok) {
+    const box = el("div", { class: "card" }, el("div", { class: "ci" }, cardIcon(c)),
+      el("div", {}, el("div", { class: "ct", text: nameText }), el("div", { class: "cr", text: rarity })));
+    if (descText) box.append(el("div", { class: "cd" }, markup(descText, talentFill(c))));
+    return box;
+  }
+  const T = CARD.tex;
+  const icon = el("div", { class: "gc-icon sq" }, el("img", { class: "bg", alt: "", src: T.skill_slot }),
+    cardIcon(c, "it"), el("img", { class: "fr", alt: "", src: T["skill_" + rarity] || T.skill_Common }));
+  const box = cardFrame(rarity, icon, nameText || c.source, rarity);
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, talentFill(c))), CARD.fonts.body, 19));
+  return box;
+}
+
+// "Skill Attack Dive Damage Multiplier Selector" on the Attack Dive card is
+// just "Damage Multiplier": the card already says which talent it is.
+function shortLabel(label, source) {
+  let out = label;
+  const pre = ("Skill " + source + " ").toLowerCase();
+  if (out.toLowerCase().startsWith(pre)) out = out.slice(pre.length);
+  out = out.replace(/ (Selector|Value)$/, "");
+  return out || label;
+}
+
+// The numbers behind a card's {N}, each where it can be edited.
+function talentNumbers(c, redraw) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  c.entries.forEach((e, n) => {
+    const tag = el("span", { class: "phn", text: "{" + n + "}" });
+    if (!e) { box.append(el("div", { class: "tnote" }, tag, "set inside the talent, not editable here")); return; }
+    if (e.single) {
+      // One number, no rarity: a selector with a single entry (the Ice Clone's
+      // health ratio). Saved exactly like a tier -- a union patch by index.
+      const node = tierNode(e), s = e.single, k = tierKey(c.file, node, s.index), cur = E.tiers[k];
+      const inp = el("input", { type: "number", step: s.type === "int" ? "1" : "any", value: fmt(cur ? cur.new : s.value), title: "was " + fmt(s.value) });
+      const undo = resetBtn(() => { delete E.tiers[k]; renderView(); refresh(); });
+      undo.classList.add("own");
+      const sync = () => undo.classList.toggle("on", !!E.tiers[k]);
+      inp.oninput = () => {
+        const nv = inp.value === "" ? NaN : Number(inp.value);
+        if (Number.isNaN(nv) || nv === s.value) delete E.tiers[k];
+        else E.tiers[k] = { file: c.file, label: node, index: s.index, old: s.value, new: nv };
+        inp.classList.toggle("ed", !!E.tiers[k]); sync(); redraw(); refresh();
+      };
+      inp.classList.toggle("ed", !!cur);
+      sync();
+      box.append(el("div", { class: "trow" },
+        el("div", { class: "lbl", title: node }, tag, " " + (node === e.node ? "" : "from ") + shortLabel(node, c.source)),
+        el("label", { class: "tier" }, inp), undo));
+      return;
+    }
+    if (e.tiers) {
+      const node = tierNode(e);
+      const row = el("div", { class: "trow" }, el("div", { class: "lbl", title: node }, tag, " " + (node === e.node ? "" : "from ") + shortLabel(node, c.source)));
+      const keys = TIERS.filter(t => e.tiers[t]).map(t => tierKey(c.file, node, e.tiers[t].index));
+      const undo = resetBtn(() => { for (const k of keys) delete E.tiers[k]; renderView(); refresh(); });
+      undo.classList.add("own");
+      const sync = () => undo.classList.toggle("on", keys.some(k => E.tiers[k]));
+      for (const tier of TIERS) {
+        const t = e.tiers[tier];
+        if (!t) { row.append(el("span")); continue; }
+        const k = tierKey(c.file, node, t.index), cur = E.tiers[k];
+        const inp = el("input", { type: "number", step: "any", value: fmt(cur ? cur.new : t.value), title: tier + " (was " + fmt(t.value) + ")", "data-tier": tier });
+        inp.oninput = () => {
+          const nv = inp.value === "" ? NaN : Number(inp.value);
+          if (Number.isNaN(nv) || nv === t.value) delete E.tiers[k];
+          else E.tiers[k] = { file: c.file, label: node, index: t.index, old: t.value, new: nv };
+          inp.classList.toggle("ed", !!E.tiers[k]); sync(); redraw(); refresh();
+        };
+        inp.classList.toggle("ed", !!cur);
+        inp.classList.toggle("on", tier === (E.rarity || "Common"));
+        row.append(el("label", { class: "tier" }, el("span", { text: tier }), inp));
+      }
+      sync();
+      row.append(undo);
+      box.append(row);
+      return;
+    }
+    const labels = e.kind === "Value" ? [e.node] : e.sources;
+    const rows = labels.map(l => [l, talentValue(c.file, l)]).filter(([, r]) => r);
+    if (!rows.length) { box.append(el("div", { class: "tnote" }, tag, e.node + " — worked out in game")); return; }
+    for (const [label, r] of rows) {
+      const key = c.file + "\u0000" + label;
+      const vr = valueRow((e.kind === "Value" ? "" : "from ") + shortLabel(label, c.source), r.value, r.type, r.shadowed,
+        E.values[key] ? E.values[key].new : undefined, nv => {
+          if (nv === undefined) delete E.values[key];
+          else E.values[key] = { file: c.file, label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
+          redraw(); refresh();
+        });
+      vr.querySelector(".lbl").prepend(tag.cloneNode(true), " ");
+      box.append(vr);
+    }
+  });
+  return box;
+}
+
+// ---- talents: the custom-talent builder ------------------------------------------
+// A hero's number of talents is fixed, so a custom talent REPLACES one: pick it,
+// then build what it does from blocks. Everything here writes the same edit state
+// as the cards below it (rebuild, addStats, include, cards), so the manifest is the
+// one the card list would write. What cannot be built yet is asked for: the idea
+// goes to the issue tracker, and asked-for ideas are how the blocks grew.
+const IDEA_URL = "https://github.com/Ovilli/RavenswatchModManager/issues/new";
+const IDEA_SPARKS = [
+  "POWER spawns a tornado that pulls enemies in",
+  "Dashing through an enemy sets it on fire",
+  "Every 5th ATTACK chills everything around you",
+  "Leave a decoy behind when you DASH",
+  "Killing an enemy during DEFENSE refunds its cooldown",
+  "Your SPECIAL is twice as big but costs health",
+  "At night, chests show on the map",
+  "+1 DEFENSE charge, but DEFENSE recharges slower",
+];
+// Blocks that build today. `when` presets the added stat; `needs` is the ability
+// list (from the server's addStat info) the block cannot work without.
+const BLOCKS = [
+  { id: "always", title: "Boost a stat", blurb: "On for as long as you own the talent. Damage, cooldowns, crit, armour, health…" },
+  { id: "during", title: "While using an ability", blurb: "e.g. ATTACK damage +40% during DEFENSE.", needs: "during" },
+  { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
+  { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
+  { id: "bigger", title: "Make an ability bigger", blurb: "A wider, longer or larger area: +30% POWER radius." },
+  { id: "status", title: "Hits apply a status", blurb: "e.g. POWER's hits set enemies on fire (Ignite), chill or weaken them." },
+  { id: "borrow", title: "Borrow a talent's effect", blurb: "Also run another talent's effect, even another hero's." },
+];
+// Not buildable yet: each opens the idea box with a starting line.
+const WISHES = [
+  { title: "Spawn something", ex: "POWER spawns a tornado that pulls enemies in" },
+  { title: "Change how an ability behaves", ex: "SPECIAL bounces to a second enemy" },
+  { title: "Extra ability charges", ex: "+1 DEFENSE charge" },
+  { title: "Map, loot and shards", ex: "Reveal chests on the map at night" },
+  { title: "Something else entirely", ex: "" },
+];
+// Example talents: a name and the stats they add. Shown only when the hero's
+// abilities support every row.
+const RECIPES = [
+  { name: "Riposte", blurb: "After DEFENSE, your next ATTACK is more likely to crit.",
+    rows: [{ stat: "Crit chance", values: [0.15, 0.2, 0.25, 0.3], after: "DEFENSE", seconds: 6, next: "ATTACK" }] },
+  { name: "Battle Trance", blurb: "Hit harder while your SPECIAL is in use.",
+    rows: [{ stat: "Attack power", values: [0.2, 0.3, 0.4, 0.5], during: "SPECIAL" }] },
+  { name: "Second Wind", blurb: "DEFENSE comes back sooner.",
+    rows: [{ stat: "CD reduce defensive", values: [0.1, 0.15, 0.2, 0.25] }] },
+  { name: "Momentum", blurb: "A short burst of damage after every POWER, at most every 8 s.",
+    rows: [{ stat: "Attack power", values: [0.15, 0.2, 0.25, 0.3], after: "POWER", seconds: 3, cooldown: 8 }] },
+];
+
+function recipeFits(r, info) {
+  return r.rows.every(a => (!a.during || (info.during || []).includes(a.during))
+    && (!a.after || (info.after || []).includes(a.after))
+    && (!a.next || (info.during || []).includes(a.next)));
+}
+
+// The card text the builder writes: one line per added stat that has none yet,
+// in the same form the stat rows write (addedStats keeps them in step after).
+function writeStatLines(c, desc) {
+  const list = (S.talentEdit.addStats || {})[c.source] || [], base = firstSlot(c);
+  if (base == null || !c.hasDescription) return;
+  let text = desc.get();
+  list.forEach((a, i) => {
+    if (!a.stat || a.line) return;              // has its line (or was saved before)
+    a.line = statLine(a, base + i);
+    text = text.trim() ? text.replace(/\s*$/, "") + "\n" + a.line : a.line;
+  });
+  desc.set(text);
+}
+
+// The idea box: free text about what the talent should do, sent as a prefilled
+// issue (the "Talent idea" form) or copied for the Discord.
+function ideaBox(c, ideaRef) {
+  const E = S.talentEdit;
+  const spark = IDEA_SPARKS[Math.floor(Math.random() * IDEA_SPARKS.length)];
+  const ta = el("textarea", { rows: "3", placeholder: "Describe it the way you'd say it, e.g. “" + spark + "”" });
+  ta.value = E.idea || "";
+  const summary = () => {
+    const list = ((E.addStats || {})[c?.source] || []).filter(a => a.stat);
+    const lines = list.map((a, i) => statLine(a, i).replace(/[#@&~$*]/g, "").replace(/\{\d+\}/, fmt(a.values[3])).replace(/^• /, "- "));
+    const inc = c && (E.include || {})[c.source];
+    if (inc) lines.push("- Also runs " + inc.replace("\u0000", "'s ") + "'s effect");
+    return lines.join("\n");
+  };
+  const send = el("a", { class: "btnlike primary", target: "_blank", rel: "noopener" }, "Send the idea ↗");
+  const sync = () => {
+    E.idea = ta.value;
+    const q = new URLSearchParams({ template: "talent-idea.yml",
+      title: "Talent idea: " + (ta.value.trim().split("\n")[0].slice(0, 70) || "…"),
+      hero: S.hero.replace(/_/g, " "), talent: c ? (c.name || c.source) : "", idea: ta.value, builder: summary() });
+    send.href = IDEA_URL + "?" + q.toString();
+    send.classList.toggle("off", !ta.value.trim());
+  };
+  ta.oninput = () => { sync(); saveDraft(); };
+  sync();
+  const copy = el("button", { type: "button", onclick: async () => {
+    const text = `Talent idea for ${S.hero.replace(/_/g, " ")}${c ? " (replacing " + (c.name || c.source) + ")" : ""}:\n${ta.value}` + (summary() ? "\n\nBuilt so far:\n" + summary() : "");
+    try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; } catch { copy.textContent = "Copy failed"; }
+    setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+  } }, "Copy");
+  ideaRef.focus = ex => {
+    if (ex && !ta.value.includes(ex)) ta.value = ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n" + ex : ex;
+    sync(); saveDraft();
+    ta.scrollIntoView({ behavior: "smooth", block: "center" }); ta.focus();
+  };
+  return el("div", { class: "tb-idea" },
+    el("h3", { text: "Dream it up" }),
+    el("p", { class: "tiny muted", text: "Can't build it with the blocks? Describe it anyway, however wild. Ideas people sent became blocks: “your next ATTACK”, “at most once every N s” and borrowing another hero's talent all started as requests." }),
+    ta,
+    el("div", { class: "tb-ideabtns" }, send, copy,
+      el("span", { class: "tiny muted", text: "Opens a short form on GitHub (needs an account), or copy it for the Discord." })));
+}
+
+// "Make an ability bigger" (`scale`): while the talent is owned, one of the hero's
+// size numbers (a radius, a length, a width) is multiplied by 1 + the amount. The
+// server lists the numbers it can grow, by ability; the card gets a {N} for each,
+// after the added stats' ones.
+const scalableNodes = new Map();
+function scaleWord(node) {
+  const m = /radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  if (m && /lifetime/i.test(m[0]))           // a shot's lifetime is its range; anything else lasts longer
+    return /projectile|basic attack/i.test(node) ? "range" : "duration";
+  return m ? m[0].toLowerCase().replace("radius", "area") : "size";
+}
+function scaleLine(r, n, ability) {
+  return `• #${ability || "Ability"}@ ${scaleWord(r.node)} &+{${n}}%~`;
+}
+function scaleRows(c, paint, desc) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  E.scale = E.scale || {};
+  const list = E.scale[c.source] || [];
+  if (!list.length) return box;
+  const base = () => (firstSlot(c) ?? 0) + ((E.addStats || {})[c.source] || []).filter(a => a.stat).length;
+  if (!scalableNodes.has(S.hero))
+    scalableNodes.set(S.hero, get("api/talents/scalable?hero=" + encodeURIComponent(S.hero)).then(j => j.nodes || []).catch(() => []));
+  const save = removed => {
+    if (desc && c.hasDescription) {
+      let text = desc.get();
+      if (removed && removed.line) text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+      list.forEach((r, i) => {
+        if (!r.node) return;
+        const want = scaleLine(r, base() + i, r.ability);
+        if (r.line && text.includes(r.line)) text = text.replace(r.line, want);
+        else if (!r.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
+        else return;
+        r.line = want;
+      });
+      desc.set(text);
+    }
+    if (list.length) E.scale[c.source] = list; else delete E.scale[c.source];
+    paint(); refresh();
+  };
+  list.forEach((r, i) => {
+    const sel = el("select", { "aria-label": "Which number grows" }, el("option", { value: "", text: "Loading the hero's sizes…" }));
+    scalableNodes.get(S.hero).then(nodes => {
+      sel.textContent = "";
+      sel.append(el("option", { value: "", text: nodes.length ? "Pick what grows…" : "No size numbers found for this hero" }));
+      const groups = new Map();
+      for (const n of nodes) {
+        const g = (n.ability || "Other") + (n.where ? " \u00b7 " + n.where.replace(/_/g, " ") : "");
+        if (!groups.has(g)) groups.set(g, el("optgroup", { label: g }));
+        groups.get(g).append(el("option", { value: n.file + "\u0000" + n.node, "data-ability": n.ability || "",
+          text: n.node + (n.value != null ? " (now " + fmt(n.value) + ")" : " (worked out)") }));
+      }
+      for (const g of groups.values()) sel.append(g);
+      sel.value = r.node ? r.file + "\u0000" + r.node : "";
+    });
+    sel.onchange = () => {
+      const [file, node] = sel.value.split("\u0000");
+      const opt = sel.selectedOptions[0];
+      r.file = file || ""; r.node = node || "";
+      r.ability = (opt && opt.dataset.ability) || "";
+      save();
+    };
+    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
+      const inp = el("input", { type: "number", step: "any", value: fmt(r.values[k]), "aria-label": t });
+      inp.oninput = () => { const v = Number(inp.value); if (inp.value !== "" && !Number.isNaN(v)) { r.values[k] = v; save(); } };
+      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
+    }));
+    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    // Something the hero spawns (a caster, a projectile) can grow its look with
+    // the number; the hero's own file never does, it would grow the hero.
+    const look = el("input", { type: "checkbox", ...(r.visual === false ? {} : { checked: "" }) });
+    look.onchange = () => { r.visual = look.checked; save(); };
+    box.append(el("div", { class: "addstat" },
+      el("div", { class: "sectrow" }, el("span", { class: "phn", text: "{" + (base() + i) + "}" }), sel, del),
+      nums,
+      el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
+        look, "Grow its look too (water, fire, the effect on the ground)"),
+      el("div", { class: "tiny muted", text: "Grows by this much while the talent is owned: 0.3 is +30%." })));
+  });
+  return box;
+}
+
+// "Hits apply a status" (`on_hit`): while the talent is owned, one of the hero's
+// hits (a damage record of an ability) also puts a status on whoever it hits.
+// The server lists the hits by ability and the statuses it has a donor for.
+const hitDamages = new Map();
+function hitLine(r) {
+  return `• #${r.ability || "Ability"}@ hits #${r.status}@ enemies`;
+}
+function hitRows(c, paint, desc) {
+  const E = S.talentEdit, box = el("div", { class: "tnums" });
+  E.onHit = E.onHit || {};
+  const list = E.onHit[c.source] || [];
+  if (!list.length) return box;
+  if (!hitDamages.has(S.hero))
+    hitDamages.set(S.hero, get("api/talents/damages?hero=" + encodeURIComponent(S.hero))
+      .catch(() => ({ damages: [], statuses: [] })));
+  const save = removed => {
+    if (desc && c.hasDescription) {
+      let text = desc.get();
+      if (removed && removed.line) text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+      for (const r of list) {
+        if (!r.damage) continue;
+        const want = hitLine(r);
+        if (r.line && text.includes(r.line)) text = text.replace(r.line, want);
+        else if (!r.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
+        else continue;
+        r.line = want;
+      }
+      desc.set(text);
+    }
+    if (list.length) E.onHit[c.source] = list; else delete E.onHit[c.source];
+    paint(); refresh();
+  };
+  list.forEach((r, i) => {
+    const hit = el("select", { "aria-label": "Which hit" }, el("option", { value: "", text: "Loading the hero's hits…" }));
+    const status = el("select", { "aria-label": "Status" });
+    hitDamages.get(S.hero).then(j => {
+      hit.textContent = "";
+      hit.append(el("option", { value: "", text: j.damages.length ? "Pick the hit…" : "No hits found for this hero" }));
+      const groups = new Map();
+      for (const d of j.damages) {
+        const g = (d.ability || "Other") + (d.where ? " \u00b7 " + d.where.replace(/_/g, " ") : "");
+        if (!groups.has(g)) groups.set(g, el("optgroup", { label: g }));
+        groups.get(g).append(el("option", { value: d.file + "\u0000" + d.damage, "data-ability": d.ability || "", text: d.damage }));
+      }
+      for (const g of groups.values()) hit.append(g);
+      hit.value = r.damage ? r.file + "\u0000" + r.damage : "";
+      status.textContent = "";
+      for (const st of j.statuses) status.append(el("option", { value: st, text: st }));
+      status.value = r.status;
+    });
+    hit.onchange = () => {
+      const [file, damage] = hit.value.split("\u0000");
+      const opt = hit.selectedOptions[0];
+      r.file = file || ""; r.damage = damage || "";
+      r.ability = (opt && opt.dataset.ability) || "";
+      save();
+    };
+    status.onchange = () => { r.status = status.value; save(); };
+    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    box.append(el("div", { class: "addstat" },
+      el("div", { class: "sectrow" }, hit, status, del),
+      el("div", { class: "tiny muted", text: "While the talent is owned, this hit also puts the status on whoever it hits. Pick every hit of the ability that should do it (some have two, like a normal and an upgraded one)." })));
+  });
+  return box;
+}
+
+// Step 1: which talent does the custom one replace?
+function builderPicker() {
+  const E = S.talentEdit, T = S.talents;
+  const grid = el("div", { class: "tb-pick" });
+  for (const c of T.cards) {
+    const info = c.addStat || { ok: false, why: "" };
+    const can = info.ok && info.rebuild !== false;
+    const b = el("button", { type: "button", class: "tb-tile" + (isRebuilt(c) ? " on" : ""), ...(can ? {} : { disabled: "" }),
+      title: can ? "Replace " + (c.name || c.source) : (info.ok ? info.rebuildWhy : info.why) || "Can't be replaced",
+      onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
+    cardIcon(c, "ico"), el("span", { class: "n", text: c.name || c.source }), el("span", { class: "s", text: c.source }));
+    grid.append(b);
+  }
+  return el("div", {},
+    el("h3", { text: "1. Pick the talent it replaces" }),
+    el("p", { class: "tiny muted", text: "A hero's number of talents is fixed, so a custom talent takes the place of one. Its card slot, icon and rarity stay; what it does is up to you. Greyed-out cards can't be replaced yet (hover for why)." }),
+    grid);
+}
+
+function builderView() {
+  const E = S.talentEdit, T = S.talents;
+  const v = el("div", { class: "tpage tbuild" });
+  const back = el("button", { type: "button", class: "linkbtn", onclick: () => { delete E.build; renderView(); refresh(); } }, "← All talent cards");
+  v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
+    el("div", { class: "tname" }, back, el("h2", { text: "Custom talent for " + S.hero.replace(/_/g, " ") }))));
+  const c = T.cards.find(x => x.source === E.build);
+  const ideaRef = {};
+  if (!c) {
+    v.append(builderPicker(), ideaBox(null, ideaRef));
+    return v;
+  }
+  const info = c.addStat || { ok: false, during: [], after: [] };
+  const cur = E.cards[c.source] || {};
+
+  // The card, large, beside everything that changes it.
+  const preview = el("div", { class: "tb-card" });
+  const nameIn = el("input", { value: cur.name || c.name, placeholder: "Name your talent", ...(c.hasName ? {} : { disabled: "" }) });
+  const descIn = el("textarea", { rows: "4", placeholder: "What the card says. Each effect you add writes a line here; reword it freely.", ...(c.hasDescription ? {} : { disabled: "" }) });
+  descIn.value = cur.description || (isRebuilt(c) ? "" : c.description);
+  const fit = () => { descIn.rows = Math.max(4, descIn.value.split("\n").length + 1); };
+  fit();
+  const paint = () => {
+    preview.textContent = "";
+    preview.append(talentCard(c, nameIn.value || c.name, descIn.value || (isRebuilt(c) ? "" : c.description)));
+  };
+  const store = () => {
+    const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
+    const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
+    const icon = (E.cards[c.source] || {}).iconUpload || "";
+    if (n || d || icon) E.cards[c.source] = { name: n, description: d, ...(icon ? { iconUpload: icon } : {}) };
+    else delete E.cards[c.source];
+    paint(); refresh();
+  };
+  nameIn.oninput = store;
+  descIn.oninput = () => { fit(); store(); };
+  const desc = { get: () => descIn.value, set: t => { descIn.value = t; fit(); store(); } };
+  const setIcon = d => {
+    const now = E.cards[c.source] || { name: "", description: "" };
+    if (d) now.iconUpload = d; else delete now.iconUpload;
+    E.cards[c.source] = now;
+    store(); renderView();
+  };
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Preview rarity" });
+  for (const tier of TIERS) {
+    const b = el("button", { type: "button", class: (E.rarity || "Common") === tier ? "on" : "", onclick: () => {
+      E.rarity = tier;
+      for (const x of seg.children) x.classList.toggle("on", x.textContent === tier);
+      paint(); saveDraft();
+    } }, tier);
+    b.style.setProperty("--rc", RARITY_COLOUR[tier]);
+    seg.append(b);
+  }
+  const left = el("div", { class: "tb-left" }, preview, el("div", { class: "tb-segrow" }, el("span", { class: "tiny muted", text: "Preview as" }), seg),
+    el("button", { type: "button", class: "linkbtn", onclick: () => { E.build = ""; renderView(); } }, "Replace a different talent"));
+
+  const right = el("div", { class: "tb-right" });
+  // 2. Name and look.
+  const up = (E.cards[c.source] || {}).iconUpload;
+  right.append(el("h3", { text: "2. Name it" }),
+    el("div", { class: "tb-replacing tiny muted", text: "Replacing " + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "") }),
+    nameIn, descIn,
+    el("div", { class: "tb-iconrow" }, c.icon ? uploadButton(up ? "Replace icon…" : "Use your own icon…", 128, setIcon) : el("span"),
+      up ? el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again") : el("span"),
+      el("span", { class: "tiny muted", text: "Markup: #WORD@ highlights, &{0}~ is a number that grows with rarity." })));
+
+  // 3. What it does.
+  right.append(el("h3", { text: "3. What it does" }));
+  right.append(rebuildSwitch(c, desc, () => renderView()));
+  const addRow = a => {
+    E.addStats = E.addStats || {};
+    (E.addStats[c.source] = E.addStats[c.source] || []).push(a);
+    writeStatLines(c, desc);
+    renderView(); refresh();
+  };
+  const effects = el("div", { class: "tb-effects" });
+  effects.append(addedStats(c, paint, desc));
+  // addedStats ends with its own "+ Add a stat"; the palette replaces it here.
+  const plain = effects.querySelector(".tnums > button:last-child");
+  if (plain) plain.remove();
+  const borrowBox = el("div", { class: "tb-borrow" }, includeControl(c, paint));
+  borrowBox.hidden = !(E.include || {})[c.source] && !E.showBorrow;
+  right.append(effects, scaleRows(c, paint, desc), hitRows(c, paint, desc), borrowBox);
+
+  const palette = el("div", { class: "tb-palette" });
+  for (const blk of BLOCKS) {
+    const list = blk.needs ? info[blk.needs] || [] : [true];
+    const ok = info.ok && list.length;
+    palette.append(el("button", { type: "button", class: "tb-block", ...(ok ? {} : { disabled: "" }),
+      title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
+      onclick: () => {
+        if (blk.id === "borrow") { E.showBorrow = true; borrowBox.hidden = false; borrowBox.querySelector("select").focus(); return; }
+        if (blk.id === "status") {
+          E.onHit = E.onHit || {};
+          (E.onHit[c.source] = E.onHit[c.source] || []).push({ damage: "", file: "", status: "Ignite" });
+          renderView(); refresh(); return;
+        }
+        if (blk.id === "bigger") {
+          E.scale = E.scale || {};
+          (E.scale[c.source] = E.scale[c.source] || []).push({ node: "", file: "", values: [0.1, 0.2, 0.3, 0.4] });
+          renderView(); refresh(); return;
+        }
+        const a = { stat: "", values: [0, 0, 0, 0], percent: true };
+        if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
+        if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
+        if (blk.id === "next") {
+          const nxt = (info.during || []).filter(x => x !== a.after);
+          if (nxt.length) a.next = nxt.includes("ATTACK") ? "ATTACK" : nxt[0];
+        }
+        addRow(a);
+      } }, el("span", { class: "t", text: "+ " + blk.title }), el("span", { class: "b", text: blk.blurb })));
+  }
+  right.append(el("div", { class: "tb-sub", text: "Add a building block" }), palette);
+
+  const fits = RECIPES.filter(r => recipeFits(r, info));
+  if (info.ok && fits.length) {
+    right.append(el("div", { class: "tb-sub", text: "Or start from an example" }),
+      el("div", { class: "tb-recipes" }, ...fits.map(r => el("button", { type: "button", class: "tb-recipe", onclick: () => {
+        if (!nameIn.value.trim() || nameIn.value === c.name) { nameIn.value = r.name; store(); }
+        for (const row of r.rows) {
+          E.addStats = E.addStats || {};
+          (E.addStats[c.source] = E.addStats[c.source] || []).push({ percent: true, ...structuredClone(row) });
+        }
+        writeStatLines(c, desc);
+        renderView(); refresh();
+      } }, el("span", { class: "t", text: r.name }), el("span", { class: "b", text: r.blurb })))));
+  }
+
+  right.append(el("div", { class: "tb-sub", text: "Not buildable yet: ask for it" }),
+    el("div", { class: "tb-palette wish" }, ...WISHES.map(w => el("button", { type: "button", class: "tb-block", onclick: () => ideaRef.focus(w.ex) },
+      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))));
+  right.append(ideaBox(c, ideaRef));
+
+  v.append(el("div", { class: "tb-grid" }, left, right));
+  paint();
+  return v;
+}
+
+function talentView() {
+  const T = S.talents, v = el("div", { class: "tpage" });
+  if (!CARD.ready) cardAssets().then(() => { if (S.tab === "talents" && S.talents) TPREV.all(); });
+  if (!T) {
+    v.append(el("div", { class: "help", text: "Pick a hero on the left to rename their talent cards, change the numbers behind them, or build a talent of your own." }));
+    return v;
+  }
+  const E = S.talentEdit;
+  if (typeof E.build === "string") {
+    if (!CARD.ready) cardAssets().then(() => { if (S.tab === "talents" && typeof S.talentEdit.build === "string") renderView(); });
+    return builderView();
+  }
+  const resetAll = () => { S.talentEdit = freshTalentEdit(); S.restored = ""; renderView(); refresh(); };
+  const banner = draftBanner(resetAll);
+  if (banner) v.append(banner);
+
+  // Head: portrait, name, block id, reset.
+  const pre = el("input", { value: E.prefix, spellcheck: "false", class: "prefix", title: "The start of each block's id in the manifest" });
+  pre.oninput = () => { E.prefix = pre.value; refresh(); };
+  v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
+    el("div", { class: "tname" }, el("h2", { text: S.hero.replace(/_/g, " ") }),
+      el("div", { class: "muted tiny", text: `${T.cards.length} talent cards · a hero's number of talents is fixed, so you change the ones there are` })),
+    el("label", { class: "tiny muted tprefix" }, "Block id", pre),
+    el("button", { type: "button", title: "Undo every change to this hero (other heroes and items keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this hero")));
+
+  // The way in to the builder: a custom talent, and the ideas the blocks can't do yet.
+  const built = Object.keys(E.rebuild || {});
+  v.append(el("div", { class: "tb-promo" },
+    el("div", { class: "tb-promotext" },
+      el("strong", { text: built.length ? `${built.length} custom talent${built.length > 1 ? "s" : ""} in progress` : "Make your own talent" }),
+      el("span", { text: "Replace one of " + S.hero.replace(/_/g, " ") + "'s talents with one you build from blocks: bonuses during or after abilities, “your next ATTACK”, another hero's talent… And if your idea is “POWER spawns a tornado”, ask for it: that is how the blocks get made." })),
+    el("button", { type: "button", class: "primary", onclick: () => { E.build = built.length === 1 ? built[0] : ""; renderView(); } },
+      built.length === 1 ? "Open the builder" : "Build a custom talent")));
+
+  // Toolbar: search, preview rarity.
+  const q = el("input", { type: "search", placeholder: "Find a card, e.g. dash", value: E.q || "" });
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Preview rarity" });
+  for (const tier of TIERS) {
+    const b = el("button", { type: "button", class: (E.rarity || "Common") === tier ? "on" : "", onclick: () => setTalentRarity(tier, seg) }, tier);
+    b.style.setProperty("--rc", RARITY_COLOUR[tier]);
+    seg.append(b);
+  }
+  v.append(el("div", { class: "ttools" }, q, el("span", { class: "tiny muted", text: "Show cards as" }), seg));
+
+  const list = el("div", { class: "tgrid" });
+  const draw = () => {
+    TPREV.reset();
+    list.textContent = "";
+    const needle = q.value.toLowerCase();
+    const cards = T.cards.filter(c => !needle || (c.source + " " + c.name + " " + c.description).toLowerCase().includes(needle));
+    if (!cards.length) list.append(el("div", { class: "empty", text: T.cards.length ? "No card matches." : "No card text found. Card text needs a readable game install." }));
+    for (const c of cards) list.append(talentRow(c));
+  };
+  q.oninput = () => { E.q = q.value; draw(); };
+  draw();
+  v.append(list);
+  // Anything the editor could not turn into a card is listed, never dropped.
+  const skipped = T.skipped || [];
+  if (skipped.length) {
+    const bad = skipped.filter(x => x.problem).length;
+    v.append(el("details", { class: "hint", ...(bad ? { open: "" } : {}) },
+      el("summary", { text: bad ? `${skipped.length} rows not shown as cards, ${bad} of them look like a bug` : `${skipped.length} rows not shown as cards (helpers, no card text)` }),
+      ...skipped.map(x => el("div", { class: "tiny" + (x.problem ? " bad" : " muted"), text: `${x.source}: ${x.reason}` }))));
+  }
+  v.append(el("div", { class: "hint", text: "Card text markup: #WORD@ highlights, &{0}~ is a number that scales with rarity, $word* marks a drawback. Keep the placeholders the card already uses." }));
+  v.append(allValues());
+  return v;
+}
+
+// "Open in Ability editor": the same numbers as parts of a graph, with the links
+// between them. Only inside the editor shell, which is what can switch tabs; the
+// ability group of a card "Defense Clone" is "Skill Defense Clone".
+function abilityLink(c) {
+  let host = null;
+  try { host = window.top !== window && window.top.rsmmOpen ? window.top : null; } catch { host = null; }
+  if (!host) return el("span");
+  return el("button", { type: "button", class: "linkbtn", title: "Show this talent's parts and links in the Ability editor",
+    onclick: () => host.rsmmOpen("abilities", { hero: S.hero, group: "Skill " + c.source }) }, "Open in Ability editor ↗");
+}
+
+// One talent: its card as the game draws it, and everything that changes it.
+function talentRow(c) {
+  const E = S.talentEdit, cur = E.cards[c.source] || {};
+  const tierEdited = () => c.entries.some(e => e && (
+    (e.tiers && Object.values(e.tiers).some(t => E.tiers[tierKey(c.file, tierNode(e), t.index)]))
+    || (e.single && E.tiers[tierKey(c.file, tierNode(e), e.single.index)])));
+  const row = el("div", { class: "tcard" });
+  const preview = el("div", { class: "tprev" });
+  const nameIn = el("input", { value: cur.name || c.name, placeholder: c.name || "(no name key)" });
+  const descIn = el("textarea", { rows: "3" });
+  // A rebuilt talent starts from no text: its old text describes what is now off,
+  // and its old {0} would now show the first added stat.
+  descIn.value = cur.description || (isRebuilt(c) ? "" : c.description);
+  if (isRebuilt(c)) descIn.placeholder = "Describe the new talent. Each stat you add below writes a line here.";
+  // Tall enough to show every line, so a line added for a new stat is seen.
+  const descWarn = el("div", { class: "tiny bad", text: "Give the new talent a description: without one, the card keeps its old text in game." });
+  const syncWarn = () => { descWarn.hidden = !!descIn.value.trim(); };
+  const fitDesc = () => { descIn.rows = Math.max(3, descIn.value.split("\n").length + 1); syncWarn(); };
+  fitDesc();
+  if (!c.hasName) nameIn.disabled = true;
+  if (!c.hasDescription) descIn.disabled = true;
+  const paint = () => {
+    preview.textContent = "";
+    preview.append(talentCard(c, nameIn.value || c.name,
+      descIn.value || (isRebuilt(c) ? "" : c.description)));
+  };
+  const redraw = () => {
+    TPREV.redraw(preview, paint);
+    row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)
+      || (E.include || {})[c.source] || (E.scale || {})[c.source] || (E.onHit || {})[c.source]));
+  };
+  const upd = () => {
+    const n = nameIn.value.trim() && nameIn.value !== c.name ? nameIn.value : "";
+    const d = descIn.value.trim() && descIn.value !== c.description ? descIn.value : "";
+    const icon = (E.cards[c.source] || {}).iconUpload || "";
+    if (n || d || icon) E.cards[c.source] = { name: n, description: d, ...(icon ? { iconUpload: icon } : {}) };
+    else delete E.cards[c.source];
+    redraw(); refresh();
+  };
+  nameIn.oninput = upd; descIn.oninput = () => { syncWarn(); upd(); };
+  const setIcon = d => {
+    const cur = E.cards[c.source] || { name: "", description: "" };
+    if (d) cur.iconUpload = d; else delete cur.iconUpload;
+    E.cards[c.source] = cur;
+    upd(); drawIconCtl();
+  };
+  const iconCtl = el("div", { class: "own" });
+  const drawIconCtl = () => {
+    iconCtl.textContent = "";
+    const up = (E.cards[c.source] || {}).iconUpload;
+    if (up) iconCtl.append(el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again"));
+    if (c.icon) iconCtl.append(uploadButton(up ? "Replace icon…" : "Replace icon…", 128, setIcon));
+    else iconCtl.append(el("span", { class: "tiny muted", text: "No icon found for this card." }));
+  };
+  drawIconCtl();
+  const undo = resetBtn(() => { nameIn.value = c.name; descIn.value = c.description; setIcon(""); }, "Undo the text and icon changes to this card");
+  undo.classList.add("own");
+  const side = el("div", { class: "tside" },
+    el("div", { class: "tsrc" }, el("span", { text: c.source }), iconCtl, undo),
+    nameIn, descIn);
+  if (isRebuilt(c)) side.append(descWarn);
+  syncWarn();
+  const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
+  // Replacing a talent happens in the builder; here, a way in (and out).
+  const info = c.addStat || { ok: false };
+  const canBuild = info.ok && info.rebuild !== false;
+  side.append(el("div", { class: "tb-rowbtn" + (isRebuilt(c) ? " on" : "") },
+    el("button", { type: "button", ...(canBuild ? {} : { disabled: "" }),
+      title: canBuild ? "" : "Can't be replaced: " + ((info.ok ? info.rebuildWhy : info.why) || "not supported"),
+      onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
+    isRebuilt(c) ? "Custom talent: open in the builder →" : "Replace with a custom talent →"),
+    isRebuilt(c) ? el("button", { type: "button", class: "linkbtn", onclick: () => {
+      delete E.rebuild[c.source];
+      if (!E.cards[c.source]?.name) delete E.cards[c.source];
+      renderView(); refresh();
+    } }, "Turn back into " + (c.name || c.source)) : el("span")));
+  side.append(includeControl(c, redraw));
+  if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
+    talentNumbers(c, redraw));
+  side.append(el("div", { class: "sect sectrow" }, el("span", { text: isRebuilt(c) ? "What the new talent does" : "Added stats" })),
+    addedStats(c, redraw, desc));
+  row.append(preview, side);
+  TPREV.add(preview, paint);
+  row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
+  row.classList.toggle("rebuilt", isRebuilt(c));
+  return row;
+}
+
+// Card previews are the expensive part of the Talents tab (every letter is a
+// glyph), so a preview is drawn only while it is on screen; one scrolled away
+// is marked stale and drawn when it comes back.
+const TPREV = {
+  paints: new Map(), stale: new Set(), seen: new Set(), obs: null,
+  reset() {
+    if (this.obs) this.obs.disconnect();
+    this.paints.clear(); this.stale.clear(); this.seen.clear();
+    this.obs = "IntersectionObserver" in window ? new IntersectionObserver(es => {
+      for (const e of es) {
+        if (e.isIntersecting) {
+          this.seen.add(e.target);
+          if (this.stale.delete(e.target)) this.paints.get(e.target)();
+        } else this.seen.delete(e.target);
+      }
+    }, { root: document.getElementById("main"), rootMargin: "300px 0px" }) : null;
+  },
+  add(el, paint) {
+    this.paints.set(el, paint);
+    if (this.obs) { this.stale.add(el); el.style.minHeight = "170px"; this.obs.observe(el); } else paint();
+  },
+  redraw(el, paint) {
+    if (!this.obs || this.seen.has(el)) paint(); else this.stale.add(el);
+  },
+  // Every preview is out of date (the rarity changed): draw the visible ones now.
+  all() {
+    for (const [el, paint] of this.paints) this.redraw(el, paint);
+  },
+};
+
+// Switch the preview rarity: restyle the switch and the highlighted tier boxes
+// in place and redraw the cards, without rebuilding the page.
+function setTalentRarity(tier, seg) {
+  const E = S.talentEdit;
+  if ((E.rarity || "Common") === tier) return;
+  E.rarity = tier;
+  for (const b of seg.children) b.classList.toggle("on", b.textContent === tier);
+  for (const inp of document.querySelectorAll(".tier input[data-tier]")) inp.classList.toggle("on", inp.dataset.tier === tier);
+  TPREV.all();
+  saveDraft();
+}
+
+// Every value and effect of the hero, by file, for what the cards do not show.
+function allValues() {
+  const T = S.talents, E = S.talentEdit;
+  const nVals = T.files.reduce((n, f) => n + f.values.length, 0);
+  const nMods = T.files.reduce((n, f) => n + f.modifiers.length, 0);
+  const d = el("details", { class: "allv" }, el("summary", {}, `All values and effects (${nVals} values, ${nMods} effects)`));
+  const changed = Object.keys(E.values).length + Object.keys(E.stats).length;
+  if (changed) d.open = true;
+  const q = el("input", { type: "search", placeholder: "Filter, e.g. damage", style: "width:100%;margin:8px 0" });
+  const box = el("div");
+  const draw = () => {
+    box.textContent = "";
+    const needle = q.value.toLowerCase();
+    for (const file of T.files) {
+      const rows = file.values.filter(r => !needle || r.label.toLowerCase().includes(needle));
+      const mods = file.modifiers.filter(m => !needle || (m.name + " " + m.stat).toLowerCase().includes(needle));
+      if (!rows.length && !mods.length) continue;
+      const nChanged = file.values.filter(r => (file.file + "\u0000" + r.label) in E.values).length
+        + file.modifiers.filter(m => (file.file + "\u0000" + m.name) in E.stats).length;
+      const fd = el("details", { class: "file" }, el("summary", {}, file.file,
+        el("span", { class: "muted", text: `  ${file.values.length} values, ${file.modifiers.length} effects` + (nChanged ? `, ${nChanged} changed` : "") })));
+      if (needle || nChanged) fd.open = true;
+      const inner = el("div", { class: "rows" });
+      for (const r of rows) {
+        const key = file.file + "\u0000" + r.label;
+        inner.append(valueRow(r.label, r.value, r.type, r.shadowed, E.values[key] ? E.values[key].new : undefined, nv => {
+          if (nv === undefined) delete E.values[key];
+          else E.values[key] = { file: file.file, label: r.label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
+          refresh();
+        }));
+      }
+      for (const m of mods) {
+        const key = file.file + "\u0000" + m.name;
+        inner.append(statRow(m, E.stats[key], val => {
+          if (val === undefined) delete E.stats[key]; else E.stats[key] = val;
+          refresh();
+        }));
+      }
+      fd.append(inner); box.append(fd);
+    }
+  };
+  q.oninput = draw;
+  d.addEventListener("toggle", () => { if (d.open && !box.childNodes.length) draw(); });
+  if (d.open) draw();
+  d.append(q, box);
+  return d;
+}
+
+function renderView() {
+  if (S.ws) { try { S.ws.dispose(); } catch { /* already gone */ } S.ws = null; }
+  const view = $("#view"); view.textContent = "";
+  view.classList.toggle("blocks", S.tab === "scripts" && S.scriptMode === "blocks");
+  view.append(S.tab === "items" ? itemView() : S.tab === "talents" ? talentView() : scriptView());
+  applyWide();
+}
+
+// ---- scripts: test grants -------------------------------------------------------------
+// The Scripts tab sets the editor's own section of the mod's init.lua, which hands
+// out items, talents and XP when a run starts. The server writes the Lua; this
+// page only edits the settings.
+const SCRIPT_KEY = "rsmm.editor.script", LOADED_KEY = "rsmm.editor.loaded";
+const TIER_NAMES = ["Common", "Rare", "Epic", "Legendary"];
+function emptyScript() { return { hero: "", xp: 0, items: [], talents: [] }; }
+// The settings as the server keeps them: a half-filled row is not a change, and
+// talents need their hero.
+function scriptNorm(c) {
+  c = c || emptyScript();
+  return JSON.stringify({ hero: c.hero || "", xp: Math.max(0, Math.floor(Number(c.xp) || 0)),
+    items: (c.items || []).filter(i => i.id).map(i => ({ id: i.id, count: Math.min(99, Math.max(1, Math.floor(Number(i.count) || 1))) })),
+    talents: c.hero ? (c.talents || []).filter(t => t.name).map(t => ({ name: t.name, tier: Number(t.tier) || 0 })) : [] });
+}
+const NO_GRANTS = scriptNorm(emptyScript());
+function scriptChanged() { return !!S.script && scriptNorm(S.script) !== S.scriptSaved; }
+function saveScript() { store.set(SCRIPT_KEY, { script: S.script, saved: S.scriptSaved }); }
+// ---- scripts: the block program ---------------------------------------------------------
+// A Blockly workspace the server turns into Lua (editor/blocks.py), so the page never
+// writes code: a program can only use the blocks defined here.
+const PROGRAM_KEY = "rsmm.editor.program";
+function emptyProgram() { return { blocks: { languageVersion: 0, blocks: [] }, variables: [] }; }
+// A program with no blocks is the empty program, whatever the workspace saved around it.
+function programNorm(p) {
+  const blocks = (p && p.blocks && p.blocks.blocks) || [];
+  return JSON.stringify(blocks.length ? { blocks: p.blocks, variables: p.variables || [] } : emptyProgram());
+}
+const NO_PROGRAM = programNorm(emptyProgram());
+function programChanged() { return !!S.program && programNorm(S.program) !== S.programSaved; }
+function programUsed() { return programNorm(S.program) !== NO_PROGRAM; }
+function saveProgram() { store.set(PROGRAM_KEY, { program: S.program, saved: S.programSaved }); }
+
+let blocklyReady = null, blocklyMedia = "static/";
+// Blockly is one file served beside the page, loaded through fetch so it works in the
+// web editor too (which routes fetch, not script tags), then run as an inline script.
+function loadBlockly() {
+  if (!blocklyReady) blocklyReady = (async () => {
+    if (!window.Blockly) {
+      const r = await fetch("static/blockly.min.js");
+      if (!r.ok) throw new Error("the block editor could not be loaded");
+      const tag = document.createElement("script");
+      tag.textContent = await r.text();
+      document.head.append(tag);
+    }
+    // Blockly draws its zoom and trash icons from one sprite sheet it asks for by URL, and the
+    // web editor serves fetch, not image loads. So the sheet is fetched here and handed over as a
+    // data URL: Blockly appends "sprites.svg" to its media path, which lands after the "#" and is
+    // ignored. The unreserved characters encodeURIComponent keeps are escaped too, because the
+    // path ends up inside an unquoted CSS url().
+    try {
+      const r = await fetch("static/sprites.svg");
+      if (r.ok) blocklyMedia = "data:image/svg+xml," + encodeURIComponent(await r.text())
+        .replace(/[()'!*~]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase()) + "#";
+    } catch { /* the icons are missing, nothing else */ }
+    let events = [];
+    try { events = (await get("api/blocks/meta")).events || []; } catch { /* free text instead */ }
+    defineBlocks(events);
+  })().catch(e => { blocklyReady = null; throw e; });
+  return blocklyReady;
+}
+
+// Block colours: one muted family, set in the theme below so the toolbox, the blocks and
+// Blockly's own categories all agree.
+const PALETTE = {
+  event: "#b3122c", action: "#2f6f8f", value: "#3f8f6b", logic: "#7a5aa6", loop: "#c0873a",
+  math: "#4a6fa5", text: "#7d8794", list: "#3e9a9a", variable: "#b06a8c", procedure: "#8a5ba8",
+};
+function defineBlocks(events) {
+  const items = [...S.items].sort((a, b) => a.name.localeCompare(b.name)).map(i => [`${i.name} (${i.rarity})`, i.id]);
+  const stats = S.stats.map(x => [x.name, x.name]);
+  const heroes = S.heroes.map(h => [h.replace(/_/g, " "), h]);
+  const orText = (opts, name, dflt) => opts.length ? { type: "field_dropdown", name, options: opts } : { type: "field_input", name, text: dflt };
+  const amount = { type: "input_value", name: "AMOUNT", check: "Number" };
+  const stack = { previousStatement: null, nextStatement: null };
+  Blockly.defineBlocksWithJsonArray([
+    { type: "rsmm_on_event", message0: "when %1", args0: [{ type: "field_dropdown", name: "EVENT", options: [
+        ["a run starts", "run:start"], ["a run ends", "run:end"], ["the menu opens", "menu:enter"], ["the game is ready", "ready"]] }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Runs its blocks when this happens. Actions wait until your hero exists." },
+    { type: "rsmm_on_gameplay", message0: "when the game event %1 happens", args0: [events.length
+        ? { type: "field_dropdown", name: "NAME", options: events.map(e => [e.name, e.name]) }
+        : { type: "field_input", name: "NAME", text: "ENEMY_KILLED" }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Runs its blocks each time the game fires this event (for example ENEMY_KILLED)." },
+    { type: "rsmm_on_every", message0: "every %1 seconds", args0: [{ type: "field_number", name: "SECONDS", value: 5, min: 0.05 }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], style: "rsmm_event",
+      tooltip: "Repeats while a run is going." },
+    { type: "rsmm_wait", message0: "after %1 seconds", args0: [{ type: "field_number", name: "SECONDS", value: 1, min: 0.05 }],
+      message1: "do %1", args1: [{ type: "input_statement", name: "DO" }], ...stack, style: "rsmm_event",
+      tooltip: "Runs its blocks once, after the wait." },
+    { type: "rsmm_stop", message0: "stop here", previousStatement: null, style: "rsmm_event",
+      tooltip: "Ends this event's blocks, or this function, right here." },
+    { type: "rsmm_give_item", message0: "give item %1 × %2", args0: [orText(items, "ITEM", "Armor_Per_Object"),
+        { type: "field_number", name: "COUNT", value: 1, min: 1, max: 99, precision: 1 }],
+      ...stack, style: "rsmm_action", tooltip: "Hands you copies of a magical object." },
+    { type: "rsmm_give_random", message0: "give %1 random item(s)", args0: [{ type: "field_number", name: "COUNT", value: 1, min: 1, max: 99, precision: 1 }],
+      ...stack, style: "rsmm_action", tooltip: "Hands you random magical objects from the game's pool." },
+    { type: "rsmm_grant_talent", message0: "give talent %1 at %2", args0: [{ type: "field_input", name: "TALENT", text: "" },
+        { type: "field_dropdown", name: "TIER", options: [["Common", "0"], ["Rare", "1"], ["Epic", "2"], ["Legendary", "3"]] }],
+      ...stack, style: "rsmm_action", tooltip: "Grants a talent card of your hero by its name." },
+    { type: "rsmm_grant_xp", message0: "give XP %1", args0: [amount], ...stack, style: "rsmm_action",
+      tooltip: "5000 takes a new hero from level 1 to 4." },
+    { type: "rsmm_stat_add", message0: "change stat %1 by %2 for %3 seconds (0 = the whole run)", args0: [orText(stats, "STAT", "Armour"), amount,
+        { type: "input_value", name: "SECONDS", check: "Number" }],
+      ...stack, style: "rsmm_action", tooltip: "Adds to one of your stats the way an item would." },
+    { type: "rsmm_hp", message0: "%1 health %2", args0: [{ type: "field_dropdown", name: "ACTION", options: [["heal", "heal"], ["damage", "damage"], ["set to", "set"]] }, amount],
+      ...stack, style: "rsmm_action", tooltip: "Changes your health." },
+    { type: "rsmm_shards", message0: "%1 dream shards %2", args0: [{ type: "field_dropdown", name: "ACTION", options: [["add", "add"], ["spend", "spend"], ["set to", "set"]] }, amount],
+      ...stack, style: "rsmm_action", tooltip: "Changes your dream shards." },
+    { type: "rsmm_log", message0: "write to the log %1", args0: [{ type: "input_value", name: "TEXT" }],
+      ...stack, style: "rsmm_action", tooltip: "Writes a line to the loader log (rsmm log)." },
+    { type: "rsmm_hp_value", message0: "my %1", args0: [{ type: "field_dropdown", name: "WHAT", options: [["health", "hp"], ["max health", "max"], ["health fraction", "frac"]] }],
+      output: "Number", style: "rsmm_value", tooltip: "Reads your health." },
+    { type: "rsmm_xp_level", message0: "my level", output: "Number", style: "rsmm_value" },
+    { type: "rsmm_shards_value", message0: "my dream shards", output: "Number", style: "rsmm_value" },
+    { type: "rsmm_item_count", message0: "items I own", output: "Number", style: "rsmm_value",
+      tooltip: "How many magical objects you hold right now." },
+    { type: "rsmm_stat_value", message0: "my stat %1", args0: [orText(stats, "STAT", "Armour")], output: "Number", style: "rsmm_value" },
+    { type: "rsmm_hero_is", message0: "my hero is %1", args0: [orText(heroes, "HERO", "Aladdin")], output: "Boolean", style: "rsmm_value" },
+  ]);
+}
+const num = (n) => ({ shadow: { type: "math_number", fields: { NUM: n } } });
+function toolbox() {
+  const b = (type, inputs, extra) => Object.assign({ kind: "block", type }, inputs ? { inputs } : {}, extra || {});
+  const cat = (name, style, contents, more) => Object.assign({ kind: "category", name, categorystyle: style, contents }, more || {});
+  const text = t => ({ shadow: { type: "text", fields: { TEXT: t } } });
+  return { kind: "categoryToolbox", contents: [
+    cat("Events", "rsmm_event_category", [b("rsmm_on_event"), b("rsmm_on_gameplay"), b("rsmm_on_every"), b("rsmm_wait"), b("rsmm_stop")]),
+    cat("Actions", "rsmm_action_category", [b("rsmm_give_item"), b("rsmm_give_random"), b("rsmm_grant_talent"), b("rsmm_grant_xp", { AMOUNT: num(5000) }),
+      b("rsmm_stat_add", { AMOUNT: num(1), SECONDS: num(0) }), b("rsmm_hp", { AMOUNT: num(10) }),
+      b("rsmm_shards", { AMOUNT: num(10) }), b("rsmm_log", { TEXT: text("hello") })]),
+    cat("Me", "rsmm_value_category", [b("rsmm_hp_value"), b("rsmm_xp_level"), b("rsmm_shards_value"), b("rsmm_item_count"), b("rsmm_stat_value"), b("rsmm_hero_is")]),
+    cat("Logic", "logic_category", [b("controls_if"), b("controls_if", null, { extraState: { hasElse: true } }),
+      b("logic_compare", { A: num(0), B: num(0) }), b("logic_operation"), b("logic_negate"), b("logic_boolean"),
+      b("logic_ternary", { THEN: num(1), ELSE: num(0) })]),
+    cat("Loops", "loop_category", [b("controls_repeat_ext", { TIMES: num(3) }), b("controls_for", { FROM: num(1), TO: num(5), BY: num(1) }),
+      b("controls_forEach"), b("controls_whileUntil"), b("controls_flow_statements")]),
+    cat("Math", "math_category", [b("math_number"), b("math_arithmetic", { A: num(1), B: num(1) }), b("math_single", { NUM: num(9) }),
+      b("math_round", { NUM: num(3.5) }), b("math_modulo", { DIVIDEND: num(10), DIVISOR: num(3) }),
+      b("math_constrain", { VALUE: num(50), LOW: num(1), HIGH: num(100) }), b("math_number_property", { NUMBER_TO_CHECK: num(0) }),
+      b("math_random_int", { FROM: num(1), TO: num(10) }), b("math_random_float")]),
+    cat("Text", "text_category", [b("text"), b("text_join"), b("text_append", { TEXT: text("") }), b("text_length", { VALUE: text("abc") }),
+      b("text_isEmpty", { VALUE: text("") })]),
+    cat("Lists", "list_category", [b("lists_create_with", null, { extraState: { itemCount: 0 } }), b("lists_create_with", null, { extraState: { itemCount: 3 } }),
+      b("lists_length"), b("lists_isEmpty"), b("lists_getIndex"), b("lists_setIndex")]),
+    { kind: "sep" },
+    cat("Variables", "variable_category", [], { custom: "VARIABLE" }),
+    cat("Functions", "procedure_category", [], { custom: "PROCEDURE" }),
+  ] };
+}
+// The page's own colours and font, so the workspace follows its light and dark themes.
+function blockTheme() {
+  const css = getComputedStyle(document.documentElement), c = (n, d) => css.getPropertyValue(n).trim() || d;
+  // Shadow inputs and outlines take lighter and darker shades of the block's own colour.
+  const mix = (hex, to, t) => "#" + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - t) + to * t)
+    .toString(16).padStart(2, "0")).join("");
+  const style = hex => ({ colourPrimary: hex, colourSecondary: mix(hex, 255, 0.35), colourTertiary: mix(hex, 0, 0.25) });
+  const P = PALETTE, ink = c("--ink", "#1d1d1f"), panel = c("--panel", "#ffffff");
+  return Blockly.Theme.defineTheme("rsmm", { name: "rsmm", base: Blockly.Themes.Zelos,
+    fontStyle: { family: 'system-ui, "Segoe UI", sans-serif', weight: "600", size: 11 },
+    blockStyles: {
+      rsmm_event: style(P.event), rsmm_action: style(P.action), rsmm_value: style(P.value),
+      logic_blocks: style(P.logic), loop_blocks: style(P.loop), math_blocks: style(P.math), text_blocks: style(P.text),
+      list_blocks: style(P.list), variable_blocks: style(P.variable), variable_dynamic_blocks: style(P.variable),
+      procedure_blocks: style(P.procedure),
+    },
+    categoryStyles: {
+      rsmm_event_category: { colour: P.event }, rsmm_action_category: { colour: P.action }, rsmm_value_category: { colour: P.value },
+      logic_category: { colour: P.logic }, loop_category: { colour: P.loop }, math_category: { colour: P.math }, text_category: { colour: P.text },
+      list_category: { colour: P.list }, variable_category: { colour: P.variable }, variable_dynamic_category: { colour: P.variable },
+      procedure_category: { colour: P.procedure },
+    },
+    componentStyles: {
+      workspaceBackgroundColour: c("--bg", "#f4f3ef"), toolboxBackgroundColour: panel, toolboxForegroundColour: ink,
+      flyoutBackgroundColour: panel, flyoutForegroundColour: ink, flyoutOpacity: 0.98, scrollbarColour: c("--muted", "#6a6a70"),
+      scrollbarOpacity: 0.5, insertionMarkerColour: ink, insertionMarkerOpacity: 0.25, cursorColour: ink } });
+}
+function paintProgramWarn() {
+  const host = document.getElementById("blockly-warn");
+  if (host) host.textContent = S.programWarn.length ? "Note: " + S.programWarn.join(" ") : "";
+}
+
+// Starter programs: each builds a complete Blockly state.
+let exId = 0;
+const xb = (type, fields, inputs, extra) => Object.assign({ type, id: "ex" + (++exId), fields: fields || {} }, inputs ? { inputs } : {}, extra || {});
+const xchain = (...bs) => { for (let i = 0; i + 1 < bs.length; i++) bs[i].next = { block: bs[i + 1] }; return { block: bs[0] }; };
+const xn = n => ({ block: xb("math_number", { NUM: n }) });
+const xv = id => ({ block: xb("variables_get", { VAR: { id } }) });
+const xstate = (blocks, variables) => ({ blocks: { languageVersion: 0, blocks }, variables: variables || [] });
+const at = (b, x, y) => Object.assign(b, { x, y });
+const EXAMPLES = [
+  ["Start with extras", () => xstate([at(xb("rsmm_on_event", { EVENT: "run:start" }, { DO: xchain(
+    xb("rsmm_give_random", { COUNT: 2 }), xb("rsmm_grant_xp", {}, { AMOUNT: xn(5000) })) }), 40, 40)])],
+  ["Heal when hurt on a kill", () => xstate([at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+    xb("controls_if", {}, { IF0: { block: xb("logic_compare", { OP: "LT" }, { A: { block: xb("rsmm_hp_value", { WHAT: "frac" }) }, B: xn(0.5) }) },
+      DO0: xchain(xb("rsmm_hp", { ACTION: "heal" }, { AMOUNT: xn(10) })) })) }), 40, 40)])],
+  ["Reward every 10 kills", () => xstate([at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+    xb("math_change", { VAR: { id: "kills" } }, { DELTA: xn(1) }),
+    xb("controls_if", {}, { IF0: { block: xb("logic_compare", { OP: "GTE" }, { A: xv("kills"), B: xn(10) }) },
+      DO0: xchain(xb("rsmm_give_random", { COUNT: 1 }), xb("variables_set", { VAR: { id: "kills" } }, { VALUE: xn(0) }),
+        xb("rsmm_log", {}, { TEXT: { shadow: { type: "text", fields: { TEXT: "kill reward" } } } })) })) }), 40, 40)],
+    [{ name: "kills", id: "kills" }])],
+  ["A function you call", () => xstate([
+    at(xb("procedures_defnoreturn", { NAME: "reward" }, { STACK: xchain(xb("rsmm_shards", { ACTION: "add" }, { AMOUNT: xv("amount") })) },
+      { extraState: { params: [{ name: "amount", id: "amount" }] } }), 40, 40),
+    at(xb("rsmm_on_gameplay", { NAME: "ENEMY_KILLED" }, { DO: xchain(
+      xb("procedures_callnoreturn", {}, { ARG0: xn(5) }, { extraState: { name: "reward", params: ["amount"] } })) }), 40, 200)],
+    [{ name: "amount", id: "amount" }])],
+  ["Timed buff after 30 seconds", () => xstate([at(xb("rsmm_on_event", { EVENT: "run:start" }, { DO: xchain(
+    xb("rsmm_wait", { SECONDS: 30 }, { DO: xchain(xb("rsmm_stat_add",
+      { STAT: (S.stats.find(x => /armo/i.test(x.name)) || S.stats[0] || { name: "Armour" }).name },
+      { AMOUNT: xn(5), SECONDS: xn(60) })) })) }), 40, 40)])],
+];
+
+async function startBlockly(host, tools) {
+  await loadBlockly();
+  if (!host.isConnected || S.tab !== "scripts" || S.scriptMode !== "blocks") return;
+  const ws = Blockly.inject(host, { toolbox: toolbox(), theme: blockTheme(), renderer: "zelos", trashcan: true, sounds: false, media: blocklyMedia,
+    zoom: { controls: true, wheel: true, startScale: 0.95, minScale: 0.35, maxScale: 1.8, pinch: true },
+    grid: { spacing: 28, length: 3, colour: getComputedStyle(document.documentElement).getPropertyValue("--line").trim() || "#ccc", snap: true },
+    move: { scrollbars: true, drag: true, wheel: true } });
+  S.ws = ws;
+  let loading = true;
+  try { if (S.program && programUsed()) Blockly.serialization.workspaces.load(S.program, ws); }
+  catch (e) { host.before(el("div", { class: "hint bad", text: "The saved blocks could not be loaded: " + e.message })); }
+  loading = false;
+  const changed = () => { S.program = Blockly.serialization.workspaces.save(ws); saveProgram(); refresh(); };
+  ws.addChangeListener(ev => {
+    if (loading || ev.isUiEvent || ev.type === Blockly.Events.FINISHED_LOADING || S.ws !== ws) return;
+    changed();
+  });
+  tools.undo.onclick = () => ws.undo(false);
+  tools.redo.onclick = () => ws.undo(true);
+  tools.tidy.onclick = () => { ws.cleanUp(); changed(); };
+  tools.examples.onchange = () => {
+    const ex = EXAMPLES[Number(tools.examples.value)];
+    tools.examples.value = "";
+    if (!ex) return;
+    if (ws.getAllBlocks(false).length && !confirm("Replace the blocks on the canvas with this example?")) return;
+    loading = true;
+    try { Blockly.serialization.workspaces.load(ex[1](), ws); } finally { loading = false; }
+    changed(); ws.scrollCenter();
+  };
+  tools.wide.onclick = () => setWide(!S.wide);
+  const fit = () => Blockly.svgResize(ws);
+  window.addEventListener("resize", fit);
+  tools.fit = fit;
+  requestAnimationFrame(fit);
+}
+// "Expand" is a preference that only takes effect while the Blocks view is open, so
+// the item and hero lists are never left hidden on another tab.
+function applyWide() {
+  const blocks = S.tab === "scripts" && S.scriptMode === "blocks", on = blocks && !!S.wide;
+  document.body.classList.toggle("wide", on);
+  const btn = document.getElementById("blocks-wide");
+  if (btn) { btn.textContent = on ? "Shrink" : "Expand"; btn.setAttribute("aria-pressed", String(on)); }
+  if (S.ws) requestAnimationFrame(() => Blockly.svgResize(S.ws));
+}
+function setWide(on) { S.wide = on; store.set("rsmm.editor.wide", on); applyWide(); }
+
+function scriptView() {
+  const v = el("div"), seg = el("div", { class: "seg", role: "group", "aria-label": "Test grants or blocks" });
+  for (const [mode, label, title] of [["grants", "Test grants", "Hand yourself items, talents and XP when a run starts"],
+    ["blocks", "Blocks", "Build a script from blocks: events, conditions, variables, functions and game actions"]]) {
+    seg.append(el("button", { type: "button", class: S.scriptMode === mode ? "on" : "", title, "aria-pressed": String(S.scriptMode === mode),
+      onclick: () => { if (S.scriptMode !== mode) { S.scriptMode = mode; renderView(); } } }, label));
+  }
+  if (S.scriptMode === "grants") { v.append(seg, grantsView()); return v; }
+  const tools = {
+    undo: el("button", { type: "button", title: "Undo (Ctrl+Z)" }, "Undo"),
+    redo: el("button", { type: "button", title: "Redo (Ctrl+Y)" }, "Redo"),
+    tidy: el("button", { type: "button", title: "Line the scripts up in a column" }, "Tidy up"),
+    examples: el("select", { title: "Start from an example", "aria-label": "Examples" }, el("option", { value: "", text: "Examples…" }),
+      ...EXAMPLES.map((e, i) => el("option", { value: String(i), text: e[0] }))),
+    wide: el("button", { type: "button", id: "blocks-wide", title: "Hide the side list and the preview to give the blocks the whole window", "aria-pressed": "false" }, "Expand"),
+  };
+  v.append(el("div", { class: "blocksbar" }, seg, el("span", { class: "grow" }), tools.undo, tools.redo, tools.tidy, tools.examples, tools.wide));
+  v.append(el("details", { class: "blockshelp" }, el("summary", { text: "How blocks work" }),
+    el("div", { class: "help", text: "Drag blocks in from the left. An event block starts a script; the blocks under it run when it happens, on the game's main thread once your hero exists. Variables and functions work as in any block language. Right-click a block for more (duplicate, comment, collapse, disable). Saving writes a section of the mod's init.lua that the editor owns; your own code outside it is left alone." })));
+  const host = el("div", { class: "blockly-host" });
+  v.append(host, el("div", { id: "blockly-warn", class: "hint blockly-warn" }));
+  startBlockly(host, tools).catch(e => host.replaceChildren(el("div", { class: "empty", text: "Could not open the block editor: " + e.message })));
+  paintProgramWarn();
+  return v;
+}
+
+const talentCards = new Map();
+function cardsOf(hero) {
+  if (!talentCards.has(hero)) {
+    talentCards.set(hero, get("api/talents?hero=" + encodeURIComponent(hero)).then(j => j.cards || []).catch(() => []));
+  }
+  return talentCards.get(hero);
+}
+
+function grantsView() {
+  const C = S.script, v = el("div");
+  const changed = () => { saveScript(); refresh(); };
+  const redraw = () => { renderView(); changed(); };
+  v.append(el("div", { class: "help", text: "Test grants: when a run starts, the mod hands you these items, talents and XP, so a change can be tried at once instead of waiting for the game to offer it. They go into the mod's init.lua, in a section the editor owns; your own code in that file is left alone. Take them out before you publish the mod." }));
+  const f = el("div", { class: "form" });
+  const hero = el("select", {}, el("option", { value: "", text: "Every hero" }),
+    ...S.heroes.map(h => el("option", { value: h, text: h.replace(/_/g, " ") })));
+  hero.value = C.hero;
+  hero.onchange = () => { C.hero = hero.value; redraw(); };
+  const xp = el("input", { type: "number", min: "0", max: "1000000", step: "100", value: String(C.xp || 0) });
+  xp.oninput = () => { C.xp = Math.max(0, Math.floor(Number(xp.value) || 0)); changed(); };
+  f.append(el("label", { text: "Only for" }), el("div", {}, hero,
+      el("div", { class: "hint", text: "A mod's script runs for whatever hero you play. Pick one and the grants happen only with that hero." })),
+    el("label", { text: "XP" }), el("div", {}, xp, el("div", { class: "hint", text: "5000 takes a new hero from level 1 to 4. 0 gives none." })));
+  v.append(el("div", { class: "sect", text: "Who and how much" }), f);
+
+  v.append(el("div", { class: "sect", text: `Items (${C.items.length})` }));
+  const items = [...S.items].sort((a, b) => a.name.localeCompare(b.name));
+  C.items.forEach((it, i) => {
+    const sel = el("select", {}, el("option", { value: "", text: "Pick an item…" }),
+      ...items.map(x => el("option", { value: x.id, text: `${x.name} (${x.rarity})` })));
+    sel.value = it.id;
+    sel.onchange = () => { it.id = sel.value; changed(); };
+    const n = el("input", { type: "number", min: "1", max: "99", value: String(it.count), title: "Copies" });
+    n.oninput = () => { it.count = Math.min(99, Math.max(1, Math.floor(Number(n.value) || 1))); changed(); };
+    // The box may hold 0 or nothing while typing; show the count that will be used.
+    n.onchange = () => { n.value = String(it.count); };
+    v.append(el("div", { class: "grant" }, sel, n, removeBtn(() => { C.items.splice(i, 1); redraw(); })));
+  });
+  v.append(el("button", { type: "button", onclick: () => { C.items.push({ id: "", count: 1 }); redraw(); } }, "+ Add an item"));
+
+  v.append(el("div", { class: "sect", text: `Talents (${C.talents.length})` }));
+  if (!C.hero) {
+    v.append(el("div", { class: "muted", text: "Talents belong to one hero: pick the hero above to choose them." }));
+    return v;
+  }
+  const box = el("div", {}, loadingView("Loading " + C.hero.replace(/_/g, " ") + "'s talents…", true));
+  v.append(box);
+  cardsOf(C.hero).then(cards => {
+    box.textContent = "";
+    C.talents.forEach((t, i) => {
+      const sel = el("select", {}, el("option", { value: "", text: "Pick a talent…" }),
+        ...cards.map(c => el("option", { value: c.source, text: c.name ? `${c.name} (${c.source})` : c.source })));
+      sel.value = t.name;
+      sel.onchange = () => { t.name = sel.value; changed(); };
+      const tier = el("select", {}, ...TIER_NAMES.map((n, k) => el("option", { value: String(k), text: n })));
+      tier.value = String(t.tier || 0);
+      tier.onchange = () => { t.tier = Number(tier.value); changed(); };
+      box.append(el("div", { class: "grant" }, sel, tier, removeBtn(() => { C.talents.splice(i, 1); redraw(); })));
+    });
+    box.append(el("button", { type: "button", onclick: () => { C.talents.push({ name: "", tier: 0 }); redraw(); } }, "+ Add a talent"));
+  });
+  return v;
+}
+
+// ---- opening a mod -------------------------------------------------------------------
+// A saved mod opens back into the page: its items, talents and test grants become
+// the changes in the bar, and saving to it puts each changed block in place of the
+// old one. Blocks the editor cannot show exactly are listed and left as they are.
+// JSON with sorted keys: the page and the server build the same payload in
+// different key orders, and an untouched block must not count as changed.
+function canon(v) {
+  return JSON.stringify(v, (_k, x) => x && typeof x === "object" && !Array.isArray(x)
+    ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x);
+}
+function loadedEntry(tab, id) { return S.loaded && S.loaded.entries[tab + "\u0000" + id]; }
+function editIsNew(e) { const ent = loadedEntry(e.tab, e.id); return !ent || ent.json !== canon(e.edit); }
+// This frame's own tab's share of hasUnsaved(), counted: the shell marks each tab
+// with the changes made there. Every one of them is kept as a draft in the browser.
+window.rsmmUnsaved = () => {
+  if (START_TAB === "scripts") return { count: (scriptChanged() ? 1 : 0) + (programChanged() ? 1 : 0), kept: true };
+  const tab = START_TAB === "talents" ? "talents" : "items";
+  let count = 0;
+  for (const [id, edit] of S.pending[tab]) if (editIsNew({ tab, id, edit })) count++;
+  return { count, kept: true };
+};
+function hasUnsaved() {
+  if (scriptChanged() || programChanged()) return true;
+  for (const tab of ["items", "talents"]) for (const [id, edit] of S.pending[tab]) {
+    if (editIsNew({ tab, id, edit })) return true;
+  }
+  return false;
+}
+// Rebuild the pending changes from the drafts (also when another tab of the
+// editor opened a mod: they share the browser's storage).
+function syncFromStore() {
+  for (const t of ["items", "talents"]) {
+    S.pending[t].clear(); S.drafts[t].clear();
+    for (const k of store.keys(DRAFT[t])) {
+      const id = k.slice(DRAFT[t].length), d = store.get(k);
+      S.drafts[t].add(id);
+      if (d && d.payload) S.pending[t].set(id, d.payload);    // older drafts join once reopened
+    }
+  }
+  S.loaded = store.get(LOADED_KEY);
+  S.wide = !!store.get("rsmm.editor.wide");
+  const sc = store.get(SCRIPT_KEY);
+  S.script = sc && sc.script ? sc.script : emptyScript();
+  S.scriptSaved = sc && typeof sc.saved === "string" ? sc.saved : NO_GRANTS;
+  const pr = store.get(PROGRAM_KEY);
+  S.program = pr && pr.program ? pr.program : emptyProgram();
+  S.programSaved = pr && typeof pr.saved === "string" ? pr.saved : NO_PROGRAM;
+}
+function reopenCurrent() {
+  S.restored = "";
+  if (S.item) S.itemEdit = Object.assign(freshItemEdit(), store.get(DRAFT.items + S.item.id) || {});
+  if (S.hero && S.talents) S.talentEdit = Object.assign(freshTalentEdit(), store.get(DRAFT.talents + S.hero) || {});
+}
+async function openMod(id, { ask = true, quiet = false } = {}) {
+  if (ask && hasUnsaved() && !confirm("Opening a mod replaces the changes you have not saved. Open it?")) return;
+  let j;
+  try { j = await get("api/mod?id=" + encodeURIComponent(id)); }
+  catch (e) { status(e.message, "st-bad"); return; }
+  for (const t of ["items", "talents"]) for (const k of store.keys(DRAFT[t])) store.del(k);
+  const entries = {};
+  for (const [t, map] of [["items", j.items], ["talents", j.talents]]) {
+    for (const [key, e] of Object.entries(map)) {
+      store.set(DRAFT[t] + key, Object.assign({}, e.edit, { payload: e.payload }));
+      entries[t + "\u0000" + key] = { blocks: e.blocks, json: canon(e.payload) };
+    }
+  }
+  const script = j.script ? JSON.parse(JSON.stringify(j.script)) : emptyScript();
+  store.set(SCRIPT_KEY, { script, saved: scriptNorm(script) });
+  const program = j.program ? JSON.parse(JSON.stringify(j.program)) : emptyProgram();
+  store.set(PROGRAM_KEY, { program, saved: programNorm(program) });
+  store.set(LOADED_KEY, { id: j.id, name: j.name, entries, at: Date.now() });
+  syncFromStore(); reopenCurrent();
+  $("#mod").value = j.id; $("#mod").onchange();
+  renderList(); renderView(); await refresh();
+  if (quiet) return;
+  const n = Object.keys(j.items).length + Object.keys(j.talents).length;
+  const kept = j.kept.map(k => `${k.kind} ${k.id}: ${k.why}`);
+  flash(`Opened ${j.name}: ${n} item/hero change(s)${j.script ? " and test grants" : ""}${j.program ? " and blocks" : ""}. Change anything, then save to it.`
+    + (kept.length ? ` Left as they are: ${kept.join("; ")}.` : ""), kept.length ? "st-warn" : "st-ok", kept.length ? 20000 : 6000);
+}
+window.addEventListener("storage", e => {
+  if (e.key !== LOADED_KEY && e.key !== SCRIPT_KEY && e.key !== PROGRAM_KEY) return;
+  syncFromStore(); reopenCurrent();
+  if (S.loaded && $("#mod").value !== S.loaded.id && S.mods.some(m => m.id === S.loaded.id)) {
+    $("#mod").value = S.loaded.id; $("#mod").onchange();
+  }
+  renderList(); renderView(); refresh();
+});
+$("#open").onclick = () => { const id = $("#mod").value; if (id !== "__new__") openMod(id); };
+
+// The web editor's mods live only in the page, so one saved earlier is brought
+// back from its folder: only the files the editor reads are sent.
+$("#importdir").webkitdirectory = true;
+$("#import").hidden = !window.RSMM_HOSTED;
+$("#import").onclick = () => $("#importdir").click();
+function fileB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1] || "");
+    r.onerror = () => rej(new Error("could not read " + file.name));
+    r.readAsDataURL(file);
+  });
+}
+$("#importdir").onchange = async () => {
+  const list = [...$("#importdir").files];
+  $("#importdir").value = "";
+  const files = {};
+  for (const f of list) {
+    const parts = (f.webkitRelativePath || f.name).split("/");
+    const rel = parts.slice(1).join("/");
+    if (!/^(manifest\.toml|init\.lua|icons\/[A-Za-z0-9_]+\.png)$/.test(rel)) continue;
+    files[rel] = await fileB64(f);
+    files._folder = parts[0];
+  }
+  if (!files["manifest.toml"]) { status("That folder has no manifest.toml. Pick the mod's own folder.", "st-bad"); return; }
+  if (hasUnsaved() && !confirm("Opening a mod replaces the changes you have not saved. Open it?")) return;
+  try {
+    const j = await post("api/import", { files });
+    S.mods = (await get("api/mods")).mods; renderMods();
+    await openMod(j.id, { ask: false });
+  } catch (e) { status(e.message, "st-bad"); }
+};
+
+// ---- the blocks ----------------------------------------------------------------------
+function editPayload() {
+  if (S.tab === "items") {
+    if (!S.item) return null;
+    const E = S.itemEdit;
+    return { mode: E.mode === "clone" ? "clone" : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
+      stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
+      values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
+        shadowed: S.item.values.find(r => r.label === label).shadowed })) };
+  }
+  if (!S.talents) return null;
+  const E = S.talentEdit;
+  return { hero: S.hero, prefix: E.prefix, values: Object.values(E.values), tiers: Object.values(E.tiers),
+    stats: Object.entries(E.stats).map(([k, stat]) => { const [file, modifier] = k.split("\u0000"); return { file, modifier, stat }; }),
+    cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
+    addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
+      .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
+        ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
+          ...(a.next ? { next: a.next } : {}) } : {}) }))),
+    rebuild: Object.keys(E.rebuild || {}),
+    onHit: Object.entries(E.onHit || {}).flatMap(([talent, list]) => list.filter(r => r.damage && r.status)
+      .map(r => ({ talent, damage: r.damage, file: r.file, status: r.status }))),
+    scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node)
+      .map(r => ({ talent, node: r.node, file: r.file, values: r.values, percent: r.percent !== false,
+        ...(r.visual === false ? { visual: false } : {}) }))),
+    include: Object.entries(E.include || {}).map(([talent, pick]) => {
+      const [a, b] = pick.split("\u0000");
+      return b === undefined ? { talent, from: a } : { talent, from: b, hero: a };
+    }) };
+}
+
+let lastToml = "", lastEdits = [], tick = 0;
+// The Abilities tab's unsaved steps, when this page sits in the editor's shell with it.
+function abilityPending() {
+  try { return window.top.rsmmPending ? window.top.rsmmPending("abilities") : null; } catch { return null; }
+}
+window.rsmmShown = () => refresh();     // the shell shows this tab: ability changes may be new
+function editsBody(edits) { return { edits: edits.map(e => ({ tab: e.tab, edit: e.edit, name: e.name })) }; }
+async function refresh() {
+  renderPreview();
+  const me = ++tick;
+  clearTimeout(statusTimer); status("");        // an edit makes the last check's verdict stale
+  $("#check").disabled = $("#save").disabled = $("#copy").disabled = true;
+  await new Promise(r => setTimeout(r, 150));
+  if (me !== tick) return;
+  saveDraft();
+  const edits = pendingEdits();
+  lastEdits = edits;
+  renderPending(edits, []);
+  const grants = scriptNorm(S.script) !== NO_GRANTS, prog = programUsed();
+  const abil = abilityPending();
+  if (!edits.length && !grants && !scriptChanged() && !prog && !programChanged() && !abil) {
+    $("#toml").textContent = "Nothing changed yet. Pick an item or a hero on the left.";
+    $("#toml").className = "muted"; lastToml = ""; return;
+  }
+  try {
+    const j = await post("api/toml", Object.assign(editsBody(edits), grants ? { script: JSON.parse(scriptNorm(S.script)) } : {},
+      prog ? { program: JSON.parse(programNorm(S.program)) } : {}));
+    if (me !== tick) return;
+    S.programWarn = j.warnings || []; paintProgramWarn();
+    renderPending(edits, j.errors);
+    lastToml = j.toml;
+    const pre = $("#toml"); pre.textContent = ""; pre.className = j.toml || j.lua ? "" : "muted";
+    if (j.errors.length) {
+      pre.append(el("div", { class: "errs" }, ...j.errors.map(e => el("div", { text: "✗ " + (e.name ? e.name + ": " : "") + e.error }))));
+    }
+    pre.append(j.toml || (j.errors.length || j.lua ? "" : "Nothing changed yet."));
+    if (j.lua) pre.append((j.toml ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
+    else if (scriptChanged() || programChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the editor's section is taken out\n");
+    $("#copy").disabled = !j.toml;
+    $("#check").disabled = !j.blocks || j.errors.length > 0;
+    if (abil) pre.append((j.toml || j.lua ? "\n" : "") + `# ${abil.hero.replace(/_/g, " ")} ability changes (${abil.steps.length}) go into the mod's ${abil.mode === "custom" ? "custom hero" : "ability"} block\n`);
+    $("#save").disabled = j.errors.length > 0 || !(j.blocks || scriptChanged() || programChanged() || abil);
+  } catch (e) {
+    if (me !== tick) return;
+    lastToml = ""; $("#toml").textContent = e.message; $("#toml").className = "st-warn";
+  }
+}
+
+$("#copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(lastToml); flash("Copied. Paste it at the end of a mod's manifest.toml.", "st-ok", 3500); }
+  catch { flash("The browser blocked the clipboard. Select the text and copy it.", "st-warn", 6000); }
+};
+
+$("#check").onclick = async () => {
+  clearTimeout(statusTimer);
+  status("Building with the real kinds…");
+  $("#check").disabled = true;
+  try {
+    const j = await post("api/check", editsBody(lastEdits));
+    const bad = j.results.filter(r => !r.ok);
+    if (!bad.length) {
+      flash(`Everything builds (${j.results.length} block${j.results.length === 1 ? "" : "s"}). rsmm apply will accept them.`, "st-ok", 4000);
+    } else {
+      // A failure stays until the next edit: it is the thing to fix.
+      const box = el("div", { class: "results" });
+      for (const r of bad) box.append(el("div", { class: "st-bad", text: "✗ " + r.kind + " " + r.id + ": " + r.error }));
+      const st = $("#status"); st.textContent = ""; st.className = "";
+      st.append(el("div", { class: "st-bad", text: `${bad.length} of ${j.results.length} block(s) would fail in rsmm apply:` }), box);
+    }
+  } catch (e) { status(e.message, "st-bad"); }
+  $("#check").disabled = false;
+};
+
+function renderMods() {
+  const sel = $("#mod"); sel.textContent = "";
+  sel.append(el("option", { value: "__new__", text: "New mod…" }));
+  for (const m of S.mods) sel.append(el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` }));
+  sel.onchange = () => {
+    $("#open").disabled = sel.value === "__new__";
+    $("#save").textContent = sel.value === "__new__" ? "Create mod…"
+      : S.loaded && sel.value === S.loaded.id ? "Save to mod" : "Add to mod";
+  };
+  sel.onchange();
+}
+
+// The details of a new mod are asked by the shared dialog (common.js), which keeps the
+// author for next time. `error` reopens the form after a refusal, with the reason.
+function askNewMod(error) { return askNewModDialog(S.modTags, error); }
+$("#save").onclick = () => saveAll();
+async function saveAll(error) {
+  const create = $("#mod").value === "__new__";
+  let mod = $("#mod").value, meta = null;
+  if (create) {
+    const got = await askNewMod(error);
+    if (!got) return;
+    ({ id: mod, meta } = got);
+      }
+  // Saving to the opened mod sends only what changed since it was opened, in
+  // place of the blocks it came from; any other mod gets everything.
+  const intoOpened = !create && S.loaded && mod === S.loaded.id;
+  const edits = intoOpened ? lastEdits.filter(editIsNew) : lastEdits;
+  const replace = intoOpened ? edits.flatMap(e => (loadedEntry(e.tab, e.id) || {}).blocks || []) : [];
+  const wantScript = intoOpened ? scriptChanged() : scriptNorm(S.script) !== NO_GRANTS;
+  const script = wantScript ? JSON.parse(scriptNorm(S.script)) : null;
+  const wantProgram = intoOpened ? programChanged() : programUsed();
+  const program = wantProgram ? JSON.parse(programNorm(S.program)) : null;
+  const abil = abilityPending();
+  if (!edits.length && !script && !program && !abil) { flash("Nothing changed since you opened it.", "muted", 4000); return; }
+  try {
+    const j = await post("api/save", Object.assign(editsBody(edits), { mod, create, replace },
+      meta ? { meta } : {}, script ? { script } : {}, program ? { program } : {},
+      abil ? { abilities: abil } : {}));
+    if (abil) { try { window.top.rsmmAfterSave("abilities", mod); } catch {} }
+    if (create) { S.mods = (await get("api/mods")).mods; renderMods(); }
+    // Keep working: the mod as saved opens back in, so the next change and save
+    // go to the same blocks.
+    await openMod(mod, { ask: false, quiet: true });
+    const what = [j.blocks ? `${j.blocks} block(s)` : "", script ? "the test grants" : "", program ? "the blocks" : "", abil ? "the ability changes" : ""].filter(Boolean).join(" and ");
+    flash(window.RSMM_HOSTED
+      ? `Saved ${what} to ${mod} and downloaded ${mod}.zip. Unzip it into your mods folder, then run: rsmm apply`
+      : `Saved ${what} to ${j.saved}. Keep editing, or run: rsmm apply`, "st-ok", 9000);
+  } catch (e) {
+    // A refused new mod (a taken id, a bad version) asks again, with the reason.
+    if (create) saveAll(e.message); else status(e.message, "st-bad");
+  }
+}
+
+// ---- boot --------------------------------------------------------------------------
+(async () => {
+  try {
+    const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
+    S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
+    S.modTags = mo.tags || [];
+    get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
+  } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
+  syncFromStore();
+  for (const r of [...new Set(S.items.map(i => i.rarity))]) $("#rarity").append(el("option", { value: r, text: r }));
+  renderMods();
+  // The mod opened last time is still open, if it is still there.
+  if (S.loaded && S.mods.some(m => m.id === S.loaded.id)) { $("#mod").value = S.loaded.id; $("#mod").onchange(); }
+  else if (S.loaded) { S.loaded = null; store.del(LOADED_KEY); }
+  // A deep link opens a pick: #item=<id> or #hero=<name>.
+  const link = new URLSearchParams(location.hash.slice(1));
+  if (link.get("hero")) S.tab = "talents";
+  if (link.get("item")) S.tab = "items";
+  setTab(S.tab);
+  if (link.get("item")) pickItem(link.get("item"));
+  if (link.get("hero")) pickHero(link.get("hero"));
+})();
+</script>
+</body>
+</html>

@@ -25,6 +25,10 @@ const nextConfig = {
             "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://fundingchoicesmessages.google.com",
             "object-src 'none'",
             "form-action 'none'",
+            // Belt and braces for the markdown sanitizer: an injected <base> can't
+            // repoint relative script URLs, and framing is refused in CSP too.
+            "base-uri 'self'",
+            "frame-ancestors 'none'",
           ].join('; ')
         : '';
     return [

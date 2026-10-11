@@ -200,6 +200,79 @@ def test_uninstall_removes_existing(tmp_path, monkeypatch, capsys):
     assert not (mods / "Doomed").exists()
 
 
+@pytest.mark.parametrize("mod_id", [".", "", "Keep/..", "Keep\\..", "C:Keep"])
+def test_uninstall_never_takes_the_mods_folder_itself(tmp_path, monkeypatch, capsys, mod_id):
+    """`.` resolves to mods/ itself; removing it would delete every mod."""
+    mods = tmp_path / "mods"
+    _write_mod(mods, "Keep", '[mod]\nname = "k"\n')
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+    json_bridge.cmd_uninstall_mod(mod_id)
+    res = _emit_json(capsys)
+    assert res["ok"] is False and "invalid mod id" in res["error"]
+    assert (mods / "Keep" / "manifest.toml").is_file()
+
+
+_MARKER_HOOK = (
+    "import os\nfrom pathlib import Path\n"
+    "Path(os.environ['RSMM_GAME_DIR'], 'hook-ran.txt').write_text('x')\n"
+)
+
+
+@pytest.fixture()
+def hooked_mod(tmp_path, monkeypatch):
+    """An enabled mod that ships an on_disable.py, and the install it was applied to."""
+    from rsmm.cli import apply_mods
+    mods = tmp_path / "mods"
+    _write_mod(mods, "Seedy", '[mod]\nname = "s"\n')
+    (mods / "Seedy" / "on_disable.py").write_text(_MARKER_HOOK, encoding="utf-8")
+    game = tmp_path / "game"
+    cooking = game / "DarkTalesResources" / "_Cooking"
+    cooking.mkdir(parents=True)
+    state = apply_mods.State(cooking)
+    state.set_enabled_mods(["Seedy"])
+    state.save()
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mods)
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    return mods, game
+
+
+def test_uninstall_asks_before_running_a_mods_hook(hooked_mod, capsys):
+    """The hook is the mod author's Python, run as the user: never unasked."""
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy")
+    res = _emit_json(capsys)
+    assert res["ok"] is False
+    assert res["needsHookConsent"] is True
+    assert res["hookPath"].endswith("on_disable.py")
+    assert not (game / "hook-ran.txt").exists()
+    assert (mods / "Seedy").is_dir(), "nothing is removed until the user answers"
+
+
+def test_uninstall_runs_the_hook_when_told_to(hooked_mod, capsys):
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy", "run")
+    res = _emit_json(capsys)
+    assert res["ok"] is True and res["disableHook"] == "ok", res
+    assert (game / "hook-ran.txt").is_file()
+    assert not (mods / "Seedy").exists()
+
+
+def test_uninstall_skips_the_hook_when_declined(hooked_mod, capsys):
+    mods, game = hooked_mod
+    json_bridge.cmd_uninstall_mod("Seedy", "skip")
+    res = _emit_json(capsys)
+    assert res["ok"] is True and res["disableHook"] == "skipped"
+    assert not (game / "hook-ran.txt").exists()
+    assert not (mods / "Seedy").exists()
+
+
+def test_uninstall_flags_reach_the_command(hooked_mod, capsys):
+    _, game = hooked_mod
+    assert json_bridge.main(["uninstall-mod", "Seedy", "--skip-hook"]) == 0
+    assert _emit_json(capsys)["disableHook"] == "skipped"
+    assert not (game / "hook-ran.txt").exists()
+
+
 # --- cmd_loader_log (desktop Log tab) --------------------------------------
 
 def _write_log(tmp_path: Path, text: str) -> Path:
@@ -261,3 +334,39 @@ def test_loader_log_without_session_banners_returns_everything(tmp_path, monkeyp
     monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
     assert json_bridge.cmd_loader_log() == 0
     assert _emit_json(capsys)["lines"] == ["just a line", "and another"]
+
+
+def test_list_profiles_reads_sibling_profiles_in_one_call(tmp_path, monkeypatch, capsys):
+    """The Profiles screen needs every profile's mods; one process, not one each."""
+    root = tmp_path / "profiles"
+    _write_mod(root / "solo", "alpha", '[mod]\nname = "Alpha"\n')
+    _write_mod(root / "coop", "beta", '[mod]\nname = "Beta"\n')
+    _write_mod(root / "coop", "gamma", '[mod]\nname = "Gamma"\n')
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")  # the active profile
+
+    assert json_bridge.cmd_list_profiles(["coop", "solo"]) == 0
+    got = _emit_json(capsys)["profiles"]
+    assert [m["id"] for m in got["coop"]["mods"]] == ["beta", "gamma"]
+    assert [m["id"] for m in got["solo"]["mods"]] == ["alpha"]
+    assert got["coop"]["ok"] and got["solo"]["ok"]
+
+
+def test_list_profiles_a_missing_folder_is_empty_not_an_error(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "profiles"
+    (root / "solo").mkdir(parents=True)
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")
+    assert json_bridge.cmd_list_profiles(["never-made"]) == 0
+    assert _emit_json(capsys)["profiles"]["never-made"] == {"ok": True, "mods": []}
+
+
+def test_list_profiles_refuses_an_id_that_is_not_a_plain_name(tmp_path, monkeypatch, capsys):
+    """An id becomes a folder name; nothing with a separator or a dot may reach a path."""
+    root = tmp_path / "profiles"
+    _write_mod(tmp_path, "outside", '[mod]\nname = "Not a profile mod"\n')
+    (root / "solo").mkdir(parents=True)
+    monkeypatch.setattr(json_bridge, "MODS_DIR", root / "solo")
+    bad = ["..", "../outside", "a/b", ".hidden", "", "x" * 65]
+    assert json_bridge.cmd_list_profiles(bad) == 0
+    got = _emit_json(capsys)["profiles"]
+    assert all(v["ok"] is False for v in got.values())
+    assert len(got) == len(set(bad))

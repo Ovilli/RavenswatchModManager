@@ -40,6 +40,9 @@ you should expect to work at the end.
 **What the player sees.** A brand-new item in the compendium that drops, is
 offered by chests, and works.
 
+**Or build it on a page.** The **Items** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/), writes this block from a picked base item.
+
 ```toml
 [mod]
 id          = "SwiftAttacks"
@@ -65,6 +68,22 @@ byte length. Browse bases with `./rsmm items list`, and a base's editable
 value labels with `./rsmm items show <base>` — a label marked `shadowed`
 accepts the edit and changes nothing in game.
 
+**Change the shipped item instead.** `mode = "replace"` takes the same fields
+but edits the base itself rather than adding a copy beside it: no new id, the
+base keeps its rarity, and `name`/`description` rewrite the text the item
+already shows. The shipped file is backed up and comes back when the mod is
+turned off. The editor's **Replace this item** / **Make a copy** switch picks
+between the two.
+
+```toml
+[[content]]
+kind          = "item"
+id            = "Damage_Attack"
+mode          = "replace"
+base          = "Damage_Attack"
+value_patches = [["Attack Speed Value", 0.15, 0.30]]
+```
+
 **Also does the opposite.** `mode = "ban"` with `items = [...]` removes vanilla
 items from the catalog instead — the multiplayer-correct way to disable one.
 
@@ -73,6 +92,10 @@ items from the catalog instead — the multiplayer-correct way to disable one.
 ## `talent` — retune a talent
 
 **What the player sees.** The same talent card, different numbers.
+
+**Or build it on a page.** The **Talents** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/), lists every value a hero has and writes this
+block (and `skill` blocks for renamed cards).
 
 ```toml
 [mod]
@@ -103,6 +126,85 @@ stops. Find labels, their files and their numbers with
 
 ---
 
+## `ability` — change a shipped hero's abilities in place
+
+**What the player sees.** The same hero, an ability that behaves differently:
+a number changed (a hit's stagger, a cooldown, a damage multiplier) or a link
+rewired. No second hero is added, so the change applies to every run with that
+hero, and `rsmm restore` puts the originals back.
+
+**Or build it on a page.** The **Abilities** tab of `rsmm editor`, or the
+[web editor](/guides/web-editor/): set a number, pick "Change the original
+hero", and *Save to mod* writes this block. Choose "Make a separate custom
+hero" there when you want a copy (`kind = "hero"`) instead, or an ability copied
+with `clone`.
+
+```toml
+[mod]
+id           = "BeowulfFireballNerf"
+name         = "Beowulf Fireball Nerf"
+version      = "0.1.0"
+author       = "you"
+description  = "Beowulf's Fireball staggers less."
+experimental = true
+
+[[content]]
+kind = "ability"
+id   = "BeowulfAbilities"
+hero = "Beowulf"
+
+[[content.abilities]]
+set    = "Stagger Power Selector.entries[0][1]"
+value  = 25
+entity = "Hero_Beowulf_Ultimate_2_Fireball"
+```
+
+**Prove it.** Use the ability in a run and look at the effect: here the fireball
+hits stagger enemies less than the 50 it ships with.
+
+**Trap.** A hit's numbers often live in another file of the hero (the fireball's
+stagger is in its own projectile file, hence `entity`), and a selector's number
+is addressed as `Part.entries[i][j]`, not `Part.value`. The editor's search
+lists matches in every file of a hero. `clone` steps are refused here: copying
+an ability adds parts that only a custom hero builds. The kind is experimental
+until the steps are proven in game.
+
+---
+
+## `entity` — edit any shipped entity in place
+
+**What the player sees.** One shipped object behaving differently: a boss
+spawner, a camp, a UI. It takes the same `set` / `link` / `add_link` /
+`remove_link` steps as `ability`, aimed at one entity file that is not a hero's.
+`rsmm restore` puts the original back.
+
+```toml
+[mod]
+id           = "NoOvertimeTint"
+name         = "No Overtime Tint"
+version      = "0.1.0"
+author       = "you"
+description  = "Removes the red screen tint before and during overtime."
+
+[[content]]
+kind   = "entity"
+id     = "boss_spawner_no_tint"
+entity = "Objects/Map_Boss_Spawner/Map_Boss_Spawner_Graph_Model"
+
+[[content.steps]]
+remove_link = "State FX PreOvertime.while_active[1]"
+```
+
+**Prove it.** Let a chapter run into overtime: the screen stays its normal
+colour while the banner, minimap ping and music still arrive.
+
+**Trap.** `entity` is the path under `EntitySettings` (`.entity.ot` optional).
+Part names and link indices are the ones `rsmm entity-graph` prints for that
+file, and removing a link shifts the later indices of the SAME list, so remove
+from the end first or list one step per field. `clone` steps are refused.
+
+---
+
 ## `mesh` — put your model in the game
 
 **What the player sees.** A shipped prop, weapon or body wearing your geometry.
@@ -130,6 +232,73 @@ yours. And replacing a *character* needs the right `transform.skin` —
 `"gltf"` when you rigged to the game's bone names, `"rigid"` when you did not.
 The default (`"transfer"`) assumes your mesh occupies the same space as the one
 it replaces, and shreds a differently-shaped body on the first animation frame.
+
+---
+
+## `animation` — replace a clip with your own motion
+
+**What the player sees.** A shipped animation, such as Piper's dash, playing your motion.
+
+```toml
+[mod]
+id           = "PiperSpin"
+name         = "Piper Spin Dash"
+version      = "0.1.0"
+author       = "you"
+description  = "Piper spins through her dash."
+
+[[content]]
+kind   = "animation"
+id     = "piper_dash"
+target = "Characters\\Heroes\\Piper\\Animations\\Piper_Dash_Default.fbx"
+source = "anims/piper_dash.glb"
+```
+
+**Prove it.** Dash in a run: the move plays your keys.
+
+**Authoring in Blender or Maya.** `rsmm export-character Piper` writes one
+`.glb` with the real armature (the game's bone names, hierarchy and bind pose),
+the skinned body with its full materials (colour, normal and
+metal/roughness/AO maps), the weapon or prop on the bone that carries it, and
+every clip that fits that rig. `--skin Combat` exports a skin's look instead:
+its materials, its body and its weapon (`--list-skins` names them). A piece
+on a skeleton of its own, like the Combat cloak, comes in as a second armature
+at its own origin: the entity does not say where it hangs, so place it by hand.
+It imports as a posable, animated character.
+
+For anything that is not a hero, use `rsmm export-model`. It exports any of the
+game's 3,001 models: scenery, props, enemies, NPCs and mechanisms like chests.
+Each comes with its full materials, and a rigged one also gets its skeleton and
+every clip in its folder that fits it. `rsmm export-model --list Ogres` shows
+what there is, and `rsmm export-model OgreHuman_GEO` writes one model.
+`rsmm export-model --all -o export/` writes every model into a tree laid out
+like the game's folders. That run is long, and `--no-textures` makes it much
+faster.
+
+Two settings matter:
+
+1. **Set the scene frame rate to 60 *before* importing.** Clips mix a 30 fps
+   grid with 60 fps keys where something snaps (Piper's weapon flips in half a
+   frame). At 24 or 30 fps Blender drops those keys. At 60, all 45 of Piper's
+   clips came back within 0.3 degrees after an import and export.
+2. Export glTF with animations, keeping the action names.
+
+Then `rsmm import-character edited.glb --mod my-piper` (add `--skin Combat` if
+you exported a skin) writes the mod for you. It cooks every action, compares
+its sampled poses with the shipped clip of the same name, and keeps only the
+ones that moved more than `--threshold` degrees (default 1; an untouched round
+trip stays under 0.5). The body is kept when its vertices no longer match the
+shipped body. Each kept clip becomes a block like the one above, the body a
+`kind = "mesh"` block with `transform = { skin = "gltf", submeshes = "map" }`
+(weights bind by bone name, each submesh keeps its own material), and the
+`.glb` is copied into the mod. It never overwrites an existing mod without
+`--force`.
+
+**Trap.** Bones are matched by **name**, and the target clip is the template:
+it decides which bones exist. A bone your file does not animate is held at the
+target's first pose (`strict = true` makes that an error). A bone the target
+lacks is refused. Like `mesh`, the override is global: everything that plays
+that clip plays yours.
 
 ---
 
@@ -201,7 +370,6 @@ name         = "Treantfall"
 version      = "0.1.0"
 author       = "you"
 description  = "Dark Hills is a forest, and it has opinions."
-experimental = true
 
 [[content]]
 kind   = "enemy"
@@ -214,9 +382,10 @@ entity = "Enemies\\Treant\\Standard_Root_Treant.entity.ot"
 **Prove it.** Load the chapter and fight the first camp: every creature in it
 is a treant. List a biome's creatures with `./rsmm enemies pool Dark_Hills`.
 
-**Trap.** `mode = "override"` is the proven half — it repoints what an existing
-population *is*. `mode = "clone"` adds a NET-NEW definition, and that half has
-not been seen spawning. Imported creatures can also bring projectiles and attack
+**Trap.** `power` (old name `weight`) is a creature's **cost** against the
+camp's power budget, not its spawn odds. A `mode = "clone"` enemy set to 20 was
+priced out of every gnoll camp and never appeared. Leave it unset to keep the
+base's cost. Imported creatures can also bring projectiles and attack
 zones the destination chapter never loads; see
 [Custom enemies](/guides/custom-enemies/).
 
@@ -291,29 +460,43 @@ id           = "BusyHills"
 name         = "Busy Dark Hills"
 version      = "0.1.0"
 author       = "you"
-description  = "More camps, more wishing wells."
-experimental = true
+description  = "Fewer, hand-placed-feeling camps."
 
 [[content]]
 kind    = "tilegen"
 id      = "camps"
 chapter = "DarkHills"
 [content.kinds.Camp]
-count = 8
-[content.quotas]
-Wishing_Well = 2
+count = 2                 # camps placed by the kind pass
+[content.fill]
+"40x40" = []              # leftover big slots stay empty instead of
+"64x64" = []              # becoming camps
 ```
+
+**Where tiles come from.** Generation runs in two passes, and tiles can pull
+in more tiles:
+
+1. **Kind pass.** Each kind places up to its `count`.
+2. **Fill pass.** Every footprint group then fills each slot still empty with a
+   tile carrying the group's flags. Dark Hills fills 40x40/64x64 with `Camp`,
+   which is why an unedited map shows 8-9 camps against a Camp count of 5.
+   `fill = { "<WxH>" = [] }` turns it off for that group.
+3. **Tile constraints.** A placed tile can require others nearby. `Start` places
+   one `Story` tile, and the Wood House story tile then places 3 Treant camps.
+   The recipe doesn't control these.
+
+Flag `quotas` are **caps** (at most N), so raising one never adds tiles.
 
 **Prove it.** Start a run in that chapter and count what generated.
 `R.poi.on_generated` + `R.poi.placed` hand you every placed tile by name, so the
-count can come from the spawner itself instead of the minimap. Compare against
-a LOW count: an unedited Storm Island (recipe 5) has generated 8 camps, so "more
-than usual" is not evidence on its own.
+count can come from the spawner itself instead of the minimap. Count camps by
+source: Treant camps next to the Wood House come from its constraint, not the
+recipe.
 
 **Trap.** Edits are keyed by **name** and re-applied to the shipped recipe every
 time, so a name the recipe no longer has fails the emit rather than landing on
-whatever now sits at that index. `./rsmm map-editor` writes these blocks for you
-from a 3D view of the chapter.
+whatever now sits at that index. The **Map** tab of `./rsmm editor` writes these
+blocks for you from a 3D view of the chapter.
 
 ---
 
@@ -505,37 +688,256 @@ global — every run fights the new boss there.
 
 ---
 
-## `hero` — stage a new playable hero
+## `hero` — add a hero to the roster
 
-**What the player sees.** Nothing yet — the hardest kind in the SDK.
+**What the player sees.** A new portrait on the hero-select screen. With only
+a `base` it is an exact copy of that hero; the fields under "A hero of its own"
+give it its own name, body, textures, portrait and gameplay entity.
 
 ```toml
 [mod]
-id           = "Kintaro"
-name         = "Kintaro"
+id           = "MoreHeroes"
+name         = "More Heroes"
 version      = "0.1.0"
 author       = "you"
-description  = "Staged hero manifest."
-experimental = true
+description  = "A second Piper."
 
 [[content]]
-kind      = "hero"
-id        = "Kintaro"
-base      = "Juliet"
-name      = "Kintaro"
-abilities = [
-  { name = "Oni Cleave", description = "A wide axe swing." },
-  { name = "Bear Rush",  description = "Charge through the line." },
-]
+kind = "hero"
+id   = "Zz_Piper_Clone"
+base = "Piper"
 ```
 
-**Prove it.** `mods/<id>/assets/_pending_heros/Kintaro/` gets `hero.json`,
-`skillprofile.json` and `i18n.json`.
+**Prove it.** Open the hero-select screen: one more portrait than before. From
+Lua, `#R.defs.instances("oCDtHeroDefinition")` goes from 12 to 13.
 
-**Trap.** `oCDtHeroDefinition` has no registered class UID and is created by its
-parent record's deserializer, so a new hero needs the library singleton and a
-roster detour that do not exist yet. **Reskinning an existing hero works
-today** — that is `mesh` plus a texture override, both proven.
+**Trap.** The roster is every hero the game has **loaded**, and heroes load only
+through the LiveOps versiondef's hero list, which `apply` appends to. Dropping a
+herodef file in without that loads nothing. The new hero takes the next index,
+which no save has unlocked, so test with the `unlock-heroes` mod. Paid DLC
+hero (Merlin) is a `base` only when the block says `dlc_owner = true`: the
+clone plays for anyone who installs the mod, so share it only with players
+who own the DLC.
+
+### A hero of its own
+
+Everything past `base` turns the copy into a hero of its own. The fields below
+are **not yet proven in game**. Only the plain copy above is.
+
+```toml
+[[content]]
+kind        = "hero"
+id          = "Nyx"                       # letters and digits: it names Hero_Nyx
+base        = "Piper"                     # whose moves she has
+name        = "Nyx"
+description = "Piper's moves, her own look."
+model       = "art/nyx.glb"               # body, rigged to Piper's skeleton
+albedo      = "art/nyx_albedo.png"        # also: mra, normal
+portrait    = "art/nyx_portrait.png"      # select screen + in-run
+
+# A weapon of her own. The key is the base's graphic object; `rsmm
+# export-character Piper` lists it as an attachment.
+[content.weapons."Weapon In Left Hand Mesh"]
+model  = "art/nyx_flute.glb"
+albedo = "art/nyx_flute.png"
+
+# Her own moves: a clip of Nyx's alone, the base keeps its own.
+[content.animations.Piper_Dash_Default]
+source = "art/nyx_moves.glb"
+clip   = "Piper_Dash_Default"             # the action's name in the .glb
+
+# Outfits fill the skin slots after Default, in order.
+[[content.outfits]]
+name   = "Frost"
+albedo = "art/nyx_frost.png"
+
+[[content.outfits]]
+name   = "Mercenary"
+model  = "art/nyx_mercenary.glb"      # a body of its own
+albedo = "art/nyx_mercenary.png"
+
+# Her numbers. `rsmm export-character Piper --list-values` lists them.
+[content.values]
+"Ultimate Power 2 Cooldown Max" = 30
+"Trait Ability Pets Per Spawn Default Amount" = 3
+"Hero_Piper_Projectile/Lifetime Duration" = 0.8   # one entity only
+
+# What her abilities use: a VFX, a sound, a mesh, anything her entities name.
+[content.references]
+"Settings\\Heroes\\Hero_Piper_FX\\Piper_Note_Day_01.vfx.ot" = "Settings\\Heroes\\Hero_Juliet_FX\\Juliet_Basic_Bullet_Trail_01.vfx.ot"
+
+# How her abilities are wired: copy, set and rewire parts, by the names
+# `rsmm entity-graph Piper` shows. Applied in order.
+[[content.abilities]]
+clone = "Ability Secondary"          # a group, or a list of parts
+as    = "Echo"                       # new group; each part gets " Echo"
+
+[[content.abilities]]
+set   = "Primary Ability Shots Delay.value"
+value = 0.2                          # on a linked number, replaces the link
+
+[[content.abilities]]
+entity = "Ice_Clone"                 # another file of the family
+set    = "Explosion Attack Traverser.obj_2[3]"
+value  = 4.0                         # the n-th number inside a part's settings
+
+[[content.abilities]]
+link  = "Primary Ability Shoot Timer.on_end"
+to    = "State Secondary Ability Echo"
+```
+
+- **`name` / `description`** are added to the base's text bank as
+  `Hero_<id>_Name` / `Hero_<id>_Desc` in every language (English text for all
+  of them), and the new herodef points at them.
+- **`model`** is the body. Start from `rsmm export-character Piper`, edit the
+  mesh in Blender on Piper's skeleton, and export. Bones are matched by name,
+  and a weapon left in the file is ignored (it is a separate object in game).
+  Every skin slot shows this body.
+- **`albedo` / `mra` / `normal`** replace the maps of the body material. A map
+  you leave out keeps the base's.
+- **`portrait`** replaces the select-screen and in-run portraits. It is the
+  riskiest field: a UI texture under a new name once hung level load (a POI
+  minimap icon), so try it separately.
+- **`weapons`** gives a weapon its own mesh (`model`, a static mesh) and/or
+  maps (`albedo`, `mra`, `normal`). Only this hero carries it; the base keeps
+  its own. The mesh is used exactly as authored, in the weapon's own space:
+  export it ON ITS OWN with its object transform cleared, not while it is
+  parented to the hand bone of an `export-character` file (the cooker bakes
+  object transforms, so a weapon exported in the hand ends up offset).
+- **`animations`** cooks each clip under a new name (`Nyx_Piper_Dash_Default`)
+  and points only this hero's entities at it. The `animation` kind replaces a
+  clip for everyone who plays it; this does not. Keys are the base's clip
+  names, as `rsmm export-character` prints them. A `.glb` path alone means the
+  action carries the clip's own name.
+- **`outfits`** are more skins, each with its own `name` on the skin page.
+  An outfit is the Default look wearing its own body maps, and with `model` it
+  gets a body of its own too, rigged like `model` (to the base's skeleton).
+  Outfits take the skin slots after Default in order, and the slots after them
+  show Default. They may show as locked: the base's skin unlocks do not carry
+  over to a new hero.
+- **`values`** sets the hero's numbers: cooldowns, durations, radii, damage
+  multipliers, pet counts, projectile lifetimes.
+  `rsmm export-character <Base> --list-values` lists what can be set and in
+  which entity. A bare label sets it everywhere; `<Entity>/<Label>` sets it in
+  one entity only. A misspelt label fails the build.
+- **`references`** swaps anything the hero's own entities name: another VFX, a
+  sound event, a mesh, a clip. Each new resource's preloads are borrowed from a
+  shipped cache that already loads it. A resource no shipped cache lists is
+  refused, because an unlisted preload crashes the game at load.
+- **`skills`** gives the hero talent and ability cards of her own:
+  `[content.skills."Dash Trap"]` (a talent, as its `Skill Controller` names
+  it) or `[content.skills."Ability Power"]` (an ability slot), each with
+  `name` and/or `description`. The base hero keeps his cards. The number of
+  talents is fixed, so this relabels a slot; change what the talent does with
+  `abilities` (its parts are the `Skill <talent>` group). Keep the card's
+  `{N}` placeholders and `#…@` keywords: the numbers come from the card's own
+  String Format.
+- **`placeholder`** (a PNG, a flat pink by convention) paints every piece of
+  art the hero still borrows from its base: each character material (body,
+  gear, companion, every skin), every ability and talent icon, the HUD
+  images, and the book's portraits, skin icons and codex pictures. Whatever
+  is still pink in game is what is left to make. `albedo`, `weapons` and
+  `portrait` win over it. Story pages the hero does not write itself read as
+  pages still to write.
+- **`effects`** gives the hero particle effects of its own. Every effect in
+  the base's own FX folder (Beowulf has 99) is copied under the hero's name
+  with its own materials and textures, recoloured to a tint at each colour's
+  own brightness, so shapes and transparency stay. The recolour reaches the
+  colour textures (never masks or surface data), the materials' colours and
+  the effect's own colour ramps, which are what make fire orange:
+  `[content.effects."*"]` `tint = "#7ad0ff"` for all of them, or
+  `[content.effects.Beowulf_Shockwave_Front_01]` for one. With `placeholder`,
+  effects given no tint turn pink. Effects shared with every hero
+  (`Common_FX`) are never touched.
+- **`hide`** lists meshes the hero does not have, by name (`"Wyrm_GEO"`,
+  Beowulf's dragon) or full path. Each is swapped, in this hero's entities
+  only, for an invisible copy: the same mesh on the same skeleton, shrunk to
+  about a thousandth. Everything attached to its bones keeps working, so the
+  dragon's fire still comes, just from nowhere visible. Its sounds stay.
+- **`memoirs`** is the book's story pages, in order: `[[content.memoirs]]`
+  tables with `title` and `text` (Beowulf has 7). A page left out keeps the
+  base hero's story, or shows a placeholder when `placeholder` is set. The
+  narration audio stays the base's.
+- **`abilities`** edits how her abilities are wired. An ability is a graph of
+  parts (states, timers, tests, spawners, values) inside the hero's entity;
+  `rsmm entity-graph Piper --group "Ability Secondary"` lists one ability's
+  parts and links, and `--show "<part>"` shows a part's fields by name. Each
+  step is one of:
+  - `clone = "<group>"` + `as = "<new group>"` (or `clone = ["part", ...]`):
+    copy the parts under new names (`suffix`, default `" " + as`). Links among
+    the copies point at the copies; everything they own is copied too.
+    `from = "Juliet"` copies from another hero.
+  - `set = "Part.field"` + `value`: a number, a bool, or `[x, y, z]`.
+    `"Part.field[n]"` sets the n-th number (or `[x, y, z]`) inside an object
+    field, as `--show` prints them; with a text `value` it replaces the n-th
+    string instead, e.g. `set = "My Spawner.template[1]"` with
+    `value = "Heroes\\Hero_Beowulf\\Hero_Beowulf_Shockwave.entity.ot"` makes
+    a spawner spawn something else.
+  - `link = "Part.field"` + `to = "Other Part"` (`""` for nothing); a list
+    element is `"Part.list[0]"`, and `"Part.obj[n]"` is the n-th reference
+    inside an object field (`--tokens` lists them, empty ones included).
+
+    **Turning a spawn.** A spawner's own yaw fields (`position[8]`,
+    `transform[5]`) are ignored for a hero's ability spawn: four shockwaves
+    turned that way all went the way the hero faced. The game turns a spawn
+    the way Piper fans her notes: the spawner reads a 3D node, whose Y angle
+    (radians) comes from a value. Copy a spawner together with its node
+    (`clone = ["Attack Shoot Projectile Spawner 02", "Attack Shoot 3d Node 02"]`)
+    and point the node's angle at a value of your own
+    (`link = "Attack Shoot 3d Node 02 Copy.obj_4[5]"`).
+  - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
+  Add `entity = "FX"` to a step to edit another entity of the family.
+  The **Abilities** tab of `rsmm editor` builds these steps for you.
+  It opens on **Numbers**: every number the chosen ability uses, by name
+  (type a value, press Enter; ↺ resets it). The **Diagram** tab draws the
+  ability as a graph of parts for re-pointing links and copying groups. Every
+  change is re-checked straight away; press *Copy manifest code* and paste it
+  into the manifest.
+  Every edit is checked before anything is written, and the build fails
+  rather than install an ability that cannot work: a link into an entity the
+  hero does not carry (copying Juliet's secondary drags links into
+  `Hero_Romeo_Juliet_Common`, which a hero built on Piper does not have), a
+  part left owning nothing, a number re-pointed at a value of another type.
+  The check proves the wiring is sound, not that the ability plays the way
+  you meant: that is still a playtest.
+- **`[[content.attacks]]`**: an attack of the hero's own that replaces an
+  ability slot, declared instead of wired step by step:
+
+  ```toml
+  [[content.attacks]]
+  id        = "Crescent"             # its entity is Hero_<hero>_Crescent
+  slot      = "special"
+  model     = "art/crescent.glb"     # static mesh, glTF +Y = direction of flight
+  albedo    = "art/crescent_alb.png" # mra / normal optional
+  speed     = 16
+  lifetime  = 0.9                    # seconds
+  beats     = [[0, 180], [90, -90]]  # each beat's angles, 0 = where the hero faces
+  delay     = 0.4                    # seconds between beats
+  animation = "art/cast.glb"         # replaces the slot's clip (`clip` = its name)
+  ```
+
+  The projectile is a new entity of the hero's own on the engine's generic
+  hero projectile (physics, hits, piercing, damage and despawn come from
+  it), with the mod's mesh and maps, the hero's own trail and impact effects
+  (tinted by `effects`) and the base's projectile sounds. Each angle fires
+  from a copy of the base's projectile spawner and 3D node, turned by the
+  node's angle (see *Turning a spawn* above). Beat 0 fires when the slot is
+  used and each later beat on a timer inside the slot's state, so the
+  slot's animation must last until the last beat. Damage is the generic
+  projectile's for now. Supported bases so far: Piper (`slot = "special"`).
+- **`own_entity = true`** is implied by every field above except `name`,
+  `description` and `portrait`. The hero gets
+  its own gameplay entity: every `Hero_<Base>*` entity (the hero, FX, pets,
+  projectiles, skins) is cloned as `Hero_<id>*` with its paths and scopes
+  renamed, and a new alias in `ApplicationSettings.ot` binds the skins to it.
+  The whole family has to move together, because a pet or a projectile reads
+  its owner's values by the owner's template name. With its own entity, the
+  hero's abilities and values are its own to change later.
+
+**Prove it.** A portrait named after your hero, your body and texture when you
+pick it, and the base's abilities (Piper's rats and notes) working in a run.
+How the pieces connect is written up in `docs/_re/kinds/heroes.md` under "How a
+hero is assembled from data".
 
 ---
 

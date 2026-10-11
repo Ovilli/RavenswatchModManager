@@ -1,2 +1,5 @@
 pyproject.toml
-/src/
+# Nothing under src/ is needed by a web deploy, except the rsmm package: the
+# docs build packs it into /editor/rsmm.bundle for the web editor.
+/src/*
+!/src/rsmm/

@@ -63,7 +63,7 @@ def parse_root_and_body(path: Path) -> tuple[str | None, bytes]:
         if lb == -1 or le <= lb:
             return root, b""
         return root, d[lb + 4:le]
-    except Exception:
+    except (struct.error, IndexError, ValueError, OSError):
         return None, b""
 
 

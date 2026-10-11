@@ -295,6 +295,7 @@ def test_add_placement_restamps_the_streams_self_declared_size():
     assert cooked.emit(cooked.parse(out)) == out
 
 
+@pytest.mark.slow   # whole-corpus scan
 @needs_corpus
 def test_every_shipped_level_with_a_template_survives_an_add():
     """The whole corpus through the append, checked against the engine's rules.

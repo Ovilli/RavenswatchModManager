@@ -25,7 +25,12 @@ Subcommands:
         <slug> <version>            download a specific version of a mod
     rsmm json config get <id>       read a mod's config schema + values
     rsmm json config set <id> <js>  replace a mod's config values
-    rsmm json uninstall-mod <id>    remove a mod from mods/<id>/
+    rsmm json uninstall-mod <id> [--run-hook|--skip-hook]
+                                    remove a mod from mods/<id>/. A mod
+                                    whose on_disable.py would run gets
+                                    {ok:false, needsHookConsent:true} and
+                                    is left in place until the caller
+                                    passes one of the two flags
     rsmm json loader-log [--run N]  read the loader log, or an archived run
     rsmm json loader-runs           list archived runs under <game>/rsmm/logs
     rsmm json loader-health         boot canary + per-mod crash history
@@ -66,13 +71,20 @@ from pathlib import Path
 from typing import Any
 
 from rsmm.cli.apply_mods import (
+    DEACTIVATION_SCRIPT_NAME,
     State,
     clear_runtime_mods,
     find_game_dir,
     run_uninstall_hook,
+    uninstall_hook_pending,
 )
 from rsmm.cli.merge import _ranked, collect_patches
 from rsmm.engine import net
+from rsmm.engine.loader_flags import FLAGS_FILE as _LOADER_FLAGS_FILE
+from rsmm.engine.loader_flags import KNOWN_FLAG_NAMES as _KNOWN_FLAG_NAMES
+from rsmm.engine.loader_flags import LOADER_FLAGS
+from rsmm.engine.loader_flags import SAFE_FLAG_NAMES as _SAFE_FLAG_NAMES
+from rsmm.engine.loader_flags import read_flags as _read_loader_flags
 from rsmm.engine.paths import MODS_DIR, REPO_ROOT, dist_out_dir, self_cmd
 from rsmm.logging import get_logger
 from rsmm.sdk import archive
@@ -129,7 +141,6 @@ def cmd_list() -> int:
     permission error and disabled install buttons for mods that were on disk
     all along. A failure now exits non-zero so the caller can tell them apart.
     """
-    items: list[dict[str, Any]] = []
     try:
         if not MODS_DIR.is_dir():
             # Not an error: no mods folder yet is a legitimate empty state.
@@ -138,10 +149,18 @@ def cmd_list() -> int:
         print(f"error: could not access mods directory {MODS_DIR}: {e}", file=sys.stderr)
         return 1
     try:
-        entries = sorted(MODS_DIR.iterdir())
+        items = _scan_mods(MODS_DIR)
     except (OSError, PermissionError) as e:
         print(f"error: could not read mods directory {MODS_DIR}: {e}", file=sys.stderr)
         return 1
+    return _emit(items)
+
+
+def _scan_mods(mods_dir: Path) -> list[dict[str, Any]]:
+    """The mods in one folder, in the shape ``list`` reports. Raises ``OSError``
+    when the folder cannot be read, which is NOT the same as it being empty."""
+    items: list[dict[str, Any]] = []
+    entries = sorted(mods_dir.iterdir())
     for entry in entries:
         if not entry.is_dir() or entry.name.startswith("_"):
             continue
@@ -165,6 +184,10 @@ def cmd_list() -> int:
         # still surface its error in the config panel rather than hide the
         # control that opens it.
         has_config = (entry / "config_schema.toml").is_file()
+        # The mod's own translation, when the client asked for a locale
+        # (RSMM_LOCALE) and the mod ships lang/<locale>.toml with [manifest].
+        from rsmm.sdk.i18n import mod_text
+        local = mod_text(entry).get("manifest", {})
         # `id` and `slug` are both the folder name. The folder name is
         # the canonical identifier post-install — manifest.id is only
         # the upload-time author-supplied id, which may differ from the
@@ -174,10 +197,11 @@ def cmd_list() -> int:
         items.append({
             "id": entry.name,
             "slug": entry.name,
-            "name": manifest.get("name", entry.name),
+            "name": local.get("name") or manifest.get("name", entry.name),
             "version": str(manifest.get("version", "0.0.0")),
             "author": manifest.get("author"),
-            "summary": manifest.get("summary") or manifest.get("description"),
+            "summary": (local.get("summary") or local.get("description")
+                        or manifest.get("summary") or manifest.get("description")),
             "license": manifest.get("license"),
             "tags": manifest.get("tags") or [],
             "enabled": bool(manifest.get("enabled", True)),
@@ -186,10 +210,55 @@ def cmd_list() -> int:
             "writes": writes,
             "hasConfig": has_config,
         })
-    return _emit(items)
+    return items
+
+
+#: Same rule the desktop applies before it lets a profile id near a path
+#: (`PROFILE_ID_RE` in untrusted-state.ts). Re-checked here because the ids
+#: arrive as arguments and a folder name is built from each one.
+_PROFILE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+
+
+def cmd_list_profiles(ids: list[str]) -> int:
+    """The mods of several profiles in ONE process.
+
+    Every profile's mods live in ``<root>/profiles/<id>``, and a call is run with
+    ``RSMM_MODS_DIR`` at the ACTIVE profile's folder, so its siblings are the
+    other profiles. Asking for them one ``list`` at a time started a fresh
+    sidecar per profile (each a cold start, more with antivirus on Windows); this
+    reads them all in one. A profile whose folder is missing has no mods, which is
+    a result, but one that cannot be read, or whose id is not a plain name, is
+    reported as failed so the caller does not take "nothing" to mean "empty".
+    """
+    root = MODS_DIR.parent
+    out: dict[str, dict[str, Any]] = {}
+    for pid in ids:
+        if not _PROFILE_ID_RE.match(pid):
+            out[pid] = {"ok": False, "error": "not a valid profile id"}
+            continue
+        folder = root / pid
+        try:
+            out[pid] = {"ok": True, "mods": _scan_mods(folder) if folder.is_dir() else []}
+        except OSError as e:
+            out[pid] = {"ok": False, "error": str(e)}
+    return _emit({"profiles": out})
+
+
+def _is_plain_mod_id(mod_id: str) -> bool:
+    """Whether `mod_id` names one folder directly under ``mods/``.
+
+    The id arrives on argv from the desktop app. ``.`` (or an empty id) joins
+    to ``mods/`` itself, which uninstall would then delete wholesale and
+    config would treat as a mod; a separator or drive prefix reaches another
+    folder entirely.
+    """
+    return (bool(mod_id) and mod_id not in (".", "..")
+            and not any(c in mod_id for c in "/\\:\0"))
 
 
 def _config_for_mod(mod_id: str) -> ConfigStore | None:
+    if not _is_plain_mod_id(mod_id):
+        return None
     mod_dir = MODS_DIR / mod_id
     if not mod_dir.is_dir():
         return None
@@ -249,7 +318,31 @@ def _resolved_themes(store: ConfigStore) -> dict[str, dict[str, str]]:
             for name, grid in grids.items()}
 
 
-def cmd_config_set(mod_id: str, values_json: str) -> int:
+def _mirror_config_live(store: ConfigStore, mod_id: str) -> str | None:
+    """Copy the saved config.toml into the INSTALLED mod (<game>/mods/<id>/),
+    which is the copy the loader reads. The loader re-reads it when its mtime
+    moves (rsmm._internal.config_reload, polled by R.config each tick), so a
+    value set here reaches the running game without an apply. Returns the path
+    written, or None when the mod is not installed (nothing is running it)."""
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return None
+    root = (game_dir / "mods").resolve()
+    dest_dir = (root / mod_id).resolve()
+    try:
+        dest_dir.relative_to(root)
+    except ValueError:
+        return None
+    if dest_dir == root or not dest_dir.is_dir():
+        return None
+    from rsmm.engine.safeio import atomic_write_text
+    dest = dest_dir / "config.toml"
+    atomic_write_text(dest, store.values_path.read_text(encoding="utf-8"))
+    return str(dest)
+
+
+def cmd_config_set(mod_id: str, values_json: str, live: bool = False,
+                   merge: bool = False) -> int:
     try:
         store = _config_for_mod(mod_id)
     except ConfigError as exc:
@@ -262,25 +355,47 @@ def cmd_config_set(mod_id: str, values_json: str) -> int:
         return _emit({"ok": False, "error": f"invalid config JSON: {exc}"})
     if not isinstance(payload, dict):
         return _emit({"ok": False, "error": "config payload must be a JSON object"})
+    if merge:
+        # Only the keys sent change. An overlay sends just its controls, and a
+        # plain replace would reset every other field of the mod to its default.
+        payload = {**store.as_dict(), **payload}
     try:
         store.replace(payload)
     except ConfigError as exc:
         return _emit({"ok": False, "error": str(exc)})
+    live_path = None
+    if live:
+        try:
+            live_path = _mirror_config_live(store, mod_id)
+        except OSError as exc:
+            return _emit({"ok": False, "error": f"saved, but the running game's copy "
+                                                f"could not be written: {exc}"})
     return _emit({
         "ok": True,
         "modId": mod_id,
         "path": str(store.mod_dir),
         "schema": store.schema_as_dict(),
         "values": store.as_dict(),
+        "livePath": live_path,
     })
 
 
-def cmd_uninstall_mod(mod_id: str) -> int:
-    mod_path = (MODS_DIR / mod_id).resolve()
+def cmd_uninstall_mod(mod_id: str, hook: str | None = None) -> int:
+    """Delete ``mods/<mod_id>/``, giving its ``on_disable.py`` a chance first.
+
+    `hook` is the user's answer about that script: ``"run"``, ``"skip"``, or
+    None for "not asked yet". The script came inside the mod's archive and
+    runs as the user with no sandbox, so it never runs unasked: with no
+    answer, a mod whose hook would run is reported as ``needsHookConsent``
+    and left exactly as it was, for the caller to ask and call again.
+    """
     mods_root = MODS_DIR.resolve()
+    mod_path = (MODS_DIR / mod_id).resolve() if _is_plain_mod_id(mod_id) else mods_root
     try:
         mod_path.relative_to(mods_root)
     except ValueError:
+        mod_path = mods_root
+    if mod_path == mods_root:
         return _emit({"ok": False, "error": f"invalid mod id: {mod_id!r}"})
 
     # Give the mod its on_disable.py while the directory still exists — see
@@ -291,9 +406,25 @@ def cmd_uninstall_mod(mod_id: str) -> int:
         game_dir = find_game_dir()
         if game_dir is not None:
             cooking = game_dir / "DarkTalesResources" / "_Cooking"
-            hook_status, hook_detail = run_uninstall_hook(
-                mod_path, mod_id, game_dir, cooking, State(cooking))
-        elif (mod_path / "on_disable.py").is_file():
+            state = State(cooking)
+            pending = uninstall_hook_pending(mod_path, mod_id, state)
+            if pending and hook is None:
+                return _emit({
+                    "ok": False,
+                    "modId": mod_id,
+                    "needsHookConsent": True,
+                    "hookPath": str(mod_path / DEACTIVATION_SCRIPT_NAME),
+                    "error": (f"{mod_id} ships {DEACTIVATION_SCRIPT_NAME}, which runs "
+                              "with your permissions and no sandbox; pass --run-hook "
+                              "or --skip-hook"),
+                })
+            if pending and hook == "skip":
+                hook_status = "skipped"
+                hook_detail = f"you chose not to run {DEACTIVATION_SCRIPT_NAME}"
+            else:
+                hook_status, hook_detail = run_uninstall_hook(
+                    mod_path, mod_id, game_dir, cooking, state)
+        elif (mod_path / DEACTIVATION_SCRIPT_NAME).is_file():
             hook_status = "no-game-dir"
             hook_detail = ("Ravenswatch install not found, so this mod's "
                            "on_disable.py could not run before removal.")
@@ -347,8 +478,52 @@ def _run_rsmm(args: list[str]) -> int:
     return _emit(_collect_rsmm(args))
 
 
-def cmd_apply(rest: list[str]) -> int:
-    return _run_rsmm(["apply", *rest])
+def sync_enabled(mods_dir: Path, enabled_ids: list[str]) -> list[str]:
+    """Make every mod folder's manifest ``enabled`` flag match ``enabled_ids``
+    (the desktop profile's enabled mods); returns ``"<id>: on|off"`` per flip.
+
+    The desktop Library keeps enabled/disabled in its own profile store, but
+    `apply` reads each manifest's `enabled`, so a mod switched off in the app
+    was still installed (bug report 2026-10-06: "disabled mods in my library
+    were still applied"). Folders the profile does not list are switched off,
+    as the Library shows them; ids with no folder are ignored."""
+    from rsmm.cli.cmd_mods import set_mod_enabled
+    want = set(enabled_ids)
+    changed: list[str] = []
+    for entry in sorted(mods_dir.iterdir()) if mods_dir.is_dir() else []:
+        if not entry.is_dir() or entry.name.startswith("_"):
+            continue
+        if not (entry / "manifest.toml").is_file():
+            continue
+        on = entry.name in want
+        if set_mod_enabled(mods_dir, entry.name, on) == "ok":
+            changed.append(f"{entry.name}: {'on' if on else 'off'}")
+    return changed
+
+
+def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
+    """``apply``; with ``enabled_json`` (a JSON list of mod ids) the manifests
+    are first made to match it (:func:`sync_enabled`)."""
+    note = ""
+    if enabled_json is not None:
+        try:
+            ids = json.loads(enabled_json)
+        except json.JSONDecodeError as e:
+            return _emit({"ok": False, "code": 2, "stdout": "",
+                          "stderr": f"--enabled-json is not JSON: {e}"})
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            return _emit({"ok": False, "code": 2, "stdout": "",
+                          "stderr": "--enabled-json must be a list of mod ids"})
+        try:
+            changed = sync_enabled(MODS_DIR, ids)
+        except OSError as e:
+            return _emit({"ok": False, "code": 1, "stdout": "",
+                          "stderr": f"could not update mod manifests: {e}"})
+        if changed:
+            note = "Matched the profile: " + ", ".join(changed) + "\n"
+    result = _collect_rsmm(["apply", *rest])
+    result["stdout"] = note + result["stdout"]
+    return _emit(result)
 
 
 def cmd_restore_all() -> int:
@@ -402,94 +577,8 @@ def cmd_active_overrides() -> int:
     })
 
 
-# Loader feature flags surfaced in the desktop "Loader features" panel.
-# The loader reads these from <game_dir>/rsmm_loader_flags.json (a JSON array
-# of enabled flag names) OR from a matching environment variable. Only flags
-# marked safe=True are user-togglable; the rest are documented but locked so
-# the UI can explain why (e.g. RSMM_ENABLE_ITEM_INJECT crashes the game).
-LOADER_FLAGS: list[dict[str, Any]] = [
-    # Both event buses are ON by default (the loader skips publishing entirely
-    # when no mod has subscribed, so an asset-only install pays nothing). These
-    # entries are the opt-OUT switches, for isolating a suspected event-bus
-    # problem without uninstalling the loader.
-    {
-        "name": "RSMM_DISABLE_GAMEPLAY_EVENTS",
-        "label": "Disable gameplay event bus",
-        "description": "Stop bridging the in-game oCGameNamedEvent bus to Lua "
-                       "(R.on(\"gameplay:<NAME>\")). Event-driven mods break "
-                       "while this is on — troubleshooting only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_DISABLE_GAME_EVENTS",
-        "label": "Disable analytics event bridge",
-        "description": "Stop bridging the analytics firehose (run_start, "
-                       "enemy_killed, ...) to R.on. Troubleshooting only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_EVENT_PROBE",
-        "label": "Event payload probe",
-        "description": "Attach a raw field window (ev.w38..ev.w70) to every "
-                       "gameplay event, for reverse-engineering an undecoded "
-                       "payload. Verbose; developers only.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_SKILL_HOOK",
-        "label": "Skill hook (read-only)",
-        "description": "Log the herodef skill vector at load. Experimental; "
-                       "may fail to resolve under Proton on some builds.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_UI_HOOK",
-        "label": "UI button events",
-        "description": "Emit R.on(\"ui:press\") when a native UI button is "
-                       "clicked. Needed by mods that add in-game menu actions.",
-        "safe": True,
-    },
-    {
-        "name": "RSMM_ENABLE_ITEM_INJECT",
-        "label": "Item pool injection",
-        "description": "Disabled: crashes the game. Custom items already load "
-                       "via UsedRscList — no injection needed.",
-        "safe": False,
-    },
-    {
-        "name": "RSMM_ENABLE_SKILL_INJECT",
-        "label": "Skill injection (proof-of-path)",
-        "description": "Disabled: experimental loader path that duplicates a "
-                       "skill slot. For development only.",
-        "safe": False,
-    },
-    {
-        "name": "RSMM_DUMP_SYMBOLS",
-        "label": "Dump resolved symbols (RE/dev)",
-        "description": "At boot, write <game>/rsmm/resolved_symbols.json — the "
-                       "addresses the loader actually resolved every semantic "
-                       "pattern to. Feeds `rsmm symbols audit`. Read-only; adds "
-                       "~1s to load. Dev/RE aid.",
-        "safe": True,
-    },
-]
-
-_LOADER_FLAGS_FILE = "rsmm_loader_flags.json"
-_SAFE_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS if f["safe"])
-_KNOWN_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS)
-
-
-def _read_loader_flags(flags_path: Path) -> list[str]:
-    """Read the enabled-flag list, tolerating a missing/garbage file."""
-    if not flags_path.exists():
-        return []
-    try:
-        data = json.loads(flags_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if not isinstance(data, list):
-        return []
-    return [x for x in data if isinstance(x, str) and x in _KNOWN_FLAG_NAMES]
+# The loader feature flags live in rsmm.engine.loader_flags (imported above),
+# which `apply` also uses for a mod's `loader_flags`.
 
 
 def _loader_status(game_dir: Path) -> dict[str, Any]:
@@ -856,7 +945,7 @@ def put_bytes(path: str, url: str) -> dict[str, Any]:
     # A presigned URL's query string IS a credential for that object, so error
     # messages carry the scheme, host and path only.
     shown = url.split("?", 1)[0]
-    if not (url.startswith("https://") or url.startswith("http://")):
+    if not (url.startswith(("https://", "http://"))):
         return {"ok": False, "error": f"refusing to PUT to non-http(s) URL: {shown}"}
     if not _upload_url_allowed(url):
         return {"ok": False, "error": f"refusing to PUT to non-allowlisted host: {shown}"}
@@ -927,7 +1016,7 @@ def _http_get_json(url: str, *, timeout: int = 30) -> dict[str, Any]:
         "User-Agent",
         "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         # Capped: an index that streams forever otherwise OOMs the sidecar
         # before anything gets a chance to reject the response.
         raw = net.read_capped(resp, url, limit=net.MAX_METADATA_BYTES)
@@ -997,6 +1086,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
     tmp = tempfile.NamedTemporaryFile(prefix="rsmm-download-", suffix=".zip", delete=False)
     tmp_path = Path(tmp.name)
     dl_url = ""
+    handed_over = False     # only a verified archive leaves; the caller deletes it
     try:
         # Inside the try: `_api_url` resolves RSMM_INDEX_URL, which is checked,
         # so a bad override must surface as an error payload rather than a
@@ -1007,7 +1097,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
             "User-Agent",
             "rsmm-installer/1.0 (compatible; Mozilla/5.0; like Chrome/126)",
         )
-        with urllib.request.urlopen(req, timeout=600) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=600) as resp:
             with tmp as fh:
                 # Capped: the digest can only be checked once the whole archive
                 # has landed, so without a ceiling a hostile index fills the
@@ -1019,6 +1109,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
                 "ok": False,
                 "error": f"sha256 mismatch: expected {expected_sha}, got {got_sha}",
             }
+        handed_over = True
         return {"ok": True, "sizeBytes": size, "tmp_path": tmp_path}
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"download failed: HTTP {e.code} {e.reason}"}
@@ -1027,6 +1118,12 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
     finally:
         with contextlib.suppress(Exception):
             tmp.close()
+        # A rejected or partial download is not returned to anyone, so it is
+        # deleted here; before, every tampered or failed download left a
+        # (possibly hundreds-of-MB) zip in the temp dir.
+        if not handed_over:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
 
 
 def cmd_install_mod(slug: str) -> int:
@@ -1318,6 +1415,19 @@ def cmd_conflicts() -> int:
     """
     conflicts: list[dict[str, object]] = []
 
+    # A file two mods both ship is only a conflict if apply lets one of them
+    # win. It merges text banks, the hero-alias table, tile pools and resource
+    # caches instead (plan_apply's mergers), and never installs staging files:
+    # reporting those made two custom heroes look like they conflicted.
+    from rsmm.cli.apply_mods import is_skippable_asset
+    from rsmm.engine.content_merge import (
+        is_app_settings,
+        is_map_def,
+        is_rsc_cache,
+        is_text_bank,
+    )
+    merged = (is_text_bank, is_map_def, is_rsc_cache, is_app_settings)
+
     tracked_paths: dict[str, list[str]] = {}
     try:
         if MODS_DIR.is_dir():
@@ -1336,6 +1446,8 @@ def cmd_conflicts() -> int:
                     for f in assets_dir.rglob("*"):
                         if f.is_file():
                             rel = f.relative_to(assets_dir).as_posix()
+                            if is_skippable_asset(rel) or any(m(rel) for m in merged):
+                                continue
                             tracked_paths.setdefault(rel, []).append(mod_id)
     except (OSError, PermissionError):
         pass
@@ -1359,11 +1471,6 @@ def cmd_conflicts() -> int:
         elif p.kind == "texture":
             key = ("texture", str(p.data.get("target", "")).replace("\\", "/"))
             by_key.setdefault(key, {})[p.mod_id] = p.data.get("donor")
-        elif p.kind in {"url", "text"}:
-            key = (p.kind,) + tuple(
-                str(p.data.get(k, "")) for k in
-                (["field"] if p.kind == "url" else ["bank", "lang", "key"]))
-            by_key.setdefault(key, {})[p.mod_id] = p.data.get("value")
     for key, owners in by_key.items():
         if len({repr(v) for v in owners.values()}) > 1:
             kind = key[0]
@@ -1401,7 +1508,7 @@ def cmd_conflicts() -> int:
                     "type": "manifest",
                     "modIds": [a, b],
                 })
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - best-effort panel, logged below
         # Best-effort: a malformed manifest shouldn't blank the whole
         # conflict panel, but the UI must not silently under-report either.
         logger.warning("conflict analysis incomplete: %s", e)
@@ -1617,6 +1724,77 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def _backend_state(game_dir: Path, check_server: bool) -> dict[str, Any]:
+    """Everything the Settings panel shows about the self-hosted backend."""
+    from rsmm.engine import backend_redirect as br
+
+    stored = br.read_marker(game_dir)
+    url, invalid = None, None
+    if stored:
+        try:
+            url = br.normalize_url(stored)
+        except br.BackendUrlError as e:
+            invalid = str(e)
+    loader = br.inspect_loader(game_dir)
+    log = br.last_backend_log(game_dir)
+    env = br.env_override()
+    state: dict[str, Any] = {
+        "ok": True,
+        "gameDir": str(game_dir),
+        "url": url,
+        "invalid": invalid,
+        # Only worth showing when it wins over the file with a different address.
+        "envOverride": env if env and env.rstrip("/") != url else None,
+        "loaderCanRedirect": loader.can_redirect,
+        "loaderSummary": loader.summary,
+        "logPath": str(log.path),
+        "logModified": log.modified,
+        "logLines": list(log.lines),
+        "server": None,
+    }
+    if url and check_server:
+        fed = br.probe_federation(url)
+        state["server"] = {
+            "reachable": fed.reachable,
+            "endpoints": list(fed.endpoints),
+            "error": fed.error or None,
+            "advertisesLoopback": fed.reachable and br.advertises_loopback(url, fed),
+        }
+    return state
+
+
+def cmd_backend(action: str, url: str | None, check_server: bool) -> int:
+    """Read, set or clear the self-hosted backend address (`rsmm backend`).
+
+    `set` and `off` run the CLI command itself, so the desktop gets the same
+    repairs it does — installing a loader that cannot redirect, removing a
+    leftover `setx RSMM_BACKEND_URL` — instead of a second copy of that logic.
+    Its human-readable report comes back as `output`.
+    """
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": False, "error": "game directory not found"})
+    try:
+        output = None
+        if action in ("set", "off"):
+            from rsmm.engine import backend_redirect as br
+
+            target = "off" if action == "off" else (url or "")
+            if action == "set":
+                try:
+                    br.normalize_url(target)
+                except br.BackendUrlError as e:
+                    return _emit({"ok": False, "error": str(e)})
+            result = _collect_rsmm(["backend", target, "--game-dir", str(game_dir),
+                                    "--no-check"])
+            output = (result.get("stdout") or "") + (result.get("stderr") or "")
+        state = _backend_state(game_dir, check_server)
+        state["output"] = output
+        return _emit(state)
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "error": str(e)})
+
+
 def cmd_changelog(refresh: bool) -> int:
     """
     Read the rolling release-notes channel.
@@ -1712,10 +1890,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list installed mods")
+    p_list_profiles = sub.add_parser(
+        "list-profiles", help="list the mods of several profiles in one call")
+    p_list_profiles.add_argument("ids", nargs="*", help="profile ids (sibling folders)")
     p_apply = sub.add_parser("apply", help="run apply")
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
     p_apply.add_argument("--no-merge", action="store_true")
+    p_apply.add_argument("--enabled-json", default=None,
+                         help="JSON list of the profile's enabled mod ids; manifests "
+                              "are made to match it before applying")
     sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
@@ -1762,6 +1946,10 @@ def main(argv: list[str] | None = None) -> int:
     p_cfg_set = cfg_sub.add_parser("set", help="replace config values")
     p_cfg_set.add_argument("mod_id", help="folder name under mods/")
     p_cfg_set.add_argument("values_json", help="JSON object with config values")
+    p_cfg_set.add_argument("--live", action="store_true",
+                           help="also write the installed copy the running game reloads")
+    p_cfg_set.add_argument("--merge", action="store_true",
+                           help="change only the keys given; keep every other value")
     p_cat = sub.add_parser("item-catalog",
                            help="magical objects the install offers, for the picker")
     p_cat.add_argument("--icons", action="store_true",
@@ -1774,6 +1962,11 @@ def main(argv: list[str] | None = None) -> int:
     p_bans_set.add_argument("items_json", help="JSON array of item ids to ban")
     p_uninstall = sub.add_parser("uninstall-mod", help="remove a mod from mods/<id>/")
     p_uninstall.add_argument("mod_id", help="folder name under mods/")
+    hook_choice = p_uninstall.add_mutually_exclusive_group()
+    hook_choice.add_argument("--run-hook", dest="hook", action="store_const", const="run",
+                             help="run the mod's on_disable.py before removing it")
+    hook_choice.add_argument("--skip-hook", dest="hook", action="store_const", const="skip",
+                             help="remove the mod without running its on_disable.py")
     p_flags = sub.add_parser("loader-flags", help="read or set loader feature flags")
     flags_sub = p_flags.add_subparsers(dest="flags_cmd", required=True)
     flags_sub.add_parser("get", help="list available flags + which are enabled")
@@ -1787,6 +1980,16 @@ def main(argv: list[str] | None = None) -> int:
         "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
     p_upd_loader.add_argument("--check", action="store_true",
                               help="report status only, do not install")
+    p_backend = sub.add_parser(
+        "backend", help="read, set or clear the self-hosted online backend address")
+    backend_sub = p_backend.add_subparsers(dest="backend_cmd", required=True)
+    p_backend_get = backend_sub.add_parser("get", help="current address + checks")
+    p_backend_get.add_argument("--check-server", action="store_true",
+                               help="also ask the server whether it answers")
+    p_backend_set = backend_sub.add_parser(
+        "set", help="set the address (installs a loader that can redirect if needed)")
+    p_backend_set.add_argument("url", help="http://host:port")
+    backend_sub.add_parser("off", help="go back to the official servers")
     p_changelog = sub.add_parser(
         "changelog", help="read release notes from the rolling changelog channel")
     p_changelog.add_argument("--refresh", action="store_true",
@@ -1795,6 +1998,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "list":
         return cmd_list()
+    if args.cmd == "list-profiles":
+        return cmd_list_profiles(list(args.ids))
     if args.cmd == "apply":
         rest = []
         if args.dry_run:
@@ -1803,7 +2008,7 @@ def main(argv: list[str] | None = None) -> int:
             rest.append("--force")
         if args.no_merge:
             rest.append("--no-merge")
-        return cmd_apply(rest)
+        return cmd_apply(rest, args.enabled_json)
     if args.cmd == "overlays":
         return cmd_overlays()
     if args.cmd == "active-overrides":
@@ -1846,7 +2051,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.config_cmd == "get":
             return cmd_config_get(args.mod_id)
         if args.config_cmd == "set":
-            return cmd_config_set(args.mod_id, args.values_json)
+            return cmd_config_set(args.mod_id, args.values_json, args.live, args.merge)
         ap.error(f"unknown config subcommand: {args.config_cmd}")
         return 2
     if args.cmd == "item-catalog":
@@ -1857,13 +2062,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.bans_cmd == "set":
             return cmd_item_bans_set(args.items_json)
     if args.cmd == "uninstall-mod":
-        return cmd_uninstall_mod(args.mod_id)
+        return cmd_uninstall_mod(args.mod_id, args.hook)
     if args.cmd == "update-data":
         return cmd_update_data(args.check)
     if args.cmd == "update-loader":
         return cmd_update_loader(args.check)
     if args.cmd == "changelog":
         return cmd_changelog(args.refresh)
+    if args.cmd == "backend":
+        return cmd_backend(args.backend_cmd, getattr(args, "url", None),
+                           getattr(args, "check_server", False) or args.backend_cmd == "set")
     if args.cmd == "loader-flags":
         if args.flags_cmd == "get":
             return cmd_loader_flags_get()

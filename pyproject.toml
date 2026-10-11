@@ -60,7 +60,11 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I", "UP", "B", "BLE"]
+select = ["F", "E", "W", "I", "UP", "B", "BLE",
+          # Gates, not a style sweep: each had a handful of findings when
+          # enabled (2026-09-26) and all were fixed, so new ones fail CI.
+          "C4", "PIE", "RET", "PERF102", "PERF402", "SIM103", "SIM108",
+          "RUF005", "RUF010", "RUF015", "RUF059", "RUF100"]
 ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 
 # Bare `except Exception:` swallows programmer errors and makes the CLI
@@ -71,39 +75,16 @@ ignore = ["F401"]   # unused imports: noisy on src/rsmm/__init__ re-exports
 # violations elsewhere in the tree. Drop a path once its `except` calls
 # are reviewed.
 [tool.ruff.lint.per-file-ignores]
-"src/rsmm/cli/cmd_log.py"      = ["BLE001"]
-"src/rsmm/cli/json_bridge.py"  = ["BLE001"]
 "tests/test_sdk.py"            = ["BLE001"]
-"src/rsmm/cli/compat.py"       = ["BLE001"]
-"src/rsmm/cli/doctor.py"       = ["BLE001"]
-"src/rsmm/cli/lint.py"         = ["BLE001"]
-"src/rsmm/cli/repo_cmd.py"     = ["BLE001"]
-"src/rsmm/cli/run.py"          = ["BLE001"]
-"src/rsmm/cli/safe_mode.py"    = ["BLE001"]
-"src/rsmm/cli/sdk_doctor.py"   = ["BLE001"]
-"src/rsmm/cli/test.py"         = ["BLE001"]
 
-"src/rsmm/dev/class_diff.py"   = ["BLE001"]
-"src/rsmm/dev/class_survey.py" = ["BLE001"]
-"src/rsmm/manifest_graph.py"   = ["BLE001"]
-"src/rsmm/sdk/config.py"       = ["BLE001"]
-"src/rsmm/sdk/docs_gen.py"     = ["BLE001"]
-"src/rsmm/sdk/health.py"       = ["BLE001"]
-"src/rsmm/sdk/intermod.py"     = ["BLE001"]
-"src/rsmm/sdk/plugins.py"      = ["BLE001"]
-"src/rsmm/sdk/repo.py"         = ["BLE001"]
-"src/rsmm/sdk/transaction.py"  = ["BLE001"]
-"src/rsmm/sdk/versioning.py"   = ["BLE001"]
 
 # Pre-existing offenders from the cook/uncook pipeline + roundtrip tests
 # (blind try/except for skip-on-any-failure, plus dense binary-format code
 # with packed statements). Exempt to keep CI green; narrow per-call when
 # each is audited.
 "src/rsmm/engine/cooked_schemas/animation.py" = ["E702", "E501"]
-"src/rsmm/engine/magic_items.py"              = ["BLE001"]
-"src/rsmm/engine/heroes.py"                   = ["BLE001"]
-"src/rsmm/logging.py"                         = ["BLE001", "E501"]
-"src/rsmm/cli/console_cmd.py"                 = ["BLE001", "E501"]
+"src/rsmm/logging.py"                         = ["BLE001", "E501"]   # a logger must never raise
+"src/rsmm/cli/console_cmd.py"                 = ["E501"]
 "src/rsmm/dev/ghidra_resolve.py"              = ["BLE001"]
 "tests/test_animation_roundtrip.py"           = ["BLE001"]
 "tests/test_asset_refs_roundtrip.py"          = ["BLE001"]

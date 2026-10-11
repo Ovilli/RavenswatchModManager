@@ -32,7 +32,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 OLD_TEXT_BIN = REPO / "docs/_re/out/text_section.bin"
@@ -49,7 +49,7 @@ def find_ref_sites(old_text: bytes, old_text_va: int, target: int) -> list[int]:
     # disp32 sits at the end of the instruction: next_ip = va(site)+4 (+imm for
     # some encodings — those simply won't verify in the consensus pass).
     want = target - old_text_va
-    for off in range(0, len(old_text) - 4):
+    for off in range(len(old_text) - 4):
         disp = struct.unpack_from("<i", old_text, off)[0]
         if off + 4 + disp == want:
             sites.append(off)

@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
-import { useApp } from '../store';
+import { isEnabledIn, useApp } from '../store';
+import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
+import { noteGameStateChanged } from './session-cache';
 import { isSafeProfileId } from './untrusted-state';
 
 interface ExecResult {
@@ -116,9 +118,43 @@ interface RsmmOptions {
  * (development). Returns parsed JSON output. Throws a typed `RsmmError`
  * subclass on failure.
  */
+/**
+ * Commands that only read. Anything NOT listed is assumed to change the game or
+ * the mods folder, which is the safe default: a command forgotten here costs one
+ * extra re-check, where a wrongly-listed one would let a cached "all good"
+ * outlive an apply or a repair (see `session-cache.ts`).
+ */
+const READ_ONLY_COMMANDS = new Set([
+  'list',
+  'list-profiles',
+  'overlays',
+  'changelog',
+  'loader-runs',
+  'loader-health',
+  'loader-log',
+  'game-status',
+  'conflicts',
+  'active-overrides',
+]);
+
+export function writesGameState(args: string[]): boolean {
+  const [cmd = '', ...rest] = args;
+  if (rest.includes('--check')) return false;
+  if (cmd === 'doctor') return rest.includes('--fix');
+  if (cmd === 'config') return rest[0] !== 'get';
+  if (cmd === 'backend') return rest[0] !== 'get';
+  return !READ_ONLY_COMMANDS.has(cmd);
+}
+
 async function rsmm<T = unknown>(args: string[], options: RsmmOptions = {}): Promise<T | null> {
   const fullArgs = ['json', ...args];
-  const result = await execute(fullArgs, options);
+  let result: ExecResult;
+  try {
+    result = await execute(fullArgs, options);
+  } finally {
+    // Even a failed apply may have touched files, so invalidate either way.
+    if (writesGameState(args)) noteGameStateChanged();
+  }
   if (result.code !== 0) {
     throw new RsmmExitError(args, result.code, result.stdout, result.stderr);
   }
@@ -141,6 +177,19 @@ function defaultModsDir(): string {
 }
 
 /**
+ * The mods root every profile folder lives under, as the CLI will see it.
+ *
+ * The Settings field is documented as "leave empty to use the default", so an
+ * empty value means the platform default, not "unset". Anything that builds a
+ * profile path itself (duplicating a profile's files, revealing its folder)
+ * must resolve it the same way, or it acts on a different directory from the
+ * one every CLI call uses.
+ */
+export function modsRoot(): string {
+  return useApp.getState().settings.modsDir?.trim() || defaultModsDir();
+}
+
+/**
  * Environment handed to every CLI invocation. Exported for tests: the profile
  * id it interpolates decides which directory the CLI creates, overwrites and
  * deletes in, so the fail-closed behaviour below is worth asserting directly
@@ -148,7 +197,7 @@ function defaultModsDir(): string {
  */
 export function rsmmEnv(profileId?: string): Record<string, string> {
   const state = useApp.getState();
-  const rootDir = state.settings.modsDir?.trim() || defaultModsDir();
+  const rootDir = modsRoot();
   const requested = profileId ?? state.activeProfileId;
   // Defence in depth. The store sanitizes every profile id at the boundary
   // (see lib/untrusted-state.ts), but this is the SINK: the id lands inside
@@ -157,7 +206,14 @@ export function rsmmEnv(profileId?: string): Record<string, string> {
   // a caller passing one straight from an API response — would traverse out of
   // the mods tree from here. Fail closed onto the default profile instead.
   const id = isSafeProfileId(requested) ? requested : 'default';
-  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}` };
+  // The app's language, so the CLI hands back each mod's own translation
+  // (lang/<LOCALE>.toml) for names, overlay headers and config labels.
+  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}`, RSMM_LOCALE: modLocale() };
+}
+
+/** The app's language as a mod locale code (rsmm.sdk.i18n SUPPORTED_LOCALES). */
+export function modLocale(): string {
+  return getLocale() === 'zh-CN' ? 'ZH-S' : 'EN';
 }
 
 /**
@@ -385,6 +441,10 @@ function spawnWithLifecycle(
     let stdoutBuf = '';
     let stderrBuf = '';
     let settled = false;
+    // The process has reported its end. `close`/`error` arrive over a separate
+    // channel from `spawn()`'s answer, so for a fast command they can land
+    // FIRST — before there is a `child` to untrack.
+    let exited = false;
     let child: Child | null = null;
 
     const cleanup = (timeoutHandle: ReturnType<typeof setTimeout> | null) => {
@@ -440,6 +500,7 @@ function spawnWithLifecycle(
     });
 
     cmd.on('close', ({ code }: { code: number | null }) => {
+      exited = true;
       if (child) liveChildren.delete(child);
       if (stdoutBuf && options.onStdout) options.onStdout(stripCR(stdoutBuf));
       if (stderrBuf && options.onStderr) options.onStderr(stripCR(stderrBuf));
@@ -448,6 +509,7 @@ function spawnWithLifecycle(
     });
 
     cmd.on('error', (err: string) => {
+      exited = true;
       if (child) liveChildren.delete(child);
       // Started and then died: the command ran, so this must not be retried
       // against another program. Only a failure to spawn at all is a
@@ -457,6 +519,17 @@ function spawnWithLifecycle(
 
     cmd.spawn().then(
       (c) => {
+        // Already gone: tracking it now would leave a dead entry in
+        // `liveChildren` for good, and quit would later kill whatever process
+        // reused its pid.
+        if (exited) return;
+        // Aborted or timed out while the spawn was in flight. Both of those
+        // paths call `child?.kill()`, which was a no-op with no child yet, so
+        // the command ran on to completion untracked.
+        if (settled) {
+          c.kill().catch(() => {});
+          return;
+        }
         child = c;
         liveChildren.add(c);
       },
@@ -501,6 +574,8 @@ export interface ModConfigField {
   min: number | null;
   max: number | null;
   choices: string[];
+  /** Shown text per choice value, from the mod's translation; may be empty. */
+  choiceLabels?: Record<string, string>;
   label: string;
   source?: string | null;
   grid?: ItemGridSpec;
@@ -568,6 +643,8 @@ export interface ModConfigResponse {
   choices?: Record<string, ModConfigChoice[]>;
   /** Game textures per `item-grid` field, per theme slot (inline PNG data URLs). */
   themes?: Record<string, Record<string, string>>;
+  /** `set --live` only: the installed copy written, or null when not installed. */
+  livePath?: string | null;
 }
 
 interface RunResult {
@@ -673,6 +750,31 @@ export async function uncookInfo(path: string): Promise<CookedInfo> {
 export const listLocalModsForProfile = (profileId: string) =>
   rsmm<LocalMod[]>(['list'], { profileId });
 
+/**
+ * The mods of several profiles in one sidecar process.
+ *
+ * `listLocalModsForProfile` once per profile started a cold sidecar each time,
+ * so opening Profiles cost one process per inactive profile. A profile that
+ * could not be read comes back `null`, which means "unknown", not "empty".
+ */
+export async function listLocalModsForProfiles(
+  ids: string[],
+): Promise<Record<string, LocalMod[] | null>> {
+  const safe = ids.filter(isSafeProfileId);
+  const out: Record<string, LocalMod[] | null> = {};
+  for (const id of ids) out[id] = null;
+  if (safe.length === 0) return out;
+  const res = await rsmm<{ profiles: Record<string, { ok: boolean; mods?: LocalMod[] }> }>([
+    'list-profiles',
+    ...safe,
+  ]);
+  for (const id of safe) {
+    const entry = res?.profiles?.[id];
+    out[id] = entry?.ok && Array.isArray(entry.mods) ? entry.mods : null;
+  }
+  return out;
+}
+
 export async function getModConfig(modId: string): Promise<ModConfigResponse> {
   const result = await rsmm<ModConfigResponse>(['config', 'get', modId]);
   if (!result) {
@@ -681,11 +783,22 @@ export async function getModConfig(modId: string): Promise<ModConfigResponse> {
   return result;
 }
 
+/**
+ * Save a mod's config. `live` also writes the installed copy the running game
+ * re-reads (the loader polls its mtime), so the change reaches a mod mid-run
+ * through `R.config.on_change` — what an overlay control needs. `merge`
+ * changes only the keys given; without it, every field not sent is reset to
+ * its default.
+ */
 export async function setModConfig(
   modId: string,
   values: Record<string, ModConfigValue>,
+  opts: { live?: boolean; merge?: boolean } = {},
 ): Promise<ModConfigResponse> {
-  const result = await rsmm<ModConfigResponse>(['config', 'set', modId, JSON.stringify(values)], {
+  const args = ['config', 'set', modId, JSON.stringify(values)];
+  if (opts.live) args.push('--live');
+  if (opts.merge) args.push('--merge');
+  const result = await rsmm<ModConfigResponse>(args, {
     timeoutMs: LONG_TIMEOUT_MS,
   });
   if (!result) {
@@ -977,12 +1090,73 @@ export const getLoaderFlags = () => rsmm<LoaderFlagsState>(['loader-flags', 'get
 export const setLoaderFlags = (names: string[]) =>
   rsmm<LoaderFlagsState>(['loader-flags', 'set', JSON.stringify(names)]);
 
+export interface BackendServerCheck {
+  reachable: boolean;
+  endpoints: string[];
+  error: string | null;
+  // Reached, but tells players to dial localhost: the server's publicIp is unset.
+  advertisesLoopback: boolean;
+}
+
+export interface BackendState {
+  ok: boolean;
+  error?: string;
+  gameDir?: string;
+  /** The address the loader will use, or null for the official servers. */
+  url?: string | null;
+  /** The stored address is one the loader would ignore; says why. */
+  invalid?: string | null;
+  /** An RSMM_BACKEND_URL that beats the file with a different address. */
+  envOverride?: string | null;
+  loaderCanRedirect?: boolean;
+  loaderSummary?: string;
+  logPath?: string;
+  /** Unix seconds; null when there is no loader log yet. */
+  logModified?: number | null;
+  /** The loader's `[backend]` lines from the last launch. */
+  logLines?: string[];
+  server?: BackendServerCheck | null;
+  /** `set` / `off`: the CLI report, including any loader install it did. */
+  output?: string | null;
+}
+
+/** Self-hosted online backend (`rsmm backend`). `checkServer` contacts it. */
+export const getBackend = (opts: { checkServer?: boolean } = {}) =>
+  rsmm<BackendState>(['backend', 'get', ...(opts.checkServer ? ['--check-server'] : [])]);
+
+/** Set the address. Also installs a loader that can redirect, when needed —
+ *  a download, hence the long timeout. */
+export const setBackend = (url: string) =>
+  rsmm<BackendState>(['backend', 'set', url], { timeoutMs: LONG_TIMEOUT_MS });
+
+export const clearBackend = () => rsmm<BackendState>(['backend', 'off']);
+
+/**
+ * The mods the Library shows as enabled in a profile: what `apply` must install.
+ *
+ * The Library keeps enabled/disabled in this store, but `apply` reads each
+ * mod's `manifest.toml`, so a mod switched off here used to be installed anyway
+ * (bug report 2026-10-06). `apply` now gets this list (`--enabled-json`) and
+ * makes the manifests match it first. Undefined, leaving the manifests as they
+ * are, when the profile is unknown or is `default`: the store forces default's
+ * load order empty on every sync ("the vanilla load"), so it says nothing about
+ * the files in that folder and would switch every one of them off.
+ */
+export function profileEnabledMods(profileId?: string): string[] | undefined {
+  const s = useApp.getState();
+  const profile = s.profiles.find((p) => p.id === (profileId ?? s.activeProfileId));
+  if (!profile || profile.id === 'default') return undefined;
+  return profile.loadOrder.filter((id) => isEnabledIn(profile, id));
+}
+
 export const applyMods = (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
   if (force) args.push('--force');
   if (noMerge) args.push('--no-merge');
+  const enabled = profileEnabledMods(rsmmOpts.profileId);
+  if (enabled) args.push('--enabled-json', JSON.stringify(enabled));
   return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
 };
 
@@ -1043,6 +1217,13 @@ export interface UninstallResult {
    */
   disableHook?: string;
   disableHookDetail?: string;
+  /**
+   * The mod ships an `on_disable.py` that would run, and nothing was removed:
+   * the CLI never runs a mod's script without the user's say-so.
+   * `uninstallLocalMod` asks and calls again.
+   */
+  needsHookConsent?: boolean;
+  hookPath?: string;
 }
 
 /** Statuses where no cleanup was owed, or it completed. */
@@ -1080,8 +1261,33 @@ export const installModVersion = (slug: string, version: string, profileId?: str
     profileId,
   });
 
-export const uninstallLocalMod = (modId: string) =>
-  rsmm<UninstallResult>(['uninstall-mod', modId], { timeoutMs: LONG_TIMEOUT_MS });
+/** Asked before a mod's `on_disable.py` runs; resolves true to run it. */
+export type ConfirmDisableHook = (modId: string) => Promise<boolean>;
+
+/**
+ * Delete a mod's folder, running its `on_disable.py` first only if the user
+ * agrees.
+ *
+ * That script is the mod author's Python. It arrives inside the downloaded
+ * archive and runs as the user, outside the game, with no sandbox, so an
+ * asset-only mod that never ran any code while enabled could run anything the
+ * moment it was uninstalled. The CLI now refuses to run it unasked and reports
+ * `needsHookConsent`; this asks through `confirmHook` and calls again with the
+ * answer. With no way to ask, the script is skipped and the mod still removed.
+ */
+export const uninstallLocalMod = async (
+  modId: string,
+  confirmHook?: ConfirmDisableHook,
+): Promise<UninstallResult | null> => {
+  const first = await rsmm<UninstallResult>(['uninstall-mod', modId], {
+    timeoutMs: LONG_TIMEOUT_MS,
+  });
+  if (!first?.needsHookConsent) return first;
+  const run = confirmHook ? await confirmHook(modId) : false;
+  return rsmm<UninstallResult>(['uninstall-mod', modId, run ? '--run-hook' : '--skip-hook'], {
+    timeoutMs: LONG_TIMEOUT_MS,
+  });
+};
 
 /** A column in a mod-declared overlay (its manifest `[overlay]` block). */
 export interface OverlayColumn {
@@ -1090,6 +1296,24 @@ export interface OverlayColumn {
   type: 'text' | 'number' | 'percent' | 'bar';
   format: 'plain' | 'compact';
   suffix: string;
+}
+
+/**
+ * A live control in a mod's overlay: one field of the mod's own config schema
+ * (named in `[overlay].controls`), drawn by type and written back with
+ * `setModConfig(..., { live: true })`.
+ */
+export interface OverlayControl {
+  key: string;
+  label: string;
+  type: 'int' | 'float' | 'bool' | 'enum';
+  min: number | null;
+  max: number | null;
+  choices: string[];
+  /** What to SHOW for each choice, in the app's language (the mod's
+   *  translation); the value written stays the choice itself. */
+  choiceLabels?: Record<string, string>;
+  value: ModConfigValue;
 }
 
 /** One mod's overlay: what it declared, plus the rows it has published. */
@@ -1105,11 +1329,15 @@ export interface OverlayRecord {
   title?: string;
   icon?: string;
   columns?: OverlayColumn[];
+  /** Config fields shown as live controls; empty for a rows-only overlay. */
+  controls?: OverlayControl[];
   sort?: { key: string; dir: 'asc' | 'desc' } | null;
   highlight?: string | null;
   empty?: string;
   /** Set when the manifest declaration is malformed; nothing else is usable. */
   error?: string;
+  /** Usable, but something was left out (controls hidden: schema not found). */
+  warning?: string;
   /**
    * The mod's state file — where its live rows land.
    *

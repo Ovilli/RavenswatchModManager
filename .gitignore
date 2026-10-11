@@ -68,8 +68,10 @@ data/uncooked/
 # machine's extracted corpus.
 data/.corpus_cache/
 data/function_patterns.json
+data/function_patterns*.prev
 # game-derived: mine_fingerprints currently embeds decompiled function bodies
 data/symbol_fingerprints.json
+data/va_locators.json
 
 # Big RE artifacts — outputs are local
 ghidra_project/
@@ -87,6 +89,7 @@ docs/_re/project/
 # Local Claude Code config (per-machine permissions, scratch).
 .claude/
 .rsmm_emitted.json
+.rsmm_emit_cache.json
 .vercel
 .env*
 data/.symbol_remap.json
@@ -102,3 +105,10 @@ docs/_re/out_new/candidates2/
 # RE / pattern-db scratch backups
 *.bak_*
 *.rsmm.bak
+
+# Coverage output (pytest --cov)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+coverage.json

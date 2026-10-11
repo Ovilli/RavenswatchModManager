@@ -4,6 +4,10 @@ Two modes, dispatched by the declaration's ``mode`` field:
 
 * ``mode="clone"`` (default) — ADD a new, distinct, droppable magical object,
   cooked from a vanilla ``base``. Described below.
+* ``mode="replace"`` — CHANGE a vanilla item in place: the same cooked
+  pipeline with no rename, written over the shipped entity (apply backs it up),
+  so the item keeps its id, its catalog slot and every save's reference to it.
+  See :func:`_emit_clone`.
 * ``mode="ban"`` — REMOVE vanilla items from the catalog so no draw can offer
   them, the multiplayer-correct lever for "disable this item". See
   :func:`_emit_ban`.
@@ -34,22 +38,20 @@ import logging
 import struct
 from pathlib import Path
 
+from ...engine import corpus
 from ...engine import magic_item_cook as cook
-from ...engine.paths import DATA_DIR
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
-from .item import schema as item_schema
-from .item.builder import build_manifest
 
 _log = logging.getLogger(__name__)
 
 #: Where the vanilla magical-object entities + text bank live in-repo.
-_MO_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Objects" / "Magical_Objects"
+#: Decoded directory of the retail magical objects (read through `engine.corpus`).
+_MO_DIR = "EntitySettings/Objects/Magical_Objects"
+_MO_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 _RARITIES = ("Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups")
 
-PENDING_ITEMS_SUBDIR = "_pending_items"
 PENDING_BANS_SUBDIR = "_pending_bans"
-TEXT_BANK_OVERRIDES_SUBDIR = "_pending_text_overrides"
 
 
 def _find_base(base_id: str) -> tuple[bytes, str] | None:
@@ -62,13 +64,12 @@ def _find_base(base_id: str) -> tuple[bytes, str] | None:
     of cooking a real clone.
     """
     want_rarity, _, stem = str(base_id).replace("\\", "/").rpartition("/")
-    leaf = f"{stem}.entity.ot.EntitySettingsResource.gen"
     for rarity in _RARITIES:
         if want_rarity and rarity.lower() != want_rarity.lower():
             continue
-        p = _MO_DIR / rarity / leaf
-        if p.is_file():
-            return p.read_bytes(), rarity
+        raw = corpus.read(f"{_MO_DIR}/{rarity}/{stem}{_MO_SUFFIX}")
+        if raw is not None:
+            return raw, rarity
     return None
 
 
@@ -77,11 +78,8 @@ def _install_bank_gen() -> Path | None:
     in the game install, so name/description can be appended to the real bank
     (with its language siblings). None when no install is reachable."""
     try:
-        from rsmm.cli.apply_mods import (
-            COOKING_REL,
-            find_game_dir,
-            load_asset_map,
-        )
+        from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+        from rsmm.engine.paths import COOKING_REL
         game = find_game_dir()
         if game is None:
             return None
@@ -129,6 +127,27 @@ def _coerce_icon(raw) -> str | None:
     return f"Objects\\UI_Object_{s}.png"
 
 
+def _coerce_stats(item_id: str, raw) -> dict[str, str | int]:
+    """Normalise ``stats`` into ``{modifier name: stat}``; the stat itself is
+    checked against the catalog here so a typo fails before any cooking."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ContentError(
+            f"item {item_id}: stats must be a table of modifier name -> stat, got {raw!r}")
+    from ...engine.item_modifier import ItemModifierError, resolve_stat
+    out: dict[str, str | int] = {}
+    for modifier, stat in raw.items():
+        if not isinstance(stat, str | int) or isinstance(stat, bool):
+            raise ContentError(f"item {item_id}: stats[{modifier!r}] = {stat!r} is not a stat")
+        try:
+            resolve_stat(stat)
+        except ItemModifierError as e:
+            raise ContentError(f"item {item_id}: stats[{modifier!r}]: {e}") from e
+        out[str(modifier)] = stat
+    return out
+
+
 def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
     """Normalise ``value_patches`` into ``(label, old, new, clear_override)``.
 
@@ -165,16 +184,13 @@ _BAN_FIELDS = ("mode", "items")
 def _vanilla_item_ids() -> set[str]:
     """Every vanilla magical-object id present in the in-repo corpus.
 
-    Empty when ``data/uncooked`` is absent (a frozen build, a fresh checkout),
-    in which case ban ids simply go unvalidated here and are checked again at
-    apply time against the install's own versiondef vector.
+    Read from the game install or the mirror (`engine.corpus`). Empty only
+    when neither is readable, in which case ban ids go unvalidated here and
+    are checked again at apply time against the install's versiondef vector.
     """
     out: set[str] = set()
     for rarity in _RARITIES:
-        d = _MO_DIR / rarity
-        if not d.is_dir():
-            continue
-        for f in d.glob("*.entity.ot.EntitySettingsResource.gen"):
+        for f in corpus.files(f"{_MO_DIR}/{rarity}", _MO_SUFFIX):
             out.add(f.name.split(".entity.ot", 1)[0])
     return out
 
@@ -189,14 +205,14 @@ def _catalog_item_ids() -> set[str] | None:
     no-op that a corpus-only check would happily accept.
     """
     try:
-        from rsmm.cli.apply_mods import (
-            BACKUP_SUFFIX,
+        from rsmm.cli.apply_mods import find_game_dir
+        from rsmm.engine.paths import BACKUP_SUFFIX
+        from rsmm.engine.versiondef import (
             VERSIONDEF_GEN_LEAF,
             _find_mo_vector,
             _locate_cooked_by_leaf,
             _mo_entry_stem,
             _mo_vector_entries,
-            find_game_dir,
         )
         game = find_game_dir()
         if game is None:
@@ -329,15 +345,33 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     mode = defn.fields.get("mode", "clone")
     if mode == "ban":
         return _emit_ban(mod_id, defn, out_dir)
-    if mode != "clone":
+    if mode not in ("clone", "replace"):
         raise ContentError(
-            f"item {defn.id}: unknown mode {mode!r}; expected 'clone' or 'ban'"
+            f"item {defn.id}: unknown mode {mode!r}; expected 'clone', 'replace' or 'ban'"
         )
-    return _emit_clone(mod_id, defn, out_dir)
+    return _emit_clone(mod_id, defn, out_dir, replace=mode == "replace")
 
 
-def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Materialize one cloned item def into the mod's ``assets/`` tree.
+def _bank_prior(out_dir: Path) -> dict[str, bytes]:
+    """The magical-objects bank an earlier block of this mod already wrote in
+    this emit, as ``{"__base__" | ".Lang<XX>": bytes}``. Each block builds on
+    it; rebuilding from vanilla dropped every earlier item's text."""
+    bank = out_dir.joinpath(*cook.MAGIC_TEXT_BANK.split("/"))
+    out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
+           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
+    if bank.is_file():
+        out["__base__"] = bank.read_bytes()
+    return out
+
+
+def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
+                replace: bool = False) -> list[Path]:
+    """Materialize one cloned (or, with ``replace``, edited-in-place) item def
+    into the mod's ``assets/`` tree.
+
+    A replacement takes the same fields except ``rarity`` (the rarity folder
+    IS the shipped file's path) and ``unique_identity``; its name and
+    description rewrite the text the base already shows.
 
     Fields:
         ``base`` (str, required)   vanilla item id to clone.
@@ -348,6 +382,14 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         ``value_patches``           list of ``(label, old, new)`` (or dicts) —
                                     f32 effect edits, e.g.
                                     ``["Armor per Object Value", 2.0, 50.0]``.
+        ``stats`` (table)           modifier name -> the stat it changes instead,
+                                    e.g. ``{ "Super Effect Modifier" =
+                                    "Crit damage" }``. Stat names come from
+                                    ``data/stat_keys.json``; a ``0x`` key also
+                                    works. The amount keeps its old unit, so
+                                    pair it with a ``value_patches`` entry.
+        ``super_description`` (str) super effect card text
+                                    (-> ``<id>_SuperEffect``).
     """
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
@@ -359,28 +401,41 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     found = _find_base(base)
     if found is None:
-        # Base isn't a known vanilla magical object (or data/uncooked is
-        # absent): fall back to the legacy manifest so registration/tagging
-        # still works. Real cooked output requires a real base id.
-        return _emit_legacy_manifest(mod_id, defn, out_dir)
+        raise _base_not_found(defn.id, base)
 
     base_cooked, base_rarity = found
+    if replace:
+        for key in ("rarity", "unique_identity"):
+            if defn.fields.get(key):
+                raise ContentError(
+                    f"item {defn.id}: mode='replace' keeps the base's {key}; "
+                    f"use mode='clone' to make a new item with its own")
+        # `base` may carry its rarity folder (`Common/Armor_Per_Object`).
+        base = base.replace("\\", "/").rpartition("/")[2]
     rarity = str(defn.fields.get("rarity") or base_rarity)
+    item_id = base if replace else defn.id
     name = defn.fields.get("name") or defn.fields.get("display_name")
     name = str(name) if name is not None else None
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
     value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
+    stats = _coerce_stats(defn.id, defn.fields.get("stats"))
+    super_description = defn.fields.get("super_description")
+    super_description = str(super_description) if super_description is not None else None
     # Custom PNG icon shipped in the mod is cooked into a new texture;
     # otherwise the icon field repoints to a vanilla icon.
-    custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"), defn.id)
+    # A replacement's own icon gets a name of its own too: overwriting the
+    # shipped texture would also repaint any other item that shares it.
+    custom_tex = _maybe_custom_texture(out_dir.parent, defn.fields.get("icon"),
+                                       f"{base}_Custom" if replace else defn.id)
     if custom_tex is not None:
         icon, extra_files = custom_tex
     else:
         icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
-    bank_gen = _install_bank_gen() if name is not None else None
-    if name is not None and bank_gen is None:
+    wants_text = name is not None or description is not None or super_description is not None
+    bank_gen = _install_bank_gen() if wants_text else None
+    if wants_text and bank_gen is None:
         _log.warning(
             "item %s/%s: no install text bank reachable; entity will be "
             "nameless in-game. Run apply against a Ravenswatch install.",
@@ -389,7 +444,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     try:
         files = cook.build_magic_item(
-            new_id=defn.id,
+            new_id=item_id,
             base_id=base,
             base_cooked=base_cooked,
             # NO GUID remint (corpus=[]): reminting mints fresh GUIDs the engine
@@ -412,8 +467,12 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             name=name,
             description=description,
             value_patches=value_patches,
+            modifier_stats=stats,
+            super_description=super_description,
             icon=icon,
             bank_base_gen=bank_gen,
+            replace=replace,
+            bank_prior=_bank_prior(out_dir) if bank_gen is not None else None,
         )
     except ValueError as e:
         # e.g. a shadowed value_patches target — surface with item context.
@@ -426,33 +485,38 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)
         written.append(dest)
-    _log.info("item %s/%s: emitted %d cooked file(s) (rarity=%s)",
-              mod_id, defn.id, len(written), rarity)
+    _log.info("item %s/%s: emitted %d cooked file(s) (%s, rarity=%s)",
+              mod_id, defn.id, len(written), "replace" if replace else "clone", rarity)
     return written
 
 
-def _emit_legacy_manifest(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
-    """Legacy path: write a `_pending_items/<id>.json` manifest + EN text seed.
+def _base_not_found(item_id: str, base: str) -> ContentError | SchemaNotMined:
+    """The error for a ``base`` that names no vanilla magical object.
 
-    Used when the ``base`` isn't a resolvable vanilla magical object, so
-    registration/tagging/summary still work without producing cooked bytes.
+    This used to fall back to writing a ``_pending_items/<id>.json`` manifest
+    that nothing read, so a mistyped base emitted no item and said nothing:
+    the mod applied cleanly and the item never existed in game.
+
+    With no install or mirror readable the base cannot be checked at all, which
+    is `SchemaNotMined` like every other kind's missing-corpus case (callers
+    and tests treat that as "this machine has no game data", not a bad mod).
     """
-    display_name = str(
-        defn.fields.get("name") or defn.fields.get("display_name") or defn.id
-    )
-    manifest = build_manifest(
-        mod_id=mod_id, item_id=defn.id,
-        fields={**defn.fields, "name": display_name},
-        schema_version=max(int(defn.schema_version or 1),
-                           item_schema.ITEM_MANIFEST_SCHEMA_VERSION),
-    )
-    written = [C.write_json(
-        out_dir / PENDING_ITEMS_SUBDIR / f"{defn.id}.json", manifest.to_json(),
-    )]
-    written.append(C.write_json(
-        out_dir / TEXT_BANK_OVERRIDES_SUBDIR / f"{mod_id}__{defn.id}__EN.json",
-        {"locale": "EN", "mod": mod_id, "id": defn.id,
-         "strings": {manifest.text_keys["name"]: display_name},
-         "note": "Seeded by rsmm.sdk.kinds.items; lang/<locale>.toml overrides."},
-    ))
-    return written
+    from rsmm.cli._suggest import did_you_mean
+
+    known = _vanilla_item_ids()
+    if not known:
+        return SchemaNotMined(
+            f"item {item_id}: can't read the vanilla item {base!r} to clone — "
+            f"no game install found (set RSMM_GAME_DIR to it)")
+    stem = base.replace("\\", "/").rpartition("/")[2]
+    if stem in known:
+        # Real item, wrong rarity folder: `_find_base` only looks in the one
+        # the base names.
+        found = _find_base(stem)
+        right = f"{found[1]}/{stem}" if found else stem
+        return ContentError(
+            f"item {item_id}: {base!r} is in the wrong rarity folder; "
+            f"use {stem!r} or {right!r}")
+    hint = did_you_mean(stem, known) or " (`rsmm items list` shows them)"
+    return ContentError(
+        f"item {item_id}: 'base' {base!r} is not a shipped item{hint}")

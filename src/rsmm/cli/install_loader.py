@@ -177,15 +177,20 @@ def _lua_syntax_gate() -> bool:
     """
     if getattr(sys, "frozen", False):
         return True
-    lib = REPO_ROOT / "src" / "loader" / "lib"
-    if not lib.is_dir():
+    # Both trees are planted: lib/ (the entrypoint and generated files) and
+    # lua/ (every rsmm/*.lua submodule). Checking lib/ alone let a broken
+    # submodule through; a submodule fails soft (its namespace is absent), but
+    # the whole namespace goes with it.
+    roots = [REPO_ROOT / "src" / "loader" / d for d in ("lib", "lua")]
+    roots = [r for r in roots if r.is_dir()]
+    if not roots:
         return True
     luac = next((c for c in ("luac5.4", "luac5.3", "luac")
                  if shutil.which(c)), None)
     if luac is None:
         return True
     bad = []
-    for f in sorted(lib.rglob("*.lua")):
+    for f in sorted(f for r in roots for f in r.rglob("*.lua")):
         r = subprocess.run([luac, "-p", str(f)], capture_output=True, text=True)
         if r.returncode != 0:
             bad.append(r.stderr.strip() or f"{f}: compile failed")

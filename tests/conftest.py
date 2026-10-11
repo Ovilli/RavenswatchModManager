@@ -110,6 +110,14 @@ _LAZY_PATH_ATTRS = ("MODS_DIR", "DEFAULT_GAME_DIR")
 
 
 @pytest.fixture(autouse=True)
+def _private_cook_cache(tmp_path_factory, monkeypatch):
+    """Point the cook memo at a per-session temp dir. Without this a test that
+    cooks a model or texture would read entries a developer's real applies
+    left in `.rsmm/cook_memo` (and write its own there)."""
+    monkeypatch.setenv("RSMM_COOK_CACHE", str(tmp_path_factory.getbasetemp() / "cook_memo"))
+
+
+@pytest.fixture(autouse=True)
 def _guard_lazy_paths(request):
     """Fail any test that leaves a lazy path attribute frozen in the module.
 
@@ -184,3 +192,22 @@ def _guard_real_mods_dir(request):
         "monkeypatch.setenv('RSMM_MODS_DIR', str(tmp_path)).",
         pytrace=False,
     )
+
+
+@pytest.fixture
+def install_only(monkeypatch):
+    """Hide the `data/uncooked` mirror so every corpus read falls through to
+    the game install — the only store a player's machine has. Skips without
+    an install. See `rsmm.engine.corpus`."""
+    from rsmm.engine import corpus
+    from rsmm.engine import enemy_pools as EP
+
+    if corpus.cooking_dir() is None:
+        pytest.skip("no game install to read the cooked corpus from")
+    missing = Path("/nonexistent/uncooked")
+    monkeypatch.setattr(corpus, "UNCOOKED", missing)
+    monkeypatch.setattr(EP, "UNCOOKED", missing)
+    monkeypatch.setattr(EP, "OT_DIR", missing / "Ot")
+    monkeypatch.setattr(EP, "ENEMY_DIR", missing / "Definitions" / "Enemies")
+    assert corpus.source() == "install"
+    yield

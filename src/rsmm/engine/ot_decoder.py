@@ -244,7 +244,7 @@ def maybe_decode_payload(payload: bytes) -> list[str]:
             notes.append(f"    tail floats: ({f1}, {f2})")
 
     # Common in oCEntitySettingsResource: length(0x10) + 16-byte GUID blob.
-    for i in range(0, n - 20):
+    for i in range(n - 20):
         if payload[i:i + 4] != b"\x10\x00\x00\x00":
             continue
         raw = payload[i + 4:i + 20]
@@ -280,8 +280,7 @@ def emit(cf: CookedFile, full_path: str, show_raw: bool = False) -> str:
         out.append(
             f"*Section{i}=range[{s.begin_off:#x}..{s.end_off:#x}] "
             f"payload_len={len(s.payload)}")
-        for note in maybe_decode_payload(s.payload):
-            out.append(note)
+        out.extend(maybe_decode_payload(s.payload))
         if show_raw:
             out.append(hex_dump(s.payload))
     return "\n".join(out) + "\n"

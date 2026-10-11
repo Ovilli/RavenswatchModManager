@@ -75,12 +75,19 @@ export const zhCN: Record<string, string> = {
   'This writes the safe automated repairs into your game install.':
     '这会把安全的自动修复写入你的游戏安装目录。',
   'Uninstall {name}?': '卸载 {name}？',
+  "Run {name}'s cleanup script?": '运行 {name} 的清理脚本？',
+  "This mod ships a cleanup script (on_disable.py) that undoes changes it made to the game. It runs as you, outside the game, with access to all your files. Run it only if you trust the mod's author. The mod is removed either way.":
+    '该模组附带一个清理脚本（on_disable.py），用于撤销它对游戏所做的更改。该脚本会以你的身份在游戏之外运行，可以访问你的全部文件。只有在你信任该模组作者时才运行它。无论如何，该模组都会被移除。',
+  'Run script': '运行脚本',
+  'Remove without running': '不运行，直接移除',
   'Uninstall {n} mod?': '卸载 {n} 个模组？',
   'Uninstall {n} mods?': '卸载 {n} 个模组？',
   'Uninstalling…': '正在卸载…',
   '{done} of {total} uninstalled.': '已卸载 {done} / {total} 个。',
   'Checking for conflicts…': '正在检查冲突…',
   'Could not check for conflicts': '无法检查冲突',
+  'Could not copy — select the preview below and copy it from there.':
+    '无法复制——请选中下方的预览内容，从那里复制。',
   'Could not read the installed mods': '无法读取已安装的模组',
   'The mod names below may be incomplete until this succeeds.':
     '在此成功之前，下面的模组名称可能不完整。',
@@ -111,8 +118,8 @@ export const zhCN: Record<string, string> = {
   Balance: '平衡性',
   'Big mod sets can outrun the timeout. Try again, or run the command from a terminal to watch it work.':
     '模组数量多时可能会超时。请重试，或在终端里运行该命令，看着它跑完。',
-  'Blackletter headings, Garamond body — the default look.':
-    '哥特体标题、Garamond 正文——默认外观。',
+  'Alegreya headings and text, clear at small sizes — the default look.':
+    'Alegreya 标题与正文，小字号下依然清晰——默认外观。',
   'Broken dependency chain': '依赖链断裂',
   Browse: '浏览',
   'Browse community mods and install in one click': '浏览社区模组并一键安装',
@@ -140,6 +147,7 @@ export const zhCN: Record<string, string> = {
   'Close Ravenswatch and start it again?': '关闭 Ravenswatch 并重新启动？',
   'Close config': '关闭配置',
   'Close overlay': '关闭悬浮窗',
+  'Reset size and position': '重置大小和位置',
   'Close preview': '关闭预览',
   'Close the game and Steam, then try again. On Windows the game folder may need elevated rights.':
     '请关闭游戏和 Steam，然后重试。在 Windows 上，游戏文件夹可能需要管理员权限。',
@@ -175,6 +183,7 @@ export const zhCN: Record<string, string> = {
   'Copy error details to clipboard': '将错误详情复制到剪贴板',
   'Copy this code to restore the full app state': '复制此代码即可恢复完整的应用状态',
   'Copy this code to share the profile': '复制此代码即可分享该方案',
+  'Copy report': '复制报告',
   Cosmetic: '外观美化',
   'Could not create account.': '无法创建账户。',
   'Could not load this collection.': '无法加载此合集。',
@@ -204,6 +213,10 @@ export const zhCN: Record<string, string> = {
   Credits: '致谢',
   'Curated bundles of mods made by the community.': '社区精心搭配的模组合集。',
   'Current run': '本次运行',
+  'Last run': '最近一次运行',
+  'Ravenswatch is not running. Its log shows here as soon as you start it.':
+    'Ravenswatch 未在运行。启动游戏后，日志会立即显示在这里。',
+  'Show the last run': '查看最近一次运行',
   'Current run only. Cleared whenever you launch Vanilla or Modded.':
     '只保留本次运行。每次启动原版或模组版时都会清空。',
   'Declared conflict': '声明的冲突',
@@ -366,7 +379,6 @@ export const zhCN: Record<string, string> = {
   'Load order': '加载顺序',
   'Loader DLL': '加载器 DLL',
   'Loader features': '加载器功能',
-  'Loader features, graphics': '加载器功能、图形',
   'Loader update': '加载器更新',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
@@ -375,6 +387,7 @@ export const zhCN: Record<string, string> = {
   'Loading…': '加载中…',
   Log: '日志',
   'Log uploaded — link copied below.': '日志已上传——链接见下方。',
+  'Logo by Arch': '图标设计：Arch',
   'Manage profiles →': '管理方案 →',
   Maximize: '最大化',
   'Maximum legibility — your OS UI font everywhere.': '最高可读性——全部使用系统界面字体。',
@@ -484,7 +497,6 @@ export const zhCN: Record<string, string> = {
   'Play video': '播放视频',
   'Preview exactly what is uploaded': '预览将要上传的确切内容',
   Previous: '上一个',
-  'Previous run': '上一次运行',
   Privacy: '隐私',
   'Profile "{name}" deleted.': '方案“{name}”已删除。',
   'Profile code': '方案代码',
@@ -586,8 +598,7 @@ export const zhCN: Record<string, string> = {
   'Run vanilla': '运行原版',
   'Running…': '运行中…',
   'Same file': '同一文件',
-  'Same shape, no blackletter. Easier on long reading.':
-    '版式相同，但不用哥特体，长时间阅读更轻松。',
+  'Your system serif everywhere, for long reading.': '全程使用系统衬线字体，适合长时间阅读。',
   Save: '保存',
   'Save or reset before leaving.': '离开前请保存或重置。',
   'Save or restore all profiles, the active profile, and settings.':
@@ -613,7 +624,6 @@ export const zhCN: Record<string, string> = {
   'Select filtered': '选中筛选结果',
   'Selected mods uninstalled.': '所选模组已卸载。',
   'Send crash reports': '发送崩溃报告',
-  'Set a mods folder in Settings first': '请先在设置中指定模组文件夹',
   'Set the game folder in Settings → Paths, then run the command again.':
     '请在“设置 → 路径”中设置游戏文件夹，然后重新运行该命令。',
   'Set your game install path under General, then reopen Settings to manage loader features.':
@@ -695,6 +705,7 @@ export const zhCN: Record<string, string> = {
   'Tighter panels; more fits on screen.': '面板更紧凑，一屏能放下更多内容。',
   'Toggle individual mods on or off per profile': '按方案逐个开关模组',
   'Toggle {name} overlay': '开关 {name} 悬浮窗',
+  'Reset {name} overlay size and position': '重置 {name} 悬浮窗的大小和位置',
   'Too many attempts. Wait a minute and try again.': '尝试次数过多，请稍等一分钟后重试。',
   'Too many uploads — try again in {seconds}s. (Shares are rate limited to keep this from being used as file hosting.)':
     '上传过于频繁——请在 {seconds} 秒后重试。（分享有频率限制，以免被当作文件托管使用。）',
@@ -814,9 +825,10 @@ export const zhCN: Record<string, string> = {
   'in profile': '已在方案中',
   'include app log': '附带程序日志',
   'include mod list': '附带模组列表',
+  'include health check': '附带健康检查',
+  'running health check…': '正在运行健康检查…',
   install: '安装',
   'install all': '全部安装',
-  'install failed': '安装失败',
   'install rest': '安装其余',
   installed: '已安装',
   'installing…': '正在安装…',
@@ -890,6 +902,7 @@ export const zhCN: Record<string, string> = {
   '{name} overlay closed.': '已关闭 {name} 悬浮窗。',
   '{name} overlay opened.': '已打开 {name} 悬浮窗。',
   '{name} overlay recentred.': '{name} 悬浮窗已重新居中。',
+  '{name} overlay reset.': '{name} 悬浮窗已重置。',
   '{name} screenshot {n}': '{name} 截图 {n}',
   '{name} video': '{name} 视频',
   '{n} check needs your attention before mods will apply cleanly.':
@@ -955,4 +968,48 @@ export const zhCN: Record<string, string> = {
   'The {label} of {name} cannot be changed here.': '此处无法修改{name}的{label}。',
   Value: '数值',
   '{label} of {name}': '{name}的{label}',
+  'Online server, loader features, graphics': '联机服务器、加载器功能、图形',
+  'Could not save the server address.': '无法保存服务器地址。',
+  'Server saved. Start the game to play on it.': '服务器已保存。启动游戏即可在其上游玩。',
+  'Back to the official servers.': '已切回官方服务器。',
+  'Online server': '联机服务器',
+  'Play online through a community-hosted server instead of the official one. Paste the address the host gave you; it is used from the next game start.':
+    '通过社区架设的服务器而非官方服务器进行联机。粘贴主机提供的地址；下次启动游戏时生效。',
+  'Set your game install path under General first.': '请先在“常规”中设置游戏安装路径。',
+  'Server address': '服务器地址',
+  'Use this server': '使用此服务器',
+  'Check server': '检查服务器',
+  'Use official servers': '使用官方服务器',
+  'Installing the loader if it is missing or too old — this can take a minute.':
+    '如果加载器缺失或过旧，正在安装加载器——这可能需要一分钟。',
+  'Playing on': '当前服务器',
+  'official servers': '官方服务器',
+  Loader: '加载器',
+  ready: '就绪',
+  'not ready — saving an address installs it': '未就绪——保存地址时会自动安装加载器',
+  Server: '服务器',
+  reachable: '可连接',
+  misconfigured: '配置有误',
+  'not reachable': '无法连接',
+  'The loader ignores the saved address: {reason}': '加载器会忽略已保存的地址：{reason}',
+  'The RSMM_BACKEND_URL environment variable ({value}) overrides this setting. Saving an address removes it if it was set with setx — then restart Steam.':
+    '环境变量 RSMM_BACKEND_URL（{value}）会覆盖此设置。如果它是用 setx 设置的，保存地址时会将其删除——之后请重启 Steam。',
+  'No answer from the server: {error}. Is it running?': '服务器没有响应：{error}。它是否在运行？',
+  'The server answers, but tells players to connect to localhost — its publicIp is not set. Tell the host.':
+    '服务器有响应，但让玩家连接到 localhost——它的 publicIp 未设置。请告知主机。',
+  'Last launch ({when})': '上次启动（{when}）',
+  'That launch did not use a server address. Start the game again.':
+    '那次启动没有使用服务器地址。请重新启动游戏。',
+  'What was done': '执行了哪些操作',
+  'Game folder: {path}': '游戏目录：{path}',
+  'Delete all logs?': '删除所有日志？',
+  'This deletes every archived run. The log of the game that is running now is kept until it closes.':
+    '这会删除所有已归档的运行日志。正在运行的游戏的日志会保留到游戏关闭为止。',
+  'This deletes every archived run and the last run’s log. Logs you have already shared keep working.':
+    '这会删除所有已归档的运行日志以及最近一次运行的日志。已经分享的日志链接不受影响。',
+  'Deleted {n} log file.': '已删除 {n} 个日志文件。',
+  'Deleted {n} log files.': '已删除 {n} 个日志文件。',
+  'Open the folder that holds every archived run': '打开存放所有已归档运行日志的文件夹',
+  'Delete the archived runs and the last run’s log': '删除已归档的运行日志和最近一次运行的日志',
+  'Delete logs': '删除日志',
 };

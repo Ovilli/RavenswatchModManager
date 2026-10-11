@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Also the package: this script is shelled out with a bare interpreter, which
 # is not necessarily the one an editable install put `rsmm` on.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import gen_function_patterns as gen  # noqa: E402
+import gen_function_patterns as gen
 
 REPO = Path(__file__).resolve().parent.parent
 DB_PATH = REPO / "data/function_patterns.json"
@@ -43,19 +43,9 @@ META_PATH = REPO / "data/function_patterns.meta.json"
 PROLOGUE_TRY = (32, 48, 64, 96, 128)
 
 
-def pattern_to_regex(pat: str) -> re.Pattern[bytes]:
-    parts: list[bytes] = []
-    for t in pat.split():
-        if t == "??":
-            parts.append(b".")
-        else:
-            b = int(t, 16)
-            if b in (0x5C, 0x5B, 0x5D, 0x5E, 0x24, 0x2E, 0x7C, 0x3F,
-                     0x2A, 0x2B, 0x28, 0x29, 0x7B, 0x7D):
-                parts.append(b"\\" + bytes([b]))
-            else:
-                parts.append(bytes([b]))
-    return re.compile(b"".join(parts), re.DOTALL)
+def pattern_to_regex(pat: str) -> gen._Overlapping:
+    """Loader-faithful: every (possibly overlapping) match. See gen.pattern_regex."""
+    return gen.pattern_regex(pat)
 
 
 def build_entry(name: str, addr: int, text: bytes, text_va: int) -> dict | None:

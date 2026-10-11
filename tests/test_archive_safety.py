@@ -122,6 +122,17 @@ def test_scan_dangerous_blocks_executables(tmp_path):
         archive.scan_dangerous(zf, "M")
 
 
+@pytest.mark.parametrize("name", [
+    "_root/run.com", "_root/x.pif", "_root/setup.msi", "_root/a.hta", "_root/t.reg",
+    "_root/Play.lnk", "_root/go.url", "_root/plugin.asi", "_root/ctl.ocx", "tools/x.pyw",
+])
+def test_scan_dangerous_blocks_other_windows_executables(tmp_path, name):
+    """Run by a double-click or loaded as code, so as dangerous as a `.bat`."""
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"", f"M/{name}": b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="blocked file type"):
+        archive.scan_dangerous(zf, "M")
+
+
 def test_scan_dangerous_reports_every_root_overlay(tmp_path):
     """`_root/` members overwrite the game install itself — always warn.
 
@@ -303,6 +314,14 @@ def test_pack_warns_about_root_overlays_but_still_packs(tmp_path, monkeypatch, c
     assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
     assert "overwrites game install root file" in capsys.readouterr().err
     assert (tmp_path / "dist" / "Overlay.zip").is_file()
+
+
+def test_pack_takes_the_folder_as_tab_completion_writes_it(tmp_path, monkeypatch, capsys):
+    _packable(tmp_path / "mods", "Tabbed")
+    assert _run_pack(tmp_path, monkeypatch, "tabbed/") == 0
+    assert (tmp_path / "dist" / "Tabbed.zip").is_file()
+    assert _run_pack(tmp_path, monkeypatch, "Tabed") == 1
+    assert "did you mean Tabbed?" in capsys.readouterr().err
 
 
 def test_packed_archive_installs_cleanly(tmp_path, monkeypatch):

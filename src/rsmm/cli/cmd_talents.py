@@ -19,26 +19,29 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-from rsmm.engine.paths import DATA_DIR
+from rsmm.engine import corpus
 from rsmm.engine.talent_values import TYPE_BOOL, list_talent_values
 
-_HEROES_DIR = DATA_DIR / "uncooked" / "EntitySettings" / "Heroes"
-_GEN_GLOB = "*.entity.ot.EntitySettingsResource.gen"
+#: Read through `engine.corpus`: the game install, or the mirror on a checkout.
+_HEROES_DIR = "EntitySettings/Heroes"
+_GEN_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 
 
-def _hero_dirs() -> list[Path]:
-    if not _HEROES_DIR.is_dir():
-        return []
-    return sorted(d for d in _HEROES_DIR.glob("Hero_*") if d.is_dir())
+def _hero_dirs() -> list[str]:
+    """``Hero_<name>`` directory names the game ships."""
+    return [d for d in corpus.subdirs(_HEROES_DIR) if d.startswith("Hero_")]
 
 
-def _resolve_hero(name: str) -> Path | None:
+def _hero_files(d: str) -> list[corpus.CorpusFile]:
+    return corpus.files(f"{_HEROES_DIR}/{d}", _GEN_SUFFIX)
+
+
+def _resolve_hero(name: str) -> str | None:
     low = name.lower()
     for d in _hero_dirs():
-        stem = d.name[len("Hero_"):]
-        if stem.lower() == low or d.name.lower() == low:
+        stem = d[len("Hero_"):]
+        if stem.lower() == low or d.lower() == low:
             return d
     return None
 
@@ -47,18 +50,16 @@ def _cmd_list_heroes() -> int:
     print("heroes with discoverable talent values:")
     found = 0
     for d in _hero_dirs():
-        stem = d.name[len("Hero_"):]
+        stem = d[len("Hero_"):]
         n = 0
-        for p in d.glob(_GEN_GLOB):
+        for p in _hero_files(d):
             n += len(list_talent_values(p.read_bytes()))
         if n:
             found += 1
             print(f"  {stem:<14} {n:>4} value(s)   (rsmm talents {stem})")
     if not found:
-        print(f"  (none: no {_GEN_GLOB} files under {_HEROES_DIR})\n"
-              "  Extract them from your game install first:\n"
-              '    python scripts/extract_uncooked.py --filter "EntitySettings\\Heroes"',
-              file=sys.stderr)
+        print("  (none: no hero entity files found — is the game install "
+              "readable? set RSMM_GAME_DIR)", file=sys.stderr)
         return 1
     return 0
 
@@ -70,7 +71,7 @@ def _cmd_hero(args) -> int:
         return 1
     grep = args.grep.lower() if args.grep else None
     any_rows = False
-    for p in sorted(d.glob(_GEN_GLOB)):
+    for p in _hero_files(d):
         if args.file and args.file.lower() not in p.name.lower():
             continue
         vals = list_talent_values(p.read_bytes(), include_spawner=args.spawner)
@@ -80,7 +81,7 @@ def _cmd_hero(args) -> int:
         any_rows = True
         decoded = p.name.split(".entity.ot.", 1)[0]
         print(f"\n# {decoded}")
-        print(f"  (decoded asset: EntitySettings\\Heroes\\{d.name}\\{p.name})")
+        print(f"  (decoded asset: EntitySettings\\Heroes\\{d}\\{p.name})")
         for v in rows:
             if v.is_spawner:
                 tag = "  [spawner/runtime, no-op]"
