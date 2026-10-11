@@ -147,6 +147,7 @@ export const zhCN: Record<string, string> = {
   'Close Ravenswatch and start it again?': '关闭 Ravenswatch 并重新启动？',
   'Close config': '关闭配置',
   'Close overlay': '关闭悬浮窗',
+  'Reset size and position': '重置大小和位置',
   'Close preview': '关闭预览',
   'Close the game and Steam, then try again. On Windows the game folder may need elevated rights.':
     '请关闭游戏和 Steam，然后重试。在 Windows 上，游戏文件夹可能需要管理员权限。',
@@ -703,6 +704,7 @@ export const zhCN: Record<string, string> = {
   'Tighter panels; more fits on screen.': '面板更紧凑，一屏能放下更多内容。',
   'Toggle individual mods on or off per profile': '按方案逐个开关模组',
   'Toggle {name} overlay': '开关 {name} 悬浮窗',
+  'Reset {name} overlay size and position': '重置 {name} 悬浮窗的大小和位置',
   'Too many attempts. Wait a minute and try again.': '尝试次数过多，请稍等一分钟后重试。',
   'Too many uploads — try again in {seconds}s. (Shares are rate limited to keep this from being used as file hosting.)':
     '上传过于频繁——请在 {seconds} 秒后重试。（分享有频率限制，以免被当作文件托管使用。）',
@@ -899,6 +901,7 @@ export const zhCN: Record<string, string> = {
   '{name} overlay closed.': '已关闭 {name} 悬浮窗。',
   '{name} overlay opened.': '已打开 {name} 悬浮窗。',
   '{name} overlay recentred.': '{name} 悬浮窗已重新居中。',
+  '{name} overlay reset.': '{name} 悬浮窗已重置。',
   '{name} screenshot {n}': '{name} 截图 {n}',
   '{name} video': '{name} 视频',
   '{n} check needs your attention before mods will apply cleanly.':

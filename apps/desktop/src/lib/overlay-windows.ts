@@ -11,7 +11,8 @@
  * because the packaged app serves static files and a deep path like /overlay
  * has no SPA fallback to land on.
  */
-import { getAllWebviewWindows, WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
+import { LogicalSize, PhysicalPosition, type Window, currentMonitor } from '@tauri-apps/api/window';
 import { getPlatform } from './platform';
 
 /** Window label for a mod's overlay. Must match the `overlay-*` capability. */
@@ -35,6 +36,27 @@ function positionKey(modId: string): string {
   return `rsmm.overlay.position.${modId}`;
 }
 
+/** The size a fresh overlay opens at. */
+export const DEFAULT_OVERLAY_SIZE = { width: 420, height: 196 } as const;
+
+/**
+ * Largest saved size we will restore. A HUD bigger than this is not a HUD —
+ * it is a window that got maximized (a double-click on the title bar did it)
+ * and then saved at screen size, which reopened full-screen forever with no
+ * way back. Such a record is ignored, so the next open heals by itself.
+ */
+export const MAX_RESTORED_SIZE = { width: 900, height: 700 } as const;
+
+/** Whether a saved size is one a HUD could plausibly have. Pure, for tests. */
+export function plausibleOverlaySize(width: number, height: number): boolean {
+  return (
+    width >= 120 &&
+    height >= 40 &&
+    width <= MAX_RESTORED_SIZE.width &&
+    height <= MAX_RESTORED_SIZE.height
+  );
+}
+
 interface StoredPosition {
   x: number;
   y: number;
@@ -51,7 +73,8 @@ function readPosition(modId: string): StoredPosition | null {
       typeof parsed.x !== 'number' ||
       typeof parsed.y !== 'number' ||
       typeof parsed.width !== 'number' ||
-      typeof parsed.height !== 'number'
+      typeof parsed.height !== 'number' ||
+      !plausibleOverlaySize(parsed.width, parsed.height)
     ) {
       return null;
     }
@@ -75,6 +98,38 @@ export function resetPosition(modId: string): void {
     localStorage.removeItem(positionKey(modId));
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Put an overlay window back to a fresh state: not maximized, default size,
+ * centred on its current monitor, saved position forgotten. Called from the
+ * overlay's own reset button, so it works even when the window is huge.
+ */
+export async function resetOverlayWindow(modId: string, win: Window): Promise<void> {
+  resetPosition(modId);
+  try {
+    if (await win.isMaximized()) await win.unmaximize();
+  } catch {
+    // keep going: the size and position below are the part that matters
+  }
+  await win.setSize(new LogicalSize(DEFAULT_OVERLAY_SIZE.width, DEFAULT_OVERLAY_SIZE.height));
+  try {
+    // The monitor of the window CALLING this — the overlay resets itself.
+    const monitor = await currentMonitor();
+    if (monitor) {
+      const scale = monitor.scaleFactor;
+      const w = DEFAULT_OVERLAY_SIZE.width * scale;
+      const h = DEFAULT_OVERLAY_SIZE.height * scale;
+      await win.setPosition(
+        new PhysicalPosition(
+          Math.round(monitor.position.x + (monitor.size.width - w) / 2),
+          Math.round(monitor.position.y + (monitor.size.height - h) / 2),
+        ),
+      );
+    }
+  } catch {
+    // An unknown monitor leaves it where it is, which is still reachable.
   }
 }
 
@@ -130,11 +185,14 @@ export async function openOverlay(modId: string): Promise<void> {
   const overlay = new WebviewWindow(overlayLabel(modId), {
     url: overlayUrl(modId),
     title: `RSMM — ${modId}`,
-    width: pos?.width ?? 420,
-    height: pos?.height ?? 196,
+    width: pos?.width ?? DEFAULT_OVERLAY_SIZE.width,
+    height: pos?.height ?? DEFAULT_OVERLAY_SIZE.height,
     x: pos?.x,
     y: pos?.y,
     resizable: true,
+    // A HUD is never meant to fill the screen. Maximizing is how one got
+    // stuck full-screen (see MAX_RESTORED_SIZE).
+    maximizable: false,
     decorations: false,
     // Not on Linux: a transparent WebKitGTK window on X11 is not redrawn after
     // a content update until input forces it, so the HUD went invisible and

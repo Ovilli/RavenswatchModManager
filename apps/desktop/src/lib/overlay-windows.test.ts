@@ -7,7 +7,13 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getAllWebviewWindows: async () => [],
 }));
 
-import { overlayFor, overlayLabel, resetPosition, savePosition } from './overlay-windows';
+import {
+  overlayFor,
+  overlayLabel,
+  plausibleOverlaySize,
+  resetPosition,
+  savePosition,
+} from './overlay-windows';
 
 describe('overlayFor', () => {
   const records = [{ modId: 'damage-meter' }, { modId: 'run-timer' }];
@@ -73,5 +79,24 @@ describe('overlay position memory', () => {
     };
     expect(() => savePosition('a', { x: 1, y: 2, width: 3, height: 4 })).not.toThrow();
     localStorage.setItem = original;
+  });
+});
+
+describe('restoring a saved overlay size', () => {
+  it('keeps a size a HUD could have', () => {
+    expect(plausibleOverlaySize(420, 196)).toBe(true);
+    expect(plausibleOverlaySize(900, 700)).toBe(true);
+  });
+
+  it('refuses a screen-sized one, so a once-maximized overlay heals on reopen', () => {
+    // A 1080p/1440p monitor, as saved by an overlay that had been maximized.
+    expect(plausibleOverlaySize(1920, 1080)).toBe(false);
+    expect(plausibleOverlaySize(2560, 1400)).toBe(false);
+    expect(plausibleOverlaySize(420, 1000)).toBe(false);
+  });
+
+  it('refuses a collapsed one', () => {
+    expect(plausibleOverlaySize(0, 0)).toBe(false);
+    expect(plausibleOverlaySize(420, 10)).toBe(false);
   });
 });
