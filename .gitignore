@@ -71,6 +71,7 @@ data/function_patterns.json
 data/function_patterns*.prev
 # game-derived: mine_fingerprints currently embeds decompiled function bodies
 data/symbol_fingerprints.json
+data/va_locators.json
 
 # Big RE artifacts — outputs are local
 ghidra_project/
