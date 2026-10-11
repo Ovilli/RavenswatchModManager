@@ -213,6 +213,37 @@ def strip_rsmm_launch_options(value: str) -> str:
     return "" if out == "%command%" else out
 
 
+def add_rsmm_launch_options(value: str) -> str:
+    """`value` with the loader override added, everything else kept.
+
+    The override goes into an existing WINEDLLOVERRIDES when there is one,
+    else at the very front (before any wrapper such as gamemoderun). Options
+    with no %command% are game ARGUMENTS to Steam, so they move after it.
+
+    This used to REPLACE anything without the override with the bare
+    recommended string; on 2026-10-11 that dropped a player's PRIME-offload
+    variables and the game failed DX12 init again.
+    """
+    value = (value or "").strip()
+    if not value:
+        return RECOMMENDED_LAUNCH_OPTIONS
+    if _override_present(value):
+        return value
+    head, sep, tail = value.partition("%command%")
+    if not sep:
+        return f"{RECOMMENDED_LAUNCH_OPTIONS} {value}"
+    for m in _ENV_TOKEN.finditer(head):
+        if m.group("name") == "WINEDLLOVERRIDES":
+            val = m.group("val")
+            inner = val[1:-1] if val[:1] in "\"'" and len(val) >= 2 else val
+            merged = f'WINEDLLOVERRIDES="{inner};{REQUIRED_OVERRIDE}"'
+            return (head[:m.start()] + merged + head[m.end():] + sep + tail).strip()
+    # At the FRONT: an assignment only sets the environment before the first
+    # word, so `gamemoderun VAR=x %command%` would try to run "VAR=x".
+    prefix = " ".join(f'WINEDLLOVERRIDES="{REQUIRED_OVERRIDE}" {head.strip()}'.split())
+    return f"{prefix} %command%{tail}".strip()
+
+
 def _is_steam_running() -> bool:
     if sys.platform == "win32":
         try:
@@ -489,7 +520,9 @@ def main() -> int:
         changed = 0
         for vdf in vdfs:
             try:
-                if _write_launch_options(vdf, args.app_id, ""):
+                # Only OUR part comes out; the player's own options stay.
+                current = _read_launch_options(vdf, args.app_id) or ""
+                if _write_launch_options(vdf, args.app_id, strip_rsmm_launch_options(current)):
                     changed += 1
             except (OSError, ValueError) as e:
                 print(f"Failed to clear launch options in {vdf}: {e}", file=sys.stderr)
@@ -519,9 +552,7 @@ def main() -> int:
             print("Refusing to write while Steam is running — close Steam, "
                   "then re-run with --set-launch-options.", file=sys.stderr)
             return 1
-        existing = lo or ""
-        merged = (existing + " " + RECOMMENDED_LAUNCH_OPTIONS).strip() \
-                 if existing and "%command%" not in existing else RECOMMENDED_LAUNCH_OPTIONS
+        merged = add_rsmm_launch_options(lo or "")
         if _write_launch_options(primary, args.app_id, merged):
             print(f"wrote launch options into {primary}")
             print(f"backup: {primary}.rsmm.bak")
@@ -539,9 +570,7 @@ def main() -> int:
         # actually works on Linux/Wine. If Steam is running or the
         # write fails, warn but proceed.
         if lo is None or not _override_present(lo):
-            merged = (lo or "") + " " + RECOMMENDED_LAUNCH_OPTIONS \
-                     if (lo or "") and "%command%" not in (lo or "") \
-                     else RECOMMENDED_LAUNCH_OPTIONS
+            merged = add_rsmm_launch_options(lo or "")
             try:
                 if _write_launch_options(primary, args.app_id, merged):
                     print(f"wrote launch options into {primary}")
