@@ -2,6 +2,30 @@
   "generated": "2026-10-10",
   "entries": [
     {
+      "version": "5.9.15",
+      "date": "2026-10-11",
+      "summary": "Cleaner overlays you can always reset, working option dropdowns, mods in your language, and your own Steam launch options are left alone.",
+      "highlights": [
+        "Overlays: column headers, columns that line up, buttons that appear only on hover, and a window that fits the board exactly (no more grey box below it on Linux).",
+        "Overlays can no longer get stuck full-screen: a reset button and a command-palette entry put one back at its normal size, and a once-maximized overlay heals itself on reopen.",
+        "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
+        "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
+        "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
+      ]
+    },
+    {
+      "version": "5.9.14",
+      "date": "2026-10-11",
+      "summary": "Cleaner overlays you can always reset, working option dropdowns, mods in your language, and your own Steam launch options are left alone.",
+      "highlights": [
+        "Overlays: column headers, columns that line up, buttons that appear only on hover, and a window that fits the board exactly (no more grey box below it on Linux).",
+        "Overlays can no longer get stuck full-screen: a reset button and a command-palette entry put one back at its normal size, and a once-maximized overlay heals itself on reopen.",
+        "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
+        "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
+        "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
+      ]
+    },
+    {
       "version": "5.9.13",
       "date": "2026-10-10",
       "summary": "The Damage Meter no longer counts as a gameplay mod online, and mod authors get the full list of run events.",
@@ -426,110 +450,6 @@
         "A shop edit that would crash the game when the Sandman's shop opens (a Minor row with fewer than two items) is refused before it is applied.",
         "New CLI command: rsmm map-editor opens a local 3D editor for a chapter's tile-generation recipe.",
         "Applying mods cleans up files from content you removed, and merged text banks land in the right mods folder."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 14,
-      "date": "2026-09-13",
-      "summary": "Faster hero detection, runtime entity spawning for mods, in-run talent grants, run-state reads, and a much quieter loader log.",
-      "highlights": [
-        "Mods that use your hero (stats, talents, damage meter) start working within a second of a run starting. Before, they could wait up to two minutes, until your first dream-shard pickup.",
-        "New for mod authors: R.spawn creates a copy of an entity in the world, such as another enemy beside the hero.",
-        "New for mod authors: R.talent.grant gives the hero a talent mid-run, so a modded talent can be tested without waiting for the game to offer it.",
-        "New for mod authors: R.game reads the run's own state, such as the current chapter, whether you are in the shop, and whether you are the session host.",
-        "The loader log is far shorter. Debug traces no longer flag every level as an error, and rsmm doctor warns when a debug trace flag is left switched on."
-      ]
-    },
-    {
-      "version": "5.6.1",
-      "date": "2026-09-04",
-      "summary": "Five reported bugs: the store-page arrow in the list view, Open folder doing nothing, a duplicated profile losing every mod, scrolling that dropped you back where you came from, and collections landing in a profile named after nothing.",
-      "highlights": [
-        "The arrow beside a mod in list view opens its store page again. In list view it was wired to nothing at all.",
-        "Open folder in Profiles works. In the AppImage it was launching the file manager with the app's own bundled GTK libraries, which killed it on startup — silently, because nothing was waiting to hear about it.",
-        "Duplicating a profile keeps its mods. The copy took the profile's list but not its files, and since the app reads mods from whichever profile is active, the copy AND the original looked empty until you switched back.",
-        "Scrolling stays where you put it. If anything else moved the page mid-scroll — a scrollbar drag, a list growing — the wheel animation kept chasing its old destination and dragged you back to it.",
-        "Installing a collection with no profile selected creates one named after the collection, instead of a generic “My Mods”."
-      ]
-    },
-    {
-      "version": "5.6.0",
-      "date": "2026-09-04",
-      "summary": "A visual overhaul of the whole app: readable text, one consistent shape language, and cards that line up. Plus a fix for the stale strips of the previous page that appeared while scrolling.",
-      "highlights": [
-        "The app has been redrawn. Panels and cards now sit on their own surfaces instead of each carrying a border, so the screen has a foreground and a background again.",
-        "Body text is legible. The greys it was set in fell below the accessible contrast floor, and error messages were the worst offender of all.",
-        "Scrolling no longer leaves fragments of the previous page behind.",
-        "Mod cards in the Library are the same height, with the description clipped to three lines, so a long summary stops knocking the grid out of line.",
-        "The enable switch is a real toggle, and Uninstall is quiet until you reach for it — it used to be the boldest thing on every card.",
-        "Filters read as a list of choices rather than a heap of buttons, and labels are in sentence case instead of tracked-out capitals.",
-        "Corners, focus rings and button styles are consistent across every screen.",
-        "The 'Ready to restart' dialog after a Linux AppImage update is legible: its notice used to render as a wall of capitals."
-      ]
-    },
-    {
-      "version": "5.5.0",
-      "date": "2026-09-03",
-      "summary": "Overlay HUDs stop launching a background process every second while you play, the window remembers where you left it, uninstalling asks first, and toolbars no longer run off the edge in a smaller window.",
-      "highlights": [
-        "Overlay HUDs no longer start a background process once a second while the game is running — they read the mod's data straight from disk instead.",
-        "The window remembers its size and position between launches, and refuses to reopen off-screen if you unplug the monitor it was on.",
-        "Uninstalling a mod asks first. Uninstalling several reports each one, so a single failure no longer silently abandons the rest.",
-        "Buttons, cards and toolbars no longer overflow when the window is not full width — the Profiles actions and the Browse install button especially.",
-        "A mod versioned 1.0 is no longer treated as older than 1.0.0, which left an update badge showing forever and reinstalled the mod on every 'Update all'.",
-        "The Conflicts screen no longer reports 'all quiet' while it is still checking, or after the check fails.",
-        "Dialogs close with Escape and move focus into themselves, so they can be answered without tabbing through the whole app first.",
-        "Load order can be rearranged from the keyboard with Alt+Up / Alt+Down.",
-        "Settings no longer rewrites its whole store on every keystroke while you type a path.",
-        "Commands that rewrite the game install — Apply, Restore, Build, Doctor + repair — now confirm before running."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 12,
-      "date": "2026-09-02",
-      "summary": "Loader/SDK v12: hero-select unlock progression, duplicate-hero availability gate, cross-chapter enemy mixing, stale value-context crash fix, guarded Entity_ModifyHealth walks, resource-resolve tracing.",
-      "highlights": [
-        "Loader/SDK v12: hero-select unlock progression, duplicate-hero availability gate, cross-chapter enemy mixing, stale value-context crash fix, guarded Entity_ModifyHealth walks, resource-resolve tracing."
-      ]
-    },
-    {
-      "version": "5.4.4",
-      "date": "2026-09-02",
-      "summary": "Pick the monsters each chapter spawns. An enemy mod's chapters are now editable from its Config panel — a searchable list of every creature in the game, grouped by the chapter it ships in, so you can put Storm Island crabs in the Dark Hills or turn one chapter into a single monster. Picks apply on a plain install: the cooked definitions are read straight out of the game folder, so no 7 GB asset dump is needed any more. Also fixes the download count breaking across two lines on a mod card.",
-      "highlights": [
-        "Enemy mods get a per-chapter monster picker: add, remove, or move a creature to another chapter.",
-        "Picking now works on a normal install, not just a developer checkout.",
-        "Mod cards no longer wrap the download count into the star rating.",
-        "New: rsmm assets search <text> finds a cooked asset by its readable path."
-      ]
-    },
-    {
-      "version": "5.4.3",
-      "date": "2026-09-01",
-      "summary": "Cross-chapter enemy randomisation works. A mod can now draw every biome's monsters from the whole game — chapter 1 spawning crabs, gargoyles and cultists alongside its own — without the chapter-2 crash or black screen that made the feature unusable. The cause was the step that rewrote each biome's spawn pool, and it turned out to be unnecessary: an imported creature is already preloaded by the definition that points at it. Enemy mods add repoint_pools = false to use it.",
-      "highlights": [
-        "Enemy mods can mix monsters across every chapter without crashing on a chapter transition.",
-        "The unlock and hero-select work in this build is inert unless a mod asks for it."
-      ]
-    },
-    {
-      "version": "5.4.2",
-      "date": "2026-08-30",
-      "summary": "Fixes the loader log being unreadable on a non-English Windows. The log is written as UTF-8, but the app read it with whatever encoding the system locale preferred — so on a Chinese, Russian or Japanese Windows every dash and every non-ASCII player name came out as mojibake, in the Log screen and in any log shared for support.",
-      "highlights": [
-        "Loader log reads correctly on every system locale — player names with non-Latin characters are no longer mangled.",
-        "Shared diagnostic logs can now be opened by an assistant the user sends the link to, instead of only by a human."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 11,
-      "date": "2026-08-30",
-      "summary": "Loader log: the boot line that counted the IO-hook override table said 'active overrides=N'. That table is only read by the IO hook (off unless RSMM_ENABLE_IO=1) and counts files under mods/*/assets, which apply never populates — so a fully-applied install always read 'active overrides=0', which looks like none of your mods are working. The line now names itself and points at rsmm doctor.",
-      "highlights": [
-        "Loader log no longer reports \"active overrides=0\" on a healthy install — that line counted a subsystem that is off by default and never meant what it looked like."
       ]
     }
   ]
