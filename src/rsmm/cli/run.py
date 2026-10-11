@@ -166,6 +166,53 @@ def _override_present(launch_options: str) -> bool:
     return any(o in lo for o in ACCEPTED_OVERRIDES)
 
 
+#: `NAME=value` before %command%: a double-quoted value (escapes allowed), a
+#: single-quoted one, or a bare word.
+_ENV_TOKEN = re.compile(
+    r"""(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<val>"(?:[^"\\]|\\.)*"|'[^']*'|\S*)""")
+
+
+def strip_rsmm_launch_options(value: str) -> str:
+    """`value` with only what the mod manager put there taken out.
+
+    Removed: the `winhttp` entry of WINEDLLOVERRIDES (other DLL overrides in
+    the same variable are kept) and any `RSMM_*` loader-flag variable. Kept:
+    everything else — the player's own variables (a PRIME-offload set that is
+    the only thing letting DX12 start on a hybrid laptop, `gamemoderun`, ...)
+    and the game arguments after %command%. A value left holding nothing but
+    `%command%` becomes "" (Steam's own default), as before.
+
+    `restore --all` used to write "" unconditionally, which wiped those player
+    settings along with ours; on 2026-10-11 that took a working launch back
+    to "DX12 Error 0x80004005".
+    """
+    head, sep, tail = value.partition("%command%")
+    if not sep:
+        head, tail = value, ""
+    kept: list[str] = []
+    pos = 0
+    for m in _ENV_TOKEN.finditer(head):
+        kept.append(head[pos:m.start()])
+        pos = m.end()
+        name, val = m.group("name"), m.group("val")
+        if name.startswith("RSMM_"):
+            continue
+        if name == "WINEDLLOVERRIDES":
+            inner = val[1:-1] if val[:1] in "\"'" and len(val) >= 2 else val
+            rest = [e for e in inner.split(";")
+                    if e.strip() and not e.strip().lower().startswith("winhttp=")]
+            if not rest:
+                continue
+            kept.append(f'WINEDLLOVERRIDES="{";".join(rest)}"')
+            continue
+        kept.append(m.group(0))
+    kept.append(head[pos:])
+    out = " ".join("".join(kept).split())
+    if sep:
+        out = f"{out} %command%{tail}".strip()
+    return "" if out == "%command%" else out
+
+
 def _is_steam_running() -> bool:
     if sys.platform == "win32":
         try:

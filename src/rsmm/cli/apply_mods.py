@@ -2107,8 +2107,10 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
             RAVENSWATCH_APP_ID,
             _is_steam_running,
             _localconfig_paths,
+            _read_launch_options,
             _steam_root,
             _write_launch_options,
+            strip_rsmm_launch_options,
         )
     except ImportError as e:
         print(f"  [warn] could not import Steam launch-option helpers: {e}", file=sys.stderr)
@@ -2131,15 +2133,26 @@ def clear_steam_launch_options_for_vanilla(dry_run: bool = False) -> int:
     changed = 0
     for vdf in vdfs:
         try:
+            current = _read_launch_options(vdf, RAVENSWATCH_APP_ID)
+            if not current:
+                changed += 1          # nothing of ours there: already vanilla
+                continue
+            # Only OUR parts come out; the player's own settings stay.
+            wanted = strip_rsmm_launch_options(current)
+            if wanted == current:
+                changed += 1
+                continue
+            if wanted:
+                print(f"  kept your own launch options: {wanted}")
             if dry_run:
                 changed += 1
                 continue
-            if _write_launch_options(vdf, RAVENSWATCH_APP_ID, ""):
+            if _write_launch_options(vdf, RAVENSWATCH_APP_ID, wanted):
                 changed += 1
         except OSError as e:
             print(f"  [warn] failed to clear launch options in {vdf}: {e}", file=sys.stderr)
 
-    print(f"Cleared Steam launch options in {changed}/{len(vdfs)} config(s).")
+    print(f"Removed the mod manager's Steam launch options in {changed}/{len(vdfs)} config(s).")
     return 1
 
 
