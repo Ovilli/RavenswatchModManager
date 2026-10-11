@@ -423,6 +423,17 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
     }
     schema, values = _mod_config(entry) if isinstance(raw, dict) and raw.get("controls") \
         else (None, {})
+    # The install never carries config_schema.toml, so a mod applied from a
+    # tree that is not the active profile (a repo checkout, another profile)
+    # has controls with no schema here. That is not a broken declaration: the
+    # rows still work, so drop the controls and say why instead of refusing the
+    # whole overlay — refusing it disabled the client's Overlay button.
+    # `rsmm lint` is what catches a mod that really ships without its schema.
+    warning = None
+    if isinstance(raw, dict) and raw.get("controls") and schema is None and raw.get("columns"):
+        warning = (f"{mod_id}: config_schema.toml not found in the active profile, "
+                   f"so the overlay's controls are hidden")
+        raw = {k: v for k, v in raw.items() if k != "controls"}
     try:
         if isinstance(raw, dict) and raw.get("controls") and schema is None:
             raise OverlayError(f"{mod_id}: [overlay] has controls but the mod has no "
@@ -442,6 +453,8 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
     if name:
         record["modName"] = str(name)
     record.update(spec)
+    if warning:
+        record["warning"] = warning
     record["controls"] = (_resolve_controls(spec["controls"], schema, values, text)
                           if schema else [])
     live = read_rows(state_file(game_dir, entry.name))

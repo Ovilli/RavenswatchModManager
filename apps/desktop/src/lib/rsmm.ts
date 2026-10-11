@@ -1336,6 +1336,8 @@ export interface OverlayRecord {
   empty?: string;
   /** Set when the manifest declaration is malformed; nothing else is usable. */
   error?: string;
+  /** Usable, but something was left out (controls hidden: schema not found). */
+  warning?: string;
   /**
    * The mod's state file — where its live rows land.
    *

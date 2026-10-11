@@ -386,6 +386,23 @@ def test_controls_without_a_schema_are_reported(tmp_path):
     assert "no config_schema.toml" in record["error"]
 
 
+def test_a_missing_schema_hides_the_controls_but_keeps_the_board(tmp_path, monkeypatch):
+    """A mod applied from a repo checkout while the active profile lacks it:
+    the install has no config_schema.toml and the profile has no copy. That
+    used to error the whole record, which disabled the Overlay button."""
+    spec = '[overlay]\ntitle = "Bounties"\ncontrols = ["yaw"]\n' \
+           '[[overlay.columns]]\nkey = "bounty"\nlabel = "Bounty"\n'
+    _install(tmp_path, mod_id="bb", spec=spec, rows=None)
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    monkeypatch.setenv("RSMM_MODS_DIR", str(profile))
+    [record] = cmd_overlay.discover(tmp_path)
+    assert "error" not in record
+    assert record["controls"] == []
+    assert record["columns"][0]["key"] == "bounty"
+    assert "config_schema.toml not found" in record["warning"]
+
+
 def test_config_set_live_mirrors_into_the_installed_mod(tmp_path, monkeypatch, capsys):
     from rsmm.cli import json_bridge
 

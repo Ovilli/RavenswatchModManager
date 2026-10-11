@@ -6,9 +6,10 @@ import { api, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
 import { closeOverlay, openOverlay, resetPosition, toggleOverlay } from '../lib/overlay-windows';
 import { type PaletteAction, type PaletteRow, buildRows } from '../lib/palette';
-import { listOverlays, restoreAll } from '../lib/rsmm';
+import { restoreAll } from '../lib/rsmm';
 import { useApp } from '../store';
 import { useLaunch } from './launch';
+import { useDeclaredOverlays } from './overlay-button';
 import { useDialog, useToast } from './toast';
 
 interface Hit {
@@ -127,13 +128,8 @@ export function CommandPalette() {
     return [...local, ...remote];
   }, [trimmedQ, installed, localMods, remoteData, t]);
 
-  const { data: overlayList } = useQuery({
-    queryKey: ['overlays'],
-    queryFn: () => listOverlays(),
-    // Only needed while the palette is open, and a stale entry is harmless.
-    staleTime: 30_000,
-    enabled: open,
-  });
+  // Only needed while the palette is open.
+  const { data: overlayList } = useDeclaredOverlays(open);
 
   const overlayActions = useMemo<PaletteAction[]>(
     () =>

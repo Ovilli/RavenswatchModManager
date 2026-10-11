@@ -18,10 +18,31 @@
  */
 
 let generation = 0;
+const listeners = new Set<() => void>();
 
 /** Something that can change what a cached check would say just happened. */
 export function noteGameStateChanged(): void {
   generation += 1;
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch {
+      // A listener failing must not fail the CLI call that wrote.
+    }
+  }
+}
+
+/**
+ * Run `fn` after every write, for caches that live outside this module (React
+ * Query). The overlay list was the case that needed it: nothing refetched it
+ * after an install, so a stale "broken" answer kept the Overlay button
+ * disabled for minutes. Returns the unsubscribe.
+ */
+export function onGameStateChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 const launch = new Map<string, Promise<unknown>>();

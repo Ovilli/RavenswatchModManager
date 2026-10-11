@@ -21,6 +21,7 @@ import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
 import { firstSightOfDeepLink, reportDesktopAuthFailure } from './lib/desktop-auth';
 import { setLocale, t } from './lib/i18n';
+import { onGameStateChanged } from './lib/session-cache';
 import { wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 import { useApp } from './store';
@@ -163,6 +164,12 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
+});
+
+// An install, apply or config write changes what `rsmm overlays` reports, and
+// that answer decides whether each mod's Overlay button is enabled.
+onGameStateChanged(() => {
+  void queryClient.invalidateQueries({ queryKey: ['overlays'] });
 });
 
 const router = createRouter({
