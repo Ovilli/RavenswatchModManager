@@ -9767,6 +9767,19 @@ do
     -- A key this context does not hold comes back nil, not a wrong number.
     check(R.game.get("reroll_count") == nil, "an unheld key reads nil")
 
+    -- R.game.cached: the same value with NO engine call, for a timer thread
+    -- that must notice the pause while main-thread callbacks are stopped.
+    check(R.game.cached("is_in_pause") == nil, "cached() of a value never got on the main thread is nil")
+    asked = nil
+    check(R.game.cached("is_in_overtime") == 1, "cached() re-reads a value get() already found")
+    check(asked == nil, "...without asking the engine")
+    wint(REC + 0x40, 0, 4)
+    check(R.game.cached("is_in_overtime") == 0, "...and follows the live value")
+    wint(REC + 0x40, 1, 4)
+    shared[17] = JUNK
+    check(R.game.cached("is_in_overtime") == nil, "cached() is nil once the context is gone")
+    shared[17] = CTX
+
     -- R.modifier reads THIS context by raw key (run modifiers are global, not
     -- on the hero), and a modifier it does not hold is nil -- not the hero
     -- store's 0.0, which read as "off" for every modifier in game.

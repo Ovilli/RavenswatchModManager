@@ -332,6 +332,10 @@ function R.game.why() return _why end
 --- `is_`/`can_` value), or nil when the context is unavailable or the value is
 --- not held inline. Never raises.
 -- One read by raw key. `label` only names the value in why().
+-- key -> { ctx, rec }: the record each value was last found at, per context.
+local _records = {}
+local _decode
+
 local function _read_key(key, label)
     local p = _ctx()
     if not p then return nil end
@@ -353,6 +357,14 @@ local function _read_key(key, label)
         _why = string.format("%q is not held by this scene context", label)
         return nil
     end
+    -- Remember where the value lives, for R.game.cached (see there).
+    _records[key] = { ctx = p, rec = u }
+    return _decode(u, label)
+end
+
+-- The value held by entry record `u`. Memory reads only — no engine call —
+-- which is what lets R.game.cached use it off the main thread.
+_decode = function(u, label)
     local v = u + EV_RECORD_UNION_OFF
     local data = _union_data(v)
     if not data then
@@ -394,6 +406,21 @@ function R.game.get(name)
         return nil
     end
     return _read_key(spec.key, name)
+end
+
+--- Read a value WITHOUT an engine call, from any thread — for a timer that
+--- must notice the game paused, when main-thread callbacks may stop with it.
+--- Returns nil until R.game.get(name) has run once on the MAIN thread in the
+--- current scene context (that call finds where the value lives; this one only
+--- re-reads it), and again after the context changes. Page-guarded reads, so a
+--- stale record reads nil or garbage, never faults. Never raises.
+function R.game.cached(name)
+    local spec = R.game.keys[name]
+    if not spec then return nil end
+    local p = _ctx()
+    local c = _records[spec.key]
+    if not (p and c and c.ctx == p) then return nil end
+    return _decode(c.rec, name)
 end
 
 --- Read by raw 32-bit key, for a key the slug table does not cover.
