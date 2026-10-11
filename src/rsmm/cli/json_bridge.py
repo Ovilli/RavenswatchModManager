@@ -184,6 +184,10 @@ def _scan_mods(mods_dir: Path) -> list[dict[str, Any]]:
         # still surface its error in the config panel rather than hide the
         # control that opens it.
         has_config = (entry / "config_schema.toml").is_file()
+        # The mod's own translation, when the client asked for a locale
+        # (RSMM_LOCALE) and the mod ships lang/<locale>.toml with [manifest].
+        from rsmm.sdk.i18n import mod_text
+        local = mod_text(entry).get("manifest", {})
         # `id` and `slug` are both the folder name. The folder name is
         # the canonical identifier post-install — manifest.id is only
         # the upload-time author-supplied id, which may differ from the
@@ -193,10 +197,11 @@ def _scan_mods(mods_dir: Path) -> list[dict[str, Any]]:
         items.append({
             "id": entry.name,
             "slug": entry.name,
-            "name": manifest.get("name", entry.name),
+            "name": local.get("name") or manifest.get("name", entry.name),
             "version": str(manifest.get("version", "0.0.0")),
             "author": manifest.get("author"),
-            "summary": manifest.get("summary") or manifest.get("description"),
+            "summary": (local.get("summary") or local.get("description")
+                        or manifest.get("summary") or manifest.get("description")),
             "license": manifest.get("license"),
             "tags": manifest.get("tags") or [],
             "enabled": bool(manifest.get("enabled", True)),

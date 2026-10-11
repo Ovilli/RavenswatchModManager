@@ -241,6 +241,59 @@ R.i18n.t("hello", {name="X"})   -- substitution: "Hello, X"
 Missing locale → fall back to `EN`. Missing key in `EN` → return the key
 literally and log warning.
 
+**Which language.** The loader follows the language the player picked for
+Ravenswatch in Steam (`schinese` → `ZH-S`, `japanese` → `JA`, …), so a
+translated mod needs no setup from the player. `RSMM_LOCALE` (before
+`%command%` in the launch options) or `<game>/rsmm/locale.txt` override it.
+
+**Write the English inline.** `R.i18n.t` returns the key itself when the
+string is missing, so a mod that only looks text up reads as keys on a loader
+without your `lang/` file. Prefer the English in the code, swapped for the
+translation when there is one:
+
+```lua
+local function T(key, vars, english)
+  local s = english
+  if R.i18n and R.i18n.has(key) then s = R.i18n.t(key) end
+  return (s:gsub("{(%w+)}", function(k) return tostring(vars and vars[k]) end))
+end
+T("title_slay", { n = 20 }, "Slay {n} enemies")
+```
+
+### Text the desktop app shows
+
+`[strings]` is for your Lua. The mod's name, its overlay and its config panel
+are drawn by the desktop app from `manifest.toml` and `config_schema.toml`,
+and a lang file can translate those too. Every section is optional; anything
+left out shows the manifest/schema's own text. The app asks for its own UI
+language (Chinese UI → `ZH-S`).
+
+```toml
+[manifest]
+name        = "悬赏榜"
+summary     = "..."
+description = "..."
+
+[overlay]
+title = "悬赏"
+empty = "开始一局后悬赏榜才会开放。"
+
+[overlay.columns]        # by column key; the keys themselves never change
+bounty = "悬赏"
+
+[config.difficulty]      # by config field
+label = "悬赏难度"
+
+[config.difficulty.choices]   # what to SHOW per value; the value saved stays
+relaxed = "轻松"
+brutal  = "残酷"
+```
+
+`rsmm lint` fails a lang file that does not parse; at runtime a broken one is
+ignored rather than hiding the mod. For a game term, use the game's own
+wording (its text banks are under `data/uncooked/Text` plus the per-language
+siblings), so players read the same word in your mod as in the game.
+
 ## Inter-mod API
 
 ```lua

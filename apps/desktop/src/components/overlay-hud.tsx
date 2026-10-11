@@ -223,7 +223,7 @@ function ControlRow({
         >
           {control.choices.map((c) => (
             <option key={c} value={c}>
-              {c}
+              {control.choiceLabels?.[c] ?? c}
             </option>
           ))}
         </select>

@@ -248,9 +248,20 @@ class ConfigStore:
         return dict(self._values)
 
     def schema_as_dict(self) -> dict[str, Any]:
-        return {
-            "fields": {name: field.as_dict() for name, field in self.schema.fields.items()}
-        }
+        # Labels in the client's language when the mod ships one
+        # (lang/<locale>.toml [config.<field>]); `choiceLabels` maps each
+        # stored value to what to show for it — the VALUE stays what is saved.
+        from .i18n import config_text, mod_text
+        text = mod_text(self.mod_dir)
+        fields: dict[str, Any] = {}
+        for name, f in self.schema.fields.items():
+            d = f.as_dict()
+            label, choice_labels = config_text(text, name)
+            if label:
+                d["label"] = label
+            d["choiceLabels"] = choice_labels
+            fields[name] = d
+        return {"fields": fields}
 
     @sdk_export("ConfigStore.get")
     def get(self, key: str, fallback: Any = None) -> Any:

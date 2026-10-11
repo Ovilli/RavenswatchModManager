@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { isEnabledIn, useApp } from '../store';
+import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
 import { noteGameStateChanged } from './session-cache';
 import { isSafeProfileId } from './untrusted-state';
@@ -205,7 +206,14 @@ export function rsmmEnv(profileId?: string): Record<string, string> {
   // a caller passing one straight from an API response — would traverse out of
   // the mods tree from here. Fail closed onto the default profile instead.
   const id = isSafeProfileId(requested) ? requested : 'default';
-  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}` };
+  // The app's language, so the CLI hands back each mod's own translation
+  // (lang/<LOCALE>.toml) for names, overlay headers and config labels.
+  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}`, RSMM_LOCALE: modLocale() };
+}
+
+/** The app's language as a mod locale code (rsmm.sdk.i18n SUPPORTED_LOCALES). */
+export function modLocale(): string {
+  return getLocale() === 'zh-CN' ? 'ZH-S' : 'EN';
 }
 
 /**
@@ -566,6 +574,8 @@ export interface ModConfigField {
   min: number | null;
   max: number | null;
   choices: string[];
+  /** Shown text per choice value, from the mod's translation; may be empty. */
+  choiceLabels?: Record<string, string>;
   label: string;
   source?: string | null;
   grid?: ItemGridSpec;
@@ -1300,6 +1310,9 @@ export interface OverlayControl {
   min: number | null;
   max: number | null;
   choices: string[];
+  /** What to SHOW for each choice, in the app's language (the mod's
+   *  translation); the value written stays the choice itself. */
+  choiceLabels?: Record<string, string>;
   value: ModConfigValue;
 }
 

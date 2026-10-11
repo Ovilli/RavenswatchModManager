@@ -248,24 +248,81 @@ int lua_health_checkpoint(lua_State* L) {
 // a missing locale falls back to EN, which is what the guide promises.
 // Parsed once per lua_State and cached in the registry.
 
+// Steam's language API names -> the SDK's locale codes (rsmm.sdk.i18n
+// SUPPORTED_LOCALES). Unlisted languages fall through to EN.
+const char* locale_from_steam(const std::string& lang) {
+    static const std::pair<const char*, const char*> kMap[] = {
+        {"english", "EN"},    {"schinese", "ZH-S"}, {"tchinese", "ZH-T"},
+        {"japanese", "JA"},   {"koreana", "KO"},    {"russian", "RU"},
+        {"spanish", "ES"},    {"latam", "ES"},      {"german", "DE"},
+        {"polish", "PL"},     {"french", "FR"},     {"italian", "IT"},
+        {"brazilian", "PT-BR"},
+    };
+    for (const auto& [steam, code] : kMap)
+        if (lang == steam) return code;
+    return nullptr;
+}
+
+// The game's language as Steam reports it (the player's per-game choice),
+// or "" while Steam has not answered — the API is only live after the game's
+// SteamAPI_Init, which a mod asking during load can beat.
+std::string steam_game_language() {
+    using GetAppsFn = void* (*)();
+    using LangFn    = const char* (*)(void*);
+    HMODULE m = GetModuleHandleA("steam_api64.dll");
+    if (!m) return {};
+    auto get_apps = reinterpret_cast<GetAppsFn>(
+        reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_SteamApps_v008")));
+    auto get_lang = reinterpret_cast<LangFn>(
+        reinterpret_cast<void*>(GetProcAddress(m, "SteamAPI_ISteamApps_GetCurrentGameLanguage")));
+    if (!get_apps || !get_lang) return {};
+    void* apps = get_apps();
+    if (!apps) return {};
+    const char* lang = get_lang(apps);
+    return lang ? std::string(lang) : std::string();
+}
+
+// The active locale: RSMM_LOCALE, else <game>/rsmm/locale.txt (both explicit
+// overrides), else the GAME's language from Steam, else EN. Following Steam is
+// what makes a mod's lang/ZH-S.toml reach a Chinese player with nothing to
+// set up. A Steam answer is cached; "Steam not ready yet" is not, so a mod
+// asking during load does not pin English for the whole session.
 const char* active_locale() {
-    static const std::string locale = []{
-        char buf[16] = {0};
-        DWORD n = GetEnvironmentVariableA("RSMM_LOCALE", buf, sizeof(buf));
-        if (n > 0 && n < sizeof(buf)) return std::string(buf);
-        std::error_code ec;
-        const auto p = Loader::get().game_dir() / "rsmm" / "locale.txt";
-        if (std::filesystem::exists(p, ec)) {
-            std::ifstream f(p);
-            std::string s;
-            if (std::getline(f, s)) {
-                while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
-                                      s.back() == ' ')) s.pop_back();
-                if (!s.empty() && s.size() < 16) return s;
+    static std::string locale;
+    static bool settled = false;
+    if (settled) return locale.c_str();
+
+    char buf[16] = {0};
+    DWORD n = GetEnvironmentVariableA("RSMM_LOCALE", buf, sizeof(buf));
+    if (n > 0 && n < sizeof(buf)) {
+        locale = buf;
+        settled = true;
+        return locale.c_str();
+    }
+    std::error_code ec;
+    const auto p = Loader::get().game_dir() / "rsmm" / "locale.txt";
+    if (std::filesystem::exists(p, ec)) {
+        std::ifstream f(p);
+        std::string s;
+        if (std::getline(f, s)) {
+            while (!s.empty() && (s.back() == '\r' || s.back() == '\n' ||
+                                  s.back() == ' ')) s.pop_back();
+            if (!s.empty() && s.size() < 16) {
+                locale = s;
+                settled = true;
+                return locale.c_str();
             }
         }
-        return std::string("EN");
-    }();
+    }
+    const std::string steam = steam_game_language();
+    if (!steam.empty()) {
+        const char* code = locale_from_steam(steam);
+        locale = code ? code : "EN";
+        settled = true;
+        Loader::get().log("[i18n] game language " + steam + " -> " + locale);
+        return locale.c_str();
+    }
+    locale = "EN";   // for now; asked again on the next call
     return locale.c_str();
 }
 
@@ -309,8 +366,14 @@ void load_locale_file(lua_State* L, const std::filesystem::path& path) {
 }
 
 int lua_i18n_table(lua_State* L) {
+    // Cached per locale: a table built before Steam reported the game's
+    // language is English, and must be rebuilt once the real locale is known.
+    const char* want = active_locale();
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n_locale");
+    const bool same = lua_isstring(L, -1) && std::strcmp(lua_tostring(L, -1), want) == 0;
+    lua_pop(L, 1);
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
-    if (lua_istable(L, -1)) return 1;
+    if (same && lua_istable(L, -1)) return 1;
     lua_pop(L, 1);
 
     lua_newtable(L);
@@ -327,6 +390,8 @@ int lua_i18n_table(lua_State* L) {
     }
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n");
+    lua_pushstring(L, want);
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_i18n_locale");
     return 1;
 }
 

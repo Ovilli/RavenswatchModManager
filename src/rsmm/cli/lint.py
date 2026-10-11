@@ -171,6 +171,19 @@ def lint_one(entry: Path) -> tuple[int, int]:
             print(f"  {_T_FAIL} {mod_s}: config_schema.toml: {ce}")
             errs += 1
 
+    # lang/ — translations. A file that does not parse is dropped silently at
+    # runtime (a bad translation must not hide the mod), which is exactly why
+    # it has to be caught here.
+    if (entry / "lang").is_dir():
+        import tomllib
+
+        from rsmm.sdk.i18n import I18nBundle
+        try:
+            I18nBundle.load(str(m.get("id", entry.name)), entry)
+        except (ValueError, tomllib.TOMLDecodeError) as le:
+            print(f"  {_T_FAIL} {mod_s}: lang/: {le}")
+            errs += 1
+
     # [overlay] — a mod-declared HUD. Validated here rather than at runtime
     # because the failure is otherwise invisible: the desktop app would list
     # the overlay, refuse to open it, and the author would have no idea which

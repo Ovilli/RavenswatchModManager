@@ -353,14 +353,45 @@ def _mod_config(entry: Path) -> tuple[Any, dict[str, Any]]:
     return None, {}
 
 
-def _resolve_controls(keys: list[str], schema: Any, values: dict[str, Any]) -> list[dict]:
+def _mod_text(entry: Path) -> dict:
+    """The mod's translation for the client's locale (see rsmm.sdk.i18n), from
+    the authoring copy first — like the schema, `lang/` may not be installed."""
+    from rsmm.sdk.i18n import mod_text
+
+    lib = library_dir()
+    for d in ([lib / entry.name] if lib else []) + [entry]:
+        text = mod_text(d)
+        if text:
+            return text
+    return {}
+
+
+def _resolve_controls(keys: list[str], schema: Any, values: dict[str, Any],
+                      text: dict | None = None) -> list[dict]:
+    from rsmm.sdk.i18n import config_text
+
     out = []
     for k in keys:
         f = schema.fields[k]
-        out.append({"key": k, "label": f.label or k, "type": f.type, "min": f.min,
-                    "max": f.max, "choices": list(f.choices),
+        label, choice_labels = config_text(text or {}, k)
+        out.append({"key": k, "label": label or f.label or k, "type": f.type, "min": f.min,
+                    "max": f.max, "choices": list(f.choices), "choiceLabels": choice_labels,
                     "value": values.get(k, f.default)})
     return out
+
+
+def _localize(spec: dict[str, Any], text: dict) -> None:
+    """Swap the declaration's English for the mod's translation, in place.
+    Only text: keys, types and sorting never change with the language."""
+    ov = text.get("overlay") or {}
+    if ov.get("title"):
+        spec["title"] = str(ov["title"])[:40]
+    if ov.get("empty"):
+        spec["empty"] = str(ov["empty"])
+    cols = ov.get("columns") if isinstance(ov.get("columns"), dict) else {}
+    for col in spec.get("columns", []):
+        if col["key"] in cols:
+            col["label"] = str(cols[col["key"]])[:24]
 
 
 def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
@@ -405,8 +436,14 @@ def _read_one(entry: Path, mf: Path, game_dir: Path | str | None,
         record.update({"title": record["modName"], "error": str(e),
                        "rows": [], "meta": {}, "updated": 0, "exists": False})
         return record
+    text = _mod_text(entry)
+    _localize(spec, text)
+    name = (text.get("manifest") or {}).get("name")
+    if name:
+        record["modName"] = str(name)
     record.update(spec)
-    record["controls"] = _resolve_controls(spec["controls"], schema, values) if schema else []
+    record["controls"] = (_resolve_controls(spec["controls"], schema, values, text)
+                          if schema else [])
     live = read_rows(state_file(game_dir, entry.name))
     if live is None:
         record.update({"rows": [], "meta": {}, "updated": 0, "exists": False})

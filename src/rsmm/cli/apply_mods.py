@@ -1970,7 +1970,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 
         # Sync top-level auxiliary files so mods can ship data alongside
         # init.lua (pointer tables, embedded configs, secondary scripts).
-        # Only top-level — never recurse into assets/, _root/, lang/, etc.
+        # Only top-level — never recurse into assets/ or _root/ (lang/ is
+        # copied below, on its own).
         for src in mod_dir.iterdir():
             if not src.is_file():
                 continue
@@ -1980,6 +1981,16 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
                 continue
             if _sync_one_file(src, dst_dir / src.name, dry_run):
                 synced += 1
+
+        # lang/ — the mod's translations. The loader reads
+        # <game>/mods/<mod>/lang/<LOCALE>.toml|json for R.i18n.t; without this
+        # copy every translated mod spoke English in game.
+        lang_src = mod_dir / "lang"
+        if lang_src.is_dir():
+            for src in lang_src.iterdir():
+                if src.is_file() and src.suffix.lower() in (".toml", ".json"):
+                    if _sync_one_file(src, dst_dir / "lang" / src.name, dry_run):
+                        synced += 1
 
     return synced
 

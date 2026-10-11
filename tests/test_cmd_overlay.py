@@ -376,7 +376,7 @@ def test_discover_resolves_controls_from_the_authoring_copy(tmp_path, monkeypatc
     assert "error" not in record
     assert record["controls"] == [{
         "key": "yaw", "label": "Rotation", "type": "float", "min": 0.0, "max": 360.0,
-        "choices": [], "value": 135.0,
+        "choices": [], "choiceLabels": {}, "value": 135.0,
     }]
 
 

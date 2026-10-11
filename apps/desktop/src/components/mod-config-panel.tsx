@@ -307,7 +307,12 @@ function FramelessShell({ children }: { children: ReactNode }) {
  * because Tailwind's scanner cannot see an interpolated one.
  */
 const GROUP_TONES = [
-  { dot: 'bg-gilt', text: 'text-gilt', edge: 'border-l-gilt/70', chip: 'border-gilt/50 bg-gilt/10' },
+  {
+    dot: 'bg-gilt',
+    text: 'text-gilt',
+    edge: 'border-l-gilt/70',
+    chip: 'border-gilt/50 bg-gilt/10',
+  },
   {
     dot: 'bg-crimson',
     text: 'text-crimson',
@@ -320,7 +325,12 @@ const GROUP_TONES = [
     edge: 'border-l-frost/70',
     chip: 'border-frost/50 bg-frost/10',
   },
-  { dot: 'bg-moss', text: 'text-moss', edge: 'border-l-moss/70', chip: 'border-moss/50 bg-moss/10' },
+  {
+    dot: 'bg-moss',
+    text: 'text-moss',
+    edge: 'border-l-moss/70',
+    chip: 'border-moss/50 bg-moss/10',
+  },
   {
     dot: 'bg-smoke',
     text: 'text-smoke',
@@ -360,7 +370,13 @@ function MultiSelectField({
   const options: ModConfigChoice[] =
     choices.length > 0
       ? choices
-      : field.choices.map((c) => ({ id: c, label: c, group: '', icon: '', description: '' }));
+      : field.choices.map((c) => ({
+          id: c,
+          label: field.choiceLabels?.[c] ?? c,
+          group: '',
+          icon: '',
+          description: '',
+        }));
 
   const q = search.trim().toLowerCase();
   const shown = q
@@ -623,7 +639,9 @@ function ConfigFieldRow({
       <div className="flex items-center justify-between gap-3">
         <span className="font-data text-sm text-parchment">{label}</span>
         {field.type === 'enum' && field.choices.length > 0 ? (
-          <span className="font-data text-xs text-ash">{field.choices.join(' · ')}</span>
+          <span className="font-data text-xs text-ash">
+            {field.choices.map((c) => field.choiceLabels?.[c] ?? c).join(' · ')}
+          </span>
         ) : field.type === 'int' || field.type === 'float' ? (
           <span className="font-mono text-xs text-ash">
             {field.min != null ? t('min {value}', { value: field.min }) : ''}
@@ -664,7 +682,7 @@ function ConfigFieldRow({
           {field.choices.length > 0 ? (
             field.choices.map((choice) => (
               <option key={choice} value={choice}>
-                {choice}
+                {field.choiceLabels?.[choice] ?? choice}
               </option>
             ))
           ) : (
