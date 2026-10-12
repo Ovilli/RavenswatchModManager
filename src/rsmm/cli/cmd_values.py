@@ -5,6 +5,8 @@
     rsmm values diff <A> [<B>]          what changed from A to B (default:
                                         the install as it is now)
     rsmm values extract <A> <path> -o F one cooked file as snapshot A shipped it
+    rsmm values backport <A> [--id ID]  a mod that plays snapshot A's data on
+                                        the current build (local only)
 
 Take a snapshot BEFORE a game update installs: after it, the old values exist
 nowhere else. Snapshots live under the per-user data dir, never in the game
@@ -100,6 +102,31 @@ def _extract(args, _st: _term.Style) -> int:
     return 0
 
 
+def _backport(args, st: _term.Style) -> int:
+    from rsmm.engine import values_backport as VB
+    from rsmm.engine.paths import MODS_DIR
+
+    mod_id = args.id or "backport-" + "".join(
+        c if c.isalnum() else "-" for c in args.snapshot.lower()).strip("-")
+    r = VB.build(args.snapshot, Path(MODS_DIR) / mod_id, mod_id=mod_id, force=args.force)
+    print(f"{st.ok('wrote')} {r.mod_dir}")
+    print(f"  {st.dim('changed files')}  {len(r.changed)}")
+    print(f"  {st.dim('herodefs')}       {len(r.herodefs)} (old content, current names)")
+    if r.versiondef:
+        print(f"  {st.dim('versiondef')}     {r.versiondef[0]} -> {r.versiondef[1]}")
+    if r.kept_heroes:
+        print(f"  {st.dim('kept heroes')}    {', '.join(r.kept_heroes)}")
+    if r.renamed:
+        print(f"  {st.dim('renamed')}        {len(r.renamed)} file(s): references point at "
+              "the current name")
+    print(f"  {st.dim('re-added')}       {len(r.readded)} removed file(s) the old data uses")
+    if r.skipped_removed:
+        print(f"  {st.dim('not re-added')}   {len(r.skipped_removed)} (renamed or unused)")
+    print(f"\nEnable it with `rsmm enable {mod_id}`, then `rsmm apply`. It is the game's own "
+          "data: keep it local, never publish it.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm values", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -118,12 +145,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("snapshot")
     p.add_argument("path", help="decoded path, e.g. EntitySettings/Heroes/...gen")
     p.add_argument("-o", "--output", required=True)
+    p = sub.add_parser("backport", help="a mod that plays a snapshot's data on this build")
+    p.add_argument("snapshot")
+    p.add_argument("--id", help="mod id (default backport-<snapshot>)")
+    p.add_argument("--force", action="store_true", help="overwrite an existing mod folder")
     args = ap.parse_args(argv)
     st = _term.Style()
-    run = {"snapshot": _snapshot, "list": _list, "diff": _diff, "extract": _extract}[args.cmd]
+    run = {"snapshot": _snapshot, "list": _list, "diff": _diff, "extract": _extract,
+           "backport": _backport}[args.cmd]
+    from rsmm.engine.values_backport import BackportError
     try:
         return run(args, st)
-    except VS.SnapshotError as e:
+    except (VS.SnapshotError, BackportError) as e:
         print(f"rsmm values: {e}", file=sys.stderr)
         return 1
 

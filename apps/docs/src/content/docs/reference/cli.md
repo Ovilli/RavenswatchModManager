@@ -419,6 +419,22 @@ from the install, never the authoring mirror, and stored in the per-user data
 directory (`~/.local/share/rsmm/snapshots`, `%LOCALAPPDATA%\rsmm\snapshots`),
 so `restore --all` and Steam's file check leave it alone.
 
+To play an older patch's balance on the current game build, turn a snapshot
+into a mod:
+
+```sh
+./rsmm values backport Version_1.05.01.01.27384 --id update5-backport
+./rsmm enable update5-backport && ./rsmm apply
+```
+
+The game's code stays the new build; its data goes back. Files the newer patch
+changed get their old bytes, herodefs and the LiveOps versiondef get their old
+content under the names the newer patch gave them (which also drops that
+patch's `Hero_<X>_Update<N>` rework entities), files it renamed keep their new
+name, and heroes the old patch did not have stay playable. The mod is the
+game's own data: it stays in your local `mods/` and must never be published.
+Every player in a party needs it, since the data decides gameplay for everyone.
+
 ---
 
 ## Debugging
