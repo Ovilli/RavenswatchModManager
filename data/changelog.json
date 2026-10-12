@@ -2,6 +2,20 @@
   "generated": "2026-10-12",
   "entries": [
     {
+      "version": "",
+      "loader_version": 42,
+      "date": "2026-10-12",
+      "summary": "Ravenswatch Update 6 compatibility: fixes the damage meter naming you as another player, talent grants/upgrades, rerolls, dream shards, ingredients, melodies, game options and XP reading the wrong memory after the patch.",
+      "highlights": [
+        "Damage meter shows your own damage under your name again (Update 6 moved the hero data)",
+        "Hero detection works again: health and HUD reads fixed for Update 6",
+        "Talent grants, upgrades and random ultimates read the right talent slots again",
+        "Rerolls, dream shards, ingredients, melodies and stat modifiers use the correct engine events again",
+        "Game options (R.options) read and write the right settings again",
+        "SDK engine addresses now update with every game patch instead of going stale"
+      ]
+    },
+    {
       "version": "5.9.18",
       "date": "2026-10-12",
       "summary": "Mod Manager updated for Ravenswatch Update 6: installing mods and the loader works with the patched game again.",
