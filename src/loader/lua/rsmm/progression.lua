@@ -336,7 +336,7 @@ end
 -- store while the strip shows 0 — so this reads the other side of that split.
 -- Returns the raw cached float (NOT multiplied by 100), or nil when the stat
 -- has no known cache slot or any pointer on the way fails validation.
-local STAT_REPORT_ROOT_VA = 0x14143cb28   -- data/symbols.json: g_StatReportRoot
+local STAT_REPORT_ROOT_VA = R.engine.va("g_StatReportRoot")   -- data/symbols.json: g_StatReportRoot
 local _STAT_CACHE_OFF = {
     max_health   = 0x304,   -- reported as "vitality"
     attack_power = 0x308,
@@ -534,7 +534,7 @@ end
 -- required, fail-closed on any unresolved symbol / implausible pointer.
 -- Pending in-game verification. Don't combine with R.stat.stick on the same
 -- stat (stick pins the final value and would fight the modifier).
-local MODIFIER_EVENT_VFT_VA = 0x140f322d0  -- oCGameEventNetworkModifier_vftable (symbol map)
+local MODIFIER_EVENT_VFT_VA = R.engine.va("oCGameEventNetworkModifier_vftable")  -- oCGameEventNetworkModifier_vftable (symbol map)
 
 -- HOW A MODIFIER IS DELIVERED (settled in game 2026-09-19)
 --
@@ -804,8 +804,8 @@ R.xp = {}
 -- match and R.xp returned nil on every build. Real class is
 -- oCDtEntityCpntGroupLevel. Keep in sync with symbols.json XpComponent_vftable
 -- -- this literal mirrors the symbol map by hand.
-local XP_VFTABLE_VA      = 0x140f231b0  -- oCDtEntityCpntGroupLevel::vftable
-local XP_TESTER_VA       = 0x141476e00  -- XpComponent_TypeTester (data global)
+local XP_VFTABLE_VA      = R.engine.va("XpComponent_vftable")  -- oCDtEntityCpntGroupLevel::vftable
+local XP_TESTER_VA       = R.engine.va("XpComponent_TypeTester")  -- XpComponent_TypeTester (data global)
 local XP_ARR_OFF         = 0x190        -- entity -> component ptr array
 local XP_ARR_COUNT_OFF   = 0x198        -- entity -> component count
 local XP_OWNER_OFF       = 0x08         -- component -> owner entity (back-ptr)

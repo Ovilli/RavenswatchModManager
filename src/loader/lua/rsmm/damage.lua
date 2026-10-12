@@ -103,9 +103,9 @@ local DMG = {
     ATTACK_SYMBOL   = "Entity_ResolveAttackHits",
     -- oCDtEntityCpntHeroController
     HERO_ENTITY_OFF  = 0x08,     -- owning oCEntity
-    HERO_ISLOCAL_OFF = 0x1d88,   -- 1 = this machine's player
-    HERO_MIRROR_OFF  = 0x1d80,   -- HUD HP mirror; LOCAL player only
-    HERO_STATS_OFF   = 0x1db0,   -- per-run stats record (end-screen source)
+    HERO_ISLOCAL_OFF = 0x1db0,   -- 1 = this machine's player (0x1d88 before Update 6)
+    HERO_MIRROR_OFF  = 0x1da8,   -- HUD HP mirror; LOCAL player only (0x1d80 before Update 6)
+    HERO_STATS_OFF   = 0x1dd8,   -- per-run stats record (end-screen source; 0x1db0 before Update 6)
     STATS_TOTAL_OFF  = 0xa8,     -- u32 total damage — LOCAL hero only
     STATS_BEST_OFF   = 0xcc,     -- f32 biggest single hit
     -- oCDtProcessedDamage
@@ -198,7 +198,7 @@ local DMG = {
     -- the literal Entity_GetNetComponent hardcodes.
     ENEMY_CTRL_CLASS_ID = 0x1561073c,   -- oCDtEntityCpntEnemyController
     HERO_CTRL_CLASS_ID  = 0x155aac59,   -- oCDtEntityCpntHeroController
-    ENEMY_CTRL_VFT_VA = 0x140f30b78,    -- symbols.json EnemyController_vftable
+    ENEMY_CTRL_VFT_VA = R.engine.va("EnemyController_vftable"),    -- symbols.json EnemyController_vftable
     CPNT_OWNER_OFF   = 0x08,     -- component -> owner entity (back-ptr)
     VICTIM_DEF_OFF   = 0x28,     -- entity -> oCEntitySettings (confirmed live)
     SETTINGS_RSRC_OFF = 0x70,    -- settings -> resource the engine stringifies

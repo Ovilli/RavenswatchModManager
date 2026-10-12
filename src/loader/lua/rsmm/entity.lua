@@ -75,8 +75,8 @@ local function _deprecated(old, new)
            .. "(settled 2026-09-18). Use %s, or R.hp for real HP."):format(old, new))
 end
 
-local ENTITY_HP_OFF      = 0x15c8        -- f32 current HP on the hero character
-local ENTITY_MAXHP_OFF   = 0x15cc        -- f32 max HP
+local ENTITY_HP_OFF      = 0x15d0        -- f32 current HP on the hero character (0x15c8 before Update 6)
+local ENTITY_MAXHP_OFF   = 0x15d4        -- f32 max HP (0x15cc before Update 6)
 -- The chain Hero_ModifyDreamShards dereferences in its first four instructions:
 --   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
 -- Both are unguarded on the engine side, so both are ours to check. See
@@ -87,7 +87,7 @@ local ENTITY_STORE_HOP   = 0x30          -- first field ModifyHealth reads off i
 -- (I.resolve on the semantic symbol name) so a game patch that shifts code
 -- can never leave us hooking/calling a stale VA: an unresolved symbol fails
 -- closed instead. Only data addresses (vftable) stay link-time constants.
-local FLAGLIST_VFT_VA    = 0x140f01650   -- oCCustomFlagList::vftable (re-derived 2026-07-10)
+local FLAGLIST_VFT_VA    = R.engine.va("oCCustomFlagList_vftable")   -- oCCustomFlagList::vftable (re-derived 2026-07-10)
 local ENTITY_IMG_BASE    = 0x140000000
 
 local _hero_char = nil

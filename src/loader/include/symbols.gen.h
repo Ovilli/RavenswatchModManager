@@ -470,6 +470,10 @@ constexpr std::uintptr_t GameModifierUi_PadSelectedSlots = 0x14035b570ull;
 constexpr const char* GameModifierUi_PadSelectedSlots_Pattern = "GameModifierUi_PadSelectedSlots";
 constexpr std::uintptr_t g_GameOptions = 0x141436a18ull;
 
+// --- registry ---
+constexpr std::uintptr_t DefRegistry_Begin = 0x14143a040ull;
+constexpr std::uintptr_t DefRegistry_End = 0x14143a048ull;
+
 // --- resource ---
 constexpr std::uintptr_t BinarySaver_CollectDependencies = 0x1404fc950ull;
 // BinarySaver_CollectDependencies_Pattern omitted: status=unverified

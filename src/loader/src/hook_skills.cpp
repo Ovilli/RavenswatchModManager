@@ -31,7 +31,7 @@ namespace {
 //   vtable, objects spaced 0xe0). cap==count==28 (exact-fit) so adding a 29th
 //   needs a realloc, not a spare slot.
 //   (The old +0x7d0 vector held only 3-11 small entries — NOT the talent set.)
-constexpr std::size_t kTalentVecOff  = 0x8d8;
+constexpr std::size_t kTalentVecOff  = 0x910;   // 0x8d8 before Update 6 (herodef tail +0x38)
 constexpr std::size_t kVecCountOff   = 0x08;
 constexpr std::size_t kVecCapOff     = 0x0c;
 constexpr std::size_t kPtrStride     = 0x08;
@@ -116,10 +116,10 @@ void probe_vector_offsets(void* herodef) {
     // fields and flag any that points INTO the ability array (+0x8e8 region), so
     // a host-side scan finds the column-ref offset. Also dump the +0x8e8 base/range.
     {
-        void* tdata2 = *reinterpret_cast<void**>(b + 0x8d8);
-        std::uint32_t tcnt2 = *reinterpret_cast<std::uint32_t*>(b + 0x8e0);
-        void* adata2 = *reinterpret_cast<void**>(b + 0x8e8);
-        std::uint32_t acnt2 = *reinterpret_cast<std::uint32_t*>(b + 0x8f0);
+        void* tdata2 = *reinterpret_cast<void**>(b + 0x910);
+        std::uint32_t tcnt2 = *reinterpret_cast<std::uint32_t*>(b + 0x918);
+        void* adata2 = *reinterpret_cast<void**>(b + 0x920);
+        std::uint32_t acnt2 = *reinterpret_cast<std::uint32_t*>(b + 0x928);
         if (readable(tdata2, 8) && readable(adata2, 8) && tcnt2 <= 64 && acnt2 <= 32) {
             std::uintptr_t abase = (std::uintptr_t)adata2;
             std::uintptr_t aend = abase + (std::size_t)acnt2 * 0x240;
@@ -151,10 +151,10 @@ void probe_vector_offsets(void* herodef) {
     // qwords that point at a talent — that link IS the grid's column membership,
     // and the offset where it sits encodes the tier ordering.
     {
-        void* tdata = *reinterpret_cast<void**>(b + 0x8d8);
-        std::uint32_t tcnt = *reinterpret_cast<std::uint32_t*>(b + 0x8d8 + 8);
-        void* adata = *reinterpret_cast<void**>(b + 0x8e8);
-        std::uint32_t acnt = *reinterpret_cast<std::uint32_t*>(b + 0x8e8 + 8);
+        void* tdata = *reinterpret_cast<void**>(b + 0x910);
+        std::uint32_t tcnt = *reinterpret_cast<std::uint32_t*>(b + 0x910 + 8);
+        void* adata = *reinterpret_cast<void**>(b + 0x920);
+        std::uint32_t acnt = *reinterpret_cast<std::uint32_t*>(b + 0x920 + 8);
         if (readable(tdata, 8) && readable(adata, 8) && tcnt <= 64 && acnt <= 32) {
             auto* tarr = reinterpret_cast<std::uintptr_t*>(tdata);
             auto talent_index = [&](std::uintptr_t v) -> int {
@@ -207,7 +207,7 @@ void inspect_and_maybe_inject(void* herodef) {
     std::uint32_t cap   = *reinterpret_cast<std::uint32_t*>(vec + kVecCapOff);
 
     Loader::get().log("[skill-hook] herodef=" + hex_of((std::uintptr_t)herodef)
-                      + " talentvec(+0x8d8) data=" + hex_of((std::uintptr_t)data)
+                      + " talentvec(+0x910) data=" + hex_of((std::uintptr_t)data)
                       + " count=" + std::to_string(count)
                       + " cap=" + std::to_string(cap));
 

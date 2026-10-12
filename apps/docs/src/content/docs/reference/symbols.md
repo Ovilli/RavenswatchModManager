@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **323** symbols across 24 categories.
+Total: **325** symbols across 25 categories.
 
 ## analytics
 
@@ -345,6 +345,13 @@ Total: **323** symbols across 24 categories.
 |------|---------|--------|----------|------------------|
 | `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+
+## registry
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `DefRegistry_Begin` | `0x14143a040` | 📍 va |  | Global definition registry (vector of registered def instances) written by Registry_Reg… |
+| `DefRegistry_End` | `0x14143a048` | 📍 va |  | Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin. |
 
 ## resource
 

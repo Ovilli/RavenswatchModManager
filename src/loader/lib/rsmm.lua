@@ -474,9 +474,19 @@ end
 -- List the semantic names available to R.engine.call.
 function R.engine.names()
     local out = {}
-    for k in pairs(engine_map()) do out[#out + 1] = k end
+    for k in pairs(engine_map()) do
+        if k ~= "_va" then out[#out + 1] = k end
+    end
     table.sort(out)
     return out
+end
+
+-- A data global's / vftable's address at the PREFERRED base (0x140000000),
+-- from data/symbols.json via engine_gen.lua -- callers rebase it exactly as
+-- they did the hand-copied literals this replaces. nil when unknown.
+function R.engine.va(name)
+    local t = engine_map()._va
+    return t and t[name] or nil
 end
 
 -- Named accessors: every callable symbol is exposed as
@@ -643,7 +653,7 @@ R.ptr = {
 -- u32 source count @+8, runtime array @+0x10, u32 runtime count @+0x18 }.
 -- Re-derived 2026-07-10 after the 2026-07-09 game patch (readers of the new
 -- slot dereference +0x10/+0x18 exactly like the old pool, e.g. FUN_1402b3030).
-local GIVE_POOL_VA = 0x14143cc18
+local GIVE_POOL_VA = R.engine.va("g_MagicalObjectPool")
 local GIVE_IMG_BASE = 0x140000000
 
 -- Hero dispatcher, captured from any hero-anchored gameplay event. These all
@@ -811,8 +821,8 @@ end
 -- resolved to a nil GLOBAL and every anchor event raised inside the event
 -- router — which pcalls handlers, so the ally guard silently did nothing and
 -- the hero capture stopped updating. Caught by the spec, not in-game.
-local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
-local ENTITY_ISLOCAL_OFF   = 0x1d88      -- 1 = this machine's player
+local ENTITY_HUDMIRROR_OFF = 0x1da8      -- ptr to the HUD HP mirror (hero-only; 0x1d80 before Update 6)
+local ENTITY_ISLOCAL_OFF   = 0x1db0      -- 1 = this machine's player (0x1d88 before Update 6)
 
 local function _dispatcher_is_local(d)
     if not _DISPATCHER_ENTITY_OFF then return nil end
@@ -1024,7 +1034,7 @@ function R.reroll.get()
 end
 
 function R.reroll.add(n)
-    local REROLL_EVENT_VFT_VA = 0x140f263d0   -- oCDtNamedEventGainReroll_vftable
+    local REROLL_EVENT_VFT_VA = R.engine.va("oCDtNamedEventGainReroll_vftable")   -- oCDtNamedEventGainReroll_vftable
     local EVENT, EVENT_CRC = "GAIN_REROLL", 0x96065360
     if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 0x7fff then
         R.log("[rsmm.reroll] add(n): n must be a whole number from 1 to 32767")
@@ -2087,7 +2097,7 @@ R.options = {}
 -- Re-derived 2026-07-10 after the 2026-07-09 game patch (ctor is now
 -- FUN_1401ca130, found via the "Forced seed" string xref; it stores the
 -- singleton to this slot as its first write).
-local OPT_GAMEOPTIONS_VA = 0x14143cb58
+local OPT_GAMEOPTIONS_VA = R.engine.va("g_GameOptions")
 local OPT_IMG_BASE = 0x140000000
 local OPT_VALUE_OFF = 0x28
 
@@ -2096,7 +2106,9 @@ local OPT_VALUE_OFF = 0x28
 -- Offsets transcribed from the options ctor (FUN_1401ca130, 2026-07-09 build);
 -- value at off+0x28. The patch added "Delay before can unpause" / "Max pause
 -- per player", which moved "Pause during choices" (0x10f8 -> 0x10f0); every
--- other slot is unchanged.
+-- other slot is unchanged. Update 6 (2026-10-12, ctor FUN_1401c2d70) inserted
+-- "Accepted Privacy Policy" plus one more slot ahead of "Dash at cursor", so
+-- every slot from there on moved +0x60; Forced seed / Dev / Test did not.
 local _OPT = {
     ["Forced seed"]                                 = { off = 0x0000, type = "uint"  },
     -- "Dev" is the build-type flag the ctor seeds from a baked constant; the
@@ -2104,18 +2116,18 @@ local _OPT = {
     -- old seeded-runs raw poke at +0x58 was flipping).
     ["Dev"]                                         = { off = 0x0030, type = "bool"  },
     ["Test"]                                        = { off = 0x0060, type = "bool"  },
-    ["Dash at cursor"]                              = { off = 0x0e80, type = "bool"  },
-    ["Screen shake"]                                = { off = 0x1090, type = "bool"  },
-    ["Pause during choices"]                        = { off = 0x10f0, type = "bool"  },
-    ["Show damage and healing numbers"]             = { off = 0x11b0, type = "bool"  },
-    ["Select random skin when using random heroes"] = { off = 0x11e0, type = "bool"  },
-    ["Show enemy debug info"]                       = { off = 0x1210, type = "bool"  },
-    ["Sectorize enemy camps"]                       = { off = 0x1240, type = "bool"  },
-    ["Display fake unlock in recap"]                = { off = 0x1270, type = "bool"  },
-    ["Show social options debug"]                   = { off = 0x12a0, type = "bool"  },
-    ["Show hourglass debug info"]                   = { off = 0x12d0, type = "bool"  },
-    ["Force epilogue"]                              = { off = 0x1300, type = "bool"  },
-    ["Force end credits"]                           = { off = 0x1330, type = "bool"  },
+    ["Dash at cursor"]                              = { off = 0x0ee0, type = "bool"  },
+    ["Screen shake"]                                = { off = 0x10f0, type = "bool"  },
+    ["Pause during choices"]                        = { off = 0x1150, type = "bool"  },
+    ["Show damage and healing numbers"]             = { off = 0x1210, type = "bool"  },
+    ["Select random skin when using random heroes"] = { off = 0x1240, type = "bool"  },
+    ["Show enemy debug info"]                       = { off = 0x1270, type = "bool"  },
+    ["Sectorize enemy camps"]                       = { off = 0x12a0, type = "bool"  },
+    ["Display fake unlock in recap"]                = { off = 0x12d0, type = "bool"  },
+    ["Show social options debug"]                   = { off = 0x1300, type = "bool"  },
+    ["Show hourglass debug info"]                   = { off = 0x1330, type = "bool"  },
+    ["Force epilogue"]                              = { off = 0x1360, type = "bool"  },
+    ["Force end credits"]                           = { off = 0x1390, type = "bool"  },
 }
 
 -- Accept the GameOptions singleton pointer only if a couple of known bool slots
@@ -5389,9 +5401,9 @@ R.defs = {}
 -- unreadable", indistinguishable from a moved global. Every other va-global in
 -- this file does the same rebase (see GIVE_POOL_VA / OPT_GAMEOPTIONS_VA).
 local DEFS_IMG_BASE = 0x140000000
-local CTRL_VA  = 0x1412f0a68     -- DefinitionRegistry_Ctrl
-local SLOTS_VA = 0x1412f0a70     -- DefinitionRegistry_Slots
-local MASK_VA  = 0x1412f0a80     -- DefinitionRegistry_Mask
+local CTRL_VA  = R.engine.va("DefinitionRegistry_Ctrl")     -- DefinitionRegistry_Ctrl
+local SLOTS_VA = R.engine.va("DefinitionRegistry_Slots")     -- DefinitionRegistry_Slots
+local MASK_VA  = R.engine.va("DefinitionRegistry_Mask")     -- DefinitionRegistry_Mask
 local SLOT_STRIDE = 0x18
 local MAX_CAPACITY = 0x40000     -- refuse an implausible mask rather than spin
 local MAX_INSTANCES = 0x8000

@@ -203,8 +203,8 @@ F._netid = {
     -- tunnel pointer) directly, so reading the array from there is off by
     -- 0x50 and every string comes back from the NEXT slot. The true base is
     -- what the slot ctor FUN_1402aedf0 zeroes, field by field.
-    PEER_SLOTS  = 0x14143f600,
-    PEER_COUNT  = 0x14143f780,
+    PEER_SLOTS  = R.engine.va("Netcode_PeerSlots"),
+    PEER_COUNT  = R.engine.va("Netcode_PeerCount"),
     PEER_STRIDE = 0x60,        -- `lea rax,[rax+rax*2]; shl rax,5` in the tick
     PEER_MAX    = 32,          -- refuse an implausible count outright
     -- Slot fields, all decompile-confirmed (FUN_1402aedf0 fills them,

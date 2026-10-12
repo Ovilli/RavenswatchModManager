@@ -215,3 +215,16 @@ def test_sdk_functions_keep_local_headroom():
         + "\n— lift a namespace into src/loader/lua/rsmm/ (memory: sdk-lua-module-split) "
         "or move values onto a table before the next `local` stops the SDK compiling"
     )
+
+
+def test_sdk_lua_has_no_hardcoded_game_va():
+    """Engine globals/vftables come from engine_gen.lua (`R.engine.va`), not
+    literals. Update 6 remapped symbols.json and left 19 hand-copied VAs in the
+    SDK pointing at the old build. 0x140000000 is the image base, not a VA."""
+    va = re.compile(r"\b0x14[0-9a-fA-F]{7}\b")
+    hits = []
+    for path in [LIB / "rsmm.lua", *sorted((LIB.parent / "lua" / "rsmm").glob("*.lua"))]:
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("--", 1)[0]
+            hits += [f"{path.name}:{n} {m}" for m in va.findall(code) if int(m, 16) != 0x140000000]
+    assert not hits, "use R.engine.va(<symbol>) instead:\n" + "\n".join(hits)

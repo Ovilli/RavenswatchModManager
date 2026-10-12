@@ -48,11 +48,11 @@ return function(env)
     local dispatcher_live = env.dispatcher_live
     local M = {}
 
-    local CAT_BASE, CAT_STRIDE, CAT_COUNT = 0xf98, 0x10, 5
+    local CAT_BASE, CAT_STRIDE, CAT_COUNT = 0xfb0, 0x10, 5   -- 0xf98 before Update 6
     local C_ENTITY, C_SETTINGS, C_TIER, C_HERO = 0x08, 0x10, 0x68, 0x78
     local MAX_PER_CATEGORY = 64
-    local HELD_BASE, HELD_STRIDE, HELD_SLOTS = 0xff0, 0x20, 10
-    local H_HUD = 0x1db0          -- replicated HUD copy AddSkill writes through
+    local HELD_BASE, HELD_STRIDE, HELD_SLOTS = 0x1008, 0x20, 10  -- 0xff0 before Update 6
+    local H_HUD = 0x1dd8          -- replicated HUD copy AddSkill writes through (0x1db0 before Update 6)
     local C_STATE = 0x80          -- resolved [State] component of the talent
     local C_ACQUIRED = 0x260      -- inline "acquired" event trigger
 

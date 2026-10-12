@@ -35,7 +35,6 @@ local M = {}
 local R, I, _va_ok, _ptr_plausible
 
 -- data/symbols.json: AppSettings_SectionList -- { void** data; u32 count }.
-local SECTION_LIST_VA = 0x1412f5aa8
 local IMG_BASE        = 0x140000000
 local SECTION_MAX     = 256
 local SECTION_CLASS   = "DarkTalesAppSettingsSection"   -- oe::dt:: in RTTI
@@ -92,7 +91,7 @@ function M.section()
     end
     local base = I.module_base and I.module_base()
     if not base or base == 0 then _why = "module base unknown"; return nil, _why end
-    local list = base + (SECTION_LIST_VA - IMG_BASE)
+    local list = base + (R.engine.va("AppSettings_SectionList") - IMG_BASE)
     local data, n = I.read_u64(list), I.read_u32(list + 8)
     if not _ptr_plausible(data) or type(n) ~= "number" or n == 0 or n > SECTION_MAX then
         _why = ("settings section list unreadable (data=%s count=%s)")

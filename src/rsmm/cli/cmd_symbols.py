@@ -806,6 +806,14 @@ def _gen_lua(smap: SymbolMap) -> str:
             f'  ["{s.name}"] = {{ pattern = "{s.pattern_name}", '
             f'offset = 0x{s.anchor_offset:x}, sig = "{sig}" }},'
         )
+    # Data globals and vftables, at the preferred base. The SDK used to copy
+    # these into Lua literals by hand, and a game patch left every copy stale
+    # while symbols.json was remapped (Update 6, 2026-10-12).
+    lines.append("  _va = {")
+    for s in sorted(smap.by_kind("data"), key=lambda x: x.name):
+        if s.va:
+            lines.append(f'    ["{s.name}"] = 0x{s.preferred_addr(smap.preferred_base):x},')
+    lines.append("  },")
     lines.append("}")
     lines.append("")
     return "\n".join(lines)

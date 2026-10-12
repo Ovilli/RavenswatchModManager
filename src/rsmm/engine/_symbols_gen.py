@@ -44,6 +44,8 @@ ADDR: dict[str, int] = {
     "DayNightCycle_InitCycle": 0x1401eca80,
     "DayNightCycle_PushValues": 0x1401ee1c4,
     "DayNightCycle_RegisterValues": 0x1401ee9e3,
+    "DefRegistry_Begin": 0x14143a040,
+    "DefRegistry_End": 0x14143a048,
     "DefinitionRegistry_Ctrl": 0x1412eba68,
     "DefinitionRegistry_Mask": 0x1412eba80,
     "DefinitionRegistry_Slots": 0x1412eba70,

@@ -33,8 +33,8 @@ namespace rsmm {
 namespace {
 
 constexpr std::uintptr_t kImgBase           = 0x140000000ull;
-constexpr std::uintptr_t kRegistryBeginVA   = 0x141440420ull;  // reward-def registry begin ptr
-constexpr std::uintptr_t kRegistryEndVA     = 0x141440428ull;  // reward-def registry end ptr
+constexpr std::uintptr_t kRegistryBeginVA   = Sym::DefRegistry_Begin;  // reward-def registry begin ptr
+constexpr std::uintptr_t kRegistryEndVA     = Sym::DefRegistry_End;    // reward-def registry end ptr
 constexpr std::size_t    kCtxDefOff         = 0xa8;            // guaranteed-path def on the ctx
 constexpr std::size_t    kTypesPtrOff       = 0x288;           // reward_types vector data ptr
 constexpr std::size_t    kTypesCountOff     = 0x290;           // reward_types count

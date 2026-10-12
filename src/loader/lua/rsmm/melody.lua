@@ -36,8 +36,8 @@ return function(env)
     local NE = env.named_event                   -- rsmm/named_event.lua
     local M = {}
 
-    local CHOOSE_VFT_VA = 0x140f25c48            -- oCGameNamedEventChooseMelody_vftable
-    local REMOVE_VFT_VA = 0x140f22608            -- oCGameNamedEventRemoveMelody_vftable
+    local CHOOSE_VFT_VA = R.engine.va("oCGameNamedEventChooseMelody_vftable")            -- oCGameNamedEventChooseMelody_vftable
+    local REMOVE_VFT_VA = R.engine.va("oCGameNamedEventRemoveMelody_vftable")            -- oCGameNamedEventRemoveMelody_vftable
     local EV_SIZE, DEF_NAME_OFF, NAME_STR_OFF = 0x60, 0x48, 0x18
 
     local function stem(s)

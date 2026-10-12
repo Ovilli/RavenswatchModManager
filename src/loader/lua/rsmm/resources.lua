@@ -30,8 +30,8 @@ return function(env)
     local R, I = env.R, env.I
     local NE = env.named_event                   -- rsmm/named_event.lua
 
-    local SHARDS_VFT_VA = 0x140f224c0            -- oCDtNamedEventGainDreamShards_vftable
-    local INGREDIENT_VFT_VA = 0x140f26460        -- oCGameEventGainIngredient_vftable
+    local SHARDS_VFT_VA = R.engine.va("oCDtNamedEventGainDreamShards_vftable")            -- oCDtNamedEventGainDreamShards_vftable
+    local INGREDIENT_VFT_VA = R.engine.va("oCGameEventGainIngredient_vftable")        -- oCGameEventGainIngredient_vftable
     local INGREDIENT_ID_OFF, INGREDIENT_NAME_OFF = 0x290, 0x298
 
     local shards = {}
