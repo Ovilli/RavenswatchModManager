@@ -2,6 +2,16 @@
   "generated": "2026-10-12",
   "entries": [
     {
+      "version": "5.9.18",
+      "date": "2026-10-12",
+      "summary": "Mod Manager updated for Ravenswatch Update 6: installing mods and the loader works with the patched game again.",
+      "highlights": [
+        "Hero, talent and item mods build against the renamed Update 6 hero files",
+        "Installing the loader now replaces a pattern database left over from before the patch, so features like player names in the damage meter work again",
+        "New `rsmm values backport` command: play an older patch's balance values as a local mod"
+      ]
+    },
+    {
       "version": "",
       "loader_version": 41,
       "date": "2026-10-12",
