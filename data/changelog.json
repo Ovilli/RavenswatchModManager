@@ -1,6 +1,17 @@
 {
-  "generated": "2026-10-11",
+  "generated": "2026-10-12",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 41,
+      "date": "2026-10-12",
+      "summary": "Updated for Ravenswatch Update 6: the loader finds the game's functions again after the patch, and mods that change heroes, talents or items work with the new hero files.",
+      "highlights": [
+        "Works with Ravenswatch Update 6 (the 12 October 2026 patch)",
+        "Hero, talent and item mods work with the renamed Update 6 hero files",
+        "Kintaro shows up as a hero"
+      ]
+    },
     {
       "version": "5.9.17",
       "date": "2026-10-11",
