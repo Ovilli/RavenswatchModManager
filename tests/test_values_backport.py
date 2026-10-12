@@ -53,3 +53,16 @@ def test_backport_of_a_real_snapshot(tmp_path):
         raw = p.read_bytes()
         assert cooked.emit(cooked.parse(raw)) == raw, p
     assert not r.readded or all(not x.startswith("Definitions/Tiles/") for x in r.readded)
+
+
+def test_pack_refuses_a_generated_backport(tmp_path, monkeypatch):
+    """Its files are an OLDER patch's originals, which the vanilla-bytes check
+    cannot see, so the marker is what keeps it off the mod site."""
+    from rsmm.cli import cmd_pack
+
+    mod = tmp_path / "bp"
+    (mod / "assets").mkdir(parents=True)
+    (mod / "manifest.toml").write_text('[mod]\nid = "bp"\nname = "x"\nversion = "1.0.0"\n')
+    (mod / VB.MARKER).write_text("local only\n")
+    monkeypatch.setattr(cmd_pack, "MODS_DIR", tmp_path)
+    assert cmd_pack.main(["bp"]) == 1

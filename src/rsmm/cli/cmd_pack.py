@@ -205,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"invalid mod id: {mod_id!r}", file=sys.stderr)
         return 1
     src = MODS_DIR / mod_id
+    from rsmm.engine.values_backport import MARKER
+    if (src / MARKER).exists() and not allow_vanilla:
+        print(f"refusing to pack {mod_id}: it is a generated backport (`rsmm values "
+              f"backport`) — every asset in it is the game's own data from an older "
+              f"patch, so packing it for anyone else redistributes copyrighted files. "
+              f"It is meant to stay on this machine. (--allow-vanilla makes a zip for "
+              f"your own backup only; `rsmm publish` never passes it.)", file=sys.stderr)
+        return 1
     if not allow_vanilla:
         offenders = _vanilla_offenders(src)
         if offenders:
