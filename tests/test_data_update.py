@@ -195,6 +195,20 @@ def test_install_loader_keeps_a_planted_db(remote: Path, game_dir: Path):
     assert planted.read_text() == "[]"
 
 
+def test_install_loader_refreshes_a_db_for_another_build(remote: Path, game_dir: Path):
+    # Update 6: a pre-patch DB survived install-loader and left
+    # LobbyAttributes_Parse unresolved in game.
+    from rsmm.cli.install_loader import _ensure_pattern_db
+
+    planted = planted_dir(game_dir) / "function_patterns.json"
+    planted.parent.mkdir(parents=True)
+    planted.write_text("[]")
+    (planted.parent / "function_patterns.meta.json").write_text(
+        json.dumps({"game_exe_size": 12345}))
+    _ensure_pattern_db(game_dir)
+    assert json.loads(planted.read_text()) == PATTERNS
+
+
 def test_install_loader_db_fetch_failure_is_advisory(
     tmp_path: Path, game_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ):
