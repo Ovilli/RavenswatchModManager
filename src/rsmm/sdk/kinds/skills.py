@@ -47,6 +47,7 @@ See ``docs/_re/kinds/skills-system.md``.
 from __future__ import annotations
 
 import logging
+import re
 import struct
 from pathlib import Path
 
@@ -135,6 +136,67 @@ def card_keys(key_base: str, bank_keys) -> tuple[str | None, str | None]:
     return name, desc
 
 
+#: A rework entity layered over the base one (``Hero_Beowulf_Update6`` over
+#: ``Hero_Beowulf``, ``_Update_6`` too); the LiveOps versiondef wires it in.
+_REWORK_RE = re.compile(r"^(.+)_Update_?(\d+)$")
+
+
+def is_rework(stem: str) -> bool:
+    """Is ``stem`` a rework entity layered over a base one?"""
+    return _REWORK_RE.match(stem) is not None
+
+
+def rework_desc_keys(hero_token: str) -> dict[str, str]:
+    """Old card description key -> the key a rework shows instead.
+
+    A rework entity re-declares a card's ``String Format`` under the SAME node
+    name, which shadows the base one, often pointing it at a new key the bank
+    holds beside the old (Beowulf's Battle Cry: ``Skill_Trait_Battlecry_Desc``
+    -> ``Skill_Trait_Battlecry_Update6_Desc``). The old key stays in the bank
+    with the old text, so reading or relabelling it edits a card the game no
+    longer draws. Keys are spelled every way (``_Desc_Update6``,
+    ``_Update_6_Desc``, ``_Update6_Burst_Desc``), so they are mapped through the
+    format's node name, never by suffix. Names are never reworked."""
+    from ...engine import item_modifier as IM
+
+    low = _name_of(hero_token).replace("_", "").lower()
+    files: dict[str, bytes] = {}
+    for d in corpus.subdirs(_ENTITY_DIR):
+        if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low:
+            for p in corpus.files(f"{_ENTITY_DIR}/{d}", _ENTITY_SUFFIX):
+                files[p.name.split(".entity.ot.", 1)[0]] = p.read_bytes()
+
+    def formats(raw: bytes) -> dict[str, str]:
+        m = re.search(rb"(Hero_[A-Za-z_]+_Common~GAM\.xls)", raw)
+        return {} if m is None else {
+            n: f.key for n, f in IM.text_formats(raw, m.group(1).decode())}
+
+    out: dict[str, str] = {}
+    reworks = sorted((int(m.group(2)), m.group(1), s) for s in files
+                     if (m := _REWORK_RE.match(s)) and m.group(1) in files)
+    for _n, base, stem in reworks:  # a later update's rework wins
+        new = formats(files[stem])
+        for name, key in formats(files[base]).items():
+            if name in new and new[name] != key:
+                out[key] = new[name]
+    return out
+
+
+def live_card_keys(hero_token: str, key_base: str, bank_keys,
+                   reworks: dict[str, str] | None = None) -> tuple[str | None, str | None]:
+    """``card_keys`` with a rework's description key in place of the one it
+    shadows: the text the game actually shows for the card. Pass ``reworks``
+    (``rework_desc_keys``) when resolving many cards of one hero."""
+    name, desc = card_keys(key_base, bank_keys)
+    if desc is not None:
+        if reworks is None:
+            reworks = rework_desc_keys(hero_token)
+        new = reworks.get(desc)
+        if new is not None and new in set(bank_keys):
+            desc = new
+    return name, desc
+
+
 def _text_key_base(source: str, bank_keys: list[str] | None = None,
                    own: list[str] | None = None) -> str:
     """``Attack Dive`` -> ``Skill_Attack_Dive``; ``Primary Bleed`` ->
@@ -165,8 +227,6 @@ def controller_key_bases(hero_token: str) -> dict[str, list[str]]:
     A row holds its card's key in a text field, or links to a ``String Format``
     part that does (the base ultimates ``Ultimate Power 1/2`` do). Empty for a
     hero with no entity in the corpus."""
-    import re
-
     from ...engine import entity_fields as EF
     from ...engine import entity_graph as EG
 
@@ -267,7 +327,7 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
     bank_keys = TP.parse_text_file(base_gen).entries
     own = controller_key_bases(hero_token).get(source.strip().removeprefix("Skill Controller "))
     key_base = _text_key_base(source, bank_keys, own)
-    name_key, desc_key = card_keys(key_base, bank_keys)
+    name_key, desc_key = live_card_keys(hero_token, key_base, bank_keys)
     overrides: dict[str, str] = {}
     if display_name is not None:
         overrides[name_key or f"{key_base}_Name"] = str(display_name)
@@ -297,6 +357,7 @@ def _require_bank(hero_token: str) -> tuple[Path, str]:
 
 
 _ENTITY_DIR = "EntitySettings/Heroes"
+_ENTITY_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 
 
 def _slot_icon_texture(hero_token: str, controller: str) -> str:
