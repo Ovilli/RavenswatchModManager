@@ -34,7 +34,7 @@ def test_an_unedited_file_writes_back_byte_identical():
 @needs
 def test_every_sub_object_in_piper_has_one_known_owner():
     owned, ambiguous = _piper().pointers()
-    assert len(owned) == 468 and ambiguous == {}
+    assert len(owned) == 466 and ambiguous == {}       # 468 before Update 6
 
 
 @needs

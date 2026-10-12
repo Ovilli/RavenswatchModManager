@@ -1,15 +1,17 @@
 """A mod item's own icon must be preloaded by the versiondef cache.
 
-Of the 599 shipped resource caches, only ``LiveOps5.versiondef.UsedRscCache.ot``
+Of the 599 shipped resource caches, only ``LiveOps6.versiondef.UsedRscCache.ot``
 lists item icons (all 94 ``Objects\\UI_Object_*`` textures), so an icon the mod
 adds under its own name has no other preloader.
 """
 
 from __future__ import annotations
 
+import json
+
 from rsmm.engine import cipher
 from rsmm.engine import versiondef as V
-from rsmm.engine.paths import BACKUP_SUFFIX, COOKING_REL
+from rsmm.engine.paths import BACKUP_SUFFIX, COOKING_REL, REPO_ROOT
 
 ICON = "Ui/Objects/UI_Object_Zz_Test_Item.png.Texture.dxt"
 ENTITY = ("EntitySettings/Objects/Magical_Objects/Common/"
@@ -61,3 +63,10 @@ def test_a_shipped_icon_repoint_adds_no_duplicate(tmp_path):
                       dry_run=False)
     body = cache.read_bytes().decode("latin1").splitlines()
     assert body.count("Ui|Objects\\UI_Object_GreenArmor.png|oCTexture") == 1
+
+
+def test_versiondef_leaf_is_shipped():
+    """The game loads one LiveOps manifest by name and deletes the old one on a
+    content update; a stale stem registers items into a file nothing reads."""
+    shipped = set(json.loads((REPO_ROOT / "data" / "asset_map.json").read_text()).values())
+    assert f"Versions\\{V.VERSIONDEF_STEM}.versiondef.ot" in shipped

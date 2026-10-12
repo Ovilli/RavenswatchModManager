@@ -63,14 +63,18 @@ _HERODEF_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 
 
 def _hero_token(hero: str) -> str | None:
-    """Canonical herodef stem for a hero name (e.g. ``Snow_Queen``)."""
-    # `Sun_Wukong`, `Sun Wukong` and the folder spelling `SunWukong` are all
-    # the same hero.
-    low = hero.lower().replace(" ", "").replace("_", "")
-    for stem in corpus.stems(_HERODEF_DIR, _HERODEF_SUFFIX):
-        if stem.lower().replace("_", "") == low:
-            return stem
-    return None
+    """Current herodef stem for a hero name (``Snow_Queen`` ->
+    ``Snow_Queen_Update6``); spelling-insensitive, see ``herodefs.stem``."""
+    from ...engine import herodefs
+    return herodefs.stem(hero)
+
+
+def _name_of(hero_token: str) -> str:
+    """The hero NAME a token stands for: text banks and entity folders are
+    named after the hero (``Hero_Piper_Common``, ``Hero_Piper/``), never after
+    a revised herodef (``Piper_Update6``)."""
+    from ...engine import herodefs
+    return herodefs.hero_name(hero_token)
 
 
 #: Controller-name prefix -> text-key prefix. A hero's rows are named after the
@@ -166,7 +170,7 @@ def controller_key_bases(hero_token: str) -> dict[str, list[str]]:
     from ...engine import entity_fields as EF
     from ...engine import entity_graph as EG
 
-    low = hero_token.replace("_", "").lower()
+    low = _name_of(hero_token).replace("_", "").lower()
     for d in corpus.subdirs(_ENTITY_DIR):
         if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low:
             raw = corpus.read(f"{_ENTITY_DIR}/{d}/{d}.entity.ot.EntitySettingsResource.gen")
@@ -211,6 +215,7 @@ def _install_bank(hero_token: str):
         return None
     # apply-layer asset map is decoded->encoded with forward-slash keys.
     amap = load_asset_map()
+    hero_token = _name_of(hero_token)
     decoded = f"Text/Hero_{hero_token}_Common~GAM.xls.LocalText.gen"
     enc = amap.get(decoded)
     if not enc:
@@ -312,7 +317,7 @@ def _slot_icon_texture(hero_token: str, controller: str) -> str:
     pat = struct.pack("<I", len(name)) + name.encode("ascii")
     # The herodef token and the entity folder can spell a hero differently
     # (herodef `Sun_Wukong`, folder `Hero_SunWukong`), so compare without `_`.
-    low = hero_token.replace("_", "").lower()
+    low = _name_of(hero_token).replace("_", "").lower()
     dirs = [d for d in corpus.subdirs(_ENTITY_DIR)
             if d.startswith("Hero_") and d[5:].replace("_", "").lower() == low]
     for d in dirs:

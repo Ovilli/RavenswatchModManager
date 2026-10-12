@@ -26,7 +26,8 @@ _MO_SUFFIX = ".entity.ot.EntitySettingsResource.gen"
 
 
 def _heroes() -> list[str]:
-    return corpus.stems("Definitions/Heroes", ".herodef.ot.DtHeroDefinition.gen")
+    from rsmm.engine import herodefs
+    return herodefs.names()
 
 
 def _bosses() -> list[str]:

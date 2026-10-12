@@ -86,6 +86,7 @@ def test_the_preload_caches_are_found_on_a_players_install(install_only):
     CK._cache_index.cache_clear()
     try:
         hits = [k for k, v in CK._cache_index().items() if REF in v]
-        assert "Definitions/Heroes/Piper.herodef.UsedRscCache.ot" in hits
+        from rsmm.engine import herodefs
+        assert f"Definitions/Heroes/{herodefs.stem('Piper')}.herodef.UsedRscCache.ot" in hits
     finally:
         CK._cache_index.cache_clear()

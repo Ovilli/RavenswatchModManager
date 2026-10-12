@@ -128,12 +128,34 @@ PARENTS: dict[str, str] = {
 #: The resource root every parent reference is filed under.
 _PARENT_ROOT = "EntitySettings"
 
-#: Bytes between the end of the parent list and the record's END marker: a u32
-#: field (0xffffffff on most entities, a small enum on 127 of them) plus two
-#: zero u32s -- and, on 127 entities, one more u32. Both shapes appear in the
-#: shipped corpus and nothing else does, so this doubles as the walk's proof:
-#: land anywhere but here and the offsets were wrong.
-_TAIL_SIZES = (16, 20)
+#: What follows the parent list, up to the record's END marker: a u32 field
+#: (0xffffffff on most entities, a small enum on the rest), a u32 flag, one more
+#: u32 when that flag is 1, then a second reference list -- u32 count, count x
+#: (root, path) -- empty everywhere until Update 6 (2026-10-12), when Kintaro's
+#: bear form listed ``Hero_Common\Hero_Alt_Form_Common.entity.ot`` there.
+#: Walking it exactly doubles as the walk's proof: land anywhere but the END
+#: and the offsets were wrong. :func:`_tail_end` is that walk.
+
+
+def _tail_end(payload: bytes, o: int) -> int | None:
+    """Offset just past the trailer that follows the parent list at ``o``,
+    or None when the bytes there are not that trailer."""
+    try:
+        o += 4                                          # u32 field
+        (flag,) = struct.unpack_from("<I", payload, o)
+        o += 4 + (4 if flag == 1 else 0)
+        (count,) = struct.unpack_from("<I", payload, o)
+        o += 4
+        if count > 64:
+            return None
+        for _ in range(2 * count):                      # root, path
+            (n,) = struct.unpack_from("<I", payload, o)
+            if n > 300:
+                return None
+            o += 4 + n
+    except struct.error:
+        return None
+    return o + 4 if payload[o:o + 4] == cooked.MARK_END else None
 
 
 #: name -> (donor entity ref, component class).
@@ -312,11 +334,11 @@ def _parent_list_span(payload: bytes) -> tuple[int, int, list[tuple[str, str]]]:
     except (struct.error, UnicodeDecodeError) as e:
         raise EntityComponentError(f"parent list is not walkable: {e}") from e
 
-    if len(payload) - o not in _TAIL_SIZES or payload[-4:] != cooked.MARK_END:
+    if _tail_end(payload, o) != len(payload):
         raise EntityComponentError(
             f"parent list ends {len(payload) - o} bytes before the record end, "
-            f"which is not one of {_TAIL_SIZES} — refusing to edit a record "
-            f"this walk does not understand")
+            f"and those bytes are not the known trailer — refusing to edit a "
+            f"record this walk does not understand")
     return start, o, entries
 
 

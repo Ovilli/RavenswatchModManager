@@ -4461,8 +4461,11 @@ end
 
 --- Hero name for a lobby `RequestedHero` id, or nil.
 ---
---- The twelve shipped `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
---- order. INFERRED, not read from the engine: the id is not stored in the
+--- The twelve pre-Update-6 `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
+--- order. Update 6 (2026-10-12) added Kintaro; if the id really is alphabetical
+--- he lands at 5 and shifts Melusine..Sun_Wukong up by one, but no lobby on that
+--- build has been observed yet, so the table keeps the one mapping that WAS
+--- observed until a session confirms either way. INFERRED, not read from the engine: the id is not stored in the
 --- herodef payload, so this is positional. It matches every observation to
 --- hand -- session 304f had the local player at RequestedHero 10, and index 10
 --- is Snow_Queen, which is also the one hero `_HERO_SIGNATURES` was seeded from

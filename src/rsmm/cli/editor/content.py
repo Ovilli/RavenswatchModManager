@@ -309,11 +309,9 @@ def _herodefs() -> dict[str, str]:
 
     The two spellings differ for some heroes; a folder with no herodef
     (``Pets``, the unreleased ``Alice``) is not a playable hero."""
-    from rsmm.engine import corpus
-    from rsmm.sdk.kinds import skills as S
+    from rsmm.engine import corpus, herodefs
 
-    defs = {s.replace("_", "").lower(): s
-            for s in corpus.stems(S._HERODEF_DIR, S._HERODEF_SUFFIX)}
+    defs = {n.replace("_", "").lower(): s for n, s in herodefs.stems().items()}
     out = {}
     for d in corpus.subdirs(_HEROES_DIR):
         name = d.removeprefix("Hero_")
@@ -1098,10 +1096,12 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             fields[FILES] = {rel: _upload_png(card["iconUpload"], f"{source} icon")}
         if not fields:
             continue
-        # The skill kind names a hero by its herodef (``Sun_Wukong``), the
-        # talent kind by its folder (``SunWukong``).
+        # The skill kind names a hero by its herodef name (``Sun_Wukong``),
+        # the talent kind by its folder (``SunWukong``). The name, never the
+        # stem: a manifest saying ``Sun_Wukong_Update6`` breaks next update.
+        from rsmm.engine import herodefs
         out.append(("skill", sid, {"kind": "skill", "id": sid,
-                                   "hero": _herodefs().get(hero, hero),
+                                   "hero": herodefs.hero_name(_herodefs().get(hero, hero)),
                                    "source": source, **fields}))
     if not out:
         raise EditorError(_NOTHING)

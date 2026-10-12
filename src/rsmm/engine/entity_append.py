@@ -265,8 +265,7 @@ class _Accessors:
         self._section_of: dict[bytes, int] = {}
         self.by_target: dict[bytes, Counter] = {}
         self.by_class: dict[str, Counter] = {}
-        self.format_entry = (names.index("oCStringFormatEntryPicker")
-                             if "oCStringFormatEntryPicker" in names else -1)
+        self.format_entry = cooked.format_entry_index(names)
         self.value_picker = (names.index("oCEntityCpntValuePicker")
                              if "oCEntityCpntValuePicker" in names else -1)
         #: display option of every String Format slot that reads a target
@@ -343,7 +342,8 @@ class _Accessors:
 
 
 def format_slot_at(buf: bytes, picker_begin: int, acc: _Accessors) -> int | None:
-    """Offset of the `oCStringFormatEntryPicker` a picker is the value of, or None.
+    """Offset of the String Format slot a picker is the value of, or None
+    (the slot's class is any of `cooked.FORMAT_ENTRY_CLASSES`).
 
     A talent card's slot is ``BEGIN entry, u32 class, u32 FORMAT TYPE, BEGIN
     value picker, u32 class, u16 flags, BEGIN picker ...`` and, after the value

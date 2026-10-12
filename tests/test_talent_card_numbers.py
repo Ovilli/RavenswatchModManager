@@ -90,4 +90,7 @@ def test_the_card_numbers_that_cannot_be_traced_stay_few():
                 if not any((c["file"], n) in labels for n in names):
                     unresolved += 1
     assert named > 300
-    assert unresolved <= 40, f"{unresolved} of {named} card placeholders have nothing editable"
+    # 40 before Update 6 (2026-10-12), which added 26 untraced placeholders of
+    # its own -- Kintaro's cards (9) and the new Special Quest Dream Shard
+    # talents (Romeo 9, Juliet 8) -- not cards that lost their numbers.
+    assert unresolved <= 50, f"{unresolved} of {named} card placeholders have nothing editable"
