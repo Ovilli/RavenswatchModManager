@@ -345,13 +345,14 @@ def talent_values(hero: str) -> list[dict]:
 
     files = []
     on_cards = _card_labels(hero)
+    redirects = _redirects(hero)
     for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
         data = p.read_bytes()
         seen: set[str] = set()
         rows = []
         stem = p.name.split(".entity.ot.", 1)[0]
         for v in list_talent_values(data, extra_labels=on_cards.get(stem, ())):
-            if v.is_spawner or v.label in seen:
+            if v.is_spawner or v.label in seen or (stem, v.label) in redirects:
                 continue
             seen.add(v.label)
             kind = "bool" if v.type_code == TYPE_BOOL else "int" if v.is_int else "float"
@@ -365,6 +366,33 @@ def talent_values(hero: str) -> list[dict]:
             files.append({"file": p.name.split(".entity.ot.", 1)[0], "values": rows,
                           "modifiers": mods})
     return files
+
+
+@_once
+def _redirects(hero: str) -> dict[tuple[str, str], str]:
+    """``(base file, label)`` -> the rework file whose copy the game reads.
+
+    A rework (``Hero_X_Update6`` over ``Hero_X``) re-declares some values under
+    the same name, and the game reads its copy. An edit to the base copy writes
+    a value nothing reads, so the editor lists the rework's copy instead. Only a
+    file's own counterpart counts (``Hero_X`` and ``Hero_X_Update6``); a value
+    another file's rework shadows keeps its picker's override flag."""
+    from rsmm.engine import corpus
+    from rsmm.engine.talent_values import list_talent_values
+    from rsmm.sdk.kinds import skills as S
+
+    files = {p.name.split(".entity.ot.", 1)[0]: p.read_bytes()
+             for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX)}
+    labels = {f: {v.label for v in list_talent_values(b)} for f, b in files.items()}
+    out: dict[tuple[str, str], str] = {}
+    for base in sorted(files):
+        if S.is_rework(base):
+            continue
+        for rw in sorted(files):
+            if rw != base and re.fullmatch(re.escape(base) + r"_Update_?\d+", rw):
+                for label in labels[base] & labels[rw]:
+                    out[(base, label)] = rw
+    return out
 
 
 @_once
@@ -394,6 +422,7 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
         vals = []
     text = dict(zip(keys, vals, strict=False))
     formats = _hero_formats(hero)
+    redirects = _redirects(hero)
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out, skipped = [], []
     own = S.controller_key_bases(_herodefs()[hero])
@@ -421,8 +450,12 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
         refs = []
         for e in entries:
             for label in ([e["node"]] if e and e["kind"] == "Value" else e["sources"] if e else []):
-                ref = {"file": e["file"], "label": label}
-                if (e["file"], label) in labels and ref not in refs:
+                # A value a rework redefines is read from the rework's file.
+                f = redirects.get((e["file"], label), e["file"])
+                if f != e["file"]:
+                    e.setdefault("valueFiles", {})[label] = f
+                ref = {"file": f, "label": label}
+                if (f, label) in labels and ref not in refs:
                     refs.append(ref)
         icon = _card_icon(hero, source)
         out.append({"source": source, "base": base,

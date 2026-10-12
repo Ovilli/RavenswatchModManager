@@ -1355,7 +1355,7 @@ function talentFill(c) {
       chip.title = "{" + n + "}: set inside the talent";
       return chip;
     }
-    return placeholder(n, next, e, label => talentCurrent(e.file || c.file, label));
+    return placeholder(n, next, e, label => talentCurrent(valueFile(c, e, label), label));
   };
 }
 // The added stat a card's {n} shows, if n is past the card's own numbers.
@@ -1626,13 +1626,16 @@ function shortLabel(label, source) {
   return out || label;
 }
 
+// The file a card's value is read from: its rework's copy when a rework
+// redefines it (the backend sets valueFiles), else the entry's own file.
+function valueFile(c, e, label) { return (e.valueFiles || {})[label] || e.file || c.file; }
+
 // The numbers behind a card's {N}, each where it can be edited.
 function talentNumbers(c, redraw) {
   const E = S.talentEdit, box = el("div", { class: "tnums" });
   c.entries.forEach((e, n) => {
     const tag = el("span", { class: "phn", text: "{" + n + "}" });
     if (!e) { box.append(el("div", { class: "tnote" }, tag, "set inside the talent, not editable here")); return; }
-    // A reworked card can read some numbers from the file its rework shadows.
     const file = e.file || c.file;
     if (e.single) {
       // One number, no rarity: a selector with a single entry (the Ice Clone's
@@ -1683,14 +1686,14 @@ function talentNumbers(c, redraw) {
       return;
     }
     const labels = e.kind === "Value" ? [e.node] : e.sources;
-    const rows = labels.map(l => [l, talentValue(file, l)]).filter(([, r]) => r);
+    const rows = labels.map(l => [l, talentValue(valueFile(c, e, l), l)]).filter(([, r]) => r);
     if (!rows.length) { box.append(el("div", { class: "tnote" }, tag, e.node + " — worked out in game")); return; }
     for (const [label, r] of rows) {
-      const key = file + "\u0000" + label;
+      const vf = valueFile(c, e, label), key = vf + "\u0000" + label;
       const vr = valueRow((e.kind === "Value" ? "" : "from ") + shortLabel(label, c.source), r.value, r.type, r.shadowed,
         E.values[key] ? E.values[key].new : undefined, nv => {
           if (nv === undefined) delete E.values[key];
-          else E.values[key] = { file, label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
+          else E.values[key] = { file: vf, label, type: r.type, old: r.value, new: nv, shadowed: r.shadowed };
           redraw(); refresh();
         });
       vr.querySelector(".lbl").prepend(tag.cloneNode(true), " ");

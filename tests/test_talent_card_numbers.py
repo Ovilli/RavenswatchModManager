@@ -87,7 +87,8 @@ def test_the_card_numbers_that_cannot_be_traced_stay_few():
                 if e.get("tiers") or e.get("single"):
                     continue
                 names = [e["node"]] if e["kind"] == "Value" else e["sources"]
-                if not any((e.get("file", c["file"]), n) in labels for n in names):
+                if not any((e.get("valueFiles", {}).get(n, e.get("file", c["file"])), n)
+                           in labels for n in names):
                     unresolved += 1
     assert named > 300
     # 40 before Update 6 (2026-10-12), which added 26 untraced placeholders of
