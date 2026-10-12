@@ -19,7 +19,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts/bump-version.py"
 
-# The four files the script rewrites, with just enough content to be parseable.
+# The files the script rewrites, with just enough content to be parseable.
 FIXTURES = {
     "apps/desktop/src-tauri/tauri.conf.json": '{\n  "version": "0.1.0"\n}\n',
     "apps/desktop/src-tauri/Cargo.toml": '[package]\nname = "rsmm-desktop"\nversion = "0.1.0"\n',
@@ -27,6 +27,7 @@ FIXTURES = {
         '[[package]]\nname = "rsmm-desktop"\nversion = "0.1.0"\n'
     ),
     "apps/desktop/package.json": '{\n  "name": "desktop",\n  "version": "0.1.0"\n}\n',
+    "pyproject.toml": '[project]\nname = "rsmm"\nversion = "0.1.0"\n',
 }
 
 
