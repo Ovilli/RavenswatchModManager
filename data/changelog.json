@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-12",
+  "generated": "2026-10-13",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 43,
+      "date": "2026-10-13",
+      "summary": "update-loader",
+      "highlights": [
+        "update-loader"
+      ]
+    },
     {
       "version": "",
       "loader_version": 42,
