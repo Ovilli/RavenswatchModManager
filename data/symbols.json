@@ -2118,6 +2118,30 @@
    ]
   },
   {
+   "name": "AdditionalContentGate_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1406979e0",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::AdditionalContentGameUnlockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Ownership / entitlement gate (DLC and bought content). Body is `cmp dword [rcx+0x28], 3; sete al; ret`, the vftable slot 14 of oe::AdditionalContentGameUnlockConditionData, verified in Ravenswatch.exe 2026-10-13 (vtable 0x140f27a70, RTTI name checked). Hooked by R.hero.unlock_progression only when the mod opts in to ownership gates (the unlock-heroes mod), which opens every ownership-gated hero for every player on the mod, including paid DLC. Replaces the stale 0x140699250 address in the older notes, which no longer holds this function.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
    "name": "HeroRankLock_IsUnlocked",
    "kind": "function",
    "category": "heroes",

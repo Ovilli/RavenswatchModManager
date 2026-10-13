@@ -19,6 +19,13 @@ inline AchievementDef_PostLoad_fn AchievementDef_PostLoad() {
     return reinterpret_cast<AchievementDef_PostLoad_fn>(rsmm::fn_resolve(Sym::AchievementDef_PostLoad_Pattern));
 }
 
+// AdditionalContentGate_IsUnlocked  (AdditionalContentGate_IsUnlocked)
+//   bool(void* condition_data)
+using AdditionalContentGate_IsUnlocked_fn = uint32_t(*)(void*);
+inline AdditionalContentGate_IsUnlocked_fn AdditionalContentGate_IsUnlocked() {
+    return reinterpret_cast<AdditionalContentGate_IsUnlocked_fn>(rsmm::fn_resolve(Sym::AdditionalContentGate_IsUnlocked_Pattern));
+}
+
 // Analytics_SubmitNamedEvent  (Analytics_SubmitNamedEvent)
 //   void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)
 using Analytics_SubmitNamedEvent_fn = void(*)(void*, void*, void*, uint32_t);

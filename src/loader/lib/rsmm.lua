@@ -1788,13 +1788,12 @@ R.hero = {}
 -- save — Profile_*.ob is checksummed and Steam Cloud would fight an edit
 -- anyway, so a runtime hook is the durable answer.
 --
--- WHAT THIS DELIBERATELY DOES NOT TOUCH
--- oe::AdditionalContentGameUnlockConditionData::vftable[14] is the same slot on
--- the same base, and its body is `return *(int*)(this+0x28) == 3` — the
--- OWNERSHIP check. Forcing that would hand out content the player has not
--- bought, so it has no symbol in data/symbols.json and cannot be reached from
--- here. A hero gated on ownership stays locked; only progression, rank, story
--- and challenge gates open.
+-- OWNERSHIP GATES ARE OPENED TOO (a choice, 2026-10-13). The
+-- oe::AdditionalContentGameUnlockConditionData::vftable[14] body is
+-- `return *(int*)(this+0x28) == 3` (AdditionalContentGate_IsUnlocked). It is
+-- hooked with the progression gates, so EVERY ownership-gated hero opens for
+-- anyone running this mod, paid DLC included (Merlin). Nothing is written to the
+-- save. The mod's README warns about it.
 --
 -- Returns the number of gates opened (0 if the symbols are unavailable on this
 -- build, which fails closed rather than guessing at an address).
@@ -1803,6 +1802,7 @@ local PROGRESSION_GATES = {
     "HeroRankLock_IsUnlocked",
     "HeroStoryUnlock_IsUnlocked",
     "ChallengeUnlock_IsUnlocked",
+    "AdditionalContentGate_IsUnlocked",
 }
 local _gates_hooked = false
 
@@ -1823,7 +1823,7 @@ function R.hero.unlock_progression()
         end
     end
     R.log(("[rsmm.hero] progression gates opened: %d/%d "
-           .. "(ownership gates untouched)"):format(n, #PROGRESSION_GATES))
+           .. "(ownership gates included)"):format(n, #PROGRESSION_GATES))
     return n
 end
 

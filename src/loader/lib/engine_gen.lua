@@ -7,6 +7,7 @@
 -- f=float d=double s=string (see script_lua.cpp::lua_call_native).
 return {
   ["AchievementDef_PostLoad"] = { pattern = "AchievementDef_PostLoad", offset = 0x0, sig = "up" },
+  ["AdditionalContentGate_IsUnlocked"] = { pattern = "AdditionalContentGate_IsUnlocked", offset = 0x0, sig = "up" },
   ["Analytics_SubmitNamedEvent"] = { pattern = "Analytics_SubmitNamedEvent", offset = 0x0, sig = "vpppu" },
   ["BinarySaver_WriteGraph"] = { pattern = "BinarySaver_WriteGraph", offset = 0x0, sig = "upppp" },
   ["BinarySaver_WriteObject"] = { pattern = "BinarySaver_WriteObject", offset = 0x0, sig = "upppu" },

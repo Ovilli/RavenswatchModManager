@@ -9446,6 +9446,7 @@ do
         "HeroRankLock_IsUnlocked",
         "HeroStoryUnlock_IsUnlocked",
         "ChallengeUnlock_IsUnlocked",
+        "AdditionalContentGate_IsUnlocked",
     }
     local vas = {}
     for i, name in ipairs(gates) do vas[i] = I.resolve(name) end
@@ -9458,11 +9459,11 @@ do
         check(hooks[vas[i]].cb(0x1000) == 1, name .. " answers true")
     end
 
-    -- THE LINE THAT MUST NOT MOVE. Ownership is the same slot on the same
-    -- base; it has no symbol precisely so it cannot be reached from here.
-    local owner_va = I.resolve("AdditionalContentUnlock_IsUnlocked")
-    check(hooks[owner_va] == nil,
-          "the ownership condition is NOT hooked — unbought content stays locked")
+    -- Ownership is opened too (a deliberate choice, 2026-10-13): every
+    -- ownership-gated hero, paid DLC included, is selectable for anyone on the mod.
+    local owner_va = I.resolve("AdditionalContentGate_IsUnlocked")
+    check(hooks[owner_va] ~= nil and hooks[owner_va].cb(0x1000) == 1,
+          "the ownership condition is hooked and answers true")
 
     check(R.hero.unlock_progression() == 0,
           "a second call reports 0 rather than re-installing")

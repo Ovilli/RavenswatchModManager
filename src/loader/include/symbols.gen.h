@@ -289,6 +289,8 @@ constexpr const char* XpComponent_XpForLevel_Pattern = "XpComponent_XpForLevel";
 constexpr std::uintptr_t XpComponent_vftable = 0x140f1fad0ull;
 
 // --- heroes ---
+constexpr std::uintptr_t AdditionalContentGate_IsUnlocked = 0x1406979e0ull;
+constexpr const char* AdditionalContentGate_IsUnlocked_Pattern = "AdditionalContentGate_IsUnlocked";
 constexpr std::uintptr_t ChallengeUnlock_IsUnlocked = 0x1402abce0ull;
 constexpr const char* ChallengeUnlock_IsUnlocked_Pattern = "ChallengeUnlock_IsUnlocked";
 constexpr std::uintptr_t HeroDef_Deserialize = 0x14031a570ull;

@@ -8,6 +8,7 @@ ADDR: dict[str, int] = {
     "AbilityController_Ctor": 0x1402c8db0,
     "Account_GetDisplayName": 0x140928620,
     "AchievementDef_PostLoad": 0x14030cb90,
+    "AdditionalContentGate_IsUnlocked": 0x1406979e0,
     "AnalyticsBag_SetInt": 0x14020abf0,
     "AnalyticsBag_SetString": 0x140201c10,
     "Analytics_EmitActiveBoss": 0x1401f9170,
@@ -338,6 +339,7 @@ ADDR: dict[str, int] = {
 PATTERN: dict[str, str] = {
     "Account_GetDisplayName": "Account_GetDisplayName",
     "AchievementDef_PostLoad": "AchievementDef_PostLoad",
+    "AdditionalContentGate_IsUnlocked": "AdditionalContentGate_IsUnlocked",
     "Analytics_SubmitNamedEvent": "Analytics_SubmitNamedEvent",
     "BinarySaver_WriteGraph": "BinarySaver_WriteGraph",
     "BinarySaver_WriteObject": "BinarySaver_WriteObject",
