@@ -54,25 +54,26 @@ end
 --   "exit"  — DLL is being unloaded
 --
 -- Typed gameplay events (from data/symbols.json kind="event"; run
--- `rsmm symbols events` for the live list). Enable with
--- RSMM_ENABLE_GAME_EVENTS=1:
+-- `rsmm symbols events` for the live list). Armed by default; opt out with
+-- RSMM_DISABLE_GAME_EVENTS=1:
 --   "level_up" -> { level },  "run_end"
 --
--- Analytics firehose (same RSMM_ENABLE_GAME_EVENTS=1 gate). The game
+-- Analytics firehose (same RSMM_DISABLE_GAME_EVENTS=1 opt-out). The game
 -- funnels ~37 named analytics events through one telemetry sink
 -- (Analytics_SubmitNamedEvent); the loader detours it once and
 -- re-publishes EVERY event to this bus by its raw name — no per-event
--- wiring, and new names the game adds appear automatically. Confirmed:
---   "game_start" "run_start" "matchmaking_start" "matchmaking_end"
---   "chapter_end" "levelup_run" "level_up_book" "enemy_killed"
---   "unlock_skill" "unlock_object" "unlock_hero" "unlock_level_nightmare"
---   "event_start" "event_end"
+-- wiring, and new names the game adds appear automatically. The full list,
+-- with fields and confirmation status, is data/symbols.json::event_catalog
+-- (e.g. "chapter_end", "skill_selected", "object_selected", "hero_death",
+-- "sandman_buy", "levelup_run"). Note "enemy_killed" and "level_reached"
+-- are FIELDS of "chapter_end", not events — use "gameplay:ENEMY_KILLED".
 -- OBSERVATION-grade: they fire after the action and carry the analytics
 -- payload, not a live entity handle. Great for "when X happens, do Y"
 -- triggers; to mutate the actor use the oCGameNamedEvent gameplay bus
 -- below.
 --
--- Gameplay bus events (RSMM_ENABLE_GAMEPLAY_EVENTS=1) arrive as
+-- Gameplay bus events (on by default; RSMM_DISABLE_GAMEPLAY_EVENTS=1 opts
+-- out) arrive as
 -- "gameplay:<NAME>" — entity-context events the game itself dispatches
 -- (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, REMOVE_*_OBJECT,
 -- CINE_START/STOP, ...; full map in docs/_re/kinds/events-bus.md). Their
