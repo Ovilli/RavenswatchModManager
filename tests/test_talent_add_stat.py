@@ -551,6 +551,24 @@ def test_two_stats_on_one_talent_in_one_block_get_their_own_guids(tmp_path, wuko
     assert len(comp(path.read_bytes(), "Skill Trait Fire", "StateSettings").refs) == 2
 
 
+def test_one_stat_on_three_talents_in_one_block_get_their_own_guids(tmp_path, wukong):
+    # Same seed, same stat, different talents: the editor's "TRAIT cooldown on
+    # Fiery Dragon, Frost Tiger and Supreme Polarity" failed on the second one.
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    trio = ("Trait Fire", "Trait Frost", "Trait Better Stances")
+    defn = ContentDef(kind="talent", id="three", fields={
+        "hero": "SunWukong",
+        "add_stats": [{"talent": t, "stat": "CD reduce trait", "values": [0.10, 0.15, 0.20, 0.25]}
+                      for t in trio],
+    })
+    [path] = talents.emit("test-mod", defn, tmp_path)
+    names = {c.name for c in EG.parse(path.read_bytes()).components}
+    for t in trio:
+        assert any(n.startswith(f"Skill {t} Added ") and n.endswith(" Modifier") for n in names), t
+
+
 # --- game state is not a stat ---------------------------------------------------
 
 def test_game_state_is_told_apart_from_stats(wukong):

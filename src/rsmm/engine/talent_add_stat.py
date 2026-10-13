@@ -577,8 +577,10 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
     donor = GE.EntityFile(donor_raw)
     # The tag is always part of it: the talent kind passes one seed per block,
     # and two stats on one talent copy the same selector, so without the tag
-    # their copies minted the same GUID and the second entry failed.
-    seed = f"{seed or talent}:{tag}"
+    # their copies minted the same GUID and the second entry failed. The talent
+    # is part of it too: one stat on two talents of a block (TRAIT cooldown on
+    # Fiery Dragon AND Frost Tiger) minted the same GUIDs the same way.
+    seed = f"{seed}:{talent}:{tag}" if seed else f"{talent}:{tag}"
     try:
         ef.clone([sel.name], rename={sel.name: new_sel}, seed=seed + ":sel")
         donor_mod = donor.component(DONOR_MODIFIER)
