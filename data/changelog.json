@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-13",
+  "generated": "2026-10-15",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 44,
+      "date": "2026-10-15",
+      "summary": "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange.",
+      "highlights": [
+        "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange."
+      ]
+    },
     {
       "version": "",
       "loader_version": 43,
@@ -507,19 +516,6 @@
         "Several talent or text changes in one mod now all apply. Before, only the last one took effect.",
         "Relabelling Sun Wukong's talents works; his text could not be found before.",
         "New CLI command: rsmm publish uploads a mod to the store, signed in with a personal API token."
-      ]
-    },
-    {
-      "version": "5.7.0",
-      "date": "2026-09-13",
-      "summary": "Edit the Sandman's shop from a config screen dressed in the game's own art, a new item-grid config editor for mod authors, and a local 3D map-generation editor.",
-      "highlights": [
-        "New for mod authors: the shop content kind edits the Sandman's shop. Set prices, choose which items each offer slot sells (including Grimoire, Astral and Wishing Well powerups), and replace the random magical-object offers with items you pick.",
-        "New for mod authors: the item-grid config field. A mod declares sections, filters, counts, a per-item number and an optional theme of game textures in config_schema.toml, and the app draws the editor. Textures are read from your own install, never shipped with a mod.",
-        "Config dialogs for grid editors open wide and lay their sections out side by side, sized to the window and your UI scale.",
-        "A shop edit that would crash the game when the Sandman's shop opens (a Minor row with fewer than two items) is refused before it is applied.",
-        "New CLI command: rsmm map-editor opens a local 3D editor for a chapter's tile-generation recipe.",
-        "Applying mods cleans up files from content you removed, and merged text banks land in the right mods folder."
       ]
     }
   ]
