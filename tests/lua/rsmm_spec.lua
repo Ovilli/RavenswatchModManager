@@ -10632,5 +10632,52 @@ do
     R.modifier.allow_unlocks(false)
 end
 
+-- R.hero.on_roster: walks the swiss-table at roster+0x50 after the builder
+-- runs, reports full slots only, and fails closed on an absurd capacity.
+do
+    local ROSTER, CTRL, SLOTS = 0x61000000, 0x61001000, 0x61002000
+    I.write_u64(ROSTER + 0x50, CTRL)
+    I.write_u64(ROSTER + 0x58, SLOTS)
+    I.write_u64(ROSTER + 0x68, 4)                 -- capacity
+    local ctrl = { 0x12, 0x80, 0x7f, 0xfe }       -- full, empty, full, deleted
+    for i, c in ipairs(ctrl) do I.write_u8(CTRL + i - 1, c) end
+    for i = 0, 3 do
+        local slot = SLOTS + i * 0x18
+        I.write_u64(slot, 0x1000 + i)             -- key
+        I.write_u64(slot + 8, 0x62000000 + i * 0x100)   -- hero def
+        I.write_u16(slot + 0x10, i)               -- skin
+    end
+    local got
+    check(R.hero.on_roster(function(entries) got = entries end) == true, "on_roster arms the detour")
+    local va = I.resolve("RunRoster_Build")
+    check(hooks[va] and hooks[va].sig == "vpp", "roster detour installed with sig vpp")
+    local built = false
+    hooks[va].cb(0x7000, ROSTER, function() built = true end)
+    check(built and got and #got == 2, "original ran; only the two full slots reported")
+    check(got[1].key == 0x1000 and got[1].hero == 0x62000000 and got[1].skin == 0
+          and got[2].key == 0x1002 and got[2].hero == 0x62000200 and got[2].skin == 2,
+          "entry key / hero / skin read from the documented offsets")
+    -- Member names: session = this+0x98, member table at session+0x2c0,
+    -- 0x40-byte slots { id, ?, std::string @+0x10 }. Key 0x1000 has an inline
+    -- name; key 0x1002 is absent from the table.
+    local THIS, SESSION, MCTRL, MSLOTS = 0x63000000, 0x63100000, 0x63200000, 0x63300000
+    I.write_u64(THIS + 0x98, SESSION)
+    I.write_u64(SESSION + 0x2c0, MCTRL)
+    I.write_u64(SESSION + 0x2c8, MSLOTS)
+    I.write_u64(SESSION + 0x2d8, 1)
+    I.write_u8(MCTRL, 0x05)
+    I.write_u64(MSLOTS, 0x1000)
+    for i = 1, #"Ovilli" do I.write_u8(MSLOTS + 0x10 + i - 1, ("Ovilli"):byte(i)) end
+    I.write_u8(MSLOTS + 0x10 + 6, 0)
+    I.write_u64(MSLOTS + 0x20, 6)                 -- size
+    I.write_u64(MSLOTS + 0x28, 15)                -- capacity < 16 = inline
+    hooks[va].cb(THIS, ROSTER, function() end)
+    check(got and #got == 2 and got[1].member == "Ovilli" and got[2].member == nil,
+          "member name joined by key from the session member table")
+    I.write_u64(ROSTER + 0x68, 100000)            -- absurd capacity
+    hooks[va].cb(0x7000, ROSTER, function() end)
+    check(got and #got == 0, "absurd capacity fails closed to an empty list")
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -1953,6 +1953,98 @@ function R.hero.broadcast_decoy(index)
     return false
 end
 
+--- Watch the run's hero ROSTER as the game builds it at run start.
+--
+-- `cb(entries, roster)` runs right after RunRoster_Build returns, before the
+-- roster is applied and (on an online host) sent to every peer. `entries` is
+-- { { key = <u64>, hero = <hero def ptr>, skin = <u16>, slot = <entry addr>,
+--     member = <string or nil> }, ... }.
+-- The key is the session MEMBER id: the builder takes it from the session's
+-- member list (session = builder this+0x98, list from session vft[0xe8]) and
+-- looks it up in the session's member table at session+0x2c0 (same swiss-table
+-- shape, 0x40-byte slots: id +0x00, std::string +0x10). `member` is that
+-- string; what it holds (name, platform id, ...) is what this is confirming.
+-- Read-only: nothing is written and the original result is untouched. Every
+-- read is page-guarded and the walk is bounded, so a layout that is not what
+-- the RE says yields an empty list (or no `member`), never a fault.
+--
+-- Clients never build a roster (they receive the host's), so on a co-op
+-- client this never fires; solo and the online host do.
+-- Returns true when the hook is in place, false if the symbol is unavailable.
+local _roster_cbs, _roster_hooked = {}, false
+local _roster_arm
+
+function R.hero.on_roster(cb)
+    if type(cb) ~= "function" then error("R.hero.on_roster: expected a function", 2) end
+    _roster_cbs[#_roster_cbs + 1] = cb
+    return _roster_arm()
+end
+
+function _roster_arm()
+    if _roster_hooked then return true end
+    if not (R.hook and R.engine.resolve and I.read_u64 and I.read_u8 and I.read_u16) then return false end
+    local va = R.engine.resolve("RunRoster_Build")
+    if not va or va == 0 then return false end
+    -- Swiss-table at roster+0x50 (RunRoster_Build note): ctrl ptr, slots ptr,
+    -- capacity; ctrl 0x00..0x7f = full; 0x18-byte slots {key, hero, skin}.
+    local MAP_OFF, MAX_CAP = 0x50, 64
+    local SESSION_OFF, MEMBERS_OFF = 0x98, 0x2c0
+    -- Visit each full slot of a swiss-table {ctrl, slots, _, capacity}.
+    local function each_slot(map, stride, fn)
+        local ctrl  = I.read_u64(map)
+        local slots = I.read_u64(map + 0x08)
+        local cap   = I.read_u64(map + 0x18)
+        if not (_ptr_plausible(ctrl) and _ptr_plausible(slots) and cap and cap > 0 and cap <= MAX_CAP) then
+            return
+        end
+        for i = 0, cap - 1 do
+            local c = I.read_u8(ctrl + i)
+            if c and c < 0x80 then fn(slots + i * stride) end
+        end
+    end
+    -- MSVC std::string at `s`: inline buffer while capacity < 16, else a pointer.
+    local function std_string(s)
+        local size, capacity = I.read_u64(s + 0x10), I.read_u64(s + 0x18)
+        if not (size and capacity and size <= 256) then return nil end
+        local p = s
+        if capacity >= 0x10 then
+            p = I.read_u64(s)
+            if not _ptr_plausible(p) then return nil end
+        end
+        return I.read_cstr and I.read_cstr(p, size + 1) or nil
+    end
+    local function walk(this, roster)
+        local out = {}
+        if not _ptr_plausible(roster) then return out end
+        each_slot(roster + MAP_OFF, 0x18, function(slot)
+            out[#out + 1] = { key = I.read_u64(slot), hero = I.read_u64(slot + 0x08),
+                              skin = I.read_u16(slot + 0x10), slot = slot }
+        end)
+        local session = _ptr_plausible(this) and I.read_u64(this + SESSION_OFF)
+        if _ptr_plausible(session) then
+            local names = {}
+            each_slot(session + MEMBERS_OFF, 0x40, function(slot)
+                local id = I.read_u64(slot)
+                if id then names[id] = std_string(slot + 0x10) end
+            end)
+            for _, e in ipairs(out) do e.member = names[e.key] end
+        end
+        return out
+    end
+    local ok, slot = pcall(R.hook, va, "vpp", function(this, roster, next)
+        next(this, roster)
+        local entries = walk(this, roster)
+        for i = 1, #_roster_cbs do
+            local ran, err = pcall(_roster_cbs[i], entries, roster)
+            if not ran then R.log("[rsmm.hero] roster handler error: " .. tostring(err)) end
+        end
+        return 0
+    end)
+    _roster_hooked = ok and slot ~= nil
+    if not _roster_hooked then R.log("[rsmm.hero] roster hook failed: " .. tostring(slot)) end
+    return _roster_hooked
+end
+
 function R.hero.handle() return _give_hero end
 function R.hero.ready()  return _give_hero ~= nil end
 

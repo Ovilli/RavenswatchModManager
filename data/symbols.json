@@ -2184,7 +2184,13 @@
     ],
     "note": "the only caller of HeroSelect_IsHeroAvailable that returns a code"
    },
-   "note": "Why the hero-select CONFIRM is refused, as a code: 0 = go ahead, 1 = a type check on the screen state failed before anything was asked, 2 = HeroSelect_IsHeroAvailable said the hero is taken (`mov ecx,2; xor edx,edx; test al,al; cmovne ecx,edx`). THE COMMIT PATH IS GATED ON IT: the click handler FUN_1403e9300 does `call HeroSelect_ConfirmBlockReason; test eax,eax; jne ->bail`, so a non-zero return is a click that does visibly nothing. Its other two callers (FUN_1403e77bf, FUN_1403e7d20) are the draw paths that decide the padlock, so forcing 0 keeps the button's look and its behaviour consistent. \u26a0 This is the gate to force, not its callee. Forcing HeroSelect_IsHeroAvailable only removes reason 2 \u2014 reason 1 returns before the callee is ever consulted, which is exactly what was measured in-game 2026-09-01: the availability hook fires, the padlock hook takes the button off its lock, and the click still does nothing. The solo path never reaches this: FUN_1403e9300 first calls FUN_14026dd30 (true when the lobby holds one member) and commits directly."
+   "note": "Why the hero-select CONFIRM is refused, as a code: 0 = go ahead, 1 = a type check on the screen state failed before anything was asked, 2 = HeroSelect_IsHeroAvailable said the hero is taken (`mov ecx,2; xor edx,edx; test al,al; cmovne ecx,edx`). THE COMMIT PATH IS GATED ON IT: the click handler FUN_1403e9300 does `call HeroSelect_ConfirmBlockReason; test eax,eax; jne ->bail`, so a non-zero return is a click that does visibly nothing. Its other two callers (FUN_1403e77bf, FUN_1403e7d20) are the draw paths that decide the padlock, so forcing 0 keeps the button's look and its behaviour consistent. \u26a0 This is the gate to force, not its callee. Forcing HeroSelect_IsHeroAvailable only removes reason 2 \u2014 reason 1 returns before the callee is ever consulted, which is exactly what was measured in-game 2026-09-01: the availability hook fires, the padlock hook takes the button off its lock, and the click still does nothing. The solo path never reaches this: FUN_1403e9300 first calls FUN_14026dd30 (true when the lobby holds one member) and commits directly.",
+   "cabi": {
+    "ret": "int",
+    "params": [
+     "void*"
+    ]
+   }
   },
   {
    "name": "HeroSelect_ConfirmPressed",
@@ -2192,7 +2198,7 @@
    "category": "ui",
    "raw": "FUN_1403e17f0",
    "status": "ok",
-   "signature": "int(void* screen)",
+   "signature": "void(void* screen)",
    "locator": {
     "how": "callee_shape",
     "calls": [
@@ -2200,7 +2206,13 @@
     ],
     "note": "branches on FUN_14026dd30 (solo vs lobby), then commits or bails on the block code"
    },
-   "note": "BELIEVED to be the hero-select confirm action. Shape: `rdi = *(*(screen+0xd0)+0xc8)`; bail if null; `FUN_14026dd30(rdi)` is true when the lobby holds one member and takes a solo path that tail-jumps into the commit (0x140918450); otherwise `HeroSelect_ConfirmBlockReason(rdi)` and `test eax,eax; jne ->bail`. \u26a0 'BELIEVED' is the operative word and it is why this symbol exists as an instrument rather than a target: three hooks derived from reading this call graph (the availability check, the button's widget setter, the block code) all install, all fire where expected, and the player still cannot confirm. Either this is not the function the button invokes, or something past it refuses. R.hero.allow_duplicates hooks it in REPLAY mode purely to log whether a press reaches it \u2014 a press is a rare event, so a handful of lines settles a question that three rounds of static reading did not."
+   "note": "BELIEVED to be the hero-select confirm action. Shape: `rdi = *(*(screen+0xd0)+0xc8)`; bail if null; `FUN_14026dd30(rdi)` is true when the lobby holds one member and takes a solo path that tail-jumps into the commit (0x140918450); otherwise `HeroSelect_ConfirmBlockReason(rdi)` and `test eax,eax; jne ->bail`. \u26a0 'BELIEVED' is the operative word and it is why this symbol exists as an instrument rather than a target: three hooks derived from reading this call graph (the availability check, the button's widget setter, the block code) all install, all fire where expected, and the player still cannot confirm. Either this is not the function the button invokes, or something past it refuses. R.hero.allow_duplicates hooks it in REPLAY mode purely to log whether a press reaches it \u2014 a press is a rare event, so a handful of lines settles a question that three rounds of static reading did not. [2026-10-15, current exe] Multiplayer path decoded: when FUN_1402686e0(ctrl) is false it calls HeroSelect_ConfirmBlockReason, then reads the local member data (FUN_14091d490, field +0x20) and posts a lobby request (FUN_14092ab70, one of two string pairs chosen by that field ==1). Returns no value (the old int signature was wrong). [2026-10-15 in game, strangers' lobby, client] With IsHeroAvailable forced true and ConfirmBlockReason forced 0, pressing confirm on a taken hero NEVER reached this function (R.debug.observe on it logged nothing) while SetConfirmEnabled reported the button ENABLED. Its only reference is a reflection member-function-pointer table entry ({fn,0} pairs at 0x140f33990): the button calls whatever method its data names. Update 6 ships a new SelectHeroSkinUiControllerEntityCpnt next to oCDtEntityCpntSelectHeroBookPageUiController -- confirm may live there now (unverified). READY itself goes through Stormancer (GameSession_Impl::setPlayerReady, oCStormancerSceneContext::PartyStatePendingReady strings), so a server-side duplicate refusal would be unfixable client-side. In-game duplicate pick PARKED.",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   }
   },
   {
    "name": "HeroSelect_IsHeroAvailable",
@@ -2244,7 +2256,14 @@
     ],
     "lines_max": 20
    },
-   "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. \u26a0 Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game \u2014 hooked to true, it fires (log line for the local hero) and the button stays locked."
+   "note": "Sets the hero-select CONFIRM control's enabled state. 74 bytes, and the whole body is two calls to the generic widget setter 0x1405518b0: `screen+0x230` gets `enabled ^ 1` (the lock overlay) and `screen+0x238` gets `enabled` (the button). Called from exactly ONE site, 0x1403e823c inside the hero-select screen FUN_1403e7d20, and the argument is computed three instructions earlier: `cmp byte [global+0x11a8], 0` -> non-zero writes '*' (0x2a) into `screen+0x378` and passes edx=0, zero writes 0 there and passes dl=1. So the padlock the player sees and the disabled button are one boolean. The global is `*(0x14143CB58)`, referenced by 48 functions; what writes its +0x11a8 was NOT found (the only writers are a struct copy at 0x1401be463 and a dword store at 0x1401caa62), which is why this SETTER, not the flag, is what R.hero.allow_duplicates hooks. \u26a0 Forcing it never-disabled is deliberately blunt: the confirm control stays enabled for EVERY reason the screen might disable it, not just a duplicate hero. That is acceptable for an opt-in mod and would not be for anything else. Reached after HeroSelect_IsHeroAvailable was proven insufficient in-game \u2014 hooked to true, it fires (log line for the local hero) and the button stays locked. [2026-10-15, current exe] Single caller is the screen update FUN_1403e0240 (0x1403e075c); the padlock condition moved from +0x11a8 to *(0x141436a18)+0x1208 (byte non-zero = disabled, writes '*' to screen+0x378). No hero-select code reads +0x11a8 any more.",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "bool"
+    ]
+   }
   },
   {
    "name": "HeroSelect_ValidateBlockedPtr",
@@ -5504,6 +5523,43 @@
    "status": "va",
    "note": "Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin.",
    "refs": []
+  },
+  {
+   "name": "RunRoster_Build",
+   "kind": "function",
+   "category": "progression",
+   "raw": "FUN_1402691e0",
+   "status": "ok",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Builds the run's hero ROSTER into param_2 (an OUT container; ctor 0x1400c3250 / dtor 0x1400c32e0 at the call sites). Called from exactly two places: the online-HOST path FUN_140266080 (gated on session state ==5 and session vft[0xd8], the same authority check R.run relies on) which then applies it (RunRoster_Apply) and SENDS it to peers as message 0x15dba49e via session vft[0x100]; and the local/solo path FUN_140266f90 which builds + applies with no send. So clients never build a roster -- they receive the host's. Layout (static, 2026-10-15): swiss-table at roster+0x50: ctrl bytes ptr +0x00, slots ptr +0x08, capacity +0x18 (end = ctrl + capacity); a ctrl byte 0x00..0x7f marks a full slot; slot stride 0x18 = { u64 key = session MEMBER id +0x00, hero definition ptr +0x08, u16 skin index +0x10 }. Entries arrive filled from the lobby picks; the builder fills only EMPTY slots with a random unused hero (used-hero bitmask, `btr edi`). Then the 'All same heroes' scene value (0x1ab58780) branch overwrites every entry with ONE random entry's hero + skin 0 -- the engine and clients accept a duplicated roster. This is the seam for 'play the same hero as a friend': post-hook here on the host and copy one entry's hero into another before apply+send. KEY (static, 2026-10-15): the builder iterates session->vft[0xe8]() (member id list; session = this+0x98, the object the host caller gates on) and inserts each id (0x140269e8f, value {0,0}); FUN_1402a5b20 resolves an id via FNV-1a in the member table at session+0x2c0 (swiss-table, 0x40-byte slots: id +0x00, std::string +0x10) whose string the builder compares against a name list from the run settings. Observed solo: one entry, key 0x09f00001ce0c6bcd (not the Steam/EOS/lobby-session id), hero Snow Queen + skin 1 = the lobby RequestedHero 3 / RequestedSkin 1. HERO INDEX (static, 2026-10-15, 0x14026a1a4): each member's lobby blob is parsed with LobbyAttributes_Parse into a record; if record+0x10 (RequestedHero) != -1 the entry gets hero = (*(this+0x170))[RequestedHero] (count this+0x178) and skin = u16 record+0x14 (RequestedSkin), and the hero's bit is set in the used mask. Since the lobby forbids two players on one hero, a player's entry is the one holding list[their RequestedHero] -- no member-id decoding needed. A host-side rewrite on that basis (copy one player's hero into other entries) is the planned 'same hero' feature; not shipped, untested in co-op.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "RunRoster_Apply",
+   "kind": "function",
+   "category": "progression",
+   "raw": "FUN_14026aa30",
+   "status": "ok",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "bool"
+    ]
+   },
+   "note": "Applies a roster built by RunRoster_Build (param_2) to the run; both call sites pass r8b=1. On the online host it runs before the roster is sent to peers. Recorded as the companion of RunRoster_Build; not hooked by the SDK yet.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`. Each entry's `fields` are the property names the emitter passes (literals in the emitting function, 2026-09-11 catalog); the loader decodes them onto the event table, so a handler reads ev.<field>. Entries with `confirmed` were seen firing in game with those fields (solo run, 2026-10-10); the rest are from the static catalog only.",

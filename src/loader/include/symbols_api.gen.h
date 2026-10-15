@@ -373,11 +373,32 @@ inline HeroRankLock_IsUnlocked_fn HeroRankLock_IsUnlocked() {
     return reinterpret_cast<HeroRankLock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroRankLock_IsUnlocked_Pattern));
 }
 
+// HeroSelect_ConfirmBlockReason  (HeroSelect_ConfirmBlockReason)
+//   int(void* screen)
+using HeroSelect_ConfirmBlockReason_fn = int(*)(void*);
+inline HeroSelect_ConfirmBlockReason_fn HeroSelect_ConfirmBlockReason() {
+    return reinterpret_cast<HeroSelect_ConfirmBlockReason_fn>(rsmm::fn_resolve(Sym::HeroSelect_ConfirmBlockReason_Pattern));
+}
+
+// HeroSelect_ConfirmPressed  (HeroSelect_ConfirmPressed)
+//   void(void* screen)
+using HeroSelect_ConfirmPressed_fn = void(*)(void*);
+inline HeroSelect_ConfirmPressed_fn HeroSelect_ConfirmPressed() {
+    return reinterpret_cast<HeroSelect_ConfirmPressed_fn>(rsmm::fn_resolve(Sym::HeroSelect_ConfirmPressed_Pattern));
+}
+
 // HeroSelect_IsHeroAvailable  (HeroSelect_IsHeroAvailable)
 //   bool(void* menu, int hero_index, bool flag)
 using HeroSelect_IsHeroAvailable_fn = bool(*)(void*, int, bool);
 inline HeroSelect_IsHeroAvailable_fn HeroSelect_IsHeroAvailable() {
     return reinterpret_cast<HeroSelect_IsHeroAvailable_fn>(rsmm::fn_resolve(Sym::HeroSelect_IsHeroAvailable_Pattern));
+}
+
+// HeroSelect_SetConfirmEnabled  (HeroSelect_SetConfirmEnabled)
+//   void(void* screen, bool enabled)
+using HeroSelect_SetConfirmEnabled_fn = void(*)(void*, bool);
+inline HeroSelect_SetConfirmEnabled_fn HeroSelect_SetConfirmEnabled() {
+    return reinterpret_cast<HeroSelect_SetConfirmEnabled_fn>(rsmm::fn_resolve(Sym::HeroSelect_SetConfirmEnabled_Pattern));
 }
 
 // HeroStoryUnlock_IsUnlocked  (HeroStoryUnlock_IsUnlocked)
@@ -602,6 +623,18 @@ inline Registry_UnregisterInstance_fn Registry_UnregisterInstance() {
 using Resource_LookupByPath_fn = void*(*)(const char*, void*, void*, void*);
 inline Resource_LookupByPath_fn Resource_LookupByPath() {
     return reinterpret_cast<Resource_LookupByPath_fn>(rsmm::fn_resolve(Sym::Resource_LookupByPath_Pattern));
+}
+
+// RunRoster_Apply  (RunRoster_Apply)
+using RunRoster_Apply_fn = void(*)(void*, void*, bool);
+inline RunRoster_Apply_fn RunRoster_Apply() {
+    return reinterpret_cast<RunRoster_Apply_fn>(rsmm::fn_resolve(Sym::RunRoster_Apply_Pattern));
+}
+
+// RunRoster_Build  (RunRoster_Build)
+using RunRoster_Build_fn = void(*)(void*, void*);
+inline RunRoster_Build_fn RunRoster_Build() {
+    return reinterpret_cast<RunRoster_Build_fn>(rsmm::fn_resolve(Sym::RunRoster_Build_Pattern));
 }
 
 // SceneContextValue_Find  (SceneContextValue_Find)

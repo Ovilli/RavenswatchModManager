@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **326** symbols across 26 categories.
+Total: **328** symbols across 26 categories.
 
 ## analytics
 
@@ -351,6 +351,8 @@ Total: **326** symbols across 26 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `GameModifierLock_OnStateChange` | `0x140257f50` | ✅ ok | ✔ | The 'Playing with Modifiers will not unlock Difficulties, Achievements or Outfits' rule… |
+| `RunRoster_Apply` | `0x14026aa30` | ✅ ok | ✔ | Applies a roster built by RunRoster_Build (param_2) to the run; both call sites pass r8… |
+| `RunRoster_Build` | `0x1402691e0` | ✅ ok | ✔ | Builds the run's hero ROSTER into param_2 (an OUT container; ctor 0x1400c3250 / dtor 0x… |
 
 ## registry
 
@@ -451,9 +453,9 @@ Total: **326** symbols across 26 categories.
 |------|---------|--------|----------|------------------|
 | `BookController_ResolveSettings` | `0x1403024f0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookController_ResolveTabs` | `0x140303790` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
-| `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_SetConfirmEnabled` | `0x1403e19f0` | ✅ ok |  | void(void* screen, bool enabled) |
+| `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok | ✔ | int(void* screen) |
+| `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok | ✔ | void(void* screen) |
+| `HeroSelect_SetConfirmEnabled` | `0x1403e19f0` | ✅ ok | ✔ | void(void* screen, bool enabled) |
 | `HeroSelect_ValidateBlockedPtr` | `0x141436a18` | 📍 va |  | Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate … |
 | `StringFormat_ArgPointer` | `0x1402c44f0` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
 | `StringFormat_ArgString` | `0x14052c7d0` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |

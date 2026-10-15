@@ -473,6 +473,10 @@ constexpr std::uintptr_t g_GameOptions = 0x141436a18ull;
 // --- progression ---
 constexpr std::uintptr_t GameModifierLock_OnStateChange = 0x140257f50ull;
 constexpr const char* GameModifierLock_OnStateChange_Pattern = "GameModifierLock_OnStateChange";
+constexpr std::uintptr_t RunRoster_Apply = 0x14026aa30ull;
+constexpr const char* RunRoster_Apply_Pattern = "RunRoster_Apply";
+constexpr std::uintptr_t RunRoster_Build = 0x1402691e0ull;
+constexpr const char* RunRoster_Build_Pattern = "RunRoster_Build";
 
 // --- registry ---
 constexpr std::uintptr_t DefRegistry_Begin = 0x14143a040ull;
