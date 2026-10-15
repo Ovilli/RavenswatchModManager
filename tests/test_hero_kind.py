@@ -28,8 +28,8 @@ def _emit(tmp_path, id="Zz_Piper_Clone", **fields):
 def test_clone_is_the_base_bytes_under_a_new_name_with_its_own_cache(tmp_path):
     gen, cache = _emit(tmp_path)
     assert gen.name == "Zz_Piper_Clone.herodef.ot.DtHeroDefinition.gen"
-    assert gen.read_bytes() == EP.corpus_read(
-        "Definitions/Heroes/Piper.herodef.ot.DtHeroDefinition.gen")
+    from rsmm.engine import herodefs
+    assert gen.read_bytes() == EP.corpus_read(herodefs.rel("Piper"))
     lines = RC.parse(cache.read_bytes())
     assert lines == sorted(lines)
     assert "Definitions|Heroes\\Zz_Piper_Clone.herodef.ot|oCDtHeroDefinition" in lines
@@ -78,13 +78,13 @@ def test_apply_appends_a_new_hero_to_the_versiondef_hero_vector():
     assert A._hero_versiondef_path(
         "Definitions/Heroes/Zz_Piper_Clone.herodef.ot.DtHeroDefinition.gen") == rel
     assert A._hero_versiondef_path("Definitions/Heroes/Piper.herodef.UsedRscCache.ot") is None
-    vd = EP.corpus_read("Definitions/Versions/LiveOps5.versiondef.ot.rsionDefinition.gen")
+    vd = EP.corpus_read(f"Definitions/Versions/{A.VERSIONDEF_GEN_LEAF}")
     co, _, cnt = A._find_hero_vector(vd)
-    assert cnt == 12
+    assert cnt == 13                                    # Kintaro joined in Update 6
     out = A._patch_versiondef_heroes(vd, [rel])
     co2, _, cnt2 = A._find_hero_vector(out)
     entries = [e[2] for e in A._mo_vector_entries(out, co2, cnt2)]
-    assert cnt2 == 13 and entries[-1] == rel and entries[:12] == [
+    assert cnt2 == cnt + 1 and entries[-1] == rel and entries[:cnt] == [
         e[2] for e in A._mo_vector_entries(vd, co, cnt)]
     assert A._patch_versiondef_heroes(out, [rel]) == out      # idempotent
     cooked.parse(out)
@@ -142,7 +142,7 @@ def test_an_own_entity_hero_clones_the_family_and_adds_an_alias(tmp_path):
 @needs_corpus
 def test_a_custom_hero_id_must_be_a_plain_name(tmp_path):
     with pytest.raises(ContentError, match="letters and digits|reserved"):
-        _emit(tmp_path, id="Kintaro", name="X")
+        _emit(tmp_path, id="Alice", name="X")
 
 
 @needs_corpus

@@ -171,10 +171,6 @@ def test_boolean_flags_go_through_flag_enabled():
 # data/symbols.json referenced as Sym::<Name>, which at least gets the address
 # re-derived by the remap pipeline and reported by `rsmm symbols`.
 DATA_VA_ALLOWLIST = {
-    # Reward-def registry begin/end. Verified live: DAT_141440420 and
-    # DAT_141440428 have 75 corpus references each and are the pair
-    # Registry_RegisterInstance itself pushes through.
-    "hook_rewards.cpp": 2,
 }
 
 _DATA_VA = re.compile(r"0x14[0-9a-f]{7}ull")

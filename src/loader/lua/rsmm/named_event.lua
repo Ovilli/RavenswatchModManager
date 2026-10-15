@@ -122,7 +122,7 @@ return function(env)
     -- or a heap pointer for type 1; type byte @+0x68). The class the ability
     -- events require, and a safe carrier for any event whose handler reads no
     -- payload (the item events).
-    local WD_VFT_VA = 0x140f0f180                -- oCNamedEventNetworkWithData_vftable
+    local WD_VFT_VA = R.engine.va("oCNamedEventNetworkWithData_vftable")                -- oCNamedEventNetworkWithData_vftable
     local WD_SIZE, UNION_OFF = 0x70, 0x50
     M.T_F32, M.T_INT, M.T_BOOL = 0, 1, 2
 

@@ -54,25 +54,26 @@ end
 --   "exit"  — DLL is being unloaded
 --
 -- Typed gameplay events (from data/symbols.json kind="event"; run
--- `rsmm symbols events` for the live list). Enable with
--- RSMM_ENABLE_GAME_EVENTS=1:
+-- `rsmm symbols events` for the live list). Armed by default; opt out with
+-- RSMM_DISABLE_GAME_EVENTS=1:
 --   "level_up" -> { level },  "run_end"
 --
--- Analytics firehose (same RSMM_ENABLE_GAME_EVENTS=1 gate). The game
+-- Analytics firehose (same RSMM_DISABLE_GAME_EVENTS=1 opt-out). The game
 -- funnels ~37 named analytics events through one telemetry sink
 -- (Analytics_SubmitNamedEvent); the loader detours it once and
 -- re-publishes EVERY event to this bus by its raw name — no per-event
--- wiring, and new names the game adds appear automatically. Confirmed:
---   "game_start" "run_start" "matchmaking_start" "matchmaking_end"
---   "chapter_end" "levelup_run" "level_up_book" "enemy_killed"
---   "unlock_skill" "unlock_object" "unlock_hero" "unlock_level_nightmare"
---   "event_start" "event_end"
+-- wiring, and new names the game adds appear automatically. The full list,
+-- with fields and confirmation status, is data/symbols.json::event_catalog
+-- (e.g. "chapter_end", "skill_selected", "object_selected", "hero_death",
+-- "sandman_buy", "levelup_run"). Note "enemy_killed" and "level_reached"
+-- are FIELDS of "chapter_end", not events — use "gameplay:ENEMY_KILLED".
 -- OBSERVATION-grade: they fire after the action and carry the analytics
 -- payload, not a live entity handle. Great for "when X happens, do Y"
 -- triggers; to mutate the actor use the oCGameNamedEvent gameplay bus
 -- below.
 --
--- Gameplay bus events (RSMM_ENABLE_GAMEPLAY_EVENTS=1) arrive as
+-- Gameplay bus events (on by default; RSMM_DISABLE_GAMEPLAY_EVENTS=1 opts
+-- out) arrive as
 -- "gameplay:<NAME>" — entity-context events the game itself dispatches
 -- (NETWORK_DAMAGE, GIVE_MAGICAL_OBJECT, GAIN_REROLL, REMOVE_*_OBJECT,
 -- CINE_START/STOP, ...; full map in docs/_re/kinds/events-bus.md). Their
@@ -474,9 +475,19 @@ end
 -- List the semantic names available to R.engine.call.
 function R.engine.names()
     local out = {}
-    for k in pairs(engine_map()) do out[#out + 1] = k end
+    for k in pairs(engine_map()) do
+        if k ~= "_va" then out[#out + 1] = k end
+    end
     table.sort(out)
     return out
+end
+
+-- A data global's / vftable's address at the PREFERRED base (0x140000000),
+-- from data/symbols.json via engine_gen.lua -- callers rebase it exactly as
+-- they did the hand-copied literals this replaces. nil when unknown.
+function R.engine.va(name)
+    local t = engine_map()._va
+    return t and t[name] or nil
 end
 
 -- Named accessors: every callable symbol is exposed as
@@ -643,7 +654,7 @@ R.ptr = {
 -- u32 source count @+8, runtime array @+0x10, u32 runtime count @+0x18 }.
 -- Re-derived 2026-07-10 after the 2026-07-09 game patch (readers of the new
 -- slot dereference +0x10/+0x18 exactly like the old pool, e.g. FUN_1402b3030).
-local GIVE_POOL_VA = 0x14143cc18
+local GIVE_POOL_VA = R.engine.va("g_MagicalObjectPool")
 local GIVE_IMG_BASE = 0x140000000
 
 -- Hero dispatcher, captured from any hero-anchored gameplay event. These all
@@ -811,8 +822,8 @@ end
 -- resolved to a nil GLOBAL and every anchor event raised inside the event
 -- router — which pcalls handlers, so the ally guard silently did nothing and
 -- the hero capture stopped updating. Caught by the spec, not in-game.
-local ENTITY_HUDMIRROR_OFF = 0x1d80      -- ptr to the HUD HP mirror (hero-only)
-local ENTITY_ISLOCAL_OFF   = 0x1d88      -- 1 = this machine's player
+local ENTITY_HUDMIRROR_OFF = 0x1da8      -- ptr to the HUD HP mirror (hero-only; 0x1d80 before Update 6)
+local ENTITY_ISLOCAL_OFF   = 0x1db0      -- 1 = this machine's player (0x1d88 before Update 6)
 
 local function _dispatcher_is_local(d)
     if not _DISPATCHER_ENTITY_OFF then return nil end
@@ -1024,7 +1035,7 @@ function R.reroll.get()
 end
 
 function R.reroll.add(n)
-    local REROLL_EVENT_VFT_VA = 0x140f263d0   -- oCDtNamedEventGainReroll_vftable
+    local REROLL_EVENT_VFT_VA = R.engine.va("oCDtNamedEventGainReroll_vftable")   -- oCDtNamedEventGainReroll_vftable
     local EVENT, EVENT_CRC = "GAIN_REROLL", 0x96065360
     if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 0x7fff then
         R.log("[rsmm.reroll] add(n): n must be a whole number from 1 to 32767")
@@ -1777,13 +1788,12 @@ R.hero = {}
 -- save — Profile_*.ob is checksummed and Steam Cloud would fight an edit
 -- anyway, so a runtime hook is the durable answer.
 --
--- WHAT THIS DELIBERATELY DOES NOT TOUCH
--- oe::AdditionalContentGameUnlockConditionData::vftable[14] is the same slot on
--- the same base, and its body is `return *(int*)(this+0x28) == 3` — the
--- OWNERSHIP check. Forcing that would hand out content the player has not
--- bought, so it has no symbol in data/symbols.json and cannot be reached from
--- here. A hero gated on ownership stays locked; only progression, rank, story
--- and challenge gates open.
+-- OWNERSHIP GATES ARE OPENED TOO (a choice, 2026-10-13). The
+-- oe::AdditionalContentGameUnlockConditionData::vftable[14] body is
+-- `return *(int*)(this+0x28) == 3` (AdditionalContentGate_IsUnlocked). It is
+-- hooked with the progression gates, so EVERY ownership-gated hero opens for
+-- anyone running this mod, paid DLC included (Merlin). Nothing is written to the
+-- save. The mod's README warns about it.
 --
 -- Returns the number of gates opened (0 if the symbols are unavailable on this
 -- build, which fails closed rather than guessing at an address).
@@ -1792,6 +1802,7 @@ local PROGRESSION_GATES = {
     "HeroRankLock_IsUnlocked",
     "HeroStoryUnlock_IsUnlocked",
     "ChallengeUnlock_IsUnlocked",
+    "AdditionalContentGate_IsUnlocked",
 }
 local _gates_hooked = false
 
@@ -1812,7 +1823,7 @@ function R.hero.unlock_progression()
         end
     end
     R.log(("[rsmm.hero] progression gates opened: %d/%d "
-           .. "(ownership gates untouched)"):format(n, #PROGRESSION_GATES))
+           .. "(ownership gates included)"):format(n, #PROGRESSION_GATES))
     return n
 end
 
@@ -2087,7 +2098,7 @@ R.options = {}
 -- Re-derived 2026-07-10 after the 2026-07-09 game patch (ctor is now
 -- FUN_1401ca130, found via the "Forced seed" string xref; it stores the
 -- singleton to this slot as its first write).
-local OPT_GAMEOPTIONS_VA = 0x14143cb58
+local OPT_GAMEOPTIONS_VA = R.engine.va("g_GameOptions")
 local OPT_IMG_BASE = 0x140000000
 local OPT_VALUE_OFF = 0x28
 
@@ -2096,7 +2107,9 @@ local OPT_VALUE_OFF = 0x28
 -- Offsets transcribed from the options ctor (FUN_1401ca130, 2026-07-09 build);
 -- value at off+0x28. The patch added "Delay before can unpause" / "Max pause
 -- per player", which moved "Pause during choices" (0x10f8 -> 0x10f0); every
--- other slot is unchanged.
+-- other slot is unchanged. Update 6 (2026-10-12, ctor FUN_1401c2d70) inserted
+-- "Accepted Privacy Policy" plus one more slot ahead of "Dash at cursor", so
+-- every slot from there on moved +0x60; Forced seed / Dev / Test did not.
 local _OPT = {
     ["Forced seed"]                                 = { off = 0x0000, type = "uint"  },
     -- "Dev" is the build-type flag the ctor seeds from a baked constant; the
@@ -2104,18 +2117,18 @@ local _OPT = {
     -- old seeded-runs raw poke at +0x58 was flipping).
     ["Dev"]                                         = { off = 0x0030, type = "bool"  },
     ["Test"]                                        = { off = 0x0060, type = "bool"  },
-    ["Dash at cursor"]                              = { off = 0x0e80, type = "bool"  },
-    ["Screen shake"]                                = { off = 0x1090, type = "bool"  },
-    ["Pause during choices"]                        = { off = 0x10f0, type = "bool"  },
-    ["Show damage and healing numbers"]             = { off = 0x11b0, type = "bool"  },
-    ["Select random skin when using random heroes"] = { off = 0x11e0, type = "bool"  },
-    ["Show enemy debug info"]                       = { off = 0x1210, type = "bool"  },
-    ["Sectorize enemy camps"]                       = { off = 0x1240, type = "bool"  },
-    ["Display fake unlock in recap"]                = { off = 0x1270, type = "bool"  },
-    ["Show social options debug"]                   = { off = 0x12a0, type = "bool"  },
-    ["Show hourglass debug info"]                   = { off = 0x12d0, type = "bool"  },
-    ["Force epilogue"]                              = { off = 0x1300, type = "bool"  },
-    ["Force end credits"]                           = { off = 0x1330, type = "bool"  },
+    ["Dash at cursor"]                              = { off = 0x0ee0, type = "bool"  },
+    ["Screen shake"]                                = { off = 0x10f0, type = "bool"  },
+    ["Pause during choices"]                        = { off = 0x1150, type = "bool"  },
+    ["Show damage and healing numbers"]             = { off = 0x1210, type = "bool"  },
+    ["Select random skin when using random heroes"] = { off = 0x1240, type = "bool"  },
+    ["Show enemy debug info"]                       = { off = 0x1270, type = "bool"  },
+    ["Sectorize enemy camps"]                       = { off = 0x12a0, type = "bool"  },
+    ["Display fake unlock in recap"]                = { off = 0x12d0, type = "bool"  },
+    ["Show social options debug"]                   = { off = 0x1300, type = "bool"  },
+    ["Show hourglass debug info"]                   = { off = 0x1330, type = "bool"  },
+    ["Force epilogue"]                              = { off = 0x1360, type = "bool"  },
+    ["Force end credits"]                           = { off = 0x1390, type = "bool"  },
 }
 
 -- Accept the GameOptions singleton pointer only if a couple of known bool slots
@@ -4461,8 +4474,11 @@ end
 
 --- Hero name for a lobby `RequestedHero` id, or nil.
 ---
---- The twelve shipped `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
---- order. INFERRED, not read from the engine: the id is not stored in the
+--- The twelve pre-Update-6 `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
+--- order. Update 6 (2026-10-12) added Kintaro; if the id really is alphabetical
+--- he lands at 5 and shifts Melusine..Sun_Wukong up by one, but no lobby on that
+--- build has been observed yet, so the table keeps the one mapping that WAS
+--- observed until a session confirms either way. INFERRED, not read from the engine: the id is not stored in the
 --- herodef payload, so this is positional. It matches every observation to
 --- hand -- session 304f had the local player at RequestedHero 10, and index 10
 --- is Snow_Queen, which is also the one hero `_HERO_SIGNATURES` was seeded from
@@ -5386,9 +5402,9 @@ R.defs = {}
 -- unreadable", indistinguishable from a moved global. Every other va-global in
 -- this file does the same rebase (see GIVE_POOL_VA / OPT_GAMEOPTIONS_VA).
 local DEFS_IMG_BASE = 0x140000000
-local CTRL_VA  = 0x1412f0a68     -- DefinitionRegistry_Ctrl
-local SLOTS_VA = 0x1412f0a70     -- DefinitionRegistry_Slots
-local MASK_VA  = 0x1412f0a80     -- DefinitionRegistry_Mask
+local CTRL_VA  = R.engine.va("DefinitionRegistry_Ctrl")     -- DefinitionRegistry_Ctrl
+local SLOTS_VA = R.engine.va("DefinitionRegistry_Slots")     -- DefinitionRegistry_Slots
+local MASK_VA  = R.engine.va("DefinitionRegistry_Mask")     -- DefinitionRegistry_Mask
 local SLOT_STRIDE = 0x18
 local MAX_CAPACITY = 0x40000     -- refuse an implausible mask rather than spin
 local MAX_INSTANCES = 0x8000

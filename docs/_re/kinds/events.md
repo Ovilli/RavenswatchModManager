@@ -42,24 +42,34 @@ original returns. The Lua bus delivers it to every mod's
 `rsmm.on_event("<event>", fn)` handler (handlers get a payload table arg —
 empty for now). See `src/loader/src/script_lua.cpp::script_emit_event_json`.
 
-**OPT-IN:** gated behind `RSMM_ENABLE_GAME_EVENTS=1` — string-verified but
-not yet validated against a live game (can't run Windows/game on the dev
-box). Flip the env var in the Steam launch options to test; confirm the
-loader log prints `[game-events] 'level_up' -> FUN_1401f6410 hooked` and that
-handlers fire at the expected cadence (once per level-up, not per frame).
+**ON BY DEFAULT** (opt out with `RSMM_DISABLE_GAME_EVENTS=1`). The addresses
+in the table above are from the build these notes were written against;
+`data/symbols.json` (`Event_LevelUp` / `Event_RunEnd`, `kind="event"`) is the
+source of truth. To validate `level_up` after a remap: the loader log must
+print `[game-events]` without a `resolve`/`verify`/`mid-function` failure for
+`Event_LevelUp`, and an `R.on("level_up", …)` handler must fire once per
+level-up with `{ level }` matching the HUD — not per frame.
 
-## TODO (same recipe, not yet done)
+## Adding a typed emitter
 
-| Event       | name string anchor              | notes |
-|-------------|---------------------------------|-------|
-| `level_reached` | `level_reached` @ 0x140f13c20 (xref 0x1401f5c93/0x1401f742c) | two xref sites — pick the emitter, find start |
-| `hero_pick` | `Skill selected` via registry `FUN_1401d1850` (HOOKPOINTS.md) | find the selection consumer, extract hero/skin from args |
-| `damage`    | not yet string-anchored         | search decomp for the damage-apply function |
+Add a `kind="event"` symbol (with `lua_event`, `cabi`, optional `payload`) to
+`data/symbols.json` and run `rsmm symbols gen`. That is the whole change:
+`event_table.gen.h` grows a row and `arm_all` folds over the actual table
+length, minting one `detour<N>` per slot. There is no hand-unrolled `arm<N>`
+list any more.
 
-Add a row to `g_hooks[]` in `hook_events.cpp` + a pattern entry, and bump the
-`arm<N>` calls in `install_event_hooks()` (the `arm<N>` loop is hand-unrolled —
-each new table slot needs its own `arm<N>(g_hooks[N])` line because MinHook
-needs a distinct `detour<N>` trampoline per entry).
+## Closed: the old per-emitter TODO list (2026-10-13)
+
+The three emitters this file used to list as "not yet done" are each already
+delivered by one of the two buses, so none gets a dedicated detour. A new
+detour costs a fresh RE pass on every game patch and is a crash risk if it
+mis-resolves:
+
+| Wanted | Already delivered by |
+|--------|----------------------|
+| `level_reached` | Not an event. `level_reached` is a **field** of analytics `chapter_end` (proven 2026-10-10) and of `level_up_book` (`hero_name`, `level_reached`). Per-level-up timing is the typed `level_up` → `{ level }`. The old `0x140f13c20` string anchor was the field-name literal. |
+| `hero_pick` | No solo emitter exists. The pick is in the lobby blob (`RequestedHero`, via the `LobbyAttributes_Parse` hook) and in analytics `run_start.player_heroes` (online only, unconfirmed). The old anchor (`"Skill selected"`) was the **talent** pick, now analytics `skill_selected`. If a solo `hero_pick` is ever needed, `HeroSelect_ConfirmPressed` is the candidate, but it is unproven and fires on refused presses too. |
+| `damage` | `R.damage` (per-player meter) and `gameplay:NETWORK_DAMAGE` (`value`, `source_id`; co-op only, because solo damage is a direct call). For totals, use analytics `chapter_end.damage_dealt` / `damage_received`. |
 
 ## Analytics firehose — every named event from one hook
 

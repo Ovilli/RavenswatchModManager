@@ -166,9 +166,22 @@ class EntityFile:
         # unambiguous pointers narrow a candidate list whose id also occurs as
         # plain data (0x400 and 0x500 are common numbers).
         pairs = {(self._owner_class(p.owner), self._class(x)) for x, p in owned.items()}
+        # Same idea one level finer: a field holding the number 0x400 sits at
+        # one fixed offset in every object of a class (Update 6 took Piper past
+        # 1024 objects, and eight cine blocs carry 0x400 at +12 while the ninth
+        # owns #1024 at +117), so a candidate at an offset no real pointer of
+        # that pair uses is data. Still only taken when exactly one is left.
+        at = {(self._owner_class(p.owner), self._class(x), p.offset) for x, p in owned.items()}
         for x, cands in list(ambiguous.items()):
             fit = [p for p in cands if (self._owner_class(p.owner), self._class(x)) in pairs]
-            if len(fit) == 1 and not (vec[x] and fit[0] not in vec[x]):
+            # A vector hit outranks a single one -- unless no real pointer of
+            # that class pair exists, in which case the "vector" is data too.
+            vfit = [p for p in vec[x] if p in fit]
+            if len(fit) > 1:
+                fit = [p for p in fit
+                       if (self._owner_class(p.owner), self._class(x), p.offset) in at] or fit
+                vfit = [p for p in vfit if p in fit]
+            if len(fit) == 1 and not (vfit and fit[0] not in vfit):
                 owned[x] = fit[0]
                 del ambiguous[x]
         return owned, ambiguous
@@ -784,9 +797,10 @@ class EntityFile:
 
     def _format_slots(self, c: EG.Component) -> tuple[list[EF.Field], EF.Field | None]:
         """A String Format's slot fields and the u32 field holding their count."""
-        tag = _B + struct.pack("<I", self._class_index("oCStringFormatEntryPicker"))
+        ci = cooked.format_entry_index([k.name for k in self.cf.classes])
+        tag = _B + struct.pack("<I", ci) if ci >= 0 else None
         fs = EF.fields(c)
-        slots = [f for f in fs if f.kind == "obj"
+        slots = [f for f in fs if tag and f.kind == "obj"
                  and c.body[f.offset:f.offset + len(tag)] == tag]
         count_f = None
         for f in fs:

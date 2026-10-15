@@ -309,11 +309,9 @@ def _herodefs() -> dict[str, str]:
 
     The two spellings differ for some heroes; a folder with no herodef
     (``Pets``, the unreleased ``Alice``) is not a playable hero."""
-    from rsmm.engine import corpus
-    from rsmm.sdk.kinds import skills as S
+    from rsmm.engine import corpus, herodefs
 
-    defs = {s.replace("_", "").lower(): s
-            for s in corpus.stems(S._HERODEF_DIR, S._HERODEF_SUFFIX)}
+    defs = {n.replace("_", "").lower(): s for n, s in herodefs.stems().items()}
     out = {}
     for d in corpus.subdirs(_HEROES_DIR):
         name = d.removeprefix("Hero_")
@@ -347,13 +345,14 @@ def talent_values(hero: str) -> list[dict]:
 
     files = []
     on_cards = _card_labels(hero)
+    redirects = _redirects(hero)
     for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX):
         data = p.read_bytes()
         seen: set[str] = set()
         rows = []
         stem = p.name.split(".entity.ot.", 1)[0]
         for v in list_talent_values(data, extra_labels=on_cards.get(stem, ())):
-            if v.is_spawner or v.label in seen:
+            if v.is_spawner or v.label in seen or (stem, v.label) in redirects:
                 continue
             seen.add(v.label)
             kind = "bool" if v.type_code == TYPE_BOOL else "int" if v.is_int else "float"
@@ -367,6 +366,33 @@ def talent_values(hero: str) -> list[dict]:
             files.append({"file": p.name.split(".entity.ot.", 1)[0], "values": rows,
                           "modifiers": mods})
     return files
+
+
+@_once
+def _redirects(hero: str) -> dict[tuple[str, str], str]:
+    """``(base file, label)`` -> the rework file whose copy the game reads.
+
+    A rework (``Hero_X_Update6`` over ``Hero_X``) re-declares some values under
+    the same name, and the game reads its copy. An edit to the base copy writes
+    a value nothing reads, so the editor lists the rework's copy instead. Only a
+    file's own counterpart counts (``Hero_X`` and ``Hero_X_Update6``); a value
+    another file's rework shadows keeps its picker's override flag."""
+    from rsmm.engine import corpus
+    from rsmm.engine.talent_values import list_talent_values
+    from rsmm.sdk.kinds import skills as S
+
+    files = {p.name.split(".entity.ot.", 1)[0]: p.read_bytes()
+             for p in corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX)}
+    labels = {f: {v.label for v in list_talent_values(b)} for f, b in files.items()}
+    out: dict[tuple[str, str], str] = {}
+    for base in sorted(files):
+        if S.is_rework(base):
+            continue
+        for rw in sorted(files):
+            if rw != base and re.fullmatch(re.escape(base) + r"_Update_?\d+", rw):
+                for label in labels[base] & labels[rw]:
+                    out[(base, label)] = rw
+    return out
 
 
 @_once
@@ -396,9 +422,11 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
         vals = []
     text = dict(zip(keys, vals, strict=False))
     formats = _hero_formats(hero)
+    redirects = _redirects(hero)
     labels = {(f["file"], v["label"]) for f in talent_values(hero) for v in f["values"]}
     out, skipped = [], []
     own = S.controller_key_bases(_herodefs()[hero])
+    reworks = S.rework_desc_keys(_herodefs()[hero])
     add_stat = _add_stat_info([main, *(f.read_bytes() for f in _inherited(hero))])
     for source in sorted({n[len("Skill Controller "):]
                           for _o, n in SC._iter_name_offsets(main)}):
@@ -411,19 +439,24 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
                 if held else "has no card text of its own (a helper row, not a card)"),
                 "problem": bool(held)})
             continue
-        name_key, desc_key = S.card_keys(base, keys)
+        name_key, desc_key = S.live_card_keys(_herodefs()[hero], base, keys, reworks)
         file, fmt = formats.get(desc_key, (None, None))
         entries = [] if fmt is None else [
             None if e is None else {"node": e.node, "kind": e.kind, "sources": list(e.sources),
-                                    "selectors": list(e.selectors), **_tiers(hero, file, e)}
-            for e in fmt.entries]
+                                    "selectors": list(e.selectors), "file": f, **_tiers(hero, f, e)}
+            for e, f in _placed_entries(hero, file, fmt, labels)]
         # The values behind the card's {N}: a plain node itself, or what a
-        # computed one is worked out from. Looked up in the text's own file.
+        # computed one is worked out from. Looked up in the file holding it.
         refs = []
         for e in entries:
             for label in ([e["node"]] if e and e["kind"] == "Value" else e["sources"] if e else []):
-                if (file, label) in labels and {"file": file, "label": label} not in refs:
-                    refs.append({"file": file, "label": label})
+                # A value a rework redefines is read from the rework's file.
+                f = redirects.get((e["file"], label), e["file"])
+                if f != e["file"]:
+                    e.setdefault("valueFiles", {})[label] = f
+                ref = {"file": f, "label": label}
+                if (f, label) in labels and ref not in refs:
+                    refs.append(ref)
         icon = _card_icon(hero, source)
         out.append({"source": source, "base": base,
                     "name": (text.get(name_key) or "").strip() if name_key else "",
@@ -432,6 +465,44 @@ def _talent_rows(hero: str) -> tuple[list[dict], list[dict]]:
                     "entries": entries, "file": file, "values": refs, "icon": icon,
                     "addStat": add_stat(source)})
     return out, skipped
+
+
+def _placed_entries(hero: str, file: str, fmt, labels: set) -> list[tuple]:
+    """``(entry, file holding its node)`` for each ``{N}`` of ``fmt``.
+
+    A rework file (``Hero_Beowulf_Update6``) re-declares a card's format but
+    keeps pointing most of its ``{N}`` at nodes of the file it shadows: Battle
+    Cry's shield amount and duration stay in ``Hero_Beowulf``, only the new
+    move-speed number is the rework's own. An entry that resolves to nothing in
+    the rework is read, and edited, from the base file (through the base
+    format's same-named entry when it has one), when it resolves there."""
+    from rsmm.engine import item_modifier as IM
+    from rsmm.sdk.kinds import skills as S
+    plain = [(e, file) for e in fmt.entries]
+    m = S._REWORK_RE.match(file)
+    bank = re.search(rb"(Hero_[A-Za-z_]+_Common~GAM\.xls)", _hero_main(hero) or b"")
+    if m is None or bank is None or not _hero_file(hero, m.group(1)):
+        return plain
+    base, bank = m.group(1), bank.group(1).decode()
+    name = next((n for n, f in IM.text_formats(_hero_file(hero, file), bank) if f == fmt), None)
+    shadowed = next((f for n, f in IM.text_formats(_hero_file(hero, base), bank)
+                     if n == name), None)
+    if shadowed is None:
+        return plain
+    by_node = {e.node: e for e in shadowed.entries if e is not None}
+
+    def resolves(e, f) -> bool:
+        names = [e.node] if e.kind == "Value" else e.sources
+        return any((f, n) in labels for n in names) or bool(_tiers(hero, f, e))
+
+    out = []
+    for e in fmt.entries:
+        if e is None or resolves(e, file):
+            out.append((e, file))
+            continue
+        old = by_node.get(e.node, e)
+        out.append((old, base) if resolves(old, base) else (e, file))
+    return out
 
 
 def _inherited(hero: str) -> list:
@@ -677,11 +748,15 @@ def _hero_formats(hero: str) -> dict:
     if m is None:
         return {}
     bank = m.group(1).decode()
+    from rsmm.sdk.kinds import skills as S
     out: dict = {}
     # The hero's own files first, then the ones it inherits (Love Shield's card
-    # text is formatted in the shared Romeo/Juliet file).
-    for p in [*corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX),
-              *_inherited(hero)]:
+    # text is formatted in the shared Romeo/Juliet file). A rework file comes
+    # before the one it shadows: when it keeps a card's key but re-declares the
+    # format (Carmilla's Dash Taunt), its numbers are the ones the card shows.
+    own = sorted(corpus.files(f"{_HEROES_DIR}/{_hero_dir(hero)}", _GEN_SUFFIX),
+                 key=lambda p: not S.is_rework(p.name.split(".entity.ot.", 1)[0]))
+    for p in [*own, *_inherited(hero)]:
         file = p.name.split(".entity.ot.", 1)[0]
         for key, fmt in IM.formats_by_key(p.read_bytes(), bank).items():
             out.setdefault(key, (file, fmt))
@@ -1098,10 +1173,12 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             fields[FILES] = {rel: _upload_png(card["iconUpload"], f"{source} icon")}
         if not fields:
             continue
-        # The skill kind names a hero by its herodef (``Sun_Wukong``), the
-        # talent kind by its folder (``SunWukong``).
+        # The skill kind names a hero by its herodef name (``Sun_Wukong``),
+        # the talent kind by its folder (``SunWukong``). The name, never the
+        # stem: a manifest saying ``Sun_Wukong_Update6`` breaks next update.
+        from rsmm.engine import herodefs
         out.append(("skill", sid, {"kind": "skill", "id": sid,
-                                   "hero": _herodefs().get(hero, hero),
+                                   "hero": herodefs.hero_name(_herodefs().get(hero, hero)),
                                    "source": source, **fields}))
     if not out:
         raise EditorError(_NOTHING)

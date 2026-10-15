@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rsmm"
-version = "0.1.0"
+version = "5.9.19"
 description = "Ravenswatch Mod Manager — single-player modding tool for OEngine cooked assets and Lua scripting."
 readme = "README.md"
 license = { file = "LICENSE" }

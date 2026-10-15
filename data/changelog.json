@@ -1,6 +1,50 @@
 {
-  "generated": "2026-10-11",
+  "generated": "2026-10-13",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 43,
+      "date": "2026-10-13",
+      "summary": "update-loader",
+      "highlights": [
+        "update-loader"
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 42,
+      "date": "2026-10-12",
+      "summary": "Ravenswatch Update 6 compatibility: fixes the damage meter naming you as another player, talent grants/upgrades, rerolls, dream shards, ingredients, melodies, game options and XP reading the wrong memory after the patch.",
+      "highlights": [
+        "Damage meter shows your own damage under your name again (Update 6 moved the hero data)",
+        "Hero detection works again: health and HUD reads fixed for Update 6",
+        "Talent grants, upgrades and random ultimates read the right talent slots again",
+        "Rerolls, dream shards, ingredients, melodies and stat modifiers use the correct engine events again",
+        "Game options (R.options) read and write the right settings again",
+        "SDK engine addresses now update with every game patch instead of going stale"
+      ]
+    },
+    {
+      "version": "5.9.18",
+      "date": "2026-10-12",
+      "summary": "Mod Manager updated for Ravenswatch Update 6: installing mods and the loader works with the patched game again.",
+      "highlights": [
+        "Hero, talent and item mods build against the renamed Update 6 hero files",
+        "Installing the loader now replaces a pattern database left over from before the patch, so features like player names in the damage meter work again",
+        "New `rsmm values backport` command: play an older patch's balance values as a local mod"
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 41,
+      "date": "2026-10-12",
+      "summary": "Updated for Ravenswatch Update 6: the loader finds the game's functions again after the patch, and mods that change heroes, talents or items work with the new hero files.",
+      "highlights": [
+        "Works with Ravenswatch Update 6 (the 12 October 2026 patch)",
+        "Hero, talent and item mods work with the renamed Update 6 hero files",
+        "Kintaro shows up as a hero"
+      ]
+    },
     {
       "version": "5.9.17",
       "date": "2026-10-11",

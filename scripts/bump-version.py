@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bump the desktop release version across every file that has to agree.
 
-Four files hold the user-facing release version and must move in lockstep
+Five files hold the user-facing release version and must move in lockstep
 on every release (the updater feed in `apps/desktop/UPDATER.md` and CI's
 release.yml both rely on `tauri.conf.json` matching the git tag, while
 the Cargo build refuses to start if Cargo.lock disagrees with Cargo.toml):
@@ -10,6 +10,7 @@ the Cargo build refuses to start if Cargo.lock disagrees with Cargo.toml):
     apps/desktop/src-tauri/Cargo.toml        (version = "X.Y.Z")
     apps/desktop/src-tauri/Cargo.lock        ([[package]] name = "rsmm-desktop")
     apps/desktop/package.json                ("version": "X.Y.Z")
+    pyproject.toml                           ([project] version, the CLI)
 
 Usage:
     python scripts/bump-version.py patch          # 0.1.10 -> 0.1.11
@@ -21,7 +22,7 @@ Usage:
 
 The script is idempotent (re-running with the same target version is a
 no-op) and refuses to write if it can't find the expected line in any of
-the four files — better to fail loudly than ship a half-bumped release.
+the five files — better to fail loudly than ship a half-bumped release.
 """
 
 from __future__ import annotations
@@ -82,6 +83,13 @@ def targets() -> list[Target]:
             pattern=re.compile(r'^(\s*"version"\s*:\s*)"[^"]+"(,?\s*)$', re.MULTILINE),
             template=r'\g<1>"{v}"\g<2>',
             label="apps/desktop/package.json",
+        ),
+        Target(
+            # The CLI's own version — the sidecar ships inside every release.
+            path=REPO_ROOT / "pyproject.toml",
+            pattern=re.compile(r'(\[project\][\s\S]*?\nversion\s*=\s*)"[^"]+"'),
+            template=r'\g<1>"{v}"',
+            label="pyproject.toml",
         ),
     ]
 
@@ -215,7 +223,7 @@ def main() -> int:
         print("done. files written; commit + tag yourself when ready.")
         return 0
 
-    # Commit only the four files we touched — don't sweep in unrelated
+    # Commit only the files we touched — don't sweep in unrelated
     # working-tree changes.
     #
     # `git add <paths>` is NOT enough for that: `git commit` commits the whole

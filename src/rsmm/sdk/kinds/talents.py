@@ -192,6 +192,27 @@ def _inherited_files(hero_dir: _HeroDir) -> list[corpus.CorpusFile]:
             todo.append(parent)
             if parent.rel not in mine:
                 out.append(parent)
+    # Update 6 (2026-10-12) cut that inheritance (Hero_Romeo_FX lists no parent
+    # any more) while Romeo's controller override still names its state as
+    # `Hero_Romeo_Juliet_Common\...`. The scope of a talent controller's
+    # owned-state reference IS the file that builds the talent, so follow it --
+    # except the files every hero shares (an edit there changes every hero).
+    if main is not None:
+        from ...engine import entity_graph as EG
+        from ...engine.talent_add_stat import SHARED_SCOPES
+        stems = {f.name[:-len(_GEN_SUFFIX)]: f
+                 for d in corpus.subdirs(_HEROES_DIR)
+                 for f in corpus.files(f"{_HEROES_DIR}/{d}", _GEN_SUFFIX)}
+        have = mine | {f.rel for f in out}
+        for c in EG.parse(main.read_bytes()).components:
+            if not c.name.startswith("Skill Controller "):
+                continue
+            for r in c.refs:
+                f = (stems.get(r.scope)
+                     if r.kind == "State" and r.scope not in SHARED_SCOPES else None)
+                if f is not None and f.rel not in have:
+                    have.add(f.rel)
+                    out.append(f)
     return out
 
 

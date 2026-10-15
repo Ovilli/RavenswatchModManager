@@ -7,7 +7,7 @@
    "name": "Account_GetDisplayName",
    "kind": "function",
    "category": "session",
-   "raw": "FUN_140929940",
+   "raw": "FUN_140928620",
    "status": "ok",
    "signature": "void(std::string* out, void* account)",
    "note": "Platform display name for an account object, written into `out` as an MSVC std::string (32 bytes, SSO under 16 chars). One function per platform key: it branches over the strings `gamertag` (Xbox), `personaName` (Steam), `pseudo`, and `Nickname`, so it is the engine's single name abstraction. Its only direct caller is FUN_14044a050, the login/session bring-up, which means this is confirmed for the LOCAL account and not yet proven reachable per-peer. Recorded because the ally-name hunt kept re-deriving it: the exe imports EOSSDK-Win64-Shipping.dll (Lobby/P2P/Connect) and NOT steam_api64.dll, and imports no EOS_UserInfo_* at all, so no ally name can come from the platform SDK - remote names must arrive over the game's own session layer. That they exist at all is settled by the shipped text keys Menu_PauseAskerName and Session_Peer_Disconnect. NOT called by the SDK: it takes an out-string the caller owns and an account pointer we cannot yet validate.",
@@ -19,7 +19,7 @@
    "name": "AchievementDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140312060",
+   "raw": "FUN_14030cb90",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -151,7 +151,7 @@
    "name": "Analytics_SubmitNamedEvent",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1401fad70",
+   "raw": "FUN_1401f48d0",
    "status": "ok",
    "signature": "void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx)",
    "cabi": {
@@ -191,7 +191,7 @@
    "name": "BinarySaver_WriteGraph",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140501a30",
+   "raw": "FUN_140501570",
    "status": "ok",
    "signature": "bool(void* saver, void* rootObject, const char* label, void* ctx)",
    "cabi": {
@@ -210,7 +210,7 @@
    "name": "BinarySaver_WriteObject",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1405016c0",
+   "raw": "FUN_140501210",
    "status": "ok",
    "signature": "bool(void* saver, void* object, const char* label, bool flag)",
    "cabi": {
@@ -230,7 +230,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_140307a30",
+   "raw": "FUN_1403024f0",
    "cabi": {
     "params": [
      "void*"
@@ -261,7 +261,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_140308cd0",
+   "raw": "FUN_140303790",
    "cabi": {
     "params": [
      "void*"
@@ -288,7 +288,7 @@
    "name": "ChallengeDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140324f30",
+   "raw": "FUN_140320650",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -312,7 +312,7 @@
    "name": "ChallengeUnlock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_1402b1100",
+   "raw": "FUN_1402abce0",
    "status": "ok",
    "signature": "bool(void* condition_data)",
    "cabi": {
@@ -336,7 +336,7 @@
    "name": "Chapter_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_1403254d0",
+   "raw": "FUN_140320bf0",
    "status": "ok",
    "signature": "bool(Chapter* this, void* serializer)",
    "note": "GameModeDefInternal::Chapter \u2014 vftable 0x140ed7968 slot 3, and the most important find for a NET-NEW CHAPTER. Layout: u8 @+0x08, u8 @+0x09, then a DISCRIMINATED UNION on +0x09 \u2014 nonzero reads a resref @+0x10 through ResourceRef_Serialize, zero reads a plain u32 enum @+0x0c through Serializer_ReadEnum. NEITHER BRANCH IS VERSION-GATED.\n\nAll four shipped chapters in All_Chapters.gamemodedefaultdef take the ENUM branch (+0x09 = 0, +0x0c = 0,1,2,3 and +0x08 = 1,1,1,0 \u2014 false on the last, so it reads as 'a chapter follows'). The enum is what binds a chapter to one of the four built-in biome map ids registered by the blackboard registrar, and it is why 'add a fifth chapter' has always looked blocked.\n\nThe resref branch is the way out, and it is LIVE CODE, not a hypothesis: GameModeDefaultDef_PostLoad walks the chapter vector at +0x290/+0x298 and for every chapter with +0x09 != 0 calls ResourceRef_Resolve on +0x10 unless it is already resolved. So a chapter can name its content by asset path instead of by index, the engine resolves it at load, and nothing in that path is gated on a version or a flag. \u26a0 WHAT THE REF POINTS AT IS NOT PROVEN \u2014 the expected class is held in a runtime-initialised global, so it cannot be read statically. A mapdef is the hypothesis (the tile-generation level carries a mapdef resref of exactly this shape) and it needs a playtest, not more static reading.",
@@ -402,7 +402,7 @@
    "name": "Crc32_TableInit",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14051ef30",
+   "raw": "FUN_14051e100",
    "status": "ok",
    "note": "Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime \u2014 the table is BSS, not stored in the image). Uses polynomial 0x04C11DB7 with input/output bit-reflection, i.e. it produces the standard reflected CRC32 table (equivalent poly 0xEDB88320). Confirms NamedEvent_Id_FromCrc / Id_HashString are plain CRC32, replicable in tooling. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
@@ -418,7 +418,7 @@
    "name": "CustomFlagFilter_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140189830",
+   "raw": "FUN_140182180",
    "status": "ok",
    "signature": "bool(void* flagFilter, void* reader)",
    "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects \u2014 required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.] [recover_unverified 2026-07-17: relocated to 0x140189830 via hash 0x15a9d9bf]",
@@ -441,7 +441,7 @@
    "name": "CustomFlagList_ContainsAll",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_14066ac70",
+   "raw": "FUN_140669420",
    "status": "ok",
    "signature": "bool(void* flagListA, void* flagListB)",
    "note": "oCCustomFlagList string-set test: true iff EVERY flag string in B exists in A (memcmp over {char* name, u32 len} entries, 0x18 stride; data ptr @+0x8, count @+0x10). Empty B => true. Reward spawner roll uses it as the REQUIRED-flags gate: ContainsAll(spawnerSettings+0x100, oCItem+0xc0). All shipping rewarddefs carry empty flag lists \u2014 mechanism present, unused by data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14066ac70 2026-08-09, hand-confirmed: Opens with `if (count_A < count_B) return 0` \u2014 the ALL precondition \u2014 then the nested 0x18-stride memcmp over {name @+8} with data @+8 and count @+0x10.] [RELOCATED to FUN_14066ac70 2026-08-09, hand-confirmed: Opens with `if (count_A < count_B) return 0` \u2014 the ALL precondition \u2014 then the nested 0x18-stride memcmp over {name @+8} with data @+8 and count @+0x10.]",
@@ -465,7 +465,7 @@
    "name": "CustomFlagList_ContainsAny",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_14066ad90",
+   "raw": "FUN_140669540",
    "status": "ok",
    "signature": "bool(void* flagListA, void* flagListB)",
    "note": "oCCustomFlagList string-set test: true if ANY flag string in B exists in A. Empty B => false. Reward spawner roll uses it as the EXCLUDED-flags gate (the 'suppress field'): candidate rejected when ContainsAny(spawnerSettings+0x100, oCItem+0xd8). Also used by LevelLoad 'Enemies settings loading' against enemy-def flag container @def+0x2c0 \u2014 CustomFlagFilter is a generic engine facility, not rewards-specific. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14066ad90 2026-08-09, hand-confirmed: Same 0x18-stride scan as its immediate neighbour but with no count precondition and an early return on first match; an empty B falls straight out with 0, i.e. 'Empty B => false' as documented.] [RELOCATED to FUN_14066ad90 2026-08-09, hand-confirmed: Same 0x18-stride scan as its immediate neighbour but with no count precondition and an early return on first match; an empty B falls straight out with 0, i.e. 'Empty B => false' as documented.]",
@@ -509,7 +509,7 @@
    "name": "AppSettings_SectionList",
    "kind": "data",
    "category": "engine-core",
-   "va": "0x1412f5aa8",
+   "va": "0x1412efd60",
    "status": "va",
    "signature": null,
    "refs": [],
@@ -535,7 +535,7 @@
    "name": "DefinitionRegistry_Ctrl",
    "kind": "data",
    "category": "library",
-   "va": "0x1412f0a68",
+   "va": "0x1412eba68",
    "status": "va",
    "signature": null,
    "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the pointer to the control-byte array. Read the table directly instead of calling Registry_EnumInstances when you only want to LOOK: that function is find-or-INSERT, so a miss mutates the map and can trigger a rehash (FUN_140244620) \u2014 an allocation on the game's heap from a read-only probe. R.defs walks these three globals with page-guarded reads and never calls in.",
@@ -545,7 +545,7 @@
    "name": "DefinitionRegistry_Mask",
    "kind": "data",
    "category": "library",
-   "va": "0x1412f0a80",
+   "va": "0x1412eba80",
    "status": "va",
    "signature": null,
    "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the capacity mask (capacity-1), so slots 0..mask are the whole table.",
@@ -555,7 +555,7 @@
    "name": "DefinitionRegistry_Slots",
    "kind": "data",
    "category": "library",
-   "va": "0x1412f0a70",
+   "va": "0x1412eba70",
    "status": "va",
    "signature": null,
    "note": "Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer; this is the table Registry_EnumInstances find-or-inserts into and Registry_RegisterInstance appends live definitions to. Slot stride 0x18: {u64 key = class desc ptr, u64 data = void** instance array, u32 count @+0x10}. Control bytes are absl's: a byte with the high bit CLEAR marks a full slot (h2 = hash & 0x7f), 0x80 = empty, 0xfe = deleted. THIS entry is the pointer to the slot array (0x18 stride).",
@@ -565,7 +565,7 @@
    "name": "Definition_DeserializeBase",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140310180",
+   "raw": "FUN_14030acb0",
    "status": "ok",
    "signature": "bool(void* def, void* reader)",
    "note": "oCDtDefinition (hash 0x1768ce8e) base deserialize, called first by every *def.ot deserializer: class version 0 = nothing, v1+ = two u8 bools into def+0x285 / def+0x284. These are the codec's base_a/base_b bytes. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [2026-07-09: recovered via hash/decompile verification.]",
@@ -586,7 +586,7 @@
    "name": "Definition_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140310200",
+   "raw": "FUN_14030ad30",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -610,7 +610,7 @@
    "name": "Definition_PreUnload",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140310230",
+   "raw": "FUN_14030ad60",
    "status": "ok",
    "signature": "void(void*)",
    "cabi": {
@@ -658,7 +658,7 @@
    "name": "Definitions_LoadGroup",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140310300",
+   "raw": "FUN_14030ae30",
    "status": "ok",
    "note": "Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curated content list). Pattern-verified 2026-07-05 (Ghidra decompile: 'Definitions' group registry walk + Versions/LiveOps5.versiondef.ot reference). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_140310300 2026-08-09, hand-confirmed: Sole corpus function whose only string literal is the 'Definitions' group name. Weaker than the rest of this table (no versiondef path reference survives in the body), so treat a failure here as the first suspect.] [RELOCATED to FUN_140310300 2026-08-09, hand-confirmed: Sole corpus function whose only string literal is the 'Definitions' group name. Weaker than the rest of this table (no versiondef path reference survives in the body), so treat a failure here as the first suspect.] [RELOCATED to FUN_140310300 2026-08-09, hand-confirmed: Sole corpus function whose only string literal is the 'Definitions' group name. Weaker than the rest of this table (no versiondef path reference survives in the body), so treat a failure here as the first suspect.]",
    "refs": [
@@ -677,7 +677,7 @@
    "name": "DreamShardDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140312690",
+   "raw": "FUN_140314ac0",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -701,7 +701,7 @@
    "name": "EnemyCampTierDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140319620",
+   "raw": "FUN_140314e20",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -737,7 +737,7 @@
    "name": "EnemyCamp_TierSelector",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_14032e790",
+   "raw": "FUN_1403372a0",
    "status": "ok",
    "signature": "void(void* selector)",
    "note": "Camp generation: picks tribes (EnemyCamp_TribeEntryBuilder), then per tribe entry copies the tribe runtime roster (+0x2b8/+0x2c0) as the candidate vector, trims it with EnemyCamp_Stage3Filter, weighted-picks until camp power weight reached. Logs 'Min/Max power weight', 'Generation complete !'. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14032e790 2026-08-09, hand-confirmed: Carries the 'Generation complete !' and 'Min/Max power weight' log strings from the note; sole match in the corpus.] [RELOCATED to FUN_14032e790 2026-08-09, hand-confirmed: Carries the 'Generation complete !' and 'Min/Max power weight' log strings from the note; sole match in the corpus.] [RELOCATED to FUN_14032e790 2026-08-09, hand-confirmed: Carries the 'Generation complete !' and 'Min/Max power weight' log strings from the note; sole match in the corpus.]",
@@ -754,7 +754,7 @@
    "name": "EnemyCamp_TribeEntryBuilder",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_14032fe20",
+   "raw": "FUN_140338930",
    "status": "ok",
    "signature": "void(void* selector, void* specialEntry, void* outEntries, float mult)",
    "note": "Builds the camp's tribe entry list: tribe pool = map def list (mapdef+0x720 -> +0x2c0 stride 0x38) or, if absent, ALL tribes from the class registry; filters via EnemyTribeDefInternal::SearchFilter, weighted-picks tribes, precomputes per-enemy spawn counts from the tribe roster. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14032fe20 2026-08-09, hand-confirmed: Callee of the tier selector that references the map-def tribe list at mapdef+0x720 with 0x38 stride and the EnemyTribeDefInternal SearchFilter, and does NOT touch the tier-band offsets that identify the stage-3 filter.] [RELOCATED to FUN_14032fe20 2026-08-09, hand-confirmed: Callee of the tier selector that references the map-def tribe list at mapdef+0x720 with 0x38 stride and the EnemyTribeDefInternal SearchFilter, and does NOT touch the tier-band offsets that identify the stage-3 filter.] [RELOCATED to FUN_14032fe20 2026-08-09, hand-confirmed: Callee of the tier selector that references the map-def tribe list at mapdef+0x720 with 0x38 stride and the EnemyTribeDefInternal SearchFilter, and does NOT touch the tier-band offsets that identify the stage-3 filter.]",
@@ -778,7 +778,7 @@
    "name": "EnemyController_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140389d00",
+   "raw": "FUN_140392140",
    "status": "ok",
    "signature": "oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self)",
    "cabi": {
@@ -796,7 +796,7 @@
    "name": "EnemyController_vftable",
    "kind": "data",
    "category": "entity",
-   "va": "0x140f30b78",
+   "va": "0x140f32170",
    "status": "va",
    "note": "Vftable of oCDtEntityCpntEnemyController. Derived from MSVC RTTI (type descriptor .?AVoCDtEntityCpntEnemyController@@ -> complete object locator -> vftable) and cross-checked by the same derivation reproducing HeroController's vftable at 0x140f30ca0, which HeroController_Ctor (0x14038ec30) provably stores at +0x1c6. \u26a0 NOT the right key for 'is this entity an enemy' -- use the CLASS ID 0x1561073c (tools/mine_class_ids.py, data/class_ids.json) instead. Components on an oCEntity live in an F14 map (control bytes @entity+0x5e8, slots @+0x5f0 with stride 0x10 = {u32 class id @+0, cpnt* @+8}, bucket mask @+0x600) keyed by that id -- the exact structure Entity_GetNetComponent probes for oCEntityCpntNetwork (0x154fce5c). A class id is a hash of the class NAME, so it survives a patch that moves every address, while this VA does not. The vftable remains useful as corroboration on a component already found by id. CORRECTED 2026-08-17 after a playtest (session c536) in which the vftable walk classified 12/12 victims as unknown-or-scenery: it was scanning entity+0x190/+0x198, which is the component array of an oCEntitySpawnerGo (see Entity_GetComponentByTester), NOT of an oCEntity. Re-derive after a patch from EnemyController_Ctor+0x81.",
    "refs": [
@@ -807,7 +807,7 @@
    "name": "EnemyDef_PostLoad",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_14031a800",
+   "raw": "FUN_140315ce0",
    "status": "ok",
    "signature": "bool(void* enemyDef)",
    "note": "oCDtEnemyDefinition vftable+0x90 post-deserialize callback. Resolves the tribe typed-ref block at +0x2e8 (resolved ptr -> +0x318) via ResourceRef_Resolve, then SELF-REGISTERS into the tribe's runtime roster vector (tribe+0x2b8 data / +0x2c0 count, push_back via FUN_1401550d0) and folds min/max spawn-tier aggregates into tribe+0x2c8/+0x2cc/+0x2d0. Finally registers the instance in the class registry (Registry_RegisterInstance). THE tribe-roster writer: any loaded enemy def with a resolvable tribe_ref becomes a spawn candidate automatically. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031a800 2026-08-09, hand-confirmed: oCDtEnemyDefinition::vftable[18] (+0x90). Body matches the note exactly: tribe ref @+0x2e8 with class-desc default @+0x308 resolved into +0x318, push_back into tribe+0x2b8/+0x2c0, min/max folds into +0x2c8/+0x2cc/+0x2d0, then Registry_RegisterInstance.] [RELOCATED to FUN_14031a800 2026-08-09, hand-confirmed: oCDtEnemyDefinition::vftable[18] (+0x90). Body matches the note exactly: tribe ref @+0x2e8 with class-desc default @+0x308 resolved into +0x318, push_back into tribe+0x2b8/+0x2c0, min/max folds into +0x2c8/+0x2cc/+0x2d0, then Registry_RegisterInstance.] [RELOCATED to FUN_14031a800 2026-08-09, hand-confirmed: oCDtEnemyDefinition::vftable[18] (+0x90). Body matches the note exactly: tribe ref @+0x2e8 with class-desc default @+0x308 resolved into +0x318, push_back into tribe+0x2b8/+0x2c0, min/max folds into +0x2c8/+0x2cc/+0x2d0, then Registry_RegisterInstance.]",
@@ -838,7 +838,7 @@
    "name": "EnemyDefinition_ctor",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_1401df270",
+   "raw": "FUN_1401d8d10",
    "status": "ok",
    "signature": "void*(void* self)",
    "note": "oCDtEnemyDefinition ctor (size 0x350, UID 0x176debb7, vftable 0x140f0af80). Typed ref blocks: entity ref @+0x288 (resolved @+0x2b8), tribe ref @+0x2e8 (resolved @+0x318, class desc default @+0x308). Flag list @+0x2c0. minTier f32 @+0x2dc, tier range {u32,u32} @+0x2e0 init {0,5}, weightA @+0x320 + table @+0x328/+0x330, weightB @+0x338 + table @+0x340/+0x348. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_1401df270 2026-08-09, hand-confirmed: MSVC ctor chain oISerializable -> oIResource -> oCDtDefinition -> oCDtEnemyDefinition, returning param_1. Sets the flag list at +0x2c0 to oCCustomFlagList::vftable, minTier f32 @+0x2dc = 0x3dcccccd, and the tier range @+0x2e0 to {0, 5} \u2014 the note's initialisers.] [RELOCATED to FUN_1401df270 2026-08-09, hand-confirmed: MSVC ctor chain oISerializable -> oIResource -> oCDtDefinition -> oCDtEnemyDefinition, returning param_1. Sets the flag list at +0x2c0 to oCCustomFlagList::vftable, minTier f32 @+0x2dc = 0x3dcccccd, and the tier range @+0x2e0 to {0, 5} \u2014 the note's initialisers.]",
@@ -860,7 +860,7 @@
    "name": "EnemyTribeDef_PostLoad",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_14031bae0",
+   "raw": "FUN_140316fc0",
    "status": "ok",
    "signature": "bool(void* tribeDef)",
    "note": "oCDtEnemyTribeDefinition vftable+0x90 post-deserialize callback. Resolves each 0x38-stride typed-ref entry of the COOKED entry vector at +0x2a0/+0x2a8 (empty in all 25 vanilla tribes), then registers in the class registry. Does NOT write the runtime roster (+0x2b8) - enemies self-register there via EnemyDef_PostLoad. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031bae0 2026-08-09, hand-confirmed: oCDtEnemyTribeDefinition::vftable[18] (+0x90). Walks the 0x38-stride entry vector at +0x2a0/+0x2a8 through ResourceRef_Resolve, then Registry_RegisterInstance; never touches the runtime roster +0x2b8 \u2014 the distinguishing negative in the note.] [RELOCATED to FUN_14031bae0 2026-08-09, hand-confirmed: oCDtEnemyTribeDefinition::vftable[18] (+0x90). Walks the 0x38-stride entry vector at +0x2a0/+0x2a8 through ResourceRef_Resolve, then Registry_RegisterInstance; never touches the runtime roster +0x2b8 \u2014 the distinguishing negative in the note.] [RELOCATED to FUN_14031bae0 2026-08-09, hand-confirmed: oCDtEnemyTribeDefinition::vftable[18] (+0x90). Walks the 0x38-stride entry vector at +0x2a0/+0x2a8 through ResourceRef_Resolve, then Registry_RegisterInstance; never touches the runtime roster +0x2b8 \u2014 the distinguishing negative in the note.]",
@@ -886,7 +886,7 @@
    "name": "EnemyTribeDefinition_ctor",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_1400c5260",
+   "raw": "FUN_1400bdd20",
    "status": "ok",
    "signature": "void*(void* self)",
    "note": "oCDtEnemyTribeDefinition ctor (size 0x2d8, UID 0x176dc2eb, vftable 0x140efea30). Tribe flag list @+0x288; cooked entry vector @+0x2a0/+0x2a8; runtime roster {data,count} @+0x2b8/+0x2c0 (written only by EnemyDef_PostLoad); tier aggregates @+0x2c8 (min, init FLT_MAX) /+0x2cc (max, init -FLT_MAX) /+0x2d0 (maxTierHi u32).",
@@ -910,7 +910,7 @@
    "name": "Engine_MainThreadId",
    "kind": "data",
    "category": "engine-core",
-   "va": "0x141443148",
+   "va": "0x14143d0c8",
    "status": "va",
    "note": "Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId() against it and does nothing (returning 0, i.e. 'do not abort') off that thread, so load progress and its abort check are main-thread-only."
   },
@@ -918,7 +918,7 @@
    "name": "Engine_Singleton",
    "kind": "data",
    "category": "engine-core",
-   "va": "0x14143cbd0",
+   "va": "0x141436a88",
    "status": "va",
    "note": "Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores both, dtor FUN_140456a60 clears). Its vftable is 0x140f3fcf0 \u2014 13 slots, first entry 0x140456960, sitting in the ctor/dtor neighbourhood; slot 9 (+0x48) is the pump LevelLoad_AbortPredicate calls. (The ctor also writes 0x140f54c20/0x140f4f2a0 to +0x00/+0x08 first \u2014 base-class sub-vftables, overwritten.) Two adjacent BYTE flags at +0x18 and +0x19 are the load-abort pair; the ctor zeroes BOTH with one 2-byte store at 0x140456534. +0xf8 gates the pump. \u26a0 NEGATIVE RESULT worth as much as a positive one (2026-08-31): +0x19 has NO writer in Engine scope \u2014 searched the 45 functions that load this global, the 5 resolvable vftable methods, and the one direct callee taking rcx = Engine, for writes of any width at +0x18/+0x19. Only +0x18 is ever set (cold chunk 0x14029987c, which then drains a work queue). Since the abort needs both, the predicate looks inert. \u26a0 Do NOT scan .text for byte writes to [reg+0x19] unscoped \u2014 those offsets are generic and the output is pure noise (tried twice, both times worthless).",
    "refs": []
@@ -927,7 +927,7 @@
    "name": "EntityComponent_Activate",
    "kind": "function",
    "category": "skill",
-   "raw": "FUN_140712c50",
+   "raw": "FUN_140711520",
    "status": "ok",
    "signature": "void(void* unused, oIEntityCpnt* cpnt)",
    "cabi": {
@@ -956,7 +956,7 @@
    "name": "EntityEventTrigger_Fire",
    "kind": "function",
    "category": "skill",
-   "raw": "FUN_140713b00",
+   "raw": "FUN_1407123d0",
    "status": "ok",
    "signature": "void(EventTrigger* trig)",
    "cabi": {
@@ -971,7 +971,7 @@
    "name": "EntityPool_AllocNode",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140690e50",
+   "raw": "FUN_14068f580",
    "status": "ok",
    "signature": "void*(void* pool)",
    "note": "2026-07-18 RE (typed-DB session). Free-list node allocator behind EntityStore_CreateEntity {freecount +0x10, head +0x18, livecount +0x28, tail +0x38}. On pool-empty it constructs via a vcall (*(pool+8))->vtbl[+0x50]() then runs vtbl[+0x18] (init) on the new node. Pattern unique (0/1, 37 bytes). NOT CALL-TESTED.\n\n[2026-09-13, Ghidra] The constructor vcall IS resolved: pool+8 is the owning oCEntitySettings (its ctor FUN_1406dfe30 sets param_1[4] = param_1), and slot +0x50 of oCEntitySettings::vftable (0x140f74688) is FUN_1406e0840 -> FUN_1406f9920, which mallocs 0x640 and runs the oCEntity ctor FUN_1406e2580(entity, settings) \u2014 template stored at entity+0x28. So the class was never unknown; the pool belongs to the template. See EntityStore_CreateEntity.",
@@ -995,7 +995,7 @@
    "name": "EntitySpawner_InstantiateRecord",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140730f80",
+   "raw": "FUN_14072f750",
    "status": "ok",
    "signature": "void(oCEntityCpntEntitySpawner* self, void* spawnRecord)",
    "note": "2026-07-18 RE (typed-DB session). Record -> live entity bridge. record[0] = entity store, record+8 = 4x4 transform. Calls EntityStore_CreateEntity(ctx=FUN_140730860(), store=record[0], xform=record+8, cbCtx), optionally scales via settings (+0x150/+0x158 float) through FUN_1406e3a90, registers a listener on entity+0x570 vector, appends the entity to self+0x210 and writes it back to record[0x10]. Pattern unique (0/1, 49 bytes). NOT CALL-TESTED.",
@@ -1018,7 +1018,7 @@
    "name": "EntitySpawner_SpawnOne",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140730150",
+   "raw": "FUN_14072e920",
    "status": "ok",
    "signature": "void(oCEntityCpntEntitySpawner* self)",
    "note": "2026-07-18 RE (typed-DB session). oCEntityCpntEntitySpawner vtable slot 28 (+0xe0). CORRECTS the stale note in memory/docs: the spawner vtable is 0x140f26a30 (30 slots), NOT 0x140f20cf0; 0x140f06ad8 is oCTFlagSet, not oCSpawnerGoEntityCollector. Spawn-one routine: resolves the target entity store (spawner+0xc8 vcall +0xf0, else *(owner+0x1a8)+0x98), allocates a spawn record via FUN_1407343a0, fills a 4x4 transform (settings+0x1bc mode 0=identity/1=from spawner+0x180), push_backs the record to the vector at self+0x1c0 {count +0x1c8, cap +0x1cc}, then calls EntitySpawner_InstantiateRecord. Only DATA xrefs (vtable slot) -> reached virtually only. Pattern unique (match_index 0/1, 35 bytes). NOT CALL-TESTED in-game; no cabi on purpose.",
@@ -1035,7 +1035,7 @@
    "name": "EntityStore_CreateEntity",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406f5dc0",
+   "raw": "FUN_1406f4540",
    "status": "ok",
    "signature": "oCEntity*(oCEntitySpawner* spawner, oCEntitySettings* settings, oCEntitySpawnData* spawnData, void* cbCtx)",
    "note": "2026-07-18 RE (typed-DB session). Generic create-entity entry used by 9 call sites across the spawn/entity paths. Allocates the entity node via EntityPool_AllocNode(entityStore+0x18), optionally registers cbCtx into entity+0x588 vector, then PLACES it via a vcall ctx->vtbl[+0x18](ctx, entity, xform). Returns the entity. Pattern unique (0/1, 33 bytes).\n\n[2026-09-13, Ghidra] THE JULY 'TEMPLATE-AGNOSTIC' LIMIT WAS WRONG \u2014 this IS the spawn primitive R.spawn is built on. The 'entity store' argument is an oCEntitySettings (the template): its ctor FUN_1406dfe30 embeds an oCSpawnablePool at +0x18 whose owner (+0x20) is the settings itself, so EntityPool_AllocNode's (*(pool+8))->vtbl[+0x50] is oCEntitySettings slot 10 = FUN_1406e0840 -> FUN_1406f9920 = new oCEntity(settings), which stores the template at entity+0x28. A loaded oCEntitySettingsResource embeds its settings at +0x98 (ctor FUN_1406e68d0: settings ctor on param_1 + 0x13), which is why every caller passes `resource + 0x98` (FUN_140435720, FUN_140452a50, and EntitySpawner_SpawnOne's `*(ref+0x1a8) + 0x98`).\n  * arg 1 'ctx' is an oCEntitySpawner. The world one is embedded at +0xa0 of the scene's oCEntitySceneContext (ctor FUN_140702450 writes oCEntitySpawner::vftable at param_1[0x14]); FUN_140730860 fetches it from *(entity+0x30) through GameScene_FindContextByTester. The two stack callers pass a component's own embedded spawner instead. Its vtable +0x18 is FUN_1406f5ef0: link the entity into the spawner list (+0x18 count, +0x20 tail, +0x28 head), default spawnData+0x08 to spawner+0x58 when null, then tail-call entity->vtbl[+0x28](entity, spawnData).\n  * arg 3 is an oCEntitySpawnData (vftable 0x140f1cd18), NOT a 4x4 matrix. Its consumer FUN_1406e41e0 (oCEntity vtable +0x28) reads fields only: +0x08 scene -> entity+0x30; +0x10 position vec3 -> SetPosition (entity+0x324); +0x1c rotation quat xyzw -> SetRotation; +0x2c scale vec3 -> SetScale; +0x38 parent entity -> FUN_1406e4060; +0x40/+0x48 -> entity+0x240/+0x248; +0x50 on-spawned functor copied to entity+0x208. The heap allocator FUN_1407343a0 (0x88 bytes, spawn data at +8) and both stack builders initialise identity quaternion, unit scale, all else zero. EntitySpawner_SpawnOne's 4x4 is converted to position + quaternion (FUN_1404e54e0) before it lands here.\n  * arg 4 may be null (FUN_140452a50 passes 0).\nCALL-TESTED IN-GAME 2026-09-13 (session 3636): R.spawn (src/loader/lua/rsmm/spawn.lua) called it with the scene spawner, a camp enemy's template and a stack-built spawn data; it returned an oCEntity that then appeared on the scene spawner's list (entity+0x38 = that spawner), carried the enemy controller, and was hit by the player 6 s later. No crash.",
@@ -1056,7 +1056,7 @@
    "name": "EntityValueEntry_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140747120",
+   "raw": "FUN_140746390",
    "status": "ok",
    "signature": "void(void*, void*)",
    "cabi": {
@@ -1075,7 +1075,7 @@
    "name": "EntityValueOverride_Alloc",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140770290",
+   "raw": "FUN_14076dfb0",
    "status": "ok",
    "signature": "void*(void*, uint32_t, uint32_t)",
    "cabi": {
@@ -1095,7 +1095,7 @@
    "name": "EntityValueRegistry_RegisterAll",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_1401da350",
+   "raw": "FUN_1401d3dd0",
    "status": "ok",
    "signature": "void(void)",
    "note": "Registers every CRC-keyed game-state value (label+type) in the generic entity-value store: difficulty/xp scalars, GameModifier toggles, multiplayer, player-location flags. Source of the modifier/difficulty key table in docs/_re/kinds/game-modifiers.md (e.g. Game Difficulty 0x18700873, Camp Difficulty Modifier 0x187aaecf, Global Xp Modifier 0x187afd1d, No boss timer 0x1a7945fc). Address not pattern-confirmed across updates. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
@@ -1115,7 +1115,7 @@
    "name": "EntityValueStore_ApplyModifierEvent",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14074b2f0",
+   "raw": "FUN_14074a560",
    "status": "ok",
    "signature": "void(void* store, void* modifierEvent, void* a3, void* a4)",
    "cabi": {
@@ -1149,7 +1149,7 @@
    "name": "EntityValueStore_InitBaseValues",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140747f20",
+   "raw": "FUN_140747190",
    "status": "ok",
    "signature": "void(void* store)",
    "cabi": {
@@ -1180,7 +1180,7 @@
    "name": "EntityValueStore_Recompute",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140749a90",
+   "raw": "FUN_140748d00",
    "status": "ok",
    "signature": "void(void* store, void* valueDef)",
    "cabi": {
@@ -1199,7 +1199,7 @@
    "name": "EntityValueUnion_Compare",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14082ceb0",
+   "raw": "FUN_14082ae90",
    "status": "ok",
    "signature": "uint32_t(void*, void*)",
    "cabi": {
@@ -1218,7 +1218,7 @@
    "name": "EntityValueUnion_CopyAssign",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14082b1d0",
+   "raw": "FUN_1408291b0",
    "status": "ok",
    "signature": "void(void*, void*)",
    "cabi": {
@@ -1237,7 +1237,7 @@
    "name": "EntityValueUnion_DefaultCtor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14082aa60",
+   "raw": "FUN_140828a40",
    "status": "ok",
    "signature": "void*(void*)",
    "cabi": {
@@ -1255,7 +1255,7 @@
    "name": "EntityValueUnion_Destruct",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14082dae0",
+   "raw": "FUN_14082bac0",
    "status": "ok",
    "signature": "void(void*)",
    "cabi": {
@@ -1273,7 +1273,7 @@
    "name": "EntityValueUnion_InitAsType",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14082d670",
+   "raw": "FUN_14082b650",
    "status": "ok",
    "signature": "void(void*, uint32_t)",
    "cabi": {
@@ -1292,7 +1292,7 @@
    "name": "EntityValue_Get",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403c7fa0",
+   "raw": "FUN_1403bf260",
    "status": "ok",
    "signature": "void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey)",
    "cabi": {
@@ -1312,7 +1312,7 @@
    "name": "EntityValue_Lookup",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140749260",
+   "raw": "FUN_1407484d0",
    "status": "ok",
    "signature": "oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey)",
    "cabi": {
@@ -1351,7 +1351,7 @@
    "name": "Entity_DispatchHit",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406e3ce0",
+   "raw": "FUN_1406e2470",
    "status": "ok",
    "signature": "void(oCEntity* target, oCEntityHitData* hit)",
    "cabi": {
@@ -1370,7 +1370,7 @@
    "name": "Entity_FindComponentByType",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406e3210",
+   "raw": "FUN_1406e19a0",
    "status": "ok",
    "signature": "oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta)",
    "cabi": {
@@ -1409,7 +1409,7 @@
    "name": "Entity_GainHealthHandler",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140399d00",
+   "raw": "FUN_1403a23d0",
    "status": "ok",
    "signature": "void(oCEntity* hero, void* a2, void* valueCtx)",
    "note": "\u26a0 2026-09-18: +0x15c8 is DREAM SHARDS, not HP (see Hero_ModifyDreamShards); the 'Damage' call here is the dream-shards-lost-on-damage path. \u2014 Hero damage-taken handler (param_1 = hero HP-carrier; reads current HP @+0x15c8, value ctx @+0x2f8, and the dream-shards-on-damage / damage-reduction value keys 0x188831a6/0x188832a9/0x1887e5ac/0x1ab19456, calling Hero_ModifyDreamShards for 'Damage' / 'Dream Shards on Damage'). Pointer-only args (ptr,ptr,ptr). RE-ANCHORED 2026-07-13: the prior raw FUN_1403a7710 was mid-function on the current build. Used read-only as a hero-capture anchor (the mirror plausibility check filters non-hero entities that also take damage).",
@@ -1430,7 +1430,7 @@
    "name": "Entity_GetComponentByTester",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406e3210",
+   "raw": "FUN_1406e19a0",
    "status": "ok",
    "signature": "void*(void*, void*)",
    "cabi": {
@@ -1449,7 +1449,7 @@
    "name": "Entity_GetComponentFast",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406e31a0",
+   "raw": "FUN_1406e1930",
    "status": "ok",
    "signature": "void*(void*, void*, uint32_t)",
    "cabi": {
@@ -1469,7 +1469,7 @@
    "name": "Entity_GetNetComponent",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140312db0",
+   "raw": "FUN_14030d6b0",
    "status": "ok",
    "signature": "void*(oCEntity* entity)",
    "cabi": {
@@ -1498,7 +1498,7 @@
    "name": "Entity_GetNetId",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1407273c0",
+   "raw": "FUN_140725a20",
    "status": "ok",
    "signature": "uint32_t(void* entity)",
    "note": "Replication id for an entity: a 49-byte thunk that fetches the entity's net component and returns its id. DO NOT CALL FROM THE SDK. It reaches Entity_GetNetComponent, which walks the component map (control bytes @+0x5e8, slots @+0x5f0, mask @+0x600) with no guard of its own, so an entity whose store slot holds the -1 sentinel is an access violation, not a nil return - that is the 2026-08-15 crash (dump a97c76fe, faulting read of 0xffffffffffffffff at Entity_GetNetComponent+0x62). Recorded so the address is not re-derived, and banned in tests/test_loader_sdk_safety.py. For local-vs-remote use the engine's own byte at hero controller +0x1d88 instead. [2026-08-20 OWNER FIELD, fully decompiled] netcomp+0xb8 is an oCSLNetworkObject (vftable rva 0xfa5dd0, confirmed live in session 4c36). Its slot 0x20 is this net-id accessor; its slot 0x18 (0x1408c0d40) is ONE LINE: `*out = *(*(netobj+0x100)+0x28)`. netobj+0x100 is the oCSLNetReplica, set as param_2 of the ctor FUN_1408c0890 (`param_1[0x10].vftable = param_2`, object malloc'd at 0x110 bytes by FUN_1408c4540, called from the replica ctor FUN_1408beac0). THE ENGINE IS RAKNET: FUN_1408beac0 installs RakNet::NetworkIDObject::vftable then RakNet::Replica3::vftable and initialises two 16-byte RakNetGUIDs at +0x28 and +0x38 (guid uint64 + systemIndex uint16 = UNASSIGNED at DAT_1412fed98/DAT_1412feda0), i.e. Replica3::creatingSystemGUID and deletingSystemGUID. So *(replica+0x28) is the RakNetGUID of the peer that CREATED the replica -- the machine whose player owns that hero, and the per-player key a row->player join needs. Consumed by rsmm.lua's F._dmg_owner_guid as three guarded reads; no vcall. \u26a0 This is NOT the lobby's session id: the lobby member's +0x00 is a 32-character string (EOS), a RakNetGUID is 8 bytes, and no scan of the net component for that string can ever hit.",
@@ -1510,7 +1510,7 @@
    "name": "Entity_GiveHandler",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_1403c7560",
+   "raw": "FUN_1403be820",
    "status": "ok",
    "signature": "void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx)",
    "note": "Hero on-hit handler. THREE pointer args (ptr,ptr,ptr). PARAM SEMANTICS decompile-verified 2026-07-15 (crash triage): param_1 is the hero's VALUE CONTEXT (= *(hero+0x2f8)) \u2014 the function reads its store directly at param_1+0x4c8 (life-steal key 0x15c028c2 + life-on-hit keys 0x174b6ada/0x174b6ad8) and keeps the hit-handler list @param_1+0xae0/+0xae8; param_2 is the HERO ENTITY (the shards/heal modifier event is dispatched at param_2+0x4d8, the entity's NamedEventDispatcher); param_3 = the HIT CONTEXT \u2014 dereferenced immediately (*(p3+0x10) IsKindOf gate, *(p3+0x18..0x2c) hit vecs copied to ctx+0x910/+0x930, *(p3+0xa0), *(p3+0x78)). RE-ANCHORED 2026-07-13 (prior raw FUN_1403c7cf0 was mid-function). Used read-only as a hero-capture anchor \u2014 capture must publish param_2, NOT param_1 (the ctx never passes the HUD-mirror plausibility check, so the old param_1 capture silently never fired). [2026-07-14: detour/typedef were 2-arg while the function is 3-arg -> garbage param_3/R8 -> 0xc0000005 at +0x106 in-menu. FIXED: 3-arg. 2026-07-15: passing hero+0x2f8 (field address) instead of *(hero+0x2f8) to EntityValue_Get made the engine read *(hero+0x7c0)=-1.0f as the store -> EntityValue_Lookup fault at store+0xc8, in-run crash. FIXED in rsmm.lua _ev_ctx.]",
@@ -1536,7 +1536,7 @@
    "name": "Entity_LookupMagicalObjectComponent",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_1406e3280",
+   "raw": "FUN_1406e1a10",
    "status": "ok",
    "signature": "void*(void* componentStore, void** out, oCEntity* entity)",
    "cabi": {
@@ -1557,7 +1557,7 @@
    "name": "Entity_ResolveAttackHits",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403dd540",
+   "raw": "FUN_1403d58c0",
    "status": "ok",
    "signature": "float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float baseDamage)",
    "cabi": {
@@ -1588,7 +1588,7 @@
    "name": "Entry_Ctor",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_1402154b0",
+   "raw": "FUN_14020f6f0",
    "status": "ok",
    "signature": "void(void* base, uint32_t count)",
    "cabi": {
@@ -1614,7 +1614,7 @@
    "name": "EventQueue_Drain",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1406642d0",
+   "raw": "FUN_140662a80",
    "status": "ok",
    "signature": "void(void* queue)",
    "note": "Deferred-event queue flush: critsec @+0x8, reentrancy guard byte @+0x0, count @+0x30, head @+0x38, freelist @+0x48; pops each node and invokes node-vtbl+0x20 handler with node+0x30 payload. Level load drains the game-context queue @ctx+0x1c0 right after posting GENERATE_REWARDS / GENERATE_ENEMY_CAMPS oCGameNamedEvents via NamedEvent_Dispatch. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_1406642d0 2026-08-09, hand-confirmed: Called as FUN_1406642d0(ctx + 0x1c0) immediately after the NamedEvent_Dispatch on the world dispatcher (+0x340) in the 'Level load - Generate rewards' stage \u2014 the exact post-GENERATE_REWARDS drain the note describes. Takes a critical section.] [RELOCATED to FUN_1406642d0 2026-08-09, hand-confirmed: Called as FUN_1406642d0(ctx + 0x1c0) immediately after the NamedEvent_Dispatch on the world dispatcher (+0x340) in the 'Level load - Generate rewards' stage \u2014 the exact post-GENERATE_REWARDS drain the note describes. Takes a critical section.]",
@@ -1636,7 +1636,7 @@
    "name": "Event_LevelUp",
    "kind": "event",
    "category": "event",
-   "raw": "FUN_1401f6bf0",
+   "raw": "FUN_1401f0750",
    "status": "ok",
    "lua_event": "level_up",
    "cabi": {
@@ -1669,7 +1669,7 @@
    "name": "Event_RunEnd",
    "kind": "event",
    "category": "event",
-   "raw": "FUN_1401f59c0",
+   "raw": "FUN_1401ef520",
    "status": "ok",
    "lua_event": "run_end",
    "cabi": {
@@ -1694,7 +1694,7 @@
    "name": "Fcm2_OnClosedConnection",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140ac94a0",
+   "raw": "FUN_140ac8590",
    "status": "ok",
    "signature": "void(FullyConnectedMesh2* this, const SystemAddress& addr, RakNetGUID guid, int reason)",
    "locator": {
@@ -1719,7 +1719,7 @@
    "name": "Format_String",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_1402092a0",
+   "raw": "FUN_140202e90",
    "status": "ok",
    "note": "printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO'). Useful xref anchor for locating gameplay logic by its format literal.",
    "refs": [
@@ -1730,7 +1730,7 @@
    "name": "GameModeDefaultDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140325950",
+   "raw": "FUN_140321070",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -1754,7 +1754,7 @@
    "name": "GameModeDefaultDef_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_1403256e0",
+   "raw": "FUN_140320e00",
    "status": "ok",
    "signature": "bool(GameModeDefaultDefinition* this, void* serializer)",
    "note": "GameModeDefaultDefinition \u2014 vftable 0x140f04688 slot 3. u32 @+0x288 (field_a, -100 in All_Chapters) then a poly-pointer vector @+0x290 with its count at +0x298: the ordered CHAPTER list, ids into the file's own object table. The shipped file is 6 sections \u2014 an object table of 4 Chapter entries, four 10-byte Chapter payloads and the root \u2014 so adding a fifth chapter is the same three writes documented for entities and levels: grow the object table, insert the payload before the root, append the id to this vector. Two of the three already exist as code (entity_append, level_placements); this container is a plain cooked file, not a level stream, so it needs its own.",
@@ -1767,7 +1767,7 @@
    "name": "GameModifierDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140326250",
+   "raw": "FUN_140321970",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -1791,7 +1791,7 @@
    "name": "GameModifierDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_1403260b0",
+   "raw": "FUN_1403217d0",
    "status": "ok",
    "signature": "void(void* assetClassDesc)",
    "note": "Registers the '*.gamemodifierdef.ot' asset glob -> GameModifierDefinition library loader (label 'Game modifier definition'); calls generic glob-register FUN_1404a2190. Proves modifier defs are file-additive (new def file auto-registers, no machinery). Address not pattern-confirmed across updates. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
@@ -1808,7 +1808,7 @@
    "name": "GameModifierUi_PadSelectedSlots",
    "kind": "function",
    "category": "options",
-   "raw": "FUN_140360c20",
+   "raw": "FUN_14035b570",
    "status": "ok",
    "signature": "void(void* uiController, void* unknown, void* selectedVector)",
    "cabi": {
@@ -1825,7 +1825,7 @@
    "name": "GameScene_FindContextByTester",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14066cad0",
+   "raw": "FUN_14066b290",
    "status": "ok",
    "signature": "void*(void* gameScene, void* kindOfTypeTester)",
    "note": "Scene-context lookup: iterates two context arrays on the game scene (data @+0x58 count @+0x60, data @+0x68 count @+0x70), calls tester vtbl+0x8 Test(ctx), returns first match. Callers stack-construct an oCTKindOfTypeTester<T, oIGameSceneContext> (vftable + classdesc global) \u2014 the standard way to get MapSceneContext / EntitySceneContext / P2PSessionSceneContext etc. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14066cad0 2026-08-09, hand-confirmed: Two loops over (data @+0x58, count @+0x60) and (data @+0x68, count @+0x70), each calling tester vtbl+0x8 Test(ctx) and returning the first match \u2014 the note verbatim.] [RELOCATED to FUN_14066cad0 2026-08-09, hand-confirmed: Two loops over (data @+0x58, count @+0x60) and (data @+0x68, count @+0x70), each calling tester vtbl+0x8 Test(ctx) and returning the first match \u2014 the note verbatim.]",
@@ -1849,7 +1849,7 @@
    "kind": "function",
    "category": "library",
    "note": "oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards owned->slot+0x18(a) (1-arg void). In 323 vtables. Decompile-identified 2026-07-17.",
-   "raw": "FUN_14066bf00",
+   "raw": "FUN_14066a6c0",
    "status": "ok"
   },
   {
@@ -1857,7 +1857,7 @@
    "kind": "function",
    "category": "library",
    "note": "oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned object via the derived class's slot-0x30 getter (pure in base), then forwards to owned->slot+0x8 returning a {ptr,val} pair into out (null owned -> zeroed out). Getter. In 323 vtables. Decompile-identified 2026-07-17.",
-   "raw": "FUN_14066be70",
+   "raw": "FUN_14066a630",
    "status": "ok"
   },
   {
@@ -1865,14 +1865,14 @@
    "kind": "function",
    "category": "library",
    "note": "oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards owned->slot+0x10(a,b) (2-arg void, set-shaped). In 323 vtables. Decompile-identified 2026-07-17.",
-   "raw": "FUN_14066bec0",
+   "raw": "FUN_14066a680",
    "status": "ok"
   },
   {
    "name": "GroupLevelComponent_Ctor",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e1de0",
+   "raw": "FUN_1402dc810",
    "status": "ok",
    "signature": "void*(void* self)",
    "cabi": {
@@ -1890,7 +1890,7 @@
    "name": "HasGameModifierStateMachine_Register",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140197780",
+   "raw": "FUN_1401900d0",
    "status": "ok",
    "signature": "void(void)",
    "note": "Registers the per-run HasGameModifierStateMachine component type (component id 0x1b49a36c) that tracks which GameModifiers are active this run. Address not pattern-confirmed across updates. [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
@@ -1907,7 +1907,7 @@
    "name": "HeroController_AddSkill",
    "kind": "function",
    "category": "skill",
-   "raw": "FUN_1403974b0",
+   "raw": "FUN_14039fb80",
    "status": "ok",
    "signature": "void(HeroController* hero, oCDtEntityCpntSkillController* ctrl)",
    "cabi": {
@@ -1933,7 +1933,7 @@
    "name": "HeroController_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14038ec30",
+   "raw": "FUN_140397250",
    "status": "ok",
    "signature": "oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self)",
    "cabi": {
@@ -1964,7 +1964,7 @@
    "name": "HeroController_HudMirror_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1403b3c70",
+   "raw": "FUN_140400380",
    "status": "ok",
    "note": "Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroController_Ctor. Hero_ModifyDreamShards writes new HP to *(*(hero+0x1d80)) and the HUD reads it; only the local player gets one, so its presence is the local-hero discriminator used by hero_plausible. [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
    "refs": [
@@ -1975,7 +1975,7 @@
    "name": "HeroController_RemoveSkill",
    "kind": "function",
    "category": "skill",
-   "raw": "FUN_1403977b0",
+   "raw": "FUN_14039fe80",
    "status": "ok",
    "signature": "void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud)",
    "cabi": {
@@ -1992,7 +1992,7 @@
    "name": "HeroDef_Deserialize",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_14031ef30",
+   "raw": "FUN_14031a570",
    "status": "ok",
    "signature": "bool(oCDtHeroDefinition* def, oCBinaryStream* stream)",
    "cabi": {
@@ -2017,7 +2017,7 @@
    "name": "HeroDef_LoadBaseEntity",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_14031ece0",
+   "raw": "FUN_14031a320",
    "status": "ok",
    "signature": "void(void* heroDef, void** outEntityRef)",
    "note": "Lazy loader for the hero's base entity, called per herodef in 'Level load - LoadAndGetRandomHeroEntity' (herodef list @gameScene+0x710 count @+0x718). Entity spec inline in the herodef: path string @+0x8a0, second path @+0x8b0, package ctx @+0x8c0, loaded flag @+0x8c8, cached refcounted entity @+0x8d0. Waits on def+0x68 readiness, resolves the entity-loader service (id 0x53b64d) from ServiceRegistry_Global and calls svc-vtbl+0x18 Load(path, flags, outRef, 0). Key link for the custom-hero path: this is where a herodef turns into a live entity. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14031ece0 2026-08-09, hand-confirmed: Called from the 'Level load - LoadAndGetRandomHeroEntity' stage, in the loop over the herodef list at gameScene+0x710 with count +0x718 \u2014 the exact pair recorded in the note.] [RELOCATED to FUN_14031ece0 2026-08-09, hand-confirmed: Called from the 'Level load - LoadAndGetRandomHeroEntity' stage, in the loop over the herodef list at gameScene+0x710 with count +0x718 \u2014 the exact pair recorded in the note.] [RELOCATED to FUN_14031ece0 2026-08-09, hand-confirmed: Called from the 'Level load - LoadAndGetRandomHeroEntity' stage, in the loop over the herodef list at gameScene+0x710 with count +0x718 \u2014 the exact pair recorded in the note.]",
@@ -2042,7 +2042,7 @@
    "name": "HeroDef_LoadSkinEntity",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_14031ea40",
+   "raw": "FUN_14031a080",
    "status": "ok",
    "signature": "void(void* heroDef, uint16_t skinIndex, void* outHandle)",
    "note": "Lazy loader for a hero SKIN entity, called in 'Level load - LoadAndGetPlayedHeroEntity' with (herodef, skinIdx u16) pairs. Skin spec table @herodef+0x8f8 (array of spec ptrs), count @+0x900; out-of-range index warns and falls back to 0. Spec layout mirrors the base-entity spec at different offsets: path @spec+0x1c0, second path @+0x1d0, package ctx @+0x1e0, loaded flag @+0x1e8, cached entity @+0x1f0. Complements the baked roster count in FUN_1401dcae0 (hook_skins.cpp): the count gates the UI, THIS table is what actually loads a skin. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.] [FALSE OK (found 2026-08-09): FUN_14028e5f0 is the level-load orchestrator (all 15 'Level load - *' stage strings), not the skin loader \u2014 the note itself says this routine is CALLED from the 'LoadAndGetPlayedHeroEntity' stage, so it cannot be the function that contains that stage string. verify_symbol_resolve passed it because the address is a real function boundary; the gate proves an address is a function, never that it is the RIGHT function. The skin loader is the call inside that stage block; re-derive before using. Reassigned the address to LevelLoad_Orchestrator.] [RELOCATED to FUN_14031ea40 2026-08-09, hand-confirmed: Called from the orchestrator's 'Level load - LoadAndGetPlayedHeroEntity' stage as (herodef, u16 skin index, &out) \u2014 the (herodef, skinIdx u16) pair in the note. Sits directly before its HeroDef_LoadBaseEntity sibling. This is the symbol that was previously pointing at the orchestrator itself.] [RELOCATED to FUN_14031ea40 2026-08-09, hand-confirmed: Called from the orchestrator's 'Level load - LoadAndGetPlayedHeroEntity' stage as (herodef, u16 skin index, &out) \u2014 the (herodef, skinIdx u16) pair in the note. Sits directly before its HeroDef_LoadBaseEntity sibling. This is the symbol that was previously pointing at the orchestrator itself.]",
@@ -2064,7 +2064,7 @@
    "name": "HeroDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_14031fd70",
+   "raw": "FUN_14031b3f0",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -2088,7 +2088,7 @@
    "name": "HeroMelodyPersistentData_vftable",
    "kind": "data",
    "category": "melodies",
-   "va": "0x140f12f40",
+   "va": "0x140f0f950",
    "status": "va",
    "note": "vftable of HeroMelodyPersistentData (\"Dt Hero Controller Owned Melody Persistent Data\", typedesc 0x141375258) \u2014 the per-hero component that survives a chapter and is the likeliest home of the player's NOTE COUNT and per-melody power-up level. Notes are NOT in the entity-value store (no key in R.stat) and not in the scene-context table (R.game has only 'Melody notes in spawning tile' and 'Melody power up level max catchup'); MelodyProfileData is the cross-run counterpart. 7 construction sites. Not yet walked: dump a live instance to find the counter.",
    "refs": []
@@ -2097,7 +2097,7 @@
    "name": "HeroProgressionUnlock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_1402b2b10",
+   "raw": "FUN_1402ad610",
    "status": "ok",
    "signature": "bool(void* condition_data)",
    "cabi": {
@@ -2118,10 +2118,34 @@
    ]
   },
   {
+   "name": "AdditionalContentGate_IsUnlocked",
+   "kind": "function",
+   "category": "heroes",
+   "raw": "FUN_1406979e0",
+   "status": "ok",
+   "signature": "bool(void* condition_data)",
+   "cabi": {
+    "ret": "uint32_t",
+    "params": [
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oe::AdditionalContentGameUnlockConditionData",
+     "slot": 14
+    }
+   },
+   "note": "Ownership / entitlement gate (DLC and bought content). Body is `cmp dword [rcx+0x28], 3; sete al; ret`, the vftable slot 14 of oe::AdditionalContentGameUnlockConditionData, verified in Ravenswatch.exe 2026-10-13 (vtable 0x140f27a70, RTTI name checked). Hooked by R.hero.unlock_progression only when the mod opts in to ownership gates (the unlock-heroes mod), which opens every ownership-gated hero for every player on the mod, including paid DLC. Replaces the stale 0x140699250 address in the older notes, which no longer holds this function.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
    "name": "HeroRankLock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_1402b1c10",
+   "raw": "FUN_1402ac6f0",
    "status": "ok",
    "signature": "bool(void* condition_data)",
    "cabi": {
@@ -2145,7 +2169,7 @@
    "name": "HeroSelect_ConfirmBlockReason",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_14026dbc0",
+   "raw": "FUN_140268570",
    "status": "ok",
    "signature": "int(void* screen)",
    "locator": {
@@ -2166,7 +2190,7 @@
    "name": "HeroSelect_ConfirmPressed",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_1403e9300",
+   "raw": "FUN_1403e17f0",
    "status": "ok",
    "signature": "int(void* screen)",
    "locator": {
@@ -2182,7 +2206,7 @@
    "name": "HeroSelect_IsHeroAvailable",
    "kind": "function",
    "category": "session",
-   "raw": "FUN_14032b460",
+   "raw": "FUN_1403269f0",
    "status": "ok",
    "locator": {
     "how": "callees",
@@ -2207,7 +2231,7 @@
    "name": "HeroSelect_SetConfirmEnabled",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_1403e9500",
+   "raw": "FUN_1403e19f0",
    "status": "ok",
    "signature": "void(void* screen, bool enabled)",
    "locator": {
@@ -2226,7 +2250,7 @@
    "name": "HeroSelect_ValidateBlockedPtr",
    "kind": "data",
    "category": "ui",
-   "va": "0x14143cb58",
+   "va": "0x141436a18",
    "status": "va",
    "note": "Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate Hero Button'. TWO independent sites read it and set the same widget pair from it \u2014 FUN_1403e7d20 calls HeroSelect_SetConfirmEnabled with `edx = (byte == 0)`, and FUN_1403e8840 inlines the identical pair of widget calls (`test r10b,r10b; sete bl`). Non-zero also writes '*' (0x2a) into screen+0x378, which is the padlock glyph the player sees. So the byte is the single source and the setters are just two copies of the same decision \u2014 which is why hooking ONE of them left the button dead. The page is `GameUis/All_Book_Pages/Select_Hero_Book_Page`, the widget is `[Button Ui] Select_Hero_Book_Page\\\\Validate Hero Button`, and the owning class is oCDtEntityCpntSelectHeroBookPageUiController (vftable 0x140f35960, RTTI-walked). \u26a0 WHAT WRITES IT IS NOT KNOWN. A scan of every access to +0x11a8 found only a struct copy (0x1401be463) and an unrelated dword store; the global itself is referenced by 48 functions. R.hero.allow_duplicates therefore clears the byte on a tick rather than intercepting a writer, which is blunt and is documented as such. \u26a0 va symbols are build-specific and this one is NOT pattern-anchored: it must be re-derived after a game patch."
   },
@@ -2234,7 +2258,7 @@
    "name": "HeroStats_OnDamageDealt",
    "kind": "function",
    "category": "combat",
-   "raw": "FUN_14039aef0",
+   "raw": "FUN_1403a35c0",
    "status": "ok",
    "signature": "void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload, char analytics)",
    "note": "Per-hero damage-dealt accounting, and the ONLY source that sees allies. It fires on every hero in the session, local or remote - the engine merely skips the TOTALLING branch for a non-local hero, so the callback itself is a faithful per-player damage feed and is what makes a co-op damage meter possible without netcode RE. param_1 is the hero CONTROLLER (entity @+0x8, is-local byte @+0x1d88, HUD mirror @+0x1d80, stats block @+0x1db0); param_3 is the damage payload (value object @+0x10 -> amount f32 @+0x08, source @+0xa0 -> type u32 @+0xc8). Hook shape 'vpppi'. Backs R.damage. CORRECTED 2026-08-17: param_2 is the VICTIM ENTITY, not a stats block (the earlier note said stats). Proof: the sole caller FUN_1403c7560 passes its own param_2 to Entity_GetNetComponent (FUN_140312db0) and touches it at +0x28 / +0x4d8, i.e. an oCEntity; inside this function param_2+0x28 is the entity's definition object, whose +0x70 resource path is stringified into the analytics record (falling back to \"Unknown\") and whose flag lists at +0x2c0 / +0x318 are appended to it. That makes the victim available to a hook, which is what lets a damage meter tell an enemy from a destructible prop -- see EnemyController_vftable.",
@@ -2259,7 +2283,7 @@
    "name": "HeroStats_OnDamageTaken",
    "kind": "function",
    "category": "combat",
-   "raw": "FUN_1403a0940",
+   "raw": "FUN_1403a8ff0",
    "status": "ok",
    "signature": "void(void* hero, void* payload)",
    "note": "Per-hero damage-taken accounting; the counterpart to HeroStats_OnDamageDealt and the source of the meter's `taken` column. Found from the stat id 0x17df7da0 referenced at 0x1403a0c8d, with the function bounds taken from .pdata because Ghidra had no function defined there. param_2 carries the amount at +0x10 (the same value is mirrored at +0xa0). Unlike the dealt hook this is NOT a session-wide feed: a hit on an ally is applied on the ALLY's machine, so a remote player's taken is always 0 here. That is netcode, not a bug - the mod documents it. Hook shape 'vpp'.\n\n[2026-09-11] DECOMPILED for the first time \u2014 the address was never a Ghidra function until the exception table was used to define the 16,945 functions its heuristics had missed.\n\nWhat it does: resolves the GAME EVENT scene context (a different tester from the global entity-value one \u2014 oCGameEventSceneContext), builds an oCCustomFlagList naming the damage source, and emits it under the entity-value keys 0x17df7da0 (\"Damage dealt\") and, when the hit flag at +0x11 is set, 0x17fdac33 (\"Damage received\").\n\nLAYOUT worth keeping: the attacker name falls back to the literal \"Unknown\" when the source chain is absent, which is the engine's own answer to the ally-naming problem R.damage spent sessions on. A per-hit log is appended at hero+0x1758 (data), +0x1760 (count), +0x1764 (cap), stride 0xc, and the running total is accumulated into the HUD mirror at *(hero+0x1d80)+0xc. A `bool` is recorded per hit for whether the instigator is the local hero.",
@@ -2271,7 +2295,7 @@
    "name": "HeroStoryUnlock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
-   "raw": "FUN_1402b21a0",
+   "raw": "FUN_1402acca0",
    "status": "ok",
    "signature": "bool(void* condition_data)",
    "cabi": {
@@ -2295,7 +2319,7 @@
    "name": "Hero_GainExperience",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e2f00",
+   "raw": "FUN_1402dd930",
    "status": "ok",
    "signature": "void(void*, void*)",
    "cabi": {
@@ -2326,7 +2350,7 @@
    "name": "Hero_GrantMagicalObject",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_140397aa0",
+   "raw": "FUN_1403a0170",
    "status": "ok",
    "signature": "void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void* sourceTags)",
    "cabi": {
@@ -2355,7 +2379,7 @@
    "name": "Hero_ModifyDreamShards",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_14039a320",
+   "raw": "FUN_1403a29f0",
    "status": "ok",
    "signature": "void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags)",
    "cabi": {
@@ -2389,7 +2413,7 @@
    "name": "HitPoint_SetHitPoints",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140822db0",
+   "raw": "FUN_140820b60",
    "status": "ok",
    "signature": "void(oCEntityCpntHitPoint* hp, float value)",
    "cabi": {
@@ -2428,7 +2452,7 @@
    "name": "IngredientDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140323190",
+   "raw": "FUN_14031e8b0",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -2452,7 +2476,7 @@
    "name": "InitialLoading_LoadAllDefinitions",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140260b80",
+   "raw": "FUN_14025b160",
    "status": "ok",
    "signature": "void(void* nameFilter)",
    "note": "Boot stage 'InitialLoading - Load all definitions'. Loads Versions/LiveOps5.versiondef.ot first, then directory-scans the 'Definitions' folder of the resource FS (index = UsedRscList.ot) and loads EVERY definition file found except 7 excluded classes (tribe class among them; tribes load lazily when an enemy tribe_ref resolves). This is why a custom .enemydef.ot registered in UsedRscList loads at boot with no further reference needed. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
@@ -2490,7 +2514,7 @@
    "name": "LevelDatabase_BuildAndRegister",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_14047cf80",
+   "raw": "FUN_14047cf20",
    "status": "ok",
    "signature": "bool(void* db, void* level, bool flag)",
    "note": "THE GATE that decides whether a loaded level keeps its objects. Called by FUN_1407466b0 as `gate(db, level, 0)` right after LevelStream_LoadStep succeeds: false -> the level is DESTROYED (0x140482d90) and the owning slot nulled; true -> the level is kept at [owner+0x68]. `db` is `[[rcx+8]+0x30] + 0x448`, the runtime oCGameLevelDatabase (class id 0x064a9acd \u2014 runtime only, no shipped asset declares it). It appends the level to the database vector at db+0x88/+0x90, then walks the level's objects and instantiates each: count at level+0xc8, array at level+0xc0 with STRIDE 0x38, and per element `test [db+0xa0], [elem+0x30]` / `jbe` -> SKIP. \u26a0 `test` always clears CF so that `jbe` is really `je`: an object is skipped when the AND is ZERO, silently, with no log and no fault. Stride 0x38 is the size of a resource REF BLOCK (see hook_resource.cpp), which puts +0x30 exactly where `resolvedPtr` lives \u2014 so the skip may be 'this object's resource never resolved', the documented null-preload failure seen from the skip side rather than the crash side. NOT yet disambiguated from a flags mask. An earlier accept check at 0x14047c930 can also bail out before the loop runs at all (al != 1 and byte[db] == 0 -> jump past it). WHY IT MATTERS: a mod-owned tile level is placed, its resource resolves, and NONE of its objects are instantiated \u2014 not even the shipped ones it inherited from its donor (measured 2026-09-10: 5 mod tiles placed, the donor's Health_Fountain resolved 0 extra times). Those three silent paths are the whole remaining hypothesis space, and hooking this function to log level+0xc8 before the call and the return value after separates them in one run. [PROMOTED to ok 2026-09-10: 0x14047cf80 is a function START per the module's .pdata exception table (bounds 0x14047cf80..0x14047d585, 1541 bytes), and its body is exactly the shape this note describes \u2014 the db+0x88/+0x90 append, then the level+0xc8 / +0xc0 stride-0x38 walk with the test/jbe skip and LevelObject_LoadOrCreate. Promoted so a read-only detour can report which of the three silent empty-level paths a mod-owned level takes.]",
@@ -2516,7 +2540,7 @@
    "name": "LevelLoad_Orchestrator",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_14028e5f0",
+   "raw": "FUN_140288fb0",
    "status": "ok",
    "signature": "i64(void* levelGs)",
    "note": "Runs the 'Level load - *' stage chain (hero entities, barks, 'Enemies settings loading' = blocking-load of registry enemy defs filtered by map-def tribe list, map/tile defs, enemy camp generation via named event, navmesh, sectorization). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_14028e5f0 2026-08-09, hand-confirmed: Holds all 15 'Level load - *' stage strings (hero entities, barks, 'Enemies settings loading', map/tile defs, enemy camps, navmesh, sectorization) \u2014 the stage chain the note describes. This address was previously and wrongly assigned to HeroDef_LoadSkinEntity, which is one of the functions this orchestrator CALLS.] [RELOCATED to FUN_14028e5f0 2026-08-09, hand-confirmed: Holds all 15 'Level load - *' stage strings (hero entities, barks, 'Enemies settings loading', map/tile defs, enemy camps, navmesh, sectorization) \u2014 the stage chain the note describes. This address was previously and wrongly assigned to HeroDef_LoadSkinEntity, which is one of the functions this orchestrator CALLS.] [RELOCATED to FUN_14028e5f0 2026-08-09, hand-confirmed: Holds all 15 'Level load - *' stage strings (hero entities, barks, 'Enemies settings loading', map/tile defs, enemy camps, navmesh, sectorization) \u2014 the stage chain the note describes. This address was previously and wrongly assigned to HeroDef_LoadSkinEntity, which is one of the functions this orchestrator CALLS.]",
@@ -2554,7 +2578,7 @@
    "name": "LevelObject_LoadOrCreate",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_14047c1e0",
+   "raw": "FUN_14047c180",
    "status": "ok",
    "signature": "bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* registry)",
    "note": "Allocates a level object, deserializes it through the oCTextLoader/oCBinaryLoader path (fields *a_pLvlId / *a_pLinks / *a_pLevel) and, ON A NON-1 RESULT, calls the level destructor FUN_140482d90 (which runs LevelObject_DestroyVectors) on the half-built object and returns 0. That destroy is the crash: see LevelLoad_AbortPredicate. The container the teardown walks is at level+0x10, its object vector at +0x90 with the count at +0x98 \u2014 matching the crash dump's rbx+0x80/rbx+0x88. [PROMOTED to ok 2026-09-10: 0x14047c1e0 is a function START per the module's .pdata exception table. Promoted so hook_levelbuild.cpp can COUNT its calls \u2014 which measures how many objects a level actually instantiates without depending on any struct offset. That matters: the first version of that trace read a guessed count field and reported ZERO objects for every level in the game, vanilla ones included, which is a wrong offset rather than a finding.]\n\n[2026-09-11] ONE UNRESOLVED REFERENCE DESTROYS THE WHOLE LEVEL. The sequence is ResourceRef_Resolve(level+0xd0, classDesc, level+0x100, &policy) followed immediately by LevelStream_LoadStep(level+0x10, level+0x100, level+0x150, level+0xa0); if that step returns anything other than 1 the function destroys the level object and returns 0 with *outLevel = NULL. classDesc defaults to the global at 0x141476278 when level+0xf0 is null.\n\nThis is the mechanism behind the additive-POI symptom recorded in rsmm.sdk.kinds.poi._emit_prop_override: a mod-added entity that fails to resolve does not produce a missing prop in an otherwise fine level, it fails the ENTIRE level load. So 'the level did not load' and 'one reference was null' are the same observation, and a trace must name WHICH reference.",
@@ -2600,7 +2624,7 @@
    "name": "LevelStream_LoadStep",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140476770",
+   "raw": "FUN_140476710",
    "status": "ok",
    "signature": "bool(void* container, void* resourceSlot, void* lvlId, void* links)",
    "note": "One step of a level load. Signature by register: rcx = container (level+0x10), rdx = the level's RESOURCE REF SLOT (level+0x100), r8 = lvlId (level+0x150), r9 = links (level+0xa0). TWO failure returns, and telling them apart matters: (1) LevelLoad_ProgressTick returns 1 -> return 0, the abort path, which looks INERT on this build (see LevelLoad_AbortPredicate); (2) `*(*(rdx) + 0x38) != 1` -> return 0, a resource STATE check and the only one of the two reachable in practice. On success it passes the DEREFERENCED object `*(rdx)` \u2014 not the slot \u2014 to FUN_140476680, which picks LevelBinary_Load when `*(u32*)(obj+0x90) > 0` (unsigned, `jbe`) and LevelText_Load otherwise. Object field map, read off the two callees: +0x28 flags (bit 5 tested), +0x38 state (must be 1), +0x68 char* name, +0x80 blob, +0x90 blob size. CROSS-CHECK that the slot really is a standard resource ref: LevelObject_LoadOrCreate calls ResourceRef_Resolve with the ref block at level+0xd0 and the out pointer at level+0x100, and 0xd0 + 0x30 = 0x100 is exactly that symbol's documented `resolvedPtr @+0x30` \u2014 so level+0x100 IS the resolved-pointer field of a 0x38-byte ref block, not a separate structure. \u26a0 WHO WRITES +0x38 IS UNRESOLVED and the static routes are dead ends (2026-08-31): the producing service is looked up by id 0x53b64d in ServiceRegistry_Global and REGISTERED AT RUNTIME by FUN_140456cb0 during engine boot, from a static-init linked list, so the concrete class is not statically reachable; and the object cannot be fingerprinted by field shape \u2014 offsets 0x30/0x38/0x3c/0x68/0x80/0x90 are far too common, and three separate scans each came back with unrelated structures (vector size/capacity pairs at +0x38/+0x3c, stack slots, float constants). Do not re-run a shape scan. The remaining route is dynamic: ResourceRef_Resolve is status=ok, so hook it and read +0x38 off the object it resolves. Nothing here establishes what the enum means; '1 = usable' is inferred from this one comparison. [PROMOTED to ok 2026-08-31: 0x140476770 is a function start (34-byte pattern, unique match 0/1) and its body is exactly the shape this note describes \u2014 ProgressTick, then the +0x38 == 1 test, then the loader dispatch at 0x140476680. Promoted so hook_levelload.cpp can detour it and report WHICH resource fails a level load, on the failure path only.]"
@@ -2609,7 +2633,7 @@
    "name": "LevelStream_ProgressHook",
    "kind": "data",
    "category": "resource",
-   "va": "0x1412ebf30",
+   "va": "0x1412e6f30",
    "status": "va",
    "note": "Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_140454750. Phase argument: 0 = begin, 1 = tick (from LevelLoad_ProgressTick), 2 = end. LevelStream_LoadLevel brackets a level load with phases 0 and 2 and resets the accumulator at 0x14143cd34 and the max at 0x1412ebf00 first.",
    "refs": []
@@ -2627,7 +2651,7 @@
    "name": "Library_AchievementDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f27660",
+   "va": "0x140f23ff0",
    "status": "va",
    "note": "vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2638,7 +2662,7 @@
    "name": "Library_ChallengeDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f299d8",
+   "va": "0x140f267c0",
    "status": "va",
    "note": "vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2649,7 +2673,7 @@
    "name": "Library_DreamShardDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f27178",
+   "va": "0x140f266a0",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2660,7 +2684,7 @@
    "name": "Library_EnemyCampDifficultyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f280e0",
+   "va": "0x140f27818",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2671,7 +2695,7 @@
    "name": "Library_EnemyCampTierDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f2ad30",
+   "va": "0x140f27858",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2682,7 +2706,7 @@
    "name": "Library_EnemyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f2b450",
+   "va": "0x140f27d50",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtEnemyDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2693,7 +2717,7 @@
    "name": "Library_EnemyTribeDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f2aeb8",
+   "va": "0x140f27a08",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2704,7 +2728,7 @@
    "name": "Library_EntitySettingsResource_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f75e60",
+   "va": "0x140f72d90",
    "status": "va",
    "note": "vftable of oCTLibrary<oCEntitySettingsResource> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2715,7 +2739,7 @@
    "name": "Library_GameModifierDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f2a960",
+   "va": "0x140f26b98",
    "status": "va",
    "note": "vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the run mutators / 'negative modes' (No boss timer, No minimap, More experience, Day only, ...). Defs load from *.gamemodifierdef.ot via the additive dir-scan/UsedRscList path, same as enemy defs. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2726,7 +2750,7 @@
    "name": "Library_IngredientDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f29a18",
+   "va": "0x140f26800",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtIngredientDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2737,7 +2761,7 @@
    "name": "Library_MapDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f29810",
+   "va": "0x140f26608",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtMapDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2748,7 +2772,7 @@
    "name": "Library_MelodyDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f29af8",
+   "va": "0x140f268e0",
    "status": "va",
    "note": "vftable of oCTLibrary<MelodyDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2759,7 +2783,7 @@
    "name": "Library_RewardDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f298a8",
+   "va": "0x140f26660",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtRewardDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2770,7 +2794,7 @@
    "name": "Library_TileDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f2b0e0",
+   "va": "0x140f27af0",
    "status": "va",
    "note": "vftable of oCTLibrary<oCDtTileDefinition> singleton. \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2781,7 +2805,7 @@
    "name": "Library_VersionDefinition_vftable",
    "kind": "data",
    "category": "library",
-   "va": "0x140f297c0",
+   "va": "0x140f265c8",
    "status": "va",
    "note": "vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). \u26a0 ADDRESS CORRECTED 2026-09-17: the VA recorded here pointed at the RTTI TYPE DESCRIPTOR of this class, not at its vftable \u2014 its +0 is type_info's vftable and +0x10 onward is the mangled name, so any consumer reading it as a vftable would have compared against ASCII. Nothing consumed it, so this was inert rather than broken. Re-derived from RTTI (type descriptor \u2192 complete object locator \u2192 vftable) and checked by scripts/audit_va_globals.py.",
    "refs": [
@@ -2792,7 +2816,7 @@
    "name": "LobbyAttributes_Parse",
    "kind": "function",
    "category": "session",
-   "raw": "FUN_140922f20",
+   "raw": "FUN_140921ae0",
    "status": "ok",
    "signature": "void*(void* self, StringDesc* blob)",
    "cabi": {
@@ -2818,7 +2842,7 @@
    "name": "LobbyAttributes_Serialize",
    "kind": "function",
    "category": "session",
-   "raw": "FUN_140923e00",
+   "raw": "FUN_1409229b0",
    "status": "ok",
    "signature": "void*(void* out, void* member)",
    "cabi": {
@@ -2861,9 +2885,9 @@
    "name": "LobbyPlayerName_Registry",
    "kind": "data",
    "category": "session",
-   "va": "0x141476268",
+   "va": "0x141470268",
    "status": "va",
-   "signature": "std::string[]  // count at 0x141476270",
+   "signature": "std::string[]  // count at 0x141470270",
    "note": "Global append-only table of every player name the session has interned, 0x10 bytes per entry, count in the adjacent global. LobbyAttributes_Parse pushes a member's PlayerName here (and into the parallel table at 0x141475cc0) the first time it sees it, then copies the interned copy back into the record. Mined 2026-08-19. \u26a0 Append-only and never pruned, so it is a history of names seen, NOT the current roster \u2014 the same trap that made R.lobby's roster grow to six members for a four-player run. Useful as a name POOL, useless as membership."
   },
   {
@@ -2912,7 +2936,7 @@
    "name": "MagicalObject_RegisterInstance",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_1403abb90",
+   "raw": "FUN_1403b46c0",
    "status": "ok",
    "signature": "void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive)",
    "cabi": {
@@ -2959,7 +2983,7 @@
    "refs": [
     "src/loader/src/hook_items.cpp"
    ],
-   "raw": "FUN_140259060",
+   "raw": "FUN_140253540",
    "locator": {
     "called_by": [
      "InitialLoading_LoadAllDefinitions"
@@ -2975,7 +2999,7 @@
    "name": "MagicalObject_SpawnContainingFunc",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_14025d9b0",
+   "raw": "FUN_140257f50",
    "status": "ok",
    "note": "Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. This is the pattern-resolvable anchor.",
    "refs": [
@@ -2986,7 +3010,7 @@
    "name": "MapCtx_DistributeEnemyCampTiers",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_1401e8830",
+   "raw": "FUN_1401e2370",
    "status": "ok",
    "signature": "void(void* mapSceneContext)",
    "note": "Runs under 'Level load - MapSceneContext OnLevelStart', just before the reward roll. Camp spawner list @ctx+0xc8 count @+0xd0; each spawner's value f32 @+0x68 lazily evaluated via Property_EvaluateByGuid (on failure logs the settings asset path). Enemy-camp tier defs enumerated from the class registry and filtered by tier band [def+0x288, def+0x28c] \u2014 this is enemycamptierdef codec value_a/value_b, now pinned as the tier min/max over the value roll. Seeded pick, then weighted distribution over def rows @+0x290 count @+0x298 (weight @entry+0x40); tier assigned to spawner via FUN_14032de30. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1401e8830 2026-08-09, hand-confirmed: First of the three calls under the 'MapSceneContext OnLevelStart' stage, i.e. before the reward roll (Reward_InitAllRewards) as the note says. Contains 7 of the note's 8 struct offsets (+0x288/+0x28c tier band, +0x290/+0x298 rows, weight +0x40); its neighbour has 1.] [RELOCATED to FUN_1401e8830 2026-08-09, hand-confirmed: First of the three calls under the 'MapSceneContext OnLevelStart' stage, i.e. before the reward roll (Reward_InitAllRewards) as the note says. Contains 7 of the note's 8 struct offsets (+0x288/+0x28c tier band, +0x290/+0x298 rows, weight +0x40); its neighbour has 1.] [RELOCATED to FUN_1401e8830 2026-08-09, hand-confirmed: First of the three calls under the 'MapSceneContext OnLevelStart' stage, i.e. before the reward roll (Reward_InitAllRewards) as the note says. Contains 7 of the note's 8 struct offsets (+0x288/+0x28c tier band, +0x290/+0x298 rows, weight +0x40); its neighbour has 1.]",
@@ -3014,7 +3038,7 @@
    "name": "MapCtx_LinkPairedSpawners",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1401ebad0",
+   "raw": "FUN_1401e5610",
    "status": "ok",
    "signature": "void(void* mapSceneContext)",
    "note": "Runs right after the reward roll. Spawner list @ctx+0x198 count @+0x1a0: collects spawners with null link @+0x68 and def+0x110 != 0, then pairs A,B where A.def+0x110 == B.def+0xf8 (link-id match), stores peer ptr @spawner+0x68 and registers both via FUN_1402b6f10(entity+0x570, ...). Semantics inferred from structure (teleporter/portal-style two-way pairing candidate) \u2014 not yet observed in-game. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1401ebad0 2026-08-09, hand-confirmed: The call right AFTER the reward roll in the same stage. Contains all 6 note offsets (+0x198/+0x1a0 spawner list, link +0x68, def +0x110 / +0xf8, register +0x570); the tier-distribute neighbour has 1.] [RELOCATED to FUN_1401ebad0 2026-08-09, hand-confirmed: The call right AFTER the reward roll in the same stage. Contains all 6 note offsets (+0x198/+0x1a0 spawner list, link +0x68, def +0x110 / +0xf8, register +0x570); the tier-distribute neighbour has 1.] [RELOCATED to FUN_1401ebad0 2026-08-09, hand-confirmed: The call right AFTER the reward roll in the same stage. Contains all 6 note offsets (+0x198/+0x1a0 spawner list, link +0x68, def +0x110 / +0xf8, register +0x570); the tier-distribute neighbour has 1.]",
@@ -3038,7 +3062,7 @@
    "name": "MapDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_1403234f0",
+   "raw": "FUN_14031ec10",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -3062,7 +3086,7 @@
    "name": "MapDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140323350",
+   "raw": "FUN_14031ea70",
    "status": "ok",
    "signature": "void(void* assetClassDesc)",
    "note": "Registers the '*.mapdef.ot' asset glob -> oCDtMapDefinition library loader. Map defs (codec = cooked_schemas.definitions mapdef.json: level_ref/field_a/tribe_ref) are sequenced into chapters by GameModeDefaultDefinition (*.gamemodedefaultdef.ot); chapter type = GameModeDefInternal::Chapter. The chapter->map sequence lives in the gamemodedefaultdef _tail_hex (not yet typed) \u2014 the lever for new/random maps (#9/#10). [2026-07-10: recovered via live-Ghidra decompile-verified anchor/call-graph after the July-9 remap mis-placed it mid-instruction.]",
@@ -3079,7 +3103,7 @@
    "name": "MapDef_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_1403233b0",
+   "raw": "FUN_14031ead0",
    "status": "ok",
    "signature": "bool(oCDtMapDefinition* this, void* serializer)",
    "note": "oCDtMapDefinition \u2014 vftable 0x140ed72e8 slot 3. resref @+0x288 = the map's root LEVEL, an inline object @+0x2d0, and a u8 @+0x448 gated on v>=2 that the shipped version 1 never reads. The tile POOL that map_pool.py edits sits in the tail this walk does not reach; the two are complementary. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -3092,7 +3116,7 @@
    "name": "MelodyDef_PostLoad",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140326f50",
+   "raw": "FUN_140322670",
    "status": "ok",
    "signature": "bool(void* definition)",
    "cabi": {
@@ -3117,14 +3141,14 @@
    "kind": "function",
    "category": "library",
    "note": "malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zeroed refcount-block allocator. Top corpus reference count (11653). Decompile-identified 2026-07-17.",
-   "raw": "FUN_14050d5c0",
+   "raw": "FUN_14050c600",
    "status": "ok"
   },
   {
    "name": "MetaClass_AddMember",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14050aa30",
+   "raw": "FUN_140509a70",
    "status": "ok",
    "signature": "void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData)",
    "note": "oIMetaClass::AddMember. Sets member+0x28 = id (name hash, e.g. 0x1871e0aa), calls member vslot 2 = SetName, member+0xa0 = userData, vslot 4 = SetOwner(metaClass), then links the member into the class's ADAPTER (metaClass+0x88): push-front onto the intrusive list at adapter+0x28 (member+0x70 = next, -1 = end) AND append to the vector {ptr adapter+0x08, count +0x10, cap +0x14}. Meta hierarchy: oIMetaItem -> oIMetaMember -> oIMetaField -> oIMetaAttribute (name @+0x08, display name @+0x18, flags @+0x2c, type meta-class ptr @+0x48). ONLY 360 call sites in 143 functions exist in retail, i.e. reflection survives for ~143 engine runtime classes (VFX/particle/FMod/camera-shake/persistent-data/math/app-settings) and for NO asset definition class -- do not plan a schema generator on it. The serializer bridge (Object_SaveToFile) is the route that does cover defs.",
@@ -3134,7 +3158,7 @@
    "name": "MetaClass_FindMember",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14050cd20",
+   "raw": "FUN_14050bd60",
    "status": "ok",
    "signature": "void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents)",
    "note": "Walks the adapter's member list (head via metaClass vslot 36 = adapter+0x60, next at member+0x70, terminator -1), matching member+0x80 against the requested kind and member vslot 6 against the name/id; recurses to the parent meta class via vslot 39 (= metaClass+0x60) when searchParents. Companion to MetaClass_AddMember.",
@@ -3144,7 +3168,7 @@
    "name": "ModifierEvent_Ctor",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_140389fb0",
+   "raw": "FUN_140392450",
    "status": "ok",
    "signature": "void*(void* buf, void* valueDef)",
    "cabi": {
@@ -3176,7 +3200,7 @@
    "name": "NamedEvent_ChannelMap_Find",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14066dc10",
+   "raw": "FUN_14066c3d0",
    "status": "ok",
    "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
    "cabi": {
@@ -3203,7 +3227,7 @@
    "name": "NamedEvent_Delete",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1401273b0",
+   "raw": "FUN_14011ff10",
    "status": "ok",
    "signature": "void(oCGameNamedEvent* ev)",
    "cabi": {
@@ -3221,7 +3245,7 @@
    "name": "NamedEvent_Dispatch",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14066b6b0",
+   "raw": "FUN_140669e60",
    "status": "ok",
    "signature": "void(void* dispatcher, oCGameNamedEvent* ev)",
    "cabi": {
@@ -3242,7 +3266,7 @@
    "name": "NamedEvent_EmitNetworkDamageFromHit",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1407276a0",
+   "raw": "FUN_140725d00",
    "status": "ok",
    "note": "Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDamage (size 0x110) \u2014 header as usual, f32 value @+0x40, source net-id @+0x48 (FUN_140726330), embedded oCEntityHitData @+0x50 (vft @+0x50, target entity* @+0x60 refcounted, hit floats/vectors +0x68..0xbc, u64s @+0xc0/0xc8/0xd0, u16 @+0xd8, ptr @+0xe0, instigator entity* @+0xf0 refcounted, flag byte @+0x100) \u2014 then sends via NamedEvent_NetSend. Best anchor for decoding the damage payload. For self/non-networked targets it applies locally via Entity_DispatchHit instead of (or alongside) the net send. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RE-PROMOTED 2026-08-16: relocated to FUN_1407276a0, a .pdata function start (0x1407276a0..0x1407279fc). The previous FUN_140743a00 was carried as unverified.]\n\n[2026-10-10 static re-read, for an R.damage.deal] Arguments are (source entity rcx, target entity rdx, oCEntityHitData* r8). A LOCAL target (no net component, or its +0x130 is-remote byte clear) gets Entity_DispatchHit(target, hit) directly at 0x14072772d; the network event is only built for a remote one. The event's f32 @+0x40 is NOT read from the hit: it is *(f32*)(*(source+0x30)+0x24) * 1000.0 (const @0x140fcbee8), i.e. most likely a source-side TIME in ms, so do not take +0x40 as the hit's damage without checking it against the damage meter's own decode. The hit is copied field by field: +0x10 instigator, +0x18..+0x6c floats/vectors, +0x70/+0x78/+0x80 u64, +0x88 u16, +0x90 ptr, +0xa0 ptr (an object whose +0x70 byte gates the network send). WHERE THE DAMAGE AMOUNT LIVES \u2014 answered by the damage meter, which is proven in game (src/loader/lua/rsmm/damage.lua, oCDtProcessedDamage): hit +0x10 is a POINTER to a hit-value object whose f32 at +0x08 is the damage (+0x1b = the 'game counts this hit' gate, +0x11 = the kill flag), and +0xa0 points to the hit def / source info (u16 attack type at +0xc8). So the +0x10 label in Entity_DispatchHit's note ('source/instigator entity*') is wrong for this struct. What still blocks R.damage.deal is not the amount but the replay: the value object is shared by pointer, so scaling a copied hit's amount mutates the original's, and its lifetime/refcount is unread. Build it as a copy of a live hit with its OWN value object, dispatched through Entity_DispatchHit on a LOCAL target, never a hit built from zero.",
    "refs": [
@@ -3266,7 +3290,7 @@
    "name": "NamedEvent_GiveMagicalObject_Ctor",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14030fd30",
+   "raw": "FUN_14030a860",
    "status": "ok",
    "signature": "oe::dt::NamedEventGiveMagicalObject*(void* buf)",
    "cabi": {
@@ -3298,7 +3322,7 @@
    "name": "NamedEvent_HeroSubscribeAll",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140391860",
+   "raw": "FUN_140399ee0",
    "status": "ok",
    "signature": "void(oCEntity* hero)",
    "cabi": {
@@ -3317,7 +3341,7 @@
    "name": "NamedEvent_HeroUnsubscribeAll",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140395350",
+   "raw": "FUN_14039d9d0",
    "status": "ok",
    "note": "Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pairs and calls Netcode_Channel_Unsubscribe on each. Easiest place to read the full hero event catalog (one lookup+unsubscribe pair per event). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140395350 2026-08-09, hand-confirmed: Calls Netcode_Channel_Unsubscribe 34 times, each paired with a Netcode_Channel_LookupById \u2014 the 'one lookup+unsubscribe pair per event' shape the note calls the easiest place to read the hero event catalog. Single arg, like its HeroSubscribeAll twin.] [RELOCATED to FUN_140395350 2026-08-09, hand-confirmed: Calls Netcode_Channel_Unsubscribe 34 times, each paired with a Netcode_Channel_LookupById \u2014 the 'one lookup+unsubscribe pair per event' shape the note calls the easiest place to read the hero event catalog. Single arg, like its HeroSubscribeAll twin.]",
    "refs": [
@@ -3333,7 +3357,7 @@
    "name": "NamedEvent_Id_FromCrc",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14051f090",
+   "raw": "FUN_14051e260",
    "status": "ok",
    "signature": "uint32_t(uint32_t ns, uint32_t name_crc)",
    "cabi": {
@@ -3361,7 +3385,7 @@
    "name": "NamedEvent_NetSend",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_140721630",
+   "raw": "FUN_14071fc80",
    "status": "ok",
    "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev)",
    "cabi": {
@@ -3380,7 +3404,7 @@
    "name": "NamedEvent_NetSendToPeer",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1407216c0",
+   "raw": "FUN_14071fd10",
    "status": "ok",
    "signature": "void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session)",
    "cabi": {
@@ -3409,7 +3433,7 @@
    "name": "Netcode_Channel_LookupById",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140241a50",
+   "raw": "FUN_14023bca0",
    "status": "ok",
    "signature": "iter*(void* channel_map, iter* out, uint32_t* event_id)",
    "cabi": {
@@ -3439,7 +3463,7 @@
    "name": "Netcode_Channel_Unsubscribe",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1401c8da0",
+   "raw": "FUN_1401c1840",
    "status": "ok",
    "signature": "void(void* node_plus_8, void** sub_slot)",
    "cabi": {
@@ -3474,7 +3498,7 @@
    "name": "Netcode_DropPeer",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1402b4d50",
+   "raw": "FUN_1402ae3e0",
    "status": "ok",
    "note": "Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07-05 (Ghidra: called from Netcode_PeerStateTick's 'max reconnection time attempt' branch). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1402b4d50 2026-08-09, hand-confirmed: The call in PeerStateTick's 'max reconnection time attempt' branch. Swap-removes a peer from the same global array PeerStateTick walks (0x60 stride, count decremented).] [RELOCATED to FUN_1402b4d50 2026-08-09, hand-confirmed: The call in PeerStateTick's 'max reconnection time attempt' branch. Swap-removes a peer from the same global array PeerStateTick walks (0x60 stride, count decremented).] [RELOCATED to FUN_1402b4d50 2026-08-09, hand-confirmed: The call in PeerStateTick's 'max reconnection time attempt' branch. Swap-removes a peer from the same global array PeerStateTick walks (0x60 stride, count decremented).]",
    "refs": [
@@ -3512,7 +3536,7 @@
    "name": "Netcode_PeerCount",
    "kind": "data",
    "category": "session",
-   "va": "0x14143f780",
+   "va": "0x141439700",
    "status": "va",
    "signature": "uint32_t",
    "note": "Live entry count for Netcode_PeerSlots. Read as the loop bound by Netcode_PeerStateTick (FUN_1402b03a0), decremented by Netcode_DropPeer (FUN_1402b4d50) after its swap-remove, and zeroed by the teardown at 0x1402afe4d that destroys every slot. Sits 0x130 past the array base, so it is NOT `base + cap*0x60` \u2014 do not derive one from the other. \u26a0 va: gate on va_globals_trusted."
@@ -3521,7 +3545,7 @@
    "name": "Netcode_PeerSlots",
    "kind": "data",
    "category": "session",
-   "va": "0x14143f600",
+   "va": "0x141439580",
    "status": "va",
    "signature": "PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount",
    "note": "Global array of connected-peer slots \u2014 the engine's own list of the OTHER machines in the run, one slot per remote player, and the only structure that carries a remote player's DISPLAY NAME outside the lobby-attribute path. Mined 2026-08-21 with Ghidra. \u26a0 BASE IS 0x14143f600, NOT 0x14143f650. Netcode_PeerStateTick's `lea rax,[rip+...]` lands on 0x14143f650 because it indexes slot+0x50 (the tunnel pointer) directly; reading the array from there is off by 0x50 and every field comes back from the NEXT slot. The true base is what the slot ctor FUN_1402aedf0 zeroes field by field. Stride 0x60 is fixed by `lea rax,[rax+rax*2]; shl rax,5`. SLOT LAYOUT (FUN_1402aedf0 fills it, FUN_1402b5db0 frees it): +0x00 PlayerName, +0x10 the lobby member's own +0x00 session-id string, +0x20 m_sEosUserId (the engine calls it the \"P2P User\"), +0x30 uint64 hash of the EOS id (FUN_1402aed50), +0x48 connection handle carrying the SystemAddress, +0x50 the P2P tunnel (+0xc0 uint16 UDP port \u2014 FUN_1402aa470 passes it through Ordinal_15 = ntohs, so it is a PORT and NOT a RakNet system index; +0xcc conn-state enum, 3 = connected, 2 = eInterrupted; +0xd0 a timestamp). The three string members are the engine's {void* ptr @+0x0; int32 len @+0x8; uint32 cap @+0xc} descriptor, the same shape LobbyAttributes_Parse's StringDesc uses. HOW THE FIELDS WERE PROVEN: FUN_1402aedf0 calls FUN_140918b00(session_mgr, param_1, &record), which walks the lobby members (0x70 stride), memcmp's each member's +0x00 string against param_1, and on a match runs LobbyAttributes_Parse(&record, member+0x28) \u2014 so param_1, stored at slot+0x10, IS the member session id, and the record fields copied out to slot+0x00 and slot+0x20 are record+0x00 (PlayerName) and record+0xa8 (m_sEosUserId) by their stack offsets. FUN_1402b0230 finds the LOCAL slot by comparing slot+0x10 to the global at 0x141300958; FUN_1402b0170 finds a slot by slot+0x20. FUN_140272700 is the engine's own member->slot join: it hashes each parsed member's EOS id and compares against slot+0x30, logging \"No tunnel found for P2P User: {}\" / \"No party member found for P2P User: {}\" with slot+0x20 as the argument. WHY IT WAS MINED: the damage board knows every player NAME and a distinct per-row owner RakNetGUID (Entity_GetNetId's note) and nothing joined the two. This table supplies the name directly; the open half is which slot owns which hero row, and slot+0x30 is the engine's own ownership key, so rsmm.lua's F._dmg_peer_join scans each row's controller and entity for it. UNPROVEN in-game. \u26a0 va, so build-specific: gate every read on va_globals_trusted. [IN-GAME 2026-08-21, session a34f] The layout READS BACK CORRECTLY on live data: `peer table: 2 peer(s) [#0 fruktik_kiwi eos=0002742cd3f241e6821afcd414945c85 port=59550 state=3, #1 EvilMurray eos=0002b4fab7154a739ef4154809c7f6ea port=33421 state=3]` \u2014 real personas at +0x00, real ProductUserIds at +0x20, live ports and state=3 through the tunnel at +0x50, and the peer count equalled the number of remote machines. So this IS a working name table for remote players. \u26a0 TWO NEGATIVES from the same session. (1) slot+0x30 is NOT a hash value: it reads 0x2a114260 / 0x2bfbe3a0, i.e. heap addresses in the game's own allocation range, so FUN_1402aed50 returns a POINTER (probably to the interned id) and comparing it across processes is meaningless. (2) Nothing on the hero side carries it: scanning 0x800 of every row's controller and entity gave `hash hits [none]`, and the netcomp locator sweep found +0x2d0/+0x2e8/+0x300 pointing at the SAME player's id on EVERY row \u2014 a shared object, not a per-player field. The hero->peer link is therefore NOT on the hero object. The only per-row distinct value remains RakNet::Replica3::creatingSystemGUID, so the next candidate is GUID -> SystemAddress -> the tunnel's +0xc0 PORT, which this table already exposes."
@@ -3530,7 +3554,7 @@
    "name": "Netcode_PeerStateTick",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1402b03a0",
+   "raw": "FUN_1402aaf80",
    "status": "ok",
    "note": "Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconnect-window lever hooks here. Pattern-verified 2026-07-05 (Ghidra decompile: iterates peer array, EP2PConnectionState log strings, state 2=eInterrupted disconnect, calls Netcode_DropPeer on max-window). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1402b03a0 2026-08-09, hand-confirmed: Iterates the peer array, reads the conn-state enum at peer+0xCC and skips 3; carries the EP2PConnectionState log strings including the eInterrupted disconnect branch. NOT DropPeer \u2014 the scorer picked this for DropPeer because the 'max reconnection time attempt' string the DropPeer note quotes is logged HERE, at the call site.] [RELOCATED to FUN_1402b03a0 2026-08-09, hand-confirmed: Iterates the peer array, reads the conn-state enum at peer+0xCC and skips 3; carries the EP2PConnectionState log strings including the eInterrupted disconnect branch. NOT DropPeer \u2014 the scorer picked this for DropPeer because the 'max reconnection time attempt' string the DropPeer note quotes is logged HERE, at the call site.] [RELOCATED to FUN_1402b03a0 2026-08-09, hand-confirmed: Iterates the peer array, reads the conn-state enum at peer+0xCC and skips 3; carries the EP2PConnectionState log strings including the eInterrupted disconnect branch. NOT DropPeer \u2014 the scorer picked this for DropPeer because the 'max reconnection time attempt' string the DropPeer note quotes is logged HERE, at the call site.]",
    "refs": [
@@ -3554,7 +3578,7 @@
    "name": "Object_CloneViaSerialize",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1404fe640",
+   "raw": "FUN_1404fe230",
    "status": "ok",
    "signature": "bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4)",
    "cabi": {
@@ -3573,7 +3597,7 @@
    "name": "Object_LoadFromStream",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1404fd6b0",
+   "raw": "FUN_1404fd470",
    "status": "ok",
    "signature": "bool(void* object, void* readStream)",
    "cabi": {
@@ -3590,7 +3614,7 @@
    "name": "Object_SaveToFile",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1404fd7e0",
+   "raw": "FUN_1404fd580",
    "status": "ok",
    "signature": "bool(void* object, void* pathString, bool cooked, void* ctx)",
    "cabi": {
@@ -3617,7 +3641,7 @@
    "name": "P2PSession_OnFcm2NewHost",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_1408b8530",
+   "raw": "FUN_1408b70b0",
    "status": "ok",
    "locator": {
     "strings": [
@@ -3631,7 +3655,7 @@
    "name": "P2PSession_SetState",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_14085ca70",
+   "raw": "FUN_14085ae80",
    "status": "ok",
    "signature": "void(oCDtP2PSessionSceneContext* ctx, int newState)",
    "locator": {
@@ -3645,7 +3669,7 @@
    "name": "P2PSession_StateNames",
    "kind": "data",
    "category": "netcode",
-   "va": "0x140eece10",
+   "va": "0x140ee98a0",
    "status": "va",
    "signature": "struct { const char* s; uint32 len; } [14]  // 0x10 stride",
    "note": "State-name table P2PSession_SetState logs through. 0x10 stride, {ptr,len}; the len field is |0x80000000 (the engine's inline-string-view tag), so mask it off. Entries 0..6 are the P2P SESSION states, 7..13 a second connection enum -- see P2PSession_SetState for both lists. Useful for decoding a state integer read out of ctx+0x70 without hardcoding the names."
@@ -3666,7 +3690,7 @@
    "name": "ProjectileAttack_BeginAttack",
    "kind": "function",
    "category": "combat",
-   "raw": "FUN_14083e7d0",
+   "raw": "FUN_14083cbb0",
    "status": "ok",
    "signature": "void(void* projectile_attack_cpnt)",
    "cabi": {
@@ -3698,7 +3722,7 @@
    "name": "Property_EvaluateByGuid",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1406ab910",
+   "raw": "FUN_1406aa0a0",
    "status": "ok",
    "signature": "bool(void* ctx, void* container, void* guid16, float* out)",
    "note": "Evaluates a GUID-referenced scalar (curve/property) into *out; returns false when the GUID doesn't resolve (callers then fall back to a raw settings read or log the asset path). Feeds the 0..1 'value' rolls consumed by the reward-spawner and enemy-camp tier bands. Semantics partially inferred from two call sites. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_1406ab910 2026-08-09, hand-confirmed: In MapCtx_DistributeEnemyCampTiers: guarded by `if (spawner+0x68 <= 0.0)` (the lazy value evaluation) and its false return leads straight into the settings-asset-path log fallback \u2014 both halves of the note's description.] [RELOCATED to FUN_1406ab910 2026-08-09, hand-confirmed: In MapCtx_DistributeEnemyCampTiers: guarded by `if (spawner+0x68 <= 0.0)` (the lazy value evaluation) and its false return leads straight into the settings-asset-path log fallback \u2014 both halves of the note's description.]",
@@ -3718,7 +3742,7 @@
    "kind": "function",
    "category": "library",
    "note": "pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else malloc(param_3*8) into vec[0], count/cap at +0xc. 3039 refs. Decompile-identified 2026-07-17. [SAME FUNCTION as Vector_Grow \u2014 see that symbol's note.]",
-   "raw": "FUN_140155230",
+   "raw": "FUN_14014db80",
    "status": "ok"
   },
   {
@@ -3733,7 +3757,7 @@
    "name": "RakPeer_GetGuidFromSystemAddress",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140ae33d0",
+   "raw": "FUN_140ae24c0",
    "status": "ok",
    "signature": "RakNetGUID(RakPeer* this, const SystemAddress& addr)",
    "note": "RakNet::RakPeer::GetGuidFromSystemAddress -- vtable slot 52. The reverse of RakPeer_GetSystemAddressFromGuid. IDENTIFIED BY RTTI, NOT BY RE (2026-09-20, tools/mine_netcode_vtables.py). The game statically links RakNet, whose source is public, and MSVC left `.?AVRakPeer@RakNet@@` in the binary. RakPeerInterface is pure-virtual, so its vtable slot ORDER is fixed by the header's declaration order, and the shipped vtable has exactly 87 slots against the header's 87 -- an equality that is the whole licence to name a slot. Four independent confirmations agree: the count gate, the header order, the pre-existing July vftable export (docs/_re/out_new/vftables.jsonl, RakNet::RakPeer::vftable), and the hand decompile already recorded in this entry from 2026-08-21.",
@@ -3763,7 +3787,7 @@
    "name": "RakPeer_GetSystemAddressFromGuid",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140ae3570",
+   "raw": "FUN_140ae2660",
    "status": "ok",
    "signature": "SystemAddress(RakPeer* this, const RakNetGUID& guid)",
    "note": "RakNet::RakPeer::GetSystemAddressFromGuid -- vtable slot 53. Maps a replica's `creatingSystemGUID` to that peer's SystemAddress, whose ntohs'd sin_port is the key Netcode_PeerSlots exposes at slot+0x50 -> +0xc0 beside the player's display NAME. That is the GUID -> port -> name join in one hop. Prefer RakPeer_GetSystemList for a whole-table pass; both are READ anchors, and neither should be called from Lua (SystemAddress is returned BY VALUE, i.e. a hidden sret pointer the caller must supply). IDENTIFIED BY RTTI, NOT BY RE (2026-09-20, tools/mine_netcode_vtables.py). The game statically links RakNet, whose source is public, and MSVC left `.?AVRakPeer@RakNet@@` in the binary. RakPeerInterface is pure-virtual, so its vtable slot ORDER is fixed by the header's declaration order, and the shipped vtable has exactly 87 slots against the header's 87 -- an equality that is the whole licence to name a slot. Four independent confirmations agree: the count gate, the header order, the pre-existing July vftable export (docs/_re/out_new/vftables.jsonl, RakNet::RakPeer::vftable), and the hand decompile already recorded in this entry from 2026-08-21.",
@@ -3778,7 +3802,7 @@
    "name": "RakPeer_GetSystemList",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_140ae1700",
+   "raw": "FUN_140ae07f0",
    "status": "ok",
    "note": "RakNet::RakPeer::GetSystemList -- vtable slot 32 (the old note's `vft[0x100]` is 32*8, the same slot). Fills two PARALLEL lists: `addresses[i]` and `guids[i]` are the same system, which is exactly the GUID -> SystemAddress step the damage-row owner join needs. `ConnectMode::CONNECTED == 7` in RakPeer.h, confirming the old note's `*(int*)(rs+0x2cec) == 7` filter. IDENTIFIED BY RTTI, NOT BY RE (2026-09-20, tools/mine_netcode_vtables.py). The game statically links RakNet, whose source is public, and MSVC left `.?AVRakPeer@RakNet@@` in the binary. RakPeerInterface is pure-virtual, so its vtable slot ORDER is fixed by the header's declaration order, and the shipped vtable has exactly 87 slots against the header's 87 -- an equality that is the whole licence to name a slot. Four independent confirmations agree: the count gate, the header order, the pre-existing July vftable export (docs/_re/out_new/vftables.jsonl, RakNet::RakPeer::vftable), and the hand decompile already recorded in this entry from 2026-08-21.\n\n*** DO NOT GIVE THIS A `cabi`. *** The signature takes two `DataStructures::List<T>&` out-params that the callee push_back()s into (allocating). Those are C++ containers, not caller-supplied arrays, so there is nothing Lua can hand it -- calling it with anything else is the engine-owns-the-deref crash class the SDK bans. The correct consumer is the pure-read walk of RakPeer's own members that rsmm.lua already does (`F._dmg_rak_systems`), which is page-guarded and cannot fault. This symbol exists to NAME and anchor that walk, not to be called.\n\nPRIOR NOTE (2026-08-21, body decompile -- still accurate):\noCSLNetPeer::vft[0x100] \u2014 enumerates the connected remote systems, and the reason a damage row can be named at all. Ghidra 2026-08-21, it walks MEMBERS rather than calling RakNet: `for i in 0..*(u32*)(peer+0x258): rs = *(void**)(peer+0x250 + i*8); if *(char*)rs != 0 and *(int*)(rs+0x2cec) == 7: emit SystemAddress at rs+0x08 and {u64 @rs+0x2cc8, u16 @rs+0x2cd0}` \u2014 RakNet::RakPeer::RemoteSystemStruct, with systemAddress at +0x08 (sockaddr; sin_port at +0x02, NETWORK order \u2014 the caller FUN_1408b7580 ntohs's it via Ordinal_15), RakNetGUID at +0x2cc8 and connectMode at +0x2cec (7 = connected). THE JOIN: rs+0x2cc8 is the same qword Replica3::creatingSystemGUID stamps on a hero's replica (Entity_GetNetId), and the ntohs'd port is the same UDP endpoint Netcode_PeerSlots exposes per peer at slot+0x50 -> +0xc0 beside the player's display NAME. So GUID -> port -> name, entirely by reads. Consumed by rsmm.lua's F._dmg_rak_systems / F._dmg_rak_join. UNVERIFIED in-game as of 2026-08-21: derived from the decompile, gated on an anchor (this machine must not appear among its own remote systems) and distinctness, and it logs the whole table either way.",
    "signature": "void(RakPeer* this, List<SystemAddress>& addresses, List<RakNetGUID>& guids)",
@@ -3815,7 +3839,7 @@
    "name": "Registry_EnumInstances",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140241750",
+   "raw": "FUN_14023b9a0",
    "status": "ok",
    "signature": "void*(void* unused, void* out3, void** classDescPtr)",
    "cabi": {
@@ -3844,7 +3868,7 @@
    "name": "Registry_RegisterInstance",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1403119d0",
+   "raw": "FUN_14030c500",
    "status": "ok",
    "signature": "void(void* definition)",
    "note": "Pushes a definition instance into the global instance list (DAT_141439de0) and its per-class registry list (via class descriptor vfunc[0] + Registry_EnumInstances). Guarded by a per-instance registration counter at +0x280. [2026-07-09: remap ambiguous/unbuildable pattern; not trusted.] [RELOCATED to FUN_1403119d0 2026-08-09, hand-confirmed: Called by both PostLoad routines above. Per-instance registration counter at param_1[0x50] = +0x280 as documented; pushes into the global instance list and the per-class registry entry.] [RELOCATED to FUN_1403119d0 2026-08-09, hand-confirmed: Called by both PostLoad routines above. Per-instance registration counter at param_1[0x50] = +0x280 as documented; pushes into the global instance list and the per-class registry entry.] [RELOCATED to FUN_1403119d0 2026-08-09, hand-confirmed: Called by both PostLoad routines above. Per-instance registration counter at param_1[0x50] = +0x280 as documented; pushes into the global instance list and the per-class registry entry.]",
@@ -3869,7 +3893,7 @@
    "name": "Registry_UnregisterInstance",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140311a50",
+   "raw": "FUN_14030c580",
    "status": "ok",
    "signature": "void(void*)",
    "cabi": {
@@ -3896,7 +3920,7 @@
    "name": "ResourceCache_Submit",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_1404aa3a0",
+   "raw": "FUN_1404aa340",
    "status": "ok",
    "signature": "void(void* resourceSink, void* entryVector)",
    "note": "Hand a parsed resource-cache entry vector to the resource system. The sink is reached as *(definition+0x30)+0x68. This is the last step of Definition_PreloadResourceCache and the point where a cache line becomes a load request \u2014 so it is the place to instrument if the question is \"was my mod's entity ever REQUESTED\", which the ResourceRef_Resolve trace cannot answer.\n\nPromoted to ok 2026-09-11: .pdata entry point (0x1404aa3a0..0x1404aa842), unique byte pattern (match 0 of 1). Hooked by hook_resource.cpp's cache trace.",
@@ -3912,7 +3936,7 @@
    "name": "ResourceRef_Resolve",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140492540",
+   "raw": "FUN_1404924e0",
    "status": "ok",
    "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
    "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]\n\n[2026-09-11] Two modes, chosen by the byte at refBlock+0x28. Non-zero = RELEASE: decrement the refcount at (*outResolved)+0x8, call the destructor through (*(outResolved))+0x10 vtable+0x8 when it hits zero, null the slot, return. Zero = RESOLVE: scan the class descriptor's provider array (data at classDesc+0x30, count at +0x38) for the entry whose id at +0x8 equals 0x53b64d, then call provider vtable+0x18 with (provider, refBlock, *policy, outResolved, 0). \u26a0 If no provider matches, the code dereferences a null pointer rather than returning -- it assumes the provider exists. 0x53b64d is generic: it occurs 71 times across the exe at every resource-resolve site, so it identifies the RESOURCE-PROVIDER ROLE, not any particular class, and is not a discriminator worth chasing.",
@@ -3935,7 +3959,7 @@
    "name": "ResourceRef_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401c8e60",
+   "raw": "FUN_1401c1900",
    "status": "ok",
    "signature": "bool(void* reader, void* refSlot)",
    "note": "Reads/writes a typed resource reference \u2014 cooked form {lstr type tag e.g. 'EntitySettings', lstr asset path} = the codec's tresptr field type. Used for oCItem entity refs, herodef fields, etc. Semantics inferred from call sites + cooked bytes. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-09-12 RELOCATED and re-derived \u2014 the entry had been downgraded on 2026-07-10 as 'resolves mid-instruction, no unique anchor, needs manual RE'.] Found from the call side rather than by anchor: Chapter_Serialize's resref branch and TileSpawnerSettings_Serialize's mapdef field both call it. Body is exactly two length-prefixed strings through the loader vftable's lstr slot (+0x60) at ref+0x00 and ref+0x10 \u2014 the {type tag, asset path} tresptr pair the cooked codec already models. The 'resolved' u8 the JSON hoists is NOT part of this call. Pattern regenerated at the new address and unique in the current exe.",
@@ -3947,7 +3971,7 @@
    "name": "Resource_LookupByPath",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_14049b2a0",
+   "raw": "FUN_14049b240",
    "status": "ok",
    "signature": "void*(const char* decoded_path, void*, void*, void*)",
    "cabi": {
@@ -3969,7 +3993,7 @@
    "name": "RewardDef_Deserialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_1403244c0",
+   "raw": "FUN_14031fbe0",
    "status": "ok",
    "signature": "bool(void* rewardDef, void* reader)",
    "note": "oCDtRewardDefinition::Deserialize (vftable slot 3, hash 0x176f164e): Definition_DeserializeBase, then Serializer_ReadPolyPtrVector into def+0x288 (the oCType row vector the roll iterates), then v1+: one u8 bool. Full cooked grammar in docs/_re/kinds/rewards.md. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
@@ -3989,7 +4013,7 @@
    "name": "RewardDef_RegisterAssetLoader",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140324460",
+   "raw": "FUN_14031fb80",
    "status": "ok",
    "signature": "void(void* assetClassDesc)",
    "note": "Registers the '*.rewarddef.ot' asset glob -> oCDtRewardDefinition library loader (label 'Reward definition'). Reward defs are the level-up / chest offer pool; codec = cooked_schemas.definitions rewarddef.json. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via string/hash anchor.]",
@@ -4006,7 +4030,7 @@
    "name": "RewardItem_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_140323dd0",
+   "raw": "FUN_14031f4f0",
    "status": "ok",
    "signature": "bool(void* oCItem, void* reader)",
    "note": "RewardDefInternal::oCItem serialize (hash 0x176f5023): resource-ref ('EntitySettings' + entity path) @+0x8, f32 value_min @+0xb0, f32 value_max @+0xb4, v<3: skipped u8, v1+: inline oCCustomFlagFilter @+0xb8 (required list lands @+0xc0, excluded @+0xd8), v2+: resource-ref @+0x40, v4+: resource-ref @+0x78 (both empty in retail = the '20 zero bytes'), v5+: u32 enum (<7, observed 3/4, semantics unpinned). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
@@ -4031,7 +4055,7 @@
    "name": "RewardSelectorSettings_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_140340470",
+   "raw": "FUN_14033ac50",
    "status": "ok",
    "signature": "bool(void* settings, void* reader)",
    "note": "oCDtRewardEntitySelectorToSpawnEntityCpntSettings serialize (hash 0x1740e3e9) \u2014 the CANDIDATE side of the reward roll, cooked inside the reward object's entity settings: v<3 legacy discarded resource-ref (default classdesc = oCType), v1+: inline oCCustomFlagList @+0x100 (the flag set matched against oCItem filters \u2014 per-entity, editable), v2+: u32 enum (<4) @+0xf8, v3+: u32 enum (<2) @+0xfc (enum semantics unpinned; likely value-source/tier-roll mode). [2026-07-10: recovered via anchor/decompile-verify (batch 2) after the July-9 remap mis-placed it.]",
@@ -4053,7 +4077,7 @@
    "name": "RewardType_Serialize",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_140324260",
+   "raw": "FUN_14031f980",
    "status": "ok",
    "signature": "bool(void* oCType, void* reader)",
    "note": "RewardDefInternal::oCType serialize (hash 0x176f4fdc): poly-ptr vector of oCItem sub-object ids into this+0x8/count+0x10; v0 legacy f32; v1+: u8 use-float flag -> either u32 count (writes BOTH +0x18 and +0x1c) or legacy f32; v2+: u32 min_count @+0x18, u32 max_count @+0x1c. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]",
@@ -4087,7 +4111,7 @@
    "name": "Reward_InitAllRewards",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_1401e9800",
+   "raw": "FUN_1401e3340",
    "status": "ok",
    "note": "_InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibling. oCDtRewardDefinition is the entity class.",
    "refs": [
@@ -4105,7 +4129,7 @@
    "kind": "function",
    "category": "library",
    "note": "CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-noises decompiles across the binary. Decompile-identified 2026-07-17.",
-   "raw": "FUN_140cc7e04",
+   "raw": "FUN_140cc6d34",
    "status": "ok"
   },
   {
@@ -4125,7 +4149,7 @@
    "name": "SceneContextValue_Find",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_1401c9600",
+   "raw": "FUN_1401c20a0",
    "status": "ok",
    "signature": "oCEntityValueUnion*(void* sceneContext, uint32_t crcKey)",
    "note": "Read one entity value out of a SCENE CONTEXT, by 32-bit key. Returns a pointer to the oCEntityValueUnion (entry+8), or 0 when the key is not held. Unlike EntityValue_Lookup there is no out-parameter: the returned pointer IS the union, and the usual layout applies to it (inline sentinel u32 at +0x08 == 4, value at +0x10).\n\n\u26a0 THERE ARE TWO DIFFERENT VALUE-STORE SHAPES AND THEY TAKE DIFFERENT READERS. Conflating them crashed the game on 2026-09-11 (dump 3c3943b7), so the distinction is the entire reason this symbol exists:\n  * HERO value store, reached as *(ctx+0x4c8): keyed map at +0x80, override vector at +0xc0 with its count at +0xc8. Read by EntityValue_Lookup / EntityValue_Get.\n  * SCENE CONTEXT (this one), e.g. oCGlobalEntityValueSceneContext as returned by GameScene_FindContextByTester: keyed map at +0x98, end sentinel computed as *(self+0xb0) + *(self+0x98). Read by THIS function, written by FUN_1402091a0 (int) and FUN_14020a580 (float) via FUN_1401c9670, which indexes the same +0x98 map.\n\nThe two shapes are not distinguishable by a single non-null pointer read, and the crash is what happens when you try: a scene context correctly identified by its +0x98 map was handed to EntityValue_Lookup, which walks +0xc0/+0xc8 instead and faulted reading -1 at EntityValue_Lookup+0x32 with the 'Is in sandman shop' key (0xd53e08e5) in r8. Match the READER to the shape; do not assume a value store is a value store.\n\nBoth halves of the pair are 0x60-byte leaf functions over the same hash map (FUN_14021a790 with the 0xde5fb9d2630458e9 mix), which is what makes the +0x98/+0xb0 pair the positive signature of this shape.\n\nPROMOTED to ok 2026-09-11 on STATIC evidence only: 0x1401c9600 is a .pdata entry point (bounds 0x1401c9600..0x1401c9669), and its body is the read half of the pair whose write half (FUN_1401c9670, called from the engine's own int/float setters) indexes the identical +0x98 map with the identical hash mix. NOT yet proven by a playtest -- `rsmm symbols audit` after a launch with RSMM_DUMP_SYMBOLS is the confirmation that is still owed. The SDK guards the call the way the crash taught: it refuses unless +0x98 and +0xb0 both check out, which are precisely the two fields this function reads -- unlike the call that crashed, which walked +0xc0/+0xc8, fields nothing had validated.",
@@ -4141,7 +4165,7 @@
    "name": "SceneContextValue_SetInt",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_1402091a0",
+   "raw": "FUN_140202d90",
    "status": "ok",
    "signature": "void(void* sceneContext, uint32_t crcKey, int32_t value)",
    "cabi": {
@@ -4158,7 +4182,7 @@
    "name": "SceneContextValue_SetFloat",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_14020a580",
+   "raw": "FUN_140204150",
    "status": "ok",
    "signature": "void(void* sceneContext, uint32_t crcKey, float value)",
    "cabi": {
@@ -4175,7 +4199,7 @@
    "name": "SceneContextValue_SetBool",
    "kind": "function",
    "category": "entity-values",
-   "raw": "FUN_140209010",
+   "raw": "FUN_140202c00",
    "status": "ok",
    "signature": "void(void* sceneContext, uint32_t crcKey, bool value)",
    "cabi": {
@@ -4192,7 +4216,7 @@
    "name": "Serializer_GetClassVersion",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1404fce50",
+   "raw": "FUN_1404fcd60",
    "status": "ok",
    "signature": "void*(void* reader, void* out, uint32_t classHash)",
    "note": "Returns the version record for a class hash from the cooked file's HEADER class table (codec cooked.parse classes[] version fields); result+0x4 = the version number every versioned field-read checks ('if (ver(hash)+4 < N) skip field'). This is how one binary supports all historical cooked layouts \u2014 and how the codec must gate optional fields when typing a def. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-09-12 RELOCATED \u2014 same 2026-07-10 downgrade, same fix.] This is the function every versioned field-read calls as `f(serializer, &out, <class uid>)` before comparing `[rax+4]` against a threshold, and it was already being cited at this address in TileDef_Deserialize's note without the symbol being moved. The version it returns is the class's `version_minor` from the cooked file's OWN header class table, which is why a class version is per-file data and not a build constant \u2014 measured on the tilegen classes: oCDtTileKind v6, oCDtTileSlotSettings v3, oCDtTileSlotSize v1, oCDtEntityCpntTileSpawnerSettings v14, Chapter v0. Pattern regenerated and unique.",
@@ -4204,7 +4228,7 @@
    "name": "Serializer_ReadEnum",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14020c450",
+   "raw": "FUN_140206020",
    "status": "ok",
    "signature": "bool(void* serializer, void* vec)",
    "note": "Reads a 4-byte enum by value: loads `[rdx]`, stages it on the stack and passes it through the serializer's 4-byte slot (+0x98). Chapter_Serialize's index branch uses it for the built-in biome id.",
@@ -4255,7 +4279,7 @@
    "name": "Serializer_ReadPolyPtrVector",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14020e000",
+   "raw": "FUN_140207bd0",
    "status": "ok",
    "signature": "bool(void* reader, void* vec, const char* label)",
    "note": "Reads a vector of polymorphic sub-object pointers: u32 count (0xaabb1111 sentinel = optional inline class-header {lstr name, u32 x2} first \u2014 not hit in cooked files, where sub-objects live in their own sections referenced by u32 sub-object id), then per element reader-vtbl+0xa8 poly resolve. Count clamped to 1,000,000. Write path labels 'Vector.Length' / 'Vector[%d]'. Vec layout {data @+0x0, u32 size @+0x8, u32 cap @+0xc}. [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-07-09: recovered via hash/decompile verification.]\n\n[2026-09-11] WHY THE SKILL-VECTOR COUNT WAS NEVER FOUND, and why the net-new-talent wall should be re-opened. The binary path reads a u32 and, if it equals the 0xaabb1111 MARK, consumes a class-name string plus two u32s (and optionally a second such block) BEFORE reading the real count. The count is therefore NOT at a fixed distance ahead of the rows, which is exactly why docs/_re/kinds/skills-system.md concluded 'there is no plain u32==28 count anywhere in the .gen before the rows (scanned all heroes)' and attributed the failure to 'a count living in the registrar region Ghidra leaves unanalysed'. The count is in the stream; the scan was looking in the wrong place.\n\nThe engine then allocates exactly `count` pointer slots and loops exactly `count` times, rejecting anything above 1,000,000. So a spliced skill row is an ORPHAN in precisely the sense CLAUDE.md already documents for entities (fixed 2026-09-06) and levels (fixed 2026-09-08): the bytes are in the stream and the vector that owns them was not grown. The Aladdin 'whole hero fails to load' result is consistent with that and does not require a hidden registrar format.\n\n[2026-09-12] The element reader at reader-vtbl+0xa8 is now read, not inferred: Serializer_ResolveObjectId. An element id is an index into the object table that Serializer_ReadObjectNamed builds from `uOjbectsCount`, with 0xffffffff = null and 0xfffffffe = the root. So growing one of these vectors is only half an append \u2014 the id it adds has to BE an object, which means `uOjbectsCount` and its `uClassFinfoIndex` list have to grow too. rsmm.engine.entity_append does both (`_directory` + `component_vector`, asserted by `validate_layout`); rsmm.engine.level_placements.add_placement does only the vector.",
@@ -4267,7 +4291,7 @@
    "name": "Serializer_ReadVectorObjIds",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1402f3cf0",
+   "raw": "FUN_1402ed2c0",
    "status": "ok",
    "signature": "bool(void* serializer, void* vec)",
    "note": "Vector whose elements go through the loader vftable's +0xa8 slot (Serializer_ResolveObjectId), i.e. a vector of OBJECT IDS into the graph's object table rather than inline payloads. Backs the tile spawner's kind and slot-size lists. Distinct from Serializer_ReadPolyPtrVector, which is the poly-pointer form used by container roots.",
@@ -4280,7 +4304,7 @@
    "name": "Serializer_ReadVectorU32",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140364270",
+   "raw": "FUN_14035d950",
    "status": "ok",
    "signature": "bool(void* serializer, void* vec)",
    "note": "The 4-byte sibling of Serializer_ReadVectorU8. Backs oCDtTileSlotScenarioKindCompatibility's per-kind row.",
@@ -4293,7 +4317,7 @@
    "name": "Serializer_ReadVectorU8",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1403646c0",
+   "raw": "FUN_14035dda0",
    "status": "ok",
    "signature": "bool(void* serializer, void* vec)",
    "note": "Reads `u32 count` through the serializer's 4-byte slot then `count` BYTES one at a time through the 1-byte slot (+0x70), element address = data + i. Labels the count 'Vector.Length' on the write path. Backs oCDtTileKind's footprint mask and oCDtTileSlotSettings' kind mask.",
@@ -4332,7 +4356,7 @@
    "kind": "function",
    "category": "library",
    "note": "base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at refblock+8. Appears in 528 vtables (top vtable-slot member). Identical twin at 0x14021e390 (SharedRef_AddRefCopy_b). Decompile-identified 2026-07-17.",
-   "raw": "FUN_1401663a0",
+   "raw": "FUN_14015ecf0",
    "status": "ok"
   },
   {
@@ -4340,14 +4364,14 @@
    "kind": "function",
    "category": "library",
    "note": "identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Decompile-identified 2026-07-17.",
-   "raw": "FUN_14021e390",
+   "raw": "FUN_1402185e0",
    "status": "ok"
   },
   {
    "name": "SharedRef_Release",
    "kind": "function",
    "category": "library",
-   "raw": "FUN_140111cf0",
+   "raw": "FUN_14010a850",
    "status": "ok",
    "signature": "void(void*)",
    "cabi": {
@@ -4365,7 +4389,7 @@
    "name": "SkillController_SetTier",
    "kind": "function",
    "category": "skill",
-   "raw": "FUN_1402edd80",
+   "raw": "FUN_1402e87b0",
    "status": "ok",
    "signature": "void(oCDtEntityCpntSkillController* ctrl, int32_t tier)",
    "cabi": {
@@ -4381,7 +4405,7 @@
    "name": "SkinGrid_Populate",
    "kind": "function",
    "category": "skins",
-   "raw": "FUN_1401f16f0",
+   "raw": "FUN_1401eb250",
    "status": "ok",
    "signature": "void(void* ctx, void* arg)",
    "cabi": {
@@ -4413,7 +4437,7 @@
    "name": "SkinRoster_Build",
    "kind": "function",
    "category": "skins",
-   "raw": "FUN_1401dd2c0",
+   "raw": "FUN_1401d6d40",
    "status": "ok",
    "note": "Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selectable skin needs a detour here, not pure data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [RELOCATED to FUN_1401dd2c0 2026-08-09, hand-confirmed: Sole caller of Entry_Ctor, void(ctx). Carries the baked selectable-skin count of 9 the note describes, plus the manager list writes (+0x8 count, +0x10 head, +0x18 tail), key +0x3c, index +0x48 and the string slots +0x50/+0x60/+0x70/+0x90 \u2014 10 of the 12 documented offsets.]",
    "refs": [
@@ -4442,7 +4466,7 @@
    "name": "String_Assign",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_140529860",
+   "raw": "FUN_14052b8e0",
    "status": "ok",
    "signature": "void(void* dst_slot, const StringDesc* src)",
    "cabi": {
@@ -4483,7 +4507,7 @@
    "name": "TileKindPool_ReportEmpty",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_1403421f0",
+   "raw": "FUN_14033c9d0",
    "status": "ok",
    "signature": "void(void* tileSpawnerSettings, void* outMessages)",
    "cabi": {
@@ -4508,7 +4532,7 @@
    "name": "TileKind_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140340fc0",
+   "raw": "FUN_14033b7a0",
    "status": "ok",
    "signature": "bool(oCDtTileKind* this, void* serializer)",
    "note": "oCDtTileKind (uid 0x1608d797, corpus version 6) \u2014 vftable 0x140f120d0 slot 3. Stream order: an inline oCCustomFlagFilter @+0x18 whose single REQUIRED FLAG is the kind's name ('Teleporter', 'Camp', \u2026) \u2014 there is no name string field; u32 @+0x50 = HOW MANY of this kind the generator places; v>=1 a vector<u8> @+0x58 that is one byte per oCDtTileSlotSize group, in the spawner's own order, i.e. WHICH FOOTPRINTS this kind may occupy (Start = 40x40 only, Map_Boss = 64x64 only, Crystal = 3x3|6x6, Teleporter = 6x6); v>=3 f32 @+0x54 = the MIN DISTANCE in metres that TileSpawn_DistanceConstraints enforces; v>=5 u32 @+0x10, unmined (0 on 10 of 14 Dark Hills kinds; Key and Key_Keeper both carry 2). Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -4534,7 +4558,7 @@
    "name": "TileSlotScenarioKindCompat_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140341190",
+   "raw": "FUN_14033b970",
    "status": "ok",
    "signature": "bool(oCDtTileSlotScenarioKindCompatibility* this, void* serializer)",
    "note": "oCDtTileSlotScenarioKindCompatibility (uid 0x171712d1, version 0) \u2014 vftable 0x140f0ead8 slot 3. A single vector<u32> @+0x10, exactly one entry per tile kind. One of these per SCENARIO hangs off every slot, so the pair (slot, scenario) says what that slot accepts under that scenario. TRI-STATE, not boolean: across Dark Hills' 138 masked slots the values are 2 (7695), 0 (29) and 1 (4). Do not rewrite it as a flag. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -4547,7 +4571,7 @@
    "name": "TileSlotSettings_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_1403411f0",
+   "raw": "FUN_14033b9d0",
    "status": "ok",
    "signature": "bool(oCDtTileSlotSettings* this, void* serializer)",
    "note": "oCDtTileSlotSettings (uid 0x16075cfc, version 3) \u2014 vftable 0x140f10608 slot 3, and ONE PHYSICAL SLOT on the map. f32 @+0x10/+0x14/+0x18 = world position (y is terrain height and really varies); v>=2 vector<u8> @+0x20 = one byte per kind, the slot's own vocabulary; v>=2 a vector of inline oCDtTileSlotScenarioKindCompatibility @+0x30, exactly one per scenario; v>=3 u32 @+0x1c, unmined. Dark Hills ships 143 of these, Avalon 147. A slot with an EMPTY kind mask is not missing data \u2014 it is a member of the inline 128x128 whole-map group on the spawner (+0x190), and the two sets match exactly in all three chapters. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -4573,7 +4597,7 @@
    "name": "TileSlotSize_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140341780",
+   "raw": "FUN_14033bf60",
    "status": "ok",
    "signature": "bool(oCDtTileSlotSize* this, void* serializer)",
    "note": "oCDtTileSlotSize (uid 0x1715b749, version 1) \u2014 vftable 0x140f12b60 slot 3. One FOOTPRINT FAMILY: u32 @+0x14/+0x18 = width/height in tile units, an inline oCCustomFlagFilter @+0x20 whose required flag names the family ('Blocker', 'Camp', 'Blocker_Wall_Down'), and a poly-pointer vector @+0x58 of the OBJECT IDS of the slots that belong to it. Dark Hills/Storm Island ship 3x3(62)/6x6(57)/40x40(18)/64x64(5) plus an inline 128x128(5); Avalon adds 9x9 and 20x20. Those four counts are the same four groups the runtime probe reads off the spawner at +0x110 (see the tile-spawn-seam notes) \u2014 the data side and the runtime side agree, which is what makes either trustworthy. Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -4586,7 +4610,7 @@
    "name": "TileSpawn_DistanceConstraints",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140345890",
+   "raw": "FUN_140340070",
    "status": "ok",
    "signature": "void(void*, void*)",
    "cabi": {
@@ -4611,7 +4635,7 @@
    "name": "TileSpawn_PlaceTiles",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140343ad0",
+   "raw": "FUN_14033e2b0",
    "status": "ok",
    "signature": "void(void* tileSpawnerComponent)",
    "cabi": {
@@ -4637,7 +4661,7 @@
    "name": "TileSpawnerSettings_Serialize",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140341b10",
+   "raw": "FUN_14033c2f0",
    "status": "ok",
    "signature": "bool(oCDtEntityCpntTileSpawnerSettings* this, void* serializer)",
    "note": "oCDtEntityCpntTileSpawnerSettings (uid 0x16075cc8, version 14) \u2014 vftable 0x140f0c540 slot 3, and the HEADER of a chapter's whole generation recipe. After the oIEntityCpntSettings base: vector<objid> @+0x170 = the oCDtTileKind objects; v>=2 a vector of inline oCDtMapScenario @+0x150 (Dark Hills and Storm Island ship four, 'Scenario 01'..'04' labelled 'Enemy Camp Difficulty 01'..'04'; Avalon ships ONE) \u2014 these are the rows of every slot's compatibility table; v>=3 vector<objid> @+0x180 = the oCDtTileSlotSize groups; v>=4 an inline oCDtTileSlotSize @+0x190, the 128x128 whole-map group; v>=6 a resref @+0x0f8 naming THIS RECIPE'S MAPDEF ('Definitions|Maps\\\\Dark_Hills_LiveOps_Update5.mapdef.ot'), which is the link from the level back to the chapter; v>=7 a vector of inline oCDtTileFlagConstraint @+0x160 = PER-FLAG QUOTAS independent of the kind counts (Dark Hills: at most 1 Wishing_Well, 2 Boss, 1 Leprechaun_Cauldron, 18 in all); then eight 4-byte scalars @+0x130..+0x14c, unmined (two are floats, 40.0 and 0.3). Field widths come from the loader vftable (0x140f4a690): +0x60 lstr, +0x68/+0x70 u8, +0x78/+0x90/+0x98 four-byte, +0xa0 a nested object read through Serializer_ReadObjectPayload, +0xa8 an object id. \u26a0 The version gates run BOTH ways: `jb` reads the field when the file's class version is high enough, `ja` skips a block only OLD files carry. Reading a `ja` as a `jb` invents fields that are not in the stream.",
@@ -4657,7 +4681,7 @@
    "name": "TileSpawner_Spawn",
    "kind": "function",
    "category": "world",
-   "raw": "FUN_140343640",
+   "raw": "FUN_14033de20",
    "status": "ok",
    "signature": "void(void* tileSpawnerComponent)",
    "cabi": {
@@ -4682,7 +4706,7 @@
    "kind": "function",
    "category": "library",
    "note": "base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / heap @+0x18, cap-bit &0x7fffffff), hashes it. Appears in 538 vtables. Identical twin at 0x1401c96e0 (TypeDesc_HashName_b). Decompile-identified 2026-07-17.",
-   "raw": "FUN_1404fd5d0",
+   "raw": "FUN_1404fd390",
    "status": "ok"
   },
   {
@@ -4690,7 +4714,7 @@
    "kind": "function",
    "category": "library",
    "note": "identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompile-identified 2026-07-17.",
-   "raw": "FUN_1401c96e0",
+   "raw": "FUN_1401c2180",
    "status": "ok"
   },
   {
@@ -4698,7 +4722,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_1407d72a0",
+   "raw": "FUN_1407d4ec0",
    "cabi": {
     "ret": "void",
     "params": [
@@ -4716,7 +4740,7 @@
    "kind": "function",
    "category": "ui",
    "status": "ok",
-   "raw": "FUN_1406a08a0",
+   "raw": "FUN_14069f030",
    "cabi": {
     "params": [
      "void*"
@@ -4743,7 +4767,7 @@
    "kind": "function",
    "category": "ui",
    "anchor": {
-    "raw": "FUN_1407d72a0",
+    "raw": "FUN_1407d4ec0",
     "offset": "0xe2"
    },
    "status": "ok",
@@ -4817,7 +4841,7 @@
    "name": "Vector_Grow",
    "kind": "function",
    "category": "engine",
-   "raw": "FUN_140155230",
+   "raw": "FUN_14014db80",
    "status": "ok",
    "signature": "void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/)",
    "cabi": {
@@ -4850,7 +4874,7 @@
    "name": "Vector_InsertRange",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401556e0",
+   "raw": "FUN_14014e030",
    "status": "ok",
    "signature": "void*(void* vector, unsigned index, unsigned count)",
    "cabi": {
@@ -4867,7 +4891,7 @@
    "name": "XpComponent_GetMaxLevel",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e2d30",
+   "raw": "FUN_1402dd760",
    "status": "ok",
    "signature": "uint32_t(void*)",
    "cabi": {
@@ -4895,7 +4919,7 @@
    "name": "XpComponent_IsMaxLevel",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e2d90",
+   "raw": "FUN_1402dd7c0",
    "status": "ok",
    "signature": "bool(void*)",
    "cabi": {
@@ -4913,7 +4937,7 @@
    "name": "XpComponent_SetLevel",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e3190",
+   "raw": "FUN_1402ddbc0",
    "status": "ok",
    "signature": "void(void*, uint32_t)",
    "cabi": {
@@ -4939,7 +4963,7 @@
    "name": "XpComponent_SetXp",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e3630",
+   "raw": "FUN_1402de060",
    "status": "ok",
    "signature": "void(void*, uint32_t)",
    "cabi": {
@@ -4966,7 +4990,7 @@
    "name": "XpComponent_TypeTester",
    "kind": "data",
    "category": "hero",
-   "va": "0x141476e00",
+   "va": "0x141470e00",
    "status": "va",
    "note": "Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resolution; pass as arg2 to Entity_GetComponentByTester to fetch the hero XpComponent. Sibling tester DAT_141476d48. Confidence medium (tester provenance) \u2014 the vtable scan via XpComponent_vftable is the fallback. Verified live 2026-07-13.",
    "refs": [
@@ -4977,7 +5001,7 @@
    "name": "XpComponent_XpForLevel",
    "kind": "function",
    "category": "hero",
-   "raw": "FUN_1402e2c30",
+   "raw": "FUN_1402dd660",
    "status": "ok",
    "signature": "uint32_t(void*, uint32_t)",
    "cabi": {
@@ -5008,7 +5032,7 @@
    "name": "XpComponent_vftable",
    "kind": "data",
    "category": "hero",
-   "va": "0x140f231b0",
+   "va": "0x140f1fad0",
    "status": "va",
    "note": "Vftable of the hero's XP/level component. CORRECTED 2026-07-18 from 0x140f23200, which was NOT a vtable: it lands 0x50 INSIDE this vtable (slot 10 of 30), so the exact-match scan `*(comp)==va` could never hit -- that single constant is why R.xp returned nil across 5 playtests. Real class is oCDtEntityCpntGroupLevel (hash 0x15888c02, size 0x170, ctor 0x1402e1de0); there is no `Xp*` class in the 5993-vtable dump. CONFIRMED 2026-07-19: the component is NOT on the hero -- exactly one instance exists, on EntitySettings/Common_Settings/Group_Scaling.entity.ot ('[Dt Group Level] Group_Scaling\\\\Hero Group'), which is why component scans of hero entities found nothing. Progress is a POINTER at +0x108 -> {u32 level @0, u32 xp @4}. Reachable via the game-scene-context registry (ctx+0x58 array, +0x60 count), not by entity walking. Symbol keeps the XpComponent_* name for loader/SDK compatibility.",
    "refs": [
@@ -5019,7 +5043,7 @@
    "name": "g_GameOptions",
    "kind": "data",
    "category": "options",
-   "va": "0x14143cb58",
+   "va": "0x141436a18",
    "status": "va",
    "note": "[2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca130, found via the 'Forced seed' string xref \u2014 first write stores the singleton here. Patch added 'Delay before can unpause' / 'Max pause per player', shifting the 'Pause during choices' slot 0x10f8 -> 0x10f0; all other transcribed slot offsets unchanged.] Game-options registry singleton pointer (set by the options ctor FUN_1401ca130; *ptr = the options object). Holds every persisted GameOption inline: volumes, screen shake, plus debug/cheat toggles (Forced seed, Show enemy debug info, Show hourglass debug info, Force epilogue, Force end credits, Sectorize enemy camps, Show damage and healing numbers, ...). Each option is a 0x30-byte struct: +0x0 vftable, +0x8 u32 hashed id, +0x10 name char*, +0x18 flags, +0x28 CURRENT VALUE (bool=u8, uint/int/float=u32), +0x2c default. Consumers hold a resolved option pointer and read the inline +0x28 field (the hashed id is a baked immediate only in the ctor, never at read sites), so writing +0x28 at runtime is authoritative. Exposed via R.options.get/set in rsmm.lua. PROVEN in-game 2026-06-13: write-read-back round-trips stick (Forced seed 0->1337) and 'Show enemy debug info' = true renders per-enemy + hero HP bars \u2014 i.e. that debug feature is NOT double-gated by g_bEnableDebug. Some other pure-debug toggles might still be gated by g_bEnableDebug (a runtime-built CRC cvar \u2014 value not statically resolvable); test per-option in-game. [2026-07-12: RE-VERIFIED against the current build \u2014 ctor FUN_1401ca130 decompile shows `DAT_14143cb58 = param_1` as its first write, and all 15 transcribed R.options slot offsets (Forced seed@0x0, Dev@0x30, Test@0x60, Dash at cursor@0xe80, Screen shake@0x1090, Pause during choices@0x10f0, ... Force end credits@0x1330) match this binary. Loader now fail-closes: rsmm.lua _ptr_plausible + a Dev/Test bool content probe reject a mis-derived singleton pointer so R.options degrades to no-op instead of a stray write.]",
    "refs": [
@@ -5030,7 +5054,7 @@
    "name": "g_GlobalEntityValueSceneContext_Tester_vftable",
    "kind": "data",
    "category": "entity-values",
-   "va": "0x140f09e68",
+   "va": "0x140f06868",
    "status": "va",
    "note": "Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, read from MSVC RTTI (the complete object locator one qword before the vftable names the class exactly). This is the ONE missing piece between the loader and roughly a hundred engine-authored gameplay values.\n\nTHE RECIPE, read off the reroll-counter writer at 0x1403aaa0d..0x1403aaa4f and not guessed:\n  1. Stack-construct the tester: two `lea` writes to the SAME slot, the second (this vftable) overwriting the first (oITTester<oIGameSceneContext>, 0x140f11fd8) -- ctor then vftable fixup, so the SECOND is the live one. Taking the first is the obvious mistake here, and it yields a tester that matches nothing and returns null.\n  2. ctx = GameScene_FindContextByTester(gameScene, &tester)  [status=ok, pattern-resolved]\n  3. EntityValue_Get(ctx, &out, crcKey)                       [status=ok, pattern-resolved]\nBoth functions already resolve today; only this VA is build-specific, so a capability built on it must gate on va_globals_trusted the way the event payload decode does.\n\nWHAT IT UNLOCKS -- 117 named values harvested from the four registration routines (EntityValueRegistry_RegisterAll plus three siblings, 177 call sites). These are the ENGINE's own answers to questions mods currently infer. Highlights: 'Is in sandman shop' (every shop rule), 'Reroll count' (every no-reroll rule), 'Current chapter' (hand-counted today), 'Is in overtime' and 'Is boss awaken', 'Active Enemies Count' (a real in-combat signal instead of a boss/tumor proxy), 'Is Session Host', 'Revive token', 'Current dream shards count'.\n\nNOTE ON is_in_main_menu: the loader currently answers this by sniffing which cooked file was opened in the last 5 seconds (Loader::is_in_main_menu, the HgdzHqzw prefix heuristic). Key 0x181d17fe IS 'Is in main menu' in the Player location family, so that heuristic has an exact replacement once this context is reachable.\n\nHARVEST METHOD, because the naive version is confidently wrong: a registration is a `mov ecx, <key>` plus three string pointers passed through frame slots, and the string register is hoisted OUT of the call block in most cases. Pairing a key with the nearest `lea`, forwards or backwards, produces a table shifted by one entry that looks entirely plausible. Follow the argument set-up instead -- `lea reg,[rip+s]`, then `mov [rbp+N],reg`, then `lea r8,[rbp+N]` -- so r8 is the display name and r9 the category. The self-check is that every row in a family carries the SAME category string, and that consecutive names take consecutive keys.\n\nKEY TABLE (key, display name), grouped by the category the engine itself gives each value:\n  [Day/Night cycle]\n    0x17d8d89b Is day\n    0x17d8d89c Is night\n    0x189e4b06 Play Time (s)\n    0x189e4ed5 Cycle playing\n    0x6b7e633e Current day ratio\n    0x75cc8184 Current night ratio\n    0x17d8d89f Current cycle ratio\n    0x1859c278 Day duration\n    0x1859c279 Night duration\n    0x17d8d8a0 Dawn and dusk half duration (Duration of [Sunrise|Sunset|Moonrise|Moonset])\n    0x8ae3fefe Day/Night phase as FMod param (0.0=day, 1.0=night)\n    0x17de260c Remaining cycle before boss awakens\n    0x18ab6b3b Remaining time before boss awakens\n    0x17de260d Boss time warning duration\n    0x1896a549 Boss time warning ratio\n    0x17de260e Is boss awaken\n    0x1cc8c666 Boss sleep duration\n    0x1e533557 Current hourglass time\n    0x1e5c3007 Current hourglass time ratio\n    0x25c606ac Last map hourglass time ratio\n    0x1cd7923b Overtime duration\n    0x1ce9bb1a Overtime ratio\n    0x1cd79255 Is in overtime\n    0x1cdf6e8e Remaining cycle before Overtime\n    0x1cdf6e90 Remaining time before Overtime\n    0x2fd2db08 Slow hourglass ratio\n    0x81c945ca Night_And_Day_Cycle_Phase\n  [Game]\n    0x189512bc Game Chrono Started\n    0x18bc7252 Local peer index\n    0x162b18c8 Is skill menu open\n    0x162b18c9 Is menu open\n    0x1b4aab3e Is MOs menu open\n    0x165e8282 Is in cinematic\n    0x1984fd23 Skip cinematic\n    0x17081d0b Last second damage ratio received\n    0x171c27b5 Current dream shards count\n    0x18c3664a Active Enemies Count\n    0x1633db76 Revive token\n    0x17a117c6 Random seed\n    0x18700873 Game Difficulty\n    0x19bddb2e Difficulty Xp Modifier\n    0x187afd1d Global Xp Modifier\n    0x1e408ac5 Is in pause\n    0x17147b56 Keyboard and mouse control\n    0x18a8c3b5 Pad control\n    0x18759e35 Is last game win\n    0x187ef01f LastGame Standard Loot Count\n    0x187ef021 Last Game Exceptional Loot Count\n    0x19d94870 Can minimap ping\n    0x1dfeeafa Melody notes in spawning tile\n    0x70f3a3ae Melody power up level max catchup\n  [Player location]\n    0x181d17fd Current chapter\n    0x181d17fe Is in main menu\n    0x181d17ff Is in loading screen\n    0x181d1800 Is in exploration (OutDoor)\n    0x181d180d Is in exploration (InDoor)\n    0x181d1801 Is in tumor fighting\n    0xf122efd2 Is in boss fighting\n    0x1b6fc1fc Is in end credits\n    0xd53e08e5 Is in sandman shop\n    0x1c2c3925 Is book open\n    0x18ab4599 Is game menu open\n    0x18ab57ca Is in safe zone\n    0x1859c61f Is in game scene\n    0x1859c621 Is in book scene\n    0x18ab42d9 Is in victory sequence\n    0x18ab42db Is in defeat sequence\n  [New Game Plus]\n    0x1a7945fc GameModifier : No boss timer\n    0x1a77d42d GameModifier : Less day/night half cycle\n    0x1a77e2e4 GameModifier : More experience (from any source)\n    0x1a793d1a GameModifier : No revive token\n    0x99f27eac GameModifier : No minimap\n    0x1a8a3688 GameModifier : One chapter\n    0x1a8b53b4 GameModifier : Day only\n    0x1a8b53bc GameModifier : Night only\n    0x1ab183ab GameModifier : Random hero at map start\n    0x1ab58780 GameModifier : All same heroes\n    0x1871c2fa Rare Skill Chance Modifier\n    0x187310ec Dream Shard Costs Modifier\n    0x187443de Half Cycle Count Before Boss Awakens Modifier\n    0x187aaecf Camp Difficulty Modifier\n    0x187ab36e Camp Difficulty Modifier Chance To Apply\n  [Multiplayer]\n    0x190648b4 Stormancer Server Endpoint\n    0x1906600b Stormancer App\n    0x190648b0 Stormancer Server Is Live\n    0x1599ae4c Hero Count\n    0x1a124d8d Deathdoor hero Count\n    0x1a124d8e Perma-death hero Count\n    0x186c0ec3 Game Session Size\n    0x15dbeb54 Is Connected to Session\n    0x15dbeb6a Is Session Host\n  [System]\n    0x147d2a83 Build version\n    0x16f76afa Is in play game (F5 or F6)\n    0x16f76b02 Is in edition\n    0x17e9a843 Is in play test (F6)\n    0x186332c8 Game Ui Is Hidden (F7)\n    0x18633ac4 Screenshot Mode\n    0x18e036a2 Max physic anim count\n    0x1c05eff2 Is Christmas play test date\n  [Loading Screen]\n    0x19a5e99c Map Loading Description\n    0x19a5e9a0 Map Loading Sub Description\n    0x19a60066 Map Loading Progress Ratio\n  [Can still be revived (token, friend...)]\n    0x193c75ab Ally kill streak\n    0x18829b99 Hero death door\n  [Cannot be revived (goto observer mode)]\n    0x193c6829 Ally death door\n    0x18829b9a Hero permadeath\n  [Bonus stat changed]\n    0x17df7d9e Editor\\Icon\\dt_damage.png\n  [Damage dealt]\n    0x17df7da0 Editor\\Icon\\gooey-impact.png\n  [Damage received]\n    0x17fdac33 Editor\\Icon\\gooey-impact.png\n  [Ally permadeath]\n    0x12e831f3 Editor\\Icon\\dt_shard_gain.png\n  [Gain dream shards]\n    0x12e831f4 Editor\\Icon\\dt_shard_loss.png\n  [Lose dream shards]\n    0x1a9cac95 Editor\\Icon\\dt_shard_loss.png\n  [Dream shards purchase]\n    0x1b5e6883 Editor\\Icon\\dt_shard_loss.png\n  [Total Dream shards purchase]\n    0x1883f309 Editor\\Icon\\dt_ingredient.png\n  [Gain ingredient(s)]\n    0x1883f30a Editor\\Icon\\dt_ingredient.png\n  [Rank = Meta progression level]\n    0x18b0f2ab Rank = Meta progression level\n  [Platform]\n    0x1b80cf17 Cheat version"
   },
@@ -5038,7 +5062,7 @@
    "name": "g_MagicalObjectComponentMeta",
    "kind": "data",
    "category": "entity",
-   "va": "0x141470768",
+   "va": "0x141469098",
    "status": "va",
    "note": "oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectComponent.",
    "refs": [
@@ -5049,7 +5073,7 @@
    "name": "g_MagicalObjectPool",
    "kind": "data",
    "category": "items",
-   "va": "0x14143cc18",
+   "va": "0x141436ad0",
    "status": "va",
    "note": "[2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers dereferencing +0x10/+0x18 runtime array/count, e.g. FUN_1402b3030.] Magical-object pool global pointer. Layout at *ptr: +0x0 source array (MagicalObjectDefinition*[]), +0x8 source count, +0x10 runtime array, +0x18 runtime count. Each source def carries its identity GUID at def+0x88/+0x90 \u2014 the value MagicalObjectPool_SourceLookup matches. GIVE-ITEM RECIPE (proven in-game 2026-06-12): read a source def's +0x88/+0x90 GUID, build a GIVE_MAGICAL_OBJECT event (NamedEvent_GiveMagicalObject_Ctor), write that GUID to ev+0x50/+0x58, NamedEvent_Dispatch(hero+0x4d8, ev) \u2014 the give handler (FUN_1403a7ba0) resolves the def via SourceLookup and grants the item straight to inventory (no world orb), then fires SPAWN_MO at the hero. NOTE: this is the DEFINITION pool (all MOs), NOT what a hero owns \u2014 the hero's owned set is on the HeroController (see Hero_GrantMagicalObject / hero+0xd70).",
    "refs": [
@@ -5072,7 +5096,7 @@
    "name": "g_StatReportRoot",
    "kind": "data",
    "category": "stats",
-   "va": "0x14143cb28",
+   "va": "0x1414369e8",
    "status": "va",
    "note": "Singleton pointer whose object holds the CACHED hero stats the game reports and displays. The chapter_end analytics emitter (0x1401f5c70) reads rax=[this global], rcx=[rax+0x20], then vitality = 100*f32[rcx+0x304], attack_power = 100*f32[rcx+0x308], armor = f32[rcx+0x30c] (0x1401f5d4a..0x1401f5d66; both scale constants read back as 100.0). The same three are the numbers on the in-run stat strip. Set to its owner's `this` by 0x1400c8b3f and cleared when that owner goes away; the owner's class is NOT identified. \u26a0 This is a CACHE, not the entity-value store: R.stat writes land in the store (damage reads the store, so a pin is real) but never reach these floats, which is why a pinned attack_power of 40 showed 0 on the strip (2026-09-19). What refreshes the cache in vanilla is unknown \u2014 R.watch on [obj+0x308] during an attack-item pickup would name it. Offsets near +0x300 are common: three unrelated functions (0x140604447 bbox, 0x1404cd8d0 lerp, 0x1406357b0 vec3 array) store there, so never search for the writer by offset alone. Backs R.stat.cached (read-only).",
    "refs": []
@@ -5081,7 +5105,7 @@
    "name": "oCCustomFlagList_vftable",
    "kind": "data",
    "category": "entity",
-   "va": "0x140f01650",
+   "va": "0x140efe050",
    "status": "va",
    "note": "vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, list ptr @+0x8 = 0, u64 count @+0x10 = 0 } \u2014 used as the sourceTags ctx arg to Hero_ModifyDreamShards. Build it in scratch and rebase the vftable by the live module base. [2026-07-12: confirmed a live vftable for the current build \u2014 DATA-xref'd from the oCCustomFlagList ctor FUN_14039ffe0. R.combat stays fail-closed behind _va_ok + _hero_plausible + a pattern-resolved Hero_ModifyDreamShards.]",
    "refs": [
@@ -5092,7 +5116,7 @@
    "name": "oCEntityHitData_vftable",
    "kind": "data",
    "category": "entity",
-   "va": "0x140f137d8",
+   "va": "0x140f101e8",
    "status": "va",
    "note": "vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit / embedded in oCGameNamedEventNetworkDamage). Layout (offsets from the struct base): vft @+0x0, hit handle/id @+0x8, source/instigator entity* @+0x10 (vtable-accessed, refcounted), float/vector block @+0x18..0x90 (positions/normals/direction \u2014 defaults copied from 0x140fc6c10/0x140fc6c50/0x140fc6e70/0x140fc7240), u16 flags @+0x88, ptr @+0x90, target entity* @+0xa0 (vtable-accessed, refcounted). Built inline by Entity_ResolveAttackHits; no separate constructor exists.",
    "refs": [
@@ -5103,7 +5127,7 @@
    "name": "oCEntityValueUnion_vftable",
    "kind": "data",
    "category": "entity",
-   "va": "0x140f95008",
+   "va": "0x140f91d68",
    "status": "va",
    "note": "vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Lookup. Layout: vft @+0x0, type tag @+0x8 (4 = inline value), value @+0x10 (inline f32 if tag==4, else (tag & ~1) points to it), u16 @+0x18 = 0xa, byte @+0x1a = 0. Paired base oISerializable::vftable = 0x140efed08. Destruct with FUN_14082ca50.",
    "refs": [
@@ -5114,7 +5138,7 @@
    "name": "oCGameEventNetworkModifier_vftable",
    "kind": "data",
    "category": "entity",
-   "va": "0x140f322d0",
+   "va": "0x140f343c0",
    "status": "va",
    "note": "vftable of oCGameEventNetworkModifier \u2014 the durable stat-modifier named event (leaf of the oCGameNamedEvent -> ...Network -> Modifier chain). Set as the third/most-derived vftable by ModifierEvent_Ctor. Identifies a modifier event when scanning the named-event bus; anchor for building a durable-stat-modifier event from the loader. Verified live 2026-07-13 (LEA @0x14038a01d in ModifierEvent_Ctor).",
    "refs": [
@@ -5125,7 +5149,7 @@
    "name": "oCGameNamedEventChooseMelody_vftable",
    "kind": "data",
    "category": "melodies",
-   "va": "0x140f25c48",
+   "va": "0x140f22398",
    "status": "va",
    "note": "vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x14137c2c8). The event the game dispatches when a melody is CHOSEN. 0x60 bytes; its ctor (0x1402da150) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30 from a cached global 0x1412ef578), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, and a second oCString @+0x50/+0x58/+0x5c. Bus id = NamedEvent_Id_FromCrc(0, crc32(\"CHOOSE_MELODY\")) = 1391314199. \u26a0 NOTHING constructs this inline: the only three references to the vftable are the ctor, the copy ctor (0x1402da240) and a network-deserialisation factory (0x140313cd0, which allocates exactly 0x60), so the game builds it through a class-id factory table and the MEANING of the payload fields is NOT readable from an emitter. DISPROVED 2026-10-10 (static read of the handler): the GUID-at-+0x38/+0x48 hypothesis was wrong. The hero handler 0x140399090 takes the oCString at +0x50 {ptr, len|flags @+0x58} and 0x1403afa90 compares it with each live MelodyDefinition's *(*(def+0x48)+0x18) name string; the match goes to the registry lookup 0x14025ac40, then 0x1403988c0 applies it. So the melody is named by that string. Backs R.melody.choose(name) (rsmm/melody.lua), which reads the live strings and sends one verbatim; the first R.melody.choose(lo, hi) left +0x50 empty and could never match.",
    "refs": [
@@ -5136,7 +5160,7 @@
    "name": "oCGameNamedEventRemoveMelody_vftable",
    "kind": "data",
    "category": "melodies",
-   "va": "0x140f22608",
+   "va": "0x140f1f098",
    "status": "va",
    "note": "vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGameNamedEventChooseMelody_vftable (ctor 0x1402da320, copy 0x1402da410, factory 0x140313d20). Bus id = NamedEvent_Id_FromCrc(0, crc32(\"REMOVE_MELODY\")) = 2162471170. Hero handler 0x140399150 reads the same +0x50 name string as CHOOSE_MELODY. Backs R.melody.remove(name) (rsmm/melody.lua).",
    "refs": [
@@ -5148,7 +5172,7 @@
    "kind": "function",
    "category": "library",
    "note": "oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees + bumps DAT_14146d854. 2259 refs. Decompile-identified 2026-07-17.",
-   "raw": "FUN_140111d90",
+   "raw": "FUN_14010a8f0",
    "status": "ok"
   },
   {
@@ -5341,7 +5365,7 @@
    "name": "oCDtNamedEventGainReroll_vftable",
    "kind": "data",
    "category": "event",
-   "va": "0x140f263d0",
+   "va": "0x140f22b20",
    "status": "va",
    "note": "vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_Id_FromCrc(0, crc32(\"GAIN_REROLL\") = 0x96065360)). 0x58 bytes; its ctor (0x1402e6eb0, reached from the class registrar's metaclass construct slot via thunk 0x140303560) lays it out: standard oCGameNamedEvent header (state u32 2 @+0x08, name oCString @+0x20/+0x28/+0x2c, interned id @+0x30), then +0x38 u64 = -1, +0x40 u32 = 0, +0x48 u64 = -1, +0x50 u16 = 0. The game's sender (Reroll_GrantToHeroes, 0x1402eb030) writes the reroll COUNT into +0x50 and dispatches to each target hero's dispatcher (entity+0x4d8), or NamedEvent_NetSendToPeer to a remote owner. The hero-bound handler (Hero_GainRerollHandler) adds it to the hero's reroll counter. Backs R.reroll.add, PROVEN IN GAME 2026-10-10 (counter 3 -> 6, rerolls usable on the offer screen).",
    "refs": [
@@ -5352,7 +5376,7 @@
    "name": "oCNamedEventNetworkWithData_vftable",
    "kind": "data",
    "category": "event",
-   "va": "0x140f0f180",
+   "va": "0x140f0bba0",
    "status": "va",
    "note": "vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), the named event that carries ONE typed value: an oCEntityValueUnion embedded at +0x50 (union vft @+0x50, storage @+0x58 with 4 = inline, inline value @+0x60, type byte @+0x68: 0 = f32, 1 = int32, 2 = bool; read off the handlers, not the union symbol's note). Header as every named event, then +0x38 = -1, +0x40 = 0, +0x48 = -1; 0x70 bytes. Class chain oCGameNamedEvent (0x140f05aa8) -> oCGameNamedEventNetwork (0x140f09d98) -> this. Layout read off the game's own sender in HeroStats_OnDamageTaken (0x1403a6900..0x1403a6a80): it stack-builds one named CLEAR_PRIMARY_CD, InitAsType(union, 2), writes bool 1 and dispatches it to entity+0x4d8. The ability family subscribes to it in AbilityController_Ctor (0x1402c9e2c.., on owner+0x4d8, then a switch on the slot 0..6): CLEAR_CD / CLEAR_<SLOT>_CD -> 0x1402cce40 (IsKindOf this class, requires type 2 and a true byte), REDUCE_CD / REDUCE_<SLOT>_CD -> 0x1402cd140 (cooldown at controller+0x6c minus the f32 (type 0) or int (type 1) value), ADD_<SLOT>_CHARGE -> 0x1402ccf30 (int count, type 1; default 1, negative -> 0; only when the ability has charges), REMOVE_<SLOT>_CHARGE -> 0x1402cd040 (removes one, reads no payload). Activity events (ACTIVITY_*/SOLO_ACTIVITY_*) also use this class with type 5 (String). Backs R.ability. PROVEN IN GAME 2026-10-10: CLEAR_CD made the ultimate ready again at once. MEASURED in game: type 1 is a 16-byte type InitAsType allocates OUT of line (storage = heap pointer, not 4), and the charge handler reads its first int32 there.",
    "refs": [
@@ -5363,7 +5387,7 @@
    "name": "oCDtNamedEventGainDreamShards_vftable",
    "kind": "data",
    "category": "event",
-   "va": "0x140f224c0",
+   "va": "0x140f1ef50",
    "status": "va",
    "note": "vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0x60 bytes; ctor 0x1402e6ce0 (NamedEvent_GainDreamShards_Ctor): standard header, +0x38/+0x48 = -1, +0x40 = 0, then +0x50 u64 source net id = -1, +0x58 i32 amount = 0, +0x5c u8 picked-up = 1, +0x5d u8 purchase = 0. Hero handler 0x1403a72b0 (subscribed in NamedEvent_HeroSubscribeAll): a positive amount is multiplied by the hero's shard-gain values 0x173900d6 and 0x1d788952, tagged 'PickedUpByMyself' (+0x5c, when +0x50 is the hero's own id) and/or 'Purchase' (+0x5d), then passed to Hero_ModifyDreamShards with those tags. Backs R.shards.gain, PROVEN IN GAME 2026-10-10 (+50 took the counter 0 -> 50 in the same frame).",
    "refs": [
@@ -5374,7 +5398,7 @@
    "name": "oCGameEventGainIngredient_vftable",
    "kind": "data",
    "category": "event",
-   "va": "0x140f26460",
+   "va": "0x140f22bb0",
    "status": "va",
    "note": "vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x1402da4f0: standard header, +0x38/+0x48 = -1, +0x40 = 0, +0x50 u32 ingredient id = 0, +0x54 i16 count = 0. Hero handler 0x14039acc0 tail-calls 0x14039a970(hero, id, count), which finds the IngredientDefinition whose +0x290 u32 equals the id (name oCString at +0x298: Bean, Key, Note, Stone, Straw, Wood) and adds, or removes for a negative count, against the hero HUD mirror's list (hero+0x1d80, entries at +0x48/+0x50). Backs R.ingredient, PROVEN IN GAME 2026-10-10 (add(\"Key\", 2) showed two more keys; remove not yet exercised).",
    "refs": [
@@ -5408,7 +5432,7 @@
    "name": "NamedEvent_ChooseMelody_Ctor",
    "kind": "function",
    "category": "melodies",
-   "raw": "FUN_1402da150",
+   "raw": "FUN_1402d4c20",
    "status": "ok",
    "signature": "oe::dt::NamedEventChooseMelody*(void* buf)",
    "cabi": {
@@ -5426,7 +5450,7 @@
    "name": "NamedEvent_GainReroll_Ctor",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_1402e6eb0",
+   "raw": "FUN_1402e18e0",
    "status": "ok",
    "signature": "oe::dt::NamedEventGainReroll*(void* buf)",
    "cabi": {
@@ -5444,7 +5468,7 @@
    "name": "CharacterController_ClearStagger",
    "kind": "function",
    "category": "combat",
-   "raw": "FUN_1403cc1d0",
+   "raw": "FUN_1403c3500",
    "status": "ok",
    "signature": "void(void* charController)",
    "cabi": {
@@ -5454,6 +5478,24 @@
     ]
    },
    "note": "The hero character controller's CLEAR_STAGGER handler (hero dispatcher channel map; see events-bus.md). Body: this+0x33c (f32, the accumulated stagger) = 0, then 0x1403c9ab0(this) returns the stagger threshold and, when it is > 0, pushes +0x33c / threshold to the gauge at this+0x8b0 via 0x1402f0890 (tail call). A .pdata function start. Its sibling RESET_STAGGER_RESILIENCE 0x1403cc1c0 is a two-instruction leaf (this+0x344 = 0; ret) with NO .pdata entry, so it is not hookable and is not mapped. Hooked read-only by R.status (rsmm/status.lua) to capture the controller and log +0x33c before and after a clear."
+  },
+  {
+   "name": "DefRegistry_Begin",
+   "kind": "data",
+   "category": "registry",
+   "va": "0x14143a040",
+   "status": "va",
+   "note": "Global definition registry (vector of registered def instances) written by Registry_RegisterInstance (`lea rcx,[this]` / `mov edx,[this+8]` at its entry) and read by ~90 functions: rewards, camps, tiles, magical objects, level load. hook_rewards.cpp walks it for the reward dump. Pre-Update-6 it was 0x141440420/0x141440428; relocated 2026-10-12 from the same two instructions in the new Registry_RegisterInstance (0x14030c519 / 0x14030c513).",
+   "refs": []
+  },
+  {
+   "name": "DefRegistry_End",
+   "kind": "data",
+   "category": "registry",
+   "va": "0x14143a048",
+   "status": "va",
+   "note": "Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin.",
+   "refs": []
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`. Each entry's `fields` are the property names the emitter passes (literals in the emitting function, 2026-09-11 catalog); the loader decodes them onto the event table, so a handler reads ev.<field>. Entries with `confirmed` were seen firing in game with those fields (solo run, 2026-10-10); the rest are from the static catalog only.",
@@ -6408,7 +6450,7 @@
    "class": "GameNamedEventNetworkBark",
    "sites": 7,
    "vftable_rvas": [
-    "0xf9d890"
+    "0xf9a738"
    ],
    "fields": [
     {
@@ -6427,7 +6469,7 @@
    "class": "NamedEventChooseMelody",
    "sites": 3,
    "vftable_rvas": [
-    "0xf25c48"
+    "0xf22398"
    ],
    "fields": [
     {
@@ -6451,7 +6493,7 @@
    "class": "NamedEventGameEnd",
    "sites": 6,
    "vftable_rvas": [
-    "0xf209d0"
+    "0xf1d440"
    ],
    "fields": [
     {
@@ -6585,7 +6627,7 @@
    "class": "NamedEventGiveMagicalObject",
    "sites": 5,
    "vftable_rvas": [
-    "0xf270f0"
+    "0xf237f0"
    ],
    "fields": [
     {
@@ -6604,7 +6646,7 @@
    "class": "NamedEventRemoveMelody",
    "sites": 3,
    "vftable_rvas": [
-    "0xf22608"
+    "0xf1f098"
    ],
    "fields": [
     {
@@ -6628,7 +6670,7 @@
    "class": "oCDtNamedEventDPCollectIngredient",
    "sites": 8,
    "vftable_rvas": [
-    "0xf28d00"
+    "0xf25a00"
    ],
    "fields": [
     {
@@ -6647,7 +6689,7 @@
    "class": "oCDtNamedEventExpGain",
    "sites": 5,
    "vftable_rvas": [
-    "0xf25270"
+    "0xf219d0"
    ],
    "fields": [
     {
@@ -6661,7 +6703,7 @@
    "class": "oCDtNamedEventExpGainNotif",
    "sites": 5,
    "vftable_rvas": [
-    "0xf269f8"
+    "0xf23048"
    ],
    "fields": [
     {
@@ -6675,7 +6717,7 @@
    "class": "oCDtNamedEventGainDreamShards",
    "sites": 6,
    "vftable_rvas": [
-    "0xf224c0"
+    "0xf1ef50"
    ],
    "fields": [
     {
@@ -6704,7 +6746,7 @@
    "class": "oCDtNamedEventGainHealthResource",
    "sites": 8,
    "vftable_rvas": [
-    "0xf227b8"
+    "0xf1f168"
    ],
    "fields": [
     {
@@ -6728,7 +6770,7 @@
    "class": "oCDtNamedEventGainReroll",
    "sites": 5,
    "vftable_rvas": [
-    "0xf263d0"
+    "0xf22b20"
    ],
    "fields": [
     {
@@ -6742,7 +6784,7 @@
    "class": "oCDtNamedEventInteraction",
    "sites": 8,
    "vftable_rvas": [
-    "0xf21130"
+    "0xf1db60"
    ],
    "fields": [
     {
@@ -6761,7 +6803,7 @@
    "class": "oCDtNamedEventLevelUp",
    "sites": 5,
    "vftable_rvas": [
-    "0xf23b30"
+    "0xf20458"
    ],
    "fields": [
     {
@@ -6775,7 +6817,7 @@
    "class": "oCDtNamedEventPowerUpCollectRequest",
    "sites": 5,
    "vftable_rvas": [
-    "0xf23ef0"
+    "0xf20818"
    ],
    "fields": [
     {
@@ -6789,7 +6831,7 @@
    "class": "oCGameEventGainIngredient",
    "sites": 7,
    "vftable_rvas": [
-    "0xf26460"
+    "0xf22bb0"
    ],
    "fields": [
     {
@@ -6808,7 +6850,7 @@
    "class": "oCGameEventHitPointModification",
    "sites": 6,
    "vftable_rvas": [
-    "0xf27810"
+    "0xf241c0"
    ],
    "fields": [
     {
@@ -6832,7 +6874,7 @@
    "class": "oCGameEventMaxHitPointModification",
    "sites": 5,
    "vftable_rvas": [
-    "0xf28690"
+    "0xf25350"
    ],
    "fields": [
     {
@@ -6856,7 +6898,7 @@
    "class": "oCGameEventNetworkModifier",
    "sites": 21,
    "vftable_rvas": [
-    "0xf322d0"
+    "0xf343c0"
    ],
    "fields": [
     {
@@ -6940,7 +6982,7 @@
    "class": "oCGameNamedEventAttachmentChange",
    "sites": 5,
    "vftable_rvas": [
-    "0xf7bbc8"
+    "0xf766c8"
    ],
    "fields": [
     {
@@ -6959,7 +7001,7 @@
    "class": "oCGameNamedEventNetworkDamage",
    "sites": 4,
    "vftable_rvas": [
-    "0xf117d0"
+    "0xf0e1f8"
    ],
    "fields": [
     {
@@ -7083,7 +7125,7 @@
    "class": "oCGameNamedEventNetworkDamageResponse",
    "sites": 6,
    "vftable_rvas": [
-    "0xf0dd10"
+    "0xf0a738"
    ],
    "fields": [
     {
@@ -7217,7 +7259,7 @@
    "class": "oCNamedEventGainHealth",
    "sites": 11,
    "vftable_rvas": [
-    "0xf25648"
+    "0xf21d78"
    ],
    "fields": [
     {
@@ -7251,7 +7293,7 @@
    "class": "oCNamedEventNetworkMessage",
    "sites": 13,
    "vftable_rvas": [
-    "0xf9bec0"
+    "0xf98e90"
    ],
    "fields": [
     {
@@ -7270,7 +7312,7 @@
    "class": "oCNamedEventNetworkWithData",
    "sites": 11,
    "vftable_rvas": [
-    "0xf0f180"
+    "0xf0bba0"
    ],
    "fields": [
     {

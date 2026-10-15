@@ -41,7 +41,11 @@ BASE_BYTES = sum(_PRIM[k] for _n, k in BASE)
 #: for a list (u32 count, then that many objects). ``ids`` is a poly-pointer
 #: vector: u32 count, then object ids of SUB-OBJECTS owned by this component
 #: (id i is ``cf.sections[i + 1]``, past the component range). A third element names an
-#: earlier bool the field depends on (``"!broadcast"``: only when it is False).
+#: earlier bool the field depends on (``"!broadcast"``: only when it is False),
+#: or ``TAIL``: a field a later class version appends, present only in files
+#: written at that version (the serializer gates it on the class version).
+TAIL = "@tail"
+
 SCHEMAS: dict[str, list[tuple[str, ...]]] = {
     # FUN_14076beb0: seven ref lists (FUN_1402f2740). [0] is what an event or
     # state switches on (4767 users), [6] what runs while the state is active
@@ -78,7 +82,10 @@ SCHEMAS: dict[str, list[tuple[str, ...]]] = {
     "oCEntityCpntValueSettings": [("value", "value"), ("flag", "bool")],
     "oCEntityCpntTimerSettings": [
         ("bias?", "value"), ("count", "value"), ("on_tick", "ref"), ("on_end", "ref"),
-        ("state", "ref"), ("paused?", "value"), ("duration", "value"), ("flag", "bool")],
+        ("state", "ref"), ("paused?", "value"), ("duration", "value"), ("flag", "bool"),
+        # Update 6 (2026-10-12): Serialize (0x140728540) gained one more
+        # version-gated picker read after the bool.
+        ("ref_tail?", "ref", TAIL)],
     "oCEntityCpntTesterSettings": [
         ("on_true", "ref"), ("ref_2", "ref"), ("on_false", "ref"), ("ref_4", "ref"),
         ("test", "obj"), ("ref_6", "ref"), ("ref_7", "ref")],
@@ -189,7 +196,10 @@ def _apply(c: EG.Component, items, spec) -> list[Field] | None:
 
     for entry in spec:
         name, want = entry[0], entry[1]
-        if len(entry) > 2:                         # present only when a bool says so
+        if len(entry) > 2 and entry[2] == TAIL:     # a later class version's field
+            if at == len(b):
+                continue
+        elif len(entry) > 2:                       # present only when a bool says so
             flag = entry[2].lstrip("!")
             seen = next((f.text for f in out if f.name == flag), None)
             if (seen == "True") == entry[2].startswith("!"):

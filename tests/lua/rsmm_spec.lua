@@ -15,6 +15,8 @@ local LIB = (arg and arg[1]) or "src/loader/lib"
 -- to put them BOTH on the path or every `require "rsmm.<submodule>"` misses
 -- and R.health / R.config / R.i18n / R.api / R.schedule silently come back nil.
 package.path = LIB .. "/?.lua;" .. LIB .. "/../lua/?.lua;" .. package.path
+-- Engine data VAs from the generated table, exactly what the SDK reads.
+local VA = require("engine_gen")._va
 
 -- ---------------------------------------------------------------------------
 -- byte-addressed little-endian fake memory
@@ -40,7 +42,7 @@ local STORE  = 0x20000000          -- fake value store
 local MIRROR = 0x30000000          -- HUD HP mirror
 local VALCTX_OFF, STORE_OFF = 0x2f8, 0x4c8
 local OVR_DATA_OFF, OVR_COUNT_OFF, OVR_STRIDE = 0xc0, 0xc8, 0x38
-local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15c8, 0x15cc, 0x1d80, 0x80
+local HP_OFF, MAXHP_OFF, HUDMIRROR_OFF, HASHMAP_OFF = 0x15d0, 0x15d4, 0x1da8, 0x80
 -- The chain Entity_ModifyHealth reads in its first four instructions:
 --   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
 -- Modelled because it is unguarded on the engine side: session 8c4f had the
@@ -55,14 +57,14 @@ local XPPROG   = 0x13000000        -- {level u32@0, xp u32@4}
 local XPMAX    = 0x13f00000        -- max-level object (comp+0x70 -> [+8] = max)
 -- Must track rsmm.lua's XP_VFTABLE_VA (corrected 2026-07-18: the old
 -- 0x140f23200 was mid-vtable, not a vtable start).
-local XP_VFTABLE_VA = 0x140f231b0
-local XP_TESTER_VA  = 0x141476e00  -- XpComponent_TypeTester data global
+local XP_VFTABLE_VA = VA["XpComponent_vftable"]
+local XP_TESTER_VA  = VA["XpComponent_TypeTester"]  -- XpComponent_TypeTester data global
 local XP_SUBCLASS_VFT = 0x140f99990 -- a subclass vftable the exact scan can't match
 local XP_ARR_OFF, XP_ARR_COUNT_OFF, XP_OWNER_OFF, XP_PROGRESS_OFF = 0x190, 0x198, 0x08, 0x108
 local XP_GAIN_AMOUNT_OFF = 0x50
 
 -- give pool wiring
-local POOL_PTR_VA = 0x14143cc18    -- *(this) = pool vector
+local POOL_PTR_VA = VA["g_MagicalObjectPool"]    -- *(this) = pool vector
 local POOL_VEC = 0x21000000        -- 8-aligned, ptr-plausible
 
 -- Locate the override entry for `key` in the store's override vector, or nil.
@@ -170,7 +172,7 @@ end
 -- forged oCGameEventNetworkModifier the SDK builds, then folds the amount
 -- additively into the key's override entry (a stand-in for the modifier
 -- registry + recompute — enough to prove the event reaches the engine intact).
-local MODEV_VFT = 0x140f322d0
+local MODEV_VFT = VA["oCGameEventNetworkModifier_vftable"]
 -- The duration each modifier event carried, for the "permanent" check.
 local last_mod_duration = nil
 engine["EntityValueStore_ApplyModifierEvent"] = function(store, ev)
@@ -684,7 +686,7 @@ end
 -- pinned stat never reaches them — that split is the reason this reader
 -- exists, so pin it: the store says 500 while the cache keeps its own value.
 do
-    local ROOT_SLOT = I.module_base() + (0x14143cb28 - 0x140000000)
+    local ROOT_SLOT = I.module_base() + (VA["g_StatReportRoot"] - 0x140000000)
     local root, obj = scratch(0x40), scratch(0x400)
     I.write_u64(ROOT_SLOT, root)
     I.write_u64(root + 0x20, obj)
@@ -827,7 +829,7 @@ do
         return n
     end
 
-    check(about(R.shards.get(), 80), "shards.get reads +0x15c8")
+    check(about(R.shards.get(), 80), "shards.get reads +0x15d0")
     check(R.shards.add(5) == true and about(R.shards.get(), 85), "shards.add grants")
     check(R.shards.spend(5) == true and about(R.shards.get(), 80), "shards.spend takes")
     check(count("deprecated") == 0, "the R.shards API logs no deprecation")
@@ -1211,8 +1213,8 @@ do
     -- handlers compare the oCString at +0x50 with *(*(def+0x48)+0x18). The SDK
     -- reads that string from the live defs and sends it verbatim; a bare stem
     -- ("Fully_Heal") or the exact string both resolve.
-    local MELODY_VFT = I.module_base() + (0x140f25c48 - 0x140000000)
-    local MELODY_RM_VFT = I.module_base() + (0x140f22608 - 0x140000000)
+    local MELODY_VFT = I.module_base() + (VA["oCGameNamedEventChooseMelody_vftable"] - 0x140000000)
+    local MELODY_RM_VFT = I.module_base() + (VA["oCGameNamedEventRemoveMelody_vftable"] - 0x140000000)
     I.write_u64(MELODY_VFT, I.module_base() + 0x1000)   -- a plausible slot 0
     I.write_u64(MELODY_RM_VFT, I.module_base() + 0x1000)
     local MEL_PATH = "Objects\\Melodies\\Fully_Heal.entity.ot"
@@ -1258,7 +1260,7 @@ do
     -- R.reroll.add rides it too. Proven in game 2026-10-10: the layout
     -- is the GainReroll ctor's, the count is a u16 at +0x50 as the game's own
     -- sender writes it, and bad counts never reach the engine.
-    local REROLL_VFT = I.module_base() + (0x140f263d0 - 0x140000000)
+    local REROLL_VFT = I.module_base() + (VA["oCDtNamedEventGainReroll_vftable"] - 0x140000000)
     I.write_u64(REROLL_VFT, I.module_base() + 0x1000)
     local sent
     engine["NamedEvent_Dispatch"] = function(_, ev)
@@ -1299,7 +1301,7 @@ do
     -- handlers check the type, so each call must carry the right one, and the
     -- union must come from the engine's routines (the bus clones the event
     -- through the union's vftable). Mocks behave like the real union ctor.
-    local WD_VFT = I.module_base() + (0x140f0f180 - 0x140000000)
+    local WD_VFT = I.module_base() + (VA["oCNamedEventNetworkWithData_vftable"] - 0x140000000)
     I.write_u64(WD_VFT, I.module_base() + 0x1000)
     local UNION_VFT = I.module_base() + 0x2000
     engine["EntityValueUnion_DefaultCtor"] = function(u)
@@ -1385,8 +1387,8 @@ do
     -- R.shards.gain sends GAIN_DREAM_SHARDS as a pickup would (the handler
     -- applies the hero's shard-gain bonuses); R.ingredient sends
     -- GAIN_INGREDIENT with the id read from the live IngredientDefinition.
-    local SHARD_VFT = I.module_base() + (0x140f224c0 - 0x140000000)
-    local ING_VFT = I.module_base() + (0x140f26460 - 0x140000000)
+    local SHARD_VFT = I.module_base() + (VA["oCDtNamedEventGainDreamShards_vftable"] - 0x140000000)
+    local ING_VFT = I.module_base() + (VA["oCGameEventGainIngredient_vftable"] - 0x140000000)
     I.write_u64(SHARD_VFT, I.module_base() + 0x1000)
     I.write_u64(ING_VFT, I.module_base() + 0x1000)
     engine["NamedEvent_Dispatch"] = function(disp, ev)
@@ -1496,8 +1498,8 @@ do
     check(R.entity.hero() == HERO, "the hero is captured for the talent guards")
     local saved_slots = {}
     for k = 0, 9 do
-        saved_slots[k] = I.read_u64(HERO + 0xff0 + k * 0x20)
-        I.write_u64(HERO + 0xff0 + k * 0x20, 0)
+        saved_slots[k] = I.read_u64(HERO + 0x1008 + k * 0x20)
+        I.write_u64(HERO + 0x1008 + k * 0x20, 0)
     end
     engine["NamedEvent_Dispatch"] = function(disp, ev)
         dispatched = true
@@ -1525,8 +1527,8 @@ do
     dispatched = false
     check(R.talent.upgrade(1) == false and not dispatched,
           "upgrade with NO talent owned is refused (the engine would index a null list)")
-    I.write_u64(HERO + 0xff0 + 2 * 0x20, scratch(0x80))
-    I.write_u64(HERO + 0xff0 + 5 * 0x20, scratch(0x80))
+    I.write_u64(HERO + 0x1008 + 2 * 0x20, scratch(0x80))
+    I.write_u64(HERO + 0x1008 + 5 * 0x20, scratch(0x80))
     check(R.talent.owned() == 2, "owned() counts filled slots")
     check(R.talent.upgrade(2) == true and sent.name == "UPGRADE_SPECIFIC_SKILL" and sent.i == 1,
           "upgrade(2) sends the 0-based index of the 2nd talent owned")
@@ -1541,13 +1543,13 @@ do
         return c
     end
     local ULIST = scratch(0x20)
-    I.write_u64(HERO + 0xfb8, ULIST)
-    I.write_u32(HERO + 0xfc0, 0)
+    I.write_u64(HERO + 0xfd0, ULIST)
+    I.write_u32(HERO + 0xfd8, 0)
     dispatched = false
     check(R.talent.add_random_ultimate() == false and not dispatched,
           "no ultimate candidates is refused (the engine would divide by zero)")
     I.write_u64(ULIST, ulti_cand(true, true)); I.write_u64(ULIST + 8, ulti_cand(false, false))
-    I.write_u32(HERO + 0xfc0, 2)
+    I.write_u32(HERO + 0xfd8, 2)
     dispatched = false
     check(R.talent.add_random_ultimate() == false and not dispatched,
           "no QUALIFYING candidate is refused (divide by zero after the re-rolls)")
@@ -1560,8 +1562,8 @@ do
     dispatched = false
     check(R.talent.add_random_ultimate() == false and not dispatched,
           "a candidate the engine would read through address 0xc8 is refused")
-    I.write_u32(HERO + 0xfc0, 0)
-    for k = 0, 9 do I.write_u64(HERO + 0xff0 + k * 0x20, saved_slots[k] or 0) end
+    I.write_u32(HERO + 0xfd8, 0)
+    for k = 0, 9 do I.write_u64(HERO + 0x1008 + k * 0x20, saved_slots[k] or 0) end
 
     -- R.control: the game COUNTS locks, so the SDK counts its own and never
     -- sends an unlock it does not owe.
@@ -2114,7 +2116,7 @@ end
 -- 18. R.options.set type checking ------------------------------------------
 do
     local OPT_OBJ = 0x60000000
-    I.write_u64(0x140000000 + (0x14143cb58 - 0x140000000), OPT_OBJ)
+    I.write_u64(0x140000000 + (VA["g_GameOptions"] - 0x140000000), OPT_OBJ)
     I.write_u8(OPT_OBJ + 0x0030 + 0x28, 1)     -- "Dev"  reads as a real bool
     I.write_u8(OPT_OBJ + 0x0060 + 0x28, 0)     -- "Test" reads as a real bool
     check(R.options.get("Dev") == true, "bool option round-trips")
@@ -2423,7 +2425,7 @@ end
 --    machine (three stashes inside 5 ms, four more at the next chapter). The
 --    loop adopted the first plausible entry, i.e. whichever hero the allocator
 --    put in the lower ring slot — so R.combat/R.stat/R.xp could have been
---    pointed at an ALLY's character. The engine's +0x1d88 byte decides it.
+--    pointed at an ALLY's character. The engine's +0x1db0 byte decides it.
 --
 -- 2. Nothing retired a chapter's candidates. The engine rebuilds every hero
 --    controller at a chapter load, freed memory keeps reading plausible, and
@@ -2445,8 +2447,8 @@ do
         I.write_u64(p + HUDMIRROR_OFF, MIRROR)
     end
     I.write_f32(MIRROR, 100.0)
-    I.write_u8(ALLY + 0x1d88, 0)          -- a remote ally
-    I.write_u8(MINE + 0x1d88, 1)          -- this machine's player
+    I.write_u8(ALLY + 0x1db0, 0)          -- a remote ally
+    I.write_u8(MINE + 0x1db0, 1)          -- this machine's player
     shared[8] = ALLY                      -- the LOWER slot, which used to win
     shared[9] = MINE
 
@@ -2655,13 +2657,13 @@ do
     local DEAD, LIVE = 0x21000000, 0x22000000
     -- DEAD never populates: HP fields stay zero, exactly like the candidate
     -- that blocked the real run.
-    I.write_f32(DEAD + 0x15c8, 0.0)
-    I.write_f32(DEAD + 0x15cc, 0.0)
-    I.write_u64(DEAD + 0x1d80, 0)
+    I.write_f32(DEAD + 0x15d0, 0.0)
+    I.write_f32(DEAD + 0x15d4, 0.0)
+    I.write_u64(DEAD + 0x1da8, 0)
     -- LIVE is a fully populated hero.
-    I.write_f32(LIVE + 0x15c8, 42.0)
-    I.write_f32(LIVE + 0x15cc, 100.0)
-    I.write_u64(LIVE + 0x1d80, 0x23000000)
+    I.write_f32(LIVE + 0x15d0, 42.0)
+    I.write_f32(LIVE + 0x15d4, 100.0)
+    I.write_u64(LIVE + 0x1da8, 0x23000000)
     I.write_f32(0x23000000, 42.0)
 
     -- The dead one arrives LAST, which under the old single-slot design is
@@ -2731,9 +2733,9 @@ do
 
     local OFF = 0x520                       -- deliberately NOT the old 0x4d8
     local function hero_at(addr)
-        I.write_f32(addr + 0x15c8, 50.0)    -- hp
-        I.write_f32(addr + 0x15cc, 100.0)   -- max hp
-        I.write_u64(addr + 0x1d80, 0x12340000)
+        I.write_f32(addr + 0x15d0, 50.0)    -- hp
+        I.write_f32(addr + 0x15d4, 100.0)   -- max hp
+        I.write_u64(addr + 0x1da8, 0x12340000)
         I.write_u64(addr + 8, 0x13000000)   -- component store
         I.write_u64(0x13000000, 0x13000100)
         return addr
@@ -2922,12 +2924,12 @@ do
     end
     I.write_u64(ME + 0x08, ME_ENT)
     I.write_u64(ALLY + 0x08, ALLY_ENT)
-    I.write_u8(ME + 0x1d88, 1)                  -- the engine's is-local flag
-    I.write_u8(ALLY + 0x1d88, 0)
-    -- Local/remote is the engine's is-local byte at +0x1d88 (see the co-op
+    I.write_u8(ME + 0x1db0, 1)                  -- the engine's is-local flag
+    I.write_u8(ALLY + 0x1db0, 0)
+    -- Local/remote is the engine's is-local byte at +0x1db0 (see the co-op
     -- section for why it is neither the net component nor the HUD mirror).
-    I.write_u8(ME_ENT + 0x1d88, 1)
-    I.write_u8(ALLY_ENT + 0x1d88, 0)
+    I.write_u8(ME_ENT + 0x1db0, 1)
+    I.write_u8(ALLY_ENT + 0x1db0, 0)
     I.write_u64(CTX + 8, ME_ENT)
     I.write_u64(FOE_CTX + 8, FOE)
     I.write_u64(PD + 0x10, PDVAL)
@@ -3171,9 +3173,9 @@ do
     for _, e in ipairs({ ENT1, ENT2, ALLY_ENT, ENEMY }) do
         I.write_u64(e + 8, 0x13000000)          -- plausible component store
     end
-    I.write_u8(ENT1 + 0x1d88, 1)
-    I.write_u8(ENT2 + 0x1d88, 1)                -- still THIS machine's player
-    I.write_u8(ALLY_ENT + 0x1d88, 0)
+    I.write_u8(ENT1 + 0x1db0, 1)
+    I.write_u8(ENT2 + 0x1db0, 1)                -- still THIS machine's player
+    I.write_u8(ALLY_ENT + 0x1db0, 0)
     I.write_u64(CTX1 + 8, ENT1)
     I.write_u64(CTX2 + 8, ENT2)
     I.write_u64(ALLY_CTX + 8, ALLY_ENT)
@@ -3260,13 +3262,13 @@ do
     rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
 
     local ENEMY_ID, HERO_ID, OTHER_ID = 0x1561073c, 0x155aac59, 0x11110000
-    local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+    local ENEMY_VFT = I.module_base() + (VA["EnemyController_vftable"] - 0x140000000)
     local OTHER_VFT = I.module_base() + 0x1000
 
     local HERO, HERO_ENT = 0x60000000, 0x61000000
     I.write_u64(HERO + 0x08, HERO_ENT)
-    I.write_u8(HERO + 0x1d88, 1)
-    I.write_u8(HERO_ENT + 0x1d88, 1)
+    I.write_u8(HERO + 0x1db0, 1)
+    I.write_u8(HERO_ENT + 0x1db0, 1)
     I.write_u64(HERO_ENT + 8, 0x13000000)
 
     -- Build a victim: `ids` is the class id in each map slot. The map is
@@ -3435,13 +3437,13 @@ do
     rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
 
     local ENEMY_ID, OTHER_ID = 0x1561073c, 0x11110000
-    local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+    local ENEMY_VFT = I.module_base() + (VA["EnemyController_vftable"] - 0x140000000)
     local OTHER_VFT = I.module_base() + 0x1000
     local JAR_SETTINGS, GNOLL_SETTINGS = 0x66000000, 0x66100000
 
     local HERO, HERO_ENT = 0x67000000, 0x67100000
     I.write_u64(HERO + 0x08, HERO_ENT)
-    I.write_u8(HERO + 0x1d88, 1)
+    I.write_u8(HERO + 0x1db0, 1)
     I.write_u64(HERO_ENT + 8, 0x13000000)
 
     local next_addr = 0x68000000
@@ -3581,10 +3583,10 @@ do
     local ALLY1, ALLY2 = 0x70200000, 0x70300000
     local function controller(addr, is_local, hero_id, entity)
         I.write_u64(addr + 0x08, entity)
-        I.write_u8(addr + 0x1d88, is_local and 1 or 0)
+        I.write_u8(addr + 0x1db0, is_local and 1 or 0)
         I.write_u32(addr + HERO_OFF, hero_id)
         I.write_u64(entity + 8, 0x13000000)
-        I.write_u8(entity + 0x1d88, is_local and 1 or 0)
+        I.write_u8(entity + 0x1db0, is_local and 1 or 0)
     end
     controller(ME1,   true,  4, 0x71000000)
     controller(ALLY1, false, 7, 0x71100000)
@@ -3700,7 +3702,7 @@ do
     for addr, id in pairs({ [ME] = 4, [ALLY] = 7 }) do
         local ent = addr + 0x8000
         I.write_u64(addr + 0x08, ent)
-        I.write_u8(addr + 0x1d88, addr == ME and 1 or 0)
+        I.write_u8(addr + 0x1db0, addr == ME and 1 or 0)
         I.write_u64(ent + 8, 0x13000000)
         -- TWO fields that both read as a distinct known hero id.
         I.write_u32(addr + 0x1ae0, id)
@@ -3754,9 +3756,9 @@ local function _name_world(base, ids, locals)
         local addr = base + i * 0x100000
         local ent = addr + 0x8000
         I.write_u64(addr + 0x08, ent)
-        I.write_u8(addr + 0x1d88, locals[i] and 1 or 0)
+        I.write_u8(addr + 0x1db0, locals[i] and 1 or 0)
         I.write_u64(ent + 8, 0x13000000)
-        I.write_u8(ent + 0x1d88, locals[i] and 1 or 0)
+        I.write_u8(ent + 0x1db0, locals[i] and 1 or 0)
         if id then I.write_u32(addr + 0x1ae0, id) end
         ctrl[i] = addr
     end
@@ -3909,9 +3911,9 @@ local function _own_world(base, names)
         local addr = base + i * 0x100000
         local ent = addr + 0x8000
         I.write_u64(addr + 0x08, ent)
-        I.write_u8(addr + 0x1d88, i == 1 and 1 or 0)
+        I.write_u8(addr + 0x1db0, i == 1 and 1 or 0)
         I.write_u64(ent + 8, 0x13000000)
-        I.write_u8(ent + 0x1d88, i == 1 and 1 or 0)
+        I.write_u8(ent + 0x1db0, i == 1 and 1 or 0)
         ctrl[i] = addr
     end
     local PD, PDV, PDS = base + 0x10000, base + 0x20000, base + 0x30000
@@ -4823,10 +4825,10 @@ do
     local E_A1,  E_A2  = 0x80200000, 0x80300000
     local function controller(addr, is_local, hero_id, entity)
         I.write_u64(addr + 0x08, entity)
-        I.write_u8(addr + 0x1d88, is_local and 1 or 0)
+        I.write_u8(addr + 0x1db0, is_local and 1 or 0)
         I.write_u32(addr + HERO_OFF, hero_id)
         I.write_u64(entity + 8, 0x13000000)
-        I.write_u8(entity + 0x1d88, is_local and 1 or 0)
+        I.write_u8(entity + 0x1db0, is_local and 1 or 0)
     end
     controller(ME1,   true,  4, E_ME1)
     controller(ALLY1, false, 7, E_A1)
@@ -6223,9 +6225,9 @@ do
     for i, addr in ipairs(P) do
         local ent = addr + 0x8000
         I.write_u64(addr + 0x08, ent)
-        I.write_u8(addr + 0x1d88, 1)          -- misread: "this is my player"
+        I.write_u8(addr + 0x1db0, 1)          -- misread: "this is my player"
         I.write_u64(ent + 8, 0x13000000)
-        I.write_u8(ent + 0x1d88, 1)
+        I.write_u8(ent + 0x1db0, 1)
         I.write_u32(addr + 0x1ae0, 4)         -- one id for all four rows
         local _ = i
     end
@@ -6261,7 +6263,7 @@ do
     for _, addr in ipairs(Q) do
         local ent = addr + 0x8000
         I.write_u64(addr + 0x08, ent)
-        I.write_u8(addr + 0x1d88, 1)
+        I.write_u8(addr + 0x1db0, 1)
         I.write_u64(ent + 8, 0x13000000)
         I.write_u32(addr + 0x1ae0, 4)
     end
@@ -6299,9 +6301,9 @@ do
     local OFF = 0x520
     local MINE, ALLY = 0x1a000000, 0x1a800000
     local function hero_at(addr)
-        I.write_f32(addr + 0x15c8, 50.0)
-        I.write_f32(addr + 0x15cc, 100.0)
-        I.write_u64(addr + 0x1d80, 0x12340000)
+        I.write_f32(addr + 0x15d0, 50.0)
+        I.write_f32(addr + 0x15d4, 100.0)
+        I.write_u64(addr + 0x1da8, 0x12340000)
         I.write_u64(addr + 8, 0x13000000)
         I.write_u64(0x13000000, 0x13000100)
         local d = addr + OFF
@@ -6309,11 +6311,11 @@ do
         return d
     end
     local d_mine, d_ally = hero_at(MINE), hero_at(ALLY)
-    -- An ally is told apart by the engine's own is-local byte at +0x1d88.
+    -- An ally is told apart by the engine's own is-local byte at +0x1db0.
     -- Not the net component (that engine call crashed the game) and not the
     -- HUD mirror (a live probe found an ALLY carrying one).
-    I.write_u8(MINE + 0x1d88, 1)
-    I.write_u8(ALLY + 0x1d88, 0)
+    I.write_u8(MINE + 0x1db0, 1)
+    I.write_u8(ALLY + 0x1db0, 0)
 
     -- Teach the dispatcher offset. It needs two distinct CAPTURED heroes, and
     -- only a local one can ever be captured (the plausibility gate requires a
@@ -6321,7 +6323,7 @@ do
     -- never an ally.
     local MINE2 = 0x1b000000
     local d_mine2 = hero_at(MINE2)
-    I.write_u8(MINE2 + 0x1d88, 1)
+    I.write_u8(MINE2 + 0x1db0, 1)
     shared[0] = MINE
     check(Rc.entity.hero() == MINE, "spec fixture: local hero captured")
     fire("gameplay:ABILITY_EXIT", { source = "gameplay",
@@ -7134,7 +7136,7 @@ local function _peer_world(Rp, base, opts)
         if plant then I.write_u64(ctrl[i] + 0x120, plant) end
         deal(ctrl[i], 10.0 * i)
     end
-    local SLOTS, COUNT = 0x14143f600, 0x14143f780
+    local SLOTS, COUNT = VA["Netcode_PeerSlots"], VA["Netcode_PeerCount"]
     I.write_u32(COUNT, #names)
     for i = 1, #names do
         local slot = SLOTS + (i - 1) * 0x60
@@ -7308,7 +7310,7 @@ local function _plant_session_chain(base, ctrl, opts)
         local conn = base + 0xc2000 + i * 0x1000
         I.write_u64(mgr + 0x10 + (i - 2) * 8, conn)
         I.write_u64(conn + 0x08, (opts.guid or {})[i] or (0x51100 + i))
-        local slot = 0x14143f600 + (i - 1) * 0x60
+        local slot = VA["Netcode_PeerSlots"] + (i - 1) * 0x60
         I.write_u64(conn + 0x20, I.read_u64(slot + 0x50))   -- that peer's tunnel
     end
     return mgr
@@ -7527,7 +7529,7 @@ do  -- 9h. the REGISTRY path: one node reaches every connection in the run
         node[i] = base + 0xd8000 + i * 0x1000
         I.write_u64(conn + 0xf8, 0x51100 + i)
         -- the peer this connection belongs to, at one constant offset
-        I.write_u64(conn + 0x40, I.read_u64(0x14143f600 + (i - 1) * 0x60 + 0x50))
+        I.write_u64(conn + 0x40, I.read_u64(VA["Netcode_PeerSlots"] + (i - 1) * 0x60 + 0x50))
         I.write_u64(node[i] + 0x10, 0x51100 + i)
         I.write_u64(node[i] + 0x18, conn)
     end
@@ -7578,7 +7580,7 @@ do  -- 9i. a pointer that is not a connection is refused at +0xf8
     local fake, junk = base + 0xd8000, base + 0xd9000
     I.write_u64(fake + 0x10, 0x51102)
     I.write_u64(fake + 0x18, junk)
-    I.write_u64(junk + 0x40, I.read_u64(0x14143f600 + 0x60 + 0x50))
+    I.write_u64(junk + 0x40, I.read_u64(VA["Netcode_PeerSlots"] + 0x60 + 0x50))
     I.write_u64(mgr + 0x18, fake)
     check(Rp.damage._conn_join() == false,
           "a GUID next to a pointer is not a connection: +0xf8 has to agree")
@@ -7728,7 +7730,7 @@ do  -- 9i2. a non-ASCII player name (session 104f, match 2)
     local ctrl = _peer_world(Rp, base, { plant = {} })
     -- Rename peer slot 2 to the non-ASCII name, in place.
     do
-        local slot = 0x14143f600 + 1 * 0x60
+        local slot = VA["Netcode_PeerSlots"] + 1 * 0x60
         local txt  = base + 0x95000
         local who  = "7\226\153\163"
         _put_str(txt, who)
@@ -8092,7 +8094,7 @@ do  -- 9k. an ALLY is re-adopted across a chapter, not forked into a new row
     local ENT2 = ALLY2 + 0x10000
     alive[ENT2] = true
     I.write_u64(ALLY2 + 0x08, ENT2)
-    I.write_u8(ALLY2 + 0x1d88, 0)
+    I.write_u8(ALLY2 + 0x1db0, 0)
     deal(ALLY2, 25.0)
 
     local board = Rk.damage.board()
@@ -8138,7 +8140,7 @@ do  -- 9l. TWO stale ally rows are ambiguous, so it refuses instead of guessing
     local NENT = NEW + 0x10000
     alive[NENT] = true
     I.write_u64(NEW + 0x08, NENT)
-    I.write_u8(NEW + 0x1d88, 0)
+    I.write_u8(NEW + 0x1db0, 0)
     deal(NEW, 25.0)
 
     check(#Rk.damage.board() == 4,
@@ -8198,7 +8200,7 @@ do  -- 9l2. two stale ally rows: the OWNER GUID says which one came back
     local NENT = NEW + 0x10000
     alive[NEW], alive[NENT] = true, true
     I.write_u64(NEW + 0x08, NENT)
-    I.write_u8(NEW + 0x1d88, 0)
+    I.write_u8(NEW + 0x1db0, 0)
     _guid_on(ncmap, NENT, B + 0x58000, G2)     -- a2 came back
     deal(NEW, 25.0)
 
@@ -8241,7 +8243,7 @@ do  -- 9l3. ONE stale row with a DIFFERENT owner GUID is a different player
     local NENT = NEW + 0x10000
     alive[NEW], alive[NENT] = true, true
     I.write_u64(NEW + 0x08, NENT)
-    I.write_u8(NEW + 0x1d88, 0)
+    I.write_u8(NEW + 0x1db0, 0)
     _guid_on(ncmap, NENT, B + 0x58000, 0x2222)
     deal(NEW, 25.0)
 
@@ -8317,7 +8319,7 @@ do  -- 9m. WITHIN a chapter, a dead ally's row is not handed to a newcomer
     local JENT = JOINER + 0x10000
     alive[JOINER], alive[JENT] = true, true
     I.write_u64(JOINER + 0x08, JENT)
-    I.write_u8(JOINER + 0x1d88, 0)
+    I.write_u8(JOINER + 0x1db0, 0)
     deal(JOINER, 25.0)
 
     local board = Rk.damage.board()
@@ -8597,9 +8599,9 @@ do
     seed_rtti(".?AVoCDtEnemyDefinition@@", ALT_BASE)
 
     local CTRL, SLOTS, DATA = 0x23000000, 0x24000000, 0x25000000
-    I.write_u64(alt(0x1412f0a68), CTRL)
-    I.write_u64(alt(0x1412f0a70), SLOTS)
-    I.write_u64(alt(0x1412f0a80), 7)
+    I.write_u64(alt(VA["DefinitionRegistry_Ctrl"]), CTRL)
+    I.write_u64(alt(VA["DefinitionRegistry_Slots"]), SLOTS)
+    I.write_u64(alt(VA["DefinitionRegistry_Mask"]), 7)
     for i = 0, 7 do I.write_u8(CTRL + i, 0x80) end   -- empty
     I.write_u8(CTRL + 3, 0x12)                       -- full (high bit clear)
     I.write_u64(DATA, INST)
@@ -8617,14 +8619,14 @@ do
           "suffix match, so callers need not spell the oCDt prefix")
     check(R.defs.first("oCDtMapDefinition") == nil, "a miss returns nil")
 
-    I.write_u64(alt(0x1412f0a80), 6)
+    I.write_u64(alt(VA["DefinitionRegistry_Mask"]), 6)
     check(R.defs.ready() == false,
           "a mask that is not capacity-1 is refused -- a garbage mask would "
           .. "otherwise turn the walk into a multi-million-iteration probe")
     check((R.defs.why_not() or ""):find("not capacity%-1") ~= nil,
           "and why_not() names the reason -- 'unreadable' covers five distinct "
           .. "failures, and a probe that cannot say which wastes a playtest")
-    I.write_u64(alt(0x1412f0a80), 7)
+    I.write_u64(alt(VA["DefinitionRegistry_Mask"]), 7)
     check(R.defs.why_not() == nil, "why_not() is nil once the registry reads")
 
     -- Back to the default base: the RTTI fixtures above were seeded relative to
@@ -8742,12 +8744,12 @@ do
     local OFF = 0x520
     local H1, H2 = 0x5c000000, 0x5c800000
     local function hero_at(addr)
-        I.write_f32(addr + 0x15c8, 50.0)
-        I.write_f32(addr + 0x15cc, 100.0)
-        I.write_u64(addr + 0x1d80, 0x12340000)   -- HUD mirror: the plausibility gate
+        I.write_f32(addr + 0x15d0, 50.0)
+        I.write_f32(addr + 0x15d4, 100.0)
+        I.write_u64(addr + 0x1da8, 0x12340000)   -- HUD mirror: the plausibility gate
         I.write_u64(addr + 8, 0x13000000)
         I.write_u64(0x13000000, 0x13000100)
-        I.write_u8(addr + 0x1d88, 1)             -- the engine's is-local flag
+        I.write_u8(addr + 0x1db0, 1)             -- the engine's is-local flag
         local d = addr + OFF
         I.write_u64(d, 0x140f00000)              -- dispatcher vtable, in the image
         return d
@@ -8838,8 +8840,8 @@ do
         for _, e in ipairs({ ME_ENT, ALLY_ENT }) do I.write_u64(e + 8, 0x13000000) end
         I.write_u64(ME + 0x08, ME_ENT)
         I.write_u64(ALLY + 0x08, ALLY_ENT)
-        I.write_u8(ME + 0x1d88, 1);     I.write_u8(ME_ENT + 0x1d88, 1)
-        I.write_u8(ALLY + 0x1d88, 0);   I.write_u8(ALLY_ENT + 0x1d88, 0)
+        I.write_u8(ME + 0x1db0, 1);     I.write_u8(ME_ENT + 0x1db0, 1)
+        I.write_u8(ALLY + 0x1db0, 0);   I.write_u8(ALLY_ENT + 0x1db0, 0)
         local boardable = { [ME_ENT] = true, [ALLY_ENT] = true }
         I.is_grant_target = function(e) return boardable[e] == true end
         I.mem_find = function() return {} end
@@ -8849,7 +8851,7 @@ do
         -- at entity+0x5f0 (stride 0x10, mask +0x600), keyed by class id.
         local ENEMY, PD, PDVAL, PDSRC = 0x72000000, 0x73000000, 0x73100000, 0x73200000
         local ENEMY_ID  = 0x1561073c            -- oCDtEntityCpntEnemyController
-        local ENEMY_VFT = I.module_base() + (0x140f30b78 - 0x140000000)
+        local ENEMY_VFT = I.module_base() + (VA["EnemyController_vftable"] - 0x140000000)
         local slots, comp = 0x72100000, 0x72200000
         I.write_u64(ENEMY + 8, 0x13000000)
         I.write_u64(ENEMY, I.module_base() + 0x1000)
@@ -9056,7 +9058,7 @@ do
         I.write_u64(netcomp + 0xb8, netobj)
         I.write_u64(netobj + 0x100, holder)
         I.write_u64(holder + 0x28, owner)
-        I.write_u8(ent + 0x1d88, hero and 1 or 0)
+        I.write_u8(ent + 0x1db0, hero and 1 or 0)
     end
     local A, B = 0x80000000, 0x80100000
     make(A, 0x80200000, 0x80300000, 0x80400000, OWNER, false)
@@ -9140,7 +9142,7 @@ do
     local PD, PDVAL, PDSRC = 0x92000000, 0x92100000, 0x92200000
     local VICTIM = 0x93000000
     I.write_u64(ME + 0x08, ME_ENT)
-    I.write_u8(ME + 0x1d88, 1)
+    I.write_u8(ME + 0x1db0, 1)
     I.write_u64(ME_ENT + 8, 0x13000000)
     I.write_u64(VICTIM + 8, 0x13000000)
     I.write_u64(PD + 0x10, PDVAL)
@@ -9200,7 +9202,7 @@ do
     local PD, PDVAL, PDSRC = 0x96000000, 0x96100000, 0x96200000
     local VICTIM = 0x97000000
     I.write_u64(ME + 0x08, ME_ENT)
-    I.write_u8(ME + 0x1d88, 1)
+    I.write_u8(ME + 0x1db0, 1)
     I.write_u64(ME_ENT + 8, 0x13000000)
     I.write_u64(VICTIM + 8, 0x13000000)
     I.write_u64(PD + 0x10, PDVAL)
@@ -9444,6 +9446,7 @@ do
         "HeroRankLock_IsUnlocked",
         "HeroStoryUnlock_IsUnlocked",
         "ChallengeUnlock_IsUnlocked",
+        "AdditionalContentGate_IsUnlocked",
     }
     local vas = {}
     for i, name in ipairs(gates) do vas[i] = I.resolve(name) end
@@ -9456,11 +9459,11 @@ do
         check(hooks[vas[i]].cb(0x1000) == 1, name .. " answers true")
     end
 
-    -- THE LINE THAT MUST NOT MOVE. Ownership is the same slot on the same
-    -- base; it has no symbol precisely so it cannot be reached from here.
-    local owner_va = I.resolve("AdditionalContentUnlock_IsUnlocked")
-    check(hooks[owner_va] == nil,
-          "the ownership condition is NOT hooked — unbought content stays locked")
+    -- Ownership is opened too (a deliberate choice, 2026-10-13): every
+    -- ownership-gated hero, paid DLC included, is selectable for anyone on the mod.
+    local owner_va = I.resolve("AdditionalContentGate_IsUnlocked")
+    check(hooks[owner_va] ~= nil and hooks[owner_va].cb(0x1000) == 1,
+          "the ownership condition is hooked and answers true")
 
     check(R.hero.unlock_progression() == 0,
           "a second call reports 0 rather than re-installing")
@@ -9913,7 +9916,7 @@ do
           "R.talent.grant is merged in from rsmm/talent_grant.lua")
 
     local ENT = I.read_u64(HERO + 0x08)          -- the hero's owning entity
-    local CAT1 = HERO + 0xf98 + 1 * 0x10         -- category 1: the talent pool
+    local CAT1 = HERO + 0xfb0 + 1 * 0x10         -- category 1: the talent pool
     local DATA = 0x51000000
     local VFT = 0x140f10000                      -- in the image, like a real vtable
 
@@ -9957,8 +9960,8 @@ do
     check(none == nil and (why or ""):find("ambiguous", 1, true),
           "a query matching two talents is refused as ambiguous")
 
-    local HELD, STRIDE = HERO + 0xff0, 0x20
-    I.write_u64(HERO + 0x1db0, 0x55000000)      -- replicated HUD copy AddSkill writes
+    local HELD, STRIDE = HERO + 0x1008, 0x20
+    I.write_u64(HERO + 0x1dd8, 0x55000000)      -- replicated HUD copy AddSkill writes
     local function slot_of(c)
         for i = 0, 9 do if I.read_u64(HELD + i * STRIDE) == c then return i end end
     end
@@ -10250,9 +10253,9 @@ end
 do
     local CAND, CENT, MIRR = 0x68000000, 0x68100000, 0x68200000
     I.write_u64(CAND, 0x140f00000)               -- a vtable in the image
-    I.write_f32(CAND + 0x15c8, 0.0); I.write_f32(CAND + 0x15cc, 0.0)
+    I.write_f32(CAND + 0x15d0, 0.0); I.write_f32(CAND + 0x15d4, 0.0)
     I.write_u64(CAND + 0x08, CENT)
-    I.write_u64(CAND + 0x1d80, MIRR); I.write_f32(MIRR, 0.0)
+    I.write_u64(CAND + 0x1da8, MIRR); I.write_f32(MIRR, 0.0)
     I.write_u64(CENT, 0x140f10000)
 
     local rtti_name, component, flag = R.rtti.name, R.net.component, R.game.flag
@@ -10281,11 +10284,11 @@ do
     check(attempt(false, true) == CAND,
           "a 0/0-HP candidate is captured by identity while in a game scene")
     check(R.entity._is_live(CAND), "and counts as the live hero for R.stat")
-    I.write_f32(CAND + 0x15c8, 50.0); I.write_f32(CAND + 0x15cc, 100.0)
+    I.write_f32(CAND + 0x15d0, 50.0); I.write_f32(CAND + 0x15d4, 100.0)
     I.write_f32(MIRR, 50.0)
     check(attempt(true, true) == nil,
           "the main menu does no capture at all, even of a live-HP preview hero")
-    I.write_f32(CAND + 0x15c8, 0.0); I.write_f32(CAND + 0x15cc, 0.0)
+    I.write_f32(CAND + 0x15d0, 0.0); I.write_f32(CAND + 0x15d4, 0.0)
     I.write_f32(MIRR, 0.0)
     check(attempt(nil, nil) == nil,
           "an unreadable scene falls back to the HP gate, which 0/0 fails")
@@ -10541,7 +10544,7 @@ end
 do
     package.loaded["rsmm"] = nil
     local Rd = require "rsmm"
-    local LIST, DATA = 0x1412f5aa8, 0x1f100000
+    local LIST, DATA = VA["AppSettings_SectionList"], 0x1f100000
     local OTHER, SEC = 0x1f110000, 0x1f120000
     I.write_u64(LIST, DATA); I.write_u32(LIST + 8, 2)
     I.write_u64(DATA, OTHER); I.write_u64(DATA + 8, SEC)

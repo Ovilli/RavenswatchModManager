@@ -251,12 +251,22 @@ def _ensure_pattern_db(game_dir: Path) -> None:
         DataUpdateError,
         apply_update,
         planted_dir,
+        planted_meta,
     )
 
+    # A DB planted before a game patch keeps resolving the pre-patch
+    # patterns — every hand-relocated symbol (LobbyAttributes_Parse after
+    # Update 6) comes back unresolved — so a stale one is refetched too.
     if (planted_dir(game_dir) / PATTERNS_NAME).is_file():
-        return
-    print("install-loader: no pattern DB in the game folder — fetching it "
-          "(same as `rsmm update-data`)...")
+        want = (planted_meta(game_dir) or {}).get("game_exe_size")
+        exe = game_dir / "Ravenswatch.exe"
+        if not want or not exe.is_file() or exe.stat().st_size == want:
+            return
+        print("install-loader: the planted pattern DB is for another game "
+              "build — refreshing it (same as `rsmm update-data`)...")
+    else:
+        print("install-loader: no pattern DB in the game folder — fetching it "
+              "(same as `rsmm update-data`)...")
     try:
         state = apply_update(game_dir)
     except (DataUpdateError, OSError) as exc:

@@ -87,7 +87,33 @@ def test_the_card_numbers_that_cannot_be_traced_stay_few():
                 if e.get("tiers") or e.get("single"):
                     continue
                 names = [e["node"]] if e["kind"] == "Value" else e["sources"]
-                if not any((c["file"], n) in labels for n in names):
+                if not any((e.get("valueFiles", {}).get(n, e.get("file", c["file"])), n)
+                           in labels for n in names):
                     unresolved += 1
     assert named > 300
-    assert unresolved <= 40, f"{unresolved} of {named} card placeholders have nothing editable"
+    # 40 before Update 6 (2026-10-12), which added 26 untraced placeholders of
+    # its own -- Kintaro's cards (9) and the new Special Quest Dream Shard
+    # talents (Romeo 9, Juliet 8) -- not cards that lost their numbers.
+    assert unresolved <= 50, f"{unresolved} of {named} card placeholders have nothing editable"
+
+
+_BEOWULF = ("EntitySettings/Heroes/Hero_Beowulf/"
+            "Hero_Beowulf_Update6.entity.ot.EntitySettingsResource.gen")
+
+
+def test_a_reworked_card_shows_the_text_and_numbers_its_rework_draws():
+    """Update 6's ``Hero_Beowulf_Update6`` re-declares Battle Cry's String Format
+    under a new key, while the old ``_Desc`` stays in the bank with the old text.
+    The card must read the new key, and each ``{N}`` the file holding its node:
+    the shield numbers stay in ``Hero_Beowulf``, the move speed is the rework's."""
+    from rsmm.sdk.kinds import skills as S
+    if corpus.read(_BEOWULF) is None:
+        pytest.skip("Update 6 heroes not available (no mirror, no install)")
+    assert S.rework_desc_keys("Beowulf")["Skill_Trait_Battlecry_Desc"] \
+        == "Skill_Trait_Battlecry_Update6_Desc"
+    c = next(c for c in C.talent_cards("Beowulf") if c["base"] == "Skill_Trait_Battlecry")
+    if c["description"]:  # the bank text needs an install
+        assert "Move Speed" in c["description"]
+    assert [e["file"] for e in c["entries"]] == ["Hero_Beowulf", "Hero_Beowulf",
+                                                 "Hero_Beowulf_Update6"]
+    assert c["entries"][0]["tiers"]["Common"]["value"] == pytest.approx(1.2)

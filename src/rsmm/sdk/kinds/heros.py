@@ -137,6 +137,7 @@ from pathlib import Path
 from typing import Final
 
 from ...engine import enemy_pools as EP
+from ...engine import herodefs as HD
 from ...engine import rsc_cache as RC
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
@@ -158,8 +159,9 @@ _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albed
                      "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
                      "dlc_owner"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
-#: Shipped alias names (ApplicationSettings.ot). Kintaro's has no entity, but a
-#: hero of that name would still collide with it.
+#: Shipped alias names (ApplicationSettings.ot) that are not heroes: a hero of
+#: that name would still collide with the alias. (Kintaro was one until he
+#: shipped in Update 6; the shipped-hero check covers him now.)
 _RESERVED_IDS = frozenset({"Common", "Kintaro", "Alice"})
 
 
@@ -172,9 +174,8 @@ def _self_line(hero: str) -> str:
 
 
 def shipped_heroes() -> list[str]:
-    """Hero ids the game ships, from the corpus (mirror or install)."""
-    return sorted(r.rsplit("/", 1)[-1][: -len(_GEN_SUFFIX)]
-                  for r in EP.corpus_rels(prefix=_HEROES_DIR, suffix=_GEN_SUFFIX))
+    """Hero names the game ships (``Piper``, not its ``Piper_Update6`` herodef)."""
+    return HD.names()
 
 
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
@@ -193,11 +194,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"installs the mod, so add `dlc_owner = true` to this block to confirm you own "
             f"the DLC, and share the mod only with players who do.")
     shipped = shipped_heroes()
-    if defn.id in shipped:
+    if defn.id in shipped or HD.stem(defn.id):
         raise ContentError(f"hero {defn.id}: the id collides with a shipped hero")
 
-    raw = EP.corpus_read(_rel(base))
-    cache = EP.corpus_read(RC.cache_path_for(_rel(base)))
+    bstem = HD.stem(base) or base
+    raw = EP.corpus_read(_rel(bstem))
+    cache = EP.corpus_read(RC.cache_path_for(_rel(bstem)))
     if raw is None or cache is None:
         if shipped and base not in shipped:
             raise ContentError(
@@ -216,7 +218,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # 12 of 12 shipped herodefs carry a cache listing their own def line; a new
     # name has none unless it is written (the enemy/tile lesson).
-    lines = set(RC.parse(cache)) - {_self_line(base)}
+    lines = set(RC.parse(cache)) - {_self_line(bstem)}
     lines.add(_self_line(defn.id))
     cache_dest = out_dir / Path(*RC.cache_path_for(_rel(defn.id)).split("/"))
     cache_dest.write_bytes(RC.render(sorted(lines)))
@@ -267,7 +269,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     if app is None:
         raise SchemaNotMined("ApplicationSettings.ot is not in the game install")
     try:
-        b = H.resolve_base(base, app)
+        b = H.resolve_base(HD.stem(base) or base, app)
     except H.HeroCookError as e:
         raise ContentError(f"hero {hid}: {e}") from e
 
@@ -776,7 +778,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     extra = tuple(art + portrait_lines
                   + [f"EntitySettings|{r}|oCEntitySettingsResource" for r, _n in outfit_refs])
     lines = RC.parse(herodef_cache)
-    lines = [ln for ln in lines if ln != _self_line(base)] + [_self_line(hid)]
+    lines = [ln for ln in lines if ln != _self_line(HD.stem(base) or base)] + [_self_line(hid)]
     base_cache = RC.render(sorted(set(lines)))
     put(RC.cache_path_for(_rel(hid)),
         R.cache(base_cache, extra) if R is not None

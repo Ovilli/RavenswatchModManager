@@ -345,10 +345,17 @@ def borrowable(raw: bytes | EG.EntityGraph, other: str, *,
         raise AddStatError(f"talent {other!r} holds only numbers that its hero reads "
                            "elsewhere, so on another hero it would do nothing")
     mine = seen | {ctl.guid}
+    # Pickers resolve by PATH, so a child file that defines a node under one of
+    # the talent's own names replaces that node rather than reading it: Update 6
+    # (2026-10-12) retunes talents this way, e.g. Hero_SunWukong_Update6 carries
+    # its own `Skill Power Hold AP Selector`. Same for an explicit override record.
+    own_names = {by_guid[x].name for x in seen}
     for g in [graph, *(b if isinstance(b, EG.EntityGraph) else EG.parse(b) for b in readers)]:
         for c in g.components:
             if c.guid in seen or c.guid == ctl.guid or c.name.startswith("Skill Controller ") \
                     or c.cls.endswith("StringFormatValueSettings"):
+                continue
+            if c.name in own_names or (c.override is not None and c.override.guid in mine):
                 continue
             hit = next((r for r in c.refs if r.guid in mine), None)
             if hit is not None:
@@ -570,8 +577,10 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
     donor = GE.EntityFile(donor_raw)
     # The tag is always part of it: the talent kind passes one seed per block,
     # and two stats on one talent copy the same selector, so without the tag
-    # their copies minted the same GUID and the second entry failed.
-    seed = f"{seed or talent}:{tag}"
+    # their copies minted the same GUID and the second entry failed. The talent
+    # is part of it too: one stat on two talents of a block (TRAIT cooldown on
+    # Fiery Dragon AND Frost Tiger) minted the same GUIDs the same way.
+    seed = f"{seed}:{talent}:{tag}" if seed else f"{talent}:{tag}"
     try:
         ef.clone([sel.name], rename={sel.name: new_sel}, seed=seed + ":sel")
         donor_mod = donor.component(DONOR_MODIFIER)

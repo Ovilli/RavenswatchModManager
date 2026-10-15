@@ -109,5 +109,8 @@ def test_a_row_finds_its_card_through_a_string_format_link():
 def test_a_hero_is_named_with_or_without_underscores():
     from rsmm.sdk.kinds import skills as S
     _aladdin()
-    assert S._hero_token("SunWukong") == S._hero_token("Sun_Wukong") == "Sun_Wukong"
+    from rsmm.engine import herodefs
+    assert S._hero_token("SunWukong") == S._hero_token("Sun_Wukong") == \
+        herodefs.stem("Sun_Wukong")
+    assert herodefs.hero_name(S._hero_token("Sun Wukong")) == "Sun_Wukong"
     assert S._slot_icon_texture("Sun_Wukong", "Attack Beam").startswith("Ui/Heroes/")

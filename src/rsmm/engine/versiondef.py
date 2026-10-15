@@ -27,13 +27,17 @@ if TYPE_CHECKING:
 # (so it drops and shows in the compendium) if it is referenced by the active
 # LiveOps version manifest. UsedRscList.ot only makes the file loadable-by-path;
 # the manifest is what triggers the load. Two install files must list it:
-#   * LiveOps5.versiondef.ot.rsionDefinition.gen — a vector<TResourcePtr> of
+#   * LiveOps6.versiondef.ot.rsionDefinition.gen — a vector<TResourcePtr> of
 #     magical-object refs (u32 count, then count x <lstr type><lstr path>).
-#   * LiveOps5.versiondef.UsedRscCache.ot — plain text, one line per resource
+#   * LiveOps6.versiondef.UsedRscCache.ot — plain text, one line per resource
 #     ``<category>|<path>|<class>`` so the manifest's ref resolves at load.
 # Verified in-game 2026-06-02 (pool count 104 -> 105, item visible).
-VERSIONDEF_GEN_LEAF = "LiveOps5.versiondef.ot.rsionDefinition.gen"
-VERSIONDEF_CACHE_LEAF = "LiveOps5.versiondef.UsedRscCache.ot"
+# The exe names exactly one manifest (the string ``LiveOps<N>.versiondef.ot``);
+# a content update bumps N and deletes the old one — LiveOps5 -> LiveOps6 on
+# 2026-10-12 (Update 6). test_versiondef_leaf_is_shipped pins this to the map.
+VERSIONDEF_STEM = "LiveOps6"
+VERSIONDEF_GEN_LEAF = f"{VERSIONDEF_STEM}.versiondef.ot.rsionDefinition.gen"
+VERSIONDEF_CACHE_LEAF = f"{VERSIONDEF_STEM}.versiondef.UsedRscCache.ot"
 
 
 def _locate_cooked_by_leaf(game_dir: Path, decoded_leaf: str) -> Path | None:

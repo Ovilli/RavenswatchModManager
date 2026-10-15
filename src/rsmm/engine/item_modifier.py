@@ -410,7 +410,6 @@ def set_super_text_key(cooked_bytes: bytes, new_key: str) -> bytes:
 _REF_LABEL = re.compile(rb"([\x05-\xff])\x00\x00\x00(\[[A-Za-z ]+\] [ -~]+)")
 _FORMAT_TAIL = b'""\xbb\xaa""\xbb\xaa'
 _FORMAT_CLASS = "oCEntityCpntStringFormatValueSettings"
-_ENTRY_CLASS = "oCStringFormatEntryPicker"
 
 
 def _labels(payload: bytes, start: int = 0) -> list[str]:
@@ -450,11 +449,11 @@ def _entry_labels(payload: bytes, start: int, count: int,
     an entry holding an inline value. Each entry is one
     ``oCStringFormatEntryPicker`` object, so the payload is split at those; when
     they cannot be found the labels must line up one-for-one, or all are None."""
-    from .cooked import MARK_BEGIN
+    from .cooked import MARK_BEGIN, format_entry_index
     if count == 0:
         return []
-    if _ENTRY_CLASS in names:
-        mark = MARK_BEGIN + struct.pack("<I", names.index(_ENTRY_CLASS))
+    if format_entry_index(names) >= 0:
+        mark = MARK_BEGIN + struct.pack("<I", format_entry_index(names))
         starts, i = [], payload.find(mark, start)
         while i >= 0 and len(starts) < count:
             starts.append(i)

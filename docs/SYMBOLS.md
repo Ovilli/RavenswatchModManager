@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **323** symbols across 24 categories.
+Total: **326** symbols across 25 categories.
 
 ## analytics
 
@@ -32,153 +32,153 @@ Total: **323** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `CharacterController_ClearStagger` | `0x1403cc1d0` | ✅ ok | ✔ | void(void* charController) |
-| `HeroStats_OnDamageDealt` | `0x14039aef0` | ✅ ok |  | void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload… |
-| `HeroStats_OnDamageTaken` | `0x1403a0940` | ✅ ok |  | void(void* hero, void* payload) |
-| `ProjectileAttack_BeginAttack` | `0x14083e7d0` | ✅ ok | ✔ | void(void* projectile_attack_cpnt) |
+| `CharacterController_ClearStagger` | `0x1403c3500` | ✅ ok | ✔ | void(void* charController) |
+| `HeroStats_OnDamageDealt` | `0x1403a35c0` | ✅ ok |  | void(oCDtEntityCpntHeroController* hero, oCEntity* victim, oCDtProcessedDamage* payload… |
+| `HeroStats_OnDamageTaken` | `0x1403a8ff0` | ✅ ok |  | void(void* hero, void* payload) |
+| `ProjectileAttack_BeginAttack` | `0x14083cbb0` | ✅ ok | ✔ | void(void* projectile_attack_cpnt) |
 
 ## enemies
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `EnemyCamp_Stage3Filter` | `0x140323830` | ❓ unverified |  | void(void* candidatesVec, void* searchFilter) |
-| `EnemyCamp_TierSelector` | `0x14032e790` | ✅ ok |  | void(void* selector) |
-| `EnemyCamp_TribeEntryBuilder` | `0x14032fe20` | ✅ ok |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
-| `EnemyDef_PostLoad` | `0x14031a800` | ✅ ok |  | bool(void* enemyDef) |
-| `EnemyDefinition_ctor` | `0x1401df270` | ✅ ok |  | void*(void* self) |
-| `EnemyTribeDef_PostLoad` | `0x14031bae0` | ✅ ok |  | bool(void* tribeDef) |
-| `EnemyTribeDefinition_ctor` | `0x1400c5260` | ✅ ok |  | void*(void* self) |
+| `EnemyCamp_TierSelector` | `0x1403372a0` | ✅ ok |  | void(void* selector) |
+| `EnemyCamp_TribeEntryBuilder` | `0x140338930` | ✅ ok |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
+| `EnemyDef_PostLoad` | `0x140315ce0` | ✅ ok |  | bool(void* enemyDef) |
+| `EnemyDefinition_ctor` | `0x1401d8d10` | ✅ ok |  | void*(void* self) |
+| `EnemyTribeDef_PostLoad` | `0x140316fc0` | ✅ ok |  | bool(void* tribeDef) |
+| `EnemyTribeDefinition_ctor` | `0x1400bdd20` | ✅ ok |  | void*(void* self) |
 | `Enemy_RuntimeSpawnPicker` | `0x140364360` | ❓ unverified |  | void(void* spawnerCpnt) |
-| `MapCtx_DistributeEnemyCampTiers` | `0x1401e8830` | ✅ ok |  | void(void* mapSceneContext) |
+| `MapCtx_DistributeEnemyCampTiers` | `0x1401e2370` | ✅ ok |  | void(void* mapSceneContext) |
 
 ## engine
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entry_Ctor` | `0x1402154b0` | ✅ ok | ✔ | void(void* base, uint32_t count) |
-| `Format_String` | `0x1402092a0` | ✅ ok |  | printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO')… |
-| `LevelLoad_Orchestrator` | `0x14028e5f0` | ✅ ok |  | i64(void* levelGs) |
-| `String_Assign` | `0x140529860` | ✅ ok | ✔ | void(void* dst_slot, const StringDesc* src) |
-| `Vector_Grow` | `0x140155230` | ✅ ok | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
+| `Entry_Ctor` | `0x14020f6f0` | ✅ ok | ✔ | void(void* base, uint32_t count) |
+| `Format_String` | `0x140202e90` | ✅ ok |  | printf-style format/string builder (e.g. 'Is Hero liked by {}', 'Chance to give {} MO')… |
+| `LevelLoad_Orchestrator` | `0x140288fb0` | ✅ ok |  | i64(void* levelGs) |
+| `String_Assign` | `0x14052b8e0` | ✅ ok | ✔ | void(void* dst_slot, const StringDesc* src) |
+| `Vector_Grow` | `0x14014db80` | ✅ ok | ✔ | void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/) |
 
 ## engine-core
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `AppSettings_SectionList` | `0x1412f5aa8` | 📍 va |  | Global list of application-settings SECTIONS: {void** data @+0x0, u32 count @+0x8}. Rea… |
+| `AppSettings_SectionList` | `0x1412efd60` | 📍 va |  | Global list of application-settings SECTIONS: {void** data @+0x0, u32 count @+0x8}. Rea… |
 | `ClassRegistry_FindByKey` | `0x140523a10` | ❓ unverified |  | void*(void* unused, void* identityKey) |
 | `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
 | `Component_GetTypeId` | `0x1401e6950` | ❓ unverified |  | uint32_t(void* component) |
 | `Controller_GetFieldByKey` | `0x140396df0` | ❓ unverified |  | void*(void* controller, uint32_t key) |
-| `CustomFlagFilter_Serialize` | `0x140189830` | ✅ ok |  | bool(void* flagFilter, void* reader) |
+| `CustomFlagFilter_Serialize` | `0x140182180` | ✅ ok |  | bool(void* flagFilter, void* reader) |
 | `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
-| `Engine_MainThreadId` | `0x141443148` | 📍 va |  | Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId… |
-| `Engine_Singleton` | `0x14143cbd0` | 📍 va |  | Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores b… |
-| `GameScene_FindContextByTester` | `0x14066cad0` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
-| `MetaClass_AddMember` | `0x14050aa30` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
+| `Engine_MainThreadId` | `0x14143d0c8` | 📍 va |  | Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId… |
+| `Engine_Singleton` | `0x141436a88` | 📍 va |  | Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores b… |
+| `GameScene_FindContextByTester` | `0x14066b290` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
+| `MetaClass_AddMember` | `0x140509a70` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
 | `MetaClass_Construct_Zero16` | `0x1401a96e0` | ❓ unverified |  | void(void* obj) |
 | `MetaClass_Construct_Zero8` | `0x1401a9570` | ❓ unverified |  | void(void* obj) |
 | `MetaClass_DestructInPlace` | `0x1401a9530` | ❓ unverified | ✔ | void(void* obj) |
 | `MetaClass_DestructInPlace_Slot0` | `0x1401aaf30` | ❓ unverified |  | void(void* obj) |
-| `MetaClass_FindMember` | `0x14050cd20` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
+| `MetaClass_FindMember` | `0x14050bd60` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
 | `MetaClass_GetObjectClass` | `0x1401b9850` | ❓ unverified |  | void*(void* obj) |
 | `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
-| `Property_EvaluateByGuid` | `0x1406ab910` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
-| `ResourceRef_Serialize` | `0x1401c8e60` | ✅ ok |  | bool(void* reader, void* refSlot) |
-| `Serializer_GetClassVersion` | `0x1404fce50` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
-| `Serializer_ReadEnum` | `0x14020c450` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Property_EvaluateByGuid` | `0x1406aa0a0` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
+| `ResourceRef_Serialize` | `0x1401c1900` | ✅ ok |  | bool(void* reader, void* refSlot) |
+| `Serializer_GetClassVersion` | `0x1404fcd60` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
+| `Serializer_ReadEnum` | `0x140206020` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ReadObjectNamed` | `0x140500d70` | ❓ unverified |  | bool(void* loader, void* root, const char* name) |
 | `Serializer_ReadObjectPayload` | `0x1405006d0` | ❓ unverified |  | bool(void* loader, void* obj, const char* name) |
-| `Serializer_ReadPolyPtrVector` | `0x14020e000` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
-| `Serializer_ReadVectorObjIds` | `0x1402f3cf0` | ✅ ok |  | bool(void* serializer, void* vec) |
-| `Serializer_ReadVectorU32` | `0x140364270` | ✅ ok |  | bool(void* serializer, void* vec) |
-| `Serializer_ReadVectorU8` | `0x1403646c0` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Serializer_ReadPolyPtrVector` | `0x140207bd0` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
+| `Serializer_ReadVectorObjIds` | `0x1402ed2c0` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Serializer_ReadVectorU32` | `0x14035d950` | ✅ ok |  | bool(void* serializer, void* vec) |
+| `Serializer_ReadVectorU8` | `0x14035dda0` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ResolveObjectId` | `0x140500630` | ❓ unverified |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
-| `Vector_InsertRange` | `0x1401556e0` | ✅ ok | ✔ | void*(void* vector, unsigned index, unsigned count) |
+| `Vector_InsertRange` | `0x14014e030` | ✅ ok | ✔ | void*(void* vector, unsigned index, unsigned count) |
 
 ## entity
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `EnemyController_Ctor` | `0x140389d00` | ✅ ok | ✔ | oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self) |
-| `EnemyController_vftable` | `0x140f30b78` | 📍 va |  | Vftable of oCDtEntityCpntEnemyController. Derived from MSVC RTTI (type descriptor .?AVo… |
-| `EntityPool_AllocNode` | `0x140690e50` | ✅ ok |  | void*(void* pool) |
-| `EntitySpawner_InstantiateRecord` | `0x140730f80` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self, void* spawnRecord) |
-| `EntitySpawner_SpawnOne` | `0x140730150` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self) |
-| `EntityStore_CreateEntity` | `0x1406f5dc0` | ✅ ok | ✔ | oCEntity*(oCEntitySpawner* spawner, oCEntitySettings* settings, oCEntitySpawnData* spaw… |
-| `EntityValueEntry_Ctor` | `0x140747120` | ✅ ok | ✔ | void(void*, void*) |
-| `EntityValueOverride_Alloc` | `0x140770290` | ✅ ok | ✔ | void*(void*, uint32_t, uint32_t) |
-| `EntityValueStore_ApplyModifierEvent` | `0x14074b2f0` | ✅ ok | ✔ | void(void* store, void* modifierEvent, void* a3, void* a4) |
-| `EntityValueStore_InitBaseValues` | `0x140747f20` | ✅ ok | ✔ | void(void* store) |
-| `EntityValueStore_Recompute` | `0x140749a90` | ✅ ok | ✔ | void(void* store, void* valueDef) |
-| `EntityValueUnion_Compare` | `0x14082ceb0` | ✅ ok | ✔ | uint32_t(void*, void*) |
-| `EntityValueUnion_CopyAssign` | `0x14082b1d0` | ✅ ok | ✔ | void(void*, void*) |
-| `EntityValueUnion_DefaultCtor` | `0x14082aa60` | ✅ ok | ✔ | void*(void*) |
-| `EntityValueUnion_Destruct` | `0x14082dae0` | ✅ ok | ✔ | void(void*) |
-| `EntityValueUnion_InitAsType` | `0x14082d670` | ✅ ok | ✔ | void(void*, uint32_t) |
-| `EntityValue_Get` | `0x1403c7fa0` | ✅ ok | ✔ | void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey) |
-| `EntityValue_Lookup` | `0x140749260` | ✅ ok | ✔ | oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey) |
+| `EnemyController_Ctor` | `0x140392140` | ✅ ok | ✔ | oCDtEntityCpntEnemyController*(oCDtEntityCpntEnemyController* self) |
+| `EnemyController_vftable` | `0x140f32170` | 📍 va |  | Vftable of oCDtEntityCpntEnemyController. Derived from MSVC RTTI (type descriptor .?AVo… |
+| `EntityPool_AllocNode` | `0x14068f580` | ✅ ok |  | void*(void* pool) |
+| `EntitySpawner_InstantiateRecord` | `0x14072f750` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self, void* spawnRecord) |
+| `EntitySpawner_SpawnOne` | `0x14072e920` | ✅ ok |  | void(oCEntityCpntEntitySpawner* self) |
+| `EntityStore_CreateEntity` | `0x1406f4540` | ✅ ok | ✔ | oCEntity*(oCEntitySpawner* spawner, oCEntitySettings* settings, oCEntitySpawnData* spaw… |
+| `EntityValueEntry_Ctor` | `0x140746390` | ✅ ok | ✔ | void(void*, void*) |
+| `EntityValueOverride_Alloc` | `0x14076dfb0` | ✅ ok | ✔ | void*(void*, uint32_t, uint32_t) |
+| `EntityValueStore_ApplyModifierEvent` | `0x14074a560` | ✅ ok | ✔ | void(void* store, void* modifierEvent, void* a3, void* a4) |
+| `EntityValueStore_InitBaseValues` | `0x140747190` | ✅ ok | ✔ | void(void* store) |
+| `EntityValueStore_Recompute` | `0x140748d00` | ✅ ok | ✔ | void(void* store, void* valueDef) |
+| `EntityValueUnion_Compare` | `0x14082ae90` | ✅ ok | ✔ | uint32_t(void*, void*) |
+| `EntityValueUnion_CopyAssign` | `0x1408291b0` | ✅ ok | ✔ | void(void*, void*) |
+| `EntityValueUnion_DefaultCtor` | `0x140828a40` | ✅ ok | ✔ | void*(void*) |
+| `EntityValueUnion_Destruct` | `0x14082bac0` | ✅ ok | ✔ | void(void*) |
+| `EntityValueUnion_InitAsType` | `0x14082b650` | ✅ ok | ✔ | void(void*, uint32_t) |
+| `EntityValue_Get` | `0x1403bf260` | ✅ ok | ✔ | void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey) |
+| `EntityValue_Lookup` | `0x1407484d0` | ✅ ok | ✔ | oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey) |
 | `Entity_AllocInstance` | `0x1406a8d80` | ❓ unverified | ✔ | void*(void* allocator) |
-| `Entity_DispatchHit` | `0x1406e3ce0` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
-| `Entity_FindComponentByType` | `0x1406e3210` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
+| `Entity_DispatchHit` | `0x1406e2470` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
+| `Entity_FindComponentByType` | `0x1406e19a0` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406fb8a2` | ❓ unverified | ✔ | void*(void* instance, void* mo_component_meta) |
-| `Entity_GainHealthHandler` | `0x140399d00` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
-| `Entity_GetComponentByTester` | `0x1406e3210` | ✅ ok | ✔ | void*(void*, void*) |
-| `Entity_GetComponentFast` | `0x1406e31a0` | ✅ ok | ✔ | void*(void*, void*, uint32_t) |
-| `Entity_ResolveAttackHits` | `0x1403dd540` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
-| `HeroController_Ctor` | `0x14038ec30` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
-| `HeroController_HudMirror_Ctor` | `0x1403b3c70` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
-| `Hero_ModifyDreamShards` | `0x14039a320` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags) |
-| `HitPoint_SetHitPoints` | `0x140822db0` | ✅ ok | ✔ | void(oCEntityCpntHitPoint* hp, float value) |
-| `MapCtx_LinkPairedSpawners` | `0x1401ebad0` | ✅ ok |  | void(void* mapSceneContext) |
-| `ModifierEvent_Ctor` | `0x140389fb0` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
-| `g_MagicalObjectComponentMeta` | `0x141470768` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
-| `oCCustomFlagList_vftable` | `0x140f01650` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
-| `oCEntityHitData_vftable` | `0x140f137d8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
-| `oCEntityValueUnion_vftable` | `0x140f95008` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
-| `oCGameEventNetworkModifier_vftable` | `0x140f322d0` | 📍 va |  | vftable of oCGameEventNetworkModifier — the durable stat-modifier named event (leaf of … |
+| `Entity_GainHealthHandler` | `0x1403a23d0` | ✅ ok |  | void(oCEntity* hero, void* a2, void* valueCtx) |
+| `Entity_GetComponentByTester` | `0x1406e19a0` | ✅ ok | ✔ | void*(void*, void*) |
+| `Entity_GetComponentFast` | `0x1406e1930` | ✅ ok | ✔ | void*(void*, void*, uint32_t) |
+| `Entity_ResolveAttackHits` | `0x1403d58c0` | ✅ ok | ✔ | float(void* attacker, uint hitDefIndex, TargetList* targets, float damageMul, float bas… |
+| `HeroController_Ctor` | `0x140397250` | ✅ ok | ✔ | oCDtEntityCpntHeroController*(oCDtEntityCpntHeroController* self) |
+| `HeroController_HudMirror_Ctor` | `0x140400380` | ✅ ok |  | Builds the hero's HUD HP-mirror object whose pointer is stored at hero+0x1d80 by HeroCo… |
+| `Hero_ModifyDreamShards` | `0x1403a29f0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, float delta, oCCustomFlagList* sourceTags) |
+| `HitPoint_SetHitPoints` | `0x140820b60` | ✅ ok | ✔ | void(oCEntityCpntHitPoint* hp, float value) |
+| `MapCtx_LinkPairedSpawners` | `0x1401e5610` | ✅ ok |  | void(void* mapSceneContext) |
+| `ModifierEvent_Ctor` | `0x140392450` | ✅ ok | ✔ | void*(void* buf, void* valueDef) |
+| `g_MagicalObjectComponentMeta` | `0x141469098` | 📍 va |  | oCMetaClass* for the magical-object component; passed to Entity_FindMagicalObjectCompon… |
+| `oCCustomFlagList_vftable` | `0x140efe050` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
+| `oCEntityHitData_vftable` | `0x140f101e8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
+| `oCEntityValueUnion_vftable` | `0x140f91d68` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
+| `oCGameEventNetworkModifier_vftable` | `0x140f343c0` | 📍 va |  | vftable of oCGameEventNetworkModifier — the durable stat-modifier named event (leaf of … |
 
 ## entity-values
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `EntityValueRegistry_RegisterAll` | `0x1401da350` | ✅ ok |  | void(void) |
-| `SceneContextValue_Find` | `0x1401c9600` | ✅ ok | ✔ | oCEntityValueUnion*(void* sceneContext, uint32_t crcKey) |
-| `SceneContextValue_SetBool` | `0x140209010` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, bool value) |
-| `SceneContextValue_SetFloat` | `0x14020a580` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, float value) |
-| `SceneContextValue_SetInt` | `0x1402091a0` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, int32_t value) |
-| `g_GlobalEntityValueSceneContext_Tester_vftable` | `0x140f09e68` | 📍 va |  | Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, re… |
+| `EntityValueRegistry_RegisterAll` | `0x1401d3dd0` | ✅ ok |  | void(void) |
+| `SceneContextValue_Find` | `0x1401c20a0` | ✅ ok | ✔ | oCEntityValueUnion*(void* sceneContext, uint32_t crcKey) |
+| `SceneContextValue_SetBool` | `0x140202c00` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, bool value) |
+| `SceneContextValue_SetFloat` | `0x140204150` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, float value) |
+| `SceneContextValue_SetInt` | `0x140202d90` | ✅ ok | ✔ | void(void* sceneContext, uint32_t crcKey, int32_t value) |
+| `g_GlobalEntityValueSceneContext_Tester_vftable` | `0x140f06868` | 📍 va |  | Vftable of oCTKindOfTypeTester<oCGlobalEntityValueSceneContext, oIGameSceneContext>, re… |
 
 ## event
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Analytics_SubmitNamedEvent` | `0x1401fad70` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
-| `Crc32_TableInit` | `0x14051ef30` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is … |
-| `EventQueue_Drain` | `0x1406642d0` | ✅ ok |  | void(void* queue) |
-| `Event_LevelUp` → `level_up` | `0x1401f6bf0` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
-| `Event_RunEnd` → `run_end` | `0x1401f59c0` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
+| `Analytics_SubmitNamedEvent` | `0x1401f48d0` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
+| `Crc32_TableInit` | `0x14051e100` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is … |
+| `EventQueue_Drain` | `0x140662a80` | ✅ ok |  | void(void* queue) |
+| `Event_LevelUp` → `level_up` | `0x1401f0750` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
+| `Event_RunEnd` → `run_end` | `0x1401ef520` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
 | `Hero_GainRerollHandler` | `0x1403aa9e0` | ❓ unverified |  | void(void* hero, void* ev) |
 | `Id_HashString` | `0x14033f7a0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
-| `NamedEvent_ChannelMap_Find` | `0x14066dc10` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
-| `NamedEvent_Delete` | `0x1401273b0` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
-| `NamedEvent_Dispatch` | `0x14066b6b0` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
-| `NamedEvent_EmitNetworkDamageFromHit` | `0x1407276a0` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
+| `NamedEvent_ChannelMap_Find` | `0x14066c3d0` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
+| `NamedEvent_Delete` | `0x14011ff10` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
+| `NamedEvent_Dispatch` | `0x140669e60` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
+| `NamedEvent_EmitNetworkDamageFromHit` | `0x140725d00` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
 | `NamedEvent_GainDreamShards_Ctor` | `0x1402e6ce0` | ❓ unverified |  | void*(void* buf) |
-| `NamedEvent_GainReroll_Ctor` | `0x1402e6eb0` | ✅ ok | ✔ | oe::dt::NamedEventGainReroll*(void* buf) |
-| `NamedEvent_GiveMagicalObject_Ctor` | `0x14030fd30` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
-| `NamedEvent_HeroSubscribeAll` | `0x140391860` | ✅ ok | ✔ | void(oCEntity* hero) |
-| `NamedEvent_HeroUnsubscribeAll` | `0x140395350` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
-| `NamedEvent_Id_FromCrc` | `0x14051f090` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
-| `NamedEvent_NetSend` | `0x140721630` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
-| `NamedEvent_NetSendToPeer` | `0x1407216c0` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
+| `NamedEvent_GainReroll_Ctor` | `0x1402e18e0` | ✅ ok | ✔ | oe::dt::NamedEventGainReroll*(void* buf) |
+| `NamedEvent_GiveMagicalObject_Ctor` | `0x14030a860` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
+| `NamedEvent_HeroSubscribeAll` | `0x140399ee0` | ✅ ok | ✔ | void(oCEntity* hero) |
+| `NamedEvent_HeroUnsubscribeAll` | `0x14039d9d0` | ✅ ok |  | Hero teardown twin of NamedEvent_HeroSubscribeAll: walks the same (id global, slot) pai… |
+| `NamedEvent_Id_FromCrc` | `0x14051e260` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
+| `NamedEvent_NetSend` | `0x14071fc80` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
+| `NamedEvent_NetSendToPeer` | `0x14071fd10` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
 | `Reroll_GrantToHeroes` | `0x1402eb030` | ❓ unverified |  | The game's own reroll grant: builds a GainReroll event on the stack with the count (an … |
-| `oCDtNamedEventGainDreamShards_vftable` | `0x140f224c0` | 📍 va |  | vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0… |
-| `oCDtNamedEventGainReroll_vftable` | `0x140f263d0` | 📍 va |  | vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_I… |
-| `oCGameEventGainIngredient_vftable` | `0x140f26460` | 📍 va |  | vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x140… |
-| `oCNamedEventNetworkWithData_vftable` | `0x140f0f180` | 📍 va |  | vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), th… |
+| `oCDtNamedEventGainDreamShards_vftable` | `0x140f1ef50` | 📍 va |  | vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0… |
+| `oCDtNamedEventGainReroll_vftable` | `0x140f22b20` | 📍 va |  | vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_I… |
+| `oCGameEventGainIngredient_vftable` | `0x140f22bb0` | 📍 va |  | vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x140… |
+| `oCNamedEventNetworkWithData_vftable` | `0x140f0bba0` | 📍 va |  | vftable of oCNamedEventNetworkWithData (RTTI name, docs/_re/out_new/vftables.jsonl), th… |
 
 ## gameplay
 
@@ -192,245 +192,253 @@ Total: **323** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `GroupLevelComponent_Ctor` | `0x1402e1de0` | ✅ ok | ✔ | void*(void* self) |
-| `Hero_GainExperience` | `0x1402e2f00` | ✅ ok | ✔ | void(void*, void*) |
-| `XpComponent_GetMaxLevel` | `0x1402e2d30` | ✅ ok | ✔ | uint32_t(void*) |
-| `XpComponent_IsMaxLevel` | `0x1402e2d90` | ✅ ok | ✔ | bool(void*) |
-| `XpComponent_SetLevel` | `0x1402e3190` | ✅ ok | ✔ | void(void*, uint32_t) |
-| `XpComponent_SetXp` | `0x1402e3630` | ✅ ok | ✔ | void(void*, uint32_t) |
-| `XpComponent_TypeTester` | `0x141476e00` | 📍 va |  | Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resol… |
-| `XpComponent_XpForLevel` | `0x1402e2c30` | ✅ ok | ✔ | uint32_t(void*, uint32_t) |
-| `XpComponent_vftable` | `0x140f231b0` | 📍 va |  | Vftable of the hero's XP/level component. CORRECTED 2026-07-18 from 0x140f23200, which … |
+| `GroupLevelComponent_Ctor` | `0x1402dc810` | ✅ ok | ✔ | void*(void* self) |
+| `Hero_GainExperience` | `0x1402dd930` | ✅ ok | ✔ | void(void*, void*) |
+| `XpComponent_GetMaxLevel` | `0x1402dd760` | ✅ ok | ✔ | uint32_t(void*) |
+| `XpComponent_IsMaxLevel` | `0x1402dd7c0` | ✅ ok | ✔ | bool(void*) |
+| `XpComponent_SetLevel` | `0x1402ddbc0` | ✅ ok | ✔ | void(void*, uint32_t) |
+| `XpComponent_SetXp` | `0x1402de060` | ✅ ok | ✔ | void(void*, uint32_t) |
+| `XpComponent_TypeTester` | `0x141470e00` | 📍 va |  | Type-tester global (DAT_141476e00) used by the XP component's own IsKindOf/parent-resol… |
+| `XpComponent_XpForLevel` | `0x1402dd660` | ✅ ok | ✔ | uint32_t(void*, uint32_t) |
+| `XpComponent_vftable` | `0x140f1fad0` | 📍 va |  | Vftable of the hero's XP/level component. CORRECTED 2026-07-18 from 0x140f23200, which … |
 
 ## heroes
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `ChallengeUnlock_IsUnlocked` | `0x1402b1100` | ✅ ok | ✔ | bool(void* condition_data) |
-| `HeroDef_Deserialize` | `0x14031ef30` | ✅ ok | ✔ | bool(oCDtHeroDefinition* def, oCBinaryStream* stream) |
-| `HeroDef_LoadBaseEntity` | `0x14031ece0` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
-| `HeroDef_LoadSkinEntity` | `0x14031ea40` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
+| `AdditionalContentGate_IsUnlocked` | `0x1406979e0` | ✅ ok | ✔ | bool(void* condition_data) |
+| `ChallengeUnlock_IsUnlocked` | `0x1402abce0` | ✅ ok | ✔ | bool(void* condition_data) |
+| `HeroDef_Deserialize` | `0x14031a570` | ✅ ok | ✔ | bool(oCDtHeroDefinition* def, oCBinaryStream* stream) |
+| `HeroDef_LoadBaseEntity` | `0x14031a320` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
+| `HeroDef_LoadSkinEntity` | `0x14031a080` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
 | `HeroDefinition_Ctor` | `0x14031df10` | ❓ unverified |  | void*(void* self) |
-| `HeroProgressionUnlock_IsUnlocked` | `0x1402b2b10` | ✅ ok | ✔ | bool(void* condition_data) |
-| `HeroRankLock_IsUnlocked` | `0x1402b1c10` | ✅ ok | ✔ | bool(void* condition_data) |
-| `HeroStoryUnlock_IsUnlocked` | `0x1402b21a0` | ✅ ok | ✔ | bool(void* condition_data) |
+| `HeroProgressionUnlock_IsUnlocked` | `0x1402ad610` | ✅ ok | ✔ | bool(void* condition_data) |
+| `HeroRankLock_IsUnlocked` | `0x1402ac6f0` | ✅ ok | ✔ | bool(void* condition_data) |
+| `HeroStoryUnlock_IsUnlocked` | `0x1402acca0` | ✅ ok | ✔ | bool(void* condition_data) |
 
 ## items
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entity_GiveHandler` | `0x1403c7560` | ✅ ok |  | void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx) |
-| `Entity_LookupMagicalObjectComponent` | `0x1406e3280` | ✅ ok | ✔ | void*(void* componentStore, void** out, oCEntity* entity) |
-| `Hero_GrantMagicalObject` | `0x140397aa0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
+| `Entity_GiveHandler` | `0x1403be820` | ✅ ok |  | void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx) |
+| `Entity_LookupMagicalObjectComponent` | `0x1406e1a10` | ✅ ok | ✔ | void*(void* componentStore, void** out, oCEntity* entity) |
+| `Hero_GrantMagicalObject` | `0x1403a0170` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
 | `InitialLoading_SpawnMagicalObjects` | `0x140259060` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
-| `MagicalObject_RegisterInstance` | `0x1403abb90` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
-| `MagicalObject_SpawnAllObjects` | `0x140259060` | ✅ ok | ✔ | void(void* pool, void* scene) |
-| `MagicalObject_SpawnContainingFunc` | `0x14025d9b0` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
-| `g_MagicalObjectPool` | `0x14143cc18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
+| `MagicalObject_RegisterInstance` | `0x1403b46c0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
+| `MagicalObject_SpawnAllObjects` | `0x140253540` | ✅ ok | ✔ | void(void* pool, void* scene) |
+| `MagicalObject_SpawnContainingFunc` | `0x140257f50` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
+| `g_MagicalObjectPool` | `0x141436ad0` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 
 ## library
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `AchievementDef_PostLoad` | `0x140312060` | ✅ ok | ✔ | bool(void* definition) |
-| `ChallengeDef_PostLoad` | `0x140324f30` | ✅ ok | ✔ | bool(void* definition) |
+| `AchievementDef_PostLoad` | `0x14030cb90` | ✅ ok | ✔ | bool(void* definition) |
+| `ChallengeDef_PostLoad` | `0x140320650` | ✅ ok | ✔ | bool(void* definition) |
 | `Crt_Free` | `0x140ce09b0` | ❓ unverified |  | void(void* p) |
-| `DefinitionRegistry_Ctrl` | `0x1412f0a68` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
-| `DefinitionRegistry_Mask` | `0x1412f0a80` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
-| `DefinitionRegistry_Slots` | `0x1412f0a70` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
-| `Definition_DeserializeBase` | `0x140310180` | ✅ ok |  | bool(void* def, void* reader) |
-| `Definition_PostLoad` | `0x140310200` | ✅ ok | ✔ | bool(void* definition) |
-| `Definition_PreUnload` | `0x140310230` | ✅ ok | ✔ | void(void*) |
+| `DefinitionRegistry_Ctrl` | `0x1412eba68` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
+| `DefinitionRegistry_Mask` | `0x1412eba80` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
+| `DefinitionRegistry_Slots` | `0x1412eba70` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
+| `Definition_DeserializeBase` | `0x14030acb0` | ✅ ok |  | bool(void* def, void* reader) |
+| `Definition_PostLoad` | `0x14030ad30` | ✅ ok | ✔ | bool(void* definition) |
+| `Definition_PreUnload` | `0x14030ad60` | ✅ ok | ✔ | void(void*) |
 | `Definition_Unload` | `0x1403238a0` | ❓ unverified |  | bool(void* definition) |
-| `DreamShardDef_PostLoad` | `0x140312690` | ✅ ok | ✔ | bool(void* definition) |
-| `EnemyCampTierDef_PostLoad` | `0x140319620` | ✅ ok | ✔ | bool(void* definition) |
-| `GameModeDefaultDef_PostLoad` | `0x140325950` | ✅ ok | ✔ | bool(void* definition) |
-| `GameModifierDef_PostLoad` | `0x140326250` | ✅ ok | ✔ | bool(void* definition) |
-| `GameModifierDef_RegisterAssetLoader` | `0x1403260b0` | ✅ ok |  | void(void* assetClassDesc) |
-| `GoPtrOwnerRelay_ForwardCall` | `0x14066bf00` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards own… |
-| `GoPtrOwnerRelay_ForwardGet` | `0x14066be70` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned objec… |
-| `GoPtrOwnerRelay_ForwardSet` | `0x14066bec0` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards own… |
-| `HasGameModifierStateMachine_Register` | `0x140197780` | ✅ ok |  | void(void) |
-| `HeroDef_PostLoad` | `0x14031fd70` | ✅ ok | ✔ | bool(void* definition) |
-| `IngredientDef_PostLoad` | `0x140323190` | ✅ ok | ✔ | bool(void* definition) |
-| `Library_AchievementDefinition_vftable` | `0x140f27660` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. ⚠ ADDRESS CORRECTED 202… |
-| `Library_ChallengeDefinition_vftable` | `0x140f299d8` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
-| `Library_DreamShardDefinition_vftable` | `0x140f27178` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_EnemyCampDifficultyDefinition_vftable` | `0x140f280e0` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. ⚠ ADDRESS CORRECTED… |
-| `Library_EnemyCampTierDefinition_vftable` | `0x140f2ad30` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
-| `Library_EnemyDefinition_vftable` | `0x140f2b450` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: t… |
-| `Library_EnemyTribeDefinition_vftable` | `0x140f2aeb8` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_EntitySettingsResource_vftable` | `0x140f75e60` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_GameModifierDefinition_vftable` | `0x140f2a960` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
-| `Library_IngredientDefinition_vftable` | `0x140f29a18` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_MapDefinition_vftable` | `0x140f29810` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the… |
-| `Library_MelodyDefinition_vftable` | `0x140f29af8` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the … |
-| `Library_RewardDefinition_vftable` | `0x140f298a8` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: … |
-| `Library_TileDefinition_vftable` | `0x140f2b0e0` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: th… |
-| `Library_VersionDefinition_vftable` | `0x140f297c0` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). … |
-| `MapDef_PostLoad` | `0x1403234f0` | ✅ ok | ✔ | bool(void* definition) |
-| `MapDef_RegisterAssetLoader` | `0x140323350` | ✅ ok |  | void(void* assetClassDesc) |
-| `MelodyDef_PostLoad` | `0x140326f50` | ✅ ok | ✔ | bool(void* definition) |
-| `Mem_Alloc16Zeroed` | `0x14050d5c0` | ✅ ok |  | malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zero… |
-| `PtrVector_Resize` | `0x140155230` | ✅ ok |  | pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else mallo… |
+| `DreamShardDef_PostLoad` | `0x140314ac0` | ✅ ok | ✔ | bool(void* definition) |
+| `EnemyCampTierDef_PostLoad` | `0x140314e20` | ✅ ok | ✔ | bool(void* definition) |
+| `GameModeDefaultDef_PostLoad` | `0x140321070` | ✅ ok | ✔ | bool(void* definition) |
+| `GameModifierDef_PostLoad` | `0x140321970` | ✅ ok | ✔ | bool(void* definition) |
+| `GameModifierDef_RegisterAssetLoader` | `0x1403217d0` | ✅ ok |  | void(void* assetClassDesc) |
+| `GoPtrOwnerRelay_ForwardCall` | `0x14066a6c0` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x18): resolves owned via slot-0x30, forwards own… |
+| `GoPtrOwnerRelay_ForwardGet` | `0x14066a630` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (vtable 0x140f06820 slot +0x8): resolves the owned objec… |
+| `GoPtrOwnerRelay_ForwardSet` | `0x14066a680` | ✅ ok |  | oIGoPtrOwnerRelay base virtual (slot +0x10): resolves owned via slot-0x30, forwards own… |
+| `HasGameModifierStateMachine_Register` | `0x1401900d0` | ✅ ok |  | void(void) |
+| `HeroDef_PostLoad` | `0x14031b3f0` | ✅ ok | ✔ | bool(void* definition) |
+| `IngredientDef_PostLoad` | `0x14031e8b0` | ✅ ok | ✔ | bool(void* definition) |
+| `Library_AchievementDefinition_vftable` | `0x140f23ff0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. ⚠ ADDRESS CORRECTED 202… |
+| `Library_ChallengeDefinition_vftable` | `0x140f267c0` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
+| `Library_DreamShardDefinition_vftable` | `0x140f266a0` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_EnemyCampDifficultyDefinition_vftable` | `0x140f27818` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. ⚠ ADDRESS CORRECTED… |
+| `Library_EnemyCampTierDefinition_vftable` | `0x140f27858` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
+| `Library_EnemyDefinition_vftable` | `0x140f27d50` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: t… |
+| `Library_EnemyTribeDefinition_vftable` | `0x140f27a08` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_EntitySettingsResource_vftable` | `0x140f72d90` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_GameModifierDefinition_vftable` | `0x140f26b98` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
+| `Library_IngredientDefinition_vftable` | `0x140f26800` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_MapDefinition_vftable` | `0x140f26608` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the… |
+| `Library_MelodyDefinition_vftable` | `0x140f268e0` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the … |
+| `Library_RewardDefinition_vftable` | `0x140f26660` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: … |
+| `Library_TileDefinition_vftable` | `0x140f27af0` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: th… |
+| `Library_VersionDefinition_vftable` | `0x140f265c8` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). … |
+| `MapDef_PostLoad` | `0x14031ec10` | ✅ ok | ✔ | bool(void* definition) |
+| `MapDef_RegisterAssetLoader` | `0x14031ea70` | ✅ ok |  | void(void* assetClassDesc) |
+| `MelodyDef_PostLoad` | `0x140322670` | ✅ ok | ✔ | bool(void* definition) |
+| `Mem_Alloc16Zeroed` | `0x14050c600` | ✅ ok |  | malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zero… |
+| `PtrVector_Resize` | `0x14014db80` | ✅ ok |  | pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else mallo… |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
 | `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
-| `RewardDef_RegisterAssetLoader` | `0x140324460` | ✅ ok |  | void(void* assetClassDesc) |
-| `Rt_FailFast` | `0x140cc7e04` | ✅ ok |  | CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-no… |
-| `SharedRef_AddRefCopy` | `0x1401663a0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
-| `SharedRef_AddRefCopy_b` | `0x14021e390` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
-| `SharedRef_Release` | `0x140111cf0` | ✅ ok | ✔ | void(void*) |
+| `RewardDef_RegisterAssetLoader` | `0x14031fb80` | ✅ ok |  | void(void* assetClassDesc) |
+| `Rt_FailFast` | `0x140cc6d34` | ✅ ok |  | CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-no… |
+| `SharedRef_AddRefCopy` | `0x14015ecf0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
+| `SharedRef_AddRefCopy_b` | `0x1402185e0` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
+| `SharedRef_Release` | `0x14010a850` | ✅ ok | ✔ | void(void*) |
 | `Std_AllocateBytes` | `0x140128090` | ❓ unverified |  | void*(size_t n) |
 | `TileDef_Deserialize` | `0x140324690` | ❓ unverified |  | bool(oCDtTileDefinition* def, oCBinaryStream* stream) |
-| `TypeDesc_HashName` | `0x1404fd5d0` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
-| `TypeDesc_HashName_b` | `0x1401c96e0` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
-| `oCString_Dtor` | `0x140111d90` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
+| `TypeDesc_HashName` | `0x1404fd390` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
+| `TypeDesc_HashName_b` | `0x1401c2180` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
+| `oCString_Dtor` | `0x14010a8f0` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
 
 ## melodies
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `HeroMelodyPersistentData_vftable` | `0x140f12f40` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
+| `HeroMelodyPersistentData_vftable` | `0x140f0f950` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
 | `MelodyDefinition_Ctor` | `0x140326b20` | ❓ unverified |  | void*(void* self) |
-| `NamedEvent_ChooseMelody_Ctor` | `0x1402da150` | ✅ ok | ✔ | oe::dt::NamedEventChooseMelody*(void* buf) |
-| `oCGameNamedEventChooseMelody_vftable` | `0x140f25c48` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
-| `oCGameNamedEventRemoveMelody_vftable` | `0x140f22608` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
+| `NamedEvent_ChooseMelody_Ctor` | `0x1402d4c20` | ✅ ok | ✔ | oe::dt::NamedEventChooseMelody*(void* buf) |
+| `oCGameNamedEventChooseMelody_vftable` | `0x140f22398` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
+| `oCGameNamedEventRemoveMelody_vftable` | `0x140f1f098` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
 
 ## netcode
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Entity_GetNetComponent` | `0x140312db0` | ✅ ok | ✔ | void*(oCEntity* entity) |
-| `Entity_GetNetId` | `0x1407273c0` | ✅ ok |  | uint32_t(void* entity) |
-| `Fcm2_OnClosedConnection` | `0x140ac94a0` | ✅ ok |  | void(FullyConnectedMesh2* this, const SystemAddress& addr, RakNetGUID guid, int reason) |
-| `Netcode_Channel_LookupById` | `0x140241a50` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
-| `Netcode_Channel_Unsubscribe` | `0x1401c8da0` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
+| `Entity_GetNetComponent` | `0x14030d6b0` | ✅ ok | ✔ | void*(oCEntity* entity) |
+| `Entity_GetNetId` | `0x140725a20` | ✅ ok |  | uint32_t(void* entity) |
+| `Fcm2_OnClosedConnection` | `0x140ac8590` | ✅ ok |  | void(FullyConnectedMesh2* this, const SystemAddress& addr, RakNetGUID guid, int reason) |
+| `Netcode_Channel_LookupById` | `0x14023bca0` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
+| `Netcode_Channel_Unsubscribe` | `0x1401c1840` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
 | `Netcode_ConnectionFactory` | `0x140b287f0` | ❓ unverified |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
 | `Netcode_ConnectionRegistry_Emplace` | `0x140b2fd80` | ❓ unverified |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
-| `Netcode_DropPeer` | `0x1402b4d50` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
+| `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
 | `Netcode_EntityReplSetup` | `0x14073dda0` | ❓ unverified | ✔ | void(void* replContext) |
-| `Netcode_PeerStateTick` | `0x1402b03a0` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
+| `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b7550` | ❓ unverified |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
-| `P2PSession_OnFcm2NewHost` | `0x1408b8530` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
-| `P2PSession_SetState` | `0x14085ca70` | ✅ ok |  | void(oCDtP2PSessionSceneContext* ctx, int newState) |
-| `P2PSession_StateNames` | `0x140eece10` | 📍 va |  | struct { const char* s; uint32 len; } [14]  // 0x10 stride |
+| `P2PSession_OnFcm2NewHost` | `0x1408b70b0` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
+| `P2PSession_SetState` | `0x14085ae80` | ✅ ok |  | void(oCDtP2PSessionSceneContext* ctx, int newState) |
+| `P2PSession_StateNames` | `0x140ee98a0` | 📍 va |  | struct { const char* s; uint32 len; } [14]  // 0x10 stride |
 | `RakNetConnection_Ctor` | `0x140b9cd50` | ❓ unverified |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
-| `RakPeer_GetGuidFromSystemAddress` | `0x140ae33d0` | ✅ ok |  | RakNetGUID(RakPeer* this, const SystemAddress& addr) |
+| `RakPeer_GetGuidFromSystemAddress` | `0x140ae24c0` | ✅ ok |  | RakNetGUID(RakPeer* this, const SystemAddress& addr) |
 | `RakPeer_GetMyGUID` | `0x140ae3280` | ❓ unverified |  | const RakNetGUID&(RakPeer* this) |
-| `RakPeer_GetSystemAddressFromGuid` | `0x140ae3570` | ✅ ok |  | SystemAddress(RakPeer* this, const RakNetGUID& guid) |
-| `RakPeer_GetSystemList` | `0x140ae1700` | ✅ ok |  | void(RakPeer* this, List<SystemAddress>& addresses, List<RakNetGUID>& guids) |
+| `RakPeer_GetSystemAddressFromGuid` | `0x140ae2660` | ✅ ok |  | SystemAddress(RakPeer* this, const RakNetGUID& guid) |
+| `RakPeer_GetSystemList` | `0x140ae07f0` | ✅ ok |  | void(RakPeer* this, List<SystemAddress>& addresses, List<RakNetGUID>& guids) |
 | `SLNetworkObject_GetOwnerId` | `0x1408c0d40` | ❓ unverified |  | void* __fastcall(oCSLNetworkObject* self, uint64_t* out) |
 
 ## options
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `GameModifierUi_PadSelectedSlots` | `0x140360c20` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
-| `g_GameOptions` | `0x14143cb58` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+| `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
+| `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+
+## registry
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `DefRegistry_Begin` | `0x14143a040` | 📍 va |  | Global definition registry (vector of registered def instances) written by Registry_Reg… |
+| `DefRegistry_End` | `0x14143a048` | 📍 va |  | Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin. |
 
 ## resource
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `BinarySaver_CollectDependencies` | `0x1404fc950` | ❓ unverified |  | bool(void* saver, void* rootObject) |
-| `BinarySaver_WriteGraph` | `0x140501a30` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
-| `BinarySaver_WriteObject` | `0x1405016c0` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
+| `BinarySaver_WriteGraph` | `0x140501570` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
+| `BinarySaver_WriteObject` | `0x140501210` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
 | `Definition_PreloadResourceCache` | `0x140310fb0` | ❓ unverified |  | void(void* definition) |
-| `Definitions_LoadGroup` | `0x140310300` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
+| `Definitions_LoadGroup` | `0x14030ae30` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
 | `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
-| `InitialLoading_LoadAllDefinitions` | `0x140260b80` | ✅ ok |  | void(void* nameFilter) |
+| `InitialLoading_LoadAllDefinitions` | `0x14025b160` | ✅ ok |  | void(void* nameFilter) |
 | `LevelBinary_Load` | `0x1404764f0` | ❓ unverified |  | bool(void* container, void* stream, void* lvlId, void* links) |
-| `LevelDatabase_BuildAndRegister` | `0x14047cf80` | ✅ ok |  | bool(void* db, void* level, bool flag) |
+| `LevelDatabase_BuildAndRegister` | `0x14047cf20` | ✅ ok |  | bool(void* db, void* level, bool flag) |
 | `LevelLoad_AbortPredicate` | `0x140456c70` | ❓ unverified |  | uint32_t() |
 | `LevelLoad_ProgressTick` | `0x140516cd0` | ❓ unverified |  | uint32_t(float delta) |
 | `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
-| `LevelObject_LoadOrCreate` | `0x14047c1e0` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
+| `LevelObject_LoadOrCreate` | `0x14047c180` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
 | `LevelStream_LoadLevel` | `0x14047b4f0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
-| `LevelStream_LoadStep` | `0x140476770` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
-| `LevelStream_ProgressHook` | `0x1412ebf30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |
+| `LevelStream_LoadStep` | `0x140476710` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
+| `LevelStream_ProgressHook` | `0x1412e6f30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |
 | `LevelText_Load` | `0x140476340` | ❓ unverified |  | bool(void* container, char** name, void* lvlId, void* links) |
-| `Object_CloneViaSerialize` | `0x1404fe640` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |
-| `Object_LoadFromStream` | `0x1404fd6b0` | ✅ ok | ✔ | bool(void* object, void* readStream) |
-| `Object_SaveToFile` | `0x1404fd7e0` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
-| `Registry_EnumInstances` | `0x140241750` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
-| `Registry_RegisterInstance` | `0x1403119d0` | ✅ ok |  | void(void* definition) |
-| `Registry_UnregisterInstance` | `0x140311a50` | ✅ ok | ✔ | void(void*) |
+| `Object_CloneViaSerialize` | `0x1404fe230` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |
+| `Object_LoadFromStream` | `0x1404fd470` | ✅ ok | ✔ | bool(void* object, void* readStream) |
+| `Object_SaveToFile` | `0x1404fd580` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
+| `Registry_EnumInstances` | `0x14023b9a0` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
+| `Registry_RegisterInstance` | `0x14030c500` | ✅ ok |  | void(void* definition) |
+| `Registry_UnregisterInstance` | `0x14030c580` | ✅ ok | ✔ | void(void*) |
 | `ResourceCache_Parse` | `0x140492a10` | ❓ unverified |  | bool(void* outVector, void* cachePath) |
-| `ResourceCache_Submit` | `0x1404aa3a0` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
-| `ResourceRef_Resolve` | `0x140492540` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
-| `Resource_LookupByPath` | `0x14049b2a0` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
+| `ResourceCache_Submit` | `0x1404aa340` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
+| `ResourceRef_Resolve` | `0x1404924e0` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
+| `Resource_LookupByPath` | `0x14049b240` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 
 ## rewards
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `CustomFlagList_ContainsAll` | `0x14066ac70` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
-| `CustomFlagList_ContainsAny` | `0x14066ad90` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
-| `RewardDef_Deserialize` | `0x1403244c0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
+| `CustomFlagList_ContainsAll` | `0x140669420` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
+| `CustomFlagList_ContainsAny` | `0x140669540` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
+| `RewardDef_Deserialize` | `0x14031fbe0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
 | `RewardDefinition_Ctor` | `0x1401c9b90` | ❓ unverified |  | void*(void* self) |
-| `RewardItem_Serialize` | `0x140323dd0` | ✅ ok |  | bool(void* oCItem, void* reader) |
-| `RewardSelectorSettings_Serialize` | `0x140340470` | ✅ ok |  | bool(void* settings, void* reader) |
-| `RewardType_Serialize` | `0x140324260` | ✅ ok |  | bool(void* oCType, void* reader) |
+| `RewardItem_Serialize` | `0x14031f4f0` | ✅ ok |  | bool(void* oCItem, void* reader) |
+| `RewardSelectorSettings_Serialize` | `0x14033ac50` | ✅ ok |  | bool(void* settings, void* reader) |
+| `RewardType_Serialize` | `0x14031f980` | ✅ ok |  | bool(void* oCType, void* reader) |
 | `Reward_GenerateAndDistribute` | `0x1401ecd10` | ❓ unverified |  | void(void* mapSceneContext) |
-| `Reward_InitAllRewards` | `0x1401e9800` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
+| `Reward_InitAllRewards` | `0x1401e3340` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
 
 ## session
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Account_GetDisplayName` | `0x140929940` | ✅ ok |  | void(std::string* out, void* account) |
-| `HeroSelect_IsHeroAvailable` | `0x14032b460` | ✅ ok | ✔ | bool(void* menu, int hero_index, bool flag) |
-| `LobbyAttributes_Parse` | `0x140922f20` | ✅ ok | ✔ | void*(void* self, StringDesc* blob) |
-| `LobbyAttributes_Serialize` | `0x140923e00` | ✅ ok | ✔ | void*(void* out, void* member) |
+| `Account_GetDisplayName` | `0x140928620` | ✅ ok |  | void(std::string* out, void* account) |
+| `HeroSelect_IsHeroAvailable` | `0x1403269f0` | ✅ ok | ✔ | bool(void* menu, int hero_index, bool flag) |
+| `LobbyAttributes_Parse` | `0x140921ae0` | ✅ ok | ✔ | void*(void* self, StringDesc* blob) |
+| `LobbyAttributes_Serialize` | `0x1409229b0` | ✅ ok | ✔ | void*(void* out, void* member) |
 | `LobbyMembers_List` | `0x140925420` | ❓ unverified |  | void(void** scene, std::vector<LobbyMember*>* out) |
 | `LobbyMembers_Local` | `0x1409253a0` | ❓ unverified |  | void(void** scene, LobbyMember** out) |
-| `LobbyPlayerName_Registry` | `0x141476268` | 📍 va |  | std::string[]  // count at 0x141476270 |
-| `Netcode_PeerCount` | `0x14143f780` | 📍 va |  | uint32_t |
-| `Netcode_PeerSlots` | `0x14143f600` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
+| `LobbyPlayerName_Registry` | `0x141470268` | 📍 va |  | std::string[]  // count at 0x141470270 |
+| `Netcode_PeerCount` | `0x141439700` | 📍 va |  | uint32_t |
+| `Netcode_PeerSlots` | `0x141439580` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
 
 ## skill
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `AbilityController_Ctor` | `0x1402c8db0` | ❓ unverified |  | void*(void* self) |
-| `EntityComponent_Activate` | `0x140712c50` | ✅ ok | ✔ | void(void* unused, oIEntityCpnt* cpnt) |
-| `EntityEventTrigger_Fire` | `0x140713b00` | ✅ ok | ✔ | void(EventTrigger* trig) |
-| `HeroController_AddSkill` | `0x1403974b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl) |
-| `HeroController_RemoveSkill` | `0x1403977b0` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud) |
+| `EntityComponent_Activate` | `0x140711520` | ✅ ok | ✔ | void(void* unused, oIEntityCpnt* cpnt) |
+| `EntityEventTrigger_Fire` | `0x1407123d0` | ✅ ok | ✔ | void(EventTrigger* trig) |
+| `HeroController_AddSkill` | `0x14039fb80` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl) |
+| `HeroController_RemoveSkill` | `0x14039fe80` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud) |
 | `SkillController_Ctor` | `0x1402ecc40` | ❓ unverified |  | void*(void* self) |
-| `SkillController_SetTier` | `0x1402edd80` | ✅ ok | ✔ | void(oCDtEntityCpntSkillController* ctrl, int32_t tier) |
+| `SkillController_SetTier` | `0x1402e87b0` | ✅ ok | ✔ | void(oCDtEntityCpntSkillController* ctrl, int32_t tier) |
 
 ## skins
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `SkinGrid_Populate` | `0x1401f16f0` | ✅ ok | ✔ | void(void* ctx, void* arg) |
-| `SkinRoster_Build` | `0x1401dd2c0` | ✅ ok |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
+| `SkinGrid_Populate` | `0x1401eb250` | ✅ ok | ✔ | void(void* ctx, void* arg) |
+| `SkinRoster_Build` | `0x1401d6d40` | ✅ ok |  | Skin-pack roster builder. Selectable-skin count (9) is baked into its loop; a new selec… |
 | `g_RosterManager` | `0x141436590` | 📍 va |  | Manager pointer global (relocated by the live image base) walked by the skin-grid popul… |
 
 ## stats
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `g_StatReportRoot` | `0x14143cb28` | 📍 va |  | Singleton pointer whose object holds the CACHED hero stats the game reports and display… |
+| `g_StatReportRoot` | `0x1414369e8` | 📍 va |  | Singleton pointer whose object holds the CACHED hero stats the game reports and display… |
 
 ## ui
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `BookController_ResolveSettings` | `0x140307a30` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
-| `BookController_ResolveTabs` | `0x140308cd0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
-| `HeroSelect_ConfirmBlockReason` | `0x14026dbc0` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_ConfirmPressed` | `0x1403e9300` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_SetConfirmEnabled` | `0x1403e9500` | ✅ ok |  | void(void* screen, bool enabled) |
-| `HeroSelect_ValidateBlockedPtr` | `0x14143cb58` | 📍 va |  | Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate … |
+| `BookController_ResolveSettings` | `0x1403024f0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `BookController_ResolveTabs` | `0x140303790` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
+| `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok |  | int(void* screen) |
+| `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok |  | int(void* screen) |
+| `HeroSelect_SetConfirmEnabled` | `0x1403e19f0` | ✅ ok |  | void(void* screen, bool enabled) |
+| `HeroSelect_ValidateBlockedPtr` | `0x141436a18` | 📍 va |  | Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate … |
 | `StringFormat_ArgPointer` | `0x1402c44f0` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
 | `StringFormat_ArgString` | `0x14052c7d0` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
-| `UiButton_InputPoll` | `0x1407d72a0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
-| `UiButton_PressCommit` | `0x1406a08a0` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
-| `UiButton_PressReturnSite` | `0x1407d7382` | ✅ ok |  | (code location, not callable) |
+| `UiButton_InputPoll` | `0x1407d4ec0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
+| `UiButton_PressCommit` | `0x14069f030` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
+| `UiButton_PressReturnSite` | `0x1407d4fa2` | ✅ ok |  | (code location, not callable) |
 | `UiController_BindComponent` | `0x14034c180` | ❓ unverified |  | void(void* uiController) |
 | `UiController_OnHide` | `0x140352b40` | ❓ unverified |  | void(void* uiController) |
 | `UiController_OnShow` | `0x140352aa0` | ❓ unverified |  | void(void* uiController) |
@@ -440,16 +448,16 @@ Total: **323** symbols across 24 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `Chapter_Serialize` | `0x1403254d0` | ✅ ok |  | bool(Chapter* this, void* serializer) |
-| `GameModeDefaultDef_Serialize` | `0x1403256e0` | ✅ ok |  | bool(GameModeDefaultDefinition* this, void* serializer) |
+| `Chapter_Serialize` | `0x140320bf0` | ✅ ok |  | bool(Chapter* this, void* serializer) |
+| `GameModeDefaultDef_Serialize` | `0x140320e00` | ✅ ok |  | bool(GameModeDefaultDefinition* this, void* serializer) |
 | `LevelStream_Deserialize` | `0x1404767e0` | ❓ unverified |  | bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks) |
-| `MapDef_Serialize` | `0x1403233b0` | ✅ ok |  | bool(oCDtMapDefinition* this, void* serializer) |
-| `TileKindPool_ReportEmpty` | `0x1403421f0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
-| `TileKind_Serialize` | `0x140340fc0` | ✅ ok |  | bool(oCDtTileKind* this, void* serializer) |
-| `TileSlotScenarioKindCompat_Serialize` | `0x140341190` | ✅ ok |  | bool(oCDtTileSlotScenarioKindCompatibility* this, void* serializer) |
-| `TileSlotSettings_Serialize` | `0x1403411f0` | ✅ ok |  | bool(oCDtTileSlotSettings* this, void* serializer) |
-| `TileSlotSize_Serialize` | `0x140341780` | ✅ ok |  | bool(oCDtTileSlotSize* this, void* serializer) |
-| `TileSpawn_DistanceConstraints` | `0x140345890` | ✅ ok | ✔ | void(void*, void*) |
-| `TileSpawn_PlaceTiles` | `0x140343ad0` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
-| `TileSpawnerSettings_Serialize` | `0x140341b10` | ✅ ok |  | bool(oCDtEntityCpntTileSpawnerSettings* this, void* serializer) |
-| `TileSpawner_Spawn` | `0x140343640` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
+| `MapDef_Serialize` | `0x14031ead0` | ✅ ok |  | bool(oCDtMapDefinition* this, void* serializer) |
+| `TileKindPool_ReportEmpty` | `0x14033c9d0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
+| `TileKind_Serialize` | `0x14033b7a0` | ✅ ok |  | bool(oCDtTileKind* this, void* serializer) |
+| `TileSlotScenarioKindCompat_Serialize` | `0x14033b970` | ✅ ok |  | bool(oCDtTileSlotScenarioKindCompatibility* this, void* serializer) |
+| `TileSlotSettings_Serialize` | `0x14033b9d0` | ✅ ok |  | bool(oCDtTileSlotSettings* this, void* serializer) |
+| `TileSlotSize_Serialize` | `0x14033bf60` | ✅ ok |  | bool(oCDtTileSlotSize* this, void* serializer) |
+| `TileSpawn_DistanceConstraints` | `0x140340070` | ✅ ok | ✔ | void(void*, void*) |
+| `TileSpawn_PlaceTiles` | `0x14033e2b0` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |
+| `TileSpawnerSettings_Serialize` | `0x14033c2f0` | ✅ ok |  | bool(oCDtEntityCpntTileSpawnerSettings* this, void* serializer) |
+| `TileSpawner_Spawn` | `0x14033de20` | ✅ ok | ✔ | void(void* tileSpawnerComponent) |

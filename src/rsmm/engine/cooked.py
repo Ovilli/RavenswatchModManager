@@ -62,6 +62,17 @@ MARK_END = b"\x22\x22\xbb\xaa"     # 0xAABB2222 little-endian
 COOKED_TAG = b"Cooked"
 DEFAULT_TYPE_TAG = 0x31
 
+#: The class of one String Format slot (the per-``{N}`` entry of a card text).
+#: Update 6 (2026-10-12) renamed it ``oCDynamicTypePicker`` with an unchanged
+#: layout; files the update did not re-cook still name the old class.
+FORMAT_ENTRY_CLASSES = ("oCDynamicTypePicker", "oCStringFormatEntryPicker")
+
+
+def format_entry_index(class_names: list[str]) -> int:
+    """Index of the String Format slot class in a file's class table, or -1."""
+    return next((class_names.index(n) for n in FORMAT_ENTRY_CLASSES if n in class_names), -1)
+
+
 
 @dataclass
 class ClassDef:
