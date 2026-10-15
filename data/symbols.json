@@ -2996,14 +2996,22 @@
    }
   },
   {
-   "name": "MagicalObject_SpawnContainingFunc",
+   "name": "GameModifierLock_OnStateChange",
    "kind": "function",
-   "category": "items",
+   "category": "progression",
    "raw": "FUN_140257f50",
    "status": "ok",
-   "note": "Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. This is the pattern-resolvable anchor.",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "int"
+    ]
+   },
+   "note": "The 'Playing with Modifiers will not unlock Difficulties, Achievements or Outfits' rule (GH #54). State callback of the HAS-modifiers state of oe::dt::HasGameModifierStateMachine (member at oCDtRootGs+0x2120/+0x2128). Every tick the RootGs update (FUN_14025a9e0) reads the run settings (FUN_140917be0: RootGs+0x2188 -> +0xa0 -> +0x278 -> +0x3f8; selected-modifier index vector at +0x28, count at +0x30 -- the same list the run_start analytics event reports as custom_mode) and sets the state machine (FUN_14026e8c0) to HAS-modifiers {thunk FUN_140271810, this fn} when count != 0, else NO-modifiers whose callback is a bare `ret`. param_2: 0 = ENTER, 1 = EXIT (proven in game 2026-10-15; the static reading had it backwards). ENTER (param_2==0, branch at +0x2c6) walks every oe::dt::AchievementDefinition instance (Registry_EnumInstances) and, unless byte +0x2b2 is set (a serialized per-def 'keeps tracking with modifiers' exemption, no code writes it), calls (*(obj+0x2a8))->vft[0x58](src) -- detaches its progress tracker from the event source src = *(g+0x18); it then does the same for a second definition class, over each element of the vector at obj+0x930/+0x938 (flag +0x1f8, tracker +0x28) -- the outfit/difficulty unlock conditions. EXIT (param_2==1) is the identical walk calling vft[0x50] (re-attach). So modded runs do not block the unlock WRITE: the trackers simply stop listening for the whole run. Proof so far: static (current Update-6 exe); run_start.custom_mode=1 with a modifier vs 0 without, observed in game 2026-10-15. In game 2026-10-15 (probe, R.debug.observe): param_2=0 fired while a 3-modifier run was set up (before run_start, custom_mode=3 = modifier COUNT), param_2=1 when the next run had none. A real unlock landing with the skip in place is NOT yet verified. [2026-10-15: previously mislabelled MagicalObject_SpawnContainingFunc (an anchor for an item routine that has since been resolved on its own as MagicalObject_SpawnAllObjects); nothing referenced the old name.]",
    "refs": [
-    "src/loader/src/hook_items.cpp"
+    "src/loader/lib/rsmm.lua",
+    "docs/_re/kinds/game-modifiers.md"
    ]
   },
   {

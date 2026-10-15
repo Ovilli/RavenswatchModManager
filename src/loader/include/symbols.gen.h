@@ -325,8 +325,6 @@ constexpr std::uintptr_t MagicalObject_RegisterInstance = 0x1403b46c0ull;
 constexpr const char* MagicalObject_RegisterInstance_Pattern = "MagicalObject_RegisterInstance";
 constexpr std::uintptr_t MagicalObject_SpawnAllObjects = 0x140253540ull;
 constexpr const char* MagicalObject_SpawnAllObjects_Pattern = "MagicalObject_SpawnAllObjects";
-constexpr std::uintptr_t MagicalObject_SpawnContainingFunc = 0x140257f50ull;
-constexpr const char* MagicalObject_SpawnContainingFunc_Pattern = "MagicalObject_SpawnContainingFunc";
 constexpr std::uintptr_t g_MagicalObjectPool = 0x141436ad0ull;
 
 // --- library ---
@@ -471,6 +469,10 @@ constexpr std::uintptr_t SLNetworkObject_GetOwnerId = 0x1408c0d40ull;
 constexpr std::uintptr_t GameModifierUi_PadSelectedSlots = 0x14035b570ull;
 constexpr const char* GameModifierUi_PadSelectedSlots_Pattern = "GameModifierUi_PadSelectedSlots";
 constexpr std::uintptr_t g_GameOptions = 0x141436a18ull;
+
+// --- progression ---
+constexpr std::uintptr_t GameModifierLock_OnStateChange = 0x140257f50ull;
+constexpr const char* GameModifierLock_OnStateChange_Pattern = "GameModifierLock_OnStateChange";
 
 // --- registry ---
 constexpr std::uintptr_t DefRegistry_Begin = 0x14143a040ull;

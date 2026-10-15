@@ -10594,5 +10594,43 @@ do
     R = require "rsmm"
 end
 
+-- R.debug.observe: the original runs with the same args, the observer sees its
+-- result, and the detour hands that result back unchanged.
+do
+    local seen = {}
+    local ok = R.debug.observe("ChallengeUnlock_IsUnlocked", "up", function(r, this)
+        seen[#seen + 1] = { r = r, this = this }
+    end)
+    local va = I.resolve("ChallengeUnlock_IsUnlocked")
+    check(ok == true and hooks[va] ~= nil, "observe installs a detour on the resolved va")
+    local got = hooks[va].cb(7, function(a) return a + 35 end)
+    check(got == 42 and #seen == 1 and seen[1].r == 42 and seen[1].this == 7,
+          "observe passes the original result through and reports it")
+end
+
+-- R.modifier.allow_unlocks: skips the has-modifiers ENTER callback (trackers
+-- stay attached) and the matching EXIT, and leaves an unpaired exit alone.
+do
+    check(R.modifier.allow_unlocks() == true, "allow_unlocks arms the detour")
+    local va = I.resolve("GameModifierLock_OnStateChange")
+    local cb = hooks[va] and hooks[va].cb
+    check(cb ~= nil and hooks[va].sig == "vpi", "detour installed with sig vpi")
+    local ran = {}
+    local function nxt(_, st) ran[#ran + 1] = st end
+    -- state 0 = ENTER (detach), 1 = EXIT (re-attach), as observed in game.
+    cb(0x1000, 0, nxt)
+    cb(0x1000, 1, nxt)
+    check(#ran == 0, "enter skipped and its paired exit skipped")
+    R.modifier.allow_unlocks(false)
+    cb(0x1000, 0, nxt)
+    cb(0x1000, 1, nxt)
+    check(#ran == 2 and ran[1] == 0 and ran[2] == 1, "off: original runs both ways")
+    cb(0x1000, 0, nxt)            -- entered (trackers detached) while off
+    R.modifier.allow_unlocks(true)
+    cb(0x1000, 1, nxt)            -- exit must still run to re-attach them
+    check(#ran == 4 and ran[4] == 1, "unpaired exit after toggling on still runs")
+    R.modifier.allow_unlocks(false)
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

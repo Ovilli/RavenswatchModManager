@@ -304,6 +304,12 @@ inline GameModifierDef_PostLoad_fn GameModifierDef_PostLoad() {
     return reinterpret_cast<GameModifierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::GameModifierDef_PostLoad_Pattern));
 }
 
+// GameModifierLock_OnStateChange  (GameModifierLock_OnStateChange)
+using GameModifierLock_OnStateChange_fn = void(*)(void*, int);
+inline GameModifierLock_OnStateChange_fn GameModifierLock_OnStateChange() {
+    return reinterpret_cast<GameModifierLock_OnStateChange_fn>(rsmm::fn_resolve(Sym::GameModifierLock_OnStateChange_Pattern));
+}
+
 // GameModifierUi_PadSelectedSlots  (GameModifierUi_PadSelectedSlots)
 //   void(void* uiController, void* unknown, void* selectedVector)
 using GameModifierUi_PadSelectedSlots_fn = void(*)(void*, void*, void*);

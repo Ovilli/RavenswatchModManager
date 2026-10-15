@@ -50,6 +50,7 @@ return {
   ["Event_RunEnd"] = { pattern = "Event_RunEnd", offset = 0x0, sig = "ppp" },
   ["GameModeDefaultDef_PostLoad"] = { pattern = "GameModeDefaultDef_PostLoad", offset = 0x0, sig = "up" },
   ["GameModifierDef_PostLoad"] = { pattern = "GameModifierDef_PostLoad", offset = 0x0, sig = "up" },
+  ["GameModifierLock_OnStateChange"] = { pattern = "GameModifierLock_OnStateChange", offset = 0x0, sig = "vpi" },
   ["GameModifierUi_PadSelectedSlots"] = { pattern = "GameModifierUi_PadSelectedSlots", offset = 0x0, sig = "vppp" },
   ["GroupLevelComponent_Ctor"] = { pattern = "GroupLevelComponent_Ctor", offset = 0x0, sig = "pp" },
   ["HeroController_AddSkill"] = { pattern = "HeroController_AddSkill", offset = 0x0, sig = "vpp" },

@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **326** symbols across 25 categories.
+Total: **326** symbols across 26 categories.
 
 ## analytics
 
@@ -244,7 +244,6 @@ Total: **326** symbols across 25 categories.
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
 | `MagicalObject_RegisterInstance` | `0x1403b46c0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
 | `MagicalObject_SpawnAllObjects` | `0x140253540` | ✅ ok | ✔ | void(void* pool, void* scene) |
-| `MagicalObject_SpawnContainingFunc` | `0x140257f50` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x141436ad0` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 
 ## library
@@ -346,6 +345,12 @@ Total: **326** symbols across 25 categories.
 |------|---------|--------|----------|------------------|
 | `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+
+## progression
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `GameModifierLock_OnStateChange` | `0x140257f50` | ✅ ok | ✔ | The 'Playing with Modifiers will not unlock Difficulties, Achievements or Outfits' rule… |
 
 ## registry
 

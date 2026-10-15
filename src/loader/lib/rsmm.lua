@@ -1605,6 +1605,58 @@ local _modifier_orig = {}
 -- IS that flag, so enabling either enables both.
 function R.modifier.enable_writes() return R.stat.enable_writes() end
 
+--- Let achievements / outfits / difficulties keep unlocking while run
+--- modifiers are on (GH #54). OFF unless a mod calls this.
+--
+-- The game does not block the unlock write. When a run has modifiers, the
+-- "has modifiers" state of HasGameModifierStateMachine is ENTERED and its
+-- callback detaches every achievement and unlock-condition tracker from the
+-- event source; leaving the state re-attaches them. This skips that callback,
+-- so the trackers keep listening exactly as in an unmodded run. Nothing is
+-- forced: an unlock still has to be earned, and the ownership (DLC) gate is
+-- untouched.
+--
+-- The callback's state arg is 0 on ENTER and 1 on EXIT (proven in game
+-- 2026-10-15: 0 fired when a modded run was set up, 1 when the next run had
+-- none; the static reading had it backwards, and skipping 1 would have left
+-- the trackers detached until restart). Enter and exit are kept paired: an
+-- exit is skipped only when we skipped its enter, so turning this on or off
+-- mid-run never re-attaches a tracker twice or leaves one detached. Call at
+-- load (init.lua), before a run is set up.
+-- Returns true when armed; false if the symbol is unavailable on this build.
+local _unlock_bypass_on, _unlock_bypass_hooked, _unlock_enter_skipped = false, false, false
+
+function R.modifier.allow_unlocks(on)
+    _unlock_bypass_on = (on ~= false)
+    if _unlock_bypass_hooked then return true end
+    if not (R.hook and R.engine.resolve) then return false end
+    local va = R.engine.resolve("GameModifierLock_OnStateChange")
+    -- nil/0 when the symbol is unverified for this build: fail closed rather
+    -- than detouring a stale address.
+    if not va or va == 0 then return false end
+    local ok, slot, why = pcall(R.hook, va, "vpi", function(this, state, next)
+        if state == 0 and _unlock_bypass_on then
+            _unlock_enter_skipped = true
+            R.log("[rsmm.modifier] modded run: kept unlock trackers attached")
+            -- Non-nil without calling next(): the original does not run.
+            return 0
+        end
+        if state == 1 and _unlock_enter_skipped then
+            _unlock_enter_skipped = false
+            return 0
+        end
+        next(this, state)
+        return 0
+    end)
+    -- "already-hooked" is a FAILURE here: some other detour (e.g. a probe's
+    -- R.debug.observe) owns the address, so ours is not installed and the
+    -- lock would still run while this reported success.
+    _unlock_bypass_hooked = ok and slot ~= nil
+    R.log("[rsmm.modifier] allow_unlocks " .. (_unlock_bypass_hooked and "armed" or
+        ("FAILED: " .. tostring(why or slot))))
+    return _unlock_bypass_hooked
+end
+
 -- Set a named modifier in the global context. MAIN THREAD only (wrap in
 -- R.schedule.next_main). Returns true when the value reads back as written;
 -- false otherwise, with the reason in R.modifier.why().
@@ -3206,6 +3258,34 @@ function R.hooks.dump()
 end
 
 R.debug = {}
+
+-- Observe-only detour on an engine symbol. `after(result, ...)` runs once the
+-- ORIGINAL has returned, with its result and the same arguments it received.
+-- The original's result is what the caller gets back: nothing can be forced
+-- through this, so it is safe for probing a gate's answer (issue #54).
+-- `sig` is the hook shape ("up" = ret u32, arg ptr), as for R.hook.
+-- Returns false when the symbol is unavailable on this build (fail closed).
+function R.debug.observe(name, sig, after)
+    if type(after) ~= "function" then
+        error("R.debug.observe: expected a function", 2)
+    end
+    if not (R.hook and R.engine.resolve) then return false end
+    local va = R.engine.resolve(name)
+    if not va or va == 0 then return false end
+    -- The detour gets the args and `next` as its last arg. Call next() with
+    -- the same args, then report, then return the original's result.
+    local ok, slot = pcall(R.hook, va, sig, function(...)
+        local n = select("#", ...)
+        local nxt = select(n, ...)
+        local args = { ... }
+        args[n] = nil
+        local r = nxt(table.unpack(args, 1, n - 1))
+        local ran, err = pcall(after, r, table.unpack(args, 1, n - 1))
+        if not ran then R.log("[rsmm.debug] observe handler error: " .. tostring(err)) end
+        return r or 0
+    end)
+    return ok and slot ~= nil
+end
 
 local function _classify(v)
     if not v or v == 0 then return "0" end
