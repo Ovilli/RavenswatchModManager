@@ -394,6 +394,12 @@ inline HeroSelect_IsHeroAvailable_fn HeroSelect_IsHeroAvailable() {
     return reinterpret_cast<HeroSelect_IsHeroAvailable_fn>(rsmm::fn_resolve(Sym::HeroSelect_IsHeroAvailable_Pattern));
 }
 
+// HeroSelect_PortraitPicked  (HeroSelect_PortraitPicked)
+using HeroSelect_PortraitPicked_fn = void(*)(void*, void*);
+inline HeroSelect_PortraitPicked_fn HeroSelect_PortraitPicked() {
+    return reinterpret_cast<HeroSelect_PortraitPicked_fn>(rsmm::fn_resolve(Sym::HeroSelect_PortraitPicked_Pattern));
+}
+
 // HeroSelect_SetConfirmEnabled  (HeroSelect_SetConfirmEnabled)
 //   void(void* screen, bool enabled)
 using HeroSelect_SetConfirmEnabled_fn = void(*)(void*, bool);
@@ -455,6 +461,12 @@ inline LobbyAttributes_Parse_fn LobbyAttributes_Parse() {
 using LobbyAttributes_Serialize_fn = void*(*)(void*, void*);
 inline LobbyAttributes_Serialize_fn LobbyAttributes_Serialize() {
     return reinterpret_cast<LobbyAttributes_Serialize_fn>(rsmm::fn_resolve(Sym::LobbyAttributes_Serialize_Pattern));
+}
+
+// Lobby_SetRequestedHero  (Lobby_SetRequestedHero)
+using Lobby_SetRequestedHero_fn = void(*)(void*, int, int);
+inline Lobby_SetRequestedHero_fn Lobby_SetRequestedHero() {
+    return reinterpret_cast<Lobby_SetRequestedHero_fn>(rsmm::fn_resolve(Sym::Lobby_SetRequestedHero_Pattern));
 }
 
 // MagicalObject_RegisterInstance  (MagicalObject_RegisterInstance)

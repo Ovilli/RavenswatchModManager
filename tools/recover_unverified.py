@@ -179,6 +179,7 @@ def recover(apply: bool):
         if apply and unambiguous:
             new_addr = top[0][1]
             s["raw"] = f"FUN_{new_addr:x}"
+            s.pop("va", None)  # a symbol has exactly one of raw/anchor/va
             s["status"] = "ok"
             tag = (f" [recover_unverified 2026-07-17: relocated to "
                    f"0x{new_addr:x} via {top[0][3][0]}]")
