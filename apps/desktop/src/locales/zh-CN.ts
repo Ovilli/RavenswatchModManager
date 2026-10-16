@@ -656,6 +656,9 @@ export const zhCN: Record<string, string> = {
   Status: '状态',
   'Stop watching the log file': '停止监视日志文件',
   'Support on Ko-fi': '在 Ko-fi 上支持',
+  'Not now': '以后再说',
+  'RSMM is free and made by one person. If it saves you time, a coffee keeps it going.':
+    'RSMM 免费，由一个人开发。如果它为你节省了时间，请我喝杯咖啡让它继续下去。',
   'System sans': '系统无衬线体',
   Tags: '标签',
   'That email is already registered. Try signing in instead.': '该邮箱已注册，请改为登录。',
