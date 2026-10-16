@@ -1,5 +1,6 @@
 import { jsonLd } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
+import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
@@ -282,6 +283,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </footer>
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>
