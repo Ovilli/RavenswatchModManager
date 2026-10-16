@@ -2,6 +2,17 @@
   "generated": "2026-10-16",
   "entries": [
     {
+      "version": "5.9.22",
+      "loader_version": 45,
+      "date": "2026-10-16",
+      "summary": "Mods can offer settings for their game-data edits: sliders and switches in a mod's config now drive its numbers.",
+      "highlights": [
+        "Mod authors: entity edits can take a value from the mod's config (`config`, `times`) and be switched on or off (`when`).",
+        "Mod authors: [[patch]] stat values can come from config too, e.g. a camp size slider.",
+        "Changing such a setting rebuilds the mod's files on the next launch."
+      ]
+    },
+    {
       "version": "5.9.21",
       "loader_version": 45,
       "date": "2026-10-16",
@@ -505,15 +516,6 @@
       "summary": "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object.",
       "highlights": [
         "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 17,
-      "date": "2026-09-18",
-      "summary": "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with.",
-      "highlights": [
-        "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with."
       ]
     }
   ]
