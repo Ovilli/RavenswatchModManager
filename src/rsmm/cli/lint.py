@@ -442,6 +442,10 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
 
     errs = warns = 0
     mod_s = _ST.bold(modname)
+    # The versiondef the game will read: the one that wires reworks in.
+    from rsmm.engine.versiondef import VERSIONDEF_GEN_LEAF
+    vd_rel = Path("Definitions", "Versions", VERSIONDEF_GEN_LEAF)
+    vd = next((p.read_bytes() for p in (assets / vd_rel, root / vd_rel) if p.is_file()), None)
     for f in sorted(assets.rglob("*")):
         if not f.is_file():
             continue
@@ -463,6 +467,12 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
             warns += 1
         if not rel.name.endswith(_ENTITY_SUFFIX):
             continue
+        for stem, node in _rework_shadowed_edits(f, vanilla, cur, van, vd):
+            hint = (f"{stem} redefines this node and the game reads that one, so "
+                    f"the edit here likely does nothing in game — edit {stem} too")
+            print(f"  {_T_WARN} {mod_s}: {name}: node {_ST.accent(repr(node))} "
+                  f"{_ST.dim(hint)}")
+            warns += 1
         before = {v.label: v for v in list_talent_values(van)}
         after = {v.label: v for v in list_talent_values(cur)}
         changed = [lab for lab, v in before.items()
@@ -505,6 +515,60 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
                   f"{_ST.dim('bytes differ, but no tracked magnitude node changed')} "
                   f"{_ST.dim('(GUID/selector/counter edits are not tracked — verify in game)')}")
     return errs, warns
+
+
+_REWORK_RE = re.compile(r"^(.+)_Update_?\d+$")
+
+
+def _rework_shadowed_edits(mod_file: Path, vanilla: Path, cur: bytes,
+                           van: bytes, versiondef: bytes | None) -> list[tuple[str, str]]:
+    """``(rework stem, node)`` for each node the mod changed in a base entity
+    file that a rework layered over it (``Hero_Red_Update6`` over ``Hero_Red``)
+    redefines under the same name, unless the mod changes the rework's node too
+    or ``versiondef`` (the one the game reads; None = unknown, assume wired)
+    does not wire that rework in (``rsmm values backport`` drops them).
+
+    The versiondef swaps the rework in for the base entity, and a picker
+    resolves a node by path, so the rework's same-name node is the one the game
+    reads (Update 6 retunes ~240 nodes this way)."""
+    from rsmm.engine import entity_graph as EG
+
+    sfx = ".entity.ot" + _ENTITY_SUFFIX
+    if not vanilla.name.endswith(sfx):
+        return []
+    stem = vanilla.name[:-len(sfx)]
+    if _REWORK_RE.match(stem):
+        return []
+    reworks = [p for p in vanilla.parent.glob(f"{stem}_Update*{sfx}")
+               if _REWORK_RE.match(p.name[:-len(sfx)])
+               and (versiondef is None
+                    or p.name[:-len(_ENTITY_SUFFIX)].encode() in versiondef)]
+    if not reworks:
+        return []
+
+    def bodies(raw: bytes) -> dict[str, list[bytes]]:
+        out: dict[str, list[bytes]] = {}
+        for c in EG.parse(raw).components:
+            out.setdefault(c.name, []).append(c.body)
+        return out
+
+    try:
+        b_van, b_cur = bodies(van), bodies(cur)
+    except (ValueError, IndexError):  # an unparseable edit is reported elsewhere
+        return []
+    changed = {n for n, v in b_cur.items() if b_van.get(n) != v}
+    out = []
+    for rw in sorted(reworks):
+        mine = mod_file.parent / rw.name
+        try:
+            r_van = bodies(rw.read_bytes())
+            r_cur = bodies(mine.read_bytes()) if mine.is_file() else r_van
+        except (OSError, ValueError, IndexError):
+            continue
+        rstem = rw.name[:-len(sfx)]
+        out += [(rstem, n) for n in sorted(changed & r_van.keys())
+                if r_cur.get(n) == r_van[n]]
+    return out
 
 
 def _lint_patchable(modname: str, entry: Path) -> int:
