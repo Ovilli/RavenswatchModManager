@@ -2838,12 +2838,11 @@ end
 
 -- N. R.lobby.hero_name: display-only, never load-bearing --------------------
 do
-    check(R.lobby.hero_name(0) == "Aladdin" and R.lobby.hero_name(11) == "Sun_Wukong",
-          "the twelve shipped herodefs map by load (alphabetical) order")
-    check(R.lobby.hero_name(10) == "Snow_Queen",
-          "RequestedHero 10 is Snow_Queen -- the id the local player carried in "
-          .. "session 304f, and the one hero _HERO_SIGNATURES was seeded from")
-    check(R.lobby.hero_name(12) == nil and R.lobby.hero_name(-1) == nil
+    check(R.lobby.hero_name(0) == "Red" and R.lobby.hero_name(12) == "Kintaro",
+          "ids follow the LiveOps6 versiondef hero vector")
+    check(R.lobby.hero_name(3) == "Snow_Queen" and R.lobby.hero_name(7) == "Sun_Wukong",
+          "the two ids observed in game on Update 6 (2026-10-15)")
+    check(R.lobby.hero_name(13) == nil and R.lobby.hero_name(-1) == nil
           and R.lobby.hero_name("4") == nil,
           "an id off the roster, or not a number, is nil rather than a guess")
 end
@@ -10677,6 +10676,222 @@ do
     I.write_u64(ROSTER + 0x68, 100000)            -- absurd capacity
     hooks[va].cb(0x7000, ROSTER, function() end)
     check(got and #got == 0, "absurd capacity fails closed to an empty list")
+end
+
+-- R.hero.share_hero: rewrites every roster entry to the named player's hero
+-- (looked up as hero_list[lobby hero_id]), keeps that player's skin, resets
+-- the others to skin 0, and fails closed when the pick is not in the roster.
+do
+    local THIS, LIST = 0x64000000, 0x64100000
+    local ROSTER, CTRL, SLOTS = 0x64200000, 0x64201000, 0x64202000
+    local DEF_A, DEF_B, DEF_C = 0x65000000, 0x65000100, 0x65000200
+    I.write_u64(THIS + 0x98, 0)                   -- no session: no member names
+    I.write_u64(THIS + 0x170, LIST)
+    I.write_u32(THIS + 0x178, 3)
+    I.write_u64(LIST, DEF_A); I.write_u64(LIST + 8, DEF_B); I.write_u64(LIST + 16, DEF_C)
+    I.write_u64(ROSTER + 0x50, CTRL); I.write_u64(ROSTER + 0x58, SLOTS); I.write_u64(ROSTER + 0x68, 2)
+    I.write_u8(CTRL, 0x01); I.write_u8(CTRL + 1, 0x02)
+    local function set_roster()
+        I.write_u64(SLOTS, 0xA); I.write_u64(SLOTS + 8, DEF_C); I.write_u16(SLOTS + 0x10, 3)          -- Ovilli
+        I.write_u64(SLOTS + 0x18, 0xB); I.write_u64(SLOTS + 0x20, DEF_A); I.write_u16(SLOTS + 0x28, 1) -- Friend
+    end
+    local real_members, real_name = R.lobby.members, R.player.name
+    local members = { { name = "Ovilli", hero_id = 2 }, { name = "Friend", hero_id = 0 } }
+    R.lobby.members = function() return members end
+    R.player.name = function() return "Ovilli" end
+    local va = I.resolve("RunRoster_Build")
+    local ava = I.resolve("RunRoster_Apply")
+    -- host path: the builder runs, then Apply (where the rewrite happens)
+    local function host_build() hooks[va].cb(THIS, ROSTER, function() end)
+        hooks[ava].cb(THIS, ROSTER, 1, function() end) end
+
+    check(R.hero.share_hero() == true, "share_hero arms on the roster detour")
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_C and I.read_u16(SLOTS + 0x10) == 3
+          and I.read_u64(SLOTS + 0x20) == DEF_C and I.read_u16(SLOTS + 0x28) == 0,
+          "everyone gets the host's hero; host keeps their skin, others skin 0")
+
+    R.hero.share_hero("Friend")
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_A and I.read_u64(SLOTS + 0x20) == DEF_A,
+          "a named player's hero is shared")
+
+    members = { { name = "Ovilli", hero_id = 1 } }   -- DEF_B: nobody holds it
+    R.hero.share_hero()
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_C and I.read_u64(SLOTS + 0x20) == DEF_A,
+          "pick not in the roster: roster left untouched")
+
+    members = { { name = "Ovilli", hero_id = 2 } }
+    R.hero.share_hero(false)
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 0x20) == DEF_A, "share_hero(false) turns it off")
+
+    R.lobby.members, R.player.name = real_members, real_name
+end
+
+-- R.hero.play_as: a chosen hero by name for you / a named player / everyone,
+-- duplicates allowed, refused when the list entry is not a hero definition.
+do
+    local THIS, LIST = 0x66000000, 0x66100000
+    local ROSTER, CTRL, SLOTS = 0x66200000, 0x66201000, 0x66202000
+    local DEF_A, DEF_B, DEF_C = 0x67000000, 0x67000100, 0x67000200   -- Aladdin, Beowulf, Carmilla
+    I.write_u64(THIS + 0x98, 0)
+    I.write_u64(THIS + 0x170, LIST); I.write_u32(THIS + 0x178, 3)
+    I.write_u64(LIST, DEF_A); I.write_u64(LIST + 8, DEF_B); I.write_u64(LIST + 16, DEF_C)
+    -- Names come from each def's portrait path (def+0x2c8), NOT an index table.
+    local STR = 0x67100000
+    for k, pair in ipairs({ { DEF_A, "Heroes\\Aladdin\\Portrait_Aladdin_01.png" },
+                            { DEF_B, "Heroes\\Beowulf\\Portrait_Beowulf_01.png" },
+                            { DEF_C, "Heroes\\Carmilla\\Portrait_Carmilla_01.png" } }) do
+        local at = STR + k * 0x100
+        for n = 1, #pair[2] do I.write_u8(at + n - 1, pair[2]:byte(n)) end
+        I.write_u8(at + #pair[2], 0)
+        I.write_u64(pair[1] + 0x2c8, at)
+    end
+    I.write_u64(ROSTER + 0x50, CTRL); I.write_u64(ROSTER + 0x58, SLOTS); I.write_u64(ROSTER + 0x68, 2)
+    I.write_u8(CTRL, 0x01); I.write_u8(CTRL + 1, 0x02)
+    local function set_roster()
+        I.write_u64(SLOTS + 8, DEF_A); I.write_u16(SLOTS + 0x10, 2)      -- Ovilli on Aladdin
+        I.write_u64(SLOTS + 0x20, DEF_C); I.write_u16(SLOTS + 0x28, 1)   -- Friend on Carmilla
+    end
+    local real_members, real_name, real_rtti = R.lobby.members, R.player.name, R.rtti.name
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 }, { name = "Friend", hero_id = 2 } } end
+    R.player.name = function() return "Ovilli" end
+    local hero_defs = { [DEF_A] = true, [DEF_B] = true, [DEF_C] = true }
+    R.rtti.name = function(p) return hero_defs[p] and "oCDtHeroDefinition" or "oCSomethingElse" end
+    local va = I.resolve("RunRoster_Build")
+    local ava = I.resolve("RunRoster_Apply")
+    local function host_build() hooks[va].cb(THIS, ROSTER, function() end)
+        hooks[ava].cb(THIS, ROSTER, 1, function() end) end
+    local function client_receive() hooks[ava].cb(THIS, ROSTER, 0, function() end) end
+    R.hero.share_hero(false)
+
+    check(R.hero.play_as("carmilla") == true, "play_as arms; hero names are case-insensitive")
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_C and I.read_u16(SLOTS + 0x10) == 0
+          and I.read_u64(SLOTS + 0x20) == DEF_C and I.read_u16(SLOTS + 0x28) == 1,
+          "you play Carmilla next to a friend already on Carmilla; friend untouched")
+
+    R.hero.play_as(false)
+    R.hero.play_as("Beowulf", "*")
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_B and I.read_u64(SLOTS + 0x20) == DEF_B, "\"*\" puts everyone on one hero")
+
+    hero_defs[DEF_B] = nil
+    set_roster()
+    host_build()
+    check(I.read_u64(SLOTS + 8) == DEF_A and I.read_u64(SLOTS + 0x20) == DEF_C,
+          "not a hero definition: roster left untouched")
+
+    -- CLIENT: a roster received from the host (Apply without a local build)
+    -- only gets the rules about YOU; "*" must not touch the other players.
+    hero_defs[DEF_B] = true
+    set_roster()
+    client_receive()
+    check(I.read_u64(SLOTS + 8) == DEF_B and I.read_u64(SLOTS + 0x20) == DEF_C,
+          "client: only your own entry changes, the host's roster is otherwise kept")
+    R.hero.play_as(false, "*")
+    R.hero.play_as("Beowulf", "Friend")
+    set_roster()
+    client_receive()
+    check(I.read_u64(SLOTS + 0x20) == DEF_C, "client: a rule about another player is not applied")
+    R.hero.play_as(false, "Friend")
+    R.hero.play_as(false, "*")
+    R.lobby.members, R.player.name, R.rtti.name = real_members, real_name, real_rtti
+end
+
+-- R.hero.unlock_hero_select: forces the availability check true and the
+-- confirm-block code 0, and does not re-hook on a second call.
+do
+    check(R.hero.unlock_hero_select() == 2, "both hero-select gates forced")
+    local avail = hooks[I.resolve("HeroSelect_IsHeroAvailable")]
+    local block = hooks[I.resolve("HeroSelect_ConfirmBlockReason")]
+    check(avail.sig == "ipii" and avail.cb(0x1000, 3, 0, function() return 0 end) == 1,
+          "a taken hero reads as available")
+    check(block.sig == "ip" and block.cb(0x1000, function() return 2 end) == 0,
+          "confirm is never blocked")
+    local before = hook_calls
+    check(R.hero.unlock_hero_select() == 2 and hook_calls == before, "second call does not re-hook")
+end
+
+-- R.hero.allow_taken_pick: a click on a TAKEN portrait is swapped -- the
+-- original (which would refuse) does not run, the lobby is not told, and the
+-- hero becomes your run-start play_as rule, applied to your own entry when a
+-- roster arrives. A free portrait passes straight through.
+do
+    local GRID, MINI, HOLDER, LIST, COMPS, COMP = 0x68000000, 0x68100000, 0x68200000, 0x68300000, 0x68400000, 0x68500000
+    local DEF0, DEF1 = 0x69000100, 0x69000000
+    I.write_u64(MINI + 0x238, HOLDER); I.write_u64(HOLDER + 0x78, DEF1)
+    I.write_u64(GRID + 0x200, LIST); I.write_u32(GRID + 0x208, 2)
+    I.write_u64(LIST, DEF0); I.write_u64(LIST + 8, DEF1)               -- clicked hero is index 1
+    I.write_u64(GRID + 0x1e0, COMPS); I.write_u64(COMPS + 2 * 8, COMP) -- comps[idx+1]
+    I.write_u8(COMP + 0x64, 0x0c)                                       -- taken
+    check(R.hero.allow_taken_pick() == true, "allow_taken_pick arms")
+    local va = I.resolve("HeroSelect_PortraitPicked")
+    local real_members0, real_name0 = R.lobby.members, R.player.name
+    R.player.name = function() return "Ovilli" end
+    -- Ownership comes from your lobby UnlockedHeroFlag (bit = hero index).
+    local hook = R.lobby._hook
+    local saved_me = hook.by_name["Ovilli"]
+    hook.by_name["Ovilli"] = { name = "Ovilli", unlocked = 0x1 }       -- only hero 0 unlocked
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 }, { name = "Friend", hero_id = 1 } } end
+    local ran0 = false
+    hooks[I.resolve("HeroSelect_PortraitPicked")].cb(GRID, MINI, function() ran0 = true end)
+    check(ran0, "held by a friend but NOT unlocked by you: stays locked (no swap)")
+    hook.by_name["Ovilli"] = { name = "Ovilli", unlocked = 0x3 }       -- heroes 0 and 1 unlocked
+    -- Locked but NOT held by anyone (not unlocked / not owned): stays locked.
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 } } end
+    local ran = false
+    hooks[va].cb(GRID, MINI, function() ran = true end)
+    check(ran, "locked hero nobody holds (not owned/unlocked): original runs, no swap")
+    -- Held by another member: swapped.
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 }, { name = "Friend", hero_id = 1 } } end
+    ran = false
+    hooks[va].cb(GRID, MINI, function() ran = true end)
+    check(not ran and I.read_u8(COMP + 0x64) == 0x0c, "taken click: original not run, lock bit untouched")
+    -- A stale record read (members() says Friend is on hero 0) must not hide
+    -- what the freshest parse says: Friend holds hero 1 -> still swapped.
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 }, { name = "Friend", hero_id = 0 } } end
+    local saved_friend = hook.by_name["Friend"]
+    hook.by_name["Friend"] = { name = "Friend", hero_id = 1 }
+    ran = false
+    hooks[va].cb(GRID, MINI, function() ran = true end)
+    check(not ran, "held per the parsed lobby data even when a record read is stale: swapped")
+    hook.by_name["Friend"] = saved_friend
+    R.lobby.members, R.player.name = real_members0, real_name0
+    hook.by_name["Ovilli"] = saved_me
+
+    -- The rule rewrites YOUR entry when a roster arrives (client path).
+    local THIS, HLIST = 0x6a000000, 0x6a100000
+    local ROSTER, CTRL, SLOTS = 0x6a200000, 0x6a201000, 0x6a202000
+    I.write_u64(THIS + 0x98, 0)
+    I.write_u64(THIS + 0x170, HLIST); I.write_u32(THIS + 0x178, 2)
+    I.write_u64(HLIST, DEF0); I.write_u64(HLIST + 8, DEF1)
+    I.write_u64(ROSTER + 0x50, CTRL); I.write_u64(ROSTER + 0x58, SLOTS); I.write_u64(ROSTER + 0x68, 2)
+    I.write_u8(CTRL, 0x01); I.write_u8(CTRL + 1, 0x02)
+    I.write_u64(SLOTS + 8, DEF0); I.write_u16(SLOTS + 0x10, 3)          -- you: lobby pick DEF0
+    I.write_u64(SLOTS + 0x20, DEF1); I.write_u16(SLOTS + 0x28, 1)       -- friend holds DEF1
+    local real_members, real_name, real_rtti = R.lobby.members, R.player.name, R.rtti.name
+    R.lobby.members = function() return { { name = "Ovilli", hero_id = 0 }, { name = "Friend", hero_id = 1 } } end
+    R.player.name = function() return "Ovilli" end
+    R.rtti.name = function() return "oCDtHeroDefinition" end
+    hooks[I.resolve("RunRoster_Apply")].cb(THIS, ROSTER, 0, function() end)
+    check(I.read_u64(SLOTS + 8) == DEF1 and I.read_u64(SLOTS + 0x20) == DEF1,
+          "run start: you play the taken hero next to its owner")
+    R.lobby.members, R.player.name, R.rtti.name = real_members, real_name, real_rtti
+    R.hero.play_as(false)
+
+    I.write_u8(COMP + 0x64, 0x04)                                       -- free portrait
+    ran = false
+    hooks[va].cb(GRID, MINI, function() ran = true end)
+    check(ran and I.read_u8(COMP + 0x64) == 0x04, "free portrait passes through unchanged")
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
