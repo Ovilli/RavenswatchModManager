@@ -68,6 +68,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "description", "icon",
     }),
     "modifier": frozenset({"base", "name", "description", "effect"}),
+    "challenge": frozenset({"base", "name", "modifiers"}),
     "game_mode": frozenset({"base", "chapters"}),
     "reward": frozenset({"base", "counts", "ban"}),
     "melody": frozenset({"base", "effect", "exclude"}),

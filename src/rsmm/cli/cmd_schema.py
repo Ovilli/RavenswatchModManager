@@ -73,6 +73,7 @@ SOURCES: dict[str, Callable[[], list[str]]] = {
     "melody": _stems("Definitions/Melodies", ".melodydef.ot.lodyDefinition.gen"),
     "modifier": _stems("Definitions/GameModifiers",
                        ".gamemodifierdef.ot.meModifierDefinition.gen"),
+    "challenge": _stems("Definitions/Challenges", ".challengedef.ot.allengeDefinition.gen"),
 }
 
 _KINDS = tuple(SOURCES)

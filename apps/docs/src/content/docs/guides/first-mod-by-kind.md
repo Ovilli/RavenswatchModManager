@@ -626,6 +626,39 @@ reuses an existing behaviour; new behaviour is layered in Lua via `R.modifier`.
 
 ---
 
+## `challenge` — a new entry on the challenge screen
+
+**What the player sees.** A new challenge beside DodgeIt and Rush Hour: a title
+and a fixed set of up to five modifiers.
+
+```toml
+[mod]
+id           = "NightOwl"
+name         = "Night Owl"
+version      = "0.1.0"
+author       = "you"
+description  = "Night only, no minimap, no boss timer."
+experimental = true
+
+[[content]]
+kind      = "challenge"
+id        = "NightOwl"
+name      = "Night Owl"
+modifiers = ["NightOnly", "NoMinimap", "NoBossTimer"]
+```
+
+**Prove it.** Open the challenge screen; the new entry is listed with its three
+modifier icons.
+
+**Tip.** The game's text already titles three challenges that never shipped —
+`AllIn`, `TeamUp` and `TheCrucible`. Use one as the `id` and leave out `name`
+to bring it back under its original title.
+
+**Trap.** Five modifiers is the most a challenge holds, and only shipped
+modifiers can be listed.
+
+---
+
 ## `melody` — retune one of the Piper's melodies
 
 **What the player sees.** A lost melody that grants a different effect.

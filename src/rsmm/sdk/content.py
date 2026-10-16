@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity")
+         "entity", "challenge")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -71,6 +71,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # shrine's reward when it died. Arenas select their boss by the
                               # per-boss FLAG and nothing else names the entity (corpus scan,
                               # re-asserted by a slow test); bosses failing that are refused.
+    "challenge": "guess",     # cooks byte-exact (all 5 retail defs and their caches rebuild
+                              # identically, 2026-10-16); the challenge page lists every loaded
+                              # ChallengeDefinition (Ghidra), but a clone appearing is unproven
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
@@ -335,6 +338,7 @@ _KIND_MODULES = {
     "entity": "entities",
     "skill": "skills",
     "modifier": "modifiers",
+    "challenge": "challenges",
     "game_mode": "game_modes",
     "melody": "melodies",
     "mesh": "meshes",

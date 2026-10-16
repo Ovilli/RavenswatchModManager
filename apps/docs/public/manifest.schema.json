@@ -114,6 +114,7 @@
               "ability",
               "animation",
               "boss",
+              "challenge",
               "enemy",
               "entity",
               "game_mode",
@@ -205,6 +206,29 @@
                 "becomes": {},
                 "id": {},
                 "kind": {},
+                "name": {},
+                "schema_version": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "challenge"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "base": {},
+                "id": {},
+                "kind": {},
+                "modifiers": {},
                 "name": {},
                 "schema_version": {}
               },
