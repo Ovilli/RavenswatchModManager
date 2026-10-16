@@ -96,13 +96,13 @@ if(MSVC)
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
-      kernel32 user32 gdi32 psapi ole32)
+      kernel32 user32 gdi32 psapi ole32 bcrypt)
 else()
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
       -static -static-libgcc -static-libstdc++
-      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
+      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32 -lbcrypt)
 endif()
 
 if(MSVC)

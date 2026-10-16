@@ -2,6 +2,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <bcrypt.h>
 
 #include <fstream>
 #include <iostream>
@@ -22,6 +23,36 @@
 namespace fs = std::filesystem;
 
 namespace rsmm {
+
+namespace {
+// Lowercase hex SHA-256 of a file via CNG, or "" on any failure.
+std::string sha256_file_hex(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) return {};
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_HASH_HANDLE h = nullptr;
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0)
+        return {};
+    std::string out;
+    if (BCryptCreateHash(alg, &h, nullptr, 0, nullptr, 0, 0) == 0) {
+        std::vector<char> buf(1 << 20);
+        bool ok = true;
+        while (ok && f) {
+            f.read(buf.data(), static_cast<std::streamsize>(buf.size()));
+            const auto n = static_cast<ULONG>(f.gcount());
+            if (n) ok = BCryptHashData(h, reinterpret_cast<PUCHAR>(buf.data()), n, 0) == 0;
+        }
+        unsigned char d[32];
+        if (ok && f.eof() && BCryptFinishHash(h, d, sizeof d, 0) == 0) {
+            static const char* hx = "0123456789abcdef";
+            for (unsigned char c : d) { out += hx[c >> 4]; out += hx[c & 15]; }
+        }
+        BCryptDestroyHash(h);
+    }
+    BCryptCloseAlgorithmProvider(alg, 0);
+    return out;
+}
+}
 
 Loader& Loader::get() {
     static Loader inst;
@@ -257,6 +288,24 @@ void Loader::init(const fs::path& game_dir) {
                         + " — the game updated; absolute data addresses are "
                           "DISABLED (run `rsmm update-data`, then re-verify "
                           "va globals). Pattern-resolved features still work.");
+                } else {
+                    // Same size is not same build: a hotfix can keep the size
+                    // and move every global. The sha is the real fingerprint.
+                    const auto want_sha = mj.value("game_exe_sha256", std::string{});
+                    const auto have_sha = sha256_file_hex(game_exe);
+                    if (!want_sha.empty() && !have_sha.empty()
+                        && want_sha != have_sha) {
+                        va_trusted_ = false;
+                        log("[va-gate] game exe sha " + have_sha.substr(0, 12)
+                            + " != symbol-map build " + want_sha.substr(0, 12)
+                            + " (same size) — the game updated; absolute data "
+                              "addresses are DISABLED (run `rsmm update-data`, "
+                              "then re-verify va globals). Pattern-resolved "
+                              "features still work.");
+                    } else if (have_sha.empty()) {
+                        log("[va-gate] could not hash the game exe — size "
+                            "matched, keeping va-globals enabled (unverified)");
+                    }
                 }
             } catch (const std::exception& e) {
                 log(std::string("[va-gate] meta parse error: ") + e.what());
