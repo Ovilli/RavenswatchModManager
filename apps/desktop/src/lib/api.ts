@@ -1,6 +1,8 @@
 import { ApiError, ApiTimeoutError, createApiClient } from '@rsmm/api-client';
+import type { ModTranslations } from '@rsmm/schemas';
 import { getApiUrl } from './api-url';
 import { t } from './i18n';
+import { modLocale } from './rsmm';
 
 const API_BASE = getApiUrl();
 
@@ -13,10 +15,48 @@ const API_BASE = getApiUrl();
 // TRUSTED_ORIGINS env var doesn't include the Windows WebView origin.
 const noCredsFetch: typeof fetch = (input, init) => fetch(input, { ...init, credentials: 'omit' });
 
-export const api = createApiClient({
+const client = createApiClient({
   baseUrl: API_BASE,
   fetch: noCredsFetch,
 });
+
+type Translatable = {
+  name: string;
+  summary: string | null;
+  description?: string | null;
+  translations?: ModTranslations | null;
+};
+
+/** A registry mod with its own translation for `locale` laid over the English
+ *  name/summary/description; any field the author left out stays English. */
+export function localizeMod<T extends Translatable>(mod: T, locale: string): T {
+  const tr = mod.translations?.[locale];
+  if (!tr) return mod;
+  return {
+    ...mod,
+    name: tr.name || mod.name,
+    summary: tr.summary || mod.summary,
+    description: tr.description || mod.description,
+  };
+}
+
+// Every registry read the desktop shows goes through these two, so localizing
+// here covers browse, detail, updates and the command palette at once.
+export const api: typeof client = {
+  ...client,
+  mods: {
+    ...client.mods,
+    list: async (...args) => {
+      const res = await client.mods.list(...args);
+      const loc = modLocale();
+      return { ...res, items: res.items.map((m) => localizeMod(m, loc)) };
+    },
+    get: async (...args) => {
+      const res = await client.mods.get(...args);
+      return { ...res, mod: localizeMod(res.mod, modLocale()) };
+    },
+  },
+};
 
 export function getApiBaseUrl(): string {
   return API_BASE;

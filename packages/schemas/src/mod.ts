@@ -2,9 +2,9 @@ import { z } from 'zod';
 import {
   httpUrlSchema,
   safeHttpUrl,
-  sanitizedOptionalHttpUrlSchema,
   sanitizedHttpUrlArraySchema,
   sanitizedHttpUrlSchema,
+  sanitizedOptionalHttpUrlSchema,
 } from './url';
 
 export const modSlugSchema = z
@@ -42,6 +42,24 @@ export const overlayDeclarationSchema = z
 
 export type OverlayDeclaration = z.infer<typeof overlayDeclarationSchema>;
 
+/**
+ * Per-locale store text, keyed by the SDK's locale tags (`ZH-S`, `JA`, …).
+ * Filled at pack time from the mod's own `lang/<locale>.toml` `[manifest]`;
+ * a field left out falls back to the English one.
+ */
+export const modTranslationsSchema = z
+  .record(
+    z.string().regex(/^[A-Z]{2}(-[A-Z]{1,2})?$/),
+    z.object({
+      name: z.string().min(1).max(128).optional(),
+      summary: z.string().max(512).optional(),
+      description: z.string().max(8192).optional(),
+    }),
+  )
+  .refine((t) => Object.keys(t).length <= 16, { message: 'at most 16 translations' });
+
+export type ModTranslations = z.infer<typeof modTranslationsSchema>;
+
 export const modManifestSchema = z.object({
   id: modSlugSchema,
   name: z.string().min(1).max(128),
@@ -74,6 +92,7 @@ export const modManifestSchema = z.object({
   // validation in `rsmm.cli.cmd_overlay.parse_spec`, which is what actually
   // gates it at lint time; this keeps a published manifest honest too.
   overlay: overlayDeclarationSchema.optional(),
+  translations: modTranslationsSchema.optional(),
 });
 
 export type ModManifest = z.infer<typeof modManifestSchema>;
@@ -132,6 +151,9 @@ export const modListItemSchema = z.object({
   // modManifestSchema). The desktop app uses these to warn on mismatch.
   sdkVersion: z.string().nullable().optional(),
   gameBuild: z.string().nullable().optional(),
+  // From the latest servable version's manifest. `.catch` so one malformed
+  // legacy manifest drops its translations instead of failing the whole list.
+  translations: modTranslationsSchema.nullable().optional().catch(undefined),
 });
 
 export type ModListItem = z.infer<typeof modListItemSchema>;

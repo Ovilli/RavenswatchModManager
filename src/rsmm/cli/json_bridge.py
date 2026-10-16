@@ -773,6 +773,29 @@ def _slugify(value: str) -> str:
     return s
 
 
+#: Caps mirror `modManifestSchema` (name/summary/description), so a long
+#: translation is trimmed here rather than failing the whole upload.
+_TRANSLATED_FIELDS = {"name": 128, "summary": 512, "description": 8192}
+
+
+def _manifest_translations(mod_dir: Path) -> dict[str, dict[str, str]]:
+    """``{locale: {name, summary, description}}`` from each shipped
+    ``lang/<locale>.toml`` ``[manifest]`` — the same text the desktop library
+    already shows locally, carried to the registry so a browse in that
+    language shows it too."""
+    from rsmm.sdk.i18n import FALLBACK_LOCALE, SUPPORTED_LOCALES, mod_text
+    out: dict[str, dict[str, str]] = {}
+    for loc in SUPPORTED_LOCALES:
+        if loc in (FALLBACK_LOCALE, "RAW"):
+            continue
+        text = mod_text(mod_dir, loc).get("manifest", {})
+        fields = {k: v.strip()[:cap] for k, cap in _TRANSLATED_FIELDS.items()
+                  if isinstance(v := text.get(k), str) and v.strip()}
+        if fields:
+            out[loc] = fields
+    return out
+
+
 def cmd_pack_mod(mod_id: str) -> int:
     """``rsmm json pack-mod``: :func:`pack_mod_metadata` as JSON on stdout."""
     return _emit(pack_mod_metadata(mod_id))
@@ -873,6 +896,9 @@ def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
     deps = _deps_map(manifest)
     if deps:
         out_manifest["dependencies"] = deps
+    translations = _manifest_translations(src)
+    if translations:
+        out_manifest["translations"] = translations
 
     return {
         "ok": True,

@@ -221,6 +221,14 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
+      translations: sql<unknown>`(
+        select ${schema.modVersions.manifestJson} -> 'translations'
+        from ${schema.modVersions}
+        where ${schema.modVersions.modId} = ${outerModId}
+          and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
+        order by ${schema.modVersions.createdAt} desc
+        limit 1
+      )`,
       downloads: sql<number>`coalesce((
         select sum(${schema.modDownloads.count})::int
         from ${schema.modDownloads}
@@ -319,6 +327,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       featured: r.featured,
       nsfw: r.nsfw,
       ownerId: r.ownerId,
+      translations: r.translations ?? undefined,
     })),
     total,
     totalDownloads,
@@ -433,6 +442,9 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       dependencies:
         (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
+      translations:
+        (servableVersions[0]?.manifestJson as { translations?: unknown } | undefined)
+          ?.translations ?? undefined,
     },
     versions: visibleVersions.map((v) => ({
       id: v.id,
