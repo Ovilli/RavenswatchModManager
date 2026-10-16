@@ -203,6 +203,33 @@ Part names and link indices are the ones `rsmm entity-graph` prints for that
 file, and removing a link shifts the later indices of the SAME list, so remove
 from the end first or list one step per field. `clone` steps are refused.
 
+**Let the player choose the number.** A `set` step can read the mod's config
+instead of a literal: `config = "<field>"` takes the player's value, and
+`times = <n>` multiplies a number field by `n` — write the shipped value there,
+and a multiplier of 1.0 leaves the game as it was.
+
+```toml
+# config_schema.toml
+[fields.health]
+label   = "Enemy health multiplier"
+type    = "float"
+min     = 0.5
+max     = 5.0
+default = 1.5
+
+# manifest.toml
+[[content.steps]]
+set    = "Chapter 2 Max Health Multiplier Selector.obj_4[1]"
+config = "health"
+times  = 2.0          # shipped value
+```
+
+Like every content config, a change takes effect on the next launch.
+
+Any step can also carry `when = "<bool field>"`: it applies only while that
+switch is on. That is how a mod offers an optional structural change, e.g. a
+`link` that sends a tester's `on_false` to the same state as its `on_true`.
+
 ---
 
 ## `mesh` — put your model in the game

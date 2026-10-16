@@ -13,6 +13,12 @@ Fields:
                                  (``.entity.ot`` optional, ``\\`` or ``/``).
     ``steps``   (list, required) ``[[content.steps]]`` tables, applied in order.
 
+A ``set`` step may read its value from the mod's config instead of ``value``:
+``config = "<field>"``, plus ``times = <n>`` to multiply a number field by
+``n`` (the shipped value, so a 1.0 multiplier leaves the game as it was).
+Any step may carry ``when = "<bool field>"``: it applies only while that
+switch is on (e.g. a ``link`` that forces a branch).
+
 ``clone`` steps are refused: a copied part adds resources only a custom-hero
 build preloads. Several blocks may edit one file; each starts from what an
 earlier block of this mod already wrote.
@@ -44,6 +50,46 @@ def _rel(entity: str) -> str:
     return f"{_ROOT}/{p}{_GEN_SUFFIX}"
 
 
+def _resolve_config(defn: ContentDef, steps: list[dict], mod_root: Path) -> list[dict]:
+    """A ``set`` step may take its value from the mod's config instead of a
+    literal: ``config = "<field>"`` reads the player's value (or the schema
+    default), and ``times = <n>`` multiplies a number by it — so one
+    "health multiplier" field can scale every shipped value it names."""
+    if not any("config" in s or "when" in s for s in steps):
+        return steps
+    from rsmm.sdk.config import ConfigError, ConfigStore, config_value
+    try:
+        store = ConfigStore(mod_root)
+    except (OSError, ConfigError, ValueError) as e:
+        raise ContentError(f"entity {defn.id}: config unreadable: {e}") from e
+    out = []
+    for s in steps:
+        if "when" in s:
+            try:
+                on = config_value(store, s["when"])
+            except ConfigError as e:
+                raise ContentError(f"entity {defn.id}: when: {e}") from e
+            if not isinstance(on, bool):
+                raise ContentError(f"entity {defn.id}: when = {s['when']!r} must name an "
+                                   f"on/off (bool) field")
+            if not on:
+                continue
+            s = {k: v for k, v in s.items() if k != "when"}
+        if "config" not in s:
+            out.append(s)
+            continue
+        if "set" not in s or "value" in s:
+            raise ContentError(f"entity {defn.id}: 'config' goes on a set step, "
+                               f"in place of 'value'")
+        try:
+            value = config_value(store, s["config"], s.get("times"))
+        except ConfigError as e:
+            raise ContentError(f"entity {defn.id}: {e}") from e
+        out.append({k: v for k, v in s.items() if k not in ("config", "times")}
+                   | {"value": value})
+    return out
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Write the edited entity file into the mod's ``assets/`` tree."""
     C.validate_id("entity", defn.id)
@@ -57,6 +103,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if any("clone" in s for s in steps):
         raise ContentError(f"entity {defn.id}: clone steps are not supported here; "
                            f"use set / link / add_link / remove_link")
+
+    steps = _resolve_config(defn, steps, out_dir.parent)
 
     rel = _rel(entity)
     shipped = corpus.read(rel)

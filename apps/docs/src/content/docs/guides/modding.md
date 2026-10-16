@@ -164,6 +164,11 @@ field    = "m_eComputerType"
 value    = 0
 ```
 
+A `stat` field can take its number from the mod's config instead:
+`min = { config = "pack_size", times = 15 }` reads the player's `pack_size`
+setting and multiplies it by 15 (write the shipped value there, so 1.0 leaves the
+game as it was). Like every content config, it takes effect on the next launch.
+
 The same blocks from the optional Python SDK — `python3 mods/MyMod/build.py`
 writes the manifest above:
 

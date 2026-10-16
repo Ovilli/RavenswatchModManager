@@ -347,3 +347,18 @@ class ConfigStore:
             else:
                 out.append(ch)
         return '"' + "".join(out) + '"'
+
+
+def config_value(store: ConfigStore, name: Any, times: Any = None) -> Any:
+    """The player's value for config field ``name`` (or the schema default),
+    multiplied by ``times`` when given — how a declarative edit takes a number
+    from the mod's settings instead of a literal (`kind = "entity"` steps,
+    `[[patch]] kind = "stat"` fields). Raises ConfigError on a bad reference."""
+    if name not in store.schema.fields:
+        raise ConfigError(f"config = {name!r} is not a field in config_schema.toml")
+    value = store.get(name)
+    if times is None:
+        return value
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigError(f"'times' needs a number field, {name!r} is {value!r}")
+    return round(value * float(times), 6)

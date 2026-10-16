@@ -297,6 +297,8 @@ def lint_one(entry: Path) -> tuple[int, int]:
                       f"{', '.join(sorted(MS.STAT_VALUE_FIELDS))}")
                 errs += 1
             for k in set_fields:
+                if isinstance(p[k], dict) and "config" in p[k]:
+                    continue        # { config = "<field>", times = n }: resolved at apply
                 if isinstance(p[k], bool) or not isinstance(p[k], (int, float)):
                     if isinstance(p[k], bool) and have and k == "value":
                         continue        # a bool global takes true/false

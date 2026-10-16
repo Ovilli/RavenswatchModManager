@@ -96,3 +96,45 @@ def test_an_out_of_range_link_names_the_list(tmp_path):
 def test_bad_blocks_are_refused_with_the_reason(tmp_path, fields, msg):
     with pytest.raises(ContentError, match=msg):
         entities.emit("m", ContentDef(kind="entity", id="Bad", fields=fields), tmp_path)
+
+
+def _cfg_root(tmp_path):
+    (tmp_path / "config_schema.toml").write_text(
+        '[fields.health]\ntype = "float"\ndefault = 1.5\n'
+        '[fields.on]\ntype = "bool"\ndefault = true\n', encoding="utf-8")
+    return tmp_path
+
+
+def test_a_set_step_can_take_its_value_from_config(tmp_path):
+    d = ContentDef(kind="entity", id="e", fields={})
+    steps = [{"set": "A.obj_4[1]", "config": "health", "times": 2.4},
+             {"set": "B.value", "config": "on"},
+             {"remove_link": "C.list[0]"}]
+    assert entities._resolve_config(d, steps, _cfg_root(tmp_path)) == [
+        {"set": "A.obj_4[1]", "value": 3.6},
+        {"set": "B.value", "value": True},
+        {"remove_link": "C.list[0]"},
+    ]
+
+
+@pytest.mark.parametrize("step, msg", [
+    ({"set": "A.v", "config": "nope"}, "not a field"),
+    ({"set": "A.v", "config": "on", "times": 2}, "needs a number"),
+    ({"set": "A.v", "config": "health", "value": 1}, "in place of 'value'"),
+])
+def test_config_steps_fail_loudly(tmp_path, step, msg):
+    d = ContentDef(kind="entity", id="e", fields={})
+    with pytest.raises(ContentError, match=msg):
+        entities._resolve_config(d, [step], _cfg_root(tmp_path))
+
+
+def test_when_gates_any_step_on_a_bool_field(tmp_path):
+    root = _cfg_root(tmp_path)
+    d = ContentDef(kind="entity", id="e", fields={})
+    steps = [{"link": "T.on_false", "to": "S", "when": "on"}, {"remove_link": "C.l[0]"}]
+    assert entities._resolve_config(d, steps, root) == [{"link": "T.on_false", "to": "S"},
+                                                        {"remove_link": "C.l[0]"}]
+    (root / "config.toml").write_text("on = false\n", encoding="utf-8")
+    assert entities._resolve_config(d, steps, root) == [{"remove_link": "C.l[0]"}]
+    with pytest.raises(ContentError, match="on/off"):
+        entities._resolve_config(d, [{"remove_link": "C.l[0]", "when": "health"}], root)

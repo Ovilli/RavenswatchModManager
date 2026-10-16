@@ -104,8 +104,24 @@ def collect_patches() -> list[_Patch]:
             if not kind:
                 continue
             data = {k: v for k, v in p.items() if k != "kind"}
+            try:
+                data = _resolve_config(entry, data)
+            except ValueError as e:
+                print(f"  [merge] skip {entry.name} {kind} patch: {e}", file=sys.stderr)
+                continue
             out.append(_Patch(mid, order, kind, data))
     return out
+
+
+def _resolve_config(mod_dir: Path, data: dict) -> dict:
+    """A patch field written ``{ config = "<field>", times = n }`` takes its
+    value from the mod's config (see ``rsmm.sdk.config.config_value``)."""
+    refs = {k: v for k, v in data.items() if isinstance(v, dict) and "config" in v}
+    if not refs:
+        return data
+    from rsmm.sdk.config import ConfigStore, config_value
+    store = ConfigStore(mod_dir)
+    return data | {k: config_value(store, v["config"], v.get("times")) for k, v in refs.items()}
 
 
 def _ranked(items: list[_Patch]) -> list[_Patch]:
