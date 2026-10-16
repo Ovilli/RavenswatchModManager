@@ -117,11 +117,41 @@ def _parse_libraryfolders_vdf(vdf: Path) -> list[Path]:
     return roots
 
 
+def _registry_steam_roots() -> list[Path]:
+    """Where Steam says it is installed (Windows registry), or ``[]``.
+
+    Steam can live anywhere (``C:\\QqQqQ\\Steam``, #55); only the registry
+    knows, and without it a Steam outside Program Files is never found."""
+    if sys.platform != "win32":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+    out: list[Path] = []
+    for hive, key, value in (
+        (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    ):
+        try:
+            with winreg.OpenKey(hive, key) as k:
+                raw, _type = winreg.QueryValueEx(k, value)
+        except OSError:
+            continue
+        if isinstance(raw, str) and raw.strip():
+            p = Path(raw.strip())
+            if p not in out:
+                out.append(p)
+    return out
+
+
 def _steam_roots() -> list[Path]:
     """Locations where Steam's libraryfolders.vdf may live, per platform."""
     home = Path.home()
     if sys.platform == "win32":
         return [
+            *_registry_steam_roots(),
             Path(r"C:\Program Files (x86)\Steam"),
             Path(r"C:\Program Files\Steam"),
         ]

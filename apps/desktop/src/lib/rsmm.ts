@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
-import { isEnabledIn, useApp } from '../store';
+import { defaultGameDir, isEnabledIn, useApp } from '../store';
 import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
 import { noteGameStateChanged } from './session-cache';
@@ -208,7 +208,20 @@ export function rsmmEnv(profileId?: string): Record<string, string> {
   const id = isSafeProfileId(requested) ? requested : 'default';
   // The app's language, so the CLI hands back each mod's own translation
   // (lang/<LOCALE>.toml) for names, overlay headers and config labels.
-  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}`, RSMM_LOCALE: modLocale() };
+  const env: Record<string, string> = {
+    RSMM_MODS_DIR: `${rootDir}/profiles/${id}`,
+    RSMM_LOCALE: modLocale(),
+  };
+  // The Game folder setting reached no CLI call at all, so a Steam outside
+  // Program Files could not be fixed from Settings (#55). Only a folder the
+  // user actually chose is forwarded: the field starts out holding the
+  // platform default, and pinning that would override the CLI's autodetect
+  // for everyone it currently finds.
+  const gameDir = state.settings.gameDir?.trim();
+  if (gameDir && gameDir !== defaultGameDir()) {
+    env.RSMM_GAME_DIR = gameDir;
+  }
+  return env;
 }
 
 /** The app's language as a mod locale code (rsmm.sdk.i18n SUPPORTED_LOCALES). */

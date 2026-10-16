@@ -122,3 +122,33 @@ def test_pep562_getattr_returns_mods_dir(monkeypatch, tmp_path):
 def test_pep562_getattr_raises_for_unknown():
     with pytest.raises(AttributeError):
         paths_mod.__getattr__("NOT_A_REAL_ATTR")
+
+
+def test_registry_steam_path_comes_first_on_windows(monkeypatch):
+    """#55: a Steam outside Program Files is only known to the registry."""
+    import sys
+    import types
+
+    class _Key:
+        def __init__(self, key):
+            self.key = key
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def open_key(hive, key):
+        if key != r"Software\Valve\Steam":
+            raise OSError("missing")
+        return _Key(key)
+
+    fake = types.SimpleNamespace(
+        HKEY_CURRENT_USER=1, HKEY_LOCAL_MACHINE=2, OpenKey=open_key,
+        QueryValueEx=lambda k, v: ("C:/QqQqQ/Steam", 1))
+    monkeypatch.setitem(sys.modules, "winreg", fake)
+    monkeypatch.setattr(paths_mod.sys, "platform", "win32")
+    roots = paths_mod._steam_roots()
+    assert str(roots[0]).replace("\\", "/") == "C:/QqQqQ/Steam"
+    assert len(roots) == 3  # then the two Program Files fallbacks
