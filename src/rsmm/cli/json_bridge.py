@@ -1750,6 +1750,25 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def cmd_update_cli(dest: str, check_only: bool) -> int:
+    """Stage a newer frozen CLI from the rolling `cli` release into
+    `<dest>/staged`; the app swaps it in on its next start. See
+    rsmm.engine.cli_update."""
+    try:
+        from rsmm.engine.cli_update import run
+
+        state = run(Path(dest), check_only, on_progress=_progress_reporter("download"))
+        return _emit({
+            "ok": state["status"] != "needs_app_update",
+            "status": state["status"],
+            "installedVersion": state.get("installed_version"),
+            "remoteVersion": state.get("remote_version"),
+            "notes": state.get("notes"),
+        })
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "status": "error", "error": str(e)})
+
+
 def _backend_state(game_dir: Path, check_server: bool) -> dict[str, Any]:
     """Everything the Settings panel shows about the self-hosted backend."""
     from rsmm.engine import backend_redirect as br
@@ -1910,6 +1929,9 @@ def cmd_item_bans_set(items_json: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if (sys.argv[1:] if argv is None else argv)[:1] == ["serve"]:
+        from rsmm.cli.json_serve import serve
+        return serve()
     ap = argparse.ArgumentParser(
         prog="rsmm json",
         description="Machine-readable JSON bridge for the desktop / web UI.",
@@ -2006,6 +2028,11 @@ def main(argv: list[str] | None = None) -> int:
         "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
     p_upd_loader.add_argument("--check", action="store_true",
                               help="report status only, do not install")
+    p_upd_cli = sub.add_parser(
+        "update-cli", help="stage the newest signed CLI build for the app's next start")
+    p_upd_cli.add_argument("--dest", required=True, help="the app's CLI channel directory")
+    p_upd_cli.add_argument("--check", action="store_true",
+                           help="report status only, do not download")
     p_backend = sub.add_parser(
         "backend", help="read, set or clear the self-hosted online backend address")
     backend_sub = p_backend.add_subparsers(dest="backend_cmd", required=True)
@@ -2093,6 +2120,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_data(args.check)
     if args.cmd == "update-loader":
         return cmd_update_loader(args.check)
+    if args.cmd == "update-cli":
+        return cmd_update_cli(args.dest, args.check)
     if args.cmd == "changelog":
         return cmd_changelog(args.refresh)
     if args.cmd == "backend":

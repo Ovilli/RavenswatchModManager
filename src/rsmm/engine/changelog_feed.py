@@ -122,7 +122,7 @@ def _clean(value: Any, limit: int) -> str:
     return text[:limit].strip()
 
 
-def _loader_version(raw: Any) -> int | None:
+def _loader_version(raw: Any, key: str = "loader_version") -> int | None:
     """The loader-channel version an entry describes, if it is a channel note.
 
     Loader/SDK updates reach users through `rsmm update-loader` with no app
@@ -133,7 +133,7 @@ def _loader_version(raw: Any) -> int | None:
     unread. A channel note carries `loader_version` instead, and is shown on
     the loader the user actually has planted.
     """
-    v = raw.get("loader_version")
+    v = raw.get(key)
     if isinstance(v, bool) or not isinstance(v, int):
         return None
     return v if 0 < v <= 100_000 else None
@@ -145,9 +145,11 @@ def _entry(raw: Any) -> dict | None:
         return None
     version = _clean(raw.get("version"), MAX_VERSION)
     loader_version = _loader_version(raw)
-    # One or the other must identify the entry. An app release keeps `version`;
-    # a loader-channel note keeps `loader_version` and may omit it entirely.
-    if not version and loader_version is None:
+    # The CLI channel (rsmm.engine.cli_update) ships the same way, keyed by its own stamp.
+    cli_version = _loader_version(raw, "cli_version")
+    # One must identify the entry. An app release keeps `version`; a channel
+    # note keeps `loader_version` / `cli_version` and may omit it entirely.
+    if not version and loader_version is None and cli_version is None:
         return None
     highlights = raw.get("highlights")
     if not isinstance(highlights, list):
@@ -164,6 +166,8 @@ def _entry(raw: Any) -> dict | None:
     }
     if loader_version is not None:
         entry["loader_version"] = loader_version
+    if cli_version is not None:
+        entry["cli_version"] = cli_version
     summary = _clean(raw.get("summary"), MAX_TEXT)
     if summary:
         entry["summary"] = summary

@@ -36,13 +36,18 @@ FEED = REPO / "data" / "changelog.json"
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--loader-version", type=int, required=True)
+    which = ap.add_mutually_exclusive_group(required=True)
+    which.add_argument("--loader-version", type=int)
+    which.add_argument("--cli-version", type=int,
+                       help="a CLI-channel note (scripts/publish_cli.py) instead")
     ap.add_argument("--summary", required=True, help="one sentence, shown as the subtitle")
     ap.add_argument("--highlight", action="append", default=[],
                     help="a bullet; repeat for more (at least one required)")
     ap.add_argument("--date", default=_date.today().isoformat())
     ap.add_argument("--feed", default=str(FEED))
     a = ap.parse_args(argv)
+    field, num, label = (("cli_version", a.cli_version, "cli") if a.cli_version is not None
+                         else ("loader_version", a.loader_version, "loader"))
 
     if not a.highlight:
         print("at least one --highlight is required (an entry with nothing to "
@@ -62,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         # DIRECTLY as typed data — an absent key makes the entry a different
         # shape from every other one and fails the build.
         "version": "",
-        "loader_version": a.loader_version,
+        field: num,
         "date": a.date,
         "summary": a.summary,
         "highlights": list(a.highlight),
@@ -71,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     # top, because the feed is newest-first and a channel publish is the most
     # recent thing that happened.
     kept = [e for e in entries
-            if not (isinstance(e, dict) and e.get("loader_version") == a.loader_version)]
+            if not (isinstance(e, dict) and e.get(field) == num)]
     replaced = len(kept) != len(entries)
     # The client reads at most MAX_ENTRIES and silently drops the rest, and
     # publish_changelog.sh refuses a feed it would truncate -- so a full feed
@@ -95,11 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     except ChangelogError as e:
         print(f"the feed no longer parses: {e}", file=sys.stderr)
         return 1
-    if not any(e.get("loader_version") == a.loader_version for e in feed["entries"]):
+    if not any(e.get(field) == num for e in feed["entries"]):
         print("the new entry was dropped by the parser (too long? empty?)", file=sys.stderr)
         return 1
 
-    print(f"{'replaced' if replaced else 'added'} loader v{a.loader_version} note in {path}")
+    print(f"{'replaced' if replaced else 'added'} {label} v{num} note in {path}")
     if retired:
         print(f"  retired the {retired} oldest note(s): the client shows {MAX_ENTRIES} at most")
     print(f"  {a.summary}")

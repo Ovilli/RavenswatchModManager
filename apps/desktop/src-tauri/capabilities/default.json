@@ -41,6 +41,16 @@
           "args": true
         },
         {
+          "name": "cli-channel",
+          "cmd": "$APPLOCALDATA/cli/current/rsmm",
+          "args": true
+        },
+        {
+          "name": "cli-channel-win",
+          "cmd": "$APPLOCALDATA/cli/current/rsmm.exe",
+          "args": true
+        },
+        {
           "name": "pgrep",
           "cmd": "pgrep",
           "args": [
@@ -75,6 +85,16 @@
         {
           "name": "binaries/rsmm",
           "sidecar": true,
+          "args": true
+        },
+        {
+          "name": "cli-channel",
+          "cmd": "$APPLOCALDATA/cli/current/rsmm",
+          "args": true
+        },
+        {
+          "name": "cli-channel-win",
+          "cmd": "$APPLOCALDATA/cli/current/rsmm.exe",
           "args": true
         },
         {
@@ -120,6 +140,12 @@
         },
         {
           "url": "https://github.com/**"
+        },
+        {
+          "url": "https://ko-fi.com/**"
+        },
+        {
+          "url": "https://discord.gg/**"
         }
       ]
     },

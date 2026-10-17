@@ -380,6 +380,10 @@ export const zhCN: Record<string, string> = {
   'Loader DLL': '加载器 DLL',
   'Loader features': '加载器功能',
   'Loader update': '加载器更新',
+  'Loader v{n}': '加载器 v{n}',
+  'CLI v{n}': 'CLI v{n}',
+  'CLI v{version} · update channel': 'CLI v{version} · 更新通道',
+  'CLI v{version} · bundled': 'CLI v{version} · 内置',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
   'Loader updated to v{version} — restart Ravenswatch to pick it up.':

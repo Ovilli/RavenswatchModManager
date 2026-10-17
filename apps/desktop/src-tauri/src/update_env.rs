@@ -55,7 +55,7 @@ impl UpdateTarget {
             path: path.map(|p| p.display().to_string()),
             writable: false,
             reason: reason.into(),
-            can_migrate: cfg!(target_os = "linux"),
+            can_migrate: cfg!(target_os = "linux") && appimage_runs_here(),
         }
     }
 }
@@ -89,6 +89,32 @@ fn file_writable(path: &Path) -> bool {
 #[cfg(target_os = "linux")]
 const SYSTEM_PREFIXES: &[&str] = &["/usr/", "/opt/", "/snap/", "/nix/store/", "/var/lib/flatpak/"];
 
+/// The AppImage is built on Ubuntu 24.04 (its bundled WebKitGTK from 22.04 was
+/// far too slow), so it needs that glibc. Below it, the released AppImage does
+/// not start: never migrate onto it or update into it.
+const APPIMAGE_GLIBC: (u32, u32) = (2, 39);
+
+#[cfg(target_os = "linux")]
+fn glibc_version() -> (u32, u32) {
+    extern "C" {
+        fn gnu_get_libc_version() -> *const std::os::raw::c_char;
+    }
+    // SAFETY: glibc returns a static NUL-terminated string.
+    let v = unsafe { std::ffi::CStr::from_ptr(gnu_get_libc_version()) }.to_string_lossy();
+    let mut it = v.split('.').map(|p| p.parse().unwrap_or(0));
+    (it.next().unwrap_or(0), it.next().unwrap_or(0))
+}
+
+#[cfg(target_os = "linux")]
+fn appimage_runs_here() -> bool {
+    glibc_version() >= APPIMAGE_GLIBC
+}
+
+#[cfg(not(target_os = "linux"))]
+fn appimage_runs_here() -> bool {
+    false
+}
+
 #[cfg(target_os = "linux")]
 fn detect() -> UpdateTarget {
     // The updater uses `$APPIMAGE` (via `app.env().appimage`) as the path to
@@ -121,6 +147,20 @@ fn detect() -> UpdateTarget {
                     parent.display()
                 ),
             );
+        }
+        if !appimage_runs_here() {
+            let (maj, min) = glibc_version();
+            let mut t = UpdateTarget::blocked(
+                "appimage",
+                Some(path),
+                format!(
+                    "New versions of the AppImage need glibc {}.{} and this system has {maj}.{min}, \
+                     so an update would not start. Install the .deb from the releases page instead.",
+                    APPIMAGE_GLIBC.0, APPIMAGE_GLIBC.1
+                ),
+            );
+            t.can_migrate = false;
+            return t;
         }
         return UpdateTarget::ok("appimage", Some(path));
     }
