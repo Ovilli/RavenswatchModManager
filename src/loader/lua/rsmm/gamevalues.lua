@@ -490,7 +490,7 @@ end
 -- AND fires the change signal at record+8, which is what every listener of the
 -- value hangs off. A poke changes the number and tells nobody.
 --
--- LOCAL-ONLY. FUN_140706660 (under both setters) marks a value for
+-- LOCAL-ONLY. FUN_140704e70 (under both setters; FUN_140706660 before Update 6) marks a value for
 -- replication when its settings byte +0xbe is set, and silently refuses a
 -- client's write to such a value. So a replicated value is written only when
 -- the run is provably solo -- "Hero Count" reads exactly 1 -- and never
