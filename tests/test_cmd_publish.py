@@ -107,6 +107,22 @@ def test_publish_runs_the_whole_flow_and_waits_until_live(api, monkeypatch):
     assert all(TOKEN not in line for line in lines), "the token must never be printed"
 
 
+def test_the_cli_returns_after_upload_unless_asked_to_wait(api, monkeypatch, capsys):
+    # The scan runs server-side and a clean version goes live on its own, so the
+    # command must not hold the terminal for it by default.
+    monkeypatch.setenv("RSMM_API_TOKEN", TOKEN)
+    import rsmm.cli._suggest as S
+    monkeypatch.setattr(S, "resolve_mod", lambda target, _dir: target)
+    assert P.main(["my-mod"]) == 0
+    assert ("GET", f"/api/mods/versions/{VERSION_ID}/scan-status") not in [
+        (m, p) for m, p, _a, _b in api.calls]
+    assert "close this terminal" in capsys.readouterr().out
+    api.calls.clear()
+    assert P.main(["my-mod", "--wait"]) == 0
+    assert ("GET", f"/api/mods/versions/{VERSION_ID}/scan-status") in [
+        (m, p) for m, p, _a, _b in api.calls]
+
+
 @pytest.mark.parametrize("status, match", [
     (409, "already published"),
     (403, "nope"),

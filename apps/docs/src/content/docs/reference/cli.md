@@ -218,15 +218,17 @@ Package a mod for distribution. Verifies no vanilla (unmodified game) bytes are 
 ### `rsmm publish <id>`
 
 Upload a mod to the store in one command: lint, pack (with the vanilla-byte
-check), upload with its checksum, queue the malware scan, and wait until the
-version is live. A version can only be downloaded once its scan comes back
-clean; that gate is on the server and a token cannot skip it.
+check), upload with its checksum and queue the malware scan, then return. The
+scan runs on the server and the version goes live by itself once it comes back
+clean, so you can close the terminal; add `--wait` to stay and see the verdict.
+A version can only be downloaded once its scan is clean; that gate is on the
+server and a token cannot skip it.
 
 ```sh
 ./rsmm publish login        # paste a token from rsmm.me/account (input hidden)
 ./rsmm publish whoami       # which account the token publishes as
-./rsmm publish MyMod        # pack, upload, scan, wait until live
-./rsmm publish MyMod --no-wait
+./rsmm publish MyMod        # pack, upload, queue the scan, return
+./rsmm publish MyMod --wait # ...and stay until the scan says it is live
 ./rsmm publish logout
 ```
 
