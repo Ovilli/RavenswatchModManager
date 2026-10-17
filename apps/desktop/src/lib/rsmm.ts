@@ -1204,10 +1204,21 @@ export interface UpdateCliResult {
  * Stage the newest signed CLI build (rolling `cli` release); the app switches
  * to it on its next start. Lets a Python fix ship without an app release.
  */
-export async function updateCli(): Promise<UpdateCliResult | null> {
-  const { dir } = await cliChannel();
-  if (!dir) return null;
-  return rsmm<UpdateCliResult>(['update-cli', '--dest', dir], { timeoutMs: LONG_TIMEOUT_MS });
+export function updateCli(): Promise<UpdateCliResult | null> {
+  lastCliUpdatePromise = (async () => {
+    const { dir } = await cliChannel();
+    if (!dir) return null;
+    return rsmm<UpdateCliResult>(['update-cli', '--dest', dir], { timeoutMs: LONG_TIMEOUT_MS });
+  })();
+  return lastCliUpdatePromise;
+}
+
+let lastCliUpdatePromise: Promise<UpdateCliResult | null> | null = null;
+
+/** This launch's most recent `updateCli()`, so Settings can show a staged build
+ *  without a second network check. Null until one has run. */
+export function lastCliUpdate(): Promise<UpdateCliResult | null> | null {
+  return lastCliUpdatePromise;
 }
 
 /** One stderr line -> progress, or null when it is anything else. */
