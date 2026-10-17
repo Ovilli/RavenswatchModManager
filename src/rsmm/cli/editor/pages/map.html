@@ -6,160 +6,220 @@
 <title>Ravenswatch Map Editor</title>
 <style>{{common.css}}</style>
 <style>
+/* The chapter editor: the map is the work surface, everything else floats on it.
+   Colours are the shared editor palette (common.css), so this tab looks like the
+   others: --gilt marks what you have hold of (selection, active tool), --ok a
+   tile pinned by hand, the accent is Save. */
 :root {
-  --idle: #a9a8a3; --changed: #fff2c2; --gw: #8b8b8b;
+  --chrome: var(--panel); --chrome2: var(--bg); --rule: var(--line); --text: var(--ink); --dim: var(--muted);
+  --lantern: var(--gilt); --lanternbg: var(--accentbg); --glass: var(--ok); --glassbg: var(--okbg);
+  --gone: var(--bad); --view: var(--bg);
   --g0: #4f86c6; --g1: #3aa39a; --g2: #d9822b; --g3: #b54a8c; --g4: #8a6fd1; --g5: #7c9a2f; --g6: #c9544d; --g7: #2f8fb0;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --idle: #5a5a60; --changed: #4a3d12; --gw: #77777d;
-    --g0: #6fa4e0; --g1: #52c2b8; --g2: #f09a45; --g3: #d06aa8; --g4: #a891ea; --g5: #9cbd48; --g6: #e8736b; --g7: #4fb0d2;
-  }
+  :root { --g0: #6fa4e0; --g1: #52c2b8; --g2: #f09a45; --g3: #d06aa8; --g4: #a891ea; --g5: #9cbd48; --g6: #e8736b; --g7: #4fb0d2; }
 }
-body { margin: 0; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; height: 100vh;
+html, body { height: 100%; }
+body { margin: 0; background: var(--view); color: var(--text); overflow: hidden;
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
-header h1 { font-size: 15px; margin: 0 4px 0 0; font-weight: 650; }
-label.inline { display: flex; gap: 6px; align-items: center; color: var(--muted); }
-select { max-width: 260px; }
-input[type=number] { width: 70px; }
-button.undo { border: none; background: none; color: var(--warn); padding: 0 4px; font-size: 15px; line-height: 1; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { border: none; border-radius: 0; padding: 4px 10px; }
-.seg button[aria-pressed=true] { background: var(--accent); color: var(--onaccent); }
-#status { margin-left: auto; color: var(--muted); max-width: 52ch; overflow-wrap: anywhere; }
-#status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 12px;
-  padding: 12px 16px; flex: 1; min-height: 0; }
-@media (max-width: 1100px) { body { height: auto; } main { grid-template-columns: 1fr; } #viewport { height: 70vh; } }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  display: flex; flex-direction: column; min-height: 0; }
-.card > .head { padding: 8px 12px; border-bottom: 1px solid var(--line);
-  display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; }
-#viewport { position: relative; flex: 1; min-height: 380px; overflow: hidden; border-radius: 0 0 10px 10px; }
-#map, #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-#gl { cursor: grab; touch-action: none; } #gl.dragging { cursor: grabbing; }
-#tip { position: absolute; pointer-events: none; background: var(--panel); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px;
-  box-shadow: 0 2px 8px #0003; white-space: nowrap; z-index: 3; }
-#hint { position: absolute; right: 10px; bottom: 10px; font-size: 12px; color: var(--muted);
-  background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 8px; border-radius: 6px; z-index: 2; }
-#legend { position: absolute; right: 10px; top: 10px; z-index: 2; font-size: 12px; max-width: 46%;
-  background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line);
-  padding: 6px 9px; border-radius: 8px; display: flex; flex-direction: column; gap: 2px; }
-#legend b { font-weight: 600; }
-.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
-#load { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 2; font-size: 12px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 3px 12px; }
-#nogl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--muted); padding: 24px; text-align: center; }
-.tabs { display: flex; gap: 2px; flex-wrap: wrap; }
-.tabs button { border: none; background: none; padding: 6px 10px; border-radius: 6px; }
-.tabs button[aria-selected=true] { background: var(--bg); color: var(--accentink); font-weight: 600; }
-.tabs .num { display: inline-block; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px;
-  background: var(--chip); color: var(--muted); font-size: 11px; text-align: center; margin-right: 5px; }
-.tabs button[aria-selected=true] .num { background: var(--accent); color: var(--onaccent); }
-.body { overflow: auto; padding: 10px 12px; flex: 1; }
-table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 4px 6px; vertical-align: middle; }
-th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
-tbody.kind td { border-bottom: none; }
-tbody.kind tr:last-child td { border-bottom: 1px solid var(--line); padding-bottom: 7px; }
-tbody.kind.sel td { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-td.changed, label.changed { background: var(--changed); border-radius: 4px; }
-.kname { cursor: pointer; font-weight: 560; }
-.kname:hover { color: var(--accentink); }
-.badge { display: inline-block; padding: 0 7px; border-radius: 9px; background: var(--chip); font-size: 12px; cursor: pointer; }
-.badge.warn { color: #fff; background: var(--warn); }
-.fp { display: flex; gap: 4px 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); align-items: center; }
-.chipbox { display: inline-flex; gap: 3px; align-items: center; padding: 0 6px 0 3px; border-radius: 9px; background: var(--chip); }
-.muted { color: var(--muted); } .warn { color: var(--warn); } .okc { color: var(--ok); }
-details.help { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
-details.help summary { cursor: pointer; font-weight: 600; }
-details.help ul { margin: 6px 0 2px; padding-left: 18px; } details.help li { margin: 3px 0; }
-.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-ul.changes { margin: 6px 0 12px; padding-left: 0; list-style: none; }
-ul.changes li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
-.slotinfo { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin-bottom: 10px; }
-.kgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; margin: 4px 0 10px; }
-.kgrid label { display: flex; gap: 5px; align-items: baseline; padding: 1px 4px; }
-.form { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
-.form input { width: 100%; }
-pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 6px 0; white-space: pre-wrap; }
-h3 { font-size: 13px; margin: 12px 0 4px; }
-svg text { fill: var(--ink); font-size: 20px; paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
-svg .scale { stroke: var(--ink); stroke-width: 3; }
-.slot { cursor: pointer; }
-.slot:hover { stroke: var(--ink); stroke-width: 3; }
+button, select, input { font: inherit; }
+
+/* ---- top bar ---- */
+#bar { position: fixed; inset: 0 0 auto 0; height: 52px; z-index: 10; display: flex; align-items: center; gap: 14px;
+  padding: 0 14px 0 12px; background: var(--chrome); border-bottom: 1px solid var(--rule); }
+#bar h1 { font-size: 15px; font-weight: 650; margin: 0; white-space: nowrap; }
+#bar select { background: var(--chrome2); color: var(--text); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; max-width: 220px; }
+#bar .grow { flex: 1; }
+#status { color: var(--dim); max-width: 46ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#status.bad { color: var(--gone); } #status.ok { color: var(--glass); }
+.btn { border: 1px solid var(--rule); background: var(--chrome2); color: var(--text); border-radius: 7px; padding: 5px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--lantern); }
+.btn.save { background: var(--accent); border-color: var(--accent); color: var(--onaccent); font-weight: 600; }
+.btn.save:hover { filter: brightness(1.08); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--lanternbg); color: var(--lantern); font-size: 11px; text-align: center; }
+
+/* ---- the map ---- */
+#viewport { position: fixed; inset: 52px 0 0 0; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+#gl.orbit { cursor: grabbing; }
+body[data-tool=select] #gl { cursor: default; }
+#nogl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--dim); }
+#tip { position: absolute; pointer-events: none; background: var(--chrome); color: var(--text); border: 1px solid var(--rule);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; z-index: 6; }
+#load { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 5; font-size: 12px;
+  background: var(--chrome); border: 1px solid var(--rule); border-radius: 12px; padding: 3px 12px; }
+#hint { position: absolute; left: 76px; bottom: 12px; z-index: 5; font-size: 12px; color: var(--dim);
+  background: color-mix(in srgb, var(--chrome) 88%, transparent); padding: 4px 10px; border-radius: 6px; max-width: calc(100% - 480px); }
+
+/* ---- tool rail ---- */
+#tools { position: absolute; left: 12px; top: 12px; z-index: 5; display: flex; flex-direction: column; gap: 4px; padding: 5px;
+  background: var(--chrome); border: 1px solid var(--rule); border-radius: 10px; }
+#tools button { position: relative; width: 42px; height: 42px; border: 0; border-radius: 7px; background: none; color: var(--text); cursor: pointer; display: grid; place-items: center; }
+#tools button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#tools button:hover { background: var(--chrome2); }
+#tools button[aria-pressed=true] { background: var(--lanternbg); color: var(--lantern); }
+#tools button kbd { position: absolute; right: 3px; bottom: 1px; font: 9px/1 system-ui; color: var(--dim); }
+#tools hr { border: 0; border-top: 1px solid var(--rule); margin: 2px 4px; }
+
+/* ---- inspector ---- */
+#insp { position: absolute; right: 12px; top: 12px; bottom: 12px; width: 352px; z-index: 5; display: flex; flex-direction: column;
+  background: var(--chrome); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+#insp > header { padding: 14px 16px 10px; border-bottom: 1px solid var(--rule); }
+#insp > header h2 { font-size: 15px; font-weight: 650; margin: 0; }
+#insp > header p { margin: 3px 0 0; color: var(--dim); }
+#insp .scroll { overflow: auto; padding: 4px 16px 16px; flex: 1; }
+#insp h3 { font-size: 12px; font-weight: 600; color: var(--dim); margin: 16px 0 6px; }
+#insp details { border-bottom: 1px solid var(--rule); padding: 2px 0 8px; }
+#insp details:last-child { border-bottom: 0; }
+#insp summary { cursor: pointer; font-weight: 600; padding: 10px 0 4px; list-style: none; display: flex; justify-content: space-between; }
+#insp summary::-webkit-details-marker { display: none; }
+#insp summary::after { content: "+"; color: var(--dim); }
+#insp details[open] > summary::after { content: "–"; }
+.rows { display: grid; grid-template-columns: 1fr 64px 64px; gap: 4px 8px; align-items: center; }
+.rows .h { color: var(--dim); font-size: 11px; }
+.rows .name { cursor: pointer; border-radius: 5px; padding: 2px 4px; margin-left: -4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rows .name:hover { background: var(--chrome2); }
+.rows .name.on { background: var(--lanternbg); color: var(--lantern); }
+.rows input, .field input, .field select { width: 100%; background: var(--chrome2); color: var(--text); border: 1px solid var(--rule); border-radius: 5px; padding: 3px 6px; }
+.rows input.changed, .chk.changed { box-shadow: inset 3px 0 0 var(--lantern); }
+.field { display: grid; grid-template-columns: 96px 1fr; gap: 6px 10px; align-items: center; margin: 6px 0; }
+.field label { color: var(--dim); }
+.chk { display: flex; gap: 7px; align-items: center; padding: 2px 4px; border-radius: 5px; }
+.chk input { accent-color: var(--lantern); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: var(--chrome2); color: var(--text); padding: 4px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed=true] { background: var(--lanternbg); color: var(--lantern); font-weight: 600; }
+input[type=range] { width: 100%; accent-color: var(--lantern); }
+.tilelist { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.tile { text-align: left; border: 1px solid transparent; background: none; color: var(--text); border-radius: 6px; padding: 5px 7px; cursor: pointer; }
+.tile:hover { background: var(--chrome2); }
+.tile[aria-pressed=true] { border-color: var(--glass); background: var(--glassbg); }
+.tile small { display: block; color: var(--dim); }
+.pin { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 8px; background: var(--glassbg); border: 1px solid var(--glass); margin: 6px 0; }
+.pin b { flex: 1; }
+.warnline { color: var(--gone); margin: 6px 0; }
+.muted { color: var(--dim); }
+.danger { color: var(--gone); }
+.linkbtn { border: 0; background: none; color: var(--lantern); cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---- dialogs ---- */
+dialog { border: 1px solid var(--rule); border-radius: 12px; background: var(--chrome); color: var(--text); padding: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
+dialog::backdrop { background: #0007; }
+dialog header { padding: 16px 20px 8px; } dialog header h2 { font-size: 16px; font-weight: 650; margin: 0; }
+dialog .body { padding: 4px 20px 8px; overflow: auto; max-height: calc(100vh - 220px); }
+dialog footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px 16px; border-top: 1px solid var(--rule); }
+ul.changes { list-style: none; margin: 4px 0 12px; padding: 0; }
+ul.changes li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule); }
+ul.changes button { border: 0; background: none; color: var(--lantern); cursor: pointer; }
+fieldset { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 12px; margin: 8px 0; display: grid; gap: 6px; }
+legend { color: var(--dim); padding: 0 4px; }
+pre.cmd { background: var(--chrome2); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; }
+:focus-visible { outline: 2px solid var(--lantern); outline-offset: 1px; }
+
+@media (max-width: 900px) {
+  #insp { top: auto; height: 46%; left: 12px; right: 12px; width: auto; }
+  #hint { display: none; }
+  #bar h1 { display: none; }
+}
+html.embedded #bar h1 { display: none; }
+@media (prefers-reduced-motion: no-preference) { .tile, .btn, #tools button { transition: background .12s, border-color .12s; } }
 </style>
 </head>
-<body>
-<header>
-  <h1>Map Editor</h1>
-  <label class="inline">Chapter <select id="chapter"></select></label>
-  <label class="inline" title="The game picks one of these for each run. Some spots allow different tiles per scenario.">Scenario <select id="scenario"></select></label>
-  <label class="inline">Open saved mod <select id="openmod"><option value="">—</option></select></label>
+<body data-tool="select">
+<div id="bar">
+  <h1 id="title">Chapter editor</h1>
+  <select id="chapter" aria-label="Chapter"></select>
+  <select id="scenario" aria-label="Scenario" title="The game picks one scenario per run; some spots allow different tiles per scenario"></select>
+  <select id="openmod" aria-label="Open a saved mod"><option value="">Open a saved mod…</option></select>
+  <span class="grow"></span>
   <span id="status" role="status" aria-live="polite">Loading…</span>
-</header>
-<main>
-  <section class="card" aria-label="Map">
-    <div class="head">
-      <div class="seg" role="group" aria-label="View">
-        <button id="v3d" aria-pressed="true">3D</button>
-        <button id="v2d" aria-pressed="false">Top-down</button>
-      </div>
-      <button id="recenter" class="small" title="Reset the camera">Reset view</button>
-      <label class="inline" title="Draw the chapter's scenery and tiles with the game's own models (read from your game install)"><input type="checkbox" id="models" checked> Models</label>
-      <label class="inline"><input type="checkbox" id="spots" checked> Spots</label>
-      <button id="sample" class="small" title="Fill the spots with tiles from this chapter's pool, roughly the way a run would">Sample layout</button>
-      <button id="clearlayout" class="small" hidden>Clear tiles</button>
-      <label class="inline" title="With a tile picked, also draw the spots it is not allowed on"><input type="checkbox" id="showall" checked> Show unusable spots</label>
-      <strong id="maptitle" class="muted" style="margin-left:auto">—</strong>
-    </div>
-    <div id="viewport">
-      <canvas id="gl" aria-label="3D view of the chapter terrain and tile spots"></canvas>
-      <svg id="map" role="img" aria-label="Tile spots plotted from above" hidden></svg>
-      <div id="nogl" hidden></div>
-      <div id="legend"></div>
-      <div id="hint"></div>
-      <div id="load" hidden></div>
-      <div id="tip" hidden></div>
-    </div>
-  </section>
-  <section class="card" aria-label="Recipe">
-    <div class="head tabs" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="kinds"><span class="num">1</span>Tiles</button>
-      <button role="tab" aria-selected="false" data-tab="slot"><span class="num">2</span>Spot</button>
-      <button role="tab" aria-selected="false" data-tab="quotas"><span class="num">3</span>Limits</button>
-      <button role="tab" aria-selected="false" data-tab="changes"><span class="num">4</span>Review &amp; save <span id="nchanges"></span></button>
-    </div>
-    <div class="body" id="panel"></div>
-  </section>
-</main>
+  <button class="btn" id="sample" title="Fill the spots roughly the way a run would (press again for another roll)">Preview a run</button>
+  <button class="btn save" id="saveopen">Save<span class="count" id="nchanges" hidden></span></button>
+</div>
+<div id="viewport">
+  <canvas id="gl" aria-label="3D view of the chapter: terrain, spots and tiles"></canvas>
+  <div id="nogl" hidden>This editor draws the chapter in 3D and needs WebGL2, which this browser does not offer.</div>
+  <nav id="tools" aria-label="Tools">
+    <button data-tool="select" title="Select (1)" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg><kbd>1</kbd></button>
+    <button data-tool="move" title="Move a spot (2)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><kbd>2</kbd></button>
+    <button data-tool="add" title="Add a spot (3)" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/></svg><kbd>3</kbd></button>
+    <button data-tool="place" title="Place a tile by hand (4)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.5-6-11a6 6 0 0112 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><kbd>4</kbd></button>
+    <button data-tool="paint" title="Paint the terrain (5)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 19c3-1 4-4 7-4s3 3 6 3 4-2 5-3"/><path d="M3 14c3-2 5-7 9-7s5 4 9 2"/></svg><kbd>5</kbd></button>
+    <hr>
+    <button id="recenter" title="Reset the camera (0)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    <button id="undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+  </nav>
+  <aside id="insp" aria-label="Inspector"><header><h2 id="ih">Chapter</h2><p id="ip"></p></header><div class="scroll" id="ib"></div></aside>
+  <div id="hint"></div>
+  <div id="load" hidden></div>
+  <div id="tip" hidden></div>
+</div>
+
+<dialog id="savedlg" aria-labelledby="savetitle">
+  <header><h2 id="savetitle">Save as a mod</h2></header>
+  <div class="body" id="savebody"></div>
+  <footer><button class="btn" id="saveclose">Close</button><button class="btn" id="check">Check</button><button class="btn save" id="save">Save mod</button></footer>
+</dialog>
+<dialog id="pooldlg" aria-labelledby="pooltitle">
+  <header><h2 id="pooltitle">Tile pool</h2></header>
+  <div class="body" id="poolbody"></div>
+  <footer><button class="btn" id="poolclose">Done</button></footer>
+</dialog>
+
 <script>{{common.js}}</script>
 <script type="module">
 // three.js is served by the editor itself (vendored, MIT; see editor/static).
 let THREE = null;
 try { THREE = await import("./static/three.module.min.js"); } catch (err) { console.error(err); }
 const $ = (id) => document.getElementById(id);
-const S = { chapters: [], chapter: null, orig: null, work: null, kind: null, slot: null, tab: "kinds",
-  scen: 0, view: "3d", terrain: null, filter: "", showAll: true, lastSave: null,
-  models: true, showSpots: true, layout: {}, pool: [], seed: 1, sceneInfo: null, modelsError: null };
+const S = {
+  chapters: [], chapter: null, orig: null, work: null, scen: 0, terrain: null, terrainBase: null,
+  tool: "select", slot: null, kind: null, models: true, layout: {}, layoutSample: false, pool: [], catalog: null,
+  seed: 1, sceneInfo: null, modelsError: null,
+  // Changes that only a map CLONE can carry (see Save): the tile pool, tiles
+  // pinned by hand, painted terrain. Spots can be moved, added and removed either way.
+  poolEdit: { add: [], remove: [] }, place: {}, strokes: [], removed: new Set(), nextNew: 0,
+  addSize: null, placeTile: null,
+  brush: { mode: "shape", op: "raise", radius: 24, amount: 3, falloff: "smooth", layer: null, surfOp: "raise", strength: 0.5, color: "#b89a6a" },
+  layers: {}, layerList: null, overlay: null, showOverlay: true,
+  saveAs: "chapter", mapId: "", mapPlay: true, lastSave: null, savedKey: null, poolFilter: "", placeFilter: "",
+};
+const history = [];
 const GROUP_COLORS = ["--g0", "--g1", "--g2", "--g3", "--g4", "--g5", "--g6", "--g7"];
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                 set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
-
-function status(msg, cls) { const el = $("status"); el.textContent = msg; el.className = cls || ""; }
-function clone(o) { return JSON.parse(JSON.stringify(o)); }
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function status(msg, cls) { const el = $("status"); el.textContent = msg; el.title = msg; el.className = cls || ""; }
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const nice = (n) => String(n).replace(/_/g, " ");
 const sizeLabel = (g) => String(g).replace("x", "×") + " m";
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+const tileShort = (p) => nice(p.split("\\").pop().replace(".tiledef.ot", ""));
+const isNew = (s) => typeof s.id === "string";
+const liveSlots = () => S.work.slots.filter(s => !s.whole_map && !S.removed.has(s.id));
+const slotById = (id) => S.work.slots.find(s => s.id === id);
+const origSlot = (id) => S.orig.slots.find(s => s.id === id);
 
+// ---- undo: one snapshot of everything editable per action -------------------
+function snap() {
+  return JSON.stringify({ work: S.work, poolEdit: S.poolEdit, place: S.place, strokes: S.strokes,
+    removed: [...S.removed], nextNew: S.nextNew });
+}
+function remember() { history.push(snap()); if (history.length > 200) history.shift(); }
+function undo() {
+  const h = history.pop(); if (!h) { status("Nothing to undo"); return; }
+  const o = JSON.parse(h), terrainChanged = o.strokes.length !== S.strokes.length;
+  Object.assign(S, { work: o.work, poolEdit: o.poolEdit, place: o.place, strokes: o.strokes,
+    removed: new Set(o.removed), nextNew: o.nextNew });
+  if (terrainChanged) repaint();
+  drawLayout(); render(); status("Undone");
+}
 
-// ---- edits: the diff between the shipped recipe and the working copy ------
+// ---- the edit document: the diff between the shipped chapter and the work --
 function edits() {
-  const e = { kinds: {}, quotas: {}, slots: {} };
+  const e = { kinds: {}, quotas: {}, slots: {}, fill: {}, remove_slots: {}, add_slots: [] };
   S.work.kinds.forEach((k, i) => {
     const o = S.orig.kinds[i], d = {};
     if (k.count !== o.count) d.count = k.count;
@@ -170,43 +230,75 @@ function edits() {
     if (Object.keys(d).length) e.kinds[k.name] = d;
   });
   S.work.quotas.forEach((q, i) => { if (q.limit !== S.orig.quotas[i].limit) e.quotas[q.key] = q.limit; });
-  S.work.slots.forEach((s, i) => {
-    const o = S.orig.slots[i], allow = {};
+  for (const s of S.work.slots) {
+    if (isNew(s)) continue;
+    if (S.removed.has(s.id)) { e.remove_slots[String(s.id)] = origSlot(s.id).pos; continue; }
+    const o = origSlot(s.id), d = {}, allow = {};
     for (const k in s.allow) if (s.allow[k] !== o.allow[k]) allow[k] = s.allow[k];
-    if (Object.keys(allow).length) e.slots[String(s.id)] = { pos: o.pos, allow };
-  });
-  for (const k of ["kinds", "quotas", "slots"]) if (!Object.keys(e[k]).length) delete e[k];
+    if (Object.keys(allow).length) d.allow = allow;
+    if (s.pos[0] !== o.pos[0] || s.pos[2] !== o.pos[2]) d.move = s.pos;
+    if (Object.keys(d).length) e.slots[String(s.id)] = { pos: o.pos, ...d };
+  }
+  for (const s of S.work.slots.filter(isNew)) {
+    const allow = Object.fromEntries(Object.entries(s.allow).filter(([, v]) => v));
+    e.add_slots.push({ group: s.group, pos: s.pos, ...(Object.keys(allow).length ? { allow } : {}) });
+  }
+  S.work.groups.forEach((g, i) => { if (!sameList(g.fill, S.orig.groups[i].fill)) e.fill[g.name] = g.fill; });
+  for (const k of Object.keys(e)) if (Array.isArray(e[k]) ? !e[k].length : !Object.keys(e[k]).length) delete e[k];
   return e;
 }
-// Plain-language change list; each entry knows how to undo itself.
+// Hand placements keyed the way the map kind reads them: a shipped id, or newN.
+function placeDoc() {
+  const added = S.work.slots.filter(isNew).map(s => s.id), out = {};
+  for (const [id, path] of Object.entries(S.place)) {
+    const key = id.startsWith("n") ? "new" + added.indexOf(id) : id;
+    const [, biome, file] = path.split("\\");
+    out[key] = `${biome}/${file.replace(".tiledef.ot", "")}`;
+  }
+  return out;
+}
+const poolChanged = () => S.poolEdit.add.length + S.poolEdit.remove.length > 0;
+const cloneOnly = () => poolChanged() || Object.keys(S.place).length > 0 || S.strokes.length > 0;
+const asMap = () => S.saveAs === "map" || cloneOnly();
+
 function changeList() {
-  const out = [];
+  const out = [], e = edits();
   S.work.kinds.forEach((k, i) => {
     const o = S.orig.kinds[i];
     if (k.count !== o.count) out.push({ text: `${nice(k.name)}: ${o.count} → ${k.count} per run`, undo: () => { k.count = o.count; } });
-    if (Math.abs(k.min_distance - o.min_distance) > 1e-4) out.push({ text: `${nice(k.name)}: spacing ${o.min_distance} m → ${k.min_distance} m`, undo: () => { k.min_distance = o.min_distance; } });
-    for (const g in k.footprints) if (k.footprints[g] !== o.footprints[g]) {
-      out.push({ text: `${nice(k.name)}: ${k.footprints[g] ? "now fits" : "no longer fits"} ${sizeLabel(g)} spots`, undo: () => { k.footprints[g] = o.footprints[g]; } });
-    }
+    if (Math.abs(k.min_distance - o.min_distance) > 1e-4) out.push({ text: `${nice(k.name)}: spacing ${o.min_distance} → ${k.min_distance} m`, undo: () => { k.min_distance = o.min_distance; } });
+    for (const g in k.footprints) if (k.footprints[g] !== o.footprints[g])
+      out.push({ text: `${nice(k.name)} ${k.footprints[g] ? "now fits" : "no longer fits"} ${sizeLabel(g)} spots`, undo: () => { k.footprints[g] = o.footprints[g]; } });
   });
-  S.work.quotas.forEach((q, i) => {
-    const o = S.orig.quotas[i];
-    if (q.limit !== o.limit) out.push({ text: `Limit ${nice(q.flags.join(" + "))}: at most ${o.limit} → ${q.limit}`, undo: () => { q.limit = o.limit; } });
-  });
-  S.work.slots.forEach((s, i) => {
-    const o = S.orig.slots[i];
-    for (const k in s.allow) if (s.allow[k] !== o.allow[k]) {
-      out.push({ text: `Spot ${s.id}: ${nice(k)} ${s.allow[k] ? "allowed" : "not allowed"}`, undo: () => { s.allow[k] = o.allow[k]; } });
-    }
-  });
+  S.work.quotas.forEach((q, i) => { const o = S.orig.quotas[i];
+    if (q.limit !== o.limit) out.push({ text: `At most ${q.limit} ${nice(q.flags.join(" + "))} (was ${o.limit})`, undo: () => { q.limit = o.limit; } }); });
+  S.work.groups.forEach((g, i) => { const o = S.orig.groups[i];
+    if (!sameList(g.fill, o.fill)) out.push({ text: `Leftover ${sizeLabel(g.name)} spots ${g.fill.length ? "filled" : "stay empty"}`, undo: () => { g.fill = o.fill.slice(); } }); });
+  for (const [id, se] of Object.entries(e.slots || {})) {
+    const s = slotById(Number(id)), o = origSlot(Number(id));
+    if (se.move) out.push({ text: `Spot ${id} moved`, undo: () => { s.pos = o.pos.slice(); } });
+    for (const k in se.allow || {}) out.push({ text: `Spot ${id}: ${nice(k)} ${se.allow[k] ? "allowed" : "not allowed"}`, undo: () => { s.allow[k] = o.allow[k]; } });
+  }
+  for (const id of S.removed) out.push({ text: `Spot ${id} removed`, undo: () => { S.removed.delete(id); } });
+  for (const s of S.work.slots.filter(isNew)) out.push({ text: `New ${sizeLabel(s.group)} spot`, undo: () => { dropNew(s.id); } });
+  for (const [id, p] of Object.entries(S.place)) out.push({ text: `${tileShort(p)} pinned to spot ${id.startsWith("n") ? "(new)" : id}`, undo: () => { delete S.place[id]; } });
+  if (S.strokes.length) out.push({ text: `Terrain painted (${S.strokes.length} brush stroke${S.strokes.length === 1 ? "" : "s"})`, undo: () => { S.strokes = []; repaint(); } });
+  for (const p of S.poolEdit.add) out.push({ text: `Pool: add ${tileShort(p)}`, undo: () => { S.poolEdit.add = S.poolEdit.add.filter(x => x !== p); } });
+  for (const p of S.poolEdit.remove) out.push({ text: `Pool: remove ${tileShort(p)}`, undo: () => { S.poolEdit.remove = S.poolEdit.remove.filter(x => x !== p); } });
   return out;
 }
+function dropNew(id) {
+  S.work.slots = S.work.slots.filter(s => s.id !== id);
+  for (const g of S.work.groups) g.slots = g.slots.filter(x => x !== id);
+  delete S.place[id];
+  if (S.slot === id) S.slot = null;
+}
 
-// ---- eligibility: where a kind could possibly stand -------------------------
-// Per scenario the compatibility table may override the slot's mask: 1 forces
-// the kind allowed, 0 forbids it, and anything not listed defers to the mask.
+// ---- eligibility ------------------------------------------------------------
+// Per scenario the compatibility table may override a spot's mask: 1 forces
+// the tile type on, 0 keeps it off, anything else defers to the mask.
 function allowedHere(slot, kind) {
-  const ov = (slot.overrides[S.scen] || {})[kind.name];
+  const ov = ((slot.overrides || [])[S.scen] || {})[kind.name];
   if (ov === 1) return true;
   if (ov === 0) return false;
   return !!slot.allow[kind.name];
@@ -215,34 +307,42 @@ function eligible(slot, kind) {
   if (slot.whole_map || !allowedHere(slot, kind)) return "no";
   return kind.footprints[slot.group] ? "yes" : "blocked";
 }
-function eligibleCount(kind) { return S.work.slots.filter(s => eligible(s, kind) === "yes").length; }
-function slotChanged(s) {
-  const o = S.orig.slots.find(x => x.id === s.id);
-  return Object.keys(s.allow).some(k => s.allow[k] !== o.allow[k]);
+const fitsNow = (s) => S.work.kinds.filter(k => eligible(s, k) === "yes");
+function poolNow() {
+  const gone = new Set(S.poolEdit.remove);
+  const added = S.poolEdit.add.map(p => (S.catalog || []).find(t => t.path === p)).filter(Boolean);
+  return S.pool.filter(t => !gone.has(t.path)).concat(added);
 }
-function fitsNow(s) { return S.work.kinds.filter(k => eligible(s, k) === "yes"); }
+function bareKinds() {
+  const pool = poolNow();
+  return S.work.kinds.filter(k => k.count > 0 && !pool.some(t => k.required.every(f => t.flags.includes(f))));
+}
 
 // ---- colours ----------------------------------------------------------------
-const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// getComputedStyle is slow and buildSlots asks for colours per spot, so each
+// theme's values are read once and kept until the theme changes.
+const COLOR = new Map();
+const cssVar = (n) => {
+  let v = COLOR.get(n);
+  if (v === undefined) { v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); COLOR.set(n, v); }
+  return v;
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { COLOR.clear(); G.bg = null; render(); });
 function hexRgb(h) {
   h = h.replace("#", ""); if (h.length === 3) h = h.split("").map(c => c + c).join("");
   const v = parseInt(h, 16); return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255];
 }
 function groupVar(name) {
   const i = S.work.groups.findIndex(g => g.name === name);
-  return i < 0 ? "--gw" : GROUP_COLORS[i % GROUP_COLORS.length];
+  return i < 0 ? "--dim" : GROUP_COLORS[i % GROUP_COLORS.length];
 }
-// What a spot looks like right now: [css var, opacity, emphasis 0..1].
+// [css var, opacity, pin height factor]
 function slotLook(s) {
+  if (S.place[String(s.id)]) return ["--glass", 1, 1.1];
   const kind = S.kind != null ? S.work.kinds[S.kind] : null;
   if (!kind) return [groupVar(s.group), 0.9, 0.6];
   const e = eligible(s, kind);
-  return e === "yes" ? ["--ok", 1, 1] : e === "blocked" ? ["--warn", 0.75, 0.55] : ["--idle", 0.35, 0.15];
-}
-function visibleSlot(s) {
-  if (s.whole_map) return false;
-  if (S.showAll || S.kind == null) return true;
-  return eligible(s, S.work.kinds[S.kind]) !== "no";
+  return e === "yes" ? ["--ok", 1, 1] : e === "blocked" ? ["--warn", 0.75, 0.55] : ["--dim", 0.3, 0.15];
 }
 
 // ---- terrain ----------------------------------------------------------------
@@ -255,8 +355,6 @@ function decodeTerrain(t) {
   return { n, min: t.box_min, max: t.box_max, h: u16(t.height), path: u8(t.path), block: u8(t.block),
            water: t.water ? u16(t.water) : null, hmin: t.height.min, hmax: t.height.max };
 }
-// Ground colour of one cell: a moss-to-stone height ramp, sandy design paths,
-// darker blocked ground. Shared by the 3D mesh and the top-down image.
 function groundColor(T, i) {
   const t = Math.max(0, Math.min(1, (T.h[i] - T.hmin) / ((T.hmax - T.hmin) || 1)));
   const lo = [0.29, 0.36, 0.25], mid = [0.50, 0.56, 0.36], hi = [0.78, 0.76, 0.62];
@@ -264,77 +362,99 @@ function groundColor(T, i) {
   let c = [0, 1, 2].map(k => a[k] + (b[k] - a[k]) * f);
   if (T.block && T.block[i] > 0.05) { const w = Math.min(1, T.block[i]) * 0.6; c = c.map((v, k) => v + ([0.36, 0.30, 0.32][k] - v) * w); }
   if (T.path && T.path[i] > 0.05) { const w = Math.min(1, T.path[i]) * 0.85; c = c.map((v, k) => v + ([0.85, 0.72, 0.47][k] - v) * w); }
+  const tint = S.layers[TINT_LAYER];
+  if (tint) c = c.map((v, k) => v * (0.35 + 0.65 * tint.v[i * 4 + k] / 255));
+  const ov = S.overlay && S.layers[S.overlay];
+  if (ov && ov.v[i] > 0.02) { const w = ov.v[i] * 0.45, g = OVERLAY_RGB(); c = c.map((v, k) => v + (g[k] - v) * w); }
   return c;
 }
-function wet(T, i) { return T.water && T.water[i] > T.h[i] + 0.05; }
-function terrainImage(T) {
-  const n = T.n, cv = document.createElement("canvas"); cv.width = n; cv.height = n;
-  const ctx = cv.getContext("2d"), img = ctx.createImageData(n, n);
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const i = r * n + c, o = ((n - 1 - r) * n + c) * 4;   // +z is up on screen
-    const dx = T.h[r * n + Math.min(n - 1, c + 1)] - T.h[r * n + Math.max(0, c - 1)];
-    const dz = T.h[Math.min(n - 1, r + 1) * n + c] - T.h[Math.max(0, r - 1) * n + c];
-    const shade = Math.max(0.55, Math.min(1.25, 1 - (dx * 0.5 - dz * 0.35) * 0.12));
-    let col = groundColor(T, i).map(v => v * shade);
-    if (wet(T, i)) col = col.map((v, k) => v * 0.35 + [0.25, 0.5, 0.72][k] * 0.65);
-    img.data[o] = col[0] * 255; img.data[o + 1] = col[1] * 255; img.data[o + 2] = col[2] * 255; img.data[o + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  return new Promise(res => cv.toBlob(b => res(URL.createObjectURL(b))));
+// The terrain's vertex colour: what the Tint brush paints.
+const TINT_LAYER = "Base Terrain Vertex Color";
+const OVERLAY_RGB = () => hexRgb(cssVar("--gilt"));
+// Fetch one painted layer at the preview grid, keeping a pristine copy for undo.
+async function ensureLayer(name) {
+  if (S.layers[name] || name === "Base Height") return S.layers[name];
+  const r = await api(`api/layer?chapter=${encodeURIComponent(S.chapter.key)}&name=${encodeURIComponent(name)}`);
+  const raw = Uint8Array.from(atob(r.kind === "rgba" ? r.rgba : r.u8), c => c.charCodeAt(0));
+  const v = r.kind === "rgba" ? new Uint8ClampedArray(raw) : Float32Array.from(raw, x => x / 255);
+  S.layers[name] = { v, base: v.slice(), rgba: r.kind === "rgba" };
+  return S.layers[name];
+}
+// The grid a stroke paints: the height (metres) or a loaded layer (0..1, or RGBA bytes).
+function gridOf(st) {
+  const T = S.terrain, name = st.layer || "Base Height";
+  if (name === "Base Height") return { arr: T.h, lo: T.min[1], hi: T.max[1] };
+  const L = S.layers[name]; return L ? { arr: L.v, lo: 0, hi: 1, rgba: L.rgba } : null;
+}
+const wet = (T, i) => T.water && T.water[i] > T.h[i] + 0.05;
+function groundY(x, z, fallback) {
+  const T = S.terrain; if (!T) return fallback;
+  const n = T.n, c = Math.floor((x - T.min[0]) / (T.max[0] - T.min[0]) * n), r = Math.floor((z - T.min[2]) / (T.max[2] - T.min[2]) * n);
+  if (c < 0 || r < 0 || c >= n || r >= n) return fallback;
+  return T.h[r * n + c];
 }
 
-// ---- top-down view (SVG) ----------------------------------------------------
-function renderMap() {
-  const svg = $("map");
-  const slots = S.work.slots.filter(s => !s.whole_map);
-  const xs = slots.map(s => s.pos[0]), zs = slots.map(s => s.pos[2]);
-  const minX = Math.min(...xs) - 40, maxX = Math.max(...xs) + 40, minZ = Math.min(...zs) - 40, maxZ = Math.max(...zs) + 40;
-  const pad = 10, span = Math.max(maxX - minX, maxZ - minZ) || 1;
-  const W = 1000, H = 1000, sc = (W - 2 * pad) / span;
-  const px = x => pad + (x - minX) * sc, pz = z => H - pad - (z - minZ) * sc;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  const parts = [];
-  const T = S.terrain;
-  if (T && T.imageUrl) {
-    const x0 = px(T.min[0]), x1 = px(T.max[0]), y0 = pz(T.max[2]), y1 = pz(T.min[2]);
-    parts.push(`<image href="${T.imageUrl}" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" preserveAspectRatio="none"/>`);
+// The brush, as `rsmm.engine.terrain.apply_strokes` applies it at install time
+// on the full-resolution grid. This copy runs on the preview grid so the land
+// moves under the cursor; the mod stores only the strokes.
+function brush(T, st) {
+  const g = gridOf(st); if (!g) return null;
+  const A = g.arr, n = T.n, cell = (T.max[0] - T.min[0]) / n, lo = g.lo, hi = g.hi;
+  const cc = (st.x - T.min[0]) / cell - 0.5, cr = (st.z - T.min[2]) / cell - 0.5, rc = st.radius / cell;
+  const fall = (d) => st.falloff === "constant" ? 1 : st.falloff === "linear" ? 1 - d : 1 - d * d * (3 - 2 * d);
+  let target = st.amount;
+  const ci = Math.min(n - 1, Math.max(0, Math.round(cr))) * n + Math.min(n - 1, Math.max(0, Math.round(cc)));
+  if (st.op === "flatten" && target == null) target = A[ci];
+  const rgb = st.op === "tint" ? hexRgb(st.color).map(v => v * 255) : null;
+  const src = st.op === "smooth" ? A.slice() : A;
+  const r0 = Math.max(0, Math.floor(cr - rc)), r1 = Math.min(n - 1, Math.ceil(cr + rc));
+  const c0 = Math.max(0, Math.floor(cc - rc)), c1 = Math.min(n - 1, Math.ceil(cc + rc));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const d = Math.hypot(c - cc, r - cr) / rc; if (d >= 1) continue;
+    const w = fall(d), i = r * n + c;
+    if (rgb) { for (let k = 0; k < 3; k++) A[i * 4 + k] += (rgb[k] - A[i * 4 + k]) * w * st.amount; continue; }
+    let v = A[i];
+    if (st.op === "raise") v += st.amount * w;
+    else if (st.op === "lower") v -= st.amount * w;
+    else if (st.op === "flatten") v += (target - v) * w;
+    else if (st.op === "set") v = target;
+    else { let sum = 0, k = 0;
+      for (let rr = Math.max(0, r - 1); rr <= Math.min(n - 1, r + 1); rr++) for (let c2 = Math.max(0, c - 1); c2 <= Math.min(n - 1, c + 1); c2++) { sum += src[rr * n + c2]; k++; }
+      v += (sum / k - v) * w; }
+    A[i] = Math.max(lo, Math.min(hi, v));
   }
-  const bar = 50 * sc;
-  parts.push(`<line class="scale" x1="${pad + 12}" y1="${H - 22}" x2="${pad + 12 + bar}" y2="${H - 22}"/>`);
-  parts.push(`<text x="${pad + 20 + bar}" y="${H - 15}">50 m</text>`);
-  for (const s of slots) {
-    if (!visibleSlot(s)) continue;
-    const [v, op] = slotLook(s);
-    const half = Math.max(parseFloat(s.group) * sc / 2, 5);
-    const sel = S.slot === s.id, ch = slotChanged(s);
-    const stroke = sel ? `stroke="var(--ink)" stroke-width="5"` : ch ? `stroke="var(--warn)" stroke-width="4"` : `stroke="#0008" stroke-width="1.5"`;
-    parts.push(`<rect class="slot" data-id="${s.id}" x="${px(s.pos[0]) - half}" y="${pz(s.pos[2]) - half}" width="${2 * half}" height="${2 * half}" rx="3" fill="var(${v})" fill-opacity="${op}" ${stroke}></rect>`);
-  }
-  svg.innerHTML = parts.join("");
-  svg.querySelectorAll(".slot").forEach(el => {
-    el.addEventListener("click", () => pickSlot(Number(el.dataset.id)));
-    el.addEventListener("mousemove", (ev) => showTip(ev, S.work.slots.find(s => s.id === Number(el.dataset.id))));
-    el.addEventListener("mouseleave", () => { $("tip").hidden = true; });
-  });
+  return [r0, r1, c0, c1];
+}
+// Recompute the preview from the shipped ground plus every stroke (after undo).
+function repaint() {
+  if (!S.terrain || !S.terrainBase) return;
+  S.terrain.h.set(S.terrainBase);
+  for (const L of Object.values(S.layers)) L.v.set(L.base);
+  for (const st of S.strokes) brush(S.terrain, st);
+  updateGround(0, S.terrain.n - 1, 0, S.terrain.n - 1);
+  buildSlots(); shadows();
 }
 
-// ---- 3D view (three.js, vendored; see /static) ------------------------------
-// Everything in the world lives under one group mirrored in Z: the engine is
-// left-handed (Y up, +Z away), WebGL is right-handed, and mirroring once keeps
-// every engine position, rotation and mesh usable as-is. three.js flips the
-// face winding for mirrored objects on its own.
+// ---- 3D (three.js, vendored; see /static) ------------------------------------
+// Everything lives under one group mirrored in Z: the engine is left-handed
+// (Y up, +Z away), WebGL right-handed; mirroring once keeps every engine
+// position, rotation and mesh usable as-is.
 const G = { three: null, cam: { tx: 0, ty: 0, tz: 0, yaw: 0, pitch: 0.95, dist: 640 }, dirty: true,
-  terrainKey: null, pickable: [], parts: new Map(), loading: 0, loaded: 0, tileCache: new Map() };
+  terrainKey: null, ground: null, pickable: [], parts: new Map(), loading: 0, loaded: 0, tileCache: new Map(), cursor: null };
 
 function glInit() {
   if (!THREE) return false;
   const cv = $("gl");
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true }); } catch (e) { return false; }
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+  // The sun and its shadow camera never move, so shadows only change with the
+  // geometry: redraw them on demand (shadows()), not on every camera frame,
+  // which is where 17k scenery objects cost most.
+  renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(42, 1, 1, 6000);
   const world = new THREE.Group(); world.scale.z = -1; scene.add(world);
@@ -342,17 +462,18 @@ function glInit() {
   const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
   sun.position.set(-220, 380, 180); sun.castShadow = true;
   Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 10, far: 1200 });
-  sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
   scene.add(sun); scene.add(sun.target);
   const groups = {};
-  for (const k of ["terrain", "scenery", "tiles", "markers"]) { groups[k] = new THREE.Group(); world.add(groups[k]); }
+  for (const k of ["terrain", "scenery", "tiles", "markers", "cursor"]) { groups[k] = new THREE.Group(); world.add(groups[k]); }
   G.three = { renderer, scene, camera, world, groups, sun };
-  bindCamera(cv);
+  bindPointer(cv);
   new ResizeObserver(() => { G.dirty = true; }).observe(cv);
   requestAnimationFrame(frame);
   return true;
 }
-const srgb = (c) => c.map(v => Math.pow(Math.max(0, v), 2.2));   // vertex colours are linear
+const srgb = (c) => c.map(v => Math.pow(Math.max(0, v), 2.2));
+function shadows() { if (G.three) G.three.renderer.shadowMap.needsUpdate = true; G.dirty = true; }
 function clearGroup(g) {
   for (const o of [...g.children]) {
     g.remove(o);
@@ -361,7 +482,6 @@ function clearGroup(g) {
     if (o.dispose && o.isInstancedMesh) o.dispose();
   }
 }
-
 function buildTerrain() {
   const T3 = G.three, T = S.terrain; if (!T3 || !T) return;
   const key = S.chapter.key + "|" + T.n; if (G.terrainKey === key) return;
@@ -384,9 +504,11 @@ function buildTerrain() {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeVertexNormals();
+  geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(n * n * 3), 3));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  G.ground = geo; gridNormals(0, n - 1, 0, n - 1);
   const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0, side: THREE.DoubleSide }));
-  ground.receiveShadow = true; T3.groups.terrain.add(ground);
+  ground.receiveShadow = true; T3.groups.terrain.add(ground); G.ground = geo;
   if (T.water) {
     const wg = new THREE.BufferGeometry();
     wg.setAttribute("position", new THREE.BufferAttribute(wpos, 3));
@@ -395,26 +517,51 @@ function buildTerrain() {
     const water = new THREE.Mesh(wg, new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, roughness: 0.15, metalness: 0.1, depthWrite: false, side: THREE.DoubleSide }));
     water.renderOrder = 2; water.receiveShadow = true; T3.groups.terrain.add(water);
   }
+  shadows();
+}
+// A height-field normal by central differences: what computeVertexNormals
+// gives on this grid, but local, so one brush dab costs its own footprint
+// rather than all 262k vertices.
+function gridNormals(r0, r1, c0, c1) {
+  const T = S.terrain, n = T.n, nr = G.ground.attributes.normal.array, h = T.h;
+  const sx = (T.max[0] - T.min[0]) / n, sz = (T.max[2] - T.min[2]) / n;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const dx = (h[r * n + Math.min(n - 1, c + 1)] - h[r * n + Math.max(0, c - 1)]) / (2 * sx);
+    const dz = (h[Math.min(n - 1, r + 1) * n + c] - h[Math.max(0, r - 1) * n + c]) / (2 * sz);
+    // Pointing DOWN on purpose: the triangles wind (a, a+1, a+n), so the side
+    // the camera sees is the back face, whose normal the double-sided material
+    // flips. That is what computeVertexNormals produced; an up normal flips to
+    // down and lights the ground from below.
+    const l = Math.hypot(dx, 1, dz), i = (r * n + c) * 3;
+    nr[i] = dx / l; nr[i + 1] = -1 / l; nr[i + 2] = dz / l;
+  }
+}
+// Push painted heights in rows r0..r1, columns c0..c1 into the ground mesh,
+// uploading only those rows. Spots and shadows catch up when the stroke ends.
+function updateGround(r0, r1, c0, c1) {
+  const T = S.terrain, geo = G.ground; if (!T || !geo) return;
+  const n = T.n, pos = geo.attributes.position.array, col = geo.attributes.color.array;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const i = r * n + c; pos[i * 3 + 1] = T.h[i]; col.set(srgb(groundColor(T, i)), i * 3);
+  }
+  const R0 = Math.max(0, r0 - 1), R1 = Math.min(n - 1, r1 + 1);
+  gridNormals(R0, R1, Math.max(0, c0 - 1), Math.min(n - 1, c1 + 1));
+  for (const a of [geo.attributes.position, geo.attributes.color, geo.attributes.normal]) {
+    a.clearUpdateRanges(); a.addUpdateRange(R0 * n * 3, (R1 - R0 + 1) * n * 3); a.needsUpdate = true;
+  }
   G.dirty = true;
 }
-function groundY(x, z, fallback) {
-  const T = S.terrain; if (!T) return fallback;
-  const n = T.n, c = Math.floor((x - T.min[0]) / (T.max[0] - T.min[0]) * n), r = Math.floor((z - T.min[2]) / (T.max[2] - T.min[2]) * n);
-  if (c < 0 || r < 0 || c >= n || r >= n) return fallback;
-  return T.h[r * n + c];
-}
 
-// Spots: a translucent pad hugging the ground, an outline, and a pin.
+// Spots: a translucent pad on the ground, an outline, and a pin.
 function buildSlots() {
   const T3 = G.three; if (!T3 || !S.work) return;
   clearGroup(T3.groups.markers); G.pickable = [];
-  T3.groups.markers.visible = S.showSpots;
   const pads = { pos: [], col: [] }, lines = { pos: [], col: [] }, pins = { pos: [], col: [] };
-  const ink = hexRgb(cssVar("--ink")), warn = hexRgb(cssVar("--warn"));
-  for (const s of S.work.slots) {
-    if (!visibleSlot(s)) continue;
-    const [v, op, em] = slotLook(s), rgb = hexRgb(cssVar(v)), sel = S.slot === s.id, ch = slotChanged(s);
-    const [x, y, z] = s.pos, half = parseFloat(s.group) / 2 || 3, seg = Math.max(1, Math.round(half / 4));
+  const lantern = hexRgb(cssVar("--lantern"));
+  for (const s of liveSlots()) {
+    const [v, op, em] = slotLook(s), rgb = hexRgb(cssVar(v)), sel = S.slot === s.id;
+    const x = s.pos[0], z = s.pos[2], y = groundY(x, z, s.pos[1]);
+    const half = parseFloat(s.group) / 2 || 3, seg = Math.max(1, Math.round(half / 4));
     const P = (px, pz) => [px, groundY(px, pz, y) + 0.45, pz];
     const pa = (S.models ? 0.22 : 0.38) * op + (sel ? 0.25 : 0);
     for (let a = 0; a < seg; a++) for (let b = 0; b < seg; b++) {
@@ -422,7 +569,7 @@ function buildSlots() {
       const z0 = z - half + 2 * half * b / seg, z1 = z - half + 2 * half * (b + 1) / seg;
       for (const q of [[x0, z0], [x1, z0], [x0, z1], [x1, z0], [x1, z1], [x0, z1]]) { pads.pos.push(...P(q[0], q[1])); pads.col.push(...rgb, pa); }
     }
-    const edge = sel ? ink : ch ? warn : rgb, ea = sel || ch ? 1 : 0.5 + 0.5 * op;
+    const edge = sel ? lantern : rgb, ea = sel ? 1 : 0.5 + 0.5 * op;
     const cs = [[x - half, z - half], [x + half, z - half], [x + half, z + half], [x - half, z + half]];
     for (let q = 0; q < 4; q++) {
       const A = cs[q], B = cs[(q + 1) % 4];
@@ -433,13 +580,12 @@ function buildSlots() {
       }
     }
     const h = (4 + Math.sqrt(half) * 2.2) * (0.45 + em) * (sel ? 1.6 : 1), w = sel ? 1.4 : 0.9, top = y + h;
-    const pc = sel ? ink : rgb;
+    const pc = sel ? lantern : rgb;
     const quads = [[[w, -w], [w, w]], [[-w, w], [-w, -w]], [[w, w], [-w, w]], [[-w, -w], [w, -w]]];
-    for (const [[ax, az], [bx, bz]] of quads) {
+    for (const [[ax, az], [bx, bz]] of quads)
       for (const [qx, qy, qz] of [[ax, y, az], [bx, y, bz], [bx, top, bz], [ax, y, az], [bx, top, bz], [ax, top, az]]) { pins.pos.push(x + qx, qy, z + qz); pins.col.push(...pc); }
-    }
     for (const [qx, qz] of [[-w, -w], [w, -w], [w, w], [-w, -w], [w, w], [-w, w]]) { pins.pos.push(x + qx, top, z + qz); pins.col.push(...pc.map(c => Math.min(1, c * 1.2))); }
-    G.pickable.push({ id: s.id, x, z: -z, base: y, top });
+    G.pickable.push({ id: s.id, x, z: -z, base: y, top, half });
   }
   const geo = (p, c, size) => { const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(c, size)); return g; };
@@ -452,10 +598,27 @@ function buildSlots() {
   T3.groups.markers.add(padMesh, lineMesh, pinMesh);
   G.dirty = true;
 }
+// The tool's footprint under the cursor: a ring for the brush, a square for a new spot.
+function drawCursor(pt) {
+  const T3 = G.three; if (!T3) return;
+  clearGroup(T3.groups.cursor); G.cursor = pt; G.dirty = true;
+  if (!pt || !(S.tool === "paint" || S.tool === "add")) return;
+  const col = hexRgb(cssVar("--lantern")), p = [], N = 64;
+  const at = (x, z) => [x, groundY(x, z, pt[1]) + 0.6, z];
+  if (S.tool === "paint") {
+    for (let i = 0; i < N; i++) { const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2, r = S.brush.radius;
+      p.push(...at(pt[0] + Math.cos(a0) * r, pt[2] + Math.sin(a0) * r), ...at(pt[0] + Math.cos(a1) * r, pt[2] + Math.sin(a1) * r)); }
+  } else {
+    const h = parseFloat(S.addSize || "6") / 2, cs = [[-h, -h], [h, -h], [h, h], [-h, h]];
+    for (let q = 0; q < 4; q++) { const A = cs[q], B = cs[(q + 1) % 4];
+      for (let t = 0; t < 8; t++) p.push(...at(pt[0] + A[0] + (B[0] - A[0]) * t / 8, pt[2] + A[1] + (B[1] - A[1]) * t / 8), ...at(pt[0] + A[0] + (B[0] - A[0]) * (t + 1) / 8, pt[2] + A[1] + (B[1] - A[1]) * (t + 1) / 8)); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
+  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: new THREE.Color(...col), depthTest: false, toneMapped: false }));
+  m.renderOrder = 9; T3.groups.cursor.add(m);
+}
 
-// ---- models -----------------------------------------------------------------
-// A glb (the mirror's, or converted from the install on request) holds one or more submeshes (POSITION, NORMAL,
-// TEXCOORD_0, indices) plus an "AABB" helper node, which is skipped.
+// ---- models -------------------------------------------------------------------
 function parseGlb(buf) {
   const dv = new DataView(buf), jsonLen = dv.getUint32(12, true);
   const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
@@ -514,7 +677,7 @@ async function loadTexture(rel, swap) {
   return tex;
 }
 const partKey = (p) => [p.mesh, p.texture || "", p.swap_rb, p.color || "", p.decal].join("|");
-let DECAL_GEO = null;   // decals: the texture on a 1 m quad lying in the cube's XZ plane
+let DECAL_GEO = null;
 function partAsset(p) {
   const key = partKey(p);
   let a = G.parts.get(key);
@@ -549,8 +712,6 @@ function progress() {
   $("load").hidden = !busy;
 }
 const b64f32 = (s) => { const raw = Uint8Array.from(atob(s), c => c.charCodeAt(0)); return new Float32Array(raw.buffer); };
-// Draw a batch of {parts, matrices} payloads (each with an optional offset)
-// into `group` as one InstancedMesh per distinct mesh+texture.
 async function fillGroup(group, batches, token) {
   const per = new Map();
   for (const { data, offset } of batches) {
@@ -569,57 +730,65 @@ async function fillGroup(group, batches, token) {
     const im = new THREE.InstancedMesh(a.geometry, a.material, count);
     let o = 0; for (const m of mats) { im.instanceMatrix.array.set(m, o); o += m.length; }
     im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
-    im.castShadow = !a.decal; im.receiveShadow = true; im.userData.shared = true;
+    // Size of one instance: small props are hidden when the camera is far
+    // (see frame()) and cast no shadow; measured on Dark Hills, props under
+    // 2 m are 8 of the scenery's 13.4 million triangles.
+    const rad = a.geometry.boundingSphere ? a.geometry.boundingSphere.radius : 99;
+    im.castShadow = !a.decal && rad >= SMALL_PROP; im.receiveShadow = true;
+    im.userData.shared = true; im.userData.r = rad;
     if (a.decal) im.renderOrder = 1;
     meshes.push(im);
   }));
-  if (token !== group.userData.token) return;   // a newer fill replaced this one
+  if (token !== group.userData.token) return;
   clearGroup(group); for (const m of meshes) group.add(m);
-  G.dirty = true;
+  G.band = null; shadows();
 }
+// Distance bands for prop detail: nothing hidden up close, props under
+// SMALL_PROP metres beyond 260 m of camera distance, under 6 m beyond 900 m.
+const SMALL_PROP = 2;
+function detailBand(dist) { return dist > 900 ? 6 : dist > 260 ? SMALL_PROP : 0; }
 async function loadScenery(key) {
   if (!G.three) return;
   const g = G.three.groups.scenery; g.userData.token = key; clearGroup(g);
   try {
     const data = await api("api/scene?chapter=" + encodeURIComponent(key));
     if (S.chapter.key !== key) return;
-    S.sceneInfo = `${data.instances.toLocaleString()} objects`;
+    S.sceneInfo = `${data.instances.toLocaleString()} scenery objects`;
     await fillGroup(g, [{ data }], key);
   } catch (err) { S.sceneInfo = null; S.modelsError = err.message; }
-  renderLegend();
+  render();
 }
 async function tileData(path) {
   if (!G.tileCache.has(path)) G.tileCache.set(path, api(`api/tile?chapter=${encodeURIComponent(S.chapter.key)}&path=${encodeURIComponent(path)}`).catch(() => null));
   return G.tileCache.get(path);
 }
+// What the map shows on its spots: the hand-pinned tiles always, the rest from
+// the last preview roll.
 async function drawLayout() {
   if (!G.three) return;
   const g = G.three.groups.tiles, token = {}; g.userData.token = token;
-  const batches = [];
-  for (const [id, path] of Object.entries(S.layout)) {
-    const s = S.work.slots.find(x => String(x.id) === id); const data = await tileData(path);
-    if (s && data && data.instances) batches.push({ data, offset: s.pos });
+  const shown = { ...S.layout, ...S.place }, batches = [];
+  for (const [id, path] of Object.entries(shown)) {
+    const s = S.work.slots.find(x => String(x.id) === id); if (!s || S.removed.has(s.id)) continue;
+    const data = await tileData(path);
+    if (data && data.instances) batches.push({ data, offset: [s.pos[0], groundY(s.pos[0], s.pos[2], s.pos[1]), s.pos[2]] });
   }
   if (g.userData.token !== token) return;
-  if (!batches.length) { clearGroup(g); G.dirty = true; return; }
+  if (!batches.length) { clearGroup(g); shadows(); return; }
   await fillGroup(g, batches, token);
 }
-
-// A rough stand-in for the generator, for looking at, not for balancing: each
-// kind in order takes random eligible spots it keeps its spacing on, and a
-// pool tile whose flags match the kind and whose size matches the spot,
-// weighted by tile weight, within the flag limits.
+// A rough stand-in for the generator, for looking at, not balancing.
 function sampleLayout(seed) {
   let a = seed >>> 0; const rnd = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const used = new Set(), placed = [], quota = S.work.quotas.map(() => 0), out = {};
+  const used = new Set(Object.keys(S.place)), placed = [], quota = S.work.quotas.map(() => 0), out = {};
   for (const k of S.work.kinds) {
-    const spots = S.work.slots.filter(s => eligible(s, k) === "yes" && !used.has(s.id));
+    const spots = liveSlots().filter(s => eligible(s, k) === "yes" && !used.has(String(s.id)));
     for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
     let n = 0;
     for (const s of spots) {
       if (n >= k.count) break;
       if (placed.some(p => p.kind === k.name && Math.hypot(p.pos[0] - s.pos[0], p.pos[2] - s.pos[2]) < k.min_distance)) continue;
-      const fits = S.pool.filter(t => `${t.width}x${t.height}` === s.group
+      const fits = poolNow().filter(t => `${t.width}x${t.height}` === s.group
         && k.required.every(f => t.flags.includes(f)) && !k.excluded.some(f => t.flags.includes(f))
         && S.work.quotas.every((q, qi) => !q.flags.every(f => t.flags.includes(f)) || quota[qi] < q.limit));
       if (!fits.length) continue;
@@ -627,15 +796,17 @@ function sampleLayout(seed) {
       let r = rnd() * total, tile = fits[fits.length - 1];
       for (const t of fits) { r -= t.weight > 0 ? t.weight : 1; if (r <= 0) { tile = t; break; } }
       S.work.quotas.forEach((q, qi) => { if (q.flags.every(f => tile.flags.includes(f))) quota[qi]++; });
-      used.add(s.id); placed.push({ kind: k.name, pos: s.pos }); out[String(s.id)] = tile.path; n++;
+      used.add(String(s.id)); placed.push({ kind: k.name, pos: s.pos }); out[String(s.id)] = tile.path; n++;
     }
   }
   return out;
 }
+
+// ---- camera, picking and the tools on the map ---------------------------------
 function frame() {
   requestAnimationFrame(frame);
   const T3 = G.three, cv = $("gl");
-  if (!T3 || S.view !== "3d" || !G.dirty) return;
+  if (!T3 || !G.dirty) return;
   const w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
   const size = T3.renderer.getSize(new THREE.Vector2());
   if (size.x !== w || size.y !== h) T3.renderer.setSize(w, h, false);
@@ -644,8 +815,14 @@ function frame() {
   T3.camera.aspect = w / h;
   T3.camera.position.set(c.tx + c.dist * cp * Math.sin(c.yaw), c.ty + c.dist * Math.sin(c.pitch), c.tz + c.dist * cp * Math.cos(c.yaw));
   T3.camera.lookAt(c.tx, c.ty, c.tz); T3.camera.updateProjectionMatrix(); T3.camera.updateMatrixWorld();
-  T3.scene.background = new THREE.Color(cssVar("--panel"));
+  T3.scene.background = G.bg ||= new THREE.Color(cssVar("--view"));
   T3.groups.scenery.visible = T3.groups.tiles.visible = S.models;
+  const band = detailBand(c.dist);
+  if (band !== G.band) {
+    G.band = band;
+    for (const g of [T3.groups.scenery, T3.groups.tiles]) for (const m of g.children) m.visible = !(m.userData.r < band);
+    T3.renderer.shadowMap.needsUpdate = true;
+  }
   T3.renderer.render(T3.scene, T3.camera);
 }
 function project(p) {
@@ -663,27 +840,67 @@ function pickAt(mx, my) {
     const d = Math.hypot(mx - (a[0] + t * dx), my - (a[1] + t * dy));
     if (d < 14 && (!best || d + a[2] * 0.002 < best.score)) best = { id: p.id, score: d + a[2] * 0.002 };
   }
-  return best && best.id;
+  if (best) return best.id;
+  // Otherwise the spot whose pad is under the cursor.
+  const g = groundAt(mx, my); if (!g) return null;
+  const hit = liveSlots().find(s => { const h = parseFloat(s.group) / 2 || 3; return Math.abs(g[0] - s.pos[0]) <= h && Math.abs(g[2] - s.pos[2]) <= h; });
+  return hit ? hit.id : null;
+}
+// The engine-space ground point under a screen pixel: march the view ray over
+// the height field, then bisect the crossing. No mesh raycast (262k triangles).
+function groundAt(mx, my) {
+  const T3 = G.three, T = S.terrain, cv = $("gl"); if (!T3 || !T) return null;
+  const ndc = new THREE.Vector2(mx / cv.clientWidth * 2 - 1, -(my / cv.clientHeight) * 2 + 1);
+  const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, T3.camera);
+  const o = ray.ray.origin, d = ray.ray.direction;
+  const at = (t) => [o.x + d.x * t, o.y + d.y * t, -(o.z + d.z * t)];
+  const above = (t) => { const p = at(t), y = groundY(p[0], p[2], null); return y == null ? null : p[1] - y; };
+  // Start where the ray drops below the terrain's top; no ground above that.
+  const t0 = d.y < 0 ? Math.max(0, (o.y - T.max[1]) / -d.y) : 0;
+  let prev = t0, pv = above(t0);
+  for (let t = t0 + 1.5; t < t0 + 3000; t += 1.5) {
+    const v = above(t);
+    if (v != null && pv != null && pv > 0 && v <= 0) {
+      let lo = prev, hi = t;
+      for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2, mv = above(m); if (mv != null && mv > 0) lo = m; else hi = m; }
+      const p = at(hi); return [p[0], groundY(p[0], p[2], p[1]), p[2]];
+    }
+    if (v != null) { prev = t; pv = v; }
+  }
+  return null;
 }
 function resetCamera() {
-  const slots = S.work ? S.work.slots.filter(s => !s.whole_map) : [];
+  const slots = S.work ? liveSlots() : [];
   const cx = slots.length ? slots.reduce((a, s) => a + s.pos[0], 0) / slots.length : 0;
   const cz = slots.length ? slots.reduce((a, s) => a + s.pos[2], 0) / slots.length : 0;
-  Object.assign(G.cam, { tx: cx, ty: 0, tz: -cz, yaw: 0, pitch: 0.95, dist: 640 });
+  Object.assign(G.cam, { tx: cx - 70, ty: 0, tz: -cz, yaw: 0, pitch: 0.95, dist: 640 });
   G.dirty = true;
 }
-function bindCamera(cv) {
+// Left button runs the tool (in Select, dragging empty ground orbits); right
+// drag orbits; middle or Shift+right pans; the wheel zooms.
+function bindPointer(cv) {
   let drag = null; const pointers = new Map();
+  const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   cv.addEventListener("contextmenu", e => e.preventDefault());
   cv.addEventListener("pointerdown", e => {
     cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]);
-    drag = { x: e.clientX, y: e.clientY, moved: 0, pan: e.button === 2 || e.shiftKey, pinch: pointers.size === 2 ? null : undefined };
-    cv.classList.add("dragging");
+    const [mx, my] = local(e), tool = e.button === 0 && !e.altKey ? S.tool : null;
+    drag = { x: e.clientX, y: e.clientY, moved: 0, mode: "orbit", pinch: undefined };
+    if (e.button === 1 || (e.button === 2 && e.shiftKey)) drag.mode = "pan";
+    else if (tool === "paint" && S.terrain) { remember(); drag.mode = "paint"; drag.last = null; paintAt(mx, my, drag); }
+    else if (tool === "move") { const id = pickAt(mx, my); if (id != null) { remember(); S.slot = id; drag.mode = "move"; drag.id = id; render(); } }
+    else if (tool === "select") { drag.mode = "orbit"; drag.click = true; }
+    else if (tool) { drag.mode = "click"; }
+    if (drag.mode === "orbit" || drag.mode === "pan") cv.classList.add("orbit");
   });
+  let pending = null;
   cv.addEventListener("pointermove", e => {
-    const r = cv.getBoundingClientRect();
-    if (!drag) { const id = pickAt(e.clientX - r.left, e.clientY - r.top);
-      if (id != null) showTip(e, S.work.slots.find(s => s.id === id)); else $("tip").hidden = true; return; }
+    const first = !pending; pending = e;
+    if (first) requestAnimationFrame(() => { const ev = pending; pending = null; move(ev); });
+  });
+  const move = e => {
+    const [mx, my] = local(e);
+    if (!drag) { hover(e, mx, my); return; }
     const prev = pointers.get(e.pointerId); pointers.set(e.pointerId, [e.clientX, e.clientY]);
     if (pointers.size === 2) {
       const [p1, p2] = [...pointers.values()], d = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
@@ -693,288 +910,412 @@ function bindCamera(cv) {
     const dx = e.clientX - (prev ? prev[0] : drag.x), dy = e.clientY - (prev ? prev[1] : drag.y);
     drag.moved += Math.abs(dx) + Math.abs(dy);
     const c = G.cam;
-    if (drag.pan) {
+    if (drag.mode === "paint") { paintAt(mx, my, drag); }
+    else if (drag.mode === "move") {
+      const g = groundAt(mx, my), s = slotById(drag.id);
+      if (g && s) { s.pos = [Math.round(g[0] * 10) / 10, g[1], Math.round(g[2] * 10) / 10]; buildSlots(); }
+    } else if (drag.mode === "pan") {
       const k = c.dist * 0.0016, sy = Math.sin(c.yaw), cy = Math.cos(c.yaw);
-      c.tx -= (cy * dx + sy * dy) * k; c.tz += (sy * dx - cy * dy) * k;   // grab the ground
-    } else {
+      c.tx -= (cy * dx + sy * dy) * k; c.tz += (sy * dx - cy * dy) * k;
+    } else if (drag.mode === "orbit") {
       c.yaw -= dx * 0.006; c.pitch = Math.max(0.12, Math.min(1.5605, c.pitch + dy * 0.005));
     }
     G.dirty = true; $("tip").hidden = true;
-  });
+  };
   const end = e => {
     pointers.delete(e.pointerId);
-    if (drag && drag.moved < 5 && pointers.size === 0) {
-      const r = cv.getBoundingClientRect(), id = pickAt(e.clientX - r.left, e.clientY - r.top);
-      if (id != null) pickSlot(id);
+    if (drag && pointers.size === 0) {
+      const [mx, my] = local(e);
+      if (drag.moved < 5 && (drag.click || drag.mode === "click")) toolClick(mx, my);
+      if (drag.mode === "move") { drawLayout(); render(); }
+      if (drag.mode === "paint") { drawLayout(); render(); shadows(); }
+      drag = null; cv.classList.remove("orbit");
     }
-    if (pointers.size === 0) { drag = null; cv.classList.remove("dragging"); }
   };
   cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
   cv.addEventListener("wheel", e => { e.preventDefault(); G.cam.dist = Math.max(40, Math.min(1600, G.cam.dist * Math.exp(e.deltaY * 0.0012))); G.dirty = true; }, { passive: false });
-  cv.addEventListener("mouseleave", () => { $("tip").hidden = true; });
+  cv.addEventListener("mouseleave", () => { $("tip").hidden = true; drawCursor(null); });
 }
-
-// ---- map chrome shared by both views ----------------------------------------
+function hover(e, mx, my) {
+  if (S.tool === "paint" || S.tool === "add") { drawCursor(groundAt(mx, my)); $("tip").hidden = true; return; }
+  const id = pickAt(mx, my);
+  if (id != null) showTip(e, slotById(id)); else $("tip").hidden = true;
+}
+// One dab per brush-spacing of cursor travel, so a drag paints evenly.
+function paintAt(mx, my, drag) {
+  const g = groundAt(mx, my); if (!g) return;
+  const step = Math.max(1, S.brush.radius * 0.35);
+  if (drag.last && Math.hypot(g[0] - drag.last[0], g[2] - drag.last[2]) < step) { drawCursor(g); return; }
+  drag.last = g;
+  const b = S.brush, st = { x: Math.round(g[0] * 10) / 10, z: Math.round(g[2] * 10) / 10, radius: b.radius, falloff: b.falloff };
+  if (b.mode === "shape") {
+    st.op = b.op;
+    if (b.op === "raise" || b.op === "lower") st.amount = b.amount;
+    if (b.op === "flatten") st.amount = Math.round((drag.flat ??= g[1]) * 100) / 100;
+  } else if (b.mode === "surface") {
+    if (!b.layer || !S.layers[b.layer]) { status("Pick a surface layer in the panel first", "bad"); return; }
+    Object.assign(st, { op: b.surfOp, layer: b.layer });
+    if (b.surfOp !== "smooth") st.amount = b.strength;
+  } else {
+    if (!S.layers[TINT_LAYER]) { status("The tint layer is still loading", "bad"); return; }
+    Object.assign(st, { op: "tint", layer: TINT_LAYER, color: b.color, amount: b.strength });
+  }
+  const box = brush(S.terrain, st); if (!box) return;
+  S.strokes.push(st);
+  updateGround(...box); drawCursor(g);
+}
+function toolClick(mx, my) {
+  if (S.tool === "select") { const id = pickAt(mx, my); S.slot = id; render(); return; }
+  if (S.tool === "add") {
+    const g = groundAt(mx, my); if (!g) { status("Click on the ground to add a spot", "bad"); return; }
+    const size = S.addSize || S.work.groups[0].name;
+    remember();
+    const id = "n" + (S.nextNew++);
+    S.work.slots.push({ id, pos: [Math.round(g[0] * 10) / 10, g[1], Math.round(g[2] * 10) / 10], group: size, whole_map: false,
+      allow: Object.fromEntries(S.work.kinds.map(k => [k.name, false])), overrides: [] });
+    S.work.groups.find(x => x.name === size).slots.push(id);
+    S.slot = id; status(`Added a ${sizeLabel(size)} spot`, "ok"); render(); return;
+  }
+  if (S.tool === "place") {
+    const id = pickAt(mx, my); if (id == null) { status("Click a spot to place the tile on", "bad"); return; }
+    const s = slotById(id), t = S.placeTile && poolTile(S.placeTile);
+    if (!t) { status("Pick a tile in the panel first", "bad"); return; }
+    if (`${t.width}x${t.height}` !== s.group) { status(`${nice(t.name)} is ${sizeLabel(t.width + "x" + t.height)}; that spot is ${sizeLabel(s.group)}`, "bad"); return; }
+    remember(); S.place[String(id)] = t.path; S.slot = id;
+    status(`${nice(t.name)} pinned to the spot`, "ok"); drawLayout(); render();
+  }
+}
+const poolTile = (path) => poolNow().find(t => t.path === path) || (S.catalog || []).find(t => t.path === path);
 function showTip(ev, s) {
   if (!s) return;
   const tip = $("tip"), r = $("viewport").getBoundingClientRect();
-  const kind = S.kind != null ? S.work.kinds[S.kind] : null;
-  let line;
-  if (kind) {
-    const e = eligible(s, kind);
-    line = e === "yes" ? `${nice(kind.name)} can go here` : e === "blocked" ? `allows ${nice(kind.name)}, but it doesn't fit ${sizeLabel(s.group)}` : `${nice(kind.name)} not allowed here`;
-  } else {
-    const f = fitsNow(s).map(k => nice(k.name));
-    line = f.length ? `can hold: ${f.slice(0, 4).join(", ")}${f.length > 4 ? ` +${f.length - 4}` : ""}` : "holds nothing in this scenario";
-  }
-  const shown = S.layout[String(s.id)];
-  tip.innerHTML = `<b>Spot ${s.id}</b> · ${esc(sizeLabel(s.group))}<br>${esc(line)}` +
-    (shown ? `<br><span class="muted">showing ${esc(nice(shown.split("\\").pop().replace(".tiledef.ot", "")))}</span>` : "");
+  const pinned = S.place[String(s.id)], shown = pinned || S.layout[String(s.id)];
+  const f = fitsNow(s).map(k => nice(k.name));
+  const line = pinned ? "pinned by hand" : f.length ? `can hold ${f.slice(0, 3).join(", ")}${f.length > 3 ? ` and ${f.length - 3} more` : ""}` : "holds nothing in this scenario";
+  tip.innerHTML = `<b>${isNew(s) ? "New spot" : "Spot " + s.id}</b>, ${esc(sizeLabel(s.group))}<br>${esc(line)}` +
+    (shown ? `<br><span class="muted">${esc(tileShort(shown))}</span>` : "");
   tip.hidden = false;
   const x = ev.clientX - r.left + 14, y = ev.clientY - r.top + 14;
   tip.style.left = Math.min(x, r.width - tip.offsetWidth - 6) + "px"; tip.style.top = Math.min(y, r.height - tip.offsetHeight - 6) + "px";
 }
-function pickSlot(id) { S.slot = id; setTab("slot"); render(); }
-function renderLegend() {
-  const kind = S.kind != null ? S.work.kinds[S.kind] : null;
-  const sw = (v, op) => `<i class="sw" style="background:var(${v});opacity:${op}"></i>`;
-  let h;
-  if (kind) {
-    h = `<b>${esc(nice(kind.name))}</b><span>${eligibleCount(kind)} spots where it can go</span>` +
-      `<span>${sw("--ok", 1)}can go here</span><span>${sw("--warn", .8)}allowed, wrong size</span>` +
-      (S.showAll ? `<span>${sw("--idle", .5)}not allowed</span>` : "") +
-      `<span><button class="small" id="clearkind">Show all tiles</button></span>`;
-  } else {
-    h = `<b>Spot sizes</b>` + S.work.groups.map(g => `<span>${sw(groupVar(g.name), .9)}${esc(sizeLabel(g.name))} · ${g.slots.length}</span>`).join("") +
-      `<span class="muted">Pick a tile to see where it goes</span>`;
-  }
-  if (S.terrain) h += `<span class="muted" style="margin-top:4px"><i class="sw" style="background:#d9b878"></i>design paths <i class="sw" style="background:#3a78b6;margin-left:6px"></i>water</span>`;
-  if (S.view === "3d" && S.models) {
-    const nt = Object.keys(S.layout).length;
-    if (S.sceneInfo) h += `<span class="muted">Scenery: ${esc(S.sceneInfo)}</span>`;
-    else if (S.modelsError) h += `<span class="warn" title="${esc(S.modelsError)}">No models: the chapter's scenery could not be read from the game files</span>`;
-    if (nt) h += `<span class="muted">Tiles shown on ${nt} spots${S.layoutSample ? " (sample, approximate)" : ""}</span>`;
-  }
-  $("legend").innerHTML = h;
-  const b = $("clearkind"); if (b) b.addEventListener("click", () => { S.kind = null; render(); });
-}
-function setView(v) {
-  if (v === "3d" && !G.three) v = "2d";
-  S.view = v;
-  $("v3d").setAttribute("aria-pressed", String(v === "3d")); $("v2d").setAttribute("aria-pressed", String(v === "2d"));
-  // toggleAttribute, not .hidden: an SVG element has no `hidden` property.
-  $("gl").toggleAttribute("hidden", v !== "3d"); $("map").toggleAttribute("hidden", v !== "2d");
-  for (const id of ["recenter", "sample"]) $(id).hidden = v !== "3d";
-  for (const id of ["models", "spots"]) $(id).parentElement.hidden = v !== "3d";
-  $("clearlayout").hidden = v !== "3d" || !Object.keys(S.layout).length;
-  $("hint").textContent = v === "3d" ? "Drag to rotate · right-drag or Shift-drag to pan · scroll to zoom · click a spot"
-                                     : "Click a spot to edit it";
-  G.dirty = true; store.set("rsmm.mapeditor.view", v);
-}
 
-// ---- panels -----------------------------------------------------------------
-function setTab(t) {
-  S.tab = t;
-  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+// ---- the inspector ---------------------------------------------------------------
+const HINTS = {
+  select: "Click a spot to inspect it. Drag to orbit, right-drag to orbit too, middle or Shift+right-drag to pan, scroll to zoom.",
+  move: "Drag a spot across the ground to move it.",
+  add: "Click the ground to add a spot of the size picked in the panel.",
+  place: "Pick a tile in the panel, then click a spot of the same size: that tile lands there in every run.",
+  paint: "Drag over the ground to paint. Right-drag orbits, scroll zooms. Ctrl+Z undoes a whole drag.",
+};
+function setTool(t) {
+  S.tool = t; document.body.dataset.tool = t;
+  document.querySelectorAll("#tools [data-tool]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tool === t)));
+  if (t === "place") loadCatalog();
+  if (t !== "paint") setOverlay(null);
+  else if (S.brush.mode === "surface") setOverlay(S.brush.layer);
+  drawCursor(null); render();
 }
-function undoBtn(attr) { return `<button class="undo" title="Back to the shipped value" ${attr}>↺</button>`; }
-function helpBox() {
-  const open = store.get("rsmm.mapeditor.help") !== "closed" ? "open" : "";
-  return `<details class="help" id="help" ${open}><summary>How map generation works</summary><ul>
-    <li><b>Spots</b> are fixed places on the map where a tile can be put. Each spot has a size (for example 40×40 m).</li>
-    <li><b>Tiles</b> are what fills them: camps, shrines, the start, the boss arena. For each tile you set how many a run gets, how far apart they must be, and which spot sizes it fits.</li>
-    <li>A tile can only go on a spot that <b>allows it</b> (see the Spot tab) <b>and</b> whose size it fits.</li>
-    <li><b>Limits</b> cap special tiles (at most one Wishing Well, …) however the counts work out.</li>
-    <li>The game picks one <b>scenario</b> per run. A scenario can force a tile onto, or keep it off, particular spots, so switch scenarios to see each case.</li>
-    <li>When you're done, <b>Review &amp; save</b> writes a normal mod you install with <code>rsmm apply</code>.</li>
-  </ul></details>`;
-}
-function renderKinds() {
-  const groups = S.work.groups.map(g => g.name), q = S.filter.toLowerCase();
-  let h = helpBox() + `<div class="toolbar"><input type="search" id="kfilter" placeholder="Find a tile…" value="${esc(S.filter)}" aria-label="Filter tiles">
-    <span class="muted">${S.work.kinds.length} tile types</span></div>`;
-  h += `<table><thead><tr><th>Tile</th><th title="How many the generator tries to place each run">Per run</th><th title="Minimum distance between two of this tile">Spacing (m)</th><th title="Spots it could go on in this scenario — click to show them">Spots</th></tr></thead>`;
-  S.work.kinds.forEach((k, i) => {
-    if (q && !nice(k.name).toLowerCase().includes(q)) return;
-    const o = S.orig.kinds[i], n = eligibleCount(k), sel = S.kind === i ? "sel" : "";
-    const cCh = k.count !== o.count, dCh = Math.abs(k.min_distance - o.min_distance) > 1e-4;
-    const fp = groups.map(g => {
-      const ch = k.footprints[g] !== o.footprints[g];
-      return `<label class="chipbox ${ch ? "changed" : ""}"><input type="checkbox" data-k="${i}" data-fp="${esc(g)}" ${k.footprints[g] ? "checked" : ""}>${esc(sizeLabel(g))}</label>`;
-    }).join("");
-    const short = k.count > n;
-    h += `<tbody class="kind ${sel}"><tr>
-      <td class="kname" data-pick="${i}" title="Show on the map">${esc(nice(k.name))}</td>
-      <td class="${cCh ? "changed" : ""}"><input type="number" min="0" max="500" step="1" data-k="${i}" data-f="count" value="${k.count}" aria-label="${esc(nice(k.name))} per run">${cCh ? undoBtn(`data-undo="${i}" data-uf="count"`) : ""}</td>
-      <td class="${dCh ? "changed" : ""}"><input type="number" min="0" max="2000" step="1" data-k="${i}" data-f="min_distance" value="${k.min_distance}" aria-label="${esc(nice(k.name))} spacing">${dCh ? undoBtn(`data-undo="${i}" data-uf="min_distance"`) : ""}</td>
-      <td><span class="badge ${short ? "warn" : ""}" data-pick="${i}" title="${short ? "Asks for more than there are spots — some won't be placed" : "Show these spots"}">${n}</span></td></tr>
-      <tr><td colspan="4"><div class="fp"><span>fits</span>${fp}</div></td></tr></tbody>`;
-  });
-  h += `</table><p class="muted">Spacing and limits can still leave fewer placed than “per run” asks for.</p>`;
-  $("panel").innerHTML = h;
-  const P = $("panel");
-  $("help").addEventListener("toggle", e => store.set("rsmm.mapeditor.help", e.target.open ? "open" : "closed"));
-  $("kfilter").addEventListener("input", e => { S.filter = e.target.value; const pos = e.target.selectionStart; renderKinds(); const f = $("kfilter"); f.focus(); f.setSelectionRange(pos, pos); });
-  P.querySelectorAll("[data-pick]").forEach(el => el.addEventListener("click", () => {
-    const i = Number(el.dataset.pick); S.kind = S.kind === i ? null : i; render();
-  }));
-  P.querySelectorAll("input[data-f]").forEach(el => el.addEventListener("change", () => {
-    const k = S.work.kinds[Number(el.dataset.k)], v = Number(el.value), max = Number(el.max);
-    if (!Number.isFinite(v) || v < 0 || v > max) { el.value = k[el.dataset.f]; status(`Use a number from 0 to ${max}.`, "bad"); return; }
-    k[el.dataset.f] = el.dataset.f === "count" ? Math.round(v) : v; render();
-  }));
-  P.querySelectorAll("input[data-fp]").forEach(el => el.addEventListener("change", () => {
-    S.work.kinds[Number(el.dataset.k)].footprints[el.dataset.fp] = el.checked; render();
-  }));
-  P.querySelectorAll("[data-undo]").forEach(el => el.addEventListener("click", () => {
-    const i = Number(el.dataset.undo); S.work.kinds[i][el.dataset.uf] = S.orig.kinds[i][el.dataset.uf]; render();
-  }));
-}
-function renderQuotas() {
-  let h = `<p class="muted">A hard cap on tiles that carry a flag, applied after the per-run counts. Useful to allow more shrines, or a second Wishing Well.</p>`;
-  h += `<table><thead><tr><th>Tiles flagged</th><th>At most</th></tr></thead><tbody>`;
-  S.work.quotas.forEach((q, i) => {
-    const ch = q.limit !== S.orig.quotas[i].limit;
-    h += `<tr><td>${esc(nice(q.flags.join(" + ")))}</td><td class="${ch ? "changed" : ""}"><input type="number" min="0" max="500" step="1" data-q="${i}" value="${q.limit}" aria-label="${esc(q.key)} limit">${ch ? undoBtn(`data-uq="${i}"`) : ""}</td></tr>`;
-  });
-  h += `</tbody></table>`;
-  $("panel").innerHTML = h;
-  $("panel").querySelectorAll("input[data-q]").forEach(el => el.addEventListener("change", () => {
-    const q = S.work.quotas[Number(el.dataset.q)], v = Math.round(Number(el.value));
-    if (!Number.isFinite(v) || v < 0 || v > 500) { el.value = q.limit; status("Use a number from 0 to 500.", "bad"); return; }
-    q.limit = v; render();
-  }));
-  $("panel").querySelectorAll("[data-uq]").forEach(el => el.addEventListener("click", () => {
-    const i = Number(el.dataset.uq); S.work.quotas[i].limit = S.orig.quotas[i].limit; render();
-  }));
-}
-function renderSlot() {
-  const s = S.work.slots.find(x => x.id === S.slot);
-  if (!s) { $("panel").innerHTML = `<p class="muted">Click a spot on the map to see which tiles it can hold, and change that.</p>`; return; }
-  const o = S.orig.slots.find(x => x.id === s.id);
-  const ground = S.terrain ? groundY(s.pos[0], s.pos[2], null) : null;
-  let h = `<div class="slotinfo"><span class="muted">Spot</span><span><b>${s.id}</b></span>
-    <span class="muted">Size</span><span>${esc(sizeLabel(s.group))}</span>
-    <span class="muted">Position</span><span>x ${s.pos[0].toFixed(1)}, z ${s.pos[2].toFixed(1)}, height ${s.pos[1].toFixed(1)} m</span></div>`;
-  if (s.whole_map) {
-    h += `<p class="muted">A whole-map spot: it lists no tiles (that is what makes it one), so there is nothing to edit.</p>`;
-    $("panel").innerHTML = h; return;
-  }
-  const ov = s.overrides[S.scen] || {};
-  // Three groups, most useful first: what can land here, what would fit if
-  // allowed, and what is the wrong size for this spot anyway (collapsed).
-  const now = [], off = [], size = [];
-  S.work.kinds.forEach(k => {
-    const e = eligible(s, k);
-    (e === "yes" ? now : k.footprints[s.group] ? off : size).push(k);
-  });
-  const row = (k, fitBtn) => {
-    const ch = s.allow[k.name] !== o.allow[k.name];
-    let note = "";
-    if (ov[k.name] === 1) note = `<span class="muted" title="This scenario puts it here regardless of the tick">· forced on in this scenario</span>`;
-    else if (ov[k.name] === 0) note = `<span class="muted" title="This scenario keeps it off regardless of the tick">· kept off in this scenario</span>`;
-    if (fitBtn) note += ` <button class="small" data-fit="${esc(k.name)}" title="Tick ${esc(sizeLabel(s.group))} for ${esc(nice(k.name))} on every spot">Let it fit</button>`;
-    return `<label class="${ch ? "changed" : ""}"><input type="checkbox" data-allow="${esc(k.name)}" ${s.allow[k.name] ? "checked" : ""}> <span>${esc(nice(k.name))} ${note}</span></label>`;
-  };
-  h += `<h3 class="okc">Can go here now (${now.length})</h3><div class="kgrid">${now.map(k => row(k, false)).join("") || `<span class="muted">nothing in this scenario</span>`}</div>`;
-  if (off.length) h += `<h3>Right size, but not allowed here (${off.length})</h3><div class="kgrid">${off.map(k => row(k, false)).join("")}</div>`;
-  if (size.length) h += `<details><summary class="muted">Wrong size for a ${esc(sizeLabel(s.group))} spot (${size.length})</summary><div class="kgrid">${size.map(k => row(k, true)).join("")}</div></details>`;
-  h += `<p class="muted">Tick a tile to allow it on this spot. A tile also has to fit the spot's size, which is set per tile in the Tiles tab.</p>`;
-  const fitTiles = S.pool.filter(t => `${t.width}x${t.height}` === s.group
-    && now.some(k => k.required.every(f => t.flags.includes(f)) && !k.excluded.some(f => t.flags.includes(f))));
-  if (G.three) {
-    const cur = S.layout[String(s.id)] || "";
-    h += `<h3>Preview a tile here</h3><div class="toolbar"><select id="preview" aria-label="Tile to preview on this spot"><option value="">— none —</option>` +
-      fitTiles.map(t => `<option value="${esc(t.path)}" ${t.path === cur ? "selected" : ""}>${esc(nice(t.name))}</option>`).join("") +
-      `</select><span class="muted">${fitTiles.length} tile${fitTiles.length === 1 ? "" : "s"} in this chapter's pool can land here now</span></div>`;
-  }
-  $("panel").innerHTML = h;
-  $("panel").querySelectorAll("input[data-allow]").forEach(el => el.addEventListener("change", () => {
-    s.allow[el.dataset.allow] = el.checked; render();
-  }));
-  const pv = $("preview"); if (pv) pv.addEventListener("change", () => {
-    if (pv.value) S.layout[String(s.id)] = pv.value; else delete S.layout[String(s.id)];
-    S.layoutSample = false; drawLayout(); setView(S.view); render();
-  });
-  $("panel").querySelectorAll("[data-fit]").forEach(el => el.addEventListener("click", (e) => {
-    e.preventDefault(); S.work.kinds.find(k => k.name === el.dataset.fit).footprints[s.group] = true; render();
-  }));
-}
-function renderChanges() {
-  const list = changeList();
-  let h = list.length
-    ? `<h3>${list.length} change${list.length === 1 ? "" : "s"} to ${esc(S.chapter.label)}</h3><ul class="changes">${list.map((c, i) => `<li><span>${esc(c.text)}</span>${undoBtn(`data-uc="${i}"`)}</li>`).join("")}</ul>`
-    : `<p class="muted">No changes yet. Everything matches the game's own recipe.</p>`;
-  h += `<h3>Save as a mod</h3><div class="form">
-    <label for="modid">Mod id</label><input id="modid" type="text" placeholder="my-map-tweaks" value="${esc($("modid-keep").value)}">
-    <label for="modname">Name</label><input id="modname" type="text" placeholder="optional" value="${esc($("modname-keep").value)}"></div>
-    <div class="toolbar"><button id="check">Check</button><button id="reset">Undo everything</button><button id="save" class="primary" ${list.length ? "" : "disabled"}>Save mod</button></div>`;
-  if (S.lastSave) {
-    h += `<h3 class="okc">Saved ${esc(S.lastSave.path)}</h3><p>Close the game, then install it with:</p>
-      <pre class="cmd" id="cmd">${esc(S.lastSave.next)}</pre><button class="small" id="copy">Copy</button>
-      <p class="muted">Map generation mods are experimental: play a run and check it before sharing.</p>`;
-  }
-  $("panel").innerHTML = h;
-  $("panel").querySelectorAll("[data-uc]").forEach(el => el.addEventListener("click", () => { list[Number(el.dataset.uc)].undo(); render(); }));
-  for (const id of ["modid", "modname"]) $(id).addEventListener("input", e => { $(id + "-keep").value = e.target.value; });
-  $("check").addEventListener("click", doCheck);
-  $("save").addEventListener("click", doSave);
-  $("reset").addEventListener("click", () => {
-    if (changeList().length && !confirm("Undo every change back to the game's own recipe?")) return;
-    S.work = clone(S.orig); render(); status("Back to the game's own recipe");
-  });
-  const cp = $("copy"); if (cp) cp.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(S.lastSave.next); status("Copied", "ok"); } catch (e) { status("Copy failed; select the text instead.", "bad"); }
-  });
+function inspector(h2, p, body) {
+  $("ih").textContent = h2; $("ip").textContent = p || ""; $("ip").hidden = !p; $("ib").innerHTML = body;
 }
 function render() {
   if (!S.work) return;
-  renderLegend();
-  if (S.view === "2d") renderMap();
   buildTerrain(); buildSlots();
-  ({ kinds: renderKinds, quotas: renderQuotas, slot: renderSlot, changes: renderChanges })[S.tab]();
   const n = changeList().length;
-  $("nchanges").textContent = n ? `(${n})` : "";
+  $("nchanges").textContent = String(n); $("nchanges").hidden = !n;
+  $("hint").textContent = HINTS[S.tool];
+  const s = S.slot != null ? slotById(S.slot) : null;
+  if (S.tool === "paint") renderPaint();
+  else if (S.tool === "add") renderAdd();
+  else if (S.tool === "place" && !s) renderPlace();
+  else if (s && !S.removed.has(s.id)) renderSpot(s);
+  else renderChapter();
   tellShell();
-  const hs = new URLSearchParams({ chapter: S.chapter.key, scenario: String(S.scen), view: S.view });
-  if (S.kind != null) hs.set("kind", S.work.kinds[S.kind].name);
-  // Keeping the pick in the URL is a convenience. The web editor shows this
-  // page in a srcdoc frame, which has no URL of its own to write it to.
-  try { history.replaceState(null, "", "#" + hs.toString()); } catch { /* no URL to keep it in */ }
+}
+function renderChapter() {
+  const groups = S.work.groups, bare = bareKinds();
+  let h = "";
+  if (bare.length) h += `<p class="warnline">No pool tile carries ${esc(bare.map(k => nice(k.name)).join(", "))}, which this chapter still places.</p>`;
+  h += `<details open><summary>Tile types</summary><div class="rows"><span class="h">Click one to see where it can go</span><span class="h">Per run</span><span class="h">Spacing</span>`;
+  S.work.kinds.forEach((k, i) => {
+    const o = S.orig.kinds[i];
+    h += `<span class="name ${S.kind === i ? "on" : ""}" data-kind="${i}" title="${esc(nice(k.name))}">${esc(nice(k.name))}</span>
+      <input type="number" min="0" max="500" step="1" data-k="${i}" data-f="count" value="${k.count}" class="${k.count !== o.count ? "changed" : ""}" aria-label="${esc(nice(k.name))} per run">
+      <input type="number" min="0" max="2000" step="1" data-k="${i}" data-f="min_distance" value="${k.min_distance}" class="${Math.abs(k.min_distance - o.min_distance) > 1e-4 ? "changed" : ""}" aria-label="${esc(nice(k.name))} spacing in metres">`;
+  });
+  h += `</div></details>`;
+  if (S.kind != null) {
+    const k = S.work.kinds[S.kind];
+    h += `<details open><summary>${esc(nice(k.name))} fits</summary>` + groups.map(g =>
+      `<label class="chk ${k.footprints[g.name] !== S.orig.kinds[S.kind].footprints[g.name] ? "changed" : ""}"><input type="checkbox" data-fp="${esc(g.name)}" ${k.footprints[g.name] ? "checked" : ""}> ${esc(sizeLabel(g.name))} spots</label>`).join("") + `</details>`;
+  }
+  h += `<details><summary>Limits</summary><p class="muted">A cap on tiles carrying a flag, whatever the counts above say.</p><div class="rows">`;
+  S.work.quotas.forEach((q, i) => {
+    h += `<span>${esc(nice(q.flags.join(" + ")))}</span><input type="number" min="0" max="500" step="1" data-q="${i}" value="${q.limit}" class="${q.limit !== S.orig.quotas[i].limit ? "changed" : ""}" aria-label="At most ${esc(q.key)}"><span></span>`;
+  });
+  h += `</div></details>`;
+  const fillable = groups.map((g, i) => [g, i]).filter(([, i]) => S.orig.groups[i].fill.length);
+  if (fillable.length) {
+    h += `<details><summary>Leftover spots</summary><p class="muted">After every tile type has placed its count, spots still empty in these sizes are filled from the pool. This is where most camps come from.</p>`;
+    for (const [g, i] of fillable)
+      h += `<label class="chk ${!sameList(g.fill, S.orig.groups[i].fill) ? "changed" : ""}"><input type="checkbox" data-fill="${i}" ${g.fill.length ? "checked" : ""}> Fill ${esc(sizeLabel(g.name))} spots with ${esc(nice(S.orig.groups[i].fill.join(" + ")))}</label>`;
+    h += `</details>`;
+  }
+  h += `<details><summary>Tile pool</summary><p class="muted">${poolNow().length} tiles this map may draw from.</p><button class="btn" id="poolopen">Edit the pool</button></details>`;
+  const nSpots = liveSlots().length;
+  inspector("Chapter overview", `${nSpots} spots, ${S.work.kinds.length} tile types${S.sceneInfo ? ", " + S.sceneInfo : ""}${S.modelsError ? ". Scenery could not be read" : ""}`, h);
+  const P = $("ib");
+  P.querySelectorAll("[data-kind]").forEach(el => el.addEventListener("click", () => { const i = Number(el.dataset.kind); S.kind = S.kind === i ? null : i; render(); }));
+  P.querySelectorAll("input[data-f]").forEach(el => el.addEventListener("change", () => {
+    const k = S.work.kinds[Number(el.dataset.k)], v = Number(el.value), max = Number(el.max);
+    if (!Number.isFinite(v) || v < 0 || v > max) { el.value = k[el.dataset.f]; status(`Use a number from 0 to ${max}`, "bad"); return; }
+    remember(); k[el.dataset.f] = el.dataset.f === "count" ? Math.round(v) : v; render();
+  }));
+  P.querySelectorAll("input[data-fp]").forEach(el => el.addEventListener("change", () => { remember(); S.work.kinds[S.kind].footprints[el.dataset.fp] = el.checked; render(); }));
+  P.querySelectorAll("input[data-q]").forEach(el => el.addEventListener("change", () => {
+    const q = S.work.quotas[Number(el.dataset.q)], v = Math.round(Number(el.value));
+    if (!Number.isFinite(v) || v < 0 || v > 500) { el.value = q.limit; status("Use a number from 0 to 500", "bad"); return; }
+    remember(); q.limit = v; render();
+  }));
+  P.querySelectorAll("input[data-fill]").forEach(el => el.addEventListener("change", () => {
+    const i = Number(el.dataset.fill); remember(); S.work.groups[i].fill = el.checked ? S.orig.groups[i].fill.slice() : []; render();
+  }));
+  const po = $("poolopen"); if (po) po.addEventListener("click", openPool);
+}
+function renderSpot(s) {
+  const o = isNew(s) ? null : origSlot(s.id), pinned = S.place[String(s.id)], ov = (s.overrides || [])[S.scen] || {};
+  let h = "";
+  if (pinned) h += `<div class="pin"><b>${esc(tileShort(pinned))}</b><button class="linkbtn" id="unpin">Unpin</button></div>
+    <p class="muted">This tile lands here in every run; nothing else can.</p>`;
+  else {
+    const fits = poolNow().filter(t => `${t.width}x${t.height}` === s.group);
+    h += `<div class="field"><label for="pinsel">Tile</label><select id="pinsel"><option value="">Chosen by the generator</option>${fits.map(t => `<option value="${esc(t.path)}">${esc(nice(t.name))}</option>`).join("")}</select></div>`;
+  }
+  h += `<h3>Allowed here</h3>`;
+  const now = [], off = [];
+  S.work.kinds.forEach(k => (k.footprints[s.group] ? now : off).push(k));
+  for (const k of now) {
+    const ch = o && s.allow[k.name] !== o.allow[k.name];
+    const note = ov[k.name] === 1 ? ` <span class="muted">(forced on in this scenario)</span>` : ov[k.name] === 0 ? ` <span class="muted">(kept off in this scenario)</span>` : "";
+    h += `<label class="chk ${ch ? "changed" : ""}"><input type="checkbox" data-allow="${esc(k.name)}" ${s.allow[k.name] ? "checked" : ""} ${pinned ? "disabled" : ""}> ${esc(nice(k.name))}${note}</label>`;
+  }
+  if (off.length) h += `<p class="muted">${off.length} more tile types don't fit ${esc(sizeLabel(s.group))} spots: ${esc(off.map(k => nice(k.name)).join(", "))}.</p>`;
+  h += `<h3>Spot</h3><p class="muted">x ${s.pos[0].toFixed(1)}, z ${s.pos[2].toFixed(1)}, ground ${groundY(s.pos[0], s.pos[2], s.pos[1]).toFixed(1)} m${o && (o.pos[0] !== s.pos[0] || o.pos[2] !== s.pos[2]) ? ` (moved; <button class="linkbtn" id="unmove">put back</button>)` : ""}</p>
+    <button class="btn danger" id="rmspot">Remove this spot</button>`;
+  inspector(isNew(s) ? "New spot" : `Spot ${s.id}`, `${sizeLabel(s.group)}${isNew(s) ? ", added by you" : ""}`, h);
+  const P = $("ib");
+  P.querySelectorAll("input[data-allow]").forEach(el => el.addEventListener("change", () => { remember(); s.allow[el.dataset.allow] = el.checked; render(); }));
+  const sel = $("pinsel"); if (sel) sel.addEventListener("change", () => { if (!sel.value) return; remember(); S.place[String(s.id)] = sel.value; drawLayout(); render(); });
+  const up = $("unpin"); if (up) up.addEventListener("click", () => { remember(); delete S.place[String(s.id)]; drawLayout(); render(); });
+  const um = $("unmove"); if (um) um.addEventListener("click", () => { remember(); s.pos = o.pos.slice(); drawLayout(); render(); });
+  $("rmspot").addEventListener("click", () => {
+    remember();
+    if (isNew(s)) dropNew(s.id); else { S.removed.add(s.id); delete S.place[String(s.id)]; }
+    S.slot = null; drawLayout(); render(); status("Spot removed");
+  });
+}
+function renderAdd() {
+  S.addSize ||= S.work.groups[S.work.groups.length > 2 ? 2 : 0].name;
+  const h = `<p class="muted">New spots allow nothing until you tick tile types for them, or pin a tile by hand.</p>
+    <h3>Size</h3><div class="seg" role="group" aria-label="Spot size">${S.work.groups.map(g => `<button data-size="${esc(g.name)}" aria-pressed="${g.name === S.addSize}">${esc(sizeLabel(g.name))}</button>`).join("")}</div>`;
+  inspector("Add spots", "Click the ground to place one", h);
+  $("ib").querySelectorAll("[data-size]").forEach(b => b.addEventListener("click", () => { S.addSize = b.dataset.size; render(); }));
+}
+function renderPlace() {
+  loadCatalog();
+  const q = S.placeFilter.toLowerCase();
+  const tiles = poolNow().filter(t => !q || `${nice(t.name)} ${t.flags.join(" ")}`.toLowerCase().includes(q))
+    .sort((a, b) => a.width - b.width || a.name.localeCompare(b.name));
+  const h = `<div class="field"><label for="pfind">Find</label><input id="pfind" type="search" placeholder="Name or flag" value="${esc(S.placeFilter)}"></div>
+    <div class="tilelist">${tiles.map(t => `<button class="tile" data-tile="${esc(t.path)}" aria-pressed="${S.placeTile === t.path}">${esc(nice(t.name))}<small>${esc(sizeLabel(t.width + "x" + t.height))}, ${esc(nice(t.flags.join(", ")))}</small></button>`).join("")}</div>
+    <p class="muted">Only tiles in this map's pool are listed; add others from Tile pool in the chapter panel.</p>`;
+  inspector("Place a tile", "Pick one, then click a spot of its size", h);
+  $("pfind").addEventListener("input", e => { S.placeFilter = e.target.value; const pos = e.target.selectionStart; renderPlace(); $("pfind").focus(); $("pfind").setSelectionRange(pos, pos); });
+  $("ib").querySelectorAll("[data-tile]").forEach(b => b.addEventListener("click", () => { S.placeTile = b.dataset.tile; renderPlace(); }));
+}
+function renderPaint() {
+  const b = S.brush;
+  if (S.layerList === null) {
+    S.layerList = [];
+    api("api/layers?chapter=" + encodeURIComponent(S.chapter.key)).then(r => { S.layerList = r.layers; render(); })
+      .catch(err => status(`Terrain layers: ${err.message}`, "bad"));
+  }
+  const surfaces = S.layerList.filter(l => l.kind === "float" && !l.metres);
+  const hasTint = S.layerList.some(l => l.name === TINT_LAYER);
+  const modes = [["shape", "Shape"], ["surface", "Surface"], ...(hasTint ? [["tint", "Tint"]] : [])];
+  const seg = (items, cur, attr) => `<div class="seg" role="group">${items.map(([k, l]) => `<button ${attr}="${k}" aria-pressed="${cur === k}">${l}</button>`).join("")}</div>`;
+  const slider = (id, label, min, max, step, v, unit) =>
+    `<div class="field"><label for="${id}">${label}</label><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${v}"></div><p class="muted" style="margin:-4px 0 0 106px" id="${id}v">${unit(v)}</p>`;
+  let h = seg(modes, b.mode, "data-mode");
+  if (b.mode === "shape") {
+    h += `<p class="muted">Raise and lower the ground itself.</p>` +
+      seg([["raise", "Raise"], ["lower", "Lower"], ["flatten", "Flatten"], ["smooth", "Smooth"]], b.op, "data-op");
+  } else if (b.mode === "surface") {
+    h += `<p class="muted">Paint what the ground is made of. The layer you paint shows in gold.</p>
+      <div class="field"><label for="blayer">Layer</label><select id="blayer"><option value="">Pick a layer…</option>${surfaces.map(l => `<option value="${esc(l.name)}" ${b.layer === l.name ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></div>` +
+      seg([["raise", "Paint"], ["lower", "Erase"], ["set", "Fill"], ["smooth", "Smooth"]], b.surfOp, "data-sop") +
+      `<label class="chk"><input type="checkbox" id="bshow" ${S.showOverlay ? "checked" : ""}> Show this layer on the ground</label>`;
+  } else {
+    h += `<p class="muted">Tint the ground's colour.</p>
+      <div class="field"><label for="bcolor">Colour</label><input id="bcolor" type="color" value="${esc(b.color)}"></div>`;
+  }
+  h += slider("brad", "Size", 4, 120, 1, b.radius, v => `${v} m radius`);
+  if (b.mode === "shape" && (b.op === "raise" || b.op === "lower")) h += slider("bamt", "Strength", 0.2, 12, 0.2, b.amount, v => `${v} m per dab`);
+  if (b.mode !== "shape" && !(b.mode === "surface" && b.surfOp === "smooth")) h += slider("bstr", b.surfOp === "set" && b.mode === "surface" ? "Value" : "Strength", 0.05, 1, 0.05, b.strength, v => `${Math.round(v * 100)}%`);
+  h += `<div class="field"><label for="bfall">Edge</label><select id="bfall"><option value="smooth">Soft</option><option value="linear">Even slope</option><option value="constant">Hard</option></select></div>
+    <h3>Painted so far</h3><p class="muted">${S.strokes.length ? `${S.strokes.length} brush dabs.` : "Nothing yet."} Shape changes the ground's height, its collision and where enemies can walk; Surface and Tint change what it is made of and how it looks.</p>
+    ${S.strokes.length ? `<button class="btn" id="clearpaint">Undo all painting</button>` : ""}`;
+  inspector("Paint the terrain", "Changes save as a new map", h);
+  const P = $("ib");
+  P.querySelectorAll("[data-mode]").forEach(x => x.addEventListener("click", async () => {
+    b.mode = x.dataset.mode;
+    if (b.mode === "tint") { await ensureLayer(TINT_LAYER).catch(err => status(err.message, "bad")); recolor(); }
+    setOverlay(b.mode === "surface" ? b.layer : null); render();
+  }));
+  P.querySelectorAll("[data-op]").forEach(x => x.addEventListener("click", () => { b.op = x.dataset.op; render(); }));
+  P.querySelectorAll("[data-sop]").forEach(x => x.addEventListener("click", () => { b.surfOp = x.dataset.sop; render(); }));
+  const lay = $("blayer"); if (lay) lay.addEventListener("change", async () => {
+    b.layer = lay.value || null;
+    if (b.layer) { status(`Loading ${b.layer}…`); await ensureLayer(b.layer).catch(err => status(err.message, "bad")); status(`Painting ${b.layer}`); }
+    setOverlay(b.layer); render();
+  });
+  const show = $("bshow"); if (show) show.addEventListener("change", () => { S.showOverlay = show.checked; S.overlay = undefined; setOverlay(b.layer); });
+  const col = $("bcolor"); if (col) col.addEventListener("input", e => { b.color = e.target.value; });
+  const live = (id, key, unit) => { const el = $(id); if (el) el.addEventListener("input", e => { b[key] = Number(e.target.value); $(id + "v").textContent = unit(b[key]); if (key === "radius" && G.cursor) drawCursor(G.cursor); }); };
+  live("brad", "radius", v => `${v} m radius`);
+  live("bamt", "amount", v => `${v} m per dab`);
+  live("bstr", "strength", v => `${Math.round(v * 100)}%`);
+  $("bfall").value = b.falloff; $("bfall").addEventListener("change", e => { b.falloff = e.target.value; });
+  const cp = $("clearpaint"); if (cp) cp.addEventListener("click", () => { remember(); S.strokes = []; repaint(); render(); });
+}
+// Show one surface layer on the ground in gold (or none), recolouring the mesh.
+function setOverlay(name) {
+  if (!S.showOverlay) name = null;
+  if (S.overlay === name) return;
+  S.overlay = name; recolor();
+}
+function recolor() { if (S.terrain && G.ground) { updateGround(0, S.terrain.n - 1, 0, S.terrain.n - 1); } }
+
+// ---- the tile pool -------------------------------------------------------------
+function loadCatalog() {
+  if (S.catalog !== null) return;
+  S.catalog = [];
+  api("api/catalog").then(r => { S.catalog = r.tiles; if ($("pooldlg").open) renderPool(); else render(); })
+    .catch(err => status(`Tile list: ${err.message}`, "bad"));
+}
+function openPool() { loadCatalog(); renderPool(); $("pooldlg").showModal(); }
+function renderPool() {
+  const gone = new Set(S.poolEdit.remove), q = S.poolFilter.toLowerCase();
+  const match = (t) => !q || `${nice(t.name)} ${t.flags.join(" ")} ${t.biome}`.toLowerCase().includes(q);
+  const row = (t, on, attr) => `<label class="chk"><input type="checkbox" ${attr}="${esc(t.path)}" ${on ? "checked" : ""}> <span>${esc(nice(t.name))} <span class="muted">${esc(sizeLabel(t.width + "x" + t.height))}, ${esc(nice(t.flags.join(", ")))}</span></span></label>`;
+  const inPool = new Set(S.pool.map(t => t.path)), others = (S.catalog || []).filter(t => !inPool.has(t.path) && match(t));
+  let h = `<p class="muted">Changing the pool saves the chapter as a new map, since the game's own pool is shared with every other mod.</p>
+    <div class="field"><label for="poolfind">Find</label><input id="poolfind" type="search" placeholder="Name, flag or map" value="${esc(S.poolFilter)}"></div>`;
+  const bare = bareKinds();
+  if (bare.length) h += `<p class="warnline">No tile left for ${esc(bare.map(k => nice(k.name)).join(", "))}, which the chapter still places.</p>`;
+  h += `<h3>In ${esc(S.chapter.label)}'s pool</h3>` + S.pool.filter(match).map(t => row(t, !gone.has(t.path), "data-keep")).join("");
+  h += `<h3>From other maps</h3>` + (S.catalog && S.catalog.length ? others.map(t => row({ ...t, name: `${t.name} (${t.biome})` }, S.poolEdit.add.includes(t.path), "data-add")).join("") : `<p class="muted">Loading…</p>`);
+  $("poolbody").innerHTML = h;
+  $("poolfind").addEventListener("input", e => { S.poolFilter = e.target.value; const pos = e.target.selectionStart; renderPool(); $("poolfind").focus(); $("poolfind").setSelectionRange(pos, pos); });
+  $("poolbody").querySelectorAll("input[data-keep]").forEach(el => el.addEventListener("change", () => {
+    remember(); const p = el.dataset.keep;
+    S.poolEdit.remove = el.checked ? S.poolEdit.remove.filter(x => x !== p) : S.poolEdit.remove.concat(p); renderPool(); render();
+  }));
+  $("poolbody").querySelectorAll("input[data-add]").forEach(el => el.addEventListener("change", () => {
+    remember(); const p = el.dataset.add;
+    S.poolEdit.add = el.checked ? S.poolEdit.add.concat(p) : S.poolEdit.add.filter(x => x !== p); renderPool(); render();
+  }));
 }
 
-// ---- actions ----------------------------------------------------------------
+// ---- saving --------------------------------------------------------------------
+function renderSave() {
+  const list = changeList(), forced = cloneOnly(), m = asMap();
+  let h = list.length
+    ? `<ul class="changes">${list.map((c, i) => `<li><span>${esc(c.text)}</span><button data-uc="${i}" title="Undo this change">Undo</button></li>`).join("")}</ul>`
+    : `<p class="muted">No changes yet: everything matches the game's own chapter.</p>`;
+  h += `<fieldset><legend>What the mod does</legend>
+    <label class="chk"><input type="radio" name="saveas" value="chapter" ${m ? "" : "checked"} ${forced ? "disabled" : ""}> Change ${esc(S.chapter.label)} itself</label>
+    <label class="chk"><input type="radio" name="saveas" value="map" ${m ? "checked" : ""}> Save a new map built from it${forced ? " (needed for painted terrain, pinned tiles or a changed pool)" : ""}</label></fieldset>`;
+  if (m) h += `<div class="field"><label for="mapid">Map id</label><input id="mapid" type="text" placeholder="Twilight_Hills" value="${esc(S.mapId)}" title="Becomes the map's file name: a letter, then letters, digits or _"></div>
+    <label class="chk"><input id="mapplay" type="checkbox" ${S.mapPlay ? "checked" : ""}> Play it as this chapter instead of the game's own map</label>`;
+  h += `<div class="field"><label for="modid">Mod id</label><input id="modid" type="text" placeholder="my-chapter" value="${esc(S.modId || "")}"></div>
+    <div class="field"><label for="modname">Name</label><input id="modname" type="text" placeholder="Optional" value="${esc(S.modName || "")}"></div>`;
+  if (S.lastSave) h += `<h3>Saved ${esc(S.lastSave.path)}</h3><p>Close the game, then install it with:</p><pre class="cmd">${esc(S.lastSave.next)}</pre>
+    <p class="muted">Map edits are experimental: play a run and check them before sharing.</p>`;
+  $("savebody").innerHTML = h;
+  $("save").disabled = !list.length;
+  const B = $("savebody");
+  B.querySelectorAll("[data-uc]").forEach(el => el.addEventListener("click", () => { remember(); list[Number(el.dataset.uc)].undo(); drawLayout(); render(); renderSave(); }));
+  B.querySelectorAll("input[name=saveas]").forEach(el => el.addEventListener("change", () => { S.saveAs = el.value; renderSave(); }));
+  if ($("mapid")) $("mapid").addEventListener("input", e => { S.mapId = e.target.value.trim(); });
+  if ($("mapplay")) $("mapplay").addEventListener("change", e => { S.mapPlay = e.target.checked; });
+  $("modid").addEventListener("input", e => { S.modId = e.target.value; });
+  $("modname").addEventListener("input", e => { S.modName = e.target.value; });
+}
+function saveBody(extra) {
+  const b = { chapter: S.chapter.key, edits: edits(), ...extra };
+  if (asMap()) b.map = { id: S.mapId || "Map_Check", play: S.mapPlay, pool: S.poolEdit, place: placeDoc(), terrain: S.strokes };
+  return b;
+}
+async function doCheck() {
+  status("Checking… (a painted map takes a few seconds)");
+  try {
+    const r = await api("api/check", saveBody({}));
+    status(r.changes.length ? `Looks good: ${r.changes.length} change${r.changes.length === 1 ? "" : "s"} build cleanly` : "Valid, but nothing changes", "ok");
+  } catch (err) { status(err.message, "bad"); }
+}
+async function doSave() {
+  const id = (S.modId || "").trim().toLowerCase();
+  if (!id) { status("Give the mod an id first (letters, digits, - or _)", "bad"); $("modid").focus(); return; }
+  if (asMap() && !S.mapId) { status("Give the new map an id first (a letter, then letters, digits or _)", "bad"); $("mapid").focus(); return; }
+  status("Saving…");
+  try {
+    const r = await api("api/save", saveBody({ mod_id: id, name: (S.modName || "").trim() }));
+    S.lastSave = r; S.savedKey = changeKey(); status(`Saved ${r.path}`, "ok");
+    if (![...$("openmod").options].some(o => o.value === id))
+      $("openmod").insertAdjacentHTML("beforeend", `<option value="${esc(id)}">${esc(id)}</option>`);
+    renderSave(); render();
+  } catch (err) { status(err.message, "bad"); }
+}
+
+// ---- loading ---------------------------------------------------------------------
 async function loadTerrain(key) {
   try {
     const t = decodeTerrain(await api("api/terrain?grid=512&chapter=" + encodeURIComponent(key)));
     if (S.chapter.key !== key) return;
-    t.imageUrl = await terrainImage(t);
-    S.terrain = t; G.terrainKey = null; render();
+    S.terrain = t; S.terrainBase = t.h.slice(); G.terrainKey = null;
+    const painted = [...new Set(S.strokes.map(st => st.layer).filter(Boolean))];
+    await Promise.all(painted.map(n => ensureLayer(n).catch(() => null)));
+    if (S.strokes.length) for (const st of S.strokes) brush(S.terrain, st);
+    resetCamera(); drawLayout(); render();
   } catch (err) {
-    S.terrain = null;
-    status(`No terrain for ${key} (${err.message}). Spots are still editable.`, "bad");
-    render();
+    S.terrain = null; S.terrainBase = null;
+    status(`No terrain for ${key} (${err.message}); spots are still editable`, "bad"); render();
   }
 }
-async function loadChapter(key, initialEdits) {
+async function loadChapter(key, opened) {
   status("Loading " + key + "…");
   const data = await api("api/recipe?chapter=" + encodeURIComponent(key));
-  if (S.terrain && S.terrain.imageUrl) URL.revokeObjectURL(S.terrain.imageUrl);
   S.chapter = data.chapter; S.orig = data.recipe; S.work = clone(data.recipe);
-  S.kind = null; S.slot = null; S.scen = 0; S.terrain = null; S.lastSave = null; G.terrainKey = null;
-  S.layout = {}; S.layoutSample = false; S.pool = []; S.sceneInfo = null; S.modelsError = null; G.tileCache.clear();
+  Object.assign(S, { kind: null, slot: null, scen: 0, terrain: null, terrainBase: null, lastSave: null, layout: {}, layoutSample: false,
+    layers: {}, layerList: null, overlay: null,
+    pool: [], sceneInfo: null, modelsError: null, poolEdit: { add: [], remove: [] }, place: {}, strokes: [], removed: new Set(), nextNew: 0,
+    addSize: null, saveAs: "chapter", mapId: "", mapPlay: true });
+  history.length = 0; G.terrainKey = null; G.tileCache.clear();
   if (G.three) { clearGroup(G.three.groups.tiles); G.three.groups.tiles.userData.token = null; }
-  $("scenario").innerHTML = S.orig.scenarios.map((sc, i) => `<option value="${i}">${esc(sc.id)} · ${esc(sc.label)}</option>`).join("");
-  $("scenario").disabled = S.orig.scenarios.length < 2;
-  if (initialEdits) applyEdits(initialEdits);
-  $("chapter").value = key; $("maptitle").textContent = data.chapter.label;
-  resetCamera(); render();
-  status(`${data.chapter.label}: ${S.orig.kinds.length} tile types, ${S.orig.slots.filter(s => !s.whole_map).length} spots`);
+  $("scenario").innerHTML = S.orig.scenarios.map((sc, i) => `<option value="${i}">${esc(sc.label || sc.id)}</option>`).join("");
+  $("scenario").hidden = S.orig.scenarios.length < 2;
+  if (opened) applyOpened(opened);
+  $("chapter").value = key; $("title").textContent = data.chapter.label;
+  render();
+  status("Ready. Pick a tool on the left, or click a spot");
   loadTerrain(key);
-  api("api/tiles?chapter=" + encodeURIComponent(key)).then(r => { if (S.chapter.key === key) { S.pool = r.tiles; render(); } }).catch(() => {});
+  api("api/tiles?chapter=" + encodeURIComponent(key)).then(r => { if (S.chapter.key === key) { S.pool = r.tiles; drawLayout(); render(); } }).catch(() => {});
   if (G.three && S.models) loadScenery(key);
 }
-function applyEdits(e) {
+// Rebuild the working state from a saved mod's edit document.
+function applyOpened(m) {
+  const e = m.edits || {};
   for (const [n, d] of Object.entries(e.kinds || {})) {
     const k = S.work.kinds.find(x => x.name === n); if (!k) continue;
     if ("count" in d) k.count = d.count;
@@ -983,96 +1324,92 @@ function applyEdits(e) {
   }
   for (const [q, v] of Object.entries(e.quotas || {})) { const x = S.work.quotas.find(y => y.key === q); if (x) x.limit = v; }
   for (const [id, d] of Object.entries(e.slots || {})) {
-    const s = S.work.slots.find(x => String(x.id) === id); if (s) Object.assign(s.allow, d.allow || {});
+    const s = slotById(Number(id)); if (!s) continue;
+    Object.assign(s.allow, d.allow || {}); if (d.move) s.pos = d.move.slice();
+  }
+  for (const id of Object.keys(e.remove_slots || {})) S.removed.add(Number(id));
+  for (const a of e.add_slots || []) {
+    const id = "n" + (S.nextNew++);
+    S.work.slots.push({ id, pos: a.pos.slice(), group: a.group, whole_map: false,
+      allow: Object.fromEntries(S.work.kinds.map(k => [k.name, !!(a.allow || {})[k.name]])), overrides: [] });
+    const g = S.work.groups.find(x => x.name === a.group); if (g) g.slots.push(id);
+  }
+  for (const [n, flags] of Object.entries(e.fill || {})) { const g = S.work.groups.find(x => x.name === n); if (g) g.fill = flags.slice(); }
+  if (m.map) {
+    S.saveAs = "map"; S.mapId = m.map.id; S.mapPlay = m.map.play; S.poolEdit = clone(m.map.pool);
+    S.strokes = clone(m.map.terrain || []);
+    for (const [key, path] of Object.entries(m.map.place || {})) S.place[key.startsWith("new") ? "n" + key.slice(3) : key] = path;
+    if (S.poolEdit.add.length || Object.keys(S.place).length) loadCatalog();
   }
 }
-async function doCheck() {
-  try {
-    const r = await api("api/check", { chapter: S.chapter.key, edits: edits() });
-    status(r.changes.length ? `Looks good: ${r.changes.length} change(s) cook cleanly` : "Valid, but nothing changed", "ok");
-  } catch (err) { status(err.message, "bad"); }
-}
-async function doSave() {
-  const id = $("modid").value.trim().toLowerCase();
-  if (!id) { status("Give the mod an id first (letters, digits, - or _).", "bad"); $("modid").focus(); return; }
-  try {
-    const r = await api("api/save", { chapter: S.chapter.key, mod_id: id, name: $("modname").value.trim(), edits: edits() });
-    S.lastSave = r; S.savedKey = changeKey(); status(`Saved ${r.path}`, "ok");
-    if (![...$("openmod").options].some(o => o.value === id)) {
-      $("openmod").insertAdjacentHTML("beforeend", `<option value="${esc(id)}">${esc(id)} (${esc(S.chapter.key)})</option>`);
-    }
-    render();
-  } catch (err) { status(err.message, "bad"); }
-}
+
+// ---- wiring ----------------------------------------------------------------------
 async function init() {
-  // Mod id / name live outside the panel so switching tabs keeps them.
-  document.body.insertAdjacentHTML("beforeend", `<input id="modid-keep" type="hidden"><input id="modname-keep" type="hidden">`);
   let gl = false;
   try { gl = glInit(); } catch (err) { console.error(err); }
-  if (!gl) { $("v3d").disabled = true; $("v3d").title = "This browser has no WebGL2"; }
+  if (!gl) { $("nogl").hidden = false; $("gl").hidden = true; }
   const st = await api("api/state");
   S.chapters = st.chapters;
   $("chapter").innerHTML = st.chapters.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join("");
-  $("openmod").innerHTML = `<option value="">—</option>` + st.mods.map(m => `<option value="${esc(m.id)}">${esc(m.id)} (${esc(m.chapter)})</option>`).join("");
-  if (!st.chapters.length) { status("No tile-generated chapters found.", "bad"); return; }
+  $("openmod").insertAdjacentHTML("beforeend", st.mods.map(m => `<option value="${esc(m.id)}">${esc(m.id)}${m.map ? " (new map)" : ""}</option>`).join(""));
+  if (!st.chapters.length) { status("No tile-generated chapters found in the game files", "bad"); return; }
   const hash = new URLSearchParams(location.hash.slice(1));
-  setView(hash.get("view") || store.get("rsmm.mapeditor.view") || "3d");
-  const want = st.chapters.find(c => c.key === hash.get("chapter")) || st.chapters[0];
+  const want = st.chapters.find(c => c.key === hash.get("chapter")) || st.chapters.find(c => c.key === store.get("rsmm.mapeditor.chapter")) || st.chapters[0];
   await loadChapter(want.key);
-  const ki = S.work.kinds.findIndex(k => k.name === hash.get("kind"));
-  if (ki >= 0) S.kind = ki;
-  const sc = Number(hash.get("scenario"));
-  if (Number.isInteger(sc) && sc >= 0 && sc < S.work.scenarios.length) { S.scen = sc; $("scenario").value = String(sc); }
-  render();
 }
 $("chapter").addEventListener("change", async e => {
-  if (changeList().length && !confirm("Discard unsaved changes?")) { e.target.value = S.chapter.key; return; }
+  if (unsavedChanges() && !confirm("Discard unsaved changes?")) { e.target.value = S.chapter.key; return; }
+  store.set("rsmm.mapeditor.chapter", e.target.value);
   try { await loadChapter(e.target.value); } catch (err) { status(err.message, "bad"); }
 });
 $("openmod").addEventListener("change", async e => {
   const id = e.target.value; if (!id) return;
-  if (changeList().length && !confirm("Discard unsaved changes?")) { e.target.value = ""; return; }
+  if (unsavedChanges() && !confirm("Discard unsaved changes?")) { e.target.value = ""; return; }
   try {
     const m = await api("api/mod?id=" + encodeURIComponent(id));
-    $("modid-keep").value = id; $("modname-keep").value = m.name || "";
-    await loadChapter(m.chapter, m.edits); setTab("changes"); render();
+    S.modId = id; S.modName = m.name || "";
+    await loadChapter(m.chapter, m);
+    S.savedKey = changeKey(); S.lastSave = { path: `mods/${id}/manifest.toml`, next: "rsmm restore --all && rsmm apply" };
     status(`Opened ${id}: ${changeList().length} change(s)`, "ok");
   } catch (err) { status(err.message, "bad"); }
+  e.target.value = "";
 });
 $("scenario").addEventListener("change", e => { S.scen = Number(e.target.value); render(); });
-$("v3d").addEventListener("click", () => { setView("3d"); render(); });
-$("v2d").addEventListener("click", () => { setView("2d"); render(); });
 $("recenter").addEventListener("click", resetCamera);
-$("models").addEventListener("change", e => {
-  S.models = e.target.checked; G.dirty = true;
-  if (S.models && G.three && !G.three.groups.scenery.children.length && S.chapter) loadScenery(S.chapter.key);
-  render();
-});
-$("spots").addEventListener("change", e => { S.showSpots = e.target.checked; render(); });
+$("undo").addEventListener("click", undo);
 $("sample").addEventListener("click", () => {
-  if (!S.pool.length) { status("This chapter's tile pool isn't loaded yet.", "bad"); return; }
+  if (!S.pool.length) { status("This chapter's tile pool isn't loaded yet", "bad"); return; }
   S.seed = (S.seed * 1103515245 + 12345) >>> 0 || 1;
   S.layout = sampleLayout(S.seed); S.layoutSample = true;
-  if (!S.models) { S.models = true; $("models").checked = true; }
-  status(`Sample layout: ${Object.keys(S.layout).length} tiles placed (click again for another)`, "ok");
-  drawLayout(); setView(S.view); render();
+  status(`Preview: ${Object.keys(S.layout).length} tiles rolled, roughly as a run would (approximate)`, "ok");
+  drawLayout(); render();
 });
-$("clearlayout").addEventListener("click", () => { S.layout = {}; S.layoutSample = false; drawLayout(); setView(S.view); render(); });
-$("showall").addEventListener("change", e => { S.showAll = e.target.checked; render(); });
-document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); render(); }));
-// Changes since the last save, which nothing keeps: they are lost with the page.
+document.querySelectorAll("#tools [data-tool]").forEach(b => b.addEventListener("click", () => setTool(b.dataset.tool)));
+$("saveopen").addEventListener("click", () => { renderSave(); $("savedlg").showModal(); });
+$("saveclose").addEventListener("click", () => $("savedlg").close());
+$("poolclose").addEventListener("click", () => $("pooldlg").close());
+$("check").addEventListener("click", doCheck);
+$("save").addEventListener("click", doSave);
+const TOOL_KEYS = { 1: "select", 2: "move", 3: "add", 4: "place", 5: "paint" };
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, select, textarea, dialog")) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+  if (TOOL_KEYS[e.key]) { setTool(TOOL_KEYS[e.key]); return; }
+  if (e.key === "0") { resetCamera(); return; }
+  if (e.key === "Escape") { S.slot = null; S.kind = null; render(); return; }
+  if ((e.key === "Delete" || e.key === "Backspace") && S.slot != null) { $("rmspot")?.click(); }
+});
 const changeKey = () => JSON.stringify(changeList().map(c => c.text));
 function unsavedChanges() {
   if (!S.work) return 0;
   const n = changeList().length;
-  return n && !(S.lastSave && S.savedKey === changeKey()) ? n : 0;
+  return n && S.savedKey !== changeKey() ? n : 0;
 }
 window.rsmmUnsaved = () => ({ count: unsavedChanges(), kept: false });
-// Inside the editor shell the shell asks before the page closes, for every tab at once.
 window.addEventListener("beforeunload", e => {
   if (window.parent === window && unsavedChanges()) { e.preventDefault(); e.returnValue = ""; }
 });
-Object.assign(window, { rsmmEditor: { S, G, project, pickAt } });   // for tests and the console
+Object.assign(window, { rsmmEditor: { S, G, project, pickAt, groundAt, edits, placeDoc, setTool, toolClick } });
 init().catch(err => status(err.message, "bad"));
 </script>
 </body>

@@ -628,16 +628,22 @@ def validate(tg: TileGen) -> None:
 
 
 def write(level_bytes: bytes, tg: TileGen) -> bytes:
-    """Re-emit `level_bytes` with `tg`'s objects replaced in place.
+    """Re-emit `level_bytes` with `tg`'s objects in place of the shipped ones.
 
-    Object COUNT is unchanged, so no id moves and no vector needs growing —
-    the trap `level_placements.add_placement` documents does not arise here.
-    Adding a slot is a different operation and is deliberately not this one.
+    When `tg` still has exactly the file's objects, each is replaced where it
+    stands and nothing moves. When slots or kinds were added or removed
+    (`add_slot`, `remove_slot`, `add_kind`), the recipe's part of the object
+    graph is rebuilt instead — see `_rebuild`.
     """
     validate(tg)
     cf, sec, inner = _inner(level_bytes)
     g = _graph(inner)
     names = _class_names(g)
+    managed = {KIND_CLASS: tg.kinds, SIZE_CLASS: tg.sizes, SLOT_CLASS: tg.slots}
+    same = all({i for i in range(g.count) if names[g.class_idx[i]] == cls} == set(objs)
+               for cls, objs in managed.items())
+    if not same:
+        return _rebuild(cf, sec, inner, g, names, tg)
     out = bytearray(inner[:g.blocks[g.ot][0]])
     out += inner[g.blocks[g.ot][0]:g.blocks[g.ot][1]]     # the object table, verbatim
     for i, (_b, _e, p) in enumerate(g.objects):
@@ -654,7 +660,149 @@ def write(level_bytes: bytes, tg: TileGen) -> bytes:
             body = p
         out += cooked.MARK_BEGIN + body + cooked.MARK_END
     out += inner[g.root[0]:]
-    new_sec = bytearray(sec[:16]) + bytes(out)
-    struct.pack_into("<II", new_sec, 8, len(out), len(out))
+    return _emit(cf, sec, bytes(out))
+
+
+def _emit(cf, sec: bytes, inner: bytes) -> bytes:
+    new_sec = bytearray(sec[:16]) + inner
+    struct.pack_into("<II", new_sec, 8, len(inner), len(inner))
     cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
     return cooked.emit(cf)
+
+
+def _rebuild(cf, sec: bytes, inner: bytes, g, names: list[str], tg: TileGen) -> bytes:
+    """Write the recipe with a different number of slots or kinds.
+
+    An object's id IS its position in the stream, and the engine creates exactly
+    ``uOjbectsCount`` objects from the class indices beside it before reading a
+    payload (`level_placements.add_placement` has the measurement). So a slot
+    cannot simply be spliced in or cut out: every id after it moves. What makes
+    renumbering safe here is who refers to what, checked on all three shipped
+    levels: the objects this module does not model (the spawner GameObject and
+    the settings component) come FIRST, the root owns only the GameObject, and
+    every reference to a kind, footprint group or slot lives in an object this
+    module writes — the spawner's kind and group vectors, the whole-map group,
+    and each group's slot list. So: keep the fixed prefix where it is, lay out
+    kinds, groups and slots after it in that order, and rewrite every id
+    through one map. Each check below fails closed rather than renumber a file
+    whose references it cannot see.
+    """
+    managed = (KIND_CLASS, SIZE_CLASS, SLOT_CLASS)
+    prefix = [i for i in range(g.count) if names[g.class_idx[i]] not in managed]
+    if prefix != list(range(len(prefix))):
+        raise TileGenError("recipe objects are interleaved with others; refusing to renumber")
+    root = g.root[2]
+    (rn,) = struct.unpack_from("<I", root, 4)
+    if any(i >= len(prefix) for i in struct.unpack_from(f"<{rn}I", root, 8)):
+        raise TileGenError("the level's root owns a recipe object; refusing to renumber")
+
+    order = (list(tg.spawner.kind_ids) + list(tg.spawner.size_ids)
+             + sorted(tg.slots))
+    if len(set(order)) != len(order):
+        raise TileGenError("a kind, group and slot share an object id")
+    remap = {old: len(prefix) + n for n, old in enumerate(order)}
+    ci_of = {nm: n for n, nm in enumerate(names)}
+    for cls in managed:
+        if cls not in ci_of:
+            raise TileGenError(f"the level's class table has no {cls}")
+
+    sp = tg.spawner
+    spawner = SpawnerSettings(**{**sp.__dict__,
+                                 "kind_ids": [remap[i] for i in sp.kind_ids],
+                                 "size_ids": [remap[i] for i in sp.size_ids],
+                                 "whole_map": SlotSize(**{**sp.whole_map.__dict__, "slots": [
+                                     remap[i] for i in sp.whole_map.slots]})})
+    bodies: list[tuple[int, bytes]] = []
+    for i in prefix:
+        nm = names[g.class_idx[i]]
+        bodies.append((g.class_idx[i],
+                       _wr_spawner(spawner) if nm == SPAWNER_CLASS else g.objects[i][2]))
+    for i in sp.kind_ids:
+        bodies.append((ci_of[KIND_CLASS], _wr_kind(tg.kinds[i])))
+    for i in sp.size_ids:
+        sz = tg.sizes[i]
+        bodies.append((ci_of[SIZE_CLASS], _wr_size(SlotSize(**{
+            **sz.__dict__, "slots": [remap[j] for j in sz.slots]}))))
+    for i in sorted(tg.slots):
+        bodies.append((ci_of[SLOT_CLASS], _wr_slot(tg.slots[i])))
+
+    table = struct.pack("<I", len(bodies)) + b"".join(struct.pack("<I", c) for c, _ in bodies)
+    out = bytearray(inner[:g.blocks[g.ot][0]])
+    out += cooked.MARK_BEGIN + table + cooked.MARK_END
+    for _c, body in bodies:
+        out += cooked.MARK_BEGIN + body + cooked.MARK_END
+    out += inner[g.root[0]:]
+    return _emit(cf, sec, bytes(out))
+
+
+# --------------------------------------------------------------------------
+# Adding and removing slots and kinds
+# --------------------------------------------------------------------------
+
+def _new_id(tg: TileGen) -> int:
+    """A provisional id past every existing one; `write` renumbers."""
+    return max([*tg.kinds, *tg.sizes, *tg.slots]) + 1
+
+
+def add_slot(tg: TileGen, group: str, pos: tuple[float, float, float],
+             allow: dict[str, bool] | None = None) -> int:
+    """Add a slot to footprint group `group` (``"40x40"``) at `pos`.
+
+    It allows the kinds named true in `allow` and defers to that mask in every
+    scenario (compatibility 2). Returns its provisional id.
+    """
+    names = tg.size_names
+    if group not in names:
+        raise TileGenError(f"no footprint group {group!r}; have {names}")
+    size = tg.sizes[tg.spawner.size_ids[names.index(group)]]
+    tmpl = next((tg.slots[i] for i in size.slots), None) or next(
+        s for s in tg.slots.values() if s.kinds)
+    allow = allow or {}
+    unknown = set(allow) - set(tg.kind_names)
+    if unknown:
+        raise TileGenError(f"no kind named {sorted(unknown)}")
+    sid = _new_id(tg)
+    tg.slots[sid] = Slot(pos=tuple(float(v) for v in pos),
+                         kinds=[int(bool(allow.get(n))) for n in tg.kind_names],
+                         compat=[[2] * len(tg.kind_names) for _ in tg.spawner.scenarios],
+                         tail=tmpl.tail, _ci=tmpl._ci, _compat_ci=tmpl._compat_ci)
+    size.slots.append(sid)
+    return sid
+
+
+def remove_slot(tg: TileGen, sid: int) -> None:
+    """Remove slot `sid` from the recipe and from its footprint group."""
+    if sid not in tg.slots:
+        raise TileGenError(f"no slot {sid}")
+    if sid in tg.spawner.whole_map.slots:
+        raise TileGenError(f"slot {sid} is a whole-map slot; those are not editable")
+    del tg.slots[sid]
+    for i in tg.spawner.size_ids:
+        if sid in tg.sizes[i].slots:
+            tg.sizes[i].slots.remove(sid)
+
+
+def add_kind(tg: TileGen, flag: str, count: int = 1, min_distance: float = 0.0,
+             footprints: dict[str, bool] | None = None) -> int:
+    """Add a kind placing `count` tiles carrying `flag`. Every slot gains a mask
+    byte (off) and a compatibility entry (2, defer) for it."""
+    if not flag or flag in tg.kind_names:
+        raise TileGenError(f"kind {flag!r} is empty or already exists")
+    footprints = footprints or {}
+    unknown = set(footprints) - set(tg.size_names)
+    if unknown:
+        raise TileGenError(f"no footprint group {sorted(unknown)}")
+    tmpl = tg.kinds[tg.spawner.kind_ids[0]]
+    kid = _new_id(tg)
+    tg.kinds[kid] = TileKind(
+        filter=FlagFilter(**{**tmpl.filter.__dict__, "required": [flag], "excluded": []}),
+        count=count, min_distance=float(min_distance),
+        footprints=[int(bool(footprints.get(n))) for n in tg.size_names],
+        rule=0, _ci=tmpl._ci)
+    tg.spawner.kind_ids.append(kid)
+    for s in tg.slots.values():
+        if s.kinds:
+            s.kinds.append(0)
+            for row in s.compat:
+                row.append(2)
+    return kid

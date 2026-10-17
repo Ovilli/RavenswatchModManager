@@ -58,9 +58,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # and a valid save. A clone is its base; rename/abilities are not
                               # built yet.
     "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
-                              # resolved to the clone and the run started in it); the clone
-                              # still generates from the base's pool (tilegen backref) and
-                              # `tribe` showed no effect
+                              # resolved to the clone and the run started in it); own-pool
+                              # generation PROVEN 2026-09-24. `pool`/`tilegen` edits on the
+                              # clone are unplaytested; `tribe` showed no effect
     "skill": "confirmed",     # relabel PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
                               # "TEST Meteor" in the Skill Menu and on the card). It is the only
                               # mode emitted: repoint was playtested inert (2026-09-12) and clone

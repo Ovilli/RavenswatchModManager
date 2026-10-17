@@ -560,9 +560,10 @@ refused, because the game skips it.
 
 ## `map` — make a chapter play a cloned map
 
-**What the player sees.** A chapter that plays a mapdef of your own. Today it
-looks like the base map: the clone reuses the base's terrain and still draws
-its tiles from the base's pool.
+**What the player sees.** A chapter that plays a mapdef of your own: the
+base's terrain, generated from the clone's OWN tile pool and recipe. Change
+which tiles it may draw (`pool`) and how many of each kind it places
+(`tilegen`) without touching the vanilla chapter.
 
 ```toml
 [mod]
@@ -578,17 +579,26 @@ kind    = "map"
 id      = "Twilight_Hills"
 base    = "Dark_Hills"   # Dark_Hills, Storm_Island, Avalon or Baba_Yaga
 chapter = 0              # 0 Dark Hills, 1 Storm Island, 2 Avalon, 3 Baba Yaga
+
+# Optional: the clone's own tile pool. "<Name>" is looked up in the base's
+# biome first; "<Biome>/<Name>" borrows a tile from another biome.
+pool    = { add = ["Avalon/64x64_Ponds_And_Fountains_Camp"], remove = ["3x3_Blocker_Props_01"] }
+
+# Optional: the clone's own recipe, same fields as the `tilegen` kind.
+[content.tilegen]
+kinds = { Camp = { count = 2 } }
+fill  = { "40x40" = [], "64x64" = [] }
 ```
 
 **Prove it.** `R.maps.chapters()` lists each chapter's map: the one you
 repointed says `resref` and resolves to a mapdef that is not the vanilla one.
 
 **Trap.** `chapter` overrides `All_Chapters` as a whole file, so it conflicts
-with a `game_mode` edit in another mod (last writer wins). Tile generation
-follows the base's tile-generation level back to the ORIGINAL mapdef, so pool
-edits on the clone do nothing yet, and `tribe` has shown no visible effect.
-To change what an existing chapter generates, `tilegen` and `poi` are the
-proven tools.
+with a `game_mode` edit in another mod (last writer wins). `tribe` has shown
+no visible effect. A removal that leaves a counted recipe kind (Start,
+Map_Boss, Teleporter, …) with no pool tile is refused. Baba Yaga is not
+tile-generated, so it takes neither `pool` nor `tilegen`. To change what a
+VANILLA chapter generates, use `tilegen` and `poi`.
 
 ---
 

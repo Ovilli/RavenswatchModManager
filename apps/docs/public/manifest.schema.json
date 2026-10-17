@@ -410,7 +410,11 @@
                 "chapter": {},
                 "id": {},
                 "kind": {},
+                "place": {},
+                "pool": {},
                 "schema_version": {},
+                "terrain": {},
+                "tilegen": {},
                 "tribe": {}
               },
               "additionalProperties": false
@@ -640,12 +644,14 @@
             },
             "then": {
               "properties": {
+                "add_slots": {},
                 "chapter": {},
                 "fill": {},
                 "id": {},
                 "kind": {},
                 "kinds": {},
                 "quotas": {},
+                "remove_slots": {},
                 "schema_version": {},
                 "slots": {}
               },

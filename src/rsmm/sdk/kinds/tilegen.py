@@ -28,6 +28,13 @@ Fields:
                                  ``Camp``, which is where most camps come from:
                                  a kind's ``count`` only covers the placements
                                  made before this pass.
+    ``slots.<id>.move`` ([x, y, z])  move a slot; ``pos`` still anchors it.
+    ``remove_slots`` (table)     ``{ "<object id>" = [x, y, z] }`` — the
+                                 position anchors the removal like ``pos``.
+    ``add_slots`` (array)        ``[{ group = "<WxH>", pos = [x, y, z],
+                                 allow = { "<Kind>" = true } }]``. Removing or
+                                 adding slots changes the recipe's object
+                                 count; the writer renumbers the graph.
 """
 
 from __future__ import annotations
@@ -48,10 +55,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise SchemaNotMined(
             f"tilegen {defn.id}: needs a 'chapter' (one of "
             + ", ".join(c.key for c in ME.chapters()) + ")")
-    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "slots", "fill")
-             if k in defn.fields}
+    # Named here, not via ME.EDIT_SECTIONS, so the manifest-spec check sees each field read.
+    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "slots", "fill",
+                                         "remove_slots", "add_slots") if k in defn.fields}
     if not edits:
-        raise ContentError(f"tilegen {defn.id}: no kinds, quotas, slots or fill to change")
+        raise ContentError(f"tilegen {defn.id}: nothing to change (one of "
+                           f"{', '.join(ME.EDIT_SECTIONS)})")
     try:
         ch = ME.find_chapter(chapter)
         level, changes = ME.build_level(ch, edits)
