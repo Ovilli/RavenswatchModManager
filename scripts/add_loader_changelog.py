@@ -40,14 +40,14 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--loader-version", type=int)
     which.add_argument("--cli-version", type=int,
                        help="a CLI-channel note (scripts/publish_cli.py) instead")
+    which.add_argument("--app-version",
+                       help="an app release's note (after scripts/bump-version.py)")
     ap.add_argument("--summary", required=True, help="one sentence, shown as the subtitle")
     ap.add_argument("--highlight", action="append", default=[],
                     help="a bullet; repeat for more (at least one required)")
     ap.add_argument("--date", default=_date.today().isoformat())
     ap.add_argument("--feed", default=str(FEED))
     a = ap.parse_args(argv)
-    field, num, label = (("cli_version", a.cli_version, "cli") if a.cli_version is not None
-                         else ("loader_version", a.loader_version, "loader"))
 
     if not a.highlight:
         print("at least one --highlight is required (an entry with nothing to "
@@ -66,24 +66,32 @@ def main(argv: list[str] | None = None) -> int:
         # missing version to "" anyway, but the desktop imports this file
         # DIRECTLY as typed data — an absent key makes the entry a different
         # shape from every other one and fails the build.
-        "version": "",
-        field: num,
+        "version": a.app_version or "",
         "date": a.date,
         "summary": a.summary,
         "highlights": list(a.highlight),
     }
+    if a.cli_version is not None:
+        entry["cli_version"] = a.cli_version
+    else:
+        # An app release names the loader it bundles, like every release note.
+        entry["loader_version"] = (a.loader_version if a.loader_version is not None else
+                                   json.loads((REPO / "data/loader_version.json")
+                                              .read_text(encoding="utf-8"))["loader_version"])
+    sys.path.insert(0, str(REPO / "src"))
+    from rsmm.engine.changelog_feed import entry_key
+    key = entry_key(entry)
     # Replace an existing note for this loader version; otherwise it goes on
     # top, because the feed is newest-first and a channel publish is the most
     # recent thing that happened.
     kept = [e for e in entries
-            if not (isinstance(e, dict) and e.get(field) == num)]
+            if not (isinstance(e, dict) and entry_key(e) == key)]
     replaced = len(kept) != len(entries)
     # The client reads at most MAX_ENTRIES and silently drops the rest, and
     # publish_changelog.sh refuses a feed it would truncate -- so a full feed
     # (50 entries on 2026-10-08) failed the loader v29 publish AFTER the
     # loader itself had shipped. Retire the OLDEST notes here instead: the
     # feed is newest-first, so the tail is what no client would show anyway.
-    sys.path.insert(0, str(REPO / "src"))
     from rsmm.engine.changelog_feed import MAX_ENTRIES
     doc["entries"] = [entry, *kept][:MAX_ENTRIES]
     retired = len(kept) + 1 - len(doc["entries"])
@@ -100,11 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     except ChangelogError as e:
         print(f"the feed no longer parses: {e}", file=sys.stderr)
         return 1
-    if not any(e.get(field) == num for e in feed["entries"]):
+    if not any(entry_key(e) == key for e in feed["entries"]):
         print("the new entry was dropped by the parser (too long? empty?)", file=sys.stderr)
         return 1
 
-    print(f"{'replaced' if replaced else 'added'} {label} v{num} note in {path}")
+    print(f"{'replaced' if replaced else 'added'} {key} note in {path}")
     if retired:
         print(f"  retired the {retired} oldest note(s): the client shows {MAX_ENTRIES} at most")
     print(f"  {a.summary}")

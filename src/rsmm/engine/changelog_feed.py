@@ -174,6 +174,19 @@ def _entry(raw: Any) -> dict | None:
     return entry
 
 
+def entry_key(e: dict) -> str:
+    """What identifies an entry: its app version, else its channel build.
+
+    Channel notes carry an EMPTY version, so keying on `version` alone made
+    every one collide with every other (it bit at loader v9).
+    """
+    if e.get("version"):
+        return f"v{e['version']}"
+    if e.get("loader_version") is not None:
+        return f"loader v{e['loader_version']}"
+    return f"cli v{e.get('cli_version')}"
+
+
 def parse(data: bytes) -> dict:
     """Parse + sanitize a raw feed payload. Raises on anything unusable."""
     try:

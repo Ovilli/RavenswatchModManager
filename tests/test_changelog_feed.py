@@ -168,14 +168,13 @@ def test_shipped_feed_survives_its_own_parser():
     feed = cf.parse(cf.bundled_path().read_bytes())
     source = json.loads(cf.bundled_path().read_text(encoding="utf-8"))
     assert len(feed["entries"]) == len(source["entries"]), "an entry would be dropped as unusable"
-    # Identity, not `version` alone — mirrors the _key() in publish_changelog.sh.
+    # Identity, not `version` alone — the same entry_key() publish_changelog.sh uses.
     # A loader-channel entry has an EMPTY version and identifies by
     # loader_version, so keying on `version` made every channel entry collide
     # with every other one: the feed could hold exactly one loader note. That
     # was invisible while loader v8 was the only channel entry and failed the
     # moment v9 was added.
-    keys = [f"v{e['version']}" if e.get("version") else f"loader:{e.get('loader_version')}"
-            for e in feed["entries"]]
+    keys = [cf.entry_key(e) for e in feed["entries"]]
     assert len(keys) == len(set(keys)), "duplicate entry in the shipped feed"
     assert all(e["date"] for e in feed["entries"]), "every shipped entry needs a date"
 
@@ -291,3 +290,20 @@ def test_add_loader_changelog_keeps_a_full_feed_publishable(tmp_path):
     assert doc["entries"][0]["loader_version"] == 29
     assert doc["entries"][-1]["version"] == "1.0.2"           # 1.0.1 retired
     assert len(parse(raw)["entries"]) == MAX_ENTRIES          # nothing dropped
+
+
+def test_channel_notes_of_each_kind_have_distinct_keys():
+    """Two CLI notes, or a CLI and a loader note, must never collide."""
+    entries = [{"version": "", "cli_version": 1}, {"version": "", "cli_version": 2},
+               {"version": "", "loader_version": 1}, {"version": "5.9.24"}]
+    assert len({cf.entry_key(e) for e in entries}) == 4
+
+
+def test_shipped_feed_has_a_note_for_this_version():
+    """A release whose notes were forgotten shows users nothing; fail at CI, where
+    the release gate stops the tag, instead."""
+    version = json.loads((Path(__file__).resolve().parents[1]
+                          / "apps/desktop/package.json").read_text())["version"]
+    feed = json.loads(cf.bundled_path().read_text(encoding="utf-8"))
+    assert any(e.get("version") == version for e in feed["entries"]), (
+        f"data/changelog.json has no entry for {version}: add one in the release commit")

@@ -509,6 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # dispatch publish-cli.yml
     steps:
       - uses: actions/checkout@v5
 
@@ -542,6 +543,35 @@ jobs:
           # release is a no-op, so re-running the job is safe.
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false \
             --jq '"published " + .html_url'
+
+      # Clients read release notes from the rolling `changelog` release, which
+      # nothing here updated: 5.9.24 went out with its note unseen until it was
+      # uploaded by hand. Uploaded from MAIN, not the tag, so a loader or CLI
+      # note published after tagging is not rolled back.
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main-tree
+
+      - name: Publish release notes
+        working-directory: main-tree
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/publish_changelog.sh
+
+      # This build embeds the CLI stamp it was cut at, and the app only prefers
+      # a channel build that is strictly NEWER. Publishing one now moves new
+      # installs onto the --onedir CLI (no unpack per call) on their second
+      # start, instead of whenever someone next remembers to publish.
+      - name: Publish the CLI channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh workflow run publish-cli.yml --ref main \
+            -f notes="CLI build for ${TAG}" -f changelog=false
 
       # GITHUB_TOKEN publish does not trigger `release: published`, so
       # discord-notify.yml never runs for tag-driven releases — notify here.
