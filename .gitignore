@@ -112,3 +112,5 @@ docs/_re/out_new/candidates2/
 htmlcov/
 coverage.xml
 coverage.json
+
+dist/*
