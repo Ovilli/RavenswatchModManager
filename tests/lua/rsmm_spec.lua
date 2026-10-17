@@ -2966,11 +2966,13 @@ do
     -- so the loader replays the original itself; the callback returns nil.
     local function deal(hero, amount, atk_type)
         I.write_f32(PDVAL + 8, amount)
-        I.write_u16(PDSRC + 0xc8, atk_type or 0)
+        I.write_u16(PDSRC + 0xe0, atk_type or 0)
         return stats_hook.cb(hero, ENEMY_A, PD, 0, function() error("observer must not replay") end)
     end
 
+    I.write_u8(PDVAL + 0x1a, 1)   -- the crit flag
     check(deal(ME, 40.0, 5) == nil, "the bookkeeping hook returns nothing (void)")
+    I.write_u8(PDVAL + 0x1a, 0)
     deal(ALLY, 25.0, 0)
     deal(ALLY, 25.0, 0)
 
@@ -2987,6 +2989,7 @@ do
           "the local row uses the real Steam name, not a placeholder")
     check(me and me.dealt == 40.0, "our damage is credited once")
     check(me and me.by_type.ultimate == 40.0, "damage is split by ability type")
+    check(me and me.crits == 1, "a hit with the crit flag counts as a crit, others do not")
     check(ally and ally.dealt == 50.0 and ally.hits == 2, "ally damage accumulates")
     check(ally and ally.label == "Player 2", "the ally gets a join-order label")
 
@@ -3110,6 +3113,31 @@ do
     check(hurt and hurt.is_local and hurt.dealt == dealt_before,
           "and on the SAME row as that player's damage dealt")
     check(#Rd.damage.board() == rows_before, "taking a hit boards nobody new")
+
+    -- The engine's own taken total adds the amount behind +0xa0 (Update 6
+    -- decompile); +0x10 only feeds analytics. When both read, +0xa0 wins.
+    I.write_f32(PDSRC + 8, 9.0)
+    taken_hook.cb(ME, PD, function() end)
+    for _, row in ipairs(Rd.damage.board()) do
+        if row.is_local then
+            check(row.taken == 21.0, "taken adds the amount the game counts (+0xa0)")
+        end
+    end
+    I.write_f32(PDSRC + 8, 0.0)
+
+    -- A BLOCKED hit: the receive routine zeroes the processed amount and
+    -- leaves the hit's size at +0xa8. It is blocked damage, never taken —
+    -- even though the +0x10 value still carries the original amount.
+    I.write_f32(PDSRC + 0xa8, 30.0)
+    taken_hook.cb(ME, PD, function() end)
+    I.write_f32(PDSRC + 0xa8, -1.0)
+    for _, row in ipairs(Rd.damage.board()) do
+        if row.is_local then
+            check(row.blocked == 30.0 and row.blocked_hits == 1,
+                  "a blocked hit is counted as blocked")
+            check(row.taken == 21.0, "and is not counted as taken as well")
+        end
+    end
 
     -- An ally taking damage is boarded as that ally, not as us.
     I.write_f32(PDVAL + 8, 5.0)
@@ -3347,7 +3375,7 @@ do
     I.write_u64(PD2 + 0xa0, PDSRC2)
     local function hit(target, amount)
         I.write_f32(PDVAL2 + 8, amount)
-        I.write_u16(PDSRC2 + 0xc8, 0)
+        I.write_u16(PDSRC2 + 0xe0, 0)
         stats.cb(HERO, target, PD2, 0, function() end)
     end
 
@@ -3519,7 +3547,7 @@ do
     I.write_u64(PD + 0xa0, PDSRC)
     local function hit(target, amount)
         I.write_f32(PDVAL + 8, amount)
-        I.write_u16(PDSRC + 0xc8, 0)
+        I.write_u16(PDSRC + 0xe0, 0)
         stats.cb(HERO, target, PD, 0, function() end)
     end
     local MYSTERY = victim(nil, 0x66300000)
@@ -3605,7 +3633,7 @@ do
     I.write_u64(0x73100000 + 8, 0x73200000)
     local function deal(who, amount)
         I.write_f32(PDV3 + 8, amount)
-        I.write_u16(PDS3 + 0xc8, 0)
+        I.write_u16(PDS3 + 0xe0, 0)
         stats.cb(who, ENEMY, PD3, 0, function() end)
     end
 
@@ -3767,7 +3795,7 @@ local function _name_world(base, ids, locals)
     local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
     return ctrl, function(who, amount)
         I.write_f32(PDV + 8, amount)
-        I.write_u16(PDS + 0xc8, 0)
+        I.write_u16(PDS + 0xe0, 0)
         stats.cb(who, base + 0x40000, PD, 0, function() end)
     end
 end
@@ -3921,7 +3949,7 @@ local function _own_world(base, names)
     local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
     return ctrl, function(who, amount)
         I.write_f32(PDV + 8, amount)
-        I.write_u16(PDS + 0xc8, 0)
+        I.write_u16(PDS + 0xe0, 0)
         stats.cb(who, base + 0x40000, PD, 0, function() end)
     end
 end
@@ -4851,7 +4879,7 @@ do
     local stats = hooks[I.resolve("HeroStats_OnDamageDealt")]
     local function deal(who, amount)
         I.write_f32(PDV + 8, amount)
-        I.write_u16(PDS + 0xc8, 0)
+        I.write_u16(PDS + 0xe0, 0)
         stats.cb(who, 0x81300000, PD, 0, function() end)
     end
 
@@ -6238,7 +6266,7 @@ do
     I.write_u64(PD + 0x10, PDV)
     I.write_u64(PD + 0xa0, PDS)
     I.write_f32(PDV + 8, 10.0)
-    I.write_u16(PDS + 0xc8, 0)
+    I.write_u16(PDS + 0xe0, 0)
     for _, addr in ipairs(P) do stats.cb(addr, 0x7d000000, PD, 0, function() end) end
 
     check(#Rm.damage.board() == 4,
@@ -7873,6 +7901,144 @@ do  -- 9j. GUID -> UDP port -> peer slot: the join that is read, not searched
     R = require "rsmm"
 end
 
+-- The hero-template join: a row plays the hero its entity's template names,
+-- and the lobby allows one player per hero.
+local function _hero_world(Rp, base, picks, templates)
+    local names = { "Ovilli", "Yume", "Mascarade" }
+    Rp.damage.enable{ window = 10 }
+    for i, nm in ipairs(names) do
+        Rp.lobby._note_blob(('{"PlayerName":"%s","RequestedHero":%d}'):format(nm, picks[i]))
+    end
+    local ctrl, deal = _own_world(base, names)
+    local by_ent = {}
+    for i = 1, #names do
+        by_ent[I.read_u64(ctrl[i] + 0x08)] = templates[i]
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rp.interact.name = function(e) return by_ent[e] end
+    return ctrl
+end
+
+local HERO_TEMPLATES = {
+    "Hero_Juliet_Default",
+    "EntitySettings\\Heroes\\Hero_SunWukong\\Hero_SunWukong_Dark.entity.ot",
+    "Hero_Snow_Queen_Default",
+}
+
+do  -- 9n. the hero join names each ally by the hero only they picked
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- Juliet 10, Sun Wukong 7, Snow Queen 3: the folder spellings differ from
+    -- HERO_NAMES ("SunWukong" vs "Sun_Wukong"), which the match must absorb.
+    _hero_world(Rp, 0xbb000000, { 10, 7, 3 }, HERO_TEMPLATES)
+    check(Rp.damage._hero_join() == true, "the hero join fires")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2] and by[2].player == "Yume" and by[3] and by[3].player == "Mascarade",
+          "each ally row is named by the hero its entity was built as")
+    check(by[2].label_guess == false, "and the name is not a guess")
+    local anchored = false
+    for _, l in ipairs(logged) do
+        if l:find("hero join anchored", 1, true) then anchored = true end
+    end
+    check(anchored, "the local row's hero was checked against the lobby first")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9n2. ANCHOR: the local row playing someone else's pick names nobody
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local logged = {}
+    local saved_log = rsmm.log
+    rsmm.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.mem_find = function() return {} end
+
+    -- The lobby says Ovilli picked Sun Wukong, but the local row is Juliet.
+    _hero_world(Rp, 0xbc000000, { 7, 10, 3 }, HERO_TEMPLATES)
+    check(Rp.damage._hero_join() == false, "the join refuses")
+    local off = false
+    for _, l in ipairs(logged) do
+        if l:find("hero join OFF", 1, true) then off = true end
+    end
+    check(off, "and says the ids or the template read are wrong")
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil,
+              "no ally is named from a contradicted join")
+    end
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9n3. a hero two members picked (same-hero mods) names neither
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    _hero_world(Rp, 0xbd000000, { 10, 7, 7 },
+                { HERO_TEMPLATES[1], HERO_TEMPLATES[2], HERO_TEMPLATES[2] })
+    Rp.damage._hero_join()
+    Rp.damage.relabel()
+    for _, row in ipairs(Rp.damage.board()) do
+        check(row.slot == 1 or row.player == nil,
+              "two Sun Wukongs identify neither player")
+    end
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
+do  -- 9n4. a lobby name that is not the Steam persona does not switch it off
+    package.loaded["rsmm"] = nil
+    local Rp = require "rsmm"
+    local saved_log = rsmm.log
+    rsmm.log = function() end
+    I.mem_find = function() return {} end
+
+    Rp.damage.enable{ window = 10 }
+    -- EOS display name for the local player, not the Steam persona "Ovilli".
+    Rp.lobby._note_blob('{"PlayerName":"Ovi_EOS","RequestedHero":10}')
+    Rp.lobby._note_blob('{"PlayerName":"Yume","RequestedHero":7}')
+    Rp.lobby._note_blob('{"PlayerName":"Mascarade","RequestedHero":3}')
+    local ctrl, deal = _own_world(0xbe000000, { "Ovilli", "Yume", "Mascarade" })
+    local by_ent = {}
+    for i = 1, 3 do
+        by_ent[I.read_u64(ctrl[i] + 0x08)] = HERO_TEMPLATES[i]
+        deal(ctrl[i], 10.0 * i)
+    end
+    Rp.interact.name = function(e) return by_ent[e] end
+    check(Rp.damage._hero_join() == true, "the join still fires")
+    Rp.damage.relabel()
+    local by = {}
+    for _, row in ipairs(Rp.damage.board()) do by[row.slot] = row end
+    check(by[2].player == "Yume" and by[3].player == "Mascarade",
+          "allies are named; the local player's lobby entry is recognised by hero")
+    check(by[2].player ~= "Ovi_EOS" and by[3].player ~= "Ovi_EOS",
+          "and the local player's own lobby name is never handed to an ally")
+
+    Rp.damage.disable(); Rp.damage.reset()
+    rsmm.log = saved_log
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+end
+
 do  -- 9k. ANCHOR: this machine cannot be one of its own remote systems
     package.loaded["rsmm"] = nil
     local Rp = require "rsmm"
@@ -8898,7 +9064,7 @@ do
             local replayed = false
             local function deal(who, amount, atk_type)
                 I.write_f32(PDVAL + 8, amount)
-                I.write_u16(PDSRC + 0xc8, atk_type or 0)
+                I.write_u16(PDSRC + 0xe0, atk_type or 0)
                 return stats.cb(who, ENEMY, PD, 0, function() replayed = true end)
             end
             check(deal(ME, 400.0, 0) == nil, "the hook is a void observer")
@@ -9146,7 +9312,7 @@ do
     I.write_u64(VICTIM + 8, 0x13000000)
     I.write_u64(PD + 0x10, PDVAL)
     I.write_u64(PD + 0xa0, PDSRC)
-    I.write_u16(PDSRC + 0xc8, 0)
+    I.write_u16(PDSRC + 0xe0, 0)
     I.mem_find = function() return {} end
 
     Rq.damage.enable{ window = 10 }
@@ -9206,7 +9372,7 @@ do
     I.write_u64(VICTIM + 8, 0x13000000)
     I.write_u64(PD + 0x10, PDVAL)
     I.write_u64(PD + 0xa0, PDSRC)
-    I.write_u16(PDSRC + 0xc8, 0)
+    I.write_u16(PDSRC + 0xe0, 0)
     I.write_u8(PDVAL + 0x11, 0)
     I.mem_find = function() return {} end
 

@@ -500,6 +500,18 @@ def _cell(row: dict[str, Any], col: dict[str, Any]) -> str:
     return body + col["suffix"]
 
 
+def _visible_columns(columns: list[dict[str, Any]],
+                     rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop a declared column no row carries a value for.
+
+    Lets a mod fill some columns only behind its own config toggle (the damage
+    meter's per-act split) without the board growing empty columns while the
+    toggle is off. Mirrors `visibleColumns` in the desktop's overlay-state.ts.
+    """
+    return [c for c in columns
+            if any(r.get(c["key"]) not in (None, "") for r in rows)]
+
+
 def _age(updated: int) -> str:
     if not updated:
         return "never"
@@ -540,7 +552,7 @@ def render(record: dict[str, Any]) -> list[str]:
         out.append("  " + _ST.dim(str(record.get("empty") or "No data yet.")))
         return out
 
-    columns = record["columns"]
+    columns = _visible_columns(record["columns"], rows)
     # Width per column from the widest cell, so a mod's own column set lays
     # itself out. Pad the PLAIN string: padding a styled one counts the escape
     # bytes as width and mis-aligns every row.

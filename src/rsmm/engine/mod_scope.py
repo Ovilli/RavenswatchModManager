@@ -52,6 +52,8 @@ CLIENT_CALLS: frozenset[str] = frozenset({
     "events.known", "events.count", "events.category",
     # Reads the netcode peer table (names, session ids) — no write, no send.
     "net.peers",
+    # Read the lobby roster the loader already parsed — names and hero picks.
+    "lobby.members", "lobby.allies", "lobby.hero_name",
 })
 
 

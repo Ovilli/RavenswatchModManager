@@ -25,7 +25,7 @@ import {
   useState,
 } from 'react';
 import { useT } from '../lib/i18n-react';
-import { gridTracks, readOverlayLive } from '../lib/overlay-state';
+import { gridTracks, readOverlayLive, visibleColumns } from '../lib/overlay-state';
 import { overlayTransparent, resetOverlayWindow, savePosition } from '../lib/overlay-windows';
 import {
   type ModConfigValue,
@@ -562,10 +562,10 @@ export function OverlayHud({ modId }: { modId: string }) {
     void emit('rsmm://overlay-clickthrough', { modId, enabled: next });
   };
 
-  const columns = record?.columns ?? [];
   const rows = record?.rows ?? [];
+  const columns = visibleColumns(record?.columns ?? [], rows);
   const highlight = record?.highlight ?? null;
-  const controlsOnly = columns.length === 0 && controls.length > 0;
+  const controlsOnly = (record?.columns?.length ?? 0) === 0 && controls.length > 0;
   const stale =
     !controlsOnly &&
     (!record?.exists || (record.updated > 0 && Date.now() / 1000 - record.updated > STALE_AFTER_S));

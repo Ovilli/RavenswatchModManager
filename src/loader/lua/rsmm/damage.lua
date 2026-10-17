@@ -129,6 +129,14 @@ local DMG = {
     -- branch (the one that stamps KilledByPet / KilledBySummon).
     VALUE_APPLIED_OFF = 0x1b,
     VALUE_KILLED_OFF  = 0x11,
+    -- Set where the character controller's receive routine applies the crit
+    -- multiplier (FUN_1403bce50, Ghidra b9c3 2026-10-17).
+    VALUE_CRIT_OFF    = 0x1a,
+    -- DAMAGE BLOCKED. The same routine copies a blocked hit's whole amount into
+    -- the processed damage (+0xa0) at +0xa8 (default -1.0) and zeroes the hit;
+    -- HeroStats_OnDamageTaken sums it into the end-screen stats +0xe0. Only the
+    -- machine that owns the hero sees it, like `taken`.
+    PROC_BLOCKED_OFF  = 0xa8,
     -- Fail-open guard for the gate above. If the flag reads clear on nearly
     -- everything, the offset does not mean here what it means in the decompile
     -- (a game patch moved the field), and filtering on it would silently zero
@@ -137,7 +145,11 @@ local DMG = {
     GATE_MIN_SAMPLE  = 40,
     GATE_MIN_PASS    = 0.10,
     PD_SOURCE_OFF    = 0xa0,     -- -> hit-def / source info
-    SOURCE_TYPE_OFF  = 0xc8,     -- u16 attack-type enum
+    -- u16 attack-type enum (0 Attack .. 6 Dash, the engine's own name table at
+    -- 0x1412e87d0). 0xc8 before Update 6; HeroStats_OnDamageDealt switches on
+    -- +0xe0 now (Ghidra b9c3, 2026-10-17), so the old offset split every hit
+    -- into "other" or the wrong ability.
+    SOURCE_TYPE_OFF  = 0xe0,
     -- Entity_ResolveAttackHits arguments
     CTX_ENTITY_OFF   = 0x08,     -- attacker context -> attacking entity
     TGT_COUNT_OFF    = 0x00,
@@ -1219,6 +1231,7 @@ function F._dmg_observe_stats(hero, target, pd)
         return
     end
     if F._dmg_killed(valobj) then row.kills = (row.kills or 0) + 1 end
+    if I.read_u8(valobj + DMG.VALUE_CRIT_OFF) == 1 then row.crits = (row.crits or 0) + 1 end
     -- What did they hit? The probe reports the first few distinct victims so
     -- the classification can be confirmed from a log rather than trusted.
     F._dmg_probe_victim(target, amount)
@@ -1268,9 +1281,18 @@ function F._dmg_observe_taken(victim, pd)
     -- +0x10, its f32 at +0x8. The one-shot probe reports the alternative
     -- (+0xa0) too, so a layout difference shows up as data in the log rather
     -- than as another silently empty column.
-    local valobj = I.read_u64(pd + DMG.PD_VALUE_OFF)
-    local amount = _ptr_plausible(valobj)
-        and I.read_f32(valobj + DMG.VALUE_AMOUNT_OFF) or nil
+    -- The engine's own taken total (the HUD figure and stats +0xe8) adds the
+    -- amount behind +0xa0, not +0x10 (HeroStats_OnDamageTaken, Ghidra b9c3
+    -- 2026-10-17); +0x10 only feeds its analytics. Read what the game counts,
+    -- falling back to +0x10 if that object does not read back.
+    local amount
+    local applied = I.read_u64(pd + DMG.PD_SOURCE_OFF)
+    if _ptr_plausible(applied) then amount = I.read_f32(applied + DMG.VALUE_AMOUNT_OFF) end
+    if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
+        local valobj = I.read_u64(pd + DMG.PD_VALUE_OFF)
+        amount = _ptr_plausible(valobj)
+            and I.read_f32(valobj + DMG.VALUE_AMOUNT_OFF) or nil
+    end
     if not _dmg.probed_taken then
         _dmg.probed_taken = true
         local alt = I.read_u64(pd + DMG.PD_SOURCE_OFF)
@@ -1280,6 +1302,20 @@ function F._dmg_observe_taken(victim, pd)
             victim, tostring(I.read_u8(victim + DMG.HERO_ISLOCAL_OFF)),
             tostring(amount),
             tostring(_ptr_plausible(alt) and I.read_f32(alt + 8) or nil)))
+    end
+    -- A blocked hit arrives with its amount zeroed, so read the block before
+    -- the zero-amount return below.
+    local blocked = _ptr_plausible(applied) and I.read_f32(applied + DMG.PROC_BLOCKED_OFF)
+    if type(blocked) == "number" and blocked == blocked and blocked > 0 then
+        local brow = F._dmg_row_for_hero(victim)
+        if brow then
+            brow.blocked = (brow.blocked or 0) + blocked
+            brow.blocked_hits = (brow.blocked_hits or 0) + 1
+            brow.taken_seen = true
+        end
+        -- Blocked is not taken: the processed amount is zero, and falling back
+        -- to +0x10 (which the block leaves alone) would count it twice.
+        return
     end
     if type(amount) ~= "number" or amount ~= amount or amount <= 0 then return end
     local row = F._dmg_row_for_hero(victim)
@@ -1423,6 +1459,10 @@ function F._dmg_next_epoch(name)
     -- answered. Without this it stays stood down for the rest of the run.
     F._netid.rak_done, F._netid.rak_idle, F._netid.rak_said = false, 0, false
     F._netid.peer_gen, F._netid.peer_scanned, F._netid.peer_hit = nil, {}, {}
+    -- The hero join's cache is keyed by controller address, which the
+    -- allocator hands back out; and a refusal belongs to the board it judged.
+    F._netid.hero_seen, F._netid.hero_tries = {}, {}
+    F._netid.hero_off, F._netid.hero_said = false, false
     -- Sticky guesses belong to the board that made them: a chapter change
     -- re-adopts every controller, so slot N is not the same player it was.
     _dmg.guessed = {}
@@ -1858,6 +1898,11 @@ function R.damage.board()
             -- being large next to `dealt` is the signal that this build
             -- discards more than expected — worth seeing rather than hiding.
             kills = row.kills or 0,
+            -- Crits among the counted hits, and damage this player BLOCKED
+            -- (the end screen's stats +0xe0). Blocked, like taken, is only
+            -- seen for heroes this machine owns: read it with taken_known.
+            crits = row.crits or 0,
+            blocked = row.blocked or 0, blocked_hits = row.blocked_hits or 0,
             discarded = row.discarded or 0,
             discarded_amount = row.discarded_amount or 0,
             -- Damage credited to a victim the filter could not classify. A UI

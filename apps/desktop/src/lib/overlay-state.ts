@@ -166,6 +166,20 @@ export function readOverlayLive(text: string, sort?: OverlaySort | null): Overla
 }
 
 /**
+ * The declared columns at least one row carries a value for.
+ *
+ * A manifest's columns are static, but a mod may fill some only behind its own
+ * config toggle (damage-meter's per-act split). Hiding a column no row
+ * publishes keeps that toggle's columns out of the HUD while it is off. With
+ * no rows yet every column stays, so the header does not flicker in on the
+ * first publish. Mirrors `_visible_columns` in `cmd_overlay.py`.
+ */
+export function visibleColumns(columns: OverlayColumn[], rows: Row[]): OverlayColumn[] {
+  if (rows.length === 0) return columns;
+  return columns.filter((c) => rows.some((r) => r[c.key] !== undefined && r[c.key] !== ''));
+}
+
+/**
  * Column tracks for the board's grid. Every row is a subgrid of ONE grid, so a
  * column lines up down the whole board: when each row was its own flex line, a
  * number column was as wide as THAT row's value and "4.1k" sat left of "48k".
