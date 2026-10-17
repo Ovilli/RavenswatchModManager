@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-16",
+  "generated": "2026-10-17",
   "entries": [
+    {
+      "version": "",
+      "loader_version": 46,
+      "date": "2026-10-17",
+      "summary": "Damage meter: allies named by the hero they play, Update 6 per-ability split fixed, taken uses the game's own total, crits and blocked damage counted",
+      "highlights": [
+        "Damage meter: allies named by the hero they play, Update 6 per-ability split fixed, taken uses the game's own total, crits and blocked damage counted"
+      ]
+    },
     {
       "version": "5.9.22",
       "loader_version": 45,
@@ -507,15 +516,6 @@
       "summary": "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters.",
       "highlights": [
         "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 18,
-      "date": "2026-09-18",
-      "summary": "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object.",
-      "highlights": [
-        "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object."
       ]
     }
   ]
