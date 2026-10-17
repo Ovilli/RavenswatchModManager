@@ -2,12 +2,15 @@
   "generated": "2026-10-17",
   "entries": [
     {
-      "version": "",
+      "version": "5.9.23",
       "loader_version": 46,
       "date": "2026-10-17",
-      "summary": "Damage meter: allies named by the hero they play, Update 6 per-ability split fixed, taken uses the game's own total, crits and blocked damage counted",
+      "summary": "The damage meter now names your teammates exactly, by the hero each of them plays.",
       "highlights": [
-        "Damage meter: allies named by the hero they play, Update 6 per-ability split fixed, taken uses the game's own total, crits and blocked damage counted"
+        "Damage meter: teammates are matched to their row by the hero they picked in the lobby, so their names no longer carry a '?'.",
+        "Damage meter: crits and blocked damage are counted, and damage taken matches the game's own total.",
+        "Damage meter: the per-ability split works again after Update 6.",
+        "Overlays hide a column no row has data for, so mods can add optional columns behind a setting."
       ]
     },
     {
