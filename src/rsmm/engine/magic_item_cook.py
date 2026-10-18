@@ -149,6 +149,44 @@ def set_icon(data: bytes, new_icon: str) -> bytes:
     return replace_lstr_any(data, cur, new_icon)
 
 
+#: An item's tier is the int it overrides ``Magical_Objects_Model\Quality``
+#: with, not its folder: a Rare item copied into ``Common/`` stayed Rare in game
+#: (2026-10-18). One-to-one with the folders over every shipped tiered item
+#: (13/12/11/16/16/25, 2026-10-18).
+QUALITY = {"Common": 0, "Rare": 1, "Epic": 2, "Legendary": 3, "Cursed": 4, "Powerups": 5}
+_QUALITY_PARENT = "Magical_Objects_Model\\Quality"
+
+
+def _quality_component(data: bytes):
+    from . import entity_graph as EG
+    hits = [c for c in EG.parse(data).components
+            if c.override is not None and c.override.path.endswith(_QUALITY_PARENT)]
+    if len(hits) != 1:
+        raise ValueError(f"{len(hits)} Quality overrides in the item; expected 1")
+    return hits[0]
+
+
+def get_quality(data: bytes) -> int:
+    """The item's tier int (see :data:`QUALITY`)."""
+    from . import entity_fields as EF
+    f = next(f for f in EF.fields(_quality_component(data)) if f.name == "value")
+    return int(f.text.split()[-1])
+
+
+def set_quality(data: bytes, rarity: str) -> bytes:
+    """Give the item the tier of ``rarity`` (a :data:`QUALITY` key)."""
+    from .entity_graph_edit import EntityFile
+    want = QUALITY[rarity]
+    if get_quality(data) == want:
+        return data
+    ef = EntityFile(data)
+    ef.set_value(_quality_component(data).path, "value", want)
+    out = ef.to_bytes()
+    if get_quality(out) != want:
+        raise ValueError(f"Quality did not take {want}")
+    return out
+
+
 def _node_value(data: bytes, label: str) -> tuple[int, float] | None:
     """Resolve ``label`` to ``(offset, value)`` using the authoritative cooked
     node layout: the f32 sits immediately **before** the node's closing ``END``
@@ -637,6 +675,7 @@ def build_magic_item(
     base_cooked: bytes,
     corpus: list[bytes],
     rarity: str = "Common",
+    base_rarity: str | None = None,
     name: str | None = None,
     description: str | None = None,
     value_patches: list[tuple] | None = None,
@@ -729,6 +768,10 @@ def build_magic_item(
         ent = apply_value_patch(ent, label, old, new, clear)
     if icon is not None:
         ent = set_icon(ent, icon)
+    # The tier the game reads is the Quality int, so a copy filed under
+    # another rarity must carry that rarity's int too (see QUALITY).
+    if not replace and base_rarity is not None and rarity != base_rarity:
+        ent = set_quality(ent, rarity)
 
     files_key = (f"EntitySettings/Objects/Magical_Objects/{rarity}/"
                  f"{new_id}.entity.ot.EntitySettingsResource.gen")

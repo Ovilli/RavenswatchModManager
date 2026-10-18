@@ -412,7 +412,17 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                     f"use mode='clone' to make a new item with its own")
         # `base` may carry its rarity folder (`Common/Armor_Per_Object`).
         base = base.replace("\\", "/").rpartition("/")[2]
-    rarity = str(defn.fields.get("rarity") or base_rarity)
+    # The folder AND the entity's Quality int (which the game actually reads;
+    # build_magic_item writes it) both follow `rarity`.
+    asked = defn.fields.get("rarity")
+    rarity = next((r for r in cook.QUALITY if r.lower() == str(asked).lower()), None) \
+        if asked else base_rarity
+    if rarity is None:
+        raise ContentError(
+            f"item {defn.id}: rarity {asked!r} is not one of {', '.join(cook.QUALITY)}")
+    # The cooker looks the base up by its bare id; `base` may carry its rarity
+    # folder (`Common/Armor_Per_Object`), which only `_find_base` understands.
+    base = base.replace("\\", "/").rpartition("/")[2]
     item_id = base if replace else defn.id
     name = defn.fields.get("name") or defn.fields.get("display_name")
     name = str(name) if name is not None else None
@@ -464,6 +474,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             # after enabling. Default off so existing mods are unchanged.
             remint_identity=bool(defn.fields.get("unique_identity", False)),
             rarity=rarity,
+            base_rarity=base_rarity,
             name=name,
             description=description,
             value_patches=value_patches,

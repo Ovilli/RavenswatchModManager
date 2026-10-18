@@ -198,3 +198,35 @@ def test_a_copy_without_its_own_text_reads_the_bases_keys():
     assert keys() == {"Damage_Per_Vitality_Description", "Damage_Per_Vitality_Name"}
     assert keys(name="X") == {"Damage_Per_Vitality_Description", "Damage_Per_Vitalitz_Name"}
     assert keys(description="D") == {"Damage_Per_Vitalitz_Description", "Damage_Per_Vitality_Name"}
+
+
+# --- the tier --------------------------------------------------------------------
+
+def test_every_shipped_items_quality_matches_its_folder():
+    """The tier the game reads is the Quality int, not the folder; the mapping
+    the cooker writes must hold for every shipped item that has one."""
+    _item("Common", "Armor_Per_Object")
+    for rarity, q in C.QUALITY.items():
+        for f in corpus.files(f"{_MO}/{rarity}", _SUFFIX):
+            try:
+                assert C.get_quality(f.read_bytes()) == q, f.name
+            except ValueError:
+                pass  # the few non-items in Powerups/Cursed carry no Quality
+
+
+@pytest.mark.parametrize("rarity", ["Common", "Epic", "Legendary"])
+def test_a_copy_takes_the_tier_it_asks_for(rarity):
+    """A Rare base copied as another rarity stayed Rare in game (2026-10-18):
+    only its folder moved. The Quality int must move with it."""
+    files = C.build_magic_item(new_id="Increase_Shiel2", base_id="Increase_Shield",
+                               base_cooked=_item("Rare", "Increase_Shield"),
+                               corpus=[], rarity=rarity,
+                               base_rarity="Rare")
+    [(path, ent)] = [(p, b) for p, b in files.items() if p.endswith(_SUFFIX)]
+    assert f"/{rarity}/" in path
+    assert C.get_quality(ent) == C.QUALITY[rarity]
+
+
+def test_a_copy_at_its_bases_tier_is_left_byte_identical():
+    base = _item("Rare", "Increase_Shield")
+    assert C.set_quality(base, "Rare") is base
