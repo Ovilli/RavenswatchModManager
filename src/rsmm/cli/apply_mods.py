@@ -55,6 +55,7 @@ from pathlib import Path
 
 from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
+from rsmm.engine.compendium_layout import PAGE_DECODED, sync_compendium_columns
 
 # Moved to the engine (2026-09-26); re-exported for existing callers and tests.
 from rsmm.engine.content_merge import (
@@ -2431,6 +2432,15 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
                                          bans=collect_item_bans(mods),
                                          gen_owner=vd_owner)
+    # The book's item grids are sized for the vanilla pool; widen any tier the
+    # pool just outgrew so added items do not draw past their frame.
+    page_enc = dec2enc.get(PAGE_DECODED)
+    page_owner = (state.active.get(page_enc, {}).get("mod")
+                  or next((m for e, _s, _d, m in additions if e == page_enc), None))
+    versiondef_changes += sync_compendium_columns(
+        game_dir, args.dry_run,
+        page=encoded_to_dest(page_enc, cooking, game_dir) if page_enc else None,
+        page_owner=page_owner)
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
