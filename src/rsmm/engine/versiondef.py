@@ -374,7 +374,8 @@ def collect_item_bans(mods: list[Mod]) -> set[str]:
 
 
 def sync_versiondef(game_dir: Path, registrations: dict[str, str],
-                    dry_run: bool, bans: set[str] | None = None) -> int:
+                    dry_run: bool, bans: set[str] | None = None,
+                    gen_owner: str | None = None) -> int:
     """Ensure every new magical-object entity in ``registrations`` is listed in
     the active LiveOps version manifest (.gen vector) AND its resource cache,
     so the engine loads + spawns it, and that every id in ``bans`` is NOT — so
@@ -386,6 +387,12 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     entity's file is still on disk and other assets may still reference it, and
     a surplus cache line only wastes a preload while a missing one crashes the
     load (see the ``UsedRscCache`` invariant in CLAUDE.md).
+
+    ``gen_owner`` names a mod whose override owns the .gen (enabled, or
+    disabled and awaiting restore). The .gen is then left alone: its
+    ``.rsmm.bak`` belongs to that override, and restoring it here put vanilla
+    back over the mod's file on every second apply (2026-10-18, the Update 5
+    backport never reached the game).
     """
     bans = bans or set()
     mo_paths = sorted(
@@ -402,7 +409,13 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
 
     changed = 0
     # --- .gen vector ---
-    if gen is not None:
+    if gen is not None and gen_owner:
+        if mo_paths or bans or hero_paths:
+            print(f"  [warn] {gen_owner} replaces the LiveOps versiondef; "
+                  f"{len(mo_paths)} item(s), {len(hero_paths)} hero(es) and "
+                  f"{len(bans)} ban(s) from other mods are not applied to it",
+                  file=sys.stderr)
+    elif gen is not None:
         bak = gen.with_name(gen.name + BACKUP_SUFFIX)
         if not mo_paths and not bans and not hero_paths:
             if bak.exists() and not dry_run:

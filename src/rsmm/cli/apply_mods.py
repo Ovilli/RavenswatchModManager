@@ -2248,6 +2248,64 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     return True
 
 
+def _refresh_stale_asset_map(game_dir: Path) -> bool:
+    """Rebuild the asset map when it does not know every path the installed
+    game ships. False when it is stale and the rebuild did not fix it.
+
+    The map is how apply and restore tell a game file from a mod-added one,
+    so a map from an older game build turns every file that build lacked
+    into "mod-added": apply overwrites it with no backup and restore DELETES
+    it. Measured 2026-10-18 with a pre-Update-6 map: the Update 5 backport's
+    eleven `*_Update6` herodefs and LiveOps6 versiondef were removed by one
+    apply + restore, leaving hero select with only Random.
+
+    `_recover_game_update` alone cannot catch this: it keys on the stored
+    fingerprint, which `restore --all` and other rsmm copies (the dev CLI
+    beside a desktop install) also write, while a frozen build reads its own
+    copy of the map in the user data dir. So compare the map against the
+    install's manifest itself (pristine copy first: it holds no mod records).
+    """
+    live = game_dir / USEDRSCLIST_REL
+    pristine = live.with_name(live.name + BACKUP_SUFFIX)
+    src = pristine if pristine.exists() else live
+    try:
+        lines = [ln.strip() for ln in src.read_text(encoding="utf-8").splitlines()]
+    except OSError:
+        return True                 # no manifest to compare against
+    if lines and lines[0].isdigit():
+        lines = lines[1:]
+    from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
+
+    def missing() -> int:
+        # The file `load_asset_map` reads, not the lru-cached view of it.
+        try:
+            known = json.loads(ASSET_MAP_JSON.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0                # missing/corrupt map: callers report that
+        return sum(1 for ln in lines if ln and ln not in known)
+
+    n = missing()
+    if not n:
+        return True
+    print(f"  [apply] the asset map is from an older game build ({n} shipped "
+          f"path(s) unknown); rebuilding it from {src.name}", flush=True)
+    try:
+        from rsmm.engine.find_iyg import main as rebuild_asset_map
+        rc = rebuild_asset_map(str(live))
+    except (OSError, ImportError) as e:
+        print(f"  [warn] asset map rebuild failed: {e}", file=sys.stderr)
+        rc = 1
+    encoded_to_decoded.cache_clear()
+    decoded_to_encoded.cache_clear()
+    _shipped_cache_paths.cache_clear()
+    if rc or missing():
+        print(f"{_ST.err('[FAIL]')} the asset map does not match the installed "
+              f"game, so game files would be treated as mod-added.\n"
+              f"  Run: rsmm rebuild-asset-map", file=sys.stderr)
+        return False
+    return True
+
+
 def _refuse_if_game_running(operation: str, force: bool) -> bool:
     """True when the caller should stop.
 
@@ -2314,6 +2372,8 @@ def _print_apply_summary(additions, removals, synthesized, blocked: int,
 
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
+    if not _refresh_stale_asset_map(game_dir):
+        return 1
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
@@ -2361,8 +2421,16 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Register new magical objects in the LiveOps version manifest + resource
     # cache so the engine actually loads + spawns them (UsedRscList alone only
     # makes them loadable-by-path). See sync_versiondef.
+    # A mod that replaces the versiondef whole (`values backport`) owns that
+    # file and its `.rsmm.bak` through the normal override path; the patcher
+    # must not also treat the backup as its pristine copy. Being disabled
+    # counts too: the restore below still needs that backup.
+    vd_enc = dec2enc.get(f"Definitions/Versions/{VERSIONDEF_GEN_LEAF}")
+    vd_owner = (state.active.get(vd_enc, {}).get("mod")
+                or next((m for e, _s, _d, m in additions if e == vd_enc), None))
     versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
-                                         bans=collect_item_bans(mods))
+                                         bans=collect_item_bans(mods),
+                                         gen_owner=vd_owner)
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
@@ -2459,6 +2527,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
 
 def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
+    # Before anything is dropped: with a stale map, "mod-added" includes game
+    # files, and restore deletes those.
+    if not _refresh_stale_asset_map(game_dir):
+        print("  Not restoring: it would delete game files. Rebuild the map, "
+              "then re-run restore.", file=sys.stderr)
+        return 1
     state = State(cooking)
     # A restore is the recovery path, so it must see writes an interrupted
     # apply never got to record — otherwise mod-added files (which have no
