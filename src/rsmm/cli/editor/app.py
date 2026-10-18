@@ -259,27 +259,34 @@ def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
     if fn is None:
         return _fail(404, "not found")
     # Pure game-data reads, kept across launches (see diskcache).
+    # The header lets the web editor keep the same answers in the browser.
+    cacheable = method == "GET" and "/" + rest in getattr(editor, "CACHED", ())
     key = None
-    if ctx.disk_cache and method == "GET" and "/" + rest in getattr(editor, "CACHED", ()):
+    if ctx.disk_cache and cacheable:
         from rsmm.cli.editor import diskcache
         key = f"{mount}{target[len('/' + mount):]}"
         hit = diskcache.get(key)
         if hit is not None:
-            return Reply(200, JSON, hit)
+            return Reply(200, JSON, hit, headers=dict(GAME_DATA))
         if not _gate.enter(alive):
             return Reply(499, JSON, b"")       # the client left; nobody reads this
         try:
             # Made by another request while this one waited its turn.
             hit = diskcache.get(key)
             if hit is not None:
-                return Reply(200, JSON, hit)
-            return _run(fn, ctx, method, rest, url, data, key)
+                return Reply(200, JSON, hit, headers=dict(GAME_DATA))
+            return _run(fn, ctx, method, rest, url, data, key, cacheable)
         finally:
             _gate.leave()
-    return _run(fn, ctx, method, rest, url, data, key)
+    return _run(fn, ctx, method, rest, url, data, key, cacheable)
 
 
-def _run(fn, ctx: Context, method: str, rest: str, url, data: dict, key: str | None) -> Reply:
+#: Marks an answer that depends only on the game data and the rsmm build.
+GAME_DATA = {"X-RSMM-Cache": "game"}
+
+
+def _run(fn, ctx: Context, method: str, rest: str, url, data: dict, key: str | None,
+         cacheable: bool = False) -> Reply:
     req = Request(ctx, method, "/" + rest, {k: v[0] for k, v in parse_qs(url.query).items()},
                   data)
     try:
@@ -291,6 +298,8 @@ def _run(fn, ctx: Context, method: str, rest: str, url, data: dict, key: str | N
     if isinstance(out, Raw):
         return Reply(200, out.ctype, out.data, cache=out.cache)
     reply = _json(200, out)
+    if cacheable:
+        reply.headers.update(GAME_DATA)
     if key is not None:
         from rsmm.cli.editor import diskcache
         diskcache.put(key, reply.data)

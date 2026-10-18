@@ -85,3 +85,10 @@ def test_gate_serves_the_newest_waiter_first_and_skips_departed_ones():
     for t in threads:
         t.join(2)
     assert order == ["aborted left", "new", "old"]
+
+
+def test_game_data_answers_are_marked_for_the_web_editor(counted):
+    r = app.handle(app.Context(), "GET", "/content/api/heroes", {})
+    assert r.headers.get("X-RSMM-Cache") == "game"
+    r = app.handle(app.Context(), "GET", "/content/api/mods", {})
+    assert "X-RSMM-Cache" not in r.headers          # the player's own mods change
