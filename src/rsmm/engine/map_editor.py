@@ -46,6 +46,7 @@ import array
 import base64
 import functools
 import math
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -778,7 +779,7 @@ def _edit_lines(table: str, edits: dict) -> list[str]:
 
 
 def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
-                  as_map: dict | None = None) -> str:
+                  as_map: dict | None = None, scenery: dict | None = None) -> str:
     """A complete mod manifest carrying `edits`.
 
     Without `as_map`, one ``tilegen`` declaration: the edits apply to the
@@ -790,6 +791,11 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
     `rsmm.engine.terrain.apply_strokes`); with ``play`` true the chapter plays
     the clone. Pool edits only exist on
     a clone; the vanilla map's pool is shared with every other mod.
+
+    ``scenery = {"<level decoded path>": {"moves", "removes", "adds"}}`` adds
+    one ``scenery`` declaration per edited scenery level (see
+    `rsmm.engine.scenery_edit`). Those levels belong to the chapter, so the
+    edits show in every run of it, clone or not.
     """
     if not valid_mod_id(mod_id):
         raise MapEditError(
@@ -813,18 +819,28 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
         'sdk_version = ">=3.0,<4"',
         'license     = "MIT"',
         'tags        = ["maps", "generation"]',
-        "# The host generates the map, so only the host's copy decides the layout.",
-        'multiplayer_scope = "host-authoritative"',
     ]
+    scenery = {lv: e for lv, e in (scenery or {}).items() if any(e.get(k) for k in _SCENERY_KEYS)}
+    if scenery:
+        lines += ["# Every player loads the chapter's scenery from their own copy, so",
+                  "# everyone in the lobby needs this mod at the same version.",
+                  'multiplayer_scope = "deterministic-shared"']
+    else:
+        lines += ["# The host generates the map, so only the host's copy decides the layout.",
+                  'multiplayer_scope = "host-authoritative"']
+    if as_map is not None or scenery:
+        # The map and scenery kinds are rated experimental; lint wants the
+        # opt-in said out loud.
+        lines.append("experimental = true")
     if as_map is None:
-        lines += ["", "[[content]]", 'kind    = "tilegen"',
-                  f"id      = {_q(chapter.key.lower())}",
-                  f"chapter = {_q(chapter.key)}"]
-        lines += _edit_lines("content", edits)
+        if edits:
+            lines += ["", "[[content]]", 'kind    = "tilegen"',
+                      f"id      = {_q(chapter.key.lower())}",
+                      f"chapter = {_q(chapter.key)}"]
+            lines += _edit_lines("content", edits)
     else:
         base, index = MAP_BASES[chapter.key]
-        # The map kind is rated experimental; lint wants the opt-in said out loud.
-        lines += ["experimental = true", "", "[[content]]", 'kind    = "map"',
+        lines += ["", "[[content]]", 'kind    = "map"',
                   f"id      = {_q(as_map['id'])}", f"base    = {_q(base)}"]
         if as_map.get("play"):
             lines.append(f"chapter = {index}")
@@ -840,6 +856,8 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
             lines += ["", "[[content.terrain]]"]
             lines += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in st.items()]
         lines += _edit_lines("content.tilegen", edits)
+    for level, e in sorted(scenery.items()):
+        lines += _scenery_lines(chapter, level, e)
     text = "\n".join(lines) + "\n"
 
     # Prove it reads back as exactly these edits before anyone writes it.
@@ -849,10 +867,34 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
         "pool": {k: list((as_map.get("pool") or {}).get(k) or []) for k in ("add", "remove")},
         "place": dict(as_map.get("place") or {}), "terrain": list(as_map.get("terrain") or [])}
     if (back is None or back["chapter"] != chapter.key
-            or not _same_edits(back["edits"], edits) or back["map"] != want_map):
+            or not _same_edits(back["edits"], edits) or back["map"] != want_map
+            or _norm_json(back.get("scenery") or {}) != _norm_json(scenery)):
         raise MapEditError(
             "internal: the manifest did not read back as the edits it was built from")
     return text
+
+
+_SCENERY_KEYS = ("moves", "removes", "adds")
+
+
+def _norm_json(v):
+    import json
+    return json.loads(json.dumps(v, sort_keys=True))
+
+
+def _scenery_lines(chapter: Chapter, level: str, e: dict) -> list[str]:
+    stem = level.rsplit("/", 1)[-1].split(".", 1)[0]
+    out = ["", "[[content]]", 'kind    = "scenery"',
+           f"id      = {_q(re.sub(r'[^a-z0-9_]', '_', stem.lower()))}",
+           f"chapter = {_q(chapter.key)}", f"level   = {_q(level)}"]
+    for section in ("moves", "removes"):
+        for oid, spec in sorted((e.get(section) or {}).items(), key=lambda kv: int(kv[0])):
+            out += ["", f'[content.{section}."{int(oid)}"]']
+            out += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in spec.items()]
+    for a in e.get("adds") or []:
+        out += ["", "[[content.adds]]"]
+        out += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in a.items()]
+    return out
 
 
 def _same_edits(a: dict, b: dict) -> bool:
@@ -875,6 +917,18 @@ def read_manifest(text: str) -> dict | None:
     import tomllib
 
     data = tomllib.loads(text)
+    scenery = {str(c.get("level", "")): {k: c[k] for k in _SCENERY_KEYS if c.get(k)}
+               for c in data.get("content") or [] if c.get("kind") == "scenery"}
+    got = _read_first(data)
+    if got is None and scenery:
+        first = next(c for c in data["content"] if c.get("kind") == "scenery")
+        got = {"chapter": str(first.get("chapter", "")), "edits": {}, "map": None}
+    if got is not None and scenery:
+        got["scenery"] = scenery
+    return got
+
+
+def _read_first(data: dict) -> dict | None:
     for c in data.get("content") or []:
         if c.get("kind") == "tilegen":
             return {"chapter": str(c.get("chapter", "")),

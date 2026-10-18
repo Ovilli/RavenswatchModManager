@@ -525,6 +525,58 @@ time, so a name the recipe no longer has fails the emit rather than landing on
 whatever now sits at that index. The **Map** tab of `./rsmm editor` writes these
 blocks for you from a 3D view of the chapter.
 
+## `scenery` — move, remove and add the small objects on a chapter's map
+
+**What the player sees.** A rock moved off the path, a tree gone, a few more
+ruins on a hill. These are the chapter's own objects: most of what a map shows
+outside its tiles (Dark Hills places about 7,000 of them in four scenery
+levels), each standing once, in every run of that chapter.
+
+```toml
+[mod]
+id           = "TidyHills"
+name         = "Tidy Dark Hills"
+version      = "0.1.0"
+author       = "you"
+description  = "Clears a path and adds a ruin."
+experimental = true
+
+[[content]]
+kind    = "scenery"
+id      = "southwest"
+chapter = "DarkHills"
+level   = "Ot/DarkHills/Map_Dark_Hills_Scenery_SouthWest.level.ot.GameStream.gen"
+
+[content.moves."882"]                # object id in that level
+entity = "DarkHills\\SceneryObjects_DarkHills\\Rock_Medium_C.entity.ot"
+at     = [94.33, -6.63, 104.02]      # where the game stands it (the anchor)
+pos    = [96.33, -6.63, 104.02]
+yaw    = 30
+scale  = 1.5
+
+[content.removes."883"]
+entity = "DarkHills\\SceneryObjects_DarkHills\\Planks_Walls_B.entity.ot"
+at     = [121.86, -3.39, -19.66]
+
+[[content.adds]]
+entity = "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot"
+pos    = [100.0, -6.5, 110.0]
+yaw    = 45
+scale  = 1.0
+```
+
+**Prove it.** Start a run in that chapter and walk to the spot: the moved
+object stands at its new place, the removed one is gone, the added one is there.
+
+**Trap.** `entity` and `at` anchor every edit to the object the game ships at
+that id, so a patch that renumbers the level fails the emit instead of moving
+something else. A removal *sinks* the object 1000 m under the map (it stops
+showing and blocking); taking it out of the level is not proven yet. Additions
+are limited to entities the chapter already places, because only those are in
+its resource cache, and one the cache misses can take the whole level down. The
+**Objects** tool (6) in the **Map** tab of `./rsmm editor` writes these blocks
+for you.
+
 ---
 
 ## `game_mode` — reorder the chapters of a run

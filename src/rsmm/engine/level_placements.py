@@ -334,6 +334,65 @@ def decode(level_bytes: bytes) -> list[Placement]:
     return out
 
 
+def objects(level_bytes: bytes) -> list[tuple[int, Placement]]:
+    """``(object id, placement)`` for every placement, in stream order.
+
+    The id is the object's position in the level's object table, which is how
+    everything else in the file names it, so it is what an edit keys on. Like
+    :func:`decode`, ``[]`` when the graph walk fails.
+    """
+    try:
+        _cf, _sec, inner = _inner(level_bytes)
+        g = _graph(inner)
+    except LevelPlacementError:
+        return []
+    out: list[tuple[int, Placement]] = []
+    for oid, (_b, _e, p) in enumerate(g.objects):
+        got = _as_placement(p)
+        if got is not None:
+            ref, _o, (pos, quat, scale) = got
+            out.append((oid, Placement(ref, pos, quat, scale)))
+    return out
+
+
+def set_transforms(level_bytes: bytes,
+                   changes: dict[int, tuple[tuple[float, float, float],
+                                            tuple[float, float, float, float],
+                                            tuple[float, float, float]]]) -> bytes:
+    """Return `level_bytes` with objects moved: ``{object id: (pos, quat, scale)}``.
+
+    The transform is overwritten where it stands. It is 40 bytes of floats at a
+    structural offset inside the object's own block, so nothing else in the
+    stream moves: no length, no id, no vector changes, and the file keeps its
+    size. Only a plain placement (see :func:`_as_placement`) can be moved; any
+    other id is refused rather than written into.
+    """
+    cf, sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    out = bytearray(inner)
+    for oid, (pos, quat, scale) in sorted(changes.items()):
+        if not 0 <= oid < g.count:
+            raise LevelPlacementError(f"object {oid} is not in this level ({g.count} objects)")
+        begin, _end, p = g.objects[oid]
+        got = _as_placement(p)
+        if got is None:
+            raise LevelPlacementError(f"object {oid} is not a plain placement; refusing to move it")
+        # Written exactly as given: renormalising here changed the float bits
+        # of 290 of 350 shipped levels on an edit that moved nothing.
+        if abs(math.sqrt(sum(c * c for c in quat)) - 1.0) > _QUAT_TOLERANCE:
+            raise LevelPlacementError(f"object {oid}: rotation is not a unit quaternion")
+        if not all(math.isfinite(v) and abs(v) <= _POS_LIMIT for v in pos):
+            raise LevelPlacementError(f"object {oid}: position out of range")
+        lo, hi = _SCALE_RANGE
+        if not all(math.isfinite(v) and lo <= abs(v) <= hi for v in scale):
+            raise LevelPlacementError(f"object {oid}: scale out of range")
+        at = begin + 4 + got[1]                  # MARK_BEGIN, then the payload
+        struct.pack_into("<3f4f3f", out, at, *pos, *quat, *scale)
+    new_sec = bytes(sec[:_INNER_OFF]) + bytes(out)
+    cf.sections[-1] = cooked.Section(payload=new_sec)
+    return cooked.emit(cf)
+
+
 def placements_of(level_bytes: bytes, ref: str) -> list[Placement]:
     """Every slot at which `level_bytes` stands `ref`."""
     return [p for p in decode(level_bytes) if p.ref == ref]

@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity", "challenge")
+         "entity", "challenge", "scenery")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -144,6 +144,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # constraints (a story tile like Wood_House forces 3 Treant camps).
                               # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
+    "scenery": "experimental",  # chapter scenery levels edited in place (move / sink / add an
+                              # entity the chapter already places). Every shipped level
+                              # rewrites byte-identically and the emit is anchored, but no
+                              # moved, sunk or added object has been seen in game yet.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit
                               # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
@@ -345,6 +349,7 @@ _KIND_MODULES = {
     "animation": "animations",
     "poi": "poi",
     "tilegen": "tilegen",
+    "scenery": "scenery",
     "shop": "shops",
 }
 

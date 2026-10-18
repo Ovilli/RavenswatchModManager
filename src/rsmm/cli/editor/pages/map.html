@@ -17,6 +17,11 @@
 #t3 aside.r { border-right: 0; border-left: 1px solid var(--rule); display: flex; flex-direction: column; gap: 10px; }
 #t3 aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 10px 0 4px; display: flex; align-items: center; gap: 6px; }
 #t3 aside h2 .n { font-weight: 400; }
+#ib .proplist { list-style: none; margin: 4px 0; padding: 0; max-height: 46vh; overflow: auto; }
+#ib .proplist li { padding: 3px 6px; border-radius: 5px; cursor: pointer; }
+#ib .proplist li:hover { background: var(--chip); }
+#ib .xyz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+#ib .xyz input { width: 100%; box-sizing: border-box; }
 .poolrow { display: flex; align-items: center; gap: 8px; } .poolrow .chk { flex: 1; } .poolrow .linkbtn { font-size: 12px; white-space: nowrap; }
 #t3 .tree { list-style: none; margin: 0; padding: 0; }
 #t3 .tree li { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; }
@@ -189,6 +194,7 @@ html.embedded #bar h1 { display: none; }
     <button data-tool="add" title="Add a spot (3)" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/></svg><kbd>3</kbd></button>
     <button data-tool="place" title="Place a tile by hand (4)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.5-6-11a6 6 0 0112 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg><kbd>4</kbd></button>
     <button data-tool="paint" title="Paint the terrain (5)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 19c3-1 4-4 7-4s3 3 6 3 4-2 5-3"/><path d="M3 14c3-2 5-7 9-7s5 4 9 2"/></svg><kbd>5</kbd></button>
+    <button data-tool="objects" title="Edit objects: move, remove and add rocks, trees and props (6)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><kbd>6</kbd></button>
     <hr>
     <button id="recenter" title="Reset the camera (0)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
     <button id="undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
@@ -285,15 +291,17 @@ const origSlot = (id) => S.orig.slots.find(s => s.id === id);
 // ---- undo: one snapshot of everything editable per action -------------------
 function snap() {
   return JSON.stringify({ work: S.work, poolEdit: S.poolEdit, place: S.place, strokes: S.strokes,
-    removed: [...S.removed], nextNew: S.nextNew });
+    removed: [...S.removed], nextNew: S.nextNew, sc: S.sc });
 }
 function remember() { history.push(snap()); if (history.length > 200) history.shift(); }
 function undo() {
   const h = history.pop(); if (!h) { status("Nothing to undo"); return; }
   const o = JSON.parse(h), terrainChanged = o.strokes.length !== S.strokes.length;
   Object.assign(S, { work: o.work, poolEdit: o.poolEdit, place: o.place, strokes: o.strokes,
-    removed: new Set(o.removed), nextNew: o.nextNew });
+    removed: new Set(o.removed), nextNew: o.nextNew, sc: o.sc || SC_FRESH() });
+  if (S.obj && S.obj.kind === "added" && !S.sc.adds[S.obj.k]) S.obj = null;
   if (terrainChanged) repaint();
+  drawScenery();
   drawLayout(); render(); status("Undone");
 }
 
@@ -365,6 +373,11 @@ function changeList() {
   if (S.strokes.length) out.push({ text: `Terrain painted (${S.strokes.length} brush stroke${S.strokes.length === 1 ? "" : "s"})`, undo: () => { S.strokes = []; repaint(); } });
   for (const p of S.poolEdit.add) out.push({ text: `Pool: add ${tileShort(p)}`, undo: () => { S.poolEdit.add = S.poolEdit.add.filter(x => x !== p); } });
   for (const p of S.poolEdit.remove) out.push({ text: `Pool: remove ${tileShort(p)}`, undo: () => { S.poolEdit.remove = S.poolEdit.remove.filter(x => x !== p); } });
+  if (G.sc) {
+    for (const i of Object.keys(S.sc.moves).map(Number)) out.push({ text: `${nice(scName(i))} moved`, undo: () => { delete S.sc.moves[i]; drawScenery(); } });
+    for (const i of S.sc.removed) out.push({ text: `${nice(scName(i))} removed`, undo: () => { S.sc.removed = S.sc.removed.filter(x => x !== i); drawScenery(); } });
+    for (const a of S.sc.adds) out.push({ text: `${nice(a.name)} added`, undo: () => { S.sc.adds = S.sc.adds.filter(x => x !== a); S.obj = null; drawScenery(); } });
+  }
   return out;
 }
 function dropNew(id) {
@@ -746,16 +759,271 @@ async function fillGroup(group, batches, token) {
 // SMALL_PROP metres beyond 260 m of camera distance, under 6 m beyond 900 m.
 const SMALL_PROP = 2;
 function detailBand(dist) { return dist > 900 ? 6 : dist > 260 ? SMALL_PROP : 0; }
+// ---- the chapter's own scenery, object by object (the Objects tool) ------------
+// The small things on the map (rocks, trees, bushes, ruins) are placed by the
+// chapter's scenery levels, each exactly once, so they can be moved, removed and
+// added to right here (engine/scenery_edit). The view draws them instanced per
+// part as before; `owners` says which object every drawn instance belongs to.
+// S.sc holds the edits (undoable, saved); G.sc the drawing and lookup tables.
+const SC_FRESH = () => ({ moves: {}, removed: [], adds: [] });
+const u32 = (s) => new Uint32Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer);
+const u16 = (s) => new Uint16Array(Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer);
 async function loadScenery(key) {
   if (!G.three) return;
   const g = G.three.groups.scenery; g.userData.token = key; clearGroup(g);
+  G.sc = null;
   try {
-    const data = await api("api/scene?chapter=" + encodeURIComponent(key));
+    const data = await api("api/scenery?chapter=" + encodeURIComponent(key));
     if (S.chapter.key !== key) return;
-    S.sceneInfo = `${data.instances.toLocaleString()} scenery objects`;
-    await fillGroup(g, [{ data }], key);
+    const o = data.objects;
+    const sc = { data, lvl: u16(o.level), ids: u32(o.id), ent: u32(o.entity), xf: b64f32(o.xf),
+      inst: Array.from({ length: o.count }, () => []), byKey: new Map(), touched: new Set(),
+      added: new THREE.Group(), templates: new Map(), props: null };
+    for (let i = 0; i < o.count; i++) sc.byKey.set(sc.lvl[i] + ":" + sc.ids[i], i);
+    S.sceneInfo = `${o.count.toLocaleString()} scenery objects`;
+    const meshes = [];
+    await Promise.all(data.parts.map(async (part, pi) => {
+      const a = await partAsset(part).ready; if (!a) return;
+      const mats = b64f32(data.matrices[pi]), owners = u32(data.owners[pi]);
+      const im = new THREE.InstancedMesh(a.geometry, a.material, owners.length);
+      im.instanceMatrix.array.set(mats); im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
+      const rad = a.geometry.boundingSphere ? a.geometry.boundingSphere.radius : 99;
+      im.castShadow = !a.decal && rad >= SMALL_PROP; im.receiveShadow = true;
+      im.userData = { shared: true, r: rad, owners, base: mats };
+      if (a.decal) im.renderOrder = 1;
+      for (let j = 0; j < owners.length; j++) sc.inst[owners[j]].push([im, j]);
+      meshes.push(im);
+    }));
+    if (g.userData.token !== key) return;
+    clearGroup(g); for (const m of meshes) g.add(m);
+    G.three.world.add(sc.added);
+    G.sc = sc;
+    if (S.scPending) { applyOpenedScenery(S.scPending); S.scPending = null; }
+    drawScenery(); G.band = null; shadows();
   } catch (err) { S.sceneInfo = null; S.modelsError = err.message; }
   render();
+}
+// The shipped transform of object `i`: pos, quat (x y z w), scale.
+function scShipped(i) {
+  const x = G.sc.xf, k = i * 10;
+  return { pos: [x[k], x[k + 1], x[k + 2]], quat: [x[k + 3], x[k + 4], x[k + 5], x[k + 6]], scale: [x[k + 7], x[k + 8], x[k + 9]] };
+}
+const trsM = (t) => new THREE.Matrix4().compose(new THREE.Vector3(...t.pos), new THREE.Quaternion(...t.quat), new THREE.Vector3(...t.scale));
+const scNow = (i) => S.sc.moves[i] || scShipped(i);
+const scName = (i) => G.sc.data.entities[G.sc.ent[i]].split("\\").pop().replace(".entity.ot", "");
+// Redraw every object whose look differs from the last draw: an instance's new
+// matrix is (new transform) * (shipped transform)^-1 * (its shipped matrix).
+function drawScenery() {
+  const sc = G.sc; if (!sc) return;
+  const now = new Set([...Object.keys(S.sc.moves).map(Number), ...S.sc.removed]);
+  const dirty = new Set([...sc.touched, ...now]), meshes = new Set();
+  const m = new THREE.Matrix4(), zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (const i of dirty) {
+    const removed = S.sc.removed.includes(i), moved = S.sc.moves[i];
+    const delta = moved ? trsM(moved).multiply(trsM(scShipped(i)).invert()) : null;
+    for (const [im, j] of sc.inst[i]) {
+      if (removed) m.copy(zero);
+      else { m.fromArray(im.userData.base, j * 16); if (delta) m.premultiply(delta); }
+      im.setMatrixAt(j, m); meshes.add(im);
+    }
+  }
+  for (const im of meshes) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+  sc.touched = now;
+  drawAdded(); G.dirty = true; if (meshes.size) shadows();
+}
+// Objects the author added: one node each, models from the tile routes.
+function scTemplate(ref) {
+  const sc = G.sc;
+  if (!sc.templates.has(ref)) sc.templates.set(ref, api("api/t3/entity?ref=" + encodeURIComponent(ref)).then(async (data) => {
+    const tpl = new THREE.Group();
+    await Promise.all((data.parts || []).map(async (part, i) => {
+      const a = await partAsset(part).ready; if (!a) return;
+      const mats = b64f32(data.matrices[i]);
+      for (let j = 0; j < mats.length; j += 16) {
+        const mesh = new THREE.Mesh(a.geometry, a.material); mesh.matrixAutoUpdate = false; mesh.matrix.fromArray(mats, j);
+        mesh.castShadow = mesh.receiveShadow = true; tpl.add(mesh);
+      }
+    }));
+    return tpl;
+  }).catch(() => new THREE.Group()));
+  return sc.templates.get(ref);
+}
+const addTRS = (a) => ({ pos: a.pos, quat: [0, Math.sin(a.yaw * Math.PI / 360), 0, Math.cos(a.yaw * Math.PI / 360)], scale: [a.scale, a.scale, a.scale] });
+function drawAdded() {
+  const sc = G.sc; if (!sc) return;
+  clearGroup(sc.added);
+  S.sc.adds.forEach((a, k) => {
+    const node = new THREE.Group(); node.matrixAutoUpdate = false; node.matrix.copy(trsM(addTRS(a))); node.userData.add = k;
+    sc.added.add(node);
+    scTemplate(a.entity).then((tpl) => {
+      if (node.parent !== sc.added) return;
+      node.add(tpl.children.length ? tpl.clone()
+        : new THREE.Mesh(new THREE.OctahedronGeometry(0.6), new THREE.MeshBasicMaterial({ color: 0x3ccb7f, wireframe: true })));
+      G.dirty = true; shadows();
+    });
+  });
+  drawObjMarker();
+}
+// What the Objects tool has hold of: {kind: "game", i} or {kind: "added", k}.
+function objAt(mx, my) {
+  const T3 = G.three, cv = $("gl"), sc = G.sc; if (!T3 || !sc) return null;
+  const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(mx / cv.clientWidth * 2 - 1, -(my / cv.clientHeight) * 2 + 1), T3.camera);
+  const hits = ray.intersectObjects([sc.added, T3.groups.scenery], true);
+  for (const h of hits) {
+    if (h.object.isInstancedMesh && h.object.userData.owners) {
+      const i = h.object.userData.owners[h.instanceId];
+      if (!S.sc.removed.includes(i)) return { kind: "game", i };
+      continue;
+    }
+    let n = h.object; while (n && n.userData.add === undefined) n = n.parent;
+    if (n) return { kind: "added", k: n.userData.add };
+  }
+  return null;
+}
+function objTRS(sel) { return sel.kind === "game" ? scNow(sel.i) : addTRS(S.sc.adds[sel.k]); }
+// A ring around what is selected, sized to its models.
+function drawObjMarker() {
+  const T3 = G.three; if (!T3) return;
+  if (G.objMark) { T3.world.remove(G.objMark); G.objMark = null; }
+  const sel = S.obj; if (!sel || !G.sc || (sel.kind === "added" && !S.sc.adds[sel.k])) { G.dirty = true; return; }
+  const t = objTRS(sel), b = new THREE.Box3();
+  if (sel.kind === "game") for (const [im, j] of G.sc.inst[sel.i]) {
+    const m = new THREE.Matrix4(); im.getMatrixAt(j, m);
+    if (!im.geometry.boundingBox) im.geometry.computeBoundingBox();
+    b.union(im.geometry.boundingBox.clone().applyMatrix4(m));
+  }
+  const r = b.isEmpty() ? 1.2 : Math.max(0.8, Math.hypot(b.max.x - b.min.x, b.max.z - b.min.z) / 2 + 0.4);
+  const pts = []; for (let k = 0; k <= 48; k++) { const a = k / 48 * Math.PI * 2; pts.push(new THREE.Vector3(t.pos[0] + Math.cos(a) * r, t.pos[1] + 0.25, t.pos[2] + Math.sin(a) * r)); }
+  G.objMark = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: new THREE.Color(cssVar("--gilt")), depthTest: false }));
+  G.objMark.renderOrder = 10; T3.world.add(G.objMark); G.dirty = true;
+}
+function objSelect(sel) { S.obj = sel; drawObjMarker(); render(); }
+// Edits. A game object's edit is its whole new transform; turning premultiplies
+// a rotation about the up axis, so a tilted rock keeps its tilt.
+function objEdit(sel, fn) {
+  if (sel.kind === "game") { const t = clone(scNow(sel.i)); fn(t); S.sc.moves[sel.i] = t; }
+  else { const a = S.sc.adds[sel.k], t = { pos: a.pos.slice(), yaw: a.yaw, scale: a.scale }; fn(t); Object.assign(a, t); }
+  drawScenery(); render();
+}
+function objTurn(sel, deg) {
+  objEdit(sel, (t) => {
+    if (sel.kind === "added") { t.yaw = +((((t.yaw + deg) % 360) + 540) % 360 - 180).toFixed(3); return; }
+    const h = deg * Math.PI / 360, q = new THREE.Quaternion(0, Math.sin(h), 0, Math.cos(h)).multiply(new THREE.Quaternion(...t.quat));
+    t.quat = [q.x, q.y, q.z, q.w];
+  });
+}
+function objScale(sel, f) {
+  objEdit(sel, (t) => {
+    if (sel.kind === "added") t.scale = +Math.max(0.05, Math.min(20, t.scale * f)).toFixed(4);
+    else t.scale = t.scale.map(v => +Math.max(0.01, Math.min(500, v * f)).toFixed(4));
+  });
+}
+function objRemove(sel) {
+  remember();
+  if (sel.kind === "game") { delete S.sc.moves[sel.i]; if (!S.sc.removed.includes(sel.i)) S.sc.removed.push(sel.i); }
+  else S.sc.adds.splice(sel.k, 1);
+  S.obj = null; drawScenery(); render(); status("Object removed", "ok");
+}
+function objReset(sel) { remember(); delete S.sc.moves[sel.i]; drawScenery(); render(); }
+// A new object joins the scenery level that already stands the nearest object,
+// so additions stay with their neighbours in the file.
+function objAdd(p) {
+  const cv = $("gl"), g = groundAt(cv.clientWidth / 2, cv.clientHeight / 2) || [G.cam.tx, groundY(G.cam.tx, G.cam.tz, 0), G.cam.tz];
+  let best = 0, bd = Infinity; const x = G.sc.xf;
+  for (let i = 0; i < G.sc.ids.length; i++) { const d = (x[i * 10] - g[0]) ** 2 + (x[i * 10 + 2] - g[2]) ** 2; if (d < bd) { bd = d; best = i; } }
+  remember();
+  S.sc.adds.push({ entity: p.entity, name: p.name, level: G.sc.data.levels[G.sc.lvl[best]],
+    pos: [+g[0].toFixed(3), +g[1].toFixed(3), +g[2].toFixed(3)], yaw: 0, scale: 1 });
+  S.obj = { kind: "added", k: S.sc.adds.length - 1 }; drawScenery(); render(); status(`Added ${p.name}`, "ok");
+}
+// The save document: per scenery level, keyed and anchored the way the kind reads it.
+function sceneryDoc() {
+  const sc = G.sc, out = {}; if (!sc) return out;
+  const lv = (i) => (out[sc.data.levels[sc.lvl[i]]] ||= { moves: {}, removes: {}, adds: [] });
+  const r3 = (v) => v.map(Number);
+  for (const [i, t] of Object.entries(S.sc.moves)) {
+    const k = Number(i), s = scShipped(k);
+    lv(k).moves[String(sc.ids[k])] = { entity: sc.data.entities[sc.ent[k]], at: r3(s.pos), pos: r3(t.pos), quat: r3(t.quat), scale: r3(t.scale) };
+  }
+  for (const k of S.sc.removed) lv(k).removes[String(sc.ids[k])] = { entity: sc.data.entities[sc.ent[k]], at: r3(scShipped(k).pos) };
+  for (const a of S.sc.adds) (out[a.level] ||= { moves: {}, removes: {}, adds: [] }).adds.push({ entity: a.entity, pos: r3(a.pos), yaw: a.yaw, scale: a.scale });
+  for (const e of Object.values(out)) for (const k of ["moves", "removes"]) if (!Object.keys(e[k]).length) delete e[k];
+  for (const e of Object.values(out)) if (!e.adds.length) delete e.adds;
+  return out;
+}
+function applyOpenedScenery(doc) {
+  const sc = G.sc; if (!sc) { S.scPending = doc; return; }
+  S.sc = SC_FRESH();
+  for (const [level, e] of Object.entries(doc || {})) {
+    const li = sc.data.levels.indexOf(level); if (li < 0) continue;
+    for (const [id, m] of Object.entries(e.moves || {})) {
+      const i = sc.byKey.get(li + ":" + id); if (i == null) continue;
+      const s = scShipped(i);
+      S.sc.moves[i] = { pos: m.pos || s.pos, quat: m.quat || s.quat, scale: Array.isArray(m.scale) ? m.scale : (m.scale ? [m.scale, m.scale, m.scale] : s.scale) };
+    }
+    for (const id of Object.keys(e.removes || {})) { const i = sc.byKey.get(li + ":" + id); if (i != null) S.sc.removed.push(i); }
+    for (const a of e.adds || []) S.sc.adds.push({ entity: a.entity, name: a.entity.split("\\").pop().replace(".entity.ot", ""), level, pos: a.pos.slice(), yaw: a.yaw || 0, scale: a.scale || 1 });
+  }
+}
+function renderObjects() {
+  const sel = S.obj;
+  if (!G.sc) { inspector("Objects", "", `<p class="muted">${S.modelsError ? esc(S.modelsError) : "Loading the chapter's scenery…"}</p>`); return; }
+  const n = Object.keys(S.sc.moves).length, r = S.sc.removed.length, a = S.sc.adds.length;
+  const summary = `<p class="muted">${n} moved, ${r} removed, ${a} added. These are the chapter's own objects: each stands once, in every run of ${esc(S.chapter.label)}.</p>`;
+  if (!sel || (sel.kind === "added" && !S.sc.adds[sel.k])) {
+    let h = summary + `<div class="field"><label for="objq">Add an object</label><input id="objq" type="search" placeholder="Search props: tree, rock, banner…" value="${esc(S.objQuery || "")}"></div>`;
+    if (!G.sc.props) h += `<p class="muted">Loading the props this chapter can hold…</p>`;
+    else {
+      const q = (S.objQuery || "").toLowerCase().split(/\s+/).filter(Boolean);
+      const list = G.sc.props.filter(p => (S.objAll || p.scenery) && q.every(w => p.entity.toLowerCase().includes(w))).slice(0, 120);
+      h += `<label class="chk"><input type="checkbox" id="objall" ${S.objAll ? "checked" : ""}> Show gameplay objects too (spawners, chests, effects)</label>
+        <ul class="proplist">${list.map((p, k) => `<li data-prop="${k}" title="${esc(p.entity)}">${esc(p.name)} <span class="muted">${esc(p.group)}</span></li>`).join("")}</ul>
+        <p class="muted">Click one to place it in the middle of the view. Only props this chapter already uses are offered: the game preloads exactly those.</p>`;
+      S.objList = list;
+    }
+    inspector("Objects", "Click an object on the map to select it", h);
+    const qi = $("objq"); qi.addEventListener("input", e => { S.objQuery = e.target.value; const pos = e.target.selectionStart; renderObjects(); $("objq").focus(); $("objq").setSelectionRange(pos, pos); });
+    $("ib").querySelectorAll("[data-prop]").forEach(li => li.addEventListener("click", () => objAdd(S.objList[Number(li.dataset.prop)])));
+    if ($("objall")) $("objall").addEventListener("change", e => { S.objAll = e.target.checked; renderObjects(); });
+    if (!G.sc.props && !G.sc.propsLoading) {
+      G.sc.propsLoading = true;
+      api("api/scenery/props?chapter=" + encodeURIComponent(S.chapter.key)).then(j => { G.sc.props = j.props; if (S.tool === "objects") render(); })
+        .catch(e => { G.sc.props = []; status(e.message, "bad"); });
+    }
+    return;
+  }
+  const game = sel.kind === "game", t = game ? scNow(sel.i) : S.sc.adds[sel.k];
+  const name = game ? scName(sel.i) : S.sc.adds[sel.k].name, moved = game && S.sc.moves[sel.i];
+  const yaw = game ? 2 * Math.atan2(t.quat[1], t.quat[3]) * 180 / Math.PI : t.yaw;
+  const sc = game ? t.scale.map(v => v.toFixed(2)).join(" × ") : t.scale.toFixed(2);
+  const level = game ? G.sc.data.levels[G.sc.lvl[sel.i]] : S.sc.adds[sel.k].level;
+  const h = `${summary}<p class="muted" style="word-break:break-all">${esc(level.split("/").pop().split(".")[0].replace(/_/g, " "))}</p>
+    <div class="field"><label>Position</label><div class="xyz">${[0, 1, 2].map(k => `<input type="number" step="0.1" data-pos="${k}" value="${t.pos[k].toFixed(2)}" aria-label="${"xyz"[k]}">`).join("")}</div></div>
+    <p>Turn ${yaw.toFixed(0)}° <button class="btn" id="tl">⟲ 15°</button> <button class="btn" id="tr">⟳ 15°</button></p>
+    <p>Scale ${sc} <button class="btn" id="sm">−</button> <button class="btn" id="sp">+</button></p>
+    <p class="muted">Drag it on the map to move it. <kbd>R</kbd> turns, <kbd>+</kbd>/<kbd>−</kbd> scale, <kbd>Del</kbd> removes.</p>
+    <p>${moved ? `<button class="btn" id="oreset">Put it back</button> ` : ""}<button class="btn danger" id="orm">Remove</button></p>
+    ${game ? `<p class="muted">Removing sinks it far under the map, so it stops showing and blocking.</p>` : ""}`;
+  inspector(name, game ? (moved ? "The game's object, moved by you" : "The game's object") : "Added by you", h);
+  $("ib").querySelectorAll("input[data-pos]").forEach(el => el.addEventListener("change", () => {
+    const v = parseFloat(el.value); if (!Number.isFinite(v)) return;
+    remember(); objEdit(sel, (tt) => { tt.pos[Number(el.dataset.pos)] = v; });
+  }));
+  $("tl").onclick = () => { remember(); objTurn(sel, -15); };
+  $("tr").onclick = () => { remember(); objTurn(sel, 15); };
+  $("sm").onclick = () => { remember(); objScale(sel, 1 / 1.1); };
+  $("sp").onclick = () => { remember(); objScale(sel, 1.1); };
+  $("orm").onclick = () => objRemove(sel);
+  if ($("oreset")) $("oreset").onclick = () => objReset(sel);
+}
+// Moving with the mouse keeps the object's height above the ground it stood on.
+function objDragStart(sel) {
+  const t = objTRS(sel);
+  return { sel, rise: t.pos[1] - groundY(t.pos[0], t.pos[2], t.pos[1]) };
+}
+function objDragTo(d, mx, my) {
+  const g = groundAt(mx, my); if (!g) return;
+  objEdit(d.sel, (t) => { t.pos = [+g[0].toFixed(3), +(groundY(g[0], g[2], g[1]) + d.rise).toFixed(3), +g[2].toFixed(3)]; });
 }
 async function tileData(path) {
   if (!G.tileCache.has(path)) G.tileCache.set(path, api(`api/tile?chapter=${encodeURIComponent(S.chapter.key)}&path=${encodeURIComponent(path)}`).catch(() => null));
@@ -889,6 +1157,11 @@ function bindPointer(cv) {
     else if (tool === "paint" && S.terrain) { remember(); drag.mode = "paint"; drag.last = null; paintAt(mx, my, drag); }
     else if (tool === "move") { const id = pickAt(mx, my); if (id != null) { remember(); S.slot = id; drag.mode = "move"; drag.id = id; render(); } }
     else if (tool === "select") { drag.mode = "orbit"; drag.click = true; }
+    else if (tool === "objects") {
+      const hit = objAt(mx, my), same = hit && S.obj && hit.kind === S.obj.kind && (hit.i ?? hit.k) === (S.obj.i ?? S.obj.k);
+      if (same) { remember(); drag.mode = "objmove"; drag.obj = objDragStart(S.obj); }
+      else { drag.mode = "orbit"; drag.click = true; }
+    }
     else if (tool) { drag.mode = "click"; }
     if (drag.mode === "orbit" || drag.mode === "pan") cv.classList.add("orbit");
   });
@@ -910,6 +1183,7 @@ function bindPointer(cv) {
     drag.moved += Math.abs(dx) + Math.abs(dy);
     const c = G.cam;
     if (drag.mode === "paint") { paintAt(mx, my, drag); }
+    else if (drag.mode === "objmove") { objDragTo(drag.obj, mx, my); }
     else if (drag.mode === "move") {
       const g = groundAt(mx, my), s = slotById(drag.id);
       if (g && s) { s.pos = [Math.round(g[0] * 10) / 10, g[1], Math.round(g[2] * 10) / 10]; buildSlots(); }
@@ -936,6 +1210,7 @@ function bindPointer(cv) {
   cv.addEventListener("mouseleave", () => { $("tip").hidden = true; drawCursor(null); });
 }
 function hover(e, mx, my) {
+  if (S.tool === "objects") { $("tip").hidden = true; return; }
   if (S.tool === "paint" || S.tool === "add") { drawCursor(groundAt(mx, my)); $("tip").hidden = true; return; }
   const id = pickAt(mx, my);
   if (id != null) showTip(e, slotById(id)); else $("tip").hidden = true;
@@ -965,6 +1240,7 @@ function paintAt(mx, my, drag) {
 }
 function toolClick(mx, my) {
   if (S.tool === "select") { const id = pickAt(mx, my); S.slot = id; render(); return; }
+  if (S.tool === "objects") { objSelect(objAt(mx, my)); return; }
   if (S.tool === "add") {
     const g = groundAt(mx, my); if (!g) { status("Click on the ground to add a spot", "bad"); return; }
     const size = S.addSize || S.work.groups[0].name;
@@ -1005,6 +1281,7 @@ const HINTS = {
   add: "Click the ground to add a spot of the size picked in the panel.",
   place: "Pick a tile in the panel, then click a spot of the same size: that tile lands there in every run.",
   paint: "Drag over the ground to paint. Right-drag orbits, scroll zooms. Ctrl+Z undoes a whole drag.",
+  objects: "Click a rock, tree or prop to select it; drag a selected one to move it. R turns, +/− scale, Del removes. With nothing selected the panel adds new ones.",
 };
 function setTool(t) {
   S.tool = t; document.body.dataset.tool = t;
@@ -1025,6 +1302,7 @@ function render() {
   $("hint").textContent = HINTS[S.tool];
   const s = S.slot != null ? slotById(S.slot) : null;
   if (S.tool === "paint") renderPaint();
+  else if (S.tool === "objects") renderObjects();
   else if (S.tool === "add") renderAdd();
   else if (S.tool === "place" && !s) renderPlace();
   else if (s && !S.removed.has(s.id)) renderSpot(s);
@@ -1258,7 +1536,7 @@ function renderSave() {
   $("modname").addEventListener("input", e => { S.modName = e.target.value; });
 }
 function saveBody(extra) {
-  const b = { chapter: S.chapter.key, edits: edits(), ...extra };
+  const b = { chapter: S.chapter.key, edits: edits(), scenery: sceneryDoc(), ...extra };
   if (asMap()) b.map = { id: S.mapId || "Map_Check", play: S.mapPlay, pool: S.poolEdit, place: placeDoc(), terrain: S.strokes };
   return b;
 }
@@ -1305,7 +1583,7 @@ async function loadChapter(key, opened) {
   Object.assign(S, { kind: null, slot: null, scen: 0, terrain: null, terrainBase: null, lastSave: null, layout: {}, layoutSample: false,
     layers: {}, layerList: null, overlay: null,
     pool: [], sceneInfo: null, modelsError: null, poolEdit: { add: [], remove: [] }, place: {}, strokes: [], removed: new Set(), nextNew: 0,
-    addSize: null, saveAs: "chapter", mapId: "", mapPlay: true });
+    addSize: null, saveAs: "chapter", mapId: "", mapPlay: true, sc: SC_FRESH(), obj: null, scPending: null });
   history.length = 0; G.terrainKey = null; G.tileCache.clear();
   if (G.three) { clearGroup(G.three.groups.tiles); G.three.groups.tiles.userData.token = null; }
   $("scenario").innerHTML = S.orig.scenarios.map((sc, i) => `<option value="${i}">${esc(sc.label || sc.id)}</option>`).join("");
@@ -1323,6 +1601,7 @@ async function loadChapter(key, opened) {
 }
 // Rebuild the working state from a saved mod's edit document.
 function applyOpened(m) {
+  if (m.scenery) applyOpenedScenery(m.scenery);
   const e = m.edits || {};
   for (const [n, d] of Object.entries(e.kinds || {})) {
     const k = S.work.kinds.find(x => x.name === n); if (!k) continue;
@@ -1404,11 +1683,18 @@ $("saveclose").addEventListener("click", () => $("savedlg").close());
 $("poolclose").addEventListener("click", () => $("pooldlg").close());
 $("check").addEventListener("click", doCheck);
 $("save").addEventListener("click", doSave);
-const TOOL_KEYS = { 1: "select", 2: "move", 3: "add", 4: "place", 5: "paint" };
+const TOOL_KEYS = { 1: "select", 2: "move", 3: "add", 4: "place", 5: "paint", 6: "objects" };
 document.addEventListener("keydown", e => {
   if (TileMode.active()) return;               // the 3D tile mode has the keys
   if (e.target.closest("input, select, textarea, dialog")) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+  if (S.tool === "objects" && S.obj) {
+    if (e.key === "r" || e.key === "R") { remember(); objTurn(S.obj, e.shiftKey ? -15 : 15); return; }
+    if (e.key === "+" || e.key === "=") { remember(); objScale(S.obj, 1.1); return; }
+    if (e.key === "-") { remember(); objScale(S.obj, 1 / 1.1); return; }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); objRemove(S.obj); return; }
+    if (e.key === "Escape") { objSelect(null); return; }
+  }
   if (TOOL_KEYS[e.key]) { setTool(TOOL_KEYS[e.key]); return; }
   if (e.key === "0") { resetCamera(); return; }
   if (e.key === "Escape") { S.slot = null; S.kind = null; render(); return; }

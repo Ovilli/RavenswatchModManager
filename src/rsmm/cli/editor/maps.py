@@ -22,6 +22,7 @@ from rsmm.cli.editor import tiles as _tiles  # the 3D tile mode's routes
 from rsmm.cli.editor.app import Fail, Raw, Request, asset_dir
 from rsmm.engine import map_editor as ME
 from rsmm.engine import map_scene as MS
+from rsmm.engine import scenery_edit as SE
 
 MOUNT = "map"
 PAGE = "map.html"
@@ -153,13 +154,44 @@ def _as_map(body: dict) -> dict | None:
             "place": place, "terrain": terrain}
 
 
-def _changes(ch: ME.Chapter, edits: dict, as_map: dict | None) -> list[str]:
+def _as_scenery(body: dict) -> dict:
+    """``{level: {moves, removes, adds}}`` from the page, shape-checked; the
+    edits themselves are proven by the scenery kind (see `_scenery_changes`)."""
+    sc = body.get("scenery") or {}
+    if not isinstance(sc, dict) or not all(
+            isinstance(k, str) and isinstance(v, dict) for k, v in sc.items()):
+        raise Fail(400, "scenery: expected {level: {moves, removes, adds}}")
+    return {lv: {k: e[k] for k in ("moves", "removes", "adds") if e.get(k)}
+            for lv, e in sc.items() if any(e.get(k) for k in ("moves", "removes", "adds"))}
+
+
+def _scenery_changes(ch: ME.Chapter, scenery: dict) -> list[str]:
+    """Run the scenery kind on each edited level, as ``rsmm apply`` will."""
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import scenery as scenery_kind
+
+    out: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for level, e in sorted(scenery.items()):
+            try:
+                scenery_kind.emit("map-check", ContentDef("scenery", "check", {
+                    "chapter": ch.key, "level": level, **e}), Path(tmp))
+            except ContentError as err:
+                raise Fail(400, str(err)) from err
+            _data, notes = SE.apply(ch, level, e)
+            out += [f"scenery: {n}" for n in notes]
+    return out
+
+
+def _changes(ch: ME.Chapter, edits: dict, as_map: dict | None,
+             scenery: dict | None = None) -> list[str]:
     """What saving would change, proven to cook before anything is written.
 
     A clone is proven by the `map` kind itself, on the very manifest text the
     save would write, so what the page checks is what ``rsmm apply`` builds.
     """
     _level, changes = ME.build_level(ch, edits)
+    changes = changes + _scenery_changes(ch, scenery or {})
     if as_map is None:
         return changes
     from rsmm.sdk.content import ContentDef
@@ -179,7 +211,8 @@ def _changes(ch: ME.Chapter, edits: dict, as_map: dict | None) -> list[str]:
 
 def _check(req: Request) -> dict:
     ch = _chapter(str(req.body.get("chapter", "")))
-    return {"changes": _changes(ch, req.body.get("edits") or {}, _as_map(req.body))}
+    return {"changes": _changes(ch, req.body.get("edits") or {}, _as_map(req.body),
+                                _as_scenery(req.body))}
 
 
 def _save(req: Request) -> dict:
@@ -190,11 +223,12 @@ def _save(req: Request) -> dict:
     if not ME.valid_mod_id(mod_id):
         raise Fail(400, "mod id: use 2-64 lower-case letters, digits, '-' or '_'")
     as_map = _as_map(body)
-    changes = _changes(ch, edits, as_map)          # prove it cooks before writing
+    scenery = _as_scenery(body)
+    changes = _changes(ch, edits, as_map, scenery)  # prove it cooks before writing
     if not changes:
         raise Fail(400, "nothing to save: every value matches the shipped recipe")
     name = str(body.get("name", "")).strip()[:80]
-    text = ME.manifest_toml(mod_id, name, ch, edits, as_map)
+    text = ME.manifest_toml(mod_id, name, ch, edits, as_map, scenery)
     folder = req.ctx.mods_dir / mod_id
     man = folder / "manifest.toml"
     if man.is_file() and not man.read_text(encoding="utf-8").startswith(ME.EDITOR_MARK):
@@ -210,7 +244,7 @@ def _save(req: Request) -> dict:
 #: GET routes whose answer depends only on game data (see diskcache).
 CACHED = frozenset({
     "/api/scene", "/api/tiles", "/api/catalog", "/api/layers", "/api/layer",
-    "/api/tile", "/api/terrain",
+    "/api/tile", "/api/terrain", "/api/scenery", "/api/scenery/props",
 }) | _tiles.CACHED
 
 ROUTES = {
@@ -228,5 +262,7 @@ ROUTES = {
     ("GET", "/api/mod"): _mod,
     ("POST", "/api/check"): _check,
     ("POST", "/api/save"): _save,
+    ("GET", "/api/scenery"): _drawn(lambda req, ch: SE.scenery_json(ch)),
+    ("GET", "/api/scenery/props"): _drawn(lambda req, ch: {"props": SE.chapter_props(ch)}),
     **_tiles.ROUTES,
 }

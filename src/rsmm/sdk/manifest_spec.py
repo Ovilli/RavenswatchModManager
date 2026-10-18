@@ -81,6 +81,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "tilegen": frozenset({"chapter", "kinds", "quotas", "slots", "fill",
                           "remove_slots", "add_slots"}),
     "shop": frozenset({"prices", "price_scale", "offers", "slots", "config"}),
+    "scenery": frozenset({"chapter", "level", "moves", "removes", "adds"}),
 }
 
 #: `[[patch]]` kinds: required and optional top-level keys (besides `kind`).

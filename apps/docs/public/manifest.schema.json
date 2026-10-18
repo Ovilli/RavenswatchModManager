@@ -126,6 +126,7 @@
               "modifier",
               "poi",
               "reward",
+              "scenery",
               "shop",
               "skill",
               "talent",
@@ -540,6 +541,31 @@
                 "counts": {},
                 "id": {},
                 "kind": {},
+                "schema_version": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "scenery"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "adds": {},
+                "chapter": {},
+                "id": {},
+                "kind": {},
+                "level": {},
+                "moves": {},
+                "removes": {},
                 "schema_version": {}
               },
               "additionalProperties": false
