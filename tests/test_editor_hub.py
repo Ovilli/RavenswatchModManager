@@ -261,3 +261,16 @@ def test_the_block_editor_files_and_event_list_are_served(local, bridge):
         assert call("GET", "/content/static/three.module.min.js")[0] == 404
         status, body, _ = call("GET", "/content/api/blocks/meta")
         assert status == 200 and isinstance(json.loads(body)["events"], list)
+
+
+def test_pages_never_load_engine_urls_through_img_src():
+    """The web editor routes fetch() to its engine, not image loads: an
+    ``img.src`` pointing at ``api/...`` 404s there (map textures never drew)."""
+    import re
+    from pathlib import Path
+    pages = Path(__file__).resolve().parent.parent / "src/rsmm/cli/editor/pages"
+    bad = re.compile(r"""\.src\s*=\s*(fileUrl\(|["'`]api/)""")
+    hits = [f"{p.name}:{n}" for p in pages.glob("*.html")
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if bad.search(line)]
+    assert not hits, hits

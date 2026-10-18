@@ -661,7 +661,17 @@ function limited(fn) {
   });
 }
 async function loadTexture(rel, swap) {
-  const img = await limited(() => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = fileUrl(rel); }));
+  // fetch + blob, never `img.src = url`: the web editor routes fetch to its
+  // engine, not image loads, so a plain src got a 404 there and every model
+  // drew untextured.
+  const img = await limited(async () => {
+    const r = await fetch(fileUrl(rel));
+    if (!r.ok) throw new Error(r.status);
+    const url = URL.createObjectURL(await r.blob());
+    try {
+      return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    } finally { URL.revokeObjectURL(url); }
+  });
   let tex;
   if (swap) {   // the png was written from an uncompressed texture with red and blue swapped
     const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height;
