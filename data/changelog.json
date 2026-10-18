@@ -1,6 +1,16 @@
 {
-  "generated": "2026-10-17",
+  "generated": "2026-10-18",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-18",
+      "summary": "Restore no longer deletes game files when the asset map is from an older game build; the values backport now stays applied",
+      "highlights": [
+        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select. The asset map is now rebuilt before apply and restore.",
+        "Fixed: the Update 5 backport's hero table was undone on the next apply, so the old values never reached the game."
+      ],
+      "cli_version": 2
+    },
     {
       "version": "5.9.24",
       "loader_version": 46,
@@ -514,15 +524,6 @@
       "summary": "…",
       "highlights": [
         "…"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 21,
-      "date": "2026-09-26",
-      "summary": "XP capture shared between mods; R.hero.entity() tells a custom hero from its base",
-      "highlights": [
-        "XP capture shared between mods; R.hero.entity() tells a custom hero from its base"
       ]
     }
   ]
