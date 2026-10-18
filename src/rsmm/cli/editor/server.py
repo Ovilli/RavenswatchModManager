@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import select
+import socket
 import sys
 import threading
 import webbrowser
@@ -24,17 +26,15 @@ CSP = ("default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe
        "connect-src 'self'; img-src 'self' blob: data:; frame-src 'self'; frame-ancestors 'self'")
 
 
-def _warm() -> None:
-    """Fill the item, stat and hero-list caches before the page asks: ~350 ms
-    of cooked-file parsing the page's first four requests would otherwise wait
-    on. Talents are not warmed: all twelve heroes are ~9 s of CPU that would
-    compete with the page's own requests. Best effort: a missing install just
-    leaves the caches to fill on demand, as before."""
+def _warm(ctx: app.Context) -> None:
+    """Answer the item, stat and hero-list reads before the page asks, through
+    the same path a request takes, so a launch with them on disk (diskcache)
+    parses nothing. Talents are not warmed: all twelve heroes are seconds of
+    CPU that would compete with the page's own requests. Best effort: a missing
+    install just leaves the answers to be made on demand, as before."""
     try:
-        from rsmm.cli.editor import content
-        content.items()
-        content.stats()
-        content.heroes()
+        for target in ("/content/api/items", "/content/api/stats", "/content/api/heroes"):
+            app.handle(ctx, "GET", target, {})
     except Exception:  # noqa: BLE001 -- warming is optional; the real request reports any error
         pass
 
@@ -45,7 +45,7 @@ class EditorServer(ThreadingHTTPServer):
     def __init__(self, addr, ctx: app.Context):
         super().__init__(addr, Handler)
         self.ctx = ctx
-        threading.Thread(target=_warm, daemon=True).start()
+        threading.Thread(target=_warm, args=(ctx,), daemon=True).start()
 
     @property
     def token(self) -> str:
@@ -106,7 +106,19 @@ class Handler(BaseHTTPRequestHandler):
             if n > app.MAX_BODY:
                 return self._reply(app._fail(413, "request body missing or too large"))
             body = self.rfile.read(n)
-        return self._reply(app.handle(self.server.ctx, method, self.path, self.headers, body))
+        r = app.handle(self.server.ctx, method, self.path, self.headers, body, alive=self._alive)
+        if r.status == 499:
+            return None                 # the page aborted it: nobody is listening
+        return self._reply(r)
+
+    def _alive(self) -> bool:
+        """Whether the client is still waiting. An aborted fetch closes the
+        socket, which then reads as EOF (or a reset, on Windows)."""
+        try:
+            ready, _, _ = select.select([self.connection], [], [], 0)
+            return not ready or self.connection.recv(1, socket.MSG_PEEK) != b""
+        except (OSError, ValueError):
+            return False
 
     def do_GET(self):
         self._serve("GET")
@@ -117,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int, *, tab: str = "items", mods: Path | None = None) -> EditorServer:
     """Bind the editor on 127.0.0.1. Port 0 picks a free one."""
-    return EditorServer(("127.0.0.1", port), app.Context(mods=mods, start=tab))
+    return EditorServer(("127.0.0.1", port), app.Context(mods=mods, start=tab, disk_cache=True))
 
 
 def find_install(raw: str) -> Path | None:

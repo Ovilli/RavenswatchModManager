@@ -206,6 +206,12 @@ def _save(req: Request) -> dict:
     return {"path": f"mods/{mod_id}/manifest.toml", "changes": changes, "next": NEXT_STEP}
 
 
+#: GET routes whose answer depends only on game data (see diskcache).
+CACHED = frozenset({
+    "/api/scene", "/api/tiles", "/api/catalog", "/api/layers", "/api/layer",
+    "/api/tile", "/api/terrain",
+})
+
 ROUTES = {
     ("GET", "/api/state"): _state,
     ("GET", "/api/recipe"): _recipe,

@@ -266,15 +266,17 @@ def _install_bank(hero_token: str):
     """Return ``(install_base_gen, decoded_path)`` for a hero's Common text bank
     in the live game install, or ``None`` when no install is reachable."""
     try:
-        from rsmm.cli.apply_mods import find_game_dir, load_asset_map
+        from rsmm.cli.apply_mods import find_game_dir
+        from rsmm.engine.asset_map import decoded_to_encoded
         from rsmm.engine.paths import COOKING_REL
     except ImportError:
         return None
     game = find_game_dir()
     if game is None:
         return None
-    # apply-layer asset map is decoded->encoded with forward-slash keys.
-    amap = load_asset_map()
+    # decoded->encoded with forward-slash keys; cached, unlike load_asset_map,
+    # which re-reads the 6 MB map on every call (8 per editor talents request).
+    amap = decoded_to_encoded()
     hero_token = _name_of(hero_token)
     decoded = f"Text/Hero_{hero_token}_Common~GAM.xls.LocalText.gen"
     enc = amap.get(decoded)

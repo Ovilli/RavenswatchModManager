@@ -468,7 +468,7 @@ const S = {
 
 // ---- tabs + left list ----------------------------------------------------------
 function setTab(t) {
-  if (t !== S.tab) pickSeq++;     // a pick still loading belongs to the tab being left
+  if (t !== S.tab) { pickSeq++; pickAbort?.abort(); }   // a pick still loading belongs to the tab being left
   saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
@@ -511,11 +511,19 @@ function renderList() {
 // or for a tab the user has since left, must not overwrite what is on screen.
 let pickSeq = 0;
 const stale = (me, tab) => me !== pickSeq || S.tab !== tab;
+// One pick loads at a time: a new one aborts the last, so the server stops
+// working on an item or hero the user has already clicked past.
+let pickAbort = null;
+function pickSignal() {
+  pickAbort?.abort();
+  pickAbort = new AbortController();
+  return pickAbort.signal;
+}
 async function pickItem(id) {
   const meta = S.items.find(i => i.id === id), me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
   let got;
-  try { got = await get("api/item?id=" + encodeURIComponent(id)); }
+  try { got = await api("api/item?id=" + encodeURIComponent(id), undefined, pickSignal()); }
   catch (e) { if (!stale(me, "items")) { status(e.message, "st-bad"); renderView(); } return; }
   if (stale(me, "items")) return;
   S.item = got;
@@ -1268,7 +1276,7 @@ async function pickHero(h) {
   const me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + h.replace(/_/g, " ") + "'s talents…"));
   let got;
-  try { got = await get("api/talents?hero=" + encodeURIComponent(h)); }
+  try { got = await api("api/talents?hero=" + encodeURIComponent(h), undefined, pickSignal()); }
   catch (e) { if (!stale(me, "talents")) { status(e.message, "st-bad"); renderView(); } return; }
   if (stale(me, "talents")) return;
   S.talents = got;

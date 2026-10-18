@@ -49,11 +49,14 @@ def _once(fn):
     cache lets both parse the same cooked files (a fast tab switch, or the
     startup warm-up racing the page's first read), doubling the work they then
     fight over the GIL to finish. Locked per function, so a slow hero's
-    talents do not hold up an icon."""
-    cached, lock = cache(fn), threading.RLock()
+    talents do not hold up an icon, and per ARGUMENT, so one hero still loading
+    does not hold up another."""
+    cached, guard, locks = cache(fn), threading.Lock(), {}
 
     @wraps(fn)
     def run(*args):
+        with guard:
+            lock = locks.setdefault(args, threading.RLock())
         with lock:
             return cached(*args)
     run.cache_clear = cached.cache_clear
@@ -1652,6 +1655,12 @@ def _block_events() -> list[dict]:
     return [{"name": e["name"], "category": e.get("category", "")}
             for e in sorted(catalog, key=lambda e: e["name"])]
 
+
+#: GET routes whose answer depends only on game data (see diskcache).
+CACHED = frozenset({
+    "/api/items", "/api/item", "/api/stats", "/api/heroes", "/api/talents",
+    "/api/talents/borrowable", "/api/talents/scalable", "/api/talents/damages",
+})
 
 ROUTES = {
     ("GET", "/static/*"): _static,

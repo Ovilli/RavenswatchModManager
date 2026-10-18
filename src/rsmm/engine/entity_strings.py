@@ -22,6 +22,7 @@ for. Callers pass full strings (not substrings) for the same reason.
 
 from __future__ import annotations
 
+import re
 import struct
 
 from . import cooked
@@ -31,6 +32,8 @@ _MAX_LEN = 4096
 _PRINTABLE = frozenset(range(0x20, 0x7F))
 # Same set as bytes, for the C-speed `translate` test in _scan_payload.
 _PRINTABLE_BYTES = bytes(range(0x20, 0x7F))
+# A maximal run of printable bytes: where an lstr's text can start.
+_RUN = re.compile(rb"[\x20-\x7e]+")
 
 
 class EntityStringError(ValueError):
@@ -57,21 +60,21 @@ def _scan_payload(payload: bytes) -> list[tuple[int, str]]:
     this against the straightforward implementation over the shipped corpus.
     """
     out: list[tuple[int, str]] = []
-    i, end = 0, len(payload) - 4
-    while i <= end:
-        # Cheap rejection first — see docstring. `_MAX_LEN` is 4096, so a valid
-        # prefix looks like 00 00 <=10 xx in little-endian byte order.
-        if payload[i + 3] or payload[i + 2] > (_MAX_LEN >> 8):
-            i += 1
+    n_total = len(payload)
+    pos = 0                                  # earliest offset still open
+    for m in _RUN.finditer(payload):
+        # A candidate's chunk starts right after its prefix's zero top byte, so
+        # it can only start a printable RUN: the byte before it is 0x00, which
+        # is not printable. Every other offset the old per-byte loop tried
+        # failed one of these checks, so walking runs accepts the same set.
+        s = m.start()
+        i = s - 4
+        if i < pos or payload[s - 1] or payload[s - 2] > (_MAX_LEN >> 8):
             continue
         n = payload[i] | (payload[i + 1] << 8) | (payload[i + 2] << 16)
-        if 1 <= n <= _MAX_LEN and i + 4 + n <= len(payload):
-            chunk = payload[i + 4:i + 4 + n]
-            if not chunk.translate(None, _PRINTABLE_BYTES):
-                out.append((i, chunk.decode("ascii")))
-                i += 4 + n
-                continue
-        i += 1
+        if 1 <= n <= _MAX_LEN and n <= m.end() - s and s + n <= n_total:
+            out.append((i, payload[s:s + n].decode("ascii")))
+            pos = s + n
     return out
 
 

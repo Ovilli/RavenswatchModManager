@@ -116,11 +116,16 @@ def _class_names(g) -> list[str]:
 
 def _grid_offset(p: bytes, start: int) -> int:
     """The one offset where ``w, h, n`` frame a square grid ending at the payload end."""
+    # The grid ends at the payload end, so a width fixes its offset: walk the
+    # widths, not every byte (same candidates, ~4k unpacks instead of ~1M).
     hits = []
-    for off in range(start, len(p) - 12):
-        w, h, nb = struct.unpack_from("<III", p, off)
-        if 0 < w <= _MAX_GRID and w == h and nb == w * h * 4 and off + 12 + nb == len(p):
+    for w in range(1, _MAX_GRID + 1):
+        off = len(p) - 12 - w * w * 4
+        if off < start:
+            break
+        if struct.unpack_from("<III", p, off) == (w, w, w * w * 4):
             hits.append(off)
+    hits.reverse()
     if len(hits) != 1:
         raise TerrainError(f"painted layer grid header is ambiguous ({len(hits)} candidates)")
     return hits[0]

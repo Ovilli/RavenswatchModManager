@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import secrets
 import struct
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import cache, cached_property
@@ -94,6 +95,9 @@ class Context:
     token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
     mods: Path | None = None
     start: str = "items"
+    #: Keep pure read answers on disk across launches (the local editor; the
+    #: web editor's disk is in memory and gone with the page).
+    disk_cache: bool = False
 
     @property
     def mods_dir(self) -> Path:
@@ -166,8 +170,50 @@ def _find(routes: Mapping, method: str, path: str) -> Route | None:
     return None
 
 
+class _Gate:
+    """One slow game-data answer at a time, NEWEST request first.
+
+    Clicking through heroes or tabs while they load used to start every one of
+    them at once; they shared the CPU (one GIL) and the per-function cache
+    locks, so the hero the user actually stopped on was shown only after all
+    the ones clicked past (three quick picks: ~2.1 s, all finishing together).
+    A running answer cannot be interrupted, but everything still waiting is
+    served last-in-first-out, and a waiter whose browser has hung up (an
+    aborted pick) leaves without doing the work.
+    """
+
+    def __init__(self) -> None:
+        self._cv = threading.Condition()
+        self._busy = False
+        self._waiting: list[object] = []
+
+    def enter(self, alive: Callable[[], bool] | None) -> bool:
+        me = object()
+        with self._cv:
+            self._waiting.append(me)
+            while self._busy or self._waiting[-1] is not me:
+                self._cv.wait(0.2)
+                if alive is not None and not alive():
+                    self._waiting.remove(me)
+                    self._cv.notify_all()
+                    return False
+            self._waiting.pop()
+            self._busy = True
+            return True
+
+    def leave(self) -> None:
+        with self._cv:
+            self._busy = False
+            self._cv.notify_all()
+
+
+_gate = _Gate()
+
+
 def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
-           body: bytes = b"") -> Reply:
+           body: bytes = b"", alive: Callable[[], bool] | None = None) -> Reply:
+    """``alive`` reports whether the client still wants the answer (the local
+    server checks its socket); a slow read is skipped once it says no."""
     method = method.upper()
     url = urlparse(target)
     path = url.path
@@ -212,6 +258,28 @@ def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
     fn = _find(editor.ROUTES, method, "/" + rest)
     if fn is None:
         return _fail(404, "not found")
+    # Pure game-data reads, kept across launches (see diskcache).
+    key = None
+    if ctx.disk_cache and method == "GET" and "/" + rest in getattr(editor, "CACHED", ()):
+        from rsmm.cli.editor import diskcache
+        key = f"{mount}{target[len('/' + mount):]}"
+        hit = diskcache.get(key)
+        if hit is not None:
+            return Reply(200, JSON, hit)
+        if not _gate.enter(alive):
+            return Reply(499, JSON, b"")       # the client left; nobody reads this
+        try:
+            # Made by another request while this one waited its turn.
+            hit = diskcache.get(key)
+            if hit is not None:
+                return Reply(200, JSON, hit)
+            return _run(fn, ctx, method, rest, url, data, key)
+        finally:
+            _gate.leave()
+    return _run(fn, ctx, method, rest, url, data, key)
+
+
+def _run(fn, ctx: Context, method: str, rest: str, url, data: dict, key: str | None) -> Reply:
     req = Request(ctx, method, "/" + rest, {k: v[0] for k, v in parse_qs(url.query).items()},
                   data)
     try:
@@ -222,7 +290,11 @@ def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
         return _fail(400, str(e))
     if isinstance(out, Raw):
         return Reply(200, out.ctype, out.data, cache=out.cache)
-    return _json(200, out)
+    reply = _json(200, out)
+    if key is not None:
+        from rsmm.cli.editor import diskcache
+        diskcache.put(key, reply.data)
+    return reply
 
 
 def _header(headers: Mapping[str, str], name: str) -> str:

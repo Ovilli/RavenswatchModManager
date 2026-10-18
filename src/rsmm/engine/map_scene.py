@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import functools
 import math
+import re
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -126,23 +127,39 @@ def _bytes(root: str, path: str) -> bytes | None:
 
 def resource_refs(data: bytes) -> list[tuple[str, str]]:
     """Every ``(root, path)`` pair in a cooked blob, in stream order."""
-    roots = _index()[1]
     out: list[tuple[str, str]] = []
-    i, end = 0, len(data) - 8
-    while i < end:
-        (n,) = struct.unpack_from("<I", data, i)
-        if 0 < n <= _MAX_ROOT and i + 8 + n <= len(data):
-            root = data[i + 4:i + 4 + n]
-            if root.isascii() and root.decode("ascii", "replace") in roots:
-                (m,) = struct.unpack_from("<I", data, i + 4 + n)
-                j = i + 8 + n
-                path = data[j:j + m]
-                if 0 < m <= _MAX_PATH and len(path) == m and all(32 <= c < 127 for c in path):
-                    out.append((root.decode("ascii"), path.decode("ascii")))
-                    i = j + m
-                    continue
-        i += 1
+    pos, end = 0, len(data) - 8
+    # Candidates are exactly the offsets holding a known root as an lstr; the
+    # lookahead keeps overlapping ones, which the old per-byte loop also tried.
+    for mt in _root_lstrs(_index()[1]).finditer(data):
+        i = mt.start()
+        if i < pos or i >= end:
+            continue
+        n = struct.unpack_from("<I", data, i)[0]
+        if i + 8 + n > len(data):
+            continue
+        (m,) = struct.unpack_from("<I", data, i + 4 + n)
+        j = i + 8 + n
+        path = data[j:j + m]
+        if 0 < m <= _MAX_PATH and len(path) == m and not path.translate(None, _PRINTABLE):
+            out.append((data[i + 4:i + 4 + n].decode("ascii"), path.decode("ascii")))
+            pos = j + m
     return out
+
+
+_PRINTABLE = bytes(range(32, 127))
+
+
+@functools.lru_cache(maxsize=4)
+def _root_lstrs(roots: frozenset[str]) -> re.Pattern[bytes]:
+    """Every root in ``roots`` as ``u32 length + text``, the shape
+    `resource_refs` looks for. Keyed on the set, so a different index (a test's
+    stand-in) never reuses another's pattern."""
+    alts = sorted((struct.pack("<I", len(r)) + r.encode("ascii")
+                   for r in roots if r.isascii() and 0 < len(r) <= _MAX_ROOT),
+                  key=len, reverse=True)
+    return re.compile(b"(?=" + b"|".join(re.escape(a) for a in alts) + b")") if alts \
+        else re.compile(b"(?!)")
 
 
 def _uncooked(rel: str) -> Path | None:
