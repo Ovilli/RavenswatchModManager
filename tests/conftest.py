@@ -110,6 +110,14 @@ _LAZY_PATH_ATTRS = ("MODS_DIR", "DEFAULT_GAME_DIR")
 
 
 @pytest.fixture(autouse=True)
+def _no_editor_disk_cache(monkeypatch):
+    """Editor servers in tests answer from the code under test: a saved answer
+    (the startup warm-up's, or a real launch's in the user data dir) would hide
+    a monkeypatched data function."""
+    monkeypatch.setenv("RSMM_EDITOR_DISK_CACHE", "0")
+
+
+@pytest.fixture(autouse=True)
 def _private_cook_cache(tmp_path_factory, monkeypatch):
     """Point the cook memo at a per-session temp dir. Without this a test that
     cooks a model or texture would read entries a developer's real applies

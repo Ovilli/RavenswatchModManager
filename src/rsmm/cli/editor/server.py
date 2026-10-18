@@ -129,7 +129,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int, *, tab: str = "items", mods: Path | None = None) -> EditorServer:
     """Bind the editor on 127.0.0.1. Port 0 picks a free one."""
-    return EditorServer(("127.0.0.1", port), app.Context(mods=mods, start=tab, disk_cache=True))
+    return EditorServer(("127.0.0.1", port), app.Context(
+        mods=mods, start=tab,
+        # Off for the test suite (conftest), which swaps the data functions out.
+        disk_cache=os.environ.get("RSMM_EDITOR_DISK_CACHE", "1") != "0"))
 
 
 def find_install(raw: str) -> Path | None:
