@@ -289,7 +289,8 @@ def main() -> int:
     # the index entirely, and the warning below means a staged change is never
     # quietly LEFT BEHIND either.
     paths = [str(t.path.relative_to(REPO_ROOT)) for t in targets()]
-    paths.append(str(CHANGELOG.relative_to(REPO_ROOT)))   # the release note
+    if CHANGELOG.exists():
+        paths.append(str(CHANGELOG.relative_to(REPO_ROOT)))   # the release note
     staged = [
         line for line in git(["diff", "--cached", "--name-only"]).stdout.splitlines()
         if line.strip() and line.strip() not in paths

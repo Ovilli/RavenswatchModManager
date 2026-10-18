@@ -46,6 +46,12 @@ def repo(tmp_path: Path) -> Path:
         p.write_text(body)
     (tmp_path / "src/loader/lib").mkdir(parents=True)
     (tmp_path / "src/loader/lib/rsmm.lua").write_text("-- the SDK\nreturn {}\n")
+    # The note for the target version is already written, so the bump needs
+    # no --summary (and, unchanged, the feed stays out of the commit).
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data/changelog.json").write_text(json.dumps(
+        {"entries": [{"version": "0.2.0", "date": "2026-01-01",
+                      "summary": "s", "highlights": ["h"]}]}))
     shutil.copytree(REPO_ROOT / "scripts", tmp_path / "scripts", dirs_exist_ok=True)
 
     git(tmp_path, "init", "-q")
@@ -83,3 +89,15 @@ def test_staged_unrelated_file_stays_out_of_the_release_commit(repo: Path) -> No
     # The bump itself still happened in all four files.
     conf = json.loads((repo / "apps/desktop/src-tauri/tauri.conf.json").read_text())
     assert conf["version"] == "0.2.0"
+
+
+def test_a_bump_without_a_release_note_is_refused_before_writing(repo: Path) -> None:
+    out = subprocess.run(
+        ["python3", str(repo / "scripts/bump-version.py"), "0.3.0"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    assert out.returncode != 0
+    assert "no release note for 0.3.0" in out.stderr
+    conf = json.loads((repo / "apps/desktop/src-tauri/tauri.conf.json").read_text())
+    assert conf["version"] == "0.1.0"
+    assert git(repo, "status", "--porcelain") == ""
