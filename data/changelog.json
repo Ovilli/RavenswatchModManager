@@ -2,6 +2,18 @@
   "generated": "2026-10-18",
   "entries": [
     {
+      "version": "5.9.26",
+      "date": "2026-10-18",
+      "summary": "Item copies can change rarity, the book fits added items, and the map editor edits scenery.",
+      "highlights": [
+        "A copied item now really takes the rarity you pick in the editor or manifest; before, it kept its base item's tier in game.",
+        "The book's Objects tab widens each tier's grid when mods add items, so new items no longer spill over the next row.",
+        "Map editor: move, remove and add a chapter's own scenery objects, plus a 3D tile mode.",
+        "The editors answer faster: newest request first, and game data is kept between visits."
+      ],
+      "loader_version": 46
+    },
+    {
       "version": "5.9.25",
       "date": "2026-10-18",
       "summary": "Chapter editor, CLI updates without an app release, and a restore fix that protects game files",
@@ -518,15 +530,6 @@
       "highlights": [
         "Mods can now hand you a specific item by its id; the editor's new test grants use this.",
         "Fixed: a mod's repeating task could run many times in a single frame, so one test grant handed out dozens of items at once."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 23,
-      "date": "2026-09-26",
-      "summary": "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter.",
-      "highlights": [
-        "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter."
       ]
     }
   ]
