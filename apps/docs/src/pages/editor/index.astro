@@ -289,13 +289,18 @@ let three = null;
 // save, a check) first and in order, then the NEWEST waiting GET; a request
 // its page has aborted (a pick it moved on from) is dropped unsent. One that
 // is already running cannot be stopped; its answer is just not used.
-const sched = { busy: false, posts: [], gets: [], idle: [] };
+//
+// Model and texture files (api/file) wait in a queue of their own, in arrival
+// order, BEHIND every other request: a chapter asks for hundreds of them, and
+// served newest-first among the data they starved the map's tile pool until
+// every model was converted ("Preview a run" found no pool).
+const sched = { busy: false, posts: [], gets: [], assets: [], idle: [] };
 const aborted = () => new DOMException("The operation was aborted.", "AbortError");
-function schedule(run, isPost, signal, idle = false) {
+function schedule(run, isPost, signal, idle = false, asset = false) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(aborted()); return; }
     const job = { run, resolve, reject, done: false };
-    const queue = isPost ? sched.posts : idle ? sched.idle : sched.gets;
+    const queue = isPost ? sched.posts : idle ? sched.idle : asset ? sched.assets : sched.gets;
     signal?.addEventListener("abort", () => {
       const at = queue.indexOf(job);
       if (at >= 0) queue.splice(at, 1);
@@ -307,7 +312,7 @@ function schedule(run, isPost, signal, idle = false) {
 }
 function pump() {
   if (sched.busy) return;
-  const job = sched.posts.shift() || sched.gets.pop() || sched.idle.shift();
+  const job = sched.posts.shift() || sched.gets.pop() || sched.assets.shift() || sched.idle.shift();
   if (!job) return;
   sched.busy = true;
   job.run().then(
@@ -390,7 +395,7 @@ async function engineFetch(path, init, idle = false) {
     : new Uint8Array(await new Response(init.body).arrayBuffer());
   const text = method === "POST" ? new TextDecoder().decode(body) : "";
   const r = await schedule(() => call("request", { method, path, headers, body }, [body.buffer]),
-    method === "POST", init.signal, idle);
+    method === "POST", init.signal, idle, /\/api\/file$/.test(path.split("?")[0]));
   if (method === "GET" && r.status === 200 && r.headers?.["X-RSMM-Cache"] === "game") answers.put(path, r);
   if (method === "POST" && r.status === 200 && /\/api\/save$/.test(path.split("?")[0])) {
     afterSave(new TextDecoder().decode(r.body), text);

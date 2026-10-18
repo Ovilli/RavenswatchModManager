@@ -270,7 +270,7 @@ def test_pages_never_load_engine_urls_through_img_src():
     from pathlib import Path
     pages = Path(__file__).resolve().parent.parent / "src/rsmm/cli/editor/pages"
     bad = re.compile(r"""\.src\s*=\s*(fileUrl\(|["'`]api/)""")
-    hits = [f"{p.name}:{n}" for p in pages.glob("*.html")
+    hits = [f"{p.name}:{n}" for p in [*pages.glob("*.html"), *pages.glob("*.js")]
             for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
             if bad.search(line)]
     assert not hits, hits

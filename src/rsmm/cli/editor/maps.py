@@ -18,6 +18,7 @@ import tempfile
 import tomllib
 from pathlib import Path
 
+from rsmm.cli.editor import tiles as _tiles  # the 3D tile mode's routes
 from rsmm.cli.editor.app import Fail, Raw, Request, asset_dir
 from rsmm.engine import map_editor as ME
 from rsmm.engine import map_scene as MS
@@ -210,7 +211,7 @@ def _save(req: Request) -> dict:
 CACHED = frozenset({
     "/api/scene", "/api/tiles", "/api/catalog", "/api/layers", "/api/layer",
     "/api/tile", "/api/terrain",
-})
+}) | _tiles.CACHED
 
 ROUTES = {
     ("GET", "/api/state"): _state,
@@ -227,4 +228,5 @@ ROUTES = {
     ("GET", "/api/mod"): _mod,
     ("POST", "/api/check"): _check,
     ("POST", "/api/save"): _save,
+    **_tiles.ROUTES,
 }

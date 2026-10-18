@@ -4,7 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ravenswatch Map Editor</title>
-<style>{{common.css}}</style>
+<style>{{common.css}}/* ---- 3D tile mode (tilemode.js): one tile over the map, every object in it,
+   and what you add. --gilt marks the selection, --ok what you added. ---- */
+#t3 { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-rows: auto 1fr; background: var(--view); color: var(--text); }
+#t3[hidden] { display: none; }
+#t3 .bar3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--chrome); border-bottom: 1px solid var(--rule); }
+#t3 .bar3 h1 { font-size: 15px; margin: 0 6px 0 4px; }
+#t3 .bar3 input, #t3 .bar3 select { font: inherit; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--chrome2); color: var(--text); }
+#t3 .grow { flex: 1; }
+#t3 .body3 { display: grid; grid-template-columns: 250px 1fr 300px; min-height: 0; }
+#t3 aside { background: var(--chrome); border-right: 1px solid var(--rule); overflow: auto; min-height: 0; padding: 8px 10px; }
+#t3 aside.r { border-right: 0; border-left: 1px solid var(--rule); display: flex; flex-direction: column; gap: 10px; }
+#t3 aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 10px 0 4px; display: flex; align-items: center; gap: 6px; }
+#t3 aside h2 .n { font-weight: 400; }
+.poolrow { display: flex; align-items: center; gap: 8px; } .poolrow .chk { flex: 1; } .poolrow .linkbtn { font-size: 12px; white-space: nowrap; }
+#t3 .tree { list-style: none; margin: 0; padding: 0; }
+#t3 .tree li { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+#t3 .tree li:hover { background: var(--chip); }
+#t3 .tree li.sel { background: var(--accentbg); outline: 1px solid var(--gilt); }
+#t3 .tree li.added::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+#t3 .tree li.game::before { content: "🔒"; font-size: 10px; flex: none; opacity: .6; }
+#t3 .tree li span { overflow: hidden; text-overflow: ellipsis; }
+#t3 .view3 { position: relative; min-width: 0; min-height: 0; }
+#t3-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+#t3-hud { position: absolute; left: 10px; bottom: 10px; background: color-mix(in srgb, var(--chrome) 88%, transparent); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--dim); max-width: 70ch; }
+#t3-load { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: var(--chrome); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; font-size: 12px; }
+#t3-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); text-align: center; padding: 20px; }
+#t3-insp label { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 6px; margin: 3px 0; font-size: 13px; color: var(--dim); }
+#t3-insp input { font: inherit; padding: 3px 6px; border: 1px solid var(--rule); border-radius: 5px; background: var(--chrome2); color: var(--text); width: 100%; box-sizing: border-box; }
+#t3-insp input:disabled { opacity: .7; }
+#t3-insp .xyz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+#t3-insp .name { font-weight: 600; word-break: break-all; }
+#t3-insp .path { font-size: 11px; color: var(--dim); word-break: break-all; margin-bottom: 4px; }
+#t3 .row { display: flex; gap: 6px; flex-wrap: wrap; }
+#t3 .hint { font-size: 12px; color: var(--dim); }
+#t3-propq { width: 100%; box-sizing: border-box; font: inherit; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--chrome2); color: var(--text); }
+#t3-props { list-style: none; margin: 4px 0 0; padding: 0; overflow: auto; max-height: 40vh; }
+#t3-props li { padding: 3px 6px; border-radius: 5px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
+#t3-props li:hover { background: var(--chip); }
+#t3-props li small { color: var(--dim); }
+#t3-status { font-size: 13px; }
+#t3-status.st-ok { color: var(--ok); } #t3-status.st-bad { color: var(--bad); }
+@media (max-width: 900px) { #t3 .body3 { grid-template-columns: 1fr; grid-template-rows: 45vh auto auto; overflow: auto; } }
+</style>
 <style>
 /* The chapter editor: the map is the work surface, everything else floats on it.
    Colours are the shared editor palette (common.css), so this tab looks like the
@@ -155,6 +197,44 @@ html.embedded #bar h1 { display: none; }
   <div id="hint"></div>
   <div id="load" hidden></div>
   <div id="tip" hidden></div>
+</div>
+
+<div id="t3" hidden aria-label="3D tile editor">
+  <div class="bar3">
+    <button class="btn" id="t3-back" title="Back to the chapter (Esc)">← Back to the chapter</button>
+    <h1 id="t3-title">Tile</h1>
+    <span class="grow"></span>
+    <select id="t3-modpick" aria-label="Open a saved tile mod"><option value="">New mod</option></select>
+    <input id="t3-modid" placeholder="mod id" size="16" aria-label="Mod id">
+    <input id="t3-modname" placeholder="name (optional)" size="18" aria-label="Mod name">
+    <button class="btn" id="t3-check" disabled>Check</button>
+    <button class="btn save" id="t3-save" disabled>Save mod</button>
+    <span id="t3-status" role="status"></span>
+  </div>
+  <div class="body3">
+    <aside aria-label="Outliner">
+      <h2>Added by you <span class="n" id="t3-addedn"></span></h2>
+      <ul class="tree" id="t3-added"></ul>
+      <h2>In the game's tile <span class="n" id="t3-gamen"></span>
+        <label class="hint" style="margin-left:auto"><input type="checkbox" id="t3-showgame" checked> show</label></h2>
+      <ul class="tree" id="t3-game"></ul>
+    </aside>
+    <div class="view3">
+      <canvas id="t3-gl" tabindex="0" aria-label="3D view of the tile"></canvas>
+      <div id="t3-empty" hidden></div>
+      <div id="t3-load" hidden></div>
+      <div id="t3-hud"></div>
+    </div>
+    <aside class="r">
+      <section id="t3-insp"></section>
+      <section>
+        <h2>Add an object</h2>
+        <input id="t3-propq" placeholder="Search props… (e.g. tree, banner, crate)" aria-label="Search props">
+        <ul id="t3-props"></ul>
+        <p class="hint">Click a prop to place it where the view is pointing. Anything added here stands in every spawn of this tile.</p>
+      </section>
+    </aside>
+  </div>
 </div>
 
 <dialog id="savedlg" aria-labelledby="savetitle">
@@ -619,109 +699,18 @@ function drawCursor(pt) {
 }
 
 // ---- models -------------------------------------------------------------------
-function parseGlb(buf) {
-  const dv = new DataView(buf), jsonLen = dv.getUint32(12, true);
-  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
-  const binStart = 20 + jsonLen + 8;
-  const TYPES = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array, 5121: Uint8Array };
-  const SIZE = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
-  const read = (i) => {
-    const a = json.accessors[i], bv = json.bufferViews[a.bufferView], T = TYPES[a.componentType], n = a.count * SIZE[a.type];
-    const start = binStart + (bv.byteOffset || 0) + (a.byteOffset || 0);
-    return new T(buf.slice(start, start + n * T.BYTES_PER_ELEMENT));
-  };
-  const pos = [], nrm = [], uv = [], idx = []; let base = 0;
-  for (const node of json.nodes || []) {
-    if (node.mesh == null || node.name === "AABB") continue;
-    for (const prim of json.meshes[node.mesh].primitives) {
-      if (prim.attributes.POSITION == null) continue;
-      const p = read(prim.attributes.POSITION), count = p.length / 3;
-      pos.push(p);
-      nrm.push(prim.attributes.NORMAL != null ? read(prim.attributes.NORMAL) : new Float32Array(count * 3));
-      uv.push(prim.attributes.TEXCOORD_0 != null ? read(prim.attributes.TEXCOORD_0) : new Float32Array(count * 2));
-      const ix = prim.indices != null ? read(prim.indices) : Uint32Array.from({ length: count }, (_, i) => i);
-      idx.push(Uint32Array.from(ix, v => v + base)); base += count;
-    }
-  }
-  const cat = (arrs, T) => { const out = new T(arrs.reduce((a, x) => a + x.length, 0)); let o = 0; for (const x of arrs) { out.set(x, o); o += x.length; } return out; };
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(cat(pos, Float32Array), 3));
-  g.setAttribute("normal", new THREE.BufferAttribute(cat(nrm, Float32Array), 3));
-  g.setAttribute("uv", new THREE.BufferAttribute(cat(uv, Float32Array), 2));
-  g.setIndex(new THREE.BufferAttribute(cat(idx, Uint32Array), 1));
-  g.computeBoundingSphere();
-  return g;
-}
-const fileUrl = (rel) => "api/file?path=" + encodeURIComponent(rel);
-const queue = { active: 0, waiting: [] };
-function limited(fn) {
-  return new Promise((res, rej) => {
-    const run = () => { queue.active++; fn().then(res, rej).finally(() => { queue.active--; const nx = queue.waiting.shift(); if (nx) nx(); }); };
-    queue.active < 6 ? run() : queue.waiting.push(run);
-  });
-}
-async function loadTexture(rel, swap) {
-  // fetch + blob, never `img.src = url`: the web editor routes fetch to its
-  // engine, not image loads, so a plain src got a 404 there and every model
-  // drew untextured.
-  const img = await limited(async () => {
-    const r = await fetch(fileUrl(rel));
-    if (!r.ok) throw new Error(r.status);
-    const url = URL.createObjectURL(await r.blob());
-    try {
-      return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    } finally { URL.revokeObjectURL(url); }
-  });
-  let tex;
-  if (swap) {   // the png was written from an uncompressed texture with red and blue swapped
-    const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height;
-    const ctx = cv.getContext("2d"); ctx.drawImage(img, 0, 0);
-    const d = ctx.getImageData(0, 0, cv.width, cv.height);
-    for (let i = 0; i < d.data.length; i += 4) { const r = d.data[i]; d.data[i] = d.data[i + 2]; d.data[i + 2] = r; }
-    ctx.putImageData(d, 0, 0); tex = new THREE.CanvasTexture(cv);
-  } else {
-    tex = new THREE.Texture(img); tex.needsUpdate = true;
-  }
-  tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = false; tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = Math.min(8, G.three.renderer.capabilities.getMaxAnisotropy());
-  return tex;
-}
-const partKey = (p) => [p.mesh, p.texture || "", p.swap_rb, p.color || "", p.decal].join("|");
-let DECAL_GEO = null;
+{{models.js}}
 function partAsset(p) {
-  const key = partKey(p);
-  let a = G.parts.get(key);
-  if (!a) {
-    G.loading++;
-    a = { geometry: null, material: null };
-    if (p.decal && !DECAL_GEO) DECAL_GEO = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-    a.ready = Promise.all([
-      p.decal ? Promise.resolve(DECAL_GEO)
-        : limited(() => fetch(fileUrl(p.mesh)).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })).then(parseGlb),
-      p.texture ? loadTexture(p.texture, p.swap_rb).catch(() => null) : Promise.resolve(null),
-    ]).then(([geo, tex]) => {
-      a.geometry = geo;
-      if (p.decal) {
-        if (!tex) return null;
-        a.material = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 1,
-          polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide });
-        a.decal = true;
-      } else {
-        a.material = new THREE.MeshStandardMaterial({ map: tex, color: tex ? 0xffffff : (p.color || 0xb5ad9c),
-          roughness: 0.88, metalness: 0, alphaTest: 0.4, side: THREE.DoubleSide });
-      }
-      return a;
-    }).catch(() => null).finally(() => { G.loaded++; progress(); });
-    G.parts.set(key, a);
-  }
-  return a;
+  return modelAsset(p, G.parts, Math.min(8, G.three.renderer.capabilities.getMaxAnisotropy()),
+    { start: () => { G.loading++; }, done: () => { G.loaded++; progress(); } });
 }
+{{tilemode.js}}
+function open3d(path) { TileMode.open(path, () => { G.dirty = true; render(); }); }
 function progress() {
   const busy = G.loaded < G.loading;
   $("load").textContent = busy ? `Loading models ${G.loaded}/${G.loading}…` : "";
   $("load").hidden = !busy;
 }
-const b64f32 = (s) => { const raw = Uint8Array.from(atob(s), c => c.charCodeAt(0)); return new Float32Array(raw.buffer); };
 async function fillGroup(group, batches, token) {
   const per = new Map();
   for (const { data, offset } of batches) {
@@ -1101,6 +1090,8 @@ function renderSpot(s) {
     const fits = poolNow().filter(t => `${t.width}x${t.height}` === s.group);
     h += `<div class="field"><label for="pinsel">Tile</label><select id="pinsel"><option value="">Chosen by the generator</option>${fits.map(t => `<option value="${esc(t.path)}">${esc(nice(t.name))}</option>`).join("")}</select></div>`;
   }
+  const shownTile = pinned || S.layout[String(s.id)];
+  if (shownTile) h += `<p><button class="btn" id="edit3d" title="Walk around this tile and add objects to it">Edit ${esc(tileShort(shownTile))} in 3D</button></p>`;
   h += `<h3>Allowed here</h3>`;
   const now = [], off = [];
   S.work.kinds.forEach(k => (k.footprints[s.group] ? now : off).push(k));
@@ -1118,6 +1109,7 @@ function renderSpot(s) {
   const sel = $("pinsel"); if (sel) sel.addEventListener("change", () => { if (!sel.value) return; remember(); S.place[String(s.id)] = sel.value; drawLayout(); render(); });
   const up = $("unpin"); if (up) up.addEventListener("click", () => { remember(); delete S.place[String(s.id)]; drawLayout(); render(); });
   const um = $("unmove"); if (um) um.addEventListener("click", () => { remember(); s.pos = o.pos.slice(); drawLayout(); render(); });
+  const e3 = $("edit3d"); if (e3) e3.addEventListener("click", () => open3d(shownTile));
   $("rmspot").addEventListener("click", () => {
     remember();
     if (isNew(s)) dropNew(s.id); else { S.removed.add(s.id); delete S.place[String(s.id)]; }
@@ -1217,7 +1209,7 @@ function openPool() { loadCatalog(); renderPool(); $("pooldlg").showModal(); }
 function renderPool() {
   const gone = new Set(S.poolEdit.remove), q = S.poolFilter.toLowerCase();
   const match = (t) => !q || `${nice(t.name)} ${t.flags.join(" ")} ${t.biome}`.toLowerCase().includes(q);
-  const row = (t, on, attr) => `<label class="chk"><input type="checkbox" ${attr}="${esc(t.path)}" ${on ? "checked" : ""}> <span>${esc(nice(t.name))} <span class="muted">${esc(sizeLabel(t.width + "x" + t.height))}, ${esc(nice(t.flags.join(", ")))}</span></span></label>`;
+  const row = (t, on, attr) => `<div class="poolrow"><label class="chk"><input type="checkbox" ${attr}="${esc(t.path)}" ${on ? "checked" : ""}> <span>${esc(nice(t.name))} <span class="muted">${esc(sizeLabel(t.width + "x" + t.height))}, ${esc(nice(t.flags.join(", ")))}</span></span></label><button class="linkbtn" data-edit3d="${esc(t.path)}" title="Walk around this tile and add objects to it">Edit in 3D</button></div>`;
   const inPool = new Set(S.pool.map(t => t.path)), others = (S.catalog || []).filter(t => !inPool.has(t.path) && match(t));
   let h = `<p class="muted">Changing the pool saves the chapter as a new map, since the game's own pool is shared with every other mod.</p>
     <div class="field"><label for="poolfind">Find</label><input id="poolfind" type="search" placeholder="Name, flag or map" value="${esc(S.poolFilter)}"></div>`;
@@ -1230,6 +1222,9 @@ function renderPool() {
   $("poolbody").querySelectorAll("input[data-keep]").forEach(el => el.addEventListener("change", () => {
     remember(); const p = el.dataset.keep;
     S.poolEdit.remove = el.checked ? S.poolEdit.remove.filter(x => x !== p) : S.poolEdit.remove.concat(p); renderPool(); render();
+  }));
+  $("poolbody").querySelectorAll("button[data-edit3d]").forEach(el => el.addEventListener("click", () => {
+    $("pooldlg").close(); open3d(el.dataset.edit3d);
   }));
   $("poolbody").querySelectorAll("input[data-add]").forEach(el => el.addEventListener("change", () => {
     remember(); const p = el.dataset.add;
@@ -1320,7 +1315,10 @@ async function loadChapter(key, opened) {
   render();
   status("Ready. Pick a tool on the left, or click a spot");
   loadTerrain(key);
-  api("api/tiles?chapter=" + encodeURIComponent(key)).then(r => { if (S.chapter.key === key) { S.pool = r.tiles; drawLayout(); render(); } }).catch(() => {});
+  // Kept as a promise: "Preview a run" can be pressed before the pool arrives.
+  S.poolReady = api("api/tiles?chapter=" + encodeURIComponent(key))
+    .then(r => { if (S.chapter.key === key) { S.pool = r.tiles; drawLayout(); render(); } })
+    .catch(e => { if (S.chapter.key === key) status("Could not read the tile pool: " + e.message, "bad"); });
   if (G.three && S.models) loadScenery(key);
 }
 // Rebuild the working state from a saved mod's edit document.
@@ -1387,8 +1385,14 @@ $("openmod").addEventListener("change", async e => {
 $("scenario").addEventListener("change", e => { S.scen = Number(e.target.value); render(); });
 $("recenter").addEventListener("click", resetCamera);
 $("undo").addEventListener("click", undo);
-$("sample").addEventListener("click", () => {
-  if (!S.pool.length) { status("This chapter's tile pool isn't loaded yet", "bad"); return; }
+$("sample").addEventListener("click", async () => {
+  if (!S.pool.length && S.poolReady) {
+    const key = S.chapter.key;
+    status("Waiting for the tile pool…");
+    await S.poolReady;
+    if (S.chapter.key !== key) return;
+  }
+  if (!S.pool.length) { status("This chapter's tile pool could not be read", "bad"); return; }
   S.seed = (S.seed * 1103515245 + 12345) >>> 0 || 1;
   S.layout = sampleLayout(S.seed); S.layoutSample = true;
   status(`Preview: ${Object.keys(S.layout).length} tiles rolled, roughly as a run would (approximate)`, "ok");
@@ -1402,6 +1406,7 @@ $("check").addEventListener("click", doCheck);
 $("save").addEventListener("click", doSave);
 const TOOL_KEYS = { 1: "select", 2: "move", 3: "add", 4: "place", 5: "paint" };
 document.addEventListener("keydown", e => {
+  if (TileMode.active()) return;               // the 3D tile mode has the keys
   if (e.target.closest("input, select, textarea, dialog")) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
   if (TOOL_KEYS[e.key]) { setTool(TOOL_KEYS[e.key]); return; }
