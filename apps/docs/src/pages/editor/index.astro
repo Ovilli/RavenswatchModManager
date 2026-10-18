@@ -279,6 +279,40 @@ $("folder").addEventListener("change", async () => {
 const frames = {};
 let three = null;
 
+// The engine answers one request at a time, in the order it gets them. Every
+// tab's requests come through here, so clicking through heroes or tabs while
+// they load used to queue all of them, and the one the player stopped on was
+// answered last. Requests are therefore handed over one at a time: a POST (a
+// save, a check) first and in order, then the NEWEST waiting GET; a request
+// its page has aborted (a pick it moved on from) is dropped unsent. One that
+// is already running cannot be stopped; its answer is just not used.
+const sched = { busy: false, posts: [], gets: [] };
+const aborted = () => new DOMException("The operation was aborted.", "AbortError");
+function schedule(run, isPost, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(aborted()); return; }
+    const job = { run, resolve, reject, done: false };
+    const queue = isPost ? sched.posts : sched.gets;
+    signal?.addEventListener("abort", () => {
+      const at = queue.indexOf(job);
+      if (at >= 0) queue.splice(at, 1);
+      if (!job.done) { job.done = true; reject(aborted()); }
+    }, { once: true });
+    queue.push(job);
+    pump();
+  });
+}
+function pump() {
+  if (sched.busy) return;
+  const job = sched.posts.shift() || sched.gets.pop();
+  if (!job) return;
+  sched.busy = true;
+  job.run().then(
+    (v) => { if (!job.done) { job.done = true; job.resolve(v); } },
+    (e) => { if (!job.done) { job.done = true; job.reject(e); } },
+  ).finally(() => { sched.busy = false; pump(); });
+}
+
 async function engineFetch(path, init) {
   const method = (init.method || "GET").toUpperCase();
   const headers = {};
@@ -287,7 +321,8 @@ async function engineFetch(path, init) {
     : typeof init.body === "string" ? new TextEncoder().encode(init.body)
     : new Uint8Array(await new Response(init.body).arrayBuffer());
   const text = method === "POST" ? new TextDecoder().decode(body) : "";
-  const r = await call("request", { method, path, headers, body }, [body.buffer]);
+  const r = await schedule(() => call("request", { method, path, headers, body }, [body.buffer]),
+    method === "POST", init.signal);
   if (method === "POST" && r.status === 200 && /\/api\/save$/.test(path.split("?")[0])) {
     afterSave(new TextDecoder().decode(r.body), text);
   }
