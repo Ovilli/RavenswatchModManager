@@ -2,6 +2,18 @@
   "generated": "2026-10-18",
   "entries": [
     {
+      "version": "5.9.25",
+      "date": "2026-10-18",
+      "summary": "Chapter editor, CLI updates without an app release, and a restore fix that protects game files",
+      "highlights": [
+        "The map editor is now a chapter editor: add, move and remove spots, pin tiles, and paint terrain shape, surface and tint",
+        "The CLI now updates on its own between app releases; Settings > Updates and the version footer show which CLI build is running",
+        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select",
+        "Fixed: the Update 5 backport's hero table was undone on the next apply"
+      ],
+      "loader_version": 46
+    },
+    {
       "version": "",
       "date": "2026-10-18",
       "summary": "Restore no longer deletes game files when the asset map is from an older game build; the values backport now stays applied",
@@ -515,15 +527,6 @@
       "summary": "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter.",
       "highlights": [
         "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 22,
-      "date": "2026-09-26",
-      "summary": "…",
-      "highlights": [
-        "…"
       ]
     }
   ]
