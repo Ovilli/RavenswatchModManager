@@ -6,7 +6,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { resolveTokenUser } from './api-token-auth.js';
 import { bearerToken, isTokenRoute } from './api-tokens.js';
-import { auth } from './auth.js';
+import { getAuth } from './auth.js';
 import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
 import { errString, log, requestId } from './logger.js';
 import { createRateLimiter } from './rate-limit.js';
@@ -97,8 +97,20 @@ app.onError((err, c) => {
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
 
+/** True when the Cookie header carries a Better Auth session token (plain or
+ *  `__Secure-` prefixed). Without one, getSession can only answer null. */
+function hasSessionCookie(cookie: string | undefined): boolean {
+  return !!cookie && /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(cookie);
+}
+
 app.use('*', async (c, next) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
+  // Anonymous requests skip Better Auth entirely, so an instance that only
+  // serves them never loads it (see getAuth in auth.ts — cold-start CPU).
+  const session = hasSessionCookie(c.req.header('cookie'))
+    ? await getAuth()
+        .then((a) => a.api.getSession({ headers: c.req.raw.headers }))
+        .catch(() => null)
+    : null;
   let user = session?.user ?? null;
   let tokenId: string | null = null;
   c.set('bannedInfo', null);
@@ -200,7 +212,7 @@ app.use('/api/auth/callback/*', async (c, next) => {
 });
 
 app.use('/api/auth/*', createRateLimiter({ name: 'auth', windowMs: 60_000, maxHits: 10 }));
-app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+app.on(['GET', 'POST'], '/api/auth/*', async (c) => (await getAuth()).handler(c.req.raw));
 
 // Desktop OAuth relay (browser-side flow → one-time-token handoff). Rate-limited
 // like /api/auth to blunt abuse of the provider-redirect kickoff.

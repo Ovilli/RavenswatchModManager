@@ -1,16 +1,19 @@
-import nodemailer, { type Transporter } from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { env, isProduction, smtpConfigured } from './env.js';
 import { log } from './logger.js';
 
 let cached: Transporter | null = null;
 
-function getTransport(): Transporter {
+// nodemailer is imported on first send, not at module load: a static import
+// made every function cold start pay for it although few requests send mail.
+async function getTransport(): Promise<Transporter> {
   if (cached) return cached;
   if (!smtpConfigured()) {
     throw new Error(
       'SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optionally SMTP_PORT, SMTP_SECURE, EMAIL_FROM).',
     );
   }
+  const nodemailer = (await import('nodemailer')).default;
   cached = nodemailer.createTransport({
     host: env.smtp.host,
     port: env.smtp.port,
@@ -46,7 +49,7 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     );
     return;
   }
-  await getTransport().sendMail({
+  await (await getTransport()).sendMail({
     from: env.smtp.from,
     to: msg.to,
     subject: msg.subject,
