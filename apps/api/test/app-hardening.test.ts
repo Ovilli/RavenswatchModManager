@@ -24,7 +24,7 @@ vi.mock('@rsmm/db', () => ({
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => 'col' }) }),
 }));
 
-const { app } = await import('../src/app.js');
+const { app, isCdnCacheablePath } = await import('../src/app.js');
 
 describe('response hardening headers', () => {
   it('are present on every response', async () => {
@@ -89,5 +89,74 @@ describe('cron secret check', () => {
 
   it('rejects a missing authorization header', async () => {
     expect((await app.request('/api/cron/scan-drain')).status).toBe(401);
+  });
+});
+
+describe('CDN cache for anonymous reads', () => {
+  const CDN = 'vercel-cdn-cache-control';
+
+  it('caches an anonymous public read and varies on credentials', async () => {
+    const res = await app.request('/api/legal/impressum');
+    expect(res.status).toBe(200);
+    expect(res.headers.get(CDN)).toContain('max-age=60');
+    expect(res.headers.get('vary')).toContain('Cookie');
+    expect(res.headers.get('vary')).toContain('Authorization');
+  });
+
+  it('never caches a request that carries a cookie', async () => {
+    const res = await app.request('/api/legal/impressum', {
+      headers: { cookie: 'better-auth.session_token=x' },
+    });
+    expect(res.headers.get(CDN)).toBeNull();
+    expect(res.headers.get('vary')).toContain('Cookie');
+  });
+
+  it('never caches a request that carries an Authorization header', async () => {
+    const res = await app.request('/api/legal/impressum', {
+      headers: { authorization: 'Bearer abc' },
+    });
+    expect(res.headers.get(CDN)).toBeNull();
+  });
+
+  it('leaves routes off the allowlist uncached', async () => {
+    expect((await app.request('/api/health')).headers.get(CDN)).toBeNull();
+    expect((await app.request('/api/session')).headers.get(CDN)).toBeNull();
+  });
+
+  it('allowlists public reads but not per-viewer or side-effecting ones', () => {
+    for (const p of [
+      '/api/mods',
+      '/api/mods/camera-control',
+      '/api/mods/camera-control/reviews',
+      '/api/users/abc',
+      '/api/collections/x',
+      '/api/guides',
+    ]) {
+      expect(isCdnCacheablePath(p), p).toBe(true);
+    }
+    for (const p of [
+      '/api/mods/x/1.0.0/download',
+      '/api/mods/x/authors',
+      '/api/collections/mine',
+      '/api/guides/mine',
+      '/api/guides/pending',
+      '/api/me',
+      '/api/me/notifications',
+      '/api/logs/abc',
+      '/api/session',
+    ]) {
+      expect(isCdnCacheablePath(p), p).toBe(false);
+    }
+  });
+
+  it('answers preflights with a max-age so browsers stop repeating them', async () => {
+    const res = await app.request('/api/mods', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:3000',
+        'access-control-request-method': 'GET',
+      },
+    });
+    expect(res.headers.get('access-control-max-age')).toBe('86400');
   });
 });

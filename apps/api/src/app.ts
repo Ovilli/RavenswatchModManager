@@ -33,6 +33,10 @@ app.use(
     origin: env.trustedOrigins,
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // The web app calls cross-origin with credentials, so every GET is preceded
+    // by a preflight. Without a max-age the browser re-asks each time and the
+    // preflight is its own function invocation.
+    maxAge: 86_400,
   }),
 );
 
@@ -137,6 +141,55 @@ app.use('*', async (c, next) => {
   c.set('authMethod', accepted ? (tokenId ? 'token' : 'session') : null);
   c.set('apiTokenId', accepted ? tokenId : null);
   await next();
+});
+
+/**
+ * CDN cache for anonymous public reads.
+ *
+ * Browsing the registry signed-out is most of the traffic, and every one of
+ * those reads ran the function (session lookup, rate limiter, aggregate
+ * queries) for an answer identical across visitors. Only the allowlisted
+ * routes below qualify, and only when the request carries no cookie and no
+ * Authorization header: signed-in reads differ per viewer (owners see their
+ * in-review versions, canManage, isFollowing) and must always reach the
+ * function. `Vary: Cookie, Authorization` keeps the CDN from handing a cached
+ * anonymous body to a credentialed request. Deliberately NOT listed: the
+ * download route (short-lived presigned URL + download counter), log views
+ * (view counter), and every /mine, /pending, /me route.
+ *
+ * Vercel-CDN-Cache-Control is consumed by Vercel's CDN and not forwarded, so
+ * browsers keep revalidating and a signed-in tab never reuses an anon body.
+ */
+const CDN_CACHEABLE = [
+  /^\/api\/mods$/,
+  /^\/api\/mods\/[^/]+$/,
+  /^\/api\/mods\/[^/]+\/reviews$/,
+  /^\/api\/users\/[^/]+$/,
+  /^\/api\/collections$/,
+  /^\/api\/collections\/[^/]+$/,
+  /^\/api\/collections\/[^/]+\/reviews$/,
+  /^\/api\/guides$/,
+  /^\/api\/guides\/[^/]+$/,
+  /^\/api\/guides\/[^/]+\/reviews$/,
+  /^\/api\/legal\/impressum$/,
+  /^\/api\/auth-config$/,
+];
+const CDN_UNCACHEABLE_SEGMENTS = new Set(['mine', 'pending', 'upload']);
+
+export function isCdnCacheablePath(path: string): boolean {
+  const last = path.split('/').pop() ?? '';
+  if (CDN_UNCACHEABLE_SEGMENTS.has(last)) return false;
+  return CDN_CACHEABLE.some((re) => re.test(path));
+}
+
+app.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' || c.res.status !== 200) return;
+  if (!isCdnCacheablePath(c.req.path)) return;
+  c.header('Vary', 'Cookie, Authorization', { append: true });
+  if (c.req.header('cookie') || c.req.header('authorization') || c.get('user')) return;
+  if (c.res.headers.has('Cache-Control')) return;
+  c.header('Vercel-CDN-Cache-Control', 'max-age=60, stale-while-revalidate=300');
 });
 
 // OAuth callback diagnostics. Records only whether the browser presented a
