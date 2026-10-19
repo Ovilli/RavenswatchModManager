@@ -96,7 +96,7 @@ describe('CDN cache for anonymous reads', () => {
   const CDN = 'vercel-cdn-cache-control';
 
   it('caches an anonymous public read and varies on credentials', async () => {
-    const res = await app.request('/api/legal/impressum');
+    const res = await app.request('/api/auth-config');
     expect(res.status).toBe(200);
     expect(res.headers.get(CDN)).toContain('max-age=60');
     expect(res.headers.get('vary')).toContain('Cookie');
@@ -104,7 +104,7 @@ describe('CDN cache for anonymous reads', () => {
   });
 
   it('never caches a request that carries a cookie', async () => {
-    const res = await app.request('/api/legal/impressum', {
+    const res = await app.request('/api/auth-config', {
       headers: { cookie: 'better-auth.session_token=x' },
     });
     expect(res.headers.get(CDN)).toBeNull();
@@ -112,7 +112,7 @@ describe('CDN cache for anonymous reads', () => {
   });
 
   it('never caches a request that carries an Authorization header', async () => {
-    const res = await app.request('/api/legal/impressum', {
+    const res = await app.request('/api/auth-config', {
       headers: { authorization: 'Bearer abc' },
     });
     expect(res.headers.get(CDN)).toBeNull();
