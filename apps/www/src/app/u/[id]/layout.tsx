@@ -4,6 +4,17 @@ import { type Entity, fetchEntity } from '../../../lib/entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 
+// ISR, not per-request SSR. Everything rendered here comes from an anonymous
+// server-side fetch (viewer-specific UI is client-side), so one cached render
+// serves every visitor and crawler. The empty list prerenders nothing at build
+// time; each path renders on first request and is cached, regenerated at most
+// once per `revalidate` window. Without generateStaticParams the route was
+// dynamic (ƒ) and re-rendered on every hit — the main Fluid CPU cost.
+export const revalidate = 60;
+export function generateStaticParams(): { id: string }[] {
+  return [];
+}
+
 interface Profile {
   user?: { name?: string; handle?: string | null; image?: string };
   mods?: unknown[];
