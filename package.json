@@ -5,7 +5,7 @@
   "description": "Ravenswatch Mod Manager — cross-platform GUI (browser + Tauri desktop) + Neon-backed registry.",
   "packageManager": "pnpm@9.12.0",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=20.11 <25"
   },
   "scripts": {
     "dev": "turbo run dev --filter=desktop",

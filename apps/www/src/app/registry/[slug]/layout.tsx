@@ -13,8 +13,11 @@ const SITE = 'Ravenswatch Mod Manager';
 // serves every visitor and crawler. The empty list prerenders nothing at build
 // time; each path renders on first request and is cached, regenerated at most
 // once per `revalidate` window. Without generateStaticParams the route was
-// dynamic (ƒ) and re-rendered on every hit — the main Fluid CPU cost.
-export const revalidate = 60;
+// dynamic (ƒ) and re-rendered on every hit — the main Fluid CPU cost. Five
+// minutes: the live parts (versions, reviews, counts) load client-side, so
+// only the title/description/SEO block can lag an edit by that much.
+// Keep in step with fetchEntity's revalidate (the shortest one wins).
+export const revalidate = 300;
 export function generateStaticParams(): { slug: string }[] {
   return [];
 }

@@ -299,10 +299,10 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       })()
     : null;
 
-  // Opportunistic queue drain: piggyback on organic browse traffic so the scan
-  // queue advances even between the (plan-limited) cron ticks. Single-flight +
-  // fire-and-forget (waitUntil), so it never adds latency to this response.
-  kickScanWorker();
+  // No scan-queue kick here any more: it ran DB queries on every uncached
+  // browse and kept the instance busy (Fluid Active CPU). The queue advances
+  // from the publish + scan-status kicks below and the 10-minute GitHub
+  // Actions drain (.github/workflows, POST /api/cron/scan-drain).
 
   return c.json({
     facets: facetData,

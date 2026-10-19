@@ -19,7 +19,10 @@ export function BanGate() {
     queryKey: ['session', 'ban'],
     queryFn: () => api.session(),
     enabled: !!session,
-    refetchInterval: 60_000,
+    // Every poll is a function invocation with a session lookup + DB query,
+    // per open signed-in tab. Five minutes plus React Query's refetch on
+    // window focus still surfaces a ban promptly when the user comes back.
+    refetchInterval: 5 * 60_000,
     retry: false,
   });
 

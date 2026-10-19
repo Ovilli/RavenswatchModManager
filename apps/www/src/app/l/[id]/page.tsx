@@ -43,7 +43,9 @@ function formatBytes(n: number): string {
 
 export default async function SharedLogPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const res = await fetchEntity<SharedLog>(`/api/logs/${encodeURIComponent(id)}`);
+  // 60 s, not the 5-minute detail-page default: a log its owner deletes should
+  // stop being served quickly.
+  const res = await fetchEntity<SharedLog>(`/api/logs/${encodeURIComponent(id)}`, 60);
 
   // An expired share answers 410, which `fetchEntity` folds into `missing` —
   // both are a 404 for the reader, and both must stay a real 404 for crawlers

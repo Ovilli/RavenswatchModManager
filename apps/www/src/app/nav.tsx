@@ -22,14 +22,15 @@ import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth-client';
 
 /** Bell in the header linking to /notifications, with an unread-count badge.
- *  Polls once a minute so a new notification surfaces without a reload. */
+ *  Polls every five minutes (and on window focus) so a new notification
+ *  surfaces without a reload; each poll is a paid function invocation. */
 function NotificationBell() {
   const { data: session } = useSession();
   const q = useQuery({
     queryKey: ['me', 'notifications'],
     queryFn: () => api.me.notifications(),
     enabled: !!session,
-    refetchInterval: 60_000,
+    refetchInterval: 5 * 60_000,
   });
   if (!session) return null;
   const unread = q.data?.unread ?? 0;
