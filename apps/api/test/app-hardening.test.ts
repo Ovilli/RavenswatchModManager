@@ -92,30 +92,23 @@ describe('cron secret check', () => {
   });
 });
 
-describe('CDN cache for anonymous reads', () => {
+describe('CDN cache for viewer-independent reads', () => {
   const CDN = 'vercel-cdn-cache-control';
 
-  it('caches an anonymous public read and varies on credentials', async () => {
+  it('marks a public read cacheable without varying on Cookie', async () => {
+    // Vercel's CDN will not cache a response that varies on Cookie, so the
+    // header must never reappear on a cacheable route.
     const res = await app.request('/api/auth-config');
     expect(res.status).toBe(200);
     expect(res.headers.get(CDN)).toContain('max-age=60');
-    expect(res.headers.get('vary')).toContain('Cookie');
-    expect(res.headers.get('vary')).toContain('Authorization');
+    expect(res.headers.get('vary') ?? '').not.toMatch(/cookie/i);
   });
 
-  it('never caches a request that carries a cookie', async () => {
+  it('caches the same body for a signed-in request (route is viewer-independent)', async () => {
     const res = await app.request('/api/auth-config', {
       headers: { cookie: 'better-auth.session_token=x' },
     });
-    expect(res.headers.get(CDN)).toBeNull();
-    expect(res.headers.get('vary')).toContain('Cookie');
-  });
-
-  it('never caches a request that carries an Authorization header', async () => {
-    const res = await app.request('/api/auth-config', {
-      headers: { authorization: 'Bearer abc' },
-    });
-    expect(res.headers.get(CDN)).toBeNull();
+    expect(res.headers.get(CDN)).toContain('max-age=60');
   });
 
   it('leaves routes off the allowlist uncached', async () => {
@@ -123,25 +116,30 @@ describe('CDN cache for anonymous reads', () => {
     expect((await app.request('/api/session')).headers.get(CDN)).toBeNull();
   });
 
-  it('allowlists public reads but not per-viewer or side-effecting ones', () => {
+  it('allowlists only viewer-independent reads', () => {
     for (const p of [
       '/api/mods',
-      '/api/mods/camera-control',
       '/api/mods/camera-control/reviews',
-      '/api/users/abc',
-      '/api/collections/x',
+      '/api/collections',
       '/api/guides',
+      '/api/legal/impressum',
+      '/api/auth-config',
     ]) {
       expect(isCdnCacheablePath(p), p).toBe(true);
     }
+    // Detail pages read the viewer (owner/admin view, canManage, isFollowing).
     for (const p of [
+      '/api/mods/camera-control',
+      '/api/users/abc',
+      '/api/collections/x',
+      '/api/collections/x/reviews',
+      '/api/guides/x',
+      '/api/guides/x/reviews',
       '/api/mods/x/1.0.0/download',
       '/api/mods/x/authors',
       '/api/collections/mine',
       '/api/guides/mine',
-      '/api/guides/pending',
       '/api/me',
-      '/api/me/notifications',
       '/api/logs/abc',
       '/api/session',
     ]) {
