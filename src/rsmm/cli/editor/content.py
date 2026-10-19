@@ -1363,6 +1363,9 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
         modio.write_script(target, script)
     if program is not None:
         modio.write_blocks(target, program)
+    if script is not None or program is not None:
+        # The scripts find the hero through hero capture, off unless the mod asks.
+        modio.require_flags(target)
     return manifest
 
 
@@ -1617,6 +1620,8 @@ def _toml_with_script(req: Request) -> dict:
         section, warnings = blocks.compile_blocks(program)
         out["lua"] = (out["lua"] + "\n" if out["lua"] and section else out["lua"]) + section
         out["warnings"] = warnings
+    from rsmm.engine.loader_flags import HERO_CAPTURE, needs_hero_capture
+    out["loaderFlags"] = [HERO_CAPTURE] if needs_hero_capture(out["lua"]) else []
     return out
 
 

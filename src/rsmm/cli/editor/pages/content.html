@@ -2934,7 +2934,9 @@ async function refresh() {
       pre.append(el("div", { class: "errs" }, ...j.errors.map(e => el("div", { text: "✗ " + (e.name ? e.name + ": " : "") + e.error }))));
     }
     pre.append(j.toml || (j.errors.length || j.lua ? "" : "Nothing changed yet."));
-    if (j.lua) pre.append((j.toml ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
+    // Saving adds this to the mod's [mod] table; shown for anyone copying by hand.
+    if (j.loaderFlags && j.loaderFlags.length) pre.append((j.toml ? "\n" : "") + "# manifest.toml, under [mod] (the script needs it to find your hero):\nloader_flags = " + JSON.stringify(j.loaderFlags) + "\n");
+    if (j.lua) pre.append((j.toml || (j.loaderFlags && j.loaderFlags.length) ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
     else if (scriptChanged() || programChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the editor's section is taken out\n");
     $("#copy").disabled = !j.toml;
     $("#check").disabled = !j.blocks || j.errors.length > 0;

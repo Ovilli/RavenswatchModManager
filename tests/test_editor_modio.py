@@ -305,3 +305,46 @@ def test_a_builder_block_opens_with_every_part_and_saves_back_the_same(tmp_path)
     assert blocks["mt_builder"]["add_stats"][0]["after"] == "DEFENSE"
     assert blocks["mt_builder"]["on_hit"] == want["on_hit"]
     assert E["onHit"]["Trait Armor"][0]["line"] == M._LOADED_LINE
+
+
+# --- hero capture: the scripts' loader flag ---------------------------------------
+# 2026-10-19: a user's test grants never ran — hero capture was off, so
+# R.entity.ready() stayed false and the script waited forever without a word.
+
+def _flags(text: str) -> list:
+    return tomllib.loads(text)["mod"].get("loader_flags", [])
+
+
+def test_saving_test_grants_asks_the_manifest_for_hero_capture(tmp_path):
+    C.save([], "m1", tmp_path, create=True, name="M1", script=M.script_config(CFG))
+    text = (tmp_path / "m1" / "manifest.toml").read_text()
+    assert _flags(text) == ["RSMM_ENABLE_HERO_CAPTURE"]
+    C.save([], "m1", tmp_path, script=M.script_config(CFG))     # added once, not twice
+    assert (tmp_path / "m1" / "manifest.toml").read_text() == text
+
+
+@pytest.mark.parametrize("manifest, want", [
+    ('[mod]\nid = "a"\n', ["RSMM_ENABLE_HERO_CAPTURE"]),
+    ('[mod]\nid = "a"\n\n[[content]]\nkind = "item"\nid = "x"\n', ["RSMM_ENABLE_HERO_CAPTURE"]),
+    ('[mod]\nid = "a"\nloader_flags = ["RSMM_ENABLE_UI_HOOK"]  # mine\n'
+     '\n[[content]]\nkind = "item"\n',
+     ["RSMM_ENABLE_UI_HOOK", "RSMM_ENABLE_HERO_CAPTURE"]),
+])
+def test_ensure_loader_flag_adds_to_mod_and_keeps_the_rest(manifest, want):
+    new = M.ensure_loader_flag(manifest, "RSMM_ENABLE_HERO_CAPTURE")
+    assert _flags(new) == want
+    assert tomllib.loads(new).get("content") == tomllib.loads(manifest).get("content")
+    assert M.ensure_loader_flag(new, "RSMM_ENABLE_HERO_CAPTURE") == new
+
+
+def test_ensure_loader_flag_rewrites_a_multi_line_list():
+    new = M.ensure_loader_flag('[mod]\nloader_flags = [\n  "RSMM_ENABLE_UI_HOOK",\n]\nid = "a"\n',
+                               "RSMM_ENABLE_HERO_CAPTURE")
+    assert _flags(new) == ["RSMM_ENABLE_UI_HOOK", "RSMM_ENABLE_HERO_CAPTURE"]
+    assert tomllib.loads(new)["mod"]["id"] == "a"
+
+
+def test_the_generated_script_says_when_hero_capture_is_off():
+    lua = M.script_lua(M.script_config(CFG))
+    assert "R.entity.capture_enabled()" in lua
+    assert 'loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]' in lua

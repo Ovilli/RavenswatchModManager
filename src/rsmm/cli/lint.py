@@ -142,6 +142,7 @@ def lint_one(entry: Path) -> tuple[int, int]:
                           "or locked; a mod may ask for: "
                           + ", ".join(sorted(SAFE_FLAG_NAMES)))
                     errs += 1
+    warns += _lint_hero_capture(mod_s, entry, flags if isinstance(flags, list) else [])
     # The declared scope is the author's claim; what decides online matching is
     # the verdict DERIVED from the mod's contents (rsmm.engine.mod_scope). Say
     # so when the claim promises more than the mod delivers. A warning, not an
@@ -937,6 +938,29 @@ def _engine_vocab() -> tuple[set[str], set[str]]:
         print(f"note: symbol map unreadable ({type(e).__name__}: {e}); event and "
               f"R.engine names are checked against built-ins only", file=sys.stderr)
     return events, callables
+
+
+def _lint_hero_capture(mod_s: str, entry: Path, flags: list) -> int:
+    """Warn when the mod's Lua needs hero capture and the manifest does not ask
+    for it. Nothing fails at run time: R.entity.ready() just stays false, so a
+    script waiting on it never runs (2026-10-19, the editor's test grants)."""
+    from rsmm.engine.loader_flags import HERO_CAPTURE, needs_hero_capture
+    if HERO_CAPTURE in flags:
+        return 0
+    for f in sorted(entry.rglob("*.lua")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if needs_hero_capture(text):
+            rel = f.relative_to(entry).as_posix()
+            want = 'loader_flags = ["' + HERO_CAPTURE + '"]'
+            print(f"  {_T_WARN} {mod_s}: {_ST.accent(rel)} uses R.entity/R.stat/R.xp/"
+                  f"R.combat/R.camera/R.talent, which need hero capture; add "
+                  f"{_ST.accent(want)} under [mod] "
+                  f"{_ST.dim('— without it they never find the hero and do nothing')}")
+            return 1
+    return 0
 
 
 def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
