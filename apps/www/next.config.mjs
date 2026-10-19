@@ -2,8 +2,14 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@rsmm/ui', '@rsmm/api-client', '@rsmm/schemas'],
+  typedRoutes: true,
   experimental: {
-    typedRoutes: true,
+    // Next preloads every route's server bundle when a server starts. On
+    // Vercel a function instance often serves one or two routes before it is
+    // reclaimed, so that preload was mostly wasted cold-start CPU (Fluid
+    // Active CPU is dominated by cold starts here). Routes now load on first
+    // use instead.
+    preloadEntriesOnStart: false,
   },
   async headers() {
     // AdSense needs broad allowances: its loader + ad scripts come from
