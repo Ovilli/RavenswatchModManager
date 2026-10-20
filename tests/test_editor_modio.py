@@ -143,6 +143,22 @@ def test_an_opened_mod_rebuilds_its_own_blocks_and_saves_over_them(tmp_path):
     assert sum(c["kind"] == "talent" for c in doc["content"]) == 1, "an untouched block moved"
 
 
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_an_items_graph_steps_survive_open_and_save(tmp_path):
+    """The page has no controls for an item's [[content.steps]]; opening the mod
+    used to refuse the block, and a save must not drop them."""
+    steps = [{"remove_link": "On Damage Received.activates[1]"},
+             {"link": "Shield Reload Timer.state", "to": "On Damage Received"}]
+    item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps}
+    defs = C.defs_for("items", item)
+    C.save(defs, "m1", tmp_path, create=True, name="M1")
+
+    got = M.load_mod(tmp_path, "m1")
+    pay = got["items"]["Increase_Shield"]["payload"]
+    assert pay["steps"] == steps
+    assert C.defs_for("items", pay) == defs
+
+
 HERO_MANIFEST = """[mod]
 id = "m"
 

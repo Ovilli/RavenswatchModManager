@@ -981,6 +981,12 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
     sup = req.get("superDescription")
     if isinstance(sup, str) and sup.strip():
         fields["super_description"] = sup
+    steps = req.get("steps")
+    if steps:
+        # Graph steps have no controls on the page; they come back as loaded.
+        if not isinstance(steps, list) or not all(isinstance(x, dict) for x in steps):
+            raise EditorError("steps must be a list of tables")
+        fields["steps"] = steps
 
 
 def talent_defs(req: dict) -> list[tuple[str, str, dict]]:

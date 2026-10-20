@@ -536,11 +536,11 @@ async function pickItem(id) {
 function freshItemEdit() {
   // "replace" changes the shipped item itself; "clone" makes a new one beside it.
   return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    autoDesc: false, autoSuper: false, textMiss: [] };
+    steps: [], autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -811,6 +811,14 @@ function itemView() {
   const rows = el("div");
   for (const r of rest) rows.append(numRow(r));
   v.append(rows);
+  if ((E.steps || []).length) {
+    // Graph steps have no controls here: they ride along as the manifest has them.
+    v.append(el("div", { class: "sect", text: `Graph steps (${E.steps.length})` }));
+    v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+      text: "Kept exactly as the manifest writes them; edit them in manifest.toml." }));
+    const op = s => ["set", "link", "add_link", "remove_link"].find(k => k in s) || "?";
+    for (const s of E.steps) v.append(el("div", { class: "muted", text: `${op(s)} ${s[op(s)] ?? ""}${"to" in s ? " \u2192 " + s.to : ""}${"value" in s ? " = " + JSON.stringify(s.value) : ""}` }));
+  }
   if (it.superKey) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
     if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
@@ -2875,7 +2883,8 @@ function editPayload() {
     return { mode: E.mode === "clone" ? "clone" : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
-        shadowed: S.item.values.find(r => r.label === label).shadowed })) };
+        shadowed: S.item.values.find(r => r.label === label).shadowed })),
+      ...((E.steps || []).length ? { steps: E.steps } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;
