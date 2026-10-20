@@ -685,6 +685,7 @@ def build_magic_item(
     modifier_stats: dict[str, str | int] | None = None,
     super_description: str | None = None,
     steps: list[dict] | None = None,
+    super_effect: bool = True,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -704,6 +705,9 @@ def build_magic_item(
     * ``modifier_stats`` maps a modifier's name to the stat it should change
       instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
       :mod:`rsmm.engine.item_modifier`;
+    * ``super_effect=False`` removes the super effect: the state that runs it
+      is emptied (no bonus ever applies) and its card text is blank, as on the
+      items that ship without one (whose format is the model's empty text);
     * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
       ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
       after the value patches, by the part names ``rsmm entity-graph`` shows;
@@ -751,7 +755,21 @@ def build_magic_item(
         if own is None and renamed != base_key and struct.pack("<I", len(renamed)) \
                 + renamed.encode() in ent:
             ent = replace_lstr_any(ent, renamed, base_key)
+        # A key that does not embed the base id (Increase_Shield reads
+        # `Shield_Gain_When_Hit_Description`) was not renamed, so the copy kept
+        # showing the base's text over the `<id>_<suffix>` row written for it.
+        if own is not None and not replace:
+            cur = _own_text_key(ent, new_id, suffix)
+            if cur != renamed:
+                ent = replace_lstr_any(ent, cur, renamed)
     super_key = f"{new_id}_SuperEffect"
+    if not super_effect:
+        if super_description:
+            raise ValueError("super_effect = false leaves no super effect to describe; "
+                             "drop super_description")
+        if base_super is None:
+            raise ValueError(f"{base_id} has no super effect to remove")
+        super_description = ""
     if super_description is not None:
         if base_super is None:
             raise ValueError(
@@ -770,6 +788,8 @@ def build_magic_item(
         if new_id != base_id and part_literal(ent, label) is None and base_id in label:
             label = label.replace(base_id, new_id)
         ent = apply_value_patch(ent, label, old, new, clear)
+    if not super_effect:
+        ent = _clear_super_effect(ent, base_id)
     if steps:
         from . import ability_edit as AE
         ent = AE.apply({new_id: ent}, steps, main=new_id, seed=f"item:{new_id}").files[new_id]
@@ -811,6 +831,24 @@ def build_magic_item(
 
 
 _TEXT_BANK_NAME = "Magical_Objects~GAM.xls"
+
+#: The model state a collection-complete item switches on; whatever it runs
+#: while active IS the super effect (Increase_Shield: its healing modifier).
+_SUPER_STATE = "Child State Super Effect"
+
+
+def _clear_super_effect(ent: bytes, base_id: str) -> bytes:
+    """``ent`` with nothing left for its super-effect state to run."""
+    from . import entity_fields as EF
+    from .entity_graph_edit import EntityEditError, EntityFile
+    ef = EntityFile(ent, base_id)
+    try:
+        f = next(x for x in EF.fields(ef.component(_SUPER_STATE)) if x.name == "while_active")
+    except EntityEditError:
+        raise ValueError(f"{base_id} has no {_SUPER_STATE!r} to empty") from None
+    for i in reversed(range(len(f.items))):
+        ef.remove_ref(_SUPER_STATE, "while_active", i)
+    return ef.to_bytes()
 
 
 def text_keys(cooked_bytes: bytes) -> list[str]:

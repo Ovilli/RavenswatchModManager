@@ -979,7 +979,9 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
     if swaps:
         fields["stats"] = swaps
     sup = req.get("superDescription")
-    if isinstance(sup, str) and sup.strip():
+    if req.get("noSuper"):
+        fields["super_effect"] = False
+    elif isinstance(sup, str) and sup.strip():
         fields["super_description"] = sup
     steps = req.get("steps")
     if steps:

@@ -156,6 +156,36 @@ def test_steps_scope_an_on_hit_modifier_to_a_timer():
     assert mod["amount"].endswith("\\Shield Value")
 
 
+def test_a_copy_with_its_own_text_reads_its_own_keys():
+    """Increase_Shield's description key does not embed its id, so the rename
+    left the copy reading the shield's text ("gain 0 shield", 2026-10-20)."""
+    ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", name="P", description="D")
+    keys = C.text_keys(ent)
+    assert "Increase_Crit_M_Description" in keys and "Increase_Crit_M_Name" in keys
+    assert "Shield_Gain_When_Hit_Description" not in keys
+
+
+def test_a_copy_without_its_own_text_keeps_the_bases_keys():
+    keys = C.text_keys(_copy("Rare", "Increase_Shield", "Increase_Crit_M"))
+    assert "Shield_Gain_When_Hit_Description" in keys
+
+
+def test_a_copy_can_drop_its_super_effect():
+    """Little Thumb Pebbles never had a super effect; its Increase_Shield base
+    does (a healing bonus)."""
+    ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", super_effect=False)
+    assert "Super Effect Modifier" not in _refs(ent, "Child State Super Effect")["while_active"]
+    assert IM.super_text_key(ent) == "Increase_Crit_M_SuperEffect"
+
+
+def test_dropping_a_super_effect_refuses_super_text_and_bases_without_one():
+    with pytest.raises(ValueError, match="drop super_description"):
+        _copy("Rare", "Increase_Shield", "Increase_Shiel2", super_effect=False,
+              super_description="x")
+    with pytest.raises(ValueError, match="no super effect"):
+        _copy("Powerups", "Power_Up_Damage", "Power_Up_Damag2", super_effect=False)
+
+
 def test_a_bad_step_names_the_step():
     with pytest.raises(ValueError, match="step 1"):
         _copy("Rare", "Increase_Shield", "Increase_Shiel2",

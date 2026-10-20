@@ -536,11 +536,11 @@ async function pickItem(id) {
 function freshItemEdit() {
   // "replace" changes the shipped item itself; "clone" makes a new one beside it.
   return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    steps: [], autoDesc: false, autoSuper: false, textMiss: [] };
+    steps: [], noSuper: false, autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -823,7 +823,11 @@ function itemView() {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
     if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
       text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
-    const sup = el("textarea", { placeholder: it.superText || it.superKey });
+    const none = el("input", { type: "checkbox", ...(E.noSuper ? { checked: "" } : {}) });
+    none.addEventListener("change", () => { E.noSuper = none.checked; if (E.noSuper) E.superDescription = ""; renderView(); refresh(); });
+    v.append(el("label", { class: "hint", style: "display:block;margin-bottom:6px" }, none,
+      " No super effect: the copy never gets the base's super bonus, and its card shows no super text."));
+    const sup = el("textarea", { placeholder: it.superText || it.superKey, ...(E.noSuper ? { disabled: "" } : {}) });
     sup.value = E.superDescription;
     const f2 = el("div", { class: "form" });
     f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
@@ -1101,7 +1105,7 @@ function gameCard(it, E, card) {
   const d = card.description, sp = card.super;
   const descText = E.description || (d && d.text) || it.description || "";
   if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(d && d.entries))), F.body, 19));
-  const supText = E.superDescription || (sp && sp.text) || "";
+  const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
   if (supText) {
     box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
       markup(supText, entryFill(sp && sp.entries))), F.body, 18));
@@ -1135,7 +1139,7 @@ function cssCard(it, E, card) {
     el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
   const descText = E.description || (d && d.text) || it.description || "";
   if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
-  const supText = E.superDescription || (sp && sp.text) || "";
+  const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
   if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
   return box;
 }
@@ -2884,7 +2888,7 @@ function editPayload() {
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })),
-      ...((E.steps || []).length ? { steps: E.steps } : {}) };
+      ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;

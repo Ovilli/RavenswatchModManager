@@ -149,13 +149,15 @@ def test_an_items_graph_steps_survive_open_and_save(tmp_path):
     used to refuse the block, and a save must not drop them."""
     steps = [{"remove_link": "On Damage Received.activates[1]"},
              {"link": "Shield Reload Timer.state", "to": "On Damage Received"}]
-    item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps}
+    item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps,
+            "noSuper": True}
     defs = C.defs_for("items", item)
     C.save(defs, "m1", tmp_path, create=True, name="M1")
 
     got = M.load_mod(tmp_path, "m1")
     pay = got["items"]["Increase_Shield"]["payload"]
     assert pay["steps"] == steps
+    assert pay["noSuper"] is True and defs[0][2]["super_effect"] is False
     assert C.defs_for("items", pay) == defs
 
 

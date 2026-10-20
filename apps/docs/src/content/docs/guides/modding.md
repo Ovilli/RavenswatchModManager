@@ -1021,6 +1021,12 @@ super_description = "#Crit Damage@ &+{0}%~"
 - **`super_description`** gives the copy super-effect text of its own (the base's
   text still names the old stat). Items without a super effect (cursed,
   legendary, power-ups) refuse it.
+- **`super_effect = false`** removes the base's super effect: the bonus never
+  applies and the card shows no super text. Use it when the item you are
+  making has none of its own.
+- **Copies share their base's identity unless you set `unique_identity = true`.**
+  A copy with the base's identity is granted as the base (`R.give` hands out
+  the vanilla item), so set it on any copy you grant or test.
 - **Some stats need more than the stat.** Plain numbers (attack power, armour,
   crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
   the instant-kill thresholds only do something with the components the item

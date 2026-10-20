@@ -390,6 +390,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     pair it with a ``value_patches`` entry.
         ``super_description`` (str) super effect card text
                                     (-> ``<id>_SuperEffect``).
+        ``super_effect`` (bool)     ``false`` removes the base's super effect:
+                                    no bonus, blank super text (default true).
         ``steps`` (list)            ``[[content.steps]]`` graph edits run on
                                     the copy after the fields above: ``set``,
                                     ``link``, ``add_link``, ``remove_link``,
@@ -439,6 +441,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     super_description = defn.fields.get("super_description")
     super_description = str(super_description) if super_description is not None else None
+    super_effect = defn.fields.get("super_effect", True)
+    if not isinstance(super_effect, bool):
+        raise ContentError(f"item {defn.id}: super_effect must be true or false")
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")
@@ -456,7 +461,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     else:
         icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
-    wants_text = name is not None or description is not None or super_description is not None
+    wants_text = (name is not None or description is not None
+                  or super_description is not None or not super_effect)
     bank_gen = _install_bank_gen() if wants_text else None
     if wants_text and bank_gen is None:
         _log.warning(
@@ -494,6 +500,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             modifier_stats=stats,
             super_description=super_description,
             steps=steps,
+            super_effect=super_effect,
             icon=icon,
             bank_base_gen=bank_gen,
             replace=replace,
