@@ -32,6 +32,9 @@ One step per table::
 
     remove_link = "State Secondary Ability.activates[0]"
 
+    remove_link = "On Damage Received.activates"    the same, by what it points at:
+    to = "Modifier"                       steady when other steps change the order
+
     percent = "Descripton Format.obj_4"   a card slot shown x100 as a percentage
     value = true                          (false: the plain number)
 
@@ -123,9 +126,13 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                     ef.set_format_mode(part, fld, step.get("value", True))
                 else:
                     base, _, idx = fld.partition("[")
-                    if not idx:
-                        raise AbilityEditError("remove_link names an element: 'Part.list[i]'")
-                    ef.remove_ref(part, base, int(idx.rstrip("]")))
+                    if idx:
+                        ef.remove_ref(part, base, int(idx.rstrip("]")))
+                    elif step.get("to"):
+                        ef.remove_ref(part, base, _link_index(ef, part, base, str(step["to"])))
+                    else:
+                        raise AbilityEditError("remove_link names an element: 'Part.list[i]', "
+                                               "or 'Part.list' with to = the part it points at")
         except (EntityEditError, KeyError, ValueError) as e:
             raise AbilityEditError(f"ability step {n} ({op}): {e}") from e
 
@@ -143,6 +150,21 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
         out.resources |= CK.resource_paths(edited) - CK.resource_paths(files[stem])
         out.files[stem] = edited
     return out
+
+
+def _link_index(ef: EntityFile, part: str, field: str, to: str) -> int:
+    """The position in ``part``'s reference list ``field`` of the link to ``to``."""
+    from . import entity_fields as EF
+    f = next((x for x in EF.fields(ef.component(part)) if x.name == field), None)
+    if f is None or f.kind != "ref[]":
+        raise AbilityEditError(f"{part!r} has no reference list {field!r}")
+    hits = [i for i, x in enumerate(f.items)
+            if x.text.rstrip().rsplit("\\", 1)[-1].removesuffix('""') == to]
+    if len(hits) != 1:
+        have = ", ".join(x.text.rstrip().rsplit("\\", 1)[-1] for x in f.items) or "nothing"
+        raise AbilityEditError(f"{part}.{field} links to {to!r} {len(hits)} times "
+                               f"(it links to: {have})")
+    return hits[0]
 
 
 def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:

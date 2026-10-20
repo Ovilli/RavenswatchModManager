@@ -174,6 +174,82 @@ def _card(data: bytes) -> dict:
     return out
 
 
+def item_preview(req: dict) -> dict:
+    """What the card of the item being edited really shows: the item is built
+    from the page's edits exactly as apply builds it, and each ``{N}`` of its
+    description and super text is read back with its number and display mode
+    (1 = x100 as a percentage; 0 and 2 print the number as it is, which is how
+    a shield's slot showed 0.3 as "0"). Plus the build checks' warnings.
+
+    A request the build refuses answers ``{"error": ...}`` rather than failing:
+    the page asks on every edit, half-typed ones included."""
+    from rsmm.cli.cmd_items import _find_item
+    from rsmm.engine.item_checks import item_warnings
+    from rsmm.sdk.kinds.items import build_entity
+    try:
+        defs = item_defs(req)
+    except EditorError as e:
+        return {"error": str(e)}
+    fields = defs[0][2]
+    found = _find_item(str(fields.get("base") or ""))
+    if found is None:
+        return {"error": "no such base item"}
+    base = found[2].read_bytes()
+    try:
+        ent = build_entity(fields, base)
+    except (ValueError, TypeError, KeyError) as e:
+        return {"error": str(e)}
+    out: dict = {"warnings": item_warnings(ent, base, set(fields.get("stats") or {}))}
+    for part, fmt in _CARD_FORMATS.items():
+        out[part] = _built_slots(ent, fmt)
+    return out
+
+
+def _built_slots(ent: bytes, fmt: str) -> list[dict]:
+    """``[{node, value, mode}]`` for each value slot of String Format ``fmt``."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityEditError, EntityFile
+    from rsmm.engine.item_checks import _target
+    ef = EntityFile(ent, "x")
+    try:
+        c = ef.component(fmt)
+    except EntityEditError:
+        return []
+    comps = {x.name: x for x in ef.graph().components}
+    slots = []
+    for f in ef._format_slots(c)[0]:
+        body = c.body[f.offset:f.offset + f.size]
+        node = _target(f.text or "")
+        slots.append({"node": node, "value": _number(comps.get(node or ""), comps),
+                      "mode": body[-8] if len(body) >= 8 else 0})
+    return slots
+
+
+def _number(c, comps: dict, depth: int = 0) -> float | None:
+    """A part's number: a Value's literal, or for a math part the first number
+    it reads (what a single copy shows, as the page's estimate does)."""
+    from rsmm.engine import entity_fields as EF
+    if c is None or depth > 3:
+        return None
+    for f in EF.fields(c):
+        if f.name == "value" and f.text:
+            m = re.match(r"(?:f32|int) (-?[\d.e+-]+)", f.text)
+            if m and "<-" not in f.text:
+                return float(m[1])
+    if c.cls == "oCEntityCpntValueOperationsSettings":
+        for r in c.refs:
+            n = _number(comps.get(r.path.rsplit("\\", 1)[-1]), comps, depth + 1)
+            if n is not None:
+                return n
+    return None
+
+
+def _triggers() -> dict[str, str]:
+    """The ``effect`` triggers, ``{on: card wording}``, for the Timed effect picker."""
+    from rsmm.engine.item_effect import trigger_texts
+    return trigger_texts()
+
+
 def _hex(key: int) -> str:
     return f"0x{key:08x}"
 
@@ -978,8 +1054,16 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         swaps[modifier] = stat
     if swaps:
         fields["stats"] = swaps
-    if req.get("uniqueIdentity") and req.get("mode") == "clone":
-        fields["unique_identity"] = True
+    effect = req.get("effect")
+    if effect:
+        from rsmm.engine.item_effect import Effect, ItemEffectError
+        try:
+            Effect.parse(effect)
+        except ItemEffectError as e:
+            raise EditorError(str(e)) from None
+        fields["effect"] = effect
+    if req.get("sharedIdentity") and req.get("mode") == "clone":
+        fields["unique_identity"] = False         # a copy has its own by default
     sup = req.get("superDescription")
     if req.get("noSuper"):
         fields["super_effect"] = False
@@ -1682,8 +1766,9 @@ ROUTES = {
     ("GET", "/api/blocks/meta"): lambda req: {"events": _block_events()},
     ("GET", "/api/items"): lambda req: {"items": items()},
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
+    ("POST", "/api/item/preview"): lambda req: item_preview(req.body),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},
-    ("GET", "/api/stats"): lambda req: {"stats": stats()},
+    ("GET", "/api/stats"): lambda req: {"stats": stats(), "triggers": _triggers()},
     ("GET", "/api/cardtex"): _card_texture,
     ("GET", "/api/cardfont"): _card_font,
     ("GET", "/api/icon"): _icon,

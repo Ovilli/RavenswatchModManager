@@ -152,7 +152,8 @@ def test_an_items_graph_steps_survive_open_and_save(tmp_path):
              {"remove_link": "On Damage Received.activates[1]"},
              {"percent": "Descripton Format.obj_4", "value": True}]
     item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps,
-            "noSuper": True, "uniqueIdentity": True}
+            "noSuper": True, "sharedIdentity": True,
+            "effect": {"stat": "Crit chance", "amount": 0.3, "seconds": 5, "on": "dash"}}
     defs = C.defs_for("items", item)
     C.save(defs, "m1", tmp_path, create=True, name="M1")
 
@@ -160,7 +161,8 @@ def test_an_items_graph_steps_survive_open_and_save(tmp_path):
     pay = got["items"]["Increase_Shield"]["payload"]
     assert pay["steps"] == steps
     assert pay["noSuper"] is True and defs[0][2]["super_effect"] is False
-    assert pay["uniqueIdentity"] is True and defs[0][2]["unique_identity"] is True
+    assert pay["sharedIdentity"] is True and defs[0][2]["unique_identity"] is False
+    assert pay["effect"] == item["effect"] and defs[0][2]["effect"] == item["effect"]
     assert C.defs_for("items", pay) == defs
 
 

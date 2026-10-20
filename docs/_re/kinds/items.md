@@ -217,6 +217,94 @@ removed on 2026-10-10, along with `kinds/item/builder.py` and
 `kinds/item/schema.py`. Its only effect had been to hide a mistyped
 `base`: the mod applied cleanly and the item never existed.
 
+## Item data, its countdown, and how value links bind (RE 2026-10-20)
+
+Static RE on build `b9c3642884a8` (corpus `docs/_re/out_new`), done after
+three playtests of the `effect` builder went wrong on guesses. Facts first,
+then what is still open.
+
+**`oCDtEntityCpntMagicalObjectDataSettings`** (the "Dt Magical Object Data"
+part every item carries; vftable `0x140f22f18`, serializer `FUN_1402cf8a0`,
+version key `0x1892b5f4`). Versioned fields, in our field names:
+
+| ours | settings offset | read as |
+|---|---|---|
+| `bytes_3` | `+0x100` 16-byte GUID, `+0x110`, `+0x114` | id + two small ints. Unique per item (114/114), found in no other file (12024 scanned). Registered at init into global `DAT_1414369e8` via `+0xf8` when `+0x33` is set, next to the `oIGameProfileDataOwner` base: most likely the item's profile/compendium key. |
+| `value_4` | `+0x138` value picker | the countdown's FULL time |
+| `value_5` | `+0x1b8` value picker | the countdown's CURRENT progress |
+| `bytes_6` | `+0x238` (v5+) | — |
+
+**Runtime `oCDtEntityCpntMagicalObjectData`** (vftable `0x140f0fed0`).
+Init (`FUN_1402cfcc0`) binds `value_4` → `+0x70/+0x78` and `value_5` →
+`+0x80/+0x88` with the generic picker binder `FUN_14026f520`, and looks up
+the item's runtime object into `+0x68`. Slot 28 subscribes `FUN_1402cff70`
+to both: when the item's state (`+0x68`→`+0x68`) is 2 and `value_4 > 0`, it
+sets the "in cooldown" bool `+0x98` = `value_5 / value_4 < 1.0`
+(`FUN_1402cc640` is that ratio) and notifies `+0xb0`. Outputs by key (slot
+11): `0x1d294a5d` → `+0x90` (in-cooldown, unique to this class; no cooked
+data reads it), plus the generic `0x0fd2832a`/`0x0fd2833c`. **It only reads
+`value_4`/`value_5`; it never writes a timer and applies no cooldown
+reduction.**
+
+**The icon countdown** is `MagicalObjectUiViewerEntityCpnt`
+(`FUN_140446200` bind, `FUN_1404472a0` refresh): it reaches the data part
+through the item runtime object `+0x280`, subscribes to its `+0xb0`, and
+copies `value_4` → `+0x4b0`, `value_5` → `+0x4d0`, ratio → `+0x490`.
+
+**How a value picker binds** (`FUN_14026f520` → `FUN_140273bb0`): the
+picker's accessor key sits at picker `+0x58` (`-1` = plain number), the
+target is resolved by GUID inside the entity (`FUN_140712090` → SwissTable
+`FUN_1406dabe0`). The binder asks the target `vt[13](key)` (float outputs),
+then `vt[10](key)`. A Value part answers `vt[10]` for `0x0fd2c964 + its
+type byte`. A **Timer** answers `vt[13]` for `0x0fd2825a` (+0xa0),
+`0x0fd28264` (+0xc0), `0x1683197e` (+0x100), `0x16831980` (+0x120),
+`0x1896c3bb` (+0x140) and `vt[12]` for `0x0fd28263`; its `vt[10]` is the
+`return 0` default. The binding starts from the picker's INLINE number and
+is only updated by the target's change callbacks (registration
+`FUN_14027c420` copies nothing).
+
+**Timer update** (`FUN_140729550`, registered by `FUN_1407281f0` as
+"oCEntityCpntTimer - Update"): remaining `+0x90 -= dt`, elapsed
+`+0x98 += dt`; at `remaining <= 0` it adds the duration (+ random bias,
+`FUN_140729c90`), counts a tick, and stops at the count limit. Plain frame
+time: no cooldown reduction.
+
+**Which timer key means what** (every cooked picker that reads a Timer,
+4769 entities): `0x16831980` = time LEFT ("Transformed Time Left Value",
+"Deathdoor Timer Label"); `0x1683197e` = cooldown progress (9 hero
+SkillControllers, Increase_Shield's "Cooldown Value Selector", and the one
+working item countdown, `Curse_Lose_Life_Gain_Damage`: `value_4` → its
+period Value with `0x0fd2c964`, `value_5` → its timer with `0x1683197e`).
+**Increase_Shield, Gain_Regeneration_On_Low_Life and Defense_Heal link
+`value_5` to a timer with `0x0fd2c964`, a key no Timer answers: their
+countdown link never binds.** Copying that link is why the `effect`
+builder's countdown never showed.
+
+**`CHARACTER_HAS_BEEN_HIT` reaches no one.** Its only sender is
+`Character_Common`'s "CHARACTER_HAS_BEEN_HIT Event Sender": world flag off,
+an empty `targets` collector, and `mode` 0 where every other part has 1. The
+named-event sender (`FUN_140780390`) sends to its resolved targets unless the
+world flag is set, so with none the event goes nowhere; `Passive_Heal`'s
+on-hit listener is dead in the shipped game. A named listener
+(`FUN_140781170`) subscribes on its own entity's dispatcher (`+0x4d8`) and the
+world's (`+0x30`→`+0x1a8`→`+0x340`). The `effect` builder dropped its `hit`
+trigger for this (it never fired in 18 hits); `damage_taken` covers it.
+
+**Open (needs a live probe, not more static reading):**
+- Why links from copied parts to COPIED Value parts read the picker's
+  inline number in game (effect test: every bonus was the donor's 0.05),
+  while Pebbles' copied modifier linked to the item's OWN Shield Value did
+  read 0.3. The binder starts at the inline number and waits for a change
+  callback, so init order or the GUID map (`FUN_1406dabe0` over a table at
+  `+0x148/+0x160`) are the candidates; `R.debug.dump` on a live item would
+  settle it.
+- The "abilities faster" report from the 2026-10-20 effect test: key
+  `0x1894f1a2` is the engine's own "Life on hit" (registry `FUN_1401d0030`,
+  read on hit by `FUN_1403cd950`), so the test stat is not it; and the
+  countdown link does not touch timers. Unexplained.
+- The ~3 s durations in that test were a decoding artefact (one ON and one
+  OFF in the same poll decode as unrelated triggers), not shortened timers.
+
 ## See also
 
 - [`../MOD_HOOKS.md`](../MOD_HOOKS.md) for the registry / library

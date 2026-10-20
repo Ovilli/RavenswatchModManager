@@ -390,6 +390,13 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     pair it with a ``value_patches`` entry.
         ``super_description`` (str) super effect card text
                                     (-> ``<id>_SuperEffect``).
+        ``effect`` (table)          ``{ stat, amount, seconds, on }``: on a
+                                    trigger (``item_effect.TRIGGERS``), gain
+                                    ``amount`` of ``stat`` for ``seconds``
+                                    (each trigger restarts it). Card ``{0}`` =
+                                    amount (x100 %), ``{1}`` = seconds. Cuts
+                                    the base's own stat effects unless
+                                    ``keep_base_effect = true``.
         ``super_effect`` (bool)     ``false`` removes the base's super effect:
                                     no bonus, blank super text (default true).
         ``steps`` (list)            ``[[content.steps]]`` graph edits run on
@@ -445,6 +452,13 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     super_effect = defn.fields.get("super_effect", True)
     if not isinstance(super_effect, bool):
         raise ContentError(f"item {defn.id}: super_effect must be true or false")
+    effect = defn.fields.get("effect")
+    if effect is not None:
+        from ...engine.item_effect import Effect, ItemEffectError
+        try:
+            Effect.parse(effect)
+        except ItemEffectError as e:
+            raise ContentError(f"item {defn.id}: {e}") from None
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")
@@ -481,14 +495,14 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             # from the id/path rename, which is enough (the engine does not dedupe
             # the clone out). See memory item-clone-pipeline-verified.
             corpus=[],
-            # OPT-IN fix for the owned-set identity collision: a clone keeps its
-            # base's identity GUID, so the hero owned-set dedups the clone out at
-            # grant time when the base is also owned that run (the custom item
-            # silently "doesn't work" — see magic_item_cook.ItemEdit). Setting
-            # `unique_identity = true` on the item re-mints ONLY the root identity
-            # GUID (spawn-safe: registration is path-keyed). Verify spawn in-game
-            # after enabling. Default off so existing mods are unchanged.
-            remint_identity=bool(defn.fields.get("unique_identity", False)),
+            # A clone that keeps its base's identity GUID is the base to anything
+            # that goes by identity: the hero owned-set dedups it out when the
+            # base is also owned (see magic_item_cook.ItemEdit), and a grant by
+            # GUID hands out the vanilla item (Pebbles' first playtest got the
+            # 30 s shield, 2026-10-20). Re-minting ONLY the root identity GUID is
+            # spawn-safe (registration is path-keyed), proven on that item. On
+            # by default for a copy; `unique_identity = false` opts out.
+            remint_identity=not replace and bool(defn.fields.get("unique_identity", True)),
             rarity=rarity,
             base_rarity=base_rarity,
             name=name,
@@ -498,6 +512,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             super_description=super_description,
             steps=steps,
             super_effect=super_effect,
+            effect=effect,
             icon=icon,
             bank_base_gen=bank_gen,
             replace=replace,
@@ -506,6 +521,11 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     except ValueError as e:
         # e.g. a shadowed value_patches target — surface with item context.
         raise ContentError(f"item {mod_id}/{defn.id}: {e}") from e
+    from ...engine.item_checks import item_warnings
+    for decoded, blob in files.items():
+        if decoded.endswith(_MO_SUFFIX):
+            for w in item_warnings(blob, base_cooked, set(stats)):
+                _log.warning("item %s/%s: %s", mod_id, defn.id, w)
     files.update(extra_files)  # cooked custom texture, if any
 
     written: list[Path] = []
@@ -517,6 +537,23 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     _log.info("item %s/%s: emitted %d cooked file(s) (%s, rarity=%s)",
               mod_id, defn.id, len(written), "replace" if replace else "clone", rarity)
     return written
+
+
+def build_entity(fields: dict, base_cooked: bytes) -> bytes:
+    """The item entity a block builds, without text or icon: what lint and the
+    editor's card preview inspect. Raises ``ValueError`` as the build would."""
+    base_id = str(fields.get("base") or "").replace("\\", "/").rpartition("/")[2]
+    replace = fields.get("mode") == "replace"
+    files = cook.build_magic_item(
+        new_id=base_id if replace else str(fields.get("id")), base_id=base_id,
+        base_cooked=base_cooked, corpus=[],
+        value_patches=_coerce_value_patches(fields.get("value_patches")),
+        modifier_stats=_coerce_stats(str(fields.get("id")), fields.get("stats")),
+        steps=fields.get("steps") or None,
+        super_effect=fields.get("super_effect", True) is not False,
+        effect=fields.get("effect"), replace=replace,
+        remint_identity=not replace and fields.get("unique_identity", True) is not False)
+    return next(b for p, b in files.items() if p.endswith(_MO_SUFFIX))
 
 
 def _base_not_found(item_id: str, base: str) -> ContentError | SchemaNotMined:

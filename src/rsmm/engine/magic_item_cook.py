@@ -628,7 +628,31 @@ def remint_identity_guid(cooked: bytes, id_name: str, salt: str) -> bytes:
     g = find_identity_guid(cooked, id_name)
     if not g:
         return cooked
-    return cooked.replace(g, _mint_guid(g, salt.encode("utf-8")))
+    out = cooked.replace(g, _mint_guid(g, salt.encode("utf-8")))
+    # The Dt node's BODY carries a second id, as unique as the first (114/114
+    # shipped items) and found nowhere else (12024 files). Left shared, 14 copies
+    # of Increase_Shield were one item to the game: picking Goldilocks' Porridge
+    # from a chest took one of them away (playtest 2026-10-20).
+    t = find_type_guid(out)
+    if t is not None and out.count(t) == 1:
+        out = out.replace(t, _mint_guid(t, salt.encode("utf-8") + b":type"))
+    return out
+
+
+def find_type_guid(cooked: bytes) -> bytes | None:
+    """The 16-byte id at the start of the ``Dt Magical Object Data`` body, or None."""
+    from . import entity_fields as EF
+    from . import entity_graph as EG
+    try:
+        comps = EG.parse(cooked, "").components
+    except ValueError:          # not a whole cooked entity (a test fragment)
+        return None
+    c = next((x for x in comps if x.cls == "oCDtEntityCpntMagicalObjectDataSettings"), None)
+    f = c and next((f for f in EF.fields(c) if f.name == "bytes_3"), None)
+    if f is None or f.size < 16:
+        return None
+    g = bytes(c.body[f.offset:f.offset + 16])
+    return None if g == b"\x00" * 16 or any(m in g for m in _MARKERS) else g
 
 
 def load_corpus(corpus_dir: Path) -> list[bytes]:
@@ -686,6 +710,7 @@ def build_magic_item(
     super_description: str | None = None,
     steps: list[dict] | None = None,
     super_effect: bool = True,
+    effect: dict | None = None,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -708,6 +733,9 @@ def build_magic_item(
     * ``super_effect=False`` removes the super effect: the state that runs it
       is emptied (no bonus ever applies) and its card text becomes the model's
       empty text, as on the items that ship without one;
+    * ``effect`` = ``{stat, amount, seconds, on, ...}``: a timed bonus on a
+      trigger, see :mod:`rsmm.engine.item_effect` (before ``steps``, which may
+      adjust it);
     * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
       ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
       after the value patches, by the part names ``rsmm entity-graph`` shows;
@@ -787,6 +815,15 @@ def build_magic_item(
         if new_id != base_id and part_literal(ent, label) is None and base_id in label:
             label = label.replace(base_id, new_id)
         ent = apply_value_patch(ent, label, old, new, clear)
+    if effect is not None:
+        from . import item_effect as IE
+        from .item_checks import donor_leftovers
+        fx = IE.Effect.parse(effect)
+        ent = IE.apply_effect(ent, new_id, fx)
+        left = donor_leftovers(ent, IE.donor_stems(fx) - {new_id, base_id})
+        if left:
+            raise ValueError("effect: copied parts still point into the item they were "
+                             "copied from: " + "; ".join(left))
     if not super_effect:
         ent = _clear_super_effect(ent, base_id)
     if steps:
@@ -797,6 +834,15 @@ def build_magic_item(
             raise ValueError("cloned parts need resources the item does not load: "
                              + ", ".join(sorted(res.resources)))
         ent = res.files[new_id]
+        from .item_checks import donor_leftovers
+        donors = {AE.source_entity_ref(str(s["from"])).rsplit("\\", 1)[-1]
+                  .removesuffix(".entity.ot") for s in steps if s.get("clone") and s.get("from")}
+        left = donor_leftovers(ent, donors - {new_id, base_id})
+        if left:
+            # entity_check lets these through: they load, and read nothing.
+            raise ValueError("copied parts still point into the entity they were "
+                             "copied from; link them to this item's parts: "
+                             + "; ".join(left))
     if icon is not None:
         ent = set_icon(ent, icon)
     # The tier the game reads is the Quality int, so a copy filed under
@@ -931,10 +977,9 @@ class ItemEdit:
     #: above), leaving every other GUID intact so the entity still spawns. Safe
     #: because registration is path-keyed and nothing references the identity
     #: (the Dt Magical Object Data node's GUID) by GUID; only the runtime
-    #: identity changes. OPT-IN (default False) until
-    #: verified in-game per item, since picking the wrong GUID would silently
-    #: leave the collision or, worst case, touch a referenced node. Enable via
-    #: the manifest item field ``unique_identity = true``.
+    #: identity changes. Proven in game on Little Thumb Pebbles (2026-10-20);
+    #: the item kind turns it on for every copy unless the manifest says
+    #: ``unique_identity = false``. Off by default HERE for direct callers.
     remint_identity: bool = False
 
     def apply(self, cooked: bytes) -> bytes:

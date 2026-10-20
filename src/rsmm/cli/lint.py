@@ -785,6 +785,8 @@ def _lint_content(modname: str, blocks: list[dict],
             print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                   f"super_description: {_ST.dim(f'{base} has no super effect text')}")
             errs += 1
+        e, w = _lint_built_item(modname, c, str(base), data, stats)
+        errs, warns = errs + e, warns + w
         icon = c.get("icon")
         if icon and "\\" not in str(icon) and "/" not in str(icon) \
                 and not str(icon).lower().endswith(".png"):
@@ -794,6 +796,24 @@ def _lint_content(modname: str, blocks: list[dict],
                       f"icon {_ST.accent(repr(icon))} {_ST.dim(hint)}")
                 warns += 1
     return errs, warns
+
+
+def _lint_built_item(modname: str, c: dict, base: str, data: bytes,
+                     stats: dict) -> tuple[int, int]:
+    """Build the item as apply would (no text bank) and report what
+    ``item_checks`` finds in it: the traps that otherwise cost a playtest."""
+    from rsmm.engine.item_checks import item_warnings
+    from rsmm.sdk.kinds.items import build_entity
+    cid = str(c.get("id"))
+    try:
+        ent = build_entity(c, data)
+    except (ValueError, TypeError, KeyError) as e:
+        print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(cid)}: {_ST.dim(str(e))}")
+        return 1, 0
+    found = item_warnings(ent, data, {str(k) for k in stats})
+    for w in found:
+        print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(cid)}: {_ST.dim(w)}")
+    return 0, len(found)
 
 
 def _lint_poi_components(modname: str, entry: Path, blocks: list[dict]) -> int:

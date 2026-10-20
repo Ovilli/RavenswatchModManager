@@ -1024,9 +1024,10 @@ super_description = "#Crit Damage@ &+{0}%~"
 - **`super_effect = false`** removes the base's super effect: the bonus never
   applies and the card shows no super text. Use it when the item you are
   making has none of its own.
-- **Copies share their base's identity unless you set `unique_identity = true`.**
-  A copy with the base's identity is granted as the base (`R.give` hands out
-  the vanilla item), so set it on any copy you grant or test.
+- **A copy gets an identity of its own** (`unique_identity`, on by default).
+  A copy that keeps its base's identity is treated as the base: a grant hands
+  out the vanilla item, and owning both keeps only one. `unique_identity =
+  false` opts out.
 - **Some stats need more than the stat.** Plain numbers (attack power, armour,
   crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
   the instant-kill thresholds only do something with the components the item
@@ -1053,10 +1054,11 @@ suffix = " Pebbles"
 add_link = "State Picked Up.while_active"
 to       = "Crit Chance Modifier Active Tester Pebbles"
 [[content.steps]]
-remove_link = "On Damage Received.activates[1]"            # the permanent grant
+remove_link = "On Damage Received.activates"              # the permanent grant
+to          = "Modifier"
 [[content.steps]]
-remove_link = "On Damage Received.deactivates?[0]"         # keep listening: every
-                                                           # hit restarts the 5 s
+remove_link = "On Damage Received.deactivates?"           # keep listening: every
+to          = "Shield Protection Up State"              # hit restarts the 5 s
 [[content.steps]]
 add_link = "On Damage Received.deactivates?"               # restart: off, then on
 to       = "Crit Chance Modifier Timer Pebbles"
@@ -1079,6 +1081,42 @@ value   = true
 
 A card slot shows its number plain or x100 as a percentage; a shield's shows
 it plain, so a stat that is a fraction needs a `percent` step.
+
+### A timed bonus (`effect`)
+
+The recipe above, in one line, on any base item:
+
+```toml
+[[content]]
+kind         = "item"
+id           = "Increase_Crit_M"
+base         = "Increase_Shield"            # the look; its own effect is cut
+name         = "Little Thumb Pebbles"
+description  = "After taking damage, gain #+{0}%@ #Crit Chance@ for #{1}@ seconds"
+super_effect = false
+effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_taken" }
+```
+
+- **`on`**: when it triggers. Each one is the listener of a shipped item that
+  reacts to it: `damage_taken`, `dash`, `special`, `defense`, `ultimate`,
+  `power`, `day_start`, `night_start`, `talent_picked`, `item_picked_up`,
+  `dream_shards_gained`, `sandman_purchase`, `reroll`. Proven in game:
+  `damage_taken`, `dash`, `special`, `defense`, `power`, `talent_picked`,
+  `item_picked_up`, `dream_shards_gained` and `night_start`. There is no "on
+  kill" or "on crit": no item listens for those. The item's icon counts the
+  bonus down. Each trigger restarts the full time;
+  `refresh = false` lets a running bonus finish first.
+- **`amount`** is in the stat's own unit (crit chance 0.3 = +30%). The card's
+  `{0}` is the amount, shown x100 as a percentage (`percent = false` shows it
+  as it is), and `{1}` the seconds.
+- **The base's own stat effects are cut**, so a shield base stops being a
+  shield; `keep_base_effect = true` keeps them. Its super effect is separate:
+  `super_effect = false` drops it.
+- `steps` still run after the effect, to adjust anything it built (its parts
+  end in ` Effect`).
+
+The editor's **Timed effect** section writes this table, and its card preview
+shows the numbers as the game will print them.
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

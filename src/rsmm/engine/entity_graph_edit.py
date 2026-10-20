@@ -470,17 +470,26 @@ class EntityFile:
         "oCEntityCpntValueOperationsSettings": 0x17AE7811,
         "oCEntityCpntGetValueSettings": 0x16ABF2EB,
     }
+    #: A Timer has several number outputs, so reading one names WHICH (RE
+    #: 2026-10-20, docs/_re/kinds/items.md): the binder asks the timer's vt[13]
+    #: by key. Time left is what "Transformed Time Left Value" and Dash_Crit_
+    #: Chance's float test read; elapsed is what hero ability cooldowns and the
+    #: one working item countdown (Curse_Lose_Life_Gain_Damage) read.
+    TIMER_TIME_LEFT = 0x16831980
+    TIMER_ELAPSED = 0x1683197E
 
     def _value_pickers(self, c: EG.Component) -> list[EG.Token]:
         return [t for t in EG.tokens(c)
                 if t.kind == "object" and t.text == "oCEntityCpntValuePicker"]
 
-    def source_value(self, comp: str, n: int, target: str) -> None:
+    def source_value(self, comp: str, n: int, target: str, *, accessor: int | None = None) -> None:
         """Make the n-th number slot of ``comp`` read component ``target`` (an f32
-        node of this file), literal or sourced before; its inline number goes."""
+        node of this file), literal or sourced before; its inline number goes.
+        ``accessor`` names which output to read, for a target with several (a
+        Timer: ``TIMER_ELAPSED`` / ``TIMER_TIME_LEFT``)."""
         c = self.component(comp)
         t = self.component(target)
-        acc = self.F32_ACCESSOR.get(t.cls)
+        acc = accessor if accessor is not None else self.F32_ACCESSOR.get(t.cls)
         if acc is None:
             raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
         vps = self._value_pickers(c)

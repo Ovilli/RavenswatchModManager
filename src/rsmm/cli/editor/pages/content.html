@@ -92,6 +92,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .val { color: #7ee08a; font-weight: 600; }
 .neg { color: #ff7a7a; font-weight: 600; }
 .ph { border-bottom: 1px dotted currentColor; cursor: help; }
+.ph.bad { color: var(--bad); border-bottom-style: solid; }
 .legend { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 520px; }
 .legend div { padding: 1px 0; }
 .legend b { color: var(--ink); font-weight: 600; }
@@ -536,11 +537,11 @@ async function pickItem(id) {
 function freshItemEdit() {
   // "replace" changes the shipped item itself; "clone" makes a new one beside it.
   return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    steps: [], noSuper: false, uniqueIdentity: false, autoDesc: false, autoSuper: false, textMiss: [] };
+    steps: [], noSuper: false, sharedIdentity: false, effect: null, autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.uniqueIdentity);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || !!E.effect);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -755,10 +756,10 @@ function itemView() {
   if (!replace) {
     // A copy keeps its base's identity unless told otherwise, and anything that
     // grants by identity then hands out the base (playtest 2026-10-20).
-    const own = el("input", { type: "checkbox", ...(E.uniqueIdentity ? { checked: "" } : {}) });
-    own.addEventListener("change", () => { E.uniqueIdentity = own.checked; saveDraft(); refresh(); });
+    const own = el("input", { type: "checkbox", ...(E.sharedIdentity ? {} : { checked: "" }) });
+    own.addEventListener("change", () => { E.sharedIdentity = !own.checked; saveDraft(); refresh(); });
     f.append(el("label", { text: "Identity" }), el("label", { class: "hint", style: "display:block" }, own,
-      ` Its own identity. Without it the game can treat the copy as ${it.name}: a grant or test script hands out the original.`));
+      ` Its own identity (recommended). Without it the game treats the copy as ${it.name}: a grant hands out the original, and owning both keeps one.`));
   }
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
@@ -774,6 +775,7 @@ function itemView() {
   own.append(uploadButton(E.iconUpload ? "Replace…" : "Upload your own icon…", 192, d => { E.iconUpload = d; E.icon = ""; renderView(); refresh(); }));
   f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
   v.append(f);
+  v.append(effectForm(E));
 
   // One number row; the same edit state whichever section shows it.
   const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
@@ -962,6 +964,16 @@ function currentValue(label) {
 function placeholder(n, next, e, valueOf) {
   const chip = el("span", { class: "ph" });
   if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
+  if (e.kind === "Built") {
+    // The slot's own display mode decides, not the text: mode 1 shows x100, 0
+    // prints the number, 2 rounds it (a shield's 0.3 read "+0%" in game).
+    if (typeof e.value !== "number") { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: " + e.node + " (worked out in game)"; return chip; }
+    const shown = e.mode === 1 ? e.value * 100 : e.mode === 2 ? Math.round(e.value) : e.value;
+    chip.textContent = fmt(shown);
+    chip.title = "{" + n + "}: " + e.node + " = " + fmt(e.value) + (e.mode === 1 ? " (shown ×100 as a percent)" : " (shown as it is)");
+    if (next === "%" && e.mode !== 1) { chip.className = "ph bad"; chip.title += ". The text puts a % after it, but the game does not multiply this slot by 100."; }
+    return chip;
+  }
   if (e.kind === "Value Selector" && /description|desc/i.test(e.node)) {
     chip.title = "{" + n + "}: " + e.node + " (shown in a run only)";
     return chip;
@@ -989,11 +1001,72 @@ function placeholder(n, next, e, valueOf) {
 function entryFill(entries) {
   return (n, next) => placeholder(n, next, entries && entries[n], currentValue);
 }
+// What each {N} of a card part shows: read back from the item as it is BUILT
+// from the edits (api/item/preview), with each slot's real display mode, when
+// that answer is in; the base item's slots until then.
+function cardEntries(part, base) {
+  const b = S.itemBuilt;
+  if (b && b.for === S.item.id && !b.error && b[part]) {
+    return b[part].map(x => ({ kind: "Built", node: x.node, value: x.value, mode: x.mode }));
+  }
+  return base && base.entries;
+}
+// The effect triggers the server knows (api/stats), by their card wording.
+S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
+// A timed bonus on a trigger: the item kind's `effect` table. The card's {0} is
+// the amount and {1} the seconds, whatever the base item's card said.
+function effectForm(E) {
+  const box = el("div");
+  box.append(el("div", { class: "sect", text: "Timed effect" }));
+  const on = el("input", { type: "checkbox", ...(E.effect ? { checked: "" } : {}) });
+  on.addEventListener("change", () => {
+    E.effect = on.checked ? { stat: "Crit chance", amount: 0.1, seconds: 5, on: "damage_taken" } : null;
+    renderView(); refresh();
+  });
+  box.append(el("label", { class: "hint", style: "display:block;margin-bottom:6px" }, on,
+    " Give it a timed bonus: after a trigger, gain an amount of a stat for some seconds. Replaces what the base item does (its look stays)."));
+  if (!E.effect) return box;
+  const x = E.effect, f = el("div", { class: "form" });
+  const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
+  const trig = el("select", {}, ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t })));
+  trig.value = x.on || "damage_taken";
+  trig.onchange = () => set("on", trig.value);
+  const stat = el("select", {}, ...S.stats.map(st => el("option", { value: st.name, text: st.name })));
+  stat.value = x.stat;
+  stat.onchange = () => set("stat", stat.value);
+  const num = (k, step) => {
+    const i = el("input", { type: "number", step, value: x[k] });
+    i.oninput = () => { const n = parseFloat(i.value); if (!isNaN(n)) set(k, n); };
+    return i;
+  };
+  const flag = (k, dflt, text) => {
+    const c = el("input", { type: "checkbox", ...((x[k] ?? dflt) ? { checked: "" } : {}) });
+    c.addEventListener("change", () => set(k, c.checked === dflt ? undefined : c.checked));
+    return el("label", { class: "hint", style: "display:block" }, c, " " + text);
+  };
+  f.append(el("label", { text: "When" }), trig,
+    el("label", { text: "Stat" }), stat,
+    el("label", { text: "Amount" }), el("div", {}, num("amount", "0.01"),
+      el("div", { class: "hint", text: "In the stat's own unit: crit chance 0.3 is +30%." })),
+    el("label", { text: "Seconds" }), num("seconds", "0.5"),
+    el("label", { text: "Options" }), el("div", {},
+      flag("refresh", true, "Each trigger restarts the full time"),
+      flag("percent", true, "The card shows the amount as a percent (×100)"),
+      flag("keep_base_effect", false, "Keep the base item's own effect too")));
+  box.append(f);
+  const write = el("button", { type: "button", onclick: () => {
+    E.description = `${S.triggers[x.on || "damage_taken"] || "When it triggers"}, gain #+{0}${(x.percent ?? true) ? "%" : ""}@ #${x.stat}@ for #{1}@ seconds`;
+    E.autoDesc = false; renderView(); refresh();
+  } }, "Write the card text for it");
+  box.append(el("div", { class: "hint", style: "margin:6px 0" }, "The card's {0} is the amount and {1} the seconds. ", write));
+  return box;
+}
 function legend(entries) {
   const box = el("div", { class: "legend" });
   (entries || []).forEach((e, n) => {
     let what;
     if (!e) what = "a value set inside the item";
+    else if (e.kind === "Built") what = e.node + (typeof e.value === "number" ? " = " + fmt(e.value) + (e.mode === 1 ? " (shown ×100 as a percent)" : " (shown as it is)") : " (worked out in game)");
     else if (e.kind === "Value") {
       const v = currentValue(e.node);
       what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; before a % it shows ×100)" : "");
@@ -1112,11 +1185,11 @@ function gameCard(it, E, card) {
   const box = cardFrame(rarity, iconBox, E.name || it.name, rarity === "Powerups" ? "Power-up" : rarity);
   const d = card.description, sp = card.super;
   const descText = E.description || (d && d.text) || it.description || "";
-  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(d && d.entries))), F.body, 19));
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(cardEntries("description", d)))), F.body, 19));
   const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
   if (supText) {
     box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
-      markup(supText, entryFill(sp && sp.entries))), F.body, 18));
+      markup(supText, entryFill(cardEntries("super", sp)))), F.body, 18));
   }
   return box;
 }
@@ -1131,13 +1204,15 @@ function renderPreview() {
   if (CARD.ok) host.append(gameCard(it, E, card));
   else if (!CARD.done) host.append(loadingView("Loading the game's card art…", true));
   else host.append(cssCard(it, E, card));
-  const parts = [];
-  if (d && d.entries.length) parts.push(["Description", d.entries]);
-  if (sp && sp.entries.length) parts.push(["Super effect", sp.entries]);
+  const parts = [], de = cardEntries("description", d), se = E.noSuper ? [] : cardEntries("super", sp);
+  if (de && de.length) parts.push(["Description", de]);
+  if (se && se.length) parts.push(["Super effect", se]);
   for (const [name, entries] of parts) {
     host.append(el("div", { class: "legend" }, el("b", { text: name + ":" })), legend(entries));
   }
   if (!card.description) host.append(el("div", { class: "legend", text: "Card text needs a readable game install." }));
+  const b = S.itemBuilt;
+  if (b && b.for === S.item.id && b.warnings) for (const w of b.warnings) host.append(el("div", { class: "hint bad", style: "margin-top:6px", text: w }));
 }
 // The same card in plain CSS, for when the game's textures are not readable.
 function cssCard(it, E, card) {
@@ -1146,9 +1221,9 @@ function cssCard(it, E, card) {
     el("div", { class: "ci" }, itemIcon(E, it)),
     el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
   const descText = E.description || (d && d.text) || it.description || "";
-  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
+  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(cardEntries("description", d)))));
   const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
-  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
+  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(cardEntries("super", sp)))));
   return box;
 }
 
@@ -2897,7 +2972,8 @@ function editPayload() {
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })),
       ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}),
-      ...(E.mode === "clone" && E.uniqueIdentity ? { uniqueIdentity: true } : {}) };
+      ...(E.mode === "clone" && E.sharedIdentity ? { sharedIdentity: true } : {}),
+      ...(E.effect ? { effect: E.effect } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;
@@ -2935,6 +3011,13 @@ async function refresh() {
   await new Promise(r => setTimeout(r, 150));
   if (me !== tick) return;
   saveDraft();
+  if (S.tab === "items" && S.item) {
+    const forId = S.item.id;
+    post("api/item/preview", editPayload()).then(j => {
+      if (me !== tick || !S.item || S.item.id !== forId) return;
+      S.itemBuilt = Object.assign({ for: forId }, j); renderPreview();
+    }).catch(() => {});
+  }
   const edits = pendingEdits();
   lastEdits = edits;
   renderPending(edits, []);
@@ -3054,6 +3137,7 @@ async function saveAll(error) {
   try {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
+    S.triggers = st.triggers || S.triggers;
     S.modTags = mo.tags || [];
     get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
