@@ -32,14 +32,36 @@ esac
 
 base="${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}"
 head="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
+# Vercel's shallow checkout may not contain the previous successful deployment
+# commit. Try the object directly, then deepen the deployment branch in case
+# the Git host only allows fetching advertised refs.
+if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+  echo "Previous deployment commit $base is missing; attempting to fetch it."
+  git fetch --no-tags --depth=1 origin "$base" >/dev/null 2>&1 || true
+  if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+    branch="${VERCEL_GIT_COMMIT_REF:-}"
+    if [ -n "$branch" ] && git check-ref-format "refs/heads/$branch" >/dev/null 2>&1; then
+      for depth in 100 500 2000 8000; do
+        git fetch --no-tags --deepen="$depth" origin "refs/heads/$branch" >/dev/null 2>&1 || break
+        if git cat-file -e "${base}^{commit}" 2>/dev/null; then
+          echo "Fetched previous deployment commit by deepening $branch history."
+          break
+        fi
+      done
+    fi
+  fi
+fi
 # shellcheck disable=SC2086 # word-splitting the pathspec list is intended
 git diff --quiet "$base" "$head" -- ':/' $excludes
 status=$?
 if [ "$status" -eq 0 ]; then
   echo "No $1 inputs changed since $base; skipping build."
   exit 0
+elif [ "$status" -eq 1 ]; then
+  echo "$1 inputs changed since $base; building."
+  exit 1
 else
-  echo "$1 inputs changed since $base (git diff exit $status); building."
+  echo "Could not compare $1 inputs since $base (git diff exit $status); building conservatively."
   # Vercel expects exit 1 to mean "run the build". Preserve the underlying
   # git status in the message, but don't pass git's status (for example 128)
   # through as an ignore-command failure.
