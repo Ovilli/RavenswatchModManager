@@ -37,7 +37,11 @@ git diff --quiet "$base" "$head" -- ':/' $excludes
 status=$?
 if [ "$status" -eq 0 ]; then
   echo "No $1 inputs changed since $base; skipping build."
+  exit 0
 else
   echo "$1 inputs changed since $base (git diff exit $status); building."
+  # Vercel expects exit 1 to mean "run the build". Preserve the underlying
+  # git status in the message, but don't pass git's status (for example 128)
+  # through as an ignore-command failure.
+  exit 1
 fi
-exit "$status"
