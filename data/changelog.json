@@ -1,6 +1,17 @@
 {
-  "generated": "2026-10-18",
+  "generated": "2026-10-20",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-20",
+      "summary": "Item mods can fix behaviour, not just numbers: new [[content.steps]] graph edits on a copied item. The editor now opens and saves items that use them.",
+      "highlights": [
+        "Item mods take [[content.steps]] (set / link / add_link / remove_link) to rewire a copied item, e.g. turn a permanent on-hit bonus into a timed one",
+        "The item editor opens and saves items with steps instead of refusing them",
+        "Fixed link labels written into entities whose shipped references are stale"
+      ],
+      "cli_version": 4
+    },
     {
       "version": "",
       "date": "2026-10-18",
@@ -520,16 +531,6 @@
         "New: rsmm export-model exports any of the game's 3001 models (scenery, props, enemies, NPCs) with textures and animations for Blender. export-character and import-character take a hero's body and animations out and back in.",
         "More you can mod: animations, map chapters that generate from their own tiles, enemy copies, boss swaps, and the stat each item effect gives.",
         "Fixed: an item copy marked unique_identity now really gets its own identity, so you can hold it and the original together."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 24,
-      "date": "2026-10-01",
-      "summary": "Mods can give an item by its id (R.give.by_name), which the editor's test grants use. Fixed: a repeating main-thread task could run itself many times in one frame (a test grant handed out 66 items at once).",
-      "highlights": [
-        "Mods can now hand you a specific item by its id; the editor's new test grants use this.",
-        "Fixed: a mod's repeating task could run many times in a single frame, so one test grant handed out dozens of items at once."
       ]
     }
   ]
