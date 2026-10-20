@@ -684,6 +684,7 @@ def build_magic_item(
     remint_identity: bool = False,
     modifier_stats: dict[str, str | int] | None = None,
     super_description: str | None = None,
+    steps: list[dict] | None = None,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -703,6 +704,9 @@ def build_magic_item(
     * ``modifier_stats`` maps a modifier's name to the stat it should change
       instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
       :mod:`rsmm.engine.item_modifier`;
+    * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
+      ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
+      after the value patches, by the part names ``rsmm entity-graph`` shows;
     * when ``name`` or ``super_description`` is given and ``bank_base_gen``
       points at the live text bank, the bank + every language sibling with
       ``<new_id>_Name`` / ``_Description`` / ``_SuperEffect`` appended. The
@@ -766,6 +770,9 @@ def build_magic_item(
         if new_id != base_id and part_literal(ent, label) is None and base_id in label:
             label = label.replace(base_id, new_id)
         ent = apply_value_patch(ent, label, old, new, clear)
+    if steps:
+        from . import ability_edit as AE
+        ent = AE.apply({new_id: ent}, steps, main=new_id, seed=f"item:{new_id}").files[new_id]
     if icon is not None:
         ent = set_icon(ent, icon)
     # The tier the game reads is the Quality int, so a copy filed under

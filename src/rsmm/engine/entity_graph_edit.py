@@ -858,13 +858,19 @@ class EntityFile:
 
     def _label(self, cls: str) -> str:
         """The ``[Kind]`` label for ``cls``: from this file's own references
-        when one names such a component, else learned from the corpus."""
+        when one names such a component, else learned from the corpus.
+
+        Only a reference whose path names the component its GUID finds counts:
+        some shipped paths are stale (Increase_Shield's ``[Timer] ...\\Shield
+        Reload Timer`` carries the GUID of the State ``State Is In Cooldown``),
+        and trusting those labelled a State target ``[Timer]``."""
         g = self.graph()
         idx = g.by_guid()
         for c in g.components:
             for r in c.refs:
                 t = idx.get(r.guid)
-                if t is not None and t.cls == cls and r.kind:
+                if t is not None and t.cls == cls and r.kind \
+                        and r.path.endswith("\\" + t.name):
                     return r.kind
         return kind_label(cls)
 

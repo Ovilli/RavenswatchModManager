@@ -129,6 +129,39 @@ def test_super_text_on_an_item_without_a_super_effect_is_refused():
         _copy("Powerups", "Power_Up_Damage", "Power_Up_Damag2", super_description="x")
 
 
+def _refs(ent: bytes, comp: str) -> dict[str, str]:
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    return {f.name: f.text for f in EF.fields(EntityFile(ent, "x").component(comp))}
+
+
+def test_steps_scope_an_on_hit_modifier_to_a_timer():
+    """Increase_Shield copied as a crit item kept its permanent on-hit modifier,
+    so crit stacked for the whole run (bug report 2026-10-20). Steps move the
+    modifier onto the hit state and let the reload timer end that state."""
+    ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", steps=[
+        {"remove_link": "On Damage Received.activates[1]"},
+        {"add_link": "On Damage Received.while_active", "to": "Modifier"},
+        {"set": "Modifier.duration", "value": 0.0},
+        {"link": "Shield Reload Timer.state", "to": "On Damage Received"},
+        {"link": "Modifier.amount", "to": "Shield Value"},
+    ])
+    hit = _refs(ent, "On Damage Received")
+    assert "Modifier" not in hit["activates"]
+    assert hit["while_active"].endswith("[Modifier] Increase_Crit_M\\Modifier")
+    assert _refs(ent, "Shield Reload Timer")["state"] \
+        == "<- [State] Increase_Crit_M\\On Damage Received"
+    mod = _refs(ent, "Modifier")
+    assert mod["duration"] == "f32 0"
+    assert mod["amount"].endswith("\\Shield Value")
+
+
+def test_a_bad_step_names_the_step():
+    with pytest.raises(ValueError, match="step 1"):
+        _copy("Rare", "Increase_Shield", "Increase_Shiel2",
+              steps=[{"link": "Nope.state", "to": "Modifier"}])
+
+
 # --- card text placeholders -----------------------------------------------------------
 
 def test_a_card_text_names_what_fills_each_placeholder():

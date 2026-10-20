@@ -1025,6 +1025,35 @@ super_description = "#Crit Damage@ &+{0}%~"
   crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
   the instant-kill thresholds only do something with the components the item
   that ships them carries.
+- **The stat changes, the behaviour doesn't.** A copy of `Increase_Shield`
+  keeps the shield's permanent on-hit modifier, which never wears off because
+  only damage used up the shield. As crit chance it stacks for the rest of the
+  run. Its amount also still scales with the hero's level healing. Fix the
+  behaviour with `[[content.steps]]`: the `set` / `link` / `add_link` /
+  `remove_link` steps of the [`entity` kind](/guides/first-mod-by-kind/), run
+  on the copy by the part names `rsmm entity-graph` prints for the base:
+
+```toml
+# "After taking damage, gain crit chance for 5 seconds" from Increase_Shield:
+# the buff lives while the hit state is on, and the reload timer ends it.
+[[content.steps]]
+remove_link = "On Damage Received.activates[1]"            # the permanent grant
+[[content.steps]]
+add_link = "On Damage Received.while_active"
+to       = "Modifier"
+[[content.steps]]
+set   = "Modifier.duration"
+value = 0.0
+[[content.steps]]
+link = "Shield Reload Timer.state"
+to   = "On Damage Received"
+[[content.steps]]
+link = "Modifier.amount"                                   # drop the level scaling
+to   = "Shield Value"
+[[content.steps]]
+link = "Descripton Format.obj_4[0]"                        # the card's {0}
+to   = "Shield Value"
+```
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

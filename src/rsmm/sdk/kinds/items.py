@@ -390,6 +390,13 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     pair it with a ``value_patches`` entry.
         ``super_description`` (str) super effect card text
                                     (-> ``<id>_SuperEffect``).
+        ``steps`` (list)            ``[[content.steps]]`` graph edits run on
+                                    the copy after the fields above: ``set``,
+                                    ``link``, ``add_link``, ``remove_link``,
+                                    as for ``kind="entity"`` (part names from
+                                    ``rsmm entity-graph``). For behaviour the
+                                    fields cannot express, e.g. scoping a
+                                    permanent on-hit modifier to a timer.
     """
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
@@ -432,6 +439,12 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     super_description = defn.fields.get("super_description")
     super_description = str(super_description) if super_description is not None else None
+    steps = defn.fields.get("steps") or []
+    if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
+        raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")
+    if any("clone" in s for s in steps):
+        raise ContentError(f"item {defn.id}: clone steps are not supported here; "
+                           f"use set / link / add_link / remove_link")
     # Custom PNG icon shipped in the mod is cooked into a new texture;
     # otherwise the icon field repoints to a vanilla icon.
     # A replacement's own icon gets a name of its own too: overwriting the
@@ -480,6 +493,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             value_patches=value_patches,
             modifier_stats=stats,
             super_description=super_description,
+            steps=steps,
             icon=icon,
             bank_base_gen=bank_gen,
             replace=replace,
