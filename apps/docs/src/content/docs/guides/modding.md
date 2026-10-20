@@ -1055,6 +1055,9 @@ to       = "Crit Chance Modifier Active Tester Pebbles"
 [[content.steps]]
 remove_link = "On Damage Received.activates[1]"            # the permanent grant
 [[content.steps]]
+remove_link = "On Damage Received.deactivates?[0]"         # keep listening: every
+                                                           # hit restarts the 5 s
+[[content.steps]]
 add_link = "On Damage Received.deactivates?"               # restart: off, then on
 to       = "Crit Chance Modifier Timer Pebbles"
 [[content.steps]]
