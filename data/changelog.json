@@ -2,6 +2,15 @@
   "generated": "2026-10-20",
   "entries": [
     {
+      "version": "5.9.26",
+      "date": "2026-10-20",
+      "summary": "Discord Url Update",
+      "highlights": [
+        "Discord Link Update"
+      ],
+      "loader_version": 46
+    },
+    {
       "version": "",
       "date": "2026-10-20",
       "summary": "Item mods: timed effects on any item, build checks, and a real card preview in the editor.",
@@ -521,17 +530,6 @@
         "Talent editor: every number a card shows can now be edited, including computed ones (like the Ice Clone's damage), single-number selectors and values with unusual names. Cards with nothing editable dropped from 144 to 22 of 460.",
         "Talent editor: new 'Open in Ability editor' link on each card jumps to that talent's parts and links.",
         "Publishing: the website's publish page fills in the mod id, name, version, tags and more from the manifest in your zip."
-      ]
-    },
-    {
-      "version": "5.9.1",
-      "date": "2026-10-02",
-      "summary": "Block-based Scripts tab in the editor, faster talent cards, and editor tab fixes.",
-      "highlights": [
-        "New: the editor's Scripts tab can build a script from blocks (Blockly) and writes the Lua for you.",
-        "Editor: faster talent cards, and a slow pick no longer lands on the wrong tab.",
-        "Fixed: clicking a pending-change chip no longer turns another tab into an item editor.",
-        "The loader's live config reload and R.camera arrive through the loader channel."
       ]
     }
   ]
