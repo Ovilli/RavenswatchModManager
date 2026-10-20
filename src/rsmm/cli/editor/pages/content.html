@@ -536,11 +536,11 @@ async function pickItem(id) {
 function freshItemEdit() {
   // "replace" changes the shipped item itself; "clone" makes a new one beside it.
   return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    steps: [], noSuper: false, autoDesc: false, autoSuper: false, textMiss: [] };
+    steps: [], noSuper: false, uniqueIdentity: false, autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.uniqueIdentity);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -752,6 +752,14 @@ function itemView() {
   rar.value = E.rarity;
   rar.onchange = () => { E.rarity = rar.value; refresh(); };
   if (!replace) f.append(el("label", { text: "Rarity" }), rar);
+  if (!replace) {
+    // A copy keeps its base's identity unless told otherwise, and anything that
+    // grants by identity then hands out the base (playtest 2026-10-20).
+    const own = el("input", { type: "checkbox", ...(E.uniqueIdentity ? { checked: "" } : {}) });
+    own.addEventListener("change", () => { E.uniqueIdentity = own.checked; saveDraft(); refresh(); });
+    f.append(el("label", { text: "Identity" }), el("label", { class: "hint", style: "display:block" }, own,
+      ` Its own identity. Without it the game can treat the copy as ${it.name}: a grant or test script hands out the original.`));
+  }
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
     const b = el("button", { class: !E.iconUpload && (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
@@ -816,8 +824,8 @@ function itemView() {
     v.append(el("div", { class: "sect", text: `Graph steps (${E.steps.length})` }));
     v.append(el("div", { class: "hint", style: "margin-bottom:6px",
       text: "Kept exactly as the manifest writes them; edit them in manifest.toml." }));
-    const op = s => ["set", "link", "add_link", "remove_link"].find(k => k in s) || "?";
-    for (const s of E.steps) v.append(el("div", { class: "muted", text: `${op(s)} ${s[op(s)] ?? ""}${"to" in s ? " \u2192 " + s.to : ""}${"value" in s ? " = " + JSON.stringify(s.value) : ""}` }));
+    const op = s => ["clone", "set", "link", "add_link", "remove_link", "percent"].find(k => k in s) || "?";
+    for (const s of E.steps) v.append(el("div", { class: "muted", text: `${op(s)} ${[].concat(s[op(s)] ?? "").join(", ")}${"from" in s ? " from " + s.from : ""}${"to" in s ? " \u2192 " + s.to : ""}${"value" in s ? " = " + JSON.stringify(s.value) : ""}` }));
   }
   if (it.superKey) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
@@ -2888,7 +2896,8 @@ function editPayload() {
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })),
-      ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}) };
+      ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}),
+      ...(E.mode === "clone" && E.uniqueIdentity ? { uniqueIdentity: true } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;

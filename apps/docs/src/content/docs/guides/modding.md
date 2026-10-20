@@ -1036,30 +1036,46 @@ super_description = "#Crit Damage@ &+{0}%~"
   only damage used up the shield. As crit chance it stacks for the rest of the
   run. Its amount also still scales with the hero's level healing. Fix the
   behaviour with `[[content.steps]]`: the `set` / `link` / `add_link` /
-  `remove_link` steps of the [`entity` kind](/guides/first-mod-by-kind/), run
+  `remove_link` / `percent` / `clone` steps of the [`entity` kind](/guides/first-mod-by-kind/), run
   on the copy by the part names `rsmm entity-graph` prints for the base:
 
 ```toml
-# "After taking damage, gain crit chance for 5 seconds" from Increase_Shield:
-# the buff lives while the hit state is on, and the reload timer ends it.
+# "After taking damage, gain crit chance for 5 seconds" from Increase_Shield.
+# A bonus hung on a state lasted ~1.5 s in game. The shipped way to time a
+# bonus is Dash_Crit_Chance's: a tester (run by State Picked Up) holds the
+# modifier on while a timer has time left. Copy those three parts in, and let
+# the hit restart the timer instead of granting the permanent modifier.
+[[content.steps]]
+clone  = ["Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer", "Crit Chance Modifier"]
+from   = "Objects/Magical_Objects/Common/Dash_Crit_Chance"   # any entity, or a hero name
+suffix = " Pebbles"
+[[content.steps]]
+add_link = "State Picked Up.while_active"
+to       = "Crit Chance Modifier Active Tester Pebbles"
 [[content.steps]]
 remove_link = "On Damage Received.activates[1]"            # the permanent grant
 [[content.steps]]
-add_link = "On Damage Received.while_active"
-to       = "Modifier"
+add_link = "On Damage Received.deactivates?"               # restart: off, then on
+to       = "Crit Chance Modifier Timer Pebbles"
 [[content.steps]]
-set   = "Modifier.duration"
-value = 0.0
+add_link = "On Damage Received.activates"
+to       = "Crit Chance Modifier Timer Pebbles"
 [[content.steps]]
-link = "Shield Reload Timer.state"
-to   = "On Damage Received"
-[[content.steps]]
-link = "Modifier.amount"                                   # drop the level scaling
+link = "Crit Chance Modifier Timer Pebbles.duration"       # the copies read this
+to   = "Shield Reload Delay"                               # item's numbers, not
+[[content.steps]]                                          # the donor's
+link = "Crit Chance Modifier Pebbles.amount"
 to   = "Shield Value"
 [[content.steps]]
 link = "Descripton Format.obj_4[0]"                        # the card's {0}
 to   = "Shield Value"
+[[content.steps]]
+percent = "Descripton Format.obj_4"                        # 0.3 -> "30", not "0"
+value   = true
 ```
+
+A card slot shows its number plain or x100 as a percentage; a shield's shows
+it plain, so a stat that is a fraction needs a `percent` step.
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

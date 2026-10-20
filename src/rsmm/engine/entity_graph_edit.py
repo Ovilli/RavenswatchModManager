@@ -777,6 +777,27 @@ class EntityFile:
         at = len(self.objects[c.index - 1]) - len(c.body) + f.offset + acc.offset
         self.objects[c.index - 1][at:at + 4] = want
 
+    def set_format_mode(self, comp: str, slot: str, percent: bool) -> None:
+        """Show String Format ``comp``'s slot ``slot`` (its field name, e.g.
+        ``obj_4``) as a percentage (x100) or as the plain number: the slot's
+        trailing display mode (see :meth:`add_format_slot`). A shield's card
+        shows its value plain, so a copy turned into a 0.3 crit bonus read
+        "+0%" until its slot was switched (2026-10-20)."""
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, _ = self._format_slots(c)
+        f = next((x for x in slots if x.name == slot), None)
+        if f is None:
+            raise EntityEditError(f"{c.name!r} has no value slot {slot!r}; have "
+                                  f"{', '.join(x.name for x in slots) or 'none'}")
+        body = c.body[f.offset:f.offset + f.size]
+        if struct.unpack("<I", body[-8:-4])[0] > 15 or body[-4:] != _E:
+            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        struct.pack_into("<I", self.objects[c.index - 1], at + f.offset + f.size - 8,
+                         1 if percent else 0)
+
     def clear_format_slots(self, comp: str) -> int:
         """Remove every value slot from the String Format ``comp``; returns how
         many there were. Text that still says ``{0}`` then shows nothing there,
@@ -967,9 +988,13 @@ def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
         if ref.guid not in new_guids:
             continue
         m = EG._PATH.match(ref.path)
-        if not m or m["rest"] not in paths:
+        # A part with no group has the path `\Name`, but references name it
+        # `Scope\Name` (see _picker): without the second lookup a copy's link
+        # to an ungrouped copy kept the donor's label.
+        rest = m and next((k for k in (m["rest"], "\\" + m["rest"]) if k in paths), None)
+        if not rest:
             continue
-        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[m['rest']]}"
+        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[rest].lstrip(chr(92))}"
         s = off + 8 + 16                              # BEGIN, class, GUID
         n = struct.unpack_from("<I", p, s)[0]
         out += p[last:s] + _lstr(new)

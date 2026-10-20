@@ -137,20 +137,23 @@ def _refs(ent: bytes, comp: str) -> dict[str, str]:
 
 def test_steps_scope_an_on_hit_modifier_to_a_timer():
     """Increase_Shield copied as a crit item kept its permanent on-hit modifier,
-    so crit stacked for the whole run (bug report 2026-10-20). Steps move the
-    modifier onto the hit state and let the reload timer end that state."""
+    so crit stacked for the whole run (bug report 2026-10-20). Hung on the hit
+    state it lasted ~1 s: that is an event state. The window is a lasting state
+    the hit switches on, running the timer that ends it and the modifier."""
     ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", steps=[
         {"remove_link": "On Damage Received.activates[1]"},
-        {"add_link": "On Damage Received.while_active", "to": "Modifier"},
+        {"add_link": "On Damage Received.activates", "to": "State Is In Cooldown"},
+        {"add_link": "State Is In Cooldown.while_active", "to": "Shield Reload Timer"},
+        {"add_link": "State Is In Cooldown.while_active", "to": "Modifier"},
         {"set": "Modifier.duration", "value": 0.0},
-        {"link": "Shield Reload Timer.state", "to": "On Damage Received"},
+        {"link": "Shield Reload Timer.state", "to": "State Is In Cooldown"},
         {"link": "Modifier.amount", "to": "Shield Value"},
     ])
     hit = _refs(ent, "On Damage Received")
-    assert "Modifier" not in hit["activates"]
-    assert hit["while_active"].endswith("[Modifier] Increase_Crit_M\\Modifier")
-    assert _refs(ent, "Shield Reload Timer")["state"] \
-        == "<- [State] Increase_Crit_M\\On Damage Received"
+    assert "Modifier" not in hit["activates"] and "State Is In Cooldown" in hit["activates"]
+    window = _refs(ent, "State Is In Cooldown")["while_active"]
+    assert "Shield Reload Timer" in window and window.endswith("\\Modifier")
+    assert _refs(ent, "Shield Reload Timer")["state"].endswith("\\State Is In Cooldown")
     mod = _refs(ent, "Modifier")
     assert mod["duration"] == "f32 0"
     assert mod["amount"].endswith("\\Shield Value")
@@ -175,7 +178,22 @@ def test_a_copy_can_drop_its_super_effect():
     does (a healing bonus)."""
     ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", super_effect=False)
     assert "Super Effect Modifier" not in _refs(ent, "Child State Super Effect")["while_active"]
-    assert IM.super_text_key(ent) == "Increase_Crit_M_SuperEffect"
+    # The model's empty text, not a key with a blank row: the card prints a
+    # blank row's key ("x5 Increase_Crit_M_SuperEffect", playtest 2026-10-20).
+    assert IM.super_text_key(ent) is None
+    fmt = _refs(ent, "Super Effect Descripton Format")
+    assert fmt["value_2"].endswith("ff ff ff ff 00 00 00 00") and "obj_4" not in fmt
+
+
+def test_a_step_shows_a_card_number_as_a_percentage():
+    """A shield's card shows its amount plain: a 0.3 crit bonus read "+0%"."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M",
+                steps=[{"percent": "Descripton Format.obj_4", "value": True}])
+    c = EntityFile(ent, "x").component("Descripton Format")
+    modes = [c.body[f.offset + f.size - 8] for f in EF.fields(c) if f.name in ("obj_4", "obj_5")]
+    assert modes == [1, 0]
 
 
 def test_dropping_a_super_effect_refuses_super_text_and_bases_without_one():
@@ -184,6 +202,24 @@ def test_dropping_a_super_effect_refuses_super_text_and_bases_without_one():
               super_description="x")
     with pytest.raises(ValueError, match="no super effect"):
         _copy("Powerups", "Power_Up_Damage", "Power_Up_Damag2", super_effect=False)
+
+
+def test_parts_cloned_from_another_item_link_to_each_other_by_this_items_name():
+    """Pebbles' timed crit copies Dash_Crit_Chance's tester, timer and modifier.
+    A copied link to an UNGROUPED copy kept the donor's label
+    (`[Modifier] Dash_Crit_Chance\\Crit Chance Modifier`)."""
+    ent = _copy("Rare", "Increase_Shield", "Increase_Crit_M", steps=[
+        {"clone": ["Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer",
+                   "Crit Chance Modifier"],
+         "from": "Objects/Magical_Objects/Common/Dash_Crit_Chance", "suffix": " P"},
+        {"add_link": "State Picked Up.while_active", "to": "Crit Chance Modifier Active Tester P"},
+        # The donor's numbers were not copied: read this item's instead.
+        {"link": "Crit Chance Modifier Timer P.duration", "to": "Shield Reload Delay"},
+        {"link": "Crit Chance Modifier P.amount", "to": "Shield Value"},
+    ])
+    assert b"Dash_Crit_Chance\\" not in ent
+    assert _refs(ent, "Crit Chance Modifier Active Tester P")["ref_6"] \
+        == "<- [Modifier] Increase_Crit_M\\Crit Chance Modifier P"
 
 
 def test_a_bad_step_names_the_step():

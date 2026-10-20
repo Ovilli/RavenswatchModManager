@@ -395,6 +395,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         ``steps`` (list)            ``[[content.steps]]`` graph edits run on
                                     the copy after the fields above: ``set``,
                                     ``link``, ``add_link``, ``remove_link``,
+                                    ``percent`` (a card slot shown x100),
                                     as for ``kind="entity"`` (part names from
                                     ``rsmm entity-graph``). For behaviour the
                                     fields cannot express, e.g. scoping a
@@ -447,9 +448,6 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")
-    if any("clone" in s for s in steps):
-        raise ContentError(f"item {defn.id}: clone steps are not supported here; "
-                           f"use set / link / add_link / remove_link")
     # Custom PNG icon shipped in the mod is cooked into a new texture;
     # otherwise the icon field repoints to a vanilla icon.
     # A replacement's own icon gets a name of its own too: overwriting the
@@ -461,8 +459,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     else:
         icon, extra_files = _coerce_icon(defn.fields.get("icon")), {}
 
-    wants_text = (name is not None or description is not None
-                  or super_description is not None or not super_effect)
+    wants_text = name is not None or description is not None or super_description is not None
     bank_gen = _install_bank_gen() if wants_text else None
     if wants_text and bank_gen is None:
         _log.warning(

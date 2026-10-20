@@ -706,8 +706,8 @@ def build_magic_item(
       instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
       :mod:`rsmm.engine.item_modifier`;
     * ``super_effect=False`` removes the super effect: the state that runs it
-      is emptied (no bonus ever applies) and its card text is blank, as on the
-      items that ship without one (whose format is the model's empty text);
+      is emptied (no bonus ever applies) and its card text becomes the model's
+      empty text, as on the items that ship without one;
     * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
       ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
       after the value patches, by the part names ``rsmm entity-graph`` shows;
@@ -769,7 +769,6 @@ def build_magic_item(
                              "drop super_description")
         if base_super is None:
             raise ValueError(f"{base_id} has no super effect to remove")
-        super_description = ""
     if super_description is not None:
         if base_super is None:
             raise ValueError(
@@ -792,7 +791,12 @@ def build_magic_item(
         ent = _clear_super_effect(ent, base_id)
     if steps:
         from . import ability_edit as AE
-        ent = AE.apply({new_id: ent}, steps, main=new_id, seed=f"item:{new_id}").files[new_id]
+        res = AE.apply({new_id: ent}, steps, main=new_id, seed=f"item:{new_id}")
+        if res.resources:
+            # An item has no preload list of its own to add them to.
+            raise ValueError("cloned parts need resources the item does not load: "
+                             + ", ".join(sorted(res.resources)))
+        ent = res.files[new_id]
     if icon is not None:
         ent = set_icon(ent, icon)
     # The tier the game reads is the Quality int, so a copy filed under
@@ -838,7 +842,13 @@ _SUPER_STATE = "Child State Super Effect"
 
 
 def _clear_super_effect(ent: bytes, base_id: str) -> bytes:
-    """``ent`` with nothing left for its super-effect state to run."""
+    """``ent`` with nothing left for its super-effect state to run and no
+    super-effect text.
+
+    The text must be the model's EMPTY text (``"" "" row -1 ""``, what every
+    item without a super effect inherits), not a key whose row is blank: the
+    card shows a blank row's key ("x5 Increase_Crit_M_SuperEffect", playtest
+    2026-10-20)."""
     from . import entity_fields as EF
     from .entity_graph_edit import EntityEditError, EntityFile
     ef = EntityFile(ent, base_id)
@@ -848,6 +858,18 @@ def _clear_super_effect(ent: bytes, base_id: str) -> bytes:
         raise ValueError(f"{base_id} has no {_SUPER_STATE!r} to empty") from None
     for i in reversed(range(len(f.items))):
         ef.remove_ref(_SUPER_STATE, "while_active", i)
+    from .item_modifier import _SUPER_FORMAT
+    ef.clear_format_slots(_SUPER_FORMAT)
+    c = ef.component(_SUPER_FORMAT)
+    p = ef.objects[c.index - 1]
+    lstr = lambda b: struct.pack("<I", len(b)) + b    # noqa: E731
+    head = lstr(b"Text") + lstr(_TEXT_BANK_NAME.encode())
+    at = p.find(head)
+    if at == -1 or p.find(head, at + 1) != -1:
+        raise ValueError(f"{base_id}: cannot find its super text to blank")
+    end = at + len(head) + 4
+    end += 4 + struct.unpack_from("<I", p, end)[0]          # row, then the key
+    p[at:end] = lstr(b"") + lstr(b"") + b"\xff\xff\xff\xff" + lstr(b"")
     return ef.to_bytes()
 
 

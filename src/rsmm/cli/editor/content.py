@@ -978,6 +978,8 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         swaps[modifier] = stat
     if swaps:
         fields["stats"] = swaps
+    if req.get("uniqueIdentity") and req.get("mode") == "clone":
+        fields["unique_identity"] = True
     sup = req.get("superDescription")
     if req.get("noSuper"):
         fields["super_effect"] = False

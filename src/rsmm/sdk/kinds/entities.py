@@ -102,7 +102,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise ContentError(f"entity {defn.id}: needs 'steps', a list of [[content.steps]] tables")
     if any("clone" in s for s in steps):
         raise ContentError(f"entity {defn.id}: clone steps are not supported here; "
-                           f"use set / link / add_link / remove_link")
+                           f"use set / link / add_link / remove_link / percent")
 
     steps = _resolve_config(defn, steps, out_dir.parent)
 

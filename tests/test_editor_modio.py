@@ -147,10 +147,12 @@ def test_an_opened_mod_rebuilds_its_own_blocks_and_saves_over_them(tmp_path):
 def test_an_items_graph_steps_survive_open_and_save(tmp_path):
     """The page has no controls for an item's [[content.steps]]; opening the mod
     used to refuse the block, and a save must not drop them."""
-    steps = [{"remove_link": "On Damage Received.activates[1]"},
-             {"link": "Shield Reload Timer.state", "to": "On Damage Received"}]
+    steps = [{"clone": ["Crit Chance Modifier Timer"],
+              "from": "Objects/Magical_Objects/Common/Dash_Crit_Chance", "suffix": " P"},
+             {"remove_link": "On Damage Received.activates[1]"},
+             {"percent": "Descripton Format.obj_4", "value": True}]
     item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps,
-            "noSuper": True}
+            "noSuper": True, "uniqueIdentity": True}
     defs = C.defs_for("items", item)
     C.save(defs, "m1", tmp_path, create=True, name="M1")
 
@@ -158,6 +160,7 @@ def test_an_items_graph_steps_survive_open_and_save(tmp_path):
     pay = got["items"]["Increase_Shield"]["payload"]
     assert pay["steps"] == steps
     assert pay["noSuper"] is True and defs[0][2]["super_effect"] is False
+    assert pay["uniqueIdentity"] is True and defs[0][2]["unique_identity"] is True
     assert C.defs_for("items", pay) == defs
 
 

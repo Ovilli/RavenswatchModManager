@@ -11,7 +11,10 @@ One step per table::
     as = "Echo"                           new group name (required for a group)
     suffix = " Echo"                      appended to every copied part's name
                                           (default: " " + as)
-    from = "Juliet"                       copy from another hero's entity
+    from = "Juliet"                       copy from another hero's entity, or
+                                          any entity by its path under
+                                          EntitySettings ("Objects/Magical_Objects/
+                                          Common/Dash_Crit_Chance")
 
     set = "Primary Ability Shots Delay.value"
     value = 0.2                           a number, bool or [x, y, z]; a number
@@ -29,6 +32,9 @@ One step per table::
 
     remove_link = "State Secondary Ability.activates[0]"
 
+    percent = "Descripton Format.obj_4"   a card slot shown x100 as a percentage
+    value = true                          (false: the plain number)
+
 ``entity = "FX"`` (or a full stem) on any step targets another member of the
 family, e.g. ``Hero_Piper_FX``; the default is the gameplay entity.
 
@@ -44,7 +50,7 @@ from dataclasses import dataclass, field
 from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
-_OPS = ("clone", "set", "link", "add_link", "remove_link")
+_OPS = ("clone", "set", "link", "add_link", "remove_link", "percent")
 
 
 class AbilityEditError(ValueError):
@@ -56,6 +62,15 @@ class Result:
     files: dict[str, bytes]                     # stem -> edited bytes
     resources: set[str] = field(default_factory=set)   # new resources to preload
     warnings: list[str] = field(default_factory=list)
+
+
+def source_entity_ref(name: str) -> str:
+    """A clone's ``from``: a hero name, or an entity path under EntitySettings."""
+    if "/" not in name and "\\" not in name:
+        return hero_entity_ref(name)
+    p = name.replace("/", "\\").strip("\\")
+    p = p.removeprefix("EntitySettings\\")
+    return p if p.endswith(".entity.ot") else p.removesuffix(".entity") + ".entity.ot"
 
 
 def hero_entity_ref(name: str) -> str:
@@ -102,6 +117,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                     ef.set_ref(part, fld, str(step.get("to") or "") or None)
                 elif op == "add_link":
                     ef.add_ref(part, fld, str(step["to"]))
+                elif op == "percent":
+                    if not isinstance(step.get("value", True), bool):
+                        raise AbilityEditError("percent takes value = true or false")
+                    ef.set_format_mode(part, fld, step.get("value", True))
                 else:
                     base, _, idx = fld.partition("[")
                     if not idx:
@@ -129,10 +148,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
 def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
     src = ef
     if step.get("from"):
-        ref = hero_entity_ref(str(step["from"]))
+        ref = source_entity_ref(str(step["from"]))
         raw = read(ref)
         if raw is None:
-            raise AbilityEditError(f"no hero entity {ref}")
+            raise AbilityEditError(f"no entity {ref}")
         src = EntityFile(raw, ref.rsplit("\\", 1)[-1][:-len(".entity.ot")])
     what = step["clone"]
     new_group = str(step.get("as") or "")
