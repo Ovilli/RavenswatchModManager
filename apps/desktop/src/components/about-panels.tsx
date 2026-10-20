@@ -104,7 +104,7 @@ export function AboutPanels() {
                 {t('View repository')}
               </a>
               <a
-                href="https://discord.gg/TSVdCaqd"
+                href="https://discord.gg/dZbsKBWjSF"
                 target="_blank"
                 rel="noreferrer noopener"
                 className={buttonClass}
