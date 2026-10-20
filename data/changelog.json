@@ -4,6 +4,18 @@
     {
       "version": "",
       "date": "2026-10-20",
+      "summary": "Item mods: timed effects on any item, build checks, and a real card preview in the editor.",
+      "highlights": [
+        "New item field effect = { stat, amount, seconds, on }: a timed bonus on a trigger (taking damage, dash, special, defense, power, talent picked, item picked up, dream shards, night, and more), with the item icon counting it down",
+        "Copied items get their own identity by default, so picking up another item no longer takes one away",
+        "rsmm lint and the build warn about item traps: bonuses that stack forever, hidden level scaling, a card that reads +0%",
+        "The item editor gets a Timed effect section and a card preview that shows the numbers the game will print"
+      ],
+      "cli_version": 6
+    },
+    {
+      "version": "",
+      "date": "2026-10-20",
       "summary": "Item mods: timed bonuses and correct cards. Copied items show their own description, can drop the super effect, show fractions as percentages, and can copy parts from other items.",
       "highlights": [
         "Items can copy parts from another item with clone steps (from = an entity path), e.g. a timed '+X for N seconds' bonus",
@@ -520,15 +532,6 @@
         "Editor: faster talent cards, and a slow pick no longer lands on the wrong tab.",
         "Fixed: clicking a pending-change chip no longer turns another tab into an item editor.",
         "The loader's live config reload and R.camera arrive through the loader channel."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 25,
-      "date": "2026-10-02",
-      "summary": "live config reload + R.camera",
-      "highlights": [
-        "live config reload + R.camera"
       ]
     }
   ]
