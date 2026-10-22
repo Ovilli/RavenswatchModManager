@@ -11,6 +11,7 @@
 // loaded from a URL: content blockers hold a script named like a worker that
 // then pulls megabytes of WebAssembly (it looks like a cryptominer), and the
 // engine then never starts. As JSON, with "</" escaped so it cannot end the tag.
+import Analytics from '@vercel/analytics/astro';
 import workerSource from './_worker.js?raw';
 
 const workerJson = JSON.stringify(workerSource).replaceAll('</', '<\\/');
@@ -29,6 +30,7 @@ const description =
 <meta property="og:description" content={description} />
 <meta property="og:image" content="https://docs.rsmm.me/og.png" />
 <link rel="icon" href="/favicon.png" />
+<Analytics />
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs" crossorigin />
 <style is:global>
   :root {
