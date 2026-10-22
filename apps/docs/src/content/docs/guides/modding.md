@@ -1110,8 +1110,9 @@ super_effect = false
 effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_taken" }
 ```
 
-- **`on`**: when it triggers. Each one is the listener of a shipped item that
-  reacts to it: `damage_taken`, `dash`, `special`, `defense`, `ultimate`,
+- **`on`**: when it triggers. rsmm writes the listener itself, with the event
+  and filter the shipped items that react to it use: `damage_taken`, `dash`,
+  `special`, `defense`, `ultimate`,
   `power`, `day_start`, `night_start`, `talent_picked`, `item_picked_up`,
   `dream_shards_gained`, `sandman_purchase`, `reroll`. Proven in game:
   `damage_taken`, `dash`, `special`, `defense`, `power`, `talent_picked`,
@@ -1155,8 +1156,11 @@ effects = [
   each, numbered `{0}`, `{1}`... in order (a timed effect takes two: its
   amount, then its seconds). Write your own with the same numbering.
 - `effects` also works next to a `base`: the base then gives only the look.
-- The item is built on the frame every trigger was proven on
-  (`Increase_Shield`, with its shield cut) and has no super effect.
+- Every part an effect needs (modifier, timer, tester, trigger listener) is
+  written by rsmm, not copied out of another item, so a game patch that
+  changes some item does not change yours. The item's frame (name, icon,
+  card) is `Increase_Shield`'s, with its shield cut, the frame every trigger
+  was proven on; it has no super effect.
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

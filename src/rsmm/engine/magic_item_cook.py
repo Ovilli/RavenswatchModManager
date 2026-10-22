@@ -817,13 +817,7 @@ def build_magic_item(
         ent = apply_value_patch(ent, label, old, new, clear)
     if effect is not None:
         from . import item_effect as IE
-        from .item_checks import donor_leftovers
-        fx = IE.parse_effects(effect)
-        ent = IE.apply_effects(ent, new_id, fx)
-        left = donor_leftovers(ent, IE.donor_stems(fx) - {new_id, base_id})
-        if left:
-            raise ValueError("effect: copied parts still point into the item they were "
-                             "copied from: " + "; ".join(left))
+        ent = IE.apply_effects(ent, new_id, IE.parse_effects(effect))
     if not super_effect:
         ent = _clear_super_effect(ent, base_id)
     if steps:

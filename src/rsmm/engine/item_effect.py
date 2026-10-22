@@ -1,22 +1,26 @@
-"""An item's ``effect``: "on <trigger>, gain <amount> <stat> for <seconds> s".
+"""An item's ``effects``: always-on bonuses and "on <trigger>, gain <amount>
+<stat> for <seconds> s".
 
-Compiled from the recipe proven in game on Little Thumb Pebbles (2026-10-20:
-three hits, three exact 5.0 s windows, no stacking), so it works on ANY base
-item rather than on one base's part names:
+Every part is WRITTEN here from field values (``entity_parts``), not copied out
+of a shipped item, so a custom item does not depend on any other item. The
+parts are the recipe proven in game on Little Thumb Pebbles (2026-10-20: three
+hits, three exact 5.0 s windows, no stacking) and on effect-triggers-test, and
+they are byte for byte what copying the proven parts produced
+(``tests/test_item_effect_parts.py``):
 
-* the timed bonus is Dash_Crit_Chance's: a tester, kept running by the item's
-  equipped state, holds a modifier on while a timer has time left. A modifier
-  on a state's ``while_active`` lasted ~1.5 s in game, so that shape is not used;
-* the trigger is the listener of a shipped item that reacts to it, copied and
-  pointed at a fresh trigger state (a copy of Dash_Crit_Chance's emptied
-  ``On Dash Event``) that restarts the timer (off, then on), so every trigger
-  refreshes the full duration. Each trigger is one some shipped item listens
-  for (surveyed 2026-10-20: 23 listeners, 19 distinct); see ``TRIGGERS`` for
-  which are proven in game;
+* an always-on bonus is a modifier on the item's equipped state's
+  ``while_active``, as every plain stat item does;
+* a timed bonus is a tester, kept running by the equipped state, that holds a
+  modifier on while a timer has time left (a modifier on a trigger state's
+  ``while_active`` lasted ~1.5 s in game, so that shape is not used);
+* a trigger is a game-event listener (``TRIGGERS``: the event and its flag
+  filter, as the shipped items listen for it) that switches on a trigger state,
+  which restarts the timer (off, then on), so every trigger refreshes the full
+  duration;
 * the base's own stat effects are cut unless ``keep_base_effect`` (the base is
   the item's look, not its behaviour);
-* the card's ``{0}`` is the amount and ``{1}`` the seconds, so the card always
-  says what the effect does.
+* the card's ``{0}``, ``{1}``... are each effect's numbers, so the card always
+  says what the effects do.
 """
 
 from __future__ import annotations
@@ -24,36 +28,39 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-from . import entity_check as CK
 from . import entity_fields as EF
+from . import entity_parts as P
 from . import item_modifier as IM
 from .entity_graph_edit import EntityEditError, EntityFile
 
-_DASH = "Objects\\Magical_Objects\\Common\\Dash_Crit_Chance.entity.ot"
-_SHIELD = "Objects\\Magical_Objects\\Rare\\Increase_Shield.entity.ot"
-
-#: The timed bonus: (tester, timer, modifier, seconds value, amount value).
+#: Part names, kept from the recipe the parts were first copied from so a mod's
+#: ``steps`` that name them keep working: (tester, timer, modifier, seconds
+#: value, amount value).
 _TIMED = ("Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer",
           "Crit Chance Modifier", "Crit Chance Duration Value", "Crit Chance Value")
+_TRIGGER_STATE = "On Trigger"
+
+#: The game event every ability use sends; its flag filter says which ability.
+_ABILITY_USED = 0x17d370a7
 
 
 @dataclass(frozen=True)
 class Trigger:
-    donor: str                # a shipped item that listens for it
-    listener: str             # its listener: the part copied
+    """A game event an item reacts to, as a shipped item's listener filters it."""
+    listener: str             # the listener part's name
     text: str                 # what the card says, for the editor
-    via: tuple[str, ...] = () # parts the listener goes through, copied along
-    target: str = ""          # the part that switched the donor's state on
-                              # (default: the listener itself)
+    event: int                # the game event id
+    include: tuple[str, ...] = ()   # flags the event must carry
+    exclude: tuple[str, ...] = ()   # flags it must not
+    slots: tuple[str, ...] = ("ref_4",)   # which reference(s) it switches on
+    flags: int = 0x1000001    # the listener record's header flags
+    tail: bytes = bytes(5)    # the listener settings' last five bytes
+    target: str = ""          # the part the listener fires, when not the state
+                              # (damage_taken: a "hero is alive" check)
+    group: str = ""           # the listener's group, as the shipped item files it
 
 
-def _mo(rarity: str, item: str) -> str:
-    return f"Objects\\Magical_Objects\\{rarity}\\{item}.entity.ot"
-
-
-#: Every trigger a shipped item's listener reacts to, with that item as donor.
-#: The ability-used event is one listener filtered by flags (Dash / Special /
-#: Defense / Ultimate / Power), so those five share its proven mechanism.
+#: Every trigger, as the shipped item that reacts to it listens for it.
 #: PROVEN in game 2026-10-20 (effect-triggers-test): damage_taken, dash,
 #: special, defense, power, talent_picked, item_picked_up,
 #: dream_shards_gained, night_start. Not yet exercised: ultimate, day_start,
@@ -62,42 +69,40 @@ def _mo(rarity: str, item: str) -> str:
 #: with no targets and the world flag off (mode 0), so it reaches no one
 #: (sender FUN_140780390); it never fired in 18 hits. Use damage_taken.
 TRIGGERS = {
-    "damage_taken": Trigger(_SHIELD, "On Damage Received Event Listener",
-                            "After taking damage",
-                            # the tester reads the hero's health ratio from its own item
-                            via=("Hero Is Alive Tester", "Entity Get Ration Health Hero Value"),
-                            target="Hero Is Alive Tester"),
-    "dash": Trigger(_DASH, "On Dash Event Listener", "After dashing"),
-    "special": Trigger(_mo("Epic", "Secondary_Gain_Charge"), "Special Event Listener",
-                       "After using your special"),
-    "defense": Trigger(_mo("Legendary", "Defense_Heal"), "Defense Use Event Listener",
-                       "After using your defense"),
-    "ultimate": Trigger(_mo("Epic", "Reduce_Ultimate_CD"), "Ultimate Used Event Listener",
-                        "After using your ultimate"),
-    "power": Trigger(_mo("Legendary", "Clear_Dash_Cooldown_On_Defense"),
-                     "Use Power Game Event Listener", "After using your power"),
-    "day_start": Trigger(_mo("Legendary", "Full_Heal_At_Day_Night"), "Day Event Listener",
-                         "When day begins"),
-    "night_start": Trigger(_mo("Legendary", "Full_Heal_At_Day_Night"), "Night Event Listener",
-                           "When night begins"),
-    "talent_picked": Trigger(_mo("Legendary", "Upgrade_All_Talents_Once"),
-                             "Skill Selected Game Event Listener", "After picking a talent"),
-    "item_picked_up": Trigger(_mo("Cursed", "Destroy_Legendary_To_Damage"),
-                              "On Magical Object Pick Up Event Listener",
-                              "After picking up a magical object"),
-    "dream_shards_gained": Trigger(_mo("Cursed", "Curse_Stack_Shard_Quest"),
-                                   "Gain Dream Shards Event Listener",
-                                   "After gaining dream shards"),
-    "sandman_purchase": Trigger(_mo("Common", "Reduce_Dream_Shard_Price"),
-                                "Sandman Purchase Event Listener",
-                                "After buying from the Sandman"),
-    "reroll": Trigger(_mo("Common", "Reroll_To_Dream_Shards"), "Reroll From Code Event Listener",
-                      "After a reroll"),
+    "damage_taken": Trigger("On Damage Received Event Listener", "After taking damage",
+                            0x17df7da0, exclude=("Self",), target="Hero Is Alive Tester"),
+    "dash": Trigger("On Dash Event Listener", "After dashing", _ABILITY_USED,
+                    ("Dash",), ("NotADash",), flags=0x1000101),
+    "special": Trigger("Special Event Listener", "After using your special", _ABILITY_USED,
+                       ("Special",), ("NotAAbility",)),
+    "defense": Trigger("Defense Use Event Listener", "After using your defense",
+                       _ABILITY_USED, ("Defense",), ("NotAAbility",), flags=0x1),
+    "ultimate": Trigger("Ultimate Used Event Listener", "After using your ultimate",
+                        _ABILITY_USED, ("Ultimate",)),
+    "power": Trigger("Use Power Game Event Listener", "After using your power",
+                     _ABILITY_USED, ("Power",), ("NotAAbility",)),
+    "day_start": Trigger("Day Event Listener", "When day begins", 0x17d8d8fa, flags=0x1),
+    "night_start": Trigger("Night Event Listener", "When night begins", 0x17d8d8fc, flags=0x1),
+    "talent_picked": Trigger("Skill Selected Game Event Listener", "After picking a talent",
+                             0x17fc7683, slots=("ref_5",)),
+    "item_picked_up": Trigger("On Magical Object Pick Up Event Listener",
+                              "After picking up a magical object", 0x1a9cae51,
+                              slots=("ref_5",), flags=0x1000101),
+    "dream_shards_gained": Trigger("Gain Dream Shards Event Listener",
+                                   "After gaining dream shards", 0x12e831f3,
+                                   slots=("ref_3", "ref_4"), tail=bytes([2, 0, 0, 0, 0])),
+    "sandman_purchase": Trigger("Sandman Purchase Event Listener",
+                                "After buying from the Sandman", 0x1a18fd13),
+    "reroll": Trigger("Reroll From Code Event Listener", "After a reroll", 0x1a9b21a4,
+                      slots=("ref_4", "ref_5"), flags=0x1, group="Reroll From Code"),
 }
-#: The trigger state every listener is pointed at: emptied, it only restarts
-#: the effect's timer.
-_TRIGGER_STATE = "On Dash Event"
-_LISTENER_TARGETS = ("ref_3", "ref_4", "ref_5", "on_event")
+
+#: Accessor keys a value picker reads another part through (``items.md``): a
+#: Timer's time left, a listener's "fired", a GetValue's value.
+_TIMER_LEFT, _LISTENER_FIRED, _GOT_VALUE = 0x16831980, 0x12e4a37e, 0x16abf2eb
+#: Where damage_taken's "hero is alive" check reads the hero's health from.
+_HERO = ("EntitySettings", "Heroes\\Hero_Common\\Hero_Common.entity.ot")
+_HEALTH = ("Character_Common\\Character_Common.entity.ot", "Base\\Health Ratio")
 
 SUFFIX = " Effect"
 _EQUIPPED = "Child State Equiped"          # sic: the model's spelling
@@ -193,91 +198,168 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
     """``ent`` (an item entity, already renamed to ``item_id``) doing every one
     of ``effects``. The card's ``{0}``, ``{1}``... are each effect's numbers in
     order: an always-on effect's amount, a timed one's amount then seconds. The
-    item icon counts the first timed effect down."""
+    item icon counts the first timed effect down. ``read`` reads a shipped
+    entity (the hero's, for damage_taken's health check)."""
+    from . import entity_check as CK
     read = read or CK._corpus_reader
     ef = EntityFile(ent, item_id)
     slots: list[tuple[str, bool]] = []
-    mods: list[tuple[str, str]] = []
     first_timer = None
     try:
         equipped = _equipped_state(ef)
         if not any(e.keep_base_effect for e in effects):
             _cut_base(ef, ent)
         for i, effect in enumerate(effects):
+            w = P.PartWriter(ef, f"effect:{item_id}:{i}")
             sfx = _suffix(i)
             if effect.timed:
-                timer, mod = _add_timed(ef, item_id, effect, sfx, equipped, read, slots)
+                timer = _add_timed(w, effect, sfx, equipped, read, slots)
                 first_timer = first_timer or (timer, effect.seconds)
             else:
-                mod = _add_passive(ef, item_id, effect, sfx, equipped, read, slots)
-            mods.append((mod, effect.stat))
+                _add_passive(w, effect, sfx, equipped, slots)
         _card_slots(ef, slots)
         if first_timer is not None:
             _cooldown_display(ef, *first_timer)
-    except EntityEditError as e:
+    except (EntityEditError, P.PartError) as e:
         raise ItemEffectError(f"effect: {e}") from e
-    out = ef.to_bytes()
-    for mod, stat in mods:
-        try:
-            out = IM.set_modifier_stat(out, mod, stat)
-        except IM.ItemModifierError as e:
-            raise ItemEffectError(f"effect stat: {e}") from e
-    return out
+    return ef.to_bytes()
 
 
-#: An always-on bonus: (modifier, amount value) of the same donor.
-_PASSIVE = ("Crit Chance Modifier", "Crit Chance Value")
+_MOD = "oCEntityCpntModifierSettings"
+_VALUE = "oCEntityCpntValueSettings"
+_STATE = "oCEntityCpntStateSettings"
+_TIMER = "oCEntityCpntTimerSettings"
+_TESTER = "oCEntityCpntTesterSettings"
+_LISTENER = "oCGameEventListenerEntityCpntSettings"
+_GET = "oCEntityCpntGetValueSettings"
+_NONE = P.Link()
 
 
-def _add_passive(ef: EntityFile, item_id: str, effect: Effect, sfx: str, equipped: str,
-                 read, slots: list) -> str:
+#: The unit an amount is marked with (``entity_parts.Num.unit``), as on the
+#: proven parts.
+_RATIO = 2
+
+
+def _value(w: P.PartWriter, name: str, v: float, unit: int = 0) -> None:
+    w.add(_VALUE, name, {"value": P.Num.f32(v, unit), "flag": 0}, flags=0x101)
+
+
+def _owner(w: P.PartWriter, last: int) -> int:
+    """A collector of the entity that holds this one (the hero, for an item)."""
+    on = w.obj(P.VALUE_PICKER, b"\x00" + w.obj(P.UNION, struct.pack("<II", P.BOOL, 0) + b"\x01"))
+    return w.sub("oCOwnerEntityCollectorSettings",
+                 on + b"\x00" + w.obj("oCResourceWeakRef", bytes(8)) + bytes([last]))
+
+
+def _modifier(w: P.PartWriter, name: str, stat: str, amount: float) -> P.Link:
+    """A modifier giving ``amount`` of ``stat`` to whoever holds the item."""
+    return w.add(_MOD, name, {
+        "modifier_id": IM.resolve_stat(stat), "duration": P.Num.f32(0),
+        "amount": P.Num.f32(amount, _RATIO),
+        "targets": w.ids("oCEntityCollectorSelectorSettings", [_owner(w, 1)]),
+        "value_4": P.Num.f32(1), "sources?": w.ids("oCEntityCollectorSelectorSettings", []),
+        "id": P.Num.int(0), "flag": 1}, flags=0x1)
+
+
+def _float_test(w: P.PartWriter, source: P.Link, key: int) -> int:
+    """A condition: ``source`` (read through ``key``) is above 0."""
+    a = w.obj(P.VALUE_PICKER, b"\x01\x00" + P.link_bytes(source, w.ci) + struct.pack("<I", key)
+              + w.obj(P.UNION, struct.pack("<II", P.F32, 0) + bytes(4)))
+    b = w.obj(P.VALUE_PICKER, b"\x00" + w.obj(P.UNION, struct.pack("<II", P.F32, 0) + bytes(4)))
+    return w.sub("oCEntityCpntFloatTestSettings", a + b + struct.pack("<I", 2))
+
+
+def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags: int,
+            on_true: P.Link = _NONE, holds: P.Link = _NONE) -> P.Link:
+    """True while ``tests`` hold (all of them when ``every``); switches
+    ``on_true`` on and holds ``holds`` on meanwhile."""
+    test = w.obj("oCCombinerCpntTestSettings", bytes([0, int(every)])
+                 + struct.pack(f"<I{len(tests)}I", len(tests), *tests))
+    return w.add(_TESTER, name, {"on_true": on_true, "ref_2": _NONE, "on_false": _NONE,
+                                 "ref_4": _NONE, "test": test, "ref_6": holds,
+                                 "ref_7": _NONE}, flags=flags)
+
+
+def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
+                 slots: list) -> None:
     """A modifier held on while the item is equipped, as a plain stat item's."""
-    mod, amount = (n + sfx for n in _PASSIVE)
-    ef.clone(list(_PASSIVE), rename={n: n + sfx for n in _PASSIVE},
-             seed=f"effect:{item_id}:passive{sfx}", source=_donor(_DASH, read))
-    ef.set_value(mod, "amount", effect.amount)        # inline, see _add_timed
-    ef.set_value(amount, "value", effect.amount)
-    ef.add_ref(equipped, "while_active", mod)
+    _tester_n, _timer_n, mod, _seconds_n, amount = (n + sfx for n in _TIMED)
+    _modifier(w, mod, effect.stat, effect.amount)
+    _value(w, amount, effect.amount, _RATIO)
+    w.ef.add_ref(equipped, "while_active", mod)
     slots.append((amount, effect.percent))
-    return mod
 
 
-def _add_timed(ef: EntityFile, item_id: str, effect: Effect, sfx: str, equipped: str,
-               read, slots: list) -> tuple[str, str]:
+def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
+               slots: list) -> str:
     tester, timer, mod, seconds, amount = (n + sfx for n in _TIMED)
-    seed = "" if sfx == SUFFIX else sfx
-    ef.clone(list(_TIMED), rename={n: n + sfx for n in _TIMED},
-             seed=f"effect:{item_id}:timed{seed}", source=_donor(_DASH, read))
-    # The modifier and timer carry their numbers INLINE. Linked to the copied
-    # Value parts they read the donor's inline numbers instead (0.05 and 3 s
-    # for every trigger, playtest 2026-10-20), while links to an item's own
-    # Values work (Pebbles' Shield Value). The copied Values stay only for
-    # the card's numbers.
-    ef.set_value(mod, "amount", effect.amount)
-    ef.set_value(timer, "duration", effect.seconds)
-    ef.set_value(amount, "value", effect.amount)
-    ef.set_value(seconds, "value", effect.seconds)
+    state = _TRIGGER_STATE + sfx
+    # The modifier and timer carry their numbers INLINE: linked to Value parts
+    # they read the donor's inline numbers instead (0.05 and 3 s for every
+    # trigger, playtest 2026-10-20). The Values are only the card's numbers.
+    _value(w, seconds, effect.seconds)
+    _value(w, amount, effect.amount, _RATIO)
+    mod_link = _modifier(w, mod, effect.stat, effect.amount)
+    timer_link = w.add(_TIMER, timer, {
+        "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
+        "state": _NONE, "paused?": P.Num(P.BOOL, b"\x00"), "duration": P.Num.f32(effect.seconds),
+        "flag": 0, **_timer_tail(w)}, flags=0x1)
+    _tester(w, tester, [_float_test(w, timer_link, _TIMER_LEFT)], every=False, flags=0x1,
+            holds=mod_link)
+    w.add(_STATE, state, {
+        "activates": [timer_link], "deactivates?": [timer_link] if effect.refresh else [],
+        "list_2": [], "on_exit?": [], "disables_while_active?": [], "on_enter?": [],
+        "while_active": []}, flags=0x10001)
 
     trig = TRIGGERS[effect.on]
-    state = "On Trigger" + sfx
-    ef.clone([_TRIGGER_STATE], rename={_TRIGGER_STATE: state},
-             seed=f"effect:{item_id}:state{seed}", source=_donor(_DASH, read))
-    for field in ("activates", "deactivates?"):     # the donor's own effect
-        while _items(ef, state, field):
-            ef.remove_ref(state, field, 0)
-    if effect.refresh:                               # off, then on: full time again
-        ef.add_ref(state, "deactivates?", timer)
-    ef.add_ref(state, "activates", timer)
-    parts = (trig.listener, *trig.via)
-    ef.clone(list(parts), rename={n: n + sfx for n in parts},
-             seed=f"effect:{item_id}:{effect.on}{seed}", source=_donor(trig.donor, read))
-    # Whatever the listener (or the part it goes through) switched on in
-    # the donor, it switches on the trigger state now.
-    _retarget(ef, (trig.target or trig.listener) + sfx, state)
-    ef.add_ref(equipped, "while_active", trig.listener + sfx)
-    ef.add_ref(equipped, "while_active", tester)
+    listener = trig.listener + sfx
+    fires = w.link(state, _STATE)
+    if trig.target:                                   # damage_taken: only while alive
+        fires = _alive_check(w, trig.target + sfx, listener, fires, sfx, read)
+    settings = w.obj("oCGameEventListenerSettings", struct.pack("<I", trig.event)
+                     + w.obj("oCCustomFlagFilter", w.flags(list(trig.include))
+                             + w.flags(list(trig.exclude))) + trig.tail)
+    w.add(_LISTENER, listener, {"listener": settings, **{
+        s: (fires if s in trig.slots else _NONE) for s in ("ref_3", "ref_4", "ref_5")}},
+        flags=trig.flags, group=trig.group)
+    w.ef.add_ref(equipped, "while_active", listener)
+    w.ef.add_ref(equipped, "while_active", tester)
     slots += [(amount, effect.percent), (seconds, False)]
-    return timer, mod
+    return timer
+
+
+#: The Timer class version whose Serialize writes the trailing picker (corpus:
+#: 378 timers at 1.9 all have it, 696 at 1.8 none).
+_TIMER_TAIL_AT = (1, 9)
+
+
+def _timer_tail(w: P.PartWriter) -> dict:
+    """The picker Update 6's Timer appends, when this file's Timer class has it
+    (``entity_fields.TAIL``)."""
+    c = w.ef.cf.classes[w.ci(_TIMER)]
+    return {"ref_tail?": _NONE} if (c.version_major, c.version_minor) >= _TIMER_TAIL_AT else {}
+
+
+def _alive_check(w: P.PartWriter, name: str, listener: str, then: P.Link, sfx: str,
+                 read) -> P.Link:
+    """damage_taken's gate, as Increase_Shield's: switch ``then`` on only when the
+    listener fired and the hero's health ratio is above 0."""
+    raw = read(_HEALTH[0])
+    if raw is None:
+        raise ItemEffectError("effect: the hero's health ratio is not readable "
+                              "(no install or mirror)")
+    health = EntityFile(raw, "Character_Common").component(_HEALTH[1])
+    get = "Entity Get Ration Health Hero Value" + sfx      # sic
+    template = w.obj("oCResourceWeakRef", b"".join(P._lstr(x) for x in _HERO))
+    method = w.obj("EntityCpntMethodPicker", P.link_bytes(_NONE, w.ci) + b"\xff" * 4)
+    got = w.add(_GET, get, {
+        "source": w.ids("oCEntityCollectorSelectorSettings", [_owner(w, 0)]),
+        "template": template,
+        "value": P.Link(health.guid, "[Value] Character_Common\\" + _HEALTH[1]),
+        "method": method}, flags=0x101)
+    tests = [_float_test(w, got, _GOT_VALUE),
+             _float_test(w, w.link(listener, _LISTENER), _LISTENER_FIRED)]
+    return _tester(w, name, tests, every=True, flags=0x10001, on_true=then)
 
 
 def describe(effects: list[Effect]) -> str:
@@ -297,45 +379,9 @@ def describe(effects: list[Effect]) -> str:
     return "\n".join("• " + line for line in lines)
 
 
-def donor_stems(effects: Effect | list[Effect]) -> set[str]:
-    """Entities the effects copy parts from (for the leftover-link check)."""
-    if isinstance(effects, Effect):
-        effects = [effects]
-    return {_stem(_DASH)} | {_stem(TRIGGERS[e.on].donor) for e in effects if e.timed}
-
-
 def trigger_texts() -> dict[str, str]:
     """``{on: card wording}`` for the editor's trigger picker."""
     return {k: t.text for k, t in TRIGGERS.items()}
-
-
-def _stem(ref: str) -> str:
-    return ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
-
-
-def _donor(ref: str, read) -> EntityFile:
-    raw = read(ref)
-    if raw is None:
-        raise ItemEffectError(f"effect: the shipped {_stem(ref)} is not readable "
-                              f"(no install or mirror)")
-    return EntityFile(raw, _stem(ref))
-
-
-def _retarget(ef: EntityFile, comp: str, state: str) -> None:
-    """Point each target ``comp`` had in its donor at ``state``: a listener's
-    ``ref_3``..``ref_5`` / ``on_event``, or a tester's ``on_true``."""
-    fields = {f.name: f for f in EF.fields(ef.component(comp))}
-    names = [n for n in (*_LISTENER_TARGETS, "on_true") if n in fields
-             and fields[n].text and "<-" in fields[n].text]
-    if not names:
-        raise ItemEffectError(f"effect: {comp!r} has no target to point at the trigger")
-    for n in names:
-        ef.set_ref(comp, n, state)
-
-
-def _items(ef: EntityFile, comp: str, field: str) -> list:
-    f = next((x for x in EF.fields(ef.component(comp)) if x.name == field), None)
-    return f.items if f is not None else []
 
 
 def _equipped_state(ef: EntityFile) -> str:
