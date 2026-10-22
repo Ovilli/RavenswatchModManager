@@ -4,6 +4,19 @@
     {
       "version": "",
       "date": "2026-10-22",
+      "summary": "Items from scratch, safer item bans, and a warning for item stats the game never reads",
+      "highlights": [
+        "Item bans no longer wipe the save progress of banned items: apply and restore put back what the game dropped",
+        "You can ban every item: empty vendor pools get a harmless Sold Out item instead of crashing the game",
+        "Make magical objects from scratch: list always-on and after-a-trigger bonuses, no base item needed",
+        "The item editor gets Start from scratch, an effects list and ids of any length",
+        "Lint warns when an item's effect changes a stat the game never reads"
+      ],
+      "cli_version": 9
+    },
+    {
+      "version": "",
+      "date": "2026-10-22",
       "summary": "Editor: card text no longer garbled in a local clone; clearer tabs, custom item flow and talent builder",
       "highlights": [
         "Item and talent card text is readable again in the local editor (a font table and page from different game builds were paired)",
@@ -520,17 +533,6 @@
         "Fixed: the top bar no longer gets cut off at the default window size.",
         "Faster: coming back to the Library no longer re-runs the update checks, and Settings reuses what the app already learned at launch.",
         "Faster: the Profiles screen reads all your profiles in one step instead of one per profile."
-      ]
-    },
-    {
-      "version": "5.9.3",
-      "date": "2026-10-03",
-      "summary": "A website refresh: easier-to-read fonts and a home page that leads with the registry. The app itself is unchanged.",
-      "highlights": [
-        "Website: a redesigned home page that puts the download, a search box and the most popular mods first.",
-        "Website: easier-to-read fonts across every page, with the blackletter kept for the logo.",
-        "Website: removed the grey box that appeared on mod, guide and collection pages.",
-        "No changes to the app in this version."
       ]
     }
   ]
