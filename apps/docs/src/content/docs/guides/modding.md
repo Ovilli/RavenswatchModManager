@@ -1131,6 +1131,33 @@ effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_t
 The editor's **Timed effect** section writes this table, and its card preview
 shows the numbers as the game will print them.
 
+### An item from scratch (`effects`, no `base`)
+
+Leave `base` out and list what the item does. Each entry without `seconds` is
+always on while the item is held; one with `seconds` (and `on`) is a timed
+bonus as above. Any number of each:
+
+```toml
+[[content]]
+kind    = "item"
+id      = "Wanderers_Charm"                # any length
+name    = "Wanderer's Charm"
+rarity  = "Rare"                           # default Common
+icon    = "icons/charm.png"                # or a vanilla icon stem
+effects = [
+  { stat = "Crit chance", amount = 0.1 },
+  { stat = "Armour", amount = 5, percent = false },
+  { stat = "Attack power", amount = 0.2, seconds = 4, on = "dash" },
+]
+```
+
+- With no `description`, the card text is written from the effects, one bullet
+  each, numbered `{0}`, `{1}`... in order (a timed effect takes two: its
+  amount, then its seconds). Write your own with the same numbering.
+- `effects` also works next to a `base`: the base then gives only the look.
+- The item is built on the frame every trigger was proven on
+  (`Increase_Shield`, with its shield cut) and has no super effect.
+
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):
 

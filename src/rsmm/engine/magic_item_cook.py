@@ -710,7 +710,7 @@ def build_magic_item(
     super_description: str | None = None,
     steps: list[dict] | None = None,
     super_effect: bool = True,
-    effect: dict | None = None,
+    effect: dict | list | None = None,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -733,9 +733,9 @@ def build_magic_item(
     * ``super_effect=False`` removes the super effect: the state that runs it
       is emptied (no bonus ever applies) and its card text becomes the model's
       empty text, as on the items that ship without one;
-    * ``effect`` = ``{stat, amount, seconds, on, ...}``: a timed bonus on a
-      trigger, see :mod:`rsmm.engine.item_effect` (before ``steps``, which may
-      adjust it);
+    * ``effect`` = one ``{stat, amount[, seconds, on, ...]}`` table or a list
+      of them: always-on bonuses and timed bonuses on a trigger, see
+      :mod:`rsmm.engine.item_effect` (before ``steps``, which may adjust them);
     * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
       ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
       after the value patches, by the part names ``rsmm entity-graph`` shows;
@@ -818,8 +818,8 @@ def build_magic_item(
     if effect is not None:
         from . import item_effect as IE
         from .item_checks import donor_leftovers
-        fx = IE.Effect.parse(effect)
-        ent = IE.apply_effect(ent, new_id, fx)
+        fx = IE.parse_effects(effect)
+        ent = IE.apply_effects(ent, new_id, fx)
         left = donor_leftovers(ent, IE.donor_stems(fx) - {new_id, base_id})
         if left:
             raise ValueError("effect: copied parts still point into the item they were "

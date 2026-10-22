@@ -25,10 +25,10 @@ distinct, droppable magical object needs, written straight into the mod's
   ``Magical_Objects~GAM.xls`` bank + language siblings with the item's
   ``<id>_Name`` / ``_Description`` appended.
 
-The whole pipeline is length-preserving, so ``id`` must currently match
-``base`` in byte length (variable-length ids need the container re-emit
-cooker — tracked separately). The mechanism is validated in-game: a
-reminted clone with a custom value drops and functions as its own item.
+``base`` is optional: an item with none is built from its ``effects`` alone
+(see :func:`_emit_clone`). ``id`` may be any length; the cooker re-emits the
+container when it differs from the base's. The mechanism is validated in-game:
+a clone with a custom value drops and functions as its own item.
 """
 
 from __future__ import annotations
@@ -420,6 +420,29 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     return out
 
 
+#: What an item with no ``base`` is built on: Increase_Shield, the base every
+#: effect trigger was proven on in game (effect-triggers-test, 2026-10-20). Its
+#: own shield is cut by the effects, so only its frame is used.
+BLANK_BASE = "Increase_Shield"
+
+
+def _coerce_effects(defn: ContentDef):
+    """``effects`` (a list) or the older single ``effect`` table, checked; None
+    when the item has neither."""
+    from ...engine.item_effect import ItemEffectError, parse_effects
+    one, many = defn.fields.get("effect"), defn.fields.get("effects")
+    if one is not None and many is not None:
+        raise ContentError(f"item {defn.id}: give 'effects' (a list) or 'effect', not both")
+    raw = many if many is not None else one
+    if raw is None:
+        return None
+    try:
+        parse_effects(raw)
+    except ItemEffectError as e:
+        raise ContentError(f"item {defn.id}: {e}") from None
+    return raw
+
+
 def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                 replace: bool = False) -> list[Path]:
     """Materialize one cloned (or, with ``replace``, edited-in-place) item def
@@ -446,6 +469,12 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     pair it with a ``value_patches`` entry.
         ``super_description`` (str) super effect card text
                                     (-> ``<id>_SuperEffect``).
+        ``effects`` (list)          ``{ stat, amount }`` (always on) and/or
+                                    ``{ stat, amount, seconds, on }`` tables,
+                                    built in order; with no ``base`` the item
+                                    is built from these alone and its card
+                                    text is written from them when no
+                                    ``description`` is given.
         ``effect`` (table)          ``{ stat, amount, seconds, on }``: on a
                                     trigger (``item_effect.TRIGGERS``), gain
                                     ``amount`` of ``stat`` for ``seconds``
@@ -466,6 +495,18 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     """
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
+    effect = _coerce_effects(defn)
+    # No base: a blank item, built from its `effects` alone on the template
+    # every effect trigger was proven on. It has no super effect (the
+    # template's is a shield's) and starts Common.
+    blank = base is None and not replace
+    if blank:
+        if effect is None:
+            raise ContentError(
+                f"item {defn.id}: an item with no 'base' is built from its 'effects'; "
+                f"give it at least one, e.g. effects = [{{ stat = \"Crit chance\", "
+                f"amount = 0.1 }}]")
+        base = BLANK_BASE
     if not base or not isinstance(base, str):
         raise SchemaNotMined(
             f"item {defn.id}: needs a 'base' vanilla item id to clone. "
@@ -489,7 +530,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     # build_magic_item writes it) both follow `rarity`.
     asked = defn.fields.get("rarity")
     rarity = next((r for r in cook.QUALITY if r.lower() == str(asked).lower()), None) \
-        if asked else base_rarity
+        if asked else ("Common" if blank else base_rarity)
     if rarity is None:
         raise ContentError(
             f"item {defn.id}: rarity {asked!r} is not one of {', '.join(cook.QUALITY)}")
@@ -501,20 +542,20 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     name = str(name) if name is not None else None
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
+    if description is None and effect is not None:
+        # The effects renumber the card, so the base's text would show the
+        # wrong numbers: say what the effects do instead.
+        from ...engine.item_effect import describe, parse_effects
+        description = describe(parse_effects(effect))
     value_patches = _coerce_value_patches(defn.fields.get("value_patches"))
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     super_description = defn.fields.get("super_description")
     super_description = str(super_description) if super_description is not None else None
-    super_effect = defn.fields.get("super_effect", True)
+    super_effect = defn.fields.get("super_effect", not blank)
     if not isinstance(super_effect, bool):
         raise ContentError(f"item {defn.id}: super_effect must be true or false")
-    effect = defn.fields.get("effect")
-    if effect is not None:
-        from ...engine.item_effect import Effect, ItemEffectError
-        try:
-            Effect.parse(effect)
-        except ItemEffectError as e:
-            raise ContentError(f"item {defn.id}: {e}") from None
+    if blank and (super_effect or super_description):
+        raise ContentError(f"item {defn.id}: an item with no 'base' has no super effect")
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")

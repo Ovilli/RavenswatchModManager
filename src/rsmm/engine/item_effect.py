@@ -111,100 +111,197 @@ class ItemEffectError(ValueError):
 
 @dataclass(frozen=True)
 class Effect:
+    """One effect. Without ``seconds`` it is ALWAYS ON while the item is held
+    (a plain stat item's shape: a modifier on the equipped state's
+    ``while_active``); with ``seconds`` it is a timed bonus after ``on``."""
     stat: str
     amount: float
-    seconds: float
-    on: str = "damage_taken"
+    seconds: float | None = None
+    on: str | None = None
     refresh: bool = True
     percent: bool = True        # the card shows the amount x100 with a %
     keep_base_effect: bool = False
+
+    @property
+    def timed(self) -> bool:
+        return self.seconds is not None
 
     @classmethod
     def parse(cls, raw) -> Effect:
         """An ``effect`` table from a manifest, checked."""
         if not isinstance(raw, dict):
-            raise ItemEffectError("effect must be a table: { stat, amount, seconds, on }")
+            raise ItemEffectError("effect must be a table: { stat, amount } or "
+                                  "{ stat, amount, seconds, on }")
         unknown = set(raw) - set(cls.__dataclass_fields__)
         if unknown:
             raise ItemEffectError(f"effect has no field {', '.join(sorted(unknown))}")
-        for k in ("stat", "amount", "seconds"):
+        for k in ("stat", "amount"):
             if k not in raw:
                 raise ItemEffectError(f"effect needs {k!r}")
         try:
             IM.resolve_stat(raw["stat"])
         except IM.ItemModifierError as e:
             raise ItemEffectError(f"effect stat: {e}") from None
-        on = str(raw.get("on", "damage_taken"))
-        if on not in TRIGGERS:
+        timed = "seconds" in raw or "on" in raw
+        if timed and "seconds" not in raw:
+            raise ItemEffectError("effect: a trigger ('on') needs 'seconds' (how long the "
+                                  "bonus lasts); leave both out for an always-on bonus")
+        on = str(raw.get("on", "damage_taken")) if timed else None
+        if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
         for k in ("amount", "seconds"):
-            if isinstance(raw[k], bool) or not isinstance(raw[k], (int, float)):
+            if k in raw and (isinstance(raw[k], bool) or not isinstance(raw[k], (int, float))):
                 raise ItemEffectError(f"effect {k} must be a number")
-        if raw["seconds"] <= 0:
+        if timed and raw["seconds"] <= 0:
             raise ItemEffectError("effect seconds must be above 0")
         for k in ("refresh", "percent", "keep_base_effect"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         return cls(stat=str(raw["stat"]), amount=float(raw["amount"]),
-                   seconds=float(raw["seconds"]), on=on,
+                   seconds=float(raw["seconds"]) if timed else None, on=on,
                    refresh=raw.get("refresh", True), percent=raw.get("percent", True),
                    keep_base_effect=raw.get("keep_base_effect", False))
 
 
+def parse_effects(raw) -> list[Effect]:
+    """An ``effects`` list from a manifest (or one ``effect`` table), checked."""
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        raise ItemEffectError("effects must be a list of effect tables")
+    out = []
+    for i, r in enumerate(raw, 1):
+        try:
+            out.append(Effect.parse(r))
+        except ItemEffectError as e:
+            raise ItemEffectError(f"effects[{i}]: {e}") from None
+    return out
+
+
+def _suffix(i: int) -> str:
+    """Part-name suffix of the ``i``-th effect: the first keeps the name a lone
+    `effect` always had."""
+    return SUFFIX if i == 0 else f"{SUFFIX} {i + 1}"
+
+
 def apply_effect(ent: bytes, item_id: str, effect: Effect, *, read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) doing ``effect``."""
+    return apply_effects(ent, item_id, [effect], read=read)
+
+
+def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None) -> bytes:
+    """``ent`` (an item entity, already renamed to ``item_id``) doing every one
+    of ``effects``. The card's ``{0}``, ``{1}``... are each effect's numbers in
+    order: an always-on effect's amount, a timed one's amount then seconds. The
+    item icon counts the first timed effect down."""
     read = read or CK._corpus_reader
     ef = EntityFile(ent, item_id)
+    slots: list[tuple[str, bool]] = []
+    mods: list[tuple[str, str]] = []
+    first_timer = None
     try:
         equipped = _equipped_state(ef)
-        if not effect.keep_base_effect:
+        if not any(e.keep_base_effect for e in effects):
             _cut_base(ef, ent)
-        tester, timer, mod, seconds, amount = (n + SUFFIX for n in _TIMED)
-        ef.clone(list(_TIMED), rename={n: n + SUFFIX for n in _TIMED},
-                 seed=f"effect:{item_id}:timed", source=_donor(_DASH, read))
-        # The modifier and timer carry their numbers INLINE. Linked to the copied
-        # Value parts they read the donor's inline numbers instead (0.05 and 3 s
-        # for every trigger, playtest 2026-10-20), while links to an item's own
-        # Values work (Pebbles' Shield Value). The copied Values stay only for
-        # the card's {0} and {1}.
-        ef.set_value(mod, "amount", effect.amount)
-        ef.set_value(timer, "duration", effect.seconds)
-        ef.set_value(amount, "value", effect.amount)
-        ef.set_value(seconds, "value", effect.seconds)
-
-        trig = TRIGGERS[effect.on]
-        state = "On Trigger" + SUFFIX
-        ef.clone([_TRIGGER_STATE], rename={_TRIGGER_STATE: state},
-                 seed=f"effect:{item_id}:state", source=_donor(_DASH, read))
-        for field in ("activates", "deactivates?"):     # the donor's own effect
-            while _items(ef, state, field):
-                ef.remove_ref(state, field, 0)
-        if effect.refresh:                               # off, then on: full time again
-            ef.add_ref(state, "deactivates?", timer)
-        ef.add_ref(state, "activates", timer)
-        parts = (trig.listener, *trig.via)
-        ef.clone(list(parts), rename={n: n + SUFFIX for n in parts},
-                 seed=f"effect:{item_id}:{effect.on}", source=_donor(trig.donor, read))
-        # Whatever the listener (or the part it goes through) switched on in
-        # the donor, it switches on the trigger state now.
-        _retarget(ef, (trig.target or trig.listener) + SUFFIX, state)
-        ef.add_ref(equipped, "while_active", trig.listener + SUFFIX)
-        ef.add_ref(equipped, "while_active", tester)
-
-        _card_slots(ef, amount, seconds, effect.percent)
-        _cooldown_display(ef, timer, effect.seconds)
+        for i, effect in enumerate(effects):
+            sfx = _suffix(i)
+            if effect.timed:
+                timer, mod = _add_timed(ef, item_id, effect, sfx, equipped, read, slots)
+                first_timer = first_timer or (timer, effect.seconds)
+            else:
+                mod = _add_passive(ef, item_id, effect, sfx, equipped, read, slots)
+            mods.append((mod, effect.stat))
+        _card_slots(ef, slots)
+        if first_timer is not None:
+            _cooldown_display(ef, *first_timer)
     except EntityEditError as e:
         raise ItemEffectError(f"effect: {e}") from e
     out = ef.to_bytes()
-    try:
-        return IM.set_modifier_stat(out, mod, effect.stat)
-    except IM.ItemModifierError as e:
-        raise ItemEffectError(f"effect stat: {e}") from e
+    for mod, stat in mods:
+        try:
+            out = IM.set_modifier_stat(out, mod, stat)
+        except IM.ItemModifierError as e:
+            raise ItemEffectError(f"effect stat: {e}") from e
+    return out
 
 
-def donor_stems(effect: Effect) -> set[str]:
-    """Entities the effect copies parts from (for the leftover-link check)."""
-    return {_stem(_DASH), _stem(TRIGGERS[effect.on].donor)}
+#: An always-on bonus: (modifier, amount value) of the same donor.
+_PASSIVE = ("Crit Chance Modifier", "Crit Chance Value")
+
+
+def _add_passive(ef: EntityFile, item_id: str, effect: Effect, sfx: str, equipped: str,
+                 read, slots: list) -> str:
+    """A modifier held on while the item is equipped, as a plain stat item's."""
+    mod, amount = (n + sfx for n in _PASSIVE)
+    ef.clone(list(_PASSIVE), rename={n: n + sfx for n in _PASSIVE},
+             seed=f"effect:{item_id}:passive{sfx}", source=_donor(_DASH, read))
+    ef.set_value(mod, "amount", effect.amount)        # inline, see _add_timed
+    ef.set_value(amount, "value", effect.amount)
+    ef.add_ref(equipped, "while_active", mod)
+    slots.append((amount, effect.percent))
+    return mod
+
+
+def _add_timed(ef: EntityFile, item_id: str, effect: Effect, sfx: str, equipped: str,
+               read, slots: list) -> tuple[str, str]:
+    tester, timer, mod, seconds, amount = (n + sfx for n in _TIMED)
+    seed = "" if sfx == SUFFIX else sfx
+    ef.clone(list(_TIMED), rename={n: n + sfx for n in _TIMED},
+             seed=f"effect:{item_id}:timed{seed}", source=_donor(_DASH, read))
+    # The modifier and timer carry their numbers INLINE. Linked to the copied
+    # Value parts they read the donor's inline numbers instead (0.05 and 3 s
+    # for every trigger, playtest 2026-10-20), while links to an item's own
+    # Values work (Pebbles' Shield Value). The copied Values stay only for
+    # the card's numbers.
+    ef.set_value(mod, "amount", effect.amount)
+    ef.set_value(timer, "duration", effect.seconds)
+    ef.set_value(amount, "value", effect.amount)
+    ef.set_value(seconds, "value", effect.seconds)
+
+    trig = TRIGGERS[effect.on]
+    state = "On Trigger" + sfx
+    ef.clone([_TRIGGER_STATE], rename={_TRIGGER_STATE: state},
+             seed=f"effect:{item_id}:state{seed}", source=_donor(_DASH, read))
+    for field in ("activates", "deactivates?"):     # the donor's own effect
+        while _items(ef, state, field):
+            ef.remove_ref(state, field, 0)
+    if effect.refresh:                               # off, then on: full time again
+        ef.add_ref(state, "deactivates?", timer)
+    ef.add_ref(state, "activates", timer)
+    parts = (trig.listener, *trig.via)
+    ef.clone(list(parts), rename={n: n + sfx for n in parts},
+             seed=f"effect:{item_id}:{effect.on}{seed}", source=_donor(trig.donor, read))
+    # Whatever the listener (or the part it goes through) switched on in
+    # the donor, it switches on the trigger state now.
+    _retarget(ef, (trig.target or trig.listener) + sfx, state)
+    ef.add_ref(equipped, "while_active", trig.listener + sfx)
+    ef.add_ref(equipped, "while_active", tester)
+    slots += [(amount, effect.percent), (seconds, False)]
+    return timer, mod
+
+
+def describe(effects: list[Effect]) -> str:
+    """Card text for ``effects``, numbered as `apply_effects` lays out the card:
+    "#+{0}%@ #Crit chance@" for an always-on bonus, "After dashing, gain
+    #+{1}%@ #Attack power@ for #{2}@ seconds" for a timed one. One bullet each, as
+    the shipped cards write several effects."""
+    lines, n = [], 0
+    for e in effects:
+        amount = f"#+{{{n}}}{'%' if e.percent else ''}@ #{e.stat}@"
+        if e.timed:
+            lines.append(f"{TRIGGERS[e.on].text}, gain {amount} for #{{{n + 1}}}@ seconds")
+            n += 2
+        else:
+            lines.append(amount)
+            n += 1
+    return "\n".join("• " + line for line in lines)
+
+
+def donor_stems(effects: Effect | list[Effect]) -> set[str]:
+    """Entities the effects copy parts from (for the leftover-link check)."""
+    if isinstance(effects, Effect):
+        effects = [effects]
+    return {_stem(_DASH)} | {_stem(TRIGGERS[e.on].donor) for e in effects if e.timed}
 
 
 def trigger_texts() -> dict[str, str]:
@@ -300,25 +397,25 @@ def _cooldown_display(ef: EntityFile, timer: str, seconds: float) -> None:
     ef.source_value(_ITEM_DATA, n, timer, accessor=EntityFile.TIMER_ELAPSED)
 
 
-def _card_slots(ef: EntityFile, amount: str, seconds: str, percent: bool) -> None:
-    """Make the description's ``{0}`` the amount and ``{1}`` the seconds. The new
-    slots are copies of an existing one, so they are added before the base's
-    own are dropped."""
+def _card_slots(ef: EntityFile, slots: list[tuple[str, bool]]) -> None:
+    """Make the description's ``{0}``, ``{1}``... the given Values, in order. The
+    new slots are copies of an existing one, so they are added before the
+    base's own are dropped."""
     c = ef.component(_DESCRIPTION)
     old = len(ef._format_slots(c)[0])
-    try:
-        ef.add_format_slot(_DESCRIPTION, amount, percent=percent)
-    except EntityEditError as e:
-        if "no String Format slot" not in str(e):
-            raise
-        raise ItemEffectError("effect: this base's card shows no numbers, so there is no "
-                              "{0} to copy for the amount; pick another base") from None
-    ef.add_format_slot(_DESCRIPTION, seconds, percent=False)
+    for n, (value, percent) in enumerate(slots):
+        try:
+            ef.add_format_slot(_DESCRIPTION, value, percent=percent)
+        except EntityEditError as e:
+            if n or "no String Format slot" not in str(e):
+                raise
+            raise ItemEffectError("effect: this base's card shows no numbers, so there is "
+                                  "no {0} to copy for the amount; pick another base") from None
     if not old:
         return
     c = ef.component(_DESCRIPTION)
-    slots, count_f = ef._format_slots(c)
+    found, count_f = ef._format_slots(c)
     at = len(ef.objects[c.index - 1]) - len(c.body)
     p = ef.objects[c.index - 1]
-    del p[at + slots[0].offset:at + slots[old - 1].offset + slots[old - 1].size]
-    struct.pack_into("<I", p, at + count_f.offset, len(slots) - old)
+    del p[at + found[0].offset:at + found[old - 1].offset + found[old - 1].size]
+    struct.pack_into("<I", p, at + count_f.offset, len(found) - old)

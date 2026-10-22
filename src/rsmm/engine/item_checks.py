@@ -17,6 +17,7 @@ intends. Warnings, not errors: each shape has a legitimate use.
 from __future__ import annotations
 
 import re
+import struct
 
 from . import entity_fields as EF
 from . import entity_graph as EG
@@ -50,6 +51,7 @@ def item_warnings(ent: bytes, base: bytes, touched: set[str]) -> list[str]:
     mods = [c for c in g.components if c.cls == _MODIFIER
             and (c.name in touched or c.name not in shipped)]
     out: list[str] = []
+    out += _unread_stats(mods, touched)
     feeds: dict[str, str] = {}                    # amount source -> modifier
     for m in mods:
         f = _fields(m)
@@ -101,6 +103,35 @@ def item_warnings(ent: bytes, base: bytes, touched: set[str]) -> list[str]:
                     f"{c.name!r} shows {src!r} ({m[1]}, the amount of {feeds[src]!r}) "
                     f"as a plain number, so the card reads 0. If it is a fraction, "
                     f"add a step: percent = \"{c.name}.{f.name}\", value = true.")
+    return out
+
+
+def _unread_stats(mods: list[EG.Component], touched: set[str]) -> list[str]:
+    """A swapped stat that no shipped item, talent or hero ever changes.
+
+    Many catalog stats only do something because the hero's data listens for
+    them: "Primary/Secondary charge to damage" work through Hero_Common's "MO
+    Charge To Damage" group, and nothing listens for the Defensive or Ultimate
+    ones, so an item raising those does nothing (2026-10-22, Svalinn). A stat
+    no shipped modifier writes has nothing showing the game reads it."""
+    if not any(m.name in touched for m in mods):
+        return []
+    from .item_modifier import modifier_survey, stat_name
+    used = modifier_survey().used
+    if not used:
+        return []
+    out = []
+    for m in mods:
+        k = _fields(m).get("modifier_id")
+        if m.name not in touched or k is None:
+            continue
+        key = struct.unpack_from("<I", m.body, k.offset)[0]
+        if not used.get(key):
+            out.append(
+                f"{m.name!r} now changes {stat_name(key) or hex(key)!r}, which no item, "
+                f"talent or hero in the game ever changes, so the game may never read "
+                f"it and the effect may do nothing. Pick a stat a shipped item uses "
+                f"(`rsmm editor`'s stat picker lists those first).")
     return out
 
 

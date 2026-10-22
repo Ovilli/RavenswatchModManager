@@ -229,3 +229,88 @@ def test_the_item_icon_counts_down_the_effect(base_rel, base_id):
     i = ent.find(lab, ent.find(b"Dt Magical Object Data"))
     j = ent.find(b'""\xbb\xaa', i)
     assert ent[j + 4:j + 8] == (0x1683197E).to_bytes(4, "little")
+
+
+_BALOR = ("EntitySettings/Objects/Magical_Objects/Cursed/"
+          "Charge_To_Damage.entity.ot.EntitySettingsResource.gen")
+
+
+def _balor_warns(stats: dict[str, str]) -> list[str]:
+    base = corpus.read(_BALOR)
+    if base is None:
+        pytest.skip("shipped items not available (no mirror, no install)")
+    files = C.build_magic_item(new_id="Charge_To_Damagf", base_id="Charge_To_Damage",
+                               base_cooked=base, corpus=[], rarity="Cursed",
+                               modifier_stats=stats)
+    return item_warnings(next(b for p, b in files.items() if p.endswith(".gen")), base,
+                         set(stats))
+
+
+def test_a_stat_nothing_in_the_game_changes_is_flagged():
+    """Svalinn (2026-10-22): Balor's Eye moved to Defense and Ultimate did
+    nothing; only Power and Special have the hero-side charge-to-damage logic."""
+    ws = _balor_warns({"Power charge to damage Modifier": "Defensive charge to damage",
+                       "Special charge to damage Modifier": "Ultimate charge to damage"})
+    assert len(ws) == 2 and all("no item, talent or hero" in w for w in ws)
+    assert "'Defensive charge to damage'" in ws[0]
+
+
+def test_a_swap_between_stats_the_game_uses_is_quiet():
+    assert _balor_warns({"Power charge to damage Modifier": "Secondary charge to damage"}) == []
+
+
+# --- several effects, and items with no base ----------------------------------
+
+def test_an_effect_without_seconds_is_always_on_and_one_with_needs_both():
+    from rsmm.engine import item_effect as IE
+    assert not IE.Effect.parse({"stat": "Crit chance", "amount": 0.1}).timed
+    assert IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "seconds": 3}).on == \
+        "damage_taken"
+    with pytest.raises(IE.ItemEffectError, match="needs 'seconds'"):
+        IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "on": "dash"})
+
+
+def test_the_card_text_numbers_every_effect_in_order():
+    from rsmm.engine import item_effect as IE
+    text = IE.describe(IE.parse_effects([
+        {"stat": "Crit chance", "amount": 0.1},
+        {"stat": "Armour", "amount": 5, "percent": False},
+        {"stat": "Attack power", "amount": 0.2, "seconds": 4, "on": "dash"}]))
+    assert text.splitlines() == [
+        "• #+{0}%@ #Crit chance@", "• #+{1}@ #Armour@",
+        "• After dashing, gain #+{2}%@ #Attack power@ for #{3}@ seconds"]
+
+
+def test_several_effects_build_on_one_item_with_no_issues():
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import item_modifier as IM
+    eff = [{"stat": "Crit chance", "amount": 0.1},
+           {"stat": "Armour", "amount": 5, "percent": False},
+           {"stat": "Attack power", "amount": 0.2, "seconds": 4, "on": "dash"},
+           {"stat": "Crit chance", "amount": 0.15, "seconds": 3, "on": "damage_taken"}]
+    files = C.build_magic_item(new_id="Wanderers_Charm", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Rare",
+                               effect=eff, super_effect=False)
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    stats = {m.name: m.stat for m in IM.list_modifiers(ent)}
+    assert stats["Crit Chance Modifier Effect 2"] == "Armour"
+    assert stats["Crit Chance Modifier Effect 4"] == "Crit chance"
+    assert CK.check(ent, _shield(), name="Wanderers_Charm") == []
+
+
+def test_an_item_with_no_base_is_built_from_its_effects(tmp_path):
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import items
+    _shield()
+    out = tmp_path / "mod" / "assets"
+    files = items.emit("m", ContentDef("item", "Charm", {
+        "name": "Charm", "effects": [{"stat": "Crit chance", "amount": 0.1}]}), out)
+    ent = next(f for f in files if f.name.endswith(".EntitySettingsResource.gen"))
+    assert ent.parent.name == "Common" and ent.name.startswith("Charm.")
+
+
+def test_an_item_with_no_base_and_no_effects_says_what_it_needs(tmp_path):
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import items
+    with pytest.raises(ContentError, match="built from its 'effects'"):
+        items.emit("m", ContentDef("item", "Charm", {"name": "Charm"}), tmp_path / "a")
