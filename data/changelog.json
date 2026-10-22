@@ -1,6 +1,18 @@
 {
-  "generated": "2026-10-20",
+  "generated": "2026-10-22",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-22",
+      "summary": "Editor: card text no longer garbled in a local clone; clearer tabs, custom item flow and talent builder",
+      "highlights": [
+        "Item and talent card text is readable again in the local editor (a font table and page from different game builds were paired)",
+        "Tabs say what each editor does, and a short tour opens on first launch",
+        "\"+ New custom item\" starts a new item from a copy of a shipped one",
+        "Talent builder blocks are named, say what they do in plain words, and show each rarity's number as the card shows it"
+      ],
+      "cli_version": 8
+    },
     {
       "version": "5.9.26",
       "date": "2026-10-20",
@@ -519,17 +531,6 @@
         "Website: easier-to-read fonts across every page, with the blackletter kept for the logo.",
         "Website: removed the grey box that appeared on mod, guide and collection pages.",
         "No changes to the app in this version."
-      ]
-    },
-    {
-      "version": "5.9.2",
-      "date": "2026-10-03",
-      "summary": "Switching profiles no longer empties the one you left, every number on a talent card is editable, and cards link to the Ability editor.",
-      "highlights": [
-        "Fixed: switching profiles no longer empties or mislabels the profile you left. Its mods stay put and are no longer shown as 'not on disk'.",
-        "Talent editor: every number a card shows can now be edited, including computed ones (like the Ice Clone's damage), single-number selectors and values with unusual names. Cards with nothing editable dropped from 144 to 22 of 460.",
-        "Talent editor: new 'Open in Ability editor' link on each card jumps to that talent's parts and links.",
-        "Publishing: the website's publish page fills in the mod id, name, version, tags and more from the manifest in your zip."
       ]
     }
   ]
