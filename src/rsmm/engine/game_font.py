@@ -63,3 +63,31 @@ def parse(data: bytes) -> GameFont:
             glyphs[cp] = tuple(round(v, 3) for v in rows[gi][1:8])
     return GameFont(size=size, line_height=line_height, page_w=page_w, page_h=page_h,
                     base=base, page=page, glyphs=glyphs)
+
+
+def fits(font: GameFont, rgba: bytes, width: int, height: int, *, min_cover: float = 0.97) -> bool:
+    """Is this decoded page the one ``font``'s glyph table was cut from?
+
+    A table drawn over the wrong page renders real glyph strokes in the wrong
+    places (unreadable text that still looks like a font), so a reader must
+    check the pair before trusting it. Each locale ships its own page at its
+    own size (Fontin Sans: 512 default, 600 RU, 800 PL), which a size check
+    catches; a same-size page cut differently is caught by requiring nearly
+    every opaque pixel to fall inside some glyph's rectangle (1.000 on every
+    matched pair shipped).
+    """
+    if (width, height) != (font.page_w, font.page_h) or len(rgba) < width * height * 4:
+        return False
+    inside = bytearray(width * height)
+    for x, y, w, h, *_ in font.glyphs.values():
+        x0, y0 = max(0, int(x)), max(0, int(y))
+        x1, y1 = min(width, int(x + w) + 1), min(height, int(y + h) + 1)
+        if x1 > x0:
+            for row in range(y0, y1):
+                inside[row * width + x0:row * width + x1] = b"\1" * (x1 - x0)
+    opaque = hit = 0
+    for i, a in enumerate(rgba[3::4]):
+        if a > 127:
+            opaque += 1
+            hit += inside[i]
+    return opaque > 0 and hit >= opaque * min_cover

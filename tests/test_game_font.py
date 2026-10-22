@@ -38,6 +38,30 @@ def test_a_cut_font_is_refused(cut):
         game_font.parse(_font({65: (1, 2, 3, 4, 0, 0, 5)})[:cut])
 
 
+def _page(rects: list[tuple[int, int, int, int]], size: int = 64) -> bytearray:
+    """A ``size``-square RGBA page, opaque inside each (x, y, w, h)."""
+    px = bytearray(size * size * 4)
+    for x, y, w, h in rects:
+        for row in range(y, y + h):
+            for col in range(x, x + w):
+                px[(row * size + col) * 4 + 3] = 255
+    return px
+
+
+def test_a_page_fits_the_table_it_was_cut_from():
+    f = game_font.parse(_font({65: (4, 4, 10, 12, 0, 0, 11), 66: (30, 4, 10, 12, 0, 0, 11)}))
+    assert game_font.fits(f, _page([(4, 4, 10, 12), (30, 4, 10, 12)]), 64, 64)
+
+
+def test_a_page_of_another_size_or_layout_does_not_fit():
+    """A wrong page draws real strokes as the wrong letters (the scrambled
+    card preview), so it must be refused rather than drawn."""
+    f = game_font.parse(_font({65: (4, 4, 10, 12, 0, 0, 11), 66: (30, 4, 10, 12, 0, 0, 11)}))
+    assert not game_font.fits(f, _page([(4, 4, 10, 12)], size=80), 80, 80)
+    assert not game_font.fits(f, _page([(4, 40, 10, 12), (30, 40, 10, 12)]), 64, 64)
+    assert not game_font.fits(f, _page([]), 64, 64)
+
+
 def test_the_shipped_card_fonts_parse():
     raw = corpus.read("Fonts/Fontin Sans/Fontin_Sans_RG~GAM.fnt.Font.fnb")
     if raw is None:
@@ -45,3 +69,40 @@ def test_the_shipped_card_fonts_parse():
     f = game_font.parse(raw)
     assert f.page == "Fontin_Sans_RG_0~GAM.png"
     assert all(ord(c) in f.glyphs for c in "Aa0+%•")
+
+
+def test_the_card_font_pairs_its_table_with_the_page_it_fits(tmp_path, monkeypatch):
+    """A clone's mirror holds the glyph table but not the page texture, so a
+    stale mirror (or an old `.rsmm.bak`) paired the table with a page from a
+    different build and the card drew every letter as the wrong one."""
+    from rsmm.cli.editor import content as E
+
+    rel = E.CARD_FONTS["body"]
+    live = corpus.install_copies(rel)
+    if not live:
+        pytest.skip("game install not available")
+    wrong = tmp_path / "stale.fnb"
+    # Another font's table naming THIS font's page: only `fits` can refuse it.
+    other = corpus.read(E.CARD_FONTS["title"])
+    name = game_font.parse(other).page.encode()
+    page = b"Fontin_Sans_RG_0~GAM.png"
+    wrong.write_bytes(other[:-len(name) - 4] + struct.pack("<I", len(page)) + page)
+    real = corpus.install_copies
+
+    def copies(r, *, first=(wrong,)):
+        return list(first) + real(r) if r == rel else real(r)
+
+    monkeypatch.setattr(corpus, "install_copies", copies)
+    monkeypatch.setattr(corpus, "mirror_path", lambda r: None)
+    E._card_font_pair.cache_clear()
+    try:
+        font, png = E._card_font_pair("body")
+        assert (font["pageW"], font["page"]) == (512, "Fontin_Sans_RG_0~GAM.png")
+        assert png.startswith(b"\x89PNG")
+
+        monkeypatch.setattr(corpus, "install_copies",
+                            lambda r: [wrong] if r == rel else real(r))
+        E._card_font_pair.cache_clear()
+        assert E.card_font("body") is None              # plain text, not garbage
+    finally:
+        E._card_font_pair.cache_clear()

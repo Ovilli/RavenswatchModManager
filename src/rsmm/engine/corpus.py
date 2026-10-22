@@ -60,20 +60,33 @@ def cooking_dir() -> Path | None:
 
 def install_path(rel: str) -> Path | None:
     """Where a decoded cooked path lives in the install, pristine copy first."""
+    found = install_copies(rel)
+    return found[-1] if found else None
+
+
+def install_copies(rel: str) -> list[Path]:
+    """Every copy of a decoded cooked path in the install: the live file, then
+    rsmm's pristine backup of it. A backup made before a game update is older
+    than the live file, so two files read one by one through `install_path`
+    can come from different game builds; a reader whose files must agree
+    (a font's glyph table and its page) tries the copies itself."""
     from ..cli.apply_mods import resolve_special
     from .asset_map import decoded_to_encoded
 
     cooking = cooking_dir()
     if cooking is None:
-        return None
+        return []
     dec2enc = decoded_to_encoded()
     enc = dec2enc.get(rel) or resolve_special(rel, dec2enc)
     if not enc:
-        return None
+        return []
     p = cooking / enc.replace("\\", "/")
-    bak = p.with_name(p.name + BACKUP_SUFFIX)
-    if bak.is_file():
-        return bak
+    return [c for c in (p, p.with_name(p.name + BACKUP_SUFFIX)) if c.is_file()]
+
+
+def mirror_path(rel: str) -> Path | None:
+    """The mirror's copy of a decoded cooked path, if it has one."""
+    p = UNCOOKED / Path(*rel.replace("\\", "/").split("/"))
     return p if p.is_file() else None
 
 
