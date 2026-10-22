@@ -815,6 +815,19 @@ the mod restores the full catalog.
 Bans from several mods are **unioned**, so two mods each banning a different
 item yield both bans.
 
+**You can ban everything.** The game draws every offer with a modulo over the
+candidate count, so a pool with nothing left in it would crash the game (the
+Sandman's Major and Medium pools hold a single item each). When a ban would
+empty a rarity or a vendor pool (or leave the Sandman's Minor pool, which offers
+two different items at once, below two), the ban adds a **"Sold Out"** item to
+it: a copy of the Stars of Fate powerup that grants nothing. Pools that keep a
+real item get none. If a placeholder cannot be built, `apply` un-bans just
+enough items instead and names them in a warning.
+
+**Progress is kept.** While an item is banned the game writes it out of your
+profile save. Every `apply` and `restore` puts those records back, so lifting a
+ban brings each item back as you left it, not as never seen.
+
 :::caution[This works in multiplayer only if every peer runs the mod]
 The offer draw is seeded and *host-authoritative deterministic*, so a per-peer
 runtime filter — a loader hook, a Lua callback — would make peers disagree

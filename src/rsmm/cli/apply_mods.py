@@ -120,6 +120,7 @@ from rsmm.engine.versiondef import (
     _patch_versiondef_gen,
     _patch_versiondef_heroes,
     _warn_unmatched_bans,
+    collect_ban_placeholders,
     collect_item_bans,
     sync_versiondef,
 )
@@ -2431,7 +2432,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 or next((m for e, _s, _d, m in additions if e == vd_enc), None))
     versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
                                          bans=collect_item_bans(mods),
-                                         gen_owner=vd_owner)
+                                         gen_owner=vd_owner,
+                                         placeholders=collect_ban_placeholders(mods))
     # The book's item grids are sized for the vanilla pool; widen any tier the
     # pool just outgrew so added items do not draw past their frame.
     page_enc = dec2enc.get(PAGE_DECODED)
@@ -2903,6 +2905,17 @@ def _ensure_asset_map() -> bool:
     return False
 
 
+def _protect_save_items(game_dir: Path, dry_run: bool) -> None:
+    """Put back the item records the game wrote out of the profile while an
+    item was out of the catalog (see `rsmm.engine.save_item_ledger`). Runs
+    under the install lock with the game closed, after apply AND restore."""
+    from rsmm.engine import save_item_ledger
+    try:
+        save_item_ledger.sync(game_dir, dry_run)
+    except Exception as e:  # noqa: BLE001 - never fail an apply over the save guard
+        print(f"  [warn] save: item records not checked ({e})", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", type=Path, default=None,
@@ -2961,7 +2974,9 @@ def main() -> int:
                 return 1
             if _refuse_if_game_running("restore", bool(getattr(args, "force", False))):
                 return 1
-            return cmd_restore_all(args, repo, cooking, game_dir)
+            rc = cmd_restore_all(args, repo, cooking, game_dir)
+            _protect_save_items(game_dir, args.dry_run)
+            return rc
     if not _ensure_asset_map():
         return 1
     if args.list:
@@ -3009,10 +3024,12 @@ def main() -> int:
         if _refuse_if_game_running("apply mods", bool(getattr(args, "force", False))):
             return 1
         try:
-            return cmd_apply(args, repo, cooking, game_dir)
+            rc = cmd_apply(args, repo, cooking, game_dir)
         except NotEnoughSpace as e:
             print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
             return 1
+        _protect_save_items(game_dir, args.dry_run)
+        return rc
 
 
 if __name__ == "__main__":

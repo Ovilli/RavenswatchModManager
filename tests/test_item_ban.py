@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import json
 import struct
+from types import SimpleNamespace
 
 import pytest
 
 from rsmm.cli import apply_mods as A
+from rsmm.engine import versiondef as VD
 
 
 def _entry(path: str) -> bytes:
@@ -443,40 +445,99 @@ def _mixed(counts: dict[str, int]) -> tuple[bytes, dict[str, list[str]]]:
     return b"HEAD" + struct.pack("<I", total) + body + b"TAIL", by
 
 
-def test_ban_that_would_empty_a_rarity_is_refused(capsys):
+def test_ban_that_would_empty_a_rarity_keeps_one_item(capsys):
     """The engine picks offers with `rand() % candidate_count`, so a pool that
     reaches zero is an INT_DIVIDE_BY_ZERO — observed opening the shop with 103
-    of 104 items banned."""
+    of 104 items banned. Only the starved group gives an item back."""
     blob, by = _mixed({"Common": 10, "Rare": 10, "Legendary": 10})
-    assert A._clamp_bans(blob, set(by["Common"])) == set()
+    bans = set(by["Common"]) | {by["Rare"][3]}
+    assert A._clamp_bans(blob, bans, pools={}) == bans - {"Common_00"}
     err = capsys.readouterr().err
-    assert "refusing the whole ban list" in err
-    assert "Common" in err
+    assert "NOT banning 1 item" in err and "Common: Common_00" in err
 
 
-def test_banning_nearly_everything_is_refused():
+def test_banning_nearly_everything_keeps_one_per_rarity():
     blob, by = _mixed({"Common": 10, "Rare": 10, "Legendary": 10})
     every = {i for ids in by.values() for i in ids}
-    assert A._clamp_bans(blob, every - {"Rare_00"}) == set()
+    assert A._clamp_bans(blob, every - {"Rare_00"}, pools={}) == \
+        every - {"Rare_00", "Common_00", "Legendary_00"}
 
 
 def test_leaving_one_item_per_rarity_is_allowed():
     """A global floor would have vetoed this; the invariant is per-rarity."""
     blob, by = _mixed({"Common": 10, "Rare": 10, "Legendary": 10})
     bans = {i for ids in by.values() for i in ids[1:]}
-    assert A._clamp_bans(blob, bans) == bans
+    assert A._clamp_bans(blob, bans, pools={}) == bans
 
 
 def test_a_modest_ban_is_left_alone():
     blob, by = _mixed({"Common": 10, "Rare": 10})
     keep = {by["Common"][0], by["Rare"][0]}
-    assert A._clamp_bans(blob, keep) == keep
+    assert A._clamp_bans(blob, keep, pools={}) == keep
 
 
 def test_clamp_ignores_ban_ids_that_match_nothing():
     blob, by = _mixed({"Common": 10, "Rare": 10})
     bans = {by["Common"][0], "Not_A_Real_Item", "Also_Fake"}
-    assert A._clamp_bans(blob, bans) == bans
+    assert A._clamp_bans(blob, bans, pools={}) == bans
+
+
+def test_a_vendor_pool_of_one_keeps_its_item(capsys):
+    """2026-10-22: the Sandman's Major and Medium pools hold one item each, so
+    banning it crashed the vendor while Powerups as a rarity had plenty left."""
+    blob, _ = _mixed({"Common": 10, "Powerups": 10})
+    pools = {"Sandman; Major": (1, ["Powerups_03"]),
+             "Sandman; Minor": (2, ["Powerups_05", "Powerups_06", "Powerups_07"])}
+    bans = {"Powerups_03", "Powerups_05", "Powerups_06", "Powerups_07", "Powerups_09"}
+    assert A._clamp_bans(blob, bans, pools=pools) == {"Powerups_07", "Powerups_09"}
+    assert "Sandman; Major: Powerups_03" in capsys.readouterr().err
+
+
+def test_a_pool_left_at_its_floor_is_not_touched():
+    blob, _ = _mixed({"Common": 10, "Powerups": 10})
+    pools = {"Sandman; Minor": (2, ["Powerups_05", "Powerups_06", "Powerups_07"])}
+    assert A._clamp_bans(blob, {"Powerups_05"}, pools=pools) == {"Powerups_05"}
+
+
+def test_banning_everything_plans_a_placeholder_per_starved_group():
+    """Rarities each get one; pools get their floor, most specific first, and a
+    placeholder for `Sandman; Minor` also covers the looser `Sandman` pool."""
+    blob, by = _mixed({"Common": 10, "Rare": 10, "Powerups": 10})
+    pools = {"Sandman": (1, ["Powerups_00", "Powerups_01", "Powerups_02"]),
+             "Sandman; Minor": (2, ["Powerups_00", "Powerups_01"]),
+             "Sandman; Major": (1, ["Powerups_02"])}
+    every = {i for ids in by.values() for i in ids}
+    plan = VD.plan_placeholders(blob, every, pools=pools)
+    assert sorted(plan) == sorted([("Powerups", ["Sandman", "Major"]),
+                                   ("Powerups", ["Sandman", "Minor"]),
+                                   ("Powerups", ["Sandman", "Minor"]),
+                                   ("Common", []), ("Rare", [])])
+    # ...and with them in place the clamp honours every single pick.
+    assert A._clamp_bans(blob, every, pools=pools, placeholders=plan) == every
+
+
+def test_a_ban_that_starves_nothing_needs_no_placeholder():
+    blob, _ = _mixed({"Common": 10, "Powerups": 10})
+    pools = {"Sandman; Minor": (2, ["Powerups_00", "Powerups_01", "Powerups_02"])}
+    assert VD.plan_placeholders(blob, {"Common_00", "Powerups_00"}, pools=pools) == []
+
+
+def test_placeholder_ids_keep_the_base_length_and_differ_per_mod():
+    from rsmm.sdk.kinds import items
+    a = items.placeholder_id("banned-items", "banned_items", 1)
+    b = items.placeholder_id("other-mod", "banned_items", 1)
+    assert len(a) == len(b) == len(items.PLACEHOLDER_BASE) and a != b
+
+
+def test_a_ban_stages_its_placeholders_for_apply(tmp_path):
+    from rsmm.engine.versiondef import collect_ban_placeholders
+    d = tmp_path / "assets" / "_pending_bans"
+    d.mkdir(parents=True)
+    (d / "b.json").write_text(json.dumps({"items": ["X"], "placeholders": [
+        {"id": "P", "rarity": "Powerups", "flags": ["Sandman", "Major"]}]}))
+    mod = SimpleNamespace(enabled=True, assets_dir=tmp_path / "assets")
+    assert collect_ban_placeholders([mod]) == [("Powerups", ["Sandman", "Major"])]
+    assert collect_ban_placeholders([SimpleNamespace(**{**vars(mod), "enabled": False})]) == []
 
 
 def test_emptying_a_mods_content_removes_its_staged_files(tmp_path):

@@ -329,15 +329,71 @@ def _emit_ban(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"Ban ids are bare item ids, e.g. 'Armor_Per_Object'."
             )
 
+    written, placeholders = _emit_placeholders(mod_id, defn.id, set(items), out_dir)
     dest = out_dir / PENDING_BANS_SUBDIR / f"{defn.id}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(
-        json.dumps({"mod": mod_id, "id": defn.id, "items": sorted(set(items))},
-                   indent=1),
+        json.dumps({"mod": mod_id, "id": defn.id, "items": sorted(set(items)),
+                    "placeholders": placeholders}, indent=1),
         encoding="utf-8",
     )
-    _log.info("item %s/%s: staged ban of %d item(s)", mod_id, defn.id, len(set(items)))
-    return [dest]
+    _log.info("item %s/%s: staged ban of %d item(s), %d placeholder(s)",
+              mod_id, defn.id, len(set(items)), len(placeholders))
+    return [*written, dest]
+
+
+#: The item every "Sold out" placeholder is copied from: a powerup that names
+#: itself in its own bytes (the clone renames that), owns its flag node and its
+#: price, and whose only effect is "+Reroll Count Stars of Fate", so a count of
+#: 0 grants nothing. (The Grimoire powerups are thinner: their id lives only on
+#: the parent template, so the copy cannot rename them.)
+PLACEHOLDER_BASE = "Power_Up_Sandman_Minor_Reroll"
+_PLACEHOLDER_ZERO = ("Reroll Count", 1.0, 0.0)
+PLACEHOLDER_NAME = "Sold Out"
+PLACEHOLDER_TEXT = "Nothing left to offer: every item here is banned."
+
+
+def placeholder_id(mod_id: str, block_id: str, n: int) -> str:
+    """Same byte length as `PLACEHOLDER_BASE` (the proven rename path), unique
+    per mod and block so two mods' placeholders never collide."""
+    import zlib
+    h = zlib.crc32(f"{mod_id}/{block_id}".encode()) & 0xFFFFFFFF
+    out = f"RSMM_Sold_Out_{h:08x}_{n:06d}"
+    assert len(out) == len(PLACEHOLDER_BASE)
+    return out
+
+
+def _emit_placeholders(mod_id: str, block_id: str, bans: set[str],
+                       out_dir: Path) -> tuple[list[Path], list[dict]]:
+    """Build the "Sold out" items that keep every draw rollable under this ban
+    (`versiondef.plan_placeholders`). Each is a copy of `PLACEHOLDER_BASE` that
+    grants nothing, moved to the rarity it fills or tagged with the pool's
+    flags. A placeholder that cannot be built is skipped: the apply-time clamp
+    then un-bans an item for that pool instead, which never crashes."""
+    from ...engine import sandman_shop as S
+    from ...engine.versiondef import VERSIONDEF_GEN_LEAF, plan_placeholders
+
+    pristine = corpus.read(f"Definitions/Versions/{VERSIONDEF_GEN_LEAF}")
+    if pristine is None:
+        return [], []
+    written: list[Path] = []
+    staged: list[dict] = []
+    for n, (rarity, flags) in enumerate(plan_placeholders(pristine, bans), 1):
+        pid = placeholder_id(mod_id, block_id, n)
+        defn = ContentDef("item", pid, {
+            "base": PLACEHOLDER_BASE, "rarity": rarity, "name": PLACEHOLDER_NAME,
+            "description": PLACEHOLDER_TEXT, "value_patches": [list(_PLACEHOLDER_ZERO)]})
+        try:
+            files = _emit_clone(mod_id, defn, out_dir)
+            ent = next(f for f in files if f.name.endswith(_MO_SUFFIX))
+            ent.write_bytes(S.set_flags(ent.read_bytes(), flags))
+        except (ContentError, SchemaNotMined, ValueError, StopIteration) as e:
+            _log.warning("item %s/%s: placeholder %s (%s %s) not built: %s",
+                         mod_id, block_id, pid, rarity, "; ".join(flags), e)
+            continue
+        written += [f for f in files if f not in written]
+        staged.append({"id": pid, "rarity": rarity, "flags": flags})
+    return written, staged
 
 
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:

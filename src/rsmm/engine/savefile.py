@@ -24,9 +24,12 @@ is driven by an engine serializer nobody has decoded, so those are walked past
 and never changed — guessing offsets would corrupt real saves.
 
 An item record names its item by a 16-byte GUID that sits in the item's own
-EntitySettingsResource file (not the identity GUID `magic_item_cook` reads),
-and the game keeps records for items that are no longer registered (a retired
-item keeps its progress). The meaning of each flag is NOT known; what is known
+EntitySettingsResource file (not the identity GUID `magic_item_cook` reads).
+The game writes a record only for items whose entity it loaded that session:
+some retired items keep theirs (their entity still loads), but an item missing
+from the LiveOps catalog for one session (an item ban, a disabled mod's item)
+loses its record at the next save. `save_item_ledger` puts those back.
+The meaning of each flag is NOT known; what is known
 is the two states the game itself writes (`ITEM_STATES`), read from
 `oCDtMagicalObjectProfileData`'s vtable on build b9c3642884a8 (serializer
 FUN_1402cc730, "grant" slot 15 FUN_1402ccbf0, "reset" slot 13 FUN_1402ccb90).
@@ -300,6 +303,44 @@ def item_records(save: Save) -> list[ItemRecord]:
                               f"object table lists {want}; not editing a save the walk "
                               "does not account for")
     return [ItemRecord(r.start, *_ITEM_BODY.unpack_from(d, r.start + 8)) for r in found]
+
+
+def item_body(rec: ItemRecord) -> bytes:
+    """The record's bytes between class index and close marker, as stored."""
+    return _ITEM_BODY.pack(rec.guid, rec.word, rec.f60, rec.f61, rec.f62, rec.f64, rec.f68)
+
+
+def append_item_records(save: Save, bodies: list[bytes]) -> None:
+    """Add item records (each an `item_body`) to the save, in place.
+
+    The game writes a record only for items whose entity it loaded that
+    session, so an item missing from the catalog for one session (a ban, a
+    disabled mod) loses its record for good. This puts records back: each new
+    object takes the next object id, goes in the object table and just before
+    the profile record, and the profile lists its id. Existing ids do not
+    move. Re-sign before writing."""
+    if not bodies:
+        return
+    if any(len(b) != _ITEM_BODY.size for b in bodies):
+        raise ValueError(f"an item record body is {_ITEM_BODY.size} bytes")
+    item_records(save)                       # refuses a save the walk does not account for
+    cls = next(i for i, c in enumerate(save.classes) if c.name == ITEM_CLASS)
+    d, o = bytes(save.data), save.data_start
+    n = len(object_table(save))
+    root = records(save)[-1]
+    if save.classes[root.cls].name != "oCDtGameProfile":
+        raise SaveFormatError(f"{save.path}: the last record is not the profile")
+    k = len(bodies)
+    tend = o + 12 + 4 * n
+    (m,) = struct.unpack_from("<I", d, root.start + 8)
+    refs_end = root.start + 12 + 4 * m
+    head = struct.pack("<I", cls)
+    save.data[:] = (d[:o + 8] + struct.pack("<I", n + k) + d[o + 12:tend]
+                    + head * k + d[tend:root.start]
+                    + b"".join(_OPEN + head + b + _CLOSE for b in bodies)
+                    + d[root.start:root.start + 8] + struct.pack("<I", m + k)
+                    + d[root.start + 12:refs_end]
+                    + struct.pack(f"<{k}I", *range(n, n + k)) + d[refs_end:])
 
 
 def set_item_state(save: Save, rec: ItemRecord, state: str) -> ItemRecord:
