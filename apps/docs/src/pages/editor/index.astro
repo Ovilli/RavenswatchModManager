@@ -80,6 +80,10 @@ const description =
   .pick[data-state="ready"] { background: var(--accent); color: var(--accent-ink); cursor: pointer; }
   .pick[data-state="error"] { background: transparent; border-color: var(--bad); color: var(--bad); cursor: pointer; }
   .pick[data-state="ready"]:hover { filter: brightness(1.1); }
+  .picks { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button.pick { font: inherit; font-weight: 600; }
+  /* With a remembered folder, reopening it is the main action and picking another the alternative. */
+  .pick.alt[data-state="ready"] { background: transparent; border-color: var(--line); color: var(--ink); }
   .pick[data-state="error"]:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
   .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
   #progress { margin-top: 22px; padding: 12px 14px; border-radius: 9px; background: var(--panel);
@@ -118,10 +122,15 @@ const description =
         <li>Make your changes, then save them as a mod. You get a <code>.zip</code>: unzip it into your
           mods folder and apply it with the desktop app or <code>rsmm apply</code>.</li>
       </ol>
-      <label class="pick" id="pickLabel" aria-disabled="true" data-state="loading">
-        Choose Ravenswatch folder
-        <input id="folder" type="file" multiple hidden />
-      </label>
+      <div class="picks">
+        <button class="pick" id="again" type="button" data-state="ready" hidden></button>
+        <label class="pick" id="pickLabel" aria-disabled="true" data-state="loading">
+          <span id="pickText">Choose Ravenswatch folder</span>
+          <input id="folder" type="file" multiple hidden />
+        </label>
+      </div>
+      <p class="note" id="forgetNote" hidden>This browser can't remember the folder between visits, so you pick it each
+        time. Chrome and Edge remember it and reopen it with one click.</p>
       <div id="progress"><span class="spin"></span><span id="progressText">Starting…</span></div>
       <p class="note">The first visit downloads the Python runtime (about 12 MB) from jsDelivr; later
         visits use your browser's cache. Works in current Chrome, Edge, Firefox and Safari on a computer.</p>
@@ -206,6 +215,8 @@ function setProgress(text, cls) {
   $("progressText").textContent = text;
   $("progress").querySelector(".spin")?.toggleAttribute("hidden", !!cls);
 }
+const readyText = () => $("again").hidden ? "Ready. Choose your Ravenswatch folder to start."
+  : `Ready. ${$("again").textContent}, or choose a different folder.`;
 function setPickerState(state) {
   const picker = $("pickLabel");
   picker.dataset.state = state;
@@ -225,7 +236,7 @@ async function boot() {
     startWorker();
     try {
       engineId = (await call("init", { bundle: new URL("rsmm.bundle", editorRoot).href, attempt }))?.engine || "";
-      setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
+      setProgress(readyText(), "ok");
       setPickerState("ready");
       return;
     } catch (err) {
@@ -261,18 +272,105 @@ function gameFiles(list) {
   return { files, paths };
 }
 
-$("pickLabel").addEventListener("click", (e) => {
-  if ($("pickLabel").getAttribute("aria-disabled") === "true") e.preventDefault();
+// Chrome and Edge can hand the page a folder HANDLE, which IndexedDB can keep:
+// the next visit then reopens the same folder with one click and the browser's
+// own "allow" prompt, instead of a search through the file picker. Firefox and
+// Safari have no such API; there the folder input is all there is, and nothing
+// about the folder outlives the page.
+const canRemember = typeof window.showDirectoryPicker === "function";
+const remembered = (() => {
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const db = () => {
+    const q = indexedDB.open("rsmm-editor-folder", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("folder");
+    return req(q);
+  };
+  return {
+    async get() { try { return await req((await db()).transaction("folder").objectStore("folder").get("game")); } catch { return null; } },
+    async set(h) { try { await req((await db()).transaction("folder", "readwrite").objectStore("folder").put(h, "game")); } catch { /* private window */ } },
+  };
+})();
+// The files under DarkTalesResources, from a picked handle: the install or
+// DarkTalesResources itself. Each File is a handle to the bytes, read only
+// when the engine opens it, as with the folder input.
+async function handleFiles(dir) {
+  let root = dir;
+  if (dir.name !== "DarkTalesResources") {
+    try { root = await dir.getDirectoryHandle("DarkTalesResources"); } catch { return { files: [], paths: [] }; }
+  }
+  const files = [], paths = [];
+  const walk = async (d, prefix) => {
+    const subs = [];
+    for await (const entry of d.values()) {
+      if (entry.kind === "directory") subs.push(walk(entry, prefix + entry.name + "/"));
+      else subs.push(entry.getFile().then((f) => { files.push(f); paths.push(prefix + entry.name); }));
+    }
+    await Promise.all(subs);
+  };
+  await walk(root, "");
+  return { files, paths };
+}
+async function openHandle(dir) {
+  setPickerState("loading");
+  setProgress(`Reading ${dir.name}…`);
+  const { files, paths } = await handleFiles(dir);
+  if (await useFolder(files, paths)) await remembered.set(dir);
+}
+function offerAgain(dir) {
+  const again = $("again");
+  again.textContent = `Open ${dir.name} again`;
+  again.title = "The folder you used last time";
+  again.hidden = false;
+  $("pickLabel").classList.add("alt");
+  $("pickText").textContent = "Choose a different folder";
+  if ($("progress").className === "ok") setProgress(readyText(), "ok");   // the engine was ready first
+  again.onclick = async () => {
+    again.hidden = true;                  // one mount at a time; a failure says to pick the folder
+    try {
+      // Asked inside the click: the browser shows its prompt only for one.
+      if ((await dir.queryPermission({ mode: "read" })) !== "granted"
+          && (await dir.requestPermission({ mode: "read" })) !== "granted") {
+        fail(`The browser did not allow reading ${dir.name}. Choose the folder again.`);
+        return;
+      }
+      await openHandle(dir);
+    } catch (err) {
+      fail(`Could not open ${dir.name} again (${err.message}). Choose the folder again.`);
+    }
+  };
+}
+if (canRemember) {
+  remembered.get().then((dir) => { if (dir) offerAgain(dir); });
+} else {
+  $("forgetNote").hidden = false;
+}
+
+$("pickLabel").addEventListener("click", async (e) => {
+  if ($("pickLabel").getAttribute("aria-disabled") === "true") { e.preventDefault(); return; }
+  if (!canRemember) return;                       // the folder input opens as before
+  e.preventDefault();
+  let dir;
+  try {
+    dir = await window.showDirectoryPicker({ id: "rsmm-game", mode: "read", startIn: (await remembered.get()) || undefined });
+  } catch (err) {
+    if (err.name !== "AbortError") fail("Could not open the folder picker: " + err.message);
+    return;
+  }
+  await openHandle(dir).catch((err) => fail(err.message));
 });
 $("folder").addEventListener("change", async () => {
   const list = $("folder").files;
   if (!list || !list.length) return;
   const { files, paths } = gameFiles(list);
   $("folder").value = "";
+  await useFolder(files, paths);
+});
+// Mount a picked folder's game files; true once the editor is open on them.
+async function useFolder(files, paths) {
   if (!paths.includes("UsedRscList.ot")) {
     fail("That folder is not a Ravenswatch install: it has no DarkTalesResources/UsedRscList.ot. "
       + "Pick the folder that holds Ravenswatch.exe.");
-    return;
+    return false;
   }
   setPickerState("loading");
   try {
@@ -281,10 +379,12 @@ $("folder").addEventListener("change", async () => {
     await answers.use(engineId + ":" + await folderKey(files, paths));
     open();
     warmUp();
+    return true;
   } catch (err) {
     fail(err.message);
+    return false;
   }
-});
+}
 
 // ---- editor frames ------------------------------------------------------------------
 // Each editor page is the one `rsmm editor` serves, fetched from the engine and
