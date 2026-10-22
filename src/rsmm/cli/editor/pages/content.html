@@ -136,6 +136,54 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: #1c1b1a; color: var(--rc, #f4f3ef); font-weight: 600; }
+/* Edit the shipped item or make a new one from it: the first choice on an item,
+   so two cards with what each does, not a small toggle under a muted label. */
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 4px; }
+.modes button { display: grid; gap: 2px; align-content: start; text-align: left; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--line); }
+.modes .t { font-weight: 600; font-size: 15px; }
+.modes .t::before { content: "\25CB  "; color: var(--muted); }
+.modes .b { font-size: 12px; color: var(--muted); }
+.modes button.on { border-color: var(--accentline); background: var(--accentbg); }
+.modes button.on .t::before { content: "\25CF  "; color: var(--accentink); }
+@media (max-width: 700px) { .modes { grid-template-columns: 1fr; } }
+/* An optional feature: a switch with its name and what it does. As a hint-sized
+   checkbox it was read past. */
+.feature { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); cursor: pointer; font-weight: 400; }
+.feature:hover { border-color: var(--accentline); }
+.feature.on { border-color: var(--accentline); background: var(--accentbg); }
+.feature input { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 34px; height: 20px; margin: 1px 0 0; padding: 0; border: none; border-radius: 999px; background: var(--line); cursor: pointer; transition: background .15s; }
+.feature input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+.feature input:checked { background: var(--accent); }
+.feature input:checked::after { left: 16px; }
+.feature input:focus-visible { outline: 2px solid var(--accentline); outline-offset: 2px; }
+.feature .t { display: block; font-weight: 600; }
+.feature .b { display: block; font-size: 12px; color: var(--muted); }
+.form .feature { margin: 0; padding: 10px 12px; gap: 12px; font-weight: 400; align-items: flex-start; }
+/* A custom item: the button that starts one, and the pick-a-base step. */
+#newitem { font-weight: 600; }
+.picking { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; padding: 8px 10px; border: 1px dashed var(--accentline); border-radius: 8px; background: var(--accentbg); font-size: 13px; }
+.picking button { margin-left: auto; }
+/* Over the rarity on hover, so it takes no width from the names. */
+.pick { position: relative; }
+.pick .cp { visibility: hidden; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--ink); }
+.pick:hover .cp, .pick:focus-within .cp, #list.choosing .pick .cp { visibility: visible; }
+.newsteps { max-width: 620px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.newsteps h2 { margin: 0 0 4px; font-size: 20px; }
+.newsteps ol { margin: 12px 0 14px; padding-left: 22px; }
+.newsteps li { margin-bottom: 8px; }
+/* Every talent of the hero at a glance, by ability: a click jumps to its card. */
+.tmap { margin-bottom: 12px; padding: 8px 12px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.tmap > summary { cursor: pointer; font-weight: 600; }
+.tmap > summary span { font-weight: 400; }
+.tmap-g { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; align-items: start; margin-top: 8px; }
+.tmap-g .gl { padding-top: 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tmap-g .gi { display: flex; flex-wrap: wrap; gap: 6px; }
+.tmap-g button { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 3px; border-radius: 999px; font-size: 13px; }
+.tmap-g button img, .tmap-g button .ico { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
+.tmap-g button.changed { border-color: var(--accentline); background: var(--accentbg); font-weight: 600; }
+.tcard { scroll-margin-top: 56px; }
+.tcard.flash { animation: tflash 1.4s ease-out; }
+@keyframes tflash { from { box-shadow: 0 0 0 3px var(--accentline); } to { box-shadow: 0 0 0 3px transparent; } }
 .tgrid { display: grid; gap: 12px; }
 .tcard { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel); align-items: start; }
 .tcard.changed { border-color: var(--accentline); }
@@ -160,11 +208,34 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .addstat .secs { width: 5em; }
 .addstat { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 6px; }
 .addstat .sectrow .pickbox { flex: 1; min-width: 0; }
+/* One building block: its name, a sentence saying what it will do (or what is
+   still missing), then its fields, each with a label. */
+.tnums:has(.tblock) { gap: 10px; }
+.tblock { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--accentline); border-radius: 10px; background: var(--panel); }
+.tblock.todo { border-left-color: var(--warn); }
+.tblock-head { display: flex; align-items: center; gap: 8px; }
+.tblock-t { flex: 1; font-weight: 600; font-size: 15px; }
+.tblock-say { padding: 6px 10px; border-radius: 8px; background: var(--accentbg); font-size: 13px; }
+.tblock.todo .tblock-say { background: var(--warnbg); color: var(--warn); }
+.tfield { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: center; }
+.tfield > .fl { font-size: 13px; font-weight: 600; }
+.tfield > .addpct { flex-wrap: wrap; }
+.tfield .pickbox { flex: 1; max-width: 460px; }
+.tfield .linkbtn { justify-self: start; }
+.tblock details > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.tblock details[open] > summary { margin-bottom: 4px; }
+.tb-empty { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.tb-addmore { justify-self: start; font-weight: 600; }
+.tb-save { padding: 10px 14px; border-radius: 10px; background: var(--okbg); font-size: 13px; }
+.tb-more { margin-top: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tb-more > summary { cursor: pointer; font-weight: 600; }
+.tb-more[open] > summary { margin-bottom: 8px; }
+.feature input:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 700px) { .tfield { grid-template-columns: minmax(0, 1fr); } }
 .addnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .addnums label { display: grid; gap: 2px; }
 .addnums input { width: 100%; min-width: 0; }
 .addpct { display: flex; align-items: center; gap: 6px; }
-.rebuild { padding: 6px 8px; border-radius: 6px; background: var(--chip); }
 .tcard.rebuilt .rebuild { outline: 1px solid var(--accent, #c33); }
 .addpct input { width: auto; margin: 0; }
 .phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
@@ -285,6 +356,7 @@ body.wide #bar { max-height: none; }
 
 <aside id="left">
   <div class="filters">
+    <button id="newitem" class="primary" type="button" title="Start a new item from a copy of a shipped one">+ New custom item</button>
     <input id="q" type="search" placeholder="Search">
     <select id="rarity"><option value="">All rarities</option></select>
   </div>
@@ -456,6 +528,7 @@ const S = {
   items: [], icons: [], stats: [], heroes: [], mods: [], modTags: [], portraits: {},
   drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
   restored: "",      // the tab whose open edit came from a draft
+  newItem: false, // "+ New custom item" is waiting for the item to start from
   item: null,     // detail of the chosen base
   itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
   hero: null, talents: null,
@@ -471,6 +544,7 @@ const S = {
 function setTab(t) {
   if (t !== S.tab) { pickSeq++; pickAbort?.abort(); }   // a pick still loading belongs to the tab being left
   saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
+  if (t !== "items") S.newItem = false;
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("#rarity").hidden = t !== "items";
@@ -485,15 +559,23 @@ $("#rarity").onchange = renderList;
 function renderList() {
   const list = $("#list"); list.textContent = "";
   const q = $("#q").value.toLowerCase();
+  $("#newitem").hidden = S.tab !== "items";
+  list.classList.toggle("choosing", S.tab === "items" && S.newItem);
   if (S.tab === "items") {
+    if (S.newItem) {
+      list.append(el("div", { class: "picking", role: "status" }, el("span", { text: "Pick the item your new one starts from." }),
+        el("button", { type: "button", class: "small", onclick: cancelNewItem }, "Cancel")));
+    }
     const r = $("#rarity").value;
     const rows = S.items.filter(i => (!r || i.rarity === r) && (!q || (i.name + " " + i.id).toLowerCase().includes(q)));
     if (!rows.length) list.append(el("div", { class: "empty", text: S.items.length ? "No match." : "No items found. Is the game install readable?" }));
     for (const i of rows) {
-      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
+      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id && !S.newItem ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
         iconImg(i.icon), el("span", { class: "nm", text: i.name }),
         S.drafts.items.has(i.id) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null,
-        el("span", { class: "sub", text: i.rarity })));
+        el("span", { class: "sub", text: i.rarity }),
+        el("button", { type: "button", class: "small cp", title: "Make a new item from " + i.name,
+          onclick: ev => { ev.stopPropagation(); pickItem(i.id, true); } }, "Copy")));
     }
   } else if (S.tab === "scripts") {
     list.append(el("div", { class: "empty", text: "Test grants are set on the right. They go into whichever mod you save to." }));
@@ -520,7 +602,29 @@ function pickSignal() {
   pickAbort = new AbortController();
   return pickAbort.signal;
 }
-async function pickItem(id) {
+// A custom item is a copy of a shipped one: "+ New custom item" asks for the item
+// to start from, and the next pick opens it as a copy with its name to fill in.
+function startNewItem() {
+  if (S.tab !== "items") setTab("items");
+  S.newItem = true;
+  renderList(); renderView();
+  $("#q").focus();
+}
+function cancelNewItem() { S.newItem = false; renderList(); renderView(); }
+$("#newitem").onclick = startNewItem;
+function newItemView() {
+  return el("div", { class: "newsteps" },
+    el("h2", { text: "Make a custom item" }),
+    el("div", { class: "muted", text: "A custom item starts as a copy of one the game ships, so it already works in game. You change what you want and the original stays as it was." }),
+    el("ol", {},
+      el("li", {}, el("b", { text: "Pick an item on the left" }), " to start from. Its effects, numbers and look are copied. Search narrows the list."),
+      el("li", {}, el("b", { text: "Make it yours: " }), "a name and an icon, then its rarity, numbers, stats or a timed bonus. The card preview follows every change."),
+      el("li", {}, el("b", { text: "Add it to a mod" }), " with the bar at the bottom, then run ", el("code", { text: "rsmm apply" }), ".")),
+    el("button", { type: "button", onclick: cancelNewItem }, "Cancel"));
+}
+async function pickItem(id, copy) {
+  copy = copy || S.newItem;
+  S.newItem = false;
   const meta = S.items.find(i => i.id === id), me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
   let got;
@@ -531,8 +635,9 @@ async function pickItem(id) {
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
   // A draft from before the switch existed was a copy.
-  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {});
+  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {}, copy ? { mode: "clone" } : {});
   renderList(); renderView(); refresh();
+  if (copy) { const n = $("#itemname"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } }
 }
 function freshItemEdit() {
   // "replace" changes the shipped item itself; "clone" makes a new one beside it.
@@ -701,13 +806,28 @@ function suggestId(base) {
   return base.length > 2 ? base.slice(0, -2) + tail : base;
 }
 
+// An optional feature as a switch with its name and what it does.
+function featureToggle(title, body, checked, onchange) {
+  const inp = el("input", { type: "checkbox", role: "switch", ...(checked ? { checked: "" } : {}) });
+  const box = el("label", { class: "feature" + (checked ? " on" : "") }, inp,
+    el("span", {}, el("span", { class: "t", text: title }), el("span", { class: "b", text: body })));
+  inp.addEventListener("change", () => { box.classList.toggle("on", inp.checked); onchange(inp.checked); });
+  return box;
+}
+
 function itemView() {
+  if (S.newItem) return newItemView();
   const it = S.item, E = S.itemEdit, v = el("div");
   const replace = E.mode !== "clone";
   v.append(el("div", { class: "help", text: replace
     ? "Change a shipped item itself: its name, text, icon, values or the stats its effects give. The game's own item is replaced while the mod is on, and put back when it is off. Only what you change is written."
     : "Copy a shipped item into a new one, next to the original. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
-  if (!it) { v.append(el("div", { class: "empty", text: "Pick an item on the left." })); return v; }
+  if (!it) {
+    v.append(el("div", { class: "empty" }, el("div", { text: "Pick an item on the left to change it," }),
+      el("div", { style: "margin-top:10px" }, "or ",
+        el("button", { type: "button", class: "primary", onclick: startNewItem }, "+ Make a new custom item"))));
+    return v;
+  }
   const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
@@ -716,14 +836,16 @@ function itemView() {
     el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item (other items and heroes keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this item"))));
 
 
-  const seg = el("div", { class: "seg", role: "group", "aria-label": "Replace the item or make a copy" });
-  for (const [mode, label, title] of [["replace", "Replace this item", "Change the shipped item itself"],
-    ["clone", "Make a copy", "Add a new item next to the shipped one"]]) {
-    seg.append(el("button", { type: "button", class: (replace ? "replace" : "clone") === mode ? "on" : "", title,
-      "aria-pressed": String((replace ? "replace" : "clone") === mode),
-      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } }, label));
+  const modes = el("div", { class: "modes", role: "radiogroup", "aria-label": "Edit this item or make a new one from it" });
+  for (const [mode, title, body] of [
+    ["replace", "Edit " + it.name, "Change the game's own item. It is back to normal when the mod is off."],
+    ["clone", "New item from " + it.name, "A separate item next to the original, with its own name, icon and numbers."]]) {
+    const on = (replace ? "replace" : "clone") === mode;
+    modes.append(el("button", { type: "button", role: "radio", class: on ? "on" : "", "aria-checked": String(on),
+      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } },
+      el("span", { class: "t", text: title }), el("span", { class: "b", text: body })));
   }
-  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }), seg);
+  v.append(modes, el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }));
   const f = el("div", { class: "form" });
   const idHint = el("div", { class: "hint" });
   const idIn = el("input", { value: E.id, spellcheck: "false" });
@@ -735,7 +857,7 @@ function itemView() {
   idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
   checkId();
   if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
-  const nameIn = el("input", { placeholder: it.name, value: E.name });
+  const nameIn = el("input", { id: "itemname", placeholder: replace ? it.name : "Your item's name", value: E.name });
   // A copy left with the base's name and icon cannot be told apart from the
   // original in game: testers pick up the shipped item and see "no change".
   const twin = el("div", { class: "hint bad" });
@@ -756,10 +878,9 @@ function itemView() {
   if (!replace) {
     // A copy keeps its base's identity unless told otherwise, and anything that
     // grants by identity then hands out the base (playtest 2026-10-20).
-    const own = el("input", { type: "checkbox", ...(E.sharedIdentity ? {} : { checked: "" }) });
-    own.addEventListener("change", () => { E.sharedIdentity = !own.checked; saveDraft(); refresh(); });
-    f.append(el("label", { text: "Identity" }), el("label", { class: "hint", style: "display:block" }, own,
-      ` Its own identity (recommended). Without it the game treats the copy as ${it.name}: a grant hands out the original, and owning both keeps one.`));
+    f.append(el("label", { text: "Identity" }), featureToggle("Its own identity (recommended)",
+      `Without it the game treats the copy as ${it.name}: a grant hands out the original, and owning both keeps one.`,
+      !E.sharedIdentity, on => { E.sharedIdentity = !on; saveDraft(); refresh(); }));
   }
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
@@ -833,10 +954,8 @@ function itemView() {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
     if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
       text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
-    const none = el("input", { type: "checkbox", ...(E.noSuper ? { checked: "" } : {}) });
-    none.addEventListener("change", () => { E.noSuper = none.checked; if (E.noSuper) E.superDescription = ""; renderView(); refresh(); });
-    v.append(el("label", { class: "hint", style: "display:block;margin-bottom:6px" }, none,
-      " No super effect: the copy never gets the base's super bonus, and its card shows no super text."));
+    v.append(featureToggle("No super effect", "The copy never gets the base's super bonus, and its card shows no super text.",
+      E.noSuper, on => { E.noSuper = on; if (on) E.superDescription = ""; renderView(); refresh(); }));
     const sup = el("textarea", { placeholder: it.superText || it.superKey, ...(E.noSuper ? { disabled: "" } : {}) });
     sup.value = E.superDescription;
     const f2 = el("div", { class: "form" });
@@ -1018,13 +1137,11 @@ S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
 function effectForm(E) {
   const box = el("div");
   box.append(el("div", { class: "sect", text: "Timed effect" }));
-  const on = el("input", { type: "checkbox", ...(E.effect ? { checked: "" } : {}) });
-  on.addEventListener("change", () => {
-    E.effect = on.checked ? { stat: "Crit chance", amount: 0.1, seconds: 5, on: "damage_taken" } : null;
-    renderView(); refresh();
-  });
-  box.append(el("label", { class: "hint", style: "display:block;margin-bottom:6px" }, on,
-    " Give it a timed bonus: after a trigger, gain an amount of a stat for some seconds. Replaces what the base item does (its look stays)."));
+  box.append(featureToggle("Timed bonus", "After a trigger, gain an amount of a stat for some seconds. Replaces what the base item does (its look stays).",
+    !!E.effect, on => {
+      E.effect = on ? { stat: "Crit chance", amount: 0.1, seconds: 5, on: "damage_taken" } : null;
+      renderView(); refresh();
+    }));
   if (!E.effect) return box;
   const x = E.effect, f = el("div", { class: "form" });
   const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
@@ -1506,6 +1623,60 @@ function statPhrase(stat, n, percent) {
   return `• ${stat || "New stat"} &+${num}~`;
 }
 
+// A building block as the talent pages show it: its name, a sentence saying what
+// it will do (or what is still missing, so a half-filled block is never silent),
+// then its fields. `box.tell(text, missing)` rewrites the sentence.
+function blockCard(title, onremove, ...fields) {
+  const say = el("div", { class: "tblock-say", role: "status" });
+  const box = el("div", { class: "tblock" },
+    el("div", { class: "tblock-head" }, el("span", { class: "tblock-t", text: title }),
+      el("button", { type: "button", class: "small", title: "Remove this block and its card line", onclick: onremove }, "Remove")),
+    say, ...fields);
+  box.tell = (text, missing) => {
+    say.textContent = missing ? "To finish: " + missing : "What it does: " + text;
+    box.classList.toggle("todo", !!missing);
+  };
+  return box;
+}
+function blockField(label, ...controls) {
+  return el("div", { class: "tfield" }, el("span", { class: "fl", text: label }), el("div", { class: "addpct" }, ...controls));
+}
+// A number as the card shows it: 0.25 is 25% when the number is a percentage.
+const asShown = (v, percent) => percent ? fmt(Math.round(v * 1000) / 10) + "%" : fmt(v);
+// The four rarity numbers, each labelled with what the card shows for it, and a
+// shortcut that gives every rarity the Common number.
+function tierInputs(values, shown, onchange) {
+  const rows = TIERS.map((t, k) => {
+    const lab = el("span");
+    const inp = el("input", { type: "number", step: "any", value: fmt(values[k]), "aria-label": t });
+    const label = () => { lab.textContent = t + " · " + shown(values[k]); };
+    inp.oninput = () => {
+      const v = Number(inp.value);
+      if (inp.value !== "" && !Number.isNaN(v)) { values[k] = v; label(); onchange(); }
+    };
+    label();
+    return { wrap: el("label", { class: "tiny" }, lab, inp), inp, label };
+  });
+  const same = el("button", { type: "button", class: "linkbtn", onclick: () => {
+    for (let k = 1; k < values.length; k++) { values[k] = values[0]; rows[k].inp.value = fmt(values[0]); rows[k].label(); }
+    onchange();
+  } }, "Same for every rarity");
+  return el("div", { style: "display:grid;gap:4px;width:100%" }, el("div", { class: "addnums" }, ...rows.map(r => r.wrap)), same);
+}
+// What an added stat does, in words, from its Common number.
+function statSentence(a) {
+  const v = a.values[0];
+  let when = "while you own the talent";
+  if (a.during) when = "while using " + a.during;
+  if (a.after) when = `for ${fmt(a.seconds ?? 3)} s after ${a.after}` + (a.next ? `, until you use ${a.next}` : "")
+    + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "");
+  return `${a.stat} ${v < 0 ? "" : "+"}${asShown(v, a.percent !== false)} ${when} (Common card; each rarity uses its own number).`;
+}
+const statBlockTitle = a => a.after ? (a.next ? "Your next ability" : "For a few seconds after an ability")
+  : a.during ? "While using an ability" : "Boost a stat";
+// A new block's starting numbers: a modest bonus that grows with rarity.
+const STARTER = () => [0.1, 0.15, 0.2, 0.25];
+
 // New stats a talent did not have (add_stats), e.g. Fiery Dragon also lowering
 // TRAIT cooldown. Each one gets the next {N} on the card so its text can show the
 // number, and the number scales with the card's rarity like the others.
@@ -1537,9 +1708,11 @@ function addedStats(c, redraw, desc) {
     });
     desc.set(text);
   };
+  const tells = [];
   const save = removed => {
     syncLines(removed);
     if (list.length) E.addStats[c.source] = list; else delete E.addStats[c.source];
+    for (const t of tells) t();
     redraw(); refresh();
   };
   list.forEach((a, i) => {
@@ -1548,20 +1721,17 @@ function addedStats(c, redraw, desc) {
       a.stat = st;
       // A tally counts things: a whole number, never a percentage.
       const tally = (S.stats.find(s => s.name === st) || {}).tally;
-      if (tally) a.percent = false;
+      if (tally) {
+        a.percent = false;
+        if (a.values.every(v => v < 1)) a.values = [1, 1, 1, 1];
+      }
       save();
       if (tally) renderView();
     }, true);
-    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
-      const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
-      inp.oninput = () => {
-        const v = Number(inp.value);
-        if (inp.value !== "" && !Number.isNaN(v)) { a.values[k] = v; save(); }
-      };
-      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
-    }));
+    picker.el.querySelector("input").placeholder = "Pick a stat, e.g. attack power or cooldown";
+    const nums = tierInputs(a.values, v => asShown(v, a.percent !== false), () => save());
     const pct = el("input", { type: "checkbox", ...(a.percent !== false ? { checked: "" } : {}) });
-    pct.onchange = () => { a.percent = pct.checked; save(); };
+    pct.onchange = () => { a.percent = pct.checked; save(); renderView(); };
     // When the bonus applies: always while the talent is owned, only while one of
     // the hero's abilities is in use, or for some seconds each time one is used
     // (abilities this hero cannot signal are left out of each list).
@@ -1599,28 +1769,33 @@ function addedStats(c, redraw, desc) {
       if (!a.after || a.next === a.after) { delete a.next; nxt.value = ""; }
       secsBox.hidden = cdBox.hidden = nxtBox.hidden = !a.after;
       save();
+      renderView();   // the block's name follows its timing
     };
     secs.oninput = () => {
       const v = Number(secs.value);
       if (secs.value !== "" && v > 0) { a.seconds = v; save(); }
     };
-    const del = el("button", { type: "button", title: "Remove this added stat and its card line",
-      onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, el("span", { class: "phn", text: n != null ? "{" + n + "}" : "+" }), picker.el, del),
-      nums,
-      el("label", { class: "tiny addpct" }, "When", when),
-      secsBox,
-      cdBox,
-      nxtBox,
-      el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
-      el("div", { class: "tiny muted", text: n != null
-        ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
-        : "This card has no text format, so the number can't be shown on it." })));
+    const timing = blockField("Timing", secsBox, cdBox, nxtBox);
+    timing.hidden = !a.after;
+    when.addEventListener("change", () => { timing.hidden = !a.after; });
+    const card = blockCard(statBlockTitle(a), () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("Stat", picker.el),
+      blockField("How much", nums),
+      blockField("When", when),
+      timing,
+      el("details", {}, el("summary", { text: "Card text options" }),
+        el("label", { class: "tiny addpct" }, pct, "Show the number as a percent on the card (0.25 shows as 25%)"),
+        el("div", { class: "tiny muted", text: n != null
+          ? `On the card this number is {${n}}. A line using it was added to the description above; reword it freely. The number is in the stat's own unit: 0.25 on a cooldown stat is 25% shorter.`
+          : "This card has no text format, so the number can't be shown on it." })));
+    const tell = () => card.tell(statSentence(a),
+      !a.stat ? "pick which stat it changes." : a.values.every(v => !v) ? "set how much (it is 0 now)." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   box.append(el("button", { type: "button",
     title: "Give this talent a stat it does not have, e.g. -25% TRAIT cooldown",
-    onclick: () => { list.push({ stat: "", values: [0, 0, 0, 0], percent: true }); save(); renderView(); } },
+    onclick: () => { list.push({ stat: "", values: STARTER(), percent: true }); save(); renderView(); } },
     "+ Add a stat"));
   return box;
 }
@@ -1680,9 +1855,10 @@ function rebuildSwitch(c, desc, onchange) {
   E.rebuild = E.rebuild || {};
   const info = c.addStat || { ok: false };
   const can = info.ok && info.rebuild !== false;
-  const box = el("label", { class: "tiny addpct rebuild" });
-  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
+  const box = el("label", { class: "feature rebuild" + (isRebuilt(c) ? " on" : "") });
+  const cb = el("input", { type: "checkbox", role: "switch", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
   cb.onchange = () => {
+    box.classList.toggle("on", cb.checked);
     if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
     const list = (E.addStats || {})[c.source] || [];
     const base = firstSlot(c);
@@ -1691,9 +1867,12 @@ function rebuildSwitch(c, desc, onchange) {
       desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
     onchange();
   };
-  box.append(cb, can
-    ? "Rebuild this talent: turn off what it does now and make it a new talent from the stats you add below"
-    : "Can't be rebuilt: " + (info.ok ? info.rebuildWhy : info.why));
+  const was = c.name || c.source;
+  box.append(cb, el("span", {},
+    el("span", { class: "t", text: can ? "Start from scratch" : "Can't start from scratch" }),
+    el("span", { class: "b", text: can
+      ? `On: ${was} stops doing what it does now, and the talent does only what your blocks add. Off: your blocks are added on top of ${was}.`
+      : (info.ok ? info.rebuildWhy : info.why) || "" })));
   return box;
 }
 
@@ -1955,8 +2134,10 @@ function scaleRows(c, paint, desc) {
       desc.set(text);
     }
     if (list.length) E.scale[c.source] = list; else delete E.scale[c.source];
+    for (const t of tells) t();
     paint(); refresh();
   };
+  const tells = [];
   list.forEach((r, i) => {
     const sel = el("select", { "aria-label": "Which number grows" }, el("option", { value: "", text: "Loading the hero's sizes…" }));
     scalableNodes.get(S.hero).then(nodes => {
@@ -1979,22 +2160,21 @@ function scaleRows(c, paint, desc) {
       r.ability = (opt && opt.dataset.ability) || "";
       save();
     };
-    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
-      const inp = el("input", { type: "number", step: "any", value: fmt(r.values[k]), "aria-label": t });
-      inp.oninput = () => { const v = Number(inp.value); if (inp.value !== "" && !Number.isNaN(v)) { r.values[k] = v; save(); } };
-      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
-    }));
-    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    const nums = tierInputs(r.values, v => (v < 0 ? "" : "+") + asShown(v, true), () => save());
     // Something the hero spawns (a caster, a projectile) can grow its look with
     // the number; the hero's own file never does, it would grow the hero.
     const look = el("input", { type: "checkbox", ...(r.visual === false ? {} : { checked: "" }) });
     look.onchange = () => { r.visual = look.checked; save(); };
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, el("span", { class: "phn", text: "{" + (base() + i) + "}" }), sel, del),
-      nums,
-      el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
-        look, "Grow its look too (water, fire, the effect on the ground)"),
-      el("div", { class: "tiny muted", text: "Grows by this much while the talent is owned: 0.3 is +30%." })));
+    const card = blockCard("Make an ability bigger", () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("What grows", sel),
+      blockField("How much", nums),
+      blockField("Look", el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
+        look, "Grow its look too (water, fire, the effect on the ground)")),
+      el("div", { class: "tiny muted", text: `On the card this number is {${base() + i}}; 0.3 is +30%.` }));
+    const tell = () => card.tell(`${r.node}${r.ability ? " (" + r.ability + ")" : ""} grows by ${asShown(r.values[0], true)} while you own the talent (Common card).`,
+      !r.node ? "pick what grows: an area, a length or a radius." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   return box;
 }
@@ -2029,8 +2209,10 @@ function hitRows(c, paint, desc) {
       desc.set(text);
     }
     if (list.length) E.onHit[c.source] = list; else delete E.onHit[c.source];
+    for (const t of tells) t();
     paint(); refresh();
   };
+  const tells = [];
   list.forEach((r, i) => {
     const hit = el("select", { "aria-label": "Which hit" }, el("option", { value: "", text: "Loading the hero's hits…" }));
     const status = el("select", { "aria-label": "Status" });
@@ -2057,10 +2239,14 @@ function hitRows(c, paint, desc) {
       save();
     };
     status.onchange = () => { r.status = status.value; save(); };
-    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, hit, status, del),
-      el("div", { class: "tiny muted", text: "While the talent is owned, this hit also puts the status on whoever it hits. Pick every hit of the ability that should do it (some have two, like a normal and an upgraded one)." })));
+    const card = blockCard("Hits apply a status", () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("Which hit", hit),
+      blockField("Status", status),
+      el("div", { class: "tiny muted", text: "Some abilities have two hits (a normal and an upgraded one): add a block for each that should do it." }));
+    const tell = () => card.tell(`${r.ability || "This"} hit “${r.damage}” puts ${r.status || "the status"} on whoever it hits, while you own the talent.`,
+      !r.damage ? "pick which hit puts the status on." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   return box;
 }
@@ -2164,10 +2350,16 @@ function builderView() {
   // addedStats ends with its own "+ Add a stat"; the palette replaces it here.
   const plain = effects.querySelector(".tnums > button:last-child");
   if (plain) plain.remove();
-  const borrowBox = el("div", { class: "tb-borrow" }, includeControl(c, paint));
+  const borrowBox = el("div", { class: "tb-borrow" }, el("div", { class: "tblock-t", style: "margin-bottom:4px", text: "Borrow a talent's effect" }),
+    includeControl(c, paint));
   borrowBox.hidden = !(E.include || {})[c.source] && !E.showBorrow;
+  const blocks = ((E.addStats || {})[c.source] || []).length + ((E.scale || {})[c.source] || []).length
+    + ((E.onHit || {})[c.source] || []).length + (borrowBox.hidden ? 0 : 1);
+  if (!blocks) right.append(el("div", { class: "tb-empty", text: "No blocks yet. Each building block is one thing the talent does; pick one below (you can add several), or start from an example." }));
   right.append(effects, scaleRows(c, paint, desc), hitRows(c, paint, desc), borrowBox);
 
+  // Before the first block the palette is the next step; after it, it waits
+  // behind one button so the blocks being filled in stay the focus.
   const palette = el("div", { class: "tb-palette" });
   for (const blk of BLOCKS) {
     const list = blk.needs ? info[blk.needs] || [] : [true];
@@ -2175,6 +2367,7 @@ function builderView() {
     palette.append(el("button", { type: "button", class: "tb-block", ...(ok ? {} : { disabled: "" }),
       title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
       onclick: () => {
+        E.showPalette = false;
         if (blk.id === "borrow") { E.showBorrow = true; borrowBox.hidden = false; borrowBox.querySelector("select").focus(); return; }
         if (blk.id === "status") {
           E.onHit = E.onHit || {};
@@ -2186,7 +2379,7 @@ function builderView() {
           (E.scale[c.source] = E.scale[c.source] || []).push({ node: "", file: "", values: [0.1, 0.2, 0.3, 0.4] });
           renderView(); refresh(); return;
         }
-        const a = { stat: "", values: [0, 0, 0, 0], percent: true };
+        const a = { stat: "", values: STARTER(), percent: true };
         if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
         if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
         if (blk.id === "next") {
@@ -2196,10 +2389,17 @@ function builderView() {
         addRow(a);
       } }, el("span", { class: "t", text: "+ " + blk.title }), el("span", { class: "b", text: blk.blurb })));
   }
-  right.append(el("div", { class: "tb-sub", text: "Add a building block" }), palette);
+  if (!blocks) right.append(el("div", { class: "tb-sub", text: "Pick a building block" }), palette);
+  else {
+    palette.hidden = !E.showPalette;
+    const more = el("button", { type: "button", class: "tb-addmore", "aria-expanded": String(!palette.hidden),
+      onclick: () => { E.showPalette = palette.hidden; palette.hidden = !palette.hidden; more.setAttribute("aria-expanded", String(!palette.hidden)); } },
+      "+ Add another block");
+    right.append(more, palette);
+  }
 
   const fits = RECIPES.filter(r => recipeFits(r, info));
-  if (info.ok && fits.length) {
+  if (info.ok && fits.length && !blocks) {
     right.append(el("div", { class: "tb-sub", text: "Or start from an example" }),
       el("div", { class: "tb-recipes" }, ...fits.map(r => el("button", { type: "button", class: "tb-recipe", onclick: () => {
         if (!nameIn.value.trim() || nameIn.value === c.name) { nameIn.value = r.name; store(); }
@@ -2212,10 +2412,15 @@ function builderView() {
       } }, el("span", { class: "t", text: r.name }), el("span", { class: "b", text: r.blurb })))));
   }
 
-  right.append(el("div", { class: "tb-sub", text: "Not buildable yet: ask for it" }),
+  right.append(el("h3", { text: "4. Save it" }),
+    el("div", { class: "tb-save" }, "Check the card on the left (switch “Preview as” to see each rarity's number). When it reads right, press ",
+      el("b", { text: "Add to mod" }), " in the bar at the bottom, then run ", el("code", { text: "rsmm apply" }), "."));
+
+  // What the blocks can't do yet, out of the way until wanted.
+  right.append(el("details", { class: "tb-more" }, el("summary", { text: "Your idea isn't a block yet? Ask for it" }),
     el("div", { class: "tb-palette wish" }, ...WISHES.map(w => el("button", { type: "button", class: "tb-block", onclick: () => ideaRef.focus(w.ex) },
-      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))));
-  right.append(ideaBox(c, ideaRef));
+      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))),
+    ideaBox(c, ideaRef)));
 
   v.append(el("div", { class: "tb-grid" }, left, right));
   paint();
@@ -2264,16 +2469,55 @@ function talentView() {
     b.style.setProperty("--rc", RARITY_COLOUR[tier]);
     seg.append(b);
   }
+  // Every talent at a glance, by ability (a card's source starts with it:
+  // "Attack Dive"). A click jumps to the card; a changed one is marked.
+  const rows = new Map(), chips = new Map();
+  if (T.cards.length) {
+    const map = el("details", { class: "tmap", ...(store.get("rsmm.editor.tmap") === false ? {} : { open: "" }) },
+      el("summary", {}, "All talents ", el("span", { class: "muted", text: `· ${T.cards.length} cards, click one to jump to it` })));
+    map.addEventListener("toggle", () => store.set("rsmm.editor.tmap", map.open));
+    const groups = new Map();
+    for (const c of T.cards) {
+      const g = c.source.split(" ")[0];
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(c);
+    }
+    for (const [g, cs] of groups) {
+      const gi = el("div", { class: "gi" });
+      for (const c of cs) {
+        const b = el("button", { type: "button", title: c.source, onclick: () => jumpTo(c) },
+          cardIcon(c), el("span", { text: (E.cards[c.source] || {}).name || c.name || c.source }));
+        chips.set(c.source, b); gi.append(b);
+      }
+      map.append(el("div", { class: "tmap-g" }, el("div", { class: "gl", text: g }), gi));
+    }
+    v.append(map);
+  }
   v.append(el("div", { class: "ttools" }, q, el("span", { class: "tiny muted", text: "Show cards as" }), seg));
 
   const list = el("div", { class: "tgrid" });
+  // A card's row marks itself changed; its chip follows it.
+  const follow = (c, row) => {
+    const chip = chips.get(c.source);
+    if (!chip) return;
+    const sync = () => chip.classList.toggle("changed", row.classList.contains("changed"));
+    new MutationObserver(sync).observe(row, { attributes: true, attributeFilter: ["class"] });
+    sync();
+  };
   const draw = () => {
     TPREV.reset();
-    list.textContent = "";
+    list.textContent = ""; rows.clear();
     const needle = q.value.toLowerCase();
     const cards = T.cards.filter(c => !needle || (c.source + " " + c.name + " " + c.description).toLowerCase().includes(needle));
     if (!cards.length) list.append(el("div", { class: "empty", text: T.cards.length ? "No card matches." : "No card text found. Card text needs a readable game install." }));
-    for (const c of cards) list.append(talentRow(c));
+    for (const c of cards) { const row = talentRow(c); rows.set(c.source, row); follow(c, row); list.append(row); }
+  };
+  const jumpTo = (c) => {
+    if (!rows.has(c.source)) { q.value = ""; E.q = ""; draw(); }
+    const row = rows.get(c.source);
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "start" });
+    row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
   };
   q.oninput = () => { E.q = q.value; draw(); };
   draw();
@@ -3154,6 +3398,8 @@ async function saveAll(error) {
   setTab(S.tab);
   if (link.get("item")) pickItem(link.get("item"));
   if (link.get("hero")) pickHero(link.get("hero"));
+  // The host's welcome can start a custom item here (shell.html rsmmOpen).
+  try { if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady(START_TAB, t => { if (t && t.newItem) startNewItem(); }); } catch (e) {}
 })();
 </script>
 </body>

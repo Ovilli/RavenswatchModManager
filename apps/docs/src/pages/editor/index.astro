@@ -51,12 +51,18 @@ const description =
   nav .brand { display: flex; align-items: center; gap: 8px; margin: 0 18px 0 0; font-weight: 650;
                text-decoration: none; }
   nav .brand img { width: 24px; height: 24px; }
-  nav .tab { color: var(--muted); text-decoration: none; padding: 6px 14px 9px;
-             border-bottom: 3px solid transparent; }
-  nav .tab:hover { color: var(--ink); }
-  nav .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
-  nav .tab.dirty::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
-                          border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+  /* Same tab bar as `rsmm editor`: each tab a button saying what it edits, the open one filled. */
+  #tabs:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
+  nav .tab { display: grid; padding: 5px 14px 6px; border: 1px solid var(--line); border-radius: 9px;
+             background: var(--chip); color: var(--ink); text-decoration: none; line-height: 1.25; white-space: nowrap; }
+  nav .tab b { font-size: 14px; font-weight: 600; }
+  nav .tab small { font-size: 11px; color: var(--muted); }
+  nav .tab:hover { border-color: var(--accent); }
+  nav .tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  nav .tab.on small { color: inherit; opacity: .85; }
+  nav .tab.dirty b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
+                            border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+  @media (max-width: 1250px) { nav .tab small { display: none; } }
   nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center;
                font-size: 13px; color: var(--muted); }
   main { flex: 1; min-height: 0; position: relative; }
@@ -133,6 +139,11 @@ const TABS = {
   scripts: ["Scripts", "content", "content/?tab=scripts"],
   abilities: ["Abilities", "abilities", "abilities/"],
   map: ["Map", "map", "map/"],
+};
+// What each tab edits, under its name (the same words as `rsmm editor`'s shell).
+const BLURB = {
+  items: "Change or copy magic items", talents: "Hero talent cards & numbers", scripts: "Test grants & block scripts",
+  abilities: "Hero ability numbers & links", map: "Chapter maps & tiles",
 };
 const $ = (id) => document.getElementById(id);
 // Set here, not in the markup: Astro's HTML types do not know the attribute.
@@ -518,8 +529,9 @@ function open() {
   $("start").hidden = true;
   const tabs = $("tabs");
   for (const [key, [label]] of Object.entries(TABS)) {
-    const a = document.createElement("a");
-    a.className = "tab"; a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
+    const a = document.createElement("a"), b = document.createElement("b");
+    a.className = "tab"; a.href = "#" + key; a.dataset.tab = key; b.textContent = label; a.append(b);
+    if (BLURB[key]) { const s = document.createElement("small"); s.textContent = BLURB[key]; a.append(s); }
     tabs.append(a);
   }
   tabs.hidden = false;
