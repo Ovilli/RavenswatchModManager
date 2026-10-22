@@ -420,12 +420,6 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     return out
 
 
-#: What an item with no ``base`` is built on: Increase_Shield, the base every
-#: effect trigger was proven on in game (effect-triggers-test, 2026-10-20). Its
-#: own shield is cut by the effects, so only its frame is used.
-BLANK_BASE = "Increase_Shield"
-
-
 def _coerce_effects(defn: ContentDef):
     """``effects`` (a list) or the older single ``effect`` table, checked; None
     when the item has neither."""
@@ -496,9 +490,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     C.validate_id("item", defn.id)
     base = defn.fields.get("base")
     effect = _coerce_effects(defn)
-    # No base: a blank item, built from its `effects` alone on the template
-    # every effect trigger was proven on. It has no super effect (the
-    # template's is a shield's) and starts Common.
+    # No base: a blank item, written from scratch (`engine.item_frame`) and
+    # given its `effects`. It has no super effect and starts Common.
     blank = base is None and not replace
     if blank:
         if effect is None:
@@ -506,14 +499,22 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                 f"item {defn.id}: an item with no 'base' is built from its 'effects'; "
                 f"give it at least one, e.g. effects = [{{ stat = \"Crit chance\", "
                 f"amount = 0.1 }}]")
-        base = BLANK_BASE
-    if not base or not isinstance(base, str):
+    if not blank and (not base or not isinstance(base, str)):
         raise SchemaNotMined(
             f"item {defn.id}: needs a 'base' vanilla item id to clone. "
             f"See docs/_re/kinds/items.md."
         )
 
-    found = _find_base(base)
+    if blank:
+        from ...engine import item_frame
+        from ...engine.entity_check import _corpus_reader
+        try:
+            found = (item_frame.build(_corpus_reader), "Common")
+        except item_frame.FrameError as e:
+            raise SchemaNotMined(f"item {defn.id}: {e}") from None
+        base = item_frame.FRAME_ID
+    else:
+        found = _find_base(base)
     if found is None:
         raise _base_not_found(defn.id, base)
 
@@ -540,6 +541,8 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     item_id = base if replace else defn.id
     name = defn.fields.get("name") or defn.fields.get("display_name")
     name = str(name) if name is not None else None
+    if name is None and blank:              # the frame's own name key has no text
+        name = defn.id.replace("_", " ")
     description = defn.fields.get("description")
     description = str(description) if description is not None else None
     if description is None and effect is not None:
@@ -551,10 +554,10 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     stats = _coerce_stats(defn.id, defn.fields.get("stats"))
     super_description = defn.fields.get("super_description")
     super_description = str(super_description) if super_description is not None else None
-    super_effect = defn.fields.get("super_effect", not blank)
+    super_effect = defn.fields.get("super_effect", True)
     if not isinstance(super_effect, bool):
         raise ContentError(f"item {defn.id}: super_effect must be true or false")
-    if blank and (super_effect or super_description):
+    if blank and ("super_effect" in defn.fields or super_description):
         raise ContentError(f"item {defn.id}: an item with no 'base' has no super effect")
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
@@ -640,7 +643,11 @@ def build_entity(fields: dict, base_cooked: bytes) -> bytes:
     """The item entity a block builds, without text or icon: what lint and the
     editor's card preview inspect. Raises ``ValueError`` as the build would."""
     base_id = str(fields.get("base") or "").replace("\\", "/").rpartition("/")[2]
+    if not base_id:                                  # a blank item's frame
+        from ...engine.item_frame import FRAME_ID
+        base_id = FRAME_ID
     replace = fields.get("mode") == "replace"
+    effects = fields.get("effects")
     files = cook.build_magic_item(
         new_id=base_id if replace else str(fields.get("id")), base_id=base_id,
         base_cooked=base_cooked, corpus=[],
@@ -648,7 +655,7 @@ def build_entity(fields: dict, base_cooked: bytes) -> bytes:
         modifier_stats=_coerce_stats(str(fields.get("id")), fields.get("stats")),
         steps=fields.get("steps") or None,
         super_effect=fields.get("super_effect", True) is not False,
-        effect=fields.get("effect"), replace=replace,
+        effect=effects if effects is not None else fields.get("effect"), replace=replace,
         remint_identity=not replace and fields.get("unique_identity", True) is not False)
     return next(b for p, b in files.items() if p.endswith(_MO_SUFFIX))
 

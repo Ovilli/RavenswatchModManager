@@ -193,7 +193,8 @@ def test_the_editor_preview_reads_the_built_card():
                                           "shadowed": False}],
                               "stats": [{"modifier": "Modifier", "stat": "Crit chance"}]})
     assert len(out["warnings"]) == 2 and out["description"][0]["mode"] == 2
-    assert "error" in item_preview(req | {"id": "Inc"})
+    assert "error" in item_preview(req | {"id": "Inc M"})     # not an id
+    assert "error" not in item_preview(req | {"id": "Inc"})   # any length is
 
 
 def test_copies_get_their_own_type_id_too(tmp_path):

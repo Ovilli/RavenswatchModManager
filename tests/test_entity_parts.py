@@ -122,3 +122,51 @@ def test_an_item_built_from_effects_names_no_other_item():
             assert stem.encode() not in built, stem
     refs = {r.scope for c in EG.parse(built).components for r in c.refs}
     assert refs <= {"Written_Item_X", "Magical_Objects_Model", "Character_Common"}, refs
+
+
+# --- the frame an item with no base is written on ------------------------------
+
+def _blank(item_id: str, effects) -> bytes:
+    from rsmm.engine import item_frame
+    from rsmm.engine.entity_check import _corpus_reader
+    _shield()
+    files = C.build_magic_item(new_id=item_id, base_id=item_frame.FRAME_ID,
+                               base_cooked=item_frame.build(_corpus_reader), corpus=[],
+                               rarity="Rare", effect=effects, remint_identity=True,
+                               name="x", description="x")
+    return next(b for p, b in files.items() if p.endswith(".EntitySettingsResource.gen"))
+
+
+def test_the_frame_overrides_the_models_slots_and_nothing_else():
+    from rsmm.engine import item_frame
+    from rsmm.engine.entity_check import _corpus_reader
+    _shield()
+    comps = EG.parse(item_frame.build(_corpus_reader)).components
+    assert {(c.name, c.override.path if c.override else None) for c in comps} == {
+        ("State Picked Up", "[State] Magical_Objects_Model\\Child State Equiped"),
+        ("Dt Magical Object Data", None),
+        ("Descripton Format", "[String Format] Magical_Objects_Model\\Descripton Format"),
+        ("Icon Value", "[Value] Magical_Objects_Model\\Icon"),
+        ("Name Value", "[Value] Magical_Objects_Model\\Name"),
+        ("Quality Value", "[Value] Magical_Objects_Model\\Quality")}
+
+
+def test_a_blank_item_is_written_whole_and_reads_only_the_model():
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import item_frame
+    effects = [{"stat": "Crit chance", "amount": 0.1},
+               {"stat": "Armour", "amount": 3, "seconds": 5, "on": "damage_taken",
+                "percent": False}]
+    ent = _blank("Wanderers_Charm", effects)
+    assert item_frame.FRAME_ID.encode() not in ent
+    scopes = {r.scope for c in EG.parse(ent).components for r in c.refs}
+    scopes |= {c.override.scope for c in EG.parse(ent).components if c.override}
+    assert scopes <= {"Wanderers_Charm", "Magical_Objects_Model", "Character_Common"}
+    assert not [i for i in CK.check(ent, None, name="Wanderers_Charm") if i.error]
+
+
+def test_two_blank_items_get_their_own_identity_and_save_id():
+    a = _blank("Charm_One", [{"stat": "Crit chance", "amount": 0.1}])
+    b = _blank("Charm_Two", [{"stat": "Crit chance", "amount": 0.1}])
+    assert C.find_type_guid(a) != C.find_type_guid(b)
+    assert C.find_identity_guid(a, "Charm_One") != C.find_identity_guid(b, "Charm_Two")

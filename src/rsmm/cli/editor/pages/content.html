@@ -321,6 +321,12 @@ details.file .rows { padding: 0 6px 8px; }
 .effect { border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin: 6px 0; background: var(--panel); }
 .effect .row:nth-child(odd) { background: none; }
 .effect > .row:not(.stat) { margin-left: 18px; }
+.effect .effhead { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 0; }
+.effect .reset.on { visibility: visible; }
+.form input.tick { width: auto; margin: 0 6px 0 0; }
+.addfx { display: flex; gap: 8px; margin: 8px 0; }
+.choice { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+.choice button { flex: none; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
 #bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
 #bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
@@ -611,14 +617,27 @@ function startNewItem() {
   $("#q").focus();
 }
 function cancelNewItem() { S.newItem = false; renderList(); renderView(); }
+// An item from scratch has no base: the server writes the whole item and its
+// effects. Each one is edited under its own key (BLANK + ":" + something), so
+// several can be open as drafts at once.
+const BLANK = "RSMM_Blank_Item";
+const isBlank = id => id === BLANK || String(id).startsWith(BLANK + ":");
+function startBlankItem() {
+  if (S.tab !== "items") setTab("items");
+  S.newItem = false;
+  pickItem(BLANK + ":" + Date.now().toString(36), true);
+}
 $("#newitem").onclick = startNewItem;
 function newItemView() {
   return el("div", { class: "newsteps" },
     el("h2", { text: "Make a custom item" }),
-    el("div", { class: "muted", text: "A custom item starts as a copy of one the game ships, so it already works in game. You change what you want and the original stays as it was." }),
+    el("div", { class: "choice" },
+      el("button", { type: "button", class: "primary", onclick: startBlankItem }, "Start from scratch"),
+      el("span", { class: "muted", text: "A new item that does only what you give it: always-on bonuses and bonuses after a trigger. Nothing is copied from another item." })),
+    el("div", { class: "muted", style: "margin-top:14px", text: "Or start from a copy of an item the game ships, to keep what it already does:" }),
     el("ol", {},
       el("li", {}, el("b", { text: "Pick an item on the left" }), " to start from. Its effects, numbers and look are copied. Search narrows the list."),
-      el("li", {}, el("b", { text: "Make it yours: " }), "a name and an icon, then its rarity, numbers, stats or a timed bonus. The card preview follows every change."),
+      el("li", {}, el("b", { text: "Make it yours: " }), "a name and an icon, then its rarity, numbers, stats or bonuses of your own. The card preview follows every change."),
       el("li", {}, el("b", { text: "Add it to a mod" }), " with the bar at the bottom, then run ", el("code", { text: "rsmm apply" }), ".")),
     el("button", { type: "button", onclick: cancelNewItem }, "Cancel"));
 }
@@ -635,18 +654,23 @@ async function pickItem(id, copy) {
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
   // A draft from before the switch existed was a copy.
-  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {}, copy ? { mode: "clone" } : {});
+  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: isBlank(id) ? "blank" : "clone" } : {}, draft || {},
+    copy && !isBlank(id) ? { mode: "clone" } : {});
+  // Drafts from before effects were a list kept one timed bonus.
+  if (S.itemEdit.effect) { S.itemEdit.effects = [S.itemEdit.effect]; delete S.itemEdit.effect; }
   renderList(); renderView(); refresh();
-  if (copy) { const n = $("#itemname"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); } }
+  if (copy) { const n = $(isBlank(id) ? "#itemid" : "#itemname"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); n.select && n.select(); } }
 }
 function freshItemEdit() {
-  // "replace" changes the shipped item itself; "clone" makes a new one beside it.
-  return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    steps: [], noSuper: false, sharedIdentity: false, effect: null, autoDesc: false, autoSuper: false, textMiss: [] };
+  // "replace" changes the shipped item itself; "clone" makes a new one beside it;
+  // "blank" is an item from scratch, which starts with one bonus to show the way.
+  const blank = isBlank(S.item.id);
+  return { mode: blank ? "blank" : "replace", id: blank ? "My_Item" : suggestId(S.item.id), name: "", description: "", rarity: blank ? "Common" : "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
+    steps: [], noSuper: false, sharedIdentity: false, effects: blank ? [{ stat: "Crit chance", amount: 0.1 }] : [], autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || !!E.effect);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || (E.effects || []).length);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -681,8 +705,9 @@ function loadingView(text, small) {
 S.pending = { items: new Map(), talents: new Map() };
 function pendingName(tab, id) {
   if (tab === "items") {
-    const name = (S.items.find(i => i.id === id) || {}).name || id;
     const edit = S.pending.items.get(id) || (isOpen(tab, id) && editPayload());
+    if (isBlank(id)) return ((edit && (edit.name || edit.id)) || "New item") + " (new)";
+    const name = (S.items.find(i => i.id === id) || {}).name || id;
     return edit && edit.mode === "clone" ? name + " (copy)" : name;
   }
   return id.replace(/_/g, " ") + " talents";
@@ -694,7 +719,7 @@ function pendingEdits() {
   }
   // The open item shows before it has a change: its block alone makes the copy.
   // A replacement with nothing changed writes nothing.
-  if (S.tab === "items" && S.item && S.itemEdit.mode === "clone" && !S.pending.items.has(S.item.id)) {
+  if (S.tab === "items" && S.item && S.itemEdit.mode !== "replace" && !S.pending.items.has(S.item.id)) {
     out.unshift({ tab: "items", id: S.item.id, edit: editPayload(), name: pendingName("items", S.item.id) });
   }
   return out;
@@ -818,8 +843,10 @@ function featureToggle(title, body, checked, onchange) {
 function itemView() {
   if (S.newItem) return newItemView();
   const it = S.item, E = S.itemEdit, v = el("div");
-  const replace = E.mode !== "clone";
-  v.append(el("div", { class: "help", text: replace
+  const blank = E.mode === "blank", replace = E.mode === "replace";
+  v.append(el("div", { class: "help", text: blank
+    ? "An item from scratch: give it a name, an icon and a rarity, then add what it does below. It does only what you give it, so a game update that changes other items does not change it."
+    : replace
     ? "Change a shipped item itself: its name, text, icon, values or the stats its effects give. The game's own item is replaced while the mod is on, and put back when it is off. Only what you change is written."
     : "Copy a shipped item into a new one, next to the original. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
   if (!it) {
@@ -832,12 +859,13 @@ function itemView() {
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
   v.append(el("div", { class: "head" }, itemIcon(E, it),
-    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
+    el("div", {}, el("h2", { text: blank ? (E.name || "New item") : it.name }),
+      el("div", { class: "muted", text: blank ? "From scratch · " + (E.rarity || "Common") : it.id + " · " + it.rarity })),
     el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item (other items and heroes keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this item"))));
 
 
   const modes = el("div", { class: "modes", role: "radiogroup", "aria-label": "Edit this item or make a new one from it" });
-  for (const [mode, title, body] of [
+  for (const [mode, title, body] of blank ? [] : [
     ["replace", "Edit " + it.name, "Change the game's own item. It is back to normal when the mod is off."],
     ["clone", "New item from " + it.name, "A separate item next to the original, with its own name, icon and numbers."]]) {
     const on = (replace ? "replace" : "clone") === mode;
@@ -845,37 +873,39 @@ function itemView() {
       onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } },
       el("span", { class: "t", text: title }), el("span", { class: "b", text: body })));
   }
-  v.append(modes, el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }));
+  if (!blank) v.append(modes);
+  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }));
   const f = el("div", { class: "form" });
   const idHint = el("div", { class: "hint" });
-  const idIn = el("input", { value: E.id, spellcheck: "false" });
+  const idIn = el("input", { id: "itemid", value: E.id, spellcheck: "false" });
   const checkId = () => {
-    const n = idIn.value.length, want = it.id.length;
-    idHint.textContent = n === want ? `${n} / ${want} characters` : `${n} / ${want} characters. The id must be exactly as long as the base's.`;
-    idHint.className = "hint" + (n === want && idIn.value !== it.id ? "" : " bad");
+    const id = idIn.value, ok = /^[A-Za-z0-9_]+$/.test(id) && id !== it.id;
+    idHint.textContent = ok ? "Used in file names and the mod; players see the name." : id === it.id
+      ? "Give it an id of its own." : "Letters, digits and _ only.";
+    idHint.className = "hint" + (ok ? "" : " bad");
   };
   idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
   checkId();
   if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
-  const nameIn = el("input", { id: "itemname", placeholder: replace ? it.name : "Your item's name", value: E.name });
+  const nameIn = el("input", { id: "itemname", placeholder: replace ? it.name : blank ? E.id.replace(/_/g, " ") : "Your item's name", value: E.name });
   // A copy left with the base's name and icon cannot be told apart from the
   // original in game: testers pick up the shipped item and see "no change".
   const twin = el("div", { class: "hint bad" });
-  const checkTwin = () => { twin.textContent = !replace && !E.name.trim() && !E.icon && !E.iconUpload
+  const checkTwin = () => { twin.textContent = !replace && !blank && !E.name.trim() && !E.icon && !E.iconUpload
     ? `Your copy will look exactly like ${it.name} in game. Give it its own name (or icon) so you can tell which one you picked up.` : ""; };
   nameIn.addEventListener("input", checkTwin); checkTwin();
   f.append(textLabel("Name", nameIn, v => { E.name = v; }), el("div", {}, nameIn, twin));
   const card = it.card || {};
-  const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
+  const descIn = el("textarea", { id: "itemdesc", placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
   f.append(textLabel("Description", descIn, v => { E.description = v; E.autoDesc = false; }), el("div", {}, descIn,
     el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number, $word* marks a drawback. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
-  const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
-  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
+  const rar = el("select", {}, ...(blank ? [] : [el("option", { value: "", text: "Same as base (" + it.rarity + ")" })]));
+  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (blank || r !== it.rarity) rar.append(el("option", { value: r, text: r }));
   rar.value = E.rarity;
   rar.onchange = () => { E.rarity = rar.value; refresh(); };
   if (!replace) f.append(el("label", { text: "Rarity" }), rar);
-  if (!replace) {
+  if (E.mode === "clone") {
     // A copy keeps its base's identity unless told otherwise, and anything that
     // grants by identity then hands out the base (playtest 2026-10-20).
     f.append(el("label", { text: "Identity" }), featureToggle("Its own identity (recommended)",
@@ -896,7 +926,11 @@ function itemView() {
   own.append(uploadButton(E.iconUpload ? "Replace…" : "Upload your own icon…", 192, d => { E.iconUpload = d; E.icon = ""; renderView(); refresh(); }));
   f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
   v.append(f);
-  v.append(effectForm(E));
+  v.append(effectsForm(E, blank));
+  if (blank) {
+    const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
+    return el("div", { class: "split" }, v, aside);
+  }
 
   // One number row; the same edit state whichever section shows it.
   const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
@@ -1132,51 +1166,89 @@ function cardEntries(part, base) {
 }
 // The effect triggers the server knows (api/stats), by their card wording.
 S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
-// A timed bonus on a trigger: the item kind's `effect` table. The card's {0} is
-// the amount and {1} the seconds, whatever the base item's card said.
-function effectForm(E) {
+// What the item does: the item kind's `effects` list. A row without seconds is
+// always on while the item is held; one with seconds is a bonus for that long
+// after its trigger. The card's {0}, {1}... are each row's numbers in order (a
+// timed row takes two: its amount, then its seconds).
+function effectsForm(E, blank) {
   const box = el("div");
-  box.append(el("div", { class: "sect", text: "Timed effect" }));
-  box.append(featureToggle("Timed bonus", "After a trigger, gain an amount of a stat for some seconds. Replaces what the base item does (its look stays).",
-    !!E.effect, on => {
-      E.effect = on ? { stat: "Crit chance", amount: 0.1, seconds: 5, on: "damage_taken" } : null;
-      renderView(); refresh();
-    }));
-  if (!E.effect) return box;
-  const x = E.effect, f = el("div", { class: "form" });
-  const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
-  const trig = el("select", {}, ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t })));
-  trig.value = x.on || "damage_taken";
-  trig.onchange = () => set("on", trig.value);
-  const stat = el("select", {}, ...S.stats.map(st => el("option", { value: st.name, text: st.name })));
-  stat.value = x.stat;
-  stat.onchange = () => set("stat", stat.value);
-  const num = (k, step) => {
-    const i = el("input", { type: "number", step, value: x[k] });
-    i.oninput = () => { const n = parseFloat(i.value); if (!isNaN(n)) set(k, n); };
-    return i;
+  E.effects = E.effects || [];
+  box.append(el("div", { class: "sect", text: `What it does (${E.effects.length})` }));
+  box.append(el("div", { class: "hint", style: "margin-bottom:6px", text: blank
+    ? "Add bonuses. Each one is written by rsmm from the stat and numbers you give, not copied from another item."
+    : "Bonuses added to the copy. With any here, the base item's own effect is cut (its look stays) unless you keep it below." }));
+  const used = S.stats.filter(st => st.used).map(st => st.name), rest = S.stats.filter(st => !st.used).map(st => st.name);
+  const statSel = (value, onpick) => {
+    const sel = el("select", {},
+      el("optgroup", { label: "Given by the game's own items" }, ...used.map(n => el("option", { value: n, text: n }))),
+      el("optgroup", { label: "Others (the game may never read them)" }, ...rest.map(n => el("option", { value: n, text: n }))));
+    sel.value = value;
+    sel.onchange = () => onpick(sel.value);
+    return sel;
   };
-  const flag = (k, dflt, text) => {
-    const c = el("input", { type: "checkbox", ...((x[k] ?? dflt) ? { checked: "" } : {}) });
-    c.addEventListener("change", () => set(k, c.checked === dflt ? undefined : c.checked));
-    return el("label", { class: "hint", style: "display:block" }, c, " " + text);
-  };
-  f.append(el("label", { text: "When" }), trig,
-    el("label", { text: "Stat" }), stat,
-    el("label", { text: "Amount" }), el("div", {}, num("amount", "0.01"),
-      el("div", { class: "hint", text: "In the stat's own unit: crit chance 0.3 is +30%." })),
-    el("label", { text: "Seconds" }), num("seconds", "0.5"),
-    el("label", { text: "Options" }), el("div", {},
-      flag("refresh", true, "Each trigger restarts the full time"),
-      flag("percent", true, "The card shows the amount as a percent (×100)"),
-      flag("keep_base_effect", false, "Keep the base item's own effect too")));
-  box.append(f);
-  const write = el("button", { type: "button", onclick: () => {
-    E.description = `${S.triggers[x.on || "damage_taken"] || "When it triggers"}, gain #+{0}${(x.percent ?? true) ? "%" : ""}@ #${x.stat}@ for #{1}@ seconds`;
-    E.autoDesc = false; renderView(); refresh();
-  } }, "Write the card text for it");
-  box.append(el("div", { class: "hint", style: "margin:6px 0" }, "The card's {0} is the amount and {1} the seconds. ", write));
+  const changed = () => { saveDraft(); renderView(); refresh(); };
+  E.effects.forEach((x, i) => {
+    const timed = x.seconds !== undefined;
+    const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
+    const when = el("select", {}, el("option", { value: "", text: "Always on, while held" }),
+      ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t })));
+    when.value = timed ? (x.on || "damage_taken") : "";
+    when.onchange = () => {
+      if (when.value) { x.on = when.value; if (x.seconds === undefined) x.seconds = 5; }
+      else { delete x.on; delete x.seconds; delete x.refresh; }
+      changed();
+    };
+    const num = (k, step) => {
+      const inp = el("input", { type: "number", step, value: x[k] });
+      inp.oninput = () => { const n = parseFloat(inp.value); if (!isNaN(n)) set(k, n); };
+      return inp;
+    };
+    const flag = (k, dflt, text) => {
+      const c = el("input", { type: "checkbox", class: "tick", ...((x[k] ?? dflt) ? { checked: "" } : {}) });
+      c.addEventListener("change", () => set(k, c.checked === dflt ? undefined : c.checked));
+      return el("label", { class: "hint" }, c, text);
+    };
+    const stat = statSel(x.stat, v => { x.stat = v; changed(); });
+    const unread = rest.includes(x.stat)
+      ? el("div", { class: "hint bad", text: "No item, talent or hero in the game changes this stat, so the game may never read it." }) : null;
+    const f = el("div", { class: "form" });
+    f.append(el("label", { text: "When" }), when,
+      el("label", { text: "Stat" }), el("div", {}, stat, unread),
+      el("label", { text: "Amount" }), el("div", {}, num("amount", "0.01"),
+        el("div", { class: "hint", text: "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5." }),
+        flag("percent", true, "The card shows it as a percent (×100)")));
+    if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
+      flag("refresh", true, "Each trigger restarts the full time")));
+    box.append(el("div", { class: "effect" },
+      el("div", { class: "effhead" }, el("b", { text: `Effect ${i + 1}` }),
+        removeBtn(() => { E.effects.splice(i, 1); changed(); })), f));
+  });
+  const add = (row, text) => el("button", { type: "button", onclick: () => { E.effects.push(row()); changed(); } }, text);
+  box.append(el("div", { class: "addfx" },
+    add(() => ({ stat: "Crit chance", amount: 0.1 }), "+ Always-on bonus"),
+    add(() => ({ stat: "Attack power", amount: 0.2, seconds: 5, on: "dash" }), "+ Bonus after a trigger")));
+  if (!blank && E.effects.length) {
+    const keep = E.effects.some(x => x.keep_base_effect);
+    box.append(featureToggle("Keep the base item's own effect", "The copy also does what " + S.item.name + " does, besides the bonuses above.",
+      keep, on => { for (const x of E.effects) { if (on) x.keep_base_effect = true; else delete x.keep_base_effect; } saveDraft(); refresh(); }));
+  }
+  box.append(el("div", { id: "autohint", class: "hint", style: "margin:6px 0" }));
   return box;
+}
+// The card text written from the effects arrives with the preview, after the
+// form is drawn: fill the description's placeholder and the hint in place, so
+// typing elsewhere keeps its focus.
+function paintAuto() {
+  const hint = document.getElementById("autohint"), desc = document.getElementById("itemdesc");
+  if (!S.item) return;
+  const it = S.item, E = S.itemEdit, auto = autoText(it), card = it.card || {};
+  if (desc) desc.placeholder = auto ? "Written from the effects:\n" + auto : (card.description && card.description.text) || it.description || "";
+  if (!hint) return;
+  hint.textContent = "";
+  if (!auto) return;
+  hint.append(E.description ? "Your description is used. " : "With the description empty, the card says what the bonuses do. ",
+    el("button", { type: "button", onclick: () => { E.description = auto; E.autoDesc = false; renderView(); refresh(); } },
+      E.description ? "Replace it with the written text" : "Edit that text"));
 }
 function legend(entries) {
   const box = el("div", { class: "legend" });
@@ -1299,9 +1371,9 @@ function gameCard(it, E, card) {
     el("img", { class: "bg", alt: "", src: rarity === "Powerups" ? T.powerup_bg : T.icon_bg }),
     itemIcon(E, it, "it"),
     el("img", { class: "fr", alt: "", src: T["diamond_" + rarity] || T.diamond_Common }));
-  const box = cardFrame(rarity, iconBox, E.name || it.name, rarity === "Powerups" ? "Power-up" : rarity);
+  const box = cardFrame(rarity, iconBox, itemName(E, it), rarity === "Powerups" ? "Power-up" : rarity);
   const d = card.description, sp = card.super;
-  const descText = E.description || (d && d.text) || it.description || "";
+  const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
   if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(cardEntries("description", d)))), F.body, 19));
   const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
   if (supText) {
@@ -1331,13 +1403,20 @@ function renderPreview() {
   const b = S.itemBuilt;
   if (b && b.for === S.item.id && b.warnings) for (const w of b.warnings) host.append(el("div", { class: "hint bad", style: "margin-top:6px", text: w }));
 }
+// The name the card shows: an item from scratch with none is named after its id.
+function itemName(E, it) { return E.name || (E.mode === "blank" ? E.id.replace(/_/g, " ") : it.name); }
+// The text the item kind writes from the effects when the description is empty.
+function autoText(it) {
+  const b = S.itemBuilt;
+  return (S.itemEdit.effects || []).length && b && b.for === it.id ? b.autoText || "" : "";
+}
 // The same card in plain CSS, for when the game's textures are not readable.
 function cssCard(it, E, card) {
   const d = card.description, sp = card.super;
   const box = el("div", { class: "card" },
     el("div", { class: "ci" }, itemIcon(E, it)),
-    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
-  const descText = E.description || (d && d.text) || it.description || "";
+    el("div", {}, el("div", { class: "ct", text: itemName(E, it) }), el("div", { class: "cr", text: E.rarity || it.rarity })));
+  const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
   if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(cardEntries("description", d)))));
   const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
   if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(cardEntries("super", sp)))));
@@ -2729,6 +2808,7 @@ function renderView() {
   const view = $("#view"); view.textContent = "";
   view.classList.toggle("blocks", S.tab === "scripts" && S.scriptMode === "blocks");
   view.append(S.tab === "items" ? itemView() : S.tab === "talents" ? talentView() : scriptView());
+  if (S.tab === "items") paintAuto();
   applyWide();
 }
 
@@ -3211,13 +3291,13 @@ function editPayload() {
   if (S.tab === "items") {
     if (!S.item) return null;
     const E = S.itemEdit;
-    return { mode: E.mode === "clone" ? "clone" : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
+    return { mode: E.mode === "clone" || E.mode === "blank" ? E.mode : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
         shadowed: S.item.values.find(r => r.label === label).shadowed })),
       ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}),
       ...(E.mode === "clone" && E.sharedIdentity ? { sharedIdentity: true } : {}),
-      ...(E.effect ? { effect: E.effect } : {}) };
+      ...((E.effects || []).length ? { effects: E.effects } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;
@@ -3259,7 +3339,7 @@ async function refresh() {
     const forId = S.item.id;
     post("api/item/preview", editPayload()).then(j => {
       if (me !== tick || !S.item || S.item.id !== forId) return;
-      S.itemBuilt = Object.assign({ for: forId }, j); renderPreview();
+      S.itemBuilt = Object.assign({ for: forId }, j); renderPreview(); paintAuto();
     }).catch(() => {});
   }
   const edits = pendingEdits();

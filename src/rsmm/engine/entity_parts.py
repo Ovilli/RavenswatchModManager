@@ -268,6 +268,12 @@ def _class_sources() -> dict[str, str]:
     return out
 
 
+#: The base-class prefix (``entity_fields.BASE``) every written part carries:
+#: the values every shipped item part has.
+_PREFIX = {"flag_81": 0, "_legacy": 0, "mode": 1, "flag_32": 0}
+BASE_PREFIX = b"\x00\x00" + struct.pack("<I", 1) + b"\x00"
+
+
 class PartWriter:
     """Adds components and sub-objects to an ``EntityFile`` from field values.
 
@@ -299,18 +305,28 @@ class PartWriter:
         self.ef.objects.append(bytearray(struct.pack("<I", self.ci(cls)) + body))
         return len(self.ef.objects) - 1
 
-    def add(self, cls: str, name: str, values: dict[str, object], *, flags: int,
-            group: str = "") -> Link:
-        """Add a component; the link to it."""
-        base = {"flag_81": 0, "_legacy": 0, "mode": 1, "flag_32": 0}
-        body = encode(cls, {**base, **values}, self.ci)
+    def add(self, cls: str, name: str, values: dict[str, object] | None = None, *,
+            flags: int, group: str = "", override: Link | None = None,
+            body: bytes | None = None) -> Link:
+        """Add a component; the link to it. ``values`` are its fields (after the
+        common prefix); a class with no field layout takes its ``body`` after
+        the prefix instead. ``override`` is the ancestor component it overrides."""
+        if body is None:
+            body = encode(cls, {**_PREFIX, **(values or {})}, self.ci)
+        else:
+            body = BASE_PREFIX + body
         self.ef.objects.append(bytearray(
-            header(self.ci(cls), name, group, self.guid(name), self.ci, flags=flags) + body))
+            header(self.ci(cls), name, group, self.guid(name), self.ci, flags=flags,
+                   override=override) + body))
         from .entity_append import component_vector
         voff, ids = component_vector(bytes(self.ef.trailer))
         ids = [*ids, len(self.ef.objects) - 1]
         self.ef.trailer[voff:voff + 4 * len(ids)] = struct.pack(f"<I{len(ids)}I", len(ids), *ids)
-        return self.link(name, cls, group)
+        from .entity_graph_edit import EntityEditError
+        try:
+            return self.link(name, cls, group)
+        except EntityEditError:         # a class nothing references (Dt data)
+            return Link(self.guid(name), "")
 
     # -- nested objects --
 

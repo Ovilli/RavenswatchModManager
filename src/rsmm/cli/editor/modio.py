@@ -516,7 +516,7 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict],
 
 _ITEM_KEYS = {"kind", "id", "base", "mode", "name", "display_name", "description", "rarity",
               "icon", "value_patches", "stats", "super_description", "steps", "super_effect",
-              "unique_identity", "effect"}
+              "unique_identity", "effect", "effects"}
 _TALENT_KEYS = {"kind", "id", "hero", "file", "value_patches", "union_patches", "stats"}
 #: The talent builder's block (``<prefix>_builder``, see ``content.talent_defs``).
 _BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale", "on_hit"}
@@ -590,10 +590,15 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
     if mode not in ("clone", "replace"):
         raise EditorError(f"mode {mode!r} is not edited here")
     base = str(f.get("base") or "").replace("\\", "/").rpartition("/")[2]
+    if not base and mode == "clone":
+        # An item from scratch: keyed by its own id, so a mod can hold several.
+        mode, base = "blank", f"{C.BLANK}:{f['id']}"
     detail = C.item_detail(base)
     values = {r["label"]: r for r in detail["values"]}
     mods = {m["name"] for m in detail["modifiers"]}
-    E = {"mode": mode, "id": f["id"] if mode == "clone" else _suggest_id(base),
+    effects = f.get("effects") if isinstance(f.get("effects"), list) else (
+        [f["effect"]] if isinstance(f.get("effect"), dict) else [])
+    E = {"mode": mode, "id": f["id"] if mode != "replace" else _suggest_id(base),
          "name": str(f.get("name") or f.get("display_name") or ""),
          "description": str(f.get("description") or ""), "rarity": str(f.get("rarity") or ""),
          "icon": "", "iconUpload": "", "values": {}, "stats": {},
@@ -601,7 +606,7 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
          "steps": [s for s in f.get("steps") or [] if isinstance(s, dict)],
          "noSuper": f.get("super_effect") is False,
          "sharedIdentity": f.get("unique_identity") is False,
-         "effect": f.get("effect") if isinstance(f.get("effect"), dict) else None,
+         "effects": effects,
          "autoDesc": False, "autoSuper": False, "textMiss": []}
     for vp in f.get("value_patches") or []:
         label = vp.get("label") if isinstance(vp, dict) else vp[0]
@@ -631,8 +636,8 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
         payload["steps"] = E["steps"]   # no controls: carried through as written
     if E["noSuper"]:
         payload["noSuper"] = True
-    if E["effect"]:
-        payload["effect"] = E["effect"]
+    if E["effects"]:
+        payload["effects"] = E["effects"]
     if E["sharedIdentity"] and mode == "clone":
         payload["sharedIdentity"] = True
     return base, E, payload

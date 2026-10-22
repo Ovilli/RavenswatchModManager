@@ -742,9 +742,21 @@ def _lint_content(modname: str, blocks: list[dict],
                 errs += 1
             continue
         if not base:
-            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
-                  f"missing 'base'")
-            errs += 1
+            if c.get("effects") is None and c.get("effect") is None:
+                print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                      f"needs a 'base' to copy, or 'effects' to be built from")
+                errs += 1
+                continue
+            # A blank item: written from scratch, so only the build itself and
+            # what item_checks finds in it can be wrong.
+            from rsmm.engine import item_frame
+            from rsmm.engine.entity_check import _corpus_reader
+            try:
+                frame = item_frame.build(_corpus_reader)
+            except item_frame.FrameError:
+                continue                     # no install or mirror to build from
+            e, w = _lint_built_item(modname, c, item_frame.FRAME_ID, frame, {})
+            errs, warns = errs + e, warns + w
             continue
         found = cmd_items._find_item(str(base))
         if found is None and not _vanilla_items_readable():

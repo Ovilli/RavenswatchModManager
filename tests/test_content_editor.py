@@ -89,7 +89,7 @@ def test_stats_are_written_as_an_inline_table_that_parses_back():
 
 @pytest.mark.parametrize("kw, message", [
     ({"stats": [{"modifier": "M", "stat": "Not a stat"}]}, "unknown stat"),
-    ({"id": "short"}, "exactly as long"),
+    ({"id": "not an id"}, "letters, digits"),
     ({"id": "Dash_Crit_Chance"}, "id of its own"),
     ({"id": "Dash Crit Chan M"}, "letters, digits"),
     ({"base": ""}, "pick a base"),
@@ -328,11 +328,11 @@ def test_edits_over_several_items_and_heroes_make_one_list_of_blocks():
 
 def test_a_broken_edit_is_reported_by_name_and_the_rest_still_build():
     defs, errors = E.collect({"edits": [
-        _edit("items", "Dash", base="Dash_Crit_Chance", id="short"),
+        _edit("items", "Dash", base="Dash_Crit_Chance", id="not an id"),
         _edit("items", "Armor", base="Armor_Per_Object", id="Armor_Per_Obje_M"),
     ]})
     assert [i for _k, i, _f in defs] == ["Armor_Per_Obje_M"]
-    assert errors[0]["name"] == "Dash" and "exactly as long" in errors[0]["error"]
+    assert errors[0]["name"] == "Dash" and "letters, digits" in errors[0]["error"]
 
 
 def test_an_untouched_hero_is_skipped_not_an_error():

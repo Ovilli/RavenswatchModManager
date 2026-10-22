@@ -162,8 +162,33 @@ def test_an_items_graph_steps_survive_open_and_save(tmp_path):
     assert pay["steps"] == steps
     assert pay["noSuper"] is True and defs[0][2]["super_effect"] is False
     assert pay["sharedIdentity"] is True and defs[0][2]["unique_identity"] is False
-    assert pay["effect"] == item["effect"] and defs[0][2]["effect"] == item["effect"]
+    # A lone `effect` is written as a one-entry `effects` list, the same item.
+    assert pay["effects"] == [item["effect"]] and defs[0][2]["effects"] == [item["effect"]]
     assert C.defs_for("items", pay) == defs
+
+
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_items_from_scratch_save_open_and_build(tmp_path):
+    """Two blank items in one mod: each keyed by its own id, both reopen, and
+    the card preview builds them with the generated text."""
+    effects = [{"stat": "Crit chance", "amount": 0.1},
+               {"stat": "Armour", "amount": 3, "seconds": 5, "on": "dash", "percent": False}]
+    defs = []
+    for n, item_id in enumerate(("Charm", "A_Longer_Charm_Name")):
+        req = {"mode": "blank", "base": f"{C.BLANK}:{n}", "id": item_id, "name": item_id,
+               "rarity": "Rare", "effects": effects}
+        assert C.item_preview(req)["autoText"].startswith("• #+{0}%@ #Crit chance@")
+        defs += C.defs_for("items", req)
+    assert all("base" not in f and f["effects"] == effects for _k, _i, f in defs)
+    C.save(defs, "m2", tmp_path, create=True, name="M2")
+
+    got = M.load_mod(tmp_path, "m2")["items"]
+    assert set(got) == {f"{C.BLANK}:Charm", f"{C.BLANK}:A_Longer_Charm_Name"}
+    pay = got[f"{C.BLANK}:Charm"]["payload"]
+    assert pay["mode"] == "blank" and pay["effects"] == effects
+    assert C.defs_for("items", pay) == defs[:1]
+    with pytest.raises(C.EditorError, match="add an effect"):
+        C.defs_for("items", {**pay, "effects": []})
 
 
 HERO_MANIFEST = """[mod]

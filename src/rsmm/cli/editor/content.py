@@ -100,8 +100,29 @@ def _icon_stem(icon: str | None) -> str | None:
     return stem(icon)
 
 
+#: The key a blank item (no base: written from scratch, ``engine.item_frame``) is
+#: edited under: ``BLANK`` alone or ``BLANK:<anything>``, so a page or a loaded
+#: mod can hold several at once.
+BLANK = "RSMM_Blank_Item"
+
+
+def is_blank(item_id: str) -> bool:
+    return item_id == BLANK or item_id.startswith(BLANK + ":")
+
+
+def _blank_detail(item_id: str) -> dict:
+    """The form of an item with no base: nothing to start from but the frame."""
+    from rsmm.engine.item_frame import DEFAULT_ICON
+    return {"id": item_id, "rarity": "Common", "name": "New item", "description": "",
+            "icon": _icon_stem(DEFAULT_ICON), "idBytes": 0, "values": [], "modifiers": [],
+            "superKey": None, "superText": "", "blank": True,
+            "card": {"description": {"key": "", "text": "", "entries": []}}}
+
+
 def item_detail(item_id: str) -> dict:
     """What the form needs for one base item: its values and their state."""
+    if is_blank(item_id):
+        return _blank_detail(item_id)
     from rsmm.cli.cmd_items import _find_item
     from rsmm.engine import magic_item_cook as cook
     from rsmm.engine.talent_values import list_talent_values
@@ -191,15 +212,27 @@ def item_preview(req: dict) -> dict:
     except EditorError as e:
         return {"error": str(e)}
     fields = defs[0][2]
-    found = _find_item(str(fields.get("base") or ""))
-    if found is None:
-        return {"error": "no such base item"}
-    base = found[2].read_bytes()
+    if fields.get("base"):
+        found = _find_item(str(fields["base"]))
+        if found is None:
+            return {"error": "no such base item"}
+        base = found[2].read_bytes()
+    else:
+        from rsmm.engine import item_frame
+        from rsmm.engine.entity_check import _corpus_reader
+        try:
+            base = item_frame.build(_corpus_reader)
+        except item_frame.FrameError as e:
+            return {"error": str(e)}
     try:
         ent = build_entity(fields, base)
     except (ValueError, TypeError, KeyError) as e:
         return {"error": str(e)}
     out: dict = {"warnings": item_warnings(ent, base, set(fields.get("stats") or {}))}
+    if fields.get("effects"):
+        # The text the item kind writes when the page leaves the description empty.
+        from rsmm.engine.item_effect import describe, parse_effects
+        out["autoText"] = describe(parse_effects(fields["effects"]))
     for part, fmt in _CARD_FORMATS.items():
         out[part] = _built_slots(ent, fmt)
     return out
@@ -966,31 +999,37 @@ def _num(v, what: str) -> float:
 def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     """``(kind, id, fields)`` for an item request, validated.
 
-    ``req``: ``mode`` (``clone``, the default, or ``replace``), ``id``,
-    ``base``, optional ``name``/``description``/``rarity``/``icon``,
+    ``req``: ``mode`` (``clone``, the default, ``replace`` or ``blank``),
+    ``id``, ``base``, optional ``name``/``description``/``rarity``/``icon``,
     ``values`` = ``[{label, old, new, shadowed}]`` (changed only), ``stats`` =
-    ``[{modifier, stat}]`` (changed only) and ``superDescription``.
+    ``[{modifier, stat}]`` (changed only), ``effects`` (the item kind's
+    ``effects`` tables) and ``superDescription``.
 
     A replacement changes the shipped item itself: its block id is the base's,
-    it keeps the base's rarity, and with nothing changed it writes nothing.
+    it keeps the base's rarity, and with nothing changed it writes nothing. A
+    blank item has no base: it is written from scratch and does what its
+    ``effects`` say. Any id length works for a copy or a blank item.
     """
     base, new_id = str(req.get("base") or ""), str(req.get("id") or "")
     mode = str(req.get("mode") or "clone")
-    if mode not in ("clone", "replace"):
+    if mode not in ("clone", "replace", "blank"):
         raise EditorError(f"unknown mode {mode!r}")
-    if not base:
+    if not base and mode != "blank":
         raise EditorError("pick a base item")
     if mode == "replace":
         return _replace_defs(req, base)
     if not _ID_RE.match(new_id):
         raise EditorError("the id takes letters, digits and _ only")
-    if len(new_id.encode()) != len(base.encode()):
-        raise EditorError(
-            f"the id must be exactly as long as the base's ({len(base)} characters, "
-            f"now {len(new_id)}): the item copy keeps every byte offset")
     if new_id == base:
         raise EditorError("give the copy an id of its own")
-    fields: dict = {"kind": "item", "id": new_id, "base": base}
+    if mode == "blank":
+        # No base: the item kind writes it from scratch and its effects.
+        if not req.get("effects"):
+            raise EditorError("add an effect: an item from scratch does only what its "
+                              "effects say")
+        fields: dict = {"kind": "item", "id": new_id}
+    else:
+        fields = {"kind": "item", "id": new_id, "base": base}
     for key in ("name", "description", "rarity"):
         v = req.get(key)
         if isinstance(v, str) and v.strip():
@@ -1054,14 +1093,14 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         swaps[modifier] = stat
     if swaps:
         fields["stats"] = swaps
-    effect = req.get("effect")
-    if effect:
-        from rsmm.engine.item_effect import Effect, ItemEffectError
+    from rsmm.engine.item_effect import ItemEffectError, parse_effects
+    effects = req.get("effects") or ([req["effect"]] if req.get("effect") else [])
+    if effects:
         try:
-            Effect.parse(effect)
+            parse_effects(effects)
         except ItemEffectError as e:
             raise EditorError(str(e)) from None
-        fields["effect"] = effect
+        fields["effects"] = effects
     if req.get("sharedIdentity") and req.get("mode") == "clone":
         fields["unique_identity"] = False         # a copy has its own by default
     sup = req.get("superDescription")

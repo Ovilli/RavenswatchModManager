@@ -159,6 +159,10 @@ def _references(ef: EntityFile, g: EG.EntityGraph, before: EG.EntityGraph,
     out = []
     for c in g.components:
         links = list(c.refs) + ([c.override] if c.override else [])
+        if c.cls == "oCEntityCpntGetValueSettings":
+            # Reads its value ON its source entity (an item's "hero health" reads
+            # the hero's Character_Common value), so the link binds there.
+            links = [c.override] if c.override else []
         for r in links:
             if (c.guid, r.guid) in old or r.guid in own:
                 continue

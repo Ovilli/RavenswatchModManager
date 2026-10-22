@@ -1129,8 +1129,9 @@ effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_t
 - `steps` still run after the effect, to adjust anything it built (its parts
   end in ` Effect`).
 
-The editor's **Timed effect** section writes this table, and its card preview
-shows the numbers as the game will print them.
+The editor's **What it does** section writes these tables (a row per bonus,
+always on or after a trigger), and its card preview shows the numbers as the
+game will print them.
 
 ### An item from scratch (`effects`, no `base`)
 
@@ -1156,11 +1157,14 @@ effects = [
   each, numbered `{0}`, `{1}`... in order (a timed effect takes two: its
   amount, then its seconds). Write your own with the same numbering.
 - `effects` also works next to a `base`: the base then gives only the look.
-- Every part an effect needs (modifier, timer, tester, trigger listener) is
-  written by rsmm, not copied out of another item, so a game patch that
-  changes some item does not change yours. The item's frame (name, icon,
-  card) is `Increase_Shield`'s, with its shield cut, the frame every trigger
-  was proven on; it has no super effect.
+- In `rsmm editor` (and the [web editor](/guides/web-editor/)), **+ New custom
+  item → Start from scratch** makes one of these, with the card preview.
+- The whole item is written by rsmm, not copied out of another item: its
+  frame (name, icon, quality, card, its own save id) and every part an effect
+  needs (modifier, timer, tester, trigger listener). A game patch that changes
+  some shipped item does not change yours. The only shipped file it reads is
+  the magical-object model every item inherits. It has no super effect, and
+  with no `name` it is named after its id.
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

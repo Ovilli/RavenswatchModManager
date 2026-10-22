@@ -443,6 +443,27 @@ def _cooldown_display(ef: EntityFile, timer: str, seconds: float) -> None:
     ef.source_value(_ITEM_DATA, n, timer, accessor=EntityFile.TIMER_ELAPSED)
 
 
+#: The accessor every shipped card slot reads a Value through.
+_SLOT_READS_VALUE = 0x0fd2c964
+
+
+def _first_slot(ef: EntityFile, value: str, percent: bool) -> None:
+    """Write the card's first slot (``add_format_slot``'s layout) reading the
+    Value ``value``, for a card that has no slot to copy."""
+    w = P.PartWriter(ef, "")
+    picker = w.obj(P.VALUE_PICKER, b"\x01\x00" + ef._picker(value)
+                   + struct.pack("<I", _SLOT_READS_VALUE)
+                   + w.obj(P.UNION, struct.pack("<II", P.F32, 0) + bytes(4)))
+    slot = w.obj("oCDynamicTypePicker", struct.pack("<I", 0) + picker
+                 + struct.pack("<I", 1 if percent else 0))
+    c = ef.component(_DESCRIPTION)
+    _found, count_f = ef._format_slots(c)
+    p = ef.objects[c.index - 1]
+    end = len(p) - len(c.body) + count_f.offset + count_f.size
+    p[end:end] = slot
+    struct.pack_into("<I", p, end - 4, 1)
+
+
 def _card_slots(ef: EntityFile, slots: list[tuple[str, bool]]) -> None:
     """Make the description's ``{0}``, ``{1}``... the given Values, in order. The
     new slots are copies of an existing one, so they are added before the
@@ -455,8 +476,7 @@ def _card_slots(ef: EntityFile, slots: list[tuple[str, bool]]) -> None:
         except EntityEditError as e:
             if n or "no String Format slot" not in str(e):
                 raise
-            raise ItemEffectError("effect: this base's card shows no numbers, so there is "
-                                  "no {0} to copy for the amount; pick another base") from None
+            _first_slot(ef, value, percent)         # a written frame has none to copy
     if not old:
         return
     c = ef.component(_DESCRIPTION)
