@@ -302,7 +302,9 @@ def test_clone_node_is_attached_retargeted_and_wired(tmp_path):
     n = EA.validate_layout(before)
     assert EA.validate_layout(after) == n + 1
     _o, ids = EA.component_vector(after.sections[-1].payload)
-    assert ids[-1] == n
+    # In the vector (not an orphan), placed in its class's run rather than
+    # appended last (tests/test_component_order.py).
+    assert n in ids and len(ids) == len(set(ids))
 
     name = "Skill Dash Attack Finisher Clip Selector"
     clone = after.sections[EA.node_section(after, name)].payload

@@ -55,6 +55,7 @@ from .entity_append import (
     component_vector,
     fix_accessor,
     fix_format_slot,
+    place_new_components,
     validate_layout,
 )
 from .entity_components import _remap_class_tags, class_closure, extend_class_table
@@ -85,6 +86,9 @@ class EntityFile:
         self.objects = [bytearray(s.payload) for s in self.cf.sections[1:-1]]
         self.trailer = bytearray(self.cf.sections[-1].payload)
         self.name = name
+        # Components added from here on are placed in their class's run of the
+        # vector when written (entity_append.place_new_components).
+        self._first_new = len(self.objects)
 
     # ---- reading ---------------------------------------------------------
 
@@ -99,7 +103,7 @@ class EntityFile:
         self.cf.sections = ([cooked.Section(directory)]
                             + [cooked.Section(bytes(o)) for o in self.objects]
                             + [cooked.Section(bytes(self.trailer))])
-        out = cooked.emit(self.cf)
+        out = place_new_components(cooked.emit(self.cf), self._first_new)
         self._check(out)
         return out
 

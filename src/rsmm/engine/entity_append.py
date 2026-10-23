@@ -94,6 +94,48 @@ def _render_vector(offset: int, trailer: bytes, ids: list[int]) -> bytes:
             + struct.pack(f"<{len(ids)}I", *ids) + tail)
 
 
+def place_new_components(raw: bytes, first_new: int) -> bytes:
+    """``raw`` with every component id from ``first_new`` on moved to where the
+    game's own files would have it in the component vector.
+
+    Every one of the 4,769 shipped entities keeps each class's components in ONE
+    contiguous run of the vector (runs in class-table order, names in order
+    within a run). Appending a new component at the end split its class into
+    two runs, and that broke something the engine resolves through the vector:
+    seven unreferenced copies added to Hero_Piper switched off Piper's own
+    `Enable Right Stick Aiming` (her same-named replacement of Hero_Common_
+    Update5's default, which is false), so on a controller her shots went where
+    she faced (piper-horde-rats, found by bisect 2026-10-23). A new component
+    goes into its class's run, before the first name that sorts after it, or
+    starts its class's run before the first run of a later class. Ids before
+    ``first_new`` keep their places, so a shipped file is left as shipped."""
+    from . import entity_graph as EG
+    cf = cooked.parse(raw)
+    trailer = cf.sections[-1].payload
+    off, ids = component_vector(trailer)
+    if not any(i >= first_new for i in ids):
+        return raw
+    _count, directory = _directory(cf)
+    comps = {c.index - 1: c for c in EG.parse(raw).components}
+
+    def name(i: int) -> str:
+        return comps[i].name if i in comps else ""
+
+    out = [i for i in ids if i < first_new]
+    for new in sorted((i for i in ids if i >= first_new), key=lambda i: (directory[i], name(i))):
+        cls = directory[new]
+        run = [k for k, i in enumerate(out) if directory[i] == cls]
+        if run:
+            at = next((k for k in run if name(out[k]) > name(new)), run[-1] + 1)
+        else:
+            at = next((k for k, i in enumerate(out) if directory[i] > cls), len(out))
+        out.insert(at, new)
+    if out == ids:
+        return raw
+    cf.sections[-1].payload = _render_vector(off, trailer, out)
+    return cooked.emit(cf)
+
+
 def validate_layout(cf: cooked.CookedFile) -> int:
     """Sanity-check directory↔record correspondence; return component count."""
     count, idxs = _directory(cf)
@@ -709,7 +751,7 @@ def append_components(cooked_bytes: bytes,
     new_ids = [count + k for k, keep in enumerate(flags) if keep]
     trailer.payload = _render_vector(off, trailer.payload, ids + new_ids)
     cf.sections.append(trailer)
-    out = cooked.emit(cf)
+    out = place_new_components(cooked.emit(cf), count)
     # Re-walk what we just wrote: the only cheap proof the vector stayed framed.
     validate_layout(cooked.parse(out))
     return out
