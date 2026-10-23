@@ -315,14 +315,35 @@ def charges():
     return heard
 
 
-def test_only_trait_has_no_charge_listener(charges):
+def test_every_charge_can_be_given(charges):
+    """Five through a Modifier Listener, TRAIT through its counter's events."""
     assert {TA.stat_name(k) for k in charges} == {
-        f"Ability_Charge_{a}" for a in ("Dash", "Defensive", "Primary", "Secondary", "Ultimate")}
+        f"Ability_Charge_{a}"
+        for a in ("Dash", "Defensive", "Primary", "Secondary", "Ultimate", "Trait")}
 
 
-def test_a_trait_charge_is_refused_because_nothing_reads_it(wukong, charges):
-    with pytest.raises(TA.AddStatError, match="never turns it into charges"):
-        TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Trait", values=1)
+def test_a_trait_charge_fires_the_trait_charge_counter_events(wukong, charges):
+    """No stat gives TRAIT charges; the owned state raises Hero_Common's TRAIT
+    charge counter as it comes on and lowers it as it goes, as Snow Queen's
+    Trait Charge does (Merlin's Trait Quest, the user's pointer 2026-10-23)."""
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Trait",
+                             values=1, percent=False)
+    assert added.modifier == "" and added.slot is not None
+    state = comp(out, "Skill Trait Fire", "StateSettings")
+    paths = [r.path for r in state.refs]
+    assert any(p.endswith("TRAIT_ABILITY_MAX_CHARGES_COUNTER_INC Event Sender") for p in paths)
+    assert any(p.endswith("TRAIT_ABILITY_MAX_CHARGES_COUNTER_DEC Event Sender") for p in paths)
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+@pytest.mark.parametrize("kw, msg", [
+    ({"values": 2}, "one per talent"),
+    ({"values": [1, 1, 1, 2]}, "one per talent"),
+    ({"values": 1, "during": "DEFENSE"}, "do not apply"),
+])
+def test_a_trait_charge_is_one_and_unconditional(wukong, charges, kw, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Trait", **kw)
 
 
 def test_a_charge_takes_whole_numbers(wukong, charges):

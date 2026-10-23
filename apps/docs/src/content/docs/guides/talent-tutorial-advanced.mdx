@@ -645,8 +645,14 @@ is read from the game's files; the editor shows those stats greyed out.
 `_Defensive`, `_Dash` and `_Ultimate` add charges to that ability (tested in game:
 `values = [1, 1, 1, 2]` gave a Legendary card 2 extra POWER charges). Their
 values must be whole numbers, and the card shows them as plain numbers, not
-percentages. `Ability_Charge_Trait` is refused: the game has nothing that turns
-it into TRAIT charges.
+percentages.
+
+`Ability_Charge_Trait` works differently, and gives **one** TRAIT charge:
+`values = 1`. No stat turns into TRAIT charges; the game raises TRAIT's charge
+counter with an event instead, and the talent fires it as it is owned (and lowers
+it again if the talent goes), exactly as Snow Queen's **Trait Charge** and Merlin's
+completed **Trait Quest** do. More than one, a count that changes with rarity, or
+`during`/`after`/`on` are refused. Not yet tested in game.
 
 ### Give a talent another talent's effect: `include`
 

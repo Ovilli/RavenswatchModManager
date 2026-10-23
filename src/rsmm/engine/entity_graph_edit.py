@@ -660,6 +660,20 @@ class EntityFile:
         p[end:end] = self._picker(target)
         struct.pack_into("<I", p, at + f.offset, n + 1)
 
+    def add_external_ref(self, comp: str, field: str, guid: bytes, label: str) -> None:
+        """Append a reference to a component of ANOTHER entity (one this file
+        inherits, e.g. ``Hero_Common``'s event senders) to the list ``field``:
+        ``label`` is its full ``[Kind] Scope\\Group\\Name`` path."""
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        p = self.objects[c.index - 1]
+        n = struct.unpack_from("<I", p, at + f.offset)[0]
+        end = at + f.offset + f.size
+        head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
+        p[end:end] = head + guid + _lstr(label) + _E
+        struct.pack_into("<I", p, at + f.offset, n + 1)
+
     def insert_ref(self, comp: str, field: str, index: int, target: str) -> None:
         """Put ``target`` into the reference list ``field`` at ``index`` (the
         lists run in order: a state's ``activates`` switches nodes on one after

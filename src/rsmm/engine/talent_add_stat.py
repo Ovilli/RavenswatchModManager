@@ -149,23 +149,53 @@ def is_charge(stat: str | int) -> bool:
 
 @functools.cache
 def charges_heard() -> frozenset[int]:
-    """Charge keys the game turns into charges.
+    """Charge keys a talent can turn into charges.
 
     ``Ability_Charge_<X>`` is a plain data value; it does something only because
     Hero_Common has a Modifier Listener naming it, which fires that ability's
     "Set Max Charges" event. Dash, Defensive, Primary, Secondary and Ultimate
-    have one; Trait has none (a Trait Max Charges Counter exists, but nothing
-    feeds it), so +1 TRAIT charge did nothing (user report 2026-10-23). Read
-    from the game's files; empty when no game data is reachable."""
-    from . import corpus
-    raw = next((corpus.read(rel) for rel in corpus.rels("EntitySettings/", _HERO_COMMON)
-                if rel.endswith("/" + _HERO_COMMON)), None)
+    have one. Trait has none, so a modifier of +1 TRAIT charge did nothing
+    (user report 2026-10-23); TRAIT charges come from Hero_Common's Trait
+    Ability Max Charges Counter instead, raised and lowered by named events
+    (:data:`TRAIT_CHARGE_EVENTS`; Merlin's Trait Quest and Snow Queen's Trait
+    Charge use them), which ``add_stat`` builds for it. Read from the game's
+    files; empty when no game data is reachable."""
+    raw = _hero_common()
     if not raw:
         return frozenset()
     names = {n: k for n, k in stat_catalog().items() if n.startswith("Ability_Charge_")}
     heard = [c.body for c in EG.parse(raw).components if c.cls == _LISTENER]
-    return frozenset(k for k in names.values()
-                     if any(struct.pack("<I", k) in body for body in heard))
+    out = {k for k in names.values() if any(struct.pack("<I", k) in body for body in heard)}
+    if _TRAIT_CHARGE in names and _trait_charge_senders(raw):
+        out.add(names[_TRAIT_CHARGE])
+    return frozenset(out)
+
+
+#: A TRAIT charge is not a stat: the counter behind TRAIT's max charges is
+#: raised by one event and lowered by the other. A talent's owned state fires
+#: the first as it switches on and the second as it switches off (the list a
+#: state fires on exit is `disables_while_active?`), as Snow Queen's Trait
+#: Charge and Merlin's completed Trait Quest do: one charge each.
+_TRAIT_CHARGE = "Ability_Charge_Trait"
+TRAIT_CHARGE_EVENTS = ("TRAIT_ABILITY_MAX_CHARGES_COUNTER_INC Event Sender",
+                       "TRAIT_ABILITY_MAX_CHARGES_COUNTER_DEC Event Sender")
+
+
+def _hero_common() -> bytes | None:
+    from . import corpus
+    return next((corpus.read(rel) for rel in corpus.rels("EntitySettings/", _HERO_COMMON)
+                 if rel.endswith("/" + _HERO_COMMON)), None)
+
+
+def _trait_charge_senders(raw: bytes) -> list[tuple[bytes, str]] | None:
+    """``(guid, reference label)`` of Hero_Common's TRAIT charge INC and DEC
+    senders, or None when the game no longer has both."""
+    by_name = {c.name: c for c in EG.parse(raw).components
+               if c.cls.endswith("NamedEventSenderSettings")}
+    found = [by_name.get(n) for n in TRAIT_CHARGE_EVENTS]
+    if not all(found):
+        return None
+    return [(c.guid, f"[Named Event Sender] Hero_Common\\{c.group}\\{c.name}") for c in found]
 
 
 _HERO_COMMON = "Hero_Common.entity.ot.EntitySettingsResource.gen"
@@ -175,7 +205,7 @@ _LISTENER = "oCEntityCpntModifierListenerSettings"
 @dataclass(frozen=True)
 class AddedStat:
     selector: str      # the new selector's component name
-    modifier: str      # the new modifier's component name
+    modifier: str      # the new modifier's component name ("" for a TRAIT charge)
     slot: int | None   # the card text's {N} for the new number, None without a card format
 
 
@@ -513,6 +543,15 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool 
         if any(v != int(v) for v in amounts.values()):
             raise AddStatError(f"{stat_name(key)!r} counts charges: give whole numbers, "
                                f"got {list(amounts.values())}")
+    trait_charge = stat_name(key) == _TRAIT_CHARGE
+    if trait_charge:
+        if during or after or on:
+            raise AddStatError("a TRAIT charge lasts as long as the talent is owned; "
+                               "'during', 'after' and 'on' do not apply to it")
+        if set(amounts.values()) != {1.0}:
+            raise AddStatError("TRAIT charges come one per talent (as Merlin's and Snow "
+                               f"Queen's give them): give 1 at every rarity, got "
+                               f"{list(amounts.values())}")
 
     graph = EG.parse(raw)
     ctl, state, fmt = card_parts(graph, talent)
@@ -608,8 +647,19 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool 
             cond_state = TW.link_to(ef, cond_state.name)
         if cond_state is not None:
             amount = w.when(new_cond, cond_state, number)      # else 0
-        w.modifier(new_mod, key, amount)
-        ef.add_ref(state.name, "while_active", new_mod)
+        if trait_charge:
+            # Not a modifier: +1 on the counter as the talent's state comes on,
+            # -1 as it goes off. The number above is only the card's.
+            senders = _trait_charge_senders(_hero_common() or b"")
+            if senders is None:
+                raise AddStatError("Hero_Common no longer has the TRAIT charge events")
+            (inc, inc_label), (dec, dec_label) = senders
+            ef.add_external_ref(state.name, "activates", inc, inc_label)
+            ef.add_external_ref(state.name, "disables_while_active?", dec, dec_label)
+            new_mod = ""
+        else:
+            w.modifier(new_mod, key, amount)
+            ef.add_ref(state.name, "while_active", new_mod)
         slot = ef.add_format_slot(fmt.name, new_sel, percent=percent) if fmt else None
         out = ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:

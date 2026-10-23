@@ -226,8 +226,8 @@ def test_the_stat_list_puts_numbers_on_the_stats_items_give():
     # book scene" ... "should probably be removed"); real stats all stay.
     assert not any(n.startswith(("Is in ", "GameModifier")) for n in stats)
     assert "Ability_Charge_Primary" in stats and "Strength" in stats
-    # Nothing turns a TRAIT charge into charges (user report 2026-10-23).
-    assert "Ability_Charge_Trait" not in stats
+    # TRAIT charges are given through their counter's events (Merlin's quest).
+    assert "Ability_Charge_Trait" in stats
     assert len(stats) > 150
 
 
