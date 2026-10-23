@@ -1,6 +1,19 @@
 {
-  "generated": "2026-10-22",
+  "generated": "2026-10-23",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-23",
+      "summary": "Talents built from scratch reliably, game-event triggers, and a simpler talent editor",
+      "highlights": [
+        "Talent changes no longer copy parts from other heroes: every part is written, so talent mods are more reliable across game updates",
+        "Talent bonuses can start from game events: taking damage, your ultimate, day or night, picking a talent or item, dream shards, Sandman purchases, rerolls",
+        "Every option the talent editor offers now builds, for every hero (several failed before, e.g. on Kintaro and Snow Queen)",
+        "The talent editor has one place to change what a talent does: the builder, which can add to a talent or replace it",
+        "Charges that the game never grants (TRAIT charges) are refused, and charges show as whole numbers"
+      ],
+      "cli_version": 10
+    },
     {
       "version": "",
       "date": "2026-10-22",
@@ -521,18 +534,6 @@
       "highlights": [
         "Self-hosted online backend: point the game at your own server with RSMM_BACKEND_URL (off by default)",
         "Steam web-ticket identity probe for backend setup (logs the identity, never the ticket)"
-      ]
-    },
-    {
-      "version": "5.9.4",
-      "date": "2026-10-03",
-      "summary": "Easier-to-read text throughout the app, and fewer background checks so screens open faster.",
-      "highlights": [
-        "Easier to read: new fonts, upright labels instead of slanted ones, and larger small text. The fonts now ship inside the app, so it no longer contacts Google at launch and looks the same offline.",
-        "Fixed: file paths in Settings were shown in capital letters. They now show exactly as they are.",
-        "Fixed: the top bar no longer gets cut off at the default window size.",
-        "Faster: coming back to the Library no longer re-runs the update checks, and Settings reuses what the app already learned at launch.",
-        "Faster: the Profiles screen reads all your profiles in one step instead of one per profile."
       ]
     }
   ]
