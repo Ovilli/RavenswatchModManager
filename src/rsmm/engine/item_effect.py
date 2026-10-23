@@ -97,6 +97,15 @@ TRIGGERS = {
                       slots=("ref_4", "ref_5"), flags=0x1, group="Reroll From Code"),
 }
 
+#: Continuous day/night conditions: global bool keys read by Character_Common's
+#: "Is Daytime Tester" and "Is Nighttime Tester" (which hold State Daytime and
+#: State Nighttime on for Scarlet and Piper).
+_IS_DAYTIME, _IS_NIGHTTIME = 0x17d8d89b, 0x17d8d89c
+DURING = {
+    "day": ("Active only during day", "During the day", _IS_DAYTIME),
+    "night": ("Active only during night", "During the night", _IS_NIGHTTIME),
+}
+
 #: Accessor keys a value picker reads another part through (``items.md``): a
 #: Timer's time left, a listener's "fired", a GetValue's value.
 _TIMER_LEFT, _LISTENER_FIRED, _GOT_VALUE = 0x16831980, 0x12e4a37e, 0x16abf2eb
@@ -118,11 +127,13 @@ class ItemEffectError(ValueError):
 class Effect:
     """One effect. Without ``seconds`` it is ALWAYS ON while the item is held
     (a plain stat item's shape: a modifier on the equipped state's
-    ``while_active``); with ``seconds`` it is a timed bonus after ``on``."""
+    ``while_active``, or gated by ``during``); with ``seconds`` it is a timed
+    bonus after ``on``."""
     stat: str
     amount: float
     seconds: float | None = None
     on: str | None = None
+    during: str | None = None
     refresh: bool = True
     percent: bool = True        # the card shows the amount x100 with a %
     keep_base_effect: bool = False
@@ -147,7 +158,12 @@ class Effect:
             IM.resolve_stat(raw["stat"])
         except IM.ItemModifierError as e:
             raise ItemEffectError(f"effect stat: {e}") from None
-        timed = "seconds" in raw or "on" in raw
+        during = str(raw["during"]) if raw.get("during") is not None else None
+        if during is None and "seconds" not in raw and raw.get("on") in DURING:
+            during = str(raw["on"])
+        if during is not None and during not in DURING:
+            raise ItemEffectError(f"effect during = {during!r}: one of {', '.join(DURING)}")
+        timed = "seconds" in raw or ("on" in raw and raw.get("on") not in DURING)
         if timed and "seconds" not in raw:
             raise ItemEffectError("effect: a trigger ('on') needs 'seconds' (how long the "
                                   "bonus lasts); leave both out for an always-on bonus")
@@ -163,7 +179,7 @@ class Effect:
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         return cls(stat=str(raw["stat"]), amount=float(raw["amount"]),
-                   seconds=float(raw["seconds"]) if timed else None, on=on,
+                   seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=raw.get("percent", True),
                    keep_base_effect=raw.get("keep_base_effect", False))
 
@@ -269,6 +285,14 @@ def _float_test(w: P.PartWriter, source: P.Link, key: int) -> int:
     return w.sub("oCEntityCpntFloatTestSettings", a + b + struct.pack("<I", 2))
 
 
+def _bool_test(w: P.PartWriter, key: int) -> int:
+    """A condition: global bool ``key`` is true, as Character_Common's
+    Is Daytime Tester and Is Nighttime Tester check it."""
+    return w.sub("oCEntityCpntSimpleBoolTestSettings",
+                 P.num_bytes(P.Num(P.BOOL, b"\x00", key=key, glob=True), w.ci)
+                 + struct.pack("<I", 0))
+
+
 def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags: int,
             on_true: P.Link = _NONE, holds: P.Link = _NONE) -> P.Link:
     """True while ``tests`` hold (all of them when ``every``); switches
@@ -282,11 +306,16 @@ def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags:
 
 def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
                  slots: list) -> None:
-    """A modifier held on while the item is equipped, as a plain stat item's."""
-    _tester_n, _timer_n, mod, _seconds_n, amount = (n + sfx for n in _TIMED)
-    _modifier(w, mod, effect.stat, effect.amount)
+    """A modifier held on while the item is equipped (or while ``during`` holds)."""
+    tester, _timer_n, mod, _seconds_n, amount = (n + sfx for n in _TIMED)
+    mod_link = _modifier(w, mod, effect.stat, effect.amount)
     _value(w, amount, effect.amount, _RATIO)
-    w.ef.add_ref(equipped, "while_active", mod)
+    if effect.during:
+        _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
+                flags=0x1, holds=mod_link)
+        w.ef.add_ref(equipped, "while_active", tester)
+    else:
+        w.ef.add_ref(equipped, "while_active", mod)
     slots.append((amount, effect.percent))
 
 
@@ -304,8 +333,10 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
         "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
         "state": _NONE, "paused?": P.Num(P.BOOL, b"\x00"), "duration": P.Num.f32(effect.seconds),
         "flag": 0, **_timer_tail(w)}, flags=0x1)
-    _tester(w, tester, [_float_test(w, timer_link, _TIMER_LEFT)], every=False, flags=0x1,
-            holds=mod_link)
+    tests = [_float_test(w, timer_link, _TIMER_LEFT)]
+    if effect.during:
+        tests.append(_bool_test(w, DURING[effect.during][2]))
+    _tester(w, tester, tests, every=len(tests) > 1, flags=0x1, holds=mod_link)
     w.add(_STATE, state, {
         "activates": [timer_link], "deactivates?": [timer_link] if effect.refresh else [],
         "list_2": [], "on_exit?": [], "disables_while_active?": [], "on_enter?": [],
@@ -374,15 +405,21 @@ def _alive_check(w: P.PartWriter, name: str, listener: str, then: P.Link, sfx: s
 
 def describe(effects: list[Effect]) -> str:
     """Card text for ``effects``, numbered as `apply_effects` lays out the card:
-    "#+{0}%@ #Crit chance@" for an always-on bonus, "After dashing, gain
-    #+{1}%@ #Attack power@ for #{2}@ seconds" for a timed one. One bullet each, as
-    the shipped cards write several effects."""
+    "#+{0}%@ #Crit chance@" for an always-on bonus, "During the day, #+{0}%@
+    #Crit chance@" for a day/night one, and "After dashing, gain #+{1}%@ #Attack
+    power@ for #{2}@ seconds" for a timed one. One bullet each, as the shipped
+    cards write several effects."""
     lines, n = [], 0
     for e in effects:
         amount = f"#+{{{n}}}{'%' if e.percent else ''}@ #{e.stat}@"
         if e.timed:
-            lines.append(f"{TRIGGERS[e.on].text}, gain {amount} for #{{{n + 1}}}@ seconds")
+            head = (f"{DURING[e.during][1]}, {TRIGGERS[e.on].text.lower()}"
+                    if e.during else TRIGGERS[e.on].text)
+            lines.append(f"{head}, gain {amount} for #{{{n + 1}}}@ seconds")
             n += 2
+        elif e.during:
+            lines.append(f"{DURING[e.during][1]}, {amount}")
+            n += 1
         else:
             lines.append(amount)
             n += 1
