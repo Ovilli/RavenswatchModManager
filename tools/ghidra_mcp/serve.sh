@@ -11,7 +11,7 @@
 set -eu
 cd "$(dirname "$0")/../.."
 
-GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$HOME/Documents/Programming/ghidra_12.1.4_PUBLIC}"
+GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$HOME/Documents/Programming/ghidra_12.2_PUBLIC}"
 PORT="${RSMM_GHIDRA_MCP_PORT:-8765}"
 export GHIDRA_INSTALL_DIR
 PATH="$HOME/.local/bin:$PATH"
