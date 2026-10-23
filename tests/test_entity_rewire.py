@@ -649,7 +649,8 @@ def test_rework_entity_can_rewire_to_parent_cloned_node(tmp_path):
     u6 = _WUKONG.parent / "Hero_SunWukong_Update6.entity.ot.EntitySettingsResource.gen"
     if not (_WUKONG.is_file() and u6.is_file()):
         pytest.skip("vanilla Hero_SunWukong + Update6 corpus files not present")
-    from rsmm.engine import cooked, entity_append as EA
+    from rsmm.engine import cooked
+    from rsmm.engine import entity_append as EA
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
 
@@ -670,5 +671,6 @@ def test_rework_entity_can_rewire_to_parent_cloned_node(tmp_path):
     cf_base = cooked.parse(base_out)
     cf_u6 = cooked.parse(written[0].read_bytes())
     selector_guid = EA.node_guid(cf_base, "Skill Dash Attack Finisher Clip Selector")
-    dash_state = cf_u6.sections[EA.node_section(cf_u6, "State Basic Attack Step Dash Attack")].payload
+    dash = EA.node_section(cf_u6, "State Basic Attack Step Dash Attack")
+    dash_state = cf_u6.sections[dash].payload
     assert selector_guid in dash_state
