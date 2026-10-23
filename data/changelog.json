@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-10-23",
+      "summary": "Talents can give a TRAIT charge",
+      "highlights": [
+        "Talents can give +1 TRAIT charge, the same way Merlin's quest and Snow Queen's Trait Charge do (TRAIT charges were refused before)"
+      ],
+      "cli_version": 11
+    },
+    {
+      "version": "",
+      "date": "2026-10-23",
       "summary": "Talents built from scratch reliably, game-event triggers, and a simpler talent editor",
       "highlights": [
         "Talent changes no longer copy parts from other heroes: every part is written, so talent mods are more reliable across game updates",
@@ -524,16 +533,6 @@
         "The same from the command line: `rsmm backend http://host:port` (and `rsmm backend off` to go back to the official servers). No more setx or Steam restarts.",
         "Shows whether the server answers and whether your last game launch actually used it.",
         "Fixed: `rsmm update-loader` said \"up to date\" when the game folder had no loader at all. It now says so."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 26,
-      "date": "2026-10-04",
-      "summary": "Online backend redirect: set RSMM_BACKEND_URL=http://host:port to point the game at a self-hosted backend (services/stormancer). Off by default; with it unset the WinHTTP wrappers are a plain passthrough. Also adds a Steam web-ticket identity probe that logs the identity string and never the ticket.",
-      "highlights": [
-        "Self-hosted online backend: point the game at your own server with RSMM_BACKEND_URL (off by default)",
-        "Steam web-ticket identity probe for backend setup (logs the identity, never the ticket)"
       ]
     }
   ]
