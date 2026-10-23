@@ -38,10 +38,11 @@ _END = b"\x22\x22\xbb\xaa"
 class EntityEdit:
     """Mutable view of a cooked entity for variable-length edits."""
 
-    def __init__(self, cooked_bytes: bytes) -> None:
+    def __init__(self, cooked_bytes: bytes, *, readers: list[bytes] = ()) -> None:
         self._cf = cooked.parse(cooked_bytes)
         self._section_lens = [len(s.payload) for s in self._cf.sections]
         self.concat = b"".join(s.payload for s in self._cf.sections)
+        self._readers = list(readers)
         # queued edits: (offset, old_len, replacement) on the original concat
         self._edits: list[tuple[int, int, bytes]] = []
 
@@ -239,10 +240,28 @@ class EntityEdit:
         # All refs to one node share its GUID, so any of the target's is fine.
         # A node nothing references yet (one added by `clone_nodes`) has no
         # such label, so fall back to its own definition: END, GUID, name.
+        # A rework entity (`Hero_SunWukong_Update6`) may rewire a ref to a node
+        # defined or cloned in an ancestor (`Hero_SunWukong`); check `readers`.
         try:
             target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
         except ValueError:
-            target_guid = self._node_guid(to_label.rsplit("\\", 1)[-1])
+            leaf = to_label.rsplit("\\", 1)[-1]
+            target_guid = self._node_guid(leaf)
+            if target_guid is None:
+                for r in self._readers:
+                    red = EntityEdit(r)
+                    target_guid = red._node_guid(leaf)
+                    if target_guid is not None:
+                        break
+                    hits = [o for o, s in red.find_lstrings_containing(to_label)
+                            if s.startswith("[") and (not exact or s == to_label)
+                            and o >= 20
+                            and (red._picker_classid() is None
+                                 or struct.unpack_from("<I", red.concat, o - 20)[0]
+                                 == red._picker_classid())]
+                    if hits:
+                        target_guid = red.concat[hits[0] - 16:hits[0]]
+                        break
             if target_guid is None:
                 raise
         dsts = _picker_guid_offs(from_label, scoped=True)
