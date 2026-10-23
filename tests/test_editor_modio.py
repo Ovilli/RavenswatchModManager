@@ -199,7 +199,7 @@ def test_super_effects_save_open_and_preview(tmp_path):
     req = {"mode": "blank", "base": f"{C.BLANK}:0", "id": "Super_Charm", "rarity": "Rare",
            "effects": [{"stat": "Crit chance", "amount": 0.1}], "superEffects": supers}
     got = C.item_preview(req)
-    assert got["autoSuper"] == "• #+{0}%@ #Attack power@" and len(got["super"]) == 1
+    assert got["autoSuper"] == "#+{0}%@ #Attack power@" and len(got["super"]) == 1
     defs = C.defs_for("items", req)
     assert defs[0][2]["super_effects"] == supers
     C.save(defs, "m3", tmp_path, create=True, name="M3")

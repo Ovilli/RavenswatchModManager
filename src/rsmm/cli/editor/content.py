@@ -235,7 +235,7 @@ def item_preview(req: dict) -> dict:
         out["autoText"] = describe(parse_effects(fields["effects"]))
     if fields.get("super_effects"):
         from rsmm.engine.item_effect import describe, parse_effects
-        out["autoSuper"] = describe(parse_effects(fields["super_effects"]))
+        out["autoSuper"] = describe(parse_effects(fields["super_effects"]), one_line=True)
     for part, fmt in _CARD_FORMATS.items():
         out[part] = _built_slots(ent, fmt)
     return out

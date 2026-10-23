@@ -1184,19 +1184,19 @@ S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
 // timed row takes two: its amount, then its seconds).
 // With `key` "superEffects" it is the item's super effect instead (the item
 // kind's `super_effects`): the same rows, switched on by the game once the
-// hero's collection of the item's rarity is complete.
+// hero holds enough copies of the item (5 Common, 4 Rare, 3 Epic).
 function effectsForm(E, blank, key = "effects") {
   const box = el("div"), sup = key === "superEffects";
   const list = E[key] = E[key] || [];
   box.append(el("div", { class: "sect", text: sup ? `Super effect (${list.length})` : `What it does (${list.length})` }));
   box.append(el("div", { class: "hint", style: "margin-bottom:6px", text: sup
-    ? "Bonuses the item gives once the hero's collection of its rarity is complete, as the game's own super effects do. They replace the base item's super effect."
+    ? "Bonuses the item gives once the hero holds enough copies of it (5 of a Common, 4 of a Rare, 3 of an Epic), as the game's own super effects do. They replace the base item's super effect."
     : blank
     ? "Add bonuses. Each one is written by rsmm from the stat and numbers you give, not copied from another item."
     : "Bonuses added to the copy. With any here, the base item's own effect is cut (its look stays) unless you keep it below." }));
   const rarity = E.rarity || (blank ? "Common" : S.item.rarity);
   if (sup && list.length && !["Common", "Rare", "Epic"].includes(rarity)) box.append(el("div", { class: "hint bad", style: "margin-bottom:6px",
-    text: `A ${rarity} item never gets its super effect: the game counts a collection only for Common, Rare and Epic items. Pick one of those rarities.` }));
+    text: `A ${rarity} item never gets its super effect: the game has one only for Common, Rare and Epic items. Pick one of those rarities.` }));
   if (sup && E.noSuper) {
     box.append(el("div", { class: "muted", text: "“No super effect” is on below." }));
     return box;

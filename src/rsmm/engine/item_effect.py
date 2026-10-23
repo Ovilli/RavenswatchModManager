@@ -245,18 +245,26 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
 #: 2"...): the name marks their modifiers as the super effect's
 #: (``item_modifier.list_modifiers``), and keeps them apart from ``effects``'.
 SUPER_SUFFIX = " Super Effect"
-#: The rarities the model counts a collection for (its Super Effect Target
-#: Count Selector tests Is Common / Is Rare / Is Epic): an item of any other
-#: rarity never switches its super effect on.
+#: The rarities with a super effect, and how many copies of the item switch it
+#: on. The model's `Equiped Super Effect Active Condition` holds `State Super
+#: Effect` on while the item is equipped and its own amount (Dt Magical Object,
+#: key 0x18a38678: the copies held, what `Amount Selector` scales card numbers
+#: by) is at least `Super Effect Target Count Operation`: 5 / 4 / 3 by its Is
+#: Common / Is Rare / Is Epic tests, minus whatever lowers it. Any other rarity
+#: gets 0, and `Has Super Effect Condition` (target > 0) then fails: never on.
+#: Different items of one rarity do not count (playtest 2026-10-24: the item
+#: plus two other Epics left it off).
+SUPER_COPIES = {"Common": 5, "Rare": 4, "Epic": 3}
+SUPER_RARITIES = tuple(SUPER_COPIES)
 SUPER_RARITIES = ("Common", "Rare", "Epic")
 
 
 def apply_super_effects(ent: bytes, item_id: str, effects: list[Effect], *,
                         read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) with ``effects``
-    as its SUPER effect: what it does once the hero's collection of its rarity
-    is complete, when the model switches the item's ``Child State Super
-    Effect`` on. They are built as ``effects`` are, run from that state instead
+    as its SUPER effect: what it does once the hero holds enough copies of the
+    item (``SUPER_COPIES``), when the model switches the item's ``Child State
+    Super Effect`` on. They are built as ``effects`` are, run from that state instead
     of the equipped one, and numbered on the super text (``{0}``, ``{1}``...).
     The base's own super effect is cut. An item without the model's super slots
     (a blank item, a copy of a legendary) gets them, its text read from
@@ -461,12 +469,14 @@ def _alive_check(w: P.PartWriter, name: str, listener: str, then: P.Link, sfx: s
     return _tester(w, name, tests, every=True, flags=0x10001, on_true=then)
 
 
-def describe(effects: list[Effect]) -> str:
+def describe(effects: list[Effect], *, one_line: bool = False) -> str:
     """Card text for ``effects``, numbered as `apply_effects` lays out the card:
     "#+{0}%@ #Crit chance@" for an always-on bonus, "During the day, #+{0}%@
     #Crit chance@" for a day/night one, and "After dashing, gain #+{1}%@ #Attack
     power@ for #{2}@ seconds" for a timed one. One bullet each, as the shipped
-    cards write several effects."""
+    cards write several effects; ``one_line`` joins them with ", " instead, as
+    super text must be: no shipped super text has a bullet or a line break,
+    and the card printed a bulleted one as "???" (playtest 2026-10-24)."""
     lines, n = [], 0
     for e in effects:
         amount = f"#+{{{n}}}{'%' if e.percent else ''}@ #{e.stat}@"
@@ -481,6 +491,9 @@ def describe(effects: list[Effect]) -> str:
         else:
             lines.append(amount)
             n += 1
+    if one_line:
+        return ", ".join(line if not i else line[0].lower() + line[1:]
+                         for i, line in enumerate(lines))
     return "\n".join("• " + line for line in lines)
 
 

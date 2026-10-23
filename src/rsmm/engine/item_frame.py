@@ -96,7 +96,7 @@ _STATE = "oCEntityCpntStateSettings"
 _LISTS = ("activates", "deactivates?", "list_2", "on_exit?", "disables_while_active?",
           "on_enter?", "while_active")
 #: The model's super-effect slots: the state the model switches on once the
-#: hero's collection of the item's rarity is complete (``State Super Effect``),
+#: hero holds enough copies of the item (``item_effect.SUPER_COPIES``),
 #: and the card's super text. A shipped item with a super effect overrides one
 #: or both (Armor_Per_Object only the text: its super changes what counts).
 SUPER_STATE = "Child State Super Effect"

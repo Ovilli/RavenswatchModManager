@@ -495,8 +495,9 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         ``super_effect`` (bool)     ``false`` removes the base's super effect:
                                     no bonus, blank super text (default true).
         ``super_effects`` (list)    tables as in ``effects``, run as the
-                                    item's super effect (once the hero's
-                                    collection of its rarity is complete)
+                                    item's super effect (once the hero
+                                    holds 5 / 4 / 3 copies of a Common /
+                                    Rare / Epic item)
                                     in place of the base's; any item of a
                                     Common, Rare or Epic rarity, a blank one
                                     too. Super text is written from them
@@ -586,10 +587,16 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         if rarity not in SUPER_RARITIES:
             raise ContentError(
                 f"item {defn.id}: a {rarity} item never gets its super effect (the game "
-                f"counts a collection only for {', '.join(SUPER_RARITIES)} items)")
+                f"has one only for {', '.join(SUPER_RARITIES)} items)")
         if super_description is None:
-            super_description = describe(parse_effects(super_effects))
-    elif blank and ("super_effect" in defn.fields or super_description):
+            super_description = describe(parse_effects(super_effects), one_line=True)
+    if super_description and ("\u2022" in super_description or "\n" in super_description):
+        # No shipped super text has either; the card printed a bulleted one as
+        # "???" (playtest 2026-10-24).
+        _log.warning("item %s/%s: super_description has a bullet or line break; the "
+                     "card's super text may show \"???\": write it as one line",
+                     mod_id, defn.id)
+    if super_effects is None and blank and ("super_effect" in defn.fields or super_description):
         raise ContentError(f"item {defn.id}: an item with no 'base' has no super effect "
                            f"until 'super_effects' gives it one")
     steps = defn.fields.get("steps") or []

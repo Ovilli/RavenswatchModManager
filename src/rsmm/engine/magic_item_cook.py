@@ -888,7 +888,8 @@ def build_magic_item(
 
 _TEXT_BANK_NAME = "Magical_Objects~GAM.xls"
 
-#: The model state a collection-complete item switches on; whatever it runs
+#: The model state an item switches on once enough copies are held
+#: (``item_effect.SUPER_COPIES``); whatever it runs
 #: while active IS the super effect (Increase_Shield: its healing modifier).
 _SUPER_STATE = "Child State Super Effect"
 

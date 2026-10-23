@@ -1168,9 +1168,10 @@ effects = [
 
 ### Super effects (`super_effects`)
 
-A super effect is what an item does once the hero's collection of its rarity
-is complete: the game switches the item's super-effect state on, and the
-card's second paragraph describes it. `super_effects` takes the same tables
+A super effect is what an item does once the hero holds enough copies of it:
+5 of a Common, 4 of a Rare, 3 of an Epic (the card's "x3"; some effects lower
+it). Different items of the same rarity do not count. The game then switches
+the item's super-effect state on, and the card's second paragraph describes it. `super_effects` takes the same tables
 as `effects` (always on, or timed after a trigger) and runs them from that
 state instead:
 
@@ -1189,11 +1190,12 @@ super_effects = [
 - Works on a blank item and on a copy (or `mode = "replace"`) of any shipped
   item. A base's own super effect is replaced; an item without one (a
   legendary copied down to Rare) gets one.
-- **Common, Rare and Epic only.** The game counts a collection for those three
-  rarities, so a Legendary, Cursed or Power-up item never switches it on;
-  the build refuses it.
+- **Common, Rare and Epic only.** A Legendary, Cursed or Power-up item has no
+  copy target, so it never switches one on; the build refuses it.
 - With no `super_description` the super text is written from them, numbered
-  from `{0}` like `description`.
+  from `{0}` like `description`, as one line.
+- **Write super text as one line, without `•`.** No shipped super text has a
+  bullet or a line break, and the card prints a bulleted one as `???`.
 - `super_effect = false` and `super_effects` contradict each other: give one.
 - In the editor, each item has a **Super effect** section with the same rows
   as **What it does**.
