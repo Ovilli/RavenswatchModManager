@@ -106,10 +106,21 @@ def root() -> Path:
 
 def read(rel: str) -> bytes | None:
     """Cooked bytes for a decoded path (forward slashes), from the mirror or
-    from the install; None when neither has it."""
+    from the install; None when neither has it.
+
+    When the pristine install copy is newer than the default `data/uncooked`
+    mirror (a game update landed after `extract_uncooked` last ran), the
+    install copy wins so mods never patch stale entity files."""
     rel = rel.replace("\\", "/")
     p = UNCOOKED / Path(*rel.split("/"))
     if p.is_file():
+        if UNCOOKED == DATA_DIR / "uncooked":
+            src = install_path(rel)
+            try:
+                if src is not None and src.stat().st_mtime > p.stat().st_mtime:
+                    return src.read_bytes()
+            except OSError:
+                pass
         return p.read_bytes()
     src = install_path(rel)
     try:
