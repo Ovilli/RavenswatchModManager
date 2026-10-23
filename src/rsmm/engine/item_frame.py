@@ -73,37 +73,68 @@ def _empty_entity(parent: str, identity: bytes) -> bytes:
 def build(read) -> bytes:
     """The frame entity, as a base with the id ``FRAME_ID``. ``read`` reads a
     shipped entity by reference (the model, for the slots it overrides)."""
-    model_raw = read(MODEL)
-    if model_raw is None:
-        raise FrameError("the magical-object model is not readable (no install or mirror)")
-    model = EntityFile(model_raw, _MODEL_SCOPE)
+    model = _model(read)
     w = P.PartWriter(EntityFile(_empty_entity(MODEL, _guid("identity")), FRAME_ID),
                      f"frame:{FRAME_ID}")
 
-    def slot(name: str) -> P.Link:
-        from .entity_graph_edit import kind_label
-        c = model.component(name)
-        path = c.path if c.group else c.name        # as shipped references name it
-        return P.Link(c.guid, f"[{kind_label(c.cls)}] {_MODEL_SCOPE}\\{path}")
-
     def value(name: str, slot_name: str, num: P.Num) -> None:
         w.add("oCEntityCpntValueSettings", name, {"value": num, "flag": 0}, flags=0x101,
-              override=slot(slot_name))
+              override=_slot(model, slot_name))
 
-    lists = ("activates", "deactivates?", "list_2", "on_exit?", "disables_while_active?",
-             "on_enter?", "while_active")
-    w.add("oCEntityCpntStateSettings", "State Picked Up", dict.fromkeys(lists, []),
-          flags=0x1, override=slot("Child State Equiped"))
+    w.add(_STATE, "State Picked Up", dict.fromkeys(_LISTS, []),
+          flags=0x1, override=_slot(model, "Child State Equiped"))
     w.add("oCDtEntityCpntMagicalObjectDataSettings", "Dt Magical Object Data",
           flags=0x101, body=_item_data(w))
-    text = P.Num(5, _text(f"{FRAME_ID}_Description"))
-    w.add("oCEntityCpntStringFormatValueSettings", "Descripton Format",       # sic
-          flags=0x101, override=slot("Descripton Format"),
-          body=P.num_bytes(text, w.ci) + struct.pack("<I", 0))
+    _format(w, model, "Descripton Format", f"{FRAME_ID}_Description")       # sic
     value("Icon Value", "Icon", P.Num(6, _resource("Ui", DEFAULT_ICON)))
     value("Name Value", "Name", P.Num(5, _text(f"{FRAME_ID}_Name")))
     value("Quality Value", "Quality", P.Num.int(0))
     return w.ef.to_bytes()
+
+
+_STATE = "oCEntityCpntStateSettings"
+_LISTS = ("activates", "deactivates?", "list_2", "on_exit?", "disables_while_active?",
+          "on_enter?", "while_active")
+#: The model's super-effect slots: the state the model switches on once the
+#: hero's collection of the item's rarity is complete (``State Super Effect``),
+#: and the card's super text. A shipped item with a super effect overrides one
+#: or both (Armor_Per_Object only the text: its super changes what counts).
+SUPER_STATE = "Child State Super Effect"
+SUPER_FORMAT = "Super Effect Descripton Format"      # sic
+
+
+def _model(read) -> EntityFile:
+    raw = read(MODEL)
+    if raw is None:
+        raise FrameError("the magical-object model is not readable (no install or mirror)")
+    return EntityFile(raw, _MODEL_SCOPE)
+
+
+def _slot(model: EntityFile, name: str) -> P.Link:
+    """A link to the model's ``name``, as a shipped item's override names it."""
+    from .entity_graph_edit import kind_label
+    c = model.component(name)
+    path = c.path if c.group else c.name
+    return P.Link(c.guid, f"[{kind_label(c.cls)}] {_MODEL_SCOPE}\\{path}")
+
+
+def _format(w: P.PartWriter, model: EntityFile, name: str, key: str) -> None:
+    """An override of the model's String Format ``name`` reading text ``key``,
+    with no number slots yet."""
+    w.add("oCEntityCpntStringFormatValueSettings", name, flags=0x101,
+          override=_slot(model, name),
+          body=P.num_bytes(P.Num(5, _text(key)), w.ci) + struct.pack("<I", 0))
+
+
+def add_super(w: P.PartWriter, read, key: str, *, state: bool, text: bool) -> None:
+    """The model's super-effect slots ``w``'s item lacks: an empty state to run
+    the effect from (``state``) and super text read from ``key`` (``text``)."""
+    model = _model(read)
+    if state:
+        w.add(_STATE, SUPER_STATE, dict.fromkeys(_LISTS, []), flags=0x1,
+              override=_slot(model, SUPER_STATE))
+    if text:
+        _format(w, model, SUPER_FORMAT, key)
 
 
 def _item_data(w: P.PartWriter) -> bytes:

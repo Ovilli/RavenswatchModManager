@@ -793,7 +793,8 @@ def _lint_content(modname: str, blocks: list[dict],
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                       f"stats {_ST.accent(repr(modifier))}: {_ST.dim(str(e))}")
                 errs += 1
-        if c.get("super_description") is not None and IM.super_text_key(data) is None:
+        if c.get("super_description") is not None and not c.get("super_effects") \
+                and IM.super_text_key(data) is None:
             print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                   f"super_description: {_ST.dim(f'{base} has no super effect text')}")
             errs += 1

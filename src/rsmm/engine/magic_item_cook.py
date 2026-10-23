@@ -711,6 +711,7 @@ def build_magic_item(
     steps: list[dict] | None = None,
     super_effect: bool = True,
     effect: dict | list | None = None,
+    super_effects: list | None = None,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -736,6 +737,9 @@ def build_magic_item(
     * ``effect`` = one ``{stat, amount[, seconds, on, ...]}`` table or a list
       of them: always-on bonuses and timed bonuses on a trigger, see
       :mod:`rsmm.engine.item_effect` (before ``steps``, which may adjust them);
+    * ``super_effects`` = a list of the same tables, run as the item's super
+      effect instead of the base's (``item_effect.apply_super_effects``); an
+      item without a super effect gets one, read from ``<new_id>_SuperEffect``;
     * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
       ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
       after the value patches, by the part names ``rsmm entity-graph`` shows;
@@ -791,13 +795,16 @@ def build_magic_item(
             if cur != renamed:
                 ent = replace_lstr_any(ent, cur, renamed)
     super_key = f"{new_id}_SuperEffect"
+    if super_effects and not super_effect:
+        raise ValueError("super_effect = false removes the super effect that "
+                         "super_effects writes; give one or the other")
     if not super_effect:
         if super_description:
             raise ValueError("super_effect = false leaves no super effect to describe; "
                              "drop super_description")
         if base_super is None:
             raise ValueError(f"{base_id} has no super effect to remove")
-    if super_description is not None:
+    if super_description is not None and not super_effects:
         if base_super is None:
             raise ValueError(
                 f"{base_id} has no super effect text, so super_description has "
@@ -818,6 +825,11 @@ def build_magic_item(
     if effect is not None:
         from . import item_effect as IE
         ent = IE.apply_effects(ent, new_id, IE.parse_effects(effect))
+    if super_effects:
+        from . import item_effect as IE
+        ent = IE.apply_super_effects(ent, new_id, IE.parse_effects(super_effects))
+        if super_description is not None:
+            ent = IM.set_super_text_key(ent, super_key)
     if not super_effect:
         ent = _clear_super_effect(ent, base_id)
     if steps:

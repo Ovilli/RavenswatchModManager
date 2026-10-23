@@ -437,6 +437,22 @@ def _coerce_effects(defn: ContentDef):
     return raw
 
 
+def _coerce_super_effects(defn: ContentDef):
+    """``super_effects`` (a list of ``effects`` tables), checked; None when
+    the item has none."""
+    from ...engine.item_effect import ItemEffectError, parse_effects
+    raw = defn.fields.get("super_effects")
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ContentError(f"item {defn.id}: super_effects must be a list of effect tables")
+    try:
+        parse_effects(raw)
+    except ItemEffectError as e:
+        raise ContentError(f"item {defn.id}: super_effects: {e}") from None
+    return raw
+
+
 def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                 replace: bool = False) -> list[Path]:
     """Materialize one cloned (or, with ``replace``, edited-in-place) item def
@@ -478,6 +494,13 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     ``keep_base_effect = true``.
         ``super_effect`` (bool)     ``false`` removes the base's super effect:
                                     no bonus, blank super text (default true).
+        ``super_effects`` (list)    tables as in ``effects``, run as the
+                                    item's super effect (once the hero's
+                                    collection of its rarity is complete)
+                                    in place of the base's; any item of a
+                                    Common, Rare or Epic rarity, a blank one
+                                    too. Super text is written from them
+                                    when no ``super_description`` is given.
         ``steps`` (list)            ``[[content.steps]]`` graph edits run on
                                     the copy after the fields above: ``set``,
                                     ``link``, ``add_link``, ``remove_link``,
@@ -491,7 +514,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     base = defn.fields.get("base")
     effect = _coerce_effects(defn)
     # No base: a blank item, written from scratch (`engine.item_frame`) and
-    # given its `effects`. It has no super effect and starts Common.
+    # given its `effects` (and `super_effects`). It starts Common.
     blank = base is None and not replace
     if blank:
         if effect is None:
@@ -557,8 +580,18 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
     super_effect = defn.fields.get("super_effect", True)
     if not isinstance(super_effect, bool):
         raise ContentError(f"item {defn.id}: super_effect must be true or false")
-    if blank and ("super_effect" in defn.fields or super_description):
-        raise ContentError(f"item {defn.id}: an item with no 'base' has no super effect")
+    super_effects = _coerce_super_effects(defn)
+    if super_effects is not None:
+        from ...engine.item_effect import SUPER_RARITIES, describe, parse_effects
+        if rarity not in SUPER_RARITIES:
+            raise ContentError(
+                f"item {defn.id}: a {rarity} item never gets its super effect (the game "
+                f"counts a collection only for {', '.join(SUPER_RARITIES)} items)")
+        if super_description is None:
+            super_description = describe(parse_effects(super_effects))
+    elif blank and ("super_effect" in defn.fields or super_description):
+        raise ContentError(f"item {defn.id}: an item with no 'base' has no super effect "
+                           f"until 'super_effects' gives it one")
     steps = defn.fields.get("steps") or []
     if not isinstance(steps, list) or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"item {defn.id}: steps must be a list of [[content.steps]] tables")
@@ -613,6 +646,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
             steps=steps,
             super_effect=super_effect,
             effect=effect,
+            super_effects=super_effects,
             icon=icon,
             bank_base_gen=bank_gen,
             replace=replace,
@@ -656,6 +690,7 @@ def build_entity(fields: dict, base_cooked: bytes) -> bytes:
         steps=fields.get("steps") or None,
         super_effect=fields.get("super_effect", True) is not False,
         effect=effects if effects is not None else fields.get("effect"), replace=replace,
+        super_effects=fields.get("super_effects") or None,
         remint_identity=not replace and fields.get("unique_identity", True) is not False)
     return next(b for p, b in files.items() if p.endswith(_MO_SUFFIX))
 

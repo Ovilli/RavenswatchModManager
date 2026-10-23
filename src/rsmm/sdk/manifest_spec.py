@@ -38,7 +38,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "item": frozenset({
         "mode", "base", "name", "display_name", "description", "rarity", "icon",
         "value_patches", "unique_identity", "stats", "super_description", "steps",
-        "super_effect", "effect", "effects",
+        "super_effect", "super_effects", "effect", "effects",
         "items",                                # mode = "ban"
     }),
     "enemy": frozenset({

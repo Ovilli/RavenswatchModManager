@@ -191,6 +191,24 @@ def test_items_from_scratch_save_open_and_build(tmp_path):
         C.defs_for("items", {**pay, "effects": []})
 
 
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_super_effects_save_open_and_preview(tmp_path):
+    """A blank item's super effects reach the manifest, reopen, and the preview
+    numbers the super text from them."""
+    supers = [{"stat": "Attack power", "amount": 0.2}]
+    req = {"mode": "blank", "base": f"{C.BLANK}:0", "id": "Super_Charm", "rarity": "Rare",
+           "effects": [{"stat": "Crit chance", "amount": 0.1}], "superEffects": supers}
+    got = C.item_preview(req)
+    assert got["autoSuper"] == "• #+{0}%@ #Attack power@" and len(got["super"]) == 1
+    defs = C.defs_for("items", req)
+    assert defs[0][2]["super_effects"] == supers
+    C.save(defs, "m3", tmp_path, create=True, name="M3")
+    pay = M.load_mod(tmp_path, "m3")["items"][f"{C.BLANK}:Super_Charm"]["payload"]
+    assert pay["superEffects"] == supers and C.defs_for("items", pay) == defs
+    with pytest.raises(C.EditorError, match="No super effect"):
+        C.defs_for("items", {**pay, "noSuper": True})
+
+
 HERO_MANIFEST = """[mod]
 id = "m"
 

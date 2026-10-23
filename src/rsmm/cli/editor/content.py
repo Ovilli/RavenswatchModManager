@@ -233,6 +233,9 @@ def item_preview(req: dict) -> dict:
         # The text the item kind writes when the page leaves the description empty.
         from rsmm.engine.item_effect import describe, parse_effects
         out["autoText"] = describe(parse_effects(fields["effects"]))
+    if fields.get("super_effects"):
+        from rsmm.engine.item_effect import describe, parse_effects
+        out["autoSuper"] = describe(parse_effects(fields["super_effects"]))
     for part, fmt in _CARD_FORMATS.items():
         out[part] = _built_slots(ent, fmt)
     return out
@@ -1005,8 +1008,9 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``req``: ``mode`` (``clone``, the default, ``replace`` or ``blank``),
     ``id``, ``base``, optional ``name``/``description``/``rarity``/``icon``,
     ``values`` = ``[{label, old, new, shadowed}]`` (changed only), ``stats`` =
-    ``[{modifier, stat}]`` (changed only), ``effects`` (the item kind's
-    ``effects`` tables) and ``superDescription``.
+    ``[{modifier, stat}]`` (changed only), ``effects`` and ``superEffects``
+    (the item kind's ``effects`` / ``super_effects`` tables) and
+    ``superDescription``.
 
     A replacement changes the shipped item itself: its block id is the base's,
     it keeps the base's rarity, and with nothing changed it writes nothing. A
@@ -1027,7 +1031,7 @@ def item_defs(req: dict) -> list[tuple[str, str, dict]]:
         raise EditorError("give the copy an id of its own")
     if mode == "blank":
         # No base: the item kind writes it from scratch and its effects.
-        if not req.get("effects"):
+        if not req.get("effects") and not req.get("superEffects"):
             raise EditorError("add an effect: an item from scratch does only what its "
                               "effects say")
         fields: dict = {"kind": "item", "id": new_id}
@@ -1104,6 +1108,15 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         except ItemEffectError as e:
             raise EditorError(str(e)) from None
         fields["effects"] = effects
+    supers = req.get("superEffects") or []
+    if supers:
+        if req.get("noSuper"):
+            raise EditorError("“No super effect” drops the super effects you added")
+        try:
+            parse_effects(supers)
+        except ItemEffectError as e:
+            raise EditorError(f"super effect: {e}") from None
+        fields["super_effects"] = supers
     if req.get("sharedIdentity") and req.get("mode") == "clone":
         fields["unique_identity"] = False         # a copy has its own by default
     sup = req.get("superDescription")

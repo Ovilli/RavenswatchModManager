@@ -667,11 +667,11 @@ function freshItemEdit() {
   // "blank" is an item from scratch, which starts with one bonus to show the way.
   const blank = isBlank(S.item.id);
   return { mode: blank ? "blank" : "replace", id: blank ? "My_Item" : suggestId(S.item.id), name: "", description: "", rarity: blank ? "Common" : "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    steps: [], noSuper: false, sharedIdentity: false, effects: blank ? [{ stat: "Crit chance", amount: 0.1 }] : [], autoDesc: false, autoSuper: false, textMiss: [] };
+    steps: [], noSuper: false, sharedIdentity: false, effects: blank ? [{ stat: "Crit chance", amount: 0.1 }] : [], superEffects: [], autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || (E.effects || []).length);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || (E.effects || []).length || (E.superEffects || []).length);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -929,6 +929,8 @@ function itemView() {
   v.append(f);
   v.append(effectsForm(E, blank));
   if (blank) {
+    v.append(effectsForm(E, blank, "superEffects"));
+    if (E.superEffects.length) v.append(superTextForm(E, it));
     const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
     return el("div", { class: "split" }, v, aside);
   }
@@ -985,22 +987,31 @@ function itemView() {
     const op = s => ["clone", "set", "link", "add_link", "remove_link", "percent"].find(k => k in s) || "?";
     for (const s of E.steps) v.append(el("div", { class: "muted", text: `${op(s)} ${[].concat(s[op(s)] ?? "").join(", ")}${"from" in s ? " from " + s.from : ""}${"to" in s ? " \u2192 " + s.to : ""}${"value" in s ? " = " + JSON.stringify(s.value) : ""}` }));
   }
-  if (it.superKey) {
+  v.append(effectsForm(E, blank, "superEffects"));
+  if (it.superKey || E.superEffects.length) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
-    if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+    if (it.superKey && !it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
       text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
-    v.append(featureToggle("No super effect", "The copy never gets the base's super bonus, and its card shows no super text.",
-      E.noSuper, on => { E.noSuper = on; if (on) E.superDescription = ""; renderView(); refresh(); }));
-    const sup = el("textarea", { placeholder: it.superText || it.superKey, ...(E.noSuper ? { disabled: "" } : {}) });
-    sup.value = E.superDescription;
-    const f2 = el("div", { class: "form" });
-    f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
-      el("div", {}, sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
-    v.append(f2);
+    if (it.superKey) v.append(featureToggle("No super effect", "The copy never gets the base's super bonus, and its card shows no super text.",
+      E.noSuper, on => { E.noSuper = on; if (on) { E.superDescription = ""; E.superEffects = []; } renderView(); refresh(); }));
+    v.append(superTextForm(E, it));
   }
   // The preview stays in view beside the form while values change below.
   const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
   return el("div", { class: "split" }, v, aside);
+}
+
+// The super effect's card text: the base's, the one written from the super
+// effects, or your own.
+function superTextForm(E, it) {
+  const sup = el("textarea", { id: "itemsuper", placeholder: it.superText || it.superKey || "", ...(E.noSuper ? { disabled: "" } : {}) });
+  sup.value = E.superDescription;
+  const f2 = el("div", { class: "form" });
+  f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
+    el("div", {}, sup, el("div", { class: "hint", text: E.superEffects.length
+      ? "Leave empty and the card says what the super effects do."
+      : "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
+  return f2;
 }
 
 // A form label with an undo button for a free-text field.
@@ -1171,13 +1182,25 @@ S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
 // always on while the item is held; one with seconds is a bonus for that long
 // after its trigger. The card's {0}, {1}... are each row's numbers in order (a
 // timed row takes two: its amount, then its seconds).
-function effectsForm(E, blank) {
-  const box = el("div");
-  E.effects = E.effects || [];
-  box.append(el("div", { class: "sect", text: `What it does (${E.effects.length})` }));
-  box.append(el("div", { class: "hint", style: "margin-bottom:6px", text: blank
+// With `key` "superEffects" it is the item's super effect instead (the item
+// kind's `super_effects`): the same rows, switched on by the game once the
+// hero's collection of the item's rarity is complete.
+function effectsForm(E, blank, key = "effects") {
+  const box = el("div"), sup = key === "superEffects";
+  const list = E[key] = E[key] || [];
+  box.append(el("div", { class: "sect", text: sup ? `Super effect (${list.length})` : `What it does (${list.length})` }));
+  box.append(el("div", { class: "hint", style: "margin-bottom:6px", text: sup
+    ? "Bonuses the item gives once the hero's collection of its rarity is complete, as the game's own super effects do. They replace the base item's super effect."
+    : blank
     ? "Add bonuses. Each one is written by rsmm from the stat and numbers you give, not copied from another item."
     : "Bonuses added to the copy. With any here, the base item's own effect is cut (its look stays) unless you keep it below." }));
+  const rarity = E.rarity || (blank ? "Common" : S.item.rarity);
+  if (sup && list.length && !["Common", "Rare", "Epic"].includes(rarity)) box.append(el("div", { class: "hint bad", style: "margin-bottom:6px",
+    text: `A ${rarity} item never gets its super effect: the game counts a collection only for Common, Rare and Epic items. Pick one of those rarities.` }));
+  if (sup && E.noSuper) {
+    box.append(el("div", { class: "muted", text: "“No super effect” is on below." }));
+    return box;
+  }
   const used = S.stats.filter(st => st.used).map(st => st.name), rest = S.stats.filter(st => !st.used).map(st => st.name);
   const statSel = (value, onpick) => {
     const sel = el("select", {},
@@ -1188,7 +1211,7 @@ function effectsForm(E, blank) {
     return sel;
   };
   const changed = () => { saveDraft(); renderView(); refresh(); };
-  E.effects.forEach((x, i) => {
+  list.forEach((x, i) => {
     const timed = x.seconds !== undefined;
     const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
     const when = el("select", {},
@@ -1233,12 +1256,13 @@ function effectsForm(E, blank) {
       flag("refresh", true, "Each trigger restarts the full time")));
     box.append(el("div", { class: "effect" },
       el("div", { class: "effhead" }, el("b", { text: `Effect ${i + 1}` }),
-        removeBtn(() => { E.effects.splice(i, 1); changed(); })), f));
+        removeBtn(() => { list.splice(i, 1); changed(); })), f));
   });
-  const add = (row, text) => el("button", { type: "button", onclick: () => { E.effects.push(row()); changed(); } }, text);
+  const add = (row, text) => el("button", { type: "button", onclick: () => { list.push(row()); changed(); } }, text);
   box.append(el("div", { class: "addfx" },
     add(() => ({ stat: "Crit chance", amount: 0.1 }), "+ Always-on bonus"),
     add(() => ({ stat: "Attack power", amount: 0.2, seconds: 5, on: "dash" }), "+ Bonus after a trigger")));
+  if (sup) return box;
   if (!blank && E.effects.length) {
     const keep = E.effects.some(x => x.keep_base_effect);
     box.append(featureToggle("Keep the base item's own effect", "The copy also does what " + S.item.name + " does, besides the bonuses above.",
@@ -1255,6 +1279,8 @@ function paintAuto() {
   if (!S.item) return;
   const it = S.item, E = S.itemEdit, auto = autoText(it), card = it.card || {};
   if (desc) desc.placeholder = auto ? "Written from the effects:\n" + auto : (card.description && card.description.text) || it.description || "";
+  const sup = document.getElementById("itemsuper"), autoSup = autoSuperText(it);
+  if (sup) sup.placeholder = autoSup ? "Written from the super effects:\n" + autoSup : it.superText || it.superKey || "";
   if (!hint) return;
   hint.textContent = "";
   if (!auto) return;
@@ -1387,7 +1413,7 @@ function gameCard(it, E, card) {
   const d = card.description, sp = card.super;
   const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
   if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(cardEntries("description", d)))), F.body, 19));
-  const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
+  const supText = E.noSuper ? "" : (E.superDescription || autoSuperText(it) || (sp && sp.text) || "");
   if (supText) {
     box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
       markup(supText, entryFill(cardEntries("super", sp)))), F.body, 18));
@@ -1422,6 +1448,11 @@ function autoText(it) {
   const b = S.itemBuilt;
   return (S.itemEdit.effects || []).length && b && b.for === it.id ? b.autoText || "" : "";
 }
+// The super text the item kind writes from the super effects when it is empty.
+function autoSuperText(it) {
+  const b = S.itemBuilt;
+  return (S.itemEdit.superEffects || []).length && b && b.for === it.id ? b.autoSuper || "" : "";
+}
 // The same card in plain CSS, for when the game's textures are not readable.
 function cssCard(it, E, card) {
   const d = card.description, sp = card.super;
@@ -1430,7 +1461,7 @@ function cssCard(it, E, card) {
     el("div", {}, el("div", { class: "ct", text: itemName(E, it) }), el("div", { class: "cr", text: E.rarity || it.rarity })));
   const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
   if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(cardEntries("description", d)))));
-  const supText = E.noSuper ? "" : (E.superDescription || (sp && sp.text) || "");
+  const supText = E.noSuper ? "" : (E.superDescription || autoSuperText(it) || (sp && sp.text) || "");
   if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(cardEntries("super", sp)))));
   return box;
 }
@@ -3410,7 +3441,8 @@ function editPayload() {
         shadowed: S.item.values.find(r => r.label === label).shadowed })),
       ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}),
       ...(E.mode === "clone" && E.sharedIdentity ? { sharedIdentity: true } : {}),
-      ...((E.effects || []).length ? { effects: E.effects } : {}) };
+      ...((E.effects || []).length ? { effects: E.effects } : {}),
+      ...((E.superEffects || []).length ? { superEffects: E.superEffects } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;

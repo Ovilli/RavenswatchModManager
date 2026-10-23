@@ -241,6 +241,64 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
     return ef.to_bytes()
 
 
+#: Part-name suffix of a super effect's parts (" Super Effect", " Super Effect
+#: 2"...): the name marks their modifiers as the super effect's
+#: (``item_modifier.list_modifiers``), and keeps them apart from ``effects``'.
+SUPER_SUFFIX = " Super Effect"
+#: The rarities the model counts a collection for (its Super Effect Target
+#: Count Selector tests Is Common / Is Rare / Is Epic): an item of any other
+#: rarity never switches its super effect on.
+SUPER_RARITIES = ("Common", "Rare", "Epic")
+
+
+def apply_super_effects(ent: bytes, item_id: str, effects: list[Effect], *,
+                        read=None) -> bytes:
+    """``ent`` (an item entity, already renamed to ``item_id``) with ``effects``
+    as its SUPER effect: what it does once the hero's collection of its rarity
+    is complete, when the model switches the item's ``Child State Super
+    Effect`` on. They are built as ``effects`` are, run from that state instead
+    of the equipped one, and numbered on the super text (``{0}``, ``{1}``...).
+    The base's own super effect is cut. An item without the model's super slots
+    (a blank item, a copy of a legendary) gets them, its text read from
+    ``<item_id>_SuperEffect``."""
+    from . import entity_check as CK
+    from . import item_frame as F
+    read = read or CK._corpus_reader
+    ef = EntityFile(ent, item_id)
+    slots: list[tuple[str, bool]] = []
+    try:
+        state = _override_of(ef, F.SUPER_STATE)
+        has_text = _override_of(ef, F.SUPER_FORMAT) is not None
+        if state is None or not has_text:
+            F.add_super(P.PartWriter(ef, f"super:{item_id}"), read, f"{item_id}_SuperEffect",
+                        state=state is None, text=not has_text)
+            state = state or F.SUPER_STATE
+        f = next(x for x in EF.fields(ef.component(state)) if x.name == "while_active")
+        for i in reversed(range(len(f.items))):         # the base's own super effect
+            ef.remove_ref(state, "while_active", i)
+        ef.clear_format_slots(F.SUPER_FORMAT)
+        for i, effect in enumerate(effects):
+            w = P.PartWriter(ef, f"super:{item_id}:{i}")
+            sfx = SUPER_SUFFIX if i == 0 else f"{SUPER_SUFFIX} {i + 1}"
+            if effect.timed:
+                _add_timed(w, effect, sfx, state, read, slots)
+            else:
+                _add_passive(w, effect, sfx, state, slots)
+        for value, percent in slots:
+            ef.add_format_slot(F.SUPER_FORMAT, value, percent=percent)
+    except (EntityEditError, P.PartError, F.FrameError) as e:
+        raise ItemEffectError(f"super effect: {e}") from e
+    return ef.to_bytes()
+
+
+def _override_of(ef: EntityFile, model_part: str) -> str | None:
+    """The item's part overriding the model's ``model_part``, or None."""
+    for c in ef.graph().components:
+        if c.override is not None and c.override.path.endswith("\\" + model_part):
+            return c.name
+    return None
+
+
 _MOD = "oCEntityCpntModifierSettings"
 _VALUE = "oCEntityCpntValueSettings"
 _STATE = "oCEntityCpntStateSettings"

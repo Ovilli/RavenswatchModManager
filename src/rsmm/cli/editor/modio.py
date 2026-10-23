@@ -516,7 +516,7 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict],
 
 _ITEM_KEYS = {"kind", "id", "base", "mode", "name", "display_name", "description", "rarity",
               "icon", "value_patches", "stats", "super_description", "steps", "super_effect",
-              "unique_identity", "effect", "effects"}
+              "unique_identity", "effect", "effects", "super_effects"}
 _TALENT_KEYS = {"kind", "id", "hero", "file", "value_patches", "union_patches", "stats"}
 #: The talent builder's block (``<prefix>_builder``, see ``content.talent_defs``).
 _BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale", "on_hit"}
@@ -607,6 +607,7 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
          "noSuper": f.get("super_effect") is False,
          "sharedIdentity": f.get("unique_identity") is False,
          "effects": effects,
+         "superEffects": [x for x in f.get("super_effects") or [] if isinstance(x, dict)],
          "autoDesc": False, "autoSuper": False, "textMiss": []}
     for vp in f.get("value_patches") or []:
         label = vp.get("label") if isinstance(vp, dict) else vp[0]
@@ -638,6 +639,8 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
         payload["noSuper"] = True
     if E["effects"]:
         payload["effects"] = E["effects"]
+    if E["superEffects"]:
+        payload["superEffects"] = E["superEffects"]
     if E["sharedIdentity"] and mode == "clone":
         payload["sharedIdentity"] = True
     return base, E, payload
