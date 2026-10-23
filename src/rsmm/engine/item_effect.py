@@ -311,21 +311,31 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
         "list_2": [], "on_exit?": [], "disables_while_active?": [], "on_enter?": [],
         "while_active": []}, flags=0x10001)
 
-    trig = TRIGGERS[effect.on]
+    listener = add_listener(w, effect.on, sfx, w.link(state, _STATE), read=read)
+    w.ef.add_ref(equipped, "while_active", listener)
+    w.ef.add_ref(equipped, "while_active", tester)
+    slots += [(amount, effect.percent), (seconds, False)]
+    return timer
+
+
+def add_listener(w: P.PartWriter, on: str, sfx: str, fires: P.Link, *, read=None,
+                 alive: bool = True, group: str | None = None) -> str:
+    """Write the listener for trigger ``on`` (``TRIGGERS``), firing ``fires``;
+    its name. It listens only while a state holding it in ``while_active`` is on
+    (the item's equipped state, a talent's owned state). ``alive`` keeps
+    damage_taken's "hero is alive" check, as Increase_Shield has it (a talent
+    leaves it out, as Romeo's Panache does)."""
+    trig = TRIGGERS[on]
     listener = trig.listener + sfx
-    fires = w.link(state, _STATE)
-    if trig.target:                                   # damage_taken: only while alive
+    if trig.target and alive:                         # damage_taken: only while alive
         fires = _alive_check(w, trig.target + sfx, listener, fires, sfx, read)
     settings = w.obj("oCGameEventListenerSettings", struct.pack("<I", trig.event)
                      + w.obj("oCCustomFlagFilter", w.flags(list(trig.include))
                              + w.flags(list(trig.exclude))) + trig.tail)
     w.add(_LISTENER, listener, {"listener": settings, **{
         s: (fires if s in trig.slots else _NONE) for s in ("ref_3", "ref_4", "ref_5")}},
-        flags=trig.flags, group=trig.group)
-    w.ef.add_ref(equipped, "while_active", listener)
-    w.ef.add_ref(equipped, "while_active", tester)
-    slots += [(amount, effect.percent), (seconds, False)]
-    return timer
+        flags=trig.flags, group=trig.group if group is None else group)
+    return listener
 
 
 #: The Timer class version whose Serialize writes the trailing picker (corpus:
@@ -443,40 +453,13 @@ def _cooldown_display(ef: EntityFile, timer: str, seconds: float) -> None:
     ef.source_value(_ITEM_DATA, n, timer, accessor=EntityFile.TIMER_ELAPSED)
 
 
-#: The accessor every shipped card slot reads a Value through.
-_SLOT_READS_VALUE = 0x0fd2c964
-
-
-def _first_slot(ef: EntityFile, value: str, percent: bool) -> None:
-    """Write the card's first slot (``add_format_slot``'s layout) reading the
-    Value ``value``, for a card that has no slot to copy."""
-    w = P.PartWriter(ef, "")
-    picker = w.obj(P.VALUE_PICKER, b"\x01\x00" + ef._picker(value)
-                   + struct.pack("<I", _SLOT_READS_VALUE)
-                   + w.obj(P.UNION, struct.pack("<II", P.F32, 0) + bytes(4)))
-    slot = w.obj("oCDynamicTypePicker", struct.pack("<I", 0) + picker
-                 + struct.pack("<I", 1 if percent else 0))
-    c = ef.component(_DESCRIPTION)
-    _found, count_f = ef._format_slots(c)
-    p = ef.objects[c.index - 1]
-    end = len(p) - len(c.body) + count_f.offset + count_f.size
-    p[end:end] = slot
-    struct.pack_into("<I", p, end - 4, 1)
-
-
 def _card_slots(ef: EntityFile, slots: list[tuple[str, bool]]) -> None:
-    """Make the description's ``{0}``, ``{1}``... the given Values, in order. The
-    new slots are copies of an existing one, so they are added before the
-    base's own are dropped."""
+    """Make the description's ``{0}``, ``{1}``... the given Values, in order: the
+    new slots are added after the base's own, which are then dropped."""
     c = ef.component(_DESCRIPTION)
     old = len(ef._format_slots(c)[0])
-    for n, (value, percent) in enumerate(slots):
-        try:
-            ef.add_format_slot(_DESCRIPTION, value, percent=percent)
-        except EntityEditError as e:
-            if n or "no String Format slot" not in str(e):
-                raise
-            _first_slot(ef, value, percent)         # a written frame has none to copy
+    for value, percent in slots:
+        ef.add_format_slot(_DESCRIPTION, value, percent=percent)
     if not old:
         return
     c = ef.component(_DESCRIPTION)

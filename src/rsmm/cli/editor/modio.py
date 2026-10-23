@@ -553,7 +553,7 @@ def _builder(f: dict, E: dict) -> None:
     for e in f.get("add_stats") or []:
         a = {"stat": str(e["stat"]), "values": _tiers4(e.get("values"), str(e["stat"])),
              "percent": bool(e.get("percent", True)), "line": _LOADED_LINE}
-        for k in ("during", "after", "seconds", "cooldown", "next"):
+        for k in ("during", "after", "on", "seconds", "cooldown", "next"):
             if e.get(k) is not None:
                 a[k] = e[k]
         E["addStats"].setdefault(str(e["talent"]), []).append(a)

@@ -662,7 +662,7 @@ def _add_stat_info(files: list[bytes]):
         for i in range(len(files)):
             graph, ef, during, after = file_info(i)
             try:
-                _state, _sel, fmt = TA.talent_parts(graph, source)
+                _ctl, _state, fmt = TA.card_parts(graph, source)
             except TA.AddStatError as e:
                 why = why or str(e)
                 continue
@@ -672,10 +672,10 @@ def _add_stat_info(files: list[bytes]):
             # the old effect, so the kind refuses it (talents._home).
             overridden = i > 0 and f"Skill Controller {source}".encode() in files[0]
             return {"ok": True, "why": "", "nextSlot": slots, "during": during,
-                    "after": after, "rebuild": not overridden,
+                    "after": after, "on": talent_triggers(), "rebuild": not overridden,
                     "rebuildWhy": ("it is shared with another hero's file, and turning it "
                                    "off there is not supported yet") if overridden else ""}
-        return {"ok": False, "why": why, "nextSlot": None, "during": [], "after": []}
+        return {"ok": False, "why": why, "nextSlot": None, "during": [], "after": [], "on": {}}
     return info
 
 
@@ -1119,6 +1119,14 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         fields["steps"] = steps
 
 
+def talent_triggers() -> dict[str, str]:
+    """``{trigger: card wording}`` of the game events a talent's bonus can start
+    from (``add_stats`` ``on``), worded as the item editor words them."""
+    from rsmm.engine import item_effect as IE
+    from rsmm.engine import talent_add_stat as TA
+    return {t: IE.TRIGGERS[t].text for t in TA.TRIGGERS}
+
+
 def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     """``(kind, id, fields)`` for a talent request, validated.
 
@@ -1126,7 +1134,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
     ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
     stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
-    during?, after?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
+    during?, after?, on?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
     ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
     talent builder) and ``include`` = ``[{talent, from, hero?}]`` (owning
     ``talent`` also runs ``from``'s effect, ``hero``'s when given); only changed
@@ -1197,28 +1205,32 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         after = row.get("after") or None
         if after is not None and str(after).upper() not in abilities:
             raise EditorError(f"{talent}: unknown ability {after!r}")
-        if during and after:
-            raise EditorError(f"{talent} {stat}: choose 'during' or 'after', not both")
+        on = row.get("on") or None
+        if on is not None and on not in talent_triggers():
+            raise EditorError(f"{talent}: unknown trigger {on!r}")
+        if sum(bool(x) for x in (during, after, on)) > 1:
+            raise EditorError(f"{talent} {stat}: choose one of 'during', 'after' or a trigger")
+        starts = after or on
         seconds = None
-        if after:
+        if starts:
             seconds = float(_num(row.get("seconds"), f"{talent} {stat} seconds"))
             if seconds <= 0:
                 raise EditorError(f"{talent} {stat}: how many seconds it lasts must be above 0")
         cooldown = None
         if row.get("cooldown") not in (None, ""):
-            if not after:
+            if not starts:
                 raise EditorError(f"{talent} {stat}: a cooldown only limits 'For a while after'")
             cooldown = float(_num(row.get("cooldown"), f"{talent} {stat} cooldown"))
             if cooldown <= 0:
                 raise EditorError(f"{talent} {stat}: the cooldown must be above 0 seconds")
         nxt = row.get("next") or None
         if nxt is not None:
-            if not after:
+            if not starts:
                 raise EditorError(f"{talent} {stat}: 'your next ...' only ends "
                                   "a 'For a while after'")
             if str(nxt).upper() not in abilities:
                 raise EditorError(f"{talent}: unknown ability {nxt!r}")
-            if str(nxt).upper() == str(after).upper():
+            if after and str(nxt).upper() == str(after).upper():
                 raise EditorError(f"{talent} {stat}: the next ability must differ from the one "
                                   "that starts it")
         added.append({"talent": talent, "stat": stat,
@@ -1226,6 +1238,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
                       **({} if row.get("percent", True) else {"percent": False}),
                       **({"during": str(during).upper()} if during else {}),
                       **({"after": str(after).upper(), "seconds": seconds} if after else {}),
+                      **({"on": on, "seconds": seconds} if on else {}),
                       **({"cooldown": cooldown} if cooldown is not None else {}),
                       **({"next": str(nxt).upper()} if nxt else {})})
     rebuild = req.get("rebuild") or []

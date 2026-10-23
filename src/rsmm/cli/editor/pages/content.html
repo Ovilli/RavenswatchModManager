@@ -248,6 +248,7 @@ details.allv > summary { cursor: pointer; font-weight: 600; }
 .tb-promo button { flex: none; }
 .tb-rowbtn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .tb-rowbtn.on > button:first-child { border-color: var(--accentline); color: var(--accentink); }
+.tb-does { margin: 2px 0 8px; padding-left: 18px; }
 .tbuild h3 { margin: 18px 0 6px; font-size: 15px; }
 .tbuild .thead .linkbtn { font-size: 13px; }
 .tb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
@@ -1681,13 +1682,20 @@ const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", 
 // used up by the `next` use of another ability).
 function statLine(a, n) {
   const line = statPhrase(a.stat, n, a.percent !== false);
+  // "after using #DEFENSE@" or a game event's own wording ("after taking damage").
+  const since = a.after ? `after using #${a.after}@` : a.on ? triggerWords(a.on) : "";
   const lead = a.during ? `During #${a.during}@`
-    : a.after && a.next ? `Within #${fmt(a.seconds)}@ second(s) after using #${a.after}@, your next #${a.next}@ gets`
-    : a.after ? `For #${fmt(a.seconds)}@ second(s) after using #${a.after}@` : "";
-  const sep = a.after && a.next ? " " : ", ";
-  const out = lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}${sep}${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
-  return a.after && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
+    : since && a.next ? `Within #${fmt(a.seconds)}@ second(s) ${since}, your next #${a.next}@ gets`
+    : since ? `For #${fmt(a.seconds)}@ second(s) ${since}` : "";
+  const sep = since && a.next ? " " : ", ";
+  // "…, damage +30%" reads on; a named stat keeps its own capitals ("Crit Chance").
+  const out = lead ? line.replace(/^• (Damage|Counts)?/, (_m, w) => `• ${lead}${sep}${w ? w.toLowerCase() : ""}`) : line;
+  return since && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
 }
+// Game events a talent's bonus can start from (`on`), with the item editor's
+// wording ("After taking damage"); the server sends them with each card.
+const TRIGGER_TEXT = {};
+const triggerWords = on => (TRIGGER_TEXT[on] || on.replace(/_/g, " ")).replace(/^\w/, ch => ch.toLowerCase());
 function statPhrase(stat, n, percent) {
   const num = "{" + n + "}" + (percent ? "%" : "");
   const tally = (S.stats.find(s => s.name === stat) || {}).tally;
@@ -1749,11 +1757,12 @@ function statSentence(a) {
   const v = a.values[0];
   let when = "while you own the talent";
   if (a.during) when = "while using " + a.during;
-  if (a.after) when = `for ${fmt(a.seconds ?? 3)} s after ${a.after}` + (a.next ? `, until you use ${a.next}` : "")
-    + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "");
+  if (a.after || a.on) when = `for ${fmt(a.seconds ?? 3)} s ${a.after ? "after " + a.after : triggerWords(a.on)}`
+    + (a.next ? `, until you use ${a.next}` : "") + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "");
   return `${a.stat} ${v < 0 ? "" : "+"}${asShown(v, a.percent !== false)} ${when} (Common card; each rarity uses its own number).`;
 }
-const statBlockTitle = a => a.after ? (a.next ? "Your next ability" : "For a few seconds after an ability")
+const statBlockTitle = a => a.on ? "After something happens"
+  : a.after ? (a.next ? "Your next ability" : "For a few seconds after an ability")
   : a.during ? "While using an ability" : "Boost a stat";
 // A new block's starting numbers: a modest bonus that grows with rarity.
 const STARTER = () => [0.1, 0.15, 0.2, 0.25];
@@ -1764,6 +1773,7 @@ const STARTER = () => [0.1, 0.15, 0.2, 0.25];
 function addedStats(c, redraw, desc) {
   const E = S.talentEdit, box = el("div", { class: "tnums" });
   const info = c.addStat || { ok: false, why: "" };
+  Object.assign(TRIGGER_TEXT, info.on || {});
   if (!info.ok) {
     box.append(el("div", { class: "tnote", text: "A new stat can't be added to this card: " + info.why }));
     return box;
@@ -1820,23 +1830,26 @@ function addedStats(c, redraw, desc) {
     const when = el("select", { "aria-label": "When it applies" },
       el("option", { value: "", text: "Always" }),
       ...(info.during || []).map(ab => el("option", { value: "during:" + ab, text: "During " + ab })),
-      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })));
-    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : "";
+      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })),
+      ...(Object.keys(info.on || {}).length ? [el("optgroup", { label: "For a while after something happens" },
+        ...Object.entries(info.on).map(([t, text]) => el("option", { value: "on:" + t, text })))] : []));
+    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : a.on ? "on:" + a.on : "";
     const secs = el("input", { type: "number", step: "any", min: "0", value: fmt(a.seconds ?? 3),
       "aria-label": "Seconds", class: "secs" });
-    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting on each use");
-    secsBox.hidden = !a.after;
+    const timed = () => !!(a.after || a.on);
+    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting each time");
+    secsBox.hidden = !timed();
     // Empty = every use restarts it; a number = at most once every that many seconds.
     const cd = el("input", { type: "number", step: "any", min: "0", value: a.cooldown > 0 ? fmt(a.cooldown) : "",
       placeholder: "every use", "aria-label": "Cooldown seconds", class: "secs" });
     const cdBox = el("label", { class: "tiny addpct" }, "At most once every", cd, "second(s)");
-    cdBox.hidden = !a.after;
+    cdBox.hidden = !timed();
     // "Your next X": the bonus ends once X has been used (X's in-use state ends).
     const nxt = el("select", { "aria-label": "Used up by" }, el("option", { value: "", text: "nothing (lasts the full time)" }),
       ...(info.during || []).map(ab => el("option", { value: ab, text: "the next " + ab })));
     nxt.value = a.next || "";
     const nxtBox = el("label", { class: "tiny addpct" }, "Used up by", nxt);
-    nxtBox.hidden = !a.after;
+    nxtBox.hidden = !timed();
     nxt.onchange = () => { if (nxt.value && nxt.value !== a.after) a.next = nxt.value; else { delete a.next; nxt.value = ""; } save(); };
     cd.oninput = () => {
       const v = Number(cd.value);
@@ -1846,10 +1859,11 @@ function addedStats(c, redraw, desc) {
       const [kind, ab] = when.value.split(":");
       a.during = kind === "during" ? ab : undefined;
       a.after = kind === "after" ? ab : undefined;
-      if (a.after && !(a.seconds > 0)) a.seconds = 3;
-      if (!a.after) delete a.cooldown;
-      if (!a.after || a.next === a.after) { delete a.next; nxt.value = ""; }
-      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !a.after;
+      a.on = kind === "on" ? ab : undefined;
+      if (timed() && !(a.seconds > 0)) a.seconds = 3;
+      if (!timed()) delete a.cooldown;
+      if (!timed() || (a.after && a.next === a.after)) { delete a.next; nxt.value = ""; }
+      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !timed();
       save();
       renderView();   // the block's name follows its timing
     };
@@ -1858,8 +1872,8 @@ function addedStats(c, redraw, desc) {
       if (secs.value !== "" && v > 0) { a.seconds = v; save(); }
     };
     const timing = blockField("Timing", secsBox, cdBox, nxtBox);
-    timing.hidden = !a.after;
-    when.addEventListener("change", () => { timing.hidden = !a.after; });
+    timing.hidden = !timed();
+    when.addEventListener("change", () => { timing.hidden = !timed(); });
     const card = blockCard(statBlockTitle(a), () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
       blockField("Stat", picker.el),
       blockField("How much", nums),
@@ -2091,6 +2105,7 @@ const BLOCKS = [
   { id: "during", title: "While using an ability", blurb: "e.g. ATTACK damage +40% during DEFENSE.", needs: "during" },
   { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
   { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
+  { id: "event", title: "After something happens", blurb: "e.g. +30% damage for 4 s after taking damage, when night falls, or after a reroll.", needs: "on" },
   { id: "bigger", title: "Make an ability bigger", blurb: "A wider, longer or larger area: +30% POWER radius." },
   { id: "status", title: "Hits apply a status", blurb: "e.g. POWER's hits set enemies on fire (Ignite), chill or weaken them." },
   { id: "borrow", title: "Borrow a talent's effect", blurb: "Also run another talent's effect, even another hero's." },
@@ -2357,7 +2372,8 @@ function builderView() {
   const v = el("div", { class: "tpage tbuild" });
   const back = el("button", { type: "button", class: "linkbtn", onclick: () => { delete E.build; renderView(); refresh(); } }, "← All talent cards");
   v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
-    el("div", { class: "tname" }, back, el("h2", { text: "Custom talent for " + S.hero.replace(/_/g, " ") }))));
+    el("div", { class: "tname" }, back, el("h2", { text: (E.build && !isRebuilt(T.cards.find(x => x.source === E.build) || {})
+      ? "Change a talent of " : "Custom talent for ") + S.hero.replace(/_/g, " ") }))));
   const c = T.cards.find(x => x.source === E.build);
   const ideaRef = {};
   if (!c) {
@@ -2412,7 +2428,9 @@ function builderView() {
   // 2. Name and look.
   const up = (E.cards[c.source] || {}).iconUpload;
   right.append(el("h3", { text: "2. Name it" }),
-    el("div", { class: "tb-replacing tiny muted", text: "Replacing " + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "") }),
+    el("div", { class: "tb-replacing tiny muted", text: (isRebuilt(c)
+      ? "Replacing " : "Adding to ") + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "")
+      + (isRebuilt(c) ? "" : ": what it already does stays. Switch on “Start from scratch” below to replace it.") }),
     nameIn, descIn,
     el("div", { class: "tb-iconrow" }, c.icon ? uploadButton(up ? "Replace icon…" : "Use your own icon…", 128, setIcon) : el("span"),
       up ? el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again") : el("span"),
@@ -2443,8 +2461,10 @@ function builderView() {
   // Before the first block the palette is the next step; after it, it waits
   // behind one button so the blocks being filled in stay the focus.
   const palette = el("div", { class: "tb-palette" });
+  Object.assign(TRIGGER_TEXT, info.on || {});
   for (const blk of BLOCKS) {
-    const list = blk.needs ? info[blk.needs] || [] : [true];
+    const need = blk.needs ? info[blk.needs] || [] : [true];
+    const list = Array.isArray(need) ? need : Object.keys(need);
     const ok = info.ok && list.length;
     palette.append(el("button", { type: "button", class: "tb-block", ...(ok ? {} : { disabled: "" }),
       title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
@@ -2464,6 +2484,7 @@ function builderView() {
         const a = { stat: "", values: STARTER(), percent: true };
         if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
         if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
+        if (blk.id === "event") { a.on = "damage_taken" in (info.on || {}) ? "damage_taken" : Object.keys(info.on)[0]; a.seconds = 4; }
         if (blk.id === "next") {
           const nxt = (info.during || []).filter(x => x !== a.after);
           if (nxt.length) a.next = nxt.includes("ATTACK") ? "ATTACK" : nxt[0];
@@ -2690,30 +2711,48 @@ function talentRow(c) {
     nameIn, descIn);
   if (isRebuilt(c)) side.append(descWarn);
   syncWarn();
-  const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
-  // Replacing a talent happens in the builder; here, a way in (and out).
+  // What a card DOES is changed in one place, the builder; here, what the
+  // changes so far do, and the ways in (and back out of a replacement).
   const info = c.addStat || { ok: false };
   const canBuild = info.ok && info.rebuild !== false;
+  const does = blockSummary(c);
+  if (does.length) side.append(el("div", { class: "sect sectrow" },
+    el("span", { text: isRebuilt(c) ? "What the new talent does" : "What it also does" })),
+    el("ul", { class: "tb-does tiny" }, ...does.map(t => el("li", { text: t }))));
   side.append(el("div", { class: "tb-rowbtn" + (isRebuilt(c) ? " on" : "") },
-    el("button", { type: "button", ...(canBuild ? {} : { disabled: "" }),
-      title: canBuild ? "" : "Can't be replaced: " + ((info.ok ? info.rebuildWhy : info.why) || "not supported"),
+    isRebuilt(c) || does.length || info.ok
+      ? el("button", { type: "button", ...(info.ok ? {} : { disabled: "" }),
+        onclick: () => { E.build = c.source; renderView(); refresh(); } },
+        isRebuilt(c) ? "Custom talent: open in the builder →" : does.length ? "Change what it does →" : "Add to what it does →")
+      : el("span"),
+    !isRebuilt(c) && canBuild ? el("button", { type: "button", class: "linkbtn",
       onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
-    isRebuilt(c) ? "Custom talent: open in the builder →" : "Replace with a custom talent →"),
+      "Replace with a custom talent") : el("span"),
     isRebuilt(c) ? el("button", { type: "button", class: "linkbtn", onclick: () => {
       delete E.rebuild[c.source];
       if (!E.cards[c.source]?.name) delete E.cards[c.source];
       renderView(); refresh();
     } }, "Turn back into " + (c.name || c.source)) : el("span")));
-  side.append(includeControl(c, redraw));
+  // Written out, not in a tooltip: a reason only on hover is never seen on touch.
+  if (!info.ok) side.append(el("div", { class: "tiny muted", text: "Its effect can't be changed: " + (info.why || "not supported") }));
   if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
     talentNumbers(c, redraw));
-  side.append(el("div", { class: "sect sectrow" }, el("span", { text: isRebuilt(c) ? "What the new talent does" : "Added stats" })),
-    addedStats(c, redraw, desc));
   row.append(preview, side);
   TPREV.add(preview, paint);
   row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
   row.classList.toggle("rebuilt", isRebuilt(c));
   return row;
+}
+
+// One line per thing the builder makes this card do, for the card list.
+function blockSummary(c) {
+  const E = S.talentEdit, out = [];
+  for (const a of (E.addStats || {})[c.source] || []) if (a.stat) out.push(statSentence(a).replace(/ \(Common card.*\)\.$/, ""));
+  for (const r of (E.scale || {})[c.source] || []) if (r.node) out.push(`${r.ability || "An ability"}: ${scaleWord(r.node)} +${asShown(r.values[0], true)}`);
+  for (const r of (E.onHit || {})[c.source] || []) if (r.damage) out.push(`${r.ability || "An ability"}'s hits apply ${r.status}`);
+  const inc = (E.include || {})[c.source];
+  if (inc) out.push("Also runs " + inc.replace("\u0000", "'s ") );
+  return out;
 }
 
 // Card previews are the expensive part of the Talents tab (every letter is a
@@ -3309,8 +3348,8 @@ function editPayload() {
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
     addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
       .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
-        ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
-          ...(a.next ? { next: a.next } : {}) } : {}) }))),
+        ...(a.after || a.on ? { ...(a.after ? { after: a.after } : { on: a.on }), seconds: a.seconds,
+          ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}), ...(a.next ? { next: a.next } : {}) } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}),
     onHit: Object.entries(E.onHit || {}).flatMap(([talent, list]) => list.filter(r => r.damage && r.status)
       .map(r => ({ talent, damage: r.damage, file: r.file, status: r.status }))),

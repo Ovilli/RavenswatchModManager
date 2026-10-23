@@ -537,7 +537,16 @@ the talent's own State instead of swapping that State for a copy, so talents who
 State already does something keep doing it. The parts are the proven ones; this
 exact arrangement has not been played yet.
 
-Ultimates cannot take a stat this way: they have no State that marks them as owned.
+Every part `add_stats`, `scale` and `on_hit` add is **written** into the talent's own
+file, not copied out of another hero's. They used to be copies (Beowulf's modifier,
+Aladdin's selector, Romeo's gate, Melusine's and Carmilla's nodes), so a talent mod
+depended on those heroes' files staying as they were. The written parts are the same
+shapes, apart from what they point at. The per-rarity number is written too, so a
+talent whose own numbers are all whole counts can take a decimal bonus. Only the
+status that `on_hit` puts on enemies is still copied from the game's own status.
+
+Ultimates cannot take a stat this way: their card has no rarity, and most have no
+State that marks them as owned.
 
 **Talents two heroes share.** Romeo and Juliet build their shared talents (Love
 Shield, Ignite, …) in one file both inherit, `Hero_Juliet/Hero_Romeo_Juliet_Common`;
@@ -549,8 +558,8 @@ pointing at the old effect.
 
 <Badge text="Tested in game" variant="success" /> **Only while an ability is in use:** add `during = "DEFENSE"` (or `ATTACK`, `POWER`,
 `SPECIAL`, `TRAIT`, `DASH`) to an entry, e.g. "During #DEFENSE@, #ATTACK@ damage
-&+{0}%~". The bonus then reads a copy of a selector the game ships ("ability in use
-→ the number, else 0"). The ability is found through the hero's controller for that
+&+{0}%~". The bonus then reads a selector shaped like the 59 the game ships
+("ability in use → the number, else 0"). The ability is found through the hero's controller for that
 button, never by name. A hero whose ability only signals its start (Merlin's POWER,
 DEFENSE and TRAIT) cannot use `during` for it; the editor leaves those out.
 
@@ -573,7 +582,7 @@ add_stats = [
 <Badge text="Tested in game" variant="success" /> **At most once every N seconds:** add `cooldown = 8` to an
 `after` entry and a use only restarts the window when the last restart was at least
 8 seconds ago; uses in between do nothing. This is how Romeo's **Love Shield** limits
-itself ("every 3 s max"), and the gate is a copy of his: the ability fires a tester
+itself ("every 3 s max"), and the gate is built like his: the ability fires a tester
 that passes only while a new Cooldown State is off, and that State then restarts the
 window and switches itself off after `cooldown` seconds. In the editor, fill in **At
 most once every … second(s)** under the "Lasts" box; leave it empty for every use.
@@ -595,6 +604,35 @@ ones `during` takes) and must differ from `after`. In the editor, pick it under
 ```toml
 add_stats = [
   { talent = "Trait Fire", stat = "Attack power", values = 0.5, after = "DEFENSE", seconds = 4, next = "ATTACK" },
+]
+```
+
+<Badge text="Not yet tested in game" variant="caution" /> **For a while after something happens:** add
+`on = "damage_taken", seconds = 4` to an entry and the bonus lasts 4 seconds each time
+the hero takes damage, e.g. "For #4@ second(s) after taking damage, damage &+{0}%~".
+It is the same window as `after`, started by a game event instead of an ability, so
+`cooldown` and `next` work with it too. The events are the ones magical objects react
+to that an ability does not already give:
+
+| `on` | When |
+|---|---|
+| `damage_taken` | the hero takes damage |
+| `ultimate` | the hero uses their ultimate |
+| `day_start`, `night_start` | day or night begins |
+| `talent_picked` | the hero picks a talent |
+| `item_picked_up` | the hero picks up a magical object |
+| `dream_shards_gained` | the hero gains dream shards |
+| `sandman_purchase` | the hero buys from the Sandman |
+| `reroll` | a reroll is used |
+
+The listener is held by the talent's own State, as the game's own talents listen:
+Romeo's **Panache** for damage, Sun Wukong's **Passive Reveal** for day and night.
+In the editor, pick **After something happens** among the blocks, or an event under
+**When**.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Attack power", values = 0.3, on = "damage_taken", seconds = 4, cooldown = 8 },
 ]
 ```
 

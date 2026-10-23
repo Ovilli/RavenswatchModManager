@@ -6,15 +6,15 @@ entity, ``Primary Ability Default Radius`` (4.0) MULTIPLIED by ``1 + extra``,
 where the extra is her Freezing Splash talent's per-rarity number, read from her
 hero file through a get-value node (operator ids read off the game's operation
 dispatch, ``FUN_14074d880``: 0x17af9527 add, 0x17af9539 subtract, 0x17b29be2
-multiply, 0x17b29bec divide). That is the shape copied here, for any number:
+multiply, 0x17b29bec divide). That is the shape written here (``talent_writer``;
+until 2026-10-23 copied from Aladdin, Melusine and Carmilla), for any number:
 
 1. **Factor**, in the file holding the talent: a per-rarity selector holding
-   ``1 + amount``, read only while the talent's owned state is on (a copy of
-   Aladdin's "state active -> number, else" selector, whose else is set to 1),
-   behind a plain value node as Melusine's is.
+   ``1 + amount``, read only while the talent's owned state is on ("state
+   active -> number, else 1"), behind a plain value node as Melusine's is.
 2. **Reader**: when the number lives in another entity of the hero (a caster, a
-   projectile), a copy of Melusine's caster's get-value node reads the factor
-   from the hero's entity.
+   projectile), a get-value node reads the factor from the hero's entity, as
+   Melusine's caster does.
 3. **Scale**: a plain value node ``N`` keeps its name and GUID, so whatever reads
    it still does, and now takes its number from ``N Scaled`` = ``N Base`` (its
    old number) x factor. A multiply operation just gets the factor as one more
@@ -34,19 +34,9 @@ from dataclasses import dataclass
 
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
+from . import entity_parts as P
 from . import talent_add_stat as TA
-from . import talent_values as TV
-
-#: A multiply of a value by a literal 1.0: Carmilla's POWER radius.
-DONOR_MUL_HERO = "Carmilla"
-DONOR_MUL_FILE = "Hero_Carmilla"
-DONOR_MUL = "Primary Ability Radius Operation"
-#: A value node that reads a selector, and the caster's node that reads it.
-DONOR_FACTOR_HERO = "Melusine"
-DONOR_FACTOR_FILE = "Hero_Melusine"
-DONOR_FACTOR = "Skill Power Chill Extra Radius"
-DONOR_GET_FILE = "Hero_Melusine_Power_Caster_Model"
-DONOR_GET = "Owner Skill Power Chill Extra Radius"
+from . import talent_writer as TW
 
 _MUL = 0x17B29BE2
 
@@ -86,69 +76,44 @@ def how_scaled(raw: bytes, node: str) -> str:
     raise RangeError(f"{node!r} is a {c.cls}, not a number")
 
 
-def add_factor(raw: bytes, during_raw: bytes, factor_raw: bytes, *, talent: str, values,
-               tag: str, percent: bool = True, seed: str = "") -> tuple[bytes, Factor]:
+def add_factor(raw: bytes, *, talent: str, values, tag: str, percent: bool = True,
+               seed: str = "") -> tuple[bytes, Factor]:
     """Return the file holding ``talent`` with a factor node (step 1)."""
     amounts = TA.normalise_values(values)
     graph = EG.parse(raw)
-    state, first, fmt = TA.talent_parts(graph, talent)
-    ctl = next(c for c in graph.components if c.name == f"Skill Controller {talent}")
-    sel = TA._float_selector(raw, graph, f"Skill {talent}", ctl.guid, first)
+    ctl, state, fmt = TA.card_parts(graph, talent)
     base = f"Skill {talent} Range {tag}"
     show, mult, cond, fac = f"{base} Selector", f"{base} Factor Selector", \
         f"{base} Condition Selector", f"{base} Factor"
     if any(c.name == fac for c in graph.components):
         raise RangeError(f"talent {talent!r} already scales {tag!r}")
-    group = f"Skill {talent}"
     ef = GE.EntityFile(raw)
-    during, donor = GE.EntityFile(during_raw), GE.EntityFile(factor_raw)
-    seed = f"{seed or talent}:range:{tag}"
+    w = TW.TalentWriter(ef, f"{seed or talent}:range:{tag}", f"Skill {talent}")
     try:
-        ef.clone([sel.name], rename={sel.name: show}, seed=seed + ":show")
-        ef.clone([sel.name], rename={sel.name: mult}, seed=seed + ":mult")
-        dgrp = during.component(TA.DONOR_DURING_SELECTOR).group
-        ef.clone([TA.DONOR_DURING_SELECTOR], rename={TA.DONOR_DURING_SELECTOR: cond},
-                 group={dgrp: group}, source=during, seed=seed + ":cond")
-        ef.set_ref(cond, "entries[0][0]", state.name)        # while the talent is owned
-        ef.set_ref(cond, "entries[0][1]", mult)              # 1 + its amount
-        ef.set_value(cond, "entries[1][1]", 1.0)             # else 1: no change
-        fgrp = donor.component(DONOR_FACTOR).group
-        ef.clone([DONOR_FACTOR], rename={DONOR_FACTOR: fac}, group={fgrp: group},
-                 source=donor, seed=seed + ":factor")
-        ef.set_ref(fac, "value", cond)
+        card = TW.link_to(ef, ctl.name)
+        w.rarity(show, card, amounts)
+        one_plus = w.rarity(mult, card, {t: 1.0 + v for t, v in amounts.items()})
+        # while the talent is owned 1 + its amount, else 1: no change
+        w.value_of(fac, w.when(cond, TW.link_to(ef, state.name), one_plus, 1.0))
         slot = ef.add_format_slot(fmt.name, show, percent=percent) if fmt else None
-        out = ef.to_bytes()
-    except GE.EntityEditError as e:
+        return ef.to_bytes(), Factor(fac, show, slot)
+    except (GE.EntityEditError, P.PartError) as e:
         raise RangeError(f"talent {talent!r}: {e}") from e
-    for name, shift in ((show, 0.0), (mult, 1.0)):
-        tiers = TV.tier_values(out, name)
-        written: dict[int, float] = {}
-        for tier in TA.TIERS:
-            index = tiers[tier][0]
-            if index in written and written[index] != amounts[tier] + shift:
-                raise RangeError(f"talent {talent!r}: its card shares one number between "
-                                 f"rarities (including {tier}); give those rarities the same value")
-            written[index] = amounts[tier] + shift
-        for index, amount in written.items():
-            out = TV.set_union_value(out, name, index, amount)
-    return out, Factor(fac, show, slot)
 
 
-def reader(raw: bytes, get_raw: bytes, *, factor_guid: bytes, factor_label: str,
-           owner_resource: str, name: str, seed: str = "") -> bytes:
+def reader(raw: bytes, *, factor_guid: bytes, factor_label: str, owner_resource: str,
+           name: str, seed: str = "", scope: str = "") -> bytes:
     """Return ``raw`` (another entity of the hero) with a node ``name`` reading
     the factor from the hero's entity (step 2). ``factor_label`` is the factor's
     reference label (``[Value] Hero_X\\Group\\Name``) and ``owner_resource`` the
-    hero entity's resource path (``Heroes\\Hero_X\\Hero_X.entity.ot``)."""
-    ef, donor = GE.EntityFile(raw), GE.EntityFile(get_raw)
-    old = next(r.guid for r in donor.component(DONOR_GET).refs if r.path.endswith(DONOR_FACTOR))
+    hero entity's resource path (``Heroes\\Hero_X\\Hero_X.entity.ot``); ``scope`` the
+    entity's own name, for one whose references do not tell it."""
+    ef = GE.EntityFile(raw, scope)
     try:
-        ef.clone([DONOR_GET], rename={DONOR_GET: name}, source=donor, seed=f"{seed}:get")
-        if ef.retarget_external(name, old, factor_guid, factor_label) != 1:
-            raise RangeError(f"{DONOR_GET!r} no longer reads {DONOR_FACTOR!r}")
-        ef.set_value(name, "template[1]", owner_resource)
+        TW.TalentWriter(ef, f"{seed}:get", "").reader(
+            name, owner_resource, P.Link(factor_guid, factor_label))
         return ef.to_bytes()
-    except GE.EntityEditError as e:
+    except (GE.EntityEditError, P.PartError) as e:
         raise RangeError(str(e)) from e
 
 
@@ -184,13 +149,15 @@ def _activate_before(ef: GE.EntityFile, node: str, new: list[str],
     return lists
 
 
-def scale_node(raw: bytes, mul_raw: bytes, *, node: str, factor: str, seed: str = "",
-               activate: tuple[str, ...] = ()) -> bytes:
+def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
+               activate: tuple[str, ...] = (), scope: str = "") -> bytes:
     """Return ``raw`` with ``node`` multiplied by ``factor``, a node of the same
     file (step 3). ``activate`` are nodes added for it (the reader of step 2):
-    wherever a state switches ``node`` on, they are switched on first."""
+    wherever a state switches ``node`` on, they are switched on first. ``scope``
+    is the entity's own name, for one whose references do not tell it (Snow
+    Queen's FROST names nothing of its own)."""
     kind = how_scaled(raw, node)
-    ef = GE.EntityFile(raw)
+    ef = GE.EntityFile(raw, scope)
     try:
         if kind == "multiply":
             ef.append_operand(node, factor)
@@ -200,17 +167,18 @@ def scale_node(raw: bytes, mul_raw: bytes, *, node: str, factor: str, seed: str 
         base, scaled = f"{node} Base", f"{node} Scaled"
         if any(x.name in (base, scaled) for x in ef.graph().components):
             raise RangeError(f"{node!r} is already scaled")
-        ef.clone([node], rename={node: base}, seed=f"{seed}:{node}:base")
-        donor = GE.EntityFile(mul_raw)
-        ef.clone([DONOR_MUL], rename={DONOR_MUL: scaled},
-                 group={donor.component(DONOR_MUL).group: c.group}, source=donor,
-                 seed=f"{seed}:{node}:scaled")
-        ef.set_ref(scaled, "operations[0]", base)
-        ef.source_value(scaled, 1, factor)
+        # The base keeps the node's own number: written from its fields, not
+        # cloned (cloning lost track of the Beads' FX sub-objects, 2026-10-23).
+        w = TW.TalentWriter(ef, f"{seed}:{node}:base", c.group)
+        w.add(c.cls, base, P.decode(c), flags=TA._flags_of(ef, node), group=c.group)
+        f = ef.component(factor)
+        TW.TalentWriter(ef, f"{seed}:{node}:scaled", c.group).multiply(
+            scaled, TW.link_to(ef, base), ef.F32_ACCESSOR[c.cls],
+            TW.link_to(ef, factor), ef.F32_ACCESSOR[f.cls], group=c.group)
         ef.source_value(node, 0, scaled)
         _activate_before(ef, node, [base, scaled], first=activate)
         return ef.to_bytes()
-    except GE.EntityEditError as e:
+    except (GE.EntityEditError, P.PartError) as e:
         raise RangeError(f"{node!r}: {e}") from e
 
 
@@ -221,14 +189,15 @@ def scale_node(raw: bytes, mul_raw: bytes, *, node: str, factor: str, seed: str 
 _SCALE_X, _SCALE_Z = 8, 10
 
 
-def scale_visual(raw: bytes, factor: str) -> tuple[bytes, str | None]:
+def scale_visual(raw: bytes, factor: str, *, scope: str = "") -> tuple[bytes, str | None]:
     """Grow what an entity the hero spawns DRAWS by ``factor``: its root node's
     ground scale (X and Z) reads the factor, so the effects hung on it grow with
     the number ``scale_node`` grew (Melusine's POWER water stayed its old size
     with only the radius scaled, playtest 2026-10-09). Returns the new bytes and
     the root node's name, or ``(raw, None)`` when the entity has no single root
-    node with a plain 1 x 1 scale (nothing is guessed)."""
-    ef = GE.EntityFile(raw)
+    node with a plain 1 x 1 scale (nothing is guessed). ``scope`` is the entity's
+    own name, for one whose references do not tell it."""
+    ef = GE.EntityFile(raw, scope)
     roots = []
     for c in ef.graph().components:
         if not c.cls.endswith("3dNodeSettings"):

@@ -692,10 +692,11 @@ class EntityFile:
                                      2 on damage numbers)
             END
 
-        The new slot is a copy of an existing one (this format's, else any
-        other format's in the file) re-pointed with :meth:`set_ref`, which also
-        rewrites the accessor for the target's class. ``percent`` sets the
-        trailing flag.
+        The new slot is WRITTEN in that layout (u32 0, a picker reading
+        ``target``, a decimal fallback of 0), not copied from another slot: a
+        rebuilt card has none, and the slot copied from another card could hold a
+        plain number with no reference to re-point (Kintaro, 2026-10-23).
+        ``percent`` sets the trailing flag.
         """
         c = self.component(comp)
         if not c.cls.endswith("StringFormatValueSettings"):
@@ -703,24 +704,20 @@ class EntityFile:
         slots, count_f = self._format_slots(c)
         if count_f is None:
             raise EntityEditError(f"{c.name!r}: cannot find its slot count")
-        template = None
-        if slots:
-            template = c.body[slots[-1].offset:slots[-1].offset + slots[-1].size]
-        else:
-            for other in self.graph().components:
-                if other.cls == c.cls and other.guid != c.guid:
-                    o_slots, _ = self._format_slots(other)
-                    if o_slots:
-                        f = o_slots[0]
-                        template = other.body[f.offset:f.offset + f.size]
-                        break
-        if template is None:
-            raise EntityEditError(f"{c.name!r}: no String Format slot in this file to copy")
-        # The trailing u32 is a small display mode (0 plain, 1 percent, 2 seen on
-        # damage numbers); anything else means the layout is not the one above.
-        if struct.unpack("<I", template[-8:-4])[0] > 15 or template[-4:] != _E:
-            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
-        slot = template[:-8] + struct.pack("<I", 1 if percent else 0) + template[-4:]
+        t = self.component(target)
+        acc = self.F32_ACCESSOR.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{c.name!r}: no known way for a card slot to read a {t.cls}")
+        from .entity_parts import PartWriter
+        ci = PartWriter(self, "").ci            # adds a class this file lacks
+        entry = cooked.format_entry_index([x.name for x in self.cf.classes])
+        if entry < 0:
+            entry = ci(cooked.FORMAT_ENTRY_CLASSES[0])
+        union = _B + struct.pack("<IIIf", ci("oCEntityValueUnion"), 0, 0, 0.0) + _E
+        picker = (_B + struct.pack("<I", ci("oCEntityCpntValuePicker")) + b"\x01\x00"
+                  + self._picker(target) + struct.pack("<I", acc) + union + _E)
+        slot = (_B + struct.pack("<II", entry, 0) + picker
+                + struct.pack("<I", 1 if percent else 0) + _E)
 
         at = len(self.objects[c.index - 1]) - len(c.body)
         end = (slots[-1].offset + slots[-1].size) if slots else (count_f.offset + count_f.size)
@@ -731,7 +728,6 @@ class EntityFile:
         new_slots, _ = self._format_slots(self.component(comp))
         if len(new_slots) != len(slots) + 1:
             raise EntityEditError(f"{c.name!r}: the new slot did not parse back")
-        self.set_ref(comp, f"{new_slots[-1].name}[0]", target)
         self._slot_accessor(comp, target)
         return len(slots)
 

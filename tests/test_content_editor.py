@@ -436,7 +436,7 @@ def test_an_after_window_carries_its_cooldown_and_an_empty_one_means_every_use()
     ({"after": "DEFENSE"}, "not a number"),
     ({"after": "DEFENSE", "seconds": 0}, "above 0"),
     ({"after": "JUMP", "seconds": 3}, "unknown ability"),
-    ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "not both"),
+    ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "choose one of"),
     ({"after": "DEFENSE", "seconds": 3, "cooldown": 0}, "above 0"),
     ({"cooldown": 8}, "only limits"),
     ({"next": "ATTACK"}, "only ends"),
