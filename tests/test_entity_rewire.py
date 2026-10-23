@@ -637,3 +637,36 @@ def test_clone_retarget_to_an_inherited_node_uses_its_existing_reference():
     with pytest.raises(EA.EntityAppendError, match="no component named"):
         EA.clone_component(raw, "Skill Dash Attack Clip Selector", "Bad Copy",
                            [(old, "[Anim Clip] Hero_Common\\Nowhere\\No Such Clip")])
+
+
+def test_rework_entity_can_rewire_to_parent_cloned_node(tmp_path):
+    """Update 6 moves Wukong's dash attack into `Hero_SunWukong_Update6.entity`
+    (`State Basic Attack Step Dash Attack` -> `Skill Dash Attack Clip`), which
+    inherits `Hero_SunWukong.entity`. A rewire on the rework entity must resolve
+    a target node cloned in its parent entity."""
+    u6 = _WUKONG.parent / "Hero_SunWukong_Update6.entity.ot.EntitySettingsResource.gen"
+    if not (_WUKONG.is_file() and u6.is_file()):
+        pytest.skip("vanilla Hero_SunWukong + Update6 corpus files not present")
+    from rsmm.engine import cooked, entity_append as EA
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    base_out = _wukong_clone_emit(tmp_path)
+    defn_u6 = ContentDef(kind="talent", id="twirl_finisher_u6", fields={
+        "hero": "SunWukong",
+        "file": "Hero_SunWukong_Update6.entity",
+        "rewires": [{
+            "trigger": "[Anim Clip] Hero_SunWukong\\Skill Dash Attack\\Skill Dash Attack Clip",
+            "action": "Skill Dash Attack Finisher Clip Selector",
+            "exact": True,
+            "within": "State Basic Attack Step Dash Attack",
+            "within_span": 600,
+        }],
+    })
+    written = talents.emit("wukong-twirl-finisher", defn_u6, tmp_path)
+    assert len(written) == 1
+    cf_base = cooked.parse(base_out)
+    cf_u6 = cooked.parse(written[0].read_bytes())
+    selector_guid = EA.node_guid(cf_base, "Skill Dash Attack Finisher Clip Selector")
+    dash_state = cf_u6.sections[EA.node_section(cf_u6, "State Basic Attack Step Dash Attack")].payload
+    assert selector_guid in dash_state

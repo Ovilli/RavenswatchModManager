@@ -145,17 +145,20 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
     one family absent from it; they are read by name, never listed.
     """
     base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
+    out: set[str] = set()
     if base.is_dir():
-        return sorted(
+        out.update(
             p.relative_to(UNCOOKED).as_posix()
             for p in base.rglob(f"*{suffix}") if p.is_file()
         )
+        if UNCOOKED != DATA_DIR / "uncooked":
+            return sorted(out)
     from .asset_map import decoded_to_encoded
 
-    if cooking_dir() is None:
-        return []
-    return sorted(k for k in decoded_to_encoded()
-                  if k.startswith(prefix) and k.endswith(suffix))
+    if cooking_dir() is not None:
+        out.update(k for k in decoded_to_encoded()
+                   if k.startswith(prefix) and k.endswith(suffix))
+    return sorted(out)
 
 
 def stems(directory: str, suffix: str) -> list[str]:

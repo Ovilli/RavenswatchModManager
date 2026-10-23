@@ -922,7 +922,16 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 f"exactly one entity file (matched {len(candidates)}: "
                 f"{[p.name for p in candidates]})")
         p = candidates[0]
-        ed = EntityEdit(edited.get(p) or p.read_bytes())
+        others = [q for q in hero_dir.entity_files() + _inherited_files(hero_dir)
+                  if q != p]
+        readers = []
+        for q in others:
+            if q in edited:
+                readers.append(edited[q])
+                continue
+            earlier = out_dir / Path(*q.rel.split("/"))
+            readers.append(earlier.read_bytes() if earlier.is_file() else q.read_bytes())
+        ed = EntityEdit(edited.get(p) or p.read_bytes(), readers=readers)
         try:
             for frm, to, opts in rewires:
                 ed.rewire_ref(frm, to, **opts)
