@@ -1191,12 +1191,23 @@ function effectsForm(E, blank) {
   E.effects.forEach((x, i) => {
     const timed = x.seconds !== undefined;
     const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
-    const when = el("select", {}, el("option", { value: "", text: "Always on, while held" }),
+    const when = el("select", {},
+      el("option", { value: "", text: "Always on, while held" }),
+      el("option", { value: "during:day", text: "Active only during day" }),
+      el("option", { value: "during:night", text: "Active only during night" }),
       ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t })));
-    when.value = timed ? (x.on || "damage_taken") : "";
+    when.value = timed ? (x.on || "damage_taken") : (x.during ? "during:" + x.during : "");
     when.onchange = () => {
-      if (when.value) { x.on = when.value; if (x.seconds === undefined) x.seconds = 5; }
-      else { delete x.on; delete x.seconds; delete x.refresh; }
+      if (when.value.startsWith("during:")) {
+        x.during = when.value.slice(7);
+        delete x.on; delete x.seconds; delete x.refresh;
+      } else if (when.value) {
+        delete x.during;
+        x.on = when.value;
+        if (x.seconds === undefined) x.seconds = 5;
+      } else {
+        delete x.during; delete x.on; delete x.seconds; delete x.refresh;
+      }
       changed();
     };
     const num = (k, step) => {

@@ -315,3 +315,30 @@ def test_an_item_with_no_base_and_no_effects_says_what_it_needs(tmp_path):
     from rsmm.sdk.kinds import items
     with pytest.raises(ContentError, match="built from its 'effects'"):
         items.emit("m", ContentDef("item", "Charm", {"name": "Charm"}), tmp_path / "a")
+
+
+def test_day_and_night_effects_build_and_describe():
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import item_effect as IE
+    effs = [{"stat": "Crit chance", "amount": 0.15, "during": "day"},
+            {"stat": "Armour", "amount": 8, "percent": False, "during": "night"}]
+    parsed = IE.parse_effects(effs)
+    assert [e.during for e in parsed] == ["day", "night"]
+    assert IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "on": "day"}).during == "day"
+    assert IE.describe(parsed).splitlines() == [
+        "• During the day, #+{0}%@ #Crit chance@",
+        "• During the night, #+{1}@ #Armour@",
+    ]
+    with pytest.raises(IE.ItemEffectError, match="during"):
+        IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "during": "dusk"})
+    files = C.build_magic_item(new_id="Solar_Lunar_Charm", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Rare",
+                               effect=effs, super_effect=False)
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    eq = next(f for f in EF.fields(EntityFile(ent, "x").component("State Picked Up"))
+              if f.name == "while_active").text
+    assert "Crit Chance Modifier Active Tester Effect" in eq
+    assert "Crit Chance Modifier Active Tester Effect 2" in eq
+    assert item_warnings(ent, _shield(), set()) == []
+    assert CK.check(ent, _shield(), name="Solar_Lunar_Charm") == []
+

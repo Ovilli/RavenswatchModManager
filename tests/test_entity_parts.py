@@ -170,3 +170,35 @@ def test_two_blank_items_get_their_own_identity_and_save_id():
     b = _blank("Charm_Two", [{"stat": "Crit chance", "amount": 0.1}])
     assert C.find_type_guid(a) != C.find_type_guid(b)
     assert C.find_identity_guid(a, "Charm_One") != C.find_identity_guid(b, "Charm_Two")
+
+
+@pytest.mark.parametrize(("during", "shipped_tester"), [
+    ("day", "Is Daytime Tester"),
+    ("night", "Is Nighttime Tester"),
+])
+def test_day_and_night_bool_tests_match_character_common(during, shipped_tester):
+    """The day/night bool test is byte for byte Character_Common's Is Daytime
+    Tester / Is Nighttime Tester sub-object (which Scarlet and Piper read)."""
+    cc = corpus.read(
+        "EntitySettings/Character_Common/Character_Common.entity.ot.EntitySettingsResource.gen")
+    if cc is None:
+        pytest.skip("Character_Common not available")
+
+    def sub_norm(raw: bytes, comp_name: str):
+        ef = EntityFile(raw, "x")
+        c = ef.component(comp_name)
+        v = P.decode(c)
+        sub_id = struct.unpack_from("<I", v["test"], 14)[0]
+        raw_sub = bytes(ef.objects[sub_id])
+        names = [k.name for k in ef.cf.classes]
+        out, i = names[struct.unpack_from("<I", raw_sub, 0)[0]].encode(), 4
+        while (j := raw_sub.find(cooked.MARK_BEGIN, i)) >= 0:
+            ci = struct.unpack_from("<I", raw_sub, j + 4)[0]
+            out += raw_sub[i:j + 4] + names[ci].encode()
+            i = j + 8
+        return out + raw_sub[i:]
+
+    built = _build([{"stat": "Crit chance", "amount": 0.2, "during": during}])
+    assert (sub_norm(built, "Crit Chance Modifier Active Tester" + IE.SUFFIX)
+            == sub_norm(cc, shipped_tester))
+
