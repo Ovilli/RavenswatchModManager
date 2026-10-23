@@ -185,7 +185,8 @@ def test_rebuilding_twice_is_refused(beowulf):
         TA.rebuild_talent(out, talent="Attack Fire Cone")
 
 
-def test_the_talent_kind_rebuilds_before_adding(tmp_path):
+def test_the_talent_kind_rebuilds_before_adding(tmp_path, beowulf):
+    # `beowulf` is unused below: it skips the test where no game data is reachable.
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
 
@@ -557,7 +558,8 @@ def test_an_inherited_talent_is_built_in_the_file_that_holds_it(tmp_path, romeo_
     assert EC.check(out, romeo_juliet, name=_ROMEO_JULIET) == []
 
 
-def test_rebuilding_an_overridden_inherited_talent_is_refused(tmp_path):
+def test_rebuilding_an_overridden_inherited_talent_is_refused(tmp_path, romeo_juliet):
+    # `romeo_juliet` is unused below: it skips the test where no game data is reachable.
     from rsmm.sdk.content import ContentDef, ContentError
     from rsmm.sdk.kinds import talents
 
