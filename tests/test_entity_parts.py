@@ -239,6 +239,8 @@ def test_super_effects_replace_the_bases_own():
     from rsmm.engine import item_modifier as IM
     from rsmm.engine.entity_check import _corpus_reader
     raw = _corpus_reader("Objects\\Magical_Objects\\Rare\\Damage_Attack.entity.ot")
+    if raw is None:
+        pytest.skip("shipped items not available (no mirror, no install)")
     files = C.build_magic_item(new_id="Ace_Two", base_id="Damage_Attack", base_cooked=raw,
                                corpus=[], super_effects=[{"stat": "Crit chance", "amount": 0.05}])
     ent = next(b for p, b in files.items() if p.endswith(".EntitySettingsResource.gen"))
