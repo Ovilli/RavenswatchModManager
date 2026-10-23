@@ -404,6 +404,8 @@ def test_save_refuses_blocks_that_would_fail_in_apply(tmp_path, monkeypatch):
     from types import SimpleNamespace
     block = ("talent", "t_builder", {"kind": "talent", "id": "t_builder", "hero": "Piper"})
     monkeypatch.setattr(C, "_defs", lambda req: [block])
+    from rsmm.engine import corpus
+    monkeypatch.setattr(corpus, "source", lambda: "install")   # the check can build
     monkeypatch.setattr(C, "check", lambda defs: [
         {"id": "t_builder", "kind": "talent", "ok": False, "error": "no talent 'X' here"}])
     req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path),

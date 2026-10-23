@@ -1773,7 +1773,11 @@ def _save(req: Request) -> dict:
     defs = [] if only_other else _defs(req)
     # Saved only when it builds: the same check as the Check button (and so
     # `rsmm apply`). A mod saved without pressing Check could fail at apply.
-    bad = [r for r in check(defs) if not r["ok"]] if defs else []
+    # With no game data at all nothing can be built, so a failure there says
+    # nothing about the mod (CI, an editor run before the install is found).
+    from rsmm.engine import corpus
+    bad = [r for r in check(defs) if not r["ok"]] \
+        if defs and corpus.source() != "none" else []
     if bad:
         raise EditorError(f"not saved: {len(bad)} block(s) would fail in rsmm apply: "
                           + "; ".join(f"{r['kind']} {r['id']}: {r['error']}" for r in bad))
