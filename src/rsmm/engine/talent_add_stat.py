@@ -177,6 +177,36 @@ def charges_heard() -> frozenset[int]:
 #: state fires on exit is `disables_while_active?`), as Snow Queen's Trait
 #: Charge and Merlin's completed Trait Quest do: one charge each.
 _TRAIT_CHARGE = "Ability_Charge_Trait"
+#: Pseudo-stats that are not stats but a state of Character_Common every
+#: character has, held on for a while (``add_stats`` ``stat = "Intangible"``):
+#: name -> the state. Heroes switch each of these on themselves: Invincible
+#: (Romeo's Love Shield, Kintaro's and Wukong's ultimates), Intangible (attacks
+#: pass through: Beowulf's SPECIAL, Aladdin's ultimate, the dash item),
+#: Concealed (enemies lose track: Kintaro's bear hiding).
+HELD_STATES = {"Invulnerable": "State Invincible", "Intangible": "State Intangible",
+               "Concealed": "State Concealed"}
+INVULNERABLE = "Invulnerable"
+
+
+def held_state(stat) -> str | None:
+    """The pseudo-stat name ``stat`` is (``HELD_STATES``, any case), or None."""
+    if not isinstance(stat, str):
+        return None
+    return next((k for k in HELD_STATES if k.lower() == stat.strip().lower()), None)
+
+
+def _common_state(name: str) -> P.Link:
+    """A reference to Character_Common's state ``name``."""
+    from . import corpus
+    raw = next((corpus.read(r) for r in corpus.rels("EntitySettings/", _CHARACTER_COMMON)
+                if r.endswith("/" + _CHARACTER_COMMON)), None)
+    c = next((c for c in EG.parse(raw).components if c.name == name), None) if raw else None
+    if c is None:
+        raise AddStatError(f"Character_Common's {name} is not readable")
+    return P.Link(c.guid, f"[State] Character_Common\\{c.group}\\{c.name}")
+
+
+_CHARACTER_COMMON = "Character_Common.entity.ot.EntitySettingsResource.gen"
 TRAIT_CHARGE_EVENTS = ("TRAIT_ABILITY_MAX_CHARGES_COUNTER_INC Event Sender",
                        "TRAIT_ABILITY_MAX_CHARGES_COUNTER_DEC Event Sender")
 
@@ -341,33 +371,57 @@ def borrowable(raw: bytes | EG.EntityGraph, other: str, *,
     if state.guid not in by_guid:
         raise AddStatError(f"talent {other!r} is built in another file")
     seen = {state.guid}
-    todo = [state]
-    while todo:
-        for r in todo.pop().refs:
-            if r.guid == ctl.guid or r.guid == bytes(16):
+
+    def walk(todo: list[EG.Component]) -> None:
+        while todo:
+            for r in todo.pop().refs:
+                if r.guid == ctl.guid or r.guid == bytes(16):
+                    continue
+                t = by_guid.get(r.guid)
+                if t is None:
+                    if r.scope and r.scope not in SHARED_SCOPES:
+                        raise AddStatError(f"talent {other!r} uses {r.path}, which another "
+                                           "hero does not have")
+                    continue
+                if t.name.startswith("Skill Controller "):
+                    raise AddStatError(f"talent {other!r} depends on another talent "
+                                       f"({t.name[len('Skill Controller '):]!r})")
+                if t.guid not in seen:
+                    seen.add(t.guid)
+                    todo.append(t)
+
+    walk([state])
+    # Parts of the talent's own group that point INTO the effect and that
+    # nothing reads belong to it too, though the state never names them: a
+    # spawner's settings (Wukong's Fiery Golden Eyes sets how many reveals its
+    # spawner makes with two Spawner Values that only point at the spawner and
+    # its count). A part something else reads is not taken: a flag or value an
+    # ability reads (Snow Queen's Shatter Flag) is the talent working through
+    # its hero, which the check below must still refuse.
+    group = f"Skill {other}"
+    graphs = [graph, *(b if isinstance(b, EG.EntityGraph) else EG.parse(b) for b in readers)]
+
+    def is_read(guid: bytes) -> bool:
+        # By its bytes, not only by parsed references: Snow Queen's FROST reads
+        # her Shatter Flag through a get-value whose picker parses as no
+        # reference at all, only the GUID (2026-10-23).
+        return any(guid in x.body for g in graphs for x in g.components if x.guid != guid)
+    grew = True
+    while grew:
+        grew = False
+        for c in graph.components:
+            if c.guid in seen or c.group != group or not any(r.guid in seen for r in c.refs) \
+                    or is_read(c.guid):
                 continue
-            t = by_guid.get(r.guid)
-            if t is None:
-                if r.scope and r.scope not in SHARED_SCOPES:
-                    raise AddStatError(f"talent {other!r} uses {r.path}, which another hero "
-                                       "does not have")
-                continue
-            if t.name.startswith("Skill Controller "):
-                raise AddStatError(f"talent {other!r} depends on another talent "
-                                   f"({t.name[len('Skill Controller '):]!r})")
-            if t.guid not in seen:
-                seen.add(t.guid)
-                todo.append(t)
+            seen.add(c.guid)
+            walk([c])
+            grew = True
     if len(seen) == 1:
         raise AddStatError(f"talent {other!r} does its work inside its hero's abilities, "
                            "not through its own state, so it cannot move to another hero")
-    for x in seen:
-        loads = _weak_resources(by_guid[x])
-        if loads:
-            # Not in this hero's preload caches: it would load as null and can
-            # crash the game (engine/CLAUDE.md). Geppetto's Flash of Genius.
-            raise AddStatError(f"talent {other!r} loads {loads[0]}, which another hero "
-                               "does not load; borrowing it is not supported")
+    # A resource the effect loads (Fiery Golden Eyes' crow effect) need not
+    # stop it: the talent kind adds it, and all it loads, to every preload cache
+    # of the entity it is copied into, and fails if no shipped cache lists it.
     if all(by_guid[x].cls.endswith(_PASSIVE) for x in seen):
         raise AddStatError(f"talent {other!r} holds only numbers that its hero reads "
                            "elsewhere, so on another hero it would do nothing")
@@ -377,37 +431,20 @@ def borrowable(raw: bytes | EG.EntityGraph, other: str, *,
     # (2026-10-12) retunes talents this way, e.g. Hero_SunWukong_Update6 carries
     # its own `Skill Power Hold AP Selector`. Same for an explicit override record.
     own_names = {by_guid[x].name for x in seen}
-    for g in [graph, *(b if isinstance(b, EG.EntityGraph) else EG.parse(b) for b in readers)]:
+    for g in graphs:
         for c in g.components:
             if c.guid in seen or c.guid == ctl.guid or c.name.startswith("Skill Controller ") \
                     or c.cls.endswith("StringFormatValueSettings"):
                 continue
             if c.name in own_names or (c.override is not None and c.override.guid in mine):
                 continue
-            hit = next((r for r in c.refs if r.guid in mine), None)
+            hit = next((r.path.rsplit("\\", 1)[-1] for r in c.refs if r.guid in mine), None) \
+                or next((by_guid[x].name for x in mine - {ctl.guid} if x in c.body), None)
             if hit is not None:
                 raise AddStatError(
                     f"talent {other!r} works through its hero's own abilities ({c.name!r} in "
-                    f"{g.name or 'its file'} reads {hit.path.rsplit(chr(92), 1)[-1]!r}), so it "
-                    "cannot move to another hero")
+                    f"{g.name or 'its file'} reads {hit!r}), so it cannot move to another hero")
     return [c.name for c in graph.components if c.guid in seen]
-
-
-def _weak_resources(c: EG.Component) -> list[str]:
-    """Resource paths ``c`` names through a weak reference (archive, path)."""
-    if "oCResourceWeakRef" not in c.classes:
-        return []
-    from . import cooked
-    from . import entity_strings as ES
-    tag = cooked.MARK_BEGIN + struct.pack("<I", c.classes.index("oCResourceWeakRef"))
-    out = []
-    i = c.body.find(tag)
-    while i >= 0:
-        strs = [t for _o, t in ES._scan_payload(c.body[i + 8:c.body.find(cooked.MARK_END, i)])]
-        if len(strs) >= 2 and strs[1]:
-            out.append(strs[1])
-        i = c.body.find(tag, i + 1)
-    return out
 
 
 def borrow_talent(raw: bytes, donor_raw: bytes, *, talent: str, other: str, hero: str,
@@ -448,13 +485,8 @@ def borrow_talent(raw: bytes, donor_raw: bytes, *, talent: str, other: str, hero
         out = ef.to_bytes()
     except GE.EntityEditError as e:
         raise AddStatError(f"talent {talent!r}: {e}") from e
-    # Backstop for borrowable's own check: a resource this hero's preload
-    # caches do not list loads as null and can crash the game.
-    from .entity_check import resource_paths
-    new = sorted(resource_paths(out) - resource_paths(raw))
-    if new:
-        raise AddStatError(f"{hero}'s {other!r} loads {', '.join(new)}, which this hero "
-                           "does not load; borrowing it is not supported")
+    # A resource it loads must also go into this entity's preload caches,
+    # or it loads as null: the caller adds them (talents._preload_borrowed).
     return out
 
 
@@ -481,7 +513,7 @@ def normalise_values(values) -> dict[str, float]:
     raise AddStatError(f"values must be a number, a list of 4 or a table, got {values!r}")
 
 
-def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool = True,
+def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: bool = True,
              seed: str = "", during: str | None = None, after: str | None = None,
              seconds: float | None = None, cooldown: float | None = None,
              next_ability: str | None = None, on: str | None = None) -> tuple[bytes, AddedStat]:
@@ -520,43 +552,58 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool 
     DEFENSE's "Just Exit Timer", the dash's "Exit Event Sender" and Romeo's Love
     Shield cooldown, which starts as the shield ends, all sit there (survey
     2026-10-08)."""
-    try:
-        key = resolve_stat(stat)
-    except ItemModifierError as e:
-        raise AddStatError(str(e)) from e
-    from .item_modifier import game_state_keys
-    if key in game_state_keys():
-        raise AddStatError(f"{stat!r} is game state (scene, menu, day/night), not a stat "
-                           "a modifier can change")
-    if key in applied_on_hit():
-        raise AddStatError(
-            f"{stat!r} is something the game puts on whoever is hit, and an added stat "
-            f"applies to the hero itself, so {talent!r} would debuff its own hero")
-    amounts = normalise_values(values)
-    if is_charge(key):
-        heard = charges_heard()
-        if heard and key not in heard:
+    # Invulnerable, Intangible and Concealed are not stats: the window (or the
+    # ability's in-use state) holds Character_Common's state, through a tester
+    # the talent's owned state runs, so it never applies without the talent.
+    held = held_state(stat)
+    invulnerable = held is not None
+    trait_charge = False
+    if invulnerable:
+        if not (during or after or on):
+            raise AddStatError(f"always {held.lower()} is not offered (it would make the hero "
+                               "untouchable); give 'during', 'after' or 'on'")
+        key = None
+        # The card's number is how long it lasts.
+        amounts = {t: float(seconds) if (after or on) and isinstance(seconds, int | float)
+                   and not isinstance(seconds, bool) else 0.0 for t in TIERS}
+    else:
+        try:
+            key = resolve_stat(stat)
+        except ItemModifierError as e:
+            raise AddStatError(str(e)) from e
+        from .item_modifier import game_state_keys
+        if key in game_state_keys():
+            raise AddStatError(f"{stat!r} is game state (scene, menu, day/night), not a stat "
+                               "a modifier can change")
+        if key in applied_on_hit():
             raise AddStatError(
-                f"{stat_name(key)!r}: the game never turns it into charges (no ability "
-                f"listens for it); charges work for "
-                f"{', '.join(sorted(stat_name(k) for k in heard))}")
-        if any(v != int(v) for v in amounts.values()):
-            raise AddStatError(f"{stat_name(key)!r} counts charges: give whole numbers, "
-                               f"got {list(amounts.values())}")
-    trait_charge = stat_name(key) == _TRAIT_CHARGE
-    if trait_charge:
-        if during or after or on:
-            raise AddStatError("a TRAIT charge lasts as long as the talent is owned; "
-                               "'during', 'after' and 'on' do not apply to it")
-        if set(amounts.values()) != {1.0}:
-            raise AddStatError("TRAIT charges come one per talent (as Merlin's and Snow "
-                               f"Queen's give them): give 1 at every rarity, got "
-                               f"{list(amounts.values())}")
+                f"{stat!r} is something the game puts on whoever is hit, and an added stat "
+                f"applies to the hero itself, so {talent!r} would debuff its own hero")
+        amounts = normalise_values(values)
+        if is_charge(key):
+            heard = charges_heard()
+            if heard and key not in heard:
+                raise AddStatError(
+                    f"{stat_name(key)!r}: the game never turns it into charges (no ability "
+                    f"listens for it); charges work for "
+                    f"{', '.join(sorted(stat_name(k) for k in heard))}")
+            if any(v != int(v) for v in amounts.values()):
+                raise AddStatError(f"{stat_name(key)!r} counts charges: give whole numbers, "
+                                   f"got {list(amounts.values())}")
+        trait_charge = stat_name(key) == _TRAIT_CHARGE
+        if trait_charge:
+            if during or after or on:
+                raise AddStatError("a TRAIT charge lasts as long as the talent is owned; "
+                                   "'during', 'after' and 'on' do not apply to it")
+            if set(amounts.values()) != {1.0}:
+                raise AddStatError("TRAIT charges come one per talent (as Merlin's and Snow "
+                                   f"Queen's give them): give 1 at every rarity, got "
+                                   f"{list(amounts.values())}")
 
     graph = EG.parse(raw)
     ctl, state, fmt = card_parts(graph, talent)
 
-    tag = f"{key:08x}"
+    tag = held if invulnerable else f"{key:08x}"
     cond_state = None
     hook = None
     if sum(bool(x) for x in (during, after, on)) > 1:
@@ -645,9 +692,13 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool 
             cond_state = win
         elif cond_state is not None:
             cond_state = TW.link_to(ef, cond_state.name)
-        if cond_state is not None:
+        if cond_state is not None and not invulnerable:
             amount = w.when(new_cond, cond_state, number)      # else 0
-        if trait_charge:
+        if invulnerable:
+            new_mod = f"Skill {talent} Added {tag} Holder"
+            w.holder(new_mod, cond_state, _common_state(HELD_STATES[held]))
+            ef.add_ref(state.name, "while_active", new_mod)
+        elif trait_charge:
             # Not a modifier: +1 on the counter as the talent's state comes on,
             # -1 as it goes off. The number above is only the card's.
             senders = _trait_charge_senders(_hero_common() or b"")
@@ -660,7 +711,8 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values, percent: bool 
         else:
             w.modifier(new_mod, key, amount)
             ef.add_ref(state.name, "while_active", new_mod)
-        slot = ef.add_format_slot(fmt.name, new_sel, percent=percent) if fmt else None
+        slot = ef.add_format_slot(fmt.name, new_sel, percent=percent and not invulnerable) \
+            if fmt else None
         out = ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:
         raise AddStatError(f"talent {talent!r}: {e}") from e

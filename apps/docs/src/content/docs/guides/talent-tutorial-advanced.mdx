@@ -636,6 +636,31 @@ add_stats = [
 ]
 ```
 
+<Badge text="Not yet tested in game" variant="caution" /> **Invulnerable, intangible or concealed for a moment:** use
+`stat = "Invulnerable"`, `"Intangible"` or `"Concealed"` (no `values`) with `during`,
+`after` or `on`, e.g. "For #1.5@ second(s) after using #DEFENSE@, become
+#INVULNERABLE@". The hero gets one of the game's own states every character has
+(`Character_Common`), for the `after`/`on` window or while the `during` ability is in
+use:
+
+| `stat` | The state | Shipped heroes that use it |
+|---|---|---|
+| `Invulnerable` | State Invincible: takes no damage | Romeo's **Love Shield**, Kintaro's and Wukong's ultimates |
+| `Intangible` | State Intangible: attacks pass through | Beowulf's SPECIAL, Aladdin's ultimate, the dash item |
+| `Concealed` | State Concealed: enemies lose track | Kintaro's bear when it hides |
+ It is never always on, and the card's number is the seconds. The window
+itself opens on every use of the ability, owned or not, so the invincibility is held
+by a tester the talent's own State runs: without the talent, nothing happens.
+`cooldown` limits it like any other window. In the editor, pick **Invulnerable,
+intangible or hidden** among the blocks, then the state under Stat.
+
+```toml
+add_stats = [
+  { talent = "Trait Fire", stat = "Invulnerable", after = "DEFENSE", seconds = 1.5 },
+  { talent = "Trait Fire", stat = "Invulnerable", on = "damage_taken", seconds = 1, cooldown = 20 },
+]
+```
+
 **Stats that land on enemies are refused.** `add_stats` builds a modifier on the
 hero itself, so a stat the game only ever puts on whoever is hit (Ignite, Bleed,
 Chilled, Vulnerable, Weak, Marked, Rooted, …) would debuff your own hero. The list
@@ -697,19 +722,32 @@ Owning Piper's **Virtuoso** now also gives Wukong's **Focused Strikes** bonus.
 
 Most talents cannot move. They work inside their hero's abilities: Aladdin's
 Defense Tornado is a number his DEFENSE tornado reads, and Piper has no such
-tornado. RSMM refuses those and says why. These 9 can be given to any hero:
+tornado. RSMM refuses those and says why. These can be given to any hero (Update 6):
 
 | Hero | Talent (card) | `from` |
 |------|---------------|--------|
 | Aladdin | Master Thief | `Passive Extra MO` |
 | Aladdin | Jinniya's Gift | `Trait Extra Wish` |
 | Carmilla | Bat Master | `Defense Master` |
+| Geppetto | Flash of Genius | `Passive Create Objects` |
 | Juliet | Wedding Gifts | `Passive Bonus Object` |
+| Kintaro | Berserk | `Passive AP Per Internal Damage` |
+| Kintaro | Hardened Skin | `Passive Armor` |
+| Kintaro | Strong-Willed | `Passive Internal Damage` |
 | Melusine | Soothing Presence | `Passive Heal In Combat` |
 | Melusine | Dance Step | `Trait Dash` |
 | Merlin | Astrology | `Passive Gain Reroll High Talent` |
 | Piper | Virtuoso | `Attack Move Speed` |
+| Sun Wukong | Fiery Golden Eyes | `Passive Reveal` |
 | Sun Wukong | Focused Strikes | `Power Hold` |
+
+<Badge text="Not yet tested in game" variant="caution" /> Some of these load a file of
+their own: **Fiery Golden Eyes** spawns Baba Yaga's Eye crow effect that reveals the
+map, **Flash of Genius** drops Geppetto's object bag. A file a hero's entity names must
+be preloaded by every preload cache of that entity, or the game crashes when it
+tears down, so RSMM adds the file, and everything it loads, to your hero's caches
+(its herodef's, and any map that preloads it). It takes the lines from the shipped
+caches that already preload the file, and refuses a file none of them lists.
 
 In the editor, they are under **Other heroes** in the **Also gives the effect of**
 list.

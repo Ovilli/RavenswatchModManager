@@ -714,7 +714,6 @@ def test_piper_can_borrow_wukongs_power_hold(piper, wukong):
 
 @pytest.mark.parametrize(("hero", "other", "msg"), [
     ("Aladdin", "Defense Tornado", "inside its hero's abilities"),
-    ("Geppetto", "Passive Create Objects", "does not load"),
     ("Melusine", "Ultimate 2 Spawn More", "only numbers"),
 ])
 def test_a_talent_bound_to_its_hero_is_not_borrowed(piper, hero, other, msg):

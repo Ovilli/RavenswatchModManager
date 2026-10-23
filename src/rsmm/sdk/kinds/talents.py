@@ -77,6 +77,10 @@ Fields:
                                use); add ``cooldown = 8`` to let it restart at
                                most once every 8 s, or ``next = "ATTACK"`` to end
                                it once ATTACK has been used ("your next ATTACK").
+                               ``stat = "Invulnerable"``, ``"Intangible"`` or
+                               ``"Concealed"`` (no ``values``) puts the hero in
+                               that state instead, for that window or ``during``
+                               an ability; never always on.
                                ``on = "damage_taken", seconds = 4`` starts the
                                same window from a game event instead (one of
                                ``talent_add_stat.TRIGGERS``: damage_taken,
@@ -386,7 +390,10 @@ def _coerce_add_stats(raw) -> list[dict]:
         raise ContentError(f"add_stats must be a list of tables, got {raw!r}")
     out = []
     for e in raw:
-        if not isinstance(e, dict) or not e.get("talent") or "stat" not in e or "values" not in e:
+        from ...engine.talent_add_stat import held_state
+        invulnerable = isinstance(e, dict) and held_state(e.get("stat")) is not None
+        if not isinstance(e, dict) or not e.get("talent") or "stat" not in e \
+                or ("values" not in e and not invulnerable):
             raise ContentError(f"add_stats entry needs talent, stat and values, got {e!r}")
         during = e.get("during")
         if during is not None and not isinstance(during, str):
@@ -402,7 +409,7 @@ def _coerce_add_stats(raw) -> list[dict]:
             raise ContentError(f"add_stats: on must be a game event name, got {on!r}")
         # A charge is a count: "+1 charge", never "+100%".
         from ...engine.talent_add_stat import is_charge
-        out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
+        out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e.get("values"),
                     "percent": bool(e.get("percent", not is_charge(e["stat"]))),
                     "during": during,
                     "after": after, "seconds": e.get("seconds"),
@@ -424,6 +431,47 @@ def _files_named(files: list[corpus.CorpusFile], want: str | None) -> list[corpu
     w = want.lower().removesuffix(_GEN_SUFFIX.lower()).removesuffix(".entity")
     exact = [q for q in files if _stem(q).lower() == w]
     return exact or [q for q in files if want.lower() in q.name.lower()]
+
+
+def _preload_borrowed(defn, p: corpus.CorpusFile, before: bytes, after: bytes,
+                      out_dir: Path) -> list[Path]:
+    """Add what a borrowed effect newly loads to every preload cache of ``p``.
+
+    A resource an entity names must be listed by EVERY cache that preloads the
+    entity, or that cache's preloaded vector holds a null and the game crashes
+    at teardown (engine/CLAUDE.md): Piper's main entity is preloaded by her
+    herodef's cache and the version manifest's, so Wukong's Fiery Golden Eyes,
+    borrowed onto her, adds Baba Yaga's Eye crow effect and all it loads to
+    both. The lines come from the shipped caches that already preload it
+    (as a custom hero's borrowed parts do); a resource no shipped cache lists is
+    refused. Returns the caches written."""
+    from ...engine import entity_check as EC
+    from ...engine import rsc_cache as RC
+    from .heros import _borrow_closure
+    new = sorted(EC.resource_paths(after) - EC.resource_paths(before))
+    if not new:
+        return []
+    rel = p.rel[len("EntitySettings/"):-len(_GEN_SUFFIX)].replace("/", "\\") + ".entity.ot"
+    caches = [c for c, listed in EC._cache_index().items() if rel in listed]
+    if not caches:
+        raise ContentError(f"talent {defn.id}: {p.name} now loads {', '.join(new)}, and no "
+                           "preload cache of it was found to add them to")
+    lines = _borrow_closure(new, out_dir, defn.id)
+    written = []
+    for cache in caches:
+        dest = out_dir / Path(*cache.split("/"))
+        cur = dest.read_bytes() if dest.is_file() else corpus.read(cache)
+        have = set(RC.parse(cur or b""))
+        if have >= set(lines):
+            continue                    # it already preloads all of it
+        merged = sorted(have | set(lines))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(RC.render(merged))
+        written.append(dest)
+    if written:
+        _log.info("talent %s: %d borrowed resource(s) added to %s", defn.id, len(new),
+                  ", ".join(c.name for c in written))
+    return written
 
 
 def _apply_scale(defn, mod_id, hero_dir, scale, files, edited, home) -> None:
@@ -734,6 +782,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             _log.info("talent %s/%s: %s rebuilt (its effect is off; %d card number(s) "
                       "cleared)", mod_id, defn.id, talent, cleared)
 
+    caches: list[Path] = []      # preload caches a borrowed effect extended
     for entry in include:
         from ...engine import talent_add_stat as TA
         p = _home(entry["talent"])
@@ -749,14 +798,16 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if len(homes) != 1:
                 raise ContentError(f"talent {defn.id}: {len(homes)} of {donor_dir.name}'s "
                                    f"entity files hold a talent named {entry['from']!r}")
+            before = edited.get(p) or p.read_bytes()
             try:
                 edited[p] = TA.borrow_talent(
-                    edited.get(p) or p.read_bytes(), homes[0].read_bytes(),
+                    before, homes[0].read_bytes(),
                     talent=entry["talent"], other=entry["from"],
                     hero=donor_dir.name[len("Hero_"):], seed=f"{mod_id}:{defn.id}",
                     readers=[q.read_bytes() for q in donor_files if q is not homes[0]])
             except TA.AddStatError as e:
                 raise ContentError(f"talent {mod_id}/{defn.id}: {e}") from e
+            caches += _preload_borrowed(defn, p, before, edited[p], out_dir)
             _log.info("talent %s/%s: %s now also runs %s's %s", mod_id, defn.id,
                       entry["talent"], donor_dir.name, entry["from"])
             continue
@@ -888,6 +939,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)
         written.append(dest)
+    written += [c for c in caches if c not in written]
     _log.info("talent %s/%s: patched %d hero file(s) for %s",
               mod_id, defn.id, len(written), hero)
     return written

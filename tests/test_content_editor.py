@@ -501,7 +501,9 @@ def test_the_borrowable_list_holds_talents_that_move():
     got = {(t["hero"], t["source"]) for t in E.borrowable_talents()}
     assert ("SunWukong", "Power Hold") in got
     assert ("Aladdin", "Defense Tornado") not in got        # read by his DEFENSE
-    assert ("Geppetto", "Passive Create Objects") not in got  # loads his drop bag
+    assert ("Snow_Queen", "Power Shatter") not in got       # FROST reads its flag by GUID
+    # What a borrowed effect loads goes into the new hero's preload caches.
+    assert ("SunWukong", "Passive Reveal") in got
 
 
 @pytest.mark.parametrize("row", [{"talent": "Trait Active"}, {"talent": "A", "from": "A"}])

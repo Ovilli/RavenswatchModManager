@@ -165,6 +165,18 @@ class TalentWriter(P.PartWriter):
             "on_true": then, "ref_2": _NONE, "on_false": _NONE, "ref_4": _NONE,
             "test": combiner, "ref_6": _NONE, "ref_7": _NONE}, flags=0x10001)
 
+    def holder(self, name: str, when: P.Link, holds: P.Link) -> P.Link:
+        """A tester holding ``holds`` on while state ``when`` is active (its
+        ``ref_6``: the items' timed bonus holds its modifier this way, Knight
+        Boss holds State Invincible). It tests only while a state running it
+        is on, so held by a talent's owned state it never applies unowned."""
+        test = self.sub("oCEntityCpntSimpleBoolTestSettings", P.num_bytes(
+            self._read(when, STATE_ON, self._bool(False)), self.ci) + struct.pack("<I", 0))
+        combiner = self.obj("oCCombinerCpntTestSettings", b"\x00\x01" + struct.pack("<II", 1, test))
+        return self._add(_TESTER, name, {
+            "on_true": _NONE, "ref_2": _NONE, "on_false": _NONE, "ref_4": _NONE,
+            "test": combiner, "ref_6": holds, "ref_7": _NONE}, flags=0x1)
+
     def reader(self, name: str, owner_resource: str, value: P.Link) -> P.Link:
         """In an entity the hero spawns: ``value`` read from the hero
         (``owner_resource``, ``Heroes\\Hero_X\\Hero_X.entity.ot``)."""

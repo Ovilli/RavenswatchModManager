@@ -334,7 +334,7 @@ def stats() -> list[dict]:
     # Game state the engine keeps beside the stats ("Is in cinematic", "Is
     # day") is not something a modifier changes: left out of every picker.
     state = IM.game_state_keys()
-    # A charge nothing turns into charges (TRAIT) is left out too.
+    # A charge no talent can give is left out too.
     from rsmm.engine.talent_add_stat import charges_heard, is_charge
     heard = charges_heard()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
@@ -1191,8 +1191,11 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         talent, stat = str(row.get("talent") or ""), str(row.get("stat") or "")
         if not talent or not stat:
             raise EditorError("an added stat needs its talent and a stat")
+        from rsmm.engine.talent_add_stat import held_state
+        invulnerable = held_state(stat) is not None
         try:
-            resolve_stat(stat)
+            if not invulnerable:
+                resolve_stat(stat)
         except ItemModifierError as e:
             raise EditorError(f"{talent}: {e}") from None
         values = row.get("values")
@@ -1211,6 +1214,8 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         if sum(bool(x) for x in (during, after, on)) > 1:
             raise EditorError(f"{talent} {stat}: choose one of 'during', 'after' or a trigger")
         starts = after or on
+        if invulnerable and not (during or starts):
+            raise EditorError(f"{talent}: {stat.lower()} needs a 'When' (never always on)")
         seconds = None
         if starts:
             seconds = float(_num(row.get("seconds"), f"{talent} {stat} seconds"))
@@ -1766,6 +1771,12 @@ def _save(req: Request) -> dict:
     only_other = ((script is not None or program is not None or abil is not None)
                   and req.body.get("edits") == [])
     defs = [] if only_other else _defs(req)
+    # Saved only when it builds: the same check as the Check button (and so
+    # `rsmm apply`). A mod saved without pressing Check could fail at apply.
+    bad = [r for r in check(defs) if not r["ok"]] if defs else []
+    if bad:
+        raise EditorError(f"not saved: {len(bad)} block(s) would fail in rsmm apply: "
+                          + "; ".join(f"{r['kind']} {r['id']}: {r['error']}" for r in bad))
     meta = req.body.get("meta")
     mod_id = str(req.body.get("mod") or "")
     where = save(defs, mod_id, req.ctx.mods_dir,

@@ -396,3 +396,19 @@ def test_the_generated_script_says_when_hero_capture_is_off():
     lua = M.script_lua(M.script_config(CFG))
     assert "R.entity.capture_enabled()" in lua
     assert 'loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]' in lua
+
+
+def test_save_refuses_blocks_that_would_fail_in_apply(tmp_path, monkeypatch):
+    """Saving runs the Check button's build: a mod is never written with a block
+    `rsmm apply` would refuse, whether or not Check was pressed."""
+    from types import SimpleNamespace
+    block = ("talent", "t_builder", {"kind": "talent", "id": "t_builder", "hero": "Piper"})
+    monkeypatch.setattr(C, "_defs", lambda req: [block])
+    monkeypatch.setattr(C, "check", lambda defs: [
+        {"id": "t_builder", "kind": "talent", "ok": False, "error": "no talent 'X' here"}])
+    req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path),
+                          body={"mod": "new_mod", "create": True, "edits": [{}]})
+    with pytest.raises(C.EditorError,
+                       match=r"not saved: 1 block\(s\).*talent t_builder: no talent"):
+        C._save(req)
+    assert not (tmp_path / "new_mod").exists()

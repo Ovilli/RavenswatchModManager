@@ -1459,6 +1459,19 @@ function statRow(m, cur, onset) {
 // many effects use each; `unnamed` is an extra key offered as itself.
 // `selfOnly`: the stat lands on the hero itself (a talent's added stat), so stats the
 // game only puts on whoever is hit are listed apart and can't be picked.
+// Not a stat: a talent can make its hero invulnerable for a while (the window
+// holds the game's own State Invincible). Offered only to talents.
+// Not stats: a talent can put its hero in one of Character_Common's states for
+// a while (the window holds the game's own state). Offered only to talents.
+const HELD = [
+  { name: "Invulnerable", used: 3e6, aka: "invincible immune invulnerability untouchable no damage" },
+  { name: "Intangible", used: 2e6, aka: "i-frames dodge pass through attacks phase" },
+  { name: "Concealed", used: 1e6, aka: "stealth hidden invisible enemies lose track" },
+];
+const isInvulnerable = a => !!a && HELD.some(h => h.name === a.stat);
+// A TRAIT charge is one, at every rarity, always on: the counter event the
+// game fires for Merlin's quest and Snow Queen's Trait Charge.
+const isTraitCharge = a => a && a.stat === "Ability_Charge_Trait";
 function statPicker(value, unnamed, onpick, selfOnly) {
   let cur = value, open = false, hi = 0, shown = [];
   const input = el("input", { value: label(cur), spellcheck: "false", "aria-label": "Stat" });
@@ -1468,7 +1481,8 @@ function statPicker(value, unnamed, onpick, selfOnly) {
   function label(v) { return v === unnamed ? "unnamed (" + v + ")" : v; }
   function options(q) {
     q = q.toLowerCase();
-    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
+    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []),
+      ...(selfOnly ? HELD : []), ...S.stats];
     // A stat is found by its name, its key (0x058e0a5c, as a manifest may name
     // either) or the card's wording ("trait cooldown" for CD reduce trait); every
     // word typed must match, in any order.
@@ -1684,12 +1698,14 @@ function statLine(a, n) {
   const line = statPhrase(a.stat, n, a.percent !== false);
   // "after using #DEFENSE@" or a game event's own wording ("after taking damage").
   const since = a.after ? `after using #${a.after}@` : a.on ? triggerWords(a.on) : "";
-  const lead = a.during ? `During #${a.during}@`
-    : since && a.next ? `Within #${fmt(a.seconds)}@ second(s) ${since}, your next #${a.next}@ gets`
-    : since ? `For #${fmt(a.seconds)}@ second(s) ${since}` : "";
+  // A held state's card number IS its seconds: show the slot, not a copy.
+  const secs = isInvulnerable(a) ? `{${n}}` : fmt(a.seconds);
+  const lead = a.during ? (isInvulnerable(a) ? `While using #${a.during}@` : `During #${a.during}@`)
+    : since && a.next ? `Within #${secs}@ second(s) ${since}, your next #${a.next}@ gets`
+    : since ? `For #${secs}@ second(s) ${since}` : "";
   const sep = since && a.next ? " " : ", ";
   // "…, damage +30%" reads on; a named stat keeps its own capitals ("Crit Chance").
-  const out = lead ? line.replace(/^• (Damage|Counts)?/, (_m, w) => `• ${lead}${sep}${w ? w.toLowerCase() : ""}`) : line;
+  const out = lead ? line.replace(/^• (Damage|Counts|Become)?/, (_m, w) => `• ${lead}${sep}${w ? w.toLowerCase() : ""}`) : line;
   return since && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
 }
 // Game events a talent's bonus can start from (`on`), with the item editor's
@@ -1697,9 +1713,11 @@ function statLine(a, n) {
 const TRIGGER_TEXT = {};
 const triggerWords = on => (TRIGGER_TEXT[on] || on.replace(/_/g, " ")).replace(/^\w/, ch => ch.toLowerCase());
 function statPhrase(stat, n, percent) {
+  if (HELD.some(h => h.name === stat)) return `• Become #${stat.toUpperCase()}@`;
   const num = "{" + n + "}" + (percent ? "%" : "");
   const tally = (S.stats.find(s => s.name === stat) || {}).tally;
   if (tally) return `• Counts as #+${num}@ more ${tally}(s)`;
+  if (stat === "Ability_Charge_Trait") return `• #TRAIT@ charges #+{${n}}@`;
   const charge = /^Ability_Charge_(\w+)$/.exec(stat || "");
   if (charge) return `• #${ABILITY_WORD[charge[1].toLowerCase()] || charge[1].toUpperCase()}@ charges &+${num}~`;
   const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
@@ -1754,6 +1772,9 @@ function tierInputs(values, shown, onchange) {
 }
 // What an added stat does, in words, from its Common number.
 function statSentence(a) {
+  if (isInvulnerable(a)) return a.stat + " " + (a.during ? "while using " + a.during
+    : a.after || a.on ? `for ${fmt(a.seconds ?? 1.5)} s ${a.after ? "after " + a.after : triggerWords(a.on)}`
+      + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "") : "(pick when)") + ".";
   const v = a.values[0];
   let when = "while you own the talent";
   if (a.during) when = "while using " + a.during;
@@ -1761,11 +1782,29 @@ function statSentence(a) {
     + (a.next ? `, until you use ${a.next}` : "") + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "");
   return `${a.stat} ${v < 0 ? "" : "+"}${asShown(v, a.percent !== false)} ${when} (Common card; each rarity uses its own number).`;
 }
-const statBlockTitle = a => a.on ? "After something happens"
+const statBlockTitle = a => isInvulnerable(a) ? a.stat + " for a moment" : a.on ? "After something happens"
   : a.after ? (a.next ? "Your next ability" : "For a few seconds after an ability")
   : a.during ? "While using an ability" : "Boost a stat";
 // A new block's starting numbers: a modest bonus that grows with rarity.
 const STARTER = () => [0.1, 0.15, 0.2, 0.25];
+
+// The card's added numbers run in block order (added stats, then bigger
+// abilities), so removing one moves the {N} of every block after it. Lines the
+// editor wrote are rewritten anyway; a line reworded by hand is not, and kept
+// its old {N}, which then showed another block's number. Remap every {N} in the
+// text (and in the remembered lines) from each block's last number to its new one.
+function renumberCard(c, desc) {
+  const E = S.talentEdit, base = firstSlot(c);
+  if (!desc || !c.hasDescription || base == null) return;
+  const rows = [...((E.addStats || {})[c.source] || []).filter(a => a.stat),
+    ...((E.scale || {})[c.source] || []).filter(r => r.node)];
+  const map = {};
+  rows.forEach((r, i) => { const now = base + i; if (r.slot != null && r.slot !== now) map[r.slot] = now; r.slot = now; });
+  if (!Object.keys(map).length) return;
+  const remap = t => t.replace(/\{(\d+)\}/g, (m, d) => d in map ? `{${map[d]}}` : m);
+  desc.set(remap(desc.get()));
+  for (const r of rows) if (r.line) r.line = remap(r.line);
+}
 
 // New stats a talent did not have (add_stats), e.g. Fiery Dragon also lowering
 // TRAIT cooldown. Each one gets the next {N} on the card so its text can show the
@@ -1788,6 +1827,9 @@ function addedStats(c, redraw, desc) {
     let text = desc.get();
     if (removed && removed.line && text.includes(removed.line))
       text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+    desc.set(text);
+    renumberCard(c, desc);
+    text = desc.get();
     const base = firstSlot(c);
     list.forEach((a, i) => {
       if (!a.stat || base == null) return;
@@ -1811,6 +1853,16 @@ function addedStats(c, redraw, desc) {
     const picker = statPicker(a.stat, null, st => {
       a.stat = st;
       // A tally or a charge counts things: a whole number, never a percentage.
+      if (st === "Ability_Charge_Trait") {
+        a.percent = false; a.values = [1, 1, 1, 1];
+        delete a.during; delete a.after; delete a.on; delete a.cooldown; delete a.next;
+        save(); renderView(); return;
+      }
+      if (HELD.some(h => h.name === st)) {
+        a.percent = false;
+        if (!a.during && !a.after && !a.on) { a.after = (c.addStat.after || []).includes("DEFENSE") ? "DEFENSE" : (c.addStat.after || [])[0]; a.seconds = 1.5; }
+        save(); renderView(); return;
+      }
       const info = S.stats.find(s => s.name === st) || {};
       const count = info.tally || info.charge;
       if (count) {
@@ -1828,7 +1880,7 @@ function addedStats(c, redraw, desc) {
     // the hero's abilities is in use, or for some seconds each time one is used
     // (abilities this hero cannot signal are left out of each list).
     const when = el("select", { "aria-label": "When it applies" },
-      el("option", { value: "", text: "Always" }),
+      el("option", { value: "", text: "Always", ...(isInvulnerable(a) ? { disabled: "" } : {}) }),
       ...(info.during || []).map(ab => el("option", { value: "during:" + ab, text: "During " + ab })),
       ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })),
       ...(Object.keys(info.on || {}).length ? [el("optgroup", { label: "For a while after something happens" },
@@ -1876,8 +1928,9 @@ function addedStats(c, redraw, desc) {
     when.addEventListener("change", () => { timing.hidden = !timed(); });
     const card = blockCard(statBlockTitle(a), () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
       blockField("Stat", picker.el),
-      blockField("How much", nums),
-      blockField("When", when),
+      ...(isInvulnerable(a) || isTraitCharge(a) ? [] : [blockField("How much", nums)]),
+      ...(isTraitCharge(a) ? [el("div", { class: "tiny muted", text: "One TRAIT charge, at every rarity, for as long as the talent is owned: the game gives TRAIT charges one at a time (as Merlin's quest and Snow Queen's Trait Charge do)." })]
+        : [blockField("When", when)]),
       timing,
       el("details", {}, el("summary", { text: "Card text options" }),
         el("label", { class: "tiny addpct" }, pct, "Show the number as a percent on the card (0.25 shows as 25%)"),
@@ -1885,7 +1938,9 @@ function addedStats(c, redraw, desc) {
           ? `On the card this number is {${n}}. A line using it was added to the description above; reword it freely. The number is in the stat's own unit: 0.25 on a cooldown stat is 25% shorter.`
           : "This card has no text format, so the number can't be shown on it." })));
     const tell = () => card.tell(statSentence(a),
-      !a.stat ? "pick which stat it changes." : a.values.every(v => !v) ? "set how much (it is 0 now)." : "");
+      !a.stat ? "pick which stat it changes."
+        : isInvulnerable(a) ? (a.during || a.after || a.on ? "" : "pick when (it can't be on all the time).")
+        : a.values.every(v => !v) ? "set how much (it is 0 now)." : "");
     tells.push(tell); tell();
     box.append(card);
   });
@@ -2105,6 +2160,7 @@ const BLOCKS = [
   { id: "during", title: "While using an ability", blurb: "e.g. ATTACK damage +40% during DEFENSE.", needs: "during" },
   { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
   { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
+  { id: "immune", title: "Invulnerable, intangible or hidden", blurb: "For a moment: invulnerable for 1.5 s after DEFENSE, intangible after DASH, or concealed from enemies. Pick which under Stat.", needs: "after" },
   { id: "event", title: "After something happens", blurb: "e.g. +30% damage for 4 s after taking damage, when night falls, or after a reroll.", needs: "on" },
   { id: "bigger", title: "Make an ability bigger", blurb: "A wider, longer or larger area: +30% POWER radius." },
   { id: "status", title: "Hits apply a status", blurb: "e.g. POWER's hits set enemies on fire (Ignite), chill or weaken them." },
@@ -2220,6 +2276,9 @@ function scaleRows(c, paint, desc) {
     if (desc && c.hasDescription) {
       let text = desc.get();
       if (removed && removed.line) text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+      desc.set(text);
+      renumberCard(c, desc);
+      text = desc.get();
       list.forEach((r, i) => {
         if (!r.node) return;
         const want = scaleLine(r, base() + i, r.ability);
@@ -2484,6 +2543,7 @@ function builderView() {
         const a = { stat: "", values: STARTER(), percent: true };
         if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
         if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
+        if (blk.id === "immune") { a.stat = "Invulnerable"; a.percent = false; a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = 1.5; }
         if (blk.id === "event") { a.on = "damage_taken" in (info.on || {}) ? "damage_taken" : Object.keys(info.on)[0]; a.seconds = 4; }
         if (blk.id === "next") {
           const nxt = (info.during || []).filter(x => x !== a.after);

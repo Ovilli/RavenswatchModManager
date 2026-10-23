@@ -307,3 +307,88 @@ def test_every_option_the_editor_offers_builds(hero):
     failed = [(req, r["error"]) for req in reqs
               for r in _editor_check(hero, {"rebuild": [t], **req}) if not r["ok"]]
     assert not failed, failed[:5]
+
+
+# --- invulnerable for a moment (`stat = "Invulnerable"`) -----------------------
+
+@pytest.mark.parametrize("stat", ["Invulnerable", "Intangible", "Concealed"])
+@pytest.mark.parametrize("kw", [
+    {"after": "DEFENSE", "seconds": 1.5},
+    {"on": "damage_taken", "seconds": 1, "cooldown": 20},
+    {"during": "DASH"},
+])
+def test_a_held_state_is_held_only_while_the_talent_is_owned(wukong, stat, kw):
+    """The game's own State Invincible (Romeo's Love Shield, hero ultimates),
+    held by a tester the talent's OWNED state runs: the window alone opens on
+    every DEFENSE, owned or not, so it must not hold it itself."""
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat=stat, **kw)
+    holder = comp(out, added.modifier)
+    state = TA.HELD_STATES[stat]
+    assert [r.path for r in holder.refs if state in r.path] == [
+        f"[State] Character_Common\\Base\\{state}"]
+    owned = comp(out, "Skill Trait Fire")
+    assert any(r.guid == holder.guid for r in owned.refs)
+    for c in EG.parse(out).components:
+        if c.guid != holder.guid and c.name not in {x.name for x in EG.parse(wukong).components}:
+            assert not any(state in r.path for r in c.refs), c.name
+    from rsmm.engine import entity_check as EC
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+@pytest.mark.parametrize("kw, msg", [
+    ({}, "untouchable"),
+    ({"after": "DEFENSE"}, "seconds"),
+])
+def test_invulnerable_is_never_always_on(wukong, kw, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Invulnerable", **kw)
+
+
+def test_the_editor_builds_invulnerable():
+    entity("SunWukong")
+    req = {"rebuild": ["Trait Fire"], "addStats": [
+        {"talent": "Trait Fire", "stat": "Invulnerable", "values": [0, 0, 0, 0], "percent": False,
+         "after": "DEFENSE", "seconds": 1.5}]}
+    assert all(r["ok"] for r in _editor_check("SunWukong", req))
+
+
+# --- a borrowed effect's resources go into the hero's preload caches ----------
+
+@pytest.mark.parametrize("hero, talent, src, other", [
+    ("Piper", "Attack Move Speed", "SunWukong", "Passive Reveal"),
+    ("Beowulf", "Attack Fire Cone", "Geppetto", "Passive Create Objects"),
+])
+def test_a_borrowed_effect_is_preloaded_by_every_cache_of_its_new_entity(
+        tmp_path, hero, talent, src, other):
+    """Every cache that preloads an entity must list what it names, or that
+    cache's preloaded vector holds a null and the game crashes (engine/CLAUDE.md):
+    Wukong's Fiery Golden Eyes names Baba Yaga's Eye crow effect, which Piper's
+    herodef cache did not list."""
+    entity(hero)
+    from rsmm.engine import entity_check as EC
+    from rsmm.engine import rsc_cache as RC
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+    files = talents.emit("t", ContentDef("talent", "b", {"hero": hero, "include": [
+        {"talent": talent, "from": other, "hero": src}]}), tmp_path)
+    ent = next(f for f in files if f.name.startswith(f"Hero_{hero}.entity"))
+    rel = f"Heroes\\Hero_{hero}\\Hero_{hero}.entity.ot"
+    new = EC.resource_paths(ent.read_bytes()) - EC.resource_paths(
+        corpus.read(str(ent.relative_to(tmp_path))))
+    assert new
+    for cache in (c for c, listed in EC._cache_index().items() if rel in listed):
+        written = tmp_path / cache
+        text = written.read_bytes() if written.is_file() else corpus.read(cache)
+        listed = {ln.split("|")[1] for ln in RC.parse(text) if ln.count("|") == 2}
+        assert new <= listed, cache
+        assert RC.parse(text) == sorted(RC.parse(text)), cache
+
+
+def test_a_borrow_that_loads_nothing_new_writes_no_cache(tmp_path):
+    entity("Melusine")
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+    files = talents.emit("t", ContentDef("talent", "b", {"hero": "Melusine", "include": [
+        {"talent": "Attack Speed", "from": "Passive AP Per Internal Damage",
+         "hero": "Kintaro"}]}), tmp_path)
+    assert not [f for f in files if f.name.endswith(".UsedRscCache.ot")]
