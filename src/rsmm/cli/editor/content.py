@@ -334,11 +334,14 @@ def stats() -> list[dict]:
     # Game state the engine keeps beside the stats ("Is in cinematic", "Is
     # day") is not something a modifier changes: left out of every picker.
     state = IM.game_state_keys()
+    # A charge nothing turns into charges (TRAIT) is left out too.
+    from rsmm.engine.talent_add_stat import charges_heard, is_charge
+    heard = charges_heard()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
-             "onHit": k in on_hit, "tally": stat_tally(n),
+             "onHit": k in on_hit, "tally": stat_tally(n), "charge": is_charge(k),
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
-            if k not in state]
+            if k not in state and not (heard and is_charge(k) and k not in heard)]
 
 
 #: The engine's per-ability stat suffix -> the button the cards name it by.

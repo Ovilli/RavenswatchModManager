@@ -390,8 +390,11 @@ def _coerce_add_stats(raw) -> list[dict]:
         nxt = e.get("next")
         if nxt is not None and not isinstance(nxt, str):
             raise ContentError(f"add_stats: next must be an ability name, got {nxt!r}")
+        # A charge is a count: "+1 charge", never "+100%".
+        from ...engine.talent_add_stat import is_charge
         out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e["values"],
-                    "percent": bool(e.get("percent", True)), "during": during,
+                    "percent": bool(e.get("percent", not is_charge(e["stat"]))),
+                    "during": during,
                     "after": after, "seconds": e.get("seconds"),
                     "cooldown": e.get("cooldown"), "next": nxt})
     return out

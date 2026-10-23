@@ -32,6 +32,7 @@ numbers start at ``{0}``.
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass
 
@@ -39,7 +40,14 @@ from . import entity_fields as EF
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
 from . import talent_values as TV
-from .item_modifier import ItemModifierError, modifier_survey, resolve_stat, set_modifier_stat
+from .item_modifier import (
+    ItemModifierError,
+    modifier_survey,
+    resolve_stat,
+    set_modifier_stat,
+    stat_catalog,
+    stat_name,
+)
 
 #: The proven donor: a self-targeted permanent stat modifier.
 DONOR_HERO = "Beowulf"
@@ -150,6 +158,40 @@ def applied_on_hit() -> frozenset[int]:
     when no game data is reachable."""
     survey = modifier_survey()
     return frozenset(k for k, v in survey.on_hit.items() if v > survey.on_self.get(k, 0))
+
+
+def is_charge(stat: str | int) -> bool:
+    """``Ability_Charge_<Ability>``: a count of extra charges, not a fraction."""
+    try:
+        name = stat_name(resolve_stat(stat))
+    except ItemModifierError:
+        return False
+    return bool(name and name.startswith("Ability_Charge_"))
+
+
+@functools.cache
+def charges_heard() -> frozenset[int]:
+    """Charge keys the game turns into charges.
+
+    ``Ability_Charge_<X>`` is a plain data value; it does something only because
+    Hero_Common has a Modifier Listener naming it, which fires that ability's
+    "Set Max Charges" event. Dash, Defensive, Primary, Secondary and Ultimate
+    have one; Trait has none (a Trait Max Charges Counter exists, but nothing
+    feeds it), so +1 TRAIT charge did nothing (user report 2026-10-23). Read
+    from the game's files; empty when no game data is reachable."""
+    from . import corpus
+    raw = next((corpus.read(rel) for rel in corpus.rels("EntitySettings/", _HERO_COMMON)
+                if rel.endswith("/" + _HERO_COMMON)), None)
+    if not raw:
+        return frozenset()
+    names = {n: k for n, k in stat_catalog().items() if n.startswith("Ability_Charge_")}
+    heard = [c.body for c in EG.parse(raw).components if c.cls == _LISTENER]
+    return frozenset(k for k in names.values()
+                     if any(struct.pack("<I", k) in body for body in heard))
+
+
+_HERO_COMMON = "Hero_Common.entity.ot.EntitySettingsResource.gen"
+_LISTENER = "oCEntityCpntModifierListenerSettings"
 
 
 @dataclass(frozen=True)
@@ -518,6 +560,16 @@ def add_stat(raw: bytes, donor_raw: bytes, *, talent: str, stat: str | int,
             f"{stat!r} is something the game puts on whoever is hit, and an added stat "
             f"applies to the hero itself, so {talent!r} would debuff its own hero")
     amounts = normalise_values(values)
+    if is_charge(key):
+        heard = charges_heard()
+        if heard and key not in heard:
+            raise AddStatError(
+                f"{stat_name(key)!r}: the game never turns it into charges (no ability "
+                f"listens for it); charges work for "
+                f"{', '.join(sorted(stat_name(k) for k in heard))}")
+        if any(v != int(v) for v in amounts.values()):
+            raise AddStatError(f"{stat_name(key)!r} counts charges: give whole numbers, "
+                               f"got {list(amounts.values())}")
 
     graph = EG.parse(raw)
     state, first_sel, fmt = talent_parts(graph, talent)

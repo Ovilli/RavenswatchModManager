@@ -307,6 +307,41 @@ def test_an_on_hit_stat_is_refused_because_it_would_debuff_the_hero(wukong, beow
         TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Vulnerable", values=0.2)
 
 
+@pytest.fixture
+def charges():
+    heard = TA.charges_heard()
+    if not heard:
+        pytest.skip("ApplicationSettings.ot not readable (no game install)")
+    return heard
+
+
+def test_only_trait_has_no_charge_listener(charges):
+    assert {TA.stat_name(k) for k in charges} == {
+        f"Ability_Charge_{a}" for a in ("Dash", "Defensive", "Primary", "Secondary", "Ultimate")}
+
+
+def test_a_trait_charge_is_refused_because_nothing_reads_it(wukong, beowulf, charges):
+    with pytest.raises(TA.AddStatError, match="never turns it into charges"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Ability_Charge_Trait", values=1)
+
+
+def test_a_charge_takes_whole_numbers(wukong, beowulf, charges):
+    with pytest.raises(TA.AddStatError, match="whole numbers"):
+        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Ability_Charge_Primary",
+                    values=[0.1, 0.15, 0.2, 1])
+    out, added = TA.add_stat(wukong, beowulf, talent="Trait Fire",
+                             stat="Ability_Charge_Primary", values=1, percent=False)
+    assert EA.modifier_stat(out, added.modifier) == TA.stat_key_bytes("Ability_Charge_Primary")
+
+
+def test_a_charge_entry_is_not_a_percent_by_default(charges):
+    from rsmm.sdk.kinds.talents import _coerce_add_stats
+    charge, cd = _coerce_add_stats([
+        {"talent": "Trait Fire", "stat": "Ability_Charge_Primary", "values": 1},
+        {"talent": "Trait Fire", "stat": "CD reduce trait", "values": 0.1}])
+    assert charge["percent"] is False and cd["percent"] is True
+
+
 # --- conditions: "for N s after <ability>" --------------------------------------
 
 def _refs(raw: bytes, name: str, field: str) -> list[str]:

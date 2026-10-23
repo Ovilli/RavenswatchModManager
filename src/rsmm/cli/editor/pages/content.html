@@ -1692,6 +1692,8 @@ function statPhrase(stat, n, percent) {
   const num = "{" + n + "}" + (percent ? "%" : "");
   const tally = (S.stats.find(s => s.name === stat) || {}).tally;
   if (tally) return `• Counts as #+${num}@ more ${tally}(s)`;
+  const charge = /^Ability_Charge_(\w+)$/.exec(stat || "");
+  if (charge) return `• #${ABILITY_WORD[charge[1].toLowerCase()] || charge[1].toUpperCase()}@ charges &+${num}~`;
   const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
   const ab = m && m[2] ? "#" + (ABILITY_WORD[m[2]] || m[2].toUpperCase()) + "@ " : "";
   if (m && m[1] === "CD reduce") return `• ${ab}cooldown &-${num}~`;
@@ -1798,14 +1800,15 @@ function addedStats(c, redraw, desc) {
     const n = firstSlot(c) != null ? firstSlot(c) + i : null;
     const picker = statPicker(a.stat, null, st => {
       a.stat = st;
-      // A tally counts things: a whole number, never a percentage.
-      const tally = (S.stats.find(s => s.name === st) || {}).tally;
-      if (tally) {
+      // A tally or a charge counts things: a whole number, never a percentage.
+      const info = S.stats.find(s => s.name === st) || {};
+      const count = info.tally || info.charge;
+      if (count) {
         a.percent = false;
         if (a.values.every(v => v < 1)) a.values = [1, 1, 1, 1];
       }
       save();
-      if (tally) renderView();
+      if (count) renderView();
     }, true);
     picker.el.querySelector("input").placeholder = "Pick a stat, e.g. attack power or cooldown";
     const nums = tierInputs(a.values, v => asShown(v, a.percent !== false), () => save());
