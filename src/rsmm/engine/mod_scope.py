@@ -54,6 +54,9 @@ CLIENT_CALLS: frozenset[str] = frozenset({
     "net.peers",
     # Read the lobby roster the loader already parsed — names and hero picks.
     "lobby.members", "lobby.allies", "lobby.hero_name",
+    # Logs the hero's live component list; reads only (R.debug.observe hooks,
+    # so the namespace as a whole is not client-only).
+    "debug.components",
 })
 
 

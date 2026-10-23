@@ -3778,6 +3778,49 @@ function R.debug.dump(ptr, len, label)
     end
 end
 
+-- Log an entity's live components in order: position in the array, the index
+-- the engine gave each (+0x62), its settings' class and name. `entity`
+-- defaults to the captured hero's oCEntity (*(controller+0x08)).
+--
+-- Layout from the instantiation code (0x1406e3060, build b9c3642884a8): the
+-- entity keeps its components at +0x190 (count +0x198), created in the
+-- flattened settings order (the entity's own components, then its parents');
+-- each instance holds its settings at +0x10 and its index at +0x62, and a
+-- settings component's name is at +0xe8. Written to compare a hero's layout
+-- with and without a mod's added components (piper-horde-rats lost Piper's
+-- right-stick aim, 2026-10-23). Returns { {pos, index, class, name}, ... }.
+function R.debug.components(entity, label)
+    label = label or "components"
+    if entity == nil then
+        local ctrl = R.entity and R.entity.hero and R.entity.hero()
+        if type(ctrl) == "number" and ctrl ~= 0 then entity = I.read_u64(ctrl + 0x08) end
+    end
+    if not _ptr_plausible(entity) or R.rtti.name(entity) ~= "oCEntity" then
+        R.log(string.format("[rsmm.debug] %s: no entity (hero not captured yet?)", label))
+        return nil
+    end
+    local arr, n = I.read_u64(entity + 0x190), I.read_u32(entity + 0x198)
+    if not _ptr_plausible(arr) or type(n) ~= "number" or n == 0 or n > 8192 then
+        R.log(string.format("[rsmm.debug] %s: no component array on 0x%x", label, entity))
+        return nil
+    end
+    local name = R.interact and R.interact.name and R.interact.name(entity)
+    R.log(string.format("[rsmm.debug] %s: %s has %d components", label, tostring(name), n))
+    local out = {}
+    for pos = 0, n - 1 do
+        local inst = I.read_u64(arr + pos * 8)
+        local idx = _ptr_plausible(inst) and I.read_u16(inst + 0x62) or nil
+        local settings = _ptr_plausible(inst) and I.read_u64(inst + 0x10) or nil
+        local cls = _ptr_plausible(settings) and R.rtti.name(settings) or "?"
+        local sp = _ptr_plausible(settings) and I.read_u64(settings + 0xe8) or nil
+        local nm = _ptr_plausible(sp) and I.read_cstr and I.read_cstr(sp, 160) or "?"
+        out[#out + 1] = { pos = pos, index = idx, class = cls, name = nm }
+        R.log(string.format("[rsmm.debug] %s %4d idx=%s %s | %s", label, pos,
+            tostring(idx), tostring(cls), tostring(nm)))
+    end
+    return out
+end
+
 -- Scan every pointer field of `obj` (0..max_off) for objects that hold a
 -- {data,count} pointer-vector at data_off/count_off (default the component
 -- array 0x190/0x198). Returns a list of {off, holder, count}; logs each.

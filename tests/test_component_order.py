@@ -1,12 +1,10 @@
 """New components go where the game's own files put theirs in the vector.
 
 Every shipped entity keeps each class's components in ONE contiguous run of
-its component vector. Appending at the end split a class in two, and seven
-unreferenced copies added to Hero_Piper that way switched off Piper's own
-`Enable Right Stick Aiming` (piper-horde-rats, 2026-10-23: on a controller her
-shots went where she faced). `entity_append.place_new_components` puts a new
-component in its class's run; these tests pin the shipped invariant and that
-every writer keeps it.
+its component vector; appending at the end split a class in two.
+`entity_append.place_new_components` puts a new component in its class's run;
+these tests pin the shipped invariant and that every writer keeps it. (Made
+while chasing piper-horde-rats' lost right-stick aim; not proven to be its cause.)
 """
 
 from __future__ import annotations

@@ -100,12 +100,12 @@ def place_new_components(raw: bytes, first_new: int) -> bytes:
 
     Every one of the 4,769 shipped entities keeps each class's components in ONE
     contiguous run of the vector (runs in class-table order, names in order
-    within a run). Appending a new component at the end split its class into
-    two runs, and that broke something the engine resolves through the vector:
-    seven unreferenced copies added to Hero_Piper switched off Piper's own
-    `Enable Right Stick Aiming` (her same-named replacement of Hero_Common_
-    Update5's default, which is false), so on a controller her shots went where
-    she faced (piper-horde-rats, found by bisect 2026-10-23). A new component
+    within a run); appending a new component at the end split its class into
+    two runs. This keeps written files in the shipped layout. It was made for
+    piper-horde-rats, where seven unreferenced copies appended to Hero_Piper
+    lost Piper's controller right-stick aim (bisect 2026-10-23), but the engine
+    code read since (entity flatten 0x1406e03b0, instantiation 0x1406e3060)
+    does not depend on the runs, so it is NOT known to fix that. A new component
     goes into its class's run, before the first name that sorts after it, or
     starts its class's run before the first run of a later class. Ids before
     ``first_new`` keep their places, so a shipped file is left as shipped."""
