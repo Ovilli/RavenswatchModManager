@@ -62,6 +62,12 @@ target_compile_definitions(imgui PUBLIC
 target_compile_definitions(imgui PRIVATE
     CreateDXGIFactory1=rsmm_CreateDXGIFactory1
     D3DCompile=rsmm_D3DCompile)
+# Ubuntu 22.04's mingw-w64 d3d12.h has no flag operators for
+# D3D12_ROOT_SIGNATURE_FLAGS, so imgui_impl_dx12.cpp's `A | B` is an int the
+# enum won't take. The publish-cli and .deb legs build there (glibc floor).
+if(MINGW)
+  target_compile_options(imgui PRIVATE -fpermissive)
+endif()
 
 # --- Loader DLL ----------------------------------------------------------
 # The first in-game UI (hook_vk + hook_win32) was removed: it hooked Vulkan,
