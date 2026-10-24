@@ -817,6 +817,7 @@ export default function ManageModPage() {
                           className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
                         >
                           <img
+                            loading="lazy"
                             src={shot.url}
                             alt={shot.caption || `Screenshot ${idx + 1}`}
                             className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
@@ -1125,6 +1126,7 @@ function Lightbox({
             className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
           >
             <img
+              loading="lazy"
               src={shot.url}
               alt={shot.caption || `Screenshot ${index + 1}`}
               className="max-w-full rounded-md object-contain shadow-2xl"

@@ -383,6 +383,7 @@ export default function CollectionDetailPage({
             {editScreenshots.map((shot, i) => (
               <div key={shot.url} className="relative">
                 <img
+                  loading="lazy"
                   src={shot.url}
                   alt={shot.caption || `Screenshot ${i + 1}`}
                   className="aspect-video w-full rounded-md object-cover"
@@ -737,6 +738,7 @@ export default function CollectionDetailPage({
                 <div className="flex items-center gap-2">
                   {r.userImage ? (
                     <img
+                      loading="lazy"
                       src={r.userImage}
                       alt={r.userName ?? 'User'}
                       className="h-6 w-6 rounded-full"

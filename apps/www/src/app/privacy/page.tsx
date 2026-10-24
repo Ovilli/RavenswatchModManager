@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 // Bump whenever a section changes materially. Shown at the top so a returning
 // reader can tell at a glance whether anything moved since they last agreed.
-const LAST_UPDATED = '24 August 2026';
+const LAST_UPDATED = '24 October 2026';
 
 function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
@@ -207,7 +207,6 @@ export default function PrivacyPage() {
                 partners; do not upload anything you would not want scanned.
               </li>
               <li>An SMTP provider — delivery of the email described in section 5</li>
-              <li>Google AdSense — advertising on this website only (section 9)</li>
             </ul>
             <p className="pt-2">
               The desktop application carries no advertising and no third-party analytics.
@@ -231,56 +230,11 @@ export default function PrivacyPage() {
             </p>
           </Section>
 
-          <Section n={9} title="Advertising &amp; Cookies">
+          <Section n={9} title="Cookies">
             <p>
-              This website uses cookies and may display advertising served by Google AdSense and its
-              partners. Third-party vendors, including Google, use cookies to serve ads based on
-              your prior visits to this and other websites.
-            </p>
-            <ul className="list-disc space-y-1 pl-5">
-              <li>
-                Google&apos;s use of advertising cookies (including the DoubleClick DART cookie)
-                enables it and its partners to serve ads to you based on your visit to this site
-                and/or other sites on the Internet.
-              </li>
-              <li>
-                You may opt out of personalised advertising by visiting{' '}
-                <a
-                  href="https://www.google.com/settings/ads"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-foreground"
-                >
-                  Google Ads Settings
-                </a>
-                .
-              </li>
-              <li>
-                You can opt out of a third-party vendor&apos;s use of cookies for personalised
-                advertising at{' '}
-                <a
-                  href="https://www.aboutads.info/choices/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-foreground"
-                >
-                  aboutads.info/choices
-                </a>
-                .
-              </li>
-              <li>
-                Visitors in the EU/EEA/UK and other applicable regions are shown a consent prompt,
-                managed through a Google-certified Consent Management Platform, before personalised
-                ads and non-essential cookies are used. Your choice is recorded and applied via
-                Google Consent Mode, and you can withdraw or change it at any time by clearing this
-                site&apos;s cookies in your browser.
-              </li>
-            </ul>
-            <p>
-              Essential cookies required for sign-in and security are always set; you can disable
-              all cookies in your browser settings, though parts of the site may stop working. The
-              advertising described here applies to this website only — the desktop application
-              shows no ads and sets no advertising cookies.
+              This website shows no advertising and sets no advertising or tracking cookies. It only
+              sets the essential cookies required for sign-in and security. You can disable cookies
+              in your browser settings, though signing in will stop working.
             </p>
           </Section>
 

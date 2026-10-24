@@ -627,6 +627,7 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-xs font-semibold">
                   {r.userImage ? (
                     <img
+                      loading="lazy"
                       src={r.userImage}
                       alt={r.userName ?? 'reviewer'}
                       className="h-full w-full object-cover"

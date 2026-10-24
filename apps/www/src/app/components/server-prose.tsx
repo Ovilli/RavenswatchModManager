@@ -100,6 +100,7 @@ export function ServerProse({
         <div className="group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
           {/* Plain <img>: mod art lives on arbitrary remote hosts, which next/image would need allowlisted one by one. Same choice the client pages made. */}
           <img
+            loading="lazy"
             src={image.url}
             alt={image.alt}
             className={`h-full w-full object-cover ${

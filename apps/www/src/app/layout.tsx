@@ -65,8 +65,6 @@ export const metadata: Metadata = {
   // hosts compete as separate URLs and split their own ranking signals.
   alternates: { canonical: '/' },
   icons: '/logo.png',
-  // AdSense site-ownership verification (alongside the loader script).
-  other: { 'google-adsense-account': 'ca-pub-9139637424510522' },
   // Site-wide social-card defaults. Per-mod / per-collection pages override
   // title/description/images in their own layout's generateMetadata.
   openGraph: {

@@ -365,6 +365,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
                 <div className="flex items-center gap-2">
                   {r.userImage ? (
                     <img
+                      loading="lazy"
                       src={r.userImage}
                       alt={r.userName ?? ''}
                       className="h-6 w-6 rounded-full"
