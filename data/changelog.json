@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-23",
+  "generated": "2026-10-24",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "Supper Effect on Items and Always on Night/Day",
+      "highlights": [
+        "Supper Effect on Items and Always on Night/Day"
+      ],
+      "cli_version": 12
+    },
     {
       "version": "",
       "date": "2026-10-23",
@@ -522,17 +531,6 @@
       "summary": "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server.",
       "highlights": [
         "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server."
-      ]
-    },
-    {
-      "version": "5.9.5",
-      "date": "2026-10-05",
-      "summary": "Play on a community-hosted online server in one step, from Settings or with one command.",
-      "highlights": [
-        "New: Settings > Game > Online server. Paste the address the host gave you and the app sets everything up, including installing or updating the loader when needed.",
-        "The same from the command line: `rsmm backend http://host:port` (and `rsmm backend off` to go back to the official servers). No more setx or Steam restarts.",
-        "Shows whether the server answers and whether your last game launch actually used it.",
-        "Fixed: `rsmm update-loader` said \"up to date\" when the game folder had no loader at all. It now says so."
       ]
     }
   ]
