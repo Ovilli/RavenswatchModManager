@@ -25,10 +25,10 @@
     "dotenv": "16.4.7",
     "drizzle-orm": "0.45.2",
     "hono": "4.13.12",
-    "nodemailer": "^10.0.9",
+    "nodemailer": "^10.1.4",
     "pg": "8.13.1",
     "ws": "8.21.0",
-    "zod": "3.25.76"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",

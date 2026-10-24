@@ -22,7 +22,7 @@
     "better-auth": "1.6.22",
     "lucide-react": "0.469.0",
     "marked": "^18.0.11",
-    "next": "15.5.27",
+    "next": "15.5.28",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "sanitize-html": "^2.18.0"
