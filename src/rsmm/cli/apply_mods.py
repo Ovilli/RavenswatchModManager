@@ -2446,6 +2446,14 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         game_dir, args.dry_run,
         page=encoded_to_dest(page_enc, cooking, game_dir) if page_enc else None,
         page_owner=page_owner)
+    # The pause menu's Mods button follows the loader's native menu flag.
+    from rsmm.engine.escape_menu import MENU_DECODED, sync_escape_menu
+    menu_enc = dec2enc.get(MENU_DECODED)
+    versiondef_changes += sync_escape_menu(
+        game_dir, args.dry_run,
+        menu=encoded_to_dest(menu_enc, cooking, game_dir) if menu_enc else None,
+        menu_owner=(state.active.get(menu_enc, {}).get("mod")
+                    or next((m for e, _s, _d, m in additions if e == menu_enc), None)))
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)

@@ -6,8 +6,8 @@
 //   * Generic Lua hook bridge (hook_lua) backing the public rsmm.hook
 //   * Pattern-resolved engine baseline verifier (hook_engine), off by default
 //
-//   * Mods tab in the game's own Settings page (hook_settings_menu), opt-in
-//     via RSMM_ENABLE_NATIVE_MENU
+//   * Mods tab in the game's own Settings page + pause menu Mods button
+//     (hook_settings_menu), on unless RSMM_DISABLE_NATIVE_MENU
 //
 // Removed: the first in-game overlay (hook_vk, hook_win32), which hooked
 // Vulkan in a DX12-only game and never drew; its DXGI/ImGui successor painted

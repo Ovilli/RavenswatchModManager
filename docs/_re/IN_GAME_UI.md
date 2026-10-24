@@ -3,7 +3,8 @@
 > **SUPERSEDED 2026-10-24 — the ImGui overlay below was removed.** It worked,
 > but painting our own book over the Settings page was too complicated and
 > looked wrong. The mod menu is now a **Mods tab inside the game's own Settings
-> page** (`src/loader/src/hook_settings_menu.cpp`, flag `RSMM_ENABLE_NATIVE_MENU`):
+> page** (`src/loader/src/hook_settings_menu.cpp`, on unless `RSMM_DISABLE_NATIVE_MENU`, plus a pause menu Mods button via
+> `rsmm.engine.escape_menu`):
 > the page is built in code by `oe::dt::BookOptionsUiControllerEntityCpnt`
 > (vtable slot 7 calls five tab builders), so one detour on the last builder
 > plus the game's own add-tab / add-row functions (`OptionsMenu_*` in

@@ -15,7 +15,9 @@ namespace rsmm {
 // Rows: Off/On per installed mod (applied by `rsmm apply` on the next launch)
 // and each mod's bool/enum/int/float config fields (written to its
 // config.toml, which R.config.on_change picks up). Proven in game 2026-10-24.
-// Opt-in via RSMM_ENABLE_NATIVE_MENU=1 (env or desktop loader-flags file).
+// On by default; RSMM_DISABLE_NATIVE_MENU=1 (env or desktop loader-flags file)
+// switches it off. Also answers the pause menu's Mods button
+// (rsmm.engine.escape_menu).
 bool install_settings_menu_hooks();
 
 } // namespace rsmm

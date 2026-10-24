@@ -396,6 +396,31 @@ engine::OptionsMenu_SpawnMultiChoice_fn g_spawn_row    = nullptr;
 engine::OptionsMenu_AppendRow_fn        g_append_row   = nullptr;
 engine::OptionsMenuElement_SetTitle_fn  g_set_title    = nullptr;
 engine::StringVector_AssignFromArray_fn g_set_labels   = nullptr;
+engine::OptionsMenu_SelectCategory_fn   g_select_tab   = nullptr;
+
+// Where our tab lives, for the pause menu's Mods button. An index, not the
+// entry: the build adds more tabs after ours, which can move the vector.
+constexpr std::uintptr_t kCtrlTabs     = 0x208;   // tab entries, stride 0x48
+constexpr std::uintptr_t kCtrlTabCount = 0x210;
+constexpr std::uintptr_t kTabStride    = 0x48;
+constexpr std::uintptr_t kTabButton    = 0x10;
+void* g_ctrl = nullptr;
+std::uint32_t g_tab_index = UINT32_MAX;
+
+void select_mods_tab() {
+    auto& L = Loader::get();
+    const auto c = reinterpret_cast<std::uintptr_t>(g_ctrl);
+    std::uintptr_t tabs = 0;
+    std::uint32_t count = 0;
+    void* button = nullptr;
+    if (!g_ctrl || !g_select_tab || !mem_load(c + kCtrlTabs, &tabs)
+        || !mem_load(c + kCtrlTabCount, &count) || g_tab_index >= count
+        || !mem_load(tabs + g_tab_index * kTabStride + kTabButton, &button) || !button) {
+        L.log_warn("[native-menu] Mods tab not found; Settings opened on its first tab");
+        return;
+    }
+    g_select_tab(g_ctrl, button);
+}
 
 void add_mods_tab(void* ctrl, void* page, void* parent) {
     auto& L = Loader::get();
@@ -413,6 +438,11 @@ void add_mods_tab(void* ctrl, void* page, void* parent) {
         if (HANDLE t = CreateThread(nullptr, 0, watch_rows, nullptr, 0, nullptr)) CloseHandle(t);
     });
     if (g_rows.empty()) return;
+    std::uint32_t index = 0;
+    if (mem_load(c + kCtrlTabCount, &index)) {
+        g_ctrl = ctrl;
+        g_tab_index = index;    // AddCategory stamps this on the tab's button
+    }
     OcStr tab = lit(kTabTitle);
     void* cat = g_add_category(ctrl, page, parent, &tab, kCategoryType);
     void* row_parent = nullptr;
@@ -445,6 +475,40 @@ void hook_build(void* ctrl, void* page, void* parent) {
     add_mods_tab(ctrl, page, parent);
 }
 
+// --- the pause menu's Mods button ----------------------------------------------
+//
+// rsmm.engine.escape_menu adds a pause menu item naming the pause controller
+// and kModsAction. The controller's action lookup (vtable slot 19) only knows
+// its six keys, so we answer ours: the Settings callback, its thunk swapped
+// for one that runs it and then selects the Mods tab. A callback is
+// {this, 0, thunk}; the game calls thunk(arg, &callback).
+
+constexpr std::uint32_t kModsAction     = 0x52534D4D;   // = escape_menu.MODS_ACTION
+constexpr std::uint32_t kSettingsAction = 0x1B4AB3B7;
+
+using thunk_fn = void (*)(void*, void*);
+thunk_fn g_settings_thunk = nullptr;
+
+void mods_thunk(void* arg, void* callback) {
+    if (g_settings_thunk) g_settings_thunk(arg, callback);
+    select_mods_tab();
+}
+
+using get_callback_fn = void* (*)(void*, void**, std::uint64_t, void*);
+get_callback_fn g_real_get_callback = nullptr;
+
+void* hook_get_callback(void* self, void** out, std::uint64_t key, void* extra) {
+    if (static_cast<std::uint32_t>(key) != kModsAction || !out) {
+        return g_real_get_callback(self, out, key, extra);
+    }
+    void* r = g_real_get_callback(self, out, kSettingsAction, extra);
+    if (out[2]) {
+        g_settings_thunk = reinterpret_cast<thunk_fn>(out[2]);
+        out[2] = reinterpret_cast<void*>(&mods_thunk);
+    }
+    return r;
+}
+
 template <typename F>
 bool need(const char* what, const char* pattern, F* out) {
     return resolve_checked("native-menu", what, pattern, reinterpret_cast<void**>(out));
@@ -453,8 +517,8 @@ bool need(const char* what, const char* pattern, F* out) {
 } // anonymous namespace
 
 bool install_settings_menu_hooks() {
-    if (!flag_enabled("RSMM_ENABLE_NATIVE_MENU")) {
-        Loader::get().log("[native-menu] off (set RSMM_ENABLE_NATIVE_MENU=1 to enable)");
+    if (flag_enabled("RSMM_DISABLE_NATIVE_MENU")) {
+        Loader::get().log("[native-menu] off (RSMM_DISABLE_NATIVE_MENU is set)");
         return false;
     }
     if (!fn_resolver_init()) {
@@ -473,6 +537,14 @@ bool install_settings_menu_hooks() {
                       reinterpret_cast<void*>(&hook_build),
                       reinterpret_cast<void**>(&g_real_build))) {
         return false;
+    }
+    // The pause menu button is extra: without it the tab still works.
+    if (need("select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
+        && hook_install("native-menu", "pause menu action lookup",
+                        Sym::PauseMenu_GetActionCallback_Pattern,
+                        reinterpret_cast<void*>(&hook_get_callback),
+                        reinterpret_cast<void**>(&g_real_get_callback))) {
+        Loader::get().log("[native-menu] pause menu Mods button armed");
     }
     Loader::get().log("[native-menu] armed: open Settings for the Mods tab");
     return true;

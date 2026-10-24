@@ -693,11 +693,25 @@ inline OptionsMenu_BuildLastCategory_fn OptionsMenu_BuildLastCategory() {
     return reinterpret_cast<OptionsMenu_BuildLastCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildLastCategory_Pattern));
 }
 
+// OptionsMenu_SelectCategory  (OptionsMenu_SelectCategory)
+//   void(void* optionsCtrl, void* tabButtonGameUi)
+using OptionsMenu_SelectCategory_fn = void(*)(void*, void*);
+inline OptionsMenu_SelectCategory_fn OptionsMenu_SelectCategory() {
+    return reinterpret_cast<OptionsMenu_SelectCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SelectCategory_Pattern));
+}
+
 // OptionsMenu_SpawnMultiChoice  (OptionsMenu_SpawnMultiChoice)
 //   void*(void* elementFactory, void* templateRef, void* rowParent)
 using OptionsMenu_SpawnMultiChoice_fn = void*(*)(void*, void*, void*);
 inline OptionsMenu_SpawnMultiChoice_fn OptionsMenu_SpawnMultiChoice() {
     return reinterpret_cast<OptionsMenu_SpawnMultiChoice_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnMultiChoice_Pattern));
+}
+
+// PauseMenu_GetActionCallback  (PauseMenu_GetActionCallback)
+//   void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused)
+using PauseMenu_GetActionCallback_fn = void*(*)(void*, void*, uint32_t, void*);
+inline PauseMenu_GetActionCallback_fn PauseMenu_GetActionCallback() {
+    return reinterpret_cast<PauseMenu_GetActionCallback_fn>(rsmm::fn_resolve(Sym::PauseMenu_GetActionCallback_Pattern));
 }
 
 // ProjectileAttack_BeginAttack  (ProjectileAttack_BeginAttack)

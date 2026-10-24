@@ -5829,6 +5829,52 @@
    ]
   },
   {
+   "name": "PauseMenu_GetActionCallback",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_14034d380",
+   "signature": "void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "locator": {
+    "vftable": {
+     "class": "oCDtEntityCpntEscapeGameMenuUiController",
+     "slot": 19
+    }
+   },
+   "note": "The pause menu controller's action lookup (vftable slot 19): switch on a hashed action key, 0x1b4ab3b6..bb = Continue, Settings, Bug report, Abandon, Quit to main menu, Quit to desktop; writes a 24-byte callback {this, 0, thunk} into outCallback and returns it (unknown keys go to the base FUN_1407115b0). Escape_Menu_Model's ButtonListUiControllerEntityCpnt items each name the controller + one key; the thunk is called as thunk(arg, callback) and tail-jumps into the controller's handler. The loader answers its own key (escape_menu.MODS_ACTION) with the Settings callback wrapped in a thunk that then selects the Mods tab. Found 2026-10-24 on b9c3 for the pause menu's Mods button (rsmm.engine.escape_menu + hook_settings_menu.cpp); static until its first launch.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_SelectCategory",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f6010",
+   "signature": "void(void* optionsCtrl, void* tabButtonGameUi)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "SELECT A SETTINGS TAB: sets the controller's current tab (this+0x218) to the button's index (button+0x238, which OptionsMenu_AddCategory stamps), shows that tab's panel and hides the others (FUN_140550d40), and moves the focus to it (this+0x220). The button is the tab entry's +0x10 in the vector at this+0x208 (stride 0x48). Found 2026-10-24 on b9c3 for the pause menu's Mods button (rsmm.engine.escape_menu + hook_settings_menu.cpp); static until its first launch.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
    "name": "ModalUiController_OnShow",
    "kind": "function",
    "category": "ui",
