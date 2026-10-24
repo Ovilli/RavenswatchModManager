@@ -580,7 +580,9 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => remove.mutate()}
+                  onClick={() => {
+                    if (confirm('Delete your review?')) remove.mutate();
+                  }}
                   disabled={remove.isPending}
                 >
                   <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete

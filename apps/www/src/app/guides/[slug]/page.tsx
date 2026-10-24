@@ -80,6 +80,15 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['guide', slug, 'reviews'] }),
   });
+  const reviewDelete = useMutation({
+    mutationFn: () => api.guides.reviews.remove(slug),
+    onSuccess: () => {
+      setReviewRating(0);
+      setReviewTitle('');
+      setReviewBody('');
+      return qc.invalidateQueries({ queryKey: ['guide', slug, 'reviews'] });
+    },
+  });
 
   if (guide.isLoading) {
     return (
@@ -316,13 +325,28 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
               {reviewUpsert.isError ? (
                 <p className="text-sm text-destructive">{describeApiError(reviewUpsert.error)}</p>
               ) : null}
-              <Button
-                type="submit"
-                size="sm"
-                disabled={reviewUpsert.isPending || reviewRating === 0}
-              >
-                {reviewUpsert.isPending ? 'Saving…' : userReview ? 'Update' : 'Submit'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={reviewUpsert.isPending || reviewRating === 0}
+                >
+                  {reviewUpsert.isPending ? 'Saving…' : userReview ? 'Update' : 'Submit'}
+                </Button>
+                {userReview ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={reviewDelete.isPending}
+                    onClick={() => {
+                      if (confirm('Delete your review?')) reviewDelete.mutate();
+                    }}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                  </Button>
+                ) : null}
+              </div>
             </form>
           ) : isOwner ? (
             <p className="text-sm text-muted-foreground">Authors cannot review their own guide.</p>

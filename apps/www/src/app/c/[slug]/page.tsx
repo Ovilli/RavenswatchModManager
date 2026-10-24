@@ -704,7 +704,9 @@ export default function CollectionDetailPage({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => reviewDelete.mutate()}
+                    onClick={() => {
+                      if (confirm('Delete your review?')) reviewDelete.mutate();
+                    }}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
                   </Button>
