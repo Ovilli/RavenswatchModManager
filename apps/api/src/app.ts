@@ -166,15 +166,16 @@ app.use('*', async (c, next) => {
  * split by credentials at the CDN and must stay uncached. Mod / user /
  * collection / guide DETAIL pages read the viewer (owner's in-review versions,
  * canManage, isFollowing, takedown visibility) and are deliberately absent;
- * adding one here would serve one viewer's view to everyone. Requests with an
- * Authorization header are never cached by Vercel regardless.
+ * adding one here would serve one viewer's view to everyone. Review lists are
+ * absent too: a reviewer refetches right after posting and a cached list hid
+ * their own review for up to minutes. Requests with an Authorization header
+ * are never cached by Vercel regardless.
  *
  * Vercel-CDN-Cache-Control is consumed by Vercel's CDN and not forwarded, so
  * browsers keep revalidating.
  */
 const CDN_CACHEABLE = [
   /^\/api\/mods$/,
-  /^\/api\/mods\/[^/]+\/reviews$/,
   /^\/api\/collections$/,
   /^\/api\/guides$/,
   /^\/api\/legal\/impressum$/,

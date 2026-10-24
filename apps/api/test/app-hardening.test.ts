@@ -119,7 +119,6 @@ describe('CDN cache for viewer-independent reads', () => {
   it('allowlists only viewer-independent reads', () => {
     for (const p of [
       '/api/mods',
-      '/api/mods/camera-control/reviews',
       '/api/collections',
       '/api/guides',
       '/api/legal/impressum',
@@ -130,6 +129,7 @@ describe('CDN cache for viewer-independent reads', () => {
     // Detail pages read the viewer (owner/admin view, canManage, isFollowing).
     for (const p of [
       '/api/mods/camera-control',
+      '/api/mods/camera-control/reviews',
       '/api/users/abc',
       '/api/collections/x',
       '/api/collections/x/reviews',

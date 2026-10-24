@@ -14,7 +14,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
-import { s3Configured, virusTotalConfigured } from '../env.js';
+import { env, s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyFollowers } from '../notify.js';
@@ -1352,14 +1352,27 @@ modsRouter.put(
       });
 
     await recomputeRating(mod.id);
-    // Tell the owner someone reviewed their mod (in-app only).
+    // Tell the owner someone reviewed their mod, in-app and by email.
     if (mod.ownerId) {
+      const owner = await db
+        .select({ email: schema.users.email })
+        .from(schema.users)
+        .where(eq(schema.users.id, mod.ownerId))
+        .limit(1);
       await notify({
         userId: mod.ownerId,
         type: 'mod_review',
         title: `New review on ${mod.name}`,
-        body: `${user.name ?? 'Someone'} rated it ${body.rating}/5.`,
+        body: [
+          `${user.name ?? 'Someone'} rated it ${body.rating}/5.`,
+          body.title,
+          body.body,
+          `${env.webUrl}/registry/${mod.slug}`,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
         link: `/registry/${mod.slug}`,
+        email: owner[0]?.email ?? null,
       });
     }
     return c.json({ ok: true });
