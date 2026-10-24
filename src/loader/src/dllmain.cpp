@@ -6,9 +6,10 @@
 //   * Generic Lua hook bridge (hook_lua) backing the public rsmm.hook
 //   * Pattern-resolved engine baseline verifier (hook_engine), off by default
 //
-// Removed: in-game ImGui overlay (hook_vk, hook_win32) and Steam vtable
-// integration. Reason: the overlay surfaces were never feature-complete
-// and we don't ship things that don't work.
+//   * In-game overlay (hook_overlay), opt-in via RSMM_ENABLE_INGAME_UI
+//
+// Removed: the first in-game overlay (hook_vk, hook_win32), which hooked
+// Vulkan in a DX12-only game and never drew, and Steam vtable integration.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -27,6 +28,7 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
+#include "hook_overlay.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
@@ -174,6 +176,11 @@ static void loader_thread_cxx() {
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
         install_guarded("netcode",      rsmm::install_netcode_patches);
         install_guarded("backend",      rsmm::install_backend_redirect);
+        if (rsmm::flag_enabled("RSMM_ENABLE_INGAME_UI")) {
+            install_guarded("ingame-ui", rsmm::install_overlay_hooks);
+        } else {
+            L.log("[ingame-ui] off (set RSMM_ENABLE_INGAME_UI=1 to enable)");
+        }
 
         // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every
         // semantic pattern against the live exe and writes
@@ -327,6 +334,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
         rsmm::script_shutdown_all();
         // Every detour lives in this DLL's .text, which is about to be
         // unmapped — retire them all, not just the two that used to be here.
+        rsmm::remove_overlay_hooks();
         rsmm::remove_event_hooks();
         rsmm::remove_engine_hooks();
         rsmm::remove_io_hooks();

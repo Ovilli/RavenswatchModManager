@@ -68,6 +68,11 @@ enum class EntryCheck {
     // address, which is what turns "the game crashed" into "your hook target
     // is not a function".
     Warn,
+    // Refuse unless the address is a function entry in WHATEVER module holds
+    // it (RtlLookupFunctionEntry), not just Ravenswatch.exe. For COM vtable
+    // slots in system/driver DLLs (dxgi, d3d12): the game's .pdata cannot
+    // vouch for them, and they are never leaves, so absence means wrong.
+    AnyModule,
 };
 
 // Same guarantees as hook_install, but for an address you already hold (a

@@ -41,11 +41,31 @@ target_include_directories(lua54 SYSTEM PUBLIC ${TP}/lua)
 # (MinGW and MSVC both set it), and a second definition with a value is a
 # redefinition warning in every file that includes lua.h.
 
+# --- Dear ImGui (in-game overlay, hook_overlay.cpp) ----------------------
+# CreateDXGIFactory1 / D3DCompile are renamed to runtime-lookup shims defined
+# in hook_overlay.cpp, so the DLL gains no import on dxgi or d3dcompiler_47
+# (it is also loaded by crashpad_handler.exe; a missing d3dcompiler would stop
+# the game from starting). Gamepad is the game's own business: off.
+add_library(imgui STATIC
+    ${TP}/imgui/imgui.cpp
+    ${TP}/imgui/imgui_draw.cpp
+    ${TP}/imgui/imgui_tables.cpp
+    ${TP}/imgui/imgui_widgets.cpp
+    ${TP}/imgui/backends/imgui_impl_win32.cpp
+    ${TP}/imgui/backends/imgui_impl_dx12.cpp)
+target_include_directories(imgui SYSTEM PUBLIC ${TP}/imgui ${TP}/imgui/backends)
+target_compile_definitions(imgui PUBLIC
+    IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
+    IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCTIONS
+    IMGUI_DISABLE_DEMO_WINDOWS
+    IMGUI_DISABLE_DEBUG_TOOLS)
+target_compile_definitions(imgui PRIVATE
+    CreateDXGIFactory1=rsmm_CreateDXGIFactory1
+    D3DCompile=rsmm_D3DCompile)
+
 # --- Loader DLL ----------------------------------------------------------
-# In-game UI (hook_vk + hook_win32 + ImGui) removed: surface was never
-# feature-complete. The loader is now just asset-overrides (hook_io),
-# Lua VM (script_lua), and the generic hook bridge (hook_lua) that
-# backs the public rsmm.hook API.
+# The first in-game UI (hook_vk + hook_win32) was removed: it hooked Vulkan,
+# which this DX12 game never loads. hook_overlay.cpp is its DXGI successor.
 set(LOADER_SRC
     src/dllmain.cpp
     src/loader.cpp
@@ -56,6 +76,7 @@ set(LOADER_SRC
     src/hook_skins.cpp
     src/hook_skills.cpp
     src/hook_ui.cpp
+    src/hook_overlay.cpp
     src/hook_items.cpp
     src/hook_rewards.cpp
     src/hook_resource.cpp
@@ -96,13 +117,15 @@ if(MSVC)
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
-      kernel32 user32 gdi32 psapi ole32 bcrypt)
+      imgui
+      kernel32 user32 gdi32 psapi ole32 bcrypt dwmapi)
 else()
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
+      imgui
       -static -static-libgcc -static-libstdc++
-      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32 -lbcrypt)
+      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32 -lbcrypt -ldwmapi)
 endif()
 
 if(MSVC)

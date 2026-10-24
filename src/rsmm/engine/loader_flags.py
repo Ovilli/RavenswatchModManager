@@ -61,6 +61,15 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "safe": True,
     },
     {
+        "name": "RSMM_ENABLE_INGAME_UI",
+        "label": "In-game panel (experimental)",
+        "description": "Draw the mod manager's own panel over the game; press "
+                       "Insert or F8 in game to open or close it. While it is open, "
+                       "keyboard and mouse go to the panel only. Not yet "
+                       "proven in game.",
+        "safe": True,
+    },
+    {
         "name": "RSMM_ENABLE_HERO_CAPTURE",
         "label": "Hero capture",
         "description": "Find your hero in memory so mods can read and change "
