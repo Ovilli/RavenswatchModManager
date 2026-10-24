@@ -1,6 +1,6 @@
 'use client';
 import { Button, Spinner } from '@rsmm/ui';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -13,9 +13,13 @@ export default function NotificationsPage() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const q = useQuery({
-    queryKey: ['me', 'notifications'],
-    queryFn: () => api.me.notifications(),
+  // Own key under the ['me', 'notifications'] prefix: the nav badge holds a
+  // plain (non-paged) query at that exact key, and the two shapes can't share.
+  const q = useInfiniteQuery({
+    queryKey: ['me', 'notifications', 'pages'],
+    queryFn: ({ pageParam }) => api.me.notifications(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => (last.hasMore ? last.items.at(-1)?.id : undefined),
     enabled: !!session,
   });
 
@@ -50,7 +54,8 @@ export default function NotificationsPage() {
     );
   }
 
-  const items = q.data?.items ?? [];
+  const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const unread = q.data?.pages[0]?.unread ?? 0;
 
   return (
     <main className="container mx-auto max-w-2xl space-y-6 px-6 py-10">
@@ -59,7 +64,7 @@ export default function NotificationsPage() {
           <Bell className="h-6 w-6" /> Notifications
         </h1>
         <div className="flex gap-2">
-          {(q.data?.unread ?? 0) > 0 && (
+          {unread > 0 && (
             <Button size="sm" variant="outline" onClick={() => markRead.mutate(undefined)}>
               <Check className="mr-1.5 h-4 w-4" /> Mark all read
             </Button>
@@ -123,6 +128,18 @@ export default function NotificationsPage() {
           })}
         </ul>
       )}
+      {q.hasNextPage ? (
+        <div className="flex justify-center">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => q.fetchNextPage()}
+            disabled={q.isFetchingNextPage}
+          >
+            {q.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
+      ) : null}
     </main>
   );
 }

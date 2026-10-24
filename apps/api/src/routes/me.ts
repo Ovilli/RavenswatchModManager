@@ -308,20 +308,36 @@ meRouter.get('/mods', async (c) => {
 
 // ─────────── Notifications ───────────
 
-meRouter.get('/notifications', async (c) => {
+const NOTIFICATIONS_PAGE = 50;
+// `before` = id of the last notification already shown. Paging keys on
+// (created_at, id) of that row, looked up server-side: follower fan-out inserts
+// many rows with one timestamp, so a timestamp-only cursor would skip some.
+const notificationsQuerySchema = z.object({ before: z.string().uuid().optional() });
+meRouter.get('/notifications', zValidator('query', notificationsQuerySchema), async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { before } = c.req.valid('query');
   const db = getDb();
+  const n = schema.notifications;
   const rows = await db
     .select()
-    .from(schema.notifications)
-    .where(eq(schema.notifications.userId, user.id))
-    .orderBy(desc(schema.notifications.createdAt))
-    .limit(50);
+    .from(n)
+    .where(
+      and(
+        eq(n.userId, user.id),
+        before
+          ? sql`(${n.createdAt}, ${n.id}) < (select created_at, id from notifications where id = ${before})`
+          : undefined,
+      ),
+    )
+    .orderBy(desc(n.createdAt), desc(n.id))
+    .limit(NOTIFICATIONS_PAGE + 1);
+  const hasMore = rows.length > NOTIFICATIONS_PAGE;
   const unread = await unreadCount(user.id);
   return c.json({
     unread,
-    items: rows.map((n) => ({
+    hasMore,
+    items: rows.slice(0, NOTIFICATIONS_PAGE).map((n) => ({
       id: n.id,
       type: n.type,
       title: n.title,

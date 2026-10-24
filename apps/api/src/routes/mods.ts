@@ -402,7 +402,10 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
     (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
   );
   const servableVersions = sortedVersions.filter((v) => isServable(v.scanStatus));
-  const canManage = viewer ? isAdmin(viewer.id) || (await canManageMod(mod, viewer.id)) : false;
+  // isAuthor = owner or co-author (may reply to reviews, may not review);
+  // canManage additionally covers admins.
+  const isAuthor = viewer ? await canManageMod(mod, viewer.id) : false;
+  const canManage = isAuthor || (viewer ? isAdmin(viewer.id) : false);
   const visibleVersions = canManage ? sortedVersions : servableVersions;
 
   // Follow state for the current viewer + total follower count (both cheap).
@@ -439,6 +442,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       takedownStatus: mod.takedownStatus,
       takedownReason: mod.takedownReason,
       isFollowing,
+      isAuthor,
       followerCount,
       dependencies:
         (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)

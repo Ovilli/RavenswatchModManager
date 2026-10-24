@@ -26,6 +26,7 @@ import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { MDEditor } from '../../components/md-editor';
 import { ModCover } from '../../components/mod-cover';
+import { ReviewReplyBlock } from '../../components/review-reply';
 
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
@@ -762,6 +763,13 @@ export default function CollectionDetailPage({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(r.updatedAt).toLocaleDateString()}
                 </p>
+                <ReviewReplyBlock
+                  review={r}
+                  canReply={isOwner}
+                  queryKey={['collections', slug, 'reviews']}
+                  onSave={(text) => api.collections.reviews.reply(slug, r.id, text)}
+                  onDelete={() => api.collections.reviews.removeReply(slug, r.id)}
+                />
               </div>
             ))}
           </div>

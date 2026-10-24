@@ -1,6 +1,6 @@
 'use client';
 import { ApiError } from '@rsmm/api-client';
-import type { ModVersion, Review } from '@rsmm/schemas';
+import type { ModVersion } from '@rsmm/schemas';
 import { Badge, Button, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,6 +23,7 @@ import { useSession } from '../../../lib/auth-client';
 import { useHydrated } from '../../../lib/use-hydrated';
 import { toEmbedUrl } from '../../../lib/video-embed';
 import { MDPreview } from '../../components/md-editor';
+import { ReviewReplyBlock } from '../../components/review-reply';
 import { useModDetail } from './mod-actions';
 
 /** The registry filtered to one category or tag, so a mod page leads to more like it. */
@@ -143,7 +144,7 @@ export default function ModDetailPage({ params }: { params: Promise<{ slug: stri
               </div>
             ) : null}
 
-            <ReviewsSection slug={mod.slug} ownerId={mod.ownerId ?? null} />
+            <ReviewsSection slug={mod.slug} isAuthor={mod.isAuthor ?? false} />
           </div>
 
           <aside className="space-y-4">
@@ -459,7 +460,7 @@ function StarRating({
   );
 }
 
-function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | null }) {
+function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boolean }) {
   const { data: session } = useSession();
   const qc = useQueryClient();
   const reviews = useQuery({
@@ -518,7 +519,8 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
     },
   });
 
-  const isOwner = session?.user && ownerId === session.user.id;
+  // Owner or co-author: may reply to reviews, may not review (server-enforced).
+  const isOwner = !!session?.user && isAuthor;
   const items = reviews.data?.items ?? [];
   const avg = reviews.data?.averageRating ?? null;
 
@@ -613,7 +615,7 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
 
       {isOwner ? (
         <p className="mb-6 text-xs text-muted-foreground">
-          You own this mod — review collection is disabled for owners.
+          You're an author of this mod, so you can't review it — but you can reply to reviews.
         </p>
       ) : null}
 
@@ -660,7 +662,13 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
                       {r.body}
                     </p>
                   ) : null}
-                  <ReviewReplyBlock slug={slug} review={r} canReply={!!isOwner} />
+                  <ReviewReplyBlock
+                    review={r}
+                    canReply={!!isOwner}
+                    queryKey={['mods', slug, 'reviews']}
+                    onSave={(text) => api.mods.replyToReview(slug, r.id, text)}
+                    onDelete={() => api.mods.deleteReviewReply(slug, r.id)}
+                  />
                 </div>
               </div>
             </li>
@@ -668,107 +676,5 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
         </ul>
       )}
     </div>
-  );
-}
-
-function ReviewReplyBlock({
-  slug,
-  review,
-  canReply,
-}: {
-  slug: string;
-  review: Review;
-  canReply: boolean;
-}) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(review.ownerReply ?? '');
-  const refresh = () => qc.invalidateQueries({ queryKey: ['mods', slug, 'reviews'] });
-  const save = useMutation({
-    mutationFn: () => api.mods.replyToReview(slug, review.id, text.trim()),
-    onSuccess: async () => {
-      setEditing(false);
-      await refresh();
-    },
-  });
-  const remove = useMutation({
-    mutationFn: () => api.mods.deleteReviewReply(slug, review.id),
-    onSuccess: async () => {
-      setText('');
-      await refresh();
-    },
-  });
-
-  if (editing) {
-    return (
-      <div className="mt-3 space-y-2 border-l-2 border-gilt/50 pl-3">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Reply publicly to this review…"
-          maxLength={2000}
-          rows={3}
-          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        />
-        {save.isError ? (
-          <p className="text-xs text-destructive">
-            {save.error instanceof Error ? save.error.message : 'Failed to save reply'}
-          </p>
-        ) : null}
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => save.mutate()}
-            disabled={save.isPending || !text.trim()}
-          >
-            {save.isPending ? 'Saving…' : 'Post reply'}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {review.ownerReply ? (
-        <div className="mt-3 border-l-2 border-gilt/50 pl-3">
-          <p className="font-mono text-[10px] uppercase tracking-wide text-gilt">
-            Author reply
-            {review.ownerReplyAt ? ` · ${new Date(review.ownerReplyAt).toLocaleDateString()}` : ''}
-          </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-            {review.ownerReply}
-          </p>
-        </div>
-      ) : null}
-      {canReply ? (
-        <div className="mt-2 flex gap-3 text-xs">
-          <button
-            type="button"
-            className="text-muted-foreground underline-offset-2 hover:text-gilt hover:underline"
-            onClick={() => {
-              setText(review.ownerReply ?? '');
-              setEditing(true);
-            }}
-          >
-            {review.ownerReply ? 'Edit reply' : 'Reply'}
-          </button>
-          {review.ownerReply ? (
-            <button
-              type="button"
-              className="text-muted-foreground underline-offset-2 hover:text-destructive hover:underline"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate()}
-            >
-              Delete reply
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </>
   );
 }

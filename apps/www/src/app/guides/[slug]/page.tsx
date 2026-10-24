@@ -11,6 +11,7 @@ import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { MDEditor, MDPreview } from '../../components/md-editor';
+import { ReviewReplyBlock } from '../../components/review-reply';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Draft',
@@ -385,6 +386,13 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
                 </div>
                 {r.title ? <p className="mt-2 text-sm font-semibold">{r.title}</p> : null}
                 {r.body ? <p className="mt-1 text-sm text-muted-foreground">{r.body}</p> : null}
+                <ReviewReplyBlock
+                  review={r}
+                  canReply={isOwner}
+                  queryKey={['guide', slug, 'reviews']}
+                  onSave={(text) => api.guides.reviews.reply(slug, r.id, text)}
+                  onDelete={() => api.guides.reviews.removeReply(slug, r.id)}
+                />
               </li>
             ))}
           </ul>
