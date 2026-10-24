@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-10-24",
+      "summary": "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components.",
+      "highlights": [
+        "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components."
+      ],
+      "loader_version": 47
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
       "summary": "Supper Effect on Items and Always on Night/Day",
       "highlights": [
         "Supper Effect on Items and Always on Night/Day"
@@ -522,15 +531,6 @@
       "summary": "Fixes Launch on Linux, which started neither Steam nor the game.",
       "highlights": [
         "Fixed (Linux): Launch did nothing. The app reported the game as started, but Steam and the game never opened. It now starts Steam properly, and if one way of reaching Steam fails it tries the next and tells you what went wrong."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 27,
-      "date": "2026-10-05",
-      "summary": "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server.",
-      "highlights": [
-        "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server."
       ]
     }
   ]
