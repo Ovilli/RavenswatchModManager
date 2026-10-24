@@ -519,7 +519,7 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
   });
 
   const isOwner = session?.user && ownerId === session.user.id;
-  const others = (reviews.data?.items ?? []).filter((r) => r.userId !== session?.user?.id);
+  const items = reviews.data?.items ?? [];
   const avg = reviews.data?.averageRating ?? null;
 
   return (
@@ -539,18 +539,30 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
         <div className="mb-6 space-y-3 rounded-lg border border-border/40 bg-card p-4">
           <p className="text-sm font-semibold">{myReview ? 'Your review' : 'Write a review'}</p>
           <div className="flex items-center gap-3">
-            <StarRating value={rating} onChange={setRating} />
+            <StarRating
+              value={rating}
+              onChange={(v) => {
+                upsert.reset();
+                setRating(v);
+              }}
+            />
             <span className="font-mono text-xs text-muted-foreground">{rating} / 5</span>
           </div>
           <Input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              upsert.reset();
+              setTitle(e.target.value);
+            }}
             placeholder="Title (optional)"
             maxLength={120}
           />
           <textarea
             value={body}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => {
+              upsert.reset();
+              setBody(e.target.value);
+            }}
             placeholder="Share your experience…"
             maxLength={4000}
             rows={4}
@@ -558,7 +570,10 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
           />
           {errorMsg ? <p className="text-xs text-destructive">{errorMsg}</p> : null}
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[10px] text-muted-foreground">{body.length}/4000</p>
+            <p className="font-mono text-[10px] text-muted-foreground">
+              {body.length}/4000
+              {upsert.isSuccess ? <output className="ml-3 text-gilt">✓ Review saved</output> : null}
+            </p>
             <div className="flex items-center gap-2">
               {myReview ? (
                 <Button
@@ -577,7 +592,7 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
                 onClick={() => upsert.mutate()}
                 disabled={upsert.isPending}
               >
-                {myReview ? 'Update review' : 'Post review'}
+                {upsert.isPending ? 'Saving…' : myReview ? 'Update review' : 'Post review'}
               </Button>
             </div>
           </div>
@@ -600,11 +615,11 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
         </p>
       ) : null}
 
-      {others.length === 0 && !myReview ? (
+      {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No reviews yet. Be the first to share!</p>
       ) : (
         <ul className="space-y-4">
-          {others.map((r) => (
+          {items.map((r) => (
             <li key={r.id} className="border-t border-border/40 pt-4 first:border-t-0 first:pt-0">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-xs font-semibold">
@@ -626,6 +641,11 @@ function ReviewsSection({ slug, ownerId }: { slug: string; ownerId: string | nul
                     >
                       {r.userName ?? 'anonymous'}
                     </Link>
+                    {r.userId === session?.user?.id ? (
+                      <span className="rounded border border-border px-1.5 font-mono text-[10px] text-muted-foreground">
+                        you
+                      </span>
+                    ) : null}
                     <StarRating value={r.rating} size="sm" />
                     <span className="font-mono text-[10px] text-muted-foreground">
                       {new Date(r.updatedAt).toLocaleDateString()}
