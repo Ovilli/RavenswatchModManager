@@ -723,7 +723,14 @@ class EntityFile:
         if count_f is None:
             raise EntityEditError(f"{c.name!r}: cannot find its slot count")
         t = self.component(target)
-        acc = self.F32_ACCESSOR.get(t.cls)
+        from . import entity_fields as EF
+        is_int = any(f.name in ("value", "operations") and f.text and f.text.startswith("int ")
+                     for f in EF.fields(t))
+        int_acc = {
+            "oCEntityCpntValueSettings": 0x0FD2C965,
+            "oCEntityCpntValueOperationsSettings": 0x17AE780B,
+        }
+        acc = int_acc.get(t.cls) if is_int else self.F32_ACCESSOR.get(t.cls)
         if acc is None:
             raise EntityEditError(f"{c.name!r}: no known way for a card slot to read a {t.cls}")
         from .entity_parts import PartWriter
@@ -731,10 +738,13 @@ class EntityFile:
         entry = cooked.format_entry_index([x.name for x in self.cf.classes])
         if entry < 0:
             entry = ci(cooked.FORMAT_ENTRY_CLASSES[0])
-        union = _B + struct.pack("<IIIf", ci("oCEntityValueUnion"), 0, 0, 0.0) + _E
+        if is_int:
+            union = _B + struct.pack("<IIIi", ci("oCEntityValueUnion"), 1, 0, 0) + _E
+        else:
+            union = _B + struct.pack("<IIIf", ci("oCEntityValueUnion"), 0, 0, 0.0) + _E
         picker = (_B + struct.pack("<I", ci("oCEntityCpntValuePicker")) + b"\x01\x00"
                   + self._picker(target) + struct.pack("<I", acc) + union + _E)
-        slot = (_B + struct.pack("<II", entry, 0) + picker
+        slot = (_B + struct.pack("<II", entry, 1 if is_int else 0) + picker
                 + struct.pack("<I", 1 if percent else 0) + _E)
 
         at = len(self.objects[c.index - 1]) - len(c.body)
@@ -746,7 +756,8 @@ class EntityFile:
         new_slots, _ = self._format_slots(self.component(comp))
         if len(new_slots) != len(slots) + 1:
             raise EntityEditError(f"{c.name!r}: the new slot did not parse back")
-        self._slot_accessor(comp, target)
+        if not is_int:
+            self._slot_accessor(comp, target)
         return len(slots)
 
     def _slot_accessor(self, comp: str, target: str) -> None:

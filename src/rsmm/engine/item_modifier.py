@@ -287,6 +287,22 @@ def resolve_stat(stat: str | int) -> int:
     return key
 
 
+def is_integer_stat(stat: str | int) -> bool:
+    """Whether ``stat`` is an integer quantity (free rerolls, charges, tallies)
+    rather than a floating-point ratio/fraction/amount."""
+    try:
+        key = resolve_stat(stat)
+    except ItemModifierError:
+        return False
+    if key == 0x1AA49D8D:  # Free Reroll
+        return True
+    name = stat_name(key)
+    if name:
+        if name == "Free Reroll" or name.startswith("Ability_Charge_") or name.endswith(" Count"):
+            return True
+    return False
+
+
 def _own_name(payload: bytes) -> str | None:
     from .entity_append import _header_name_at
     at = _header_name_at(payload)

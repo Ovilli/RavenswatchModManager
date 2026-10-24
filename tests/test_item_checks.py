@@ -437,3 +437,75 @@ def test_super_effects_do_not_scale_with_duplicate_count():
 
     assert item_warnings(ent, _shield(), set()) == []
     assert CK.check(ent, _shield(), name="Super_Item") == []
+
+
+def test_free_reroll_effect_encodes_as_integer_and_not_percent():
+    """Free Reroll is an integer stat: amount must be encoded as P.INT (type 1),
+    percent defaults to False so display mode is 0 (plain, not x100), and it
+    does not scale through float operations."""
+    from rsmm.cli.editor.content import _built_slots
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine.item_effect import Effect, describe
+
+    # 1. Parsing defaults percent to False and amount to int
+    e = Effect.parse({"stat": "Free Reroll", "amount": 1.0})
+    assert e.amount == 1
+    assert isinstance(e.amount, int)
+    assert e.percent is False
+    assert describe([e]) == "• #+{0}@ #Free Reroll@"
+
+    # 2. Super effect encoding (as Lucky Coin provides natively)
+    files = C.build_magic_item(new_id="Reroll_Super_Item", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Common",
+                               super_effects=[{"stat": "Free Reroll", "amount": 1}])
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    g = EG.parse(ent)
+    comps = {c.name: c for c in g.components}
+    mod = comps["Crit Chance Modifier Super Effect"]
+    d = P.decode(mod)
+    assert d["modifier_id"] == 0x1AA49D8D
+    assert d["amount"].type == P.INT
+    assert d["amount"].value == struct.pack("<i", 1)
+    assert d["amount"].unit == 0
+    assert d["amount"].source is None
+
+    slots = [(s["node"], s["mode"])
+             for s in _built_slots(ent, "Super Effect Descripton Format")]
+    assert slots[0] == ("Crit Chance Value Super Effect", 0)
+
+    assert item_warnings(ent, _shield(), set()) == []
+    assert CK.check(ent, _shield(), name="Reroll_Super_Item") == []
+
+    # 3. Always-on effect encoding scales by duplicate copies via integer operation
+    files2 = C.build_magic_item(new_id="Reroll_Passive_Item", base_id="Increase_Shield",
+                                base_cooked=_shield(), corpus=[], rarity="Common",
+                                effect=[{"stat": "Free Reroll", "amount": 2}])
+    ent2 = next(b for p, b in files2.items() if p.endswith(".gen"))
+    g2 = EG.parse(ent2)
+    comps2 = {c.name: c for c in g2.components}
+    op2 = comps2["Crit Chance Value Operation Effect"]
+    assert op2.cls == "oCEntityCpntValueOperationsSettings"
+    mod2 = comps2["Crit Chance Modifier Effect"]
+    d2 = P.decode(mod2)
+    assert d2["modifier_id"] == 0x1AA49D8D
+    assert d2["amount"].type == P.INT
+    assert d2["amount"].value == struct.pack("<i", 2)
+    op_path = r"[Multi values operations] Reroll_Passive_Item\Crit Chance Value Operation Effect"
+    assert d2["amount"].source.path == op_path
+    assert d2["amount"].key == 0x17AE780B
+
+    slots2 = _slots(ent2)
+    assert slots2[0] == ("Crit Chance Value Operation Effect", 0)
+    built2 = _built_slots(ent2, "Descripton Format")
+    assert built2[0]["value"] == 2.0
+    assert built2[0]["mode"] == 0
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef2 = EntityFile(ent2, "Reroll_Passive_Item")
+    c_fmt = ef2.component("Descripton Format")
+    fmt_slot = ef2._format_slots(c_fmt)[0][0]
+    assert struct.unpack("<I", c_fmt.body[fmt_slot.offset + 8:fmt_slot.offset + 12])[0] == 1
+
+    assert item_warnings(ent2, _shield(), set()) == []
+    assert CK.check(ent2, _shield(), name="Reroll_Passive_Item") == []

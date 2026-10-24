@@ -1233,8 +1233,9 @@ function effectsForm(E, blank, key = "effects") {
       }
       changed();
     };
-    const num = (k, step) => {
-      const inp = el("input", { type: "number", step, value: x[k] });
+    const isInt = (S.stats.find(st => st.name === x.stat) || {}).integer || x.stat === "Free Reroll";
+    const num = (k, step, min) => {
+      const inp = el("input", { type: "number", step, ...(min !== undefined ? { min } : {}), value: x[k] });
       inp.oninput = () => { const n = parseFloat(inp.value); if (!isNaN(n)) set(k, n); };
       return inp;
     };
@@ -1243,15 +1244,24 @@ function effectsForm(E, blank, key = "effects") {
       c.addEventListener("change", () => set(k, c.checked === dflt ? undefined : c.checked));
       return el("label", { class: "hint" }, c, text);
     };
-    const stat = statSel(x.stat, v => { x.stat = v; changed(); });
+    const stat = statSel(x.stat, v => {
+      x.stat = v;
+      const stInt = (S.stats.find(st => st.name === v) || {}).integer || v === "Free Reroll";
+      if (stInt) {
+        x.percent = false;
+        if (!x.amount || x.amount < 1) x.amount = 1;
+        else x.amount = Math.round(x.amount);
+      }
+      changed();
+    });
     const unread = rest.includes(x.stat)
       ? el("div", { class: "hint bad", text: "No item, talent or hero in the game changes this stat, so the game may never read it." }) : null;
     const f = el("div", { class: "form" });
     f.append(el("label", { text: "When" }), when,
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
-      el("label", { text: "Amount" }), el("div", {}, num("amount", "0.01"),
-        el("div", { class: "hint", text: "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5." }),
-        flag("percent", true, "The card shows it as a percent (×100)")));
+      el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
+        el("div", { class: "hint", text: isInt ? "Whole number of free rerolls (1, 2...)." : "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5." }),
+        ...(isInt ? [] : [flag("percent", true, "The card shows it as a percent (×100)")])));
     if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
       flag("refresh", true, "Each trigger restarts the full time")));
     box.append(el("div", { class: "effect" },
@@ -1906,7 +1916,7 @@ function addedStats(c, redraw, desc) {
         save(); renderView(); return;
       }
       const info = S.stats.find(s => s.name === st) || {};
-      const count = info.tally || info.charge;
+      const count = info.tally || info.charge || info.integer || st === "Free Reroll";
       if (count) {
         a.percent = false;
         if (a.values.every(v => v < 1)) a.values = [1, 1, 1, 1];

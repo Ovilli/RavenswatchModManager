@@ -342,6 +342,7 @@ def stats() -> list[dict]:
     heard = charges_heard()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
              "onHit": k in on_hit, "tally": stat_tally(n), "charge": is_charge(k),
+             "integer": IM.is_integer_stat(k),
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
             if k not in state and not (heard and is_charge(k) and k not in heard)]

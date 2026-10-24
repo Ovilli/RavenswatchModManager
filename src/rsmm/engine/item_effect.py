@@ -131,7 +131,7 @@ class Effect:
     ``while_active``, or gated by ``during``); with ``seconds`` it is a timed
     bonus after ``on``."""
     stat: str
-    amount: float
+    amount: float | int
     seconds: float | None = None
     on: str | None = None
     during: str | None = None
@@ -179,9 +179,12 @@ class Effect:
         for k in ("refresh", "percent", "keep_base_effect"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
-        return cls(stat=str(raw["stat"]), amount=float(raw["amount"]),
+        is_int = IM.is_integer_stat(raw["stat"])
+        amount = int(round(raw["amount"])) if is_int else float(raw["amount"])
+        percent = raw.get("percent", not is_int)
+        return cls(stat=str(raw["stat"]), amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
-                   refresh=raw.get("refresh", True), percent=raw.get("percent", True),
+                   refresh=raw.get("refresh", True), percent=percent,
                    keep_base_effect=raw.get("keep_base_effect", False))
 
 
@@ -330,19 +333,23 @@ _AMOUNT_SELECTOR = P.Link(bytes.fromhex("ff9e14f8f4505d4890d387548a6c8f81"),
                           r"[Value Selector] Magical_Objects_Model\Amount Selector")
 
 
-def _value(w: P.PartWriter, name: str, v: float, unit: int = 0) -> P.Link:
-    return w.add(_VALUE, name, {"value": P.Num.f32(v, unit), "flag": 0}, flags=0x101)
+def _value(w: P.PartWriter, name: str, v: float | int, unit: int = 0) -> P.Link:
+    val = P.Num.int(int(v)) if isinstance(v, int) else P.Num.f32(v, unit)
+    return w.add(_VALUE, name, {"value": val, "flag": 0}, flags=0x101)
 
 
-def _scalable_operation(w: P.PartWriter, name: str, value_link: P.Link) -> P.Link:
+def _scalable_operation(w: P.PartWriter, name: str, value_link: P.Link,
+                        *, is_int: bool = False) -> P.Link:
     """``value_link`` x ``Amount Selector``, so duplicate item copies stack: the
     modifier and the card both read it (playtest 2026-10-24: stat and card number
     grew with a second copy, always-on and timed)."""
     def operand(link: P.Link, key: int, num_type: int) -> bytes:
         return struct.pack("<Ii", 0, -1) + P.num_bytes(
             P.Num(num_type, bytes(4), source=link, key=key), w.ci)
+    read_key = _READ_INT if is_int else _READ_VALUE
+    num_type = P.INT if is_int else P.F32
     node = w.obj("oCEntityCpntNodeSettings", struct.pack("<II", _MULTIPLY, 2)
-                 + operand(value_link, _READ_VALUE, P.F32)
+                 + operand(value_link, read_key, num_type)
                  + operand(_AMOUNT_SELECTOR, _READ_INT, P.INT))
     return w.add(_OPS, name, {"operations": node}, flags=0x101)
 
@@ -354,11 +361,16 @@ def _owner(w: P.PartWriter, last: int) -> int:
                  on + b"\x00" + w.obj("oCResourceWeakRef", bytes(8)) + bytes([last]))
 
 
-def _modifier(w: P.PartWriter, name: str, stat: str, amount: float,
+def _modifier(w: P.PartWriter, name: str, stat: str, amount: float | int,
               source: P.Link | None = None) -> P.Link:
     """A modifier giving ``amount`` of ``stat`` to whoever holds the item."""
-    num = (P.Num.f32(amount, _RATIO) if source is None
-           else P.Num(P.F32, struct.pack("<f", amount), _RATIO, source=source, key=0x17ae7811))
+    if IM.is_integer_stat(stat):
+        key = 0x17ae780b if source is not None else None
+        num = (P.Num.int(int(amount)) if source is None
+               else P.Num(P.INT, struct.pack("<i", int(amount)), 0, source=source, key=key))
+    else:
+        num = (P.Num.f32(amount, _RATIO) if source is None
+               else P.Num(P.F32, struct.pack("<f", amount), _RATIO, source=source, key=0x17ae7811))
     return w.add(_MOD, name, {
         "modifier_id": IM.resolve_stat(stat), "duration": P.Num.f32(0),
         "amount": num,
@@ -398,9 +410,10 @@ def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
                  slots: list, *, scale: bool = False) -> None:
     """A modifier held on while the item is equipped (or while ``during`` holds)."""
     tester, _timer_n, mod, _seconds_n, amount, op = (n + sfx for n in _TIMED)
-    amount_link = _value(w, amount, effect.amount, _RATIO)
+    is_int = IM.is_integer_stat(effect.stat)
+    amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
-        op_link = _scalable_operation(w, op, amount_link)
+        op_link = _scalable_operation(w, op, amount_link, is_int=is_int)
         mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
         slot_node = op
     else:
@@ -423,9 +436,10 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     # they read the donor's inline numbers instead (0.05 and 3 s for every
     # trigger, playtest 2026-10-20). The Values are only the card's numbers.
     _value(w, seconds, effect.seconds)
-    amount_link = _value(w, amount, effect.amount, _RATIO)
+    is_int = IM.is_integer_stat(effect.stat)
+    amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
-        op_link = _scalable_operation(w, op, amount_link)
+        op_link = _scalable_operation(w, op, amount_link, is_int=is_int)
         mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
         slot_node = op
     else:
