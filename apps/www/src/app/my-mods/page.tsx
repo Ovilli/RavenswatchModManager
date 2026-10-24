@@ -113,11 +113,16 @@ export default function MyModsPage() {
                   {m.summary ? (
                     <p className="line-clamp-2 text-sm text-muted-foreground">{m.summary}</p>
                   ) : null}
-                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {m.latestVersion ? (
+                      <span className="font-data">v{m.latestVersion}</span>
+                    ) : (
+                      <span className="text-amber-500">No version published yet</span>
+                    )}
                     <span>
-                      {m.latestVersion ? `v${m.latestVersion}` : 'no versions'} ·{' '}
-                      {m.downloads.toLocaleString()} dl
+                      {m.downloads.toLocaleString()} download{m.downloads === 1 ? '' : 's'}
                     </span>
+                    <span>Updated {new Date(m.updatedAt).toLocaleDateString()}</span>
                   </div>
                   <div className="flex gap-2">
                     <Link

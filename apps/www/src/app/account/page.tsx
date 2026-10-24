@@ -12,21 +12,16 @@ import {
   Spinner,
 } from '@rsmm/ui';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, ImageIcon, KeyRound, Loader2, Mail, Save, Trash2 } from 'lucide-react';
+import { AlertTriangle, KeyRound, Loader2, Mail, Save, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { authClient, useSession } from '../../lib/auth-client';
-import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { putFile } from '../../lib/upload';
+import { FileDrop } from '../components/file-drop';
 import { ApiTokensPanel } from './api-tokens-panel';
 import { PrivacyPanel } from './privacy-panel';
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MiB`;
-}
 
 function describeError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -35,6 +30,15 @@ function describeError(err: unknown): string {
   }
   return err instanceof Error ? err.message : String(err);
 }
+
+const ACCOUNT_SECTIONS = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'email', label: 'Email' },
+  { id: 'privacy', label: 'Privacy' },
+  { id: 'tokens', label: 'API tokens' },
+  { id: 'password', label: 'Password' },
+  { id: 'delete', label: 'Delete account' },
+] as const;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -55,6 +59,18 @@ export default function AccountPage() {
     if (session?.user) setName(session.user.name ?? '');
   }, [session]);
 
+  // Show the picked picture in the avatar circle before it is uploaded.
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(avatarFile);
+    setAvatarPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [avatarFile]);
+
   const saveName = useMutation({
     mutationFn: async () => {
       const res = await authClient.updateUser({ name: name.trim() });
@@ -70,15 +86,10 @@ export default function AccountPage() {
         contentType: avatarFile.type as 'image/png' | 'image/jpeg' | 'image/webp',
         sizeBytes: avatarFile.size,
       });
-      const put = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        body: avatarFile,
+      await putFile(presigned.uploadUrl, avatarFile, {
         headers: { 'Content-Type': avatarFile.type },
+        what: 'avatar upload',
       });
-      if (!put.ok) {
-        const text = await put.text().catch(() => '');
-        throw new Error(formatObjectStorageError(put.status, text, 'avatar upload'));
-      }
       const upd = await authClient.updateUser({ image: presigned.publicUrl });
       if (upd.error) throw new Error(upd.error.message ?? 'image update failed');
     },
@@ -174,50 +185,61 @@ export default function AccountPage() {
       <header>
         <h1 className="font-display text-5xl text-parchment">Account</h1>
         <p className="mt-1 text-sm text-muted-foreground">Manage your profile and account.</p>
+        <nav aria-label="Account sections" className="mt-4 flex flex-wrap gap-2">
+          {ACCOUNT_SECTIONS.map((s) => (
+            <a
+              key={s.id}
+              href={`#${s.id}`}
+              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-gilt/60 hover:text-foreground"
+            >
+              {s.label}
+            </a>
+          ))}
+        </nav>
       </header>
 
-      <Card className="grimoire-card">
+      <Card id="profile" className="grimoire-card scroll-mt-24">
         <CardHeader>
           <CardTitle>Profile</CardTitle>
           <CardDescription>{user.email}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center gap-4">
-            <div className="h-20 w-20 overflow-hidden rounded-full bg-muted">
-              {user.image ? (
-                <img src={user.image} alt="Current avatar" className="h-full w-full object-cover" />
+            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-muted">
+              {avatarPreview || user.image ? (
+                <img
+                  src={avatarPreview ?? user.image ?? ''}
+                  alt={avatarPreview ? 'New avatar preview' : 'Current avatar'}
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-2xl text-muted-foreground">
                   {(user.name?.[0] ?? user.email[0] ?? '?').toUpperCase()}
                 </div>
               )}
             </div>
-            <div className="flex-1 space-y-2">
-              <label
-                htmlFor="avatar"
-                className="inline-flex items-center gap-2 text-sm font-medium"
-              >
-                <ImageIcon className="h-4 w-4" /> Profile picture
-              </label>
-              <input
+            <div className="min-w-0 flex-1 space-y-2">
+              <FileDrop
                 id="avatar"
-                type="file"
                 accept="image/png,image/jpeg,image/webp"
-                onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
+                label="Profile picture"
+                hint="PNG, JPEG or WebP"
+                file={avatarFile}
+                onFile={(f) => {
+                  setSavedMsg(null);
+                  setAvatarFile(f);
+                }}
+                disabled={uploadAvatar.isPending}
               />
               {avatarFile ? (
-                <p className="text-xs text-muted-foreground">
-                  {avatarFile.name} — {fmtBytes(avatarFile.size)}
-                </p>
+                <Button
+                  size="sm"
+                  onClick={() => uploadAvatar.mutate()}
+                  disabled={uploadAvatar.isPending}
+                >
+                  {uploadAvatar.isPending ? <Spinner /> : null} Save picture
+                </Button>
               ) : null}
-              <Button
-                size="sm"
-                onClick={() => uploadAvatar.mutate()}
-                disabled={!avatarFile || uploadAvatar.isPending}
-              >
-                {uploadAvatar.isPending ? <Spinner /> : null} Upload picture
-              </Button>
               {uploadAvatar.isError ? (
                 <p className="text-xs text-destructive">{describeError(uploadAvatar.error)}</p>
               ) : null}
@@ -235,7 +257,12 @@ export default function AccountPage() {
                 onChange={(e) => setName((e.target as HTMLInputElement).value)}
                 maxLength={64}
               />
-              <Button onClick={() => saveName.mutate()} disabled={saveName.isPending}>
+              <Button
+                onClick={() => saveName.mutate()}
+                disabled={
+                  saveName.isPending || !name.trim() || name.trim() === (user.name ?? '').trim()
+                }
+              >
                 {saveName.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save
               </Button>
             </div>
@@ -244,11 +271,11 @@ export default function AccountPage() {
             ) : null}
           </div>
 
-          {savedMsg ? <p className="text-xs text-muted-foreground">{savedMsg}</p> : null}
+          {savedMsg ? <output className="block text-xs text-moss">✓ {savedMsg}</output> : null}
         </CardContent>
       </Card>
 
-      <Card className="grimoire-card">
+      <Card id="email" className="grimoire-card scroll-mt-24">
         <CardHeader>
           <CardTitle>Email</CardTitle>
           <CardDescription>
@@ -282,31 +309,56 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
-      <PrivacyPanel />
+      <div id="privacy" className="scroll-mt-24">
+        <PrivacyPanel />
+      </div>
 
-      <ApiTokensPanel />
+      <div id="tokens" className="scroll-mt-24">
+        <ApiTokensPanel />
+      </div>
 
-      <Card className="grimoire-card">
+      <Card id="password" className="grimoire-card scroll-mt-24">
         <CardHeader>
           <CardTitle>Password</CardTitle>
           <CardDescription>Set a new password. This signs out your other sessions.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input
-            type="password"
-            placeholder="current password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword((e.target as HTMLInputElement).value)}
-            autoComplete="current-password"
-          />
-          <Input
-            type="password"
-            placeholder="new password (min 8 chars)"
-            value={newPassword}
-            onChange={(e) => setNewPassword((e.target as HTMLInputElement).value)}
-            minLength={8}
-            autoComplete="new-password"
-          />
+          <div className="space-y-1.5">
+            <label htmlFor="current-password" className="text-sm font-medium">
+              Current password
+            </label>
+            <Input
+              id="current-password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword((e.target as HTMLInputElement).value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="new-password" className="text-sm font-medium">
+              New password
+            </label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword((e.target as HTMLInputElement).value)}
+              minLength={8}
+              autoComplete="new-password"
+              aria-describedby="new-password-hint"
+            />
+            <p
+              id="new-password-hint"
+              className={`text-xs ${newPassword.length > 0 && newPassword.length < 8 ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              At least 8 characters
+              {newPassword.length > 0 && newPassword.length < 8
+                ? ` (${8 - newPassword.length} more)`
+                : ''}
+              .
+            </p>
+          </div>
           <Button
             onClick={() => changePassword.mutate()}
             disabled={!currentPassword || newPassword.length < 8 || changePassword.isPending}
@@ -321,7 +373,7 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
-      <Card className="grimoire-card border-destructive/30">
+      <Card id="delete" className="grimoire-card scroll-mt-24 border-destructive/30">
         <CardHeader>
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-1 h-4 w-4 text-destructive" />
