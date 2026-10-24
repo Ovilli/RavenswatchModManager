@@ -192,7 +192,7 @@ export function PrivacyPanel() {
               />
               <Toggle
                 label="Review emails"
-                hint="Email me when someone reviews one of my mods, collections or guides. Edits to an existing review only show up in notifications."
+                hint="Email me when someone reviews one of my mods, collections or guides, or when an author replies to my review. Edits only show up in notifications."
                 checked={p.emailReviews}
                 disabled={busy}
                 onChange={(emailReviews) => save.mutate({ emailReviews })}

@@ -12,6 +12,7 @@ export type NotificationType =
   | 'mod_review'
   | 'collection_review'
   | 'guide_review'
+  | 'review_reply'
   | 'mod_new_version';
 
 interface NotifyInput {
@@ -104,9 +105,50 @@ export function verifyUnsubscribeToken(userId: string, token: string): boolean {
 }
 
 /**
- * Tell the owner of a mod / collection / guide that it was reviewed: in-app
- * always, by email only on the FIRST review from that user (edits don't
- * re-mail) and only while the owner keeps `emailReviews` on.
+ * In-app notification about review activity, plus an email when `sendEmail`
+ * and the recipient keeps `emailReviews` on. Every such email carries the
+ * one-click unsubscribe link and List-Unsubscribe headers.
+ */
+async function notifyReviewActivity(input: {
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  link: string;
+  sendEmail: boolean;
+}): Promise<void> {
+  let email: string | null = null;
+  if (input.sendEmail) {
+    try {
+      const [user] = await getDb()
+        .select({ email: schema.users.email, emailReviews: schema.users.emailReviews })
+        .from(schema.users)
+        .where(eq(schema.users.id, input.userId))
+        .limit(1);
+      if (user?.emailReviews) email = user.email;
+    } catch (err) {
+      log.error('failed to look up review email recipient', { err: errString(err) });
+    }
+  }
+  const unsubscribe = `${env.betterAuthUrl}/api/unsubscribe?u=${encodeURIComponent(input.userId)}&t=${unsubscribeToken(input.userId)}`;
+  await notify({
+    userId: input.userId,
+    type: input.type,
+    title: input.title,
+    body: input.body,
+    link: input.link,
+    email,
+    emailFooter: `${env.webUrl}${input.link}\n\n—\nStop review emails: ${unsubscribe}\n(or turn off "Review emails" in your account settings)`,
+    headers: {
+      'List-Unsubscribe': `<${unsubscribe}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  });
+}
+
+/**
+ * Tell the owner of a mod / collection / guide that it was reviewed. Only the
+ * FIRST review from a user emails; an edit is in-app only.
  */
 export async function notifyReview(input: {
   ownerId: string;
@@ -119,21 +161,7 @@ export async function notifyReview(input: {
   body?: string | null;
   isNew: boolean;
 }): Promise<void> {
-  let email: string | null = null;
-  if (input.isNew) {
-    try {
-      const [owner] = await getDb()
-        .select({ email: schema.users.email, emailReviews: schema.users.emailReviews })
-        .from(schema.users)
-        .where(eq(schema.users.id, input.ownerId))
-        .limit(1);
-      if (owner?.emailReviews) email = owner.email;
-    } catch (err) {
-      log.error('failed to look up review owner email', { err: errString(err) });
-    }
-  }
-  const unsubscribe = `${env.betterAuthUrl}/api/unsubscribe?u=${encodeURIComponent(input.ownerId)}&t=${unsubscribeToken(input.ownerId)}`;
-  await notify({
+  await notifyReviewActivity({
     userId: input.ownerId,
     type: input.type,
     title: `${input.isNew ? 'New review' : 'Updated review'} on ${input.itemName}`,
@@ -145,12 +173,26 @@ export async function notifyReview(input: {
       .filter(Boolean)
       .join('\n\n'),
     link: input.link,
-    email,
-    emailFooter: `${env.webUrl}${input.link}\n\n—\nStop review emails: ${unsubscribe}\n(or turn off "Review emails" in your account settings)`,
-    headers: {
-      'List-Unsubscribe': `<${unsubscribe}>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    },
+    sendEmail: input.isNew,
+  });
+}
+
+/** Tell a reviewer the author replied. Only the first reply emails. */
+export async function notifyReviewReply(input: {
+  reviewerId: string;
+  itemName: string;
+  link: string;
+  replierName: string | null;
+  reply: string;
+  isNew: boolean;
+}): Promise<void> {
+  await notifyReviewActivity({
+    userId: input.reviewerId,
+    type: 'review_reply',
+    title: `${input.replierName ?? 'The author'} replied to your review of ${input.itemName}`,
+    body: input.reply,
+    link: input.link,
+    sendEmail: input.isNew,
   });
 }
 

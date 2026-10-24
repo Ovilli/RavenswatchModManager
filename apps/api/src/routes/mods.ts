@@ -7,6 +7,7 @@ import {
   modUploadRequestSchema,
   modVersionCreateSchema,
   reportCreateSchema,
+  reviewReplySchema,
   reviewUpsertSchema,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm';
@@ -17,7 +18,7 @@ import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
-import { notify, notifyFollowers, notifyReview } from '../notify.js';
+import { notify, notifyFollowers, notifyReview, notifyReviewReply } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
@@ -1277,6 +1278,8 @@ modsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c)
       rating: schema.modReviews.rating,
       title: schema.modReviews.title,
       body: schema.modReviews.body,
+      ownerReply: schema.modReviews.ownerReply,
+      ownerReplyAt: schema.modReviews.ownerReplyAt,
       createdAt: schema.modReviews.createdAt,
       updatedAt: schema.modReviews.updatedAt,
       userName: schema.users.name,
@@ -1296,6 +1299,8 @@ modsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (c)
     rating: r.rating,
     title: r.title,
     body: r.body,
+    ownerReply: r.ownerReply,
+    ownerReplyAt: r.ownerReplyAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }));
@@ -1367,6 +1372,62 @@ modsRouter.put(
         isNew: saved?.isNew ?? false,
       });
     }
+    return c.json({ ok: true });
+  },
+);
+
+// The mod's team can post one public reply per review; the reviewer is told.
+const reviewReplyParamSchema = slugParamSchema.extend({ reviewId: z.string().uuid() });
+modsRouter.use('/:slug/reviews/:reviewId/reply', reviewLimiter);
+modsRouter.put(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  zValidator('json', reviewReplySchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const { body } = c.req.valid('json');
+    const db = getDb();
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod || mod.takedownStatus !== 'active') return c.json({ error: 'not found' }, 404);
+    if (!(await canManageMod(mod, user.id))) return c.json({ error: 'forbidden' }, 403);
+    const review = await db.query.modReviews.findFirst({
+      where: and(eq(schema.modReviews.id, reviewId), eq(schema.modReviews.modId, mod.id)),
+    });
+    if (!review) return c.json({ error: 'not found' }, 404);
+
+    await db
+      .update(schema.modReviews)
+      .set({ ownerReply: body, ownerReplyAt: new Date() })
+      .where(eq(schema.modReviews.id, review.id));
+    await notifyReviewReply({
+      reviewerId: review.userId,
+      itemName: mod.name,
+      link: `/registry/${mod.slug}`,
+      replierName: user.name,
+      reply: body,
+      isNew: review.ownerReply == null,
+    });
+    return c.json({ ok: true });
+  },
+);
+
+modsRouter.delete(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const db = getDb();
+    const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+    if (!mod) return c.json({ error: 'not found' }, 404);
+    if (!(await canManageMod(mod, user.id))) return c.json({ error: 'forbidden' }, 403);
+    await db
+      .update(schema.modReviews)
+      .set({ ownerReply: null, ownerReplyAt: null })
+      .where(and(eq(schema.modReviews.id, reviewId), eq(schema.modReviews.modId, mod.id)));
     return c.json({ ok: true });
   },
 );

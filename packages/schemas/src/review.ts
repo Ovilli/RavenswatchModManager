@@ -11,6 +11,8 @@ export const reviewSchema = z.object({
   rating: reviewRatingSchema,
   title: z.string().max(120).nullable(),
   body: z.string().nullable(),
+  ownerReply: z.string().nullable().optional(),
+  ownerReplyAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -24,6 +26,12 @@ export const reviewUpsertSchema = z.object({
 });
 
 export type ReviewUpsert = z.infer<typeof reviewUpsertSchema>;
+
+export const reviewReplySchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
+
+export type ReviewReply = z.infer<typeof reviewReplySchema>;
 
 export const reviewsResponseSchema = z.object({
   items: z.array(reviewSchema),

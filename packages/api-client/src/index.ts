@@ -572,6 +572,18 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       deleteReview: (slug: string) =>
         request(`/api/mods/${encodeURIComponent(slug)}/reviews`, { method: 'DELETE' }, okSchema),
+      replyToReview: (slug: string, reviewId: string, body: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+          { method: 'PUT', body: JSON.stringify({ body }) },
+          okSchema,
+        ),
+      deleteReviewReply: (slug: string, reviewId: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
       report: (slug: string, body: { reason: string; detail?: string | null }) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/report`,
