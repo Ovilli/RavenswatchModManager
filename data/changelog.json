@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-10-24",
+      "summary": "In-game Mods menu support: mods switched on or off in Settings > Mods are carried into your library on the next launch, and the pause menu gets a Mods button. Integer item stats (free rerolls, charges) now show their real number on the card instead of +0.",
+      "highlights": [
+        "In-game Mods menu support: mods switched on or off in Settings > Mods are carried into your library on the next launch, and the pause menu gets a Mods button. Integer item stats (free rerolls, charges) now show their real number on the card instead of +0."
+      ],
+      "cli_version": 14
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
       "summary": "In-game Mods menu: a Mods tab in the game's own Settings page (switch mods on or off for the next launch, change mod settings while you play) and a Mods button in the pause menu. Replaces the old drawn overlay.",
       "highlights": [
         "In-game Mods menu: a Mods tab in the game's own Settings page (switch mods on or off for the next launch, change mod settings while you play) and a Mods button in the pause menu. Replaces the old drawn overlay."
@@ -519,16 +528,6 @@
         "Fixed: the camera mod and other mods that read or change your hero did nothing unless a hidden loader setting had been switched on by hand. Settings > Loader features now has a Hero capture switch, and a mod that needs it switches it on for you when you apply.",
         "Log: opens empty until a game is running, then shows that game live. Pick Last run or any earlier run in the list to read an old log.",
         "For mod makers: `loader_flags = [\"RSMM_ENABLE_HERO_CAPTURE\"]` in [mod] asks for hero capture while your mod is enabled."
-      ]
-    },
-    {
-      "version": "5.9.8",
-      "date": "2026-10-06",
-      "summary": "Talent builder: give one talent another talent's effect, and the Log no longer calls a finished game the current run.",
-      "highlights": [
-        "Talent builder: \"Also gives the effect of\" on a card makes owning that talent also run another of the same hero's talents. Tested in game: Scarlet's Shapeshifter with Short Wick's bomb that explodes as soon as it lands.",
-        "Talent builder: the \"... Count\" stats are now labelled as tallies (\"defensive objects held\") and listed apart. They count things for other effects and do nothing on their own.",
-        "Fixed: the Log screen said \"Current run\" when no game was running. It now says \"Last run\", and notices a game started from Steam."
       ]
     }
   ]
