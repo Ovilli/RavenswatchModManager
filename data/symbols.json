@@ -5708,6 +5708,127 @@
    ]
   },
   {
+   "name": "OptionsMenu_BuildLastCategory",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f4e30",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "The LAST of the five hand-coded Settings tab builders the options controller's build (slot 7, FUN_1403f0620) calls in a row with the same (this, page=this+0x180, parent=this+0x188). Its category type byte is 8. The native mod menu detours it and appends its own tab after the original returns, so its rows sit after every vanilla multi-choice tab and before the keybinding tabs slot 7 adds next. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_AddCategory",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f2060",
+   "signature": "void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "ADD A SETTINGS TAB: spawns the tab button from the Option_CategButton template (settings+0x2d0) through the element factory at this+0x228, sets its title (copies param 4), builds the tab's scroll panel under parent, and pushes a 0x48-byte entry onto the growable vector at this+0x208 (count +0x210): +0x00 panel, +0x08 row parent, +0x10 button game-ui, +0x18 type byte, +0x20/+0x28 row vector. Returns that entry. The vanilla builders pass types 0/6/5/8 (and 1a-family keybind tabs elsewhere); only type 10 is special-cased in the input update. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_SpawnMultiChoice",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403fc7e0",
+   "signature": "void*(void* elementFactory, void* templateRef, void* rowParent)",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Spawns one oCOptionsMenuMultiChoiceElementGameUi row (the '< value >' row) from a template ref (the controller settings' Option_StringItem at settings+0x3a8) under rowParent (category entry +0x08). Caller then appends it (OptionsMenu_AppendRow) and fills it: row+0x98 = uint32_t* CURRENT CHOICE INDEX (vanilla passes &gameOption+0x28 - the row never sees the option object, only its value), row+0xa0 = label vector (16-byte oCStrings, count +0xa8; the row clamps the index to count-1), row+0xb0 = optional 'locked' bool* (null = editable), then OptionsMenuElement_SetTitle. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_AppendRow",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f4d00",
+   "signature": "void(void** ctx, void* category, void* row)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Appends a spawned row to a Settings tab: ctx is a one-pointer struct holding the options controller (the vanilla builders pass &local where local = this). Pushes the row onto category+0x20 and wires its navigation/listener entries into the controller's vectors at +0x1b0/+0x1c0. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "OptionsMenuElement_SetTitle",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_14044ddf0",
+   "signature": "void(void* element, const oCString* text)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Sets a Settings element's title: forwards text to the element's label (element+0x40) through vtable slot 12 (+0x60, the oCUILabel SetText = String_Assign: a len with the 0x80000000 'literal' bit ALIASES the pointer, so pass static storage), marks it visible and refreshes it (slot 9, +0x48), which re-reads the multi-choice row's current index - so row+0x98 must be set first, as the vanilla builders do. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "StringVector_AssignFromArray",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1401ba310",
+   "signature": "void(void* vec, const oCString* items, u32 count)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Assigns count oCStrings (16-byte {char*, u32 len|0x80000000 literal, u32 cap}) into an engine string vector, resizing it (copies owned strings; a literal item stays aliased). The Settings builders fill a multi-choice row's labels with it (row+0xa0). Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
+   "refs": [
+    "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
    "name": "ModalUiController_OnShow",
    "kind": "function",
    "category": "ui",

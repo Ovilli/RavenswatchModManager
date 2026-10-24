@@ -18,9 +18,6 @@ clone() {
 }
 
 clone https://github.com/TsudaKageyu/minhook                "$tp/minhook"
-# Pinned: master changes the ImFontLoader callback types (ImWchar -> int
-# codepoint, 2026-10) and overlay_menu.cpp implements them.
-clone https://github.com/ocornut/imgui                      "$tp/imgui" b2546a5c93090c70610046fe547b946ee3d8d986
 clone https://github.com/KhronosGroup/Vulkan-Headers        "$tp/Vulkan-Headers"
 clone https://github.com/lua/lua                            "$tp/lua"
 

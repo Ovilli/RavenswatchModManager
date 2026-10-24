@@ -60,6 +60,7 @@ def test_a_bad_list_is_refused_before_anything_changes(tmp_path, monkeypatch, ca
 def test_apply_reports_what_it_matched(tmp_path, monkeypatch, capsys):
     _mod(tmp_path, "a")
     monkeypatch.setattr(B, "MODS_DIR", tmp_path)
+    monkeypatch.setattr(B, "find_game_dir", lambda: None)
     monkeypatch.setattr(B, "_collect_rsmm", lambda args: {
         "ok": True, "code": 0, "stdout": "applied\n", "stderr": "", "args": args})
     B.cmd_apply(["--force"], json.dumps([]))
@@ -77,3 +78,23 @@ def test_a_matching_manifest_is_left_byte_for_byte(tmp_path):
     assert m.read_text(encoding="utf-8") == text
     assert set_mod_enabled(tmp_path, "a", False) == "ok"
     assert m.read_text(encoding="utf-8") == text.replace("enabled = true", "enabled = false")
+
+
+def test_an_in_game_switch_beats_the_profile_and_is_reported(tmp_path, monkeypatch, capsys):
+    """Settings > Mods in game switched a off and b on; the profile still says
+    a on, b off. The newer in-game choice wins and goes back as menuToggles."""
+    from rsmm.cli.cmd_mods import MENU_REQUESTS
+    mods = tmp_path / "lib"
+    mods.mkdir()
+    a, b = _mod(mods, "a"), _mod(mods, "b", enabled=False)
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    (game / "mods" / MENU_REQUESTS).write_text(json.dumps({"enable": {"a": False, "b": True}}))
+    monkeypatch.setattr(B, "MODS_DIR", mods)
+    monkeypatch.setattr(B, "find_game_dir", lambda: game)
+    monkeypatch.setattr(B, "_collect_rsmm", lambda args: {
+        "ok": True, "code": 0, "stdout": "", "stderr": ""})
+    B.cmd_apply([], json.dumps(["a"]))
+    out = json.loads(capsys.readouterr().out)
+    assert out["menuToggles"] == {"a": False, "b": True}
+    assert not _on(a) and _on(b)

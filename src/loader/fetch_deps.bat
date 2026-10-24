@@ -38,8 +38,6 @@ exit /b 0
 :start
 REM Clone main dependencies
 call :clone_repo "https://github.com/TsudaKageyu/minhook" "%TP%\minhook"
-REM Pinned like fetch_deps.sh: master changed the ImFontLoader callback types.
-call :clone_repo "https://github.com/ocornut/imgui" "%TP%\imgui" b2546a5c93090c70610046fe547b946ee3d8d986
 call :clone_repo "https://github.com/KhronosGroup/Vulkan-Headers" "%TP%\Vulkan-Headers"
 call :clone_repo "https://github.com/lua/lua" "%TP%\lua"
 

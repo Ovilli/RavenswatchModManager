@@ -6,10 +6,13 @@
 //   * Generic Lua hook bridge (hook_lua) backing the public rsmm.hook
 //   * Pattern-resolved engine baseline verifier (hook_engine), off by default
 //
-//   * In-game overlay (hook_overlay), opt-in via RSMM_ENABLE_INGAME_UI
+//   * Mods tab in the game's own Settings page (hook_settings_menu), opt-in
+//     via RSMM_ENABLE_NATIVE_MENU
 //
 // Removed: the first in-game overlay (hook_vk, hook_win32), which hooked
-// Vulkan in a DX12-only game and never drew, and Steam vtable integration.
+// Vulkan in a DX12-only game and never drew; its DXGI/ImGui successor painted
+// over the Settings book (replaced by hook_settings_menu); Steam vtable
+// integration.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -28,7 +31,7 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
-#include "hook_overlay.h"
+#include "hook_settings_menu.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
@@ -161,6 +164,7 @@ static void loader_thread_cxx() {
         install_guarded("skins",   rsmm::install_skin_hooks);
         install_guarded("skills",  rsmm::install_skill_hooks);
         install_guarded("ui",      rsmm::install_ui_hooks);
+        install_guarded("native-menu", rsmm::install_settings_menu_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
         install_guarded("rsc-trace", rsmm::install_resource_hooks);
@@ -176,11 +180,6 @@ static void loader_thread_cxx() {
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
         install_guarded("netcode",      rsmm::install_netcode_patches);
         install_guarded("backend",      rsmm::install_backend_redirect);
-        if (rsmm::flag_enabled("RSMM_ENABLE_INGAME_UI")) {
-            install_guarded("ingame-ui", rsmm::install_overlay_hooks);
-        } else {
-            L.log("[ingame-ui] off (set RSMM_ENABLE_INGAME_UI=1 to enable)");
-        }
 
         // Ground-truth symbol dump (opt-in, dev/RE). Force-resolves every
         // semantic pattern against the live exe and writes
@@ -334,7 +333,6 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
         rsmm::script_shutdown_all();
         // Every detour lives in this DLL's .text, which is about to be
         // unmapped — retire them all, not just the two that used to be here.
-        rsmm::remove_overlay_hooks();
         rsmm::remove_event_hooks();
         rsmm::remove_engine_hooks();
         rsmm::remove_io_hooks();

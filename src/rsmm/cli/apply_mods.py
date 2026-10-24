@@ -1908,7 +1908,7 @@ def _run_deactivation_hooks(mods: list[Mod],
 
 _RUNTIME_EXTENSIONS = {".lua", ".json", ".toml", ".txt"}
 # manifest.toml is synced on its own (always). config_schema.toml IS synced:
-# the loader's in-game settings page (hook_overlay / overlay_menu) draws each
+# the loader's in-game Settings > Mods tab (hook_settings_menu) draws each
 # mod's fields from the installed copy, the only one it can see.
 _RUNTIME_BLOCKLIST  = {"manifest.toml"}
 
@@ -2984,6 +2984,11 @@ def main() -> int:
         return 1
     if args.list:
         return cmd_list(args, repo, cooking)
+
+    if not args.dry_run:
+        from rsmm.cli.cmd_mods import consume_menu_requests
+        for line in consume_menu_requests(game_dir, MODS_DIR):
+            print(f"  [menu] {line}")
 
     # Compatibility graph: refuse to apply on hard conflict / cycle /
     # unmet require unless the user passes --force.

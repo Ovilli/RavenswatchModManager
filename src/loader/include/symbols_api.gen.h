@@ -665,6 +665,41 @@ inline Object_SaveToFile_fn Object_SaveToFile() {
     return reinterpret_cast<Object_SaveToFile_fn>(rsmm::fn_resolve(Sym::Object_SaveToFile_Pattern));
 }
 
+// OptionsMenuElement_SetTitle  (OptionsMenuElement_SetTitle)
+//   void(void* element, const oCString* text)
+using OptionsMenuElement_SetTitle_fn = void(*)(void*, void*);
+inline OptionsMenuElement_SetTitle_fn OptionsMenuElement_SetTitle() {
+    return reinterpret_cast<OptionsMenuElement_SetTitle_fn>(rsmm::fn_resolve(Sym::OptionsMenuElement_SetTitle_Pattern));
+}
+
+// OptionsMenu_AddCategory  (OptionsMenu_AddCategory)
+//   void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type)
+using OptionsMenu_AddCategory_fn = void*(*)(void*, void*, void*, void*, uint32_t);
+inline OptionsMenu_AddCategory_fn OptionsMenu_AddCategory() {
+    return reinterpret_cast<OptionsMenu_AddCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AddCategory_Pattern));
+}
+
+// OptionsMenu_AppendRow  (OptionsMenu_AppendRow)
+//   void(void** ctx, void* category, void* row)
+using OptionsMenu_AppendRow_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_AppendRow_fn OptionsMenu_AppendRow() {
+    return reinterpret_cast<OptionsMenu_AppendRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AppendRow_Pattern));
+}
+
+// OptionsMenu_BuildLastCategory  (OptionsMenu_BuildLastCategory)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildLastCategory_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildLastCategory_fn OptionsMenu_BuildLastCategory() {
+    return reinterpret_cast<OptionsMenu_BuildLastCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildLastCategory_Pattern));
+}
+
+// OptionsMenu_SpawnMultiChoice  (OptionsMenu_SpawnMultiChoice)
+//   void*(void* elementFactory, void* templateRef, void* rowParent)
+using OptionsMenu_SpawnMultiChoice_fn = void*(*)(void*, void*, void*);
+inline OptionsMenu_SpawnMultiChoice_fn OptionsMenu_SpawnMultiChoice() {
+    return reinterpret_cast<OptionsMenu_SpawnMultiChoice_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnMultiChoice_Pattern));
+}
+
 // ProjectileAttack_BeginAttack  (ProjectileAttack_BeginAttack)
 //   void(void* projectile_attack_cpnt)
 using ProjectileAttack_BeginAttack_fn = void(*)(void*);
@@ -752,6 +787,13 @@ inline SkillController_SetTier_fn SkillController_SetTier() {
 using SkinGrid_Populate_fn = void(*)(void*, void*);
 inline SkinGrid_Populate_fn SkinGrid_Populate() {
     return reinterpret_cast<SkinGrid_Populate_fn>(rsmm::fn_resolve(Sym::SkinGrid_Populate_Pattern));
+}
+
+// StringVector_AssignFromArray  (StringVector_AssignFromArray)
+//   void(void* vec, const oCString* items, u32 count)
+using StringVector_AssignFromArray_fn = void(*)(void*, void*, uint32_t);
+inline StringVector_AssignFromArray_fn StringVector_AssignFromArray() {
+    return reinterpret_cast<StringVector_AssignFromArray_fn>(rsmm::fn_resolve(Sym::StringVector_AssignFromArray_Pattern));
 }
 
 // String_Assign  (String_Assign)

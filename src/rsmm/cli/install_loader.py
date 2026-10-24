@@ -280,27 +280,6 @@ def _ensure_pattern_db(game_dir: Path) -> None:
               "most symbols usually still resolve.", file=sys.stderr)
 
 
-def _ensure_ui_pack(game_dir: Path) -> None:
-    """Decode the in-game panel's art and fonts from the install
-    (`rsmm.engine.ui_pack`) unless this game build's pack is already there.
-
-    Advisory: without a pack the panel still works, in ImGui's default look.
-    """
-    from rsmm.engine import ui_pack
-
-    if ui_pack.current(game_dir):
-        return
-    try:
-        meta = ui_pack.build(game_dir)
-    except (OSError, ValueError) as exc:
-        print(f"install-loader: in-game panel art not prepared: {exc}", file=sys.stderr)
-        return
-    print(f"  prepared in-game panel art: {len(meta['textures'])} textures, "
-          f"{len(meta['fonts'])} fonts")
-    if meta["missing"]:
-        print(f"  (not in this install: {', '.join(meta['missing'])})", file=sys.stderr)
-
-
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -360,7 +339,6 @@ def main(argv: list[str] | None = None) -> int:
     if rc == 0:
         _replant_newer_loader(Path(argv[0]))
         _ensure_pattern_db(Path(argv[0]))
-        _ensure_ui_pack(Path(argv[0]))
     return rc
 
 

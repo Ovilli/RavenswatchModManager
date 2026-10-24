@@ -505,6 +505,7 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
     """``apply``; with ``enabled_json`` (a JSON list of mod ids) the manifests
     are first made to match it (:func:`sync_enabled`)."""
     note = ""
+    menu: dict[str, bool] = {}
     if enabled_json is not None:
         try:
             ids = json.loads(enabled_json)
@@ -514,6 +515,17 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
         if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
             return _emit({"ok": False, "code": 2, "stdout": "",
                           "stderr": "--enabled-json must be a list of mod ids"})
+        # Switched in game (Settings > Mods) since the profile was last saved:
+        # the newer choice wins, and goes back to the app as menuToggles so the
+        # profile store follows instead of undoing it on the next apply.
+        from rsmm.cli.cmd_mods import read_menu_requests
+        game_dir = find_game_dir()
+        try:
+            menu = read_menu_requests(game_dir) if game_dir else {}
+        except ValueError:
+            menu = {}     # apply reports the unreadable file itself
+        ids = [i for i in ids if menu.get(i, True)]
+        ids += [i for i, on in menu.items() if on and i not in ids]
         try:
             changed = sync_enabled(MODS_DIR, ids)
         except OSError as e:
@@ -523,6 +535,8 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
             note = "Matched the profile: " + ", ".join(changed) + "\n"
     result = _collect_rsmm(["apply", *rest])
     result["stdout"] = note + result["stdout"]
+    if menu:
+        result["menuToggles"] = menu
     return _emit(result)
 
 

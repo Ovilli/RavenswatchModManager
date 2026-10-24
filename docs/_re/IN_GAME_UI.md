@@ -1,5 +1,18 @@
 # In-game mod UI — recon (2026-10-24, build b9c3642884a8)
 
+> **SUPERSEDED 2026-10-24 — the ImGui overlay below was removed.** It worked,
+> but painting our own book over the Settings page was too complicated and
+> looked wrong. The mod menu is now a **Mods tab inside the game's own Settings
+> page** (`src/loader/src/hook_settings_menu.cpp`, flag `RSMM_ENABLE_NATIVE_MENU`):
+> the page is built in code by `oe::dt::BookOptionsUiControllerEntityCpnt`
+> (vtable slot 7 calls five tab builders), so one detour on the last builder
+> plus the game's own add-tab / add-row functions (`OptionsMenu_*` in
+> `data/symbols.json`) gives rows the game draws, navigates and sounds itself.
+> A multi-choice row only holds a `uint32_t*` to its current index, so rows
+> point at loader memory. Proven in game the same day. The recon below is kept
+> for the DXGI/input findings; the overlay code is in git history (f951f0c9 ..
+> 15e2a9f9).
+
 **PROVEN IN GAME 2026-10-24 (Proton, GE-Proton10-34, vkd3d-proton, 3440x1440):**
 `hook_overlay.cpp` hooked Present/Present1/ResizeBuffers/ResizeBuffers1 and
 ExecuteCommandLists, captured the DIRECT queue ~1 s after boot, drew the panel,

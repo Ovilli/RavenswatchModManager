@@ -848,6 +848,9 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
+  /** `apply` only: mods switched on/off in game (Settings > Mods) since the
+   * profile was saved. They won this apply; the store follows them. */
+  menuToggles?: Record<string, boolean>;
 }
 
 /** A repair doctor knows how to run for a finding. `manual` ones need a
@@ -1381,7 +1384,7 @@ export function profileEnabledMods(profileId?: string): string[] | undefined {
   return profile.loadOrder.filter((id) => isEnabledIn(profile, id));
 }
 
-export const applyMods = (opts: ApplyOptions = {}) => {
+export const applyMods = async (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
@@ -1389,8 +1392,22 @@ export const applyMods = (opts: ApplyOptions = {}) => {
   if (noMerge) args.push('--no-merge');
   const enabled = profileEnabledMods(rsmmOpts.profileId);
   if (enabled) args.push('--enabled-json', JSON.stringify(enabled));
-  return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
+  const result = await rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
+  followMenuToggles(result, rsmmOpts.profileId);
+  return result;
 };
+
+/** Make the active profile agree with the in-game Settings > Mods switches the
+ * apply just honoured, or the next apply would switch them straight back. */
+function followMenuToggles(result: RunResult | null, profileId?: string) {
+  const s = useApp.getState();
+  if (!result?.menuToggles || (profileId && profileId !== s.activeProfileId)) return;
+  const profile = s.profiles.find((p) => p.id === s.activeProfileId);
+  if (!profile) return;
+  for (const [id, on] of Object.entries(result.menuToggles)) {
+    if (isEnabledIn(profile, id) !== on) s.toggleMod(id);
+  }
+}
 
 export const build = () => rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
 
