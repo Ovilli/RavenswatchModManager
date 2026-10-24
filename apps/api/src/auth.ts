@@ -6,6 +6,7 @@ import {
   resetPasswordTemplate,
   sendMail,
   verifyEmailTemplate,
+  withVerifyCallback,
 } from './mailer.js';
 
 const socialProviders: {
@@ -90,7 +91,10 @@ async function createAuth() {
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
-        const t = verifyEmailTemplate({ name: user.name, url });
+        const t = verifyEmailTemplate({
+          name: user.name,
+          url: withVerifyCallback(url, `${env.webUrl}/account`),
+        });
         try {
           await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
         } catch (err) {

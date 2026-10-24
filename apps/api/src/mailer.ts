@@ -69,6 +69,18 @@ function htmlEscape(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Better Auth redirects to the link's `callbackURL` after verifying, and to
+ * `/` on ITS OWN host (the API) when there is none — which is what sign-up
+ * sends, from both the website and the desktop app. Give such links the
+ * website as their destination; a caller-chosen callbackURL is kept.
+ */
+export function withVerifyCallback(url: string, fallback: string): string {
+  const u = new URL(url);
+  if (!u.searchParams.get('callbackURL')) u.searchParams.set('callbackURL', fallback);
+  return u.toString();
+}
+
 export function verifyEmailTemplate(args: { name: string; url: string }): {
   subject: string;
   text: string;
