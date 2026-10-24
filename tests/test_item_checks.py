@@ -121,7 +121,7 @@ def test_an_effect_builds_the_proven_timed_bonus_and_cuts_the_bases_own():
     assert "Modifier" not in hit["activates"].rsplit("\\", 1)[-1]
     stats = {m.name: m.stat for m in IM.list_modifiers(ent)}
     assert stats["Crit Chance Modifier Effect"] == "Crit chance"
-    assert _slots(ent) == [("Crit Chance Value Effect", 1),
+    assert _slots(ent) == [("Crit Chance Value Operation Effect", 1),
                            ("Crit Chance Duration Value Effect", 0)]
     assert b"Dash_Crit_Chance\\" not in ent and item_warnings(ent, _shield(), set()) == []
 
@@ -131,7 +131,7 @@ def test_an_effect_on_dash_and_without_percent():
     state = {f.name: f.text for f in EF.fields(EntityFile(ent, "x").component("On Trigger Effect"))}
     assert state["activates"].endswith("Crit Chance Modifier Timer Effect")
     assert "Timer" not in (state.get("deactivates?") or "")        # no restart
-    assert _slots(ent)[0] == ("Crit Chance Value Effect", 0)
+    assert _slots(ent)[0] == ("Crit Chance Value Operation Effect", 0)
 
 
 @pytest.mark.parametrize("on", sorted(__import__("rsmm.engine.item_effect",
@@ -186,7 +186,7 @@ def test_the_editor_preview_reads_the_built_card():
     req = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Shie_M"}
     out = item_preview(req | {"effect": _effect()})
     assert out["description"] == [
-        {"node": "Crit Chance Value Effect", "value": 0.3, "mode": 1},
+        {"node": "Crit Chance Value Operation Effect", "value": 0.3, "mode": 1},
         {"node": "Crit Chance Duration Value Effect", "value": 5.0, "mode": 0}]
     assert out["warnings"] == []
     out = item_preview(req | {"values": [{"label": "Shield Value", "old": 1.0, "new": 0.3,
@@ -264,6 +264,8 @@ def test_a_swap_between_stats_the_game_uses_is_quiet():
 
 def test_an_effect_without_seconds_is_always_on_and_one_with_needs_both():
     from rsmm.engine import item_effect as IE
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
     assert not IE.Effect.parse({"stat": "Crit chance", "amount": 0.1}).timed
     assert IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "seconds": 3}).on == \
         "damage_taken"
@@ -273,6 +275,8 @@ def test_an_effect_without_seconds_is_always_on_and_one_with_needs_both():
 
 def test_the_card_text_numbers_every_effect_in_order():
     from rsmm.engine import item_effect as IE
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
     text = IE.describe(IE.parse_effects([
         {"stat": "Crit chance", "amount": 0.1},
         {"stat": "Armour", "amount": 5, "percent": False},
@@ -320,6 +324,8 @@ def test_an_item_with_no_base_and_no_effects_says_what_it_needs(tmp_path):
 def test_day_and_night_effects_build_and_describe():
     from rsmm.engine import entity_check as CK
     from rsmm.engine import item_effect as IE
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
     effs = [{"stat": "Crit chance", "amount": 0.15, "during": "day"},
             {"stat": "Armour", "amount": 8, "percent": False, "during": "night"}]
     parsed = IE.parse_effects(effs)
@@ -342,3 +348,57 @@ def test_day_and_night_effects_build_and_describe():
     assert item_warnings(ent, _shield(), set()) == []
     assert CK.check(ent, _shield(), name="Solar_Lunar_Charm") == []
 
+
+
+def test_item_effects_scale_with_duplicate_count():
+    """Always-on and timed effects multiply their amount by Amount Selector,
+    so duplicate item copies held in-game stack additively."""
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import item_effect as IE
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
+    import struct
+    _shield()
+    effs = [
+        {"stat": "Crit chance", "amount": 0.1},
+        {"stat": "Attack power", "amount": 0.2, "seconds": 5.0, "on": "dash"},
+    ]
+    files = C.build_magic_item(new_id="Stacking_Item", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Rare",
+                               effect=effs, super_effect=False)
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    g = EG.parse(ent)
+    comps = {c.name: c for c in g.components}
+
+    # Effect 1: Always-on bonus
+    op1 = comps["Crit Chance Value Operation Effect"]
+    assert op1.cls == "oCEntityCpntValueOperationsSettings"
+    op1_refs = [r.path for r in op1.refs]
+    assert "[Value] Stacking_Item\\Crit Chance Value Effect" in op1_refs
+    assert r"[Value Selector] Magical_Objects_Model\Amount Selector" in op1_refs
+    mod1 = comps["Crit Chance Modifier Effect"]
+    d1 = P.decode(mod1)
+    assert d1["amount"].source.path == "[Multi values operations] Stacking_Item\\Crit Chance Value Operation Effect"
+    assert d1["amount"].key == 0x17ae7811
+    assert struct.unpack("<f", d1["amount"].value)[0] == pytest.approx(0.1)
+
+    # Effect 2: Timed bonus after trigger
+    op2 = comps["Crit Chance Value Operation Effect 2"]
+    assert op2.cls == "oCEntityCpntValueOperationsSettings"
+    op2_refs = [r.path for r in op2.refs]
+    assert "[Value] Stacking_Item\\Crit Chance Value Effect 2" in op2_refs
+    assert r"[Value Selector] Magical_Objects_Model\Amount Selector" in op2_refs
+    mod2 = comps["Crit Chance Modifier Effect 2"]
+    d2 = P.decode(mod2)
+    assert d2["amount"].source.path == "[Multi values operations] Stacking_Item\\Crit Chance Value Operation Effect 2"
+    assert d2["amount"].key == 0x17ae7811
+    assert struct.unpack("<f", d2["amount"].value)[0] == pytest.approx(0.2)
+
+    # Description format slots point to the operations
+    slots = _slots(ent)
+    assert slots[0] == ("Crit Chance Value Operation Effect", 1)
+    assert slots[1] == ("Crit Chance Value Operation Effect 2", 1)
+    assert slots[2] == ("Crit Chance Duration Value Effect 2", 0)
+
+    assert item_warnings(ent, _shield(), set()) == []
+    assert CK.check(ent, _shield(), name="Stacking_Item") == []

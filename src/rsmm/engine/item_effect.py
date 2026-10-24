@@ -37,7 +37,8 @@ from .entity_graph_edit import EntityEditError, EntityFile
 #: ``steps`` that name them keep working: (tester, timer, modifier, seconds
 #: value, amount value).
 _TIMED = ("Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer",
-          "Crit Chance Modifier", "Crit Chance Duration Value", "Crit Chance Value")
+          "Crit Chance Modifier", "Crit Chance Duration Value", "Crit Chance Value",
+          "Crit Chance Value Operation")
 _TRIGGER_STATE = "On Trigger"
 
 #: The game event every ability use sends; its flag filter says which ability.
@@ -255,9 +256,27 @@ _NONE = P.Link()
 #: proven parts.
 _RATIO = 2
 
+_OPS = "oCEntityCpntValueOperationsSettings"
+_MULTIPLY = 0x17b29be2
+_READ_VALUE = 0x0fd2c964
+_READ_INT = 0x0fd2c965
+_AMOUNT_SELECTOR = P.Link(bytes.fromhex("ff9e14f8f4505d4890d387548a6c8f81"),
+                          r"[Value Selector] Magical_Objects_Model\Amount Selector")
 
-def _value(w: P.PartWriter, name: str, v: float, unit: int = 0) -> None:
-    w.add(_VALUE, name, {"value": P.Num.f32(v, unit), "flag": 0}, flags=0x101)
+
+def _value(w: P.PartWriter, name: str, v: float, unit: int = 0) -> P.Link:
+    return w.add(_VALUE, name, {"value": P.Num.f32(v, unit), "flag": 0}, flags=0x101)
+
+
+def _scalable_operation(w: P.PartWriter, name: str, value_link: P.Link) -> P.Link:
+    """``value_link`` x ``Amount Selector``, so duplicate item copies stack."""
+    def operand(link: P.Link, key: int, num_type: int) -> bytes:
+        return struct.pack("<Ii", 0, -1) + P.num_bytes(
+            P.Num(num_type, bytes(4), source=link, key=key), w.ci)
+    node = w.obj("oCEntityCpntNodeSettings", struct.pack("<II", _MULTIPLY, 2)
+                 + operand(value_link, _READ_VALUE, P.F32)
+                 + operand(_AMOUNT_SELECTOR, _READ_INT, P.INT))
+    return w.add(_OPS, name, {"operations": node}, flags=0x101)
 
 
 def _owner(w: P.PartWriter, last: int) -> int:
@@ -267,11 +286,14 @@ def _owner(w: P.PartWriter, last: int) -> int:
                  on + b"\x00" + w.obj("oCResourceWeakRef", bytes(8)) + bytes([last]))
 
 
-def _modifier(w: P.PartWriter, name: str, stat: str, amount: float) -> P.Link:
+def _modifier(w: P.PartWriter, name: str, stat: str, amount: float,
+              source: P.Link | None = None) -> P.Link:
     """A modifier giving ``amount`` of ``stat`` to whoever holds the item."""
+    num = (P.Num.f32(amount, _RATIO) if source is None
+           else P.Num(P.F32, struct.pack("<f", amount), _RATIO, source=source, key=0x17ae7811))
     return w.add(_MOD, name, {
         "modifier_id": IM.resolve_stat(stat), "duration": P.Num.f32(0),
-        "amount": P.Num.f32(amount, _RATIO),
+        "amount": num,
         "targets": w.ids("oCEntityCollectorSelectorSettings", [_owner(w, 1)]),
         "value_4": P.Num.f32(1), "sources?": w.ids("oCEntityCollectorSelectorSettings", []),
         "id": P.Num.int(0), "flag": 1}, flags=0x1)
@@ -307,28 +329,30 @@ def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags:
 def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
                  slots: list) -> None:
     """A modifier held on while the item is equipped (or while ``during`` holds)."""
-    tester, _timer_n, mod, _seconds_n, amount = (n + sfx for n in _TIMED)
-    mod_link = _modifier(w, mod, effect.stat, effect.amount)
-    _value(w, amount, effect.amount, _RATIO)
+    tester, _timer_n, mod, _seconds_n, amount, op = (n + sfx for n in _TIMED)
+    amount_link = _value(w, amount, effect.amount, _RATIO)
+    op_link = _scalable_operation(w, op, amount_link)
+    mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
     if effect.during:
         _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
                 flags=0x1, holds=mod_link)
         w.ef.add_ref(equipped, "while_active", tester)
     else:
         w.ef.add_ref(equipped, "while_active", mod)
-    slots.append((amount, effect.percent))
+    slots.append((op, effect.percent))
 
 
 def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
                slots: list) -> str:
-    tester, timer, mod, seconds, amount = (n + sfx for n in _TIMED)
+    tester, timer, mod, seconds, amount, op = (n + sfx for n in _TIMED)
     state = _TRIGGER_STATE + sfx
     # The modifier and timer carry their numbers INLINE: linked to Value parts
     # they read the donor's inline numbers instead (0.05 and 3 s for every
     # trigger, playtest 2026-10-20). The Values are only the card's numbers.
     _value(w, seconds, effect.seconds)
-    _value(w, amount, effect.amount, _RATIO)
-    mod_link = _modifier(w, mod, effect.stat, effect.amount)
+    amount_link = _value(w, amount, effect.amount, _RATIO)
+    op_link = _scalable_operation(w, op, amount_link)
+    mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
     timer_link = w.add(_TIMER, timer, {
         "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
         "state": _NONE, "paused?": P.Num(P.BOOL, b"\x00"), "duration": P.Num.f32(effect.seconds),
@@ -345,7 +369,7 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     listener = add_listener(w, effect.on, sfx, w.link(state, _STATE), read=read)
     w.ef.add_ref(equipped, "while_active", listener)
     w.ef.add_ref(equipped, "while_active", tester)
-    slots += [(amount, effect.percent), (seconds, False)]
+    slots += [(op, effect.percent), (seconds, False)]
     return timer
 
 
