@@ -345,7 +345,6 @@ def test_day_and_night_effects_build_and_describe():
     assert CK.check(ent, _shield(), name="Solar_Lunar_Charm") == []
 
 
-
 def test_item_effects_scale_with_duplicate_count():
     """Always-on and timed effects multiply their amount by Amount Selector,
     so duplicate item copies held in-game stack additively."""

@@ -35,7 +35,7 @@ from .entity_graph_edit import EntityEditError, EntityFile
 
 #: Part names, kept from the recipe the parts were first copied from so a mod's
 #: ``steps`` that name them keep working: (tester, timer, modifier, seconds
-#: value, amount value).
+#: value, amount value, amount x copies operation).
 _TIMED = ("Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer",
           "Crit Chance Modifier", "Crit Chance Duration Value", "Crit Chance Value",
           "Crit Chance Value Operation")
