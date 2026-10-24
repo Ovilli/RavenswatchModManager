@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-10-24",
+      "summary": "Custom item effects now stack with duplicate copies: holding a second copy raises the stat and the card number (always-on and timed effects; super effects unchanged).",
+      "highlights": [
+        "Custom item effects now stack with duplicate copies: holding a second copy raises the stat and the card number (always-on and timed effects; super effects unchanged)."
+      ],
+      "cli_version": 13
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
       "summary": "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components.",
       "highlights": [
         "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components."
@@ -523,14 +532,6 @@
         "Talent builder: stats are found by the words on the cards (\"trait cooldown\", \"power charge\"), and stats that would debuff your own hero (Ignite, Vulnerable, Rooted...) are greyed out.",
         "Fixed: a talent with two added stats failed to build.",
         "Editor: game-state values like \"Is in cinematic\" are no longer offered as stats, and \"Reset everything\" also clears test grants."
-      ]
-    },
-    {
-      "version": "5.9.6",
-      "date": "2026-10-05",
-      "summary": "Fixes Launch on Linux, which started neither Steam nor the game.",
-      "highlights": [
-        "Fixed (Linux): Launch did nothing. The app reported the game as started, but Steam and the game never opened. It now starts Steam properly, and if one way of reaching Steam fails it tries the next and tells you what went wrong."
       ]
     }
   ]
