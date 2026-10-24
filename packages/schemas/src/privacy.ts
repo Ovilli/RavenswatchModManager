@@ -33,6 +33,8 @@ export const privacySettingsSchema = z.object({
    * sends regardless of this flag.
    */
   emailAnnouncements: z.boolean(),
+  /** Email when someone first reviews your mod, collection or guide. */
+  emailReviews: z.boolean(),
 });
 export type PrivacySettings = z.infer<typeof privacySettingsSchema>;
 
@@ -48,4 +50,5 @@ export const PRIVACY_DEFAULTS: PrivacySettings = {
   publicProfile: true,
   publicDownloadCounts: true,
   emailAnnouncements: false,
+  emailReviews: true,
 };

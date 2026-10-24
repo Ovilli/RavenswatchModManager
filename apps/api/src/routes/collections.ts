@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured } from '../env.js';
+import { notifyReview } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { presignCollectionImage } from '../storage.js';
 import type { AppEnv } from '../types.js';
@@ -517,7 +518,7 @@ collectionsRouter.put(
     }
 
     const now = new Date();
-    await db
+    const [saved] = await db
       .insert(schema.collectionReviews)
       .values({
         collectionId: collection.id,
@@ -535,7 +536,19 @@ collectionsRouter.put(
           body: body.body ?? null,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ isNew: sql<boolean>`xmax = 0` });
+    await notifyReview({
+      ownerId: collection.ownerId,
+      type: 'collection_review',
+      itemName: collection.name,
+      link: `/c/${collection.slug}`,
+      reviewerName: user.name,
+      rating: body.rating,
+      title: body.title,
+      body: body.body,
+      isNew: saved?.isNew ?? false,
+    });
 
     return c.json({ ok: true });
   },

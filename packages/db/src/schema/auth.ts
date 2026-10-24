@@ -35,6 +35,9 @@ export const users = pgTable('user', {
   publicDownloadCounts: boolean('public_download_counts').notNull().default(true),
   // Non-essential mail. Defaults to false: marketing consent is opt-in.
   emailAnnouncements: boolean('email_announcements').notNull().default(false),
+  // Email when someone reviews your mod / collection / guide. Activity about
+  // your own content, so on by default; one-click unsubscribe in each mail.
+  emailReviews: boolean('email_reviews').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

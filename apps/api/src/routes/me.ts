@@ -190,6 +190,7 @@ const PRIVACY_COLUMNS = {
   publicProfile: true,
   publicDownloadCounts: true,
   emailAnnouncements: true,
+  emailReviews: true,
 } as const;
 
 const PRIVACY_RETURNING = {
@@ -198,6 +199,7 @@ const PRIVACY_RETURNING = {
   publicProfile: schema.users.publicProfile,
   publicDownloadCounts: schema.users.publicDownloadCounts,
   emailAnnouncements: schema.users.emailAnnouncements,
+  emailReviews: schema.users.emailReviews,
 } as const;
 
 /**

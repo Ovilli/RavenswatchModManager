@@ -20,6 +20,7 @@ vi.mock('@rsmm/db', () => ({
     select: () => ({
       from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
     }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
   }),
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => 'col' }) }),
 }));
@@ -156,5 +157,19 @@ describe('CDN cache for viewer-independent reads', () => {
       },
     });
     expect(res.headers.get('access-control-max-age')).toBe('86400');
+  });
+});
+
+describe('review-email unsubscribe link', () => {
+  it('rejects a forged token and accepts the real one', async () => {
+    const { unsubscribeToken } = await import('../src/notify.js');
+    const bad = await app.request('/api/unsubscribe?u=user-1&t=forged');
+    expect(bad.status).toBe(400);
+    const other = await app.request(`/api/unsubscribe?u=user-2&t=${unsubscribeToken('user-1')}`);
+    expect(other.status).toBe(400);
+    const ok = await app.request(`/api/unsubscribe?u=user-1&t=${unsubscribeToken('user-1')}`, {
+      method: 'POST',
+    });
+    expect(ok.status).toBe(200);
   });
 });

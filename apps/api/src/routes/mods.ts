@@ -14,10 +14,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
-import { env, s3Configured, virusTotalConfigured } from '../env.js';
+import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
-import { notify, notifyFollowers } from '../notify.js';
+import { notify, notifyFollowers, notifyReview } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
@@ -1331,7 +1331,7 @@ modsRouter.put(
     }
 
     const now = new Date();
-    await db
+    const [saved] = await db
       .insert(schema.modReviews)
       .values({
         modId: mod.id,
@@ -1349,30 +1349,22 @@ modsRouter.put(
           body: body.body ?? null,
           updatedAt: now,
         },
-      });
+      })
+      // xmax = 0 only on a freshly inserted row, so edits don't re-notify.
+      .returning({ isNew: sql<boolean>`xmax = 0` });
 
     await recomputeRating(mod.id);
-    // Tell the owner someone reviewed their mod, in-app and by email.
     if (mod.ownerId) {
-      const owner = await db
-        .select({ email: schema.users.email })
-        .from(schema.users)
-        .where(eq(schema.users.id, mod.ownerId))
-        .limit(1);
-      await notify({
-        userId: mod.ownerId,
+      await notifyReview({
+        ownerId: mod.ownerId,
         type: 'mod_review',
-        title: `New review on ${mod.name}`,
-        body: [
-          `${user.name ?? 'Someone'} rated it ${body.rating}/5.`,
-          body.title,
-          body.body,
-          `${env.webUrl}/registry/${mod.slug}`,
-        ]
-          .filter(Boolean)
-          .join('\n\n'),
+        itemName: mod.name,
         link: `/registry/${mod.slug}`,
-        email: owner[0]?.email ?? null,
+        reviewerName: user.name,
+        rating: body.rating,
+        title: body.title,
+        body: body.body,
+        isNew: saved?.isNew ?? false,
       });
     }
     return c.json({ ok: true });

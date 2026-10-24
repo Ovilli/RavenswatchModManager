@@ -34,6 +34,7 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string>;
 }
 
 export async function sendMail(msg: MailMessage): Promise<void> {
@@ -55,6 +56,7 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     subject: msg.subject,
     text: msg.text,
     html: msg.html,
+    headers: msg.headers,
   });
 }
 

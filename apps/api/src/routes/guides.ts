@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured } from '../env.js';
+import { notifyReview } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { presignGuideImage } from '../storage.js';
 import type { AppEnv } from '../types.js';
@@ -465,7 +466,7 @@ guidesRouter.put(
     }
 
     const now = new Date();
-    await db
+    const [saved] = await db
       .insert(schema.guideReviews)
       .values({
         guideId: guide.id,
@@ -483,7 +484,19 @@ guidesRouter.put(
           body: body.body ?? null,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ isNew: sql<boolean>`xmax = 0` });
+    await notifyReview({
+      ownerId: guide.ownerId,
+      type: 'guide_review',
+      itemName: guide.title,
+      link: `/guides/${guide.slug}`,
+      reviewerName: user.name,
+      rating: body.rating,
+      title: body.title,
+      body: body.body,
+      isNew: saved?.isNew ?? false,
+    });
     return c.json({ ok: true });
   },
 );
