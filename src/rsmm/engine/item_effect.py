@@ -335,7 +335,9 @@ def _value(w: P.PartWriter, name: str, v: float, unit: int = 0) -> P.Link:
 
 
 def _scalable_operation(w: P.PartWriter, name: str, value_link: P.Link) -> P.Link:
-    """``value_link`` x ``Amount Selector``, so duplicate item copies stack."""
+    """``value_link`` x ``Amount Selector``, so duplicate item copies stack: the
+    modifier and the card both read it (playtest 2026-10-24: stat and card number
+    grew with a second copy, always-on and timed)."""
     def operand(link: P.Link, key: int, num_type: int) -> bytes:
         return struct.pack("<Ii", 0, -1) + P.num_bytes(
             P.Num(num_type, bytes(4), source=link, key=key), w.ci)
