@@ -717,6 +717,12 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'POST', body: JSON.stringify(id ? { id } : {}) },
           okSchema,
         ),
+      deleteNotifications: (id?: string) =>
+        request(
+          '/api/me/notifications',
+          { method: 'DELETE', body: JSON.stringify(id ? { id } : {}) },
+          okSchema,
+        ),
       follows: () => request('/api/me/follows', { method: 'GET' }, followsResponseSchema),
     },
     users: {

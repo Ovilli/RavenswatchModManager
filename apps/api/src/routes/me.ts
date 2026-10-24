@@ -355,6 +355,18 @@ meRouter.post('/notifications/read', zValidator('json', markReadSchema), async (
   return c.json({ ok: true });
 });
 
+// Delete notifications. Body `{ id }` deletes one; empty body clears all.
+meRouter.delete('/notifications', zValidator('json', markReadSchema), async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  const { id } = c.req.valid('json');
+  const mine = eq(schema.notifications.userId, user.id);
+  await getDb()
+    .delete(schema.notifications)
+    .where(id ? and(eq(schema.notifications.id, id), mine) : mine);
+  return c.json({ ok: true });
+});
+
 // ─────────── Followed mods ───────────
 
 meRouter.get('/follows', async (c) => {

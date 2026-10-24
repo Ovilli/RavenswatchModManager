@@ -1,7 +1,7 @@
 'use client';
 import { Button, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check } from 'lucide-react';
+import { Bell, Check, Trash2, X } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,6 +22,10 @@ export default function NotificationsPage() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['me', 'notifications'] });
   const markRead = useMutation({
     mutationFn: (id?: string) => api.me.markNotificationsRead(id),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id?: string) => api.me.deleteNotifications(id),
     onSuccess: invalidate,
   });
 
@@ -54,11 +58,25 @@ export default function NotificationsPage() {
         <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <Bell className="h-6 w-6" /> Notifications
         </h1>
-        {(q.data?.unread ?? 0) > 0 && (
-          <Button size="sm" variant="outline" onClick={() => markRead.mutate(undefined)}>
-            <Check className="mr-1.5 h-4 w-4" /> Mark all read
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {(q.data?.unread ?? 0) > 0 && (
+            <Button size="sm" variant="outline" onClick={() => markRead.mutate(undefined)}>
+              <Check className="mr-1.5 h-4 w-4" /> Mark all read
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (confirm('Delete all notifications?')) remove.mutate(undefined);
+              }}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" /> Clear all
+            </Button>
+          )}
+        </div>
       </div>
 
       {q.isLoading ? (
@@ -73,11 +91,11 @@ export default function NotificationsPage() {
               if (n.link) router.push(n.link as Route);
             };
             return (
-              <li key={n.id}>
+              <li key={n.id} className="relative">
                 <button
                   type="button"
                   onClick={go}
-                  className={`w-full rounded-lg border p-4 text-left transition hover:bg-foreground/5 ${
+                  className={`w-full rounded-lg border p-4 pr-10 text-left transition hover:bg-foreground/5 ${
                     n.read ? 'border-border/50' : 'border-crimson/40 bg-crimson/5'
                   }`}
                 >
@@ -89,6 +107,16 @@ export default function NotificationsPage() {
                     </span>
                   </div>
                   {n.body && <p className="mt-1 text-sm text-muted-foreground">{n.body}</p>}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete notification"
+                  title="Delete"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(n.id)}
+                  className="absolute right-2 top-2 rounded p-1.5 text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
                 </button>
               </li>
             );
