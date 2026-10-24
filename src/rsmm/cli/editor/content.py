@@ -1671,43 +1671,21 @@ def card_font(name: str) -> dict | None:
 
 @_once
 def _card_font_pair(name: str) -> tuple[dict, bytes] | None:
-    """A card font's glyph table and its page as PNG, checked to belong together.
-
-    The two are separate files, and read one by one they can come from
-    different stores: the mirror has the table but not the page texture, and a
-    `.rsmm.bak` made before a game update (or a font mod's leftovers) is a
-    different build from the live file beside it. The page draws every glyph
-    as a slice of the page at the table's coordinates, so a mismatched pair is
-    not a little off: every letter is the wrong letter. Each table copy is
-    tried with each page copy, live install first (what the game draws with),
-    and only a pair `game_font.fits` accepts is used; with none, the card falls
-    back to plain text, which is readable.
-    """
-    from itertools import product
-
-    from rsmm.engine import cooked, corpus, game_font, icon_decode
-    from rsmm.engine.cooked_schemas.texture import TextureHandler
+    """A card font's glyph table and its page as PNG, checked to belong
+    together (`rsmm.engine.game_font.load`). With none, the card falls back to
+    plain text, which is readable."""
+    from rsmm.engine import game_font, icon_decode
     rel = CARD_FONTS.get(name)
     if rel is None:
         return None
-    tables = corpus.install_copies(rel) + [p for p in (corpus.mirror_path(rel),) if p]
-    for table_path, page_kind in product(tables, (0, 1)):
-        try:
-            f = game_font.parse(table_path.read_bytes())
-            pages = corpus.install_copies(rel.rsplit("/", 1)[0] + "/" + f.page + ".Texture.dxt")
-            if page_kind >= len(pages):
-                continue
-            cf = cooked.parse(pages[page_kind].read_bytes())
-            tex = TextureHandler.parse_payload(cf.sections[-1].payload)
-            rgba = icon_decode.decode_to_rgba(tex.pixels, tex.width, tex.height, tex.format_name)
-        except (OSError, ValueError, KeyError, IndexError):
-            continue
-        if game_font.fits(f, rgba, tex.width, tex.height):
-            meta = {"page": f.page, "pageW": f.page_w, "pageH": f.page_h,
-                    "lineHeight": f.line_height, "size": f.size,
-                    "glyphs": {str(cp): list(g) for cp, g in f.glyphs.items()}}
-            return meta, icon_decode.rgba_to_png(rgba, tex.width, tex.height)
-    return None
+    pair = game_font.load(rel)
+    if pair is None:
+        return None
+    f, rgba, width, height = pair
+    meta = {"page": f.page, "pageW": f.page_w, "pageH": f.page_h,
+            "lineHeight": f.line_height, "size": f.size,
+            "glyphs": {str(cp): list(g) for cp, g in f.glyphs.items()}}
+    return meta, icon_decode.rgba_to_png(rgba, width, height)
 
 
 def _card_texture(req: Request) -> Raw:

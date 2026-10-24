@@ -91,3 +91,40 @@ def fits(font: GameFont, rgba: bytes, width: int, height: int, *, min_cover: flo
             opaque += 1
             hit += inside[i]
     return opaque > 0 and hit >= opaque * min_cover
+
+
+def load(rel: str) -> tuple[GameFont, bytearray, int, int] | None:
+    """A font's glyph table and its decoded page, checked to belong together.
+
+    ``rel`` is the table's decoded path (``...~GAM.fnt.Font.fnb``). Returns
+    ``(font, rgba, width, height)`` or None.
+
+    The two are separate files, and read one by one they can come from
+    different stores: the mirror has the table but not the page texture, and a
+    `.rsmm.bak` made before a game update (or a font mod's leftovers) is a
+    different build from the live file beside it. Every glyph is drawn as a
+    slice of the page at the table's coordinates, so a mismatched pair is not a
+    little off: every letter is the wrong letter. Each table copy is tried with
+    each page copy, live install first (what the game draws with), and only a
+    pair `fits` accepts is returned.
+    """
+    from itertools import product
+
+    from . import cooked, corpus, icon_decode
+    from .cooked_schemas.texture import TextureHandler
+
+    tables = corpus.install_copies(rel) + [p for p in (corpus.mirror_path(rel),) if p]
+    for table_path, page_kind in product(tables, (0, 1)):
+        try:
+            f = parse(table_path.read_bytes())
+            pages = corpus.install_copies(rel.rsplit("/", 1)[0] + "/" + f.page + ".Texture.dxt")
+            if page_kind >= len(pages):
+                continue
+            cf = cooked.parse(pages[page_kind].read_bytes())
+            tex = TextureHandler.parse_payload(cf.sections[-1].payload)
+            rgba = icon_decode.decode_to_rgba(tex.pixels, tex.width, tex.height, tex.format_name)
+        except (OSError, ValueError, KeyError, IndexError):
+            continue
+        if fits(f, rgba, tex.width, tex.height):
+            return f, rgba, tex.width, tex.height
+    return None

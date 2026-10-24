@@ -61,6 +61,20 @@ inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
+// BookMenuUiController_OnHide  (BookMenuUiController_OnHide)
+//   void(void* uiController)
+using BookMenuUiController_OnHide_fn = void(*)(void*);
+inline BookMenuUiController_OnHide_fn BookMenuUiController_OnHide() {
+    return reinterpret_cast<BookMenuUiController_OnHide_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnHide_Pattern));
+}
+
+// BookMenuUiController_OnShow  (BookMenuUiController_OnShow)
+//   void(void* uiController)
+using BookMenuUiController_OnShow_fn = void(*)(void*);
+inline BookMenuUiController_OnShow_fn BookMenuUiController_OnShow() {
+    return reinterpret_cast<BookMenuUiController_OnShow_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnShow_Pattern));
+}
+
 // ChallengeDef_PostLoad  (ChallengeDef_PostLoad)
 //   bool(void* definition)
 using ChallengeDef_PostLoad_fn = uint32_t(*)(void*);
@@ -442,11 +456,39 @@ inline HitPoint_SetHitPoints_fn HitPoint_SetHitPoints() {
     return reinterpret_cast<HitPoint_SetHitPoints_fn>(rsmm::fn_resolve(Sym::HitPoint_SetHitPoints_Pattern));
 }
 
+// InGameMenuGs_OnEnter  (InGameMenuGs_OnEnter)
+//   void(oe::dt::InGameMenuGs* self, void* ctx)
+using InGameMenuGs_OnEnter_fn = void(*)(void*, void*);
+inline InGameMenuGs_OnEnter_fn InGameMenuGs_OnEnter() {
+    return reinterpret_cast<InGameMenuGs_OnEnter_fn>(rsmm::fn_resolve(Sym::InGameMenuGs_OnEnter_Pattern));
+}
+
+// InGameMenuGs_OnLeave  (InGameMenuGs_OnLeave)
+//   void(oe::dt::InGameMenuGs* self, void* ctx)
+using InGameMenuGs_OnLeave_fn = void(*)(void*, void*);
+inline InGameMenuGs_OnLeave_fn InGameMenuGs_OnLeave() {
+    return reinterpret_cast<InGameMenuGs_OnLeave_fn>(rsmm::fn_resolve(Sym::InGameMenuGs_OnLeave_Pattern));
+}
+
 // IngredientDef_PostLoad  (IngredientDef_PostLoad)
 //   bool(void* definition)
 using IngredientDef_PostLoad_fn = uint32_t(*)(void*);
 inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
     return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
+}
+
+// LoadingScreenUiController_OnHide  (LoadingScreenUiController_OnHide)
+//   void(void* uiController)
+using LoadingScreenUiController_OnHide_fn = void(*)(void*);
+inline LoadingScreenUiController_OnHide_fn LoadingScreenUiController_OnHide() {
+    return reinterpret_cast<LoadingScreenUiController_OnHide_fn>(rsmm::fn_resolve(Sym::LoadingScreenUiController_OnHide_Pattern));
+}
+
+// LoadingScreenUiController_OnShow  (LoadingScreenUiController_OnShow)
+//   void(void* uiController)
+using LoadingScreenUiController_OnShow_fn = void(*)(void*);
+inline LoadingScreenUiController_OnShow_fn LoadingScreenUiController_OnShow() {
+    return reinterpret_cast<LoadingScreenUiController_OnShow_fn>(rsmm::fn_resolve(Sym::LoadingScreenUiController_OnShow_Pattern));
 }
 
 // LobbyAttributes_Parse  (LobbyAttributes_Parse)
@@ -495,6 +537,20 @@ inline MapDef_PostLoad_fn MapDef_PostLoad() {
 using MelodyDef_PostLoad_fn = uint32_t(*)(void*);
 inline MelodyDef_PostLoad_fn MelodyDef_PostLoad() {
     return reinterpret_cast<MelodyDef_PostLoad_fn>(rsmm::fn_resolve(Sym::MelodyDef_PostLoad_Pattern));
+}
+
+// ModalUiController_OnHide  (ModalUiController_OnHide)
+//   void(void* uiController)
+using ModalUiController_OnHide_fn = void(*)(void*);
+inline ModalUiController_OnHide_fn ModalUiController_OnHide() {
+    return reinterpret_cast<ModalUiController_OnHide_fn>(rsmm::fn_resolve(Sym::ModalUiController_OnHide_Pattern));
+}
+
+// ModalUiController_OnShow  (ModalUiController_OnShow)
+//   void(void* uiController)
+using ModalUiController_OnShow_fn = void(*)(void*);
+inline ModalUiController_OnShow_fn ModalUiController_OnShow() {
+    return reinterpret_cast<ModalUiController_OnShow_fn>(rsmm::fn_resolve(Sym::ModalUiController_OnShow_Pattern));
 }
 
 // ModifierEvent_Ctor  (ModifierEvent_Ctor)

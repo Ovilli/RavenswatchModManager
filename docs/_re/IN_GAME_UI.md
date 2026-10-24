@@ -86,3 +86,23 @@ the MinGW toolchain ships `d3d12.h`/`dxgi1_4.h`.
   `DAT_141436bf8` / another path also need handling?
 - Cursor: the game hides or replaces it during play; `io.MouseDrawCursor`
   may be needed while the overlay is open.
+
+## The escape menu (2026-10-24, static)
+
+The escape/pause menu is a game state, `oe::dt::InGameMenuGs` (one of four
+`Gs` classes: GameSessionGs, InGameMenuGs, LevelGs, LobbyGs). Its vtable
+(0x140f0a488 on b9c3) has the family's shape: every Gs overrides slots
+2/4/5/12 and leaves 6-11, 13 and 14 on the base stub 0x1400b9df0.
+
+| Slot | b9c3 address | Role |
+|------|--------------|------|
+| 2 | 0x140247990 | destructor (restores `oIGameState::vftable`) |
+| 4 | 0x140292740 | **enter**: scene-context bool `0x162b18c9` = 1, encyclopedia counter +0xc50 += 1 |
+| 5 | 0x1402929e0 | **leave**: bool `0x162b18c9` = 0, counter -= 1 |
+| 12 | 0x140292bb0 | per-frame update |
+
+Mapped as `InGameMenuGs_OnEnter` / `InGameMenuGs_OnLeave`. The overlay hooks
+both to show a Mods button while the escape menu is open. Its buttons
+(Resume, Quit to desktop, ...) belong to `oCDtEntityCpntInGameMenuUiController`
+("Escape Menu Ui Controller"). Their screen rects are not read, so the Mods
+button sits below the menu instead of in its column.

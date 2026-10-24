@@ -77,6 +77,9 @@ set(LOADER_SRC
     src/hook_skills.cpp
     src/hook_ui.cpp
     src/hook_overlay.cpp
+    src/overlay_menu.cpp
+    src/book_warp.cpp
+    src/book_calib.cpp
     src/hook_items.cpp
     src/hook_rewards.cpp
     src/hook_resource.cpp

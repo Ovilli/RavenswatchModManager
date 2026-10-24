@@ -1907,7 +1907,10 @@ def _run_deactivation_hooks(mods: list[Mod],
 
 
 _RUNTIME_EXTENSIONS = {".lua", ".json", ".toml", ".txt"}
-_RUNTIME_BLOCKLIST  = {"manifest.toml", "config_schema.toml"}
+# manifest.toml is synced on its own (always). config_schema.toml IS synced:
+# the loader's in-game settings page (hook_overlay / overlay_menu) draws each
+# mod's fields from the installed copy, the only one it can see.
+_RUNTIME_BLOCKLIST  = {"manifest.toml"}
 
 
 def _sync_one_file(src: Path, dst: Path, dry_run: bool) -> bool:
@@ -1929,8 +1932,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     """Copy each mod's runtime sidecar files into the game's mods/ dir.
 
     Always copied: manifest.toml + init.lua (when enabled).
-    Also copied: any top-level `.lua`, `.json`, `.toml`, `.txt` file that
-    is not the manifest or config schema — lets Lua mods ship pointer
+    Also copied: any top-level `.lua`, `.json`, `.toml`, `.txt` file other
+    than the manifest (the config schema included) — lets Lua mods ship pointer
     tables, data caches, or auxiliary scripts and read them via
     `R.mod_dir()` at runtime.
 
