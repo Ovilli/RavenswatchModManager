@@ -407,10 +407,10 @@ def _coerce_add_stats(raw) -> list[dict]:
         on = e.get("on")
         if on is not None and not isinstance(on, str):
             raise ContentError(f"add_stats: on must be a game event name, got {on!r}")
-        # A charge is a count: "+1 charge", never "+100%".
-        from ...engine.talent_add_stat import is_charge
+        # A charge or integer stat is a count: "+1", never "+100%".
+        from ...engine import item_modifier as IM
         out.append({"talent": str(e["talent"]), "stat": e["stat"], "values": e.get("values"),
-                    "percent": bool(e.get("percent", not is_charge(e["stat"]))),
+                    "percent": bool(e.get("percent", not IM.is_integer_stat(e["stat"]))),
                     "during": during,
                     "after": after, "seconds": e.get("seconds"),
                     "cooldown": e.get("cooldown"), "next": nxt, "on": on})
