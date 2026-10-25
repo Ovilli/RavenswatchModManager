@@ -268,6 +268,27 @@ def test_an_effect_without_seconds_is_always_on_and_one_with_needs_both():
         IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, "on": "dash"})
 
 
+def test_effect_amounts_are_finite_and_integer_stats_whole():
+    """0.5 free rerolls used to round to 0 silently; nan reached the cooker."""
+    from rsmm.engine import item_effect as IE
+    assert IE.Effect.parse({"stat": "Free Reroll", "amount": 2.0}).amount == 2
+    with pytest.raises(IE.ItemEffectError, match="whole units"):
+        IE.Effect.parse({"stat": "Free Reroll", "amount": 0.5})
+    with pytest.raises(IE.ItemEffectError, match="finite"):
+        IE.Effect.parse({"stat": "Crit chance", "amount": float("nan")})
+
+
+def test_card_units_follow_shipped_cards():
+    """Shipped cards print armour plain (mode 0/2), so +5 armour is not "+500";
+    a negative amount carries its own sign instead of "+-"."""
+    from rsmm.engine import item_effect as IE
+    assert IE.Effect.parse({"stat": "Armour", "amount": 5}).percent is False
+    assert IE.Effect.parse({"stat": "Shield", "amount": 10}).percent is False
+    assert IE.Effect.parse({"stat": "Crit chance", "amount": 0.1}).percent is True
+    neg = IE.Effect.parse({"stat": "Crit chance", "amount": -0.1})
+    assert IE.describe([neg]) == "• #{0}%@ #Crit chance@"
+
+
 def test_the_card_text_numbers_every_effect_in_order():
     from rsmm.engine import item_effect as IE
     text = IE.describe(IE.parse_effects([

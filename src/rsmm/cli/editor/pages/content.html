@@ -1235,6 +1235,9 @@ function effectsForm(E, blank, key = "effects") {
     };
     const isInt = (S.stats.find(st => st.name === x.stat) || {}).integer || x.stat === "Free Reroll";
     const inPoints = x.stat === "Vitality" || String(x.stat).startsWith("Attack power");
+    // Flat stats shipped cards print as the number itself (item_effect._PLAIN).
+    const plain = ["Armour", "Shield", "Regeneration", "Dash Damage", "Clamp High Damage Duration",
+      "Dash Heal For Damage Received Duration"].includes(x.stat);
     const num = (k, step, min) => {
       const inp = el("input", { type: "number", step, ...(min !== undefined ? { min } : {}), value: x[k] });
       inp.oninput = () => { const n = parseFloat(inp.value); if (!isNaN(n)) set(k, n); };
@@ -1265,7 +1268,7 @@ function effectsForm(E, blank, key = "effects") {
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
       el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
         el("div", { class: "hint", text: isInt ? "Whole number of free rerolls (1, 2...)." : amountHint }),
-        ...(isInt ? [] : [flag("percent", !inPoints, "The card shows it as a percent (×100)")])));
+        ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")])));
     if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
       flag("refresh", true, "Each trigger restarts the full time")));
     box.append(el("div", { class: "effect" },

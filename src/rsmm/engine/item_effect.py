@@ -25,6 +25,7 @@ they are byte for byte what copying the proven parts produced
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass
 
@@ -53,6 +54,18 @@ def _is_attack_power(stat: str | int) -> bool:
 
 def _in_points(stat: str | int) -> bool:
     return _stat_key(stat) == _VITALITY or _is_attack_power(stat)
+
+
+#: Flat stats shipped cards print as the number itself (display mode 0 or 2,
+#: never x100): armour 20 reads "+20", not "+2000". Fairy Dust's shield
+#: (mode 2) reads "10": Level Healing Selector x 1.0, the game's own points.
+_PLAIN = frozenset({"Armour", "Shield", "Regeneration", "Dash Damage", "Clamp High Damage Duration",
+                    "Dash Heal For Damage Received Duration"})
+
+
+def _shows_plain(stat: str | int) -> bool:
+    key = _stat_key(stat)
+    return key is not None and IM.stat_name(key) in _PLAIN
 
 #: Part names, kept from the recipe the parts were first copied from so a mod's
 #: ``steps`` that name them keep working: (tester, timer, modifier, seconds
@@ -204,15 +217,21 @@ class Effect:
         for k in ("amount", "seconds"):
             if k in raw and (isinstance(raw[k], bool) or not isinstance(raw[k], (int, float))):
                 raise ItemEffectError(f"effect {k} must be a number")
+        for k in ("amount", "seconds"):
+            if k in raw and not math.isfinite(raw[k]):
+                raise ItemEffectError(f"effect {k} must be a finite number")
         if timed and raw["seconds"] <= 0:
             raise ItemEffectError("effect seconds must be above 0")
         for k in ("refresh", "percent", "keep_base_effect"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         is_int = IM.is_integer_stat(raw["stat"])
+        if is_int and raw["amount"] != int(raw["amount"]):
+            raise ItemEffectError(f"effect amount: {raw['stat']} counts whole units, "
+                                  f"got {raw['amount']}")
         in_points = _in_points(raw["stat"])
-        amount = int(round(raw["amount"])) if is_int else float(raw["amount"])
-        percent = raw.get("percent", not is_int and not in_points)
+        amount = int(raw["amount"]) if is_int else float(raw["amount"])
+        percent = raw.get("percent", not (is_int or in_points or _shows_plain(raw["stat"])))
         return cls(stat=str(raw["stat"]), amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
@@ -432,28 +451,30 @@ def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags:
                                  "ref_7": _NONE}, flags=flags)
 
 
+def _amount_parts(w: P.PartWriter, effect: Effect, mod: str, amount: str, op: str,
+                  scale: bool) -> tuple[P.Link, str]:
+    """The card's amount Value and the modifier giving it: ``(modifier link,
+    card slot node)``. With ``scale`` both multiply by the held-copy count."""
+    is_int = IM.is_integer_stat(effect.stat)
+    amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
+    if not scale:
+        return _modifier(w, mod, effect.stat, effect.modifier_amount), amount
+    if _in_points(effect.stat):
+        # The card keeps the authored points; the modifier reads the stat's
+        # native fraction through its own scaled Value.
+        modifier_value = _value(w, "Modifier " + amount, effect.modifier_amount, _RATIO)
+        mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
+        _scalable_operation(w, op, amount_link)
+    else:
+        mod_op = _scalable_operation(w, op, amount_link, is_int=is_int)
+    return _modifier(w, mod, effect.stat, effect.modifier_amount, source=mod_op), op
+
+
 def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
                  slots: list, *, scale: bool = False) -> None:
     """A modifier held on while the item is equipped (or while ``during`` holds)."""
     tester, _timer_n, mod, _seconds_n, amount, op = (n + sfx for n in _TIMED)
-    is_int = IM.is_integer_stat(effect.stat)
-    amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
-    if scale:
-        modifier_amount = effect.modifier_amount
-        if _in_points(effect.stat):
-            # The card uses the authored amount; the modifier uses the stat's
-            # native fraction. Keep both values scaled by the held-copy count.
-            modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
-            mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
-            _scalable_operation(w, op, amount_link)
-            slot_node = op
-        else:
-            mod_op = _scalable_operation(w, op, amount_link, is_int=is_int)
-            slot_node = op
-        mod_link = _modifier(w, mod, effect.stat, modifier_amount, source=mod_op)
-    else:
-        mod_link = _modifier(w, mod, effect.stat, effect.modifier_amount)
-        slot_node = amount
+    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale)
     if effect.during:
         _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
                 flags=0x1, holds=mod_link)
@@ -471,24 +492,7 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     # they read the donor's inline numbers instead (0.05 and 3 s for every
     # trigger, playtest 2026-10-20). The Values are only the card's numbers.
     _value(w, seconds, effect.seconds)
-    is_int = IM.is_integer_stat(effect.stat)
-    amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
-    if scale:
-        modifier_amount = effect.modifier_amount
-        if _in_points(effect.stat):
-            # Keep the card in displayed points while the modifier stores a
-            # fraction; both paths still scale with duplicate item copies.
-            modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
-            mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
-            _scalable_operation(w, op, amount_link)
-            slot_node = op
-        else:
-            mod_op = _scalable_operation(w, op, amount_link, is_int=is_int)
-            slot_node = op
-        mod_link = _modifier(w, mod, effect.stat, modifier_amount, source=mod_op)
-    else:
-        mod_link = _modifier(w, mod, effect.stat, effect.modifier_amount)
-        slot_node = amount
+    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale)
     timer_link = w.add(_TIMER, timer, {
         "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
         "state": _NONE, "paused?": P.Num(P.BOOL, b"\x00"), "duration": P.Num.f32(effect.seconds),
@@ -575,7 +579,9 @@ def describe(effects: list[Effect], *, one_line: bool = False) -> str:
     for e in effects:
         # Attack power entered in points (10) still reads as a percent.
         pct = e.percent or _is_attack_power(e.stat)
-        amount = f"#+{{{n}}}{'%' if pct else ''}@ #{e.stat}@"
+        # A negative amount prints its own "-" (shipped curses: "-25%").
+        sign = "" if e.amount < 0 else "+"
+        amount = f"#{sign}{{{n}}}{'%' if pct else ''}@ #{e.stat}@"
         if e.timed:
             head = (f"{DURING[e.during][1]}, {TRIGGERS[e.on].text.lower()}"
                     if e.during else TRIGGERS[e.on].text)
