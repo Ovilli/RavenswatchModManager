@@ -1233,7 +1233,7 @@ function effectsForm(E, blank, key = "effects") {
       }
       changed();
     };
-    const isInt = (S.stats.find(st => st.name === x.stat) || {}).integer || x.stat === "Free Reroll";
+    const isInt = (S.stats.find(st => st.name === x.stat) || {}).integer;
     const inPoints = x.stat === "Vitality" || String(x.stat).startsWith("Attack power");
     // Flat stats shipped cards print as the number itself (item_effect._PLAIN).
     const plain = ["Armour", "Shield", "Regeneration", "Dash Damage", "Clamp High Damage Duration",
@@ -1250,7 +1250,7 @@ function effectsForm(E, blank, key = "effects") {
     };
     const stat = statSel(x.stat, v => {
       x.stat = v;
-      const stInt = (S.stats.find(st => st.name === v) || {}).integer || v === "Free Reroll";
+      const stInt = (S.stats.find(st => st.name === v) || {}).integer;
       if (stInt) {
         x.percent = false;
         if (!x.amount || x.amount < 1) x.amount = 1;
@@ -1267,7 +1267,7 @@ function effectsForm(E, blank, key = "effects") {
     f.append(el("label", { text: "When" }), when,
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
       el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
-        el("div", { class: "hint", text: isInt ? "Whole number of free rerolls (1, 2...)." : amountHint }),
+        el("div", { class: "hint", text: isInt ? "A whole number (1, 2...)." : amountHint }),
         ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")]),
         ...(isInt || inPoints ? [] : [flag("per_level", false, "Grows with hero level, like Fairy Dust's shield (amount = level 1)")])));
     if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
@@ -1924,7 +1924,7 @@ function addedStats(c, redraw, desc) {
         save(); renderView(); return;
       }
       const info = S.stats.find(s => s.name === st) || {};
-      const count = info.tally || info.charge || info.integer || st === "Free Reroll";
+      const count = info.tally || info.charge || info.integer;
       if (count) {
         a.percent = false;
         if (a.values.every(v => v < 1)) a.values = [1, 1, 1, 1];
