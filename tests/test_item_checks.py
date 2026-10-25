@@ -209,12 +209,13 @@ def test_copies_get_their_own_type_id_too(tmp_path):
 
 
 @pytest.mark.parametrize("base_rel, base_id", [
-    ("Rare/Increase_Shield", "Increase_Shield"),      # had a countdown: re-pointed
-    ("Common/Dash_Crit_Chance", "Dash_Crit_Chance"),  # had none: made to read the timer
+    ("Rare/Increase_Shield", "Increase_Shield"),      # had a countdown: disarmed
+    ("Common/Dash_Crit_Chance", "Dash_Crit_Chance"),  # had none: left disarmed
 ])
-def test_the_item_icon_counts_down_the_effect(base_rel, base_id):
-    """The icon showed no countdown: the shield's link reads its timer with a key no
-    Timer answers. value_4 = full time, value_5 = the timer's elapsed time."""
+def test_the_item_icon_does_not_count_down_the_effect(base_rel, base_id):
+    """A timed buff duration must not bind to Dt Magical Object Data: value_4 > 0
+    puts the item into an in-cooldown state (value_5 / value_4 < 1.0) which shows a
+    radial cooldown on the item icon and suppresses triggers."""
     raw = corpus.read(f"EntitySettings/Objects/Magical_Objects/{base_rel}"
                       ".entity.ot.EntitySettingsResource.gen")
     if raw is None:
@@ -224,14 +225,8 @@ def test_the_item_icon_counts_down_the_effect(base_rel, base_id):
     ent = next(b for p, b in files.items() if p.endswith(".gen"))
     data = EntityFile(ent, "x").component("Dt Magical Object Data")
     d = {f.name: f.text for f in EF.fields(data)}
-    assert d["value_4"].startswith("f32 7")
-    assert d["value_5"].endswith("\\Crit Chance Modifier Timer Effect")
-    # Read as ELAPSED time (0x1683197e), as the one working shipped countdown
-    # does; the shield's 0x0fd2c964 is a key no Timer answers.
-    lab = b"[Timer] " + base_id[:-2].encode() + b"_M\\Crit Chance Modifier Timer Effect"
-    i = ent.find(lab, ent.find(b"Dt Magical Object Data"))
-    j = ent.find(b'""\xbb\xaa', i)
-    assert ent[j + 4:j + 8] == (0x1683197E).to_bytes(4, "little")
+    assert d["value_4"].startswith("f32 0")
+    assert d["value_5"].startswith("f32 0")
 
 
 _BALOR = ("EntitySettings/Objects/Magical_Objects/Cursed/"
