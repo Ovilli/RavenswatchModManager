@@ -273,7 +273,7 @@ def test_the_card_text_numbers_every_effect_in_order():
     text = IE.describe(IE.parse_effects([
         {"stat": "Crit chance", "amount": 0.1},
         {"stat": "Armour", "amount": 5, "percent": False},
-        {"stat": "Attack power", "amount": 0.2, "seconds": 4, "on": "dash"}]))
+        {"stat": "Attack power", "amount": 20, "seconds": 4, "on": "dash"}]))
     assert text.splitlines() == [
         "• #+{0}%@ #Crit chance@", "• #+{1}@ #Armour@",
         "• After dashing, gain #+{2}%@ #Attack power@ for #{3}@ seconds"]
@@ -284,7 +284,7 @@ def test_several_effects_build_on_one_item_with_no_issues():
     from rsmm.engine import item_modifier as IM
     eff = [{"stat": "Crit chance", "amount": 0.1},
            {"stat": "Armour", "amount": 5, "percent": False},
-           {"stat": "Attack power", "amount": 0.2, "seconds": 4, "on": "dash"},
+           {"stat": "Attack power", "amount": 20, "seconds": 4, "on": "dash"},
            {"stat": "Crit chance", "amount": 0.15, "seconds": 3, "on": "damage_taken"}]
     files = C.build_magic_item(new_id="Wanderers_Charm", base_id="Increase_Shield",
                                base_cooked=_shield(), corpus=[], rarity="Rare",
@@ -349,7 +349,7 @@ def test_item_effects_scale_with_duplicate_count():
     _shield()
     effs = [
         {"stat": "Crit chance", "amount": 0.1},
-        {"stat": "Attack power", "amount": 0.2, "seconds": 5.0, "on": "dash"},
+        {"stat": "Attack power", "amount": 20, "seconds": 5.0, "on": "dash"},
     ]
     files = C.build_magic_item(new_id="Stacking_Item", base_id="Increase_Shield",
                                base_cooked=_shield(), corpus=[], rarity="Rare",
@@ -379,7 +379,10 @@ def test_item_effects_scale_with_duplicate_count():
     assert r"[Value Selector] Magical_Objects_Model\Amount Selector" in op2_refs
     mod2 = comps["Crit Chance Modifier Effect 2"]
     d2 = P.decode(mod2)
-    op_path2 = "[Multi values operations] Stacking_Item\\Crit Chance Value Operation Effect 2"
+    # Attack power is entered in points (20 = +20%); the modifier reads its own
+    # scaled 0.2 while the card keeps the authored 20.
+    op_path2 = ("[Multi values operations] Stacking_Item\\"
+                "Modifier Crit Chance Value Operation Effect 2")
     assert d2["amount"].source.path == op_path2
     assert d2["amount"].key == 0x17ae7811
     assert struct.unpack("<f", d2["amount"].value)[0] == pytest.approx(0.2)
@@ -387,7 +390,7 @@ def test_item_effects_scale_with_duplicate_count():
     # Description format slots point to the operations
     slots = _slots(ent)
     assert slots[0] == ("Crit Chance Value Operation Effect", 1)
-    assert slots[1] == ("Crit Chance Value Operation Effect 2", 1)
+    assert slots[1] == ("Crit Chance Value Operation Effect 2", 0)
     assert slots[2] == ("Crit Chance Duration Value Effect 2", 0)
 
     assert item_warnings(ent, _shield(), set()) == []
@@ -404,7 +407,7 @@ def test_super_effects_do_not_scale_with_duplicate_count():
     _shield()
     supers = [
         {"stat": "Crit chance", "amount": 0.05},
-        {"stat": "Attack power", "amount": 0.1, "seconds": 3.0, "on": "dash"},
+        {"stat": "Attack power", "amount": 10, "seconds": 3.0, "on": "dash"},
     ]
     files = C.build_magic_item(new_id="Super_Item", base_id="Increase_Shield",
                                base_cooked=_shield(), corpus=[], rarity="Rare",
@@ -427,7 +430,7 @@ def test_super_effects_do_not_scale_with_duplicate_count():
     super_slots = [(s["node"], s["mode"])
                    for s in _built_slots(ent, "Super Effect Descripton Format")]
     assert super_slots[0] == ("Crit Chance Value Super Effect", 1)
-    assert super_slots[1] == ("Crit Chance Value Super Effect 2", 1)
+    assert super_slots[1] == ("Crit Chance Value Super Effect 2", 0)
     assert super_slots[2] == ("Crit Chance Duration Value Super Effect 2", 0)
 
     assert item_warnings(ent, _shield(), set()) == []

@@ -195,7 +195,7 @@ def test_items_from_scratch_save_open_and_build(tmp_path):
 def test_super_effects_save_open_and_preview(tmp_path):
     """A blank item's super effects reach the manifest, reopen, and the preview
     numbers the super text from them."""
-    supers = [{"stat": "Attack power", "amount": 0.2}]
+    supers = [{"stat": "Attack power", "amount": 20}]
     req = {"mode": "blank", "base": f"{C.BLANK}:0", "id": "Super_Charm", "rarity": "Rare",
            "effects": [{"stat": "Crit chance", "amount": 0.1}], "superEffects": supers}
     got = C.item_preview(req)

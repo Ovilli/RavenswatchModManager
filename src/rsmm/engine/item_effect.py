@@ -33,16 +33,26 @@ from . import entity_parts as P
 from . import item_modifier as IM
 from .entity_graph_edit import EntityEditError, EntityFile
 
-# The game stores vitality as a fraction and reports it in points (100 * the
-# stored value). Effect amounts for this stat use the reported points.
+# The game stores vitality and attack power as fractions and reports them in
+# points (100 * the stored value). Effect amounts for these stats use the
+# reported points.
 _VITALITY = 0x188671A6
 
 
-def _is_vitality(stat: str | int) -> bool:
+def _stat_key(stat: str | int) -> int | None:
     try:
-        return IM.resolve_stat(stat) == _VITALITY
+        return IM.resolve_stat(stat)
     except IM.ItemModifierError:
-        return False
+        return None
+
+
+def _is_attack_power(stat: str | int) -> bool:
+    key = _stat_key(stat)
+    return key is not None and (IM.stat_name(key) or "").startswith("Attack power")
+
+
+def _in_points(stat: str | int) -> bool:
+    return _stat_key(stat) == _VITALITY or _is_attack_power(stat)
 
 #: Part names, kept from the recipe the parts were first copied from so a mod's
 #: ``steps`` that name them keep working: (tester, timer, modifier, seconds
@@ -158,10 +168,10 @@ class Effect:
     def modifier_amount(self) -> float | int:
         """The native value written to the game modifier.
 
-        Vitality is authored in the points shown by the game, but its modifier
-        stores a fraction: one vitality point is 0.01.
+        Vitality and attack power are authored in the points shown by the game,
+        but their modifiers store a fraction: one point is 0.01.
         """
-        return float(self.amount) / 100 if _is_vitality(self.stat) else self.amount
+        return float(self.amount) / 100 if _in_points(self.stat) else self.amount
 
     @classmethod
     def parse(cls, raw) -> Effect:
@@ -200,9 +210,9 @@ class Effect:
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         is_int = IM.is_integer_stat(raw["stat"])
-        is_vitality = _is_vitality(raw["stat"])
+        in_points = _in_points(raw["stat"])
         amount = int(round(raw["amount"])) if is_int else float(raw["amount"])
-        percent = raw.get("percent", not is_int and not is_vitality)
+        percent = raw.get("percent", not is_int and not in_points)
         return cls(stat=str(raw["stat"]), amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
@@ -430,8 +440,8 @@ def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
     amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
         modifier_amount = effect.modifier_amount
-        if _is_vitality(effect.stat):
-            # The card uses the authored amount; the modifier uses vitality's
+        if _in_points(effect.stat):
+            # The card uses the authored amount; the modifier uses the stat's
             # native fraction. Keep both values scaled by the held-copy count.
             modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
             mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
@@ -465,8 +475,8 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
         modifier_amount = effect.modifier_amount
-        if _is_vitality(effect.stat):
-            # Keep the card in vitality points while the modifier stores a
+        if _in_points(effect.stat):
+            # Keep the card in displayed points while the modifier stores a
             # fraction; both paths still scale with duplicate item copies.
             modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
             mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
@@ -563,7 +573,9 @@ def describe(effects: list[Effect], *, one_line: bool = False) -> str:
     and the card printed a bulleted one as "???" (playtest 2026-10-24)."""
     lines, n = [], 0
     for e in effects:
-        amount = f"#+{{{n}}}{'%' if e.percent else ''}@ #{e.stat}@"
+        # Attack power entered in points (10) still reads as a percent.
+        pct = e.percent or _is_attack_power(e.stat)
+        amount = f"#+{{{n}}}{'%' if pct else ''}@ #{e.stat}@"
         if e.timed:
             head = (f"{DURING[e.during][1]}, {TRIGGERS[e.on].text.lower()}"
                     if e.during else TRIGGERS[e.on].text)

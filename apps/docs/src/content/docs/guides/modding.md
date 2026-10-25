@@ -1121,10 +1121,11 @@ effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_t
   bonus down. Each trigger restarts the full time;
   `refresh = false` lets a running bonus finish first.
 - **`amount`** is in the stat's own unit (crit chance 0.3 = +30%). For
-  `Vitality`, enter the points shown in game: `15` gives +15 vitality; rsmm
-  writes the game's raw value as `0.15`. The card's `{0}` is the amount, shown
-  x100 as a percentage (`percent = false` shows it as entered), and `{1}` the
-  seconds. Vitality defaults to `percent = false`.
+  `Vitality` and the `Attack power` stats, enter the points shown in game:
+  `15` gives +15 vitality or +15% attack power; rsmm writes the game's raw
+  value as `0.15`. The card's `{0}` is the amount, shown x100 as a percentage
+  (`percent = false` shows it as entered), and `{1}` the seconds. Vitality and
+  attack power default to `percent = false`.
 - **The base's own stat effects are cut**, so a shield base stops being a
   shield; `keep_base_effect = true` keeps them. Its super effect is separate:
   `super_effect = false` drops it.
