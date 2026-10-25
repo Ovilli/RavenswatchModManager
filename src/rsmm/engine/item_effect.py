@@ -217,14 +217,12 @@ def apply_effect(ent: bytes, item_id: str, effect: Effect, *, read=None) -> byte
 def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) doing every one
     of ``effects``. The card's ``{0}``, ``{1}``... are each effect's numbers in
-    order: an always-on effect's amount, a timed one's amount then seconds. The
-    item icon counts the first timed effect down. ``read`` reads a shipped
-    entity (the hero's, for damage_taken's health check)."""
+    order: an always-on effect's amount, a timed one's amount then seconds.
+    ``read`` reads a shipped entity (the hero's, for damage_taken's health check)."""
     from . import entity_check as CK
     read = read or CK._corpus_reader
     ef = EntityFile(ent, item_id)
     slots: list[tuple[str, bool]] = []
-    first_timer = None
     try:
         equipped = _equipped_state(ef)
         if not any(e.keep_base_effect for e in effects):
@@ -233,13 +231,10 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
             w = P.PartWriter(ef, f"effect:{item_id}:{i}")
             sfx = _suffix(i)
             if effect.timed:
-                timer = _add_timed(w, effect, sfx, equipped, read, slots, scale=True)
-                first_timer = first_timer or (timer, effect.seconds)
+                _add_timed(w, effect, sfx, equipped, read, slots, scale=True)
             else:
                 _add_passive(w, effect, sfx, equipped, slots, scale=True)
         _card_slots(ef, slots)
-        if first_timer is not None:
-            _cooldown_display(ef, *first_timer)
     except (EntityEditError, P.PartError) as e:
         raise ItemEffectError(f"effect: {e}") from e
     return ef.to_bytes()
@@ -589,9 +584,21 @@ def _cut_base(ef: EntityFile, ent: bytes) -> None:
                         ef.remove_ref(c.name, f.name, i)
             elif f.kind == "ref" and f.text and f.text.rstrip().rsplit("\\", 1)[-1] in own:
                 ef.set_ref(c.name, f.name, None)
+    _disarm_cooldown(ef)
 
 
 _ITEM_DATA = "Dt Magical Object Data"
+
+
+def _disarm_cooldown(ef: EntityFile) -> None:
+    """Ensure Dt Magical Object Data has no cooldown: value_4 = 0 and value_5 = 0.
+    Otherwise the game displays a radial cooldown on the item icon and suppresses
+    its event listeners."""
+    try:
+        ef.set_value(_ITEM_DATA, "value_4", 0.0)
+        ef.set_value(_ITEM_DATA, "value_5", 0.0)
+    except EntityEditError:
+        pass
 
 
 def _cooldown_display(ef: EntityFile, timer: str, seconds: float) -> None:
