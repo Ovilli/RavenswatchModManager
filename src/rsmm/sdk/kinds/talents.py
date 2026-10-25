@@ -484,49 +484,89 @@ def _apply_scale(defn, mod_id, hero_dir, scale, files, edited, home) -> None:
     from ...engine import talent_range as TR
     seed = f"{mod_id}:{defn.id}"
     main = f"{hero_dir.name}{_GEN_SUFFIX}"
+    range_names = ("Melee attack range", "Ranged attack range", "Circular attack range", "Rectangle attack range")
     for e in scale:
         p = home(e["talent"])
-        hosts = [q for q in _files_named(files, e["file"])
-                 if any(c.name == e["node"]
-                        for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
-        if len(hosts) != 1:
-            raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
-                               f"files hold a node named {e['node']!r}"
-                               + ("; give `file`" if hosts else ""))
-        q = hosts[0]
+        raw_targets = e.get("nodes")
+        range_type = e.get("range_type") or (e["node"] if e["node"] in range_names else None)
+        if not raw_targets and range_type in range_names:
+            hero_files = [(q.name.split(".")[0], (edited.get(q) or q.read_bytes()))
+                          for q in files if q.name.endswith(_GEN_SUFFIX)]
+            all_ranges = TR.range_modifiers(hero_files, hero_dir.name.replace("Hero_", ""))
+            ability = e.get("ability")
+            if not ability:
+                t_low = e["talent"].lower()
+                for ab in ("attack", "power", "special", "defense", "trait", "ultimate", "dash"):
+                    if ab in t_low:
+                        ability = ab.upper()
+                        break
+            matched = [m for m in all_ranges if m["name"] == range_type and (not ability or m.get("ability") == ability)]
+            if not matched and all_ranges:
+                matched = [m for m in all_ranges if m["name"] == range_type]
+            if matched:
+                raw_targets = matched[0]["nodes"]
+        if not raw_targets:
+            raw_targets = [{"node": e["node"], "file": e.get("file")}]
+        tag = range_type or e["node"]
         try:
-            TR.how_scaled(edited.get(q) or q.read_bytes(), e["node"])
             edited[p], fac = TR.add_factor(edited.get(p) or p.read_bytes(),
-                                           talent=e["talent"], values=e["values"], tag=e["node"],
+                                           talent=e["talent"], values=e["values"], tag=tag,
                                            percent=e["percent"], seed=seed)
             name = fac.name
-            if q is not p:
-                owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
-                if not TR.reads_owner(q.read_bytes(), owner):
-                    raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
-                                       f"{hero_dir.name}, so it could not read the talent's factor")
-                if p.name != main:
-                    raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
-                                       f"scaling a number in {q.name} from there is not supported")
-                fg = next(c for c in EG.parse(edited[p]).components if c.name == fac.name)
-                name = f"Owner {fac.name}"
-                label = f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}"
-                edited[q] = TR.reader(edited.get(q) or q.read_bytes(), factor_guid=fg.guid,
-                                      factor_label=label, owner_resource=owner, name=name,
-                                      seed=seed, scope=_stem(q))
-            edited[q] = TR.scale_node(edited.get(q) or q.read_bytes(), node=e["node"],
-                                      factor=name, seed=seed, scope=_stem(q),
-                                      activate=(name,) if q is not p else ())
-            if q is not p and e["visual"]:
-                # What the spawned entity draws grows too; never the hero itself.
-                edited[q], root = TR.scale_visual(edited[q], name, scope=_stem(q))
-                if root is None:
-                    _log.warning("talent %s/%s: %s has no single plain root node; only "
-                                 "the number grows, not what it draws", mod_id, defn.id, q.name)
+            readers_added: set[str] = set()
+            scaled_any = False
+            for t in raw_targets:
+                target_node = t["node"] if isinstance(t, dict) else str(t)
+                target_file = t.get("file") if isinstance(t, dict) else None
+                hosts = [q for q in _files_named(files, target_file)
+                         if any(c.name == target_node
+                                for c in EG.parse(edited.get(q) or q.read_bytes()).components)]
+                if len(hosts) != 1:
+                    if len(raw_targets) == 1:
+                        raise ContentError(f"talent {defn.id}: {len(hosts)} of {hero_dir.name}'s entity "
+                                           f"files hold a node named {target_node!r}"
+                                           + ("; give `file`" if hosts else ""))
+                    continue
+                q = hosts[0]
+                TR.how_scaled(edited.get(q) or q.read_bytes(), target_node)
+                if q is not p:
+                    owner = f"Heroes\\{hero_dir.name}\\{hero_dir.name}.entity.ot"
+                    if not TR.reads_owner(q.read_bytes(), owner):
+                        if len(raw_targets) == 1:
+                            raise ContentError(f"talent {defn.id}: {q.name} never reads values from "
+                                               f"{hero_dir.name}, so it could not read the talent's factor")
+                        continue
+                    if p.name != main:
+                        if len(raw_targets) == 1:
+                            raise ContentError(f"talent {defn.id}: {e['talent']!r} is built in {p.name}; "
+                                               f"scaling a number in {q.name} from there is not supported")
+                        continue
+                    if q.name not in readers_added:
+                        fg = next(c for c in EG.parse(edited[p]).components if c.name == fac.name)
+                        rname = f"Owner {fac.name}"
+                        label = f"[Value] {hero_dir.name}\\{fg.group}\\{fg.name}"
+                        edited[q] = TR.reader(edited.get(q) or q.read_bytes(), factor_guid=fg.guid,
+                                              factor_label=label, owner_resource=owner, name=rname,
+                                              seed=seed, scope=_stem(q))
+                        readers_added.add(q.name)
+                    scale_factor = f"Owner {fac.name}"
+                else:
+                    scale_factor = name
+                edited[q] = TR.scale_node(edited.get(q) or q.read_bytes(), node=target_node,
+                                          factor=scale_factor, seed=seed, scope=_stem(q),
+                                          activate=(scale_factor,) if q is not p else ())
+                scaled_any = True
+                if q is not p and e["visual"]:
+                    edited[q], root = TR.scale_visual(edited[q], scale_factor, scope=_stem(q))
+                    if root is None:
+                        _log.warning("talent %s/%s: %s has no single plain root node; only "
+                                     "the number grows, not what it draws", mod_id, defn.id, q.name)
+            if not scaled_any:
+                raise ContentError(f"talent {defn.id}: no scalable nodes found for {tag!r}")
         except (TR.RangeError, TA.AddStatError) as err:
             raise ContentError(f"talent {mod_id}/{defn.id}: {err}") from err
-        _log.info("talent %s/%s: %s grows %s (%s); card slot {%s}", mod_id, defn.id,
-                  e["talent"], e["node"], q.name, fac.slot)
+        _log.info("talent %s/%s: %s grows %s; card slot {%s}", mod_id, defn.id,
+                  e["talent"], tag, fac.slot)
 
 
 def _coerce_on_hit(raw) -> list[dict]:
@@ -620,14 +660,26 @@ def _coerce_scale(raw) -> list[dict]:
         raise ContentError(f"scale must be a list of tables, got {raw!r}")
     out = []
     for e in raw:
-        if not isinstance(e, dict) or not e.get("talent") or not e.get("node") or "values" not in e:
+        if not isinstance(e, dict) or not e.get("talent") or ("node" not in e and "nodes" not in e and "range_type" not in e) or "values" not in e:
             raise ContentError(f"scale entry needs talent, node and values, got {e!r}")
         f = e.get("file")
         if f is not None and not isinstance(f, str):
             raise ContentError(f"scale: file must be an entity file name, got {f!r}")
-        out.append({"talent": str(e["talent"]), "node": str(e["node"]), "values": e["values"],
-                    "file": f, "percent": bool(e.get("percent", True)),
-                    "visual": bool(e.get("visual", True))})
+        node_val = str(e.get("node") or e.get("range_type") or "Range")
+        nodes_val = e.get("nodes")
+        entry = {"talent": str(e["talent"]), "node": node_val, "values": e["values"],
+                 "nodes": nodes_val, "range_type": e.get("range_type"),
+                 "file": f, "percent": bool(e.get("percent", True)),
+                 "visual": bool(e.get("visual", True))}
+        if e.get("ability"):
+            entry["ability"] = str(e["ability"])
+        else:
+            t_low = str(e["talent"]).lower()
+            for ab in ("attack", "power", "special", "defense", "trait", "ultimate", "dash"):
+                if ab in t_low:
+                    entry["ability"] = ab.upper()
+                    break
+        out.append(entry)
     return out
 
 

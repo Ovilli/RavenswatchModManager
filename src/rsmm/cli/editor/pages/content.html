@@ -1036,6 +1036,10 @@ const STAT_WORDS = {
   "Attack power primary": ["POWER"], "Attack power secondary": ["SPECIAL"],
   "Attack power defensive": ["DEFENSE"], "Attack power ultimate": ["ULTIMATE"],
   "Crit chance primary": ["Crit Chance"], "Crit chance secondary": ["Crit Chance"],
+  "Melee attack range": ["Melee Attack Range", "Melee range", "Range"],
+  "Ranged attack range": ["Ranged Attack Range", "Ranged range", "Range"],
+  "Circular attack range": ["Circular Attack Range", "Circular range", "Area", "Radius"],
+  "Rectangle attack range": ["Rectangle Attack Range", "Rectangle range", "Area", "Wave"],
 };
 function statWords(stat) { return STAT_WORDS[stat] || [stat]; }
 // Whole phrases shipped cards use for a stat, {N} standing for the styled number
@@ -1057,6 +1061,10 @@ const STAT_PHRASES = {
   "Increase damage to boss": ["Deal {N} damage to bosses"],
   "CD reduce dash": ["Reduces #DASH@'s cooldown by {N}"],
   "Ability_Charge_Dash": ["#DASH@ gains {N} charge(s)"],
+  "Melee attack range": ["{N} melee attack range", "#{N} melee attack range@"],
+  "Ranged attack range": ["{N} ranged attack range", "#{N} ranged attack range@"],
+  "Circular attack range": ["{N} circular attack range", "#{N} circular attack range@"],
+  "Rectangle attack range": ["{N} rectangle attack range", "#{N} rectangle attack range@"],
 };
 for (const [k, w] of Object.entries(ABILITY)) {
   STAT_PHRASES["Attack power " + k] = ["#" + w + "@ deals {N} damage"];
@@ -2316,13 +2324,18 @@ function ideaBox(c, ideaRef) {
 // after the added stats' ones.
 const scalableNodes = new Map();
 function scaleWord(node) {
-  const m = /radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  const m = /melee attack range|ranged attack range|circular attack range|rectangle attack range|radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  if (m && /melee attack range/i.test(m[0])) return "melee attack range";
+  if (m && /ranged attack range/i.test(m[0])) return "ranged attack range";
+  if (m && /circular attack range/i.test(m[0])) return "circular attack range";
+  if (m && /rectangle attack range/i.test(m[0])) return "rectangle attack range";
   if (m && /lifetime/i.test(m[0]))           // a shot's lifetime is its range; anything else lasts longer
     return /projectile|basic attack/i.test(node) ? "range" : "duration";
   return m ? m[0].toLowerCase().replace("radius", "area") : "size";
 }
 function scaleLine(r, n, ability) {
-  return `• #${ability || "Ability"}@ ${scaleWord(r.node)} &+{${n}}%~`;
+  const w = r.range_type ? r.range_type.toLowerCase() : scaleWord(r.node);
+  return `• #${ability || "Ability"}@ ${w} &+{${n}}%~`;
 }
 function scaleRows(c, paint, desc) {
   const E = S.talentEdit, box = el("div", { class: "tnums" });
@@ -2331,7 +2344,10 @@ function scaleRows(c, paint, desc) {
   if (!list.length) return box;
   const base = () => (firstSlot(c) ?? 0) + ((E.addStats || {})[c.source] || []).filter(a => a.stat).length;
   if (!scalableNodes.has(S.hero))
-    scalableNodes.set(S.hero, get("api/talents/scalable?hero=" + encodeURIComponent(S.hero)).then(j => j.nodes || []).catch(() => []));
+    scalableNodes.set(S.hero, get("api/talents/scalable?hero=" + encodeURIComponent(S.hero)).then(j => ({
+      nodes: j.nodes || [],
+      ranges: j.ranges || [],
+    })).catch(() => ({ nodes: [], ranges: [] })));
   const save = removed => {
     if (desc && c.hasDescription) {
       let text = desc.get();
@@ -2340,7 +2356,7 @@ function scaleRows(c, paint, desc) {
       renumberCard(c, desc);
       text = desc.get();
       list.forEach((r, i) => {
-        if (!r.node) return;
+        if (!r.node && !r.range_type) return;
         const want = scaleLine(r, base() + i, r.ability);
         if (r.line && text.includes(r.line)) text = text.replace(r.line, want);
         else if (!r.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
@@ -2356,9 +2372,29 @@ function scaleRows(c, paint, desc) {
   const tells = [];
   list.forEach((r, i) => {
     const sel = el("select", { "aria-label": "Which number grows" }, el("option", { value: "", text: "Loading the hero's sizes…" }));
-    scalableNodes.get(S.hero).then(nodes => {
+    let ranges = [];
+    scalableNodes.get(S.hero).then(data => {
       sel.textContent = "";
-      sel.append(el("option", { value: "", text: nodes.length ? "Pick what grows…" : "No size numbers found for this hero" }));
+      const nodes = Array.isArray(data) ? data : (data.nodes || []);
+      ranges = Array.isArray(data) ? [] : (data.ranges || []);
+      sel.append(el("option", { value: "", text: (nodes.length || ranges.length) ? "Pick what grows…" : "No size numbers found for this hero" }));
+
+      if (ranges.length) {
+        const grp = el("optgroup", { label: "Range Modifiers (% based)" });
+        for (const m of ranges) {
+          const val = "range\u0000" + (m.ability || "") + "\u0000" + m.name;
+          const opt = el("option", {
+            value: val,
+            "data-ability": m.ability || "",
+            "data-range": m.name,
+            text: (m.ability ? m.ability + " · " : "") + m.name
+          });
+          opt._rangeMeta = m;
+          grp.append(opt);
+        }
+        sel.append(grp);
+      }
+
       const groups = new Map();
       for (const n of nodes) {
         const g = (n.ability || "Other") + (n.where ? " \u00b7 " + n.where.replace(/_/g, " ") : "");
@@ -2367,13 +2403,39 @@ function scaleRows(c, paint, desc) {
           text: n.node + (n.value != null ? " (now " + fmt(n.value) + ")" : " (worked out)") }));
       }
       for (const g of groups.values()) sel.append(g);
-      sel.value = r.node ? r.file + "\u0000" + r.node : "";
+
+      const rt = r.range_type || (/attack range$/i.test(r.node || "") ? r.node : null);
+      if (rt) {
+        r.range_type = rt;
+        let ab = r.ability || "";
+        if (!ab) {
+          for (const a of ["ATTACK", "POWER", "SPECIAL", "DEFENSE", "TRAIT", "ULTIMATE", "DASH"]) {
+            if (new RegExp("\\b" + a + "\\b", "i").test(c.source || "")) { ab = a; break; }
+          }
+          if (ab) r.ability = ab;
+        }
+        sel.value = "range\u0000" + (r.ability || "") + "\u0000" + rt;
+      } else {
+        sel.value = r.node ? r.file + "\u0000" + r.node : "";
+      }
     });
     sel.onchange = () => {
-      const [file, node] = sel.value.split("\u0000");
       const opt = sel.selectedOptions[0];
-      r.file = file || ""; r.node = node || "";
-      r.ability = (opt && opt.dataset.ability) || "";
+      if (sel.value.startsWith("range\u0000")) {
+        const parts = sel.value.split("\u0000");
+        const m = ranges.find(x => (x.ability || "") === parts[1] && x.name === parts[2]) || opt._rangeMeta || {};
+        r.range_type = parts[2];
+        r.ability = parts[1] || "";
+        r.node = parts[2];
+        r.nodes = m.nodes || [];
+        r.file = (m.nodes && m.nodes[0] && m.nodes[0].file) || "";
+      } else {
+        const [file, node] = sel.value.split("\u0000");
+        delete r.range_type;
+        delete r.nodes;
+        r.file = file || ""; r.node = node || "";
+        r.ability = (opt && opt.dataset.ability) || "";
+      }
       save();
     };
     const nums = tierInputs(r.values, v => (v < 0 ? "" : "+") + asShown(v, true), () => save());
@@ -2387,8 +2449,8 @@ function scaleRows(c, paint, desc) {
       blockField("Look", el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
         look, "Grow its look too (water, fire, the effect on the ground)")),
       el("div", { class: "tiny muted", text: `On the card this number is {${base() + i}}; 0.3 is +30%.` }));
-    const tell = () => card.tell(`${r.node}${r.ability ? " (" + r.ability + ")" : ""} grows by ${asShown(r.values[0], true)} while you own the talent (Common card).`,
-      !r.node ? "pick what grows: an area, a length or a radius." : "");
+    const tell = () => card.tell(`${r.range_type || r.node}${r.ability ? " (" + r.ability + ")" : ""} grows by ${asShown(r.values[0], true)} while you own the talent (Common card).`,
+      !(r.range_type || r.node) ? "pick what grows: melee, ranged, circular, or rectangle range." : "");
     tells.push(tell); tell();
     box.append(card);
   });
@@ -3474,8 +3536,11 @@ function editPayload() {
     rebuild: Object.keys(E.rebuild || {}),
     onHit: Object.entries(E.onHit || {}).flatMap(([talent, list]) => list.filter(r => r.damage && r.status)
       .map(r => ({ talent, damage: r.damage, file: r.file, status: r.status }))),
-    scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node)
+    scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node || r.range_type)
       .map(r => ({ talent, node: r.node, file: r.file, values: r.values, percent: r.percent !== false,
+        ...(r.range_type ? { range_type: r.range_type } : {}),
+        ...(r.nodes && r.nodes.length ? { nodes: r.nodes } : {}),
+        ...(r.ability ? { ability: r.ability } : {}),
         ...(r.visual === false ? { visual: false } : {}) }))),
     include: Object.entries(E.include || {}).map(([talent, pick]) => {
       const [a, b] = pick.split("\u0000");
