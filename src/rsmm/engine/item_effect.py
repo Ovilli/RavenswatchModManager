@@ -33,6 +33,17 @@ from . import entity_parts as P
 from . import item_modifier as IM
 from .entity_graph_edit import EntityEditError, EntityFile
 
+# The game stores vitality as a fraction and reports it in points (100 * the
+# stored value). Effect amounts for this stat use the reported points.
+_VITALITY = 0x188671A6
+
+
+def _is_vitality(stat: str | int) -> bool:
+    try:
+        return IM.resolve_stat(stat) == _VITALITY
+    except IM.ItemModifierError:
+        return False
+
 #: Part names, kept from the recipe the parts were first copied from so a mod's
 #: ``steps`` that name them keep working: (tester, timer, modifier, seconds
 #: value, amount value, amount x copies operation).
@@ -143,6 +154,15 @@ class Effect:
     def timed(self) -> bool:
         return self.seconds is not None
 
+    @property
+    def modifier_amount(self) -> float | int:
+        """The native value written to the game modifier.
+
+        Vitality is authored in the points shown by the game, but its modifier
+        stores a fraction: one vitality point is 0.01.
+        """
+        return float(self.amount) / 100 if _is_vitality(self.stat) else self.amount
+
     @classmethod
     def parse(cls, raw) -> Effect:
         """An ``effect`` table from a manifest, checked."""
@@ -180,8 +200,9 @@ class Effect:
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         is_int = IM.is_integer_stat(raw["stat"])
+        is_vitality = _is_vitality(raw["stat"])
         amount = int(round(raw["amount"])) if is_int else float(raw["amount"])
-        percent = raw.get("percent", not is_int)
+        percent = raw.get("percent", not is_int and not is_vitality)
         return cls(stat=str(raw["stat"]), amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
@@ -408,11 +429,20 @@ def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
     is_int = IM.is_integer_stat(effect.stat)
     amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
-        op_link = _scalable_operation(w, op, amount_link, is_int=is_int)
-        mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
-        slot_node = op
+        modifier_amount = effect.modifier_amount
+        if _is_vitality(effect.stat):
+            # The card uses the authored amount; the modifier uses vitality's
+            # native fraction. Keep both values scaled by the held-copy count.
+            modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
+            mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
+            _scalable_operation(w, op, amount_link)
+            slot_node = op
+        else:
+            mod_op = _scalable_operation(w, op, amount_link, is_int=is_int)
+            slot_node = op
+        mod_link = _modifier(w, mod, effect.stat, modifier_amount, source=mod_op)
     else:
-        mod_link = _modifier(w, mod, effect.stat, effect.amount)
+        mod_link = _modifier(w, mod, effect.stat, effect.modifier_amount)
         slot_node = amount
     if effect.during:
         _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
@@ -434,11 +464,20 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     is_int = IM.is_integer_stat(effect.stat)
     amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if scale:
-        op_link = _scalable_operation(w, op, amount_link, is_int=is_int)
-        mod_link = _modifier(w, mod, effect.stat, effect.amount, source=op_link)
-        slot_node = op
+        modifier_amount = effect.modifier_amount
+        if _is_vitality(effect.stat):
+            # Keep the card in vitality points while the modifier stores a
+            # fraction; both paths still scale with duplicate item copies.
+            modifier_value = _value(w, "Modifier " + amount, modifier_amount, _RATIO)
+            mod_op = _scalable_operation(w, "Modifier " + op, modifier_value)
+            _scalable_operation(w, op, amount_link)
+            slot_node = op
+        else:
+            mod_op = _scalable_operation(w, op, amount_link, is_int=is_int)
+            slot_node = op
+        mod_link = _modifier(w, mod, effect.stat, modifier_amount, source=mod_op)
     else:
-        mod_link = _modifier(w, mod, effect.stat, effect.amount)
+        mod_link = _modifier(w, mod, effect.stat, effect.modifier_amount)
         slot_node = amount
     timer_link = w.add(_TIMER, timer, {
         "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
