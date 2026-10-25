@@ -428,10 +428,24 @@ clone_nodes = [
     { from = '[Dt Attack Combo] Hero_SunWukong\Skill Attack Finisher\Skill Attack Finisher Combo', to = '[Anim Clip] Hero_SunWukong\Skill Attack Finisher\Skill Attack Finisher Clip' },
     { from = '[Dt Attack Combo] Hero_SunWukong\Ability Basic\Basic Attack Combo', to = '[Anim Clip] Hero_SunWukong\Ability Basic\Basic Attack Clip 4' },
   ] },
+  { source = "State Skill Dash Attack Ongoing", name = "State Skill Dash Attack Finisher Step", retarget = [
+    { from = '[State] Hero_SunWukong\Ability Basic\State Basic Attack Step 1', to = "Twirl Finisher Clip Selector" },
+  ] },
 ]
 
 rewires = [
   { trigger = '[Anim Clip] Hero_SunWukong\Skill Dash Attack\Skill Dash Attack Clip', action = "Twirl Finisher Clip Selector", exact = true, within = "Basic Attack Clip Selector Step 1", within_span = 600 },
+]
+
+# In Update 6, basic attacks route through Hero_SunWukong_Update6.entity:
+[[content]]
+kind = "talent"
+id   = "twirl_pillar_or_hit_four_u6"
+hero = "SunWukong"
+file = "Hero_SunWukong_Update6.entity"
+
+rewires = [
+  { trigger = '[State] Hero_SunWukong_Update6\Skill Dash Attack\State Basic Attack Step Dash Attack', action = "State Skill Dash Attack Finisher Step", exact = true, within = "Basic Attack Combo Selector", within_span = 600 },
 ]
 ```
 
@@ -448,6 +462,13 @@ so a rewire in the same block can use them.
 The tested part is the Pillar branch: with both talents owned, the dash attack
 became the Pillar slam. The "no Pillar" branch uses the same file change as
 Recipe 1 but has not been played on its own.
+
+**Timer cancellation & damage:** Cloned `State Skill Dash Attack Finisher Step` keeps
+`deactivates: Skill Dash Attack Timer` so the 3.0 s dash window stops as soon as the
+attack strikes, returning follow-up inputs to the normal combo chain rather than looping
+the finisher. Pointing its `while_active` at `Twirl Finisher Clip Selector` preserves
+the full damage of the chosen finisher (4.5x or Pillar 4–7x) rather than Stick Twirl's
+per-strike multiplier.
 
 ## Recipe 3: Make a talent switch on a different effect
 

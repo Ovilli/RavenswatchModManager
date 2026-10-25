@@ -674,3 +674,80 @@ def test_rework_entity_can_rewire_to_parent_cloned_node(tmp_path):
     dash = EA.node_section(cf_u6, "State Basic Attack Step Dash Attack")
     dash_state = cf_u6.sections[dash].payload
     assert selector_guid in dash_state
+
+def test_wukong_twirl_finisher_update6_full_wiring(tmp_path):
+    """The full Update 6 twirl-finisher recipe: clones both the finisher clip
+    selector and a dedicated step state in the base entity, then rewires the
+    Update 6 basic combo selector entry to that cloned state. Cancels the 3.0s
+    dash timer without triggering Stick Twirl's per-strike damage downgrade."""
+    u6 = _WUKONG.parent / "Hero_SunWukong_Update6.entity.ot.EntitySettingsResource.gen"
+    if not (_WUKONG.is_file() and u6.is_file()):
+        pytest.skip("vanilla Hero_SunWukong + Update6 corpus files not present")
+    from rsmm.engine import cooked
+    from rsmm.engine import entity_append as EA
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import talents
+
+    finisher = r"[Anim Clip] Hero_SunWukong\Skill Attack Finisher\Skill Attack Finisher Clip"
+    clip4 = r"[Anim Clip] Hero_SunWukong\Ability Basic\Basic Attack Clip 4"
+    defn_base = ContentDef(kind="talent", id="twirl_finisher", fields={
+        "hero": "SunWukong",
+        "file": "Hero_SunWukong.entity",
+        "clone_nodes": [
+            {
+                "source": "Basic Attack Combo Selector",
+                "name": "Skill Dash Attack Finisher Clip Selector",
+                "retarget": [
+                    {"from": r"[Dt Attack Combo] Hero_SunWukong\Skill Attack Finisher"
+                             r"\Skill Attack Finisher Combo", "to": finisher},
+                    {"from": r"[Dt Attack Combo] Hero_SunWukong\Ability Basic"
+                             r"\Basic Attack Combo", "to": clip4},
+                ],
+            },
+            {
+                "source": "State Skill Dash Attack Ongoing",
+                "name": "State Skill Dash Attack Finisher Step",
+                "retarget": [
+                    {"from": r"[State] Hero_SunWukong\Ability Basic\State Basic Attack Step 1",
+                     "to": "Skill Dash Attack Finisher Clip Selector"},
+                ],
+            },
+        ],
+        "rewires": [{
+            "trigger": r"[Anim Clip] Hero_SunWukong\Skill Dash Attack\Skill Dash Attack Clip",
+            "action": "Skill Dash Attack Finisher Clip Selector",
+            "exact": True,
+            "within": "Basic Attack Clip Selector Step 1",
+            "within_span": 600,
+        }],
+    })
+    base_out = talents.emit("wukong-twirl-finisher", defn_base, tmp_path)[0].read_bytes()
+
+    dash_step = (r"[State] Hero_SunWukong_Update6\Skill Dash Attack"
+                 r"\State Basic Attack Step Dash Attack")
+    defn_u6 = ContentDef(kind="talent", id="twirl_finisher_u6", fields={
+        "hero": "SunWukong",
+        "file": "Hero_SunWukong_Update6.entity",
+        "rewires": [{
+            "trigger": dash_step,
+            "action": "State Skill Dash Attack Finisher Step",
+            "exact": True,
+            "within": "Basic Attack Combo Selector",
+            "within_span": 600,
+        }],
+    })
+    written = talents.emit("wukong-twirl-finisher", defn_u6, tmp_path)
+    assert len(written) == 1
+
+    cf_base = cooked.parse(base_out)
+    cf_u6 = cooked.parse(written[0].read_bytes())
+
+    step_guid = EA.node_guid(cf_base, "State Skill Dash Attack Finisher Step")
+    selector_guid = EA.node_guid(cf_base, "Skill Dash Attack Finisher Clip Selector")
+    assert step_guid is not None and selector_guid is not None
+
+    step_sec = EA.node_section(cf_base, "State Skill Dash Attack Finisher Step")
+    assert selector_guid in cf_base.sections[step_sec].payload
+
+    combo_sec = EA.node_section(cf_u6, "Basic Attack Combo Selector")
+    assert step_guid in cf_u6.sections[combo_sec].payload
