@@ -11,7 +11,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**18 kinds** — 14 confirmed, 3 experimental, 1 guess.
+**20 kinds** — 14 confirmed, 4 experimental, 2 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -33,6 +33,8 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `shop` | ✅ confirmed | `rsmm.sdk.kinds.shops` | **Shop** editor — change what the Sandman sells and what it costs. |
 | `animation` | ✅ confirmed | `rsmm.sdk.kinds.animations` | **Animation** content builder — play the mod's animation in place of a shipped clip. |
 | `entity` | ✅ confirmed | `rsmm.sdk.kinds.entities` | Edits to ONE shipped entity file, in place. |
+| `challenge` | ❓ guess | `rsmm.sdk.kinds.challenges` | Custom **challenge** content builder — a new entry on the challenge screen. |
+| `scenery` | ⚠️ experimental | `rsmm.sdk.kinds.scenery` | Chapter scenery content builder. |
 
 ## What a rating means
 

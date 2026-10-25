@@ -28,6 +28,8 @@ import re
 import tomllib
 from pathlib import Path
 
+from rsmm.engine.loader_flags import HERO_CAPTURE, needs_hero_capture
+
 from .content import EditorError
 
 BEGIN = "-- >>> rsmm editor: test grants >>>"
@@ -102,7 +104,7 @@ do
     local TALENTS = {{ {talents} }}     -- {{ talent, rarity 0-3 }}
 
     if XP > 0 then R.xp.arm() end      -- before the run builds the level
-    local left, talents_done, xp_tries, mine
+    local left, talents_done, xp_tries, mine, warned
     local function reset()
         left = {{}}
         for _, it in ipairs(ITEMS) do left[#left + 1] = {{ it[1], it[2] }} end
@@ -115,6 +117,10 @@ do
         if not HERO then return true end
         if mine == nil and R.hero.entity and R.hero.entity() then
             mine = R.hero.entity_is(HERO)
+            if not mine then
+                R.log(("[test-grants] playing %s, not %s: nothing granted"):format(
+                    tostring(R.hero.entity()), HERO))
+            end
         end
         return mine == true
     end
@@ -122,7 +128,17 @@ do
     -- Main thread: a grant builds engine objects. One step per tick, and
     -- each counted BEFORE it runs, because a grant fires game events at once.
     R.schedule.every_main(1, function()
-        if not R.entity.ready() or not for_this_hero() then return end
+        if not R.entity.ready() then
+            -- Without hero capture this never turns true; say so once.
+            if not warned and R.entity.capture_enabled and not R.entity.capture_enabled() then
+                warned = true
+                R.log('[test-grants] nothing can be granted: hero capture is off. Put '
+                    .. 'loader_flags = ["{HERO_CAPTURE}"] under [mod] in manifest.toml '
+                    .. 'and apply the mod again')
+            end
+            return
+        end
+        if not for_this_hero() then return end
         if xp_tries < 5 then
             xp_tries = xp_tries + 1
             R.stat.enable_writes()
@@ -194,6 +210,66 @@ def write_script(mod_root: Path, cfg: dict) -> str:
         return "removed"
     init.write_text(new, encoding="utf-8")
     return "written"
+
+
+_LOADER_FLAGS_RE = re.compile(r"^loader_flags[ \t]*=[ \t]*\[[^\]]*\][^\n]*\n?", re.M)
+
+
+def ensure_loader_flag(manifest: str, flag: str) -> str:
+    """``manifest`` with ``flag`` in its ``[mod] loader_flags``, the rest of the
+    text untouched. The editor's scripts find the hero through hero capture,
+    which is off unless a mod asks for it; without the flag they wait forever
+    and grant nothing (2026-10-19, a user's Ice Shield test)."""
+    try:
+        mod = tomllib.loads(manifest).get("mod")
+    except tomllib.TOMLDecodeError as e:
+        raise EditorError(f"manifest.toml does not parse: {e}") from e
+    if not isinstance(mod, dict):
+        raise EditorError("manifest.toml has no [mod] table")
+    have = mod.get("loader_flags") or []
+    if not isinstance(have, list):
+        raise EditorError("manifest.toml's loader_flags is not a list; fix it by hand")
+    if flag in have:
+        return manifest
+    head = re.search(r"^\[mod\][ \t]*(?:#[^\n]*)?$", manifest, re.M)
+    if head is None:
+        raise EditorError("manifest.toml's [mod] table is not one the editor can edit")
+    nxt = re.search(r"^[ \t]*\[", manifest[head.end():], re.M)
+    end = head.end() + (nxt.start() if nxt else len(manifest[head.end():]))
+    line = "loader_flags = " + json.dumps([*have, flag]) + "\n"
+    body = manifest[head.end():end]
+    if "loader_flags" in mod:
+        found = _LOADER_FLAGS_RE.search(body)
+        if found is None:
+            raise EditorError("manifest.toml's loader_flags is not laid out as the editor "
+                              f"expects; add {flag!r} to it by hand")
+        body = body[:found.start()] + line + body[found.end():]
+    else:
+        # After the table's last key, keeping one blank line before the next table.
+        body = body.rstrip("\n") + "\n" + line + ("\n" if nxt else "")
+    new = manifest[:head.end()] + body + manifest[end:]
+    try:
+        if flag not in (tomllib.loads(new).get("mod", {}).get("loader_flags") or []):
+            raise EditorError("could not add the loader flag to manifest.toml")
+    except tomllib.TOMLDecodeError as e:          # pragma: no cover - checked above
+        raise EditorError(f"adding the loader flag would break manifest.toml: {e}") from e
+    return new
+
+
+def require_flags(mod_root: Path) -> list[str]:
+    """Add to ``mod_root/manifest.toml`` the loader flags its ``init.lua``
+    needs. Returns the flags it added."""
+    init, manifest = mod_root / "init.lua", mod_root / "manifest.toml"
+    if not init.is_file() or not manifest.is_file():
+        return []
+    if not needs_hero_capture(init.read_text(encoding="utf-8")):
+        return []
+    old = manifest.read_text(encoding="utf-8")
+    new = ensure_loader_flag(old, HERO_CAPTURE)
+    if new == old:
+        return []
+    manifest.write_text(new, encoding="utf-8")
+    return [HERO_CAPTURE]
 
 
 # --- the Scripts tab's block program --------------------------------------------
@@ -439,7 +515,8 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict],
 # --- opening a mod ---------------------------------------------------------------
 
 _ITEM_KEYS = {"kind", "id", "base", "mode", "name", "display_name", "description", "rarity",
-              "icon", "value_patches", "stats", "super_description"}
+              "icon", "value_patches", "stats", "super_description", "steps", "super_effect",
+              "unique_identity", "effect", "effects", "super_effects"}
 _TALENT_KEYS = {"kind", "id", "hero", "file", "value_patches", "union_patches", "stats"}
 #: The talent builder's block (``<prefix>_builder``, see ``content.talent_defs``).
 _BUILDER_KEYS = {"kind", "id", "hero", "rebuild", "include", "add_stats", "scale", "on_hit"}
@@ -476,7 +553,7 @@ def _builder(f: dict, E: dict) -> None:
     for e in f.get("add_stats") or []:
         a = {"stat": str(e["stat"]), "values": _tiers4(e.get("values"), str(e["stat"])),
              "percent": bool(e.get("percent", True)), "line": _LOADED_LINE}
-        for k in ("during", "after", "seconds", "cooldown", "next"):
+        for k in ("during", "after", "on", "seconds", "cooldown", "next"):
             if e.get(k) is not None:
                 a[k] = e[k]
         E["addStats"].setdefault(str(e["talent"]), []).append(a)
@@ -513,14 +590,24 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
     if mode not in ("clone", "replace"):
         raise EditorError(f"mode {mode!r} is not edited here")
     base = str(f.get("base") or "").replace("\\", "/").rpartition("/")[2]
+    if not base and mode == "clone":
+        # An item from scratch: keyed by its own id, so a mod can hold several.
+        mode, base = "blank", f"{C.BLANK}:{f['id']}"
     detail = C.item_detail(base)
     values = {r["label"]: r for r in detail["values"]}
     mods = {m["name"] for m in detail["modifiers"]}
-    E = {"mode": mode, "id": f["id"] if mode == "clone" else _suggest_id(base),
+    effects = f.get("effects") if isinstance(f.get("effects"), list) else (
+        [f["effect"]] if isinstance(f.get("effect"), dict) else [])
+    E = {"mode": mode, "id": f["id"] if mode != "replace" else _suggest_id(base),
          "name": str(f.get("name") or f.get("display_name") or ""),
          "description": str(f.get("description") or ""), "rarity": str(f.get("rarity") or ""),
          "icon": "", "iconUpload": "", "values": {}, "stats": {},
          "superDescription": str(f.get("super_description") or ""),
+         "steps": [s for s in f.get("steps") or [] if isinstance(s, dict)],
+         "noSuper": f.get("super_effect") is False,
+         "sharedIdentity": f.get("unique_identity") is False,
+         "effects": effects,
+         "superEffects": [x for x in f.get("super_effects") or [] if isinstance(x, dict)],
          "autoDesc": False, "autoSuper": False, "textMiss": []}
     for vp in f.get("value_patches") or []:
         label = vp.get("label") if isinstance(vp, dict) else vp[0]
@@ -546,6 +633,16 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
                "stats": [{"modifier": k, "stat": v} for k, v in E["stats"].items()],
                "values": [{"label": k, "old": values[k]["value"], "new": v,
                            "shadowed": values[k]["shadowed"]} for k, v in E["values"].items()]}
+    if E["steps"]:
+        payload["steps"] = E["steps"]   # no controls: carried through as written
+    if E["noSuper"]:
+        payload["noSuper"] = True
+    if E["effects"]:
+        payload["effects"] = E["effects"]
+    if E["superEffects"]:
+        payload["superEffects"] = E["superEffects"]
+    if E["sharedIdentity"] and mode == "clone":
+        payload["sharedIdentity"] = True
     return base, E, payload
 
 

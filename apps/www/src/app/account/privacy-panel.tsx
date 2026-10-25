@@ -190,6 +190,13 @@ export function PrivacyPanel() {
                 disabled={busy}
                 onChange={(emailAnnouncements) => save.mutate({ emailAnnouncements })}
               />
+              <Toggle
+                label="Review emails"
+                hint="Email me when someone reviews one of my mods, collections or guides, or when an author replies to my review. Edits only show up in notifications."
+                checked={p.emailReviews}
+                disabled={busy}
+                onChange={(emailReviews) => save.mutate({ emailReviews })}
+              />
             </div>
 
             <p className="text-xs text-muted-foreground">

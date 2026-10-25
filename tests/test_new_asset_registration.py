@@ -160,7 +160,10 @@ def _make_new_asset_repo(tmp_path: Path):
         encoding="utf-8",
     )
     asset_map = repo / "asset_map.json"
-    asset_map.write_text(json.dumps({_LINE3: _SIB_COOKED_DEC}), encoding="utf-8")
+    # Every manifest line, as find_iyg writes it: apply rebuilds a map that
+    # lacks a shipped line, and that rebuild is stubbed here.
+    asset_map.write_text(json.dumps({_LINE1: _ROOT, _LINE2: _SIB_LOGICAL_DEC,
+                                     _LINE3: _SIB_COOKED_DEC}), encoding="utf-8")
 
     game_dir = tmp_path / "game"
     (game_dir / "DarkTalesResources" / "_Cooking").mkdir(parents=True)

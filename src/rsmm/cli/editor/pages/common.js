@@ -19,11 +19,13 @@ function tellShell() {
 // GET `path`, or POST `body` as JSON. Resolves to the reply's JSON and throws
 // its `error`. Paths are relative ("api/items"), so a page works at `/`, under
 // a mount of `rsmm editor`, and in the web editor, where fetch is routed to
-// the in-browser engine.
-async function api(path, body) {
+// the in-browser engine. `signal` aborts it (a pick the user has moved on from):
+// the local server then skips work it has not started.
+async function api(path, body, signal) {
   const opt = body === undefined ? {} : {
     method: "POST", headers: { "Content-Type": "application/json", "X-RSMM-Token": TOKEN },
     body: JSON.stringify(body) };
+  if (signal) opt.signal = signal;
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({ error: "bad response (" + r.status + ")" }));
   if (!r.ok || data.error) throw new Error(data.error || ("HTTP " + r.status));

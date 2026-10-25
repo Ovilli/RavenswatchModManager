@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Save File</title>
+<style>{{common.css}}</style>
+<style>
+html, body { height: 100%; margin: 0; }
+body { font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
+header { display: flex; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0; }
+main { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 30px; }
+.wrap { max-width: 1100px; }
+.help { background: var(--accentbg); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.help p { margin: 0 0 6px; } .help p:last-child { margin: 0; }
+.alert { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; background: var(--warnbg); color: var(--warn); font-weight: 600; }
+.alert.bad { background: var(--badbg); color: var(--bad); }
+.top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.secs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.secs button { border-radius: 999px; padding: 4px 12px; }
+.secs button.on { background: var(--accent); border-color: var(--accent); color: var(--onaccent); font-weight: 600; }
+.secs .n { opacity: .75; font-size: 12px; margin-left: 4px; }
+.secs .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: 1px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.tools input[type=search] { flex: 1; min-width: 180px; }
+.note { font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; background: var(--bg); }
+tr:last-child td { border-bottom: none; }
+tr.changed td { background: var(--accentbg); }
+td.ic img, td.ic .ico { width: 30px; height: 30px; display: block; object-fit: contain; }
+.ico { border-radius: 6px; background: var(--chip); }
+.badge { display: inline-block; font-size: 12px; border-radius: 999px; padding: 1px 9px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.badge.granted, .badge.unlocked { background: var(--okbg); color: var(--ok); }
+.badge.reset, .badge.locked { background: var(--warnbg); color: var(--warn); }
+.badge.new { background: var(--accentbg); color: var(--accentink); margin-left: 4px; }
+.raw { font: 12px ui-monospace, monospace; color: var(--muted); }
+td input[type=number] { width: 90px; }
+.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--panel); }
+.grow { flex: 1; }
+#status { font-size: 13px; }
+.st-ok { color: var(--ok); } .st-bad { color: var(--bad); }
+details.backups { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--panel); }
+details.backups > summary { cursor: pointer; font-weight: 600; }
+.brow { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.brow .w { flex: 1; font-size: 13px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.empty { padding: 30px; text-align: center; color: var(--muted); }
+html.embedded body > header { display: none; }
+</style>
+</head>
+<body>
+<header><h1>Save File</h1></header>
+<main><div class="wrap" id="view"><div class="empty">Loading…</div></div></main>
+<div class="bar">
+  <span id="count" class="muted">No changes.</span>
+  <button id="undo" type="button" disabled>Undo my changes</button>
+  <span class="grow"></span>
+  <span id="status"></span>
+  <button id="write" class="primary" type="button" disabled>Write to the save…</button>
+</div>
+<script>{{common.js}}</script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "text") e.textContent = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+// What each section can change. Values are the states and ranges the game itself
+// writes (rsmm.engine.profile_data); anything else is shown and kept as it is.
+const ITEM = { granted: "Granted", reset: "Reset", other: "As the game left it" };
+const ITEM_TIP = { granted: "The state the game puts an item in when it grants it outright.",
+  reset: "The state the game puts an item in when it resets it.", other: "A state the game set during play." };
+const LOCK = { unlocked: "Unlocked", locked: "Locked" };
+const NOTES = {
+  items: "Granted and Reset are the two states the game writes when it grants or resets an item; what each flag inside means is not decoded, so nothing else is offered.",
+  heroes: "Level is the hero's level; the part after the point is progress to the next one. The game caps it at the hero's maximum when it loads. The other numbers are shown but not changed: what they count is not decoded.",
+  talents: "Tier goes from -1 (none) to 3, the range the game itself uses. Unlocking sets the talent's lock the way the game does when its conditions are met.",
+  skins: "Unlocking sets the outfit's lock the way the game does when its conditions are met (it shows as new until you look at it). Locking is not permanent: the game opens a lock again if its conditions are already met.",
+  story: "Unlocking sets the page's lock the way the game does when its conditions are met. Locking is not permanent: the game opens a lock again if its conditions are already met.",
+  achievements: "Unlocking sets the achievement's lock in your profile. It does not unlock a Steam achievement.",
+  melodies: "Shown as they are. What these values mean is not decoded, so they are not changed.",
+  challenges: "Shown as they are. What this value means is not decoded, so it is not changed.",
+};
+const S = { profiles: [], profile: "", data: null, sec: "items", changes: new Map(), q: "", group: "" };
+const key = (row, field) => row.id + "|" + field;
+const pending = (row, field) => S.changes.get(key(row, field))?.value;
+function change(row, field, value, current) {
+  if (value === undefined || value === "" || value === current) S.changes.delete(key(row, field));
+  else S.changes.set(key(row, field), { id: row.id, guid: row.guid, field, value });
+}
+const iconUrls = new Map();
+function iconImg(stem) {
+  const hole = el("span", { class: "ico" });
+  if (!stem) return hole;
+  if (!iconUrls.has(stem)) iconUrls.set(stem, fetch("api/icon?stem=" + encodeURIComponent(stem))
+    .then(r => r.ok ? r.blob() : null).then(b => b && URL.createObjectURL(b)).catch(() => null));
+  iconUrls.get(stem).then(url => { if (url) hole.replaceWith(el("img", { src: url, alt: "" })); });
+  return hole;
+}
+function status(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || ""; }
+window.rsmmUnsaved = () => ({ count: S.changes.size, kept: false });
+function paintBar() {
+  const n = S.changes.size;
+  $("#count").textContent = n ? `${n} change${n > 1 ? "s" : ""}, not written yet.` : "No changes.";
+  $("#undo").disabled = !n;
+  $("#write").disabled = !n || !S.data || S.running;
+  tellShell();
+}
+
+async function loadProfiles() {
+  try {
+    const j = await api("api/profiles");
+    Object.assign(S, { profiles: j.profiles, dir: j.dir, running: j.running, backups: j.backups });
+    if (!S.profile || !S.profiles.some(p => p.name === S.profile)) S.profile = (S.profiles.find(p => !p.error) || {}).name || "";
+    if (S.profile) await loadProfile(); else render();
+  } catch (e) { $("#view").replaceChildren(el("div", { class: "empty", text: e.message })); }
+}
+async function loadProfile() {
+  S.data = null; S.changes.clear(); render(); paintBar();
+  try { S.data = await api("api/profile?profile=" + encodeURIComponent(S.profile)); S.running = S.data.running; }
+  catch (e) { S.error = e.message; }
+  render(); paintBar();
+}
+
+function render() {
+  const v = $("#view"); v.textContent = "";
+  v.append(el("div", { class: "help" },
+    el("p", { text: "Everything your profile save holds, by kind. Change what you want and write it to the save; nothing changes until you do." }),
+    el("p", { text: "Only what the game itself writes can be changed, within the ranges it uses. Every write keeps a backup of your profile first, and you can put any backup back at the bottom." })));
+  if (S.running) v.append(el("div", { class: "alert", text: "Ravenswatch is running. Quit the game before writing: it keeps your profile in memory and saves its own copy over any edit." }));
+  if (!S.profiles.length) { v.append(el("div", { class: "empty", text: "No Profile_*.ob in " + (S.dir || "_Save") + ". Start the game once to make one." })); return; }
+  const pick = el("select", { "aria-label": "Profile" }, ...S.profiles.map(p => el("option", { value: p.name,
+    text: p.name + (p.error ? " (can't be read)" : " · " + new Date(p.modified * 1000).toLocaleString()) })));
+  pick.value = S.profile;
+  pick.onchange = () => {
+    if (S.changes.size && !confirm("Drop your unwritten changes to " + S.profile + "?")) { pick.value = S.profile; return; }
+    S.profile = pick.value; loadProfile();
+  };
+  v.append(el("div", { class: "top" }, pick));
+  if (S.error) { v.append(el("div", { class: "alert bad", text: S.error })); S.error = ""; }
+  if (!S.data) { v.append(el("div", { class: "empty", text: "Reading " + S.profile + "…" })); return; }
+  if (!S.data.crcOk) v.append(el("div", { class: "alert bad", text: S.profile + " fails its own checksum. The game would not load it as it is; it can't be edited here." }));
+  const secs = el("div", { class: "secs", role: "tablist" });
+  for (const s of [...S.data.sections, { key: "player", label: "Profile", rows: [] }]) {
+    const has = [...S.changes.values()].some(c => s.rows.some(r => r.id === c.id));
+    secs.append(el("button", { type: "button", role: "tab", class: S.sec === s.key ? "on" : "", "aria-selected": String(S.sec === s.key),
+      onclick: () => { S.sec = s.key; S.q = ""; S.group = ""; render(); } },
+      s.label, s.rows.length ? el("span", { class: "n", text: s.rows.length }) : null, has ? el("span", { class: "dot", title: "Has unwritten changes" }) : null));
+  }
+  v.append(secs);
+  if (S.sec === "player") v.append(playerView()); else v.append(sectionView(S.data.sections.find(s => s.key === S.sec)));
+  v.append(backupsView());
+}
+
+function playerView() {
+  const box = el("div");
+  box.append(el("p", { class: "note", text: "The player record and the suspended run. What these values mean is not decoded, so they are shown and kept as they are." }));
+  const kv = el("div", { class: "kv" });
+  for (const [k, val] of Object.entries(S.data.player)) kv.append(el("span", { class: "muted", text: k }), el("span", { class: "raw", text: String(val) }));
+  kv.append(el("span", { class: "muted", text: "suspended run" }), el("span", { text: `${S.data.run} bytes, kept byte for byte` }));
+  if (S.data.retired) kv.append(el("span", { class: "muted", text: "retired items" }), el("span", { text: `${S.data.retired} records for items no longer in the game, kept as they are` }));
+  box.append(kv);
+  return box;
+}
+
+function sectionView(sec) {
+  const box = el("div");
+  box.append(el("p", { class: "note", text: NOTES[sec.key] || "" }));
+  const groups = [...new Set(sec.rows.map(r => r.group).filter(Boolean))];
+  const q = el("input", { type: "search", placeholder: "Find…", value: S.q });
+  const grp = el("select", { "aria-label": "Filter" }, el("option", { value: "", text: sec.key === "items" ? "All rarities" : "All heroes" }),
+    ...groups.map(g => el("option", { value: g, text: g })));
+  grp.value = S.group;
+  const shown = () => sec.rows.filter(r => (!S.group || r.group === S.group) && (!S.q || (r.name + " " + r.group).toLowerCase().includes(S.q.toLowerCase())));
+  const bulk = (field, value) => { for (const r of shown()) setField(r, field, value); draw(); paintBar(); render(); };
+  const tools = el("div", { class: "tools" }, q, groups.length ? grp : null);
+  if (sec.key === "items") tools.append(btn("Grant all shown", () => bulk("item", "granted")), btn("Reset all shown", () => bulk("item", "reset")));
+  if (sec.rows.some(r => r.lock)) tools.append(btn("Unlock all shown", () => bulk("lock", "unlocked")), btn("Lock all shown", () => bulk("lock", "locked")));
+  if (sec.key === "heroes") tools.append(btn("Max level all shown", () => bulk("level", S.data.ranges.level[1])));
+  if (sec.key === "talents") tools.append(btn("Highest tier all shown", () => bulk("tier", S.data.ranges.tier[1])));
+  box.append(tools);
+  const body = el("tbody");
+  const cols = ["", "Name", sec.key === "items" ? "Rarity" : "Hero"];
+  if (sec.key === "items") cols.push("In the save", "Set to", "Raw");
+  if (sec.key === "heroes") cols.push("Level", "Lock", "Other values");
+  if (sec.key === "talents") cols.push("Tier", "Lock");
+  if (["skins", "story", "achievements"].includes(sec.key)) cols.push("Lock");
+  if (["melodies", "challenges"].includes(sec.key)) cols.push("Values");
+  const table = el("table", {}, el("thead", {}, el("tr", {}, ...cols.map(c => el("th", { text: c })))), body);
+  function draw() {
+    body.textContent = "";
+    const rows = shown();
+    if (!rows.length) body.append(el("tr", {}, el("td", { colspan: String(cols.length), class: "empty", text: "Nothing matches." })));
+    for (const r of rows.slice(0, 600)) body.append(rowView(sec, r, draw));
+    if (rows.length > 600) body.append(el("tr", {}, el("td", { colspan: String(cols.length), class: "empty", text: `${rows.length - 600} more: narrow the list to see them.` })));
+  }
+  q.oninput = () => { S.q = q.value; draw(); };
+  grp.onchange = () => { S.group = grp.value; draw(); };
+  draw();
+  box.append(table);
+  return box;
+}
+function btn(text, onclick) { return el("button", { type: "button", onclick }, text); }
+function setField(r, field, value) {
+  const cur = field === "item" ? r.item : field === "lock" ? r.lock : r[field];
+  change(r, field, value, cur);
+}
+
+function rowView(sec, r, redraw) {
+  const changed = [...S.changes.keys()].some(k => k.startsWith(r.id + "|"));
+  const tr = el("tr", { class: changed ? "changed" : "" });
+  tr.append(el("td", { class: "ic" }, sec.key === "items" ? iconImg(r.icon) : null),
+    el("td", { text: r.name }), el("td", { text: r.group }));
+  const onSet = (field, value) => { setField(r, field, value); redraw(); paintBar(); };
+  if (sec.key === "items") {
+    tr.append(el("td", {}, el("span", { class: "badge " + r.item, title: ITEM_TIP[r.item], text: ITEM[r.item] })),
+      el("td", {}, stateSelect(r, "item", r.item, { granted: ITEM.granted, reset: ITEM.reset }, onSet)),
+      el("td", { class: "raw", title: "+0x60 +0x61 +0x62 +0x64 +0x68", text: r.raw.join(" ") }));
+  }
+  if (sec.key === "heroes") {
+    const [lo, hi] = S.data.ranges.level;
+    const lv = el("input", { type: "number", step: "0.5", min: String(lo), max: String(hi), value: String(pending(r, "level") ?? r.level), "aria-label": "Level of " + r.name });
+    lv.onchange = () => { const n = Number(lv.value); if (lv.value !== "" && n >= lo && n <= hi) onSet("level", n); else { lv.value = String(pending(r, "level") ?? r.level); status(`A level is ${lo} to ${hi}.`, "st-bad"); } };
+    tr.append(el("td", {}, lv), lockCell(r, onSet), el("td", { class: "raw", title: "Not decoded: shown, never changed", text: Object.values(r.info).join(" ") }));
+  }
+  if (sec.key === "talents") {
+    const [lo, hi] = S.data.ranges.tier;
+    const sel = el("select", { "aria-label": "Tier of " + r.name });
+    for (let t = lo; t <= hi; t++) sel.append(el("option", { value: String(t), text: t === lo ? `${t} (none)` : t === hi ? `${t} (highest)` : String(t) }));
+    sel.value = String(pending(r, "tier") ?? r.tier);
+    sel.onchange = () => onSet("tier", Number(sel.value));
+    tr.append(el("td", {}, sel), lockCell(r, onSet));
+  }
+  if (["skins", "story", "achievements"].includes(sec.key)) tr.append(lockCell(r, onSet));
+  if (["melodies", "challenges"].includes(sec.key)) tr.append(el("td", { class: "raw", title: "Not decoded: shown, never changed", text: Object.entries(r.info).map(([k, v]) => k + " " + v).join(" · ") }));
+  return tr;
+}
+function lockCell(r, onSet) {
+  return el("td", {}, el("span", { class: "badge " + r.lock, text: LOCK[r.lock] }), r.new ? el("span", { class: "badge new", text: "new" }) : null,
+    " ", stateSelect(r, "lock", r.lock, LOCK, onSet));
+}
+function stateSelect(r, field, current, states, onSet) {
+  const sel = el("select", { "aria-label": field + " of " + r.name }, el("option", { value: "", text: "Keep" }),
+    ...Object.entries(states).map(([k, label]) => el("option", { value: k, text: label + (k === current ? " (already)" : ""), ...(k === current ? { disabled: "" } : {}) })));
+  sel.value = pending(r, field) || "";
+  sel.onchange = () => onSet(field, sel.value || undefined);
+  return sel;
+}
+
+function backupsView() {
+  const list = S.backups || [];
+  const box = el("details", { class: "backups" }, el("summary", { text: `Backups (${list.length})` }),
+    el("p", { class: "tiny muted", text: "Each write keeps the profile as it was, in rsmm's own data folder (not in _Save, which Steam Cloud syncs and a reinstall deletes). Putting one back also backs up the current file first." }));
+  if (!list.length) box.append(el("div", { class: "tiny muted", text: "None yet." }));
+  for (const b of list) {
+    box.append(el("div", { class: "brow" },
+      el("span", { class: "w" }, el("b", { text: b.name }), " · " + b.files.join(", "), el("div", { class: "tiny muted", text: b.why })),
+      el("button", { type: "button", onclick: () => restore(b.name) }, "Put back")));
+  }
+  return box;
+}
+async function restore(name) {
+  if (!confirm(`Put backup ${name} back over your current profile? Your current profile is backed up first. Quit the game before you do this.`)) return;
+  try {
+    const j = await api("api/restore", { backup: name });
+    S.backups = j.backups;
+    status(`Put back ${name}. The profile it replaced is in backup ${j.undo.join(", ")}.`, "st-ok");
+    await loadProfile();
+  } catch (e) { status(e.message, "st-bad"); }
+}
+
+$("#undo").onclick = () => { S.changes.clear(); render(); paintBar(); };
+$("#write").onclick = async () => {
+  const n = S.changes.size;
+  if (!confirm(`Write ${n} change${n > 1 ? "s" : ""} to ${S.profile}?\n\nQuit Ravenswatch first. A backup of the profile is kept, and you can put it back from this tab.`)) return;
+  $("#write").disabled = true;
+  try {
+    const j = await api("api/write", { profile: S.profile, changes: [...S.changes.values()] });
+    S.backups = j.backups;
+    status(`Wrote ${j.changed} change${j.changed > 1 ? "s" : ""} to ${j.written}. Backup: ${j.backup}.`, "st-ok");
+    await loadProfile();
+  } catch (e) { status(e.message, "st-bad"); paintBar(); }
+};
+window.rsmmShown = () => { if (!S.changes.size) loadProfiles(); };
+loadProfiles();
+</script>
+</body>
+</html>

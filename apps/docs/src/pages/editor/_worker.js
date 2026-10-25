@@ -68,6 +68,10 @@ async function init({ bundle, attempt = 0 }) {
   });
   progress('Loading the rsmm engine…');
   const tar = await fetchBytes(bundle, 'the rsmm engine');
+  // Names this engine build: the page keeps answers per build (the bundle is
+  // deterministic, so an unchanged engine keeps its saved answers).
+  const engine = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', tar)),
+    (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
   for (const d of ['/rsmm/src', '/rsmm/data', '/game/DarkTalesResources', '/mods'])
     py.FS.mkdirTree(d);
   // Gzip unless something between here and the server already unzipped it.
@@ -80,7 +84,7 @@ async function init({ bundle, attempt = 0 }) {
 import sys
 sys.path.insert(0, "/rsmm/src")
 `);
-  return { python: py.version };
+  return { python: py.version, engine };
 }
 
 async function mount({ files, paths }) {

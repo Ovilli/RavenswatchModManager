@@ -9,11 +9,16 @@ import { appendLauncherLog } from '../lib/launcher-log';
 import { loaderStatus, noteLoaderResult } from '../lib/loader-status';
 import { quitApp } from '../lib/quit';
 import {
+  type CliChannel,
   type LoaderDownloadProgress,
+  type UpdateCliResult,
   type UpdateLoaderResult,
+  cliChannel,
   formatBytes,
   gameStatus,
+  lastCliUpdate,
   restartGame,
+  updateCli,
   updateLoader,
 } from '../lib/rsmm';
 import {
@@ -648,11 +653,15 @@ export function VersionFooter() {
   const t = useT();
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
   const [loaderVersion, setLoaderVersion] = useState<number | null>(null);
+  const [cli, setCli] = useState<CliChannel | null>(null);
 
   useEffect(() => {
     let alive = true;
     void getAppVersion().then((v) => {
       if (alive && v) setAppVersion(v);
+    });
+    void cliChannel().then((c) => {
+      if (alive) setCli(c);
     });
     void loaderStatus()
       .then((r) => {
@@ -675,6 +684,7 @@ export function VersionFooter() {
       {loaderVersion != null ? (
         <span> · {t('loader v{version}', { version: loaderVersion })}</span>
       ) : null}
+      {cli?.dir ? <span> · {t('cli v{version}', { version: cli.version })}</span> : null}
     </div>
   );
 }
@@ -755,6 +765,41 @@ export function UpdaterSettings() {
   // only when a newer release happens to exist — is what lets a user who is
   // already up to date get off the reinstall treadmill before it bites.
   const [migratable, setMigratable] = useState<InstallTarget | null>(null);
+  // The CLI the app runs, and a newer build already downloaded for next start.
+  const [cli, setCli] = useState<CliChannel | null>(null);
+  const [cliStaged, setCliStaged] = useState<number | null>(null);
+
+  const noteCliResult = useCallback((r: UpdateCliResult | null, running: number) => {
+    // update-cli counts a staged build as installed, so "installed > running"
+    // means a download is waiting for the next start.
+    const have = r?.installedVersion ?? 0;
+    setCliStaged(have > running ? have : null);
+  }, []);
+
+  useEffect(() => {
+    const alive = true;
+    void cliChannel().then(async (c) => {
+      if (!alive) return;
+      setCli(c);
+      const r = await lastCliUpdate()?.catch(() => null);
+      if (alive && r) noteCliResult(r, c.version);
+    });
+  }, [noteCliResult]);
+
+  const runCliUpdate = useCallback(async (): Promise<void> => {
+    const c = await cliChannel();
+    if (!c.dir) return;
+    const r = await updateCli().catch(() => null);
+    noteCliResult(r, c.version);
+    if (r?.status === 'staged') {
+      toast.push(
+        t('CLI v{version} downloaded — restart the app to use it.', {
+          version: r.installedVersion ?? '',
+        }),
+        'success',
+      );
+    }
+  }, [noteCliResult, t, toast]);
 
   useEffect(() => {
     let alive = true;
@@ -866,7 +911,7 @@ export function UpdaterSettings() {
         toast.push(t('Launcher is on the latest version.'), 'success');
       }
     });
-    void Promise.allSettled([app, runLoaderUpdate()]);
+    void Promise.allSettled([app, runLoaderUpdate(), runCliUpdate()]);
   };
 
   const onApply = () => {
@@ -898,6 +943,17 @@ export function UpdaterSettings() {
           }
         />
         <VersionRow label={t('Game loader & Lua SDK')} value={loaderVersion} hint={loaderPending} />
+        {cli?.dir ? (
+          <VersionRow
+            label={t('CLI')}
+            value={`v${cli.version}`}
+            hint={
+              cliStaged != null
+                ? t('→ v{version} after restart', { version: cliStaged })
+                : undefined
+            }
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -10,7 +10,11 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   clean: false,
-  noExternal: [/^@rsmm\//],
+  // drizzle-orm is bundled, not left in node_modules: its ESM build is hundreds
+  // of files under a 177 KB package.json, and Node re-reads that package scope
+  // per file — ~200 ms of the API's cold-start CPU (Vercel Fluid bills cold
+  // starts). Its drivers (pg, @neondatabase/serverless) stay external.
+  noExternal: [/^@rsmm\//, /^drizzle-orm(\/|$)/],
   esbuildPlugins: [
     {
       name: 'externalize-node-modules',
@@ -19,6 +23,7 @@ export default defineConfig({
           if (args.kind === 'entry-point') return;
           if (args.path.startsWith('.') || args.path.startsWith('/')) return;
           if (args.path.startsWith('@rsmm/')) return;
+          if (args.path === 'drizzle-orm' || args.path.startsWith('drizzle-orm/')) return;
           return { path: args.path, external: true };
         });
       },

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { auth } from '../auth.js';
+import { getAuth } from '../auth.js';
 import { githubConfigured, googleConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import type { AppEnv } from '../types.js';
@@ -105,7 +105,7 @@ desktopAuthRouter.get('/start', async (c) => {
     // disableRedirect → Better Auth returns the auth URL as JSON (with the
     // `state` Set-Cookie in the headers) instead of a 200-with-Location we
     // can't turn into a real browser redirect.
-    const res = await auth.api.signInSocial({
+    const res = await (await getAuth()).api.signInSocial({
       body: {
         provider,
         callbackURL: completeURL,
@@ -144,7 +144,9 @@ desktopAuthRouter.get('/start', async (c) => {
  * over the deep link.
  */
 desktopAuthRouter.get('/complete', async (c) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
+  const session = await getAuth()
+    .then((a) => a.api.getSession({ headers: c.req.raw.headers }))
+    .catch(() => null);
   if (!session?.user) {
     // If a privacy browser also drops the session cookie set during the callback
     // redirect, this is where the flow dies. Record the COUNT of cookies that
@@ -166,7 +168,9 @@ desktopAuthRouter.get('/complete', async (c) => {
   }
 
   try {
-    const { token } = await auth.api.generateOneTimeToken({ headers: c.req.raw.headers });
+    const { token } = await (await getAuth()).api.generateOneTimeToken({
+      headers: c.req.raw.headers,
+    });
     const appNonce = c.req.query('app') ?? '';
     const nonceParam = appNonce ? `&app=${encodeURIComponent(appNonce)}` : '';
     const deepLink = `${DEEP_LINK_SCHEME}://desktop-auth?token=${encodeURIComponent(token)}${nonceParam}`;

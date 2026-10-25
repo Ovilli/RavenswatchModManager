@@ -55,6 +55,7 @@ from .entity_append import (
     component_vector,
     fix_accessor,
     fix_format_slot,
+    place_new_components,
     validate_layout,
 )
 from .entity_components import _remap_class_tags, class_closure, extend_class_table
@@ -85,6 +86,9 @@ class EntityFile:
         self.objects = [bytearray(s.payload) for s in self.cf.sections[1:-1]]
         self.trailer = bytearray(self.cf.sections[-1].payload)
         self.name = name
+        # Components added from here on are placed in their class's run of the
+        # vector when written (entity_append.place_new_components).
+        self._first_new = len(self.objects)
 
     # ---- reading ---------------------------------------------------------
 
@@ -99,7 +103,7 @@ class EntityFile:
         self.cf.sections = ([cooked.Section(directory)]
                             + [cooked.Section(bytes(o)) for o in self.objects]
                             + [cooked.Section(bytes(self.trailer))])
-        out = cooked.emit(self.cf)
+        out = place_new_components(cooked.emit(self.cf), self._first_new)
         self._check(out)
         return out
 
@@ -470,17 +474,31 @@ class EntityFile:
         "oCEntityCpntValueOperationsSettings": 0x17AE7811,
         "oCEntityCpntGetValueSettings": 0x16ABF2EB,
     }
+    #: The same reads of an int node (Free Reroll, charges, the counts).
+    INT_ACCESSOR = {
+        "oCEntityCpntValueSettings": 0x0FD2C965,
+        "oCEntityCpntValueOperationsSettings": 0x17AE780B,
+    }
+    #: A Timer has several number outputs, so reading one names WHICH (RE
+    #: 2026-10-20, docs/_re/kinds/items.md): the binder asks the timer's vt[13]
+    #: by key. Time left is what "Transformed Time Left Value" and Dash_Crit_
+    #: Chance's float test read; elapsed is what hero ability cooldowns and the
+    #: one working item countdown (Curse_Lose_Life_Gain_Damage) read.
+    TIMER_TIME_LEFT = 0x16831980
+    TIMER_ELAPSED = 0x1683197E
 
     def _value_pickers(self, c: EG.Component) -> list[EG.Token]:
         return [t for t in EG.tokens(c)
                 if t.kind == "object" and t.text == "oCEntityCpntValuePicker"]
 
-    def source_value(self, comp: str, n: int, target: str) -> None:
+    def source_value(self, comp: str, n: int, target: str, *, accessor: int | None = None) -> None:
         """Make the n-th number slot of ``comp`` read component ``target`` (an f32
-        node of this file), literal or sourced before; its inline number goes."""
+        node of this file), literal or sourced before; its inline number goes.
+        ``accessor`` names which output to read, for a target with several (a
+        Timer: ``TIMER_ELAPSED`` / ``TIMER_TIME_LEFT``)."""
         c = self.component(comp)
         t = self.component(target)
-        acc = self.F32_ACCESSOR.get(t.cls)
+        acc = accessor if accessor is not None else self.F32_ACCESSOR.get(t.cls)
         if acc is None:
             raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
         vps = self._value_pickers(c)
@@ -651,6 +669,20 @@ class EntityFile:
         p[end:end] = self._picker(target)
         struct.pack_into("<I", p, at + f.offset, n + 1)
 
+    def add_external_ref(self, comp: str, field: str, guid: bytes, label: str) -> None:
+        """Append a reference to a component of ANOTHER entity (one this file
+        inherits, e.g. ``Hero_Common``'s event senders) to the list ``field``:
+        ``label`` is its full ``[Kind] Scope\\Group\\Name`` path."""
+        c, f, at = self._field(comp, field)
+        if f.kind != "ref[]":
+            raise EntityEditError(f"{field!r} is a {f.kind}, not a reference list")
+        p = self.objects[c.index - 1]
+        n = struct.unpack_from("<I", p, at + f.offset)[0]
+        end = at + f.offset + f.size
+        head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
+        p[end:end] = head + guid + _lstr(label) + _E
+        struct.pack_into("<I", p, at + f.offset, n + 1)
+
     def insert_ref(self, comp: str, field: str, index: int, target: str) -> None:
         """Put ``target`` into the reference list ``field`` at ``index`` (the
         lists run in order: a state's ``activates`` switches nodes on one after
@@ -683,10 +715,11 @@ class EntityFile:
                                      2 on damage numbers)
             END
 
-        The new slot is a copy of an existing one (this format's, else any
-        other format's in the file) re-pointed with :meth:`set_ref`, which also
-        rewrites the accessor for the target's class. ``percent`` sets the
-        trailing flag.
+        The new slot is WRITTEN in that layout (u32 0, a picker reading
+        ``target``, a decimal fallback of 0), not copied from another slot: a
+        rebuilt card has none, and the slot copied from another card could hold a
+        plain number with no reference to re-point (Kintaro, 2026-10-23).
+        ``percent`` sets the trailing flag.
         """
         c = self.component(comp)
         if not c.cls.endswith("StringFormatValueSettings"):
@@ -694,24 +727,26 @@ class EntityFile:
         slots, count_f = self._format_slots(c)
         if count_f is None:
             raise EntityEditError(f"{c.name!r}: cannot find its slot count")
-        template = None
-        if slots:
-            template = c.body[slots[-1].offset:slots[-1].offset + slots[-1].size]
+        t = self.component(target)
+        from . import entity_fields as EF
+        is_int = any(f.name in ("value", "operations") and f.text and f.text.startswith("int ")
+                     for f in EF.fields(t))
+        acc = (self.INT_ACCESSOR if is_int else self.F32_ACCESSOR).get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{c.name!r}: no known way for a card slot to read a {t.cls}")
+        from .entity_parts import PartWriter
+        ci = PartWriter(self, "").ci            # adds a class this file lacks
+        entry = cooked.format_entry_index([x.name for x in self.cf.classes])
+        if entry < 0:
+            entry = ci(cooked.FORMAT_ENTRY_CLASSES[0])
+        if is_int:
+            union = _B + struct.pack("<IIIi", ci("oCEntityValueUnion"), 1, 0, 0) + _E
         else:
-            for other in self.graph().components:
-                if other.cls == c.cls and other.guid != c.guid:
-                    o_slots, _ = self._format_slots(other)
-                    if o_slots:
-                        f = o_slots[0]
-                        template = other.body[f.offset:f.offset + f.size]
-                        break
-        if template is None:
-            raise EntityEditError(f"{c.name!r}: no String Format slot in this file to copy")
-        # The trailing u32 is a small display mode (0 plain, 1 percent, 2 seen on
-        # damage numbers); anything else means the layout is not the one above.
-        if struct.unpack("<I", template[-8:-4])[0] > 15 or template[-4:] != _E:
-            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
-        slot = template[:-8] + struct.pack("<I", 1 if percent else 0) + template[-4:]
+            union = _B + struct.pack("<IIIf", ci("oCEntityValueUnion"), 0, 0, 0.0) + _E
+        picker = (_B + struct.pack("<I", ci("oCEntityCpntValuePicker")) + b"\x01\x00"
+                  + self._picker(target) + struct.pack("<I", acc) + union + _E)
+        slot = (_B + struct.pack("<II", entry, 1 if is_int else 0) + picker
+                + struct.pack("<I", 1 if percent else 0) + _E)
 
         at = len(self.objects[c.index - 1]) - len(c.body)
         end = (slots[-1].offset + slots[-1].size) if slots else (count_f.offset + count_f.size)
@@ -722,8 +757,8 @@ class EntityFile:
         new_slots, _ = self._format_slots(self.component(comp))
         if len(new_slots) != len(slots) + 1:
             raise EntityEditError(f"{c.name!r}: the new slot did not parse back")
-        self.set_ref(comp, f"{new_slots[-1].name}[0]", target)
-        self._slot_accessor(comp, target)
+        if not is_int:
+            self._slot_accessor(comp, target)
         return len(slots)
 
     def _slot_accessor(self, comp: str, target: str) -> None:
@@ -776,6 +811,27 @@ class EntityFile:
             return
         at = len(self.objects[c.index - 1]) - len(c.body) + f.offset + acc.offset
         self.objects[c.index - 1][at:at + 4] = want
+
+    def set_format_mode(self, comp: str, slot: str, percent: bool) -> None:
+        """Show String Format ``comp``'s slot ``slot`` (its field name, e.g.
+        ``obj_4``) as a percentage (x100) or as the plain number: the slot's
+        trailing display mode (see :meth:`add_format_slot`). A shield's card
+        shows its value plain, so a copy turned into a 0.3 crit bonus read
+        "+0%" until its slot was switched (2026-10-20)."""
+        c = self.component(comp)
+        if not c.cls.endswith("StringFormatValueSettings"):
+            raise EntityEditError(f"{c.name!r} is a {c.cls}, not a String Format")
+        slots, _ = self._format_slots(c)
+        f = next((x for x in slots if x.name == slot), None)
+        if f is None:
+            raise EntityEditError(f"{c.name!r} has no value slot {slot!r}; have "
+                                  f"{', '.join(x.name for x in slots) or 'none'}")
+        body = c.body[f.offset:f.offset + f.size]
+        if struct.unpack("<I", body[-8:-4])[0] > 15 or body[-4:] != _E:
+            raise EntityEditError(f"{c.name!r}: unexpected slot layout; refusing to guess")
+        at = len(self.objects[c.index - 1]) - len(c.body)
+        struct.pack_into("<I", self.objects[c.index - 1], at + f.offset + f.size - 8,
+                         1 if percent else 0)
 
     def clear_format_slots(self, comp: str) -> int:
         """Remove every value slot from the String Format ``comp``; returns how
@@ -858,13 +914,19 @@ class EntityFile:
 
     def _label(self, cls: str) -> str:
         """The ``[Kind]`` label for ``cls``: from this file's own references
-        when one names such a component, else learned from the corpus."""
+        when one names such a component, else learned from the corpus.
+
+        Only a reference whose path names the component its GUID finds counts:
+        some shipped paths are stale (Increase_Shield's ``[Timer] ...\\Shield
+        Reload Timer`` carries the GUID of the State ``State Is In Cooldown``),
+        and trusting those labelled a State target ``[Timer]``."""
         g = self.graph()
         idx = g.by_guid()
         for c in g.components:
             for r in c.refs:
                 t = idx.get(r.guid)
-                if t is not None and t.cls == cls and r.kind:
+                if t is not None and t.cls == cls and r.kind \
+                        and r.path.endswith("\\" + t.name):
                     return r.kind
         return kind_label(cls)
 
@@ -961,9 +1023,13 @@ def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
         if ref.guid not in new_guids:
             continue
         m = EG._PATH.match(ref.path)
-        if not m or m["rest"] not in paths:
+        # A part with no group has the path `\Name`, but references name it
+        # `Scope\Name` (see _picker): without the second lookup a copy's link
+        # to an ungrouped copy kept the donor's label.
+        rest = m and next((k for k in (m["rest"], "\\" + m["rest"]) if k in paths), None)
+        if not rest:
             continue
-        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[m['rest']]}"
+        new = f"[{m['kind']}] {scope or m['scope']}\\{paths[rest].lstrip(chr(92))}"
         s = off + 8 + 16                              # BEGIN, class, GUID
         n = struct.unpack_from("<I", p, s)[0]
         out += p[last:s] + _lstr(new)

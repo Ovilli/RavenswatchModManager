@@ -170,6 +170,9 @@ export const modReviews = pgTable(
     rating: integer('rating').notNull(),
     title: varchar('title', { length: 120 }),
     body: text('body'),
+    // One public reply from the mod's team, shown under the review.
+    ownerReply: text('owner_reply'),
+    ownerReplyAt: timestamp('owner_reply_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -315,6 +318,9 @@ export const collectionReviews = pgTable(
     rating: integer('rating').notNull(),
     title: varchar('title', { length: 120 }),
     body: text('body'),
+    // One public reply from the owner, shown under the review.
+    ownerReply: text('owner_reply'),
+    ownerReplyAt: timestamp('owner_reply_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -367,6 +373,9 @@ export const guideReviews = pgTable(
     rating: integer('rating').notNull(),
     title: varchar('title', { length: 120 }),
     body: text('body'),
+    // One public reply from the owner, shown under the review.
+    ownerReply: text('owner_reply'),
+    ownerReplyAt: timestamp('owner_reply_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

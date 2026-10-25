@@ -2,7 +2,7 @@
 
 import { ApiError } from '@rsmm/api-client';
 import type { ModCategory } from '@rsmm/schemas';
-import { Badge, Button, Input, Spinner } from '@rsmm/ui';
+import { Badge, Button, Input, ProgressBar, Spinner } from '@rsmm/ui';
 
 function Label({
   htmlFor,
@@ -19,15 +19,16 @@ function Label({
     </label>
   );
 }
-import { AlertTriangle, ImageIcon, Loader2, Package, Upload } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
 import { parseModManifest } from '../../lib/manifest-toml';
-import { formatObjectStorageError } from '../../lib/object-storage-error';
+import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../lib/upload';
 import { readManifestText } from '../../lib/zip-manifest';
+import { FileDrop } from '../components/file-drop';
 import { MDEditor } from '../components/md-editor';
 
 // react-md-editor pulls in `navigator` at module top-level; load it on
@@ -44,6 +45,17 @@ const CATEGORIES: ModCategory[] = [
   'utility',
 ];
 
+const CATEGORY_LABELS: Record<ModCategory, string> = {
+  gameplay: 'Gameplay',
+  balance: 'Balance',
+  cosmetic: 'Cosmetic',
+  qol: 'Quality of life',
+  audio: 'Audio',
+  difficulty: 'Difficulty',
+  speedrun: 'Speedrun',
+  utility: 'Utility',
+};
+
 const SLUG_RE = /^[a-z0-9][a-z0-9-_]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
 
@@ -51,27 +63,12 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'hashing' }
   | { kind: 'presigning' }
-  | { kind: 'uploading-zip' }
+  | { kind: 'uploading-zip'; loaded: number; total: number }
   | { kind: 'scanning' }
   | { kind: 'uploading-image' }
   | { kind: 'patching' }
   | { kind: 'done'; slug: string }
   | { kind: 'error'; message: string; detail?: string };
-
-async function sha256Hex(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MiB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
-}
 
 export default function PublishPage() {
   const router = useRouter();
@@ -264,23 +261,15 @@ export default function PublishPage() {
         sizeBytes: zip.size,
       });
 
-      setPhase({ kind: 'uploading-zip' });
-      const shaBytes = new Uint8Array(sha.length / 2);
-      for (let i = 0; i < shaBytes.length; i++) {
-        shaBytes[i] = Number.parseInt(sha.slice(i * 2, i * 2 + 2), 16);
-      }
-      const putRes = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        body: zip,
+      setPhase({ kind: 'uploading-zip', loaded: 0, total: zip.size });
+      await putFile(presigned.uploadUrl, zip, {
         headers: {
           'Content-Type': 'application/zip',
-          'x-amz-checksum-sha256': btoa(String.fromCharCode(...shaBytes)),
+          'x-amz-checksum-sha256': hexToBase64(sha),
         },
+        what: 'mod archive upload',
+        onProgress: (loaded, total) => setPhase({ kind: 'uploading-zip', loaded, total }),
       });
-      if (!putRes.ok) {
-        const text = await putRes.text().catch(() => '');
-        throw new Error(formatObjectStorageError(putRes.status, text, 'mod archive upload'));
-      }
 
       // Scanning is async now: this enqueues the version and returns instantly
       // with a place in line. The worker scans it within a minute or two; if it
@@ -296,15 +285,10 @@ export default function PublishPage() {
           contentType: image.type as 'image/png' | 'image/jpeg' | 'image/webp',
           sizeBytes: image.size,
         });
-        const imgPut = await fetch(imgPresigned.uploadUrl, {
-          method: 'PUT',
-          body: image,
+        await putFile(imgPresigned.uploadUrl, image, {
           headers: { 'Content-Type': image.type },
+          what: 'image upload',
         });
-        if (!imgPut.ok) {
-          const text = await imgPut.text().catch(() => '');
-          throw new Error(formatObjectStorageError(imgPut.status, text, 'image upload'));
-        }
         imageUrl = imgPresigned.publicUrl;
       }
 
@@ -420,21 +404,16 @@ export default function PublishPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="zip" className="flex items-center gap-2">
-              <Package className="h-4 w-4" /> Mod archive (.zip)
-            </Label>
-            <input
+            <Label htmlFor="zip">Mod archive</Label>
+            <FileDrop
               id="zip"
-              type="file"
               accept=".zip,application/zip"
-              onChange={(e) => void chooseZip(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+              label="Mod archive (.zip)"
+              hint="up to 500 MB"
+              file={zip}
+              onFile={(f) => void chooseZip(f)}
+              disabled={busy}
             />
-            {zip ? (
-              <p className="text-xs text-muted-foreground">
-                {zip.name} — {fmtBytes(zip.size)}
-              </p>
-            ) : null}
             {fromManifest?.kind === 'filled' ? (
               <output className="block text-xs text-muted-foreground">
                 {fromManifest.filled.length > 0
@@ -452,21 +431,17 @@ export default function PublishPage() {
             ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="image" className="flex items-center gap-2">
-              <ImageIcon className="h-4 w-4" /> Cover image (optional)
-            </Label>
-            <input
+            <Label htmlFor="image">Cover image (optional)</Label>
+            <FileDrop
               id="image"
-              type="file"
               accept="image/png,image/jpeg,image/webp"
-              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
+              label="Cover image"
+              hint="PNG, JPEG or WebP, 16:9 looks best"
+              file={image}
+              onFile={setImage}
+              preview
+              disabled={busy}
             />
-            {image ? (
-              <p className="text-xs text-muted-foreground">
-                {image.name} — {fmtBytes(image.size)}
-              </p>
-            ) : null}
           </div>
         </section>
 
@@ -483,9 +458,16 @@ export default function PublishPage() {
                 placeholder="my-cool-mod"
                 aria-invalid={slug.length > 0 && !slugValid ? true : undefined}
               />
-              <p className="text-xs text-muted-foreground">
-                Lowercase, letters/digits/<code>-_</code>. Cannot change later.
-              </p>
+              {slug.length > 0 && !slugValid ? (
+                <p className="text-xs text-destructive">
+                  Start with a letter or digit; then only lowercase letters, digits, - or _.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  The mod's permanent id in its URL (/registry/{slug || 'my-cool-mod'}). Cannot
+                  change later.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="version">Version</Label>
@@ -496,7 +478,13 @@ export default function PublishPage() {
                 placeholder="0.1.0"
                 aria-invalid={!versionValid ? true : undefined}
               />
-              <p className="text-xs text-muted-foreground">Semver (x.y.z).</p>
+              {versionValid ? (
+                <p className="text-xs text-muted-foreground">Semver, e.g. 0.1.0.</p>
+              ) : (
+                <p className="text-xs text-destructive">
+                  Three numbers separated by dots, e.g. 0.1.0.
+                </p>
+              )}
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="name">Display name</Label>
@@ -526,7 +514,7 @@ export default function PublishPage() {
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {CATEGORY_LABELS[c]}
                   </option>
                 ))}
               </select>
@@ -638,6 +626,19 @@ export default function PublishPage() {
           .
         </p>
 
+        {busy ? (
+          <div className="grimoire-card space-y-3 p-5" aria-live="polite">
+            <PublishSteps phase={phase} hasImage={!!image} />
+            {phase.kind === 'uploading-zip' ? (
+              <ProgressBar
+                value={phase.loaded}
+                max={phase.total}
+                label={`${fmtBytes(phase.loaded)} of ${fmtBytes(phase.total)}`}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
         {!canSubmit && !busy && blockers.length > 0 ? (
           <p className="text-xs text-amber-500">To publish: {blockers.join(', ')}.</p>
         ) : null}
@@ -650,29 +651,9 @@ export default function PublishPage() {
             Cancel
           </Link>
           <Button onClick={publish} disabled={!canSubmit} size="lg">
-            {phase.kind === 'hashing' ? (
+            {busy ? (
               <>
-                <Spinner /> Hashing
-              </>
-            ) : phase.kind === 'presigning' ? (
-              <>
-                <Spinner /> Presigning
-              </>
-            ) : phase.kind === 'uploading-zip' ? (
-              <>
-                <Spinner /> Uploading zip
-              </>
-            ) : phase.kind === 'scanning' ? (
-              <>
-                <Spinner /> Queuing scan
-              </>
-            ) : phase.kind === 'uploading-image' ? (
-              <>
-                <Spinner /> Uploading image
-              </>
-            ) : phase.kind === 'patching' ? (
-              <>
-                <Spinner /> Saving
+                <Spinner /> Publishing…
               </>
             ) : (
               <>
@@ -683,5 +664,39 @@ export default function PublishPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+const STEPS = [
+  { kinds: ['hashing'], label: 'Checking the archive' },
+  { kinds: ['presigning'], label: 'Registering the version' },
+  { kinds: ['uploading-zip'], label: 'Uploading the archive' },
+  { kinds: ['scanning'], label: 'Queuing the malware scan' },
+  { kinds: ['uploading-image'], label: 'Uploading the cover image', imageOnly: true },
+  { kinds: ['patching'], label: 'Saving details' },
+] as const;
+
+/** Checklist of the publish steps: done, current (spinner), or still to come. */
+function PublishSteps({ phase, hasImage }: { phase: Phase; hasImage: boolean }) {
+  const steps = STEPS.filter((s) => !('imageOnly' in s) || hasImage);
+  const current = steps.findIndex((s) => (s.kinds as readonly string[]).includes(phase.kind));
+  return (
+    <ol className="space-y-1.5 text-sm">
+      {steps.map((s, i) => (
+        <li
+          key={s.label}
+          className={`flex items-center gap-2 ${i > current ? 'text-muted-foreground' : ''}`}
+        >
+          {i < current ? (
+            <Check className="h-4 w-4 text-moss" aria-hidden="true" />
+          ) : i === current ? (
+            <Loader2 className="h-4 w-4 animate-spin text-gilt" aria-hidden="true" />
+          ) : (
+            <span className="h-4 w-4 rounded-full border border-border" aria-hidden="true" />
+          )}
+          {s.label}
+        </li>
+      ))}
+    </ol>
   );
 }

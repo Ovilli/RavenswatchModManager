@@ -60,20 +60,33 @@ def cooking_dir() -> Path | None:
 
 def install_path(rel: str) -> Path | None:
     """Where a decoded cooked path lives in the install, pristine copy first."""
+    found = install_copies(rel)
+    return found[-1] if found else None
+
+
+def install_copies(rel: str) -> list[Path]:
+    """Every copy of a decoded cooked path in the install: the live file, then
+    rsmm's pristine backup of it. A backup made before a game update is older
+    than the live file, so two files read one by one through `install_path`
+    can come from different game builds; a reader whose files must agree
+    (a font's glyph table and its page) tries the copies itself."""
     from ..cli.apply_mods import resolve_special
     from .asset_map import decoded_to_encoded
 
     cooking = cooking_dir()
     if cooking is None:
-        return None
+        return []
     dec2enc = decoded_to_encoded()
     enc = dec2enc.get(rel) or resolve_special(rel, dec2enc)
     if not enc:
-        return None
+        return []
     p = cooking / enc.replace("\\", "/")
-    bak = p.with_name(p.name + BACKUP_SUFFIX)
-    if bak.is_file():
-        return bak
+    return [c for c in (p, p.with_name(p.name + BACKUP_SUFFIX)) if c.is_file()]
+
+
+def mirror_path(rel: str) -> Path | None:
+    """The mirror's copy of a decoded cooked path, if it has one."""
+    p = UNCOOKED / Path(*rel.replace("\\", "/").split("/"))
     return p if p.is_file() else None
 
 
@@ -93,10 +106,21 @@ def root() -> Path:
 
 def read(rel: str) -> bytes | None:
     """Cooked bytes for a decoded path (forward slashes), from the mirror or
-    from the install; None when neither has it."""
+    from the install; None when neither has it.
+
+    When the pristine install copy is newer than the default `data/uncooked`
+    mirror (a game update landed after `extract_uncooked` last ran), the
+    install copy wins so mods never patch stale entity files."""
     rel = rel.replace("\\", "/")
     p = UNCOOKED / Path(*rel.split("/"))
     if p.is_file():
+        if UNCOOKED == DATA_DIR / "uncooked":
+            src = install_path(rel)
+            try:
+                if src is not None and src.stat().st_mtime > p.stat().st_mtime:
+                    return src.read_bytes()
+            except OSError:
+                pass
         return p.read_bytes()
     src = install_path(rel)
     try:
@@ -121,17 +145,20 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
     one family absent from it; they are read by name, never listed.
     """
     base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
+    out: set[str] = set()
     if base.is_dir():
-        return sorted(
+        out.update(
             p.relative_to(UNCOOKED).as_posix()
             for p in base.rglob(f"*{suffix}") if p.is_file()
         )
+        if UNCOOKED != DATA_DIR / "uncooked":
+            return sorted(out)
     from .asset_map import decoded_to_encoded
 
-    if cooking_dir() is None:
-        return []
-    return sorted(k for k in decoded_to_encoded()
-                  if k.startswith(prefix) and k.endswith(suffix))
+    if cooking_dir() is not None:
+        out.update(k for k in decoded_to_encoded()
+                   if k.startswith(prefix) and k.endswith(suffix))
+    return sorted(out)
 
 
 def stems(directory: str, suffix: str) -> list[str]:

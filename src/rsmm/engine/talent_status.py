@@ -12,11 +12,11 @@ get-value node, a value in her hero file that reads the talent's owned state.
 Built here:
 
 1. **Flag**, in the file holding the talent: a true/false value reading the
-   talent's owned state (a copy of Freezing Splash's ``Skill Power Chill
-   Available``).
+   talent's owned state (written, ``talent_writer``, in the shape of Freezing
+   Splash's ``Skill Power Chill Available``).
 2. **Reader**: when the damage is in another entity of the hero (a caster, a
-   projectile), a copy of Melusine's caster's get-value node reads the flag,
-   switched on first thing by the entity's start-up state.
+   projectile), a get-value node reads the flag (written, as Melusine's caster's
+   is), switched on first thing by the entity's start-up state.
 3. **Debuff**: a copy of a shipped debuff of the chosen status, with its status
    modifier, appended to the damage's debuff list; its switch reads the flag
    (hero file: the owned state itself) or the reader.
@@ -28,7 +28,9 @@ from dataclasses import dataclass
 
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
+from . import entity_parts as P
 from . import talent_add_stat as TA
+from . import talent_writer as TW
 
 
 class StatusError(ValueError):
@@ -66,12 +68,6 @@ DONORS: dict[str, Donor] = {
 }
 STATUSES = tuple(DONORS)
 
-#: Freezing Splash's owned flag (hero file) and its caster's reader of it.
-FLAG_DONOR_FILE = "Hero_Melusine"
-FLAG_DONOR = "Skill Power Chill Available"
-READER_DONOR_FILE = "Hero_Melusine_Power_Caster_Model"
-READER_DONOR = "Owner Skill Power Chill Available Get Value"
-
 _DEBUFFS = "bytes_36"
 
 
@@ -86,7 +82,7 @@ def debuff_of(raw: bytes, modifier: str) -> int:
     return hits[0]
 
 
-def add_flag(raw: bytes, flag_raw: bytes, *, talent: str, seed: str = "") -> tuple[bytes, str]:
+def add_flag(raw: bytes, *, talent: str, seed: str = "") -> tuple[bytes, str]:
     """Return the file holding ``talent`` with a true/false value that is on
     while the talent is owned (step 1), and that value's name."""
     graph = EG.parse(raw)
@@ -97,61 +93,63 @@ def add_flag(raw: bytes, flag_raw: bytes, *, talent: str, seed: str = "") -> tup
     name = f"Skill {talent} Owned"
     if any(c.name == name for c in graph.components):
         return raw, name                       # one flag serves every status of the talent
-    ef, donor = GE.EntityFile(raw), GE.EntityFile(flag_raw)
+    ef = GE.EntityFile(raw)
     try:
-        ef.clone([FLAG_DONOR], rename={FLAG_DONOR: name},
-                 group={donor.component(FLAG_DONOR).group: f"Skill {talent}"}, source=donor,
-                 seed=f"{seed or talent}:owned")
-        ef.set_ref(name, "value", state.name)
+        TW.TalentWriter(ef, f"{seed or talent}:owned", f"Skill {talent}").value_of(
+            name, TW.link_to(ef, state.name), flag=True)
         return ef.to_bytes(), name
-    except GE.EntityEditError as e:
+    except (GE.EntityEditError, P.PartError) as e:
         raise StatusError(f"talent {talent!r}: {e}") from e
 
 
-def reader(raw: bytes, reader_raw: bytes, *, flag_guid: bytes, flag_label: str,
-           owner_resource: str, name: str, seed: str = "") -> bytes:
+def startup_state(graph: EG.EntityGraph, owner_resource: str, *, but: str = "") -> str | None:
+    """The state of a spawned entity whose ``activates`` list switches on its
+    readers of the hero (``owner_resource``), or None: where a new reader must be
+    switched on too. ``but`` is a reader to leave out of the count."""
+    from . import entity_fields as EF
+    readers = {c.guid for c in graph.components if c.cls.endswith("GetValueSettings")
+               and owner_resource in "".join(c.literals) and c.name != but}
+    best, most = None, 0
+    for c in graph.components:
+        f = next((x for x in EF.fields(c) if x.name == "activates" and x.kind == "ref[]"), None)
+        if f is None:
+            continue
+        k = sum(c.body[it.offset + 8:it.offset + 24] in readers for it in f.items)
+        if k > most:
+            best, most = c.name, k
+    return best
+
+
+def reader(raw: bytes, *, flag_guid: bytes, flag_label: str, owner_resource: str,
+           name: str, seed: str = "", scope: str = "") -> bytes:
     """Return ``raw`` (another entity of the hero) with a node ``name`` reading
     the flag from the hero (step 2), switched on first by the entity's start-up
-    state (the list that switches on its other readers of the hero)."""
-    from . import entity_fields as EF
-    ef, donor = GE.EntityFile(raw), GE.EntityFile(reader_raw)
+    state (the list that switches on its other readers of the hero). ``scope`` is
+    the entity's own name, for one whose references do not tell it."""
+    ef = GE.EntityFile(raw, scope)
     if any(c.name == name for c in ef.graph().components):
         return raw
-    old = next(r.guid for r in donor.component(READER_DONOR).refs if r.path.endswith(FLAG_DONOR))
     try:
-        ef.clone([READER_DONOR], rename={READER_DONOR: name}, source=donor, seed=f"{seed}:owned")
-        if ef.retarget_external(name, old, flag_guid, flag_label) != 1:
-            raise StatusError(f"{READER_DONOR!r} no longer reads {FLAG_DONOR!r}")
-        ef.set_value(name, "template[1]", owner_resource)
-        # The start-up list is the one switching on readers of the owner.
-        g = ef.graph()
-        readers = {c.guid for c in g.components if c.cls.endswith("GetValueSettings")
-                   and owner_resource in "".join(c.literals) and c.name != name}
-        best, most = None, 0
-        for c in g.components:
-            f = next((x for x in EF.fields(c) if x.name == "activates" and x.kind == "ref[]"), None)
-            if f is None:
-                continue
-            k = sum(c.body[it.offset + 8:it.offset + 24] in readers for it in f.items)
-            if k > most:
-                best, most = c.name, k
+        TW.TalentWriter(ef, f"{seed}:owned", "").reader(
+            name, owner_resource, P.Link(flag_guid, flag_label))
+        best = startup_state(ef.graph(), owner_resource, but=name)
         if best is None:
             raise StatusError("no start-up state here switches on readers of the hero")
         ef.insert_ref(best, "activates", 0, name)
         return ef.to_bytes()
-    except GE.EntityEditError as e:
+    except (GE.EntityEditError, P.PartError) as e:
         raise StatusError(str(e)) from e
 
 
 def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, switch: str,
-                 talent: str, seed: str = "") -> bytes:
+                 talent: str, seed: str = "", scope: str = "") -> bytes:
     """Return ``raw`` with damage record ``damage`` also putting ``status`` on
     whoever it hits while ``switch`` (a state or true/false value of this file)
     is on (step 3)."""
     if status not in DONORS:
         raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
     d = DONORS[status]
-    ef = GE.EntityFile(raw)
+    ef = GE.EntityFile(raw, scope)
     c = ef.component(damage)
     if not c.cls.endswith("CpntDamageSettings"):
         raise StatusError(f"{damage!r} is not a damage record")
@@ -183,7 +181,13 @@ def damages(files: list[tuple[str, bytes]], hero: str) -> list[dict]:
     for stem, raw in files:
         if stem != main and not reads_owner(raw, owner):
             continue
-        for c in EG.parse(raw).components:
+        graph = EG.parse(raw)
+        # A hit outside the hero's file is switched by a reader of the hero,
+        # which only runs when the entity's start-up state switches it on
+        # (Merlin's meteor reads the hero but switches no reader on).
+        if stem != main and startup_state(graph, owner) is None:
+            continue
+        for c in graph.components:
             if not c.cls.endswith("CpntDamageSettings") or c.group.startswith("Skill"):
                 continue
             ability = next((a for g, a in _GROUP_ABILITY if c.group.startswith(g)), None) \

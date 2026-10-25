@@ -49,11 +49,14 @@ def _once(fn):
     cache lets both parse the same cooked files (a fast tab switch, or the
     startup warm-up racing the page's first read), doubling the work they then
     fight over the GIL to finish. Locked per function, so a slow hero's
-    talents do not hold up an icon."""
-    cached, lock = cache(fn), threading.RLock()
+    talents do not hold up an icon, and per ARGUMENT, so one hero still loading
+    does not hold up another."""
+    cached, guard, locks = cache(fn), threading.Lock(), {}
 
     @wraps(fn)
     def run(*args):
+        with guard:
+            lock = locks.setdefault(args, threading.RLock())
         with lock:
             return cached(*args)
     run.cache_clear = cached.cache_clear
@@ -97,8 +100,29 @@ def _icon_stem(icon: str | None) -> str | None:
     return stem(icon)
 
 
+#: The key a blank item (no base: written from scratch, ``engine.item_frame``) is
+#: edited under: ``BLANK`` alone or ``BLANK:<anything>``, so a page or a loaded
+#: mod can hold several at once.
+BLANK = "RSMM_Blank_Item"
+
+
+def is_blank(item_id: str) -> bool:
+    return item_id == BLANK or item_id.startswith(BLANK + ":")
+
+
+def _blank_detail(item_id: str) -> dict:
+    """The form of an item with no base: nothing to start from but the frame."""
+    from rsmm.engine.item_frame import DEFAULT_ICON
+    return {"id": item_id, "rarity": "Common", "name": "New item", "description": "",
+            "icon": _icon_stem(DEFAULT_ICON), "idBytes": 0, "values": [], "modifiers": [],
+            "superKey": None, "superText": "", "blank": True,
+            "card": {"description": {"key": "", "text": "", "entries": []}}}
+
+
 def item_detail(item_id: str) -> dict:
     """What the form needs for one base item: its values and their state."""
+    if is_blank(item_id):
+        return _blank_detail(item_id)
     from rsmm.cli.cmd_items import _find_item
     from rsmm.engine import magic_item_cook as cook
     from rsmm.engine.talent_values import list_talent_values
@@ -171,6 +195,101 @@ def _card(data: bytes) -> dict:
     return out
 
 
+def item_preview(req: dict) -> dict:
+    """What the card of the item being edited really shows: the item is built
+    from the page's edits exactly as apply builds it, and each ``{N}`` of its
+    description and super text is read back with its number and display mode
+    (1 = x100 as a percentage; 0 and 2 print the number as it is, which is how
+    a shield's slot showed 0.3 as "0"). Plus the build checks' warnings.
+
+    A request the build refuses answers ``{"error": ...}`` rather than failing:
+    the page asks on every edit, half-typed ones included."""
+    from rsmm.cli.cmd_items import _find_item
+    from rsmm.engine.item_checks import item_warnings
+    from rsmm.sdk.kinds.items import build_entity
+    try:
+        defs = item_defs(req)
+    except EditorError as e:
+        return {"error": str(e)}
+    fields = defs[0][2]
+    if fields.get("base"):
+        found = _find_item(str(fields["base"]))
+        if found is None:
+            return {"error": "no such base item"}
+        base = found[2].read_bytes()
+    else:
+        from rsmm.engine import item_frame
+        from rsmm.engine.entity_check import _corpus_reader
+        try:
+            base = item_frame.build(_corpus_reader)
+        except item_frame.FrameError as e:
+            return {"error": str(e)}
+    try:
+        ent = build_entity(fields, base)
+    except (ValueError, TypeError, KeyError) as e:
+        return {"error": str(e)}
+    out: dict = {"warnings": item_warnings(ent, base, set(fields.get("stats") or {}))}
+    if fields.get("effects"):
+        # The text the item kind writes when the page leaves the description empty.
+        from rsmm.engine.item_effect import describe, parse_effects
+        out["autoText"] = describe(parse_effects(fields["effects"]))
+    if fields.get("super_effects"):
+        from rsmm.engine.item_effect import describe, parse_effects
+        out["autoSuper"] = describe(parse_effects(fields["super_effects"]), one_line=True)
+    for part, fmt in _CARD_FORMATS.items():
+        out[part] = _built_slots(ent, fmt)
+    return out
+
+
+def _built_slots(ent: bytes, fmt: str) -> list[dict]:
+    """``[{node, value, mode}]`` for each value slot of String Format ``fmt``."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityEditError, EntityFile
+    from rsmm.engine.item_checks import _target
+    ef = EntityFile(ent, "x")
+    try:
+        c = ef.component(fmt)
+    except EntityEditError:
+        return []
+    comps = {x.name: x for x in ef.graph().components}
+    slots = []
+    for f in ef._format_slots(c)[0]:
+        body = c.body[f.offset:f.offset + f.size]
+        node = _target(f.text or "")
+        slots.append({"node": node, "value": _number(comps.get(node or ""), comps),
+                      "mode": body[-8] if len(body) >= 8 else 0})
+    return slots
+
+
+def _number(c, comps: dict, depth: int = 0) -> float | None:
+    """A part's number: a Value's literal, or for a math part the first number
+    it reads (what a single copy shows, as the page's estimate does)."""
+    from rsmm.engine import entity_fields as EF
+    if c is None or depth > 3:
+        return None
+    for f in EF.fields(c):
+        if f.name == "value" and f.text:
+            m = re.match(r"(?:f32|int) (-?[\d.e+-]+)", f.text)
+            if m and "<-" not in f.text:
+                return float(m[1])
+    if c.cls == "oCEntityCpntValueOperationsSettings":
+        names = [r.path.rsplit("\\", 1)[-1] for r in c.refs]
+        # Fairy Dust's shield is Level Healing (10 at level 1) x its 1.0: the
+        # card reads 10, so count the level selector at its level-1 value.
+        level = 10.0 if any(n.startswith("Level Healing Selector") for n in names) else 1.0
+        for name in names:
+            n = _number(comps.get(name), comps, depth + 1)
+            if n is not None:
+                return n * level
+    return None
+
+
+def _triggers() -> dict[str, str]:
+    """The ``effect`` triggers, ``{on: card wording}``, for the Timed effect picker."""
+    from rsmm.engine.item_effect import trigger_texts
+    return trigger_texts()
+
+
 def _hex(key: int) -> str:
     return f"0x{key:08x}"
 
@@ -222,11 +341,15 @@ def stats() -> list[dict]:
     # Game state the engine keeps beside the stats ("Is in cinematic", "Is
     # day") is not something a modifier changes: left out of every picker.
     state = IM.game_state_keys()
+    # A charge no talent can give is left out too.
+    from rsmm.engine.talent_add_stat import charges_heard, is_charge
+    heard = charges_heard()
     return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
-             "onHit": k in on_hit, "tally": stat_tally(n),
+             "onHit": k in on_hit, "tally": stat_tally(n), "charge": is_charge(k),
+             "integer": IM.is_integer_stat(k),
              "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
             for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
-            if k not in state]
+            if k not in state and not (heard and is_charge(k) and k not in heard)]
 
 
 #: The engine's per-ability stat suffix -> the button the cards name it by.
@@ -547,7 +670,7 @@ def _add_stat_info(files: list[bytes]):
         for i in range(len(files)):
             graph, ef, during, after = file_info(i)
             try:
-                _state, _sel, fmt = TA.talent_parts(graph, source)
+                _ctl, _state, fmt = TA.card_parts(graph, source)
             except TA.AddStatError as e:
                 why = why or str(e)
                 continue
@@ -557,10 +680,10 @@ def _add_stat_info(files: list[bytes]):
             # the old effect, so the kind refuses it (talents._home).
             overridden = i > 0 and f"Skill Controller {source}".encode() in files[0]
             return {"ok": True, "why": "", "nextSlot": slots, "during": during,
-                    "after": after, "rebuild": not overridden,
+                    "after": after, "on": talent_triggers(), "rebuild": not overridden,
                     "rebuildWhy": ("it is shared with another hero's file, and turning it "
                                    "off there is not supported yet") if overridden else ""}
-        return {"ok": False, "why": why, "nextSlot": None, "during": [], "after": []}
+        return {"ok": False, "why": why, "nextSlot": None, "during": [], "after": [], "on": {}}
     return info
 
 
@@ -636,6 +759,21 @@ def scalable(hero: str) -> list[dict]:
     files = [(f.name.split(".")[0], f.read_bytes()) for f in d.entity_files()
              if f.name.endswith(_GEN_SUFFIX)]
     return TR.candidates(files, hero)
+
+
+@_once
+def scalable_ranges(hero: str) -> list[dict]:
+    """The 4 range modifiers (Melee, Ranged, Circular, Rectangle) of ``hero``'s
+    abilities (rsmm.engine.talent_range.range_modifiers)."""
+    from rsmm.engine import talent_range as TR
+    from rsmm.sdk.kinds import talents as T
+
+    d = T._resolve_hero_dir(_hero_dir(hero)[len("Hero_"):])
+    if d is None:
+        return []
+    files = [(f.name.split(".")[0], f.read_bytes()) for f in d.entity_files()
+             if f.name.endswith(_GEN_SUFFIX)]
+    return TR.range_modifiers(files, hero)
 
 
 @_once
@@ -887,31 +1025,38 @@ def _num(v, what: str) -> float:
 def item_defs(req: dict) -> list[tuple[str, str, dict]]:
     """``(kind, id, fields)`` for an item request, validated.
 
-    ``req``: ``mode`` (``clone``, the default, or ``replace``), ``id``,
-    ``base``, optional ``name``/``description``/``rarity``/``icon``,
+    ``req``: ``mode`` (``clone``, the default, ``replace`` or ``blank``),
+    ``id``, ``base``, optional ``name``/``description``/``rarity``/``icon``,
     ``values`` = ``[{label, old, new, shadowed}]`` (changed only), ``stats`` =
-    ``[{modifier, stat}]`` (changed only) and ``superDescription``.
+    ``[{modifier, stat}]`` (changed only), ``effects`` and ``superEffects``
+    (the item kind's ``effects`` / ``super_effects`` tables) and
+    ``superDescription``.
 
     A replacement changes the shipped item itself: its block id is the base's,
-    it keeps the base's rarity, and with nothing changed it writes nothing.
+    it keeps the base's rarity, and with nothing changed it writes nothing. A
+    blank item has no base: it is written from scratch and does what its
+    ``effects`` say. Any id length works for a copy or a blank item.
     """
     base, new_id = str(req.get("base") or ""), str(req.get("id") or "")
     mode = str(req.get("mode") or "clone")
-    if mode not in ("clone", "replace"):
+    if mode not in ("clone", "replace", "blank"):
         raise EditorError(f"unknown mode {mode!r}")
-    if not base:
+    if not base and mode != "blank":
         raise EditorError("pick a base item")
     if mode == "replace":
         return _replace_defs(req, base)
     if not _ID_RE.match(new_id):
         raise EditorError("the id takes letters, digits and _ only")
-    if len(new_id.encode()) != len(base.encode()):
-        raise EditorError(
-            f"the id must be exactly as long as the base's ({len(base)} characters, "
-            f"now {len(new_id)}): the item copy keeps every byte offset")
     if new_id == base:
         raise EditorError("give the copy an id of its own")
-    fields: dict = {"kind": "item", "id": new_id, "base": base}
+    if mode == "blank":
+        # No base: the item kind writes it from scratch and its effects.
+        if not req.get("effects") and not req.get("superEffects"):
+            raise EditorError("add an effect: an item from scratch does only what its "
+                              "effects say")
+        fields: dict = {"kind": "item", "id": new_id}
+    else:
+        fields = {"kind": "item", "id": new_id, "base": base}
     for key in ("name", "description", "rarity"):
         v = req.get(key)
         if isinstance(v, str) and v.strip():
@@ -975,9 +1120,44 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
         swaps[modifier] = stat
     if swaps:
         fields["stats"] = swaps
+    from rsmm.engine.item_effect import ItemEffectError, parse_effects
+    effects = req.get("effects") or ([req["effect"]] if req.get("effect") else [])
+    if effects:
+        try:
+            parse_effects(effects)
+        except ItemEffectError as e:
+            raise EditorError(str(e)) from None
+        fields["effects"] = effects
+    supers = req.get("superEffects") or []
+    if supers:
+        if req.get("noSuper"):
+            raise EditorError("“No super effect” drops the super effects you added")
+        try:
+            parse_effects(supers)
+        except ItemEffectError as e:
+            raise EditorError(f"super effect: {e}") from None
+        fields["super_effects"] = supers
+    if req.get("sharedIdentity") and req.get("mode") == "clone":
+        fields["unique_identity"] = False         # a copy has its own by default
     sup = req.get("superDescription")
-    if isinstance(sup, str) and sup.strip():
+    if req.get("noSuper"):
+        fields["super_effect"] = False
+    elif isinstance(sup, str) and sup.strip():
         fields["super_description"] = sup
+    steps = req.get("steps")
+    if steps:
+        # Graph steps have no controls on the page; they come back as loaded.
+        if not isinstance(steps, list) or not all(isinstance(x, dict) for x in steps):
+            raise EditorError("steps must be a list of tables")
+        fields["steps"] = steps
+
+
+def talent_triggers() -> dict[str, str]:
+    """``{trigger: card wording}`` of the game events a talent's bonus can start
+    from (``add_stats`` ``on``), worded as the item editor words them."""
+    from rsmm.engine import item_effect as IE
+    from rsmm.engine import talent_add_stat as TA
+    return {t: IE.TRIGGERS[t].text for t in TA.TRIGGERS}
 
 
 def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
@@ -987,7 +1167,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
     ``[{file, label, type, old, new, shadowed}]`` and ``cards`` =
     ``[{source, name?, description?}]`` and ``stats`` = ``[{file, modifier,
     stat}]`` and ``addStats`` = ``[{talent, stat, values: [4], percent,
-    during?, after?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
+    during?, after?, on?, seconds?, cooldown?, next?}]`` (new stats a talent did not have) and
     ``rebuild`` = ``[talent]`` (talents whose own effect is turned off, the
     talent builder) and ``include`` = ``[{talent, from, hero?}]`` (owning
     ``talent`` also runs ``from``'s effect, ``hero``'s when given); only changed
@@ -1044,8 +1224,11 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         talent, stat = str(row.get("talent") or ""), str(row.get("stat") or "")
         if not talent or not stat:
             raise EditorError("an added stat needs its talent and a stat")
+        from rsmm.engine.talent_add_stat import held_state
+        invulnerable = held_state(stat) is not None
         try:
-            resolve_stat(stat)
+            if not invulnerable:
+                resolve_stat(stat)
         except ItemModifierError as e:
             raise EditorError(f"{talent}: {e}") from None
         values = row.get("values")
@@ -1058,28 +1241,34 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         after = row.get("after") or None
         if after is not None and str(after).upper() not in abilities:
             raise EditorError(f"{talent}: unknown ability {after!r}")
-        if during and after:
-            raise EditorError(f"{talent} {stat}: choose 'during' or 'after', not both")
+        on = row.get("on") or None
+        if on is not None and on not in talent_triggers():
+            raise EditorError(f"{talent}: unknown trigger {on!r}")
+        if sum(bool(x) for x in (during, after, on)) > 1:
+            raise EditorError(f"{talent} {stat}: choose one of 'during', 'after' or a trigger")
+        starts = after or on
+        if invulnerable and not (during or starts):
+            raise EditorError(f"{talent}: {stat.lower()} needs a 'When' (never always on)")
         seconds = None
-        if after:
+        if starts:
             seconds = float(_num(row.get("seconds"), f"{talent} {stat} seconds"))
             if seconds <= 0:
                 raise EditorError(f"{talent} {stat}: how many seconds it lasts must be above 0")
         cooldown = None
         if row.get("cooldown") not in (None, ""):
-            if not after:
+            if not starts:
                 raise EditorError(f"{talent} {stat}: a cooldown only limits 'For a while after'")
             cooldown = float(_num(row.get("cooldown"), f"{talent} {stat} cooldown"))
             if cooldown <= 0:
                 raise EditorError(f"{talent} {stat}: the cooldown must be above 0 seconds")
         nxt = row.get("next") or None
         if nxt is not None:
-            if not after:
+            if not starts:
                 raise EditorError(f"{talent} {stat}: 'your next ...' only ends "
                                   "a 'For a while after'")
             if str(nxt).upper() not in abilities:
                 raise EditorError(f"{talent}: unknown ability {nxt!r}")
-            if str(nxt).upper() == str(after).upper():
+            if after and str(nxt).upper() == str(after).upper():
                 raise EditorError(f"{talent} {stat}: the next ability must differ from the one "
                                   "that starts it")
         added.append({"talent": talent, "stat": stat,
@@ -1087,6 +1276,7 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
                       **({} if row.get("percent", True) else {"percent": False}),
                       **({"during": str(during).upper()} if during else {}),
                       **({"after": str(after).upper(), "seconds": seconds} if after else {}),
+                      **({"on": on, "seconds": seconds} if on else {}),
                       **({"cooldown": cooldown} if cooldown is not None else {}),
                       **({"next": str(nxt).upper()} if nxt else {})})
     rebuild = req.get("rebuild") or []
@@ -1108,17 +1298,25 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         include.append({"talent": talent, "from": other, **({"hero": donor} if donor else {})})
     scale = []
     for row in req.get("scale") or []:
-        talent, node = str((row or {}).get("talent") or ""), str((row or {}).get("node") or "")
+        talent = str((row or {}).get("talent") or "")
+        node = str((row or {}).get("node") or (row or {}).get("range_type") or "")
         if not talent or not node:
             raise EditorError("a bigger ability needs its talent and the number it grows")
         values = row.get("values")
         if not isinstance(values, list) or len(values) != 4:
             raise EditorError(f"{talent}: give a number for each rarity")
-        scale.append({"talent": talent, "node": node,
-                      "values": [float(_num(v, f"{talent} {node}")) for v in values],
-                      **({"file": str(row["file"])} if row.get("file") else {}),
-                      **({} if row.get("percent", True) else {"percent": False}),
-                      **({} if row.get("visual", True) else {"visual": False})})
+        item = {"talent": talent, "node": node,
+                "values": [float(_num(v, f"{talent} {node}")) for v in values],
+                **({"file": str(row["file"])} if row.get("file") else {}),
+                **({} if row.get("percent", True) else {"percent": False}),
+                **({} if row.get("visual", True) else {"visual": False})}
+        if row.get("range_type"):
+            item["range_type"] = str(row["range_type"])
+        if row.get("ability"):
+            item["ability"] = str(row["ability"])
+        if isinstance(row.get("nodes"), list):
+            item["nodes"] = row["nodes"]
+        scale.append(item)
     on_hit = []
     for row in req.get("onHit") or []:
         talent, damage, status = (str((row or {}).get(k) or "")
@@ -1360,6 +1558,9 @@ def save(defs: list[tuple[str, str, dict]], mod_id: str, root: Path, *,
         modio.write_script(target, script)
     if program is not None:
         modio.write_blocks(target, program)
+    if script is not None or program is not None:
+        # The scripts find the hero through hero capture, off unless the mod asks.
+        modio.require_flags(target)
     return manifest
 
 
@@ -1476,11 +1677,9 @@ def card_texture(name: str) -> bytes | None:
     """One card texture (or font page) decoded to PNG, from the install."""
     from rsmm.engine import corpus, icon_decode
     rel = CARD_TEXTURES.get(name)
-    if rel is None and name.startswith("font_") and name[5:] in CARD_FONTS:
-        font = card_font(name[5:])
-        if font is None:
-            return None
-        rel = CARD_FONTS[name[5:]].rsplit("/", 1)[0] + "/" + font["page"]
+    if rel is None and name.startswith("font_"):
+        pair = _card_font_pair(name[5:])
+        return pair and pair[1]
     if rel is None:
         return None
     raw = corpus.read(rel + ".Texture.dxt")
@@ -1492,21 +1691,29 @@ def card_texture(name: str) -> bytes | None:
         return None
 
 
-@_once
 def card_font(name: str) -> dict | None:
     """A card font's metrics and glyphs, as the page draws them."""
-    from rsmm.engine import corpus, game_font
+    pair = _card_font_pair(name)
+    return pair and pair[0]
+
+
+@_once
+def _card_font_pair(name: str) -> tuple[dict, bytes] | None:
+    """A card font's glyph table and its page as PNG, checked to belong
+    together (`rsmm.engine.game_font.load`). With none, the card falls back to
+    plain text, which is readable."""
+    from rsmm.engine import game_font, icon_decode
     rel = CARD_FONTS.get(name)
-    raw = corpus.read(rel) if rel else None
-    if raw is None:
+    if rel is None:
         return None
-    try:
-        f = game_font.parse(raw)
-    except ValueError:
+    pair = game_font.load(rel)
+    if pair is None:
         return None
-    return {"page": f.page, "pageW": f.page_w, "pageH": f.page_h,
+    f, rgba, width, height = pair
+    meta = {"page": f.page, "pageW": f.page_w, "pageH": f.page_h,
             "lineHeight": f.line_height, "size": f.size,
             "glyphs": {str(cp): list(g) for cp, g in f.glyphs.items()}}
+    return meta, icon_decode.rgba_to_png(rgba, width, height)
 
 
 def _card_texture(req: Request) -> Raw:
@@ -1583,6 +1790,16 @@ def _save(req: Request) -> dict:
     only_other = ((script is not None or program is not None or abil is not None)
                   and req.body.get("edits") == [])
     defs = [] if only_other else _defs(req)
+    # Saved only when it builds: the same check as the Check button (and so
+    # `rsmm apply`). A mod saved without pressing Check could fail at apply.
+    # With no game data at all nothing can be built, so a failure there says
+    # nothing about the mod (CI, an editor run before the install is found).
+    from rsmm.engine import corpus
+    bad = [r for r in check(defs) if not r["ok"]] \
+        if defs and corpus.source() != "none" else []
+    if bad:
+        raise EditorError(f"not saved: {len(bad)} block(s) would fail in rsmm apply: "
+                          + "; ".join(f"{r['kind']} {r['id']}: {r['error']}" for r in bad))
     meta = req.body.get("meta")
     mod_id = str(req.body.get("mod") or "")
     where = save(defs, mod_id, req.ctx.mods_dir,
@@ -1614,6 +1831,8 @@ def _toml_with_script(req: Request) -> dict:
         section, warnings = blocks.compile_blocks(program)
         out["lua"] = (out["lua"] + "\n" if out["lua"] and section else out["lua"]) + section
         out["warnings"] = warnings
+    from rsmm.engine.loader_flags import HERO_CAPTURE, needs_hero_capture
+    out["loaderFlags"] = [HERO_CAPTURE] if needs_hero_capture(out["lua"]) else []
     return out
 
 
@@ -1653,13 +1872,20 @@ def _block_events() -> list[dict]:
             for e in sorted(catalog, key=lambda e: e["name"])]
 
 
+#: GET routes whose answer depends only on game data (see diskcache).
+CACHED = frozenset({
+    "/api/items", "/api/item", "/api/stats", "/api/heroes", "/api/talents",
+    "/api/talents/borrowable", "/api/talents/scalable", "/api/talents/damages",
+})
+
 ROUTES = {
     ("GET", "/static/*"): _static,
     ("GET", "/api/blocks/meta"): lambda req: {"events": _block_events()},
     ("GET", "/api/items"): lambda req: {"items": items()},
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
+    ("POST", "/api/item/preview"): lambda req: item_preview(req.body),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},
-    ("GET", "/api/stats"): lambda req: {"stats": stats()},
+    ("GET", "/api/stats"): lambda req: {"stats": stats(), "triggers": _triggers()},
     ("GET", "/api/cardtex"): _card_texture,
     ("GET", "/api/cardfont"): _card_font,
     ("GET", "/api/icon"): _icon,
@@ -1670,7 +1896,10 @@ ROUTES = {
                                           "skipped": talent_skipped(req.arg("hero")),
                                           "portrait": hero_portrait(req.arg("hero"))},
     ("GET", "/api/talents/borrowable"): lambda req: {"talents": borrowable_talents()},
-    ("GET", "/api/talents/scalable"): lambda req: {"nodes": scalable(req.arg("hero"))},
+    ("GET", "/api/talents/scalable"): lambda req: {
+        "nodes": scalable(req.arg("hero")),
+        "ranges": scalable_ranges(req.arg("hero")),
+    },
     ("GET", "/api/talents/damages"): lambda req: hit_damages(req.arg("hero")),
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},

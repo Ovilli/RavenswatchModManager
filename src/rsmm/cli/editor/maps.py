@@ -3,21 +3,26 @@
 Shows every tile slot of a chapter on a 3D (or top-down) view of the chapter's
 terrain, read from the install at request time, and lets you change how many
 of each kind of tile the generator places, how far apart, which footprints
-each kind fits, the per-flag quotas, and which kinds a slot may hold. Saving
-writes a normal mod (``mods/<id>/manifest.toml`` with one ``tilegen``
-declaration) that ``rsmm apply`` cooks onto the shipped recipe like any other
-content. The page is ``pages/map.html``.
+each kind fits, the per-flag quotas, which footprint groups fill their
+leftover spots, and which kinds a slot may hold. Saving writes a normal mod
+(``mods/<id>/manifest.toml``): either one ``tilegen`` declaration that changes
+the chapter itself, or one ``map`` declaration — a clone of the chapter's map
+with its own recipe and tile pool, which the chapter then plays. Pool edits
+only exist on a clone. The page is ``pages/map.html``.
 """
 
 from __future__ import annotations
 
 import secrets
+import tempfile
 import tomllib
 from pathlib import Path
 
+from rsmm.cli.editor import tiles as _tiles  # the 3D tile mode's routes
 from rsmm.cli.editor.app import Fail, Raw, Request, asset_dir
 from rsmm.engine import map_editor as ME
 from rsmm.engine import map_scene as MS
+from rsmm.engine import scenery_edit as SE
 
 MOUNT = "map"
 PAGE = "map.html"
@@ -28,6 +33,8 @@ STATIC_FILES = {"three.module.min.js": "text/javascript; charset=utf-8"}
 FILE_ROOT = "3D"
 FILE_TYPES = {".glb": "model/gltf-binary", ".png": "image/png"}
 NEXT_STEP = "rsmm restore --all && rsmm apply"
+#: Brush dabs one save may carry; a long painting session is a few thousand.
+MAX_STROKES = 20000
 
 
 def _editor_mods(root: Path) -> list[dict]:
@@ -40,11 +47,12 @@ def _editor_mods(root: Path) -> list[dict]:
             text = man.read_text(encoding="utf-8")
             if not text.startswith(ME.EDITOR_MARK):
                 continue
-            got = ME.read_manifest_edits(text)
+            got = ME.read_manifest(text)
         except (OSError, ValueError):
             continue
         if got:
-            out.append({"id": man.parent.name, "chapter": got[0]})
+            out.append({"id": man.parent.name, "chapter": got["chapter"],
+                        "map": bool(got["map"])})
     return out
 
 
@@ -115,17 +123,96 @@ def _mod(req: Request) -> dict:
         raise Fail(400, "bad mod id")
     man = req.ctx.mods_dir / mod_id / "manifest.toml"
     text = man.read_text(encoding="utf-8") if man.is_file() else ""
-    got = ME.read_manifest_edits(text) if text.startswith(ME.EDITOR_MARK) else None
+    got = ME.read_manifest(text) if text.startswith(ME.EDITOR_MARK) else None
     if not got:
         raise Fail(404, f"{mod_id} is not a map-editor mod")
     name = tomllib.loads(text).get("mod", {}).get("name", "")
-    return {"chapter": got[0], "edits": got[1], "name": name}
+    return {**got, "name": name}
+
+
+def _as_map(body: dict) -> dict | None:
+    m = body.get("map")
+    if m is None:
+        return None
+    if not isinstance(m, dict):
+        raise Fail(400, "map: expected an object")
+    pool = m.get("pool") or {}
+    if not isinstance(pool, dict) or not all(
+            isinstance(pool.get(k, []), list) and all(isinstance(p, str) for p in pool.get(k, []))
+            for k in ("add", "remove")):
+        raise Fail(400, "map.pool: expected {add: [paths], remove: [paths]}")
+    place = m.get("place") or {}
+    if not isinstance(place, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in place.items()):
+        raise Fail(400, "map.place: expected {slot: \"<Biome>/<Tile>\"}")
+    terrain = m.get("terrain") or []
+    if not isinstance(terrain, list) or len(terrain) > MAX_STROKES or not all(
+            isinstance(st, dict) for st in terrain):
+        raise Fail(400, f"map.terrain: expected at most {MAX_STROKES} brush strokes")
+    return {"id": str(m.get("id", "")).strip(), "play": bool(m.get("play")),
+            "pool": {k: list(pool.get(k) or []) for k in ("add", "remove")},
+            "place": place, "terrain": terrain}
+
+
+def _as_scenery(body: dict) -> dict:
+    """``{level: {moves, removes, adds}}`` from the page, shape-checked; the
+    edits themselves are proven by the scenery kind (see `_scenery_changes`)."""
+    sc = body.get("scenery") or {}
+    if not isinstance(sc, dict) or not all(
+            isinstance(k, str) and isinstance(v, dict) for k, v in sc.items()):
+        raise Fail(400, "scenery: expected {level: {moves, removes, adds}}")
+    return {lv: {k: e[k] for k in ("moves", "removes", "adds") if e.get(k)}
+            for lv, e in sc.items() if any(e.get(k) for k in ("moves", "removes", "adds"))}
+
+
+def _scenery_changes(ch: ME.Chapter, scenery: dict) -> list[str]:
+    """Run the scenery kind on each edited level, as ``rsmm apply`` will."""
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import scenery as scenery_kind
+
+    out: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for level, e in sorted(scenery.items()):
+            try:
+                scenery_kind.emit("map-check", ContentDef("scenery", "check", {
+                    "chapter": ch.key, "level": level, **e}), Path(tmp))
+            except ContentError as err:
+                raise Fail(400, str(err)) from err
+            _data, notes = SE.apply(ch, level, e)
+            out += [f"scenery: {n}" for n in notes]
+    return out
+
+
+def _changes(ch: ME.Chapter, edits: dict, as_map: dict | None,
+             scenery: dict | None = None) -> list[str]:
+    """What saving would change, proven to cook before anything is written.
+
+    A clone is proven by the `map` kind itself, on the very manifest text the
+    save would write, so what the page checks is what ``rsmm apply`` builds.
+    """
+    _level, changes = ME.build_level(ch, edits)
+    changes = changes + _scenery_changes(ch, scenery or {})
+    if as_map is None:
+        return changes
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import maps as map_kind
+
+    text = ME.manifest_toml("map-check", "", ch, edits, as_map)
+    block = tomllib.loads(text)["content"][0]
+    fields = {k: v for k, v in block.items() if k not in ("kind", "id")}
+    with tempfile.TemporaryDirectory() as out:
+        map_kind.emit("map-check", ContentDef("map", block["id"], fields), Path(out))
+    pool = as_map["pool"]
+    return (changes + [f"pool: + {p}" for p in pool["add"]]
+            + [f"pool: - {p}" for p in pool["remove"]]
+            + [f"place: {t} on slot {k}" for k, t in as_map["place"].items()]
+            + ([f"terrain: {len(as_map['terrain'])} brush strokes"] if as_map["terrain"] else []))
 
 
 def _check(req: Request) -> dict:
     ch = _chapter(str(req.body.get("chapter", "")))
-    _level, changes = ME.build_level(ch, req.body.get("edits") or {})
-    return {"changes": changes}
+    return {"changes": _changes(ch, req.body.get("edits") or {}, _as_map(req.body),
+                                _as_scenery(req.body))}
 
 
 def _save(req: Request) -> dict:
@@ -135,11 +222,13 @@ def _save(req: Request) -> dict:
     mod_id = str(body.get("mod_id", "")).strip().lower()
     if not ME.valid_mod_id(mod_id):
         raise Fail(400, "mod id: use 2-64 lower-case letters, digits, '-' or '_'")
-    _level, changes = ME.build_level(ch, edits)   # prove it cooks before writing
+    as_map = _as_map(body)
+    scenery = _as_scenery(body)
+    changes = _changes(ch, edits, as_map, scenery)  # prove it cooks before writing
     if not changes:
         raise Fail(400, "nothing to save: every value matches the shipped recipe")
     name = str(body.get("name", "")).strip()[:80]
-    text = ME.manifest_toml(mod_id, name, ch, edits)
+    text = ME.manifest_toml(mod_id, name, ch, edits, as_map, scenery)
     folder = req.ctx.mods_dir / mod_id
     man = folder / "manifest.toml"
     if man.is_file() and not man.read_text(encoding="utf-8").startswith(ME.EDITOR_MARK):
@@ -152,6 +241,12 @@ def _save(req: Request) -> dict:
     return {"path": f"mods/{mod_id}/manifest.toml", "changes": changes, "next": NEXT_STEP}
 
 
+#: GET routes whose answer depends only on game data (see diskcache).
+CACHED = frozenset({
+    "/api/scene", "/api/tiles", "/api/catalog", "/api/layers", "/api/layer",
+    "/api/tile", "/api/terrain", "/api/scenery", "/api/scenery/props",
+}) | _tiles.CACHED
+
 ROUTES = {
     ("GET", "/api/state"): _state,
     ("GET", "/api/recipe"): _recipe,
@@ -160,8 +255,14 @@ ROUTES = {
     ("GET", "/api/terrain"): _drawn(_terrain),
     ("GET", "/api/scene"): _drawn(lambda req, ch: ME.scene_json(ch)),
     ("GET", "/api/tiles"): _drawn(lambda req, ch: {"tiles": ME.tile_pool_json(ch)}),
+    ("GET", "/api/catalog"): lambda req: {"tiles": ME.tile_catalog_json()},
+    ("GET", "/api/layers"): _drawn(lambda req, ch: ME.terrain_layers_json(ch)),
+    ("GET", "/api/layer"): _drawn(lambda req, ch: ME.terrain_layer_json(ch, req.arg("name"))),
     ("GET", "/api/tile"): _drawn(lambda req, ch: ME.tile_json(ch, req.arg("path"))),
     ("GET", "/api/mod"): _mod,
     ("POST", "/api/check"): _check,
     ("POST", "/api/save"): _save,
+    ("GET", "/api/scenery"): _drawn(lambda req, ch: SE.scenery_json(ch)),
+    ("GET", "/api/scenery/props"): _drawn(lambda req, ch: {"props": SE.chapter_props(ch)}),
+    **_tiles.ROUTES,
 }

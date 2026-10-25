@@ -172,7 +172,7 @@ function uid(): string {
   return crypto.randomUUID().replaceAll('-', '').slice(0, 12);
 }
 
-function defaultGameDir(): string {
+export function defaultGameDir(): string {
   switch (getPlatform()) {
     case 'windows':
       return 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Ravenswatch';

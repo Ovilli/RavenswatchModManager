@@ -45,6 +45,8 @@ def _steam_root() -> Path | None:
     home = Path.home()
     cands: list[Path] = []
     if sys.platform == "win32":
+        from rsmm.engine.paths import _registry_steam_roots
+        cands += _registry_steam_roots()
         pf86 = os.environ.get("ProgramFiles(x86)")
         pf = os.environ.get("ProgramFiles")
         if pf86:

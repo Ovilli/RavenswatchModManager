@@ -140,6 +140,9 @@ appears on the site.
 </tr>
 </table>
 
+For the game itself (heroes, talents, items, enemies), the unofficial
+[Ravenswatch Wiki](https://ravenswatch.wiki.gg/), maintained by Skigim, is the reference.
+
 ### Lua mods
 
 Most mods are plain file changes and work wherever the game runs. Lua mods also need

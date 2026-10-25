@@ -61,6 +61,7 @@ function R.damage._utf8_ok(t) return F._utf8_ok(t) end
 --- tick already calls this once a second.
 --- The engine's peer table as the join sees it (test/diagnostic seam).
 function R.damage._peer_join() return F._dmg_peer_join() end
+function R.damage._hero_join() return F._dmg_hero_join() end
 
 --- The connection-record join (test/diagnostic seam).
 function R.damage._conn_join() return F._dmg_conn_join() end
@@ -185,6 +186,14 @@ F._netid = {
     guid_said = false,
     guid_proven = false,
     guid_done = false,   -- a refusal is final for the run: the gates said no
+    -- The hero-template join (F._dmg_hero_join). row.key -> lobby hero id, or
+    -- false once HERO_TRIES reads have failed; cleared every chapter, because
+    -- a chapter rebuilds every controller and the allocator reuses addresses.
+    hero_seen  = {},
+    hero_tries = {},
+    hero_off   = false,  -- the anchor contradicted the join; off until next chapter
+    hero_said  = false,
+    HERO_TRIES = 3,
     -- The net component fields NamedEvent_NetSend dereferences by name.
     DEEP    = { 0xb8, 0xc0, 0xc8 },
     -- oCSLNetworkObject::vft[0x18]: *(*(*(C+0xb8)+0x100)+0x28) is the session
@@ -881,6 +890,143 @@ function F._dmg_peer_join()
                .. "own peer table — exact, not a guess"):format(named))
     end
     return named > 0
+end
+
+--- Which hero a row plays, as a lobby hero id (R.lobby.HERO_NAMES), or nil.
+---
+--- Read off the template the hero entity was built from: controller +0x08 is
+--- the oCEntity, and its +0x28 template names its resource — the hop
+--- R.hero.entity proved on the hero in game ("Hero_Aladdin_Guardian"). The
+--- name is "Hero_<Hero>_<Skin>", and the folders do not spell heroes the way
+--- HERO_NAMES does (Hero_SunWukong vs "Sun_Wukong", Hero_Snow_Queen), so both
+--- sides are compared with case and underscores dropped, longest name first.
+--- Anything else (Ghost_Hero_* while downed, a custom hero) is nil, not a guess.
+local function _hero_key(s) return (s:lower():gsub("[^%a]", "")) end
+
+function F._dmg_row_hero(row)
+    local names = R.lobby.HERO_NAMES
+    if not (names and R.interact and R.interact.name) then return nil end
+    local ent = I.read_u64(row.key + DMG.HERO_ENTITY_OFF)
+    if not _ptr_plausible(ent) then return nil end
+    local ok, res = pcall(R.interact.name, ent)
+    if not ok or type(res) ~= "string" then return nil end
+    local stem = _hero_key((res:match("([^\\/]+)$") or res):gsub("%.entity%.ot$", ""))
+    -- Read fine, just not a hero template right now (Ghost_Hero_* while
+    -- downed): false, so the caller retries without spending a try.
+    if stem:sub(1, 4) ~= "hero" then return false end
+    stem = stem:sub(5)
+    local best, best_len = nil, 0
+    for id = 0, #names do
+        local k = names[id] and _hero_key(names[id])
+        if k and #k > best_len and stem:sub(1, #k) == k then best, best_len = id, #k end
+    end
+    return best
+end
+
+--- THE HERO-TEMPLATE JOIN. Name ally rows by the hero they are playing.
+---
+--- The lobby refuses two players on one hero, and every member's blob carries
+--- its RequestedHero, so a hero that exactly ONE member picked and exactly ONE
+--- row plays makes that row that member. Every input is a read — the engine's
+--- own template pointer and the parsed lobby — so unlike the name sweeps it
+--- cannot answer by heap coincidence. Costs one R.interact.name per row,
+--- cached per controller.
+---
+--- Gates:
+---   1. ANCHOR. The local row's hero must be the local member's pick (Steam
+---      names the local player). A contradiction means the id order or the
+---      template hop is wrong on this build: off until the next chapter, and
+---      nothing is named. When the roster lacks the local member (session
+---      d536), no listed member may have picked the local row's hero instead.
+---   2. ONE-TO-ONE. A hero two rows show, or two members picked (a same-hero
+---      mod, the "All same heroes" modifier), names nobody.
+function F._dmg_hero_join()
+    local N = F._netid
+    if N.hero_off then return false end
+    local wanted = false
+    for _, row in ipairs(_dmg.order) do
+        if not row.is_local and not row.player and _ptr_plausible(row.key) then
+            wanted = true
+            break
+        end
+    end
+    if not wanted then return false end
+    local ok, members = pcall(R.lobby.members)
+    if not ok or type(members) ~= "table" or #members == 0 then return false end
+
+    local by_hero = {}
+    for _, m in ipairs(members) do
+        if type(m.hero_id) == "number" and m.name then
+            by_hero[m.hero_id] = (by_hero[m.hero_id] == nil) and m or false
+        end
+    end
+    local hero_of, rows_by_hero, local_row = {}, {}, nil
+    for _, row in ipairs(_dmg.order) do
+        if _ptr_plausible(row.key) then
+            local id = N.hero_seen[row.key]
+            if id == nil then
+                id = F._dmg_row_hero(row)
+                if id then
+                    N.hero_seen[row.key] = id
+                elseif id == nil then
+                    local t = (N.hero_tries[row.key] or 0) + 1
+                    N.hero_tries[row.key] = t
+                    if t >= N.HERO_TRIES then N.hero_seen[row.key] = false end
+                end
+            end
+            if id then
+                hero_of[row] = id
+                rows_by_hero[id] = (rows_by_hero[id] == nil) and row or false
+                if row.is_local then local_row = row end
+            end
+        end
+    end
+
+    -- Gate 1. Without a readable local row there is nothing to check the join
+    -- against, so it waits rather than trusting it.
+    if not local_row then return false end
+    local me = F._dmg_me()
+    local mine
+    for _, m in ipairs(members) do
+        if me and m.name == me then mine = m break end
+    end
+    local lid = hero_of[local_row]
+    -- Only a member NAMED as this machine's player can contradict it. The
+    -- lobby's PlayerName need not be the Steam persona (the platform is EOS),
+    -- so with no name match the member who picked the local row's hero is
+    -- taken to be this player: the lobby allows one player per hero, and that
+    -- member is then excluded from naming an ally below.
+    local contradicted = mine ~= nil and type(mine.hero_id) == "number"
+                         and mine.hero_id ~= lid
+    if not mine and by_hero[lid] then me = by_hero[lid].name end
+    if contradicted then
+        N.hero_off = true
+        R.log(("[rsmm.damage] hero join OFF: the local row plays %s but the "
+               .. "lobby says %s picked %s — hero ids or the template read are "
+               .. "wrong on this build"):format(
+              tostring(R.lobby.HERO_NAMES[lid]), tostring(me),
+              tostring(mine and R.lobby.HERO_NAMES[mine.hero_id] or "no hero")))
+        return false
+    end
+    if not N.hero_said then
+        N.hero_said = true
+        R.log(("[rsmm.damage] hero join anchored: local row plays %s, as the "
+               .. "lobby says"):format(tostring(R.lobby.HERO_NAMES[lid])))
+    end
+
+    local names = F._dmg_name_set() or {}
+    local named = false
+    for row, id in pairs(hero_of) do
+        local m = by_hero[id]
+        if m and not row.is_local and not row.player and rows_by_hero[id] == row
+                and m.name ~= me then
+            if F._dmg_claim(row, names, m.name,
+                            "plays " .. tostring(R.lobby.HERO_NAMES[id])) then
+                named = true
+            end
+        end
+    end
+    return named
 end
 
 --- Name rows by matching the owner GUID against the lobby members' own words.
@@ -1811,7 +1957,10 @@ end
 ---      DIFFERENT member each time. A field that answers the same on two rows
 ---      is a lobby-wide pointer, not an owner.
 function F._dmg_netid_pass()
-    -- The GUID join FIRST: it is the only one of these built on a field the
+    -- The hero join before everything: two reads per row against the lobby,
+    -- and exact by the lobby's own one-player-per-hero rule.
+    if F._dmg_hero_join() then return true end
+    -- The GUID join next: it is the only one of these built on a field the
     -- disassembly names outright, and it costs a table lookup per (row,
     -- member) pair. Everything below is a search.
     if F._dmg_guid_join() then return true end

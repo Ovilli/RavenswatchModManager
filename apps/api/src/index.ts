@@ -19,7 +19,11 @@ async function main() {
   log.info(`rsmm-api listening on http://localhost:${port}`, { port });
   try {
     serve({ fetch: app.fetch, port });
-    startScanWorker();
+    // Long-running servers (local dev, self-hosting) drain the scan queue on a
+    // timer. On Vercel every instance ran that timer — two DB queries a minute
+    // per warm instance, keeping Neon awake — while the queue is already driven
+    // by the publish/scan-status kicks and the 10-minute GitHub Actions drain.
+    if (!process.env.VERCEL) startScanWorker();
   } catch (err) {
     log.error('failed to start server', { port, err: errString(err) });
     process.exit(1);

@@ -6,6 +6,7 @@ import {
   guidePatchSchema,
   guideReviewUpsertSchema,
   guideSlugSchema,
+  reviewReplySchema,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -13,6 +14,7 @@ import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured } from '../env.js';
+import { notifyReview, notifyReviewReply } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { presignGuideImage } from '../storage.js';
 import type { AppEnv } from '../types.js';
@@ -420,6 +422,8 @@ guidesRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (
       rating: schema.guideReviews.rating,
       title: schema.guideReviews.title,
       body: schema.guideReviews.body,
+      ownerReply: schema.guideReviews.ownerReply,
+      ownerReplyAt: schema.guideReviews.ownerReplyAt,
       createdAt: schema.guideReviews.createdAt,
       updatedAt: schema.guideReviews.updatedAt,
       userName: schema.users.name,
@@ -439,6 +443,8 @@ guidesRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), async (
     rating: r.rating,
     title: r.title,
     body: r.body,
+    ownerReply: r.ownerReply,
+    ownerReplyAt: r.ownerReplyAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }));
@@ -465,7 +471,7 @@ guidesRouter.put(
     }
 
     const now = new Date();
-    await db
+    const [saved] = await db
       .insert(schema.guideReviews)
       .values({
         guideId: guide.id,
@@ -483,7 +489,75 @@ guidesRouter.put(
           body: body.body ?? null,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ isNew: sql<boolean>`xmax = 0` });
+    await notifyReview({
+      ownerId: guide.ownerId,
+      type: 'guide_review',
+      itemName: guide.title,
+      link: `/guides/${guide.slug}`,
+      reviewerName: user.name,
+      rating: body.rating,
+      title: body.title,
+      body: body.body,
+      isNew: saved?.isNew ?? false,
+    });
+    return c.json({ ok: true });
+  },
+);
+
+// The owner can post one public reply per review; the reviewer is told.
+const reviewReplyParamSchema = slugParamSchema.extend({ reviewId: z.string().uuid() });
+guidesRouter.use('/:slug/reviews/:reviewId/reply', reviewLimiter);
+guidesRouter.put(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  zValidator('json', reviewReplySchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const { body } = c.req.valid('json');
+    const db = getDb();
+    const guide = await db.query.guides.findFirst({ where: eq(schema.guides.slug, slug) });
+    if (!guide || !canViewGuide(guide, user.id)) return c.json({ error: 'not found' }, 404);
+    if (guide.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    const review = await db.query.guideReviews.findFirst({
+      where: and(eq(schema.guideReviews.id, reviewId), eq(schema.guideReviews.guideId, guide.id)),
+    });
+    if (!review) return c.json({ error: 'not found' }, 404);
+
+    await db
+      .update(schema.guideReviews)
+      .set({ ownerReply: body, ownerReplyAt: new Date() })
+      .where(eq(schema.guideReviews.id, review.id));
+    await notifyReviewReply({
+      reviewerId: review.userId,
+      itemName: guide.title,
+      link: `/guides/${guide.slug}`,
+      replierName: user.name,
+      reply: body,
+      isNew: review.ownerReply == null,
+    });
+    return c.json({ ok: true });
+  },
+);
+
+guidesRouter.delete(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const db = getDb();
+    const guide = await db.query.guides.findFirst({ where: eq(schema.guides.slug, slug) });
+    if (!guide) return c.json({ error: 'not found' }, 404);
+    if (guide.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    await db
+      .update(schema.guideReviews)
+      .set({ ownerReply: null, ownerReplyAt: null })
+      .where(and(eq(schema.guideReviews.id, reviewId), eq(schema.guideReviews.guideId, guide.id)));
     return c.json({ ok: true });
   },
 );

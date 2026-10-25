@@ -20,11 +20,12 @@ vi.mock('@rsmm/db', () => ({
     select: () => ({
       from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
     }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
   }),
   schema: new Proxy({}, { get: () => new Proxy({}, { get: () => 'col' }) }),
 }));
 
-const { app } = await import('../src/app.js');
+const { app, isCdnCacheablePath } = await import('../src/app.js');
 
 describe('response hardening headers', () => {
   it('are present on every response', async () => {
@@ -89,5 +90,86 @@ describe('cron secret check', () => {
 
   it('rejects a missing authorization header', async () => {
     expect((await app.request('/api/cron/scan-drain')).status).toBe(401);
+  });
+});
+
+describe('CDN cache for viewer-independent reads', () => {
+  const CDN = 'vercel-cdn-cache-control';
+
+  it('marks a public read cacheable without varying on Cookie', async () => {
+    // Vercel's CDN will not cache a response that varies on Cookie, so the
+    // header must never reappear on a cacheable route.
+    const res = await app.request('/api/auth-config');
+    expect(res.status).toBe(200);
+    expect(res.headers.get(CDN)).toContain('max-age=60');
+    expect(res.headers.get('vary') ?? '').not.toMatch(/cookie/i);
+  });
+
+  it('caches the same body for a signed-in request (route is viewer-independent)', async () => {
+    const res = await app.request('/api/auth-config', {
+      headers: { cookie: 'better-auth.session_token=x' },
+    });
+    expect(res.headers.get(CDN)).toContain('max-age=60');
+  });
+
+  it('leaves routes off the allowlist uncached', async () => {
+    expect((await app.request('/api/health')).headers.get(CDN)).toBeNull();
+    expect((await app.request('/api/session')).headers.get(CDN)).toBeNull();
+  });
+
+  it('allowlists only viewer-independent reads', () => {
+    for (const p of [
+      '/api/mods',
+      '/api/collections',
+      '/api/guides',
+      '/api/legal/impressum',
+      '/api/auth-config',
+    ]) {
+      expect(isCdnCacheablePath(p), p).toBe(true);
+    }
+    // Detail pages read the viewer (owner/admin view, canManage, isFollowing).
+    for (const p of [
+      '/api/mods/camera-control',
+      '/api/mods/camera-control/reviews',
+      '/api/users/abc',
+      '/api/collections/x',
+      '/api/collections/x/reviews',
+      '/api/guides/x',
+      '/api/guides/x/reviews',
+      '/api/mods/x/1.0.0/download',
+      '/api/mods/x/authors',
+      '/api/collections/mine',
+      '/api/guides/mine',
+      '/api/me',
+      '/api/logs/abc',
+      '/api/session',
+    ]) {
+      expect(isCdnCacheablePath(p), p).toBe(false);
+    }
+  });
+
+  it('answers preflights with a max-age so browsers stop repeating them', async () => {
+    const res = await app.request('/api/mods', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:3000',
+        'access-control-request-method': 'GET',
+      },
+    });
+    expect(res.headers.get('access-control-max-age')).toBe('86400');
+  });
+});
+
+describe('review-email unsubscribe link', () => {
+  it('rejects a forged token and accepts the real one', async () => {
+    const { unsubscribeToken } = await import('../src/notify.js');
+    const bad = await app.request('/api/unsubscribe?u=user-1&t=forged');
+    expect(bad.status).toBe(400);
+    const other = await app.request(`/api/unsubscribe?u=user-2&t=${unsubscribeToken('user-1')}`);
+    expect(other.status).toBe(400);
+    const ok = await app.request(`/api/unsubscribe?u=user-1&t=${unsubscribeToken('user-1')}`, {
+      method: 'POST',
+    });
+    expect(ok.status).toBe(200);
   });
 });

@@ -1605,6 +1605,58 @@ local _modifier_orig = {}
 -- IS that flag, so enabling either enables both.
 function R.modifier.enable_writes() return R.stat.enable_writes() end
 
+--- Let achievements / outfits / difficulties keep unlocking while run
+--- modifiers are on (GH #54). OFF unless a mod calls this.
+--
+-- The game does not block the unlock write. When a run has modifiers, the
+-- "has modifiers" state of HasGameModifierStateMachine is ENTERED and its
+-- callback detaches every achievement and unlock-condition tracker from the
+-- event source; leaving the state re-attaches them. This skips that callback,
+-- so the trackers keep listening exactly as in an unmodded run. Nothing is
+-- forced: an unlock still has to be earned, and the ownership (DLC) gate is
+-- untouched.
+--
+-- The callback's state arg is 0 on ENTER and 1 on EXIT (proven in game
+-- 2026-10-15: 0 fired when a modded run was set up, 1 when the next run had
+-- none; the static reading had it backwards, and skipping 1 would have left
+-- the trackers detached until restart). Enter and exit are kept paired: an
+-- exit is skipped only when we skipped its enter, so turning this on or off
+-- mid-run never re-attaches a tracker twice or leaves one detached. Call at
+-- load (init.lua), before a run is set up.
+-- Returns true when armed; false if the symbol is unavailable on this build.
+local _unlock_bypass_on, _unlock_bypass_hooked, _unlock_enter_skipped = false, false, false
+
+function R.modifier.allow_unlocks(on)
+    _unlock_bypass_on = (on ~= false)
+    if _unlock_bypass_hooked then return true end
+    if not (R.hook and R.engine.resolve) then return false end
+    local va = R.engine.resolve("GameModifierLock_OnStateChange")
+    -- nil/0 when the symbol is unverified for this build: fail closed rather
+    -- than detouring a stale address.
+    if not va or va == 0 then return false end
+    local ok, slot, why = pcall(R.hook, va, "vpi", function(this, state, next)
+        if state == 0 and _unlock_bypass_on then
+            _unlock_enter_skipped = true
+            R.log("[rsmm.modifier] modded run: kept unlock trackers attached")
+            -- Non-nil without calling next(): the original does not run.
+            return 0
+        end
+        if state == 1 and _unlock_enter_skipped then
+            _unlock_enter_skipped = false
+            return 0
+        end
+        next(this, state)
+        return 0
+    end)
+    -- "already-hooked" is a FAILURE here: some other detour (e.g. a probe's
+    -- R.debug.observe) owns the address, so ours is not installed and the
+    -- lock would still run while this reported success.
+    _unlock_bypass_hooked = ok and slot ~= nil
+    R.log("[rsmm.modifier] allow_unlocks " .. (_unlock_bypass_hooked and "armed" or
+        ("FAILED: " .. tostring(why or slot))))
+    return _unlock_bypass_hooked
+end
+
 -- Set a named modifier in the global context. MAIN THREAD only (wrap in
 -- R.schedule.next_main). Returns true when the value reads back as written;
 -- false otherwise, with the reason in R.modifier.why().
@@ -1899,6 +1951,453 @@ function R.hero.broadcast_decoy(index)
     end
     R.log("[rsmm.hero] decoy hook failed: " .. tostring(ok and why or slot))
     return false
+end
+
+--- Watch the run's hero ROSTER as the game builds it at run start.
+--
+-- `cb(entries, roster)` runs right after RunRoster_Build returns, before the
+-- roster is applied and (on an online host) sent to every peer. `entries` is
+-- { { key = <u64>, hero = <hero def ptr>, skin = <u16>, slot = <entry addr>,
+--     member = <string or nil> }, ... }.
+-- The key is the session MEMBER id: the builder takes it from the session's
+-- member list (session = builder this+0x98, list from session vft[0xe8]) and
+-- looks it up in the session's member table at session+0x2c0 (same swiss-table
+-- shape, 0x40-byte slots: id +0x00, std::string +0x10). `member` is that
+-- string; what it holds (name, platform id, ...) is what this is confirming.
+-- Read-only: nothing is written and the original result is untouched. Every
+-- read is page-guarded and the walk is bounded, so a layout that is not what
+-- the RE says yields an empty list (or no `member`), never a fault.
+--
+-- Clients never build a roster (they receive the host's), so on a co-op
+-- client this never fires; solo and the online host do.
+-- Returns true when the hook is in place, false if the symbol is unavailable.
+local _roster_cbs, _roster_hooked, _roster_share = {}, false, false
+-- play_as rules: key = player name, true (you) or "*"; value = hero index, or a
+-- normalised hero name resolved against the live hero list at run start.
+local _roster_rules = {}
+
+-- A hero definition's name, read from the def itself: its portrait path
+-- (def+0x2c8 -> "Heroes\\<Folder>\\Portrait_...png"). The game's hero list
+-- order does NOT follow R.lobby.HERO_NAMES (index 3 is SnowQueen on Update 6),
+-- so names are always taken from the definition, never from an index table.
+local function _hero_folder(def)
+    if not (_ptr_plausible(def) and I.read_u64 and I.read_cstr) then return nil end
+    local p = I.read_u64(def + 0x2c8)
+    local path = _ptr_plausible(p) and I.read_cstr(p, 160)
+    return type(path) == "string" and path:match("^Heroes[\\/]([^\\/]+)[\\/]") or nil
+end
+local _roster_arm
+
+function R.hero.on_roster(cb)
+    if type(cb) ~= "function" then error("R.hero.on_roster: expected a function", 2) end
+    _roster_cbs[#_roster_cbs + 1] = cb
+    return _roster_arm()
+end
+
+--- Everyone plays the same hero as `name` (default: you) — no lobby tricks.
+--
+-- Everyone picks DIFFERENT heroes in the lobby as usual, so its duplicate check
+-- never fires. When the run starts, the host's roster (RunRoster_Build) is
+-- rewritten so every entry carries `name`'s hero, before it is applied and
+-- sent to the peers. The game's own unused "All same heroes" modifier does the
+-- same write (one hero into every entry, skin 0), so the engine and the
+-- clients already accept a duplicated roster.
+--
+-- How `name`'s hero is found without decoding member ids: the builder turns a
+-- member's lobby RequestedHero into a hero definition as
+-- (*(this+0x170))[RequestedHero], and the lobby forbids two players on one
+-- hero, so `name`'s lobby pick names exactly one definition. It must also be
+-- in the roster, or nothing is changed (fail closed). The other players get
+-- skin 0 (they may not own `name`'s skin); `name` keeps theirs.
+--
+-- HOST ONLY: clients never build a roster, so only the host needs this mod;
+-- clients receive the result. Call at load (init.lua). `false` turns it off.
+-- Returns true when armed; false if the symbol is unavailable on this build.
+function R.hero.share_hero(name)
+    if name == false then _roster_share = false return true end
+    if name ~= nil and type(name) ~= "string" then
+        error("R.hero.share_hero: name must be a player name string, nil (you) or false", 2)
+    end
+    _roster_share = name or true
+    return _roster_arm()
+end
+
+--- Unlock taken heroes in YOUR hero-select screen (local UI only).
+--
+-- Forces the two local gates: HeroSelect_IsHeroAvailable -> true (the
+-- padlock / availability) and HeroSelect_ConfirmBlockReason -> 0 (the confirm
+-- click). Both are read by hero-select UI code only; nothing here touches the
+-- lobby or the network. ⚠ Known from 2026-09: with these forced the pick is
+-- accepted locally but READY is reverted at once by something not yet found --
+-- this exists so that revert can be caught (R.watch on the member record's
+-- LobbyState), not as a working duplicate-hero feature.
+-- Returns the number of gates forced (0 if the symbols are unavailable).
+local _hs_unlocked = 0
+
+function R.hero.unlock_hero_select()
+    if _hs_unlocked > 0 then return _hs_unlocked end
+    if not (R.hook and R.engine.resolve) then return 0 end
+    local gates = {
+        -- bool(menu, hero_index, flag): three args as called (rcx, edx, r8b).
+        { "HeroSelect_IsHeroAvailable", "ipii", 1 },
+        -- int(screen): 0 = go ahead, 1 = state check failed, 2 = hero taken.
+        { "HeroSelect_ConfirmBlockReason", "ip", 0 },
+    }
+    for _, g in ipairs(gates) do
+        local va = R.engine.resolve(g[1])
+        if va and va ~= 0 then
+            local value = g[3]
+            local ok, slot = pcall(R.hook, va, g[2], function() return value end)
+            if ok and slot ~= nil then _hs_unlocked = _hs_unlocked + 1 end
+        end
+    end
+    R.log(("[rsmm.hero] hero-select gates forced: %d/2 (local UI only)"):format(_hs_unlocked))
+    return _hs_unlocked
+end
+
+--- Let YOU pick a hero portrait another player already holds (hero select).
+--
+-- The lock is HeroSelect_PortraitPicked: before it sets your RequestedHero it
+-- returns early when bit 0x08 of byte +0x64 is set on the clicked portrait's UI
+-- component ((grid+0x1e0)[idx+1]) -- the "taken by another player" state.
+--
+-- Sending the taken hero to the lobby does NOT work: proven in game
+-- 2026-10-15, the pick goes out but the party service then refuses READY
+-- ("Party State | Pending ready" -> "Not ready"). So a click on a TAKEN
+-- portrait is SWAPPED instead: the lobby keeps your current (free) pick so
+-- READY goes through, and the clicked hero becomes your play_as rule, which
+-- rewrites your own roster entry when the run starts (works whoever hosts;
+-- see RunRoster_Apply). The grid index equals the lobby RequestedHero index
+-- and the roster builder's hero-list index. Free portraits behave normally.
+-- The lock bit ALSO marks heroes you have not unlocked / do not own: those
+-- stay locked (the swap only fires when another lobby member holds the hero).
+-- Every pointer is read page-guarded and validated; any mismatch replays the
+-- original untouched.
+-- Returns true when armed; false if the symbol is unavailable on this build.
+local _taken_pick_hooked = false
+
+function R.hero.allow_taken_pick()
+    if _taken_pick_hooked then return true end
+    if not (R.hook and R.engine.resolve and I.read_u64 and I.read_u32 and I.read_u8 and I.write_u8) then
+        return false
+    end
+    local va = R.engine.resolve("HeroSelect_PortraitPicked")
+    if not va or va == 0 then return false end
+    local LOCK_BIT = 0x08
+    local ok, slot = pcall(R.hook, va, "vpp", function(grid, mini, next)
+        local flag_at, picked, picked_def
+        if _ptr_plausible(grid) and _ptr_plausible(mini) then
+            local holder = I.read_u64(mini + 0x238)
+            local def = _ptr_plausible(holder) and I.read_u64(holder + 0x78)
+            local list, count = I.read_u64(grid + 0x200), I.read_u32(grid + 0x208)
+            local comps = I.read_u64(grid + 0x1e0)
+            if _ptr_plausible(def) and _ptr_plausible(list) and _ptr_plausible(comps)
+                    and count and count <= 64 then
+                for i = 0, count - 1 do
+                    if I.read_u64(list + i * 8) == def then
+                        local comp = I.read_u64(comps + (i + 1) * 8)
+                        if _ptr_plausible(comp) then flag_at, picked, picked_def = comp + 0x64, i, def end
+                        break
+                    end
+                end
+            end
+        end
+        local b = flag_at and I.read_u8(flag_at)
+        if not (b and (b & LOCK_BIT) ~= 0) then
+            next(grid, mini)
+            return 0
+        end
+        -- The same bit also marks heroes you have NOT unlocked / do not own
+        -- (UnlockedHeroFlag, DLC). Only a hero ANOTHER lobby member actually
+        -- holds is swapped; any other lock stays a lock -- never hand out
+        -- content the player does not own.
+        -- Who holds it comes from the freshest PARSED lobby data first (what the
+        -- `trace` lines print). members() prefers values read back from record
+        -- pointers, and those are reused scratch records (one stack record per
+        -- parse), so a stale read let a click on a held hero fall through to the
+        -- refusing original with nothing logged (2026-10-16, 4-player lobby).
+        local me, held = R.player.name(), false
+        local hook = R.lobby._hook
+        for name, e in pairs(hook and hook.by_name or {}) do
+            if e.hero_id == picked and name ~= me then held = true end
+        end
+        if not held then
+            for _, m in ipairs(R.lobby.members()) do
+                if m.hero_id == picked and m.name ~= me then held = true end
+            end
+        end
+        -- ...and only a hero YOU have unlocked / own (your lobby UnlockedHeroFlag,
+        -- bit = hero index). Unknown flag -> refuse: fail closed on ownership.
+        local mine = hook and hook.by_name and hook.by_name[me]
+        local flags = mine and mine.unlocked
+        local owned = type(flags) == "number" and ((flags >> picked) & 1) == 1
+        if not (held and owned) then
+            R.log(("[rsmm.hero] locked portrait %s (index %s) stays locked: %s")
+                  :format(tostring(_hero_folder(picked_def) or "?"), tostring(picked),
+                          not held and "no other lobby member holds it (not unlocked?)"
+                          or "held by another player but not unlocked/owned by you"))
+            next(grid, mini)
+            return 0
+        end
+        -- Taken: remember it for the run-start swap; the lobby is not told.
+        _roster_rules[true] = picked
+        _roster_arm()
+        R.log(("[rsmm.hero] taken hero %s picked: you will play it when the run starts "
+               .. "(lobby keeps your current pick so READY goes through)")
+              :format(tostring(_hero_folder(picked_def) or picked)))
+        -- Non-nil without next(): the original (which would refuse) does not run.
+        return 0
+    end)
+    _taken_pick_hooked = ok and slot ~= nil
+    R.log("[rsmm.hero] allow_taken_pick " .. (_taken_pick_hooked and "armed" or ("FAILED: " .. tostring(slot))))
+    return _taken_pick_hooked
+end
+
+--- Play a specific hero, even one another player is on.
+--
+-- `hero` is a name from R.lobby.HERO_NAMES ("Carmilla", "Snow_Queen", ...) or a
+-- hero index. `who` is a player name, nil (you) or "*" (everyone). Same seam
+-- and same rules as share_hero: everyone picks different heroes in the lobby,
+-- and when the run starts the host's roster entry for `who` is rewritten to
+-- (*(this+0x170))[hero] with skin 0. `who`'s entry is found by their lobby
+-- pick, which the lobby keeps unique. The written definition must RTTI-name
+-- as oCDtHeroDefinition, or nothing is changed.
+--
+-- HOST ONLY, like share_hero: to play a specific hero as a co-op CLIENT, the
+-- host's mod must name you. Rules accumulate per player; `hero = false`
+-- removes `who`'s rule. Applied after share_hero, so a rule wins over it.
+-- Returns true when armed; false if the symbol is unavailable on this build.
+
+function R.hero.play_as(hero, who)
+    if who ~= nil and type(who) ~= "string" then
+        error("R.hero.play_as: who must be a player name, nil (you) or \"*\"", 2)
+    end
+    local key = who or true
+    if hero == false then _roster_rules[key] = nil return true end
+    local rule = hero
+    if type(hero) == "string" then
+        -- "Snow_Queen", "snow queen", "SnowQueen" all match folder SnowQueen.
+        rule = hero:lower():gsub("[%s_]", "")
+        if rule == "" then error("R.hero.play_as: empty hero name", 2) end
+    elseif type(hero) ~= "number" or hero < 0 or hero ~= math.floor(hero) then
+        error("R.hero.play_as: unknown hero " .. tostring(hero), 2)
+    end
+    _roster_rules[key] = rule
+    return _roster_arm()
+end
+
+function _roster_arm()
+    if _roster_hooked then return true end
+    if not (R.hook and R.engine.resolve and I.read_u64 and I.read_u8 and I.read_u16) then return false end
+    local va = R.engine.resolve("RunRoster_Build")
+    if not va or va == 0 then return false end
+    -- Swiss-table at roster+0x50 (RunRoster_Build note): ctrl ptr, slots ptr,
+    -- capacity; ctrl 0x00..0x7f = full; 0x18-byte slots {key, hero, skin}.
+    local MAP_OFF, MAX_CAP = 0x50, 64
+    local SESSION_OFF, MEMBERS_OFF = 0x98, 0x2c0
+    -- Visit each full slot of a swiss-table {ctrl, slots, _, capacity}.
+    local function each_slot(map, stride, fn)
+        local ctrl  = I.read_u64(map)
+        local slots = I.read_u64(map + 0x08)
+        local cap   = I.read_u64(map + 0x18)
+        if not (_ptr_plausible(ctrl) and _ptr_plausible(slots) and cap and cap > 0 and cap <= MAX_CAP) then
+            return
+        end
+        for i = 0, cap - 1 do
+            local c = I.read_u8(ctrl + i)
+            if c and c < 0x80 then fn(slots + i * stride) end
+        end
+    end
+    -- MSVC std::string at `s`: inline buffer while capacity < 16, else a pointer.
+    local function std_string(s)
+        local size, capacity = I.read_u64(s + 0x10), I.read_u64(s + 0x18)
+        if not (size and capacity and size <= 256) then return nil end
+        local p = s
+        if capacity >= 0x10 then
+            p = I.read_u64(s)
+            if not _ptr_plausible(p) then return nil end
+        end
+        return I.read_cstr and I.read_cstr(p, size + 1) or nil
+    end
+    local function walk(this, roster)
+        local out = {}
+        if not _ptr_plausible(roster) then return out end
+        each_slot(roster + MAP_OFF, 0x18, function(slot)
+            out[#out + 1] = { key = I.read_u64(slot), hero = I.read_u64(slot + 0x08),
+                              skin = I.read_u16(slot + 0x10), slot = slot }
+        end)
+        local session = _ptr_plausible(this) and I.read_u64(this + SESSION_OFF)
+        if _ptr_plausible(session) then
+            local names = {}
+            each_slot(session + MEMBERS_OFF, 0x40, function(slot)
+                local id = I.read_u64(slot)
+                if id then names[id] = std_string(slot + 0x10) end
+            end)
+            for _, e in ipairs(out) do e.member = names[e.key] end
+        end
+        return out
+    end
+    -- share_hero: write `who`'s hero into every entry. Fail closed at each step.
+    local HERO_LIST_OFF, HERO_COUNT_OFF = 0x170, 0x178
+    local function share(this, entries, self_only)
+        local me  = R.player.name()
+        local who = _roster_share == true and me or _roster_share
+        if type(who) ~= "string" then
+            R.log("[rsmm.hero] share_hero: own player name unknown; roster unchanged")
+            return
+        end
+        local idx
+        for _, m in ipairs(R.lobby.members()) do
+            if m.name == who then idx = m.hero_id end
+        end
+        local list  = I.read_u64(this + HERO_LIST_OFF)
+        local count = I.read_u32 and I.read_u32(this + HERO_COUNT_OFF)
+        if type(idx) ~= "number" or not (_ptr_plausible(list) and count and count <= 64
+                and idx >= 0 and idx < count) then
+            R.log(("[rsmm.hero] share_hero: no lobby pick for %q (hero %s); roster unchanged")
+                  :format(who, tostring(idx)))
+            return
+        end
+        local def = I.read_u64(list + idx * 8)
+        local present = false
+        for _, e in ipairs(entries) do if e.hero == def then present = true end end
+        if not (_ptr_plausible(def) and present) then
+            R.log(("[rsmm.hero] share_hero: %q's hero is not in the roster; roster unchanged"):format(who))
+            return
+        end
+        -- On a client only YOUR entry is yours to change: find it by your
+        -- own lobby pick (unique in the lobby).
+        local mine
+        if self_only then
+            local my_idx
+            for _, m in ipairs(R.lobby.members()) do
+                if m.name == me then my_idx = m.hero_id end
+            end
+            mine = type(my_idx) == "number" and my_idx >= 0 and my_idx < count
+                   and I.read_u64(list + my_idx * 8) or nil
+        end
+        local n = 0
+        for _, e in ipairs(entries) do
+            if e.hero ~= def and (not self_only or e.hero == mine) then
+                I.write_u64(e.slot + 0x08, def)
+                I.write_u16(e.slot + 0x10, 0)
+                e.hero, e.skin, n = def, 0, n + 1
+            end
+        end
+        R.log(("[rsmm.hero] share_hero: %d player(s) now play %q's hero (%s)%s")
+              :format(n, who, tostring(_hero_folder(def) or idx),
+                      self_only and " [client: own entry only]" or ""))
+    end
+    -- play_as: per-player rules. Entries are matched to players BEFORE any
+    -- write, by each player's lobby pick, so earlier rewrites cannot confuse it.
+    local function apply_rules(this, entries, self_only)
+        local list  = I.read_u64(this + HERO_LIST_OFF)
+        local count = I.read_u32 and I.read_u32(this + HERO_COUNT_OFF)
+        if not (_ptr_plausible(list) and count and count <= 64) then
+            R.log("[rsmm.hero] play_as: hero list unreadable; roster unchanged")
+            return
+        end
+        local function def_at(idx)
+            if type(idx) ~= "number" or idx < 0 or idx >= count then return nil end
+            local d = I.read_u64(list + idx * 8)
+            return _ptr_plausible(d) and d or nil
+        end
+        local function def_for(rule)
+            if type(rule) == "number" then return def_at(rule) end
+            for i = 0, count - 1 do
+                local d = def_at(i)
+                local f = d and _hero_folder(d)
+                if f and f:lower():gsub("[%s_]", "") == rule then return d end
+            end
+            return nil
+        end
+        local me = R.player.name()
+        -- Who is each entry? Primary: the entry's member string is the lobby
+        -- SESSION id (observed in game 2026-10-15: entry.member equalled the
+        -- session id the lobby tracker logged for that player). Fallback:
+        -- the hero, since lobby picks are unique.
+        local by_session, by_def = {}, {}
+        local hook = R.lobby._hook
+        for _, e in ipairs(hook and hook.order or {}) do
+            if e.session and e.name then by_session[e.session] = e.name end
+        end
+        for _, m in ipairs(R.lobby.members()) do
+            local d = def_at(m.hero_id)
+            if d then by_def[d] = m.name end
+        end
+        local seen = {}
+        for _, e in ipairs(entries) do
+            seen[#seen + 1] = tostring(by_session[e.member] or by_def[e.hero] or "?")
+        end
+        R.log(("[rsmm.hero] play_as: roster of %d [%s], you are %q%s")
+              :format(#entries, table.concat(seen, ", "), tostring(me),
+                      self_only and " [client: own entry only]" or " [host]"))
+        for _, e in ipairs(entries) do
+            local pname = by_session[e.member] or by_def[e.hero]
+            if self_only and pname ~= me then goto continue end
+            local idx = _roster_rules["*"]
+            if pname and _roster_rules[pname] then idx = _roster_rules[pname] end
+            if pname and pname == me and _roster_rules[true] then idx = _roster_rules[true] end
+            local def = idx and def_for(idx)
+            if idx and not (def and R.rtti.name(def) == "oCDtHeroDefinition") then
+                R.log(("[rsmm.hero] play_as: hero %s is not a hero definition here; %s unchanged")
+                      :format(tostring(idx), tostring(pname or "entry")))
+            elseif def and def ~= e.hero then
+                I.write_u64(e.slot + 0x08, def)
+                I.write_u16(e.slot + 0x10, 0)
+                e.hero, e.skin = def, 0
+                R.log(("[rsmm.hero] play_as: %s now plays %s")
+                      :format(tostring(pname or "a player"), tostring(_hero_folder(def) or idx)))
+            end
+            ::continue::
+        end
+    end
+    -- Rewrites happen in RunRoster_Apply, which EVERY machine runs before it
+    -- stores the roster: the host/solo right after RunRoster_Build (and before
+    -- the host sends it), and each client when the host's roster message
+    -- (0x15dba49e) arrives (FUN_140269180). Each machine then takes ITS OWN
+    -- entry as its hero at every chapter start (FUN_14028fd30, keyed by the
+    -- P2P session's local member id). So: a roster this machine just built ->
+    -- apply every rule; a received one -> only the rules about you.
+    local built = {}
+    local ok, slot = pcall(R.hook, va, "vpp", function(this, roster, next)
+        next(this, roster)
+        built[roster] = true
+        local entries = walk(this, roster)
+        for i = 1, #_roster_cbs do
+            local ran, err = pcall(_roster_cbs[i], entries, roster)
+            if not ran then R.log("[rsmm.hero] roster handler error: " .. tostring(err)) end
+        end
+        return 0
+    end)
+    _roster_hooked = ok and slot ~= nil
+    if not _roster_hooked then
+        R.log("[rsmm.hero] roster hook failed: " .. tostring(slot))
+        return false
+    end
+    local apply_va = R.engine.resolve("RunRoster_Apply")
+    if apply_va and apply_va ~= 0 then
+        pcall(R.hook, apply_va, "vppi", function(this, roster, flag, next)
+            local any_rule = false
+            for _ in pairs(_roster_rules) do any_rule = true break end
+            if (_roster_share or any_rule) and I.write_u64 and I.write_u16 then
+                local self_only = not built[roster]
+                built[roster] = nil
+                local entries = walk(this, roster)
+                if _roster_share then
+                    local ran, err = pcall(share, this, entries, self_only)
+                    if not ran then R.log("[rsmm.hero] share_hero error: " .. tostring(err)) end
+                end
+                if any_rule then
+                    local ran, err = pcall(apply_rules, this, entries, self_only)
+                    if not ran then R.log("[rsmm.hero] play_as error: " .. tostring(err)) end
+                end
+            end
+            next(this, roster, flag)
+            return 0
+        end)
+    end
+    return true
 end
 
 function R.hero.handle() return _give_hero end
@@ -3207,6 +3706,34 @@ end
 
 R.debug = {}
 
+-- Observe-only detour on an engine symbol. `after(result, ...)` runs once the
+-- ORIGINAL has returned, with its result and the same arguments it received.
+-- The original's result is what the caller gets back: nothing can be forced
+-- through this, so it is safe for probing a gate's answer (issue #54).
+-- `sig` is the hook shape ("up" = ret u32, arg ptr), as for R.hook.
+-- Returns false when the symbol is unavailable on this build (fail closed).
+function R.debug.observe(name, sig, after)
+    if type(after) ~= "function" then
+        error("R.debug.observe: expected a function", 2)
+    end
+    if not (R.hook and R.engine.resolve) then return false end
+    local va = R.engine.resolve(name)
+    if not va or va == 0 then return false end
+    -- The detour gets the args and `next` as its last arg. Call next() with
+    -- the same args, then report, then return the original's result.
+    local ok, slot = pcall(R.hook, va, sig, function(...)
+        local n = select("#", ...)
+        local nxt = select(n, ...)
+        local args = { ... }
+        args[n] = nil
+        local r = nxt(table.unpack(args, 1, n - 1))
+        local ran, err = pcall(after, r, table.unpack(args, 1, n - 1))
+        if not ran then R.log("[rsmm.debug] observe handler error: " .. tostring(err)) end
+        return r or 0
+    end)
+    return ok and slot ~= nil
+end
+
 local function _classify(v)
     if not v or v == 0 then return "0" end
     if _in_image(v) then
@@ -3249,6 +3776,49 @@ function R.debug.dump(ptr, len, label)
                 off, v, cls or "-", extra))
         end
     end
+end
+
+-- Log an entity's live components in order: position in the array, the index
+-- the engine gave each (+0x62), its settings' class and name. `entity`
+-- defaults to the captured hero's oCEntity (*(controller+0x08)).
+--
+-- Layout from the instantiation code (0x1406e3060, build b9c3642884a8): the
+-- entity keeps its components at +0x190 (count +0x198), created in the
+-- flattened settings order (the entity's own components, then its parents');
+-- each instance holds its settings at +0x10 and its index at +0x62, and a
+-- settings component's name is at +0xe8. Written to compare a hero's layout
+-- with and without a mod's added components (piper-horde-rats lost Piper's
+-- right-stick aim, 2026-10-23). Returns { {pos, index, class, name}, ... }.
+function R.debug.components(entity, label)
+    label = label or "components"
+    if entity == nil then
+        local ctrl = R.entity and R.entity.hero and R.entity.hero()
+        if type(ctrl) == "number" and ctrl ~= 0 then entity = I.read_u64(ctrl + 0x08) end
+    end
+    if not _ptr_plausible(entity) or R.rtti.name(entity) ~= "oCEntity" then
+        R.log(string.format("[rsmm.debug] %s: no entity (hero not captured yet?)", label))
+        return nil
+    end
+    local arr, n = I.read_u64(entity + 0x190), I.read_u32(entity + 0x198)
+    if not _ptr_plausible(arr) or type(n) ~= "number" or n == 0 or n > 8192 then
+        R.log(string.format("[rsmm.debug] %s: no component array on 0x%x", label, entity))
+        return nil
+    end
+    local name = R.interact and R.interact.name and R.interact.name(entity)
+    R.log(string.format("[rsmm.debug] %s: %s has %d components", label, tostring(name), n))
+    local out = {}
+    for pos = 0, n - 1 do
+        local inst = I.read_u64(arr + pos * 8)
+        local idx = _ptr_plausible(inst) and I.read_u16(inst + 0x62) or nil
+        local settings = _ptr_plausible(inst) and I.read_u64(inst + 0x10) or nil
+        local cls = _ptr_plausible(settings) and R.rtti.name(settings) or "?"
+        local sp = _ptr_plausible(settings) and I.read_u64(settings + 0xe8) or nil
+        local nm = _ptr_plausible(sp) and I.read_cstr and I.read_cstr(sp, 160) or "?"
+        out[#out + 1] = { pos = pos, index = idx, class = cls, name = nm }
+        R.log(string.format("[rsmm.debug] %s %4d idx=%s %s | %s", label, pos,
+            tostring(idx), tostring(cls), tostring(nm)))
+    end
+    return out
 end
 
 -- Scan every pointer field of `obj` (0..max_off) for objects that hold a
@@ -3822,6 +4392,13 @@ function LOBBY_HOOK.read(va)
 end
 
 --- Record what one parsed blob says. Internal; exposed for the spec.
+--- Log every change of a lobby member's RequestedHero / LobbyState (diagnostics).
+function R.lobby.trace(on)
+    LOBBY_HOOK.trace = (on ~= false)
+    LOBBY_HOOK.trace_last = LOBBY_HOOK.trace_last or {}
+    return true
+end
+
 function R.lobby._note_blob(text)
     if type(text) ~= "string" then return nil end
     local name = LOBBY_HOOK.value(text, "PlayerName")
@@ -3845,11 +4422,22 @@ function R.lobby._note_blob(text)
     -- but a peer id does, because that is what the netcode addresses players
     -- by. Same needle machinery, better needle.
     local eos = LOBBY_HOOK.value(text, "m_sEosUserId")
+    -- R.lobby.trace: one line per CHANGE of a member's pick / lobby state.
+    if LOBBY_HOOK.trace then
+        local key = tostring(hero) .. "/" .. tostring(LOBBY_HOOK.value(text, "LobbyState"))
+        if LOBBY_HOOK.trace_last[name] ~= key then
+            LOBBY_HOOK.trace_last[name] = key
+            R.log(("[rsmm.lobby] trace %q RequestedHero=%s LobbyState=%s (parse #%d)")
+                  :format(name, tostring(hero), tostring(LOBBY_HOOK.value(text, "LobbyState")),
+                          LOBBY_HOOK.fires or 0))
+        end
+    end
     if type(eos) ~= "string" or #eos < 8 or #eos > 64 then eos = nil end
     local e = LOBBY_HOOK.by_name[name]
     if e then
         e.hero = hero or e.hero
         e.hero_id = hero_id or e.hero_id
+        e.unlocked = tonumber(LOBBY_HOOK.value(text, "UnlockedHeroFlag")) or e.unlocked
         e.eos = eos or e.eos
         e.seen = os.time()
         LOBBY_HOOK.seq = LOBBY_HOOK.seq + 1
@@ -3858,6 +4446,7 @@ function R.lobby._note_blob(text)
     else
         LOBBY_HOOK.seq = LOBBY_HOOK.seq + 1
         e = { name = name, hero = hero, hero_id = hero_id, eos = eos,
+              unlocked = tonumber(LOBBY_HOOK.value(text, "UnlockedHeroFlag")),
               in_lobby = (inlobby == nil) or (inlobby ~= "false"),
               seen = os.time(), seq = LOBBY_HOOK.seq, src = "hook" }
         LOBBY_HOOK.by_name[name] = e
@@ -4474,15 +5063,14 @@ end
 
 --- Hero name for a lobby `RequestedHero` id, or nil.
 ---
---- The twelve pre-Update-6 `Definitions\\Heroes\\*.herodef.ot` in load (alphabetical)
---- order. Update 6 (2026-10-12) added Kintaro; if the id really is alphabetical
---- he lands at 5 and shifts Melusine..Sun_Wukong up by one, but no lobby on that
---- build has been observed yet, so the table keeps the one mapping that WAS
---- observed until a session confirms either way. INFERRED, not read from the engine: the id is not stored in the
---- herodef payload, so this is positional. It matches every observation to
---- hand -- session 304f had the local player at RequestedHero 10, and index 10
---- is Snow_Queen, which is also the one hero `_HERO_SIGNATURES` was seeded from
---- (i.e. the hero whose events were catalogued from that very machine).
+--- The id is the hero's index in the LiveOps versiondef's hero vector (Update 6,
+--- LiveOps6: Red, Piper, Beowulf, Snow_Queen, ...; Kintaro last). Observed in
+--- game 2026-10-15: the host on Snow Queen sent 3, a player on Sun Wukong sent 7,
+--- and Kintaro players sent 12. Before Update 6 the vector was alphabetical
+--- (session 304f: Snow_Queen = 10), so a patch that reorders the vector moves
+--- every id; tests/test_lobby_hero_names.py fails when the table drifts.
+--- INFERRED from position, not read from the engine: the id is not stored in
+--- the herodef payload.
 ---
 --- DISPLAY ONLY. Nothing may name a damage row from this: knowing that a
 --- player picked Juliet does not tell you WHICH ROW is Juliet, because the hero
@@ -4491,8 +5079,9 @@ end
 --- line reads "Yume (Juliet)" instead of "Yume (hero 4)", which is what lets a
 --- player map slots to people by eye and fill in player_1..player_4.
 R.lobby.HERO_NAMES = {
-    [0] = "Aladdin", "Beowulf", "Carmilla", "Geppetto", "Juliet", "Melusine",
-          "Merlin", "Piper", "Red", "Romeo", "Snow_Queen", "Sun_Wukong",
+    [0] = "Red", "Piper", "Beowulf", "Snow_Queen", "Aladdin", "Melusine",
+          "Geppetto", "Sun_Wukong", "Carmilla", "Romeo", "Juliet", "Merlin",
+          "Kintaro",
 }
 
 function R.lobby.hero_name(id)

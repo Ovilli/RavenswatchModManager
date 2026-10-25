@@ -46,6 +46,7 @@ import array
 import base64
 import functools
 import math
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,6 +68,9 @@ MAX_DISTANCE = 2000.0
 MAX_QUOTA = 500
 #: How far a slot may sit from the position its edit was made against.
 POS_TOLERANCE = 0.05
+#: Bound on an authored slot coordinate; shipped maps sit well inside ±1000 m.
+MAX_COORD = 2000.0
+MAX_NEW_SLOTS = 500
 
 
 class MapEditError(ValueError):
@@ -82,8 +86,13 @@ class Chapter:
 
     @property
     def label(self) -> str:
+        """The chapter as a player names it: ``Map_Dark_Hills_LiveOps_Update5``
+        reads "Dark Hills". Release tags (LiveOps, UpdateN) are dropped."""
         stem = self.decoded.rsplit("/", 1)[-1].removesuffix(_SUFFIX)
-        return stem.removeprefix("Map_").replace("_", " ")
+        words = stem.removeprefix("Map_").split("_")
+        keep = [w for w in words
+                if w != "LiveOps" and not (w.startswith("Update") and w[6:].isdigit())]
+        return " ".join(keep or words)
 
 
 def chapters() -> list[Chapter]:
@@ -164,7 +173,8 @@ def to_json(tg: TG.TileGen) -> dict:
     for sid in tg.spawner.size_ids:
         s = tg.sizes[sid]
         name = f"{s.width}x{s.height}"
-        groups.append({"name": name, "flag": s.name, "slots": list(s.slots)})
+        groups.append({"name": name, "flag": s.name, "fill": list(s.filter.required),
+                       "slots": list(s.slots)})
         for i in s.slots:
             group_of[i] = name
     whole = tg.spawner.whole_map
@@ -280,6 +290,49 @@ def terrain_json(chapter: Chapter, n: int = TERRAIN_GRID) -> dict:
     return out
 
 
+@functools.lru_cache(maxsize=1)
+def _terrain_all(chapter: Chapter) -> TR.Terrain:
+    """Every painted layer of the chapter's terrain (one chapter kept)."""
+    dec = terrain_decoded(chapter)
+    data = _shipped(dec) if dec else None
+    if data is None:
+        raise MapEditError(f"{chapter.key}: no terrain level in the game install or data/uncooked")
+    try:
+        return TR.read(data)
+    except (TR.TerrainError, TG.TileGenError, ValueError) as e:
+        raise MapEditError(f"{chapter.key}: terrain not readable: {e}") from None
+
+
+def terrain_layers_json(chapter: Chapter) -> dict:
+    """The chapter's painted layers, for the page's surface brush: name,
+    ``float``/``rgba`` and grid size, plus whether a stroke's amount on it is
+    metres (a height) or a 0..1 weight."""
+    t = _terrain_all(chapter)
+    return {"layers": [{"name": n, "kind": lay.kind, "size": lay.size,
+                        "metres": n in TR.METRE_LAYERS}
+                       for n, lay in t.layers.items()]}
+
+
+@functools.lru_cache(maxsize=16)
+def terrain_layer_json(chapter: Chapter, name: str, n: int = 512) -> dict:
+    """One painted layer resampled to ``n`` x ``n`` (cell centres, nearest):
+    a float layer as u8 over 0..1, an RGBA layer as ``n*n*4`` bytes."""
+    if n not in TERRAIN_GRIDS:
+        raise MapEditError(f"grid must be one of {TERRAIN_GRIDS}")
+    layer = _terrain_all(chapter).layers.get(name)
+    if layer is None:
+        raise MapEditError(f"{chapter.key}: no painted layer {name!r}")
+    if layer.kind == "float":
+        return {"grid": n, "kind": "float", "u8": _b64(TR.resample(layer, n), 0.0, 1.0, 8)}
+    s, src, out = layer.size, layer.cells, bytearray(n * n * 4)
+    for r in range(n):
+        row = min(s - 1, int((r + 0.5) * s / n)) * s
+        for c in range(n):
+            i = (row + min(s - 1, int((c + 0.5) * s / n))) * 4
+            out[(r * n + c) * 4:(r * n + c) * 4 + 4] = src[i:i + 4]
+    return {"grid": n, "kind": "rgba", "rgba": base64.b64encode(bytes(out)).decode("ascii")}
+
+
 # --------------------------------------------------------------------------
 # scene -> editor JSON (what the chapter looks like)
 # --------------------------------------------------------------------------
@@ -321,41 +374,67 @@ def scene_json(chapter: Chapter) -> dict:
     return MS.to_json(parts)
 
 
+def _tile_entry(tile: str) -> dict | None:
+    """One tile's pool-picking facts, or None when it does not decode."""
+    from . import map_pool as MP
+    from . import map_scene as MS
+    from . import tile_cook as TC
+
+    data = MS._bytes(MP.TILE_CATEGORY, tile)
+    if not data:
+        return None
+    try:
+        td = TC.read(data)
+    except (TC.TileCookError, ValueError):
+        return None
+    biome, name = tile.split("\\")[1], tile.rsplit("\\", 1)[-1].removesuffix(".tiledef.ot")
+    return {"path": tile, "name": name, "biome": biome, "flags": list(td.kinds),
+            "width": td.width, "height": td.height, "weight": td.weight}
+
+
 @functools.lru_cache(maxsize=4)
 def tile_pool_json(chapter: Chapter) -> list[dict]:
     """The tiles this chapter's map may draw, with the flags and size that pick them."""
     from . import map_pool as MP
     from . import map_scene as MS
-    from . import tile_cook as TC
 
     root, path = load(chapter).spawner.mapdef
     mapdef = MS._bytes(root, path)
     pool = MP.read_pool(mapdef) if mapdef else None
     if not pool:
         raise MapEditError(f"{chapter.key}: no tile pool in {path}")
-    out = []
-    for tile in pool:
-        data = MS._bytes(MP.TILE_CATEGORY, tile)
-        if not data:
-            continue
-        try:
-            td = TC.read(data)
-        except (TC.TileCookError, ValueError):
-            continue
-        name = tile.rsplit("\\", 1)[-1].removesuffix(".tiledef.ot")
-        out.append({"path": tile, "name": name, "flags": list(td.kinds),
-                    "width": td.width, "height": td.height, "weight": td.weight})
-    return out
+    return [e for e in map(_tile_entry, pool) if e]
+
+
+_TILE_PREFIX = "Definitions/Tiles/"
+_TILE_SUFFIX = ".tiledef.ot.DtTileDefinition.gen"
+
+
+@functools.lru_cache(maxsize=1)
+def tile_catalog_json() -> list[dict]:
+    """Every tile the game ships, any biome: what a map clone's pool may borrow.
+
+    Listed from the asset map (which the web editor rebuilds from the player's
+    own install), so it works wherever the pool view does.
+    """
+    from .asset_map import decoded_to_encoded
+
+    paths = sorted("Tiles\\" + d[len(_TILE_PREFIX):-len(_TILE_SUFFIX)].replace("/", "\\")
+                   + ".tiledef.ot"
+                   for d in decoded_to_encoded()
+                   if d.startswith(_TILE_PREFIX) and d.endswith(_TILE_SUFFIX))
+    return [e for e in map(_tile_entry, paths) if e]
 
 
 @functools.lru_cache(maxsize=256)
 def tile_json(chapter: Chapter, tile: str) -> dict:
-    """What one pool tile draws, in the tile's own space (centred on its slot)."""
+    """What one tile draws, in the tile's own space (centred on its slot). Any
+    shipped tile, so a tile borrowed into a clone's pool previews too."""
     from . import map_scene as MS
     from . import tile_cook as TC
 
-    if tile not in {t["path"] for t in tile_pool_json(chapter)}:
-        raise MapEditError(f"{tile!r} is not in {chapter.key}'s tile pool")
+    if tile not in {t["path"] for t in tile_catalog_json()}:
+        raise MapEditError(f"{tile!r} is not a shipped tile")
     from .map_pool import TILE_CATEGORY
 
     td = TC.read(MS._bytes(TILE_CATEGORY, tile))
@@ -393,6 +472,10 @@ def _as_bool(v, what: str) -> bool:
     return v
 
 
+#: Every section an edit document may carry, in the order they apply.
+EDIT_SECTIONS = ("kinds", "quotas", "slots", "fill", "remove_slots", "add_slots")
+
+
 def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
     """Apply an edit document to `tg` in place and return what changed.
 
@@ -403,7 +486,7 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
     """
     if not isinstance(edits, dict):
         raise MapEditError("edits must be a table")
-    unknown = set(edits) - {"kinds", "quotas", "slots", "fill"}
+    unknown = set(edits) - set(EDIT_SECTIONS)
     if unknown:
         raise MapEditError(f"unknown edit section(s): {', '.join(sorted(unknown))}")
 
@@ -463,21 +546,19 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
             raise MapEditError(f"slots.{sid}: no such slot in this recipe")
         if not isinstance(se, dict):
             raise MapEditError(f"slots.{sid}: expected a table")
-        bad = set(se) - {"pos", "allow"}
+        bad = set(se) - {"pos", "allow", "move"}
         if bad:
             raise MapEditError(f"slots.{sid}: unknown field(s) {sorted(bad)}")
         s = tg.slots[sid]
         if "pos" in se:
-            pos = se["pos"]
-            ok = (isinstance(pos, (list, tuple)) and len(pos) == 3
-                  and all(isinstance(a, (int, float)) and not isinstance(a, bool)
-                          for a in pos))
-            if not ok or any(abs(float(a) - b) > POS_TOLERANCE
-                             for a, b in zip(pos, s.pos, strict=True)):
-                raise MapEditError(
-                    f"slots.{sid}: the edit was made against a slot at {pos}, but slot "
-                    f"{sid} is at {[round(v, 3) for v in s.pos]} — the recipe changed "
-                    f"since, so this edit no longer points where it was meant to")
+            _anchor(tg, sid, se["pos"], f"slots.{sid}")
+        if "move" in se:
+            if not s.kinds:
+                raise MapEditError(f"slots.{sid}: whole-map slots do not move")
+            to = _as_pos(se["move"], f"slots.{sid}.move")
+            if to != s.pos:
+                plan.append((lambda s=s, to=to: setattr(s, "pos", to),
+                             f"slot {sid}: moved to {[round(v, 2) for v in to]}"))
         allow = se.get("allow") or {}
         if allow and not s.kinds:
             raise MapEditError(
@@ -511,10 +592,65 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
             plan.append((lambda g=g, flags=list(flags): setattr(g.filter, "required", flags),
                          f"fill {gname}: {g.filter.required} -> {list(flags) or 'nothing'}"))
 
+    # Removals and additions change the object count. They run after every
+    # edit above, which names slots by their SHIPPED ids, and `tilegen.write`
+    # renumbers the result.
+    for sid_raw, pos in (edits.get("remove_slots") or {}).items():
+        try:
+            sid = int(sid_raw)
+        except (TypeError, ValueError):
+            raise MapEditError(f"remove_slots: {sid_raw!r} is not a slot id") from None
+        if sid not in tg.slots:
+            raise MapEditError(f"remove_slots.{sid}: no such slot in this recipe")
+        _anchor(tg, sid, pos, f"remove_slots.{sid}")
+        if not tg.slots[sid].kinds:
+            raise MapEditError(f"remove_slots.{sid}: whole-map slots are not removable")
+        plan.append((lambda sid=sid: TG.remove_slot(tg, sid), f"slot {sid}: removed"))
+
+    added = edits.get("add_slots") or []
+    if not isinstance(added, list) or len(added) > MAX_NEW_SLOTS:
+        raise MapEditError(f"add_slots: expected a list of at most {MAX_NEW_SLOTS} slots")
+    for n, se in enumerate(added):
+        what = f"add_slots[{n}]"
+        if not isinstance(se, dict) or set(se) - {"group", "pos", "allow"}:
+            raise MapEditError(f"{what}: expected {{group, pos, allow}}")
+        if se.get("group") not in group_names:
+            raise MapEditError(f"{what}.group: no footprint group {se.get('group')!r}; "
+                               f"have {group_names}")
+        pos = _as_pos(se.get("pos"), f"{what}.pos")
+        allow = se.get("allow") or {}
+        if not isinstance(allow, dict):
+            raise MapEditError(f"{what}.allow: expected a table of kind = true/false")
+        for kname, on in allow.items():
+            if kname not in kind_names:
+                raise MapEditError(f"{what}.allow: no kind named {kname!r}")
+            _as_bool(on, f"{what}.allow.{kname}")
+        plan.append((lambda g=se["group"], pos=pos, allow=dict(allow):
+                     TG.add_slot(tg, g, pos, allow),
+                     f"slot added: {se['group']} at {[round(v, 2) for v in pos]}"))
+
     for fn, _ in plan:
         fn()
     TG.validate(tg)
     return [d for _, d in plan]
+
+
+def _as_pos(v, what: str) -> tuple[float, float, float]:
+    if not (isinstance(v, (list, tuple)) and len(v) == 3):
+        raise MapEditError(f"{what}: expected [x, y, z]")
+    return tuple(_as_float(a, what, -MAX_COORD, MAX_COORD) for a in v)
+
+
+def _anchor(tg: TG.TileGen, sid: int, pos, what: str) -> None:
+    """Refuse an edit made against a slot that is no longer where it was."""
+    s = tg.slots[sid]
+    ok = (isinstance(pos, (list, tuple)) and len(pos) == 3
+          and all(isinstance(a, (int, float)) and not isinstance(a, bool) for a in pos))
+    if not ok or any(abs(float(a) - b) > POS_TOLERANCE for a, b in zip(pos, s.pos, strict=True)):
+        raise MapEditError(
+            f"{what}: the edit was made against a slot at {pos}, but slot "
+            f"{sid} is at {[round(v, 3) for v in s.pos]} — the recipe changed "
+            f"since, so this edit no longer points where it was meant to")
 
 
 def edits_json_errors(tg: TG.TileGen, edits: dict) -> str | None:
@@ -564,17 +700,113 @@ def _val(v) -> str:
     if isinstance(v, int):
         return str(v)
     if isinstance(v, float):
-        return repr(round(v, 6))
+        # repr, not a rounding: it reads back as exactly this float, which the
+        # manifest's read-back check demands (a terrain height has 15 digits).
+        return repr(v)
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_val(x) for x in v) + "]"
     raise MapEditError(f"cannot write {v!r} into a manifest")
 
 
-def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict) -> str:
-    """A complete mod manifest carrying `edits` as one ``tilegen`` declaration."""
+#: The `map` kind's ``base`` for each tile-generated chapter, and the
+#: All_Chapters chapter object that plays it (see `rsmm.sdk.kinds.maps`).
+MAP_BASES: dict[str, tuple[str, int]] = {
+    "DarkHills": ("Dark_Hills", 0), "Storm_Island": ("Storm_Island", 1),
+    "Avalon": ("Avalon", 2),
+}
+_MAP_ID_FIRST = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_MAP_ID_CHARS = _MAP_ID_FIRST | set("0123456789_")
+
+
+def valid_map_id(map_id: str) -> bool:
+    """A map clone's id becomes its mapdef's file name: a letter, then letters,
+    digits and underscores."""
+    return (isinstance(map_id, str) and 2 <= len(map_id) <= 64
+            and map_id[0] in _MAP_ID_FIRST and set(map_id) <= _MAP_ID_CHARS)
+
+
+def _pool_name(path: str) -> str:
+    """``Tiles\\Avalon\\X.tiledef.ot`` -> ``Avalon/X``, the map kind's spelling."""
+    parts = path.split("\\")
+    if len(parts) != 3 or parts[0] != "Tiles" or not parts[2].endswith(".tiledef.ot"):
+        raise MapEditError(f"not a tile path: {path!r}")
+    return f"{parts[1]}/{parts[2].removesuffix('.tiledef.ot')}"
+
+
+def _pool_path(name: str, biome: str) -> str:
+    """The inverse; a bare name means the base's own biome, as the kind reads it."""
+    where, _, stem = name.rpartition("/")
+    return f"Tiles\\{where or biome}\\{stem}.tiledef.ot"
+
+
+def _edit_lines(table: str, edits: dict) -> list[str]:
+    lines: list[str] = []
+    for kname, ke in sorted((edits.get("kinds") or {}).items()):
+        scalars = {k: v for k, v in ke.items() if k != "footprints"}
+        if scalars:
+            lines += ["", f"[{table}.kinds.{_q(kname)}]"]
+            lines += [f"{k} = {_val(v)}" for k, v in scalars.items()]
+        if ke.get("footprints"):
+            lines += ["", f"[{table}.kinds.{_q(kname)}.footprints]"]
+            lines += [f"{_q(g)} = {_val(on)}" for g, on in ke["footprints"].items()]
+    if edits.get("quotas"):
+        lines += ["", f"[{table}.quotas]"]
+        lines += [f"{_q(k)} = {_val(v)}" for k, v in sorted(edits["quotas"].items())]
+    if edits.get("fill"):
+        lines += ["", f"[{table}.fill]"]
+        lines += [f"{_q(g)} = [{', '.join(_q(f) for f in v)}]"
+                  for g, v in sorted(edits["fill"].items())]
+    for sid, se in sorted((edits.get("slots") or {}).items(), key=lambda kv: int(kv[0])):
+        lines += ["", f"[{table}.slots.{_q(str(sid))}]"]
+        if "pos" in se:
+            lines.append(f"pos   = {_val([float(x) for x in se['pos']])}")
+        if "move" in se:
+            lines.append(f"move  = {_val([float(x) for x in se['move']])}")
+        if se.get("allow"):
+            inner = ", ".join(f"{_q(k)} = {_val(v)}" for k, v in se["allow"].items())
+            lines.append(f"allow = {{ {inner} }}")
+    if edits.get("remove_slots"):
+        lines += ["", f"[{table}.remove_slots]"]
+        lines += [f"{_q(str(k))} = {_val([float(x) for x in v])}"
+                  for k, v in sorted(edits["remove_slots"].items(), key=lambda kv: int(kv[0]))]
+    for se in edits.get("add_slots") or []:
+        lines += ["", f"[[{table}.add_slots]]", f"group = {_q(se['group'])}",
+                  f"pos   = {_val([float(x) for x in se['pos']])}"]
+        if se.get("allow"):
+            inner = ", ".join(f"{_q(k)} = {_val(v)}" for k, v in se["allow"].items())
+            lines.append(f"allow = {{ {inner} }}")
+    return lines
+
+
+def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict,
+                  as_map: dict | None = None, scenery: dict | None = None) -> str:
+    """A complete mod manifest carrying `edits`.
+
+    Without `as_map`, one ``tilegen`` declaration: the edits apply to the
+    chapter itself, in every run. With ``as_map = {"id", "play", "pool"}``, one
+    ``map`` declaration instead: a clone of the chapter's map with its own
+    recipe (`edits`) and pool (``pool = {"add": [paths], "remove": [paths]}``),
+    tiles pinned by hand (``place = {"<slot id>"|"new<N>": "<Biome>/<Tile>"}``)
+    and painted terrain (``terrain = [stroke, ...]``, see
+    `rsmm.engine.terrain.apply_strokes`); with ``play`` true the chapter plays
+    the clone. Pool edits only exist on
+    a clone; the vanilla map's pool is shared with every other mod.
+
+    ``scenery = {"<level decoded path>": {"moves", "removes", "adds"}}`` adds
+    one ``scenery`` declaration per edited scenery level (see
+    `rsmm.engine.scenery_edit`). Those levels belong to the chapter, so the
+    edits show in every run of it, clone or not.
+    """
     if not valid_mod_id(mod_id):
         raise MapEditError(
             f"mod id {mod_id!r}: use 2-64 lower-case letters, digits, '-' or '_'")
+    if as_map is not None:
+        if chapter.key not in MAP_BASES:
+            raise MapEditError(f"{chapter.key}: no map to clone for this chapter")
+        if not valid_map_id(as_map.get("id", "")):
+            raise MapEditError(f"map id {as_map.get('id')!r}: a letter, then 1-63 "
+                               f"letters, digits or '_'")
+    what = "A new map from" if as_map else "Map generation changes for"
     lines = [
         EDITOR_MARK + " Hand edits are fine; the editor reads this file back.",
         "",
@@ -583,47 +815,86 @@ def manifest_toml(mod_id: str, name: str, chapter: Chapter, edits: dict) -> str:
         f"name        = {_q(name or mod_id)}",
         'version     = "0.1.0"',
         'author      = "RSMM map editor"',
-        f"description = {_q(f'Map generation changes for {chapter.label}.')}",
+        f"description = {_q(f'{what} {chapter.label}.')}",
         'sdk_version = ">=3.0,<4"',
         'license     = "MIT"',
         'tags        = ["maps", "generation"]',
-        "# The host generates the map, so only the host's copy decides the layout.",
-        'multiplayer_scope = "host-authoritative"',
-        "",
-        "[[content]]",
-        'kind    = "tilegen"',
-        f"id      = {_q(chapter.key.lower())}",
-        f"chapter = {_q(chapter.key)}",
     ]
-    for kname, ke in sorted((edits.get("kinds") or {}).items()):
-        scalars = {k: v for k, v in ke.items() if k != "footprints"}
-        if scalars:
-            lines += ["", f"[content.kinds.{_q(kname)}]"]
-            lines += [f"{k} = {_val(v)}" for k, v in scalars.items()]
-        if ke.get("footprints"):
-            lines += ["", f"[content.kinds.{_q(kname)}.footprints]"]
-            lines += [f"{_q(g)} = {_val(on)}" for g, on in ke["footprints"].items()]
-    if edits.get("quotas"):
-        lines += ["", "[content.quotas]"]
-        lines += [f"{_q(k)} = {_val(v)}" for k, v in sorted(edits["quotas"].items())]
-    if edits.get("fill"):
-        lines += ["", "[content.fill]"]
-        lines += [f"{_q(g)} = {_val(v)}" for g, v in sorted(edits["fill"].items())]
-    for sid, se in sorted((edits.get("slots") or {}).items(), key=lambda kv: int(kv[0])):
-        lines += ["", f"[content.slots.{_q(str(sid))}]"]
-        if "pos" in se:
-            lines.append(f"pos   = {_val([float(x) for x in se['pos']])}")
-        if se.get("allow"):
-            inner = ", ".join(f"{_q(k)} = {_val(v)}" for k, v in se["allow"].items())
-            lines.append(f"allow = {{ {inner} }}")
+    scenery = {lv: e for lv, e in (scenery or {}).items() if any(e.get(k) for k in _SCENERY_KEYS)}
+    if scenery:
+        lines += ["# Every player loads the chapter's scenery from their own copy, so",
+                  "# everyone in the lobby needs this mod at the same version.",
+                  'multiplayer_scope = "deterministic-shared"']
+    else:
+        lines += ["# The host generates the map, so only the host's copy decides the layout.",
+                  'multiplayer_scope = "host-authoritative"']
+    if as_map is not None or scenery:
+        # The map and scenery kinds are rated experimental; lint wants the
+        # opt-in said out loud.
+        lines.append("experimental = true")
+    if as_map is None:
+        if edits:
+            lines += ["", "[[content]]", 'kind    = "tilegen"',
+                      f"id      = {_q(chapter.key.lower())}",
+                      f"chapter = {_q(chapter.key)}"]
+            lines += _edit_lines("content", edits)
+    else:
+        base, index = MAP_BASES[chapter.key]
+        lines += ["", "[[content]]", 'kind    = "map"',
+                  f"id      = {_q(as_map['id'])}", f"base    = {_q(base)}"]
+        if as_map.get("play"):
+            lines.append(f"chapter = {index}")
+        pool = as_map.get("pool") or {}
+        parts = [f"{k} = [{', '.join(_q(_pool_name(p)) for p in pool[k])}]"
+                 for k in ("add", "remove") if pool.get(k)]
+        if parts:
+            lines.append(f"pool    = {{ {', '.join(parts)} }}")
+        if as_map.get("place"):
+            inner = ", ".join(f"{_q(k)} = {_q(v)}" for k, v in as_map["place"].items())
+            lines.append(f"place   = {{ {inner} }}")
+        for st in as_map.get("terrain") or []:
+            lines += ["", "[[content.terrain]]"]
+            lines += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in st.items()]
+        lines += _edit_lines("content.tilegen", edits)
+    for level, e in sorted(scenery.items()):
+        lines += _scenery_lines(chapter, level, e)
     text = "\n".join(lines) + "\n"
 
     # Prove it reads back as exactly these edits before anyone writes it.
-    back = read_manifest_edits(text)
-    if back is None or back[0] != chapter.key or not _same_edits(back[1], edits):
+    back = read_manifest(text)
+    want_map = None if as_map is None else {
+        "id": as_map["id"], "play": bool(as_map.get("play")),
+        "pool": {k: list((as_map.get("pool") or {}).get(k) or []) for k in ("add", "remove")},
+        "place": dict(as_map.get("place") or {}), "terrain": list(as_map.get("terrain") or [])}
+    if (back is None or back["chapter"] != chapter.key
+            or not _same_edits(back["edits"], edits) or back["map"] != want_map
+            or _norm_json(back.get("scenery") or {}) != _norm_json(scenery)):
         raise MapEditError(
             "internal: the manifest did not read back as the edits it was built from")
     return text
+
+
+_SCENERY_KEYS = ("moves", "removes", "adds")
+
+
+def _norm_json(v):
+    import json
+    return json.loads(json.dumps(v, sort_keys=True))
+
+
+def _scenery_lines(chapter: Chapter, level: str, e: dict) -> list[str]:
+    stem = level.rsplit("/", 1)[-1].split(".", 1)[0]
+    out = ["", "[[content]]", 'kind    = "scenery"',
+           f"id      = {_q(re.sub(r'[^a-z0-9_]', '_', stem.lower()))}",
+           f"chapter = {_q(chapter.key)}", f"level   = {_q(level)}"]
+    for section in ("moves", "removes"):
+        for oid, spec in sorted((e.get(section) or {}).items(), key=lambda kv: int(kv[0])):
+            out += ["", f'[content.{section}."{int(oid)}"]']
+            out += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in spec.items()]
+    for a in e.get("adds") or []:
+        out += ["", "[[content.adds]]"]
+        out += [f"{k} = {_q(v) if isinstance(v, str) else _val(v)}" for k, v in a.items()]
+    return out
 
 
 def _same_edits(a: dict, b: dict) -> bool:
@@ -634,13 +905,52 @@ def _same_edits(a: dict, b: dict) -> bool:
     return norm(a) == norm(b)
 
 
-def read_manifest_edits(text: str) -> tuple[str, dict] | None:
-    """``(chapter, edits)`` from the first tilegen declaration in a manifest."""
+_EDIT_KEYS = EDIT_SECTIONS
+
+
+def read_manifest(text: str) -> dict | None:
+    """The first map-editor declaration in a manifest, ``tilegen`` or ``map``::
+
+        {"chapter": "DarkHills", "edits": {...},
+         "map": None | {"id", "play", "pool": {"add": [paths], "remove": [paths]}}}
+    """
     import tomllib
 
     data = tomllib.loads(text)
+    scenery = {str(c.get("level", "")): {k: c[k] for k in _SCENERY_KEYS if c.get(k)}
+               for c in data.get("content") or [] if c.get("kind") == "scenery"}
+    got = _read_first(data)
+    if got is None and scenery:
+        first = next(c for c in data["content"] if c.get("kind") == "scenery")
+        got = {"chapter": str(first.get("chapter", "")), "edits": {}, "map": None}
+    if got is not None and scenery:
+        got["scenery"] = scenery
+    return got
+
+
+def _read_first(data: dict) -> dict | None:
     for c in data.get("content") or []:
         if c.get("kind") == "tilegen":
-            edits = {k: c[k] for k in ("kinds", "quotas", "slots") if c.get(k)}
-            return str(c.get("chapter", "")), edits
+            return {"chapter": str(c.get("chapter", "")),
+                    "edits": {k: c[k] for k in _EDIT_KEYS if c.get(k)}, "map": None}
+        if c.get("kind") == "map":
+            key = next((k for k, (b, _i) in MAP_BASES.items() if b == c.get("base")), None)
+            if key is None:
+                continue
+            biome = MAP_BASES[key][0]
+            tg = c.get("tilegen") or {}
+            pool = c.get("pool") or {}
+            return {"chapter": key,
+                    "edits": {k: tg[k] for k in _EDIT_KEYS if tg.get(k)},
+                    "map": {"id": str(c.get("id", "")), "play": "chapter" in c,
+                            "pool": {k: [_pool_path(n, biome) for n in pool.get(k) or []]
+                                     for k in ("add", "remove")},
+                            "place": dict(c.get("place") or {}),
+                            "terrain": list(c.get("terrain") or [])}}
     return None
+
+
+def read_manifest_edits(text: str) -> tuple[str, dict] | None:
+    """``(chapter, edits)`` from the first map-editor declaration in a manifest."""
+    got = read_manifest(text)
+    return (got["chapter"], got["edits"]) if got else None

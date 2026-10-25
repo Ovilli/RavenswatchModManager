@@ -37,6 +37,8 @@ export interface ChangelogEntry {
    * to catch it.
    */
   loader_version?: number;
+  /** CLI-channel build this entry describes (scripts/publish_cli.py). */
+  cli_version?: number;
   /** ISO date (YYYY-MM-DD) of the release. */
   date: string;
   /** Optional one-line framing for the release as a whole. */
@@ -75,7 +77,12 @@ export function mergeEntries(
 ): ChangelogEntry[] {
   // Key on what IDENTIFIES the entry. Keying on `version` alone collapsed every
   // loader note onto one another, because they all share the empty string.
-  const key = (e: ChangelogEntry) => (e.version ? `app:${e.version}` : `loader:${e.loader_version}`);
+  const key = (e: ChangelogEntry) =>
+    e.version
+      ? `app:${e.version}`
+      : e.loader_version !== undefined
+        ? `loader:${e.loader_version}`
+        : `cli:${e.cli_version}`;
   const byKey = new Map<string, ChangelogEntry>();
   for (const entry of bundled) byKey.set(key(entry), entry);
   for (const entry of remote) byKey.set(key(entry), entry);
@@ -112,6 +119,9 @@ export function entriesSince(
 ): ChangelogEntry[] {
   return entries
     .filter((e) => {
+      // A CLI-channel note has no app or loader version to clamp against; it is
+      // read in About, never announced.
+      if (!e.version && !isLoaderEntry(e)) return false;
       if (isLoaderEntry(e)) {
         // A loader note has no app version to clamp against; the equivalent
         // ceiling is the loader the user actually has planted, so a note never

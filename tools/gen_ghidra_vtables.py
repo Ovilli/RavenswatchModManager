@@ -343,7 +343,7 @@ base = currentProgram.getImageBase()
 pref = base.getNewAddress(__PREF__)
 delta = base.getOffset() - pref.getOffset()
 cat = CategoryPath('/rsmm_vtables')
-ptr = PointerDataType.dataType
+ptr = PointerDataType()
 
 
 def get_or_make_struct(sname):
@@ -366,7 +366,7 @@ for vt_addr, sname, fields in vtbls:
         clearListing(a, a.add(st.getLength() - 1))
         createData(a, st)
         stamped += 1
-    except Exception, e:
+    except Exception as e:
         print('skip vtbl 0x%x: %s' % (vt_addr, e))
 print('phase1 vtbl structs: %d created, %d stamped' % (made, stamped))
 
@@ -452,7 +452,7 @@ for func_va in sorted(targets):
         if want_ret:
             func.setReturnType(objptr, SourceType.USER_DEFINED)
             ret_typed += 1
-    except Exception, e:
+    except Exception as e:
         failed += 1
         if failed <= 20:
             print('skip 0x%x: %s' % (func_va, e))
@@ -506,7 +506,14 @@ def main(argv=None):
     ap.add_argument("--mcp-json", action="store_true",
                     help="emit {vtable_addr: name} for the MCP rename_data bridge "
                          "instead of the Jython struct script (MCP can't make structs)")
+    ap.add_argument("--corpus", type=Path, default=None,
+                    help="dir holding vftables.jsonl + decompiled_new.jsonl for the build "
+                         "being typed (default: docs/_re/out_new). The slot addresses are "
+                         "per build: typing one build with another's corpus is wrong")
     a = ap.parse_args(argv)
+    global VFT, DEC
+    if a.corpus:
+        VFT, DEC = a.corpus / "vftables.jsonl", a.corpus / "decompiled_new.jsonl"
 
     import sys
     entries, slot_owners = build(a.limit, a.named_only, a.game_only)

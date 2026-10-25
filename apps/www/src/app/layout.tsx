@@ -1,7 +1,8 @@
 import { jsonLd } from '@rsmm/schemas';
 import { buttonVariants } from '@rsmm/ui';
+import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import { Github } from 'lucide-react';
+import { Coffee, Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
 import { Alegreya, Alegreya_Sans, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
@@ -64,8 +65,6 @@ export const metadata: Metadata = {
   // hosts compete as separate URLs and split their own ranking signals.
   alternates: { canonical: '/' },
   icons: '/logo.png',
-  // AdSense site-ownership verification (alongside the loader script).
-  other: { 'google-adsense-account': 'ca-pub-9139637424510522' },
   // Site-wide social-card defaults. Per-mod / per-collection pages override
   // title/description/images in their own layout's generateMetadata.
   openGraph: {
@@ -234,6 +233,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 >
                   <Github className="h-4 w-4" aria-hidden="true" />
                 </a>
+                <a
+                  href="https://ko-fi.com/W7W41FW3YE"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                >
+                  <Coffee className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  Support
+                </a>
               </div>
             </div>
 
@@ -282,6 +290,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </footer>
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>

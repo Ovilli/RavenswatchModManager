@@ -30,6 +30,7 @@ import { useConfirmDisableHook } from '../components/disable-hook-consent';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
 import { SetupBanner } from '../components/setup-banner';
+import { SupportNudge } from '../components/support-nudge';
 import { useDialog, useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import { useModToggle } from '../components/use-mod-toggle';
@@ -496,6 +497,7 @@ function LibraryPage() {
     // padding keeps the last row reachable above it either way.
     <div className="space-y-6 pb-24">
       <SetupBanner />
+      <SupportNudge />
       <UpdatesPanel />
       <SectionHeader
         title={t('Library')}

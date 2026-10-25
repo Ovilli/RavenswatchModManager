@@ -22,8 +22,8 @@ The RSMM logo and app icon are by **Arch**.
 # Loader DLL
 
 License copies are bundled in-tree under `src/loader/third_party/<lib>/`.
-`imgui/` and `Vulkan-Headers/` are also vendored there, but are not compiled
-into the current loader (the in-game ImGui overlay was removed).
+`Vulkan-Headers/` is also vendored there, but is not compiled into the
+current loader (the in-game ImGui overlays were removed).
 
 ---
 

@@ -243,6 +243,8 @@ export function createApiClient(options: ApiClientOptions) {
     mod: modListItemSchema.and(
       z.object({
         isFollowing: z.boolean().optional(),
+        // Viewer is the owner or a co-author.
+        isAuthor: z.boolean().optional(),
         followerCount: z.number().int().optional(),
         // Present for the owner/admin viewing a delisted mod; public callers
         // never receive a non-active mod so these default to active.
@@ -254,6 +256,7 @@ export function createApiClient(options: ApiClientOptions) {
   });
   const notificationsResponseSchema = z.object({
     unread: z.number().int().nonnegative(),
+    hasMore: z.boolean().optional(),
     items: z.array(
       z.object({
         id: z.string(),
@@ -572,6 +575,18 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       deleteReview: (slug: string) =>
         request(`/api/mods/${encodeURIComponent(slug)}/reviews`, { method: 'DELETE' }, okSchema),
+      replyToReview: (slug: string, reviewId: string, body: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+          { method: 'PUT', body: JSON.stringify({ body }) },
+          okSchema,
+        ),
+      deleteReviewReply: (slug: string, reviewId: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
       report: (slug: string, body: { reason: string; detail?: string | null }) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/report`,
@@ -709,12 +724,22 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'POST', body: JSON.stringify(body) },
           imagePresignResponseSchema,
         ),
-      notifications: () =>
-        request('/api/me/notifications', { method: 'GET' }, notificationsResponseSchema),
+      notifications: (before?: string) =>
+        request(
+          `/api/me/notifications${before ? `?before=${encodeURIComponent(before)}` : ''}`,
+          { method: 'GET' },
+          notificationsResponseSchema,
+        ),
       markNotificationsRead: (id?: string) =>
         request(
           '/api/me/notifications/read',
           { method: 'POST', body: JSON.stringify(id ? { id } : {}) },
+          okSchema,
+        ),
+      deleteNotifications: (id?: string) =>
+        request(
+          '/api/me/notifications',
+          { method: 'DELETE', body: JSON.stringify(id ? { id } : {}) },
           okSchema,
         ),
       follows: () => request('/api/me/follows', { method: 'GET' }, followsResponseSchema),
@@ -797,6 +822,18 @@ export function createApiClient(options: ApiClientOptions) {
             { method: 'DELETE' },
             okSchema,
           ),
+        reply: (slug: string, reviewId: string, body: string) =>
+          request(
+            `/api/collections/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+            { method: 'PUT', body: JSON.stringify({ body }) },
+            okSchema,
+          ),
+        removeReply: (slug: string, reviewId: string) =>
+          request(
+            `/api/collections/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+            { method: 'DELETE' },
+            okSchema,
+          ),
       },
     },
     guides: {
@@ -872,6 +909,18 @@ export function createApiClient(options: ApiClientOptions) {
         remove: (slug: string) =>
           request(
             `/api/guides/${encodeURIComponent(slug)}/reviews`,
+            { method: 'DELETE' },
+            okSchema,
+          ),
+        reply: (slug: string, reviewId: string, body: string) =>
+          request(
+            `/api/guides/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
+            { method: 'PUT', body: JSON.stringify({ body }) },
+            okSchema,
+          ),
+        removeReply: (slug: string, reviewId: string) =>
+          request(
+            `/api/guides/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
             { method: 'DELETE' },
             okSchema,
           ),

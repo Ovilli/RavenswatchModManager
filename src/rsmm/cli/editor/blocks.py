@@ -553,6 +553,10 @@ local function __run(fn)
                 __safe(fn)
             elseif tries > 60 then
                 R.schedule.cancel(handle)
+                R.log("[blocks] gave up: the hero was never found"
+                    .. ((R.entity.capture_enabled and not R.entity.capture_enabled())
+                        and ' (hero capture is off: put loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]'
+                            .. ' under [mod] in manifest.toml and apply again)' or ""))
             end
         end)
     end)

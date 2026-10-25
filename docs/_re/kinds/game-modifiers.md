@@ -129,3 +129,31 @@ marker/count copied verbatim), so it never desyncs the opaque tail. Tests:
 2. Locate/lift the UI selection-count cap (asset dump of the challenge-UI spawner) for #16.
 3. Type the modifier-def tail in the codec (title/desc keys + behaviour key as first-class
    fields) so relabel/effect don't rely on string surgery.
+
+## Unlocks under modifiers (GH #54) — 2026-10-15
+
+The in-game warning "Playing with Modifiers will not unlock Difficulties, Achievements or
+Outfits" is implemented by **detaching trackers**, not by blocking the unlock write.
+
+- `oCDtRootGs` update (`FUN_14025a9e0`) reads the run settings every tick
+  (`FUN_140917be0`; selected-modifier index vector at settings `+0x28`, count `+0x30`) and
+  drives `HasGameModifierStateMachine` (`RootGs+0x2120`) to HAS-modifiers when count != 0,
+  NO-modifiers otherwise. The same list feeds the `run_start` analytics field `custom_mode`
+  (observed `1`/`3` with modifiers, `0` without).
+- HAS-modifiers callback = symbol `GameModifierLock_OnStateChange(this, state)`.
+  `state=0` (enter — proven in game, it fires while a modded run is set up, before
+  `run_start`): for each `AchievementDefinition`, unless byte `+0x2b2` is set, calls
+  `(*(def+0x2a8))->vft[0x58](src)` (detach); then the same over a second definition class's
+  `+0x930` vector (flag `+0x1f8`, tracker `+0x28`) — the outfit/difficulty conditions.
+  `state=1` (exit, fires when the next run has none): identical walk with `vft[0x50]`
+  (re-attach). NO-modifiers callback is `ret`. The static reading had 0/1 backwards; the
+  probe caught it before the bypass was ever run.
+- `custom_mode` in `run_start` is the modifier COUNT (3 selected → 3).
+- `+0x2b2` is a serialized per-def exemption (only the reflection serializer writes it), so a
+  per-achievement data fix likely exists too; it would not cover outfits/difficulties.
+
+SDK: `R.modifier.allow_unlocks(on)` skips the enter callback (and only its paired exit), so
+trackers stay attached as in an unmodded run. Nothing is granted; the ownership gate is not
+touched. Opt-in mod: `mods/unlocks-with-modifiers`. Status: callback firing and its
+0/1 meaning observed in game 2026-10-15; an actual unlock under modifiers with the bypass on
+is **not yet verified**.

@@ -164,6 +164,11 @@ field    = "m_eComputerType"
 value    = 0
 ```
 
+A `stat` field can take its number from the mod's config instead:
+`min = { config = "pack_size", times = 15 }` reads the player's `pack_size`
+setting and multiplies it by 15 (write the shipped value there, so 1.0 leaves the
+game as it was). Like every content config, it takes effect on the next launch.
+
 The same blocks from the optional Python SDK — `python3 mods/MyMod/build.py`
 writes the manifest above:
 
@@ -810,6 +815,19 @@ the mod restores the full catalog.
 Bans from several mods are **unioned**, so two mods each banning a different
 item yield both bans.
 
+**You can ban everything.** The game draws every offer with a modulo over the
+candidate count, so a pool with nothing left in it would crash the game (the
+Sandman's Major and Medium pools hold a single item each). When a ban would
+empty a rarity or a vendor pool (or leave the Sandman's Minor pool, which offers
+two different items at once, below two), the ban adds a **"Sold Out"** item to
+it: a copy of the Stars of Fate powerup that grants nothing. Pools that keep a
+real item get none. If a placeholder cannot be built, `apply` un-bans just
+enough items instead and names them in a warning.
+
+**Progress is kept.** While an item is banned the game writes it out of your
+profile save. Every `apply` and `restore` puts those records back, so lifting a
+ban brings each item back as you left it, not as never seen.
+
 :::caution[This works in multiplayer only if every peer runs the mod]
 The offer draw is seeded and *host-authoritative deterministic*, so a per-peer
 runtime filter — a loader hook, a Lua callback — would make peers disagree
@@ -1016,10 +1034,180 @@ super_description = "#Crit Damage@ &+{0}%~"
 - **`super_description`** gives the copy super-effect text of its own (the base's
   text still names the old stat). Items without a super effect (cursed,
   legendary, power-ups) refuse it.
+- **`super_effect = false`** removes the base's super effect: the bonus never
+  applies and the card shows no super text. Use it when the item you are
+  making has none of its own.
+- **A copy gets an identity of its own** (`unique_identity`, on by default).
+  A copy that keeps its base's identity is treated as the base: a grant hands
+  out the vanilla item, and owning both keeps only one. `unique_identity =
+  false` opts out.
 - **Some stats need more than the stat.** Plain numbers (attack power, armour,
   crit, cooldowns, move speed) work anywhere. Flags like `Lightning explode` or
   the instant-kill thresholds only do something with the components the item
   that ships them carries.
+- **The stat changes, the behaviour doesn't.** A copy of `Increase_Shield`
+  keeps the shield's permanent on-hit modifier, which never wears off because
+  only damage used up the shield. As crit chance it stacks for the rest of the
+  run. Its amount also still scales with the hero's level healing. Fix the
+  behaviour with `[[content.steps]]`: the `set` / `link` / `add_link` /
+  `remove_link` / `percent` / `clone` steps of the [`entity` kind](/guides/first-mod-by-kind/), run
+  on the copy by the part names `rsmm entity-graph` prints for the base:
+
+```toml
+# "After taking damage, gain crit chance for 5 seconds" from Increase_Shield.
+# A bonus hung on a state lasted ~1.5 s in game. The shipped way to time a
+# bonus is Dash_Crit_Chance's: a tester (run by State Picked Up) holds the
+# modifier on while a timer has time left. Copy those three parts in, and let
+# the hit restart the timer instead of granting the permanent modifier.
+[[content.steps]]
+clone  = ["Crit Chance Modifier Active Tester", "Crit Chance Modifier Timer", "Crit Chance Modifier"]
+from   = "Objects/Magical_Objects/Common/Dash_Crit_Chance"   # any entity, or a hero name
+suffix = " Pebbles"
+[[content.steps]]
+add_link = "State Picked Up.while_active"
+to       = "Crit Chance Modifier Active Tester Pebbles"
+[[content.steps]]
+remove_link = "On Damage Received.activates"              # the permanent grant
+to          = "Modifier"
+[[content.steps]]
+remove_link = "On Damage Received.deactivates?"           # keep listening: every
+to          = "Shield Protection Up State"              # hit restarts the 5 s
+[[content.steps]]
+add_link = "On Damage Received.deactivates?"               # restart: off, then on
+to       = "Crit Chance Modifier Timer Pebbles"
+[[content.steps]]
+add_link = "On Damage Received.activates"
+to       = "Crit Chance Modifier Timer Pebbles"
+[[content.steps]]
+link = "Crit Chance Modifier Timer Pebbles.duration"       # the copies read this
+to   = "Shield Reload Delay"                               # item's numbers, not
+[[content.steps]]                                          # the donor's
+link = "Crit Chance Modifier Pebbles.amount"
+to   = "Shield Value"
+[[content.steps]]
+link = "Descripton Format.obj_4[0]"                        # the card's {0}
+to   = "Shield Value"
+[[content.steps]]
+percent = "Descripton Format.obj_4"                        # 0.3 -> "30", not "0"
+value   = true
+```
+
+A card slot shows its number plain or x100 as a percentage; a shield's shows
+it plain, so a stat that is a fraction needs a `percent` step.
+
+### A timed bonus (`effect`)
+
+The recipe above, in one line, on any base item:
+
+```toml
+[[content]]
+kind         = "item"
+id           = "Increase_Crit_M"
+base         = "Increase_Shield"            # the look; its own effect is cut
+name         = "Little Thumb Pebbles"
+description  = "After taking damage, gain #+{0}%@ #Crit Chance@ for #{1}@ seconds"
+super_effect = false
+effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_taken" }
+```
+
+- **`on`**: when it triggers. rsmm writes the listener itself, with the event
+  and filter the shipped items that react to it use: `damage_taken`, `dash`,
+  `special`, `defense`, `ultimate`,
+  `power`, `day_start`, `night_start`, `talent_picked`, `item_picked_up`,
+  `dream_shards_gained`, `sandman_purchase`, `reroll`. Proven in game:
+  `damage_taken`, `dash`, `special`, `defense`, `power`, `talent_picked`,
+  `item_picked_up`, `dream_shards_gained` and `night_start`. There is no "on
+  kill" or "on crit": no item listens for those. The item's icon counts the
+  bonus down. Each trigger restarts the full time;
+  `refresh = false` lets a running bonus finish first.
+- **`amount`** is in the stat's own unit (crit chance 0.3 = +30%). For
+  `Vitality` and the `Attack power` stats, enter the points shown in game:
+  `15` gives +15 vitality or +15% attack power; rsmm writes the game's raw
+  value as `0.15`. The card's `{0}` is the amount, shown x100 as a percentage
+  (`percent = false` shows it as entered), and `{1}` the seconds. Vitality,
+  attack power and flat stats (`Armour`, `Shield`, ...) default to
+  `percent = false`.
+- **`per_level = true`** makes a flat amount grow with hero level, as Fairy
+  Dust's shield does: `amount` is the level-1 number and the game scales it by
+  the hero's Level Healing (10 at level 1). `{ stat = "Shield", amount = 10,
+  per_level = true }` gives 10 shield at level 1 and more after. Not for
+  percent stats, Vitality, Attack power or whole-number stats.
+- **The base's own stat effects are cut**, so a shield base stops being a
+  shield; `keep_base_effect = true` keeps them. Its super effect is separate:
+  `super_effect = false` drops it.
+- `steps` still run after the effect, to adjust anything it built (its parts
+  end in ` Effect`).
+
+The editor's **What it does** section writes these tables (a row per bonus,
+always on or after a trigger), and its card preview shows the numbers as the
+game will print them.
+
+### An item from scratch (`effects`, no `base`)
+
+Leave `base` out and list what the item does. Each entry without `seconds` is
+always on while the item is held; one with `seconds` (and `on`) is a timed
+bonus as above. Any number of each:
+
+```toml
+[[content]]
+kind    = "item"
+id      = "Wanderers_Charm"                # any length
+name    = "Wanderer's Charm"
+rarity  = "Rare"                           # default Common
+icon    = "icons/charm.png"                # or a vanilla icon stem
+effects = [
+  { stat = "Crit chance", amount = 0.1 },
+  { stat = "Armour", amount = 5, percent = false },
+  { stat = "Attack power", amount = 0.2, seconds = 4, on = "dash" },
+]
+```
+
+- With no `description`, the card text is written from the effects, one bullet
+  each, numbered `{0}`, `{1}`... in order (a timed effect takes two: its
+  amount, then its seconds). Write your own with the same numbering.
+- `effects` also works next to a `base`: the base then gives only the look.
+- In `rsmm editor` (and the [web editor](/guides/web-editor/)), **+ New custom
+  item → Start from scratch** makes one of these, with the card preview.
+- The whole item is written by rsmm, not copied out of another item: its
+  frame (name, icon, quality, card, its own save id) and every part an effect
+  needs (modifier, timer, tester, trigger listener). A game patch that changes
+  some shipped item does not change yours. The only shipped file it reads is
+  the magical-object model every item inherits. With no `name` it is named
+  after its id; it has no super effect unless `super_effects` gives it one.
+
+### Super effects (`super_effects`)
+
+A super effect is what an item does once the hero holds enough copies of it:
+5 of a Common, 4 of a Rare, 3 of an Epic (the card's "x3"; some effects lower
+it). Different items of the same rarity do not count. The game then switches
+the item's super-effect state on, and the card's second paragraph describes it. `super_effects` takes the same tables
+as `effects` (always on, or timed after a trigger) and runs them from that
+state instead:
+
+```toml
+[[content]]
+kind          = "item"
+id            = "Wanderers_Charm"
+rarity        = "Rare"
+effects       = [{ stat = "Crit chance", amount = 0.1 }]
+super_effects = [
+  { stat = "Attack power", amount = 0.2 },
+  { stat = "Crit damage", amount = 0.3, seconds = 4, on = "dash" },
+]
+```
+
+- Works on a blank item and on a copy (or `mode = "replace"`) of any shipped
+  item. A base's own super effect is replaced; an item without one (a
+  legendary copied down to Rare) gets one.
+- **Common, Rare and Epic only.** A Legendary, Cursed or Power-up item has no
+  copy target, so it never switches one on; the build refuses it.
+- With no `super_description` the super text is written from them, numbered
+  from `{0}` like `description`, as one line.
+- **Write super text as one line, without `•`.** No shipped super text has a
+  bullet or a line break, and the card prints a bulleted one as `???`.
+- `super_effect = false` and `super_effects` contradict each other: give one.
+- In the editor, each item has a **Super effect** section with the same rows
+  as **What it does**.
 
 A **talent** takes the same `stats` table, next to its `file` (effect names
 repeat across a hero's files):

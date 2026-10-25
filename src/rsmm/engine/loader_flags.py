@@ -9,6 +9,7 @@ or the matching environment variable, once at start. Only flags marked
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,15 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "safe": True,
     },
     {
+        "name": "RSMM_DISABLE_NATIVE_MENU",
+        "label": "Disable the in-game Mods menu",
+        "description": "Remove the Mods tab from the game's Settings page and "
+                       "the Mods button from the pause menu. They let you switch "
+                       "mods on or off (applied the next time you launch) and "
+                       "change their settings while you play.",
+        "safe": True,
+    },
+    {
         "name": "RSMM_ENABLE_HERO_CAPTURE",
         "label": "Hero capture",
         "description": "Find your hero in memory so mods can read and change "
@@ -98,6 +108,24 @@ LOADER_FLAGS: list[dict[str, Any]] = [
 FLAGS_FILE = "rsmm_loader_flags.json"
 SAFE_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS if f["safe"])
 KNOWN_FLAG_NAMES = frozenset(f["name"] for f in LOADER_FLAGS)
+
+HERO_CAPTURE = "RSMM_ENABLE_HERO_CAPTURE"
+
+# The SDK namespaces that find the hero through hero capture. With the flag off
+# they do not raise: R.entity.ready() stays false and R.talent.controllers()
+# stays empty, so a script waiting on them waits forever and says nothing —
+# what the editor's test grants did on every install without the flag.
+_RE_HERO_CAPTURE = re.compile(
+    r"\bR\.(?:entity|stat|combat|xp|camera)\."
+    r"|\bR\.talent\.(?:grant|revoke|controllers|dump|find)\b"
+    r"|\bR\.hero\.entity")
+
+
+def needs_hero_capture(lua: str) -> bool:
+    """True when Lua source calls an SDK namespace that needs hero capture.
+    Comments are ignored, so a mention in prose does not count."""
+    return any(_RE_HERO_CAPTURE.search(line.split("--", 1)[0])
+               for line in lua.splitlines())
 
 
 def read_flags(flags_path: Path) -> list[str]:

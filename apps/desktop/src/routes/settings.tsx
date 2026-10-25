@@ -324,7 +324,7 @@ function UpdatesPanel() {
       <Fleuron className="my-3" />
       <p className="font-serif-italic text-ash mb-3">
         {t(
-          'RSMM checks for new releases automatically. Checking manually covers both the launcher itself and the game loader & Lua SDK planted in your Ravenswatch folder.',
+          'RSMM checks for new releases automatically. Checking manually covers the launcher itself, its CLI, and the game loader & Lua SDK planted in your Ravenswatch folder.',
         )}
       </p>
       <UpdaterSettings />

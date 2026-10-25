@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity")
+         "entity", "challenge", "scenery")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -58,9 +58,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # and a valid save. A clone is its base; rename/abilities are not
                               # built yet.
     "map": "experimental",    # clone + chapter resref PROVEN IN GAME 2026-09-19 (chapter 0
-                              # resolved to the clone and the run started in it); the clone
-                              # still generates from the base's pool (tilegen backref) and
-                              # `tribe` showed no effect
+                              # resolved to the clone and the run started in it); own-pool
+                              # generation PROVEN 2026-09-24. `pool`/`tilegen` edits on the
+                              # clone are unplaytested; `tribe` showed no effect
     "skill": "confirmed",     # relabel PROVEN IN GAME 2026-09-18 (Aladdin's Attack Dive read
                               # "TEST Meteor" in the Skill Menu and on the card). It is the only
                               # mode emitted: repoint was playtested inert (2026-09-12) and clone
@@ -71,6 +71,9 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # shrine's reward when it died. Arenas select their boss by the
                               # per-boss FLAG and nothing else names the entity (corpus scan,
                               # re-asserted by a slow test); bosses failing that are refused.
+    "challenge": "guess",     # cooks byte-exact (all 5 retail defs and their caches rebuild
+                              # identically, 2026-10-16); the challenge page lists every loaded
+                              # ChallengeDefinition (Ghidra), but a clone appearing is unproven
     "modifier": "experimental",  # a cloned def REACHES THE CHALLENGE SCREEN (in game 2026-09-18,
                               # "TEST Double XP" row, after the text-bank fix); its effect in a run
                               # is unproven (rows ARE spawner-driven — m_oGameModifierUiSpawner)
@@ -141,6 +144,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # constraints (a story tile like Wood_House forces 3 Treant camps).
                               # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
+    "scenery": "experimental",  # chapter scenery levels edited in place (move / sink / add an
+                              # entity the chapter already places). Every shipped level
+                              # rewrites byte-identically and the emit is anchored, but no
+                              # moved, sunk or added object has been seen in game yet.
                               # Field meaning is read off the live exe's generator (0x1402d9280),
                               # quality roll and price function (0x1402d4200), and every edit
                               # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
@@ -335,12 +342,14 @@ _KIND_MODULES = {
     "entity": "entities",
     "skill": "skills",
     "modifier": "modifiers",
+    "challenge": "challenges",
     "game_mode": "game_modes",
     "melody": "melodies",
     "mesh": "meshes",
     "animation": "animations",
     "poi": "poi",
     "tilegen": "tilegen",
+    "scenery": "scenery",
     "shop": "shops",
 }
 

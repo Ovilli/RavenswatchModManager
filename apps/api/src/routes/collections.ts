@@ -7,12 +7,14 @@ import {
   collectionPatchSchema,
   collectionReviewUpsertSchema,
   collectionSlugSchema,
+  reviewReplySchema,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured } from '../env.js';
+import { notifyReview, notifyReviewReply } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { presignCollectionImage } from '../storage.js';
 import type { AppEnv } from '../types.js';
@@ -467,6 +469,8 @@ collectionsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), as
       rating: schema.collectionReviews.rating,
       title: schema.collectionReviews.title,
       body: schema.collectionReviews.body,
+      ownerReply: schema.collectionReviews.ownerReply,
+      ownerReplyAt: schema.collectionReviews.ownerReplyAt,
       createdAt: schema.collectionReviews.createdAt,
       updatedAt: schema.collectionReviews.updatedAt,
       userName: schema.users.name,
@@ -486,6 +490,8 @@ collectionsRouter.get('/:slug/reviews', zValidator('param', slugParamSchema), as
     rating: r.rating,
     title: r.title,
     body: r.body,
+    ownerReply: r.ownerReply,
+    ownerReplyAt: r.ownerReplyAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }));
@@ -517,7 +523,7 @@ collectionsRouter.put(
     }
 
     const now = new Date();
-    await db
+    const [saved] = await db
       .insert(schema.collectionReviews)
       .values({
         collectionId: collection.id,
@@ -535,8 +541,89 @@ collectionsRouter.put(
           body: body.body ?? null,
           updatedAt: now,
         },
-      });
+      })
+      .returning({ isNew: sql<boolean>`xmax = 0` });
+    await notifyReview({
+      ownerId: collection.ownerId,
+      type: 'collection_review',
+      itemName: collection.name,
+      link: `/c/${collection.slug}`,
+      reviewerName: user.name,
+      rating: body.rating,
+      title: body.title,
+      body: body.body,
+      isNew: saved?.isNew ?? false,
+    });
 
+    return c.json({ ok: true });
+  },
+);
+
+// The owner can post one public reply per review; the reviewer is told.
+const reviewReplyParamSchema = slugParamSchema.extend({ reviewId: z.string().uuid() });
+collectionsRouter.use('/:slug/reviews/:reviewId/reply', reviewLimiter);
+collectionsRouter.put(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  zValidator('json', reviewReplySchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const { body } = c.req.valid('json');
+    const db = getDb();
+    const collection = await db.query.collections.findFirst({
+      where: eq(schema.collections.slug, slug),
+    });
+    if (!collection || !canViewCollection(collection, user.id))
+      return c.json({ error: 'not found' }, 404);
+    if (collection.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    const review = await db.query.collectionReviews.findFirst({
+      where: and(
+        eq(schema.collectionReviews.id, reviewId),
+        eq(schema.collectionReviews.collectionId, collection.id),
+      ),
+    });
+    if (!review) return c.json({ error: 'not found' }, 404);
+
+    await db
+      .update(schema.collectionReviews)
+      .set({ ownerReply: body, ownerReplyAt: new Date() })
+      .where(eq(schema.collectionReviews.id, review.id));
+    await notifyReviewReply({
+      reviewerId: review.userId,
+      itemName: collection.name,
+      link: `/c/${collection.slug}`,
+      replierName: user.name,
+      reply: body,
+      isNew: review.ownerReply == null,
+    });
+    return c.json({ ok: true });
+  },
+);
+
+collectionsRouter.delete(
+  '/:slug/reviews/:reviewId/reply',
+  zValidator('param', reviewReplyParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { slug, reviewId } = c.req.valid('param');
+    const db = getDb();
+    const collection = await db.query.collections.findFirst({
+      where: eq(schema.collections.slug, slug),
+    });
+    if (!collection) return c.json({ error: 'not found' }, 404);
+    if (collection.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    await db
+      .update(schema.collectionReviews)
+      .set({ ownerReply: null, ownerReplyAt: null })
+      .where(
+        and(
+          eq(schema.collectionReviews.id, reviewId),
+          eq(schema.collectionReviews.collectionId, collection.id),
+        ),
+      );
     return c.json({ ok: true });
   },
 );

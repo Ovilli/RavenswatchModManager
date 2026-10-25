@@ -61,6 +61,20 @@ inline BookController_ResolveTabs_fn BookController_ResolveTabs() {
     return reinterpret_cast<BookController_ResolveTabs_fn>(rsmm::fn_resolve(Sym::BookController_ResolveTabs_Pattern));
 }
 
+// BookMenuUiController_OnHide  (BookMenuUiController_OnHide)
+//   void(void* uiController)
+using BookMenuUiController_OnHide_fn = void(*)(void*);
+inline BookMenuUiController_OnHide_fn BookMenuUiController_OnHide() {
+    return reinterpret_cast<BookMenuUiController_OnHide_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnHide_Pattern));
+}
+
+// BookMenuUiController_OnShow  (BookMenuUiController_OnShow)
+//   void(void* uiController)
+using BookMenuUiController_OnShow_fn = void(*)(void*);
+inline BookMenuUiController_OnShow_fn BookMenuUiController_OnShow() {
+    return reinterpret_cast<BookMenuUiController_OnShow_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnShow_Pattern));
+}
+
 // ChallengeDef_PostLoad  (ChallengeDef_PostLoad)
 //   bool(void* definition)
 using ChallengeDef_PostLoad_fn = uint32_t(*)(void*);
@@ -304,6 +318,12 @@ inline GameModifierDef_PostLoad_fn GameModifierDef_PostLoad() {
     return reinterpret_cast<GameModifierDef_PostLoad_fn>(rsmm::fn_resolve(Sym::GameModifierDef_PostLoad_Pattern));
 }
 
+// GameModifierLock_OnStateChange  (GameModifierLock_OnStateChange)
+using GameModifierLock_OnStateChange_fn = void(*)(void*, int);
+inline GameModifierLock_OnStateChange_fn GameModifierLock_OnStateChange() {
+    return reinterpret_cast<GameModifierLock_OnStateChange_fn>(rsmm::fn_resolve(Sym::GameModifierLock_OnStateChange_Pattern));
+}
+
 // GameModifierUi_PadSelectedSlots  (GameModifierUi_PadSelectedSlots)
 //   void(void* uiController, void* unknown, void* selectedVector)
 using GameModifierUi_PadSelectedSlots_fn = void(*)(void*, void*, void*);
@@ -367,11 +387,38 @@ inline HeroRankLock_IsUnlocked_fn HeroRankLock_IsUnlocked() {
     return reinterpret_cast<HeroRankLock_IsUnlocked_fn>(rsmm::fn_resolve(Sym::HeroRankLock_IsUnlocked_Pattern));
 }
 
+// HeroSelect_ConfirmBlockReason  (HeroSelect_ConfirmBlockReason)
+//   int(void* screen)
+using HeroSelect_ConfirmBlockReason_fn = int(*)(void*);
+inline HeroSelect_ConfirmBlockReason_fn HeroSelect_ConfirmBlockReason() {
+    return reinterpret_cast<HeroSelect_ConfirmBlockReason_fn>(rsmm::fn_resolve(Sym::HeroSelect_ConfirmBlockReason_Pattern));
+}
+
+// HeroSelect_ConfirmPressed  (HeroSelect_ConfirmPressed)
+//   void(void* screen)
+using HeroSelect_ConfirmPressed_fn = void(*)(void*);
+inline HeroSelect_ConfirmPressed_fn HeroSelect_ConfirmPressed() {
+    return reinterpret_cast<HeroSelect_ConfirmPressed_fn>(rsmm::fn_resolve(Sym::HeroSelect_ConfirmPressed_Pattern));
+}
+
 // HeroSelect_IsHeroAvailable  (HeroSelect_IsHeroAvailable)
 //   bool(void* menu, int hero_index, bool flag)
 using HeroSelect_IsHeroAvailable_fn = bool(*)(void*, int, bool);
 inline HeroSelect_IsHeroAvailable_fn HeroSelect_IsHeroAvailable() {
     return reinterpret_cast<HeroSelect_IsHeroAvailable_fn>(rsmm::fn_resolve(Sym::HeroSelect_IsHeroAvailable_Pattern));
+}
+
+// HeroSelect_PortraitPicked  (HeroSelect_PortraitPicked)
+using HeroSelect_PortraitPicked_fn = void(*)(void*, void*);
+inline HeroSelect_PortraitPicked_fn HeroSelect_PortraitPicked() {
+    return reinterpret_cast<HeroSelect_PortraitPicked_fn>(rsmm::fn_resolve(Sym::HeroSelect_PortraitPicked_Pattern));
+}
+
+// HeroSelect_SetConfirmEnabled  (HeroSelect_SetConfirmEnabled)
+//   void(void* screen, bool enabled)
+using HeroSelect_SetConfirmEnabled_fn = void(*)(void*, bool);
+inline HeroSelect_SetConfirmEnabled_fn HeroSelect_SetConfirmEnabled() {
+    return reinterpret_cast<HeroSelect_SetConfirmEnabled_fn>(rsmm::fn_resolve(Sym::HeroSelect_SetConfirmEnabled_Pattern));
 }
 
 // HeroStoryUnlock_IsUnlocked  (HeroStoryUnlock_IsUnlocked)
@@ -409,11 +456,39 @@ inline HitPoint_SetHitPoints_fn HitPoint_SetHitPoints() {
     return reinterpret_cast<HitPoint_SetHitPoints_fn>(rsmm::fn_resolve(Sym::HitPoint_SetHitPoints_Pattern));
 }
 
+// InGameMenuGs_OnEnter  (InGameMenuGs_OnEnter)
+//   void(oe::dt::InGameMenuGs* self, void* ctx)
+using InGameMenuGs_OnEnter_fn = void(*)(void*, void*);
+inline InGameMenuGs_OnEnter_fn InGameMenuGs_OnEnter() {
+    return reinterpret_cast<InGameMenuGs_OnEnter_fn>(rsmm::fn_resolve(Sym::InGameMenuGs_OnEnter_Pattern));
+}
+
+// InGameMenuGs_OnLeave  (InGameMenuGs_OnLeave)
+//   void(oe::dt::InGameMenuGs* self, void* ctx)
+using InGameMenuGs_OnLeave_fn = void(*)(void*, void*);
+inline InGameMenuGs_OnLeave_fn InGameMenuGs_OnLeave() {
+    return reinterpret_cast<InGameMenuGs_OnLeave_fn>(rsmm::fn_resolve(Sym::InGameMenuGs_OnLeave_Pattern));
+}
+
 // IngredientDef_PostLoad  (IngredientDef_PostLoad)
 //   bool(void* definition)
 using IngredientDef_PostLoad_fn = uint32_t(*)(void*);
 inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
     return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
+}
+
+// LoadingScreenUiController_OnHide  (LoadingScreenUiController_OnHide)
+//   void(void* uiController)
+using LoadingScreenUiController_OnHide_fn = void(*)(void*);
+inline LoadingScreenUiController_OnHide_fn LoadingScreenUiController_OnHide() {
+    return reinterpret_cast<LoadingScreenUiController_OnHide_fn>(rsmm::fn_resolve(Sym::LoadingScreenUiController_OnHide_Pattern));
+}
+
+// LoadingScreenUiController_OnShow  (LoadingScreenUiController_OnShow)
+//   void(void* uiController)
+using LoadingScreenUiController_OnShow_fn = void(*)(void*);
+inline LoadingScreenUiController_OnShow_fn LoadingScreenUiController_OnShow() {
+    return reinterpret_cast<LoadingScreenUiController_OnShow_fn>(rsmm::fn_resolve(Sym::LoadingScreenUiController_OnShow_Pattern));
 }
 
 // LobbyAttributes_Parse  (LobbyAttributes_Parse)
@@ -428,6 +503,12 @@ inline LobbyAttributes_Parse_fn LobbyAttributes_Parse() {
 using LobbyAttributes_Serialize_fn = void*(*)(void*, void*);
 inline LobbyAttributes_Serialize_fn LobbyAttributes_Serialize() {
     return reinterpret_cast<LobbyAttributes_Serialize_fn>(rsmm::fn_resolve(Sym::LobbyAttributes_Serialize_Pattern));
+}
+
+// Lobby_SetRequestedHero  (Lobby_SetRequestedHero)
+using Lobby_SetRequestedHero_fn = void(*)(void*, int, int);
+inline Lobby_SetRequestedHero_fn Lobby_SetRequestedHero() {
+    return reinterpret_cast<Lobby_SetRequestedHero_fn>(rsmm::fn_resolve(Sym::Lobby_SetRequestedHero_Pattern));
 }
 
 // MagicalObject_RegisterInstance  (MagicalObject_RegisterInstance)
@@ -456,6 +537,20 @@ inline MapDef_PostLoad_fn MapDef_PostLoad() {
 using MelodyDef_PostLoad_fn = uint32_t(*)(void*);
 inline MelodyDef_PostLoad_fn MelodyDef_PostLoad() {
     return reinterpret_cast<MelodyDef_PostLoad_fn>(rsmm::fn_resolve(Sym::MelodyDef_PostLoad_Pattern));
+}
+
+// ModalUiController_OnHide  (ModalUiController_OnHide)
+//   void(void* uiController)
+using ModalUiController_OnHide_fn = void(*)(void*);
+inline ModalUiController_OnHide_fn ModalUiController_OnHide() {
+    return reinterpret_cast<ModalUiController_OnHide_fn>(rsmm::fn_resolve(Sym::ModalUiController_OnHide_Pattern));
+}
+
+// ModalUiController_OnShow  (ModalUiController_OnShow)
+//   void(void* uiController)
+using ModalUiController_OnShow_fn = void(*)(void*);
+inline ModalUiController_OnShow_fn ModalUiController_OnShow() {
+    return reinterpret_cast<ModalUiController_OnShow_fn>(rsmm::fn_resolve(Sym::ModalUiController_OnShow_Pattern));
 }
 
 // ModifierEvent_Ctor  (ModifierEvent_Ctor)
@@ -570,6 +665,55 @@ inline Object_SaveToFile_fn Object_SaveToFile() {
     return reinterpret_cast<Object_SaveToFile_fn>(rsmm::fn_resolve(Sym::Object_SaveToFile_Pattern));
 }
 
+// OptionsMenuElement_SetTitle  (OptionsMenuElement_SetTitle)
+//   void(void* element, const oCString* text)
+using OptionsMenuElement_SetTitle_fn = void(*)(void*, void*);
+inline OptionsMenuElement_SetTitle_fn OptionsMenuElement_SetTitle() {
+    return reinterpret_cast<OptionsMenuElement_SetTitle_fn>(rsmm::fn_resolve(Sym::OptionsMenuElement_SetTitle_Pattern));
+}
+
+// OptionsMenu_AddCategory  (OptionsMenu_AddCategory)
+//   void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type)
+using OptionsMenu_AddCategory_fn = void*(*)(void*, void*, void*, void*, uint32_t);
+inline OptionsMenu_AddCategory_fn OptionsMenu_AddCategory() {
+    return reinterpret_cast<OptionsMenu_AddCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AddCategory_Pattern));
+}
+
+// OptionsMenu_AppendRow  (OptionsMenu_AppendRow)
+//   void(void** ctx, void* category, void* row)
+using OptionsMenu_AppendRow_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_AppendRow_fn OptionsMenu_AppendRow() {
+    return reinterpret_cast<OptionsMenu_AppendRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AppendRow_Pattern));
+}
+
+// OptionsMenu_BuildLastCategory  (OptionsMenu_BuildLastCategory)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildLastCategory_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildLastCategory_fn OptionsMenu_BuildLastCategory() {
+    return reinterpret_cast<OptionsMenu_BuildLastCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildLastCategory_Pattern));
+}
+
+// OptionsMenu_SelectCategory  (OptionsMenu_SelectCategory)
+//   void(void* optionsCtrl, void* tabButtonGameUi)
+using OptionsMenu_SelectCategory_fn = void(*)(void*, void*);
+inline OptionsMenu_SelectCategory_fn OptionsMenu_SelectCategory() {
+    return reinterpret_cast<OptionsMenu_SelectCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SelectCategory_Pattern));
+}
+
+// OptionsMenu_SpawnMultiChoice  (OptionsMenu_SpawnMultiChoice)
+//   void*(void* elementFactory, void* templateRef, void* rowParent)
+using OptionsMenu_SpawnMultiChoice_fn = void*(*)(void*, void*, void*);
+inline OptionsMenu_SpawnMultiChoice_fn OptionsMenu_SpawnMultiChoice() {
+    return reinterpret_cast<OptionsMenu_SpawnMultiChoice_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnMultiChoice_Pattern));
+}
+
+// PauseMenu_GetActionCallback  (PauseMenu_GetActionCallback)
+//   void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused)
+using PauseMenu_GetActionCallback_fn = void*(*)(void*, void*, uint32_t, void*);
+inline PauseMenu_GetActionCallback_fn PauseMenu_GetActionCallback() {
+    return reinterpret_cast<PauseMenu_GetActionCallback_fn>(rsmm::fn_resolve(Sym::PauseMenu_GetActionCallback_Pattern));
+}
+
 // ProjectileAttack_BeginAttack  (ProjectileAttack_BeginAttack)
 //   void(void* projectile_attack_cpnt)
 using ProjectileAttack_BeginAttack_fn = void(*)(void*);
@@ -596,6 +740,18 @@ inline Registry_UnregisterInstance_fn Registry_UnregisterInstance() {
 using Resource_LookupByPath_fn = void*(*)(const char*, void*, void*, void*);
 inline Resource_LookupByPath_fn Resource_LookupByPath() {
     return reinterpret_cast<Resource_LookupByPath_fn>(rsmm::fn_resolve(Sym::Resource_LookupByPath_Pattern));
+}
+
+// RunRoster_Apply  (RunRoster_Apply)
+using RunRoster_Apply_fn = void(*)(void*, void*, bool);
+inline RunRoster_Apply_fn RunRoster_Apply() {
+    return reinterpret_cast<RunRoster_Apply_fn>(rsmm::fn_resolve(Sym::RunRoster_Apply_Pattern));
+}
+
+// RunRoster_Build  (RunRoster_Build)
+using RunRoster_Build_fn = void(*)(void*, void*);
+inline RunRoster_Build_fn RunRoster_Build() {
+    return reinterpret_cast<RunRoster_Build_fn>(rsmm::fn_resolve(Sym::RunRoster_Build_Pattern));
 }
 
 // SceneContextValue_Find  (SceneContextValue_Find)
@@ -645,6 +801,13 @@ inline SkillController_SetTier_fn SkillController_SetTier() {
 using SkinGrid_Populate_fn = void(*)(void*, void*);
 inline SkinGrid_Populate_fn SkinGrid_Populate() {
     return reinterpret_cast<SkinGrid_Populate_fn>(rsmm::fn_resolve(Sym::SkinGrid_Populate_Pattern));
+}
+
+// StringVector_AssignFromArray  (StringVector_AssignFromArray)
+//   void(void* vec, const oCString* items, u32 count)
+using StringVector_AssignFromArray_fn = void(*)(void*, void*, uint32_t);
+inline StringVector_AssignFromArray_fn StringVector_AssignFromArray() {
+    return reinterpret_cast<StringVector_AssignFromArray_fn>(rsmm::fn_resolve(Sym::StringVector_AssignFromArray_Pattern));
 }
 
 // String_Assign  (String_Assign)

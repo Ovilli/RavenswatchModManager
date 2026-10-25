@@ -38,10 +38,11 @@ _END = b"\x22\x22\xbb\xaa"
 class EntityEdit:
     """Mutable view of a cooked entity for variable-length edits."""
 
-    def __init__(self, cooked_bytes: bytes) -> None:
+    def __init__(self, cooked_bytes: bytes, *, readers: list[bytes] = ()) -> None:
         self._cf = cooked.parse(cooked_bytes)
         self._section_lens = [len(s.payload) for s in self._cf.sections]
         self.concat = b"".join(s.payload for s in self._cf.sections)
+        self._readers = list(readers)
         # queued edits: (offset, old_len, replacement) on the original concat
         self._edits: list[tuple[int, int, bytes]] = []
 
@@ -165,6 +166,27 @@ class EntityEdit:
             raise ValueError(f"subtest_of: {tester!r} evaluates no sub-tests")
         return out
 
+    def _reader_guid(self, to_label: str, leaf: str, *, exact: bool) -> bytes | None:
+        """The GUID of ``to_label``'s node in one of ``readers``: a reference
+        naming the full label first, else a node definition named ``leaf``.
+        Leaf names repeat across a hero's files (`Radius`, `Value`), so a match
+        must be ONE node: two different GUIDs raise rather than wire either."""
+        eds = [EntityEdit(r) for r in self._readers]
+        guids = []
+        for red in eds:
+            want = red._picker_classid()
+            guids += [red.concat[o - 16:o] for o, s in red.find_lstrings_containing(to_label)
+                      if s.startswith("[") and (not exact or s == to_label) and o >= 20
+                      and (want is None
+                           or struct.unpack_from("<I", red.concat, o - 20)[0] == want)]
+        if not guids:
+            guids = [g for g in (red._node_guid(leaf) for red in eds) if g is not None]
+        found = set(guids)
+        if len(found) > 1:
+            raise ValueError(f"rewire -> {to_label!r}: {len(found)} different nodes in the "
+                             "inherited files match it; name it by its full label")
+        return found.pop() if found else None
+
     def rewire_ref(self, from_label: str, to_label: str,
                    *, expect_classid: int | None = None,
                    count: int | None = 1, exact: bool = False,
@@ -239,10 +261,15 @@ class EntityEdit:
         # All refs to one node share its GUID, so any of the target's is fine.
         # A node nothing references yet (one added by `clone_nodes`) has no
         # such label, so fall back to its own definition: END, GUID, name.
+        # A rework entity (`Hero_SunWukong_Update6`) may rewire a ref to a node
+        # defined or cloned in an ancestor (`Hero_SunWukong`); check `readers`.
         try:
             target_guid = self.concat[_picker_guid_offs(to_label)[0]:][:16]
         except ValueError:
-            target_guid = self._node_guid(to_label.rsplit("\\", 1)[-1])
+            leaf = to_label.rsplit("\\", 1)[-1]
+            target_guid = self._node_guid(leaf)
+            if target_guid is None and self._readers:
+                target_guid = self._reader_guid(to_label, leaf, exact=exact)
             if target_guid is None:
                 raise
         dsts = _picker_guid_offs(from_label, scoped=True)

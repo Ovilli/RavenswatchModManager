@@ -63,6 +63,43 @@ def set_mod_enabled(mods_dir: Path, mod_id: str, enabled: bool) -> str:
     return "ok"
 
 
+#: Written by the loader's in-game Settings > Mods tab (hook_settings_menu.cpp):
+#: {"enable": {"<mod id>": true|false}}. The loader cannot edit the library's
+#: manifests, so `apply` carries the request over before it reads them.
+MENU_REQUESTS = "_menu_requests.json"
+
+
+def read_menu_requests(game_dir: Path) -> dict[str, bool]:
+    """The pending in-game On/Off requests, {mod id: enabled}. Raises
+    ValueError on a file that exists but cannot be read as one."""
+    import json
+    path = game_dir / "mods" / MENU_REQUESTS
+    try:
+        req = json.loads(path.read_text(encoding="utf-8")).get("enable", {})
+    except FileNotFoundError:
+        return {}
+    except (OSError, AttributeError) as e:
+        raise ValueError(str(e)) from e
+    if not isinstance(req, dict):
+        raise ValueError("'enable' is not a table")
+    return {str(k): v for k, v in req.items() if isinstance(v, bool)}
+
+
+def consume_menu_requests(game_dir: Path, mods_dir: Path) -> list[str]:
+    """Apply and delete the in-game On/Off requests. Returns one line per
+    mod flipped. An unreadable file is left in place, not guessed at."""
+    try:
+        req = read_menu_requests(game_dir)
+    except ValueError as e:
+        return [f"{MENU_REQUESTS} unreadable, left as is: {e}"]
+    done = []
+    for mod_id, on in req.items():
+        if set_mod_enabled(mods_dir, mod_id, on) == "ok":
+            done.append(f"{'enabled' if on else 'disabled'} {mod_id} (in-game menu)")
+    (game_dir / "mods" / MENU_REQUESTS).unlink(missing_ok=True)
+    return done
+
+
 def _all_mod_ids(mods_dir: Path) -> list[str]:
     """Every directory under mods/ that carries a manifest.toml."""
     if not mods_dir.is_dir():

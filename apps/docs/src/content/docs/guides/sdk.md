@@ -266,7 +266,10 @@ T("title_slay", { n = 20 }, "Slay {n} enemies")
 are drawn by the desktop app from `manifest.toml` and `config_schema.toml`,
 and a lang file can translate those too. Every section is optional; anything
 left out shows the manifest/schema's own text. The app asks for its own UI
-language (Chinese UI → `ZH-S`).
+language (Chinese UI → `ZH-S`). `[manifest]` also travels with `rsmm publish`:
+the registry stores it as the version's `translations`, so a player browsing
+in that language sees your translated name, summary and description before
+installing, not only after.
 
 ```toml
 [manifest]

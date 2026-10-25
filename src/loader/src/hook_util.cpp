@@ -58,7 +58,17 @@ void register_armed(std::string_view tag, std::string_view what,
 // be resolved and (where a pattern exists) verified.
 bool arm(std::string_view tag, std::string_view what, std::uintptr_t va,
          void* detour, void** trampoline, EntryCheck check) {
-    if (!fn_is_function_start(va)) {
+    if (check == EntryCheck::AnyModule) {
+        DWORD64 image_base = 0;
+        const auto* rf = RtlLookupFunctionEntry(static_cast<DWORD64>(va),
+                                                &image_base, nullptr);
+        if (!rf || image_base + rf->BeginAddress != va) {
+            Loader::get().log(prefix(tag) + "REFUSING to hook " + std::string(what)
+                              + " @ " + hex_of(va) + ": not a function start in "
+                              "its module's exception table.");
+            return false;
+        }
+    } else if (!fn_is_function_start(va)) {
         if (check == EntryCheck::Require) {
             Loader::get().log(prefix(tag) + "REFUSING to hook " + std::string(what)
                               + " @ " + hex_of(va) + ": not a function start "

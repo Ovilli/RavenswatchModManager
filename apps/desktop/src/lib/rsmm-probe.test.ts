@@ -100,8 +100,53 @@ describe('program discovery', () => {
     await listLocalMods();
     await listLocalMods();
 
-    expect(sidecar).toHaveBeenCalledTimes(2);
+    // The second read also tries the warm server (this mock cannot answer it).
+    expect(sidecar.mock.calls.filter(([, a]) => !(a as string[]).includes('serve'))).toHaveLength(
+      2,
+    );
     expect(invoke.mock.calls.filter(([c]) => c === 'probe_rsmm')).toHaveLength(0);
+  });
+
+  it('serves repeat reads from one warm process, restarted after a write', async () => {
+    const write = vi.fn();
+    sidecar.mockImplementation((_name: string, args: string[]) => {
+      if (!args.includes('serve')) return workingSidecar('[]');
+      let onData: (c: string) => void = () => {};
+      return {
+        stdout: {
+          on: (_e: string, cb: (c: string) => void) => {
+            onData = cb;
+          },
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        spawn: () =>
+          Promise.resolve({
+            pid: 5,
+            kill: vi.fn(),
+            write: async (line: string) => {
+              write(line);
+              const { id } = JSON.parse(line) as { id: number };
+              setTimeout(
+                () => onData(`${JSON.stringify({ id, code: 0, stdout: '[]', stderr: '' })}\n`),
+                0,
+              );
+            },
+          }),
+      };
+    });
+    const { listLocalMods } = await freshRsmm();
+    const serves = () => sidecar.mock.calls.filter(([, a]) => (a as string[]).includes('serve'));
+
+    await listLocalMods(); // resolves the program with a normal spawn
+    await listLocalMods();
+    await listLocalMods();
+    expect(serves()).toHaveLength(1);
+    expect(write).toHaveBeenCalledTimes(2);
+
+    (await import('./session-cache')).noteGameStateChanged();
+    await listLocalMods();
+    expect(serves()).toHaveLength(2);
   });
 
   it('tracks the child of a non-streaming command so quit can kill it', async () => {

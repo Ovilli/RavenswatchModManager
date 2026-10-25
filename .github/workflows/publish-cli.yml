@@ -1,0 +1,184 @@
+# Publish the frozen CLI to the rolling `cli` release.
+#
+# The desktop app runs `rsmm json update-cli` once per launch, stages the newest
+# build and switches to it on the next start, so a Python change reaches users
+# without an app release. Manual dispatch only, like publish-loader.yml, and for
+# the same reason it runs here: the signing key is a repo secret.
+name: Publish CLI channel
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'What changed in this CLI build'
+        required: true
+        type: string
+      dry_run:
+        description: 'Build, sign and verify, but do not upload or bump the version'
+        required: false
+        default: false
+        type: boolean
+      changelog:
+        description: 'Announce this publish in the release-notes feed'
+        required: false
+        default: true
+        type: boolean
+      highlights:
+        description: 'Release-note bullets, ONE PER LINE (default: the notes above)'
+        required: false
+        type: string
+
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install MinGW (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: choco install mingw --no-progress -y
+
+      - name: Build loader DLL (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: cmd
+        run: call src\loader\build.bat
+
+      - name: Build loader DLL (Linux, MinGW cross)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-mingw-w64-x86-64
+          src/loader/build.sh
+
+      - name: Validate loader DLL
+        shell: bash
+        run: python scripts/validate_loader_dll.py dist/winhttp.dll
+
+      - name: Fetch pattern DB (rolling pattern-db release)
+        shell: bash
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download pattern-db --repo "$GITHUB_REPOSITORY" \
+            --pattern 'function_patterns*' --dir data --clobber
+
+      - name: Test the CLI
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          pip install -e ".[dev]"
+          python -m pytest -n auto -m "not slow"
+
+      # Same bundle definition and post-build checks as the app's sidecar.
+      - name: Build onedir CLI and check it
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          pip install -e .
+          python scripts/build-sidecar.py --onedir --require-loader
+          python scripts/publish_cli.py pack --out cli-archives
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.platform }}
+          path: cli-archives/
+          retention-days: 3
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # `tauri signer sign` lives in the desktop workspace's devDependencies.
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: cli-archives
+          merge-multiple: true
+
+      # `notes` reaches the script through the ENVIRONMENT, never `${{ }}`
+      # interpolation into the script body (see publish-loader.yml).
+      - name: Publish (sign + upload)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=(publish --archives cli-archives --notes "$NOTES")
+          [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)
+          python scripts/publish_cli.py "${ARGS[@]}"
+
+      - name: Announce it in the release-notes feed
+        if: ${{ !inputs.dry_run && inputs.changelog }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          HIGHLIGHTS: ${{ inputs.highlights }}
+        run: |
+          VERSION=$(python -c "import json;print(json.load(open('data/cli_version.json'))['cli_version'])")
+          ARGS=(--cli-version "$VERSION" --summary "$NOTES")
+          if [ -n "$HIGHLIGHTS" ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] && ARGS+=(--highlight "$line")
+            done <<< "$HIGHLIGHTS"
+          else
+            ARGS+=(--highlight "$NOTES")
+          fi
+          python scripts/add_loader_changelog.py "${ARGS[@]}"
+          scripts/publish_changelog.sh
+
+      # Rebase-and-retry for the same race publish-loader.yml documents.
+      - name: Commit the CLI version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git diff --quiet -- data/cli_version.json data/changelog.json && { echo "nothing to commit"; exit 0; }
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(python -c "import json;print(json.load(open('data/cli_version.json'))['cli_version'])")
+          git add data/cli_version.json data/changelog.json
+          git commit -m "chore(cli): publish cli channel v${VERSION}"
+          for attempt in 1 2 3 4 5; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main || { git rebase --abort || true; }
+            sleep $((attempt * 5))
+          done
+          echo "::error::cli v${VERSION} is published but the stamp was not pushed; set data/cli_version.json to ${VERSION} and commit it."
+          exit 1

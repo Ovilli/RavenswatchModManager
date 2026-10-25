@@ -80,6 +80,12 @@ SCHEMAS: dict[str, list[tuple[str, ...]]] = {
         ("ref_1c0", "ref"), ("ref_200", "ref"), ("ref_180", "ref"), ("flag_f8", "bool"),
         ("value_100", "value"), ("attacks", "ids")],
     "oCEntityCpntValueSettings": [("value", "value"), ("flag", "bool")],
+    # The listener a magical object reacts to a game event with: its settings
+    # object (event id, include/exclude flag lists, five bytes) and three
+    # reference slots; whichever slot is set is what the event switches on
+    # (State / Tester / Dt Resource Gain). Names kept from the generic reading.
+    "oCGameEventListenerEntityCpntSettings": [
+        ("listener", "obj"), ("ref_3", "ref"), ("ref_4", "ref"), ("ref_5", "ref")],
     "oCEntityCpntTimerSettings": [
         ("bias?", "value"), ("count", "value"), ("on_tick", "ref"), ("on_end", "ref"),
         ("state", "ref"), ("paused?", "value"), ("duration", "value"), ("flag", "bool"),

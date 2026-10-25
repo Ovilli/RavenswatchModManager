@@ -65,6 +65,7 @@ BUNDLE: list[tuple[str, str, bool]] = [
     ("data/asset_map.json", "data", True),
     ("data/asset_map.csv", "data", True),
     ("data/loader_version.json", "data", True),
+    ("data/cli_version.json", "data", True),
     # Offline fallback for `rsmm changelog` / the desktop "What's new" dialog
     # when the rolling channel is unreachable and nothing is cached yet.
     ("data/changelog.json", "data", True),
@@ -140,8 +141,21 @@ def bundle_entries(require_loader: bool = False) -> tuple[list[tuple[Path, str]]
     return present, missing
 
 
-def build_sidecar(target: str, require_loader: bool) -> Path:
-    out = binary_path(target)
+#: `--onedir` output for the rolling `cli` channel (scripts/publish_cli.py):
+#: dist/cli-onedir/rsmm/{rsmm[.exe], _internal/}. No per-call unpack, unlike
+#: the onefile sidecar, which Tauri's externalBin needs as a single file.
+ONEDIR_ROOT = REPO_ROOT / "dist" / "cli-onedir"
+
+
+def onedir_binary(target: str) -> Path:
+    return ONEDIR_ROOT / "rsmm" / f"rsmm{EXTENSIONS[target]}"
+
+
+def build_sidecar(target: str, require_loader: bool, onedir: bool = False) -> Path:
+    out = onedir_binary(target) if onedir else binary_path(target)
+    dist = ONEDIR_ROOT if onedir else OUT_DIR
+    if onedir:
+        shutil.rmtree(ONEDIR_ROOT, ignore_errors=True)
     print(f"Building sidecar for {target} ({TARGET_TRIPLES[target]})...")
     print(f"Output: {out}")
 
@@ -175,9 +189,9 @@ def build_sidecar(target: str, require_loader: bool) -> Path:
     subprocess.run(
         [
             sys.executable, "-m", "PyInstaller",
-            "--onefile", "--noconfirm",
+            "--onedir" if onedir else "--onefile", "--noconfirm",
             "--name", out.stem,
-            "--distpath", str(OUT_DIR),
+            "--distpath", str(dist),
             "--specpath", str(OUT_DIR),
             "--workpath", str(work),
             "--paths", str(REPO_ROOT / "src"),
@@ -206,7 +220,11 @@ def check_contents(binary: Path, require_loader: bool) -> list[str]:
     """Every file of every BUNDLE entry present on disk is in the archive."""
     from PyInstaller.archive.readers import CArchiveReader
 
-    bundled = {name.replace("\\", "/") for name in CArchiveReader(str(binary)).toc}
+    internal = binary.parent / "_internal"
+    if internal.is_dir():  # --onedir: data files sit on disk beside the exe
+        bundled = {p.relative_to(internal).as_posix() for p in internal.rglob("*") if p.is_file()}
+    else:
+        bundled = {name.replace("\\", "/") for name in CArchiveReader(str(binary)).toc}
     present, missing = bundle_entries(require_loader)
     problems = [f"required bundle file missing from the source tree: {rel}" for rel in missing]
     expected = 0
@@ -352,6 +370,8 @@ if __name__ == "__main__":
                         help="check the binary already in the output dir without rebuilding")
     parser.add_argument("--require-loader", action="store_true",
                         help=f"fail if {LOADER_DLL} is missing or not bundled")
+    parser.add_argument("--onedir", action="store_true",
+                        help="build the `cli` channel layout into dist/cli-onedir")
     args = parser.parse_args()
 
     if args.target != detect_platform():
@@ -360,8 +380,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    built = binary_path(args.target)
+    built = onedir_binary(args.target) if args.onedir else binary_path(args.target)
     if not args.check_only:
-        built = build_sidecar(args.target, args.require_loader)
+        built = build_sidecar(args.target, args.require_loader, args.onedir)
     if args.check_only or not args.no_check:
         sys.exit(check_sidecar(built, args.require_loader))

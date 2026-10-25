@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrent as getCurrentDeepLink, onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { OverlayHud } from './components/overlay-hud';
@@ -121,6 +122,16 @@ if (isTauri() && !IS_OVERLAY_WINDOW) {
     .catch(() => {});
   // Warm: the single-instance plugin forwards the URL to the running window.
   onOpenUrl(handleAuthDeepLink);
+  // Tauri's webview does not open target="_blank" anchors in the system browser.
+  // Intercept every external <a> click and route it through the opener plugin.
+  document.addEventListener('click', (e) => {
+    const anchor = (e.target as Element).closest?.('a');
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (!href?.startsWith('http')) return;
+    e.preventDefault();
+    void openUrl(href);
+  });
 }
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {

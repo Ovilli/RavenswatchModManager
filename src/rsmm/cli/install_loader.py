@@ -339,6 +339,10 @@ def main(argv: list[str] | None = None) -> int:
     if rc == 0:
         _replant_newer_loader(Path(argv[0]))
         _ensure_pattern_db(Path(argv[0]))
+        # apply ran before this DLL was planted (restore -> apply ->
+        # install-loader), so the pause menu's Mods button is added here too.
+        from rsmm.engine.escape_menu import sync_installed
+        sync_installed(Path(argv[0]))
     return rc
 
 

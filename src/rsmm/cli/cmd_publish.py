@@ -3,13 +3,15 @@
     rsmm publish login              store a personal API token (prompted, never an argument)
     rsmm publish logout             forget the stored token
     rsmm publish whoami             show which account the token publishes as
-    rsmm publish <mod> [--no-wait] [--timeout SECONDS]
+    rsmm publish <mod> [--wait] [--timeout SECONDS]
 
 One command does what the website's publish page does: lint the mod, pack it
 (refusing shipped game bytes), ask the API for a presigned upload, PUT the zip
-with its checksum, queue the malware scan, and wait until the version is live.
-A version is downloadable only once its scan comes back clean — that gate is
-server-side and a token cannot skip it.
+with its checksum and queue the malware scan. It then returns: the scan runs on
+the server and a clean version goes live on its own, so nobody has to keep a
+terminal open for it (`--wait` stays and reports the verdict). A version is
+downloadable only once its scan comes back clean — that gate is server-side and
+a token cannot skip it.
 
 The token is a personal API token created on the website's account page. It can
 publish versions of your own mods and nothing else (see apps/api/src/api-tokens.ts).
@@ -247,7 +249,9 @@ def publish(mod_id: str, *, wait: bool = True, timeout: float = 900,
         out(f"Live: {pack['slug']} {pack['version']}")
         return 0
     if not wait:
-        out(f"Uploaded. Scan {state}; the version goes live when it comes back clean.")
+        out(f"Uploaded {pack['slug']} {pack['version']}. The malware scan is {state}; "
+            f"it runs on the server and the version goes live by itself when it is "
+            f"clean. You can close this terminal.")
         return 0
 
     out("  waiting for the malware scan (the version goes live when it is clean)…")
@@ -302,10 +306,12 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="rsmm publish", description=__doc__.split("\n\n")[0])
     ap.add_argument("target", help="login | logout | whoami | <mod id>")
-    ap.add_argument("--no-wait", action="store_true",
-                    help="return once uploaded instead of waiting for the scan")
+    ap.add_argument("--wait", action="store_true",
+                    help="stay until the malware scan finishes and report the verdict")
+    # The old opt-out, from when waiting was the default; still accepted.
+    ap.add_argument("--no-wait", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--timeout", type=float, default=900,
-                    help="seconds to wait for the scan (default 900)")
+                    help="with --wait: seconds to wait for the scan (default 900)")
     args = ap.parse_args(argv)
     try:
         if args.target == "login":
@@ -325,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
             mod_id = resolve_mod(args.target, mods_dir())
         except UnknownMod as e:
             raise PublishError(str(e)) from None
-        return publish(mod_id, wait=not args.no_wait, timeout=args.timeout)
+        return publish(mod_id, wait=args.wait and not args.no_wait, timeout=args.timeout)
     except PublishError as e:
         print(f"rsmm publish: {e}", file=sys.stderr)
         return 1

@@ -11,6 +11,7 @@
 // loaded from a URL: content blockers hold a script named like a worker that
 // then pulls megabytes of WebAssembly (it looks like a cryptominer), and the
 // engine then never starts. As JSON, with "</" escaped so it cannot end the tag.
+import Analytics from '@vercel/analytics/astro';
 import workerSource from './_worker.js?raw';
 
 const workerJson = JSON.stringify(workerSource).replaceAll('</', '<\\/');
@@ -29,6 +30,7 @@ const description =
 <meta property="og:description" content={description} />
 <meta property="og:image" content="https://docs.rsmm.me/og.png" />
 <link rel="icon" href="/favicon.png" />
+<Analytics />
 <link rel="modulepreload" href="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs" crossorigin />
 <style is:global>
   :root {
@@ -51,12 +53,18 @@ const description =
   nav .brand { display: flex; align-items: center; gap: 8px; margin: 0 18px 0 0; font-weight: 650;
                text-decoration: none; }
   nav .brand img { width: 24px; height: 24px; }
-  nav .tab { color: var(--muted); text-decoration: none; padding: 6px 14px 9px;
-             border-bottom: 3px solid transparent; }
-  nav .tab:hover { color: var(--ink); }
-  nav .tab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
-  nav .tab.dirty::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
-                          border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+  /* Same tab bar as `rsmm editor`: each tab a button saying what it edits, the open one filled. */
+  #tabs:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
+  nav .tab { display: grid; padding: 5px 14px 6px; border: 1px solid var(--line); border-radius: 9px;
+             background: var(--chip); color: var(--ink); text-decoration: none; line-height: 1.25; white-space: nowrap; }
+  nav .tab b { font-size: 14px; font-weight: 600; }
+  nav .tab small { font-size: 11px; color: var(--muted); }
+  nav .tab:hover { border-color: var(--accent); }
+  nav .tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  nav .tab.on small { color: inherit; opacity: .85; }
+  nav .tab.dirty b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px;
+                            border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+  @media (max-width: 1250px) { nav .tab small { display: none; } }
   nav .right { margin-left: auto; display: flex; gap: 14px; align-items: center;
                font-size: 13px; color: var(--muted); }
   main { flex: 1; min-height: 0; position: relative; }
@@ -74,6 +82,10 @@ const description =
   .pick[data-state="ready"] { background: var(--accent); color: var(--accent-ink); cursor: pointer; }
   .pick[data-state="error"] { background: transparent; border-color: var(--bad); color: var(--bad); cursor: pointer; }
   .pick[data-state="ready"]:hover { filter: brightness(1.1); }
+  .picks { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button.pick { font: inherit; font-weight: 600; }
+  /* With a remembered folder, reopening it is the main action and picking another the alternative. */
+  .pick.alt[data-state="ready"] { background: transparent; border-color: var(--line); color: var(--ink); }
   .pick[data-state="error"]:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
   .note { font-size: 13px; color: var(--muted); margin-top: 14px; }
   #progress { margin-top: 22px; padding: 12px 14px; border-radius: 9px; background: var(--panel);
@@ -112,10 +124,15 @@ const description =
         <li>Make your changes, then save them as a mod. You get a <code>.zip</code>: unzip it into your
           mods folder and apply it with the desktop app or <code>rsmm apply</code>.</li>
       </ol>
-      <label class="pick" id="pickLabel" aria-disabled="true" data-state="loading">
-        Choose Ravenswatch folder
-        <input id="folder" type="file" multiple hidden />
-      </label>
+      <div class="picks">
+        <button class="pick" id="again" type="button" data-state="ready" hidden></button>
+        <label class="pick" id="pickLabel" aria-disabled="true" data-state="loading">
+          <span id="pickText">Choose Ravenswatch folder</span>
+          <input id="folder" type="file" multiple hidden />
+        </label>
+      </div>
+      <p class="note" id="forgetNote" hidden>This browser can't remember the folder between visits, so you pick it each
+        time. Chrome and Edge remember it and reopen it with one click.</p>
       <div id="progress"><span class="spin"></span><span id="progressText">Starting…</span></div>
       <p class="note">The first visit downloads the Python runtime (about 12 MB) from jsDelivr; later
         visits use your browser's cache. Works in current Chrome, Edge, Firefox and Safari on a computer.</p>
@@ -133,6 +150,11 @@ const TABS = {
   scripts: ["Scripts", "content", "content/?tab=scripts"],
   abilities: ["Abilities", "abilities", "abilities/"],
   map: ["Map", "map", "map/"],
+};
+// What each tab edits, under its name (the same words as `rsmm editor`'s shell).
+const BLURB = {
+  items: "Change or copy magic items", talents: "Hero talent cards & numbers", scripts: "Test grants & block scripts",
+  abilities: "Hero ability numbers & links", map: "Chapter maps & tiles",
 };
 const $ = (id) => document.getElementById(id);
 // Set here, not in the markup: Astro's HTML types do not know the attribute.
@@ -195,6 +217,8 @@ function setProgress(text, cls) {
   $("progressText").textContent = text;
   $("progress").querySelector(".spin")?.toggleAttribute("hidden", !!cls);
 }
+const readyText = () => $("again").hidden ? "Ready. Choose your Ravenswatch folder to start."
+  : `Ready. ${$("again").textContent}, or choose a different folder.`;
 function setPickerState(state) {
   const picker = $("pickLabel");
   picker.dataset.state = state;
@@ -207,13 +231,14 @@ function fail(text) { setProgress(text, "bad"); setPickerState("error"); }
 // a dead end: a cut-off download is almost always gone on the next try.
 const TRIES = 3;
 let ready = null;
+let engineId = "";
 async function boot() {
   let last;
   for (let attempt = 0; attempt < TRIES; attempt++) {
     startWorker();
     try {
-      await call("init", { bundle: new URL("rsmm.bundle", editorRoot).href, attempt });
-      setProgress("Ready. Choose your Ravenswatch folder to start.", "ok");
+      engineId = (await call("init", { bundle: new URL("rsmm.bundle", editorRoot).href, attempt }))?.engine || "";
+      setProgress(readyText(), "ok");
       setPickerState("ready");
       return;
     } catch (err) {
@@ -249,28 +274,119 @@ function gameFiles(list) {
   return { files, paths };
 }
 
-$("pickLabel").addEventListener("click", (e) => {
-  if ($("pickLabel").getAttribute("aria-disabled") === "true") e.preventDefault();
+// Chrome and Edge can hand the page a folder HANDLE, which IndexedDB can keep:
+// the next visit then reopens the same folder with one click and the browser's
+// own "allow" prompt, instead of a search through the file picker. Firefox and
+// Safari have no such API; there the folder input is all there is, and nothing
+// about the folder outlives the page.
+const canRemember = typeof window.showDirectoryPicker === "function";
+const remembered = (() => {
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const db = () => {
+    const q = indexedDB.open("rsmm-editor-folder", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("folder");
+    return req(q);
+  };
+  return {
+    async get() { try { return await req((await db()).transaction("folder").objectStore("folder").get("game")); } catch { return null; } },
+    async set(h) { try { await req((await db()).transaction("folder", "readwrite").objectStore("folder").put(h, "game")); } catch { /* private window */ } },
+  };
+})();
+// The files under DarkTalesResources, from a picked handle: the install or
+// DarkTalesResources itself. Each File is a handle to the bytes, read only
+// when the engine opens it, as with the folder input.
+async function handleFiles(dir) {
+  let root = dir;
+  if (dir.name !== "DarkTalesResources") {
+    try { root = await dir.getDirectoryHandle("DarkTalesResources"); } catch { return { files: [], paths: [] }; }
+  }
+  const files = [], paths = [];
+  const walk = async (d, prefix) => {
+    const subs = [];
+    for await (const entry of d.values()) {
+      if (entry.kind === "directory") subs.push(walk(entry, prefix + entry.name + "/"));
+      else subs.push(entry.getFile().then((f) => { files.push(f); paths.push(prefix + entry.name); }));
+    }
+    await Promise.all(subs);
+  };
+  await walk(root, "");
+  return { files, paths };
+}
+async function openHandle(dir) {
+  setPickerState("loading");
+  setProgress(`Reading ${dir.name}…`);
+  const { files, paths } = await handleFiles(dir);
+  if (await useFolder(files, paths)) await remembered.set(dir);
+}
+function offerAgain(dir) {
+  const again = $("again");
+  again.textContent = `Open ${dir.name} again`;
+  again.title = "The folder you used last time";
+  again.hidden = false;
+  $("pickLabel").classList.add("alt");
+  $("pickText").textContent = "Choose a different folder";
+  if ($("progress").className === "ok") setProgress(readyText(), "ok");   // the engine was ready first
+  again.onclick = async () => {
+    again.hidden = true;                  // one mount at a time; a failure says to pick the folder
+    try {
+      // Asked inside the click: the browser shows its prompt only for one.
+      if ((await dir.queryPermission({ mode: "read" })) !== "granted"
+          && (await dir.requestPermission({ mode: "read" })) !== "granted") {
+        fail(`The browser did not allow reading ${dir.name}. Choose the folder again.`);
+        return;
+      }
+      await openHandle(dir);
+    } catch (err) {
+      fail(`Could not open ${dir.name} again (${err.message}). Choose the folder again.`);
+    }
+  };
+}
+if (canRemember) {
+  remembered.get().then((dir) => { if (dir) offerAgain(dir); });
+} else {
+  $("forgetNote").hidden = false;
+}
+
+$("pickLabel").addEventListener("click", async (e) => {
+  if ($("pickLabel").getAttribute("aria-disabled") === "true") { e.preventDefault(); return; }
+  if (!canRemember) return;                       // the folder input opens as before
+  e.preventDefault();
+  let dir;
+  try {
+    dir = await window.showDirectoryPicker({ id: "rsmm-game", mode: "read", startIn: (await remembered.get()) || undefined });
+  } catch (err) {
+    if (err.name !== "AbortError") fail("Could not open the folder picker: " + err.message);
+    return;
+  }
+  await openHandle(dir).catch((err) => fail(err.message));
 });
 $("folder").addEventListener("change", async () => {
   const list = $("folder").files;
   if (!list || !list.length) return;
   const { files, paths } = gameFiles(list);
   $("folder").value = "";
+  await useFolder(files, paths);
+});
+// Mount a picked folder's game files; true once the editor is open on them.
+async function useFolder(files, paths) {
   if (!paths.includes("UsedRscList.ot")) {
     fail("That folder is not a Ravenswatch install: it has no DarkTalesResources/UsedRscList.ot. "
       + "Pick the folder that holds Ravenswatch.exe.");
-    return;
+    return false;
   }
   setPickerState("loading");
   try {
     await ready;
     await call("mount", { files, paths });
+    await answers.use(engineId + ":" + await folderKey(files, paths));
     open();
+    warmUp();
+    return true;
   } catch (err) {
     fail(err.message);
+    return false;
   }
-});
+}
 
 // ---- editor frames ------------------------------------------------------------------
 // Each editor page is the one `rsmm editor` serves, fetched from the engine and
@@ -279,15 +395,121 @@ $("folder").addEventListener("change", async () => {
 const frames = {};
 let three = null;
 
-async function engineFetch(path, init) {
+// The engine answers one request at a time, in the order it gets them. Every
+// tab's requests come through here, so clicking through heroes or tabs while
+// they load used to queue all of them, and the one the player stopped on was
+// answered last. Requests are therefore handed over one at a time: a POST (a
+// save, a check) first and in order, then the NEWEST waiting GET; a request
+// its page has aborted (a pick it moved on from) is dropped unsent. One that
+// is already running cannot be stopped; its answer is just not used.
+//
+// Model and texture files (api/file) wait in a queue of their own, in arrival
+// order, BEHIND every other request: a chapter asks for hundreds of them, and
+// served newest-first among the data they starved the map's tile pool until
+// every model was converted ("Preview a run" found no pool).
+const sched = { busy: false, posts: [], gets: [], assets: [], idle: [] };
+const aborted = () => new DOMException("The operation was aborted.", "AbortError");
+function schedule(run, isPost, signal, idle = false, asset = false) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(aborted()); return; }
+    const job = { run, resolve, reject, done: false };
+    const queue = isPost ? sched.posts : idle ? sched.idle : asset ? sched.assets : sched.gets;
+    signal?.addEventListener("abort", () => {
+      const at = queue.indexOf(job);
+      if (at >= 0) queue.splice(at, 1);
+      if (!job.done) { job.done = true; reject(aborted()); }
+    }, { once: true });
+    queue.push(job);
+    pump();
+  });
+}
+function pump() {
+  if (sched.busy) return;
+  const job = sched.posts.shift() || sched.gets.pop() || sched.assets.shift() || sched.idle.shift();
+  if (!job) return;
+  sched.busy = true;
+  job.run().then(
+    (v) => { if (!job.done) { job.done = true; job.resolve(v); } },
+    (e) => { if (!job.done) { job.done = true; job.reject(e); } },
+  ).finally(() => { sched.busy = false; pump(); });
+}
+
+// ---- answers kept between visits ---------------------------------------------------
+// The engine marks an answer that depends only on the game data and its own
+// build (X-RSMM-Cache: game). Those are kept in IndexedDB under a key naming
+// both: the engine bundle's hash and a summary of the picked folder (every
+// file's size and modified time, so a game update or an applied mod is a new
+// key). A visit with the same folder and engine then reads instead of parsing.
+// Best effort throughout: no IndexedDB (a private window) just means no reuse.
+const answers = (() => {
+  let db = null, prefix = null;
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const store = (mode) => db.transaction("answers", mode).objectStore("answers");
+  return {
+    async use(key) {
+      try {
+        const q = indexedDB.open("rsmm-editor", 1);
+        q.onupgradeneeded = () => q.result.createObjectStore("answers");
+        db = await req(q);
+        if ((await req(store("readonly").get("@key"))) !== key) {
+          await req(store("readwrite").clear());     // answers for older data
+          await req(store("readwrite").put(key, "@key"));
+        }
+        prefix = key + "|";
+      } catch { db = null; }
+    },
+    async get(path) {
+      if (!db) return undefined;
+      try { return await req(store("readonly").get(prefix + path)); } catch { return undefined; }
+    },
+    put(path, r) {
+      if (!db) return;
+      try { store("readwrite").put({ status: r.status, headers: r.headers, body: r.body }, prefix + path); } catch { /* full or gone */ }
+    },
+  };
+})();
+
+async function folderKey(files, paths) {
+  let n = 0, size = 0, newest = 0, manifest = "";
+  files.forEach((f, i) => {
+    n++; size += f.size; newest = Math.max(newest, f.lastModified);
+    if (paths[i] === "UsedRscList.ot") manifest = f.size + ":" + f.lastModified;
+  });
+  const text = [n, size, newest, manifest].join("|");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+}
+
+// Once the folder is open, answer what every tab will ask for (and every
+// hero's talents) in the background, at the lowest priority: anything the
+// player clicks goes first. Saved answers make this nearly free on a return.
+async function warmUp() {
+  const get = (path) => engineFetch(path, {}, true).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const content = ["items", "icons", "stats", "heroes", "heroes/portraits", "blocks/meta", "talents/borrowable"];
+  await Promise.all(content.map((p) => get("/content/api/" + p)));
+  const heroes = (await get("/content/api/heroes"))?.heroes || [];
+  for (const h of heroes) {
+    const q = "?hero=" + encodeURIComponent(h);
+    await Promise.all(["talents", "talents/scalable", "talents/damages"].map((p) => get("/content/api/" + p + q)));
+  }
+  await get("/map/api/catalog");
+}
+
+async function engineFetch(path, init, idle = false) {
   const method = (init.method || "GET").toUpperCase();
+  if (method === "GET") {
+    const saved = await answers.get(path);
+    if (saved) return new Response(saved.body, { status: saved.status, headers: saved.headers });
+  }
   const headers = {};
   new Headers(init.headers || {}).forEach((v, k) => { headers[k] = v; });
   const body = init.body == null ? new Uint8Array()
     : typeof init.body === "string" ? new TextEncoder().encode(init.body)
     : new Uint8Array(await new Response(init.body).arrayBuffer());
   const text = method === "POST" ? new TextDecoder().decode(body) : "";
-  const r = await call("request", { method, path, headers, body }, [body.buffer]);
+  const r = await schedule(() => call("request", { method, path, headers, body }, [body.buffer]),
+    method === "POST", init.signal, idle, /\/api\/file$/.test(path.split("?")[0]));
+  if (method === "GET" && r.status === 200 && r.headers?.["X-RSMM-Cache"] === "game") answers.put(path, r);
   if (method === "POST" && r.status === 200 && /\/api\/save$/.test(path.split("?")[0])) {
     afterSave(new TextDecoder().decode(r.body), text);
   }
@@ -409,8 +631,9 @@ function open() {
   $("start").hidden = true;
   const tabs = $("tabs");
   for (const [key, [label]] of Object.entries(TABS)) {
-    const a = document.createElement("a");
-    a.className = "tab"; a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
+    const a = document.createElement("a"), b = document.createElement("b");
+    a.className = "tab"; a.href = "#" + key; a.dataset.tab = key; b.textContent = label; a.append(b);
+    if (BLURB[key]) { const s = document.createElement("small"); s.textContent = BLURB[key]; a.append(s); }
     tabs.append(a);
   }
   tabs.hidden = false;

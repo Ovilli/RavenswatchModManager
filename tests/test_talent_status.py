@@ -56,10 +56,10 @@ def test_every_donor_is_found_and_self_contained(status):
 
 
 def test_power_hits_apply_a_status_while_the_talent_is_owned(mel, caster):
-    hero, flag = TS.add_flag(mel, mel, talent="Attack Speed")
+    hero, flag = TS.add_flag(mel, talent="Attack Speed")
     fg = next(c for c in EG.parse(hero).components if c.name == flag)
     assert [r.path.rsplit("\\", 1)[-1] for r in fg.refs] == ["Skill Attack Speed"]
-    out = TS.reader(caster, caster, flag_guid=fg.guid,
+    out = TS.reader(caster, flag_guid=fg.guid,
                     flag_label=f"[Value] Hero_Melusine\\{fg.group}\\{fg.name}",
                     owner_resource=OWNER, name="Owner Flag")
     out = TS.apply_status(out, corpus.read(TS.DONORS["Ignite"].rel),

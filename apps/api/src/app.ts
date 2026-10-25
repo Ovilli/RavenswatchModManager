@@ -6,9 +6,10 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { resolveTokenUser } from './api-token-auth.js';
 import { bearerToken, isTokenRoute } from './api-tokens.js';
-import { auth } from './auth.js';
+import { getAuth } from './auth.js';
 import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
 import { errString, log, requestId } from './logger.js';
+import { verifyUnsubscribeToken } from './notify.js';
 import { createRateLimiter } from './rate-limit.js';
 import { collectionsRouter } from './routes/collections.js';
 import { cronRouter } from './routes/cron.js';
@@ -33,6 +34,10 @@ app.use(
     origin: env.trustedOrigins,
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // The web app calls cross-origin with credentials, so every GET is preceded
+    // by a preflight. Without a max-age the browser re-asks each time and the
+    // preflight is its own function invocation.
+    maxAge: 86_400,
   }),
 );
 
@@ -93,8 +98,20 @@ app.onError((err, c) => {
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
 
+/** True when the Cookie header carries a Better Auth session token (plain or
+ *  `__Secure-` prefixed). Without one, getSession can only answer null. */
+function hasSessionCookie(cookie: string | undefined): boolean {
+  return !!cookie && /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(cookie);
+}
+
 app.use('*', async (c, next) => {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
+  // Anonymous requests skip Better Auth entirely, so an instance that only
+  // serves them never loads it (see getAuth in auth.ts — cold-start CPU).
+  const session = hasSessionCookie(c.req.header('cookie'))
+    ? await getAuth()
+        .then((a) => a.api.getSession({ headers: c.req.raw.headers }))
+        .catch(() => null)
+    : null;
   let user = session?.user ?? null;
   let tokenId: string | null = null;
   c.set('bannedInfo', null);
@@ -139,6 +156,45 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+/**
+ * CDN cache for viewer-independent public reads.
+ *
+ * Browsing the registry was most of the traffic, and every read ran the
+ * function (session lookup, rate limiter, aggregate queries) for an answer
+ * identical across visitors. Only routes whose body does NOT depend on the
+ * viewer are listed: Vercel's CDN refuses to cache anything with `Vary: Cookie`
+ * (high-cardinality header, served as MISS), so per-viewer routes cannot be
+ * split by credentials at the CDN and must stay uncached. Mod / user /
+ * collection / guide DETAIL pages read the viewer (owner's in-review versions,
+ * canManage, isFollowing, takedown visibility) and are deliberately absent;
+ * adding one here would serve one viewer's view to everyone. Review lists are
+ * absent too: a reviewer refetches right after posting and a cached list hid
+ * their own review for up to minutes. Requests with an Authorization header
+ * are never cached by Vercel regardless.
+ *
+ * Vercel-CDN-Cache-Control is consumed by Vercel's CDN and not forwarded, so
+ * browsers keep revalidating.
+ */
+const CDN_CACHEABLE = [
+  /^\/api\/mods$/,
+  /^\/api\/collections$/,
+  /^\/api\/guides$/,
+  /^\/api\/legal\/impressum$/,
+  /^\/api\/auth-config$/,
+];
+
+export function isCdnCacheablePath(path: string): boolean {
+  return CDN_CACHEABLE.some((re) => re.test(path));
+}
+
+app.use('*', async (c, next) => {
+  await next();
+  if (c.req.method !== 'GET' || c.res.status !== 200) return;
+  if (!isCdnCacheablePath(c.req.path)) return;
+  if (c.res.headers.has('Cache-Control')) return;
+  c.header('Vercel-CDN-Cache-Control', 'max-age=60, stale-while-revalidate=300');
+});
+
 // OAuth callback diagnostics. Records only whether the browser presented a
 // state cookie, never the value: the `state` param and the `better-auth.state`
 // cookie ARE the CSRF token for the flow, and the verification row they key is
@@ -158,7 +214,7 @@ app.use('/api/auth/callback/*', async (c, next) => {
 });
 
 app.use('/api/auth/*', createRateLimiter({ name: 'auth', windowMs: 60_000, maxHits: 10 }));
-app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+app.on(['GET', 'POST'], '/api/auth/*', async (c) => (await getAuth()).handler(c.req.raw));
 
 // Desktop OAuth relay (browser-side flow → one-time-token handoff). Rate-limited
 // like /api/auth to blunt abuse of the provider-redirect kickoff.
@@ -213,6 +269,22 @@ app.get('/api/auth-config', (c) =>
 // Scheduled scan-queue drain (Vercel Cron → Bearer CRON_SECRET). Self-gates on
 // the secret; no session/cookie involved.
 app.route('/api/cron', cronRouter);
+
+// Review-email unsubscribe link. GET is the link in the mail body, POST is the
+// mail client's RFC 8058 one-click (List-Unsubscribe-Post). Token is an HMAC of
+// the user id, so no session is needed.
+app.on(['GET', 'POST'], '/api/unsubscribe', async (c) => {
+  const userId = c.req.query('u') ?? '';
+  const token = c.req.query('t') ?? '';
+  if (!userId || !verifyUnsubscribeToken(userId, token)) {
+    return c.text('This unsubscribe link is invalid.', 400);
+  }
+  await getDb()
+    .update(schema.users)
+    .set({ emailReviews: false, updatedAt: new Date() })
+    .where(eq(schema.users.id, userId));
+  return c.text('You will no longer get review emails. Turn them back on under Account → Privacy.');
+});
 
 app.route('/api/mods', modsRouter);
 app.route('/api/moderation', moderationRouter);

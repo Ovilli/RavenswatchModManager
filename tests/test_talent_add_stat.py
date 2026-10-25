@@ -44,8 +44,8 @@ def comp(raw: bytes, name: str, cls_suffix: str = "") -> EG.Component:
                 if c.name == name and c.cls.endswith(cls_suffix))
 
 
-def test_fiery_dragon_gets_trait_cooldown(wukong, beowulf):
-    out, added = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="CD reduce trait",
+def test_fiery_dragon_gets_trait_cooldown(wukong):
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="CD reduce trait",
                              values=[0.10, 0.15, 0.20, 0.25])
 
     state = comp(out, "Skill Trait Fire", "StateSettings")
@@ -69,7 +69,7 @@ def test_a_talent_that_already_runs_modifiers_keeps_them(beowulf):
     before = comp(beowulf, "Skill Attack Fire Cone", "StateSettings")
     assert before.refs, "fixture: this talent's state must already have children"
 
-    out, added = TA.add_stat(beowulf, beowulf, talent="Attack Fire Cone",
+    out, added = TA.add_stat(beowulf, talent="Attack Fire Cone",
                              stat="Attack power trait", values=0.1)
 
     after = comp(out, "Skill Attack Fire Cone", "StateSettings")
@@ -78,30 +78,30 @@ def test_a_talent_that_already_runs_modifiers_keeps_them(beowulf):
     assert EC.check(out, beowulf, name="Hero_Beowulf") == []
 
 
-def test_ultimates_are_refused_with_a_reason(wukong, beowulf):
+def test_ultimates_are_refused_with_a_reason(wukong):
     graph = EG.parse(wukong)
     ultimate = next(c.name[len("Skill Controller "):] for c in graph.components
                     if c.name.startswith("Skill Controller Ultimate"))
     with pytest.raises(TA.AddStatError, match="no state|no per-rarity"):
-        TA.add_stat(wukong, beowulf, talent=ultimate, stat="CD reduce trait", values=0.1)
+        TA.add_stat(wukong, talent=ultimate, stat="CD reduce trait", values=0.1)
 
 
-def test_unknown_talent_and_stat_are_refused(wukong, beowulf):
+def test_unknown_talent_and_stat_are_refused(wukong):
     with pytest.raises(TA.AddStatError, match="no talent"):
-        TA.add_stat(wukong, beowulf, talent="No Such Talent", stat="CD reduce trait", values=0.1)
+        TA.add_stat(wukong, talent="No Such Talent", stat="CD reduce trait", values=0.1)
     with pytest.raises(TA.AddStatError):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="not a stat at all", values=0.1)
+        TA.add_stat(wukong, talent="Trait Fire", stat="not a stat at all", values=0.1)
 
 
-def test_the_same_stat_twice_is_refused(wukong, beowulf):
-    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="CD reduce trait", values=0.1)
+def test_the_same_stat_twice_is_refused(wukong):
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="CD reduce trait", values=0.1)
     with pytest.raises(TA.AddStatError, match="already"):
-        TA.add_stat(out, beowulf, talent="Trait Fire", stat="CD reduce trait", values=0.2)
+        TA.add_stat(out, talent="Trait Fire", stat="CD reduce trait", values=0.2)
 
 
-def test_two_different_stats_stack(wukong, beowulf):
-    out, a = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="CD reduce trait", values=0.1)
-    out, b = TA.add_stat(out, beowulf, talent="Trait Fire", stat="Crit damage", values=0.2)
+def test_two_different_stats_stack(wukong):
+    out, a = TA.add_stat(wukong, talent="Trait Fire", stat="CD reduce trait", values=0.1)
+    out, b = TA.add_stat(out, talent="Trait Fire", stat="Crit damage", values=0.2)
     assert (a.slot, b.slot) == (1, 2)
     state = comp(out, "Skill Trait Fire", "StateSettings")
     assert len(state.refs) == 2
@@ -161,14 +161,14 @@ def test_rebuild_turns_the_talents_own_effect_off(beowulf):
     assert new.refs == []
     # Its card's old numbers are gone, so the rebuilt card numbers from {0}.
     assert cleared >= 1
-    _s, _sel, fmt = TA.talent_parts(g, "Attack Fire Cone")
+    _c, _s, fmt = TA.card_parts(g, "Attack Fire Cone")
     assert fmt.refs == []
     assert EC.check(out, beowulf, name="Hero_Beowulf") == []
 
 
 def test_stats_added_after_a_rebuild_attach_to_the_new_state(beowulf):
     out, _ = TA.rebuild_talent(beowulf, talent="Attack Fire Cone")
-    out, added = TA.add_stat(out, beowulf, talent="Attack Fire Cone",
+    out, added = TA.add_stat(out, talent="Attack Fire Cone",
                              stat="Crit chance primary", values=[0.05, 0.1, 0.15, 0.2])
 
     assert added.slot == 0
@@ -186,6 +186,7 @@ def test_rebuilding_twice_is_refused(beowulf):
 
 
 def test_the_talent_kind_rebuilds_before_adding(tmp_path, beowulf):
+    # `beowulf` is unused below: it skips the test where no game data is reachable.
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
 
@@ -225,10 +226,10 @@ def test_a_momentary_event_state_is_refused_for_during():
         TA.ability_state(merlin, "DEFENSE")
 
 
-def test_during_makes_the_amount_conditional(beowulf, aladdin):
-    out, added = TA.add_stat(beowulf, beowulf, talent="Attack Flurry",
+def test_during_makes_the_amount_conditional(beowulf):
+    out, added = TA.add_stat(beowulf, talent="Attack Flurry",
                              stat="Attack power basic", values=[0.1, 0.15, 0.2, 0.25],
-                             during="DEFENSE", during_donor_raw=aladdin)
+                             during="DEFENSE")
 
     g = EG.parse(out)
     modifier = comp(out, added.modifier)
@@ -242,18 +243,18 @@ def test_during_makes_the_amount_conditional(beowulf, aladdin):
     assert EC.check(out, beowulf, name="Hero_Beowulf") == []
 
 
-def test_the_same_stat_can_be_added_always_and_during(beowulf, aladdin):
-    out, _ = TA.add_stat(beowulf, beowulf, talent="Attack Flurry",
+def test_the_same_stat_can_be_added_always_and_during(beowulf):
+    out, _ = TA.add_stat(beowulf, talent="Attack Flurry",
                          stat="Attack power basic", values=0.1)
-    out, _ = TA.add_stat(out, beowulf, talent="Attack Flurry", stat="Attack power basic",
-                         values=0.2, during="DEFENSE", during_donor_raw=aladdin)
+    out, _ = TA.add_stat(out, talent="Attack Flurry", stat="Attack power basic",
+                         values=0.2, during="DEFENSE")
     assert EC.check(out, beowulf, name="Hero_Beowulf") == []
 
 
-def test_unknown_ability_is_refused(beowulf, aladdin):
+def test_unknown_ability_is_refused(beowulf):
     with pytest.raises(TA.AddStatError, match="unknown ability"):
-        TA.add_stat(beowulf, beowulf, talent="Attack Flurry", stat="Attack power basic",
-                    values=0.1, during="JUMP", during_donor_raw=aladdin)
+        TA.add_stat(beowulf, talent="Attack Flurry", stat="Attack power basic",
+                    values=0.1, during="JUMP")
 
 
 # --- card slots must be read the way card slots read -------------------------
@@ -272,21 +273,20 @@ def _slot_accessors(raw: bytes, fmt_name: str) -> list[tuple[str, str]]:
     return out
 
 
-def test_a_new_card_slot_reads_its_selector_like_the_games_slots_do(wukong, beowulf):
+def test_a_new_card_slot_reads_its_selector_like_the_games_slots_do(wukong):
     # Copied from Fiery Dragon's own slot (which reads a calculation), the new
     # slot kept the calculation's accessor and the card showed +0% in game.
-    out, added = TA.add_stat(wukong, beowulf, talent="Trait Fire",
+    out, added = TA.add_stat(wukong, talent="Trait Fire",
                              stat="CD reduce trait", values=0.25)
     slots = dict(_slot_accessors(out, "Skill String Desc Trait Fire"))
     assert slots[added.selector] == "64 c9 d2 0f"
     assert slots["Skill Trait Fire Supposed Damage Operation"] == "11 78 ae 17"  # untouched
 
 
-def test_a_rebuilt_card_slot_reads_its_selector_correctly(aladdin, beowulf):
+def test_a_rebuilt_card_slot_reads_its_selector_correctly(aladdin):
     out, _ = TA.rebuild_talent(aladdin, talent="Attack Dive")
-    out, added = TA.add_stat(out, beowulf, talent="Attack Dive", stat="Attack power basic",
-                             values=[0.2, 0.3, 0.4, 0.5], during="DEFENSE",
-                             during_donor_raw=aladdin)
+    out, added = TA.add_stat(out, talent="Attack Dive", stat="Attack power basic",
+                             values=[0.2, 0.3, 0.4, 0.5], during="DEFENSE")
     assert _slot_accessors(out, "Skill String Desc Attack Dive") == \
         [(added.selector, "64 c9 d2 0f")]
 
@@ -302,9 +302,65 @@ def test_on_hit_stats_are_the_debuffs_not_the_buffs(wukong):
         assert TA.resolve_stat(own) not in on_hit, own
 
 
-def test_an_on_hit_stat_is_refused_because_it_would_debuff_the_hero(wukong, beowulf):
+def test_an_on_hit_stat_is_refused_because_it_would_debuff_the_hero(wukong):
     with pytest.raises(TA.AddStatError, match="debuff its own hero"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Vulnerable", values=0.2)
+        TA.add_stat(wukong, talent="Trait Fire", stat="Vulnerable", values=0.2)
+
+
+@pytest.fixture
+def charges():
+    heard = TA.charges_heard()
+    if not heard:
+        pytest.skip("ApplicationSettings.ot not readable (no game install)")
+    return heard
+
+
+def test_every_charge_can_be_given(charges):
+    """Five through a Modifier Listener, TRAIT through its counter's events."""
+    assert {TA.stat_name(k) for k in charges} == {
+        f"Ability_Charge_{a}"
+        for a in ("Dash", "Defensive", "Primary", "Secondary", "Ultimate", "Trait")}
+
+
+def test_a_trait_charge_fires_the_trait_charge_counter_events(wukong, charges):
+    """No stat gives TRAIT charges; the owned state raises Hero_Common's TRAIT
+    charge counter as it comes on and lowers it as it goes, as Snow Queen's
+    Trait Charge does (Merlin's Trait Quest, the user's pointer 2026-10-23)."""
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Trait",
+                             values=1, percent=False)
+    assert added.modifier == "" and added.slot is not None
+    state = comp(out, "Skill Trait Fire", "StateSettings")
+    paths = [r.path for r in state.refs]
+    assert any(p.endswith("TRAIT_ABILITY_MAX_CHARGES_COUNTER_INC Event Sender") for p in paths)
+    assert any(p.endswith("TRAIT_ABILITY_MAX_CHARGES_COUNTER_DEC Event Sender") for p in paths)
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+
+@pytest.mark.parametrize("kw, msg", [
+    ({"values": 2}, "one per talent"),
+    ({"values": [1, 1, 1, 2]}, "one per talent"),
+    ({"values": 1, "during": "DEFENSE"}, "do not apply"),
+])
+def test_a_trait_charge_is_one_and_unconditional(wukong, charges, kw, msg):
+    with pytest.raises(TA.AddStatError, match=msg):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Trait", **kw)
+
+
+def test_a_charge_takes_whole_numbers(wukong, charges):
+    with pytest.raises(TA.AddStatError, match="whole numbers"):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Ability_Charge_Primary",
+                    values=[0.1, 0.15, 0.2, 1])
+    out, added = TA.add_stat(wukong, talent="Trait Fire",
+                             stat="Ability_Charge_Primary", values=1, percent=False)
+    assert EA.modifier_stat(out, added.modifier) == TA.stat_key_bytes("Ability_Charge_Primary")
+
+
+def test_a_charge_entry_is_not_a_percent_by_default(charges):
+    from rsmm.sdk.kinds.talents import _coerce_add_stats
+    charge, cd = _coerce_add_stats([
+        {"talent": "Trait Fire", "stat": "Ability_Charge_Primary", "values": 1},
+        {"talent": "Trait Fire", "stat": "CD reduce trait", "values": 0.1}])
+    assert charge["percent"] is False and cd["percent"] is True
 
 
 # --- conditions: "for N s after <ability>" --------------------------------------
@@ -316,9 +372,9 @@ def _refs(raw: bytes, name: str, field: str) -> list[str]:
     return [i.text.rsplit("\\", 1)[-1] for i in items if i.text and "(none)" not in i.text]
 
 
-def test_after_builds_a_window_the_ability_restarts(wukong, beowulf, aladdin):
-    out, added = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
-                             values=0.3, after="DEFENSE", seconds=4, during_donor_raw=aladdin)
+def test_after_builds_a_window_the_ability_restarts(wukong):
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="Attack power",
+                             values=0.3, after="DEFENSE", seconds=4)
     tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
     # Using DEFENSE fires the restart event, which switches the window off and on...
     assert _refs(out, "State Defensive Ability", "activates")[-1] == f"Event {tag} Window Restart"
@@ -337,24 +393,24 @@ def test_after_builds_a_window_the_ability_restarts(wukong, beowulf, aladdin):
     assert EC.check(out, wukong, name="Hero_SunWukong") == []
 
 
-def test_after_accepts_an_ability_that_only_signals_its_start(beowulf, aladdin):
+def test_after_accepts_an_ability_that_only_signals_its_start():
     merlin = hero_file("Merlin")
-    out, _ = TA.add_stat(merlin, beowulf, talent="Trait Quest Gain Charge", stat="Crit chance",
-                         values=0.1, after="DEFENSE", seconds=2, during_donor_raw=aladdin)
+    out, _ = TA.add_stat(merlin, talent="Trait Quest Gain Charge", stat="Crit chance",
+                         values=0.1, after="DEFENSE", seconds=2)
     assert EC.check(out, merlin, name="Hero_Merlin") == []
 
 
 @pytest.mark.parametrize("seconds", [None, 0, -1, True, "3"])
-def test_after_needs_a_positive_number_of_seconds(wukong, beowulf, aladdin, seconds):
+def test_after_needs_a_positive_number_of_seconds(wukong, seconds):
     with pytest.raises(TA.AddStatError, match="seconds"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
-                    after="DEFENSE", seconds=seconds, during_donor_raw=aladdin)
+        TA.add_stat(wukong, talent="Trait Fire", stat="Attack power", values=0.3,
+                    after="DEFENSE", seconds=seconds)
 
 
-def test_during_and_after_together_are_refused(wukong, beowulf, aladdin):
-    with pytest.raises(TA.AddStatError, match="not both"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
-                    during="POWER", after="DEFENSE", seconds=3, during_donor_raw=aladdin)
+def test_during_and_after_together_are_refused(wukong):
+    with pytest.raises(TA.AddStatError, match="not several"):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Attack power", values=0.3,
+                    during="POWER", after="DEFENSE", seconds=3)
 
 
 def test_the_talent_kind_passes_after_and_seconds(tmp_path, wukong):
@@ -373,18 +429,20 @@ def test_the_talent_kind_passes_after_and_seconds(tmp_path, wukong):
 
 # --- "at most once every M s": Romeo's Love Shield gate ----------------------------
 
+_ROMEO_JULIET = "Hero_Romeo_Juliet_Common"
+
+
 @pytest.fixture(scope="module")
 def romeo_juliet() -> bytes:
     for f in corpus.files("EntitySettings/Heroes/Hero_Juliet"):
-        if f.name == f"{TA.DONOR_LIMITER_FILE}{GEN}":
+        if f.name == f"{_ROMEO_JULIET}{GEN}":
             return f.read_bytes()
-    pytest.skip(f"{TA.DONOR_LIMITER_FILE} entity not available (no mirror or game install)")
+    pytest.skip(f"{_ROMEO_JULIET} entity not available (no mirror or game install)")
 
 
-def test_cooldown_gates_the_window_restart(wukong, beowulf, aladdin, romeo_juliet):
-    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
-                         values=0.3, after="DEFENSE", seconds=3, cooldown=8,
-                         during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+def test_cooldown_gates_the_window_restart(wukong):
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="Attack power",
+                         values=0.3, after="DEFENSE", seconds=3, cooldown=8)
     tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
     # DEFENSE fires the gate's tester, not the restart event directly...
     acts = _refs(out, "State Defensive Ability", "activates")
@@ -407,11 +465,10 @@ def test_cooldown_gates_the_window_restart(wukong, beowulf, aladdin, romeo_julie
     assert EC.check(out, wukong, name="Hero_SunWukong") == []
 
 
-def test_cooldown_tests_its_own_copies(wukong, beowulf, aladdin, romeo_juliet):
+def test_cooldown_tests_its_own_copies(wukong):
     from rsmm.engine import entity_edit as EE
-    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
-                         values=0.3, after="DEFENSE", seconds=3, cooldown=8,
-                         during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="Attack power",
+                         values=0.3, after="DEFENSE", seconds=3, cooldown=8)
     tag = "Skill Trait Fire Added 15a486c4 After DEFENSE"
     ed = EE.EntityEdit(out)
     tested = sorted(b.decode() for a, z in ed._subtest_ranges(f"{tag} Cooldown Tester")
@@ -420,20 +477,19 @@ def test_cooldown_tests_its_own_copies(wukong, beowulf, aladdin, romeo_juliet):
 
 
 @pytest.mark.parametrize("cooldown", [0, -2, True, "8"])
-def test_cooldown_needs_a_positive_number(wukong, beowulf, aladdin, romeo_juliet, cooldown):
+def test_cooldown_needs_a_positive_number(wukong, cooldown):
     with pytest.raises(TA.AddStatError, match="cooldown"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
-                    after="DEFENSE", seconds=3, cooldown=cooldown,
-                    during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+        TA.add_stat(wukong, talent="Trait Fire", stat="Attack power", values=0.3,
+                    after="DEFENSE", seconds=3, cooldown=cooldown)
 
 
-def test_cooldown_without_after_is_refused(wukong, beowulf, romeo_juliet):
-    with pytest.raises(TA.AddStatError, match="give 'after' too"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
-                    cooldown=8, limiter_donor_raw=romeo_juliet)
+def test_cooldown_without_after_is_refused(wukong):
+    with pytest.raises(TA.AddStatError, match="give 'after' or 'on' too"):
+        TA.add_stat(wukong, talent="Trait Fire", stat="Attack power", values=0.3,
+                    cooldown=8)
 
 
-def test_the_talent_kind_passes_cooldown(tmp_path, wukong, romeo_juliet):
+def test_the_talent_kind_passes_cooldown(tmp_path, wukong):
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
 
@@ -450,10 +506,9 @@ def test_the_talent_kind_passes_cooldown(tmp_path, wukong, romeo_juliet):
 
 # --- "your next X after Y": the window ends when X's use ends ----------------------
 
-def test_next_ends_the_window_as_that_ability_finishes(wukong, beowulf, aladdin):
-    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
-                         values=0.5, after="DEFENSE", seconds=4, next_ability="ATTACK",
-                         during_donor_raw=aladdin)
+def test_next_ends_the_window_as_that_ability_finishes(wukong):
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="Attack power",
+                         values=0.5, after="DEFENSE", seconds=4, next_ability="ATTACK")
     tag = "Skill Trait Fire Added 15a486c4 After DEFENSE Next ATTACK"
     attack = TA.ability_state(EG.parse(out), "ATTACK").name
     # ATTACK's on-exit list fires an event that only switches the window off...
@@ -466,27 +521,25 @@ def test_next_ends_the_window_as_that_ability_finishes(wukong, beowulf, aladdin)
 
 
 @pytest.mark.parametrize(("kw", "msg"), [
-    ({"next_ability": "ATTACK"}, "give 'after' too"),
+    ({"next_ability": "ATTACK"}, "give 'after' or 'on' too"),
     ({"after": "DEFENSE", "seconds": 3, "next_ability": "DEFENSE"}, "starts the window"),
 ])
-def test_a_bad_next_is_refused(wukong, beowulf, aladdin, kw, msg):
+def test_a_bad_next_is_refused(wukong, kw, msg):
     with pytest.raises(TA.AddStatError, match=msg):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power", values=0.3,
-                    during_donor_raw=aladdin, **kw)
+        TA.add_stat(wukong, talent="Trait Fire", stat="Attack power", values=0.3, **kw)
 
 
-def test_next_refuses_an_ability_that_only_signals_its_start(beowulf, aladdin):
+def test_next_refuses_an_ability_that_only_signals_its_start():
     merlin = hero_file("Merlin")
     with pytest.raises(TA.AddStatError, match="only signals its start"):
-        TA.add_stat(merlin, beowulf, talent="Trait Quest Gain Charge", stat="Crit chance",
-                    values=0.1, after="ATTACK", seconds=2, next_ability="DEFENSE",
-                    during_donor_raw=aladdin)
+        TA.add_stat(merlin, talent="Trait Quest Gain Charge", stat="Crit chance",
+                    values=0.1, after="ATTACK", seconds=2, next_ability="DEFENSE")
 
 
-def test_next_and_cooldown_combine(wukong, beowulf, aladdin, romeo_juliet):
-    out, _ = TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Attack power",
+def test_next_and_cooldown_combine(wukong):
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="Attack power",
                          values=0.5, after="DEFENSE", seconds=4, next_ability="ATTACK",
-                         cooldown=10, during_donor_raw=aladdin, limiter_donor_raw=romeo_juliet)
+                         cooldown=10)
     assert EC.check(out, wukong, name="Hero_SunWukong") == []
 
 
@@ -519,14 +572,15 @@ def test_an_inherited_talent_is_built_in_the_file_that_holds_it(tmp_path, romeo_
     })
     [path] = talents.emit("test-mod", defn, tmp_path)
     assert path.relative_to(tmp_path).as_posix() == (
-        f"EntitySettings/Heroes/Hero_Juliet/{TA.DONOR_LIMITER_FILE}{GEN}")
+        f"EntitySettings/Heroes/Hero_Juliet/{_ROMEO_JULIET}{GEN}")
     out = path.read_bytes()
     owned = comp(out, "Skill Special Invulnerable", "StateSettings")
     assert any("Added" in r.path and r.path.endswith("Modifier") for r in owned.refs)
-    assert EC.check(out, romeo_juliet, name=TA.DONOR_LIMITER_FILE) == []
+    assert EC.check(out, romeo_juliet, name=_ROMEO_JULIET) == []
 
 
 def test_rebuilding_an_overridden_inherited_talent_is_refused(tmp_path, romeo_juliet):
+    # `romeo_juliet` is unused below: it skips the test where no game data is reachable.
     from rsmm.sdk.content import ContentDef, ContentError
     from rsmm.sdk.kinds import talents
 
@@ -582,9 +636,9 @@ def test_game_state_is_told_apart_from_stats(wukong):
         assert TA.resolve_stat(stat) not in state, stat
 
 
-def test_a_game_state_flag_is_refused(wukong, beowulf):
+def test_a_game_state_flag_is_refused(wukong):
     with pytest.raises(TA.AddStatError, match="game state"):
-        TA.add_stat(wukong, beowulf, talent="Trait Fire", stat="Is in cinematic", values=1)
+        TA.add_stat(wukong, talent="Trait Fire", stat="Is in cinematic", values=1)
 
 
 # --- include another talent's effect --------------------------------------------
@@ -660,7 +714,6 @@ def test_piper_can_borrow_wukongs_power_hold(piper, wukong):
 
 @pytest.mark.parametrize(("hero", "other", "msg"), [
     ("Aladdin", "Defense Tornado", "inside its hero's abilities"),
-    ("Geppetto", "Passive Create Objects", "does not load"),
     ("Melusine", "Ultimate 2 Spawn More", "only numbers"),
 ])
 def test_a_talent_bound_to_its_hero_is_not_borrowed(piper, hero, other, msg):

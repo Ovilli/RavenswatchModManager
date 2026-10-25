@@ -505,6 +505,7 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
     """``apply``; with ``enabled_json`` (a JSON list of mod ids) the manifests
     are first made to match it (:func:`sync_enabled`)."""
     note = ""
+    menu: dict[str, bool] = {}
     if enabled_json is not None:
         try:
             ids = json.loads(enabled_json)
@@ -514,6 +515,17 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
         if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
             return _emit({"ok": False, "code": 2, "stdout": "",
                           "stderr": "--enabled-json must be a list of mod ids"})
+        # Switched in game (Settings > Mods) since the profile was last saved:
+        # the newer choice wins, and goes back to the app as menuToggles so the
+        # profile store follows instead of undoing it on the next apply.
+        from rsmm.cli.cmd_mods import read_menu_requests
+        game_dir = find_game_dir()
+        try:
+            menu = read_menu_requests(game_dir) if game_dir else {}
+        except ValueError:
+            menu = {}     # apply reports the unreadable file itself
+        ids = [i for i in ids if menu.get(i, True)]
+        ids += [i for i, on in menu.items() if on and i not in ids]
         try:
             changed = sync_enabled(MODS_DIR, ids)
         except OSError as e:
@@ -523,6 +535,8 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
             note = "Matched the profile: " + ", ".join(changed) + "\n"
     result = _collect_rsmm(["apply", *rest])
     result["stdout"] = note + result["stdout"]
+    if menu:
+        result["menuToggles"] = menu
     return _emit(result)
 
 
@@ -773,6 +787,29 @@ def _slugify(value: str) -> str:
     return s
 
 
+#: Caps mirror `modManifestSchema` (name/summary/description), so a long
+#: translation is trimmed here rather than failing the whole upload.
+_TRANSLATED_FIELDS = {"name": 128, "summary": 512, "description": 8192}
+
+
+def _manifest_translations(mod_dir: Path) -> dict[str, dict[str, str]]:
+    """``{locale: {name, summary, description}}`` from each shipped
+    ``lang/<locale>.toml`` ``[manifest]`` — the same text the desktop library
+    already shows locally, carried to the registry so a browse in that
+    language shows it too."""
+    from rsmm.sdk.i18n import FALLBACK_LOCALE, SUPPORTED_LOCALES, mod_text
+    out: dict[str, dict[str, str]] = {}
+    for loc in SUPPORTED_LOCALES:
+        if loc in (FALLBACK_LOCALE, "RAW"):
+            continue
+        text = mod_text(mod_dir, loc).get("manifest", {})
+        fields = {k: v.strip()[:cap] for k, cap in _TRANSLATED_FIELDS.items()
+                  if isinstance(v := text.get(k), str) and v.strip()}
+        if fields:
+            out[loc] = fields
+    return out
+
+
 def cmd_pack_mod(mod_id: str) -> int:
     """``rsmm json pack-mod``: :func:`pack_mod_metadata` as JSON on stdout."""
     return _emit(pack_mod_metadata(mod_id))
@@ -873,6 +910,9 @@ def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
     deps = _deps_map(manifest)
     if deps:
         out_manifest["dependencies"] = deps
+    translations = _manifest_translations(src)
+    if translations:
+        out_manifest["translations"] = translations
 
     return {
         "ok": True,
@@ -1724,6 +1764,25 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error", "error": str(e)})
 
 
+def cmd_update_cli(dest: str, check_only: bool) -> int:
+    """Stage a newer frozen CLI from the rolling `cli` release into
+    `<dest>/staged`; the app swaps it in on its next start. See
+    rsmm.engine.cli_update."""
+    try:
+        from rsmm.engine.cli_update import run
+
+        state = run(Path(dest), check_only, on_progress=_progress_reporter("download"))
+        return _emit({
+            "ok": state["status"] != "needs_app_update",
+            "status": state["status"],
+            "installedVersion": state.get("installed_version"),
+            "remoteVersion": state.get("remote_version"),
+            "notes": state.get("notes"),
+        })
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "status": "error", "error": str(e)})
+
+
 def _backend_state(game_dir: Path, check_server: bool) -> dict[str, Any]:
     """Everything the Settings panel shows about the self-hosted backend."""
     from rsmm.engine import backend_redirect as br
@@ -1884,6 +1943,9 @@ def cmd_item_bans_set(items_json: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if (sys.argv[1:] if argv is None else argv)[:1] == ["serve"]:
+        from rsmm.cli.json_serve import serve
+        return serve()
     ap = argparse.ArgumentParser(
         prog="rsmm json",
         description="Machine-readable JSON bridge for the desktop / web UI.",
@@ -1980,6 +2042,11 @@ def main(argv: list[str] | None = None) -> int:
         "update-loader", help="fetch + install the signed loader DLL + Lua SDK")
     p_upd_loader.add_argument("--check", action="store_true",
                               help="report status only, do not install")
+    p_upd_cli = sub.add_parser(
+        "update-cli", help="stage the newest signed CLI build for the app's next start")
+    p_upd_cli.add_argument("--dest", required=True, help="the app's CLI channel directory")
+    p_upd_cli.add_argument("--check", action="store_true",
+                           help="report status only, do not download")
     p_backend = sub.add_parser(
         "backend", help="read, set or clear the self-hosted online backend address")
     backend_sub = p_backend.add_subparsers(dest="backend_cmd", required=True)
@@ -2067,6 +2134,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update_data(args.check)
     if args.cmd == "update-loader":
         return cmd_update_loader(args.check)
+    if args.cmd == "update-cli":
+        return cmd_update_cli(args.dest, args.check)
     if args.cmd == "changelog":
         return cmd_changelog(args.refresh)
     if args.cmd == "backend":

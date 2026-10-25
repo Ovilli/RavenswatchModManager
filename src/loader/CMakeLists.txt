@@ -42,10 +42,10 @@ target_include_directories(lua54 SYSTEM PUBLIC ${TP}/lua)
 # redefinition warning in every file that includes lua.h.
 
 # --- Loader DLL ----------------------------------------------------------
-# In-game UI (hook_vk + hook_win32 + ImGui) removed: surface was never
-# feature-complete. The loader is now just asset-overrides (hook_io),
-# Lua VM (script_lua), and the generic hook bridge (hook_lua) that
-# backs the public rsmm.hook API.
+# The first in-game UI (hook_vk + hook_win32) was removed: it hooked Vulkan,
+# which this DX12 game never loads. Its DXGI/ImGui successor was removed too
+# (2026-10-24): hook_settings_menu.cpp adds a Mods tab to the game's own
+# Settings page instead.
 set(LOADER_SRC
     src/dllmain.cpp
     src/loader.cpp
@@ -56,6 +56,7 @@ set(LOADER_SRC
     src/hook_skins.cpp
     src/hook_skills.cpp
     src/hook_ui.cpp
+    src/hook_settings_menu.cpp
     src/hook_items.cpp
     src/hook_rewards.cpp
     src/hook_resource.cpp
@@ -96,13 +97,13 @@ if(MSVC)
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
-      kernel32 user32 gdi32 psapi ole32)
+      kernel32 user32 gdi32 psapi ole32 bcrypt dwmapi)
 else()
   target_link_libraries(winhttp PRIVATE
       minhook
       lua54
       -static -static-libgcc -static-libstdc++
-      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32)
+      -lkernel32 -luser32 -lgdi32 -lpsapi -lole32 -lbcrypt -ldwmapi)
 endif()
 
 if(MSVC)

@@ -92,6 +92,19 @@ def _install_bank() -> Path | None:
     return p if p.exists() else None
 
 
+def _bank_prior(out_dir: Path) -> dict[str, bytes]:
+    """The challenges/modifiers bank an earlier block of this mod already wrote
+    in this emit, as ``{"__base__" | ".Lang<XX>": bytes}``. Every modifier and
+    challenge block builds on it; rebuilding from vanilla dropped the text of
+    every block but the last (the bug items.py fixed the same way)."""
+    bank = out_dir.joinpath(*_TEXT_BANK_DECODED.split("/"))
+    out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
+           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
+    if bank.is_file():
+        out["__base__"] = bank.read_bytes()
+    return out
+
+
 def _write_bank_files(files: dict[str, bytes], out_dir: Path) -> list[Path]:
     """Write a bank-patch result ({token -> bytes}) into the mod assets. ``token``
     is ``.Lang<XX>`` for a language sibling, or ``__base__`` for the keys file."""
@@ -165,7 +178,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             pairs[f"GameModifier_{defn.id}_Title"] = str(name)
         if description is not None:
             pairs[f"GameModifier_{defn.id}_Desc"] = str(description)
-        files = TP.append_bank_keys(bank, pairs)
+        files, _rows = TP.patch_bank(bank, pairs, _bank_prior(out_dir))
         written += _write_bank_files(files, out_dir)
 
     _log.info(

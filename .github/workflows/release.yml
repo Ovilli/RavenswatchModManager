@@ -125,8 +125,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # .deb on 22.04: it links the SYSTEM WebKitGTK, so it is never slow
+          # and keeps glibc 2.35 distros. AppImage on 24.04: it bundles its own
+          # WebKitGTK, and 22.04's is old enough that the packaged app crawled
+          # where the same binary on system libraries was fast. Cost: the
+          # AppImage needs glibc 2.39 (Ubuntu 24.04 / Debian 13 / Fedora 40+);
+          # older distros use the .deb.
           - platform: ubuntu-22.04
-            args: ''
+            args: '--bundles deb'
+          - platform: ubuntu-24.04
+            args: '--bundles appimage'
           - platform: windows-latest
             args: ''
     runs-on: ${{ matrix.platform }}
@@ -151,10 +159,12 @@ jobs:
           targets: ''
 
       - name: Linux build deps
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev g++-mingw-w64-x86-64
+          # 24.04 dropped libappindicator3-dev for the ayatana fork.
+          if [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then ind=libappindicator3-dev; else ind=libayatana-appindicator3-dev; fi
+          sudo apt-get install -y libwebkit2gtk-4.1-dev "$ind" librsvg2-dev patchelf libssl-dev g++-mingw-w64-x86-64
 
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
@@ -186,7 +196,7 @@ jobs:
       # dist/winhttp.dll, install-loader exits with "Build first" on every
       # Linux install, and Modded Launch never works for Proton users.
       - name: Build loader DLL (Linux, MinGW cross)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: src/loader/build.sh
 
       # Fail the release leg if the DLL is missing/malformed/exportless —
@@ -264,7 +274,7 @@ jobs:
       # launch, so an upstream rebuild must fail the release loudly instead of
       # shipping unreviewed bytes into it.
       - name: Fetch AppImage runtime (fuse3-capable)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euo pipefail
@@ -301,7 +311,7 @@ jobs:
       # runtime prefix, so their absence is direct evidence of which runtime
       # got embedded.
       - name: Verify AppImage runtime needs no fuse2
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euo pipefail
@@ -499,6 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # dispatch publish-cli.yml
     steps:
       - uses: actions/checkout@v5
 
@@ -532,6 +543,35 @@ jobs:
           # release is a no-op, so re-running the job is safe.
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false \
             --jq '"published " + .html_url'
+
+      # Clients read release notes from the rolling `changelog` release, which
+      # nothing here updated: 5.9.24 went out with its note unseen until it was
+      # uploaded by hand. Uploaded from MAIN, not the tag, so a loader or CLI
+      # note published after tagging is not rolled back.
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main-tree
+
+      - name: Publish release notes
+        working-directory: main-tree
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/publish_changelog.sh
+
+      # This build embeds the CLI stamp it was cut at, and the app only prefers
+      # a channel build that is strictly NEWER. Publishing one now moves new
+      # installs onto the --onedir CLI (no unpack per call) on their second
+      # start, instead of whenever someone next remembers to publish.
+      - name: Publish the CLI channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh workflow run publish-cli.yml --ref main \
+            -f notes="CLI build for ${TAG}" -f changelog=false
 
       # GITHUB_TOKEN publish does not trigger `release: published`, so
       # discord-notify.yml never runs for tag-driven releases — notify here.

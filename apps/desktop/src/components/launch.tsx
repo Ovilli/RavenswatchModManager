@@ -12,6 +12,7 @@ import { t } from '../lib/i18n';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
 import { getPlatform } from '../lib/platform';
 import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
+import { noteModdedLaunch } from './support-nudge';
 
 /**
  * The single owner of "launch the game".
@@ -195,6 +196,7 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
           return result;
         }
         setRunning(mode);
+        if (mode === 'modded') noteModdedLaunch();
         await appendLauncherLog('info', `Launch handoff complete: ${mode} (running state set)`);
         trackGameLifecycle(mode, seq);
         return result;

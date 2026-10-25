@@ -11,6 +11,7 @@ import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { MDEditor, MDPreview } from '../../components/md-editor';
+import { ReviewReplyBlock } from '../../components/review-reply';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Draft',
@@ -79,6 +80,15 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
         body: reviewBody.trim() || null,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['guide', slug, 'reviews'] }),
+  });
+  const reviewDelete = useMutation({
+    mutationFn: () => api.guides.reviews.remove(slug),
+    onSuccess: () => {
+      setReviewRating(0);
+      setReviewTitle('');
+      setReviewBody('');
+      return qc.invalidateQueries({ queryKey: ['guide', slug, 'reviews'] });
+    },
   });
 
   if (guide.isLoading) {
@@ -316,13 +326,28 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
               {reviewUpsert.isError ? (
                 <p className="text-sm text-destructive">{describeApiError(reviewUpsert.error)}</p>
               ) : null}
-              <Button
-                type="submit"
-                size="sm"
-                disabled={reviewUpsert.isPending || reviewRating === 0}
-              >
-                {reviewUpsert.isPending ? 'Saving…' : userReview ? 'Update' : 'Submit'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={reviewUpsert.isPending || reviewRating === 0}
+                >
+                  {reviewUpsert.isPending ? 'Saving…' : userReview ? 'Update' : 'Submit'}
+                </Button>
+                {userReview ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={reviewDelete.isPending}
+                    onClick={() => {
+                      if (confirm('Delete your review?')) reviewDelete.mutate();
+                    }}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                  </Button>
+                ) : null}
+              </div>
             </form>
           ) : isOwner ? (
             <p className="text-sm text-muted-foreground">Authors cannot review their own guide.</p>
@@ -341,6 +366,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
                 <div className="flex items-center gap-2">
                   {r.userImage ? (
                     <img
+                      loading="lazy"
                       src={r.userImage}
                       alt={r.userName ?? ''}
                       className="h-6 w-6 rounded-full"
@@ -360,6 +386,13 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
                 </div>
                 {r.title ? <p className="mt-2 text-sm font-semibold">{r.title}</p> : null}
                 {r.body ? <p className="mt-1 text-sm text-muted-foreground">{r.body}</p> : null}
+                <ReviewReplyBlock
+                  review={r}
+                  canReply={isOwner}
+                  queryKey={['guide', slug, 'reviews']}
+                  onSave={(text) => api.guides.reviews.reply(slug, r.id, text)}
+                  onDelete={() => api.guides.reviews.removeReply(slug, r.id)}
+                />
               </li>
             ))}
           </ul>

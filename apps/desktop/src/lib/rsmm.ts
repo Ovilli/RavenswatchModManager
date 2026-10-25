@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
-import { isEnabledIn, useApp } from '../store';
+import { defaultGameDir, isEnabledIn, useApp } from '../store';
 import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
-import { noteGameStateChanged } from './session-cache';
+import { noteGameStateChanged, onGameStateChanged } from './session-cache';
 import { isSafeProfileId } from './untrusted-state';
 
 interface ExecResult {
@@ -208,7 +208,20 @@ export function rsmmEnv(profileId?: string): Record<string, string> {
   const id = isSafeProfileId(requested) ? requested : 'default';
   // The app's language, so the CLI hands back each mod's own translation
   // (lang/<LOCALE>.toml) for names, overlay headers and config labels.
-  return { RSMM_MODS_DIR: `${rootDir}/profiles/${id}`, RSMM_LOCALE: modLocale() };
+  const env: Record<string, string> = {
+    RSMM_MODS_DIR: `${rootDir}/profiles/${id}`,
+    RSMM_LOCALE: modLocale(),
+  };
+  // The Game folder setting reached no CLI call at all, so a Steam outside
+  // Program Files could not be fixed from Settings (#55). Only a folder the
+  // user actually chose is forwarded: the field starts out holding the
+  // platform default, and pinning that would override the CLI's autodetect
+  // for everyone it currently finds.
+  const gameDir = state.settings.gameDir?.trim();
+  if (gameDir && gameDir !== defaultGameDir()) {
+    env.RSMM_GAME_DIR = gameDir;
+  }
+  return env;
 }
 
 /** The app's language as a mod locale code (rsmm.sdk.i18n SUPPORTED_LOCALES). */
@@ -230,7 +243,32 @@ export function modLocale(): string {
  * involving PATH at all.
  */
 const SIDECAR_PROGS = ['binaries/rsmm'] as const;
-type ProgName = (typeof SIDECAR_PROGS)[number];
+type ProgName = (typeof SIDECAR_PROGS)[number] | 'cli-channel' | 'cli-channel-win';
+
+/** The CLI from the rolling `cli` release (src-tauri/src/cli_channel.rs). */
+export interface CliChannel {
+  dir: string | null;
+  active: boolean;
+  /** `cli_version` of the CLI the app runs, channel or bundled. */
+  version: number;
+}
+
+let cliChannelPromise: Promise<CliChannel> | null = null;
+
+/** Fixed for the launch: Rust promotes a staged build only at startup. */
+export function cliChannel(): Promise<CliChannel> {
+  cliChannelPromise ??= invoke<CliChannel>('cli_channel').catch(() => ({
+    dir: null,
+    active: false,
+    version: 0,
+  }));
+  return cliChannelPromise;
+}
+
+async function candidateProgs(): Promise<ProgName[]> {
+  if (!(await cliChannel()).active) return [...SIDECAR_PROGS];
+  return [getPlatform() === 'windows' ? 'cli-channel-win' : 'cli-channel', ...SIDECAR_PROGS];
+}
 
 // Strip a trailing CR from a line so Windows `\r\n` output produces clean
 // lines in `onStdout` / `onStderr` callbacks.
@@ -239,7 +277,9 @@ function stripCR(s: string): string {
 }
 
 function createCommand(name: string, args: string[], opts: Record<string, unknown> | undefined) {
-  return Command.sidecar(name, args, opts);
+  return name.startsWith('cli-channel')
+    ? Command.create(name, args, opts)
+    : Command.sidecar(name, args, opts);
 }
 
 /** `undefined` = not resolved yet (next call re-probes). */
@@ -277,6 +317,15 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
     throw new RsmmAbortError(args);
   }
 
+  if (resolvedProg !== undefined && !useRustProbe && servable(args, options)) {
+    try {
+      return await viaServer(resolvedProg, args, env, timeoutMs);
+    } catch (err) {
+      if (err instanceof RsmmError) throw err;
+      // Server unavailable or died: a cold spawn below still answers.
+    }
+  }
+
   // First call: probe programs in order. Subsequent calls: use the
   // resolved one. If discovery fails, keep retrying on later calls so
   // a transient startup env issue doesn't permanently poison the app.
@@ -287,7 +336,7 @@ async function execute(args: string[], options: RsmmOptions): Promise<ExecResult
   // spawn, and only then reached the probe again — one wasted spawn plus an
   // IPC round trip per command, forever, and the fast path below was dead code.
   if (resolvedProg === undefined && !useRustProbe) {
-    for (const name of SIDECAR_PROGS) {
+    for (const name of await candidateProgs()) {
       try {
         const probe = createCommand(name, args, opts);
         return await runWithLifecycle(name, probe, args, options, timeoutMs);
@@ -426,6 +475,153 @@ export async function killLiveChildren(): Promise<void> {
 
 export function liveChildCount(): number {
   return liveChildren.size;
+}
+
+/**
+ * One warm `rsmm json serve` process for read-only calls (src/rsmm/cli/json_serve.py).
+ *
+ * Every call used to be a cold start: interpreter, imports and, frozen, the
+ * bundle itself, on each screen. The server answers those reads from one
+ * process, one request at a time. It is started with a fixed environment and
+ * killed on any write and on any change to that environment, so cached Python
+ * state never outlives what it describes. Anything streaming, cancellable or
+ * writing still spawns its own process.
+ */
+const SERVED = new Set([
+  'list',
+  'list-profiles',
+  'overlays',
+  'changelog',
+  'loader-runs',
+  'loader-health',
+  'loader-log',
+  'game-status',
+  'conflicts',
+  'active-overrides',
+  'doctor',
+]);
+
+function servable(args: string[], options: RsmmOptions): boolean {
+  return (
+    args[0] === 'json' &&
+    SERVED.has(args[1] ?? '') &&
+    !args.includes('--fix') &&
+    !options.signal &&
+    !options.onStdout &&
+    !options.onStderr
+  );
+}
+
+interface Pending {
+  resolve: (r: ExecResult) => void;
+  reject: (e: unknown) => void;
+}
+
+interface Server {
+  child: Child;
+  envKey: string;
+  pending: Map<number, Pending>;
+}
+
+let server: Server | null = null;
+let serverStart: Promise<Server> | null = null;
+let nextRequestId = 1;
+
+function stopServer(): void {
+  const s = server;
+  server = null;
+  serverStart = null;
+  if (!s) return;
+  liveChildren.delete(s.child);
+  void Promise.resolve()
+    .then(() => s.child.kill())
+    .catch(() => {});
+  for (const p of s.pending.values()) p.reject(new Error('rsmm server stopped'));
+  s.pending.clear();
+}
+
+onGameStateChanged(stopServer);
+
+function startServer(prog: ProgName, env: Record<string, string>, envKey: string): Promise<Server> {
+  const cmd = createCommand(prog, ['json', 'serve'], { env });
+  const pending = new Map<number, Pending>();
+  let buf = '';
+  cmd.stdout.on('data', (chunk: string) => {
+    buf += chunk;
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+    // A chunk may arrive without its newline; a complete JSON object is still a whole reply.
+    if (buf.trim().startsWith('{')) {
+      try {
+        JSON.parse(buf);
+        lines.push(buf);
+        buf = '';
+      } catch {
+        // Incomplete: wait for the rest.
+      }
+    }
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const r = JSON.parse(line) as { id: number; code: number; stdout: string; stderr: string };
+        const p = pending.get(r.id);
+        pending.delete(r.id);
+        p?.resolve({ code: r.code, stdout: r.stdout, stderr: r.stderr });
+      } catch {
+        // Not a reply; the protocol never writes anything else to stdout.
+      }
+    }
+  });
+  const gone = () => {
+    if (server?.pending === pending) stopServer();
+    for (const p of pending.values()) p.reject(new Error('rsmm server exited'));
+    pending.clear();
+  };
+  cmd.on('close', gone);
+  cmd.on('error', gone);
+  return cmd.spawn().then((child) => {
+    liveChildren.add(child);
+    return { child, envKey, pending };
+  });
+}
+
+async function viaServer(
+  prog: ProgName,
+  args: string[],
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<ExecResult> {
+  const envKey = JSON.stringify(env);
+  if (server && server.envKey !== envKey) stopServer();
+  if (!serverStart) {
+    serverStart = startServer(prog, env, envKey).then((s) => {
+      server = s;
+      return s;
+    });
+    serverStart.catch(() => {
+      serverStart = null;
+    });
+  }
+  const s = await serverStart;
+  const id = nextRequestId++;
+  const reply = new Promise<ExecResult>((resolve, reject) => {
+    s.pending.set(id, { resolve, reject });
+  });
+  reply.catch(() => {}); // Awaited below; never an unhandled rejection meanwhile.
+  try {
+    await s.child.write(`${JSON.stringify({ id, args: args.slice(1) })}\n`);
+  } catch (err) {
+    s.pending.delete(id);
+    stopServer();
+    throw err;
+  }
+  try {
+    return await withTimeout(reply, args, timeoutMs);
+  } catch (err) {
+    // A hung server would stall every later read behind it.
+    if (err instanceof RsmmTimeoutError) stopServer();
+    throw err;
+  }
 }
 
 function spawnWithLifecycle(
@@ -652,6 +848,9 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
+  /** `apply` only: mods switched on/off in game (Settings > Mods) since the
+   * profile was saved. They won this apply; the store follows them. */
+  menuToggles?: Record<string, boolean>;
 }
 
 /** A repair doctor knows how to run for a finding. `manual` ones need a
@@ -989,6 +1188,42 @@ export const updateLoader = (
     },
   );
 
+export interface UpdateCliResult {
+  ok: boolean;
+  status:
+    | 'staged'
+    | 'up_to_date'
+    | 'update_available'
+    | 'not_published'
+    | 'needs_app_update'
+    | 'error';
+  installedVersion?: number | null;
+  remoteVersion?: number | null;
+  notes?: string | null;
+  error?: string;
+}
+
+/**
+ * Stage the newest signed CLI build (rolling `cli` release); the app switches
+ * to it on its next start. Lets a Python fix ship without an app release.
+ */
+export function updateCli(): Promise<UpdateCliResult | null> {
+  lastCliUpdatePromise = (async () => {
+    const { dir } = await cliChannel();
+    if (!dir) return null;
+    return rsmm<UpdateCliResult>(['update-cli', '--dest', dir], { timeoutMs: LONG_TIMEOUT_MS });
+  })();
+  return lastCliUpdatePromise;
+}
+
+let lastCliUpdatePromise: Promise<UpdateCliResult | null> | null = null;
+
+/** This launch's most recent `updateCli()`, so Settings can show a staged build
+ *  without a second network check. Null until one has run. */
+export function lastCliUpdate(): Promise<UpdateCliResult | null> | null {
+  return lastCliUpdatePromise;
+}
+
 /** One stderr line -> progress, or null when it is anything else. */
 export function parseProgressLine(line: string): LoaderDownloadProgress | null {
   const trimmed = line.trim();
@@ -1149,7 +1384,7 @@ export function profileEnabledMods(profileId?: string): string[] | undefined {
   return profile.loadOrder.filter((id) => isEnabledIn(profile, id));
 }
 
-export const applyMods = (opts: ApplyOptions = {}) => {
+export const applyMods = async (opts: ApplyOptions = {}) => {
   const { dryRun, force, noMerge, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
@@ -1157,8 +1392,22 @@ export const applyMods = (opts: ApplyOptions = {}) => {
   if (noMerge) args.push('--no-merge');
   const enabled = profileEnabledMods(rsmmOpts.profileId);
   if (enabled) args.push('--enabled-json', JSON.stringify(enabled));
-  return rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
+  const result = await rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
+  followMenuToggles(result, rsmmOpts.profileId);
+  return result;
 };
+
+/** Make the active profile agree with the in-game Settings > Mods switches the
+ * apply just honoured, or the next apply would switch them straight back. */
+function followMenuToggles(result: RunResult | null, profileId?: string) {
+  const s = useApp.getState();
+  if (!result?.menuToggles || (profileId && profileId !== s.activeProfileId)) return;
+  const profile = s.profiles.find((p) => p.id === s.activeProfileId);
+  if (!profile) return;
+  for (const [id, on] of Object.entries(result.menuToggles)) {
+    if (isEnabledIn(profile, id) !== on) s.toggleMod(id);
+  }
+}
 
 export const build = () => rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
 

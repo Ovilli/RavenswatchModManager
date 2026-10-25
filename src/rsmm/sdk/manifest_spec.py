@@ -37,7 +37,8 @@ CONTENT_COMMON: frozenset[str] = frozenset({"kind", "id", "schema_version"})
 CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "item": frozenset({
         "mode", "base", "name", "display_name", "description", "rarity", "icon",
-        "value_patches", "unique_identity", "stats", "super_description",
+        "value_patches", "unique_identity", "stats", "super_description", "steps",
+        "super_effect", "super_effects", "effect", "effects",
         "items",                                # mode = "ban"
     }),
     "enemy": frozenset({
@@ -49,7 +50,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "imports", "repoint_pools", "casts",
     }),
     "boss": frozenset({"base", "becomes", "name"}),
-    "map": frozenset({"base", "chapter", "tribe"}),
+    "map": frozenset({"base", "chapter", "tribe", "pool", "tilegen", "place", "terrain"}),
     "hero": frozenset({
         "base", "name", "description", "model", "transform", "albedo", "mra",
         "normal", "portrait", "own_entity", "weapons", "animations", "outfits",
@@ -68,6 +69,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "description", "icon",
     }),
     "modifier": frozenset({"base", "name", "description", "effect"}),
+    "challenge": frozenset({"base", "name", "modifiers"}),
     "game_mode": frozenset({"base", "chapters"}),
     "reward": frozenset({"base", "counts", "ban"}),
     "melody": frozenset({"base", "effect", "exclude"}),
@@ -77,8 +79,10 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     }),
     "mesh": frozenset({"target", "model", "transform"}),
     "animation": frozenset({"target", "source", "clip", "strict"}),
-    "tilegen": frozenset({"chapter", "kinds", "quotas", "slots", "fill"}),
+    "tilegen": frozenset({"chapter", "kinds", "quotas", "slots", "fill",
+                          "remove_slots", "add_slots"}),
     "shop": frozenset({"prices", "price_scale", "offers", "slots", "config"}),
+    "scenery": frozenset({"chapter", "level", "moves", "removes", "adds"}),
 }
 
 #: `[[patch]]` kinds: required and optional top-level keys (besides `kind`).

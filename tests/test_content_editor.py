@@ -89,7 +89,7 @@ def test_stats_are_written_as_an_inline_table_that_parses_back():
 
 @pytest.mark.parametrize("kw, message", [
     ({"stats": [{"modifier": "M", "stat": "Not a stat"}]}, "unknown stat"),
-    ({"id": "short"}, "exactly as long"),
+    ({"id": "not an id"}, "letters, digits"),
     ({"id": "Dash_Crit_Chance"}, "id of its own"),
     ({"id": "Dash Crit Chan M"}, "letters, digits"),
     ({"base": ""}, "pick a base"),
@@ -225,7 +225,9 @@ def test_the_stat_list_puts_numbers_on_the_stats_items_give():
     # Game state the engine keeps beside the stats is not offered (Pam: "Is in
     # book scene" ... "should probably be removed"); real stats all stay.
     assert not any(n.startswith(("Is in ", "GameModifier")) for n in stats)
-    assert "Ability_Charge_Trait" in stats and "Strength" in stats
+    assert "Ability_Charge_Primary" in stats and "Strength" in stats
+    # TRAIT charges are given through their counter's events (Merlin's quest).
+    assert "Ability_Charge_Trait" in stats
     assert len(stats) > 150
 
 
@@ -328,11 +330,11 @@ def test_edits_over_several_items_and_heroes_make_one_list_of_blocks():
 
 def test_a_broken_edit_is_reported_by_name_and_the_rest_still_build():
     defs, errors = E.collect({"edits": [
-        _edit("items", "Dash", base="Dash_Crit_Chance", id="short"),
+        _edit("items", "Dash", base="Dash_Crit_Chance", id="not an id"),
         _edit("items", "Armor", base="Armor_Per_Object", id="Armor_Per_Obje_M"),
     ]})
     assert [i for _k, i, _f in defs] == ["Armor_Per_Obje_M"]
-    assert errors[0]["name"] == "Dash" and "exactly as long" in errors[0]["error"]
+    assert errors[0]["name"] == "Dash" and "letters, digits" in errors[0]["error"]
 
 
 def test_an_untouched_hero_is_skipped_not_an_error():
@@ -434,7 +436,7 @@ def test_an_after_window_carries_its_cooldown_and_an_empty_one_means_every_use()
     ({"after": "DEFENSE"}, "not a number"),
     ({"after": "DEFENSE", "seconds": 0}, "above 0"),
     ({"after": "JUMP", "seconds": 3}, "unknown ability"),
-    ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "not both"),
+    ({"after": "DEFENSE", "during": "POWER", "seconds": 3}, "choose one of"),
     ({"after": "DEFENSE", "seconds": 3, "cooldown": 0}, "above 0"),
     ({"cooldown": 8}, "only limits"),
     ({"next": "ATTACK"}, "only ends"),
@@ -499,7 +501,9 @@ def test_the_borrowable_list_holds_talents_that_move():
     got = {(t["hero"], t["source"]) for t in E.borrowable_talents()}
     assert ("SunWukong", "Power Hold") in got
     assert ("Aladdin", "Defense Tornado") not in got        # read by his DEFENSE
-    assert ("Geppetto", "Passive Create Objects") not in got  # loads his drop bag
+    assert ("Snow_Queen", "Power Shatter") not in got       # FROST reads its flag by GUID
+    # What a borrowed effect loads goes into the new hero's preload caches.
+    assert ("SunWukong", "Passive Reveal") in got
 
 
 @pytest.mark.parametrize("row", [{"talent": "Trait Active"}, {"talent": "A", "from": "A"}])

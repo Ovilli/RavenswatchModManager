@@ -38,7 +38,6 @@ exit /b 0
 :start
 REM Clone main dependencies
 call :clone_repo "https://github.com/TsudaKageyu/minhook" "%TP%\minhook"
-call :clone_repo "https://github.com/ocornut/imgui" "%TP%\imgui"
 call :clone_repo "https://github.com/KhronosGroup/Vulkan-Headers" "%TP%\Vulkan-Headers"
 call :clone_repo "https://github.com/lua/lua" "%TP%\lua"
 

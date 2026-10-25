@@ -29,9 +29,13 @@ describe('bundled changelog data', () => {
     expect(versions).toEqual([...versions].sort((a, b) => compareVersions(b, a)));
   });
 
-  it('identifies every entry as either a release or a loader note', () => {
+  it('identifies every entry as a release, a loader note or a CLI note', () => {
     for (const entry of BUNDLED_CHANGELOG) {
-      expect(Boolean(entry.version) || typeof entry.loader_version === 'number').toBe(true);
+      expect(
+        Boolean(entry.version) ||
+          typeof entry.loader_version === 'number' ||
+          typeof entry.cli_version === 'number',
+      ).toBe(true);
     }
   });
 

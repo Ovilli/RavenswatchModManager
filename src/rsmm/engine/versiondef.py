@@ -277,24 +277,128 @@ def _mo_entry_rarity(path: str) -> str:
     return parts[-2] if len(parts) >= 2 else ""
 
 
-def _clamp_bans(pristine: bytes, bans: set[str]) -> set[str]:
-    """Refuse a ban set that would empty any rarity in the catalog.
+#: The flags that name a vendor's offer pool ("Grimoire; Medium", "Sandman;
+#: Minor", "WishingWell"). Read off the shipped spawners 2026-10-22: every pool
+#: string in a non-item entity carries exactly one of these.
+VENDOR_FLAGS = ("Sandman", "Grimoire", "Astral", "WishingWell")
+#: Fewest candidates a pool must keep. Default 1: the draw is `rand() % n`.
+#: Sandman Minor needs 2 (the shop picks two different offers from it, see
+#: `sandman_shop.MIN_ROLLED`).
+POOL_FLOOR = {"Sandman; Minor": 2}
+
+
+def _offer_pools(entries: list[tuple[int, int, str]]) -> dict[str, tuple[int, list[str]]]:
+    """``pool string -> (floor, catalog item stems the pool can draw)`` for every
+    vendor pool the shipped entities name. Read through `corpus`, so the pools
+    and flags are the vanilla ones (a `kind="shop"` mod's own pools are not
+    guarded here; that kind checks its own)."""
+    from . import corpus
+    from . import sandman_shop as S
+    from .magic_item_cook import find_lstrings
+
+    pools: set[str] = set()
+    for rel in corpus.rels("EntitySettings", ".gen"):
+        if "/Magical_Objects/" in rel:
+            continue
+        raw = corpus.read(rel)
+        if not raw or not any(v.encode() in raw for v in VENDOR_FLAGS):
+            continue
+        for _o, text in find_lstrings(raw):
+            flags = S.split_flags(text)
+            if flags and flags[0] in VENDOR_FLAGS and len(text) < 64:
+                pools.add("; ".join(flags))
+    flags_of: dict[str, list[str]] = {}
+    for _s, _e, ref in entries:
+        own = corpus.read("EntitySettings/" + ref.replace("\\", "/")
+                          + ".EntitySettingsResource.gen")
+        if own and S.has_own_flags(own):
+            flags_of[_mo_entry_stem(ref)] = S.read_flags(own)
+    return {p: (POOL_FLOOR.get(p, 1),
+                sorted(i for i, f in flags_of.items() if S.pool_matches(p, f)))
+            for p in sorted(pools)}
+
+
+#: A placeholder: ``(rarity folder, flags)``. Pools only draw powerups.
+Placeholder = tuple[str, list[str]]
+
+
+def _ban_groups(entries: list[tuple[int, int, str]],
+                pools: dict[str, tuple[int, list[str]]]) -> dict[str, tuple[int, list[str], str]]:
+    """Every group a draw picks from: ``name -> (floor, members, pool)``. A
+    rarity group has ``pool == ""``; its name is the rarity folder."""
+    groups: dict[str, tuple[int, list[str], str]] = {}
+    for _s, _e, ref in entries:
+        groups.setdefault(_mo_entry_rarity(ref) or "?", (1, [], ""))[1].append(
+            _mo_entry_stem(ref))
+    for pool, (floor, members) in pools.items():
+        groups[pool] = (floor, members, pool)
+    return groups
+
+
+def _fills(group: str, pool: str, ph: Placeholder) -> bool:
+    from .sandman_shop import pool_matches
+    rarity, flags = ph
+    if pool:
+        return rarity == "Powerups" and pool_matches(pool, flags)
+    return rarity == group
+
+
+def _pools_or_none(entries, pools):
+    if pools is not None:
+        return pools
+    try:
+        return _offer_pools(entries)
+    except (OSError, ValueError) as e:
+        print(f"  [warn] ban: vendor pools not checked ({e})", file=sys.stderr)
+        return {}
+
+
+def plan_placeholders(pristine: bytes, bans: set[str],
+                      pools: dict[str, tuple[int, list[str]]] | None = None
+                      ) -> list[Placeholder]:
+    """The "Sold out" items a ban needs so no draw runs out of candidates.
+
+    Pools are filled first, the most specific (most flags) first, since one
+    placeholder tagged ``Sandman; Major`` also counts for ``Sandman`` and for
+    the Powerups rarity. Deterministic for a given catalog and ban list, which
+    keeps every peer's pool identical."""
+    loc = _find_mo_vector(pristine)
+    if not bans or loc is None:
+        return []
+    co, _vec_end, cnt = loc
+    entries = _mo_vector_entries(pristine, co, cnt)
+    groups = _ban_groups(entries, _pools_or_none(entries, pools))
+    lowered = {b.lower() for b in bans}
+    out: list[Placeholder] = []
+    from .sandman_shop import split_flags
+    order = sorted(groups.items(), key=lambda kv: (kv[1][2] == "", -len(split_flags(kv[1][2])),
+                                                   kv[0]))
+    for name, (floor, members, pool) in order:
+        left = sum(m.lower() not in lowered for m in members)
+        left += sum(_fills(name, pool, ph) for ph in out)
+        for _ in range(max(0, min(floor, len(members)) - left)):
+            out.append(("Powerups", split_flags(pool)) if pool else (name, []))
+    return out
+
+
+def _clamp_bans(pristine: bytes, bans: set[str],
+                pools: dict[str, tuple[int, list[str]]] | None = None,
+                placeholders: list[Placeholder] | None = None) -> set[str]:
+    """Un-ban just enough items that no draw is left with too few candidates.
 
     The engine picks an offer with `rand() % candidate_count`, so a pool that
     reaches zero is not an empty shop — it is an INT_DIVIDE_BY_ZERO that kills
     the process (observed 2026-08-28: 103 of 104 items banned, crash at
-    0x1405183dd on opening the shop).
+    0x1405183dd on opening the shop; and 2026-10-22: banning the only item of
+    the Sandman's Major and Medium pools crashed the vendor).
 
-    Rarity is the grouping the catalog itself is organised by, and the small
-    ones are small — Common and Rare ship 10 items each — so a single global
-    floor would happily allow wiping one out. This does NOT prove a ban is
-    safe: the per-slot candidate sets are not mapped, and a slot that only ever
-    offers one specific item would still break. It rules out the whole-pool
-    case, which is the one that has actually been seen.
-
-    The set is refused whole rather than partially applied: choosing which of
-    the user's picks to honour would be inventing intent, and a loud no-op they
-    can act on beats a half-applied edit they cannot see.
+    Two kinds of group are guarded: each rarity (random magical objects are
+    drawn by rarity) and each vendor pool (`_offer_pools`; the Sandman's Major
+    and Medium pools hold ONE item each, so a whole-rarity floor never sees
+    them). The ban's "Sold out" `placeholders` count as members; this is the
+    last resort for a group they do not cover (one could not be built): it gets
+    back its first items by name until it meets its floor, every other pick is
+    honoured, and the kept ones are named.
     """
     if not bans:
         return bans
@@ -303,25 +407,26 @@ def _clamp_bans(pristine: bytes, bans: set[str]) -> set[str]:
         return bans
     co, _vec_end, cnt = loc
     entries = _mo_vector_entries(pristine, co, cnt)
-    lowered = {b.lower() for b in bans}
+    groups = _ban_groups(entries, _pools_or_none(entries, pools))
 
-    total: dict[str, int] = {}
-    banned: dict[str, int] = {}
-    for _s, _e, ref in entries:
-        rarity = _mo_entry_rarity(ref) or "?"
-        total[rarity] = total.get(rarity, 0) + 1
-        if _mo_entry_stem(ref).lower() in lowered:
-            banned[rarity] = banned.get(rarity, 0) + 1
-
-    emptied = sorted(r for r, n in total.items() if banned.get(r, 0) >= n)
-    if not emptied:
-        return bans
-    detail = ", ".join(f"{r} ({total[r]})" for r in emptied)
-    print(f"  [warn] ban: refusing the whole ban list — it would leave no items "
-          f"at all in: {detail}. The game picks offers with a modulo over the "
-          f"candidate count, so an empty pool is a divide-by-zero crash, not an "
-          f"empty shop. Nothing banned.", file=sys.stderr)
-    return set()
+    by_lower = {b.lower(): b for b in bans}
+    kept: dict[str, list[str]] = {}
+    for name, (floor, members, pool) in groups.items():
+        left = [m for m in members if m.lower() not in by_lower]
+        filled = sum(_fills(name, pool, ph) for ph in placeholders or [])
+        for m in sorted(m for m in members if m.lower() in by_lower):
+            if len(left) + filled >= min(floor, len(members)):
+                break
+            by_lower.pop(m.lower())
+            left.append(m)
+            kept.setdefault(name, []).append(m)
+    if kept:
+        detail = "; ".join(f"{g}: {', '.join(ms)}" for g, ms in sorted(kept.items()))
+        print(f"  [warn] ban: NOT banning {sum(map(len, kept.values()))} item(s) — "
+              f"the game draws offers with a modulo over the candidate count, so "
+              f"an empty pool crashes it. Kept so each pool can still roll: "
+              f"{detail}", file=sys.stderr)
+    return set(by_lower.values())
 
 
 def _warn_unmatched_bans(pristine: bytes, bans: set[str]) -> None:
@@ -373,8 +478,27 @@ def collect_item_bans(mods: list[Mod]) -> set[str]:
     return out
 
 
+def collect_ban_placeholders(mods: list[Mod]) -> list[Placeholder]:
+    """The "Sold out" items every enabled mod's ban staged beside its bans."""
+    out: list[Placeholder] = []
+    for m in mods:
+        d = m.assets_dir / "_pending_bans"
+        if not m.enabled or not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.json")):
+            try:
+                doc = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue                    # collect_item_bans already warned
+            out += [(str(p["rarity"]), [str(x) for x in p.get("flags", [])])
+                    for p in doc.get("placeholders") or []]
+    return out
+
+
 def sync_versiondef(game_dir: Path, registrations: dict[str, str],
-                    dry_run: bool, bans: set[str] | None = None) -> int:
+                    dry_run: bool, bans: set[str] | None = None,
+                    gen_owner: str | None = None,
+                    placeholders: list[Placeholder] | None = None) -> int:
     """Ensure every new magical-object entity in ``registrations`` is listed in
     the active LiveOps version manifest (.gen vector) AND its resource cache,
     so the engine loads + spawns it, and that every id in ``bans`` is NOT — so
@@ -386,6 +510,12 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     entity's file is still on disk and other assets may still reference it, and
     a surplus cache line only wastes a preload while a missing one crashes the
     load (see the ``UsedRscCache`` invariant in CLAUDE.md).
+
+    ``gen_owner`` names a mod whose override owns the .gen (enabled, or
+    disabled and awaiting restore). The .gen is then left alone: its
+    ``.rsmm.bak`` belongs to that override, and restoring it here put vanilla
+    back over the mod's file on every second apply (2026-10-18, the Update 5
+    backport never reached the game).
     """
     bans = bans or set()
     mo_paths = sorted(
@@ -402,7 +532,13 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
 
     changed = 0
     # --- .gen vector ---
-    if gen is not None:
+    if gen is not None and gen_owner:
+        if mo_paths or bans or hero_paths:
+            print(f"  [warn] {gen_owner} replaces the LiveOps versiondef; "
+                  f"{len(mo_paths)} item(s), {len(hero_paths)} hero(es) and "
+                  f"{len(bans)} ban(s) from other mods are not applied to it",
+                  file=sys.stderr)
+    elif gen is not None:
         bak = gen.with_name(gen.name + BACKUP_SUFFIX)
         if not mo_paths and not bans and not hero_paths:
             if bak.exists() and not dry_run:
@@ -415,7 +551,7 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                 shutil.copy2(gen, bak)
             pristine = (bak if bak.exists() else gen).read_bytes()
             _warn_unmatched_bans(pristine, bans)
-            bans = _clamp_bans(pristine, bans)
+            bans = _clamp_bans(pristine, bans, placeholders=placeholders)
             patched = _patch_versiondef_gen(pristine, mo_paths, bans)
             if patched is not None and hero_paths:
                 with_heroes = _patch_versiondef_heroes(patched, hero_paths)

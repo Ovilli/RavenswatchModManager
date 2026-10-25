@@ -25,24 +25,24 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **326** symbols across 25 categories.
+Total: **347** symbols across 27 categories.
 
 ## analytics
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `AnalyticsBag_SetInt` | `0x14020abf0` | ❓ unverified |  | void*(void* bag, void* keyDesc, uint64_t value, void* alloc) |
-| `AnalyticsBag_SetString` | `0x140201c10` | ❓ unverified |  | void*(void* bag, void* keyDesc, void* valueDesc, void* alloc) |
-| `Analytics_EmitActiveBoss` | `0x1401f9170` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitChapterEnd` | `0x1401f5c70` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitHeroDeath` | `0x1401f6e50` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitObjectProposed` | `0x1401f7760` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitObjectSelected` | `0x1401f79c0` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitOpenChest` | `0x1401f8f30` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitSandmanBuy` | `0x1401f6800` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitSkillProposed` | `0x1401f7120` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
-| `Analytics_EmitSkillSelected` | `0x1401f7440` | ❓ unverified |  | void(void* analyticsCtx, float* skillEvent, void* unused) |
-| `Analytics_EmitUnlockSkill` | `0x1401f7e50` | ❓ unverified |  | void(void* analyticsCtx, void* args, void* unused) |
+| `AnalyticsBag_SetInt` | `0x1402047c0` | ✅ ok |  | void*(void* bag, void* keyDesc, uint64_t value, void* alloc) |
+| `AnalyticsBag_SetString` | `0x1401fb770` | ✅ ok |  | void*(void* bag, void* keyDesc, void* valueDesc, void* alloc) |
+| `Analytics_EmitActiveBoss` | `0x1401f2cd0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitChapterEnd` | `0x1401ef7d0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitHeroDeath` | `0x1401f09b0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitObjectProposed` | `0x1401f12c0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitObjectSelected` | `0x1401f1520` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitOpenChest` | `0x1401f2a90` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSandmanBuy` | `0x1401f0360` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSkillProposed` | `0x1401f0c80` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+| `Analytics_EmitSkillSelected` | `0x1401f0fa0` | ✅ ok |  | void(void* analyticsCtx, float* skillEvent, void* unused) |
+| `Analytics_EmitUnlockSkill` | `0x1401f19b0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
 
 ## combat
 
@@ -82,12 +82,12 @@ Total: **326** symbols across 25 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `AppSettings_SectionList` | `0x1412efd60` | 📍 va |  | Global list of application-settings SECTIONS: {void** data @+0x0, u32 count @+0x8}. Rea… |
-| `ClassRegistry_FindByKey` | `0x140523a10` | ❓ unverified |  | void*(void* unused, void* identityKey) |
-| `ClassRegistry_Global` | `0x141436690` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
-| `Component_GetTypeId` | `0x1401e6950` | ❓ unverified |  | uint32_t(void* component) |
-| `Controller_GetFieldByKey` | `0x140396df0` | ❓ unverified |  | void*(void* controller, uint32_t key) |
+| `ClassRegistry_FindByKey` | `0x14050b2c0` | ✅ ok |  | void*(void* unused, void* identityKey) |
+| `ClassRegistry_Global` | `0x141436b90` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
+| `Component_GetTypeId` | `0x1401e0490` | ✅ ok |  | uint32_t(void* component) |
+| `Controller_GetFieldByKey` | `0x14039f470` | ✅ ok |  | void*(void* controller, uint32_t key) |
 | `CustomFlagFilter_Serialize` | `0x140182180` | ✅ ok |  | bool(void* flagFilter, void* reader) |
-| `CustomFlagList_Serialize` | `0x140681e60` | ❓ unverified |  | bool(void* flagList, void* reader) |
+| `CustomFlagList_Serialize` | `0x140181f90` | ✅ ok |  | bool(void* flagList, void* reader) |
 | `Engine_MainThreadId` | `0x14143d0c8` | 📍 va |  | Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId… |
 | `Engine_Singleton` | `0x141436a88` | 📍 va |  | Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores b… |
 | `GameScene_FindContextByTester` | `0x14066b290` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
@@ -103,13 +103,13 @@ Total: **326** symbols across 25 categories.
 | `ResourceRef_Serialize` | `0x1401c1900` | ✅ ok |  | bool(void* reader, void* refSlot) |
 | `Serializer_GetClassVersion` | `0x1404fcd60` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
 | `Serializer_ReadEnum` | `0x140206020` | ✅ ok |  | bool(void* serializer, void* vec) |
-| `Serializer_ReadObjectNamed` | `0x140500d70` | ❓ unverified |  | bool(void* loader, void* root, const char* name) |
-| `Serializer_ReadObjectPayload` | `0x1405006d0` | ❓ unverified |  | bool(void* loader, void* obj, const char* name) |
+| `Serializer_ReadObjectNamed` | `0x1405008b0` | ✅ ok |  | bool(void* loader, void* root, const char* name) |
+| `Serializer_ReadObjectPayload` | `0x140500260` | ✅ ok |  | bool(void* loader, void* obj, const char* name) |
 | `Serializer_ReadPolyPtrVector` | `0x140207bd0` | ✅ ok |  | bool(void* reader, void* vec, const char* label) |
 | `Serializer_ReadVectorObjIds` | `0x1402ed2c0` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ReadVectorU32` | `0x14035d950` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ReadVectorU8` | `0x14035dda0` | ✅ ok |  | bool(void* serializer, void* vec) |
-| `Serializer_ResolveObjectId` | `0x140500630` | ❓ unverified |  | bool(void* loader, void** out, const char* label) |
+| `Serializer_ResolveObjectId` | `0x1405001c0` | ✅ ok |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
 | `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
 | `Vector_InsertRange` | `0x14014e030` | ✅ ok | ✔ | void*(void* vector, unsigned index, unsigned count) |
@@ -176,13 +176,13 @@ Total: **326** symbols across 25 categories.
 | `EventQueue_Drain` | `0x140662a80` | ✅ ok |  | void(void* queue) |
 | `Event_LevelUp` → `level_up` | `0x1401f0750` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401ef520` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
-| `Hero_GainRerollHandler` | `0x1403aa9e0` | ❓ unverified |  | void(void* hero, void* ev) |
+| `Hero_GainRerollHandler` | `0x1403b3510` | ✅ ok |  | void(void* hero, void* ev) |
 | `Id_HashString` | `0x14033f7a0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
 | `NamedEvent_ChannelMap_Find` | `0x14066c3d0` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `NamedEvent_Delete` | `0x14011ff10` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x140669e60` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
 | `NamedEvent_EmitNetworkDamageFromHit` | `0x140725d00` | ✅ ok |  | Reference emitter for NETWORK_DAMAGE: stack-builds the full oCGameNamedEventNetworkDama… |
-| `NamedEvent_GainDreamShards_Ctor` | `0x1402e6ce0` | ❓ unverified |  | void*(void* buf) |
+| `NamedEvent_GainDreamShards_Ctor` | `0x1402e1710` | ✅ ok |  | void*(void* buf) |
 | `NamedEvent_GainReroll_Ctor` | `0x1402e18e0` | ✅ ok | ✔ | oe::dt::NamedEventGainReroll*(void* buf) |
 | `NamedEvent_GiveMagicalObject_Ctor` | `0x14030a860` | ✅ ok | ✔ | oe::dt::NamedEventGiveMagicalObject*(void* buf) |
 | `NamedEvent_HeroSubscribeAll` | `0x140399ee0` | ✅ ok | ✔ | void(oCEntity* hero) |
@@ -190,7 +190,7 @@ Total: **326** symbols across 25 categories.
 | `NamedEvent_Id_FromCrc` | `0x14051e260` | ✅ ok | ✔ | uint32_t(uint32_t ns, uint32_t name_crc) |
 | `NamedEvent_NetSend` | `0x14071fc80` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev) |
 | `NamedEvent_NetSendToPeer` | `0x14071fd10` | ✅ ok | ✔ | void(void* net_event_cpnt, oCGameNamedEvent* ev, uint64_t* peer_session) |
-| `Reroll_GrantToHeroes` | `0x1402eb030` | ❓ unverified |  | The game's own reroll grant: builds a GainReroll event on the stack with the count (an … |
+| `Reroll_GrantToHeroes` | `0x1402e5a60` | ✅ ok |  | The game's own reroll grant: builds a GainReroll event on the stack with the count (an … |
 | `oCDtNamedEventGainDreamShards_vftable` | `0x140f1ef50` | 📍 va |  | vftable of oCDtNamedEventGainDreamShards, the GAIN_DREAM_SHARDS event a pickup sends. 0… |
 | `oCDtNamedEventGainReroll_vftable` | `0x140f22b20` | 📍 va |  | vftable of oCDtNamedEventGainReroll, the GAIN_REROLL named event (bus id = NamedEvent_I… |
 | `oCGameEventGainIngredient_vftable` | `0x140f22bb0` | 📍 va |  | vftable of oCGameEventGainIngredient, the GAIN_INGREDIENT event. 0x58 bytes; ctor 0x140… |
@@ -200,9 +200,9 @@ Total: **326** symbols across 25 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `DayNightCycle_InitCycle` | `0x1401eca80` | ❓ unverified |  | Per-CHAPTER setup of the day/night component (this = component in RCX), called from the… |
-| `DayNightCycle_PushValues` | `0x1401ee1c4` | ❓ unverified |  | Per-frame writer for the 'Day/Night cycle' value family (see DayNightCycle_RegisterValu… |
-| `DayNightCycle_RegisterValues` | `0x1401ee9e3` | ❓ unverified |  | Registers the 'Day/Night cycle' entity-value family: 27 named values plus 9 named trigg… |
+| `DayNightCycle_InitCycle` | `0x1401e65c0` | ✅ ok |  | Per-CHAPTER setup of the day/night component (this = component in RCX), called from the… |
+| `DayNightCycle_PushValues` | `0x1401e7b50` | ✅ ok |  | Per-frame writer for the 'Day/Night cycle' value family (see DayNightCycle_RegisterValu… |
+| `DayNightCycle_RegisterValues` | `0x1401e8530` | ✅ ok |  | Registers the 'Day/Night cycle' entity-value family: 27 named values plus 9 named trigg… |
 
 ## hero
 
@@ -227,7 +227,7 @@ Total: **326** symbols across 25 categories.
 | `HeroDef_Deserialize` | `0x14031a570` | ✅ ok | ✔ | bool(oCDtHeroDefinition* def, oCBinaryStream* stream) |
 | `HeroDef_LoadBaseEntity` | `0x14031a320` | ✅ ok |  | void(void* heroDef, void** outEntityRef) |
 | `HeroDef_LoadSkinEntity` | `0x14031a080` | ✅ ok |  | void(void* heroDef, uint16_t skinIndex, void* outHandle) |
-| `HeroDefinition_Ctor` | `0x14031df10` | ❓ unverified |  | void*(void* self) |
+| `HeroDefinition_Ctor` | `0x1403194f0` | ✅ ok |  | void*(void* self) |
 | `HeroProgressionUnlock_IsUnlocked` | `0x1402ad610` | ✅ ok | ✔ | bool(void* condition_data) |
 | `HeroRankLock_IsUnlocked` | `0x1402ac6f0` | ✅ ok | ✔ | bool(void* condition_data) |
 | `HeroStoryUnlock_IsUnlocked` | `0x1402acca0` | ✅ ok | ✔ | bool(void* condition_data) |
@@ -239,12 +239,11 @@ Total: **326** symbols across 25 categories.
 | `Entity_GiveHandler` | `0x1403be820` | ✅ ok |  | void(oCEntityValueContext* heroValueCtx, oCEntity* hero, void* hitCtx) |
 | `Entity_LookupMagicalObjectComponent` | `0x1406e1a10` | ✅ ok | ✔ | void*(void* componentStore, void** out, oCEntity* entity) |
 | `Hero_GrantMagicalObject` | `0x1403a0170` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
-| `InitialLoading_SpawnMagicalObjects` | `0x140259060` | ❓ unverified |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
+| `InitialLoading_SpawnMagicalObjects` | `0x14025b160` | ✅ ok |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
 | `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
 | `MagicalObject_RegisterInstance` | `0x1403b46c0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
 | `MagicalObject_SpawnAllObjects` | `0x140253540` | ✅ ok | ✔ | void(void* pool, void* scene) |
-| `MagicalObject_SpawnContainingFunc` | `0x140257f50` | ✅ ok |  | Outer function (1283 bytes) that contains the inlined SpawnAllObjects entry at +0x70. T… |
 | `g_MagicalObjectPool` | `0x141436ad0` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
 
 ## library
@@ -253,14 +252,14 @@ Total: **326** symbols across 25 categories.
 |------|---------|--------|----------|------------------|
 | `AchievementDef_PostLoad` | `0x14030cb90` | ✅ ok | ✔ | bool(void* definition) |
 | `ChallengeDef_PostLoad` | `0x140320650` | ✅ ok | ✔ | bool(void* definition) |
-| `Crt_Free` | `0x140ce09b0` | ❓ unverified |  | void(void* p) |
+| `Crt_Free` | `0x140cdf8c0` | ✅ ok |  | void(void* p) |
 | `DefinitionRegistry_Ctrl` | `0x1412eba68` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `DefinitionRegistry_Mask` | `0x1412eba80` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `DefinitionRegistry_Slots` | `0x1412eba70` | 📍 va |  | Instance registry SwissTable (absl flat_hash_map) keyed on the class-descriptor pointer… |
 | `Definition_DeserializeBase` | `0x14030acb0` | ✅ ok |  | bool(void* def, void* reader) |
 | `Definition_PostLoad` | `0x14030ad30` | ✅ ok | ✔ | bool(void* definition) |
 | `Definition_PreUnload` | `0x14030ad60` | ✅ ok | ✔ | void(void*) |
-| `Definition_Unload` | `0x1403238a0` | ❓ unverified |  | bool(void* definition) |
+| `Definition_Unload` | `0x14031efc0` | ✅ ok |  | bool(void* definition) |
 | `DreamShardDef_PostLoad` | `0x140314ac0` | ✅ ok | ✔ | bool(void* definition) |
 | `EnemyCampTierDef_PostLoad` | `0x140314e20` | ✅ ok | ✔ | bool(void* definition) |
 | `GameModeDefaultDef_PostLoad` | `0x140321070` | ✅ ok | ✔ | bool(void* definition) |
@@ -299,8 +298,8 @@ Total: **326** symbols across 25 categories.
 | `SharedRef_AddRefCopy` | `0x14015ecf0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
 | `SharedRef_AddRefCopy_b` | `0x1402185e0` | ✅ ok |  | identical twin of SharedRef_AddRefCopy (separate TU); base virtual in 298 vtables. Deco… |
 | `SharedRef_Release` | `0x14010a850` | ✅ ok | ✔ | void(void*) |
-| `Std_AllocateBytes` | `0x140128090` | ❓ unverified |  | void*(size_t n) |
-| `TileDef_Deserialize` | `0x140324690` | ❓ unverified |  | bool(oCDtTileDefinition* def, oCBinaryStream* stream) |
+| `Std_AllocateBytes` | `0x140120bf0` | ✅ ok |  | void*(size_t n) |
+| `TileDef_Deserialize` | `0x14031fdb0` | ✅ ok |  | bool(oCDtTileDefinition* def, oCBinaryStream* stream) |
 | `TypeDesc_HashName` | `0x1404fd390` | ✅ ok |  | base virtual: vcall slot0 -> type descriptor, reads its oCString name (inline @+8 / hea… |
 | `TypeDesc_HashName_b` | `0x1401c2180` | ✅ ok |  | identical twin of TypeDesc_HashName (separate TU); base virtual in 292 vtables. Decompi… |
 | `oCString_Dtor` | `0x14010a8f0` | ✅ ok |  | oCString destructor: SSO threshold 0xf; heap buffer's real alloc ptr at [buf-8], frees … |
@@ -310,7 +309,7 @@ Total: **326** symbols across 25 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `HeroMelodyPersistentData_vftable` | `0x140f0f950` | 📍 va |  | vftable of HeroMelodyPersistentData ("Dt Hero Controller Owned Melody Persistent Data",… |
-| `MelodyDefinition_Ctor` | `0x140326b20` | ❓ unverified |  | void*(void* self) |
+| `MelodyDefinition_Ctor` | `0x140322240` | ✅ ok |  | void*(void* self) |
 | `NamedEvent_ChooseMelody_Ctor` | `0x1402d4c20` | ✅ ok | ✔ | oe::dt::NamedEventChooseMelody*(void* buf) |
 | `oCGameNamedEventChooseMelody_vftable` | `0x140f22398` | 📍 va |  | vftable of NamedEventChooseMelody (RTTI .?AVNamedEventChooseMelody@dt@oe@@, typedesc 0x… |
 | `oCGameNamedEventRemoveMelody_vftable` | `0x140f1f098` | 📍 va |  | vftable of NamedEventRemoveMelody (typedesc 0x14137bc38); same shape and origin as oCGa… |
@@ -324,21 +323,27 @@ Total: **326** symbols across 25 categories.
 | `Fcm2_OnClosedConnection` | `0x140ac8590` | ✅ ok |  | void(FullyConnectedMesh2* this, const SystemAddress& addr, RakNetGUID guid, int reason) |
 | `Netcode_Channel_LookupById` | `0x14023bca0` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `Netcode_Channel_Unsubscribe` | `0x1401c1840` | ✅ ok | ✔ | void(void* node_plus_8, void** sub_slot) |
-| `Netcode_ConnectionFactory` | `0x140b287f0` | ❓ unverified |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
-| `Netcode_ConnectionRegistry_Emplace` | `0x140b2fd80` | ❓ unverified |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
+| `Netcode_ConnectionFactory` | `0x140b274f0` | ✅ ok |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
+| `Netcode_ConnectionRegistry_Emplace` | `0x140b2ea80` | ✅ ok |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
 | `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
 | `Netcode_EntityReplSetup` | `0x14073dda0` | ❓ unverified | ✔ | void(void* replContext) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
-| `Netcode_SessionCtx_LocalGuid` | `0x1408b7550` | ❓ unverified |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
+| `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
 | `P2PSession_OnFcm2NewHost` | `0x1408b70b0` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
 | `P2PSession_SetState` | `0x14085ae80` | ✅ ok |  | void(oCDtP2PSessionSceneContext* ctx, int newState) |
 | `P2PSession_StateNames` | `0x140ee98a0` | 📍 va |  | struct { const char* s; uint32 len; } [14]  // 0x10 stride |
-| `RakNetConnection_Ctor` | `0x140b9cd50` | ❓ unverified |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
+| `RakNetConnection_Ctor` | `0x140b9ba80` | ✅ ok |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
 | `RakPeer_GetGuidFromSystemAddress` | `0x140ae24c0` | ✅ ok |  | RakNetGUID(RakPeer* this, const SystemAddress& addr) |
-| `RakPeer_GetMyGUID` | `0x140ae3280` | ❓ unverified |  | const RakNetGUID&(RakPeer* this) |
+| `RakPeer_GetMyGUID` | `0x140ae2370` | ✅ ok |  | const RakNetGUID&(RakPeer* this) |
 | `RakPeer_GetSystemAddressFromGuid` | `0x140ae2660` | ✅ ok |  | SystemAddress(RakPeer* this, const RakNetGUID& guid) |
 | `RakPeer_GetSystemList` | `0x140ae07f0` | ✅ ok |  | void(RakPeer* this, List<SystemAddress>& addresses, List<RakNetGUID>& guids) |
-| `SLNetworkObject_GetOwnerId` | `0x1408c0d40` | ❓ unverified |  | void* __fastcall(oCSLNetworkObject* self, uint64_t* out) |
+| `SLNetworkObject_GetOwnerId` | `0x1408bf8c0` | ✅ ok |  | void* __fastcall(oCSLNetworkObject* self, uint64_t* out) |
+
+## network
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `Lobby_SetRequestedHero` | `0x140267b60` | ✅ ok | ✔ | Sets the local lobby member's RequestedHero (+0x10) and RequestedSkin (u16 +0x14) and p… |
 
 ## options
 
@@ -346,6 +351,14 @@ Total: **326** symbols across 25 categories.
 |------|---------|--------|----------|------------------|
 | `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+
+## progression
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `GameModifierLock_OnStateChange` | `0x140257f50` | ✅ ok | ✔ | The 'Playing with Modifiers will not unlock Difficulties, Achievements or Outfits' rule… |
+| `RunRoster_Apply` | `0x14026aa30` | ✅ ok | ✔ | Stores a roster into the run state: FUN_1401dd670(game+0x6d8, roster) (so game+0x728 = … |
+| `RunRoster_Build` | `0x1402691e0` | ✅ ok | ✔ | Builds the run's hero ROSTER into param_2 (an OUT container; ctor 0x1400c3250 / dtor 0x… |
 
 ## registry
 
@@ -358,30 +371,30 @@ Total: **326** symbols across 25 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `BinarySaver_CollectDependencies` | `0x1404fc950` | ❓ unverified |  | bool(void* saver, void* rootObject) |
+| `BinarySaver_CollectDependencies` | `0x1404fc920` | ✅ ok |  | bool(void* saver, void* rootObject) |
 | `BinarySaver_WriteGraph` | `0x140501570` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
 | `BinarySaver_WriteObject` | `0x140501210` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
-| `Definition_PreloadResourceCache` | `0x140310fb0` | ❓ unverified |  | void(void* definition) |
+| `Definition_PreloadResourceCache` | `0x14030bae0` | ✅ ok |  | void(void* definition) |
 | `Definitions_LoadGroup` | `0x14030ae30` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
-| `FileStream_Open` | `0x14053a730` | ❓ unverified |  | bool(void** outHandle, const char* path, int* mode) |
+| `FileStream_Open` | `0x140539bc0` | ✅ ok |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x14025b160` | ✅ ok |  | void(void* nameFilter) |
-| `LevelBinary_Load` | `0x1404764f0` | ❓ unverified |  | bool(void* container, void* stream, void* lvlId, void* links) |
+| `LevelBinary_Load` | `0x1404764a0` | ✅ ok |  | bool(void* container, void* stream, void* lvlId, void* links) |
 | `LevelDatabase_BuildAndRegister` | `0x14047cf20` | ✅ ok |  | bool(void* db, void* level, bool flag) |
-| `LevelLoad_AbortPredicate` | `0x140456c70` | ❓ unverified |  | uint32_t() |
-| `LevelLoad_ProgressTick` | `0x140516cd0` | ❓ unverified |  | uint32_t(float delta) |
+| `LevelLoad_AbortPredicate` | `0x140456c30` | ✅ ok |  | uint32_t() |
+| `LevelLoad_ProgressTick` | `0x140515e20` | ✅ ok |  | uint32_t(float delta) |
 | `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
 | `LevelObject_LoadOrCreate` | `0x14047c180` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
-| `LevelStream_LoadLevel` | `0x14047b4f0` | ❓ unverified |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
+| `LevelStream_LoadLevel` | `0x14047b490` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
 | `LevelStream_LoadStep` | `0x140476710` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
 | `LevelStream_ProgressHook` | `0x1412e6f30` | 📍 va |  | Function pointer for load-progress phases, set to LevelLoad_AbortPredicate in FUN_14045… |
-| `LevelText_Load` | `0x140476340` | ❓ unverified |  | bool(void* container, char** name, void* lvlId, void* links) |
+| `LevelText_Load` | `0x140476300` | ✅ ok |  | bool(void* container, char** name, void* lvlId, void* links) |
 | `Object_CloneViaSerialize` | `0x1404fe230` | ✅ ok | ✔ | bool(void* dstObject, void* srcObject, void* ignored3, void* ignored4) |
 | `Object_LoadFromStream` | `0x1404fd470` | ✅ ok | ✔ | bool(void* object, void* readStream) |
 | `Object_SaveToFile` | `0x1404fd580` | ✅ ok | ✔ | bool(void* object, void* pathString, bool cooked, void* ctx) |
 | `Registry_EnumInstances` | `0x14023b9a0` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x14030c500` | ✅ ok |  | void(void* definition) |
 | `Registry_UnregisterInstance` | `0x14030c580` | ✅ ok | ✔ | void(void*) |
-| `ResourceCache_Parse` | `0x140492a10` | ❓ unverified |  | bool(void* outVector, void* cachePath) |
+| `ResourceCache_Parse` | `0x1404929b0` | ✅ ok |  | bool(void* outVector, void* cachePath) |
 | `ResourceCache_Submit` | `0x1404aa340` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
 | `ResourceRef_Resolve` | `0x1404924e0` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x14049b240` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
@@ -393,7 +406,7 @@ Total: **326** symbols across 25 categories.
 | `CustomFlagList_ContainsAll` | `0x140669420` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `CustomFlagList_ContainsAny` | `0x140669540` | ✅ ok |  | bool(void* flagListA, void* flagListB) |
 | `RewardDef_Deserialize` | `0x14031fbe0` | ✅ ok |  | bool(void* rewardDef, void* reader) |
-| `RewardDefinition_Ctor` | `0x1401c9b90` | ❓ unverified |  | void*(void* self) |
+| `RewardDefinition_Ctor` | `0x1401c2630` | ✅ ok |  | void*(void* self) |
 | `RewardItem_Serialize` | `0x14031f4f0` | ✅ ok |  | bool(void* oCItem, void* reader) |
 | `RewardSelectorSettings_Serialize` | `0x14033ac50` | ✅ ok |  | bool(void* settings, void* reader) |
 | `RewardType_Serialize` | `0x14031f980` | ✅ ok |  | bool(void* oCType, void* reader) |
@@ -405,11 +418,12 @@ Total: **326** symbols across 25 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Account_GetDisplayName` | `0x140928620` | ✅ ok |  | void(std::string* out, void* account) |
+| `Chapter_StartHeroSetup` | `0x14028fd30` | ✅ ok |  | Per-CHAPTER hero setup, every machine (Ghidra, b9c3642884a8, 2026-10-16). Finds the LOC… |
 | `HeroSelect_IsHeroAvailable` | `0x1403269f0` | ✅ ok | ✔ | bool(void* menu, int hero_index, bool flag) |
 | `LobbyAttributes_Parse` | `0x140921ae0` | ✅ ok | ✔ | void*(void* self, StringDesc* blob) |
 | `LobbyAttributes_Serialize` | `0x1409229b0` | ✅ ok | ✔ | void*(void* out, void* member) |
-| `LobbyMembers_List` | `0x140925420` | ❓ unverified |  | void(void** scene, std::vector<LobbyMember*>* out) |
-| `LobbyMembers_Local` | `0x1409253a0` | ❓ unverified |  | void(void** scene, LobbyMember** out) |
+| `LobbyMembers_List` | `0x140924100` | ✅ ok |  | void(void** scene, std::vector<LobbyMember*>* out) |
+| `LobbyMembers_Local` | `0x140924080` | ✅ ok |  | void(void** scene, LobbyMember** out) |
 | `LobbyPlayerName_Registry` | `0x141470268` | 📍 va |  | std::string[]  // count at 0x141470270 |
 | `Netcode_PeerCount` | `0x141439700` | 📍 va |  | uint32_t |
 | `Netcode_PeerSlots` | `0x141439580` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
@@ -418,12 +432,12 @@ Total: **326** symbols across 25 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `AbilityController_Ctor` | `0x1402c8db0` | ❓ unverified |  | void*(void* self) |
+| `AbilityController_Ctor` | `0x1402c3880` | ✅ ok |  | void*(void* self) |
 | `EntityComponent_Activate` | `0x140711520` | ✅ ok | ✔ | void(void* unused, oIEntityCpnt* cpnt) |
 | `EntityEventTrigger_Fire` | `0x1407123d0` | ✅ ok | ✔ | void(EventTrigger* trig) |
 | `HeroController_AddSkill` | `0x14039fb80` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl) |
 | `HeroController_RemoveSkill` | `0x14039fe80` | ✅ ok | ✔ | void(HeroController* hero, oCDtEntityCpntSkillController* ctrl, bool clear_hud) |
-| `SkillController_Ctor` | `0x1402ecc40` | ❓ unverified |  | void*(void* self) |
+| `SkillController_Ctor` | `0x1402f3540` | ✅ ok |  | void*(void* self) |
 | `SkillController_SetTier` | `0x1402e87b0` | ✅ ok | ✔ | void(oCDtEntityCpntSkillController* ctrl, int32_t tier) |
 
 ## skins
@@ -446,18 +460,35 @@ Total: **326** symbols across 25 categories.
 |------|---------|--------|----------|------------------|
 | `BookController_ResolveSettings` | `0x1403024f0` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookController_ResolveTabs` | `0x140303790` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
-| `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok |  | int(void* screen) |
-| `HeroSelect_SetConfirmEnabled` | `0x1403e19f0` | ✅ ok |  | void(void* screen, bool enabled) |
+| `BookMenuUiController_OnHide` | `0x1403da3d0` | ✅ ok | ✔ | void(void* uiController) |
+| `BookMenuUiController_OnShow` | `0x1403d9da0` | ✅ ok | ✔ | void(void* uiController) |
+| `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok | ✔ | int(void* screen) |
+| `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok | ✔ | void(void* screen) |
+| `HeroSelect_PortraitPicked` | `0x1403e61d0` | ✅ ok | ✔ | THE 'hero already selected' lock (Ghidra, b9c3642884a8, 2026-10-15). Called when a hero… |
+| `HeroSelect_SetConfirmEnabled` | `0x1403e19f0` | ✅ ok | ✔ | void(void* screen, bool enabled) |
 | `HeroSelect_ValidateBlockedPtr` | `0x141436a18` | 📍 va |  | Pointer to the object whose byte at +0x11a8 blocks the Select_Hero_Book_Page 'Validate … |
+| `InGameMenuGs_OnEnter` | `0x140292740` | ✅ ok | ✔ | void(oe::dt::InGameMenuGs* self, void* ctx) |
+| `InGameMenuGs_OnLeave` | `0x1402929e0` | ✅ ok | ✔ | void(oe::dt::InGameMenuGs* self, void* ctx) |
+| `LoadingScreenUiController_OnHide` | `0x140348a20` | ✅ ok | ✔ | void(void* uiController) |
+| `LoadingScreenUiController_OnShow` | `0x1403480e0` | ✅ ok | ✔ | void(void* uiController) |
+| `ModalUiController_OnHide` | `0x1407e1ab0` | ✅ ok | ✔ | void(void* uiController) |
+| `ModalUiController_OnShow` | `0x1407e1750` | ✅ ok | ✔ | void(void* uiController) |
+| `OptionsMenuElement_SetTitle` | `0x14044ddf0` | ✅ ok | ✔ | void(void* element, const oCString* text) |
+| `OptionsMenu_AddCategory` | `0x1403f2060` | ✅ ok | ✔ | void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type) |
+| `OptionsMenu_AppendRow` | `0x1403f4d00` | ✅ ok | ✔ | void(void** ctx, void* category, void* row) |
+| `OptionsMenu_BuildLastCategory` | `0x1403f4e30` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
+| `OptionsMenu_SelectCategory` | `0x1403f6010` | ✅ ok | ✔ | void(void* optionsCtrl, void* tabButtonGameUi) |
+| `OptionsMenu_SpawnMultiChoice` | `0x1403fc7e0` | ✅ ok | ✔ | void*(void* elementFactory, void* templateRef, void* rowParent) |
+| `PauseMenu_GetActionCallback` | `0x14034d380` | ✅ ok | ✔ | void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused) |
 | `StringFormat_ArgPointer` | `0x1402c44f0` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
 | `StringFormat_ArgString` | `0x14052c7d0` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
+| `StringVector_AssignFromArray` | `0x1401ba310` | ✅ ok | ✔ | void(void* vec, const oCString* items, u32 count) |
 | `UiButton_InputPoll` | `0x1407d4ec0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x14069f030` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
 | `UiButton_PressReturnSite` | `0x1407d4fa2` | ✅ ok |  | (code location, not callable) |
-| `UiController_BindComponent` | `0x14034c180` | ❓ unverified |  | void(void* uiController) |
-| `UiController_OnHide` | `0x140352b40` | ❓ unverified |  | void(void* uiController) |
-| `UiController_OnShow` | `0x140352aa0` | ❓ unverified |  | void(void* uiController) |
+| `UiController_BindComponent` | `0x140346960` | ✅ ok |  | void(void* uiController) |
+| `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
+| `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
 | `UiController_UnbindComponent` | `0x14034c200` | ❓ unverified |  | void(void* uiController) |
 
 ## world
@@ -466,7 +497,7 @@ Total: **326** symbols across 25 categories.
 |------|---------|--------|----------|------------------|
 | `Chapter_Serialize` | `0x140320bf0` | ✅ ok |  | bool(Chapter* this, void* serializer) |
 | `GameModeDefaultDef_Serialize` | `0x140320e00` | ✅ ok |  | bool(GameModeDefaultDefinition* this, void* serializer) |
-| `LevelStream_Deserialize` | `0x1404767e0` | ❓ unverified |  | bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks) |
+| `LevelStream_Deserialize` | `0x140476780` | ✅ ok |  | bool(void* loader, void* a_pLevel, void* a_pLvlId, void* a_pLinks) |
 | `MapDef_Serialize` | `0x14031ead0` | ✅ ok |  | bool(oCDtMapDefinition* this, void* serializer) |
 | `TileKindPool_ReportEmpty` | `0x14033c9d0` | ✅ ok | ✔ | void(void* tileSpawnerSettings, void* outMessages) |
 | `TileKind_Serialize` | `0x14033b7a0` | ✅ ok |  | bool(oCDtTileKind* this, void* serializer) |

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Row, gridTracks, parseKv, readOverlayLive, sortRows } from './overlay-state';
+import {
+  type Row,
+  gridTracks,
+  parseKv,
+  readOverlayLive,
+  sortRows,
+  visibleColumns,
+} from './overlay-state';
 import type { OverlayColumn } from './rsmm';
 
 /** Build one `R.kv` line the way the Lua SDK writes it. */
@@ -177,5 +184,33 @@ describe('gridTracks', () => {
     const cols = [col('a', 'text')];
     expect(gridTracks(cols, true).startsWith('max-content ')).toBe(true);
     expect(gridTracks(cols, false).startsWith('max-content')).toBe(false);
+  });
+});
+
+describe('visibleColumns', () => {
+  const col = (key: string): OverlayColumn => ({
+    key,
+    label: key,
+    type: 'number',
+    format: 'plain',
+    suffix: '',
+  });
+  const cols = [col('label'), col('dealt'), col('act_1')];
+
+  it('hides a column no row publishes, keeps one any row does', () => {
+    expect(visibleColumns(cols, [{ label: 'A', dealt: 1 }]).map((c) => c.key)).toEqual([
+      'label',
+      'dealt',
+    ]);
+    expect(
+      visibleColumns(cols, [
+        { label: 'A', dealt: 1 },
+        { label: 'B', act_1: 0 },
+      ]).map((c) => c.key),
+    ).toEqual(['label', 'dealt', 'act_1']);
+  });
+
+  it('keeps every column before the first row', () => {
+    expect(visibleColumns(cols, [])).toEqual(cols);
   });
 });

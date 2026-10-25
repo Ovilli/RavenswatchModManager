@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import pkg from '../../package.json';
 import { BUNDLED_CHANGELOG, type ChangelogEntry, loadChangelog } from '../lib/changelog';
 import { TParts, useT } from '../lib/i18n-react';
+import { type CliChannel, cliChannel } from '../lib/rsmm';
 import { ChangelogSection } from './changelog-dialog';
 import { Crest, Fleuron, MonoTag, Panel } from './chrome';
 
@@ -24,6 +25,11 @@ export function AboutPanels() {
   // in the published feed — which can carry notes for loader updates that never
   // had an app release to be compiled into.
   const [entries, setEntries] = useState<ChangelogEntry[]>(BUNDLED_CHANGELOG);
+  const [cli, setCli] = useState<CliChannel | null>(null);
+
+  useEffect(() => {
+    void cliChannel().then(setCli);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -52,6 +58,13 @@ export function AboutPanels() {
                 parts={{ version: <span className="font-data">{version}</span> }}
               />
             </p>
+            {cli?.dir ? (
+              <p className="font-data text-sm text-ash">
+                {cli.active
+                  ? t('CLI v{version} · update channel', { version: cli.version })
+                  : t('CLI v{version} · bundled', { version: cli.version })}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -91,7 +104,7 @@ export function AboutPanels() {
                 {t('View repository')}
               </a>
               <a
-                href="https://discord.gg/TSVdCaqd"
+                href="https://discord.gg/dZbsKBWjSF"
                 target="_blank"
                 rel="noreferrer noopener"
                 className={buttonClass}

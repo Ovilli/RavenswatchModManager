@@ -1,16 +1,19 @@
-import nodemailer, { type Transporter } from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { env, isProduction, smtpConfigured } from './env.js';
 import { log } from './logger.js';
 
 let cached: Transporter | null = null;
 
-function getTransport(): Transporter {
+// nodemailer is imported on first send, not at module load: a static import
+// made every function cold start pay for it although few requests send mail.
+async function getTransport(): Promise<Transporter> {
   if (cached) return cached;
   if (!smtpConfigured()) {
     throw new Error(
       'SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and optionally SMTP_PORT, SMTP_SECURE, EMAIL_FROM).',
     );
   }
+  const nodemailer = (await import('nodemailer')).default;
   cached = nodemailer.createTransport({
     host: env.smtp.host,
     port: env.smtp.port,
@@ -31,6 +34,7 @@ export interface MailMessage {
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string>;
 }
 
 export async function sendMail(msg: MailMessage): Promise<void> {
@@ -46,12 +50,13 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     );
     return;
   }
-  await getTransport().sendMail({
+  await (await getTransport()).sendMail({
     from: env.smtp.from,
     to: msg.to,
     subject: msg.subject,
     text: msg.text,
     html: msg.html,
+    headers: msg.headers,
   });
 }
 
@@ -62,6 +67,18 @@ function htmlEscape(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Better Auth redirects to the link's `callbackURL` after verifying, and to
+ * `/` on ITS OWN host (the API) when there is none — which is what sign-up
+ * sends, from both the website and the desktop app. Give such links the
+ * website as their destination; a caller-chosen callbackURL is kept.
+ */
+export function withVerifyCallback(url: string, fallback: string): string {
+  const u = new URL(url);
+  if (!u.searchParams.get('callbackURL')) u.searchParams.set('callbackURL', fallback);
+  return u.toString();
 }
 
 export function verifyEmailTemplate(args: { name: string; url: string }): {

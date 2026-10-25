@@ -142,6 +142,7 @@ def lint_one(entry: Path) -> tuple[int, int]:
                           "or locked; a mod may ask for: "
                           + ", ".join(sorted(SAFE_FLAG_NAMES)))
                     errs += 1
+    warns += _lint_hero_capture(mod_s, entry, flags if isinstance(flags, list) else [])
     # The declared scope is the author's claim; what decides online matching is
     # the verdict DERIVED from the mod's contents (rsmm.engine.mod_scope). Say
     # so when the claim promises more than the mod delivers. A warning, not an
@@ -297,6 +298,8 @@ def lint_one(entry: Path) -> tuple[int, int]:
                       f"{', '.join(sorted(MS.STAT_VALUE_FIELDS))}")
                 errs += 1
             for k in set_fields:
+                if isinstance(p[k], dict) and "config" in p[k]:
+                    continue        # { config = "<field>", times = n }: resolved at apply
                 if isinstance(p[k], bool) or not isinstance(p[k], (int, float)):
                     if isinstance(p[k], bool) and have and k == "value":
                         continue        # a bool global takes true/false
@@ -442,6 +445,10 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
 
     errs = warns = 0
     mod_s = _ST.bold(modname)
+    # The versiondef the game will read: the one that wires reworks in.
+    from rsmm.engine.versiondef import VERSIONDEF_GEN_LEAF
+    vd_rel = Path("Definitions", "Versions", VERSIONDEF_GEN_LEAF)
+    vd = next((p.read_bytes() for p in (assets / vd_rel, root / vd_rel) if p.is_file()), None)
     for f in sorted(assets.rglob("*")):
         if not f.is_file():
             continue
@@ -463,6 +470,12 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
             warns += 1
         if not rel.name.endswith(_ENTITY_SUFFIX):
             continue
+        for stem, node in _rework_shadowed_edits(f, vanilla, cur, van, vd):
+            hint = (f"{stem} redefines this node and the game reads that one, so "
+                    f"the edit here likely does nothing in game — edit {stem} too")
+            print(f"  {_T_WARN} {mod_s}: {name}: node {_ST.accent(repr(node))} "
+                  f"{_ST.dim(hint)}")
+            warns += 1
         before = {v.label: v for v in list_talent_values(van)}
         after = {v.label: v for v in list_talent_values(cur)}
         changed = [lab for lab, v in before.items()
@@ -505,6 +518,60 @@ def _lint_raw_overrides(modname: str, entry: Path, *,
                   f"{_ST.dim('bytes differ, but no tracked magnitude node changed')} "
                   f"{_ST.dim('(GUID/selector/counter edits are not tracked — verify in game)')}")
     return errs, warns
+
+
+_REWORK_RE = re.compile(r"^(.+)_Update_?\d+$")
+
+
+def _rework_shadowed_edits(mod_file: Path, vanilla: Path, cur: bytes,
+                           van: bytes, versiondef: bytes | None) -> list[tuple[str, str]]:
+    """``(rework stem, node)`` for each node the mod changed in a base entity
+    file that a rework layered over it (``Hero_Red_Update6`` over ``Hero_Red``)
+    redefines under the same name, unless the mod changes the rework's node too
+    or ``versiondef`` (the one the game reads; None = unknown, assume wired)
+    does not wire that rework in (``rsmm values backport`` drops them).
+
+    The versiondef swaps the rework in for the base entity, and a picker
+    resolves a node by path, so the rework's same-name node is the one the game
+    reads (Update 6 retunes ~240 nodes this way)."""
+    from rsmm.engine import entity_graph as EG
+
+    sfx = ".entity.ot" + _ENTITY_SUFFIX
+    if not vanilla.name.endswith(sfx):
+        return []
+    stem = vanilla.name[:-len(sfx)]
+    if _REWORK_RE.match(stem):
+        return []
+    reworks = [p for p in vanilla.parent.glob(f"{stem}_Update*{sfx}")
+               if _REWORK_RE.match(p.name[:-len(sfx)])
+               and (versiondef is None
+                    or p.name[:-len(_ENTITY_SUFFIX)].encode() in versiondef)]
+    if not reworks:
+        return []
+
+    def bodies(raw: bytes) -> dict[str, list[bytes]]:
+        out: dict[str, list[bytes]] = {}
+        for c in EG.parse(raw).components:
+            out.setdefault(c.name, []).append(c.body)
+        return out
+
+    try:
+        b_van, b_cur = bodies(van), bodies(cur)
+    except (ValueError, IndexError):  # an unparseable edit is reported elsewhere
+        return []
+    changed = {n for n, v in b_cur.items() if b_van.get(n) != v}
+    out = []
+    for rw in sorted(reworks):
+        mine = mod_file.parent / rw.name
+        try:
+            r_van = bodies(rw.read_bytes())
+            r_cur = bodies(mine.read_bytes()) if mine.is_file() else r_van
+        except (OSError, ValueError, IndexError):
+            continue
+        rstem = rw.name[:-len(sfx)]
+        out += [(rstem, n) for n in sorted(changed & r_van.keys())
+                if r_cur.get(n) == r_van[n]]
+    return out
 
 
 def _lint_patchable(modname: str, entry: Path) -> int:
@@ -675,9 +742,21 @@ def _lint_content(modname: str, blocks: list[dict],
                 errs += 1
             continue
         if not base:
-            print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
-                  f"missing 'base'")
-            errs += 1
+            if c.get("effects") is None and c.get("effect") is None:
+                print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
+                      f"needs a 'base' to copy, or 'effects' to be built from")
+                errs += 1
+                continue
+            # A blank item: written from scratch, so only the build itself and
+            # what item_checks finds in it can be wrong.
+            from rsmm.engine import item_frame
+            from rsmm.engine.entity_check import _corpus_reader
+            try:
+                frame = item_frame.build(_corpus_reader)
+            except item_frame.FrameError:
+                continue                     # no install or mirror to build from
+            e, w = _lint_built_item(modname, c, item_frame.FRAME_ID, frame, {})
+            errs, warns = errs + e, warns + w
             continue
         found = cmd_items._find_item(str(base))
         if found is None and not _vanilla_items_readable():
@@ -714,10 +793,13 @@ def _lint_content(modname: str, blocks: list[dict],
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                       f"stats {_ST.accent(repr(modifier))}: {_ST.dim(str(e))}")
                 errs += 1
-        if c.get("super_description") is not None and IM.super_text_key(data) is None:
+        if c.get("super_description") is not None and not c.get("super_effects") \
+                and IM.super_text_key(data) is None:
             print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(str(cid))}: "
                   f"super_description: {_ST.dim(f'{base} has no super effect text')}")
             errs += 1
+        e, w = _lint_built_item(modname, c, str(base), data, stats)
+        errs, warns = errs + e, warns + w
         icon = c.get("icon")
         if icon and "\\" not in str(icon) and "/" not in str(icon) \
                 and not str(icon).lower().endswith(".png"):
@@ -727,6 +809,24 @@ def _lint_content(modname: str, blocks: list[dict],
                       f"icon {_ST.accent(repr(icon))} {_ST.dim(hint)}")
                 warns += 1
     return errs, warns
+
+
+def _lint_built_item(modname: str, c: dict, base: str, data: bytes,
+                     stats: dict) -> tuple[int, int]:
+    """Build the item as apply would (no text bank) and report what
+    ``item_checks`` finds in it: the traps that otherwise cost a playtest."""
+    from rsmm.engine.item_checks import item_warnings
+    from rsmm.sdk.kinds.items import build_entity
+    cid = str(c.get("id"))
+    try:
+        ent = build_entity(c, data)
+    except (ValueError, TypeError, KeyError) as e:
+        print(f"  {_T_FAIL} {_ST.bold(modname)}: item {_ST.accent(cid)}: {_ST.dim(str(e))}")
+        return 1, 0
+    found = item_warnings(ent, data, {str(k) for k in stats})
+    for w in found:
+        print(f"  {_T_WARN} {_ST.bold(modname)}: item {_ST.accent(cid)}: {_ST.dim(w)}")
+    return 0, len(found)
 
 
 def _lint_poi_components(modname: str, entry: Path, blocks: list[dict]) -> int:
@@ -871,6 +971,29 @@ def _engine_vocab() -> tuple[set[str], set[str]]:
         print(f"note: symbol map unreadable ({type(e).__name__}: {e}); event and "
               f"R.engine names are checked against built-ins only", file=sys.stderr)
     return events, callables
+
+
+def _lint_hero_capture(mod_s: str, entry: Path, flags: list) -> int:
+    """Warn when the mod's Lua needs hero capture and the manifest does not ask
+    for it. Nothing fails at run time: R.entity.ready() just stays false, so a
+    script waiting on it never runs (2026-10-19, the editor's test grants)."""
+    from rsmm.engine.loader_flags import HERO_CAPTURE, needs_hero_capture
+    if HERO_CAPTURE in flags:
+        return 0
+    for f in sorted(entry.rglob("*.lua")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if needs_hero_capture(text):
+            rel = f.relative_to(entry).as_posix()
+            want = 'loader_flags = ["' + HERO_CAPTURE + '"]'
+            print(f"  {_T_WARN} {mod_s}: {_ST.accent(rel)} uses R.entity/R.stat/R.xp/"
+                  f"R.combat/R.camera/R.talent, which need hero capture; add "
+                  f"{_ST.accent(want)} under [mod] "
+                  f"{_ST.dim('— without it they never find the hero and do nothing')}")
+            return 1
+    return 0
 
 
 def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:

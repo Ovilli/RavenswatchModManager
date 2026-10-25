@@ -232,9 +232,10 @@ def test_content_unknown_kind_rejected():
 
 
 def test_content_missing_base_fails_loudly(tmp_path: Path):
+    """No base is fine when the item lists its effects; with neither, it says so."""
     cr = ContentRegistry(mod_id="MM")
-    cr.register("item", id="X")  # no base
-    with pytest.raises(SchemaNotMined):
+    cr.register("item", id="X")  # no base, no effects
+    with pytest.raises(ContentError, match="built from its 'effects'"):
         cr.emit(tmp_path)
 
 

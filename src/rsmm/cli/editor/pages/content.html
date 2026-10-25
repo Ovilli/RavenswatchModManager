@@ -92,6 +92,7 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .val { color: #7ee08a; font-weight: 600; }
 .neg { color: #ff7a7a; font-weight: 600; }
 .ph { border-bottom: 1px dotted currentColor; cursor: help; }
+.ph.bad { color: var(--bad); border-bottom-style: solid; }
 .legend { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 520px; }
 .legend div { padding: 1px 0; }
 .legend b { color: var(--ink); font-weight: 600; }
@@ -135,6 +136,54 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .seg button { border: none; border-radius: 0; padding: 5px 10px; background: var(--panel); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: #1c1b1a; color: var(--rc, #f4f3ef); font-weight: 600; }
+/* Edit the shipped item or make a new one from it: the first choice on an item,
+   so two cards with what each does, not a small toggle under a muted label. */
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 4px; }
+.modes button { display: grid; gap: 2px; align-content: start; text-align: left; padding: 10px 14px; border-radius: 10px; border: 2px solid var(--line); }
+.modes .t { font-weight: 600; font-size: 15px; }
+.modes .t::before { content: "\25CB  "; color: var(--muted); }
+.modes .b { font-size: 12px; color: var(--muted); }
+.modes button.on { border-color: var(--accentline); background: var(--accentbg); }
+.modes button.on .t::before { content: "\25CF  "; color: var(--accentink); }
+@media (max-width: 700px) { .modes { grid-template-columns: 1fr; } }
+/* An optional feature: a switch with its name and what it does. As a hint-sized
+   checkbox it was read past. */
+.feature { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; margin: 6px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); cursor: pointer; font-weight: 400; }
+.feature:hover { border-color: var(--accentline); }
+.feature.on { border-color: var(--accentline); background: var(--accentbg); }
+.feature input { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 34px; height: 20px; margin: 1px 0 0; padding: 0; border: none; border-radius: 999px; background: var(--line); cursor: pointer; transition: background .15s; }
+.feature input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+.feature input:checked { background: var(--accent); }
+.feature input:checked::after { left: 16px; }
+.feature input:focus-visible { outline: 2px solid var(--accentline); outline-offset: 2px; }
+.feature .t { display: block; font-weight: 600; }
+.feature .b { display: block; font-size: 12px; color: var(--muted); }
+.form .feature { margin: 0; padding: 10px 12px; gap: 12px; font-weight: 400; align-items: flex-start; }
+/* A custom item: the button that starts one, and the pick-a-base step. */
+#newitem { font-weight: 600; }
+.picking { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; padding: 8px 10px; border: 1px dashed var(--accentline); border-radius: 8px; background: var(--accentbg); font-size: 13px; }
+.picking button { margin-left: auto; }
+/* Over the rarity on hover, so it takes no width from the names. */
+.pick { position: relative; }
+.pick .cp { visibility: hidden; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--ink); }
+.pick:hover .cp, .pick:focus-within .cp, #list.choosing .pick .cp { visibility: visible; }
+.newsteps { max-width: 620px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.newsteps h2 { margin: 0 0 4px; font-size: 20px; }
+.newsteps ol { margin: 12px 0 14px; padding-left: 22px; }
+.newsteps li { margin-bottom: 8px; }
+/* Every talent of the hero at a glance, by ability: a click jumps to its card. */
+.tmap { margin-bottom: 12px; padding: 8px 12px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.tmap > summary { cursor: pointer; font-weight: 600; }
+.tmap > summary span { font-weight: 400; }
+.tmap-g { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; align-items: start; margin-top: 8px; }
+.tmap-g .gl { padding-top: 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tmap-g .gi { display: flex; flex-wrap: wrap; gap: 6px; }
+.tmap-g button { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 3px; border-radius: 999px; font-size: 13px; }
+.tmap-g button img, .tmap-g button .ico { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
+.tmap-g button.changed { border-color: var(--accentline); background: var(--accentbg); font-weight: 600; }
+.tcard { scroll-margin-top: 56px; }
+.tcard.flash { animation: tflash 1.4s ease-out; }
+@keyframes tflash { from { box-shadow: 0 0 0 3px var(--accentline); } to { box-shadow: 0 0 0 3px transparent; } }
 .tgrid { display: grid; gap: 12px; }
 .tcard { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel); align-items: start; }
 .tcard.changed { border-color: var(--accentline); }
@@ -159,11 +208,34 @@ code { background: var(--chip); border-radius: 4px; padding: 0 4px; }
 .addstat .secs { width: 5em; }
 .addstat { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 6px; }
 .addstat .sectrow .pickbox { flex: 1; min-width: 0; }
+/* One building block: its name, a sentence saying what it will do (or what is
+   still missing), then its fields, each with a label. */
+.tnums:has(.tblock) { gap: 10px; }
+.tblock { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--accentline); border-radius: 10px; background: var(--panel); }
+.tblock.todo { border-left-color: var(--warn); }
+.tblock-head { display: flex; align-items: center; gap: 8px; }
+.tblock-t { flex: 1; font-weight: 600; font-size: 15px; }
+.tblock-say { padding: 6px 10px; border-radius: 8px; background: var(--accentbg); font-size: 13px; }
+.tblock.todo .tblock-say { background: var(--warnbg); color: var(--warn); }
+.tfield { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: center; }
+.tfield > .fl { font-size: 13px; font-weight: 600; }
+.tfield > .addpct { flex-wrap: wrap; }
+.tfield .pickbox { flex: 1; max-width: 460px; }
+.tfield .linkbtn { justify-self: start; }
+.tblock details > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.tblock details[open] > summary { margin-bottom: 4px; }
+.tb-empty { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+.tb-addmore { justify-self: start; font-weight: 600; }
+.tb-save { padding: 10px 14px; border-radius: 10px; background: var(--okbg); font-size: 13px; }
+.tb-more { margin-top: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tb-more > summary { cursor: pointer; font-weight: 600; }
+.tb-more[open] > summary { margin-bottom: 8px; }
+.feature input:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 700px) { .tfield { grid-template-columns: minmax(0, 1fr); } }
 .addnums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .addnums label { display: grid; gap: 2px; }
 .addnums input { width: 100%; min-width: 0; }
 .addpct { display: flex; align-items: center; gap: 6px; }
-.rebuild { padding: 6px 8px; border-radius: 6px; background: var(--chip); }
 .tcard.rebuilt .rebuild { outline: 1px solid var(--accent, #c33); }
 .addpct input { width: auto; margin: 0; }
 .phn { font-family: ui-monospace, monospace; font-size: 12px; background: var(--chip); border-radius: 4px; padding: 0 4px; margin-right: 2px; }
@@ -176,6 +248,7 @@ details.allv > summary { cursor: pointer; font-weight: 600; }
 .tb-promo button { flex: none; }
 .tb-rowbtn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .tb-rowbtn.on > button:first-child { border-color: var(--accentline); color: var(--accentink); }
+.tb-does { margin: 2px 0 8px; padding-left: 18px; }
 .tbuild h3 { margin: 18px 0 6px; font-size: 15px; }
 .tbuild .thead .linkbtn { font-size: 13px; }
 .tb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
@@ -249,6 +322,12 @@ details.file .rows { padding: 0 6px 8px; }
 .effect { border: 1px solid var(--line); border-radius: 10px; padding: 4px; margin: 6px 0; background: var(--panel); }
 .effect .row:nth-child(odd) { background: none; }
 .effect > .row:not(.stat) { margin-left: 18px; }
+.effect .effhead { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 0; }
+.effect .reset.on { visibility: visible; }
+.form input.tick { width: auto; margin: 0 6px 0 0; }
+.addfx { display: flex; gap: 8px; margin: 8px 0; }
+.choice { display: flex; gap: 14px; align-items: center; margin-top: 12px; }
+.choice button { flex: none; }
 #bar { grid-area: bar; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; max-height: 42vh; }
 #bar pre { margin: 0; overflow: auto; background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 12px; max-height: 26vh; min-height: 40px; }
 #bar .acts { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
@@ -284,6 +363,7 @@ body.wide #bar { max-height: none; }
 
 <aside id="left">
   <div class="filters">
+    <button id="newitem" class="primary" type="button" title="Start a new item from a copy of a shipped one">+ New custom item</button>
     <input id="q" type="search" placeholder="Search">
     <select id="rarity"><option value="">All rarities</option></select>
   </div>
@@ -455,6 +535,7 @@ const S = {
   items: [], icons: [], stats: [], heroes: [], mods: [], modTags: [], portraits: {},
   drafts: { items: new Set(), talents: new Set() },   // ids with a saved draft
   restored: "",      // the tab whose open edit came from a draft
+  newItem: false, // "+ New custom item" is waiting for the item to start from
   item: null,     // detail of the chosen base
   itemEdit: {},   // id, name, description, rarity, icon, values: {label: new}, stats: {modifier: stat}, superDescription
   hero: null, talents: null,
@@ -468,8 +549,9 @@ const S = {
 
 // ---- tabs + left list ----------------------------------------------------------
 function setTab(t) {
-  if (t !== S.tab) pickSeq++;     // a pick still loading belongs to the tab being left
+  if (t !== S.tab) { pickSeq++; pickAbort?.abort(); }   // a pick still loading belongs to the tab being left
   saveDraft();   // the open edit's draft is written on a short delay a tab switch would cancel
+  if (t !== "items") S.newItem = false;
   S.tab = t;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
   $("#rarity").hidden = t !== "items";
@@ -484,15 +566,23 @@ $("#rarity").onchange = renderList;
 function renderList() {
   const list = $("#list"); list.textContent = "";
   const q = $("#q").value.toLowerCase();
+  $("#newitem").hidden = S.tab !== "items";
+  list.classList.toggle("choosing", S.tab === "items" && S.newItem);
   if (S.tab === "items") {
+    if (S.newItem) {
+      list.append(el("div", { class: "picking", role: "status" }, el("span", { text: "Pick the item your new one starts from." }),
+        el("button", { type: "button", class: "small", onclick: cancelNewItem }, "Cancel")));
+    }
     const r = $("#rarity").value;
     const rows = S.items.filter(i => (!r || i.rarity === r) && (!q || (i.name + " " + i.id).toLowerCase().includes(q)));
     if (!rows.length) list.append(el("div", { class: "empty", text: S.items.length ? "No match." : "No items found. Is the game install readable?" }));
     for (const i of rows) {
-      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
+      list.append(el("div", { class: "pick" + (S.item && S.item.id === i.id && !S.newItem ? " on" : ""), title: i.id, onclick: () => pickItem(i.id) },
         iconImg(i.icon), el("span", { class: "nm", text: i.name }),
         S.drafts.items.has(i.id) ? el("span", { class: "dot", title: "Unfinished edit saved" }) : null,
-        el("span", { class: "sub", text: i.rarity })));
+        el("span", { class: "sub", text: i.rarity }),
+        el("button", { type: "button", class: "small cp", title: "Make a new item from " + i.name,
+          onclick: ev => { ev.stopPropagation(); pickItem(i.id, true); } }, "Copy")));
     }
   } else if (S.tab === "scripts") {
     list.append(el("div", { class: "empty", text: "Test grants are set on the right. They go into whichever mod you save to." }));
@@ -511,28 +601,77 @@ function renderList() {
 // or for a tab the user has since left, must not overwrite what is on screen.
 let pickSeq = 0;
 const stale = (me, tab) => me !== pickSeq || S.tab !== tab;
-async function pickItem(id) {
+// One pick loads at a time: a new one aborts the last, so the server stops
+// working on an item or hero the user has already clicked past.
+let pickAbort = null;
+function pickSignal() {
+  pickAbort?.abort();
+  pickAbort = new AbortController();
+  return pickAbort.signal;
+}
+// A custom item is a copy of a shipped one: "+ New custom item" asks for the item
+// to start from, and the next pick opens it as a copy with its name to fill in.
+function startNewItem() {
+  if (S.tab !== "items") setTab("items");
+  S.newItem = true;
+  renderList(); renderView();
+  $("#q").focus();
+}
+function cancelNewItem() { S.newItem = false; renderList(); renderView(); }
+// An item from scratch has no base: the server writes the whole item and its
+// effects. Each one is edited under its own key (BLANK + ":" + something), so
+// several can be open as drafts at once.
+const BLANK = "RSMM_Blank_Item";
+const isBlank = id => id === BLANK || String(id).startsWith(BLANK + ":");
+function startBlankItem() {
+  if (S.tab !== "items") setTab("items");
+  S.newItem = false;
+  pickItem(BLANK + ":" + Date.now().toString(36), true);
+}
+$("#newitem").onclick = startNewItem;
+function newItemView() {
+  return el("div", { class: "newsteps" },
+    el("h2", { text: "Make a custom item" }),
+    el("div", { class: "choice" },
+      el("button", { type: "button", class: "primary", onclick: startBlankItem }, "Start from scratch"),
+      el("span", { class: "muted", text: "A new item that does only what you give it: always-on bonuses and bonuses after a trigger. Nothing is copied from another item." })),
+    el("div", { class: "muted", style: "margin-top:14px", text: "Or start from a copy of an item the game ships, to keep what it already does:" }),
+    el("ol", {},
+      el("li", {}, el("b", { text: "Pick an item on the left" }), " to start from. Its effects, numbers and look are copied. Search narrows the list."),
+      el("li", {}, el("b", { text: "Make it yours: " }), "a name and an icon, then its rarity, numbers, stats or bonuses of your own. The card preview follows every change."),
+      el("li", {}, el("b", { text: "Add it to a mod" }), " with the bar at the bottom, then run ", el("code", { text: "rsmm apply" }), ".")),
+    el("button", { type: "button", onclick: cancelNewItem }, "Cancel"));
+}
+async function pickItem(id, copy) {
+  copy = copy || S.newItem;
+  S.newItem = false;
   const meta = S.items.find(i => i.id === id), me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + ((meta && meta.name) || id) + "…"));
   let got;
-  try { got = await get("api/item?id=" + encodeURIComponent(id)); }
+  try { got = await api("api/item?id=" + encodeURIComponent(id), undefined, pickSignal()); }
   catch (e) { if (!stale(me, "items")) { status(e.message, "st-bad"); renderView(); } return; }
   if (stale(me, "items")) return;
   S.item = got;
   const draft = store.get(DRAFT.items + id);
   S.restored = draft ? "items" : "";
   // A draft from before the switch existed was a copy.
-  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: "clone" } : {}, draft || {});
+  S.itemEdit = Object.assign(freshItemEdit(), draft ? { mode: isBlank(id) ? "blank" : "clone" } : {}, draft || {},
+    copy && !isBlank(id) ? { mode: "clone" } : {});
+  // Drafts from before effects were a list kept one timed bonus.
+  if (S.itemEdit.effect) { S.itemEdit.effects = [S.itemEdit.effect]; delete S.itemEdit.effect; }
   renderList(); renderView(); refresh();
+  if (copy) { const n = $(isBlank(id) ? "#itemid" : "#itemname"); if (n) { n.scrollIntoView({ block: "center" }); n.focus(); n.select && n.select(); } }
 }
 function freshItemEdit() {
-  // "replace" changes the shipped item itself; "clone" makes a new one beside it.
-  return { mode: "replace", id: suggestId(S.item.id), name: "", description: "", rarity: "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
-    autoDesc: false, autoSuper: false, textMiss: [] };
+  // "replace" changes the shipped item itself; "clone" makes a new one beside it;
+  // "blank" is an item from scratch, which starts with one bonus to show the way.
+  const blank = isBlank(S.item.id);
+  return { mode: blank ? "blank" : "replace", id: blank ? "My_Item" : suggestId(S.item.id), name: "", description: "", rarity: blank ? "Common" : "", icon: "", iconUpload: "", values: {}, stats: {}, superDescription: "",
+    steps: [], noSuper: false, sharedIdentity: false, effects: blank ? [{ stat: "Crit chance", amount: 0.1 }] : [], superEffects: [], autoDesc: false, autoSuper: false, textMiss: [] };
 }
 function itemChanged(E) {
   return !!(E.name || E.description || E.rarity || E.icon || E.iconUpload || E.superDescription
-    || Object.keys(E.values).length || Object.keys(E.stats).length);
+    || Object.keys(E.values).length || Object.keys(E.stats).length || (E.steps || []).length || E.noSuper || E.sharedIdentity || (E.effects || []).length || (E.superEffects || []).length);
 }
 function talentChanged(E) {
   return !!(Object.keys(E.values).length || Object.keys(E.cards).length
@@ -567,8 +706,9 @@ function loadingView(text, small) {
 S.pending = { items: new Map(), talents: new Map() };
 function pendingName(tab, id) {
   if (tab === "items") {
-    const name = (S.items.find(i => i.id === id) || {}).name || id;
     const edit = S.pending.items.get(id) || (isOpen(tab, id) && editPayload());
+    if (isBlank(id)) return ((edit && (edit.name || edit.id)) || "New item") + " (new)";
+    const name = (S.items.find(i => i.id === id) || {}).name || id;
     return edit && edit.mode === "clone" ? name + " (copy)" : name;
   }
   return id.replace(/_/g, " ") + " talents";
@@ -580,7 +720,7 @@ function pendingEdits() {
   }
   // The open item shows before it has a change: its block alone makes the copy.
   // A replacement with nothing changed writes nothing.
-  if (S.tab === "items" && S.item && S.itemEdit.mode === "clone" && !S.pending.items.has(S.item.id)) {
+  if (S.tab === "items" && S.item && S.itemEdit.mode !== "replace" && !S.pending.items.has(S.item.id)) {
     out.unshift({ tab: "items", id: S.item.id, edit: editPayload(), name: pendingName("items", S.item.id) });
   }
   return out;
@@ -692,58 +832,87 @@ function suggestId(base) {
   return base.length > 2 ? base.slice(0, -2) + tail : base;
 }
 
+// An optional feature as a switch with its name and what it does.
+function featureToggle(title, body, checked, onchange) {
+  const inp = el("input", { type: "checkbox", role: "switch", ...(checked ? { checked: "" } : {}) });
+  const box = el("label", { class: "feature" + (checked ? " on" : "") }, inp,
+    el("span", {}, el("span", { class: "t", text: title }), el("span", { class: "b", text: body })));
+  inp.addEventListener("change", () => { box.classList.toggle("on", inp.checked); onchange(inp.checked); });
+  return box;
+}
+
 function itemView() {
+  if (S.newItem) return newItemView();
   const it = S.item, E = S.itemEdit, v = el("div");
-  const replace = E.mode !== "clone";
-  v.append(el("div", { class: "help", text: replace
+  const blank = E.mode === "blank", replace = E.mode === "replace";
+  v.append(el("div", { class: "help", text: blank
+    ? "An item from scratch: give it a name, an icon and a rarity, then add what it does below. It does only what you give it, so a game update that changes other items does not change it."
+    : replace
     ? "Change a shipped item itself: its name, text, icon, values or the stats its effects give. The game's own item is replaced while the mod is on, and put back when it is off. Only what you change is written."
     : "Copy a shipped item into a new one, next to the original. Give it its own id, then change any of the name, text, rarity, icon, values or the stats its effects give. Only what you change is written." }));
-  if (!it) { v.append(el("div", { class: "empty", text: "Pick an item on the left." })); return v; }
+  if (!it) {
+    v.append(el("div", { class: "empty" }, el("div", { text: "Pick an item on the left to change it," }),
+      el("div", { style: "margin-top:10px" }, "or ",
+        el("button", { type: "button", class: "primary", onclick: startNewItem }, "+ Make a new custom item"))));
+    return v;
+  }
   const resetAll = () => { S.itemEdit = freshItemEdit(); S.restored = ""; renderView(); refresh(); };
   const banner = draftBanner(resetAll);
   if (banner) v.append(banner);
   v.append(el("div", { class: "head" }, itemIcon(E, it),
-    el("div", {}, el("h2", { text: it.name }), el("div", { class: "muted", text: it.id + " · " + it.rarity })),
+    el("div", {}, el("h2", { text: blank ? (E.name || "New item") : it.name }),
+      el("div", { class: "muted", text: blank ? "From scratch · " + (E.rarity || "Common") : it.id + " · " + it.rarity })),
     el("div", { class: "headacts" }, el("button", { type: "button", title: "Undo every change to this item (other items and heroes keep theirs; \"Reset everything\" below drops all)", onclick: resetAll }, "Reset this item"))));
 
 
-  const seg = el("div", { class: "seg", role: "group", "aria-label": "Replace the item or make a copy" });
-  for (const [mode, label, title] of [["replace", "Replace this item", "Change the shipped item itself"],
-    ["clone", "Make a copy", "Add a new item next to the shipped one"]]) {
-    seg.append(el("button", { type: "button", class: (replace ? "replace" : "clone") === mode ? "on" : "", title,
-      "aria-pressed": String((replace ? "replace" : "clone") === mode),
-      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } }, label));
+  const modes = el("div", { class: "modes", role: "radiogroup", "aria-label": "Edit this item or make a new one from it" });
+  for (const [mode, title, body] of blank ? [] : [
+    ["replace", "Edit " + it.name, "Change the game's own item. It is back to normal when the mod is off."],
+    ["clone", "New item from " + it.name, "A separate item next to the original, with its own name, icon and numbers."]]) {
+    const on = (replace ? "replace" : "clone") === mode;
+    modes.append(el("button", { type: "button", role: "radio", class: on ? "on" : "", "aria-checked": String(on),
+      onclick: () => { if (E.mode === mode) return; E.mode = mode; if (mode === "replace") E.rarity = ""; saveDraft(); renderView(); refresh(); } },
+      el("span", { class: "t", text: title }), el("span", { class: "b", text: body })));
   }
-  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }), seg);
+  if (!blank) v.append(modes);
+  v.append(el("div", { class: "sect", text: replace ? "Changes to " + it.name : "The new item" }));
   const f = el("div", { class: "form" });
   const idHint = el("div", { class: "hint" });
-  const idIn = el("input", { value: E.id, spellcheck: "false" });
+  const idIn = el("input", { id: "itemid", value: E.id, spellcheck: "false" });
   const checkId = () => {
-    const n = idIn.value.length, want = it.id.length;
-    idHint.textContent = n === want ? `${n} / ${want} characters` : `${n} / ${want} characters. The id must be exactly as long as the base's.`;
-    idHint.className = "hint" + (n === want && idIn.value !== it.id ? "" : " bad");
+    const id = idIn.value, ok = /^[A-Za-z0-9_]+$/.test(id) && id !== it.id;
+    idHint.textContent = ok ? "Used in file names and the mod; players see the name." : id === it.id
+      ? "Give it an id of its own." : "Letters, digits and _ only.";
+    idHint.className = "hint" + (ok ? "" : " bad");
   };
   idIn.oninput = () => { E.id = idIn.value; checkId(); refresh(); };
   checkId();
   if (!replace) f.append(el("label", { text: "Id" }), el("div", {}, idIn, idHint));
-  const nameIn = el("input", { placeholder: it.name, value: E.name });
+  const nameIn = el("input", { id: "itemname", placeholder: replace ? it.name : blank ? E.id.replace(/_/g, " ") : "Your item's name", value: E.name });
   // A copy left with the base's name and icon cannot be told apart from the
   // original in game: testers pick up the shipped item and see "no change".
   const twin = el("div", { class: "hint bad" });
-  const checkTwin = () => { twin.textContent = !replace && !E.name.trim() && !E.icon && !E.iconUpload
+  const checkTwin = () => { twin.textContent = !replace && !blank && !E.name.trim() && !E.icon && !E.iconUpload
     ? `Your copy will look exactly like ${it.name} in game. Give it its own name (or icon) so you can tell which one you picked up.` : ""; };
   nameIn.addEventListener("input", checkTwin); checkTwin();
   f.append(textLabel("Name", nameIn, v => { E.name = v; }), el("div", {}, nameIn, twin));
   const card = it.card || {};
-  const descIn = el("textarea", { placeholder: (card.description && card.description.text) || it.description });
+  const descIn = el("textarea", { id: "itemdesc", placeholder: (card.description && card.description.text) || it.description });
   descIn.value = E.description;
   f.append(textLabel("Description", descIn, v => { E.description = v; E.autoDesc = false; }), el("div", {}, descIn,
     el("div", { class: "hint", text: "#word@ highlights a word, &+{0}%~ styles a number, $word* marks a drawback. {0}, {1}… are filled in by the game; the card preview says what each one is." })));
-  const rar = el("select", {}, el("option", { value: "", text: "Same as base (" + it.rarity + ")" }));
-  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (r !== it.rarity) rar.append(el("option", { value: r, text: r }));
+  const rar = el("select", {}, ...(blank ? [] : [el("option", { value: "", text: "Same as base (" + it.rarity + ")" })]));
+  for (const r of ["Common", "Rare", "Epic", "Legendary", "Cursed", "Powerups"]) if (blank || r !== it.rarity) rar.append(el("option", { value: r, text: r }));
   rar.value = E.rarity;
   rar.onchange = () => { E.rarity = rar.value; refresh(); };
   if (!replace) f.append(el("label", { text: "Rarity" }), rar);
+  if (E.mode === "clone") {
+    // A copy keeps its base's identity unless told otherwise, and anything that
+    // grants by identity then hands out the base (playtest 2026-10-20).
+    f.append(el("label", { text: "Identity" }), featureToggle("Its own identity (recommended)",
+      `Without it the game treats the copy as ${it.name}: a grant hands out the original, and owning both keeps one.`,
+      !E.sharedIdentity, on => { E.sharedIdentity = !on; saveDraft(); refresh(); }));
+  }
   const icons = el("div", { class: "icons" });
   for (const s of S.icons) {
     const b = el("button", { class: !E.iconUpload && (E.icon || it.icon) === s ? "on" : "", title: s, onclick: () => {
@@ -758,6 +927,13 @@ function itemView() {
   own.append(uploadButton(E.iconUpload ? "Replace…" : "Upload your own icon…", 192, d => { E.iconUpload = d; E.icon = ""; renderView(); refresh(); }));
   f.append(el("label", { text: "Icon" }), el("div", {}, own, icons));
   v.append(f);
+  v.append(effectsForm(E, blank));
+  if (blank) {
+    v.append(effectsForm(E, blank, "superEffects"));
+    if (E.superEffects.length) v.append(superTextForm(E, it));
+    const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
+    return el("div", { class: "split" }, v, aside);
+  }
 
   // One number row; the same edit state whichever section shows it.
   const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
@@ -803,20 +979,39 @@ function itemView() {
   const rows = el("div");
   for (const r of rest) rows.append(numRow(r));
   v.append(rows);
-  if (it.superKey) {
+  if ((E.steps || []).length) {
+    // Graph steps have no controls here: they ride along as the manifest has them.
+    v.append(el("div", { class: "sect", text: `Graph steps (${E.steps.length})` }));
+    v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+      text: "Kept exactly as the manifest writes them; edit them in manifest.toml." }));
+    const op = s => ["clone", "set", "link", "add_link", "remove_link", "percent"].find(k => k in s) || "?";
+    for (const s of E.steps) v.append(el("div", { class: "muted", text: `${op(s)} ${[].concat(s[op(s)] ?? "").join(", ")}${"from" in s ? " from " + s.from : ""}${"to" in s ? " \u2192 " + s.to : ""}${"value" in s ? " = " + JSON.stringify(s.value) : ""}` }));
+  }
+  v.append(effectsForm(E, blank, "superEffects"));
+  if (it.superKey || E.superEffects.length) {
     v.append(el("div", { class: "sect", text: "Super effect text" }));
-    if (!it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
+    if (it.superKey && !it.modifiers.some(m => m.super)) v.append(el("div", { class: "hint", style: "margin-bottom:6px",
       text: "This super effect changes how the item works (for example which objects count) rather than giving a stat, so it has no stat or amount to change here: only its text." }));
-    const sup = el("textarea", { placeholder: it.superText || it.superKey });
-    sup.value = E.superDescription;
-    const f2 = el("div", { class: "form" });
-    f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
-      el("div", {}, sup, el("div", { class: "hint", text: "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
-    v.append(f2);
+    if (it.superKey) v.append(featureToggle("No super effect", "The copy never gets the base's super bonus, and its card shows no super text.",
+      E.noSuper, on => { E.noSuper = on; if (on) { E.superDescription = ""; E.superEffects = []; } renderView(); refresh(); }));
+    v.append(superTextForm(E, it));
   }
   // The preview stays in view beside the form while values change below.
   const aside = el("aside", {}, el("div", { class: "sect", style: "margin-top:0", text: "Card preview" }), el("div", { id: "preview" }));
   return el("div", { class: "split" }, v, aside);
+}
+
+// The super effect's card text: the base's, the one written from the super
+// effects, or your own.
+function superTextForm(E, it) {
+  const sup = el("textarea", { id: "itemsuper", placeholder: it.superText || it.superKey || "", ...(E.noSuper ? { disabled: "" } : {}) });
+  sup.value = E.superDescription;
+  const f2 = el("div", { class: "form" });
+  f2.append(textLabel("Text", sup, val => { E.superDescription = val; E.autoSuper = false; }),
+    el("div", {}, sup, el("div", { class: "hint", text: E.superEffects.length
+      ? "Leave empty and the card says what the super effects do."
+      : "Leave empty to keep the base item's super effect text. Write your own when you change a super effect's stat." })));
+  return f2;
 }
 
 // A form label with an undo button for a free-text field.
@@ -841,6 +1036,10 @@ const STAT_WORDS = {
   "Attack power primary": ["POWER"], "Attack power secondary": ["SPECIAL"],
   "Attack power defensive": ["DEFENSE"], "Attack power ultimate": ["ULTIMATE"],
   "Crit chance primary": ["Crit Chance"], "Crit chance secondary": ["Crit Chance"],
+  "Melee attack range": ["Melee Attack Range", "Melee range", "Range"],
+  "Ranged attack range": ["Ranged Attack Range", "Ranged range", "Range"],
+  "Circular attack range": ["Circular Attack Range", "Circular range", "Area", "Radius"],
+  "Rectangle attack range": ["Rectangle Attack Range", "Rectangle range", "Area", "Wave"],
 };
 function statWords(stat) { return STAT_WORDS[stat] || [stat]; }
 // Whole phrases shipped cards use for a stat, {N} standing for the styled number
@@ -862,6 +1061,10 @@ const STAT_PHRASES = {
   "Increase damage to boss": ["Deal {N} damage to bosses"],
   "CD reduce dash": ["Reduces #DASH@'s cooldown by {N}"],
   "Ability_Charge_Dash": ["#DASH@ gains {N} charge(s)"],
+  "Melee attack range": ["{N} melee attack range", "#{N} melee attack range@"],
+  "Ranged attack range": ["{N} ranged attack range", "#{N} ranged attack range@"],
+  "Circular attack range": ["{N} circular attack range", "#{N} circular attack range@"],
+  "Rectangle attack range": ["{N} rectangle attack range", "#{N} rectangle attack range@"],
 };
 for (const [k, w] of Object.entries(ABILITY)) {
   STAT_PHRASES["Attack power " + k] = ["#" + w + "@ deals {N} damage"];
@@ -934,6 +1137,16 @@ function currentValue(label) {
 function placeholder(n, next, e, valueOf) {
   const chip = el("span", { class: "ph" });
   if (!e) { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: filled in by the game"; return chip; }
+  if (e.kind === "Built") {
+    // The slot's own display mode decides, not the text: mode 1 shows x100, 0
+    // prints the number, 2 rounds it (a shield's 0.3 read "+0%" in game).
+    if (typeof e.value !== "number") { chip.textContent = "{" + n + "}"; chip.title = "{" + n + "}: " + e.node + " (worked out in game)"; return chip; }
+    const shown = e.mode === 1 ? e.value * 100 : e.mode === 2 ? Math.round(e.value) : e.value;
+    chip.textContent = fmt(shown);
+    chip.title = "{" + n + "}: " + e.node + " = " + fmt(e.value) + (e.mode === 1 ? " (shown ×100 as a percent)" : " (shown as it is)");
+    if (next === "%" && e.mode !== 1) { chip.className = "ph bad"; chip.title += ". The text puts a % after it, but the game does not multiply this slot by 100."; }
+    return chip;
+  }
   if (e.kind === "Value Selector" && /description|desc/i.test(e.node)) {
     chip.title = "{" + n + "}: " + e.node + " (shown in a run only)";
     return chip;
@@ -961,11 +1174,152 @@ function placeholder(n, next, e, valueOf) {
 function entryFill(entries) {
   return (n, next) => placeholder(n, next, entries && entries[n], currentValue);
 }
+// What each {N} of a card part shows: read back from the item as it is BUILT
+// from the edits (api/item/preview), with each slot's real display mode, when
+// that answer is in; the base item's slots until then.
+function cardEntries(part, base) {
+  const b = S.itemBuilt;
+  if (b && b.for === S.item.id && !b.error && b[part]) {
+    return b[part].map(x => ({ kind: "Built", node: x.node, value: x.value, mode: x.mode }));
+  }
+  return base && base.entries;
+}
+// The effect triggers the server knows (api/stats), by their card wording.
+S.triggers = { damage_taken: "After taking damage", dash: "After dashing" };
+// What the item does: the item kind's `effects` list. A row without seconds is
+// always on while the item is held; one with seconds is a bonus for that long
+// after its trigger. The card's {0}, {1}... are each row's numbers in order (a
+// timed row takes two: its amount, then its seconds).
+// With `key` "superEffects" it is the item's super effect instead (the item
+// kind's `super_effects`): the same rows, switched on by the game once the
+// hero holds enough copies of the item (5 Common, 4 Rare, 3 Epic).
+function effectsForm(E, blank, key = "effects") {
+  const box = el("div"), sup = key === "superEffects";
+  const list = E[key] = E[key] || [];
+  box.append(el("div", { class: "sect", text: sup ? `Super effect (${list.length})` : `What it does (${list.length})` }));
+  box.append(el("div", { class: "hint", style: "margin-bottom:6px", text: sup
+    ? "Bonuses the item gives once the hero holds enough copies of it (5 of a Common, 4 of a Rare, 3 of an Epic), as the game's own super effects do. They replace the base item's super effect."
+    : blank
+    ? "Add bonuses. Each one is written by rsmm from the stat and numbers you give, not copied from another item."
+    : "Bonuses added to the copy. With any here, the base item's own effect is cut (its look stays) unless you keep it below." }));
+  const rarity = E.rarity || (blank ? "Common" : S.item.rarity);
+  if (sup && list.length && !["Common", "Rare", "Epic"].includes(rarity)) box.append(el("div", { class: "hint bad", style: "margin-bottom:6px",
+    text: `A ${rarity} item never gets its super effect: the game has one only for Common, Rare and Epic items. Pick one of those rarities.` }));
+  if (sup && E.noSuper) {
+    box.append(el("div", { class: "muted", text: "“No super effect” is on below." }));
+    return box;
+  }
+  const used = S.stats.filter(st => st.used).map(st => st.name), rest = S.stats.filter(st => !st.used).map(st => st.name);
+  const statSel = (value, onpick) => {
+    const sel = el("select", {},
+      el("optgroup", { label: "Given by the game's own items" }, ...used.map(n => el("option", { value: n, text: n }))),
+      el("optgroup", { label: "Others (the game may never read them)" }, ...rest.map(n => el("option", { value: n, text: n }))));
+    sel.value = value;
+    sel.onchange = () => onpick(sel.value);
+    return sel;
+  };
+  const changed = () => { saveDraft(); renderView(); refresh(); };
+  list.forEach((x, i) => {
+    const timed = x.seconds !== undefined;
+    const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
+    const when = el("select", {},
+      el("option", { value: "", text: "Always on, while held" }),
+      el("option", { value: "during:day", text: "Active only during day" }),
+      el("option", { value: "during:night", text: "Active only during night" }),
+      ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t })));
+    when.value = timed ? (x.on || "damage_taken") : (x.during ? "during:" + x.during : "");
+    when.onchange = () => {
+      if (when.value.startsWith("during:")) {
+        x.during = when.value.slice(7);
+        delete x.on; delete x.seconds; delete x.refresh;
+      } else if (when.value) {
+        delete x.during;
+        x.on = when.value;
+        if (x.seconds === undefined) x.seconds = 5;
+      } else {
+        delete x.during; delete x.on; delete x.seconds; delete x.refresh;
+      }
+      changed();
+    };
+    const isInt = (S.stats.find(st => st.name === x.stat) || {}).integer;
+    const inPoints = x.stat === "Vitality" || String(x.stat).startsWith("Attack power");
+    // Flat stats shipped cards print as the number itself (item_effect._PLAIN).
+    const plain = ["Armour", "Shield", "Regeneration", "Dash Damage", "Clamp High Damage Duration",
+      "Dash Heal For Damage Received Duration"].includes(x.stat);
+    const num = (k, step, min) => {
+      const inp = el("input", { type: "number", step, ...(min !== undefined ? { min } : {}), value: x[k] });
+      inp.oninput = () => { const n = parseFloat(inp.value); if (!isNaN(n)) set(k, n); };
+      return inp;
+    };
+    const flag = (k, dflt, text) => {
+      const c = el("input", { type: "checkbox", class: "tick", ...((x[k] ?? dflt) ? { checked: "" } : {}) });
+      c.addEventListener("change", () => set(k, c.checked === dflt ? undefined : c.checked));
+      return el("label", { class: "hint" }, c, text);
+    };
+    const stat = statSel(x.stat, v => {
+      x.stat = v;
+      const stInt = (S.stats.find(st => st.name === v) || {}).integer;
+      if (stInt) {
+        x.percent = false;
+        if (!x.amount || x.amount < 1) x.amount = 1;
+        else x.amount = Math.round(x.amount);
+      }
+      changed();
+    });
+    const unread = rest.includes(x.stat)
+      ? el("div", { class: "hint bad", text: "No item, talent or hero in the game changes this stat, so the game may never read it." }) : null;
+    const amountHint = inPoints
+      ? "Entered in displayed points (15 = +15; the game modifier stores 0.15)."
+      : "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5.";
+    const f = el("div", { class: "form" });
+    f.append(el("label", { text: "When" }), when,
+      el("label", { text: "Stat" }), el("div", {}, stat, unread),
+      el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
+        el("div", { class: "hint", text: isInt ? "A whole number (1, 2...)." : amountHint }),
+        ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")]),
+        ...(isInt || inPoints ? [] : [flag("per_level", false, "Grows with hero level, like Fairy Dust's shield (amount = level 1)")])));
+    if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
+      flag("refresh", true, "Each trigger restarts the full time")));
+    box.append(el("div", { class: "effect" },
+      el("div", { class: "effhead" }, el("b", { text: `Effect ${i + 1}` }),
+        removeBtn(() => { list.splice(i, 1); changed(); })), f));
+  });
+  const add = (row, text) => el("button", { type: "button", onclick: () => { list.push(row()); changed(); } }, text);
+  box.append(el("div", { class: "addfx" },
+    add(() => ({ stat: "Crit chance", amount: 0.1 }), "+ Always-on bonus"),
+    add(() => ({ stat: "Attack power", amount: 0.2, seconds: 5, on: "dash" }), "+ Bonus after a trigger")));
+  if (sup) return box;
+  if (!blank && E.effects.length) {
+    const keep = E.effects.some(x => x.keep_base_effect);
+    box.append(featureToggle("Keep the base item's own effect", "The copy also does what " + S.item.name + " does, besides the bonuses above.",
+      keep, on => { for (const x of E.effects) { if (on) x.keep_base_effect = true; else delete x.keep_base_effect; } saveDraft(); refresh(); }));
+  }
+  box.append(el("div", { id: "autohint", class: "hint", style: "margin:6px 0" }));
+  return box;
+}
+// The card text written from the effects arrives with the preview, after the
+// form is drawn: fill the description's placeholder and the hint in place, so
+// typing elsewhere keeps its focus.
+function paintAuto() {
+  const hint = document.getElementById("autohint"), desc = document.getElementById("itemdesc");
+  if (!S.item) return;
+  const it = S.item, E = S.itemEdit, auto = autoText(it), card = it.card || {};
+  if (desc) desc.placeholder = auto ? "Written from the effects:\n" + auto : (card.description && card.description.text) || it.description || "";
+  const sup = document.getElementById("itemsuper"), autoSup = autoSuperText(it);
+  if (sup) sup.placeholder = autoSup ? "Written from the super effects:\n" + autoSup : it.superText || it.superKey || "";
+  if (!hint) return;
+  hint.textContent = "";
+  if (!auto) return;
+  hint.append(E.description ? "Your description is used. " : "With the description empty, the card says what the bonuses do. ",
+    el("button", { type: "button", onclick: () => { E.description = auto; E.autoDesc = false; renderView(); refresh(); } },
+      E.description ? "Replace it with the written text" : "Edit that text"));
+}
 function legend(entries) {
   const box = el("div", { class: "legend" });
   (entries || []).forEach((e, n) => {
     let what;
     if (!e) what = "a value set inside the item";
+    else if (e.kind === "Built") what = e.node + (typeof e.value === "number" ? " = " + fmt(e.value) + (e.mode === 1 ? " (shown ×100 as a percent)" : " (shown as it is)") : " (worked out in game)");
     else if (e.kind === "Value") {
       const v = currentValue(e.node);
       what = e.node + (v !== undefined ? " = " + fmt(v) + " (raw; before a % it shows ×100)" : "");
@@ -1081,14 +1435,14 @@ function gameCard(it, E, card) {
     el("img", { class: "bg", alt: "", src: rarity === "Powerups" ? T.powerup_bg : T.icon_bg }),
     itemIcon(E, it, "it"),
     el("img", { class: "fr", alt: "", src: T["diamond_" + rarity] || T.diamond_Common }));
-  const box = cardFrame(rarity, iconBox, E.name || it.name, rarity === "Powerups" ? "Power-up" : rarity);
+  const box = cardFrame(rarity, iconBox, itemName(E, it), rarity === "Powerups" ? "Power-up" : rarity);
   const d = card.description, sp = card.super;
-  const descText = E.description || (d && d.text) || it.description || "";
-  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(d && d.entries))), F.body, 19));
-  const supText = E.superDescription || (sp && sp.text) || "";
+  const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
+  if (descText) box.append(glyphify(el("div", { class: "gc-desc" }, markup(descText, entryFill(cardEntries("description", d)))), F.body, 19));
+  const supText = E.noSuper ? "" : (E.superDescription || autoSuperText(it) || (sp && sp.text) || "");
   if (supText) {
     box.append(glyphify(el("div", { class: "gc-super" }, el("span", { class: "gc-slabel", text: "Super Effect" }),
-      markup(supText, entryFill(sp && sp.entries))), F.body, 18));
+      markup(supText, entryFill(cardEntries("super", sp)))), F.body, 18));
   }
   return box;
 }
@@ -1103,24 +1457,38 @@ function renderPreview() {
   if (CARD.ok) host.append(gameCard(it, E, card));
   else if (!CARD.done) host.append(loadingView("Loading the game's card art…", true));
   else host.append(cssCard(it, E, card));
-  const parts = [];
-  if (d && d.entries.length) parts.push(["Description", d.entries]);
-  if (sp && sp.entries.length) parts.push(["Super effect", sp.entries]);
+  const parts = [], de = cardEntries("description", d), se = E.noSuper ? [] : cardEntries("super", sp);
+  if (de && de.length) parts.push(["Description", de]);
+  if (se && se.length) parts.push(["Super effect", se]);
   for (const [name, entries] of parts) {
     host.append(el("div", { class: "legend" }, el("b", { text: name + ":" })), legend(entries));
   }
   if (!card.description) host.append(el("div", { class: "legend", text: "Card text needs a readable game install." }));
+  const b = S.itemBuilt;
+  if (b && b.for === S.item.id && b.warnings) for (const w of b.warnings) host.append(el("div", { class: "hint bad", style: "margin-top:6px", text: w }));
+}
+// The name the card shows: an item from scratch with none is named after its id.
+function itemName(E, it) { return E.name || (E.mode === "blank" ? E.id.replace(/_/g, " ") : it.name); }
+// The text the item kind writes from the effects when the description is empty.
+function autoText(it) {
+  const b = S.itemBuilt;
+  return (S.itemEdit.effects || []).length && b && b.for === it.id ? b.autoText || "" : "";
+}
+// The super text the item kind writes from the super effects when it is empty.
+function autoSuperText(it) {
+  const b = S.itemBuilt;
+  return (S.itemEdit.superEffects || []).length && b && b.for === it.id ? b.autoSuper || "" : "";
 }
 // The same card in plain CSS, for when the game's textures are not readable.
 function cssCard(it, E, card) {
   const d = card.description, sp = card.super;
   const box = el("div", { class: "card" },
     el("div", { class: "ci" }, itemIcon(E, it)),
-    el("div", {}, el("div", { class: "ct", text: E.name || it.name }), el("div", { class: "cr", text: E.rarity || it.rarity })));
-  const descText = E.description || (d && d.text) || it.description || "";
-  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(d && d.entries))));
-  const supText = E.superDescription || (sp && sp.text) || "";
-  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(sp && sp.entries))));
+    el("div", {}, el("div", { class: "ct", text: itemName(E, it) }), el("div", { class: "cr", text: E.rarity || it.rarity })));
+  const descText = E.description || autoText(it) || (d && d.text) || it.description || "";
+  if (descText) box.append(el("div", { class: "cd" }, markup(descText, entryFill(cardEntries("description", d)))));
+  const supText = E.noSuper ? "" : (E.superDescription || autoSuperText(it) || (sp && sp.text) || "");
+  if (supText) box.append(el("div", { class: "cs" }, el("span", { class: "sl", text: "Super effect" }), markup(supText, entryFill(cardEntries("super", sp)))));
   return box;
 }
 
@@ -1159,6 +1527,19 @@ function statRow(m, cur, onset) {
 // many effects use each; `unnamed` is an extra key offered as itself.
 // `selfOnly`: the stat lands on the hero itself (a talent's added stat), so stats the
 // game only puts on whoever is hit are listed apart and can't be picked.
+// Not a stat: a talent can make its hero invulnerable for a while (the window
+// holds the game's own State Invincible). Offered only to talents.
+// Not stats: a talent can put its hero in one of Character_Common's states for
+// a while (the window holds the game's own state). Offered only to talents.
+const HELD = [
+  { name: "Invulnerable", used: 3e6, aka: "invincible immune invulnerability untouchable no damage" },
+  { name: "Intangible", used: 2e6, aka: "i-frames dodge pass through attacks phase" },
+  { name: "Concealed", used: 1e6, aka: "stealth hidden invisible enemies lose track" },
+];
+const isInvulnerable = a => !!a && HELD.some(h => h.name === a.stat);
+// A TRAIT charge is one, at every rarity, always on: the counter event the
+// game fires for Merlin's quest and Snow Queen's Trait Charge.
+const isTraitCharge = a => a && a.stat === "Ability_Charge_Trait";
 function statPicker(value, unnamed, onpick, selfOnly) {
   let cur = value, open = false, hi = 0, shown = [];
   const input = el("input", { value: label(cur), spellcheck: "false", "aria-label": "Stat" });
@@ -1168,7 +1549,8 @@ function statPicker(value, unnamed, onpick, selfOnly) {
   function label(v) { return v === unnamed ? "unnamed (" + v + ")" : v; }
   function options(q) {
     q = q.toLowerCase();
-    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []), ...S.stats];
+    const all = [...(unnamed ? [{ name: unnamed, used: 1, unnamed: true }] : []),
+      ...(selfOnly ? HELD : []), ...S.stats];
     // A stat is found by its name, its key (0x058e0a5c, as a manifest may name
     // either) or the card's wording ("trait cooldown" for CD reduce trait); every
     // word typed must match, in any order.
@@ -1268,7 +1650,7 @@ async function pickHero(h) {
   const me = ++pickSeq;
   $("#view").replaceChildren(loadingView("Loading " + h.replace(/_/g, " ") + "'s talents…"));
   let got;
-  try { got = await get("api/talents?hero=" + encodeURIComponent(h)); }
+  try { got = await api("api/talents?hero=" + encodeURIComponent(h), undefined, pickSignal()); }
   catch (e) { if (!stale(me, "talents")) { status(e.message, "st-bad"); renderView(); } return; }
   if (stale(me, "talents")) return;
   S.talents = got;
@@ -1382,17 +1764,30 @@ const ABILITY_WORD = { basic: "ATTACK", primary: "POWER", secondary: "SPECIAL", 
 // used up by the `next` use of another ability).
 function statLine(a, n) {
   const line = statPhrase(a.stat, n, a.percent !== false);
-  const lead = a.during ? `During #${a.during}@`
-    : a.after && a.next ? `Within #${fmt(a.seconds)}@ second(s) after using #${a.after}@, your next #${a.next}@ gets`
-    : a.after ? `For #${fmt(a.seconds)}@ second(s) after using #${a.after}@` : "";
-  const sep = a.after && a.next ? " " : ", ";
-  const out = lead ? line.replace(/^• (\S)/, (_m, ch) => `• ${lead}${sep}${ch === "#" ? "#" : ch.toLowerCase()}`) : line;
-  return a.after && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
+  // "after using #DEFENSE@" or a game event's own wording ("after taking damage").
+  const since = a.after ? `after using #${a.after}@` : a.on ? triggerWords(a.on) : "";
+  // A held state's card number IS its seconds: show the slot, not a copy.
+  const secs = isInvulnerable(a) ? `{${n}}` : fmt(a.seconds);
+  const lead = a.during ? (isInvulnerable(a) ? `While using #${a.during}@` : `During #${a.during}@`)
+    : since && a.next ? `Within #${secs}@ second(s) ${since}, your next #${a.next}@ gets`
+    : since ? `For #${secs}@ second(s) ${since}` : "";
+  const sep = since && a.next ? " " : ", ";
+  // "…, damage +30%" reads on; a named stat keeps its own capitals ("Crit Chance").
+  const out = lead ? line.replace(/^• (Damage|Counts|Become)?/, (_m, w) => `• ${lead}${sep}${w ? w.toLowerCase() : ""}`) : line;
+  return since && a.cooldown > 0 ? `${out} (at most once every #${fmt(a.cooldown)}@ s)` : out;
 }
+// Game events a talent's bonus can start from (`on`), with the item editor's
+// wording ("After taking damage"); the server sends them with each card.
+const TRIGGER_TEXT = {};
+const triggerWords = on => (TRIGGER_TEXT[on] || on.replace(/_/g, " ")).replace(/^\w/, ch => ch.toLowerCase());
 function statPhrase(stat, n, percent) {
+  if (HELD.some(h => h.name === stat)) return `• Become #${stat.toUpperCase()}@`;
   const num = "{" + n + "}" + (percent ? "%" : "");
   const tally = (S.stats.find(s => s.name === stat) || {}).tally;
   if (tally) return `• Counts as #+${num}@ more ${tally}(s)`;
+  if (stat === "Ability_Charge_Trait") return `• #TRAIT@ charges #+{${n}}@`;
+  const charge = /^Ability_Charge_(\w+)$/.exec(stat || "");
+  if (charge) return `• #${ABILITY_WORD[charge[1].toLowerCase()] || charge[1].toUpperCase()}@ charges &+${num}~`;
   const m = /^(CD reduce|Attack power|Crit chance|Life on hit)(?: (\w+))?$/.exec(stat || "");
   const ab = m && m[2] ? "#" + (ABILITY_WORD[m[2]] || m[2].toUpperCase()) + "@ " : "";
   if (m && m[1] === "CD reduce") return `• ${ab}cooldown &-${num}~`;
@@ -1403,12 +1798,89 @@ function statPhrase(stat, n, percent) {
   return `• ${stat || "New stat"} &+${num}~`;
 }
 
+// A building block as the talent pages show it: its name, a sentence saying what
+// it will do (or what is still missing, so a half-filled block is never silent),
+// then its fields. `box.tell(text, missing)` rewrites the sentence.
+function blockCard(title, onremove, ...fields) {
+  const say = el("div", { class: "tblock-say", role: "status" });
+  const box = el("div", { class: "tblock" },
+    el("div", { class: "tblock-head" }, el("span", { class: "tblock-t", text: title }),
+      el("button", { type: "button", class: "small", title: "Remove this block and its card line", onclick: onremove }, "Remove")),
+    say, ...fields);
+  box.tell = (text, missing) => {
+    say.textContent = missing ? "To finish: " + missing : "What it does: " + text;
+    box.classList.toggle("todo", !!missing);
+  };
+  return box;
+}
+function blockField(label, ...controls) {
+  return el("div", { class: "tfield" }, el("span", { class: "fl", text: label }), el("div", { class: "addpct" }, ...controls));
+}
+// A number as the card shows it: 0.25 is 25% when the number is a percentage.
+const asShown = (v, percent) => percent ? fmt(Math.round(v * 1000) / 10) + "%" : fmt(v);
+// The four rarity numbers, each labelled with what the card shows for it, and a
+// shortcut that gives every rarity the Common number.
+function tierInputs(values, shown, onchange) {
+  const rows = TIERS.map((t, k) => {
+    const lab = el("span");
+    const inp = el("input", { type: "number", step: "any", value: fmt(values[k]), "aria-label": t });
+    const label = () => { lab.textContent = t + " · " + shown(values[k]); };
+    inp.oninput = () => {
+      const v = Number(inp.value);
+      if (inp.value !== "" && !Number.isNaN(v)) { values[k] = v; label(); onchange(); }
+    };
+    label();
+    return { wrap: el("label", { class: "tiny" }, lab, inp), inp, label };
+  });
+  const same = el("button", { type: "button", class: "linkbtn", onclick: () => {
+    for (let k = 1; k < values.length; k++) { values[k] = values[0]; rows[k].inp.value = fmt(values[0]); rows[k].label(); }
+    onchange();
+  } }, "Same for every rarity");
+  return el("div", { style: "display:grid;gap:4px;width:100%" }, el("div", { class: "addnums" }, ...rows.map(r => r.wrap)), same);
+}
+// What an added stat does, in words, from its Common number.
+function statSentence(a) {
+  if (isInvulnerable(a)) return a.stat + " " + (a.during ? "while using " + a.during
+    : a.after || a.on ? `for ${fmt(a.seconds ?? 1.5)} s ${a.after ? "after " + a.after : triggerWords(a.on)}`
+      + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "") : "(pick when)") + ".";
+  const v = a.values[0];
+  let when = "while you own the talent";
+  if (a.during) when = "while using " + a.during;
+  if (a.after || a.on) when = `for ${fmt(a.seconds ?? 3)} s ${a.after ? "after " + a.after : triggerWords(a.on)}`
+    + (a.next ? `, until you use ${a.next}` : "") + (a.cooldown > 0 ? `, at most once every ${fmt(a.cooldown)} s` : "");
+  return `${a.stat} ${v < 0 ? "" : "+"}${asShown(v, a.percent !== false)} ${when} (Common card; each rarity uses its own number).`;
+}
+const statBlockTitle = a => isInvulnerable(a) ? a.stat + " for a moment" : a.on ? "After something happens"
+  : a.after ? (a.next ? "Your next ability" : "For a few seconds after an ability")
+  : a.during ? "While using an ability" : "Boost a stat";
+// A new block's starting numbers: a modest bonus that grows with rarity.
+const STARTER = () => [0.1, 0.15, 0.2, 0.25];
+
+// The card's added numbers run in block order (added stats, then bigger
+// abilities), so removing one moves the {N} of every block after it. Lines the
+// editor wrote are rewritten anyway; a line reworded by hand is not, and kept
+// its old {N}, which then showed another block's number. Remap every {N} in the
+// text (and in the remembered lines) from each block's last number to its new one.
+function renumberCard(c, desc) {
+  const E = S.talentEdit, base = firstSlot(c);
+  if (!desc || !c.hasDescription || base == null) return;
+  const rows = [...((E.addStats || {})[c.source] || []).filter(a => a.stat),
+    ...((E.scale || {})[c.source] || []).filter(r => r.node)];
+  const map = {};
+  rows.forEach((r, i) => { const now = base + i; if (r.slot != null && r.slot !== now) map[r.slot] = now; r.slot = now; });
+  if (!Object.keys(map).length) return;
+  const remap = t => t.replace(/\{(\d+)\}/g, (m, d) => d in map ? `{${map[d]}}` : m);
+  desc.set(remap(desc.get()));
+  for (const r of rows) if (r.line) r.line = remap(r.line);
+}
+
 // New stats a talent did not have (add_stats), e.g. Fiery Dragon also lowering
 // TRAIT cooldown. Each one gets the next {N} on the card so its text can show the
 // number, and the number scales with the card's rarity like the others.
 function addedStats(c, redraw, desc) {
   const E = S.talentEdit, box = el("div", { class: "tnums" });
   const info = c.addStat || { ok: false, why: "" };
+  Object.assign(TRIGGER_TEXT, info.on || {});
   if (!info.ok) {
     box.append(el("div", { class: "tnote", text: "A new stat can't be added to this card: " + info.why }));
     return box;
@@ -1423,6 +1895,9 @@ function addedStats(c, redraw, desc) {
     let text = desc.get();
     if (removed && removed.line && text.includes(removed.line))
       text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+    desc.set(text);
+    renumberCard(c, desc);
+    text = desc.get();
     const base = firstSlot(c);
     list.forEach((a, i) => {
       if (!a.stat || base == null) return;
@@ -1434,54 +1909,67 @@ function addedStats(c, redraw, desc) {
     });
     desc.set(text);
   };
+  const tells = [];
   const save = removed => {
     syncLines(removed);
     if (list.length) E.addStats[c.source] = list; else delete E.addStats[c.source];
+    for (const t of tells) t();
     redraw(); refresh();
   };
   list.forEach((a, i) => {
     const n = firstSlot(c) != null ? firstSlot(c) + i : null;
     const picker = statPicker(a.stat, null, st => {
       a.stat = st;
-      // A tally counts things: a whole number, never a percentage.
-      const tally = (S.stats.find(s => s.name === st) || {}).tally;
-      if (tally) a.percent = false;
+      // A tally or a charge counts things: a whole number, never a percentage.
+      if (st === "Ability_Charge_Trait") {
+        a.percent = false; a.values = [1, 1, 1, 1];
+        delete a.during; delete a.after; delete a.on; delete a.cooldown; delete a.next;
+        save(); renderView(); return;
+      }
+      if (HELD.some(h => h.name === st)) {
+        a.percent = false;
+        if (!a.during && !a.after && !a.on) { a.after = (c.addStat.after || []).includes("DEFENSE") ? "DEFENSE" : (c.addStat.after || [])[0]; a.seconds = 1.5; }
+        save(); renderView(); return;
+      }
+      const info = S.stats.find(s => s.name === st) || {};
+      const count = info.tally || info.charge || info.integer;
+      if (count) {
+        a.percent = false;
+        if (a.values.every(v => v < 1)) a.values = [1, 1, 1, 1];
+      }
       save();
-      if (tally) renderView();
+      if (count) renderView();
     }, true);
-    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
-      const inp = el("input", { type: "number", step: "any", value: fmt(a.values[k]), "aria-label": t });
-      inp.oninput = () => {
-        const v = Number(inp.value);
-        if (inp.value !== "" && !Number.isNaN(v)) { a.values[k] = v; save(); }
-      };
-      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
-    }));
+    picker.el.querySelector("input").placeholder = "Pick a stat, e.g. attack power or cooldown";
+    const nums = tierInputs(a.values, v => asShown(v, a.percent !== false), () => save());
     const pct = el("input", { type: "checkbox", ...(a.percent !== false ? { checked: "" } : {}) });
-    pct.onchange = () => { a.percent = pct.checked; save(); };
+    pct.onchange = () => { a.percent = pct.checked; save(); renderView(); };
     // When the bonus applies: always while the talent is owned, only while one of
     // the hero's abilities is in use, or for some seconds each time one is used
     // (abilities this hero cannot signal are left out of each list).
     const when = el("select", { "aria-label": "When it applies" },
-      el("option", { value: "", text: "Always" }),
+      el("option", { value: "", text: "Always", ...(isInvulnerable(a) ? { disabled: "" } : {}) }),
       ...(info.during || []).map(ab => el("option", { value: "during:" + ab, text: "During " + ab })),
-      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })));
-    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : "";
+      ...(info.after || []).map(ab => el("option", { value: "after:" + ab, text: "For a while after " + ab })),
+      ...(Object.keys(info.on || {}).length ? [el("optgroup", { label: "For a while after something happens" },
+        ...Object.entries(info.on).map(([t, text]) => el("option", { value: "on:" + t, text })))] : []));
+    when.value = a.during ? "during:" + a.during : a.after ? "after:" + a.after : a.on ? "on:" + a.on : "";
     const secs = el("input", { type: "number", step: "any", min: "0", value: fmt(a.seconds ?? 3),
       "aria-label": "Seconds", class: "secs" });
-    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting on each use");
-    secsBox.hidden = !a.after;
+    const timed = () => !!(a.after || a.on);
+    const secsBox = el("label", { class: "tiny addpct" }, "Lasts", secs, "second(s), restarting each time");
+    secsBox.hidden = !timed();
     // Empty = every use restarts it; a number = at most once every that many seconds.
     const cd = el("input", { type: "number", step: "any", min: "0", value: a.cooldown > 0 ? fmt(a.cooldown) : "",
       placeholder: "every use", "aria-label": "Cooldown seconds", class: "secs" });
     const cdBox = el("label", { class: "tiny addpct" }, "At most once every", cd, "second(s)");
-    cdBox.hidden = !a.after;
+    cdBox.hidden = !timed();
     // "Your next X": the bonus ends once X has been used (X's in-use state ends).
     const nxt = el("select", { "aria-label": "Used up by" }, el("option", { value: "", text: "nothing (lasts the full time)" }),
       ...(info.during || []).map(ab => el("option", { value: ab, text: "the next " + ab })));
     nxt.value = a.next || "";
     const nxtBox = el("label", { class: "tiny addpct" }, "Used up by", nxt);
-    nxtBox.hidden = !a.after;
+    nxtBox.hidden = !timed();
     nxt.onchange = () => { if (nxt.value && nxt.value !== a.after) a.next = nxt.value; else { delete a.next; nxt.value = ""; } save(); };
     cd.oninput = () => {
       const v = Number(cd.value);
@@ -1491,33 +1979,42 @@ function addedStats(c, redraw, desc) {
       const [kind, ab] = when.value.split(":");
       a.during = kind === "during" ? ab : undefined;
       a.after = kind === "after" ? ab : undefined;
-      if (a.after && !(a.seconds > 0)) a.seconds = 3;
-      if (!a.after) delete a.cooldown;
-      if (!a.after || a.next === a.after) { delete a.next; nxt.value = ""; }
-      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !a.after;
+      a.on = kind === "on" ? ab : undefined;
+      if (timed() && !(a.seconds > 0)) a.seconds = 3;
+      if (!timed()) delete a.cooldown;
+      if (!timed() || (a.after && a.next === a.after)) { delete a.next; nxt.value = ""; }
+      secsBox.hidden = cdBox.hidden = nxtBox.hidden = !timed();
       save();
+      renderView();   // the block's name follows its timing
     };
     secs.oninput = () => {
       const v = Number(secs.value);
       if (secs.value !== "" && v > 0) { a.seconds = v; save(); }
     };
-    const del = el("button", { type: "button", title: "Remove this added stat and its card line",
-      onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, el("span", { class: "phn", text: n != null ? "{" + n + "}" : "+" }), picker.el, del),
-      nums,
-      el("label", { class: "tiny addpct" }, "When", when),
-      secsBox,
-      cdBox,
-      nxtBox,
-      el("label", { class: "tiny addpct" }, pct, "Show as a percentage (0.25 shows as 25)"),
-      el("div", { class: "tiny muted", text: n != null
-        ? `The card shows it as {${n}}; a line for it was added to the description, which you can reword. The number is in the stat's own unit: 0.25 on a cooldown stat is -25%.`
-        : "This card has no text format, so the number can't be shown on it." })));
+    const timing = blockField("Timing", secsBox, cdBox, nxtBox);
+    timing.hidden = !timed();
+    when.addEventListener("change", () => { timing.hidden = !timed(); });
+    const card = blockCard(statBlockTitle(a), () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("Stat", picker.el),
+      ...(isInvulnerable(a) || isTraitCharge(a) ? [] : [blockField("How much", nums)]),
+      ...(isTraitCharge(a) ? [el("div", { class: "tiny muted", text: "One TRAIT charge, at every rarity, for as long as the talent is owned: the game gives TRAIT charges one at a time (as Merlin's quest and Snow Queen's Trait Charge do)." })]
+        : [blockField("When", when)]),
+      timing,
+      el("details", {}, el("summary", { text: "Card text options" }),
+        el("label", { class: "tiny addpct" }, pct, "Show the number as a percent on the card (0.25 shows as 25%)"),
+        el("div", { class: "tiny muted", text: n != null
+          ? `On the card this number is {${n}}. A line using it was added to the description above; reword it freely. The number is in the stat's own unit: 0.25 on a cooldown stat is 25% shorter.`
+          : "This card has no text format, so the number can't be shown on it." })));
+    const tell = () => card.tell(statSentence(a),
+      !a.stat ? "pick which stat it changes."
+        : isInvulnerable(a) ? (a.during || a.after || a.on ? "" : "pick when (it can't be on all the time).")
+        : a.values.every(v => !v) ? "set how much (it is 0 now)." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   box.append(el("button", { type: "button",
     title: "Give this talent a stat it does not have, e.g. -25% TRAIT cooldown",
-    onclick: () => { list.push({ stat: "", values: [0, 0, 0, 0], percent: true }); save(); renderView(); } },
+    onclick: () => { list.push({ stat: "", values: STARTER(), percent: true }); save(); renderView(); } },
     "+ Add a stat"));
   return box;
 }
@@ -1577,9 +2074,10 @@ function rebuildSwitch(c, desc, onchange) {
   E.rebuild = E.rebuild || {};
   const info = c.addStat || { ok: false };
   const can = info.ok && info.rebuild !== false;
-  const box = el("label", { class: "tiny addpct rebuild" });
-  const cb = el("input", { type: "checkbox", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
+  const box = el("label", { class: "feature rebuild" + (isRebuilt(c) ? " on" : "") });
+  const cb = el("input", { type: "checkbox", role: "switch", ...(isRebuilt(c) ? { checked: "" } : {}), ...(can ? {} : { disabled: "" }) });
   cb.onchange = () => {
+    box.classList.toggle("on", cb.checked);
     if (cb.checked) E.rebuild[c.source] = true; else delete E.rebuild[c.source];
     const list = (E.addStats || {})[c.source] || [];
     const base = firstSlot(c);
@@ -1588,9 +2086,12 @@ function rebuildSwitch(c, desc, onchange) {
       desc.set(cb.checked ? lines.join("\n") : [c.description.replace(/\s*$/, ""), ...lines].join("\n"));
     onchange();
   };
-  box.append(cb, can
-    ? "Rebuild this talent: turn off what it does now and make it a new talent from the stats you add below"
-    : "Can't be rebuilt: " + (info.ok ? info.rebuildWhy : info.why));
+  const was = c.name || c.source;
+  box.append(cb, el("span", {},
+    el("span", { class: "t", text: can ? "Start from scratch" : "Can't start from scratch" }),
+    el("span", { class: "b", text: can
+      ? `On: ${was} stops doing what it does now, and the talent does only what your blocks add. Off: your blocks are added on top of ${was}.`
+      : (info.ok ? info.rebuildWhy : info.why) || "" })));
   return box;
 }
 
@@ -1727,6 +2228,8 @@ const BLOCKS = [
   { id: "during", title: "While using an ability", blurb: "e.g. ATTACK damage +40% during DEFENSE.", needs: "during" },
   { id: "after", title: "For a few seconds after an ability", blurb: "Restarts each use, with an optional cooldown.", needs: "after" },
   { id: "next", title: "Your next ability", blurb: "After one ability, the next use of another gets the bonus.", needs: "after" },
+  { id: "immune", title: "Invulnerable, intangible or hidden", blurb: "For a moment: invulnerable for 1.5 s after DEFENSE, intangible after DASH, or concealed from enemies. Pick which under Stat.", needs: "after" },
+  { id: "event", title: "After something happens", blurb: "e.g. +30% damage for 4 s after taking damage, when night falls, or after a reroll.", needs: "on" },
   { id: "bigger", title: "Make an ability bigger", blurb: "A wider, longer or larger area: +30% POWER radius." },
   { id: "status", title: "Hits apply a status", blurb: "e.g. POWER's hits set enemies on fire (Ignite), chill or weaken them." },
   { id: "borrow", title: "Borrow a talent's effect", blurb: "Also run another talent's effect, even another hero's." },
@@ -1821,13 +2324,18 @@ function ideaBox(c, ideaRef) {
 // after the added stats' ones.
 const scalableNodes = new Map();
 function scaleWord(node) {
-  const m = /radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  const m = /melee attack range|ranged attack range|circular attack range|rectangle attack range|radius|length|width|distance|range|scale|size|area|lifetime/i.exec(node || "");
+  if (m && /melee attack range/i.test(m[0])) return "melee attack range";
+  if (m && /ranged attack range/i.test(m[0])) return "ranged attack range";
+  if (m && /circular attack range/i.test(m[0])) return "circular attack range";
+  if (m && /rectangle attack range/i.test(m[0])) return "rectangle attack range";
   if (m && /lifetime/i.test(m[0]))           // a shot's lifetime is its range; anything else lasts longer
     return /projectile|basic attack/i.test(node) ? "range" : "duration";
   return m ? m[0].toLowerCase().replace("radius", "area") : "size";
 }
 function scaleLine(r, n, ability) {
-  return `• #${ability || "Ability"}@ ${scaleWord(r.node)} &+{${n}}%~`;
+  const w = r.range_type ? r.range_type.toLowerCase() : scaleWord(r.node);
+  return `• #${ability || "Ability"}@ ${w} &+{${n}}%~`;
 }
 function scaleRows(c, paint, desc) {
   const E = S.talentEdit, box = el("div", { class: "tnums" });
@@ -1836,13 +2344,19 @@ function scaleRows(c, paint, desc) {
   if (!list.length) return box;
   const base = () => (firstSlot(c) ?? 0) + ((E.addStats || {})[c.source] || []).filter(a => a.stat).length;
   if (!scalableNodes.has(S.hero))
-    scalableNodes.set(S.hero, get("api/talents/scalable?hero=" + encodeURIComponent(S.hero)).then(j => j.nodes || []).catch(() => []));
+    scalableNodes.set(S.hero, get("api/talents/scalable?hero=" + encodeURIComponent(S.hero)).then(j => ({
+      nodes: j.nodes || [],
+      ranges: j.ranges || [],
+    })).catch(() => ({ nodes: [], ranges: [] })));
   const save = removed => {
     if (desc && c.hasDescription) {
       let text = desc.get();
       if (removed && removed.line) text = text.replace("\n" + removed.line, "").replace(removed.line, "");
+      desc.set(text);
+      renumberCard(c, desc);
+      text = desc.get();
       list.forEach((r, i) => {
-        if (!r.node) return;
+        if (!r.node && !r.range_type) return;
         const want = scaleLine(r, base() + i, r.ability);
         if (r.line && text.includes(r.line)) text = text.replace(r.line, want);
         else if (!r.line) text = text.trim() ? text.replace(/\s*$/, "") + "\n" + want : want;
@@ -1852,13 +2366,35 @@ function scaleRows(c, paint, desc) {
       desc.set(text);
     }
     if (list.length) E.scale[c.source] = list; else delete E.scale[c.source];
+    for (const t of tells) t();
     paint(); refresh();
   };
+  const tells = [];
   list.forEach((r, i) => {
     const sel = el("select", { "aria-label": "Which number grows" }, el("option", { value: "", text: "Loading the hero's sizes…" }));
-    scalableNodes.get(S.hero).then(nodes => {
+    let ranges = [];
+    scalableNodes.get(S.hero).then(data => {
       sel.textContent = "";
-      sel.append(el("option", { value: "", text: nodes.length ? "Pick what grows…" : "No size numbers found for this hero" }));
+      const nodes = Array.isArray(data) ? data : (data.nodes || []);
+      ranges = Array.isArray(data) ? [] : (data.ranges || []);
+      sel.append(el("option", { value: "", text: (nodes.length || ranges.length) ? "Pick what grows…" : "No size numbers found for this hero" }));
+
+      if (ranges.length) {
+        const grp = el("optgroup", { label: "Range Modifiers (% based)" });
+        for (const m of ranges) {
+          const val = "range\u0000" + (m.ability || "") + "\u0000" + m.name;
+          const opt = el("option", {
+            value: val,
+            "data-ability": m.ability || "",
+            "data-range": m.name,
+            text: (m.ability ? m.ability + " · " : "") + m.name
+          });
+          opt._rangeMeta = m;
+          grp.append(opt);
+        }
+        sel.append(grp);
+      }
+
       const groups = new Map();
       for (const n of nodes) {
         const g = (n.ability || "Other") + (n.where ? " \u00b7 " + n.where.replace(/_/g, " ") : "");
@@ -1867,31 +2403,56 @@ function scaleRows(c, paint, desc) {
           text: n.node + (n.value != null ? " (now " + fmt(n.value) + ")" : " (worked out)") }));
       }
       for (const g of groups.values()) sel.append(g);
-      sel.value = r.node ? r.file + "\u0000" + r.node : "";
+
+      const rt = r.range_type || (/attack range$/i.test(r.node || "") ? r.node : null);
+      if (rt) {
+        r.range_type = rt;
+        let ab = r.ability || "";
+        if (!ab) {
+          for (const a of ["ATTACK", "POWER", "SPECIAL", "DEFENSE", "TRAIT", "ULTIMATE", "DASH"]) {
+            if (new RegExp("\\b" + a + "\\b", "i").test(c.source || "")) { ab = a; break; }
+          }
+          if (ab) r.ability = ab;
+        }
+        sel.value = "range\u0000" + (r.ability || "") + "\u0000" + rt;
+      } else {
+        sel.value = r.node ? r.file + "\u0000" + r.node : "";
+      }
     });
     sel.onchange = () => {
-      const [file, node] = sel.value.split("\u0000");
       const opt = sel.selectedOptions[0];
-      r.file = file || ""; r.node = node || "";
-      r.ability = (opt && opt.dataset.ability) || "";
+      if (sel.value.startsWith("range\u0000")) {
+        const parts = sel.value.split("\u0000");
+        const m = ranges.find(x => (x.ability || "") === parts[1] && x.name === parts[2]) || opt._rangeMeta || {};
+        r.range_type = parts[2];
+        r.ability = parts[1] || "";
+        r.node = parts[2];
+        r.nodes = m.nodes || [];
+        r.file = (m.nodes && m.nodes[0] && m.nodes[0].file) || "";
+      } else {
+        const [file, node] = sel.value.split("\u0000");
+        delete r.range_type;
+        delete r.nodes;
+        r.file = file || ""; r.node = node || "";
+        r.ability = (opt && opt.dataset.ability) || "";
+      }
       save();
     };
-    const nums = el("div", { class: "addnums" }, ...TIERS.map((t, k) => {
-      const inp = el("input", { type: "number", step: "any", value: fmt(r.values[k]), "aria-label": t });
-      inp.oninput = () => { const v = Number(inp.value); if (inp.value !== "" && !Number.isNaN(v)) { r.values[k] = v; save(); } };
-      return el("label", { class: "tiny" }, el("span", { text: t }), inp);
-    }));
-    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
+    const nums = tierInputs(r.values, v => (v < 0 ? "" : "+") + asShown(v, true), () => save());
     // Something the hero spawns (a caster, a projectile) can grow its look with
     // the number; the hero's own file never does, it would grow the hero.
     const look = el("input", { type: "checkbox", ...(r.visual === false ? {} : { checked: "" }) });
     look.onchange = () => { r.visual = look.checked; save(); };
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, el("span", { class: "phn", text: "{" + (base() + i) + "}" }), sel, del),
-      nums,
-      el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
-        look, "Grow its look too (water, fire, the effect on the ground)"),
-      el("div", { class: "tiny muted", text: "Grows by this much while the talent is owned: 0.3 is +30%." })));
+    const card = blockCard("Make an ability bigger", () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("What grows", sel),
+      blockField("How much", nums),
+      blockField("Look", el("label", { class: "tiny addpct", title: "Only for numbers in something the hero spawns (marked with a \u00b7 in the list): its effects are scaled on the ground (width and length) with the number." },
+        look, "Grow its look too (water, fire, the effect on the ground)")),
+      el("div", { class: "tiny muted", text: `On the card this number is {${base() + i}}; 0.3 is +30%.` }));
+    const tell = () => card.tell(`${r.range_type || r.node}${r.ability ? " (" + r.ability + ")" : ""} grows by ${asShown(r.values[0], true)} while you own the talent (Common card).`,
+      !(r.range_type || r.node) ? "pick what grows: melee, ranged, circular, or rectangle range." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   return box;
 }
@@ -1926,8 +2487,10 @@ function hitRows(c, paint, desc) {
       desc.set(text);
     }
     if (list.length) E.onHit[c.source] = list; else delete E.onHit[c.source];
+    for (const t of tells) t();
     paint(); refresh();
   };
+  const tells = [];
   list.forEach((r, i) => {
     const hit = el("select", { "aria-label": "Which hit" }, el("option", { value: "", text: "Loading the hero's hits…" }));
     const status = el("select", { "aria-label": "Status" });
@@ -1954,10 +2517,14 @@ function hitRows(c, paint, desc) {
       save();
     };
     status.onchange = () => { r.status = status.value; save(); };
-    const del = el("button", { type: "button", onclick: () => { const [gone] = list.splice(i, 1); save(gone); renderView(); } }, "Remove");
-    box.append(el("div", { class: "addstat" },
-      el("div", { class: "sectrow" }, hit, status, del),
-      el("div", { class: "tiny muted", text: "While the talent is owned, this hit also puts the status on whoever it hits. Pick every hit of the ability that should do it (some have two, like a normal and an upgraded one)." })));
+    const card = blockCard("Hits apply a status", () => { const [gone] = list.splice(i, 1); save(gone); renderView(); },
+      blockField("Which hit", hit),
+      blockField("Status", status),
+      el("div", { class: "tiny muted", text: "Some abilities have two hits (a normal and an upgraded one): add a block for each that should do it." }));
+    const tell = () => card.tell(`${r.ability || "This"} hit “${r.damage}” puts ${r.status || "the status"} on whoever it hits, while you own the talent.`,
+      !r.damage ? "pick which hit puts the status on." : "");
+    tells.push(tell); tell();
+    box.append(card);
   });
   return box;
 }
@@ -1986,7 +2553,8 @@ function builderView() {
   const v = el("div", { class: "tpage tbuild" });
   const back = el("button", { type: "button", class: "linkbtn", onclick: () => { delete E.build; renderView(); refresh(); } }, "← All talent cards");
   v.append(el("div", { class: "thead" }, heroImg(S.hero, T.portrait, "portrait"),
-    el("div", { class: "tname" }, back, el("h2", { text: "Custom talent for " + S.hero.replace(/_/g, " ") }))));
+    el("div", { class: "tname" }, back, el("h2", { text: (E.build && !isRebuilt(T.cards.find(x => x.source === E.build) || {})
+      ? "Change a talent of " : "Custom talent for ") + S.hero.replace(/_/g, " ") }))));
   const c = T.cards.find(x => x.source === E.build);
   const ideaRef = {};
   if (!c) {
@@ -2041,7 +2609,9 @@ function builderView() {
   // 2. Name and look.
   const up = (E.cards[c.source] || {}).iconUpload;
   right.append(el("h3", { text: "2. Name it" }),
-    el("div", { class: "tb-replacing tiny muted", text: "Replacing " + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "") }),
+    el("div", { class: "tb-replacing tiny muted", text: (isRebuilt(c)
+      ? "Replacing " : "Adding to ") + (c.name || c.source) + (c.name ? " (" + c.source + ")" : "")
+      + (isRebuilt(c) ? "" : ": what it already does stays. Switch on “Start from scratch” below to replace it.") }),
     nameIn, descIn,
     el("div", { class: "tb-iconrow" }, c.icon ? uploadButton(up ? "Replace icon…" : "Use your own icon…", 128, setIcon) : el("span"),
       up ? el("button", { type: "button", onclick: () => setIcon("") }, "Use its own icon again") : el("span"),
@@ -2061,17 +2631,26 @@ function builderView() {
   // addedStats ends with its own "+ Add a stat"; the palette replaces it here.
   const plain = effects.querySelector(".tnums > button:last-child");
   if (plain) plain.remove();
-  const borrowBox = el("div", { class: "tb-borrow" }, includeControl(c, paint));
+  const borrowBox = el("div", { class: "tb-borrow" }, el("div", { class: "tblock-t", style: "margin-bottom:4px", text: "Borrow a talent's effect" }),
+    includeControl(c, paint));
   borrowBox.hidden = !(E.include || {})[c.source] && !E.showBorrow;
+  const blocks = ((E.addStats || {})[c.source] || []).length + ((E.scale || {})[c.source] || []).length
+    + ((E.onHit || {})[c.source] || []).length + (borrowBox.hidden ? 0 : 1);
+  if (!blocks) right.append(el("div", { class: "tb-empty", text: "No blocks yet. Each building block is one thing the talent does; pick one below (you can add several), or start from an example." }));
   right.append(effects, scaleRows(c, paint, desc), hitRows(c, paint, desc), borrowBox);
 
+  // Before the first block the palette is the next step; after it, it waits
+  // behind one button so the blocks being filled in stay the focus.
   const palette = el("div", { class: "tb-palette" });
+  Object.assign(TRIGGER_TEXT, info.on || {});
   for (const blk of BLOCKS) {
-    const list = blk.needs ? info[blk.needs] || [] : [true];
+    const need = blk.needs ? info[blk.needs] || [] : [true];
+    const list = Array.isArray(need) ? need : Object.keys(need);
     const ok = info.ok && list.length;
     palette.append(el("button", { type: "button", class: "tb-block", ...(ok ? {} : { disabled: "" }),
       title: ok ? "" : info.ok ? "This hero's abilities can't be watched for this yet" : info.why,
       onclick: () => {
+        E.showPalette = false;
         if (blk.id === "borrow") { E.showBorrow = true; borrowBox.hidden = false; borrowBox.querySelector("select").focus(); return; }
         if (blk.id === "status") {
           E.onHit = E.onHit || {};
@@ -2083,9 +2662,11 @@ function builderView() {
           (E.scale[c.source] = E.scale[c.source] || []).push({ node: "", file: "", values: [0.1, 0.2, 0.3, 0.4] });
           renderView(); refresh(); return;
         }
-        const a = { stat: "", values: [0, 0, 0, 0], percent: true };
+        const a = { stat: "", values: STARTER(), percent: true };
         if (blk.id === "during") a.during = info.during.includes("DEFENSE") ? "DEFENSE" : info.during[0];
         if (blk.id === "after" || blk.id === "next") { a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = blk.id === "next" ? 6 : 3; }
+        if (blk.id === "immune") { a.stat = "Invulnerable"; a.percent = false; a.after = info.after.includes("DEFENSE") ? "DEFENSE" : info.after[0]; a.seconds = 1.5; }
+        if (blk.id === "event") { a.on = "damage_taken" in (info.on || {}) ? "damage_taken" : Object.keys(info.on)[0]; a.seconds = 4; }
         if (blk.id === "next") {
           const nxt = (info.during || []).filter(x => x !== a.after);
           if (nxt.length) a.next = nxt.includes("ATTACK") ? "ATTACK" : nxt[0];
@@ -2093,10 +2674,17 @@ function builderView() {
         addRow(a);
       } }, el("span", { class: "t", text: "+ " + blk.title }), el("span", { class: "b", text: blk.blurb })));
   }
-  right.append(el("div", { class: "tb-sub", text: "Add a building block" }), palette);
+  if (!blocks) right.append(el("div", { class: "tb-sub", text: "Pick a building block" }), palette);
+  else {
+    palette.hidden = !E.showPalette;
+    const more = el("button", { type: "button", class: "tb-addmore", "aria-expanded": String(!palette.hidden),
+      onclick: () => { E.showPalette = palette.hidden; palette.hidden = !palette.hidden; more.setAttribute("aria-expanded", String(!palette.hidden)); } },
+      "+ Add another block");
+    right.append(more, palette);
+  }
 
   const fits = RECIPES.filter(r => recipeFits(r, info));
-  if (info.ok && fits.length) {
+  if (info.ok && fits.length && !blocks) {
     right.append(el("div", { class: "tb-sub", text: "Or start from an example" }),
       el("div", { class: "tb-recipes" }, ...fits.map(r => el("button", { type: "button", class: "tb-recipe", onclick: () => {
         if (!nameIn.value.trim() || nameIn.value === c.name) { nameIn.value = r.name; store(); }
@@ -2109,10 +2697,15 @@ function builderView() {
       } }, el("span", { class: "t", text: r.name }), el("span", { class: "b", text: r.blurb })))));
   }
 
-  right.append(el("div", { class: "tb-sub", text: "Not buildable yet: ask for it" }),
+  right.append(el("h3", { text: "4. Save it" }),
+    el("div", { class: "tb-save" }, "Check the card on the left (switch “Preview as” to see each rarity's number). When it reads right, press ",
+      el("b", { text: "Add to mod" }), " in the bar at the bottom, then run ", el("code", { text: "rsmm apply" }), "."));
+
+  // What the blocks can't do yet, out of the way until wanted.
+  right.append(el("details", { class: "tb-more" }, el("summary", { text: "Your idea isn't a block yet? Ask for it" }),
     el("div", { class: "tb-palette wish" }, ...WISHES.map(w => el("button", { type: "button", class: "tb-block", onclick: () => ideaRef.focus(w.ex) },
-      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))));
-  right.append(ideaBox(c, ideaRef));
+      el("span", { class: "t", text: w.title }), el("span", { class: "b", text: w.ex ? "“" + w.ex + "”" : "Anything the blocks can't do" })))),
+    ideaBox(c, ideaRef)));
 
   v.append(el("div", { class: "tb-grid" }, left, right));
   paint();
@@ -2161,16 +2754,55 @@ function talentView() {
     b.style.setProperty("--rc", RARITY_COLOUR[tier]);
     seg.append(b);
   }
+  // Every talent at a glance, by ability (a card's source starts with it:
+  // "Attack Dive"). A click jumps to the card; a changed one is marked.
+  const rows = new Map(), chips = new Map();
+  if (T.cards.length) {
+    const map = el("details", { class: "tmap", ...(store.get("rsmm.editor.tmap") === false ? {} : { open: "" }) },
+      el("summary", {}, "All talents ", el("span", { class: "muted", text: `· ${T.cards.length} cards, click one to jump to it` })));
+    map.addEventListener("toggle", () => store.set("rsmm.editor.tmap", map.open));
+    const groups = new Map();
+    for (const c of T.cards) {
+      const g = c.source.split(" ")[0];
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(c);
+    }
+    for (const [g, cs] of groups) {
+      const gi = el("div", { class: "gi" });
+      for (const c of cs) {
+        const b = el("button", { type: "button", title: c.source, onclick: () => jumpTo(c) },
+          cardIcon(c), el("span", { text: (E.cards[c.source] || {}).name || c.name || c.source }));
+        chips.set(c.source, b); gi.append(b);
+      }
+      map.append(el("div", { class: "tmap-g" }, el("div", { class: "gl", text: g }), gi));
+    }
+    v.append(map);
+  }
   v.append(el("div", { class: "ttools" }, q, el("span", { class: "tiny muted", text: "Show cards as" }), seg));
 
   const list = el("div", { class: "tgrid" });
+  // A card's row marks itself changed; its chip follows it.
+  const follow = (c, row) => {
+    const chip = chips.get(c.source);
+    if (!chip) return;
+    const sync = () => chip.classList.toggle("changed", row.classList.contains("changed"));
+    new MutationObserver(sync).observe(row, { attributes: true, attributeFilter: ["class"] });
+    sync();
+  };
   const draw = () => {
     TPREV.reset();
-    list.textContent = "";
+    list.textContent = ""; rows.clear();
     const needle = q.value.toLowerCase();
     const cards = T.cards.filter(c => !needle || (c.source + " " + c.name + " " + c.description).toLowerCase().includes(needle));
     if (!cards.length) list.append(el("div", { class: "empty", text: T.cards.length ? "No card matches." : "No card text found. Card text needs a readable game install." }));
-    for (const c of cards) list.append(talentRow(c));
+    for (const c of cards) { const row = talentRow(c); rows.set(c.source, row); follow(c, row); list.append(row); }
+  };
+  const jumpTo = (c) => {
+    if (!rows.has(c.source)) { q.value = ""; E.q = ""; draw(); }
+    const row = rows.get(c.source);
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "start" });
+    row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
   };
   q.oninput = () => { E.q = q.value; draw(); };
   draw();
@@ -2261,30 +2893,48 @@ function talentRow(c) {
     nameIn, descIn);
   if (isRebuilt(c)) side.append(descWarn);
   syncWarn();
-  const desc = { get: () => descIn.value, set: v => { descIn.value = v; fitDesc(); upd(); } };
-  // Replacing a talent happens in the builder; here, a way in (and out).
+  // What a card DOES is changed in one place, the builder; here, what the
+  // changes so far do, and the ways in (and back out of a replacement).
   const info = c.addStat || { ok: false };
   const canBuild = info.ok && info.rebuild !== false;
+  const does = blockSummary(c);
+  if (does.length) side.append(el("div", { class: "sect sectrow" },
+    el("span", { text: isRebuilt(c) ? "What the new talent does" : "What it also does" })),
+    el("ul", { class: "tb-does tiny" }, ...does.map(t => el("li", { text: t }))));
   side.append(el("div", { class: "tb-rowbtn" + (isRebuilt(c) ? " on" : "") },
-    el("button", { type: "button", ...(canBuild ? {} : { disabled: "" }),
-      title: canBuild ? "" : "Can't be replaced: " + ((info.ok ? info.rebuildWhy : info.why) || "not supported"),
+    isRebuilt(c) || does.length || info.ok
+      ? el("button", { type: "button", ...(info.ok ? {} : { disabled: "" }),
+        onclick: () => { E.build = c.source; renderView(); refresh(); } },
+        isRebuilt(c) ? "Custom talent: open in the builder →" : does.length ? "Change what it does →" : "Add to what it does →")
+      : el("span"),
+    !isRebuilt(c) && canBuild ? el("button", { type: "button", class: "linkbtn",
       onclick: () => { E.build = c.source; E.rebuild = E.rebuild || {}; E.rebuild[c.source] = true; renderView(); refresh(); } },
-    isRebuilt(c) ? "Custom talent: open in the builder →" : "Replace with a custom talent →"),
+      "Replace with a custom talent") : el("span"),
     isRebuilt(c) ? el("button", { type: "button", class: "linkbtn", onclick: () => {
       delete E.rebuild[c.source];
       if (!E.cards[c.source]?.name) delete E.cards[c.source];
       renderView(); refresh();
     } }, "Turn back into " + (c.name || c.source)) : el("span")));
-  side.append(includeControl(c, redraw));
+  // Written out, not in a tooltip: a reason only on hover is never seen on touch.
+  if (!info.ok) side.append(el("div", { class: "tiny muted", text: "Its effect can't be changed: " + (info.why || "not supported") }));
   if (c.entries.length && !isRebuilt(c)) side.append(el("div", { class: "sect sectrow" }, el("span", { text: "Numbers" }), abilityLink(c)),
     talentNumbers(c, redraw));
-  side.append(el("div", { class: "sect sectrow" }, el("span", { text: isRebuilt(c) ? "What the new talent does" : "Added stats" })),
-    addedStats(c, redraw, desc));
   row.append(preview, side);
   TPREV.add(preview, paint);
   row.classList.toggle("changed", !!(E.cards[c.source] || tierEdited() || (E.addStats || {})[c.source] || isRebuilt(c)));
   row.classList.toggle("rebuilt", isRebuilt(c));
   return row;
+}
+
+// One line per thing the builder makes this card do, for the card list.
+function blockSummary(c) {
+  const E = S.talentEdit, out = [];
+  for (const a of (E.addStats || {})[c.source] || []) if (a.stat) out.push(statSentence(a).replace(/ \(Common card.*\)\.$/, ""));
+  for (const r of (E.scale || {})[c.source] || []) if (r.node) out.push(`${r.ability || "An ability"}: ${scaleWord(r.node)} +${asShown(r.values[0], true)}`);
+  for (const r of (E.onHit || {})[c.source] || []) if (r.damage) out.push(`${r.ability || "An ability"}'s hits apply ${r.status}`);
+  const inc = (E.include || {})[c.source];
+  if (inc) out.push("Also runs " + inc.replace("\u0000", "'s ") );
+  return out;
 }
 
 // Card previews are the expensive part of the Talents tab (every letter is a
@@ -2382,6 +3032,7 @@ function renderView() {
   const view = $("#view"); view.textContent = "";
   view.classList.toggle("blocks", S.tab === "scripts" && S.scriptMode === "blocks");
   view.append(S.tab === "items" ? itemView() : S.tab === "talents" ? talentView() : scriptView());
+  if (S.tab === "items") paintAuto();
   applyWide();
 }
 
@@ -2864,10 +3515,14 @@ function editPayload() {
   if (S.tab === "items") {
     if (!S.item) return null;
     const E = S.itemEdit;
-    return { mode: E.mode === "clone" ? "clone" : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
+    return { mode: E.mode === "clone" || E.mode === "blank" ? E.mode : "replace", base: S.item.id, id: E.id, name: E.name, description: E.description, rarity: E.rarity, icon: E.icon, iconUpload: E.iconUpload || "",
       stats: Object.entries(E.stats).map(([modifier, stat]) => ({ modifier, stat })), superDescription: E.superDescription,
       values: Object.entries(E.values).map(([label, nv]) => ({ label, old: S.item.values.find(r => r.label === label).value, new: nv,
-        shadowed: S.item.values.find(r => r.label === label).shadowed })) };
+        shadowed: S.item.values.find(r => r.label === label).shadowed })),
+      ...((E.steps || []).length ? { steps: E.steps } : {}), ...(E.noSuper ? { noSuper: true } : {}),
+      ...(E.mode === "clone" && E.sharedIdentity ? { sharedIdentity: true } : {}),
+      ...((E.effects || []).length ? { effects: E.effects } : {}),
+      ...((E.superEffects || []).length ? { superEffects: E.superEffects } : {}) };
   }
   if (!S.talents) return null;
   const E = S.talentEdit;
@@ -2876,13 +3531,16 @@ function editPayload() {
     cards: Object.entries(E.cards).map(([source, c]) => ({ source, ...c })),
     addStats: Object.entries(E.addStats || {}).flatMap(([talent, list]) => list.filter(a => a.stat)
       .map(a => ({ talent, stat: a.stat, values: a.values, percent: a.percent !== false, ...(a.during ? { during: a.during } : {}),
-        ...(a.after ? { after: a.after, seconds: a.seconds, ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}),
-          ...(a.next ? { next: a.next } : {}) } : {}) }))),
+        ...(a.after || a.on ? { ...(a.after ? { after: a.after } : { on: a.on }), seconds: a.seconds,
+          ...(a.cooldown > 0 ? { cooldown: a.cooldown } : {}), ...(a.next ? { next: a.next } : {}) } : {}) }))),
     rebuild: Object.keys(E.rebuild || {}),
     onHit: Object.entries(E.onHit || {}).flatMap(([talent, list]) => list.filter(r => r.damage && r.status)
       .map(r => ({ talent, damage: r.damage, file: r.file, status: r.status }))),
-    scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node)
+    scale: Object.entries(E.scale || {}).flatMap(([talent, list]) => list.filter(r => r.node || r.range_type)
       .map(r => ({ talent, node: r.node, file: r.file, values: r.values, percent: r.percent !== false,
+        ...(r.range_type ? { range_type: r.range_type } : {}),
+        ...(r.nodes && r.nodes.length ? { nodes: r.nodes } : {}),
+        ...(r.ability ? { ability: r.ability } : {}),
         ...(r.visual === false ? { visual: false } : {}) }))),
     include: Object.entries(E.include || {}).map(([talent, pick]) => {
       const [a, b] = pick.split("\u0000");
@@ -2905,6 +3563,13 @@ async function refresh() {
   await new Promise(r => setTimeout(r, 150));
   if (me !== tick) return;
   saveDraft();
+  if (S.tab === "items" && S.item) {
+    const forId = S.item.id;
+    post("api/item/preview", editPayload()).then(j => {
+      if (me !== tick || !S.item || S.item.id !== forId) return;
+      S.itemBuilt = Object.assign({ for: forId }, j); renderPreview(); paintAuto();
+    }).catch(() => {});
+  }
   const edits = pendingEdits();
   lastEdits = edits;
   renderPending(edits, []);
@@ -2926,7 +3591,9 @@ async function refresh() {
       pre.append(el("div", { class: "errs" }, ...j.errors.map(e => el("div", { text: "✗ " + (e.name ? e.name + ": " : "") + e.error }))));
     }
     pre.append(j.toml || (j.errors.length || j.lua ? "" : "Nothing changed yet."));
-    if (j.lua) pre.append((j.toml ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
+    // Saving adds this to the mod's [mod] table; shown for anyone copying by hand.
+    if (j.loaderFlags && j.loaderFlags.length) pre.append((j.toml ? "\n" : "") + "# manifest.toml, under [mod] (the script needs it to find your hero):\nloader_flags = " + JSON.stringify(j.loaderFlags) + "\n");
+    if (j.lua) pre.append((j.toml || (j.loaderFlags && j.loaderFlags.length) ? "\n" : "") + "# init.lua, the editor's section:\n" + j.lua);
     else if (scriptChanged() || programChanged()) pre.append((j.toml ? "\n" : "") + "# init.lua: the editor's section is taken out\n");
     $("#copy").disabled = !j.toml;
     $("#check").disabled = !j.blocks || j.errors.length > 0;
@@ -3022,6 +3689,7 @@ async function saveAll(error) {
   try {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
+    S.triggers = st.triggers || S.triggers;
     S.modTags = mo.tags || [];
     get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }
@@ -3038,6 +3706,8 @@ async function saveAll(error) {
   setTab(S.tab);
   if (link.get("item")) pickItem(link.get("item"));
   if (link.get("hero")) pickHero(link.get("hero"));
+  // The host's welcome can start a custom item here (shell.html rsmmOpen).
+  try { if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady(START_TAB, t => { if (t && t.newItem) startNewItem(); }); } catch (e) {}
 })();
 </script>
 </body>

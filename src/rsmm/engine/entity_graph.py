@@ -105,7 +105,7 @@ def _pickers(payload: bytes, picker_cls: int) -> list[tuple[int, Ref]]:
         if len(guid) == 16 and body + 20 <= len(payload):
             n = struct.unpack_from("<I", payload, body + 16)[0]
             text = payload[body + 20:body + 20 + n]
-            if n < 4096 and len(text) == n and all(0x20 <= b < 0x7F for b in text):
+            if n < 4096 and len(text) == n and not text.translate(None, ES._PRINTABLE_BYTES):
                 out.append((i, Ref(guid, text.decode("ascii"))))
         i = payload.find(tag, i + 1)
     return out

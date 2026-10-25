@@ -29,8 +29,23 @@ The painted base is what the level designers authored. Tiles placed at run time
 blend their own heights on top (`Tiles Heights`), so the base shows the land
 the generator places onto, not the finished run.
 
-Read-only, and nothing here is shipped: the editor reads these files from the
-user's own install (or a local `data/uncooked` mirror) each time.
+Nothing here is shipped: the editor reads these files from the user's own
+install (or a local `data/uncooked` mirror) each time, and a mod carries
+brush STROKES (`apply_strokes`) that `write` lays onto the vanilla grid at
+apply time, never the grid itself.
+
+Why painting the grid is enough (static RE, 2026-10-17, build b9c3): the
+shipped level holds no ground geometry. Of Dark Hills' 26.7 MB, 25.7 MB are
+painted layers; its 7168 `oCTerrainMeshTile` and 2048 `oCPhysicTerrainTile`
+objects average 29 bytes, descriptors for the `Terrain Mesh Generator` and
+`Physic Terrain Generator` that build render mesh and collision from the
+layers at load ("Level load - Rebuild terrain"). The navmesh IS baked
+(`Map_<X>_NavMeshes.level`, Detour tiles), but "Level load - Rebuild navmesh"
+in `LevelLoad_Orchestrator` marks every tile of every navmesh dirty over the
+navmesh's own full bounds (0x14086b310) and rebuilds them (0x14086b750) with
+`oCDtDetourMeshTileTriangleBuilder` (slot 1, 0x1402a3f00), which rasterizes
+the scene's live physics world. So height, collision and walkability all
+follow the painted height. Unproven in game until a playtest says so.
 """
 
 from __future__ import annotations
@@ -101,11 +116,16 @@ def _class_names(g) -> list[str]:
 
 def _grid_offset(p: bytes, start: int) -> int:
     """The one offset where ``w, h, n`` frame a square grid ending at the payload end."""
+    # The grid ends at the payload end, so a width fixes its offset: walk the
+    # widths, not every byte (same candidates, ~4k unpacks instead of ~1M).
     hits = []
-    for off in range(start, len(p) - 12):
-        w, h, nb = struct.unpack_from("<III", p, off)
-        if 0 < w <= _MAX_GRID and w == h and nb == w * h * 4 and off + 12 + nb == len(p):
+    for w in range(1, _MAX_GRID + 1):
+        off = len(p) - 12 - w * w * 4
+        if off < start:
+            break
+        if struct.unpack_from("<III", p, off) == (w, w, w * w * 4):
             hits.append(off)
+    hits.reverse()
     if len(hits) != 1:
         raise TerrainError(f"painted layer grid header is ambiguous ({len(hits)} candidates)")
     return hits[0]
@@ -173,3 +193,182 @@ def resample(layer: Layer, n: int) -> list[float]:
         for c in range(n):
             out.append(src[row + min(s - 1, int((c + 0.5) * s / n))])
     return out
+
+
+# --------------------------------------------------------------------------
+# writing: brush strokes onto the vanilla grid
+# --------------------------------------------------------------------------
+
+#: Layers whose cells are a normalised height: a stroke's amounts are metres.
+METRE_LAYERS = {HEIGHT, "Base Water Height", "Base Water Ocean Height", "Base Flying Height"}
+#: Ops on a float layer; ``tint`` is the one op on an RGBA layer.
+OPS = ("raise", "lower", "set", "flatten", "smooth", "tint")
+FALLOFFS = ("smooth", "linear", "constant")
+MAX_RADIUS = 512.0
+
+
+def _falloff(t: float, kind: str) -> float:
+    """Weight at normalised distance `t` (0 centre .. 1 edge)."""
+    if kind == "constant":
+        return 1.0
+    if kind == "linear":
+        return 1.0 - t
+    return 1.0 - t * t * (3.0 - 2.0 * t)          # smoothstep
+
+
+def apply_strokes(t: Terrain, strokes: list[dict]) -> list[str]:
+    """Apply brush `strokes` to `t`'s float layers in place; describe each.
+
+    A stroke is ``{op, x, z, radius, amount, falloff, layer, color}``: ``op``
+    one of `OPS`, centre ``x``/``z`` and ``radius`` in world metres,
+    ``amount`` in metres on a height layer (`METRE_LAYERS`) and in raw cell
+    units otherwise, ``falloff`` one of `FALLOFFS`, ``layer`` defaulting to
+    ``Base Height``. ``flatten`` pulls toward ``amount`` (or, without one, the
+    value under the centre); ``smooth`` pulls toward the 3x3 neighbourhood
+    mean; ``set`` replaces. Every float cell is clamped to 0..1, the range the
+    shipped grids use. ``tint`` is the RGBA layers' op (the terrain's vertex
+    colour): it blends each cell's RGB toward ``color`` (``"#rrggbb"``) by
+    ``amount`` (0..1) times the falloff, leaving alpha alone.
+    """
+    span = t.box_max[1] - t.box_min[1]
+    out = []
+    for n, st in enumerate(strokes):
+        what = f"terrain[{n}]"
+        if not isinstance(st, dict) or set(st) - {"op", "x", "z", "radius", "amount",
+                                                 "falloff", "layer", "color"}:
+            raise TerrainError(f"{what}: expected {{op, x, z, radius, amount, falloff, "
+                               f"layer, color}}")
+        op, name = st.get("op"), st.get("layer", HEIGHT)
+        fall = st.get("falloff", "smooth")
+        if op not in OPS or fall not in FALLOFFS:
+            raise TerrainError(f"{what}: op is one of {OPS}, falloff one of {FALLOFFS}")
+        layer = t.layers.get(name)
+        want = "rgba" if op == "tint" else "float"
+        if layer is None or layer.kind != want:
+            raise TerrainError(f"{what}: no painted {want} layer {name!r}; have "
+                               f"{sorted(k for k, v in t.layers.items() if v.kind == want)}")
+        try:
+            x, z, radius = float(st["x"]), float(st["z"]), float(st["radius"])
+            amount = None if st.get("amount") is None else float(st["amount"])
+        except (KeyError, TypeError, ValueError):
+            raise TerrainError(f"{what}: x, z and radius are numbers") from None
+        if not (0 < radius <= MAX_RADIUS) or not all(map(math.isfinite, (x, z))):
+            raise TerrainError(f"{what}: radius must be 0..{MAX_RADIUS} m")
+        if amount is None and op not in ("flatten", "smooth"):
+            raise TerrainError(f"{what}: {op} needs an amount")
+        if op == "tint":
+            if not (0.0 < amount <= 1.0):
+                raise TerrainError(f"{what}: a tint's amount is its strength, 0..1")
+            rgb = _rgb(st.get("color"), what)
+        scale = 1.0 / span if name in METRE_LAYERS else 1.0
+        if amount is not None and name in METRE_LAYERS and op in ("set", "flatten"):
+            target = (amount - t.box_min[1]) / span       # an absolute height
+        else:
+            target = None if amount is None else amount * scale
+
+        if op == "tint" and not isinstance(layer.cells, bytearray):
+            layer.cells = bytearray(layer.cells)
+        size, cells = layer.size, layer.cells
+        cell_m = (t.box_max[0] - t.box_min[0]) / size
+        cu, cv = t.uv(x, z)
+        cc, cr = cu * size - 0.5, cv * size - 0.5
+        rc = radius / cell_m
+        if op == "flatten" and target is None:
+            target = layer.at(cu, cv)
+        src = array.array("f", cells) if op == "smooth" else cells
+        touched = 0
+        for r in range(max(0, int(cr - rc)), min(size, int(cr + rc) + 2)):
+            for c in range(max(0, int(cc - rc)), min(size, int(cc + rc) + 2)):
+                d = math.hypot(c - cc, r - cr) / rc
+                if d >= 1.0:
+                    continue
+                w = _falloff(d, fall)
+                i = r * size + c
+                if op == "tint":
+                    for k in range(3):
+                        old = cells[i * 4 + k]
+                        cells[i * 4 + k] = round(old + (rgb[k] - old) * w * amount)
+                    touched += 1
+                    continue
+                v = cells[i]
+                if op == "raise":
+                    v += target * w
+                elif op == "lower":
+                    v -= target * w
+                elif op == "set":
+                    v = target if w > 0 else v
+                elif op == "flatten":
+                    v += (target - v) * w
+                else:
+                    ring = [src[rr * size + cc2]
+                            for rr in range(max(0, r - 1), min(size, r + 2))
+                            for cc2 in range(max(0, c - 1), min(size, c + 2))]
+                    v += (sum(ring) / len(ring) - v) * w
+                cells[i] = min(1.0, max(0.0, v))
+                touched += 1
+        if not touched:
+            raise TerrainError(f"{what}: the brush at ({x:g}, {z:g}) misses the terrain")
+        out.append(f"terrain: {op} {name} at ({x:g}, {z:g}) r {radius:g} m"
+                   + ("" if amount is None else f" by {amount:g}"))
+    return out
+
+
+def _rgb(color, what: str) -> tuple[int, int, int]:
+    if not (isinstance(color, str) and len(color) == 7 and color[0] == "#"):
+        raise TerrainError(f"{what}: a tint needs color = \"#rrggbb\"")
+    try:
+        return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        raise TerrainError(f"{what}: {color!r} is not a #rrggbb colour") from None
+
+
+def write(level_bytes: bytes, t: Terrain) -> bytes:
+    """`level_bytes` with `t`'s layers written back over the shipped cells.
+
+    A grid never changes size, so every payload keeps its length and the
+    object graph, ids and section sizes are untouched: only cell bytes move.
+    """
+    cf, sec, inner = LP._inner(level_bytes)
+    g = LP._graph(inner)
+    classes = _class_names(g)
+    out = bytearray(inner)
+    done = set()
+    for b, _e, p in g.objects:
+        (ci,) = struct.unpack_from("<I", p, 0)
+        cn = classes[ci] if ci < len(classes) else ""
+        if cn not in (FLOAT_LAYER, COLOR_LAYER):
+            continue
+        (ln,) = struct.unpack_from("<I", p, 4)
+        name = p[8:8 + ln].decode("latin-1")
+        layer = t.layers.get(name)
+        if layer is None:
+            continue
+        off = _grid_offset(p, 8 + ln)
+        size, _h, nb = struct.unpack_from("<III", p, off)
+        if size != layer.size:
+            raise TerrainError(f"{name}: grid is {size}, layer is {layer.size}")
+        if layer.kind == "rgba":
+            body = bytes(layer.cells)
+        else:
+            cells = array.array("f", layer.cells)
+            if sys.byteorder != "little":
+                cells.byteswap()
+            body = cells.tobytes()
+        if len(body) != nb:
+            raise TerrainError(f"{name}: {len(body)} bytes of cells for a {nb}-byte grid")
+        start = b + 4 + off + 12                      # past MARK_BEGIN and the header
+        out[start:start + nb] = body
+        done.add(name)
+    missing = set(t.layers) - done
+    if missing:
+        raise TerrainError(f"layers not found in this level: {sorted(missing)}")
+    return _emit(cf, sec, bytes(out))
+
+
+def _emit(cf, sec: bytes, inner: bytes) -> bytes:
+    from . import cooked
+
+    new_sec = bytearray(sec[:16]) + inner
+    struct.pack_into("<II", new_sec, 8, len(inner), len(inner))
+    cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
+    return cooked.emit(cf)

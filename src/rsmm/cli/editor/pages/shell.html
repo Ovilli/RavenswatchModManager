@@ -8,16 +8,32 @@
 <style>
 html, body { height: 100%; margin: 0; }
 body { font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
-nav { display: flex; align-items: flex-end; gap: 4px; padding: 6px 14px 0; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
-nav h1 { font-size: 16px; margin: 0 18px 8px 0; }
-nav a { color: var(--muted); text-decoration: none; padding: 6px 14px 8px; border-bottom: 3px solid transparent; }
-nav a:hover { color: var(--ink); }
-nav a.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accentline); }
-nav a.dirty::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+/* The tabs are the editor's map, and as underlined grey words they were read past:
+   each is a button that says what it edits, and the open one is filled. */
+nav { display: flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex: none; }
+nav h1 { font-size: 16px; margin: 0 12px 0 0; white-space: nowrap; }
+nav a { display: grid; padding: 5px 14px 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--chip); color: var(--ink); text-decoration: none; line-height: 1.25; white-space: nowrap; }
+nav a b { font-size: 14px; font-weight: 600; }
+nav a small { font-size: 11px; color: var(--muted); }
+nav a:hover { border-color: var(--accentline); }
+nav a.on { background: var(--accent); border-color: var(--accent); color: var(--onaccent); }
+nav a.on small { color: inherit; opacity: .85; }
+nav a.dirty b::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--warn); vertical-align: 2px; }
+nav #tour { flex: none; margin-left: auto; }
+nav #where + #tour { margin-left: 6px; }
+@media (max-width: 1250px) { nav a small { display: none; } }
+/* First visit: what the editor is and where things are. Reopened by "Tour". */
+#welcome { max-width: 560px; width: calc(100% - 32px); padding: 22px 24px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+#welcome::backdrop { background: rgba(0,0,0,.45); }
+#welcome h2 { margin: 0 0 4px; font-size: 20px; }
+#welcome ol { margin: 14px 0 18px; padding-left: 22px; }
+#welcome li { margin-bottom: 10px; }
+#welcome li b { display: block; }
+#welcome .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 main { flex: 1; min-height: 0; position: relative; }
 iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
 iframe[hidden] { display: none; }
-#where { margin: 0 0 8px auto; padding-left: 12px; color: var(--muted); font-size: 12px; max-width: 64ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#where { flex: 1 1 0; min-width: 0; text-align: right; margin: 0 0 0 auto; padding-left: 12px; color: var(--muted); font-size: 12px; max-width: 64ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #nogame { flex: none; padding: 12px 16px; background: var(--warnbg); border-bottom: 1px solid var(--line); }
 #nogame p { margin: 0 0 6px; max-width: 90ch; overflow-wrap: anywhere; }
 #nogame p:last-child { margin-bottom: 0; }
@@ -29,15 +45,34 @@ iframe[hidden] { display: none; }
 <nav id="nav"><h1>RSMM Editor</h1></nav>
 <div id="nogame" role="alert" hidden></div>
 <main id="main"></main>
+<dialog id="welcome" aria-labelledby="welcome-title">
+  <h2 id="welcome-title">Welcome to the RSMM Editor</h2>
+  <div class="muted">Make Ravenswatch mods without writing code. Nothing touches the game until you apply a mod.</div>
+  <ol>
+    <li><b>Pick what to change in the tabs at the top</b>Items, Talents, Scripts, Abilities and Map are separate editors. A dot on a tab means it has changes you have not saved yet.</li>
+    <li><b>Edit an item, or make a new one</b>Open an item and choose <i>Edit</i> to change the game's own, or <i>New item from it</i> for a separate copy. <i>+ New custom item</i> starts one for you.</li>
+    <li><b>Watch the card</b>The preview is drawn with the game's own art and follows every change you type.</li>
+    <li><b>Save to a mod</b>The bar at the bottom collects every change. <i>Add to mod</i> writes them; <code>rsmm apply</code> puts the mod in the game.</li>
+  </ol>
+  <div class="acts">
+    <button type="button" id="w-close">Look around</button>
+    <button type="button" id="w-talents">Edit talents</button>
+    <button type="button" id="w-item" class="primary">Make a custom item</button>
+  </div>
+</dialog>
 <script>
 "use strict";
 const TABS = __RSMM_TABS__;
 const GAME = __RSMM_GAME__;
+// What each tab edits, under its name.
+const BLURB = { items: "Change or copy magic items", talents: "Hero talent cards & numbers", scripts: "Test grants & block scripts",
+  abilities: "Hero ability numbers & links", map: "Chapter maps & tiles", save: "Items in your profile" };
 const frames = {};
 const nav = document.getElementById("nav"), main = document.getElementById("main");
 for (const [key, [label]] of Object.entries(TABS)) {
-  const a = document.createElement("a");
-  a.href = "#" + key; a.textContent = label; a.dataset.tab = key;
+  const a = document.createElement("a"), b = document.createElement("b");
+  a.href = "#" + key; a.dataset.tab = key; b.textContent = label; a.append(b);
+  if (BLURB[key]) { const s = document.createElement("small"); s.textContent = BLURB[key]; a.append(s); }
   nav.append(a);
 }
 // Which install every tab reads, or, when there is none, why and how to fix it:
@@ -66,6 +101,25 @@ if (GAME.dir) {
     para("To find the folder in Steam, right-click Ravenswatch, then Manage, then Browse local files."));
   box.hidden = false;
 }
+// The welcome: once per browser on its own, and whenever "Tour" is pressed. Storage
+// can be missing or throw (a private window); then it shows on every launch, which
+// "Look around" closes.
+const WELCOME_KEY = "rsmm.editor.welcomed";
+const welcome = document.getElementById("welcome");
+const tour = document.createElement("button");
+tour.id = "tour"; tour.type = "button"; tour.textContent = "Tour"; tour.title = "What the editor does and where things are";
+nav.append(tour);
+function openWelcome() { if (!welcome.open) welcome.showModal(); }
+function closeWelcome() {
+  welcome.close();
+  try { localStorage.setItem(WELCOME_KEY, "1"); } catch (e) {}
+}
+tour.onclick = openWelcome;
+welcome.addEventListener("cancel", () => { try { localStorage.setItem(WELCOME_KEY, "1"); } catch (e) {} });
+document.getElementById("w-close").onclick = closeWelcome;
+document.getElementById("w-talents").onclick = () => { closeWelcome(); rsmmOpen("talents", {}); };
+document.getElementById("w-item").onclick = () => { closeWelcome(); rsmmOpen("items", { newItem: true }); };
+
 // A frame is made on first visit and then kept, so switching tabs never loses
 // unsaved work in another editor.
 function show(key) {
@@ -126,6 +180,10 @@ window.rsmmOpen = (tab, target) => {
 window.rsmmReady = (tab, fn) => { receivers[tab] = fn; deliver(tab); };
 window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 show(location.hash.slice(1) || "__RSMM_TAB__");
+// Not without an install: the banner saying how to point the editor at one comes first.
+let welcomed = false;
+try { welcomed = !!localStorage.getItem(WELCOME_KEY); } catch (e) {}
+if (GAME.dir && !welcomed) openWelcome();
 </script>
 </body>
 </html>

@@ -96,6 +96,8 @@ export const collectionReviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   title: z.string().max(120).nullable(),
   body: z.string().nullable(),
+  ownerReply: z.string().nullable().optional(),
+  ownerReplyAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

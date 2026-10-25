@@ -20,12 +20,14 @@ export type Entity<T> = { state: 'ok'; data: T } | { state: 'missing' } | { stat
  * Only an explicit 404/410 from the API counts as `missing` — never a parse
  * failure, a 5xx, or a network error. Deduped by Next within a request when the
  * URL and options match, so `generateMetadata` and the layout body share one
- * round-trip (that is why the revalidate window is fixed here).
+ * round-trip (that is why each caller passes one fixed window). The default
+ * matches the ISR `revalidate` of the [slug] detail layouts — the shortest
+ * fetch window on a route wins, so a lower value here would undo theirs.
  */
-export async function fetchEntity<T>(path: string): Promise<Entity<T>> {
+export async function fetchEntity<T>(path: string, revalidate = 300): Promise<Entity<T>> {
   let res: Response;
   try {
-    res = await fetch(`${getApiUrl()}${path}`, { next: { revalidate: 60 } });
+    res = await fetch(`${getApiUrl()}${path}`, { next: { revalidate } });
   } catch {
     return { state: 'error' };
   }

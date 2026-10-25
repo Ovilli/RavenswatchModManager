@@ -20,6 +20,8 @@ export default defineConfig({
       },
       favicon: '/favicon.png',
       customCss: ['./src/styles/theme.css'],
+      // <Analytics /> (Vercel Web Analytics) on every docs page.
+      components: { Head: './src/components/Head.astro' },
       lastUpdated: true,
       // Site-wide social-preview image (link unfurls on Discord/Twitter/etc).
       // Source: `scripts/og-card.html` — keep the dimensions below in sync with

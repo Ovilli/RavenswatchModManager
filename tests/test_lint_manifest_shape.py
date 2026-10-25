@@ -121,3 +121,20 @@ def test_base_check_is_skipped_without_a_corpus(tmp_path, capsys, monkeypatch):
                            'base = "Anything"\neffect = "Swift"\n')
     assert "is not a shipped" not in _out(capsys)
     assert errs == 1    # only the experimental gate: melody is rated 'guess'
+
+
+def test_lua_needing_hero_capture_without_the_flag_warns(tmp_path, capsys):
+    root = tmp_path / "M"
+    root.mkdir()
+    (root / "init.lua").write_text('local R = require "rsmm"\n'
+                                   '-- R.entity.ready() in a comment does not count\n'
+                                   'if R.entity.ready() then end\n', encoding="utf-8")
+    (root / "manifest.toml").write_text('[mod]\nid = "M"\nversion = "1.0.0"\n', encoding="utf-8")
+    _errs, warns = lint.lint_one(root)
+    assert "need hero capture" in _out(capsys)
+    (root / "manifest.toml").write_text(
+        '[mod]\nid = "M"\nversion = "1.0.0"\nloader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]\n',
+        encoding="utf-8")
+    _errs, warns2 = lint.lint_one(root)
+    assert "need hero capture" not in _out(capsys)
+    assert warns2 == warns - 1

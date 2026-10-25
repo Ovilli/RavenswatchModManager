@@ -2,7 +2,7 @@
 
 import { ApiError } from '@rsmm/api-client';
 import type { ModCategory } from '@rsmm/schemas';
-import { Badge, Button, Input, Spinner } from '@rsmm/ui';
+import { Badge, Button, Input, ProgressBar, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -25,8 +25,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
-import { formatObjectStorageError } from '../../../lib/object-storage-error';
+import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../../lib/upload';
 import { toEmbedUrl } from '../../../lib/video-embed';
+import { FileDrop } from '../../components/file-drop';
 import { MDEditor, MDPreview } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
@@ -131,21 +132,6 @@ function Label({
       {children}
     </label>
   );
-}
-
-async function sha256Hex(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MiB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
 }
 
 function describeApiError(err: unknown): string {
@@ -314,15 +300,10 @@ export default function ManageModPage() {
         contentType: coverFile.type as 'image/png' | 'image/jpeg' | 'image/webp',
         sizeBytes: coverFile.size,
       });
-      const put = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        body: coverFile,
+      await putFile(presigned.uploadUrl, coverFile, {
         headers: { 'Content-Type': coverFile.type },
+        what: 'cover image upload',
       });
-      if (!put.ok) {
-        const text = await put.text().catch(() => '');
-        throw new Error(formatObjectStorageError(put.status, text, 'cover image upload'));
-      }
       await api.mods.patch(slug, { imageUrl: presigned.publicUrl });
     },
     onSuccess: () => {
@@ -338,15 +319,10 @@ export default function ManageModPage() {
         contentType: file.type as 'image/png' | 'image/jpeg' | 'image/webp',
         sizeBytes: file.size,
       });
-      const put = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        body: file,
+      await putFile(presigned.uploadUrl, file, {
         headers: { 'Content-Type': file.type },
+        what: 'screenshot upload',
       });
-      if (!put.ok) {
-        const text = await put.text().catch(() => '');
-        throw new Error(formatObjectStorageError(put.status, text, 'screenshot upload'));
-      }
       const next: Screenshot[] = [...screenshots, { url: presigned.publicUrl }].slice(0, 12);
       setScreenshots(next);
       await api.mods.patch(slug, { screenshots: next });
@@ -433,6 +409,7 @@ export default function ManageModPage() {
   const [newVersion, setNewVersion] = useState('');
   const [newZip, setNewZip] = useState<File | null>(null);
   const [changelog, setChangelog] = useState<string | undefined>('');
+  const [zipProgress, setZipProgress] = useState<{ loaded: number; total: number } | null>(null);
   const newVersionMut = useMutation({
     mutationFn: async () => {
       if (!newZip) throw new Error('no zip selected');
@@ -457,21 +434,18 @@ export default function ManageModPage() {
         manifest,
         changelog: changelog?.trim() || undefined,
       });
-      const shaBytes = new Uint8Array(sha.length / 2);
-      for (let i = 0; i < shaBytes.length; i++) {
-        shaBytes[i] = Number.parseInt(sha.slice(i * 2, i * 2 + 2), 16);
-      }
-      const put = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        body: newZip,
-        headers: {
-          'Content-Type': 'application/zip',
-          'x-amz-checksum-sha256': btoa(String.fromCharCode(...shaBytes)),
-        },
-      });
-      if (!put.ok) {
-        const text = await put.text().catch(() => '');
-        throw new Error(formatObjectStorageError(put.status, text, 'mod archive upload'));
+      setZipProgress({ loaded: 0, total: newZip.size });
+      try {
+        await putFile(presigned.uploadUrl, newZip, {
+          headers: {
+            'Content-Type': 'application/zip',
+            'x-amz-checksum-sha256': hexToBase64(sha),
+          },
+          what: 'mod archive upload',
+          onProgress: (loaded, total) => setZipProgress({ loaded, total }),
+        });
+      } finally {
+        setZipProgress(null);
       }
       // Async scan: enqueue and return. The worker scans within a minute or two
       // and withholds + removes the version automatically if it trips.
@@ -657,23 +631,17 @@ export default function ManageModPage() {
                   <p className="text-sm text-muted-foreground">No cover image yet.</p>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="cover">
-                    <span className="inline-flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4" /> Upload new cover (png/jpeg/webp, ≤ 8 MB)
-                    </span>
-                  </Label>
-                  <input
+                  <Label htmlFor="cover">{mod.imageUrl ? 'Replace cover' : 'Add a cover'}</Label>
+                  <FileDrop
                     id="cover"
-                    type="file"
                     accept="image/png,image/jpeg,image/webp"
-                    onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
-                    className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
+                    label="Cover image"
+                    hint="PNG, JPEG or WebP, up to 8 MB, 16:9 looks best"
+                    file={coverFile}
+                    onFile={setCoverFile}
+                    preview
+                    disabled={uploadCover.isPending}
                   />
-                  {coverFile ? (
-                    <p className="text-xs text-muted-foreground">
-                      {coverFile.name} — {fmtBytes(coverFile.size)}
-                    </p>
-                  ) : null}
                   <Button
                     onClick={() => uploadCover.mutate()}
                     disabled={!coverFile || uploadCover.isPending}
@@ -817,6 +785,7 @@ export default function ManageModPage() {
                           className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
                         >
                           <img
+                            loading="lazy"
                             src={shot.url}
                             alt={shot.caption || `Screenshot ${idx + 1}`}
                             className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
@@ -999,19 +968,16 @@ export default function ManageModPage() {
                     ) : null}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="newzip">New zip</Label>
-                    <input
+                    <Label htmlFor="newzip">New archive</Label>
+                    <FileDrop
                       id="newzip"
-                      type="file"
                       accept=".zip,application/zip"
-                      onChange={(e) => setNewZip(e.target.files?.[0] ?? null)}
-                      className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                      label="Mod archive (.zip)"
+                      hint="up to 500 MB"
+                      file={newZip}
+                      onFile={setNewZip}
+                      disabled={newVersionMut.isPending}
                     />
-                    {newZip ? (
-                      <p className="text-xs text-muted-foreground">
-                        {newZip.name} — {fmtBytes(newZip.size)}
-                      </p>
-                    ) : null}
                   </div>
                   <div className="space-y-2 sm:col-span-2">
                     <Label>Changelog (Markdown)</Label>
@@ -1020,6 +986,14 @@ export default function ManageModPage() {
                     </div>
                   </div>
                 </div>
+                {zipProgress ? (
+                  <ProgressBar
+                    className="mt-4"
+                    value={zipProgress.loaded}
+                    max={zipProgress.total}
+                    label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
+                  />
+                ) : null}
                 <div className="mt-4 flex items-center justify-end gap-3">
                   {newVersionMut.isError ? (
                     <span className="text-xs text-destructive">
@@ -1125,6 +1099,7 @@ function Lightbox({
             className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
           >
             <img
+              loading="lazy"
               src={shot.url}
               alt={shot.caption || `Screenshot ${index + 1}`}
               className="max-w-full rounded-md object-contain shadow-2xl"

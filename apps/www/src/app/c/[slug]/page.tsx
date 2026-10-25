@@ -26,6 +26,7 @@ import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
 import { MDEditor } from '../../components/md-editor';
 import { ModCover } from '../../components/mod-cover';
+import { ReviewReplyBlock } from '../../components/review-reply';
 
 function describeApiError(err: unknown): string {
   if (isRateLimited(err)) {
@@ -383,6 +384,7 @@ export default function CollectionDetailPage({
             {editScreenshots.map((shot, i) => (
               <div key={shot.url} className="relative">
                 <img
+                  loading="lazy"
                   src={shot.url}
                   alt={shot.caption || `Screenshot ${i + 1}`}
                   className="aspect-video w-full rounded-md object-cover"
@@ -704,7 +706,9 @@ export default function CollectionDetailPage({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => reviewDelete.mutate()}
+                    onClick={() => {
+                      if (confirm('Delete your review?')) reviewDelete.mutate();
+                    }}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
                   </Button>
@@ -735,6 +739,7 @@ export default function CollectionDetailPage({
                 <div className="flex items-center gap-2">
                   {r.userImage ? (
                     <img
+                      loading="lazy"
                       src={r.userImage}
                       alt={r.userName ?? 'User'}
                       className="h-6 w-6 rounded-full"
@@ -758,6 +763,13 @@ export default function CollectionDetailPage({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(r.updatedAt).toLocaleDateString()}
                 </p>
+                <ReviewReplyBlock
+                  review={r}
+                  canReply={isOwner}
+                  queryKey={['collections', slug, 'reviews']}
+                  onSave={(text) => api.collections.reviews.reply(slug, r.id, text)}
+                  onDelete={() => api.collections.reviews.removeReply(slug, r.id)}
+                />
               </div>
             ))}
           </div>

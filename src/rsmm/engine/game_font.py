@@ -63,3 +63,68 @@ def parse(data: bytes) -> GameFont:
             glyphs[cp] = tuple(round(v, 3) for v in rows[gi][1:8])
     return GameFont(size=size, line_height=line_height, page_w=page_w, page_h=page_h,
                     base=base, page=page, glyphs=glyphs)
+
+
+def fits(font: GameFont, rgba: bytes, width: int, height: int, *, min_cover: float = 0.97) -> bool:
+    """Is this decoded page the one ``font``'s glyph table was cut from?
+
+    A table drawn over the wrong page renders real glyph strokes in the wrong
+    places (unreadable text that still looks like a font), so a reader must
+    check the pair before trusting it. Each locale ships its own page at its
+    own size (Fontin Sans: 512 default, 600 RU, 800 PL), which a size check
+    catches; a same-size page cut differently is caught by requiring nearly
+    every opaque pixel to fall inside some glyph's rectangle (1.000 on every
+    matched pair shipped).
+    """
+    if (width, height) != (font.page_w, font.page_h) or len(rgba) < width * height * 4:
+        return False
+    inside = bytearray(width * height)
+    for x, y, w, h, *_ in font.glyphs.values():
+        x0, y0 = max(0, int(x)), max(0, int(y))
+        x1, y1 = min(width, int(x + w) + 1), min(height, int(y + h) + 1)
+        if x1 > x0:
+            for row in range(y0, y1):
+                inside[row * width + x0:row * width + x1] = b"\1" * (x1 - x0)
+    opaque = hit = 0
+    for i, a in enumerate(rgba[3::4]):
+        if a > 127:
+            opaque += 1
+            hit += inside[i]
+    return opaque > 0 and hit >= opaque * min_cover
+
+
+def load(rel: str) -> tuple[GameFont, bytearray, int, int] | None:
+    """A font's glyph table and its decoded page, checked to belong together.
+
+    ``rel`` is the table's decoded path (``...~GAM.fnt.Font.fnb``). Returns
+    ``(font, rgba, width, height)`` or None.
+
+    The two are separate files, and read one by one they can come from
+    different stores: the mirror has the table but not the page texture, and a
+    `.rsmm.bak` made before a game update (or a font mod's leftovers) is a
+    different build from the live file beside it. Every glyph is drawn as a
+    slice of the page at the table's coordinates, so a mismatched pair is not a
+    little off: every letter is the wrong letter. Each table copy is tried with
+    each page copy, live install first (what the game draws with), and only a
+    pair `fits` accepts is returned.
+    """
+    from itertools import product
+
+    from . import cooked, corpus, icon_decode
+    from .cooked_schemas.texture import TextureHandler
+
+    tables = corpus.install_copies(rel) + [p for p in (corpus.mirror_path(rel),) if p]
+    for table_path, page_kind in product(tables, (0, 1)):
+        try:
+            f = parse(table_path.read_bytes())
+            pages = corpus.install_copies(rel.rsplit("/", 1)[0] + "/" + f.page + ".Texture.dxt")
+            if page_kind >= len(pages):
+                continue
+            cf = cooked.parse(pages[page_kind].read_bytes())
+            tex = TextureHandler.parse_payload(cf.sections[-1].payload)
+            rgba = icon_decode.decode_to_rgba(tex.pixels, tex.width, tex.height, tex.format_name)
+        except (OSError, ValueError, KeyError, IndexError):
+            continue
+        if fits(f, rgba, tex.width, tex.height):
+            return f, rgba, tex.width, tex.height
+    return None

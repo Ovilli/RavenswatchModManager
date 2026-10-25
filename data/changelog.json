@@ -1,6 +1,297 @@
 {
-  "generated": "2026-10-13",
+  "generated": "2026-10-25",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-25",
+      "summary": "Talent range modifiers, and fixes for integer item stats and inherited rewires",
+      "highlights": [
+        "New talent range modifiers: grow an ability's melee reach, shot range, area radius or rectangle in the editor's Make an ability bigger",
+        "An ability's area hits grow with its radius, Snow Queen's skating hitbox included, from their own vanilla size",
+        "Integer stats such as Extra MO Choice, Extra skill choice and Rooted are written as whole numbers, so items and talents giving them work",
+        "A range talent refuses a range its ability lacks instead of scaling another ability's",
+        "Rework talents refuse an ambiguous rewire into an inherited file instead of wiring the wrong node"
+      ],
+      "cli_version": 17
+    },
+    {
+      "version": "",
+      "date": "2026-10-25",
+      "summary": "Item effect fixes: Vitality and Attack power entered in displayed points, correct card units for flat stats, per-level shield scaling",
+      "highlights": [
+        "Vitality and Attack power effects are entered as the number shown in game (10 = +10%), no more x100 bonuses",
+        "Armour, Shield and other flat stats show their real number on item cards instead of x100",
+        "New per_level = true: item effects can grow with hero level, like Fairy Dust's shield",
+        "Fractional Free Reroll amounts are rejected instead of silently rounding to 0"
+      ],
+      "cli_version": 16
+    },
+    {
+      "version": "",
+      "date": "2026-10-25",
+      "summary": "Pams fixes",
+      "highlights": [
+        "Pams fixes"
+      ],
+      "cli_version": 15
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "In-game Mods menu support: mods switched on or off in Settings > Mods are carried into your library on the next launch, and the pause menu gets a Mods button. Integer item stats (free rerolls, charges) now show their real number on the card instead of +0.",
+      "highlights": [
+        "In-game Mods menu support: mods switched on or off in Settings > Mods are carried into your library on the next launch, and the pause menu gets a Mods button. Integer item stats (free rerolls, charges) now show their real number on the card instead of +0."
+      ],
+      "cli_version": 14
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "In-game Mods menu: a Mods tab in the game's own Settings page (switch mods on or off for the next launch, change mod settings while you play) and a Mods button in the pause menu. Replaces the old drawn overlay.",
+      "highlights": [
+        "In-game Mods menu: a Mods tab in the game's own Settings page (switch mods on or off for the next launch, change mod settings while you play) and a Mods button in the pause menu. Replaces the old drawn overlay."
+      ],
+      "loader_version": 48
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "Custom item effects now stack with duplicate copies: holding a second copy raises the stat and the card number (always-on and timed effects; super effects unchanged).",
+      "highlights": [
+        "Custom item effects now stack with duplicate copies: holding a second copy raises the stat and the card number (always-on and timed effects; super effects unchanged)."
+      ],
+      "cli_version": 13
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components.",
+      "highlights": [
+        "In-game mod menu: an ImGui panel drawn on the game's DX12 swapchain, painted onto the book. Adds R.debug.components."
+      ],
+      "loader_version": 47
+    },
+    {
+      "version": "",
+      "date": "2026-10-24",
+      "summary": "Supper Effect on Items and Always on Night/Day",
+      "highlights": [
+        "Supper Effect on Items and Always on Night/Day"
+      ],
+      "cli_version": 12
+    },
+    {
+      "version": "",
+      "date": "2026-10-23",
+      "summary": "Talents can give a TRAIT charge",
+      "highlights": [
+        "Talents can give +1 TRAIT charge, the same way Merlin's quest and Snow Queen's Trait Charge do (TRAIT charges were refused before)"
+      ],
+      "cli_version": 11
+    },
+    {
+      "version": "",
+      "date": "2026-10-23",
+      "summary": "Talents built from scratch reliably, game-event triggers, and a simpler talent editor",
+      "highlights": [
+        "Talent changes no longer copy parts from other heroes: every part is written, so talent mods are more reliable across game updates",
+        "Talent bonuses can start from game events: taking damage, your ultimate, day or night, picking a talent or item, dream shards, Sandman purchases, rerolls",
+        "Every option the talent editor offers now builds, for every hero (several failed before, e.g. on Kintaro and Snow Queen)",
+        "The talent editor has one place to change what a talent does: the builder, which can add to a talent or replace it",
+        "Charges that the game never grants (TRAIT charges) are refused, and charges show as whole numbers"
+      ],
+      "cli_version": 10
+    },
+    {
+      "version": "",
+      "date": "2026-10-22",
+      "summary": "Items from scratch, safer item bans, and a warning for item stats the game never reads",
+      "highlights": [
+        "Item bans no longer wipe the save progress of banned items: apply and restore put back what the game dropped",
+        "You can ban every item: empty vendor pools get a harmless Sold Out item instead of crashing the game",
+        "Make magical objects from scratch: list always-on and after-a-trigger bonuses, no base item needed",
+        "The item editor gets Start from scratch, an effects list and ids of any length",
+        "Lint warns when an item's effect changes a stat the game never reads"
+      ],
+      "cli_version": 9
+    },
+    {
+      "version": "",
+      "date": "2026-10-22",
+      "summary": "Editor: card text no longer garbled in a local clone; clearer tabs, custom item flow and talent builder",
+      "highlights": [
+        "Item and talent card text is readable again in the local editor (a font table and page from different game builds were paired)",
+        "Tabs say what each editor does, and a short tour opens on first launch",
+        "\"+ New custom item\" starts a new item from a copy of a shipped one",
+        "Talent builder blocks are named, say what they do in plain words, and show each rarity's number as the card shows it"
+      ],
+      "cli_version": 8
+    },
+    {
+      "version": "5.9.26",
+      "date": "2026-10-20",
+      "summary": "Discord Url Update",
+      "highlights": [
+        "Discord Link Update"
+      ],
+      "loader_version": 46
+    },
+    {
+      "version": "",
+      "date": "2026-10-20",
+      "summary": "Item mods: timed effects on any item, build checks, and a real card preview in the editor.",
+      "highlights": [
+        "New item field effect = { stat, amount, seconds, on }: a timed bonus on a trigger (taking damage, dash, special, defense, power, talent picked, item picked up, dream shards, night, and more), with the item icon counting it down",
+        "Copied items get their own identity by default, so picking up another item no longer takes one away",
+        "rsmm lint and the build warn about item traps: bonuses that stack forever, hidden level scaling, a card that reads +0%",
+        "The item editor gets a Timed effect section and a card preview that shows the numbers the game will print"
+      ],
+      "cli_version": 6
+    },
+    {
+      "version": "",
+      "date": "2026-10-20",
+      "summary": "Item mods: timed bonuses and correct cards. Copied items show their own description, can drop the super effect, show fractions as percentages, and can copy parts from other items.",
+      "highlights": [
+        "Items can copy parts from another item with clone steps (from = an entity path), e.g. a timed '+X for N seconds' bonus",
+        "New percent step shows a card number as a percentage (a 0.3 crit bonus read '+0%')",
+        "super_effect = false removes a copy's super effect and its card text",
+        "A copy now shows its own description even when its base's text key does not contain the base id",
+        "The item editor gets an own-identity checkbox for copies, so a copy is not granted as its base"
+      ],
+      "cli_version": 5
+    },
+    {
+      "version": "",
+      "date": "2026-10-20",
+      "summary": "Item mods can fix behaviour, not just numbers: new [[content.steps]] graph edits on a copied item. The editor now opens and saves items that use them.",
+      "highlights": [
+        "Item mods take [[content.steps]] (set / link / add_link / remove_link) to rewire a copied item, e.g. turn a permanent on-hit bonus into a timed one",
+        "The item editor opens and saves items with steps instead of refusing them",
+        "Fixed link labels written into entities whose shipped references are stale"
+      ],
+      "cli_version": 4
+    },
+    {
+      "version": "",
+      "date": "2026-10-18",
+      "summary": "Item copies can change rarity, the book fits added items, and the map editor edits scenery.",
+      "highlights": [
+        "A copied item now really takes the rarity you pick in the editor or manifest; before, it kept its base item's tier in game.",
+        "The book's Objects tab widens each tier's grid when mods add items, so new items no longer spill over the next row.",
+        "Map editor: move, remove and add a chapter's own scenery objects, plus a 3D tile mode.",
+        "The editors answer faster: newest request first, and game data is kept between visits."
+      ],
+      "cli_version": 3
+    },
+    {
+      "version": "5.9.25",
+      "date": "2026-10-18",
+      "summary": "Chapter editor, CLI updates without an app release, and a restore fix that protects game files",
+      "highlights": [
+        "The map editor is now a chapter editor: add, move and remove spots, pin tiles, and paint terrain shape, surface and tint",
+        "The CLI now updates on its own between app releases; Settings > Updates and the version footer show which CLI build is running",
+        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select",
+        "Fixed: the Update 5 backport's hero table was undone on the next apply"
+      ],
+      "loader_version": 46
+    },
+    {
+      "version": "",
+      "date": "2026-10-18",
+      "summary": "Restore no longer deletes game files when the asset map is from an older game build; the values backport now stays applied",
+      "highlights": [
+        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select. The asset map is now rebuilt before apply and restore.",
+        "Fixed: the Update 5 backport's hero table was undone on the next apply, so the old values never reached the game."
+      ],
+      "cli_version": 2
+    },
+    {
+      "version": "5.9.24",
+      "loader_version": 46,
+      "date": "2026-10-17",
+      "summary": "The app opens links, feels faster, and can get CLI fixes without a new release.",
+      "highlights": [
+        "Links in the app (Discord, Ko-fi, GitHub, docs) open in your browser again.",
+        "Screens load much faster: the CLI stays warm between calls instead of restarting each time.",
+        "Linux AppImage: built on a newer base, so it no longer runs sluggishly. It needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 or newer); older systems should use the .deb.",
+        "CLI fixes can now arrive between app releases; Settings, About shows which CLI build is running.",
+        "Release notes for loader updates show a proper heading."
+      ]
+    },
+    {
+      "version": "",
+      "cli_version": 1,
+      "date": "2026-10-17",
+      "summary": "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process",
+      "highlights": [
+        "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process"
+      ]
+    },
+    {
+      "version": "5.9.23",
+      "loader_version": 46,
+      "date": "2026-10-17",
+      "summary": "The damage meter now names your teammates exactly, by the hero each of them plays.",
+      "highlights": [
+        "Damage meter: teammates are matched to their row by the hero they picked in the lobby, so their names no longer carry a '?'.",
+        "Damage meter: crits and blocked damage are counted, and damage taken matches the game's own total.",
+        "Damage meter: the per-ability split works again after Update 6.",
+        "Overlays hide a column no row has data for, so mods can add optional columns behind a setting."
+      ]
+    },
+    {
+      "version": "5.9.22",
+      "loader_version": 45,
+      "date": "2026-10-16",
+      "summary": "Mods can offer settings for their game-data edits: sliders and switches in a mod's config now drive its numbers.",
+      "highlights": [
+        "Mod authors: entity edits can take a value from the mod's config (`config`, `times`) and be switched on or off (`when`).",
+        "Mod authors: [[patch]] stat values can come from config too, e.g. a camp size slider.",
+        "Changing such a setting rebuilds the mod's files on the next launch."
+      ]
+    },
+    {
+      "version": "5.9.21",
+      "loader_version": 45,
+      "date": "2026-10-16",
+      "summary": "Mod pages in your language, Update 6 fixes for hero picks, and a new challenge content kind.",
+      "highlights": [
+        "Browse and mod pages show a mod's own translation (name, summary, description) when the app runs in that language.",
+        "Hero ids fixed for Update 6; picking a hero someone else took is handled more safely.",
+        "New 'challenge' content kind (experimental) for editing the run challenges.",
+        "Lint warns when a mod edits a hero part that Update 6 replaced, so the edit would do nothing.",
+        "A small, dismissible Ko-fi note on the Library after a few modded launches."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 45,
+      "date": "2026-10-16",
+      "summary": "Update 6 symbols, taken-hero pick, va-gate hash",
+      "highlights": [
+        "Update 6 symbols, taken-hero pick, va-gate hash"
+      ]
+    },
+    {
+      "version": "5.9.20",
+      "loader_version": 44,
+      "date": "2026-10-16",
+      "summary": "Finds the game when Steam is installed outside Program Files, and the Game folder setting now actually applies (#55).",
+      "highlights": [
+        "Game folder setting in Settings is now used by every command; before, it was saved but ignored (#55).",
+        "Steam installed anywhere (not just Program Files) is found automatically through the Windows registry."
+      ]
+    },
+    {
+      "version": "",
+      "loader_version": 44,
+      "date": "2026-10-15",
+      "summary": "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange.",
+      "highlights": [
+        "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange."
+      ]
+    },
     {
       "version": "",
       "loader_version": 43,
@@ -238,288 +529,6 @@
       "summary": "Per-ability crit chance and cooldown reduction stats now read the right ability",
       "highlights": [
         "Fixed: mods reading or changing one ability's crit chance or cooldown reduction got a different ability's stat"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 29,
-      "date": "2026-10-08",
-      "summary": "Mods can set each chapter's day/night timer",
-      "highlights": [
-        "New: mods can change day/night length and boss timing per chapter (Chapter Timer)"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 28,
-      "date": "2026-10-08",
-      "summary": "Damage meter keeps each player's damage on their own row across chapters, plus stability fixes for mods",
-      "highlights": [
-        "Damage meter: after a chapter change, a player's damage stays on their own row instead of moving to a new one",
-        "Damage meter: players who left the lobby no longer appear on the board",
-        "Damage meter: much less log spam during co-op runs",
-        "Mod settings: a mod that adjusts its own setting no longer freezes the game",
-        "Mods that read the camera, hero stats or XP no longer error between chapters",
-        "Fixed negative stat values showing as huge numbers"
-      ]
-    },
-    {
-      "version": "5.9.9",
-      "date": "2026-10-06",
-      "summary": "Mods that need your hero (like the camera mod) now work for everyone, and the Log starts empty until a game runs.",
-      "highlights": [
-        "Fixed: the camera mod and other mods that read or change your hero did nothing unless a hidden loader setting had been switched on by hand. Settings > Loader features now has a Hero capture switch, and a mod that needs it switches it on for you when you apply.",
-        "Log: opens empty until a game is running, then shows that game live. Pick Last run or any earlier run in the list to read an old log.",
-        "For mod makers: `loader_flags = [\"RSMM_ENABLE_HERO_CAPTURE\"]` in [mod] asks for hero capture while your mod is enabled."
-      ]
-    },
-    {
-      "version": "5.9.8",
-      "date": "2026-10-06",
-      "summary": "Talent builder: give one talent another talent's effect, and the Log no longer calls a finished game the current run.",
-      "highlights": [
-        "Talent builder: \"Also gives the effect of\" on a card makes owning that talent also run another of the same hero's talents. Tested in game: Scarlet's Shapeshifter with Short Wick's bomb that explodes as soon as it lands.",
-        "Talent builder: the \"... Count\" stats are now labelled as tallies (\"defensive objects held\") and listed apart. They count things for other effects and do nothing on their own.",
-        "Fixed: the Log screen said \"Current run\" when no game was running. It now says \"Last run\", and notices a game started from Steam."
-      ]
-    },
-    {
-      "version": "5.9.7",
-      "date": "2026-10-06",
-      "summary": "Mods you switch off in the Library now really stay off, and the talent builder learns \"for a while after an ability\".",
-      "highlights": [
-        "Fixed: mods switched off in the Library were still installed when you launched the game. The Library is now what decides; mods in your profile folder that the Library shows as off are turned off before launch.",
-        "Talent builder: an added stat can now apply \"For a while after\" an ability, e.g. +25% damage for 3 seconds after POWER. Each use restarts the time.",
-        "Talent builder: stats are found by the words on the cards (\"trait cooldown\", \"power charge\"), and stats that would debuff your own hero (Ignite, Vulnerable, Rooted...) are greyed out.",
-        "Fixed: a talent with two added stats failed to build.",
-        "Editor: game-state values like \"Is in cinematic\" are no longer offered as stats, and \"Reset everything\" also clears test grants."
-      ]
-    },
-    {
-      "version": "5.9.6",
-      "date": "2026-10-05",
-      "summary": "Fixes Launch on Linux, which started neither Steam nor the game.",
-      "highlights": [
-        "Fixed (Linux): Launch did nothing. The app reported the game as started, but Steam and the game never opened. It now starts Steam properly, and if one way of reaching Steam fails it tries the next and tells you what went wrong."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 27,
-      "date": "2026-10-05",
-      "summary": "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server.",
-      "highlights": [
-        "Loader v27: logs why the game's WinHTTP calls fail (error code + which winhttp_real.dll is loaded) instead of claiming the backend redirect worked. Diagnostic for Windows players who see no party code on a self-hosted server."
-      ]
-    },
-    {
-      "version": "5.9.5",
-      "date": "2026-10-05",
-      "summary": "Play on a community-hosted online server in one step, from Settings or with one command.",
-      "highlights": [
-        "New: Settings > Game > Online server. Paste the address the host gave you and the app sets everything up, including installing or updating the loader when needed.",
-        "The same from the command line: `rsmm backend http://host:port` (and `rsmm backend off` to go back to the official servers). No more setx or Steam restarts.",
-        "Shows whether the server answers and whether your last game launch actually used it.",
-        "Fixed: `rsmm update-loader` said \"up to date\" when the game folder had no loader at all. It now says so."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 26,
-      "date": "2026-10-04",
-      "summary": "Online backend redirect: set RSMM_BACKEND_URL=http://host:port to point the game at a self-hosted backend (services/stormancer). Off by default; with it unset the WinHTTP wrappers are a plain passthrough. Also adds a Steam web-ticket identity probe that logs the identity string and never the ticket.",
-      "highlights": [
-        "Self-hosted online backend: point the game at your own server with RSMM_BACKEND_URL (off by default)",
-        "Steam web-ticket identity probe for backend setup (logs the identity, never the ticket)"
-      ]
-    },
-    {
-      "version": "5.9.4",
-      "date": "2026-10-03",
-      "summary": "Easier-to-read text throughout the app, and fewer background checks so screens open faster.",
-      "highlights": [
-        "Easier to read: new fonts, upright labels instead of slanted ones, and larger small text. The fonts now ship inside the app, so it no longer contacts Google at launch and looks the same offline.",
-        "Fixed: file paths in Settings were shown in capital letters. They now show exactly as they are.",
-        "Fixed: the top bar no longer gets cut off at the default window size.",
-        "Faster: coming back to the Library no longer re-runs the update checks, and Settings reuses what the app already learned at launch.",
-        "Faster: the Profiles screen reads all your profiles in one step instead of one per profile."
-      ]
-    },
-    {
-      "version": "5.9.3",
-      "date": "2026-10-03",
-      "summary": "A website refresh: easier-to-read fonts and a home page that leads with the registry. The app itself is unchanged.",
-      "highlights": [
-        "Website: a redesigned home page that puts the download, a search box and the most popular mods first.",
-        "Website: easier-to-read fonts across every page, with the blackletter kept for the logo.",
-        "Website: removed the grey box that appeared on mod, guide and collection pages.",
-        "No changes to the app in this version."
-      ]
-    },
-    {
-      "version": "5.9.2",
-      "date": "2026-10-03",
-      "summary": "Switching profiles no longer empties the one you left, every number on a talent card is editable, and cards link to the Ability editor.",
-      "highlights": [
-        "Fixed: switching profiles no longer empties or mislabels the profile you left. Its mods stay put and are no longer shown as 'not on disk'.",
-        "Talent editor: every number a card shows can now be edited, including computed ones (like the Ice Clone's damage), single-number selectors and values with unusual names. Cards with nothing editable dropped from 144 to 22 of 460.",
-        "Talent editor: new 'Open in Ability editor' link on each card jumps to that talent's parts and links.",
-        "Publishing: the website's publish page fills in the mod id, name, version, tags and more from the manifest in your zip."
-      ]
-    },
-    {
-      "version": "5.9.1",
-      "date": "2026-10-02",
-      "summary": "Block-based Scripts tab in the editor, faster talent cards, and editor tab fixes.",
-      "highlights": [
-        "New: the editor's Scripts tab can build a script from blocks (Blockly) and writes the Lua for you.",
-        "Editor: faster talent cards, and a slow pick no longer lands on the wrong tab.",
-        "Fixed: clicking a pending-change chip no longer turns another tab into an item editor.",
-        "The loader's live config reload and R.camera arrive through the loader channel."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 25,
-      "date": "2026-10-02",
-      "summary": "live config reload + R.camera",
-      "highlights": [
-        "live config reload + R.camera"
-      ]
-    },
-    {
-      "version": "5.9.0",
-      "date": "2026-10-01",
-      "summary": "Custom heroes, one editor for items, talents, abilities and maps (also in your browser), much faster applies, and export of any of the game's models.",
-      "highlights": [
-        "New for mod authors: custom heroes. A mod can add a hero of its own with its own name, body, weapons, outfits, numbers, abilities, attacks, talent cards and story pages.",
-        "New: one editor for items, talents, abilities and maps (rsmm editor), also at docs.rsmm.me/editor with nothing to install. Cards are drawn the way the game draws them.",
-        "The editor can open a mod you saved and keep working on it. Its new Scripts tab gives you items, talents and XP at the start of a run, so you can test a change at once.",
-        "Ability changes in the editor save straight into your custom hero.",
-        "Applying mods is much faster: a mod that did not change is not rebuilt, and an unchanged model or texture is not cooked again. A custom hero went from 46 seconds to under one.",
-        "New: rsmm export-model exports any of the game's 3001 models (scenery, props, enemies, NPCs) with textures and animations for Blender. export-character and import-character take a hero's body and animations out and back in.",
-        "More you can mod: animations, map chapters that generate from their own tiles, enemy copies, boss swaps, and the stat each item effect gives.",
-        "Fixed: an item copy marked unique_identity now really gets its own identity, so you can hold it and the original together."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 24,
-      "date": "2026-10-01",
-      "summary": "Mods can give an item by its id (R.give.by_name), which the editor's test grants use. Fixed: a repeating main-thread task could run itself many times in one frame (a test grant handed out 66 items at once).",
-      "highlights": [
-        "Mods can now hand you a specific item by its id; the editor's new test grants use this.",
-        "Fixed: a mod's repeating task could run many times in a single frame, so one test grant handed out dozens of items at once."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 23,
-      "date": "2026-09-26",
-      "summary": "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter.",
-      "highlights": [
-        "Run modifiers can now be read and changed by mods (No minimap proven in game); fixes reading global game values like the current chapter."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 22,
-      "date": "2026-09-26",
-      "summary": "…",
-      "highlights": [
-        "…"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 21,
-      "date": "2026-09-26",
-      "summary": "XP capture shared between mods; R.hero.entity() tells a custom hero from its base",
-      "highlights": [
-        "XP capture shared between mods; R.hero.entity() tells a custom hero from its base"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 20,
-      "date": "2026-09-23",
-      "summary": "Removed R.mods.request (the abandoned in-game mod menu's intent queue). R.mods.list() is unchanged.",
-      "highlights": [
-        "Removed R.mods.request (the abandoned in-game mod menu's intent queue). R.mods.list() is unchanged."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 19,
-      "date": "2026-09-20",
-      "summary": "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters.",
-      "highlights": [
-        "Stat modifiers now apply once instead of twice, show up on the in-run stat strip, and permanent ones last the whole run across chapters."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 18,
-      "date": "2026-09-18",
-      "summary": "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object.",
-      "highlights": [
-        "R.interact now reports the object you interacted with (ev.entity) and the hero doing it (ev.interactor); before, both pointed at the hero, so R.interact.name named your hero instead of the object."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 17,
-      "date": "2026-09-18",
-      "summary": "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with.",
-      "highlights": [
-        "New R.hp reads and changes the hero's real health. R.shards replaces R.combat, which moved dream shards, not health; R.combat still works but logs a deprecation line. R.interact.name now names the object you interacted with."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 16,
-      "date": "2026-09-18",
-      "summary": "Mod load problems now show up as errors: a broken init.lua, a manifest that fails to parse, or a mod skipped after a crash appear in rsmm log --errors and the desktop problems filter.",
-      "highlights": [
-        "Mod load problems now show up as errors: a broken init.lua, a manifest that fails to parse, or a mod skipped after a crash appear in rsmm log --errors and the desktop problems filter."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 15,
-      "date": "2026-09-17",
-      "summary": "Mods can now tell which object an interaction happened on, so a mod-made point of interest can respond when you use it.",
-      "highlights": [
-        "New for mod authors: an interaction event now reports WHICH object it fired on, so a mod can react to its own point of interest instead of to every chest and fountain in the run.",
-        "The object is carried through to the success step, which is the one mods actually act on — before, only the initial request knew what had been used.",
-        "Custom points of interest are no longer experimental: a mod-made structure generates on the map, draws its own minimap icon, and can be interacted with.",
-        "Removed a debug trace that aimed at an address the current game build no longer has, so it could never do anything but disable itself."
-      ]
-    },
-    {
-      "version": "5.8.0",
-      "date": "2026-09-14",
-      "summary": "Talent mods can now add new behaviour to a hero, not just change numbers, and you can publish mods to the store straight from the command line.",
-      "highlights": [
-        "New for mod authors: a talent mod can copy parts of a hero's talent logic and rewire them, so a talent can gain a new effect. For example, the attack after a dash can become the combo finisher, or a talent can summon rats every few attacks.",
-        "New for mod authors: a talent mod can borrow an effect another hero already has, such as Beowulf's TRAIT cooldown reduction, and give it to a different hero's talent.",
-        "Talent cards written by mods show real numbers that grow with rarity, like the game's own cards, instead of placeholder values.",
-        "Several talent or text changes in one mod now all apply. Before, only the last one took effect.",
-        "Relabelling Sun Wukong's talents works; his text could not be found before.",
-        "New CLI command: rsmm publish uploads a mod to the store, signed in with a personal API token."
-      ]
-    },
-    {
-      "version": "5.7.0",
-      "date": "2026-09-13",
-      "summary": "Edit the Sandman's shop from a config screen dressed in the game's own art, a new item-grid config editor for mod authors, and a local 3D map-generation editor.",
-      "highlights": [
-        "New for mod authors: the shop content kind edits the Sandman's shop. Set prices, choose which items each offer slot sells (including Grimoire, Astral and Wishing Well powerups), and replace the random magical-object offers with items you pick.",
-        "New for mod authors: the item-grid config field. A mod declares sections, filters, counts, a per-item number and an optional theme of game textures in config_schema.toml, and the app draws the editor. Textures are read from your own install, never shipped with a mod.",
-        "Config dialogs for grid editors open wide and lay their sections out side by side, sized to the window and your UI scale.",
-        "A shop edit that would crash the game when the Sandman's shop opens (a Minor row with fewer than two items) is refused before it is applied.",
-        "New CLI command: rsmm map-editor opens a local 3D editor for a chapter's tile-generation recipe.",
-        "Applying mods cleans up files from content you removed, and merged text banks land in the right mods folder."
       ]
     }
   ]

@@ -149,6 +149,44 @@ def set_icon(data: bytes, new_icon: str) -> bytes:
     return replace_lstr_any(data, cur, new_icon)
 
 
+#: An item's tier is the int it overrides ``Magical_Objects_Model\Quality``
+#: with, not its folder: a Rare item copied into ``Common/`` stayed Rare in game
+#: (2026-10-18). One-to-one with the folders over every shipped tiered item
+#: (13/12/11/16/16/25, 2026-10-18).
+QUALITY = {"Common": 0, "Rare": 1, "Epic": 2, "Legendary": 3, "Cursed": 4, "Powerups": 5}
+_QUALITY_PARENT = "Magical_Objects_Model\\Quality"
+
+
+def _quality_component(data: bytes):
+    from . import entity_graph as EG
+    hits = [c for c in EG.parse(data).components
+            if c.override is not None and c.override.path.endswith(_QUALITY_PARENT)]
+    if len(hits) != 1:
+        raise ValueError(f"{len(hits)} Quality overrides in the item; expected 1")
+    return hits[0]
+
+
+def get_quality(data: bytes) -> int:
+    """The item's tier int (see :data:`QUALITY`)."""
+    from . import entity_fields as EF
+    f = next(f for f in EF.fields(_quality_component(data)) if f.name == "value")
+    return int(f.text.split()[-1])
+
+
+def set_quality(data: bytes, rarity: str) -> bytes:
+    """Give the item the tier of ``rarity`` (a :data:`QUALITY` key)."""
+    from .entity_graph_edit import EntityFile
+    want = QUALITY[rarity]
+    if get_quality(data) == want:
+        return data
+    ef = EntityFile(data)
+    ef.set_value(_quality_component(data).path, "value", want)
+    out = ef.to_bytes()
+    if get_quality(out) != want:
+        raise ValueError(f"Quality did not take {want}")
+    return out
+
+
 def _node_value(data: bytes, label: str) -> tuple[int, float] | None:
     """Resolve ``label`` to ``(offset, value)`` using the authoritative cooked
     node layout: the f32 sits immediately **before** the node's closing ``END``
@@ -590,7 +628,31 @@ def remint_identity_guid(cooked: bytes, id_name: str, salt: str) -> bytes:
     g = find_identity_guid(cooked, id_name)
     if not g:
         return cooked
-    return cooked.replace(g, _mint_guid(g, salt.encode("utf-8")))
+    out = cooked.replace(g, _mint_guid(g, salt.encode("utf-8")))
+    # The Dt node's BODY carries a second id, as unique as the first (114/114
+    # shipped items) and found nowhere else (12024 files). Left shared, 14 copies
+    # of Increase_Shield were one item to the game: picking Goldilocks' Porridge
+    # from a chest took one of them away (playtest 2026-10-20).
+    t = find_type_guid(out)
+    if t is not None and out.count(t) == 1:
+        out = out.replace(t, _mint_guid(t, salt.encode("utf-8") + b":type"))
+    return out
+
+
+def find_type_guid(cooked: bytes) -> bytes | None:
+    """The 16-byte id at the start of the ``Dt Magical Object Data`` body, or None."""
+    from . import entity_fields as EF
+    from . import entity_graph as EG
+    try:
+        comps = EG.parse(cooked, "").components
+    except ValueError:          # not a whole cooked entity (a test fragment)
+        return None
+    c = next((x for x in comps if x.cls == "oCDtEntityCpntMagicalObjectDataSettings"), None)
+    f = c and next((f for f in EF.fields(c) if f.name == "bytes_3"), None)
+    if f is None or f.size < 16:
+        return None
+    g = bytes(c.body[f.offset:f.offset + 16])
+    return None if g == b"\x00" * 16 or any(m in g for m in _MARKERS) else g
 
 
 def load_corpus(corpus_dir: Path) -> list[bytes]:
@@ -637,6 +699,7 @@ def build_magic_item(
     base_cooked: bytes,
     corpus: list[bytes],
     rarity: str = "Common",
+    base_rarity: str | None = None,
     name: str | None = None,
     description: str | None = None,
     value_patches: list[tuple] | None = None,
@@ -645,6 +708,10 @@ def build_magic_item(
     remint_identity: bool = False,
     modifier_stats: dict[str, str | int] | None = None,
     super_description: str | None = None,
+    steps: list[dict] | None = None,
+    super_effect: bool = True,
+    effect: dict | list | None = None,
+    super_effects: list | None = None,
     replace: bool = False,
     bank_prior: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
@@ -664,6 +731,18 @@ def build_magic_item(
     * ``modifier_stats`` maps a modifier's name to the stat it should change
       instead (a ``data/stat_keys.json`` name or a ``0x`` key), see
       :mod:`rsmm.engine.item_modifier`;
+    * ``super_effect=False`` removes the super effect: the state that runs it
+      is emptied (no bonus ever applies) and its card text becomes the model's
+      empty text, as on the items that ship without one;
+    * ``effect`` = one ``{stat, amount[, seconds, on, ...]}`` table or a list
+      of them: always-on bonuses and timed bonuses on a trigger, see
+      :mod:`rsmm.engine.item_effect` (before ``steps``, which may adjust them);
+    * ``super_effects`` = a list of the same tables, run as the item's super
+      effect instead of the base's (``item_effect.apply_super_effects``); an
+      item without a super effect gets one, read from ``<new_id>_SuperEffect``;
+    * ``steps`` are graph edits (``set`` / ``link`` / ``add_link`` /
+      ``remove_link``, see :mod:`rsmm.engine.ability_edit`) run on the copy
+      after the value patches, by the part names ``rsmm entity-graph`` shows;
     * when ``name`` or ``super_description`` is given and ``bank_base_gen``
       points at the live text bank, the bank + every language sibling with
       ``<new_id>_Name`` / ``_Description`` / ``_SuperEffect`` appended. The
@@ -708,8 +787,24 @@ def build_magic_item(
         if own is None and renamed != base_key and struct.pack("<I", len(renamed)) \
                 + renamed.encode() in ent:
             ent = replace_lstr_any(ent, renamed, base_key)
+        # A key that does not embed the base id (Increase_Shield reads
+        # `Shield_Gain_When_Hit_Description`) was not renamed, so the copy kept
+        # showing the base's text over the `<id>_<suffix>` row written for it.
+        if own is not None and not replace:
+            cur = _own_text_key(ent, new_id, suffix)
+            if cur != renamed:
+                ent = replace_lstr_any(ent, cur, renamed)
     super_key = f"{new_id}_SuperEffect"
-    if super_description is not None:
+    if super_effects and not super_effect:
+        raise ValueError("super_effect = false removes the super effect that "
+                         "super_effects writes; give one or the other")
+    if not super_effect:
+        if super_description:
+            raise ValueError("super_effect = false leaves no super effect to describe; "
+                             "drop super_description")
+        if base_super is None:
+            raise ValueError(f"{base_id} has no super effect to remove")
+    if super_description is not None and not super_effects:
         if base_super is None:
             raise ValueError(
                 f"{base_id} has no super effect text, so super_description has "
@@ -727,8 +822,39 @@ def build_magic_item(
         if new_id != base_id and part_literal(ent, label) is None and base_id in label:
             label = label.replace(base_id, new_id)
         ent = apply_value_patch(ent, label, old, new, clear)
+    if effect is not None:
+        from . import item_effect as IE
+        ent = IE.apply_effects(ent, new_id, IE.parse_effects(effect))
+    if super_effects:
+        from . import item_effect as IE
+        ent = IE.apply_super_effects(ent, new_id, IE.parse_effects(super_effects))
+        if super_description is not None:
+            ent = IM.set_super_text_key(ent, super_key)
+    if not super_effect:
+        ent = _clear_super_effect(ent, base_id)
+    if steps:
+        from . import ability_edit as AE
+        res = AE.apply({new_id: ent}, steps, main=new_id, seed=f"item:{new_id}")
+        if res.resources:
+            # An item has no preload list of its own to add them to.
+            raise ValueError("cloned parts need resources the item does not load: "
+                             + ", ".join(sorted(res.resources)))
+        ent = res.files[new_id]
+        from .item_checks import donor_leftovers
+        donors = {AE.source_entity_ref(str(s["from"])).rsplit("\\", 1)[-1]
+                  .removesuffix(".entity.ot") for s in steps if s.get("clone") and s.get("from")}
+        left = donor_leftovers(ent, donors - {new_id, base_id})
+        if left:
+            # entity_check lets these through: they load, and read nothing.
+            raise ValueError("copied parts still point into the entity they were "
+                             "copied from; link them to this item's parts: "
+                             + "; ".join(left))
     if icon is not None:
         ent = set_icon(ent, icon)
+    # The tier the game reads is the Quality int, so a copy filed under
+    # another rarity must carry that rarity's int too (see QUALITY).
+    if not replace and base_rarity is not None and rarity != base_rarity:
+        ent = set_quality(ent, rarity)
 
     files_key = (f"EntitySettings/Objects/Magical_Objects/{rarity}/"
                  f"{new_id}.entity.ot.EntitySettingsResource.gen")
@@ -761,6 +887,43 @@ def build_magic_item(
 
 
 _TEXT_BANK_NAME = "Magical_Objects~GAM.xls"
+
+#: The model state an item switches on once enough copies are held
+#: (``item_effect.SUPER_COPIES``); whatever it runs
+#: while active IS the super effect (Increase_Shield: its healing modifier).
+_SUPER_STATE = "Child State Super Effect"
+
+
+def _clear_super_effect(ent: bytes, base_id: str) -> bytes:
+    """``ent`` with nothing left for its super-effect state to run and no
+    super-effect text.
+
+    The text must be the model's EMPTY text (``"" "" row -1 ""``, what every
+    item without a super effect inherits), not a key whose row is blank: the
+    card shows a blank row's key ("x5 Increase_Crit_M_SuperEffect", playtest
+    2026-10-20)."""
+    from . import entity_fields as EF
+    from .entity_graph_edit import EntityEditError, EntityFile
+    ef = EntityFile(ent, base_id)
+    try:
+        f = next(x for x in EF.fields(ef.component(_SUPER_STATE)) if x.name == "while_active")
+    except EntityEditError:
+        raise ValueError(f"{base_id} has no {_SUPER_STATE!r} to empty") from None
+    for i in reversed(range(len(f.items))):
+        ef.remove_ref(_SUPER_STATE, "while_active", i)
+    from .item_modifier import _SUPER_FORMAT
+    ef.clear_format_slots(_SUPER_FORMAT)
+    c = ef.component(_SUPER_FORMAT)
+    p = ef.objects[c.index - 1]
+    lstr = lambda b: struct.pack("<I", len(b)) + b    # noqa: E731
+    head = lstr(b"Text") + lstr(_TEXT_BANK_NAME.encode())
+    at = p.find(head)
+    if at == -1 or p.find(head, at + 1) != -1:
+        raise ValueError(f"{base_id}: cannot find its super text to blank")
+    end = at + len(head) + 4
+    end += 4 + struct.unpack_from("<I", p, end)[0]          # row, then the key
+    p[at:end] = lstr(b"") + lstr(b"") + b"\xff\xff\xff\xff" + lstr(b"")
+    return ef.to_bytes()
 
 
 def text_keys(cooked_bytes: bytes) -> list[str]:
@@ -821,10 +984,9 @@ class ItemEdit:
     #: above), leaving every other GUID intact so the entity still spawns. Safe
     #: because registration is path-keyed and nothing references the identity
     #: (the Dt Magical Object Data node's GUID) by GUID; only the runtime
-    #: identity changes. OPT-IN (default False) until
-    #: verified in-game per item, since picking the wrong GUID would silently
-    #: leave the collision or, worst case, touch a referenced node. Enable via
-    #: the manifest item field ``unique_identity = true``.
+    #: identity changes. Proven in game on Little Thumb Pebbles (2026-10-20);
+    #: the item kind turns it on for every copy unless the manifest says
+    #: ``unique_identity = false``. Off by default HERE for direct callers.
     remint_identity: bool = False
 
     def apply(self, cooked: bytes) -> bytes:

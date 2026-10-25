@@ -55,6 +55,7 @@ from pathlib import Path
 
 from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
+from rsmm.engine.compendium_layout import PAGE_DECODED, sync_compendium_columns
 
 # Moved to the engine (2026-09-26); re-exported for existing callers and tests.
 from rsmm.engine.content_merge import (
@@ -119,6 +120,7 @@ from rsmm.engine.versiondef import (
     _patch_versiondef_gen,
     _patch_versiondef_heroes,
     _warn_unmatched_bans,
+    collect_ban_placeholders,
     collect_item_bans,
     sync_versiondef,
 )
@@ -1905,7 +1907,10 @@ def _run_deactivation_hooks(mods: list[Mod],
 
 
 _RUNTIME_EXTENSIONS = {".lua", ".json", ".toml", ".txt"}
-_RUNTIME_BLOCKLIST  = {"manifest.toml", "config_schema.toml"}
+# manifest.toml is synced on its own (always). config_schema.toml IS synced:
+# the loader's in-game Settings > Mods tab (hook_settings_menu) draws each
+# mod's fields from the installed copy, the only one it can see.
+_RUNTIME_BLOCKLIST  = {"manifest.toml"}
 
 
 def _sync_one_file(src: Path, dst: Path, dry_run: bool) -> bool:
@@ -1927,8 +1932,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     """Copy each mod's runtime sidecar files into the game's mods/ dir.
 
     Always copied: manifest.toml + init.lua (when enabled).
-    Also copied: any top-level `.lua`, `.json`, `.toml`, `.txt` file that
-    is not the manifest or config schema — lets Lua mods ship pointer
+    Also copied: any top-level `.lua`, `.json`, `.toml`, `.txt` file other
+    than the manifest (the config schema included) — lets Lua mods ship pointer
     tables, data caches, or auxiliary scripts and read them via
     `R.mod_dir()` at runtime.
 
@@ -2248,6 +2253,64 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
     return True
 
 
+def _refresh_stale_asset_map(game_dir: Path) -> bool:
+    """Rebuild the asset map when it does not know every path the installed
+    game ships. False when it is stale and the rebuild did not fix it.
+
+    The map is how apply and restore tell a game file from a mod-added one,
+    so a map from an older game build turns every file that build lacked
+    into "mod-added": apply overwrites it with no backup and restore DELETES
+    it. Measured 2026-10-18 with a pre-Update-6 map: the Update 5 backport's
+    eleven `*_Update6` herodefs and LiveOps6 versiondef were removed by one
+    apply + restore, leaving hero select with only Random.
+
+    `_recover_game_update` alone cannot catch this: it keys on the stored
+    fingerprint, which `restore --all` and other rsmm copies (the dev CLI
+    beside a desktop install) also write, while a frozen build reads its own
+    copy of the map in the user data dir. So compare the map against the
+    install's manifest itself (pristine copy first: it holds no mod records).
+    """
+    live = game_dir / USEDRSCLIST_REL
+    pristine = live.with_name(live.name + BACKUP_SUFFIX)
+    src = pristine if pristine.exists() else live
+    try:
+        lines = [ln.strip() for ln in src.read_text(encoding="utf-8").splitlines()]
+    except OSError:
+        return True                 # no manifest to compare against
+    if lines and lines[0].isdigit():
+        lines = lines[1:]
+    from rsmm.engine.asset_map import decoded_to_encoded, encoded_to_decoded
+
+    def missing() -> int:
+        # The file `load_asset_map` reads, not the lru-cached view of it.
+        try:
+            known = json.loads(ASSET_MAP_JSON.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0                # missing/corrupt map: callers report that
+        return sum(1 for ln in lines if ln and ln not in known)
+
+    n = missing()
+    if not n:
+        return True
+    print(f"  [apply] the asset map is from an older game build ({n} shipped "
+          f"path(s) unknown); rebuilding it from {src.name}", flush=True)
+    try:
+        from rsmm.engine.find_iyg import main as rebuild_asset_map
+        rc = rebuild_asset_map(str(live))
+    except (OSError, ImportError) as e:
+        print(f"  [warn] asset map rebuild failed: {e}", file=sys.stderr)
+        rc = 1
+    encoded_to_decoded.cache_clear()
+    decoded_to_encoded.cache_clear()
+    _shipped_cache_paths.cache_clear()
+    if rc or missing():
+        print(f"{_ST.err('[FAIL]')} the asset map does not match the installed "
+              f"game, so game files would be treated as mod-added.\n"
+              f"  Run: rsmm rebuild-asset-map", file=sys.stderr)
+        return False
+    return True
+
+
 def _refuse_if_game_running(operation: str, force: bool) -> bool:
     """True when the caller should stop.
 
@@ -2314,6 +2377,8 @@ def _print_apply_summary(additions, removals, synthesized, blocked: int,
 
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     _recover_game_update(cooking, game_dir)
+    if not _refresh_stale_asset_map(game_dir):
+        return 1
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
@@ -2361,8 +2426,34 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Register new magical objects in the LiveOps version manifest + resource
     # cache so the engine actually loads + spawns them (UsedRscList alone only
     # makes them loadable-by-path). See sync_versiondef.
+    # A mod that replaces the versiondef whole (`values backport`) owns that
+    # file and its `.rsmm.bak` through the normal override path; the patcher
+    # must not also treat the backup as its pristine copy. Being disabled
+    # counts too: the restore below still needs that backup.
+    vd_enc = dec2enc.get(f"Definitions/Versions/{VERSIONDEF_GEN_LEAF}")
+    vd_owner = (state.active.get(vd_enc, {}).get("mod")
+                or next((m for e, _s, _d, m in additions if e == vd_enc), None))
     versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
-                                         bans=collect_item_bans(mods))
+                                         bans=collect_item_bans(mods),
+                                         gen_owner=vd_owner,
+                                         placeholders=collect_ban_placeholders(mods))
+    # The book's item grids are sized for the vanilla pool; widen any tier the
+    # pool just outgrew so added items do not draw past their frame.
+    page_enc = dec2enc.get(PAGE_DECODED)
+    page_owner = (state.active.get(page_enc, {}).get("mod")
+                  or next((m for e, _s, _d, m in additions if e == page_enc), None))
+    versiondef_changes += sync_compendium_columns(
+        game_dir, args.dry_run,
+        page=encoded_to_dest(page_enc, cooking, game_dir) if page_enc else None,
+        page_owner=page_owner)
+    # The pause menu's Mods button follows the loader's native menu flag.
+    from rsmm.engine.escape_menu import MENU_DECODED, sync_escape_menu
+    menu_enc = dec2enc.get(MENU_DECODED)
+    versiondef_changes += sync_escape_menu(
+        game_dir, args.dry_run,
+        menu=encoded_to_dest(menu_enc, cooking, game_dir) if menu_enc else None,
+        menu_owner=(state.active.get(menu_enc, {}).get("mod")
+                    or next((m for e, _s, _d, m in additions if e == menu_enc), None)))
 
     # Sync manifests so game knows which mods are enabled
     manifest_syncs = _sync_mod_manifests(mods, game_dir, args.dry_run)
@@ -2459,6 +2550,12 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
 
 
 def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
+    # Before anything is dropped: with a stale map, "mod-added" includes game
+    # files, and restore deletes those.
+    if not _refresh_stale_asset_map(game_dir):
+        print("  Not restoring: it would delete game files. Rebuild the map, "
+              "then re-run restore.", file=sys.stderr)
+        return 1
     state = State(cooking)
     # A restore is the recovery path, so it must see writes an interrupted
     # apply never got to record — otherwise mod-added files (which have no
@@ -2819,6 +2916,17 @@ def _ensure_asset_map() -> bool:
     return False
 
 
+def _protect_save_items(game_dir: Path, dry_run: bool) -> None:
+    """Put back the item records the game wrote out of the profile while an
+    item was out of the catalog (see `rsmm.engine.save_item_ledger`). Runs
+    under the install lock with the game closed, after apply AND restore."""
+    from rsmm.engine import save_item_ledger
+    try:
+        save_item_ledger.sync(game_dir, dry_run)
+    except Exception as e:  # noqa: BLE001 - never fail an apply over the save guard
+        print(f"  [warn] save: item records not checked ({e})", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", type=Path, default=None,
@@ -2877,11 +2985,18 @@ def main() -> int:
                 return 1
             if _refuse_if_game_running("restore", bool(getattr(args, "force", False))):
                 return 1
-            return cmd_restore_all(args, repo, cooking, game_dir)
+            rc = cmd_restore_all(args, repo, cooking, game_dir)
+            _protect_save_items(game_dir, args.dry_run)
+            return rc
     if not _ensure_asset_map():
         return 1
     if args.list:
         return cmd_list(args, repo, cooking)
+
+    if not args.dry_run:
+        from rsmm.cli.cmd_mods import consume_menu_requests
+        for line in consume_menu_requests(game_dir, MODS_DIR):
+            print(f"  [menu] {line}")
 
     # Compatibility graph: refuse to apply on hard conflict / cycle /
     # unmet require unless the user passes --force.
@@ -2925,10 +3040,12 @@ def main() -> int:
         if _refuse_if_game_running("apply mods", bool(getattr(args, "force", False))):
             return 1
         try:
-            return cmd_apply(args, repo, cooking, game_dir)
+            rc = cmd_apply(args, repo, cooking, game_dir)
         except NotEnoughSpace as e:
             print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
             return 1
+        _protect_save_items(game_dir, args.dry_run)
+        return rc
 
 
 if __name__ == "__main__":

@@ -156,6 +156,8 @@ def _find_section_end(data: bytes, start_pos: int) -> int:
     """
     depth = 1
     pos = start_pos
+    b: int | None = None
+    e: int | None = None
     while True:
         # `bytes.find` in C rather than a Python loop that slices a 4-byte
         # object at every offset. The old loop stepped `pos += 1` on a miss, so
@@ -163,8 +165,18 @@ def _find_section_end(data: bytes, start_pos: int) -> int:
         # which is exactly what find returns, making this equivalent rather
         # than merely similar. It was 26s of a 100s apply, second only to the
         # lstr scanner.
-        b = data.find(MARK_BEGIN, pos)
-        e = data.find(MARK_END, pos)
+        #
+        # Each marker found is kept until it is consumed: re-running both finds
+        # every step re-scanned the whole gap to a far END once per nested
+        # BEGIN, which made deep files quadratic.
+        if b is not None and b < pos:
+            b = None
+        if e is not None and e < pos:
+            e = None
+        if b is None:
+            b = data.find(MARK_BEGIN, pos)
+        if e is None:
+            e = data.find(MARK_END, pos)
         if e < 0 and b < 0:
             break
         if b >= 0 and (e < 0 or b < e):

@@ -186,6 +186,18 @@ def test_render_lays_out_the_declared_columns(tmp_path):
     assert "total 84169" in out
 
 
+def test_render_hides_a_column_no_row_publishes():
+    cols = [{"key": k, "label": k.upper(), "type": "number", "format": "plain",
+             "suffix": ""} for k in ("dealt", "act_1")]
+    record = {"title": "Damage", "columns": cols, "rows": [{"dealt": 5}],
+              "meta": {}, "updated": 0}
+    out = "\n".join(cmd_overlay.render(record))
+    assert "DEALT" in out
+    assert "ACT_1" not in out
+    record["rows"].append({"act_1": 0})
+    assert "ACT_1" in "\n".join(cmd_overlay.render(record))
+
+
 def test_main_lists_then_shows(tmp_path, capsys):
     _install(tmp_path)
     assert cmd_overlay.main(["--game-dir", str(tmp_path)]) == 0

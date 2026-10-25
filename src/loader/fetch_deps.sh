@@ -18,7 +18,6 @@ clone() {
 }
 
 clone https://github.com/TsudaKageyu/minhook                "$tp/minhook"
-clone https://github.com/ocornut/imgui                      "$tp/imgui"
 clone https://github.com/KhronosGroup/Vulkan-Headers        "$tp/Vulkan-Headers"
 clone https://github.com/lua/lua                            "$tp/lua"
 

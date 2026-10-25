@@ -75,3 +75,31 @@ def test_missing_source_raises(menu_bytes):
 def test_non_ascii_replacement_rejected(menu_bytes):
     with pytest.raises(ES.EntityStringError, match="ASCII"):
         ES.replace_strings(menu_bytes, {_PAGE_REF: "Modsé"})
+
+
+def _scan_reference(payload: bytes) -> list[tuple[int, str]]:
+    """The per-byte scanner `_scan_payload` replaced: try every offset."""
+    out, i, end = [], 0, len(payload) - 4
+    while i <= end:
+        n = int.from_bytes(payload[i:i + 4], "little")
+        if 1 <= n <= ES._MAX_LEN and i + 4 + n <= len(payload):
+            chunk = payload[i + 4:i + 4 + n]
+            if all(0x20 <= b < 0x7F for b in chunk):
+                out.append((i, chunk.decode("ascii")))
+                i += 4 + n
+                continue
+        i += 1
+    return out
+
+
+def test_run_scanner_matches_the_per_byte_reference():
+    import random
+    rng = random.Random(7)
+    alphabet = [0, 0, 0, 1, 2, 3, 5, 16, 17, 0x20, 0x41, 0x7E, 0x7F, 0xFF]
+    for _ in range(4000):
+        data = bytes(rng.choice(alphabet) if rng.random() < 0.9 else rng.randrange(256)
+                     for _ in range(rng.randint(0, 120)))
+        assert ES._scan_payload(data) == _scan_reference(data), data.hex()
+    # Back-to-back strings, one cut short, one inside another's text.
+    data = b"\x03\x00\x00\x00abc\x02\x00\x00\x00de\x09\x00\x00\x00xy\x01\x00\x00\x00z"
+    assert ES._scan_payload(data) == _scan_reference(data)

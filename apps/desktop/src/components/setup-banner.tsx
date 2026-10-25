@@ -11,6 +11,7 @@ import {
   type UpdateLoaderResult,
   applyMods,
   doctor,
+  updateCli,
   updateLoader,
   updatePatternDb,
 } from '../lib/rsmm';
@@ -110,6 +111,9 @@ export function SetupBanner() {
         'setup-updates',
         async () => {
           await updatePatternDb().catch(() => null);
+          // Not awaited: a CLI download must not hold up doctor; it takes
+          // effect on the next launch anyway.
+          void updateCli().catch(() => null);
           const planted = await updateLoader().catch(() => null);
           noteLoaderResult(planted);
           return planted;

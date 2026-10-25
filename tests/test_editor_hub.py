@@ -130,12 +130,12 @@ def test_a_write_with_the_token_goes_through(call, tmp_path):
 
 
 def test_a_domain_error_is_a_400_with_its_reason(call):
-    bad = {"tab": "items", "edit": {"base": "Dash_Crit_Chance", "id": "x"}}
+    bad = {"tab": "items", "edit": {"base": "Dash_Crit_Chance", "id": "not an id"}}
     status, data, _ = call("POST", "/content/api/check", bad, {"X-RSMM-Token": call.token})
-    assert status == 400 and "exactly as long" in json.loads(data)["error"]
+    assert status == 400 and "letters, digits and _" in json.loads(data)["error"]
     # The preview lists a broken edit's reason next to the blocks that do build.
     status, data, _ = call("POST", "/content/api/toml", bad, {"X-RSMM-Token": call.token})
-    assert status == 200 and "exactly as long" in json.loads(data)["errors"][0]["error"]
+    assert status == 200 and "letters, digits and _" in json.loads(data)["errors"][0]["error"]
     status, data, _ = call("GET", "/content/api/talents?hero=Nope")
     assert status == 400 and "no shipped hero" in json.loads(data)["error"]
 
@@ -261,3 +261,16 @@ def test_the_block_editor_files_and_event_list_are_served(local, bridge):
         assert call("GET", "/content/static/three.module.min.js")[0] == 404
         status, body, _ = call("GET", "/content/api/blocks/meta")
         assert status == 200 and isinstance(json.loads(body)["events"], list)
+
+
+def test_pages_never_load_engine_urls_through_img_src():
+    """The web editor routes fetch() to its engine, not image loads: an
+    ``img.src`` pointing at ``api/...`` 404s there (map textures never drew)."""
+    import re
+    from pathlib import Path
+    pages = Path(__file__).resolve().parent.parent / "src/rsmm/cli/editor/pages"
+    bad = re.compile(r"""\.src\s*=\s*(fileUrl\(|["'`]api/)""")
+    hits = [f"{p.name}:{n}" for p in [*pages.glob("*.html"), *pages.glob("*.js")]
+            for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+            if bad.search(line)]
+    assert not hits, hits

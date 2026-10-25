@@ -195,3 +195,33 @@ def test_set_mod_enabled_inserts_when_missing(mods_dir):
     text = (root / "manifest.toml").read_text(encoding="utf-8")
     assert text.splitlines()[0] == "[mod]"
     assert "enabled = false" in text
+
+
+def _requests(game_dir, enable):
+    import json
+    (game_dir / "mods").mkdir(parents=True, exist_ok=True)
+    (game_dir / "mods" / CM.MENU_REQUESTS).write_text(json.dumps({"enable": enable}))
+
+
+def test_in_game_menu_requests_flip_the_library_once(mods_dir, tmp_path):
+    """Settings > Mods in game writes requests; apply carries them into the
+    library manifests and deletes the file so they are not re-applied."""
+    _write_manifest(mods_dir, "a", enabled=True)
+    _write_manifest(mods_dir, "b", enabled=False)
+    game = tmp_path / "game"
+    _requests(game, {"a": False, "b": True, "gone": True, "bad": "yes"})
+    lines = CM.consume_menu_requests(game, mods_dir)
+    assert not _enabled(mods_dir, "a") and _enabled(mods_dir, "b")
+    assert len(lines) == 2
+    assert not (game / "mods" / CM.MENU_REQUESTS).exists()
+    assert CM.consume_menu_requests(game, mods_dir) == []
+
+
+def test_an_unreadable_request_file_is_left_alone(mods_dir, tmp_path):
+    _write_manifest(mods_dir, "a", enabled=True)
+    game = tmp_path / "game"
+    (game / "mods").mkdir(parents=True)
+    (game / "mods" / CM.MENU_REQUESTS).write_text("{not json")
+    assert "unreadable" in CM.consume_menu_requests(game, mods_dir)[0]
+    assert _enabled(mods_dir, "a")
+    assert (game / "mods" / CM.MENU_REQUESTS).exists()

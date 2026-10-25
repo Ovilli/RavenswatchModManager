@@ -240,6 +240,7 @@ def test_install_bank_tolerates_herodef_stem_spelling(tmp_path, monkeypatch, her
     cooked.parent.mkdir(parents=True)
     cooked.write_bytes(b"")
     monkeypatch.setattr(apply_mods, "find_game_dir", lambda: tmp_path)
-    monkeypatch.setattr(apply_mods, "load_asset_map", lambda: amap)
+    from rsmm.engine import asset_map
+    monkeypatch.setattr(asset_map, "decoded_to_encoded", lambda: amap)
 
     assert skills._install_bank(hero) == (cooked, decoded)

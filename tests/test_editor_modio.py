@@ -143,6 +143,72 @@ def test_an_opened_mod_rebuilds_its_own_blocks_and_saves_over_them(tmp_path):
     assert sum(c["kind"] == "talent" for c in doc["content"]) == 1, "an untouched block moved"
 
 
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_an_items_graph_steps_survive_open_and_save(tmp_path):
+    """The page has no controls for an item's [[content.steps]]; opening the mod
+    used to refuse the block, and a save must not drop them."""
+    steps = [{"clone": ["Crit Chance Modifier Timer"],
+              "from": "Objects/Magical_Objects/Common/Dash_Crit_Chance", "suffix": " P"},
+             {"remove_link": "On Damage Received.activates[1]"},
+             {"percent": "Descripton Format.obj_4", "value": True}]
+    item = {"mode": "clone", "base": "Increase_Shield", "id": "Increase_Crit_M", "steps": steps,
+            "noSuper": True, "sharedIdentity": True,
+            "effect": {"stat": "Crit chance", "amount": 0.3, "seconds": 5, "on": "dash"}}
+    defs = C.defs_for("items", item)
+    C.save(defs, "m1", tmp_path, create=True, name="M1")
+
+    got = M.load_mod(tmp_path, "m1")
+    pay = got["items"]["Increase_Shield"]["payload"]
+    assert pay["steps"] == steps
+    assert pay["noSuper"] is True and defs[0][2]["super_effect"] is False
+    assert pay["sharedIdentity"] is True and defs[0][2]["unique_identity"] is False
+    # A lone `effect` is written as a one-entry `effects` list, the same item.
+    assert pay["effects"] == [item["effect"]] and defs[0][2]["effects"] == [item["effect"]]
+    assert C.defs_for("items", pay) == defs
+
+
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_items_from_scratch_save_open_and_build(tmp_path):
+    """Two blank items in one mod: each keyed by its own id, both reopen, and
+    the card preview builds them with the generated text."""
+    effects = [{"stat": "Crit chance", "amount": 0.1},
+               {"stat": "Armour", "amount": 3, "seconds": 5, "on": "dash", "percent": False}]
+    defs = []
+    for n, item_id in enumerate(("Charm", "A_Longer_Charm_Name")):
+        req = {"mode": "blank", "base": f"{C.BLANK}:{n}", "id": item_id, "name": item_id,
+               "rarity": "Rare", "effects": effects}
+        assert C.item_preview(req)["autoText"].startswith("• #+{0}%@ #Crit chance@")
+        defs += C.defs_for("items", req)
+    assert all("base" not in f and f["effects"] == effects for _k, _i, f in defs)
+    C.save(defs, "m2", tmp_path, create=True, name="M2")
+
+    got = M.load_mod(tmp_path, "m2")["items"]
+    assert set(got) == {f"{C.BLANK}:Charm", f"{C.BLANK}:A_Longer_Charm_Name"}
+    pay = got[f"{C.BLANK}:Charm"]["payload"]
+    assert pay["mode"] == "blank" and pay["effects"] == effects
+    assert C.defs_for("items", pay) == defs[:1]
+    with pytest.raises(C.EditorError, match="add an effect"):
+        C.defs_for("items", {**pay, "effects": []})
+
+
+@pytest.mark.skipif(not _game(), reason="no game data")
+def test_super_effects_save_open_and_preview(tmp_path):
+    """A blank item's super effects reach the manifest, reopen, and the preview
+    numbers the super text from them."""
+    supers = [{"stat": "Attack power", "amount": 20}]
+    req = {"mode": "blank", "base": f"{C.BLANK}:0", "id": "Super_Charm", "rarity": "Rare",
+           "effects": [{"stat": "Crit chance", "amount": 0.1}], "superEffects": supers}
+    got = C.item_preview(req)
+    assert got["autoSuper"] == "#+{0}%@ #Attack power@" and len(got["super"]) == 1
+    defs = C.defs_for("items", req)
+    assert defs[0][2]["super_effects"] == supers
+    C.save(defs, "m3", tmp_path, create=True, name="M3")
+    pay = M.load_mod(tmp_path, "m3")["items"][f"{C.BLANK}:Super_Charm"]["payload"]
+    assert pay["superEffects"] == supers and C.defs_for("items", pay) == defs
+    with pytest.raises(C.EditorError, match="No super effect"):
+        C.defs_for("items", {**pay, "noSuper": True})
+
+
 HERO_MANIFEST = """[mod]
 id = "m"
 
@@ -305,3 +371,64 @@ def test_a_builder_block_opens_with_every_part_and_saves_back_the_same(tmp_path)
     assert blocks["mt_builder"]["add_stats"][0]["after"] == "DEFENSE"
     assert blocks["mt_builder"]["on_hit"] == want["on_hit"]
     assert E["onHit"]["Trait Armor"][0]["line"] == M._LOADED_LINE
+
+
+# --- hero capture: the scripts' loader flag ---------------------------------------
+# 2026-10-19: a user's test grants never ran — hero capture was off, so
+# R.entity.ready() stayed false and the script waited forever without a word.
+
+def _flags(text: str) -> list:
+    return tomllib.loads(text)["mod"].get("loader_flags", [])
+
+
+def test_saving_test_grants_asks_the_manifest_for_hero_capture(tmp_path):
+    C.save([], "m1", tmp_path, create=True, name="M1", script=M.script_config(CFG))
+    text = (tmp_path / "m1" / "manifest.toml").read_text()
+    assert _flags(text) == ["RSMM_ENABLE_HERO_CAPTURE"]
+    C.save([], "m1", tmp_path, script=M.script_config(CFG))     # added once, not twice
+    assert (tmp_path / "m1" / "manifest.toml").read_text() == text
+
+
+@pytest.mark.parametrize("manifest, want", [
+    ('[mod]\nid = "a"\n', ["RSMM_ENABLE_HERO_CAPTURE"]),
+    ('[mod]\nid = "a"\n\n[[content]]\nkind = "item"\nid = "x"\n', ["RSMM_ENABLE_HERO_CAPTURE"]),
+    ('[mod]\nid = "a"\nloader_flags = ["RSMM_ENABLE_UI_HOOK"]  # mine\n'
+     '\n[[content]]\nkind = "item"\n',
+     ["RSMM_ENABLE_UI_HOOK", "RSMM_ENABLE_HERO_CAPTURE"]),
+])
+def test_ensure_loader_flag_adds_to_mod_and_keeps_the_rest(manifest, want):
+    new = M.ensure_loader_flag(manifest, "RSMM_ENABLE_HERO_CAPTURE")
+    assert _flags(new) == want
+    assert tomllib.loads(new).get("content") == tomllib.loads(manifest).get("content")
+    assert M.ensure_loader_flag(new, "RSMM_ENABLE_HERO_CAPTURE") == new
+
+
+def test_ensure_loader_flag_rewrites_a_multi_line_list():
+    new = M.ensure_loader_flag('[mod]\nloader_flags = [\n  "RSMM_ENABLE_UI_HOOK",\n]\nid = "a"\n',
+                               "RSMM_ENABLE_HERO_CAPTURE")
+    assert _flags(new) == ["RSMM_ENABLE_UI_HOOK", "RSMM_ENABLE_HERO_CAPTURE"]
+    assert tomllib.loads(new)["mod"]["id"] == "a"
+
+
+def test_the_generated_script_says_when_hero_capture_is_off():
+    lua = M.script_lua(M.script_config(CFG))
+    assert "R.entity.capture_enabled()" in lua
+    assert 'loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]' in lua
+
+
+def test_save_refuses_blocks_that_would_fail_in_apply(tmp_path, monkeypatch):
+    """Saving runs the Check button's build: a mod is never written with a block
+    `rsmm apply` would refuse, whether or not Check was pressed."""
+    from types import SimpleNamespace
+    block = ("talent", "t_builder", {"kind": "talent", "id": "t_builder", "hero": "Piper"})
+    monkeypatch.setattr(C, "_defs", lambda req: [block])
+    from rsmm.engine import corpus
+    monkeypatch.setattr(corpus, "source", lambda: "install")   # the check can build
+    monkeypatch.setattr(C, "check", lambda defs: [
+        {"id": "t_builder", "kind": "talent", "ok": False, "error": "no talent 'X' here"}])
+    req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path),
+                          body={"mod": "new_mod", "create": True, "edits": [{}]})
+    with pytest.raises(C.EditorError,
+                       match=r"not saved: 1 block\(s\).*talent t_builder: no talent"):
+        C._save(req)
+    assert not (tmp_path / "new_mod").exists()

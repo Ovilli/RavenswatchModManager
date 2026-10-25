@@ -203,6 +203,33 @@ Part names and link indices are the ones `rsmm entity-graph` prints for that
 file, and removing a link shifts the later indices of the SAME list, so remove
 from the end first or list one step per field. `clone` steps are refused.
 
+**Let the player choose the number.** A `set` step can read the mod's config
+instead of a literal: `config = "<field>"` takes the player's value, and
+`times = <n>` multiplies a number field by `n` — write the shipped value there,
+and a multiplier of 1.0 leaves the game as it was.
+
+```toml
+# config_schema.toml
+[fields.health]
+label   = "Enemy health multiplier"
+type    = "float"
+min     = 0.5
+max     = 5.0
+default = 1.5
+
+# manifest.toml
+[[content.steps]]
+set    = "Chapter 2 Max Health Multiplier Selector.obj_4[1]"
+config = "health"
+times  = 2.0          # shipped value
+```
+
+Like every content config, a change takes effect on the next launch.
+
+Any step can also carry `when = "<bool field>"`: it applies only while that
+switch is on. That is how a mod offers an optional structural change, e.g. a
+`link` that sends a tester's `on_false` to the same state as its `on_true`.
+
 ---
 
 ## `mesh` — put your model in the game
@@ -498,6 +525,58 @@ time, so a name the recipe no longer has fails the emit rather than landing on
 whatever now sits at that index. The **Map** tab of `./rsmm editor` writes these
 blocks for you from a 3D view of the chapter.
 
+## `scenery` — move, remove and add the small objects on a chapter's map
+
+**What the player sees.** A rock moved off the path, a tree gone, a few more
+ruins on a hill. These are the chapter's own objects: most of what a map shows
+outside its tiles (Dark Hills places about 7,000 of them in four scenery
+levels), each standing once, in every run of that chapter.
+
+```toml
+[mod]
+id           = "TidyHills"
+name         = "Tidy Dark Hills"
+version      = "0.1.0"
+author       = "you"
+description  = "Clears a path and adds a ruin."
+experimental = true
+
+[[content]]
+kind    = "scenery"
+id      = "southwest"
+chapter = "DarkHills"
+level   = "Ot/DarkHills/Map_Dark_Hills_Scenery_SouthWest.level.ot.GameStream.gen"
+
+[content.moves."882"]                # object id in that level
+entity = "DarkHills\\SceneryObjects_DarkHills\\Rock_Medium_C.entity.ot"
+at     = [94.33, -6.63, 104.02]      # where the game stands it (the anchor)
+pos    = [96.33, -6.63, 104.02]
+yaw    = 30
+scale  = 1.5
+
+[content.removes."883"]
+entity = "DarkHills\\SceneryObjects_DarkHills\\Planks_Walls_B.entity.ot"
+at     = [121.86, -3.39, -19.66]
+
+[[content.adds]]
+entity = "DarkHills\\SceneryObjects_DarkHills\\Wall_Ruins_Block_Small_A.entity.ot"
+pos    = [100.0, -6.5, 110.0]
+yaw    = 45
+scale  = 1.0
+```
+
+**Prove it.** Start a run in that chapter and walk to the spot: the moved
+object stands at its new place, the removed one is gone, the added one is there.
+
+**Trap.** `entity` and `at` anchor every edit to the object the game ships at
+that id, so a patch that renumbers the level fails the emit instead of moving
+something else. A removal *sinks* the object 1000 m under the map (it stops
+showing and blocking); taking it out of the level is not proven yet. Additions
+are limited to entities the chapter already places, because only those are in
+its resource cache, and one the cache misses can take the whole level down. The
+**Objects** tool (6) in the **Map** tab of `./rsmm editor` writes these blocks
+for you.
+
 ---
 
 ## `game_mode` — reorder the chapters of a run
@@ -533,9 +612,10 @@ refused, because the game skips it.
 
 ## `map` — make a chapter play a cloned map
 
-**What the player sees.** A chapter that plays a mapdef of your own. Today it
-looks like the base map: the clone reuses the base's terrain and still draws
-its tiles from the base's pool.
+**What the player sees.** A chapter that plays a mapdef of your own: the
+base's terrain, generated from the clone's OWN tile pool and recipe. Change
+which tiles it may draw (`pool`) and how many of each kind it places
+(`tilegen`) without touching the vanilla chapter.
 
 ```toml
 [mod]
@@ -551,17 +631,26 @@ kind    = "map"
 id      = "Twilight_Hills"
 base    = "Dark_Hills"   # Dark_Hills, Storm_Island, Avalon or Baba_Yaga
 chapter = 0              # 0 Dark Hills, 1 Storm Island, 2 Avalon, 3 Baba Yaga
+
+# Optional: the clone's own tile pool. "<Name>" is looked up in the base's
+# biome first; "<Biome>/<Name>" borrows a tile from another biome.
+pool    = { add = ["Avalon/64x64_Ponds_And_Fountains_Camp"], remove = ["3x3_Blocker_Props_01"] }
+
+# Optional: the clone's own recipe, same fields as the `tilegen` kind.
+[content.tilegen]
+kinds = { Camp = { count = 2 } }
+fill  = { "40x40" = [], "64x64" = [] }
 ```
 
 **Prove it.** `R.maps.chapters()` lists each chapter's map: the one you
 repointed says `resref` and resolves to a mapdef that is not the vanilla one.
 
 **Trap.** `chapter` overrides `All_Chapters` as a whole file, so it conflicts
-with a `game_mode` edit in another mod (last writer wins). Tile generation
-follows the base's tile-generation level back to the ORIGINAL mapdef, so pool
-edits on the clone do nothing yet, and `tribe` has shown no visible effect.
-To change what an existing chapter generates, `tilegen` and `poi` are the
-proven tools.
+with a `game_mode` edit in another mod (last writer wins). `tribe` has shown
+no visible effect. A removal that leaves a counted recipe kind (Start,
+Map_Boss, Teleporter, …) with no pool tile is refused. Baba Yaga is not
+tile-generated, so it takes neither `pool` nor `tilegen`. To change what a
+VANILLA chapter generates, use `tilegen` and `poi`.
 
 ---
 
@@ -623,6 +712,39 @@ description = "Twice the experience, twice the regret."
 the unproven part — the slot count looks pre-sized to the vanilla set. A
 modifier's effect is hardcoded C++ keyed by an entity-value id, so a clone
 reuses an existing behaviour; new behaviour is layered in Lua via `R.modifier`.
+
+---
+
+## `challenge` — a new entry on the challenge screen
+
+**What the player sees.** A new challenge beside DodgeIt and Rush Hour: a title
+and a fixed set of up to five modifiers.
+
+```toml
+[mod]
+id           = "NightOwl"
+name         = "Night Owl"
+version      = "0.1.0"
+author       = "you"
+description  = "Night only, no minimap, no boss timer."
+experimental = true
+
+[[content]]
+kind      = "challenge"
+id        = "NightOwl"
+name      = "Night Owl"
+modifiers = ["NightOnly", "NoMinimap", "NoBossTimer"]
+```
+
+**Prove it.** Open the challenge screen; the new entry is listed with its three
+modifier icons.
+
+**Tip.** The game's text already titles three challenges that never shipped —
+`AllIn`, `TeamUp` and `TheCrucible`. Use one as the `id` and leave out `name`
+to bring it back under its original title.
+
+**Trap.** Five modifiers is the most a challenge holds, and only shipped
+modifiers can be listed.
 
 ---
 

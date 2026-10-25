@@ -130,3 +130,60 @@ def test_slots_for_refuses_a_kind_the_chapter_does_not_have():
     assert tg.slots_for("Fountain")
     with pytest.raises(TG.TileGenError):
         tg.slots_for("Not_A_Kind")
+
+
+# --------------------------------------------------------------------------
+# changing the object count: add/remove slots, add kinds
+# --------------------------------------------------------------------------
+
+@needs_corpus
+@pytest.mark.parametrize("path", _levels(), ids=lambda p: p.parent.name)
+def test_a_renumbering_rebuild_of_an_unchanged_recipe_is_byte_identical(path):
+    """The proof that `_rebuild` sees every id reference: if it missed one, the
+    shipped layout (kinds, groups, slots after the fixed prefix) would still
+    come back, but some vector would point at the wrong object."""
+    from rsmm.engine.level_placements import _graph, _inner
+
+    raw = path.read_bytes()
+    cf, sec, inner = _inner(raw)
+    g = _graph(inner)
+    assert TG._rebuild(cf, sec, inner, g, TG._class_names(g), TG.read(raw)) == raw
+
+
+@needs_corpus
+@pytest.mark.parametrize("path", _levels(), ids=lambda p: p.parent.name)
+def test_slots_and_kinds_can_be_added_and_removed(path):
+    raw = path.read_bytes()
+    tg = TG.read(raw)
+    n_slots, n_kinds = len(tg.slots), len(tg.kinds)
+    victim = next(i for i in sorted(tg.slots) if i not in tg.spawner.whole_map.slots)
+    gone_pos = tg.slots[victim].pos
+    TG.remove_slot(tg, victim)
+    TG.add_slot(tg, "40x40", (12.5, 3.0, -7.25), {"Start": True})
+    TG.add_slot(tg, "40x40", (99.0, 0.0, 99.0))
+    TG.add_kind(tg, "RSMM_Placed_1", count=1, footprints={"40x40": True})
+
+    out = TG.write(raw, tg)
+    back = TG.read(out)
+    assert (len(back.slots), len(back.kinds)) == (n_slots + 1, n_kinds + 1)
+    assert gone_pos not in {s.pos for s in back.slots.values()}
+    new = next(s for s in back.slots.values() if s.pos == (12.5, 3.0, -7.25))
+    assert new.kinds[back.kind_names.index("Start")] == 1
+    assert all(row == [2] * len(back.kind_names) for row in new.compat)
+    assert back.kind_names[-1] == "RSMM_Placed_1"
+    assert back.kinds[back.spawner.kind_ids[-1]].count == 1
+    assert TG.write(out, back) == out
+
+
+@needs_corpus
+def test_bad_slot_and_kind_edits_are_refused():
+    raw = _levels()[0].read_bytes()
+    tg = TG.read(raw)
+    with pytest.raises(TG.TileGenError, match="footprint group"):
+        TG.add_slot(tg, "99x99", (0, 0, 0))
+    with pytest.raises(TG.TileGenError, match="no kind"):
+        TG.add_slot(tg, "40x40", (0, 0, 0), {"Nope": True})
+    with pytest.raises(TG.TileGenError, match="whole-map"):
+        TG.remove_slot(tg, tg.spawner.whole_map.slots[0])
+    with pytest.raises(TG.TileGenError, match="already exists"):
+        TG.add_kind(tg, "Camp")

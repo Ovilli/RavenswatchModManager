@@ -11,10 +11,17 @@ import { Button, MonoTag, useModalChrome } from './chrome';
 
 /** One release's notes. Shared by the dialog and the About page. */
 export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
+  const t = useT();
   return (
     <section className="space-y-2">
       <header className="flex items-baseline gap-3">
-        <h3 className="font-fraktur text-xl text-parchment">v{entry.version}</h3>
+        <h3 className="font-fraktur text-xl text-parchment">
+          {entry.version
+            ? `v${entry.version}`
+            : entry.loader_version !== undefined
+              ? t('Loader v{n}', { n: entry.loader_version })
+              : t('CLI v{n}', { n: entry.cli_version ?? 0 })}
+        </h3>
         <span className="flex-1 border-b border-dotted border-oxblood/40" aria-hidden />
         <MonoTag>{entry.date}</MonoTag>
       </header>

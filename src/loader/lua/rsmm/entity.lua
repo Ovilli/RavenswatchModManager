@@ -209,8 +209,9 @@ local function _native_capture_active()
 end
 
 -- A captured pointer is "hero-like" if its max-HP field reads as a sane float
--- AND it carries a valid HUD HP-mirror pointer at +0x1d80. The mirror is the
--- hero discriminator: Hero_ModifyDreamShards dereferences **(hero+0x1d80) on every
+-- AND it carries a valid HUD HP-mirror pointer at +0x1da8 (+0x1d80 before
+-- Update 6). The mirror is the hero discriminator: Hero_ModifyDreamShards
+-- dereferences **(hero+ENTITY_HUDMIRROR_OFF) on every
 -- heal/damage. Non-player entities (GAIN_HEALTH fires for enemies too) have no
 -- HUD mirror, so requiring it rejects false captures. Verified in Ghidra
 -- (FUN_140391d30 / FUN_140399a10). All reads are fault-safe (return nil on a

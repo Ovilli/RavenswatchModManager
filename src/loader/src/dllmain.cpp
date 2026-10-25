@@ -6,9 +6,13 @@
 //   * Generic Lua hook bridge (hook_lua) backing the public rsmm.hook
 //   * Pattern-resolved engine baseline verifier (hook_engine), off by default
 //
-// Removed: in-game ImGui overlay (hook_vk, hook_win32) and Steam vtable
-// integration. Reason: the overlay surfaces were never feature-complete
-// and we don't ship things that don't work.
+//   * Mods tab in the game's own Settings page + pause menu Mods button
+//     (hook_settings_menu), on unless RSMM_DISABLE_NATIVE_MENU
+//
+// Removed: the first in-game overlay (hook_vk, hook_win32), which hooked
+// Vulkan in a DX12-only game and never drew; its DXGI/ImGui successor painted
+// over the Settings book (replaced by hook_settings_menu); Steam vtable
+// integration.
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -27,6 +31,7 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
+#include "hook_settings_menu.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
@@ -159,6 +164,7 @@ static void loader_thread_cxx() {
         install_guarded("skins",   rsmm::install_skin_hooks);
         install_guarded("skills",  rsmm::install_skill_hooks);
         install_guarded("ui",      rsmm::install_ui_hooks);
+        install_guarded("native-menu", rsmm::install_settings_menu_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
         install_guarded("rsc-trace", rsmm::install_resource_hooks);

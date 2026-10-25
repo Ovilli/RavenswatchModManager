@@ -1,3 +1,4 @@
+mod cli_channel;
 pub mod graphics_mode;
 mod launcher_log;
 mod loader_log;
@@ -17,6 +18,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .setup(|_app| {
+            cli_channel::promote_staged(_app.handle());
             // On Linux (and Windows dev builds) the `rsmm://` scheme isn't
             // claimed by an installer, so register it at runtime. Best-effort:
             // a failure here just means OAuth deep links won't route — the
@@ -62,6 +64,7 @@ pub fn run() {
             overlay_state::read_overlay_state,
             rsmm_env::rsmm_runtime_env,
             rsmm_env::probe_rsmm,
+            cli_channel::cli_channel,
             update_env::update_install_target,
             update_migrate::migrate_to_appimage,
             update_migrate::relaunch_migrated_appimage,

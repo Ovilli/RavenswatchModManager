@@ -20,6 +20,14 @@ Usage:
     python scripts/bump-version.py patch --tag    # also create & push the v* git tag
     python scripts/bump-version.py patch --dry-run
 
+The release note goes into the same commit. Pass it here and it is written to
+`data/changelog.json` with the same writer the loader and CLI channels use:
+
+    python scripts/bump-version.py patch --summary "..." --highlight "..." [--highlight "..."]
+
+CI rejects a version with no note, so a committing bump without `--summary`
+is refused unless the feed already has a note for the new version.
+
 The script is idempotent (re-running with the same target version is a
 no-op) and refuses to write if it can't find the expected line in any of
 the five files — better to fail loudly than ship a half-bumped release.
@@ -157,6 +165,35 @@ def apply(target: Target, new_version: str, dry_run: bool) -> bool:
     return True
 
 
+CHANGELOG = REPO_ROOT / "data" / "changelog.json"
+
+
+def has_note(version: str) -> bool:
+    import json
+    try:
+        entries = json.loads(CHANGELOG.read_text(encoding="utf-8")).get("entries", [])
+    except (OSError, ValueError):
+        return False
+    return any(isinstance(e, dict) and e.get("version") == version for e in entries)
+
+
+def write_note(version: str, summary: str, highlights: list[str]) -> None:
+    """Write the release note through `add_loader_changelog.py`, the one
+    writer every note kind goes through (trims the feed, validates with the
+    client parser)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "add_loader_changelog", REPO_ROOT / "scripts" / "add_loader_changelog.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    argv = ["--app-version", version, "--summary", summary]
+    for h in highlights:
+        argv += ["--highlight", h]
+    if mod.main(argv):
+        sys.exit("release note rejected (see above); the version files are written "
+                 "but nothing was committed")
+
+
 def git(args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", *args], cwd=REPO_ROOT, check=check, text=True, capture_output=True,
@@ -184,6 +221,9 @@ def main() -> int:
         help="write the files and stop. Forbids --tag (you can't tag without "
              "a commit).",
     )
+    ap.add_argument("--summary", help="release note: one sentence, the subtitle")
+    ap.add_argument("--highlight", action="append", default=[],
+                    help="release note bullet; repeat for more")
     args = ap.parse_args()
 
     # Reject the contradictory combination up front. Without this the script
@@ -199,6 +239,15 @@ def main() -> int:
         print(f"already at {current} — nothing to do")
         return 0
 
+    # Checked before anything is written, so a refused bump leaves no trace.
+    if args.highlight and not args.summary:
+        sys.exit("--highlight needs --summary")
+    if args.summary and not args.highlight:
+        sys.exit("--summary needs at least one --highlight")
+    if not args.summary and not args.no_commit and not args.dry_run and not has_note(new):
+        sys.exit(f"no release note for {new}: pass --summary \"...\" --highlight \"...\" "
+                 "(CI rejects a version without one), or --no-commit to write it yourself")
+
     print(f"bumping {current} -> {new}")
     changed_any = False
     for t in targets():
@@ -210,8 +259,13 @@ def main() -> int:
         changed_any |= changed
 
     if args.dry_run:
+        if args.summary:
+            print(f"  [would add] release note for {new}")
         print("(dry run — no files written)")
         return 0
+
+    if args.summary:
+        write_note(new, args.summary, args.highlight)
 
     if not changed_any:
         # Shouldn't happen given the current != new check above, but the
@@ -235,6 +289,8 @@ def main() -> int:
     # the index entirely, and the warning below means a staged change is never
     # quietly LEFT BEHIND either.
     paths = [str(t.path.relative_to(REPO_ROOT)) for t in targets()]
+    if CHANGELOG.exists():
+        paths.append(str(CHANGELOG.relative_to(REPO_ROOT)))   # the release note
     staged = [
         line for line in git(["diff", "--cached", "--name-only"]).stdout.splitlines()
         if line.strip() and line.strip() not in paths

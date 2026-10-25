@@ -135,6 +135,7 @@ pub async fn probe_rsmm(
     env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<RsmmExecResult, String> {
     let rsmm = rsmm_path()
+        .or_else(|| crate::cli_channel::active_exe(&app))
         .or_else(|| sidecar_path(&app))
         .ok_or_else(|| "rsmm not found".to_string())?;
 

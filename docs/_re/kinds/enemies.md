@@ -393,7 +393,7 @@ Current chapter, not on player count** — "per player" names the quantity.
 * Stagger: `Chapter Stagger Multiplier Selector` [1.0 1.2 1.5 1.75]; per-player
   stagger chosen by chapter, common [0.3 0.4 0.5], elite [0.6 0.7 0.8 0.9].
 * XP: `Chapter XP Factor Selector` [1.0 3.0 10.0].
-* **No per-player HEALTH term** exists in Group_Scaling.
+* ~~No per-player HEALTH term exists in Group_Scaling~~ — it does: group value_7, shipped 0 (see 2026-10-16).
 * Corruption = the `AllEnemiesTainted` modifier. Its per-enemy effect is on
   `Enemy_Model` (inherited by all enemies): `Tainted HP Increase Ratio` 0.5,
   `Tainted Damage Increase Ratio` 0.75, `Tainted Stagger Increase Ratio` 0.25,
@@ -406,10 +406,58 @@ Current chapter, not on player count** — "per player" names the quantity.
   No Scale / Dummy / Hero. Enemy tiers share every field except two, which rise
   Common 0.3/0.5 → Elite 0.6/0.8 → Boss 1.1/1.5 (max level 20).
 
+## Update 2026-10-16 — the group coefficients, read in Ghidra
+
+`oCDtEntityCpntGroupLevel` binds its settings' value slots in order
+(`FUN_1402dcb30`: settings +0x150/+0x1e8/+0x268/+0x2e8/+0x368/+0x3e8/+0x468/+0x4e8/+0x568/+0x5e8
+-> runtime +0x68/+0x78/+0x88/+0x98/+0xa8/+0xb8/+0xe8/+0xf8/+0xc8/+0xd8, i.e. value_2,3,4,5,6,7,9,10,11,13).
+Cross-check: the slot the health formula uses as its chapter factor is value_10, which
+the data links to `Chapter Max Health Multiplier Selector`.
+
+```
+Enemy_ComputeMaxHealth (FUN_1403c0a60), per character:
+  maxHP  = base(+0x3a0) * powf(1 + value_3, level - 1) * value_10
+           * ((HeroCount - 1) * value_7 + 1)       HeroCount = global 0x1599ae4c
+Enemy_ComputeDamage (FUN_1403c0ca0):
+  damage = base(+0x390) * powf(1 + value_4, level - 1)
+level = the party's group level (FUN_1402dd600) unless the def pins one (+0xa94 != -1).
+```
+
+Shipped on Common/Elite/Boss: value_3 = value_4 = 0.2 (+20%/level, compounding),
+value_7 = 0 — **there is a per-hero health term; it is switched off**. Each is per
+group, so bosses can be tuned apart from other enemies. `stronger-enemies` exposes all
+three as config.
+
+Stagger (same session):
+```
+Enemy_ComputeStaggerMax (FUN_1403bf2b0):
+  staggerMax = base(+0x3b0) * powf(1 + value_5, level - 1)
+               * (1 + (HeroCount - 1) * value_6) * value_9 * (entity-value modifiers, incl. Max health 0x15c9296d)
+Enemy_ComputeStaggerChapterValue (FUN_1403c0d90, read by CharacterController_ClearStagger):
+  v = (base(+0x470) + bonus(+0x344)) * value_13 * (1 + (HeroCount - 1) * value_11)
+```
+value_5 = 0.3 everywhere; value_6 = 0.3 / 0.6 / 1.1 (the shipped per-hero stagger);
+value_9 = chapter-chosen 0.3–0.5 (Common), 0.6–0.9 (Elite), fixed 1.5 (Boss).
+
+**⚠ The chapter DAMAGE table does not scale enemy damage.** Enemy_ComputeDamage reads
+only value_4 and the level. The table's two outputs go to value_11 (only the per-hero
+term above, i.e. co-op stagger) and the global `Chapter_Scaling_Enemies_Damage_Factor`
+(id 0x8f064cb0), whose only readers are traps/objects: Thieves_Trap_Cannon/Fire_Zone/
+Poison, Giant_Tree, Pig_House_Model, Baba_Yaga_Outside_House. The health global (id
+0xe8468d43) is read by Destructible_Object_Model and Cultists_Model. A real enemy damage
+knob: `Enemy_Model` "NGP Damage Modifier" — activated on every enemy at spawn by "Event
+Initialize Starting Modifiers", modifier type = Attack power (0x15a486c4, percent),
+amount ships 0. ("NGP Max Health Modifier" is the same for Max health 0x15c9296d.)
+
+**Group assignment** (open question 1, answered): Character_AssignScalingGroup
+(FUN_1403c23b0) reads a group NAME from the character settings (+0x380 binding), finds
+the GroupLevel component whose name matches ("Boss_Enemy", "Elite_Enemy", ...), stores
+it at character+0xa98, then recomputes max health, damage, stagger and level.
+
 **Still open — code, not data** (checked: no file in the 22,831-file mirror
 references any enemy group by name or by its GUID):
-1. How an enemy is assigned to a scaling group. Hypothesis: by rank. Unproven.
-2. What the two group coefficients control — the fields are positional, no labels.
+1. ~~How an enemy is assigned to a scaling group~~ — by group NAME, see 2026-10-16.
+2. ~~What the group coefficients control~~ — SOLVED 2026-10-16 (above).
 3. The consumer that multiplies an enemy's `Raw Max Health` by the chapter factor
    (almost certainly multiplicative, not traced).
 4. How the per-player stagger value and the tumor ratio are applied.

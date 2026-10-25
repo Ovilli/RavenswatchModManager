@@ -380,6 +380,14 @@ export const zhCN: Record<string, string> = {
   'Loader DLL': '加载器 DLL',
   'Loader features': '加载器功能',
   'Loader update': '加载器更新',
+  'Loader v{n}': '加载器 v{n}',
+  CLI: 'CLI',
+  '→ v{version} after restart': '→ 重启后 v{version}',
+  'CLI v{version} downloaded — restart the app to use it.':
+    'CLI v{version} 已下载 — 重启应用后生效。',
+  'CLI v{n}': 'CLI v{n}',
+  'CLI v{version} · update channel': 'CLI v{version} · 更新通道',
+  'CLI v{version} · bundled': 'CLI v{version} · 内置',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
   'Loader updated to v{version} — restart Ravenswatch to pick it up.':
@@ -512,8 +520,8 @@ export const zhCN: Record<string, string> = {
   'Quit Ravenswatch completely, then press Play.': '完全退出 Ravenswatch，然后点击开始游戏。',
   'Quit anyway': '仍然退出',
   'Quit with active overrides?': '覆盖文件仍在生效，确定退出？',
-  'RSMM checks for new releases automatically. Checking manually covers both the launcher itself and the game loader & Lua SDK planted in your Ravenswatch folder.':
-    'RSMM 会自动检查新版本。手动检查会同时涵盖启动器本身，以及植入 Ravenswatch 文件夹里的游戏加载器与 Lua SDK。',
+  'RSMM checks for new releases automatically. Checking manually covers the launcher itself, its CLI, and the game loader & Lua SDK planted in your Ravenswatch folder.':
+    'RSMM 会自动检查新版本。手动检查会涵盖启动器本身、它的 CLI，以及植入 Ravenswatch 文件夹里的游戏加载器与 Lua SDK。',
   'RSMM draws through your GPU like any browser window. If your machine crashes, freezes or blue-screens while RSMM is open — especially with a display-driver bug check such as {code} — switch this on to render in software instead. Update your GPU driver as well; that is the real fix.':
     'RSMM 和普通浏览器窗口一样通过 GPU 绘制。如果在 RSMM 打开时你的电脑崩溃、卡死或蓝屏——尤其是出现 {code} 这类显示驱动错误检查时——请开启此项改用软件渲染。同时也请更新显卡驱动，那才是根本解决办法。',
   "RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and Lua-scripted mods without requiring manual edits to the game's install directory. Profiles let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.":
@@ -656,6 +664,9 @@ export const zhCN: Record<string, string> = {
   Status: '状态',
   'Stop watching the log file': '停止监视日志文件',
   'Support on Ko-fi': '在 Ko-fi 上支持',
+  'Not now': '以后再说',
+  'RSMM is free and made by one person. If it saves you time, a coffee keeps it going.':
+    'RSMM 免费，由一个人开发。如果它为你节省了时间，请我喝杯咖啡让它继续下去。',
   'System sans': '系统无衬线体',
   Tags: '标签',
   'That email is already registered. Try signing in instead.': '该邮箱已注册，请改为登录。',
@@ -838,6 +849,7 @@ export const zhCN: Record<string, string> = {
   live: '实时',
   load: '加载序号',
   'loader v{version}': '加载器 v{version}',
+  'cli v{version}': 'cli v{version}',
   locked: '已锁定',
   'max {value}': '最大 {value}',
   'min {value}': '最小 {value}',

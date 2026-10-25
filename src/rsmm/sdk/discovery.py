@@ -54,6 +54,7 @@ KIND_DIRS: dict[str, str] = {
     "talents": "talent",
     "skills": "skill",
     "modifiers": "modifier",
+    "challenges": "challenge",
     "rewards": "reward",
     "melodies": "melody",
     "meshes": "mesh", "maps": "map",

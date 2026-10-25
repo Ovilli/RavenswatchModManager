@@ -9,7 +9,7 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
   Command: { sidecar: vi.fn(), create: vi.fn() },
 }));
 
-import { useApp } from '../store';
+import { defaultGameDir, useApp } from '../store';
 import {
   formatBytes,
   parseProgressLine,
@@ -46,6 +46,23 @@ describe('rsmmEnv', () => {
   it('falls back to the default profile for a traversing id', () => {
     for (const bad of ['../../../../tmp/pwned', 'a/b', 'a\\b', '..', '', 'has space']) {
       expect(rsmmEnv(bad).RSMM_MODS_DIR).toBe('/srv/rsmm/mods/profiles/default');
+    }
+  });
+
+  it('forwards a game folder the user chose (#55)', () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        gameDir: 'C:\\QqQqQ\\Steam\\steamapps\\common\\Ravenswatch',
+      },
+    });
+    expect(rsmmEnv().RSMM_GAME_DIR).toBe('C:\\QqQqQ\\Steam\\steamapps\\common\\Ravenswatch');
+  });
+
+  it('leaves the default or a blank game folder to autodetect', () => {
+    for (const gameDir of [defaultGameDir(), '  ']) {
+      useApp.setState({ settings: { ...useApp.getState().settings, gameDir } });
+      expect(rsmmEnv()).not.toHaveProperty('RSMM_GAME_DIR');
     }
   });
 
