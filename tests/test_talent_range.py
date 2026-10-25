@@ -241,6 +241,8 @@ def test_the_talent_kind_scales_multiple_nodes(tmp_path):
 def test_beowulf_melee_range_scale_auto_resolves(tmp_path):
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
+    if not list(corpus.files("EntitySettings/Heroes/Hero_Beowulf")):
+        pytest.skip("no game data")
 
     defn = ContentDef(kind="talent", id="beowulf_talents_builder",
         fields={"hero": "Beowulf", "scale": [
