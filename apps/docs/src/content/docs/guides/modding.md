@@ -1124,8 +1124,14 @@ effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_t
   `Vitality` and the `Attack power` stats, enter the points shown in game:
   `15` gives +15 vitality or +15% attack power; rsmm writes the game's raw
   value as `0.15`. The card's `{0}` is the amount, shown x100 as a percentage
-  (`percent = false` shows it as entered), and `{1}` the seconds. Vitality and
-  attack power default to `percent = false`.
+  (`percent = false` shows it as entered), and `{1}` the seconds. Vitality,
+  attack power and flat stats (`Armour`, `Shield`, ...) default to
+  `percent = false`.
+- **`per_level = true`** makes a flat amount grow with hero level, as Fairy
+  Dust's shield does: `amount` is the level-1 number and the game scales it by
+  the hero's Level Healing (10 at level 1). `{ stat = "Shield", amount = 10,
+  per_level = true }` gives 10 shield at level 1 and more after. Not for
+  percent stats, Vitality, Attack power or whole-number stats.
 - **The base's own stat effects are cut**, so a shield base stops being a
   shield; `keep_base_effect = true` keeps them. Its super effect is separate:
   `super_effect = false` drops it.

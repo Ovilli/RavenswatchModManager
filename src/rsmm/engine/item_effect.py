@@ -172,6 +172,7 @@ class Effect:
     refresh: bool = True
     percent: bool = True        # the card shows the amount x100 with a %
     keep_base_effect: bool = False
+    per_level: bool = False     # grows with hero level, as Fairy Dust's shield
 
     @property
     def timed(self) -> bool:
@@ -222,7 +223,7 @@ class Effect:
                 raise ItemEffectError(f"effect {k} must be a finite number")
         if timed and raw["seconds"] <= 0:
             raise ItemEffectError("effect seconds must be above 0")
-        for k in ("refresh", "percent", "keep_base_effect"):
+        for k in ("refresh", "percent", "keep_base_effect", "per_level"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
         is_int = IM.is_integer_stat(raw["stat"])
@@ -230,12 +231,16 @@ class Effect:
             raise ItemEffectError(f"effect amount: {raw['stat']} counts whole units, "
                                   f"got {raw['amount']}")
         in_points = _in_points(raw["stat"])
+        if raw.get("per_level") and (is_int or in_points):
+            raise ItemEffectError(f"effect per_level: {raw['stat']} does not grow with "
+                                  "level; use it on flat stats such as Shield or Armour")
         amount = int(raw["amount"]) if is_int else float(raw["amount"])
         percent = raw.get("percent", not (is_int or in_points or _shows_plain(raw["stat"])))
         return cls(stat=str(raw["stat"]), amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
-                   keep_base_effect=raw.get("keep_base_effect", False))
+                   keep_base_effect=raw.get("keep_base_effect", False),
+                   per_level=raw.get("per_level", False))
 
 
 def parse_effects(raw) -> list[Effect]:
@@ -384,19 +389,55 @@ def _value(w: P.PartWriter, name: str, v: float | int, unit: int = 0) -> P.Link:
 
 
 def _scalable_operation(w: P.PartWriter, name: str, value_link: P.Link,
-                        *, is_int: bool = False) -> P.Link:
+                        *, is_int: bool = False, level: P.Link | None = None,
+                        copies: bool = True) -> P.Link:
     """``value_link`` x ``Amount Selector``, so duplicate item copies stack: the
     modifier and the card both read it (playtest 2026-10-24: stat and card number
-    grew with a second copy, always-on and timed)."""
+    grew with a second copy, always-on and timed). ``level`` (a Level Healing
+    Selector) multiplies in first, as Fairy Dust's Scalable Shield Operation
+    does; ``copies = False`` leaves the copy count out (super effects)."""
     def operand(link: P.Link, key: int, num_type: int) -> bytes:
         return struct.pack("<Ii", 0, -1) + P.num_bytes(
             P.Num(num_type, bytes(4), source=link, key=key), w.ci)
     read_key = _READ_INT if is_int else _READ_VALUE
     num_type = P.INT if is_int else P.F32
-    node = w.obj("oCEntityCpntNodeSettings", struct.pack("<II", _MULTIPLY, 2)
-                 + operand(value_link, read_key, num_type)
-                 + operand(_AMOUNT_SELECTOR, _READ_INT, P.INT))
+    ops = [operand(value_link, read_key, num_type)]
+    if level is not None:
+        ops.insert(0, operand(level, _READ_VALUE, P.F32))
+    if copies:
+        ops.append(operand(_AMOUNT_SELECTOR, _READ_INT, P.INT))
+    node = w.obj("oCEntityCpntNodeSettings",
+                 struct.pack("<II", _MULTIPLY, len(ops)) + b"".join(ops))
     return w.add(_OPS, name, {"operations": node}, flags=0x101)
+
+
+#: Character_Common's Level Healing (10 at level 1), which Fairy Dust, Healing
+#: Orbs' shield, Dash_Gain_Charge and Defense_Heal multiply their flat amount by.
+_LEVEL_HEALING = P.Link(bytes.fromhex("2182f3495c1f8c4e84009aa173dc1f9a"),
+                        r"[Value] Character_Common\Base\Level Healing")
+_GOT_VALID = 0x16abf2f3
+_LEVEL_ONE = 10.0
+
+
+def _level_selector(w: P.PartWriter, sfx: str) -> P.Link:
+    """The holder's Level Healing, or 10 with no holder (the shop card), written
+    as Fairy Dust's Level Healing Selector."""
+    template = w.obj("oCResourceWeakRef", b"".join(P._lstr(x) for x in _HERO))
+    method = w.obj("EntityCpntMethodPicker", P.link_bytes(_NONE, w.ci) + b"\xff" * 4)
+    got = w.add(_GET, "Owner Level Healing Get Value" + sfx, {
+        "source": w.ids("oCEntityCollectorSelectorSettings", [_owner(w, 0)]),
+        "template": template, "value": _LEVEL_HEALING, "method": method}, flags=0x101)
+
+    def entry(cond: P.Num, value: P.Num) -> bytes:
+        return w.obj("oCEntityCpntValueSelectorEntrySettings",
+                     P.num_bytes(cond, w.ci) + P.num_bytes(value, w.ci))
+    entries = [entry(P.Num(P.BOOL, b"\x00", source=got, key=_GOT_VALID),
+                     P.Num(P.F32, bytes(4), source=got, key=_GOT_VALUE)),
+               entry(P.Num(P.BOOL, b"\x01"), P.Num.f32(_LEVEL_ONE))]
+    body = (struct.pack("<II", 0, len(entries)) + b"".join(entries)
+            + b"\x00\x00" + P.num_bytes(P.Num(P.BOOL, b"\x00"), w.ci))
+    return w.add("oCEntityCpntValueSelectorSettings", "Level Healing Selector" + sfx,
+                 flags=0x101, body=body)
 
 
 def _owner(w: P.PartWriter, last: int) -> int:
@@ -452,9 +493,14 @@ def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags:
 
 
 def _amount_parts(w: P.PartWriter, effect: Effect, mod: str, amount: str, op: str,
-                  scale: bool) -> tuple[P.Link, str]:
+                  scale: bool, sfx: str) -> tuple[P.Link, str]:
     """The card's amount Value and the modifier giving it: ``(modifier link,
     card slot node)``. With ``scale`` both multiply by the held-copy count."""
+    if effect.per_level:
+        # amount is the level-1 number: amount / 10 x Level Healing (10 at level 1).
+        base = _value(w, amount, effect.amount / _LEVEL_ONE, _RATIO)
+        mod_op = _scalable_operation(w, op, base, level=_level_selector(w, sfx), copies=scale)
+        return _modifier(w, mod, effect.stat, effect.amount, source=mod_op), op
     is_int = IM.is_integer_stat(effect.stat)
     amount_link = _value(w, amount, effect.amount, 0 if is_int else _RATIO)
     if not scale:
@@ -474,7 +520,7 @@ def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
                  slots: list, *, scale: bool = False) -> None:
     """A modifier held on while the item is equipped (or while ``during`` holds)."""
     tester, _timer_n, mod, _seconds_n, amount, op = (n + sfx for n in _TIMED)
-    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale)
+    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale, sfx)
     if effect.during:
         _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
                 flags=0x1, holds=mod_link)
@@ -492,7 +538,7 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
     # they read the donor's inline numbers instead (0.05 and 3 s for every
     # trigger, playtest 2026-10-20). The Values are only the card's numbers.
     _value(w, seconds, effect.seconds)
-    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale)
+    mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale, sfx)
     timer_link = w.add(_TIMER, timer, {
         "bias?": P.Num.f32(0), "count": P.Num.int(1), "on_tick": _NONE, "on_end": _NONE,
         "state": _NONE, "paused?": P.Num(P.BOOL, b"\x00"), "duration": P.Num.f32(effect.seconds),

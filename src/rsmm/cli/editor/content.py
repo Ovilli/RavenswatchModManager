@@ -273,10 +273,14 @@ def _number(c, comps: dict, depth: int = 0) -> float | None:
             if m and "<-" not in f.text:
                 return float(m[1])
     if c.cls == "oCEntityCpntValueOperationsSettings":
-        for r in c.refs:
-            n = _number(comps.get(r.path.rsplit("\\", 1)[-1]), comps, depth + 1)
+        names = [r.path.rsplit("\\", 1)[-1] for r in c.refs]
+        # Fairy Dust's shield is Level Healing (10 at level 1) x its 1.0: the
+        # card reads 10, so count the level selector at its level-1 value.
+        level = 10.0 if any(n.startswith("Level Healing Selector") for n in names) else 1.0
+        for name in names:
+            n = _number(comps.get(name), comps, depth + 1)
             if n is not None:
-                return n
+                return n * level
     return None
 
 

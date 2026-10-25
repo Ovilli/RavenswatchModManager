@@ -1268,7 +1268,8 @@ function effectsForm(E, blank, key = "effects") {
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
       el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
         el("div", { class: "hint", text: isInt ? "Whole number of free rerolls (1, 2...)." : amountHint }),
-        ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")])));
+        ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")]),
+        ...(isInt || inPoints ? [] : [flag("per_level", false, "Grows with hero level, like Fairy Dust's shield (amount = level 1)")])));
     if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
       flag("refresh", true, "Each trigger restarts the full time")));
     box.append(el("div", { class: "effect" },

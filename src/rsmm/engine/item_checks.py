@@ -75,6 +75,11 @@ def item_warnings(ent: bytes, base: bytes, touched: set[str]) -> list[str]:
             for r in op.refs:
                 o = comps.get(r.path.rsplit("\\", 1)[-1])
                 reads = _reads(o, comps) if o is not None else None
+                # An effect's `per_level = true` writes its own Level Healing
+                # Selector: growing with level is what the author asked for.
+                if o is not None and o.name.startswith("Level Healing Selector ") \
+                        and o.name not in shipped:
+                    continue
                 if reads:
                     out.append(
                         f"{m.name!r}'s amount comes from {op.name!r}, which also "

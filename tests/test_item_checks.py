@@ -278,6 +278,39 @@ def test_effect_amounts_are_finite_and_integer_stats_whole():
         IE.Effect.parse({"stat": "Crit chance", "amount": float("nan")})
 
 
+def test_per_level_shield_is_written_as_fairy_dusts():
+    """per_level multiplies the amount by the holder's Level Healing through a
+    selector shaped like Fairy Dust's (10 with no holder), and the card reads
+    the level-1 number."""
+    from rsmm.cli.editor.content import _built_slots
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine import item_effect as IE
+    files = C.build_magic_item(
+        new_id="Level_Shield", base_id="Increase_Shield", base_cooked=_shield(),
+        corpus=[], rarity="Rare", effect=[{"stat": "Shield", "amount": 10, "per_level": True}])
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    ours = {c.name: c for c in EG.parse(ent).components}
+    fd = {c.name: c for c in EG.parse(_shield()).components}
+    get, sel = ours["Owner Level Healing Get Value Effect"], ours["Level Healing Selector Effect"]
+    shipped = P.decode(fd["Owner Level Healing Get Value"])
+    assert P.decode(get)["value"] == shipped["value"]
+    assert P.decode(get)["template"] == shipped["template"]
+    # Same layout; only the two links to the Get Value carry a longer name.
+    grow = len("Level_Shield\\Owner Level Healing Get Value Effect") - len(
+        "Increase_Shield\\Owner Level Healing Get Value")
+    assert len(sel.body) == len(fd["Level Healing Selector"].body) + 2 * grow
+    op = ours["Crit Chance Value Operation Effect"]
+    assert [r.path.rsplit("\\", 1)[-1] for r in op.refs] == [
+        "Level Healing Selector Effect", "Crit Chance Value Effect", "Amount Selector"]
+    assert _built_slots(ent, "Descripton Format")[0]["value"] == 10.0
+    assert CK.check(ent, _shield(), name="Level_Shield") == []
+    assert item_warnings(ent, _shield(), set()) == []
+    with pytest.raises(IE.ItemEffectError, match="per_level"):
+        IE.Effect.parse({"stat": "Vitality", "amount": 10, "per_level": True})
+
+
 def test_card_units_follow_shipped_cards():
     """Shipped cards print armour plain (mode 0/2), so +5 armour is not "+500";
     a negative amount carries its own sign instead of "+-"."""
