@@ -177,7 +177,8 @@ def test_a_shots_lifetime_is_offered_as_its_range():
 
 def test_range_modifiers_classification():
     files_mel = [(f.name.split(".")[0], f.read_bytes())
-                 for f in corpus.files("EntitySettings/Heroes/Hero_Melusine") if f.name.endswith(GEN)]
+                 for f in corpus.files("EntitySettings/Heroes/Hero_Melusine")
+                 if f.name.endswith(GEN)]
     if not files_mel:
         pytest.skip("no game data")
     mods_mel = TR.range_modifiers(files_mel, "Melusine")
@@ -200,7 +201,8 @@ def test_range_modifiers_classification():
     assert "Wolf Basic Attack Default Radius" in melee_nodes
 
     files_sq = [(f.name.split(".")[0], f.read_bytes())
-                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen") if f.name.endswith(GEN)]
+                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen")
+                if f.name.endswith(GEN)]
     mods_sq = TR.range_modifiers(files_sq, "Snow_Queen")
     by_name_sq = {(m["ability"], m["name"]): m for m in mods_sq}
     assert ("ATTACK", "Ranged attack range") in by_name_sq
@@ -212,7 +214,8 @@ def test_the_talent_kind_scales_multiple_nodes(tmp_path):
     from rsmm.sdk.kinds import talents
 
     files_mel = [(f.name.split(".")[0], f.read_bytes())
-                 for f in corpus.files("EntitySettings/Heroes/Hero_Melusine") if f.name.endswith(GEN)]
+                 for f in corpus.files("EntitySettings/Heroes/Hero_Melusine")
+                 if f.name.endswith(GEN)]
     if not files_mel:
         pytest.skip("no game data")
     defn = ContentDef(kind="talent", id="tidal_wave", fields={"hero": "Melusine", "scale": [
@@ -239,7 +242,8 @@ def test_beowulf_melee_range_scale_auto_resolves(tmp_path):
     from rsmm.sdk.content import ContentDef
     from rsmm.sdk.kinds import talents
 
-    defn = ContentDef(kind="talent", id="beowulf_talents_builder", fields={"hero": "Beowulf", "scale": [
+    defn = ContentDef(kind="talent", id="beowulf_talents_builder",
+        fields={"hero": "Beowulf", "scale": [
         {"talent": "Attack Wide", "node": "Melee attack range",
          "values": [0.1, 0.2, 0.3, 0.4]}]})
     paths = {p.name.split(".")[0]: p.read_bytes() for p in talents.emit("b", defn, tmp_path)}
@@ -255,15 +259,18 @@ def test_snow_queen_power_and_defense_range_scaling(tmp_path):
     from rsmm.sdk.kinds import talents
 
     files_sq = [(f.name.split(".")[0], f.read_bytes())
-                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen") if f.name.endswith(GEN)]
+                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen")
+                if f.name.endswith(GEN)]
     if not files_sq:
         pytest.skip("no game data")
 
-    # 1. Power Hold (Frost Surge) auto-infers ability POWER and scales cleanly without double scaling
+    # 1. Power Hold (Frost Surge) auto-infers ability POWER and scales cleanly
+    # without double scaling
     defn_pwr = ContentDef(kind="talent", id="sq_pwr", fields={"hero": "Snow_Queen", "scale": [
         {"talent": "Power Hold", "node": "Circular attack range", "values": [0.1, 0.2, 0.3, 0.4]}
     ]})
-    paths_pwr = {p.name.split(".")[0]: p.read_bytes() for p in talents.emit("p", defn_pwr, tmp_path)}
+    paths_pwr = {p.name.split(".")[0]: p.read_bytes()
+                 for p in talents.emit("p", defn_pwr, tmp_path)}
     raw_pwr = paths_pwr["Hero_Snow_Queen"]
     pwr_op = comp(raw_pwr, "Ability Primary Radius Operation")
     refs_pwr = [t.text for t in EG.tokens(pwr_op) if t.kind == "ref"]
@@ -272,25 +279,63 @@ def test_snow_queen_power_and_defense_range_scaling(tmp_path):
 
     # 2. Defense Vulnerable scales Ability Defense Frost Radius Operation AND Defense Traverser
     defn_def = ContentDef(kind="talent", id="sq_def", fields={"hero": "Snow_Queen", "scale": [
-        {"talent": "Defense Vulnerable", "node": "Circular attack range", "values": [0.1, 0.2, 0.3, 0.4]}
+        {"talent": "Defense Vulnerable", "node": "Circular attack range",
+         "values": [0.1, 0.2, 0.3, 0.4]}
     ]})
-    paths_def = {p.name.split(".")[0]: p.read_bytes() for p in talents.emit("d", defn_def, tmp_path)}
+    paths_def = {p.name.split(".")[0]: p.read_bytes()
+                 for p in talents.emit("d", defn_def, tmp_path)}
     raw_def = paths_def["Hero_Snow_Queen"]
     def_op = comp(raw_def, "Ability Defense Frost Radius Operation")
     refs_def = [t.text for t in EG.tokens(def_op) if t.kind == "ref"]
     assert any("Skill Defense Vulnerable Range Circular attack range Factor" in r for r in refs_def)
-    assert not any(c.name == "Ability Defense Frost Radius Default Scaled" for c in EG.parse(raw_def).components)
-    # Check that Defense Traversers (characters and props) picker 16 are wired to Ability Defense Frost Radius Operation
+    assert not any(c.name == "Ability Defense Frost Radius Default Scaled"
+                   for c in EG.parse(raw_def).components)
+    # The DEFENSE hits (characters and props) grow from their OWN 0.6, by the
+    # same factor: never replaced by the frost's number, which would change the
+    # vanilla hitbox before the talent is taken.
     from rsmm.engine.entity_graph_edit import EntityFile
     ef = EntityFile(raw_def)
-    owned, _ = ef.pointers()
     for c_name in ("Ability Defense Traverser", "Ability Defense Traverser Props"):
-        c_trav = ef.component(c_name)
-        around_objs = [k for k, ptr in owned.items()
-                       if ptr.owner == c_trav.index - 1 and ef._class(k) == "oCEntityGpnAroundPositionTraverserSettings"]
-        assert len(around_objs) == 1
-        p_around = ef.objects[around_objs[0]]
-        assert b"Ability Defense Frost Radius Operation" in p_around
+        [(p_around, at, _u)] = list(TR._radius_slots(ef, c_name))
+        assert p_around[at] == 1                                  # sourced now
+        assert f"{c_name} Radius Scaled".encode() in p_around
+        base = comp(raw_def, f"{c_name} Radius Base")
+        from rsmm.engine import entity_parts as P
+        value = struct.unpack("<f", P.decode(base)["value"].value)[0]
+        assert value == pytest.approx(0.6)
+    # A traverser that already follows a node is left alone.
+    assert b"Abililty Primary Traverser Radius Scaled" not in raw_def
+
+
+def test_a_talent_names_its_ability_by_its_first_word():
+    assert TR.talent_ability("Dash Attack") == "DASH"         # not ATTACK
+    assert TR.talent_ability("Basic Big Shots") == "ATTACK"
+    assert TR.talent_ability("Secondary Chill") == "SPECIAL"
+    assert TR.talent_ability("Passive Enchantment Damage") is None
+
+
+def test_a_spawned_entity_takes_the_ability_that_spawns_it():
+    files = [(f.name.split(".")[0], f.read_bytes())
+             for f in corpus.files("EntitySettings/Heroes/Hero_Geppetto") if f.name.endswith(GEN)]
+    if not files:
+        pytest.skip("no game data")
+    got = TR._spawned_abilities(files, "Hero_Geppetto")
+    assert got["Hero_Geppetto_Cogsbomb"] == "SPECIAL"       # Secondary Abillity Spawner
+    assert got["Hero_Geppetto_Dummy"] == "TRAIT"            # Trait Ability Dummy Spawner
+
+
+def test_a_range_the_ability_lacks_is_refused_not_borrowed(tmp_path):
+    from rsmm.sdk.content import ContentDef, ContentError
+    from rsmm.sdk.kinds import talents
+    if not list(corpus.files("EntitySettings/Heroes/Hero_Beowulf")):
+        pytest.skip("no game data")
+    # Beowulf's ATTACK has no projectile; his POWER does. The old fallback
+    # scaled POWER's range for an ATTACK talent.
+    defn = ContentDef(kind="talent", id="b", fields={"hero": "Beowulf", "scale": [
+        {"talent": "Attack Wide", "node": "Ranged attack range",
+         "values": [0.1, 0.2, 0.3, 0.4]}]})
+    with pytest.raises(ContentError, match="no Ranged attack range for ATTACK"):
+        talents.emit("b", defn, tmp_path)
 
 
 def test_snow_queen_special_cone_range_scaling(tmp_path):
@@ -298,7 +343,8 @@ def test_snow_queen_special_cone_range_scaling(tmp_path):
     from rsmm.sdk.kinds import talents
 
     files_sq = [(f.name.split(".")[0], f.read_bytes())
-                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen") if f.name.endswith(GEN)]
+                for f in corpus.files("EntitySettings/Heroes/Hero_Snow_Queen")
+                if f.name.endswith(GEN)]
     if not files_sq:
         pytest.skip("no game data")
 

@@ -1314,12 +1314,6 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
             item["range_type"] = str(row["range_type"])
         if row.get("ability"):
             item["ability"] = str(row["ability"])
-        else:
-            t_low = talent.lower()
-            for ab in ("attack", "power", "special", "defense", "trait", "ultimate", "dash"):
-                if ab in t_low:
-                    item["ability"] = ab.upper()
-                    break
         if isinstance(row.get("nodes"), list):
             item["nodes"] = row["nodes"]
         scale.append(item)
