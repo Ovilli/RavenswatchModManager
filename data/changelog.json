@@ -4,6 +4,19 @@
     {
       "version": "",
       "date": "2026-10-25",
+      "summary": "Talent range modifiers, and fixes for integer item stats and inherited rewires",
+      "highlights": [
+        "New talent range modifiers: grow an ability's melee reach, shot range, area radius or rectangle in the editor's Make an ability bigger",
+        "An ability's area hits grow with its radius, Snow Queen's skating hitbox included, from their own vanilla size",
+        "Integer stats such as Extra MO Choice, Extra skill choice and Rooted are written as whole numbers, so items and talents giving them work",
+        "A range talent refuses a range its ability lacks instead of scaling another ability's",
+        "Rework talents refuse an ambiguous rewire into an inherited file instead of wiring the wrong node"
+      ],
+      "cli_version": 17
+    },
+    {
+      "version": "",
+      "date": "2026-10-25",
       "summary": "Item effect fixes: Vitality and Attack power entered in displayed points, correct card units for flat stats, per-level shield scaling",
       "highlights": [
         "Vitality and Attack power effects are entered as the number shown in game (10 = +10%), no more x100 bonuses",
@@ -516,15 +529,6 @@
       "summary": "Per-ability crit chance and cooldown reduction stats now read the right ability",
       "highlights": [
         "Fixed: mods reading or changing one ability's crit chance or cooldown reduction got a different ability's stat"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 29,
-      "date": "2026-10-08",
-      "summary": "Mods can set each chapter's day/night timer",
-      "highlights": [
-        "New: mods can change day/night length and boss timing per chapter (Chapter Timer)"
       ]
     }
   ]
