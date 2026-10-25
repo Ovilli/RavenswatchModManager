@@ -29,7 +29,9 @@ caster's start-up state (``_activate_before``).
 
 from __future__ import annotations
 
+import dataclasses
 import re
+import struct
 from dataclasses import dataclass
 
 from . import entity_graph as EG
@@ -149,6 +151,72 @@ def _activate_before(ef: GE.EntityFile, node: str, new: list[str],
     return lists
 
 
+#: An oCEntityGpnAroundPositionTraverserSettings (what an area hit checks for
+#: targets in) serialises 17 number pickers when it holds them inline, and the
+#: 17th is its radius. Only Snow Queen's and Carmilla's hero files use that
+#: layout (surveyed 2026-10-25); any other count is left alone.
+_AROUND = "oCEntityGpnAroundPositionTraverserSettings"
+_PICKER_MARK = re.compile(re.escape(b"\x11\x11\xbb\xaa\x42\x00\x00\x00"))
+_AROUND_PICKERS, _AROUND_RADIUS = 17, 16
+
+
+def _radius_slots(ef: GE.EntityFile, comp: str):
+    """``(object, start, union)`` of each inline-layout area traverser ``comp``
+    owns: its radius picker spans ``object[start:union]``, its number sits at
+    ``union + 16``."""
+    owned, _ = ef.pointers()
+    union = GE._B + struct.pack("<I", ef._class_index("oCEntityValueUnion"))
+    c = ef.component(comp)
+    for k, ptr in owned.items():
+        if ptr.owner != c.index - 1 or ef._class(k) != _AROUND:
+            continue
+        p = ef.objects[k]
+        marks = [m.start() for m in _PICKER_MARK.finditer(p)]
+        if len(marks) != _AROUND_PICKERS:
+            continue
+        at = marks[_AROUND_RADIUS] + 8
+        u = p.find(union, at)
+        if u >= 0:
+            yield p, at, u
+
+
+def _scale_hit_radii(ef: GE.EntityFile, node: str, factor: str, seed: str) -> None:
+    """Grow the area hits of ``node``'s ability with it: each traverser of the
+    node's group whose radius is still a fixed number reads that number x
+    ``factor`` instead. A sourced one already follows a node (Snow Queen's
+    `Abililty Primary Traverser` reads her POWER radius, which is why POWER grew
+    its hits and DEFENSE, whose traversers hold a fixed 0.6, did not). Its own
+    number, not ``node``'s: the two differ (DEFENSE hits 0.6 around her while
+    its frost grows from 1), and using ``node`` would change the vanilla hitbox
+    before any talent is taken."""
+    if not re.search(r"radius", node, re.I):
+        return
+    group = ef.component(node).group
+    fixed = [(c.name, struct.unpack_from("<f", p, u + 16)[0])
+             for c in ef.graph().components if c.group == group
+             for p, at, u in _radius_slots(ef, c.name) if p[at] == 0]
+    if not fixed:
+        return
+    template = next(c for c in ef.graph().components if c.cls == "oCEntityCpntValueSettings")
+    f = ef.component(factor)
+    for comp, radius in fixed:
+        base, scaled = f"{comp} Radius Base", f"{comp} Radius Scaled"
+        fields = P.decode(template)
+        fields["value"] = dataclasses.replace(fields["value"], value=struct.pack("<f", radius),
+                                              source=None, key=None)
+        TW.TalentWriter(ef, f"{seed}:{comp}:radius", group).add(
+            template.cls, base, fields, flags=TA._flags_of(ef, template.name), group=group)
+        TW.TalentWriter(ef, f"{seed}:{comp}:radius:scaled", group).multiply(
+            scaled, TW.link_to(ef, base), ef.F32_ACCESSOR[template.cls],
+            TW.link_to(ef, factor), ef.F32_ACCESSOR[f.cls], group=group)
+        # Switched on wherever the node is, as scale_node's own Base/Scaled.
+        _activate_before(ef, node, [base, scaled])
+        acc = ef.F32_ACCESSOR[ef.component(scaled).cls]
+        for p, at, u in _radius_slots(ef, comp):
+            p[at:u] = b"\x01\x00" + ef._picker(scaled) + struct.pack("<I", acc)
+            struct.pack_into("<f", p, at + len(ef._picker(scaled)) + 6 + 16, 0.0)
+
+
 def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
                activate: tuple[str, ...] = (), scope: str = "") -> bytes:
     """Return ``raw`` with ``node`` multiplied by ``factor``, a node of the same
@@ -162,6 +230,7 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
         if kind == "multiply":
             ef.append_operand(node, factor)
             _activate_before(ef, node, [], first=activate)
+            _scale_hit_radii(ef, node, factor, seed)
             return ef.to_bytes()
         c = ef.component(node)
         base, scaled = f"{node} Base", f"{node} Scaled"
@@ -177,6 +246,7 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
             TW.link_to(ef, factor), ef.F32_ACCESSOR[f.cls], group=c.group)
         ef.source_value(node, 0, scaled)
         _activate_before(ef, node, [base, scaled], first=activate)
+        _scale_hit_radii(ef, node, factor, seed)
         return ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:
         raise RangeError(f"{node!r}: {e}") from e
@@ -247,8 +317,71 @@ _NOT_GAMEPLAY = re.compile(r"fx|camera|mesh|decal|gauge|anim|shader|sound|fmod|\
 _GROUP_ABILITY = (("Ability Basic", "ATTACK"), ("Ability Primary", "POWER"),
                   ("Ability Secondary", "SPECIAL"), ("Ability Defensive", "DEFENSE"),
                   ("Ability Defense", "DEFENSE"),                 # Snow Queen's spelling
+                  ("Ability Wolf Basic", "ATTACK"), ("Ability Wolf Primary", "POWER"),
+                  ("Ability Wolf Secondary", "SPECIAL"), ("Ability Wolf Ultimate", "ULTIMATE"),
+                  ("Wolf Basic", "ATTACK"), ("Wolf Primary", "POWER"),
+                  ("Wolf Secondary", "SPECIAL"), ("Wolf Ultimate", "ULTIMATE"),
+                  ("Human Basic", "ATTACK"),
                   ("Ability Trait", "TRAIT"), ("Ability Dash", "DASH"),
                   ("Ability Ultimate", "ULTIMATE"))
+
+#: The word a talent's name starts with -> its button. Every shipped talent is
+#: named so ("Dash Attack" is a DASH talent, "Basic Big Shots" an ATTACK one;
+#: 1929 controllers surveyed 2026-10-25); "Passive ..." names none.
+_ABILITY_WORD = {"attack": "ATTACK", "basic": "ATTACK", "power": "POWER",
+                 "primary": "POWER", "special": "SPECIAL", "secondary": "SPECIAL",
+                 "defense": "DEFENSE", "defensive": "DEFENSE", "trait": "TRAIT",
+                 "dash": "DASH", "ultimate": "ULTIMATE"}
+_WOLF = re.compile(r"\bwolf\b.*?\b(basic|primary|secondary|ultimate)\b", re.I)
+
+#: Spawned entities the hero's file spawns from somewhere that names no button
+#: (Piper's shots come from `Ability Common`, Juliet's and Melusine's from the
+#: files they inherit), so no spawner below can tell which ability they are.
+_SPAWNED_ABILITY = {
+    "Hero_Piper_Projectile": "ATTACK",
+    "Hero_Snow_Queen_Projectile": "ATTACK",
+    "Hero_Juliet_Ricochet_Projectile_Spawner": "ATTACK",
+    "Hero_Juliet_Attack_Rose_AOE": "POWER",
+    "Hero_Juliet_Rose_Explosion": "POWER",
+    "Hero_Melusine_Power_Caster_Model": "POWER",
+    "Hero_Melusine_Wisp": "TRAIT",
+}
+
+
+def talent_ability(talent: str) -> str | None:
+    """The button ``talent`` belongs to, from the word its name starts with."""
+    return _ABILITY_WORD.get(talent.split(" ", 1)[0].lower())
+
+
+def _spawned_abilities(files: list[tuple[str, bytes]], main: str) -> dict[str, str]:
+    """``{stem: ability}`` of the hero's spawned entities: the button whose
+    group in the hero's file holds the spawner naming ``<stem>.entity``
+    (Geppetto's `Secondary Abillity Spawner` throws his Cogsbomb), when exactly
+    one does; else :data:`_SPAWNED_ABILITY`. Snow Queen's FROST is spawned by
+    POWER and DEFENSE both, so it names neither."""
+    raw = dict(files).get(main)
+    comps = EG.parse(raw).components if raw else []
+    out = {}
+    for stem, _ in files:
+        if stem == main:
+            continue
+        key = f"{stem}.entity"
+        found = {a for c in comps if any(key in lit for lit in c.literals)
+                 for a in [next((a for g, a in _GROUP_ABILITY if c.group.startswith(g)), None)]
+                 if a}
+        if len(found) == 1:
+            out[stem] = found.pop()
+        elif stem in _SPAWNED_ABILITY and not found:
+            out[stem] = _SPAWNED_ABILITY[stem]
+    return out
+
+
+RANGE_KINDS = (
+    "Melee attack range",
+    "Ranged attack range",
+    "Circular attack range",
+    "Rectangle attack range",
+)
 
 
 def candidates(files: list[tuple[str, bytes]], hero: str) -> list[dict]:
@@ -260,6 +393,7 @@ def candidates(files: list[tuple[str, bytes]], hero: str) -> list[dict]:
     ``where`` is the spawned entity it is in (a projectile, a caster), or None."""
     main = f"Hero_{hero}"
     owner = f"Heroes\\{main}\\{main}.entity.ot"
+    spawned = _spawned_abilities(files, main)
     out = []
     for stem, raw in files:
         if stem != main and not reads_owner(raw, owner):
@@ -278,7 +412,94 @@ def candidates(files: list[tuple[str, bytes]], hero: str) -> list[dict]:
             ability = next((a for g, a in _GROUP_ABILITY if c.group.startswith(g)), None) \
                 or next((a for g, a in _GROUP_ABILITY if c.name.startswith(g.split()[1] + " ")
                          or c.name.startswith(g)), None)
+            if stem != main:
+                ability = spawned.get(stem, ability)
+            elif not ability and (m := _WOLF.search(c.name)):
+                ability = _ABILITY_WORD[m.group(1).lower()]
             out.append({"file": stem, "node": c.name, "ability": ability,
                         "where": None if stem == main else stem.removeprefix(main + "_"),
                         "value": None if how == "multiply" else float(value), "how": how})
     return out
+
+
+def range_modifiers(files: list[tuple[str, bytes]], hero: str) -> list[dict]:
+    """Group hero size candidates into the 4 gameplay range modifiers:
+    Melee attack range,
+    Ranged attack range,
+    Circular attack range,
+    Rectangle attack range.
+
+    Returns ``[{ability, name, description, nodes: [{file, node}], values_desc}]``.
+    """
+    cands = candidates(files, hero)
+    by_ab: dict[str, list[dict]] = {}
+    for c in cands:
+        ab = c.get("ability") or "OTHER"
+        by_ab.setdefault(ab, []).append(c)
+
+    mods = []
+    for ab, items in by_ab.items():
+        len_nodes = [x for x in items if re.search(r"length", x["node"], re.I)]
+        wid_nodes = [x for x in items if re.search(r"width", x["node"], re.I)]
+        proj_nodes = [x for x in items if re.search(r"lifetime|distance", x["node"], re.I)
+                      or "projectile" in (x.get("where") or "").lower()
+                      or "ricochet" in (x.get("where") or "").lower()]
+
+        # 1. Rectangle: has both length and width (and not an ATTACK with basic/human/wolf melee)
+        rect_nodes = []
+        if len_nodes and wid_nodes and ab != "ATTACK":
+            rect_nodes = len_nodes + wid_nodes
+            mods.append({
+                "ability": ab,
+                "name": "Rectangle attack range",
+                "description": "Increases both width and length",
+                "nodes": [{"file": n["file"], "node": n["node"]} for n in rect_nodes],
+                "values_desc": "Length & width",
+            })
+
+        # 2. Melee: ATTACK with length/width/radius (and not projectile only)
+        melee = []
+        if ab == "ATTACK":
+            melee = [x for x in items if (re.search(r"length|width", x["node"], re.I)
+                     or re.search(r"radius|range", x["node"], re.I))
+                     and not re.search(r"lifetime|projectile", x["node"], re.I)
+                     and "projectile" not in (x.get("where") or "").lower()]
+            # A hero whose ATTACK flies (Piper, Juliet, Snow Queen) has no reach
+            # to grow: its "range" is the shot's, below.
+            if melee and not proj_nodes:
+                mods.append({
+                    "ability": ab,
+                    "name": "Melee attack range",
+                    "description": "Increases melee attack size/radius/reach",
+                    "nodes": [{"file": n["file"], "node": n["node"]} for n in melee],
+                    "values_desc": "Attack length, width & radius",
+                })
+
+        # 3. Ranged: projectile lifetime or distance
+        if proj_nodes:
+            mods.append({
+                "ability": ab,
+                "name": "Ranged attack range",
+                "description": "Extends projectile range/distance",
+                "nodes": [{"file": n["file"], "node": n["node"]} for n in proj_nodes],
+                "values_desc": "Projectile range & lifetime",
+            })
+
+        # 4. Circular: radius/aoe/explosion (excluding nodes already in rectangle or melee)
+        used_nodes = {n["node"] for n in rect_nodes + proj_nodes + melee}
+        circ = [x for x in items if re.search(r"radius|aoe|explosion", x["node"], re.I)
+                and x["node"] not in used_nodes]
+        if not circ and len_nodes and not wid_nodes and not proj_nodes and ab != "ATTACK":
+            circ = [x for x in len_nodes if x["node"] not in used_nodes]
+        if circ:
+            mults = [x for x in circ if x.get("how") == "multiply"]
+            nodes = mults if mults else circ
+            mods.append({
+                "ability": ab,
+                "name": "Circular attack range",
+                "description": "Increases AoE radius",
+                "nodes": [{"file": n["file"], "node": n["node"]} for n in nodes],
+                "values_desc": "AoE radius",
+            })
+
+    return mods

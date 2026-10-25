@@ -762,6 +762,21 @@ def scalable(hero: str) -> list[dict]:
 
 
 @_once
+def scalable_ranges(hero: str) -> list[dict]:
+    """The 4 range modifiers (Melee, Ranged, Circular, Rectangle) of ``hero``'s
+    abilities (rsmm.engine.talent_range.range_modifiers)."""
+    from rsmm.engine import talent_range as TR
+    from rsmm.sdk.kinds import talents as T
+
+    d = T._resolve_hero_dir(_hero_dir(hero)[len("Hero_"):])
+    if d is None:
+        return []
+    files = [(f.name.split(".")[0], f.read_bytes()) for f in d.entity_files()
+             if f.name.endswith(_GEN_SUFFIX)]
+    return TR.range_modifiers(files, hero)
+
+
+@_once
 def hit_damages(hero: str) -> dict:
     """The damage records of ``hero``'s abilities a status can be added to
     (``on_hit``; rsmm.engine.talent_status.damages), and the statuses."""
@@ -1283,17 +1298,25 @@ def talent_defs(req: dict) -> list[tuple[str, str, dict]]:
         include.append({"talent": talent, "from": other, **({"hero": donor} if donor else {})})
     scale = []
     for row in req.get("scale") or []:
-        talent, node = str((row or {}).get("talent") or ""), str((row or {}).get("node") or "")
+        talent = str((row or {}).get("talent") or "")
+        node = str((row or {}).get("node") or (row or {}).get("range_type") or "")
         if not talent or not node:
             raise EditorError("a bigger ability needs its talent and the number it grows")
         values = row.get("values")
         if not isinstance(values, list) or len(values) != 4:
             raise EditorError(f"{talent}: give a number for each rarity")
-        scale.append({"talent": talent, "node": node,
-                      "values": [float(_num(v, f"{talent} {node}")) for v in values],
-                      **({"file": str(row["file"])} if row.get("file") else {}),
-                      **({} if row.get("percent", True) else {"percent": False}),
-                      **({} if row.get("visual", True) else {"visual": False})})
+        item = {"talent": talent, "node": node,
+                "values": [float(_num(v, f"{talent} {node}")) for v in values],
+                **({"file": str(row["file"])} if row.get("file") else {}),
+                **({} if row.get("percent", True) else {"percent": False}),
+                **({} if row.get("visual", True) else {"visual": False})}
+        if row.get("range_type"):
+            item["range_type"] = str(row["range_type"])
+        if row.get("ability"):
+            item["ability"] = str(row["ability"])
+        if isinstance(row.get("nodes"), list):
+            item["nodes"] = row["nodes"]
+        scale.append(item)
     on_hit = []
     for row in req.get("onHit") or []:
         talent, damage, status = (str((row or {}).get(k) or "")
@@ -1873,7 +1896,10 @@ ROUTES = {
                                           "skipped": talent_skipped(req.arg("hero")),
                                           "portrait": hero_portrait(req.arg("hero"))},
     ("GET", "/api/talents/borrowable"): lambda req: {"talents": borrowable_talents()},
-    ("GET", "/api/talents/scalable"): lambda req: {"nodes": scalable(req.arg("hero"))},
+    ("GET", "/api/talents/scalable"): lambda req: {
+        "nodes": scalable(req.arg("hero")),
+        "ranges": scalable_ranges(req.arg("hero")),
+    },
     ("GET", "/api/talents/damages"): lambda req: hit_damages(req.arg("hero")),
     ("GET", "/api/heroes/portraits"): lambda req: {"portraits": {h: hero_portrait(h)
                                                                  for h in heroes()}},
