@@ -4,6 +4,18 @@
     {
       "version": "",
       "date": "2026-10-25",
+      "summary": "Item effect fixes: Vitality and Attack power entered in displayed points, correct card units for flat stats, per-level shield scaling",
+      "highlights": [
+        "Vitality and Attack power effects are entered as the number shown in game (10 = +10%), no more x100 bonuses",
+        "Armour, Shield and other flat stats show their real number on item cards instead of x100",
+        "New per_level = true: item effects can grow with hero level, like Fairy Dust's shield",
+        "Fractional Free Reroll amounts are rejected instead of silently rounding to 0"
+      ],
+      "cli_version": 16
+    },
+    {
+      "version": "",
+      "date": "2026-10-25",
       "summary": "Pams fixes",
       "highlights": [
         "Pams fixes"
@@ -513,20 +525,6 @@
       "summary": "Mods can set each chapter's day/night timer",
       "highlights": [
         "New: mods can change day/night length and boss timing per chapter (Chapter Timer)"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 28,
-      "date": "2026-10-08",
-      "summary": "Damage meter keeps each player's damage on their own row across chapters, plus stability fixes for mods",
-      "highlights": [
-        "Damage meter: after a chapter change, a player's damage stays on their own row instead of moving to a new one",
-        "Damage meter: players who left the lobby no longer appear on the board",
-        "Damage meter: much less log spam during co-op runs",
-        "Mod settings: a mod that adjusts its own setting no longer freezes the game",
-        "Mods that read the camera, hero stats or XP no longer error between chapters",
-        "Fixed negative stat values showing as huge numbers"
       ]
     }
   ]
