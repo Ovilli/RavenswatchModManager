@@ -377,8 +377,8 @@ _RATIO = 2
 
 _OPS = "oCEntityCpntValueOperationsSettings"
 _MULTIPLY = 0x17b29be2
-_READ_VALUE = 0x0fd2c964
-_READ_INT = 0x0fd2c965
+_READ_VALUE = EntityFile.F32_ACCESSOR["oCEntityCpntValueSettings"]
+_READ_INT = EntityFile.INT_ACCESSOR["oCEntityCpntValueSettings"]
 _AMOUNT_SELECTOR = P.Link(bytes.fromhex("ff9e14f8f4505d4890d387548a6c8f81"),
                           r"[Value Selector] Magical_Objects_Model\Amount Selector")
 
@@ -451,12 +451,13 @@ def _modifier(w: P.PartWriter, name: str, stat: str, amount: float | int,
               source: P.Link | None = None) -> P.Link:
     """A modifier giving ``amount`` of ``stat`` to whoever holds the item."""
     if IM.is_integer_stat(stat):
-        key = 0x17ae780b if source is not None else None
+        key = EntityFile.INT_ACCESSOR[_OPS] if source is not None else None
         num = (P.Num.int(int(amount)) if source is None
                else P.Num(P.INT, struct.pack("<i", int(amount)), 0, source=source, key=key))
     else:
         num = (P.Num.f32(amount, _RATIO) if source is None
-               else P.Num(P.F32, struct.pack("<f", amount), _RATIO, source=source, key=0x17ae7811))
+               else P.Num(P.F32, struct.pack("<f", amount), _RATIO, source=source,
+                         key=EntityFile.F32_ACCESSOR[_OPS]))
     return w.add(_MOD, name, {
         "modifier_id": IM.resolve_stat(stat), "duration": P.Num.f32(0),
         "amount": num,
@@ -694,31 +695,19 @@ _ITEM_DATA = "Dt Magical Object Data"
 
 
 def _disarm_cooldown(ef: EntityFile) -> None:
-    """Ensure Dt Magical Object Data has no cooldown: value_4 = 0 and value_5 = 0.
-    Otherwise the game displays a radial cooldown on the item icon and suppresses
-    its event listeners."""
+    """Give the item data no cooldown. The item is in cooldown while ``value_4``
+    (the full time) > 0 and ``value_5 / value_4 < 1``, and in cooldown the icon
+    draws a clock and its listeners stay deaf, so ``value_4 = 0`` is what
+    disarms it and must hold. ``value_5`` is zeroed when it is a plain number;
+    a donor that links it to a timer (Increase_Shield) keeps the link, which
+    reads nothing once ``value_4`` is 0."""
+    if not any(c.name == _ITEM_DATA for c in ef.graph().components):
+        return
+    ef.set_value(_ITEM_DATA, "value_4", 0.0)
     try:
-        ef.set_value(_ITEM_DATA, "value_4", 0.0)
         ef.set_value(_ITEM_DATA, "value_5", 0.0)
     except EntityEditError:
         pass
-
-
-def _cooldown_display(ef: EntityFile, timer: str, seconds: float) -> None:
-    """Make the item icon count the effect down, wired as the one shipped item
-    whose countdown works (Curse_Lose_Life_Gain_Damage; RE 2026-10-20,
-    docs/_re/kinds/items.md): the item data's ``value_4`` is the full time and
-    ``value_5`` the timer's ELAPSED time; the item is in cooldown while
-    ``value_5 / value_4 < 1``. Increase_Shield, Defense_Heal and Gain_
-    Regeneration read their timer with 0x0fd2c964, a key no Timer answers, so
-    copying their link left the countdown dead. The full time is written
-    inline, and the timer link replaces whatever the slot held."""
-    ef.set_value(_ITEM_DATA, "value_4", seconds)
-    c = ef.component(_ITEM_DATA)
-    f = next(x for x in EF.fields(c) if x.name == "value_5")
-    n = next(i for i, v in enumerate(ef._value_pickers(c))
-             if f.offset <= v.offset < f.offset + f.size)
-    ef.source_value(_ITEM_DATA, n, timer, accessor=EntityFile.TIMER_ELAPSED)
 
 
 def _card_slots(ef: EntityFile, slots: list[tuple[str, bool]]) -> None:

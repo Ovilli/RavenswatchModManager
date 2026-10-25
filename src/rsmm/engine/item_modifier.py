@@ -24,6 +24,7 @@ from it as a generic GUID-swap primitive.
 from __future__ import annotations
 
 import binascii
+import dataclasses
 import functools
 import re
 import struct
@@ -140,6 +141,7 @@ class ModifierSurvey:
     used: dict[int, int]      # every modifier naming the key
     on_hit: dict[int, int]    # EMPTY targets list: carried onto its victims
     on_self: dict[int, int]   # targets exactly one self collector
+    int_amount: dict[int, int] = dataclasses.field(default_factory=dict)  # amount an int
 
 
 @functools.cache
@@ -153,6 +155,7 @@ def modifier_survey() -> ModifierSurvey:
     used: dict[int, int] = {}
     hit: dict[int, int] = {}
     own: dict[int, int] = {}
+    ints: dict[int, int] = {}
     for rel in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen"):
         raw = corpus.read(rel)
         if not raw or b"Modifier" not in raw:
@@ -176,13 +179,16 @@ def modifier_survey() -> ModifierSurvey:
             except (KeyError, ValueError, struct.error):
                 continue
             used[key] = used.get(key, 0) + 1
+            a = fs.get("amount")
+            if a is not None and (a.text or "").startswith("int "):
+                ints[key] = ints.get(key, 0) + 1
             kinds = {names[directory[i]] for i in ids
                      if i < len(directory) and directory[i] < len(names)}
             if not n:
                 hit[key] = hit.get(key, 0) + 1
             elif kinds == {"oCSelfEntityCollectorSettings"}:
                 own[key] = own.get(key, 0) + 1
-    return ModifierSurvey(used, hit, own)
+    return ModifierSurvey(used, hit, own, ints)
 
 
 def game_state_keys() -> frozenset[int]:
@@ -289,18 +295,20 @@ def resolve_stat(stat: str | int) -> int:
 
 def is_integer_stat(stat: str | int) -> bool:
     """Whether ``stat`` is an integer quantity (free rerolls, charges, tallies)
-    rather than a floating-point ratio/fraction/amount."""
+    rather than a floating-point ratio/fraction/amount: as the game's own
+    modifiers store it, every one of them an int (2026-10-25: the name rule
+    alone missed 7, Extra MO Choice and Rooted among them, so +1 of them wrote
+    the bits of 1.0 into an int). A stat no shipped modifier gives falls back
+    to its name."""
     try:
         key = resolve_stat(stat)
     except ItemModifierError:
         return False
-    if key == 0x1AA49D8D:  # Free Reroll
-        return True
-    name = stat_name(key)
-    if name:
-        if name == "Free Reroll" or name.startswith("Ability_Charge_") or name.endswith(" Count"):
-            return True
-    return False
+    s = modifier_survey()
+    if s.used.get(key):
+        return s.int_amount.get(key, 0) == s.used[key]
+    name = stat_name(key) or ""
+    return name == "Free Reroll" or name.startswith("Ability_Charge_") or name.endswith(" Count")
 
 
 def _own_name(payload: bytes) -> str | None:

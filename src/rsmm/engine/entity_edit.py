@@ -166,6 +166,27 @@ class EntityEdit:
             raise ValueError(f"subtest_of: {tester!r} evaluates no sub-tests")
         return out
 
+    def _reader_guid(self, to_label: str, leaf: str, *, exact: bool) -> bytes | None:
+        """The GUID of ``to_label``'s node in one of ``readers``: a reference
+        naming the full label first, else a node definition named ``leaf``.
+        Leaf names repeat across a hero's files (`Radius`, `Value`), so a match
+        must be ONE node: two different GUIDs raise rather than wire either."""
+        eds = [EntityEdit(r) for r in self._readers]
+        guids = []
+        for red in eds:
+            want = red._picker_classid()
+            guids += [red.concat[o - 16:o] for o, s in red.find_lstrings_containing(to_label)
+                      if s.startswith("[") and (not exact or s == to_label) and o >= 20
+                      and (want is None
+                           or struct.unpack_from("<I", red.concat, o - 20)[0] == want)]
+        if not guids:
+            guids = [g for g in (red._node_guid(leaf) for red in eds) if g is not None]
+        found = set(guids)
+        if len(found) > 1:
+            raise ValueError(f"rewire -> {to_label!r}: {len(found)} different nodes in the "
+                             "inherited files match it; name it by its full label")
+        return found.pop() if found else None
+
     def rewire_ref(self, from_label: str, to_label: str,
                    *, expect_classid: int | None = None,
                    count: int | None = 1, exact: bool = False,
@@ -247,21 +268,8 @@ class EntityEdit:
         except ValueError:
             leaf = to_label.rsplit("\\", 1)[-1]
             target_guid = self._node_guid(leaf)
-            if target_guid is None:
-                for r in self._readers:
-                    red = EntityEdit(r)
-                    target_guid = red._node_guid(leaf)
-                    if target_guid is not None:
-                        break
-                    hits = [o for o, s in red.find_lstrings_containing(to_label)
-                            if s.startswith("[") and (not exact or s == to_label)
-                            and o >= 20
-                            and (red._picker_classid() is None
-                                 or struct.unpack_from("<I", red.concat, o - 20)[0]
-                                 == red._picker_classid())]
-                    if hits:
-                        target_guid = red.concat[hits[0] - 16:hits[0]]
-                        break
+            if target_guid is None and self._readers:
+                target_guid = self._reader_guid(to_label, leaf, exact=exact)
             if target_guid is None:
                 raise
         dsts = _picker_guid_offs(from_label, scoped=True)

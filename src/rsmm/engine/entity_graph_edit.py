@@ -474,6 +474,11 @@ class EntityFile:
         "oCEntityCpntValueOperationsSettings": 0x17AE7811,
         "oCEntityCpntGetValueSettings": 0x16ABF2EB,
     }
+    #: The same reads of an int node (Free Reroll, charges, the counts).
+    INT_ACCESSOR = {
+        "oCEntityCpntValueSettings": 0x0FD2C965,
+        "oCEntityCpntValueOperationsSettings": 0x17AE780B,
+    }
     #: A Timer has several number outputs, so reading one names WHICH (RE
     #: 2026-10-20, docs/_re/kinds/items.md): the binder asks the timer's vt[13]
     #: by key. Time left is what "Transformed Time Left Value" and Dash_Crit_
@@ -726,11 +731,7 @@ class EntityFile:
         from . import entity_fields as EF
         is_int = any(f.name in ("value", "operations") and f.text and f.text.startswith("int ")
                      for f in EF.fields(t))
-        int_acc = {
-            "oCEntityCpntValueSettings": 0x0FD2C965,
-            "oCEntityCpntValueOperationsSettings": 0x17AE780B,
-        }
-        acc = int_acc.get(t.cls) if is_int else self.F32_ACCESSOR.get(t.cls)
+        acc = (self.INT_ACCESSOR if is_int else self.F32_ACCESSOR).get(t.cls)
         if acc is None:
             raise EntityEditError(f"{c.name!r}: no known way for a card slot to read a {t.cls}")
         from .entity_parts import PartWriter
