@@ -344,12 +344,17 @@ def stats() -> list[dict]:
     # A charge no talent can give is left out too.
     from rsmm.engine.talent_add_stat import charges_heard, is_charge
     heard = charges_heard()
-    return [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
-             "onHit": k in on_hit, "tally": stat_tally(n), "charge": is_charge(k),
-             "integer": IM.is_integer_stat(k),
-             "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
-            for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
-            if k not in state and not (heard and is_charge(k) and k not in heard)]
+    catalog = [{"name": n, "used": used.get(k, 0), "key": _hex(k), "aka": stat_aka(n),
+                "onHit": k in on_hit, "tally": stat_tally(n), "charge": is_charge(k),
+                "integer": IM.is_integer_stat(k),
+                "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
+               for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
+               if k not in state and not (heard and is_charge(k) and k not in heard)]
+    catalog.append({"name": "Stars of Fate", "used": 1, "key": "0x00000000",
+                    "aka": "reroll star star fragment cryptic prophecy",
+                    "onHit": False, "tally": None, "charge": False,
+                    "integer": True, "amounts": [1, 2]})
+    return catalog
 
 
 #: The engine's per-ability stat suffix -> the button the cards name it by.
@@ -1112,6 +1117,9 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
     for row in req.get("stats") or []:
         modifier, stat = str(row.get("modifier") or ""), str(row.get("stat") or "")
         if not modifier or not stat:
+            continue
+        if stat == "Stars of Fate":
+            swaps[modifier] = stat
             continue
         try:
             resolve_stat(stat)

@@ -294,6 +294,8 @@ def resolve_stat(stat: str | int) -> int:
 
 
 def is_integer_stat(stat: str | int) -> bool:
+    if str(stat) == "Stars of Fate":
+        return True
     """Whether ``stat`` is an integer quantity (free rerolls, charges, tallies)
     rather than a floating-point ratio/fraction/amount: as the game's own
     modifiers store it, every one of them an int (2026-10-25: the name rule

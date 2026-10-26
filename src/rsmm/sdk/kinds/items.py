@@ -140,6 +140,9 @@ def _coerce_stats(item_id: str, raw) -> dict[str, str | int]:
     for modifier, stat in raw.items():
         if not isinstance(stat, str | int) or isinstance(stat, bool):
             raise ContentError(f"item {item_id}: stats[{modifier!r}] = {stat!r} is not a stat")
+        if stat == "Stars of Fate":
+            out[str(modifier)] = stat
+            continue
         try:
             resolve_stat(stat)
         except ItemModifierError as e:

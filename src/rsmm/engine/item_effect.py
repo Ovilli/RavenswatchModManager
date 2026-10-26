@@ -199,10 +199,13 @@ class Effect:
         for k in ("stat", "amount"):
             if k not in raw:
                 raise ItemEffectError(f"effect needs {k!r}")
-        try:
-            IM.resolve_stat(raw["stat"])
-        except IM.ItemModifierError as e:
-            raise ItemEffectError(f"effect stat: {e}") from None
+        stat_name = str(raw["stat"])
+        is_stars = stat_name == "Stars of Fate"
+        if not is_stars:
+            try:
+                IM.resolve_stat(raw["stat"])
+            except IM.ItemModifierError as e:
+                raise ItemEffectError(f"effect stat: {e}") from None
         during = str(raw["during"]) if raw.get("during") is not None else None
         if during is None and "seconds" not in raw and raw.get("on") in DURING:
             during = str(raw["on"])
@@ -212,6 +215,8 @@ class Effect:
         if timed and "seconds" not in raw:
             raise ItemEffectError("effect: a trigger ('on') needs 'seconds' (how long the "
                                   "bonus lasts); leave both out for an always-on bonus")
+        if is_stars and (timed or during):
+            raise ItemEffectError("Stars of Fate is gained on pickup and cannot have a trigger or duration")
         on = str(raw.get("on", "damage_taken")) if timed else None
         if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
@@ -226,17 +231,17 @@ class Effect:
         for k in ("refresh", "percent", "keep_base_effect", "per_level"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
-        is_int = IM.is_integer_stat(raw["stat"])
+        is_int = is_stars or IM.is_integer_stat(raw["stat"])
         if is_int and raw["amount"] != int(raw["amount"]):
             raise ItemEffectError(f"effect amount: {raw['stat']} counts whole units, "
                                   f"got {raw['amount']}")
-        in_points = _in_points(raw["stat"])
+        in_points = False if is_stars else _in_points(raw["stat"])
         if raw.get("per_level") and (is_int or in_points):
             raise ItemEffectError(f"effect per_level: {raw['stat']} does not grow with "
                                   "level; use it on flat stats such as Shield or Armour")
         amount = int(raw["amount"]) if is_int else float(raw["amount"])
-        percent = raw.get("percent", not (is_int or in_points or _shows_plain(raw["stat"])))
-        return cls(stat=str(raw["stat"]), amount=amount,
+        percent = False if is_stars else raw.get("percent", not (is_int or in_points or _shows_plain(raw["stat"])))
+        return cls(stat=stat_name, amount=amount,
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
                    keep_base_effect=raw.get("keep_base_effect", False),
@@ -264,6 +269,57 @@ def _suffix(i: int) -> str:
     return SUFFIX if i == 0 else f"{SUFFIX} {i + 1}"
 
 
+_STAR_FRAGMENT = r"Objects\Magical_Objects\Powerups\Power_Up_Sandman_Minor_Reroll.entity.ot"
+_RESOURCE_GAIN = "oCDtEntityCpntResourceGainSettings"
+
+
+def _pickup_state(ef: EntityFile) -> str:
+    """The item's pickup state: an override of the model's pickup event, or
+    its equipped state (State Picked Up)."""
+    for c in ef.graph().components:
+        if c.override is not None and (
+            c.override.path.endswith(r"\Child On Pickup Event")
+            or c.override.path.endswith(r"\Event First Equiped")
+        ):
+            return c.name
+    for name in ("Child On Pickup Event", "On Pickup Event", "Event First Equiped"):
+        try:
+            ef.component(name)
+            return name
+        except EntityEditError:
+            pass
+    return _equipped_state(ef)
+
+
+def _add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read, slots: list,
+                       state: str | None = None) -> None:
+    """A resource-gain component copied from Star Fragment, giving ``amount``
+    Stars of Fate on pickup (or when ``state`` activates)."""
+    raw = read(_STAR_FRAGMENT)
+    if raw is None:
+        raise ItemEffectError("effect: Star Fragment is not readable (no install or mirror)")
+    from . import entity_graph as EG
+    g_star = EG.parse(raw, "Star_Fragment")
+    star_gain = next((c for c in g_star.components if c.cls == _RESOURCE_GAIN), None)
+    if star_gain is None:
+        raise ItemEffectError("effect: Star Fragment has no resource gain component")
+    decoded = P.decode(star_gain)
+
+    val_name = "Stars of Fate Value" + sfx
+    val_link = _value(w, val_name, int(effect.amount))
+
+    decoded["value_2"] = P.Num(P.INT, bytes(4), source=val_link,
+                               key=EntityFile.INT_ACCESSOR[_VALUE])
+    decoded["obj_3"] = w.ids("oCEntityCollectorSelectorSettings", [_owner(w, 1)])
+
+    gain_name = "Dt Resource Gain" + sfx
+    w.add(_RESOURCE_GAIN, gain_name, decoded, flags=0x10001)
+
+    target_state = state if state is not None else _pickup_state(w.ef)
+    w.ef.add_ref(target_state, "activates", gain_name)
+    slots.append((val_name, False))
+
+
 def apply_effect(ent: bytes, item_id: str, effect: Effect, *, read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) doing ``effect``."""
     return apply_effects(ent, item_id, [effect], read=read)
@@ -285,7 +341,9 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"effect:{item_id}:{i}")
             sfx = _suffix(i)
-            if effect.timed:
+            if effect.stat == "Stars of Fate":
+                _add_stars_of_fate(w, effect, sfx, read, slots)
+            elif effect.timed:
                 _add_timed(w, effect, sfx, equipped, read, slots, scale=True)
             else:
                 _add_passive(w, effect, sfx, equipped, slots, scale=True)
@@ -342,7 +400,9 @@ def apply_super_effects(ent: bytes, item_id: str, effects: list[Effect], *,
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"super:{item_id}:{i}")
             sfx = SUPER_SUFFIX if i == 0 else f"{SUPER_SUFFIX} {i + 1}"
-            if effect.timed:
+            if effect.stat == "Stars of Fate":
+                _add_stars_of_fate(w, effect, sfx, read, slots, state=state)
+            elif effect.timed:
                 _add_timed(w, effect, sfx, state, read, slots)
             else:
                 _add_passive(w, effect, sfx, state, slots)
