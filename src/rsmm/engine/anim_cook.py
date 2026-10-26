@@ -231,14 +231,6 @@ def declared_duration(glb: bytes, name: str | None = None) -> float | None:
     return float(d) if isinstance(d, (int, float)) and d > 0 else None
 
 
-def embedded_template(glb: bytes) -> bytes | None:
-    """The original cooked payload our exporter embedded, if any."""
-    try:
-        return A._extract_raw_payload_from_glb(glb)
-    except ValueError:
-        return None
-
-
 # --------------------------------------------------------------------------
 # comparison
 # --------------------------------------------------------------------------

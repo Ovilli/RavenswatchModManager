@@ -264,11 +264,6 @@ def _suffix(i: int) -> str:
     return SUFFIX if i == 0 else f"{SUFFIX} {i + 1}"
 
 
-def apply_effect(ent: bytes, item_id: str, effect: Effect, *, read=None) -> bytes:
-    """``ent`` (an item entity, already renamed to ``item_id``) doing ``effect``."""
-    return apply_effects(ent, item_id, [effect], read=read)
-
-
 def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) doing every one
     of ``effects``. The card's ``{0}``, ``{1}``... are each effect's numbers in

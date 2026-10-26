@@ -654,6 +654,3 @@ def format_issues(issues: Iterable[GraphIssue], *, color: bool = True) -> str:
 # ---------------------------------------------------------------------------
 
 
-def has_blocking(issues: Iterable[GraphIssue]) -> bool:
-    """True if any issue has severity == 'error'. Used by `apply` to refuse."""
-    return any(i.severity == "error" for i in issues)

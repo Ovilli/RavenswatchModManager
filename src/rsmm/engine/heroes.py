@@ -72,37 +72,6 @@ def _classify(key: str) -> str:
     return "meta"
 
 
-def _pair_keys(keys: list[str]) -> list[tuple[str, str | None]]:
-    """Group `_Name` + `_Desc` keys into pairs in source order. Solo
-    keys (no matching pair) pass through with the other side = None.
-    """
-    seen: set[str] = set()
-    out: list[tuple[str, str | None]] = []
-    for k in keys:
-        if k in seen:
-            continue
-        if k.endswith("_Name"):
-            base = k[:-5]
-            desc = base + "_Desc"
-            seen.add(k)
-            seen.add(desc)
-            out.append((k, desc if desc in keys else None))
-        elif k.endswith("_Desc"):
-            base = k[:-5]
-            name = base + "_Name"
-            if name in keys:
-                # paired in an earlier iteration; skip
-                seen.add(k)
-                seen.add(name)
-                continue
-            seen.add(k)
-            out.append((k, None))
-        else:
-            seen.add(k)
-            out.append((k, None))
-    return out
-
-
 def _parse(bank_base: Path, lang_path: Path) -> tuple[list[str], list[str]]:
     """Return (keys, values_en). Missing files -> empty lists."""
     try:
@@ -153,25 +122,7 @@ def registry() -> dict[str, Hero]:
     return out
 
 
-def list_names() -> list[str]:
-    return sorted(registry().keys())
-
-
 def get(name: str) -> Hero | None:
     return registry().get(name)
 
 
-def to_jsonable() -> list[dict]:
-    out = []
-    for h in sorted(registry().values(), key=lambda x: x.name):
-        out.append({
-            "name": h.name,
-            "bank": h.bank,
-            "abilities": [{"key": e.key, "label": e.label, "value": e.value}
-                          for e in h.abilities],
-            "skills":    [{"key": e.key, "label": e.label, "value": e.value}
-                          for e in h.skills],
-            "meta":      [{"key": e.key, "label": e.label, "value": e.value}
-                          for e in h.meta],
-        })
-    return out
