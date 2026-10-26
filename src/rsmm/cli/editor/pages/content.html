@@ -1264,6 +1264,9 @@ function effectsForm(E, blank, key = "effects") {
         if (!x.amount || x.amount < 1) x.amount = 1;
         else x.amount = Math.round(x.amount);
       }
+      if (v === "Stars of Fate") {
+        delete x.seconds; delete x.on; delete x.during; delete x.refresh;
+      }
       changed();
     });
     const unread = rest.includes(x.stat)
@@ -1271,14 +1274,16 @@ function effectsForm(E, blank, key = "effects") {
     const amountHint = inPoints
       ? "Entered in displayed points (15 = +15; the game modifier stores 0.15)."
       : "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5.";
+    const isStars = x.stat === "Stars of Fate";
     const f = el("div", { class: "form" });
-    f.append(el("label", { text: "When" }), when,
+    if (!isStars) f.append(el("label", { text: "When" }), when);
+    f.append(
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
       el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),
         el("div", { class: "hint", text: isInt ? "A whole number (1, 2...)." : amountHint }),
         ...(isInt ? [] : [flag("percent", !inPoints && !plain, "The card shows it as a percent (×100)")]),
         ...(isInt || inPoints ? [] : [flag("per_level", false, "Grows with hero level, like Fairy Dust's shield (amount = level 1)")])));
-    if (timed) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
+    if (timed && !isStars) f.append(el("label", { text: "Seconds" }), el("div", {}, num("seconds", "0.5"),
       flag("refresh", true, "Each trigger restarts the full time")));
     box.append(el("div", { class: "effect" },
       el("div", { class: "effhead" }, el("b", { text: `Effect ${i + 1}` }),

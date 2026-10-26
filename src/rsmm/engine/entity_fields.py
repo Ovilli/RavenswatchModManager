@@ -115,6 +115,10 @@ SCHEMAS: dict[str, list[tuple[str, ...]]] = {
         ("flag_a", "bool"), ("flag_b", "bool"), ("acceleration", "value"),
         ("braking", "value"), ("value_8", "value"), ("epsilon?", "f32"),
         ("on_change?", "obj"), ("on_changed?", "obj")],
+    "oCDtEntityCpntResourceGainSettings": [
+        ("bytes_1", "bytes"), ("value_2", "value"), ("obj_3", "obj"), ("value_4", "value"),
+        ("value_5", "value"), ("value_6", "value"), ("value_7", "value"), ("bytes_8", "bytes"),
+        ("value_9", "value")],
 }
 
 _OBJ_KIND = {"oCEntityCpntValuePicker": "value", "oCEntityCpntPicker": "ref"}

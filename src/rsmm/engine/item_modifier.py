@@ -300,6 +300,8 @@ def is_integer_stat(stat: str | int) -> bool:
     alone missed 7, Extra MO Choice and Rooted among them, so +1 of them wrote
     the bits of 1.0 into an int). A stat no shipped modifier gives falls back
     to its name."""
+    if str(stat) == "Stars of Fate":
+        return True
     try:
         key = resolve_stat(stat)
     except ItemModifierError:
