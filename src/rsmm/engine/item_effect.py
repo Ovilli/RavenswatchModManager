@@ -200,7 +200,7 @@ class Effect:
             if k not in raw:
                 raise ItemEffectError(f"effect needs {k!r}")
         stat_name = str(raw["stat"])
-        is_stars = stat_name == "Stars of Fate"
+        is_stars = stat_name == IM.STARS_OF_FATE
         if not is_stars:
             try:
                 IM.resolve_stat(raw["stat"])
@@ -293,11 +293,12 @@ def _pickup_state(ef: EntityFile) -> str:
     return _equipped_state(ef)
 
 
-def _add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read, slots: list,
-                       state: str | None = None) -> None:
+def add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read=None,
+                      slots: list | None = None, state: str | None = None) -> None:
     """A resource-gain component copied from Star Fragment, giving ``amount``
     Stars of Fate on pickup (or when ``state`` activates)."""
-    raw = read(_STAR_FRAGMENT)
+    from . import entity_check as CK
+    raw = (read or CK._corpus_reader)(_STAR_FRAGMENT)
     if raw is None:
         raise ItemEffectError("effect: Star Fragment is not readable (no install or mirror)")
     from . import entity_graph as EG
@@ -319,7 +320,8 @@ def _add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read, slots: l
 
     target_state = state if state is not None else _pickup_state(w.ef)
     w.ef.add_ref(target_state, "activates", gain_name)
-    slots.append((val_name, False))
+    if slots is not None:
+        slots.append((val_name, False))
 
 
 def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None) -> bytes:
@@ -338,8 +340,8 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"effect:{item_id}:{i}")
             sfx = _suffix(i)
-            if effect.stat == "Stars of Fate":
-                _add_stars_of_fate(w, effect, sfx, read, slots)
+            if effect.stat == IM.STARS_OF_FATE:
+                add_stars_of_fate(w, effect, sfx, read, slots)
             elif effect.timed:
                 _add_timed(w, effect, sfx, equipped, read, slots, scale=True)
             else:
@@ -397,8 +399,8 @@ def apply_super_effects(ent: bytes, item_id: str, effects: list[Effect], *,
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"super:{item_id}:{i}")
             sfx = SUPER_SUFFIX if i == 0 else f"{SUPER_SUFFIX} {i + 1}"
-            if effect.stat == "Stars of Fate":
-                _add_stars_of_fate(w, effect, sfx, read, slots, state=state)
+            if effect.stat == IM.STARS_OF_FATE:
+                add_stars_of_fate(w, effect, sfx, read, slots, state=state)
             elif effect.timed:
                 _add_timed(w, effect, sfx, state, read, slots)
             else:

@@ -350,7 +350,8 @@ def stats() -> list[dict]:
                 "amounts": [min(spans[k]), max(spans[k])] if k in spans else None}
                for n, k in sorted(IM.stat_catalog().items(), key=lambda kv: kv[0].lower())
                if k not in state and not (heard and is_charge(k) and k not in heard)]
-    catalog.append({"name": "Stars of Fate", "used": 1, "key": "0x00000000",
+    # Not a modifier stat, so no key; Star Fragment is the one shipped item giving it.
+    catalog.append({"name": IM.STARS_OF_FATE, "used": 1, "key": None,
                     "aka": "reroll star star fragment cryptic prophecy",
                     "onHit": False, "tally": None, "charge": False,
                     "integer": True, "amounts": [1, 2]})
@@ -1112,13 +1113,13 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
                                                         else [])])
     if patches:
         fields["value_patches"] = patches
-    from rsmm.engine.item_modifier import ItemModifierError, resolve_stat
+    from rsmm.engine.item_modifier import STARS_OF_FATE, ItemModifierError, resolve_stat
     swaps = {}
     for row in req.get("stats") or []:
         modifier, stat = str(row.get("modifier") or ""), str(row.get("stat") or "")
         if not modifier or not stat:
             continue
-        if stat == "Stars of Fate":
+        if stat == STARS_OF_FATE:
             swaps[modifier] = stat
             continue
         try:

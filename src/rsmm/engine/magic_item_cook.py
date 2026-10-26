@@ -788,7 +788,7 @@ def build_magic_item(
         # A modifier name that embeds the base id was renamed with the item.
         names = {m.name for m in IM.list_modifiers(ent)}
         target = modifier if modifier in names else modifier.replace(base_id, new_id)
-        if stat == "Stars of Fate":
+        if stat == IM.STARS_OF_FATE:
             from . import entity_fields as EF
             from . import entity_parts as P
             from . import item_effect as IE
@@ -815,8 +815,7 @@ def build_magic_item(
                 if cur_v is not None and cur_v > 0:
                     amount = int(round(cur_v))
             w = P.PartWriter(ef, f"mod_star:{new_id}")
-            from . import entity_check as CK
-            IE._add_stars_of_fate(w, IE.Effect("Stars of Fate", amount), "", CK._corpus_reader, [])
+            IE.add_stars_of_fate(w, IE.Effect(IM.STARS_OF_FATE, amount), "")
             ent = ef.to_bytes()
         else:
             ent = IM.set_modifier_stat(ent, target, stat)
