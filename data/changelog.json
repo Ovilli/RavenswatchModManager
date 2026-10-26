@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-25",
+  "generated": "2026-10-26",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-26",
+      "summary": "Symbol map corrections for build b9c3642: two mis-mapped flag serializers dropped, 16 more engine functions located (#66)",
+      "highlights": [
+        "Symbol map corrections for build b9c3642: two mis-mapped flag serializers dropped, 16 more engine functions located (#66)"
+      ],
+      "loader_version": 49
+    },
     {
       "version": "",
       "date": "2026-10-25",
@@ -520,15 +529,6 @@
         "Editor: reopening a mod keeps your custom talents editable, and the editor says when it can't find the game.",
         "For mod makers: rsmm diff shows what applying one mod changes, rsmm watch checks a mod before applying it, and mistyped mod names and commands get a suggestion.",
         "Fixed: profile, install, sign-in and background-helper bugs in the app, and several security gaps."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 30,
-      "date": "2026-10-08",
-      "summary": "Per-ability crit chance and cooldown reduction stats now read the right ability",
-      "highlights": [
-        "Fixed: mods reading or changing one ability's crit chance or cooldown reduction got a different ability's stat"
       ]
     }
   ]
