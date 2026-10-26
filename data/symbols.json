@@ -419,23 +419,12 @@
    "kind": "function",
    "category": "engine-core",
    "raw": "FUN_140182180",
-   "status": "ok",
+   "status": "unverified",
    "signature": "bool(void* flagFilter, void* reader)",
-   "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects \u2014 required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.] [recover_unverified 2026-07-17: relocated to 0x140189830 via hash 0x15a9d9bf]",
+   "note": "oCCustomFlagFilter serialize (hash 0x15a9d9bf): two inline oCCustomFlagList sub-objects \u2014 required @+0x8, excluded @+0x20. Explains the runtime reward-roll offsets: oCItem filter @+0xb8 -> required @+0xc0, excluded @+0xd8. [2026-07-09: remap landed on ambiguous stub; not trusted.] [recover_unverified 2026-07-17: relocated to 0x140189830 via hash 0x15a9d9bf] [2026-10-25 b9c3642884a8 CLI: 0x140182180 registers oCCustomFlagFilter; it is NOT a serializer. The old UID locator identifies that registrar and has been removed. No serializer replacement is claimed. Remove the obsolete semantic pattern from pattern-db before release. Kept unverified. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
-   ],
-   "locator": {
-    "consts": [
-     "0x15a9d9bf"
-    ],
-    "offsets": [
-     "0x20",
-     "0xb8",
-     "0xc0",
-     "0xd8"
-    ]
-   }
+   ]
   },
   {
    "name": "CustomFlagList_ContainsAll",
@@ -489,10 +478,10 @@
    "name": "CustomFlagList_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140181f90",
-   "status": "ok",
+   "raw": "FUN_140668a70",
+   "status": "unverified",
    "signature": "bool(void* flagList, void* reader)",
-   "note": "oCCustomFlagList serialize (hash 0x15a9d9be): delegates to string-vector read into this+0x8 ({count, count x lstr}). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [recover_unverified 2026-07-17: relocated to 0x140181f90 via hash 0x15a9d9be]",
+   "note": "oCCustomFlagList serialize (hash 0x15a9d9be): delegates to string-vector read into this+0x8 ({count, count x lstr}). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [recover_unverified 2026-07-17: relocated to 0x140181f90 via hash 0x15a9d9be] [2026-10-25 b9c3642884a8 CLI: The old 0x140181f90 is the oCCustomFlagList registrar, not its serializer. Actual serializer 0x140668a70 is slot 3 of RTTI vftable 0x140efe050 and delegates to StringVector_Serialize at 0x14066bb60. Remove the obsolete semantic pattern from pattern-db before release; do not reuse its registrar bytes. Kept unverified. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -725,10 +714,10 @@
    "name": "EnemyCamp_Stage3Filter",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_140323830",
+   "raw": "FUN_1403152a0",
    "status": "unverified",
    "signature": "void(void* candidatesVec, void* searchFilter)",
-   "note": "Trims an enemy-def candidate vector by tier range (+0x2e0), min tier (+0x2dc), flag include/exclude (+0x2c0 list), tribe whitelist (+0x318) and tier-weight tables. Only removes - never adds. (Rebase of old FUN_14030b000 notes.) [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Trims an enemy-def candidate vector by tier range (+0x2e0), min tier (+0x2dc), flag include/exclude (+0x2c0 list), tribe whitelist (+0x318) and tier-weight tables. Only removes - never adds. (Rebase of old FUN_14030b000 notes.) [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Removes candidates using +0x2e0 tier bounds, +0x2dc minimum, +0x2c0 include/exclude lists, +0x318 tribe whitelist, and tier-weight tables. EnemyCamp_TierSelector 0x1403372a0 copies the tribe roster and calls this function (focused-07). Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -898,10 +887,10 @@
    "name": "Enemy_RuntimeSpawnPicker",
    "kind": "function",
    "category": "enemies",
-   "raw": "FUN_140364360",
+   "raw": "FUN_14033a1c0",
    "status": "unverified",
    "signature": "void(void* spawnerCpnt)",
-   "note": "Spawn-time weighted picker: enumerates ALL enemy defs from the class registry (NOT the tribe roster), filters by tier/flags/allowed-tribe-ptr, weighted-random picks, lazily resolves the entity ref (+0x288 block) and appends spawn data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Spawn-time weighted picker: enumerates ALL enemy defs from the class registry (NOT the tribe roster), filters by tier/flags/allowed-tribe-ptr, weighted-random picks, lazily resolves the entity ref (+0x288 block) and appends spawn data. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Enumerates the enemy definition class registry, filters tier/flags/tribe, performs a weighted draw, lazily resolves the +0x288 entity resource via +0x2b8, and appends spawn data. This is distinct from the tribe-roster filter. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -1332,7 +1321,7 @@
    "name": "Entity_AllocInstance",
    "kind": "function",
    "category": "entity",
-   "raw": "FUN_1406a8d80",
+   "raw": "FUN_14068f580",
    "status": "unverified",
    "signature": "void*(void* allocator)",
    "cabi": {
@@ -1341,7 +1330,7 @@
      "void*"
     ]
    },
-   "note": "Free-list instance allocator: pops a node from the allocator's free list (or constructs one via vtable+0x50 when empty), links it into the live list, returns the instance ptr. Single arg = the allocator/pool struct (e.g. resource+0x18). Re-confirmed in Ghidra 2026-06-07 (decompile @0x14068fe90: 1 arg, returns node). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Free-list instance allocator: pops a node from the allocator's free list (or constructs one via vtable+0x50 when empty), links it into the live list, returns the instance ptr. Single arg = the allocator/pool struct (e.g. resource+0x18). Re-confirmed in Ghidra 2026-06-07 (decompile @0x14068fe90: 1 arg, returns node). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: One allocator argument; pops the free-list node or constructs through allocator resource vtable+0x50, links the live list, and returns the node. MagicalObject_SpawnAllObjects 0x140253540 calls it with resource+0x18 (focused-05). Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re",
     "src/loader/src/hook_items.cpp"
@@ -2460,9 +2449,9 @@
    "name": "Id_HashString",
    "kind": "function",
    "category": "event",
-   "raw": "FUN_14033f7a0",
+   "raw": "FUN_1405281b0",
    "status": "unverified",
-   "note": "Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff, table from Crc32_TableInit), then id = NamedEvent_Id_FromCrc(0, ~runningCrc). Lazily builds the crc table on first use (guard byte DAT_1414366f3). Used by def deserializers to intern a name string into an id (stored e.g. at hero+0x140). The Python equivalent is in data/ tooling-verifiable: id = crc32_pair(0, crc32(name)). Confirms how event/name ids are derived from strings; does NOT generate entity-VALUE-store keys (those are structured ids). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-10-16: BinDiff maps the old raw to 0x140334ba0, which is NOT a CRC hasher (vector moves) \u2014 the old raw was already wrong. Needs a fresh search: CRC table + guard byte + NamedEvent_Id_FromCrc.]",
+   "note": "Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff, table from Crc32_TableInit), then id = NamedEvent_Id_FromCrc(0, ~runningCrc). Lazily builds the crc table on first use (guard byte DAT_1414366f3). Used by def deserializers to intern a name string into an id (stored e.g. at hero+0x140). The Python equivalent is in data/ tooling-verifiable: id = crc32_pair(0, crc32(name)). Confirms how event/name ids are derived from strings; does NOT generate entity-VALUE-store keys (those are structured ids). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [2026-10-16: BinDiff maps the old raw to 0x140334ba0, which is NOT a CRC hasher (vector moves) \u2014 the old raw was already wrong. Needs a fresh search: CRC table + guard byte + NamedEvent_Id_FromCrc.] [2026-10-25 b9c3642884a8 CLI: Returns zero for an empty engine string; otherwise lazily initializes CRC table 0x141436c10 using guard byte 0x141436bf3, runs CRC32 from 0xffffffff, then returns NamedEvent_Id_FromCrc(0, ~crc). Input is an engine string descriptor, not necessarily a raw C string. Do not infer its ABI from the old prose. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/events-bus.md"
    ]
@@ -2587,10 +2576,10 @@
    "name": "LevelObject_DestroyVectors",
    "kind": "function",
    "category": "resource",
-   "raw": "FUN_140476f60",
+   "raw": "FUN_140476f00",
    "status": "unverified",
    "signature": "void(void* container)",
-   "note": "Destroys a level container's two object vectors: [+0x80] with count [+0x88], then [+0x18] with count [+0x20], calling the generic destroy thunk 0x1401273b0 on every entry WITHOUT A NULL CHECK. A cancelled load leaves the tail of the first vector null, so this faults at 0x1401273b6 reading address 0. Crash dumps 06721fec / bf959d79 / a8bb7d8c are all this, byte-identical: rdi (byte offset) 0x40 and rsi (remaining) 4 against a count of 12 = 12 entries with the first null at index 8. \u26a0 data/symbols.json calls 0x1401273b0 NamedEvent_Delete; it has 358 callers and is the generic destroy(obj) vtable thunk \u2014 its name is not evidence that named events are involved.",
+   "note": "Destroys a level container's two object vectors: [+0x80] with count [+0x88], then [+0x18] with count [+0x20], calling the generic destroy thunk 0x1401273b0 on every entry WITHOUT A NULL CHECK. A cancelled load leaves the tail of the first vector null, so this faults at 0x1401273b6 reading address 0. Crash dumps 06721fec / bf959d79 / a8bb7d8c are all this, byte-identical: rdi (byte offset) 0x40 and rsi (remaining) 4 against a count of 12 = 12 entries with the first null at index 8. \u26a0 data/symbols.json calls 0x1401273b0 NamedEvent_Delete; it has 358 callers and is the generic destroy(obj) vtable thunk \u2014 its name is not evidence that named events are involved. [2026-10-25 b9c3642884a8 CLI: Iterates [+0x80]/count[+0x88], then [+0x18]/count[+0x20], calling generic destroy 0x14011ff10 without per-entry null checks; then frees both vectors. No crash replay or runtime behavior was tested. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": []
   },
   {
@@ -2934,7 +2923,7 @@
    "name": "MagicalObjectPool_SourceLookup",
    "kind": "function",
    "category": "items",
-   "raw": "FUN_14025e3e0",
+   "raw": "FUN_140253ea0",
    "status": "unverified",
    "signature": "void*(void* pool, void* out, void* id)",
    "cabi": {
@@ -2945,7 +2934,7 @@
      "void*"
     ]
    },
-   "note": "Source-list lookup into the magical-object pool. Scans pool source array (*pool, count at pool[1]) for the entry whose GUID matches *id/id[1]; writes the found source into *out and returns out. Re-confirmed in Ghidra 2026-06-07 (decompile @0x1402590c0 matches: 3 args, calls Entity_FindMagicalObjectComponent). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Source-list lookup into the magical-object pool. Scans pool source array (*pool, count at pool[1]) for the entry whose GUID matches *id/id[1]; writes the found source into *out and returns out. Re-confirmed in Ghidra 2026-06-07 (decompile @0x1402590c0 matches: 3 args, calls Entity_FindMagicalObjectComponent). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Scans source pointers at pool+0/count+8 for GUID equality at source+0x88/+0x90. Then scans runtime entries at pool+0x10/count+0x18, calls generic Entity_FindComponentByType 0x1406e19a0 with descriptor 0x141470688, and matches component+0x10 against the source. Writes the RUNTIME ENTRY to out, not the source definition. Metadata registrar 0x140230710 identifies that descriptor as oCDtEntityCpntMagicalObjectData (focused-08). Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re",
     "src/loader/src/hook_items.cpp"
@@ -3544,7 +3533,7 @@
    "name": "Netcode_EntityReplSetup",
    "kind": "function",
    "category": "netcode",
-   "raw": "FUN_14073dda0",
+   "raw": "FUN_140720350",
    "status": "unverified",
    "signature": "void(void* replContext)",
    "cabi": {
@@ -3553,7 +3542,7 @@
      "void*"
     ]
    },
-   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
     "docs/_re/MULTIPLAYER.md"
@@ -3705,10 +3694,10 @@
    "name": "Profiler_GetThreadScopeStack",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_14053a660",
+   "raw": "FUN_1405220f0",
    "status": "unverified",
    "signature": "void*(void)",
-   "note": "Returns the per-thread profiler scope stack (TLS slot +0x148, lazily created; main-thread fast path via global DAT_1414476d0). Explains the ubiquitous decompile pattern `p = FUN_140521f20(); p[n*4+2]=&LAB_...; p[n*4+4]=\"ScopeName\"` \u2014 those are profiler scope pushes, safe to ignore when reading engine code. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.]",
+   "note": "Returns the per-thread profiler scope stack (TLS slot +0x148, lazily created; main-thread fast path via global DAT_1414476d0). Explains the ubiquitous decompile pattern `p = FUN_140521f20(); p[n*4+2]=&LAB_...; p[n*4+4]=\"ScopeName\"` \u2014 those are profiler scope pushes, safe to ignore when reading engine code. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Loads thread-local +0x148; if absent selects main-thread global 0x141447cf0 or lazily creates the worker stack and caches it. RAX retains that pointer through the epilogue. Reward_GenerateAndDistribute callers use it to push named profiler scopes. Standalone decompile incorrectly inferred void; machine code and caller use establish the return value. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -3846,7 +3835,7 @@
    "category": "library",
    "va": "0x141470208",
    "status": "va",
-   "note": "Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID 0x176debb7, instance size 0x350). Enumerate instances via Registry_EnumInstances. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
+   "note": "Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID 0x176debb7, instance size 0x350). Enumerate instances via Registry_EnumInstances. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: the UNREFERENCED warning above does not hold here: 5 RIP-relative sites in 2 functions (e.g. 0x140188525). None of those functions carries UID 0x176debb7 or size 0x350, so the reference does not confirm this is the descriptor. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -3857,7 +3846,7 @@
    "category": "library",
    "va": "0x14146f938",
    "status": "va",
-   "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308). \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
+   "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308). \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: the UNREFERENCED warning above does not hold here: 2 RIP-relative sites in 1 function (e.g. 0x140453aa5). None of those functions carries UID 0x176dc2eb or size 0x2d8, so the reference does not confirm this is the descriptor. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -4126,10 +4115,10 @@
    "name": "Reward_GenerateAndDistribute",
    "kind": "function",
    "category": "rewards",
-   "raw": "FUN_1401ecd10",
+   "raw": "FUN_1401e3340",
    "status": "unverified",
    "signature": "void(void* mapSceneContext)",
-   "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) \u2014 a per-peer Lua post-filter would desync MP. After the roll, level load posts GENERATE_REWARDS via NamedEvent_Dispatch + EventQueue_Drain (FUN_14005c510/FUN_14003b350 are just static initializers interning the event name, NOT handlers). Candidate gate per (spawner, oCItem) pair: value f32 (spawner+0x68, lazy) within [oCItem+0xb0, oCItem+0xb4] AND CustomFlagList_ContainsAll(settings+0x100, oCItem+0xc0) AND !CustomFlagList_ContainsAny(settings+0x100, oCItem+0xd8). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
+   "note": "The per-level reward roll: SEEDED ('Seed : {0} ; Base seed {1}'), '_InitAllRewards' / 'Distribute' / 'Fill remaining slots with random rewards'. Because the draw is seed-driven and multiplayer host-authoritative/deterministic, a reward BAN must be DATA-LEVEL (remove the candidate from the pool the roll reads) \u2014 a per-peer Lua post-filter would desync MP. After the roll, level load posts GENERATE_REWARDS via NamedEvent_Dispatch + EventQueue_Drain (FUN_14005c510/FUN_14003b350 are just static initializers interning the event name, NOT handlers). Candidate gate per (spawner, oCItem) pair: value f32 (spawner+0x68, lazy) within [oCItem+0xb0, oCItem+0xb4] AND CustomFlagList_ContainsAll(settings+0x100, oCItem+0xc0) AND !CustomFlagList_ContainsAny(settings+0x100, oCItem+0xd8). [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8: relocated to 0x1401e3340 \u2014 the only function referencing all four quoted strings ('Seed : {0} ; Base seed {1}', '_InitAllRewards', 'Distribute', 'Fill remaining slots with random rewards'). It calls CustomFlagList_ContainsAll and _ContainsAny three times each and reads +0x68/+0xb0/+0xb4/+0xc0/+0xd8, the candidate gate above. SAME FUNCTION as Reward_InitAllRewards (ok). The old 0x1401ecd10 is mid-function (inside FUN_1401ec140). Kept unverified: the pattern DB has no entry for it under this name. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -4140,7 +4129,7 @@
    "category": "rewards",
    "raw": "FUN_1401e3340",
    "status": "ok",
-   "note": "_InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibling. oCDtRewardDefinition is the entity class.",
+   "note": "_InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibling. oCDtRewardDefinition is the entity class. [2026-10-25 b9c3642884a8: this function IS the seeded roll \u2014 it references 'Seed : {0} ; Base seed {1}', 'Distribute' and 'Fill remaining slots with random rewards' and applies the ContainsAll/ContainsAny candidate gate, so 'the actual reward roller is a sibling' does not hold in this build. Reward_GenerateAndDistribute now names the same address. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re"
    ],
@@ -4373,7 +4362,7 @@
    "category": "engine-core",
    "va": "0x14146f740",
    "status": "va",
-   "note": "Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> service object with u32 service id @+0x8. Id 0x53b64d = entity loader (svc-vtbl+0x18 = LoadEntityByPath(str, flags, outRef, 0)) \u2014 used by HeroDef_LoadBaseEntity / HeroDef_LoadSkinEntity. Registration happens in FUN_140456cb0 during engine boot (called from FUN_140454750): it walks a static-init linked list of service singletons, and for each one inserts a (key, service) pair into the registry array \u2014 the id 0x53b64d appears there as the key immediate at 0x140456d9d. Because the list is built by static initializers, the concrete class behind a service id is NOT statically reachable; use a hook if you need it. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
+   "note": "Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> service object with u32 service id @+0x8. Id 0x53b64d = entity loader (svc-vtbl+0x18 = LoadEntityByPath(str, flags, outRef, 0)) \u2014 used by HeroDef_LoadBaseEntity / HeroDef_LoadSkinEntity. Registration happens in FUN_140456cb0 during engine boot (called from FUN_140454750): it walks a static-init linked list of service singletons, and for each one inserts a (key, service) pair into the registry array \u2014 the id 0x53b64d appears there as the key immediate at 0x140456d9d. Because the list is built by static initializers, the concrete class behind a service id is NOT statically reachable; use a hook if you need it. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: STILL UNREFERENCED \u2014 no RIP-relative reference to this address, nor to +0x8..+0x40, anywhere in .text. va_globals_trusted is true for this build (the planted meta matches), so that gate does not protect reads of it here. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re/kinds/heroes.md"
    ]
@@ -4481,10 +4470,10 @@
    "name": "StringVector_Serialize",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_140684f30",
+   "raw": "FUN_14066bb60",
    "status": "unverified",
    "signature": "bool(void* reader, void* strVec)",
-   "note": "Reads/writes a vector of engine strings ({u32 count, count x lstr}); backing store 0x18-byte entries {ptr @+0x8, u32 len @+0x10} \u2014 the layout CustomFlagList_ContainsAll/Any iterate. Semantics inferred from CustomFlagList_Serialize delegation. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.]",
+   "note": "Reads/writes a vector of engine strings ({u32 count, count x lstr}); backing store 0x18-byte entries {ptr @+0x8, u32 len @+0x10} \u2014 the layout CustomFlagList_ContainsAll/Any iterate. Semantics inferred from CustomFlagList_Serialize delegation. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Reached from oCCustomFlagList vftable 0x140efe050 slot 3, wrapper 0x140668a70 (focused-03). Reads/writes vector length and 0x18-byte entries via 0x1404ff6a0 (focused-05). These entries contain a u32 cached ID plus engine string at +8; reading recalculates CRC-derived IDs. Also accepts a legacy serialized-object envelope. Thus the old plain-string-vector description omits the cached ID and compatibility path. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re/kinds/rewards.md"
    ]
@@ -4853,7 +4842,7 @@
    "name": "UiController_UnbindComponent",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_14034c200",
+   "raw": "FUN_1403469e0",
    "status": "unverified",
    "signature": "void(void* uiController)",
    "locator": {
@@ -4862,7 +4851,7 @@
      "slot": 6
     }
    },
-   "note": "Drop the cached target component \u2014 vftable slot 6, the exact inverse of slot 5. Both implementations read are a single store: the minimap controller nulls +0x70, the book-page controller nulls +0x68, each the same field its own slot 5 filled.\n\n\u26a0 SLOTS 5 AND 6 ARE A PAIR, and so are 28/29 (UiController_OnShow / _OnHide). Slot 5 caches a pointer into a controller field; slot 6 nulls that SAME field. Reading one without the other is how a cached component pointer outlives the thing it points at.\n\n33 and 32 implementations respectively, all unnamed before this \u2014 the two densest unnamed slots in the Controller family, so naming them describes the binding lifecycle of every UI controller in the game at once. Found via tools/mine_vtable_interfaces.py."
+   "note": "Drop the cached target component \u2014 vftable slot 6, the exact inverse of slot 5. Both implementations read are a single store: the minimap controller nulls +0x70, the book-page controller nulls +0x68, each the same field its own slot 5 filled.\n\n\u26a0 SLOTS 5 AND 6 ARE A PAIR, and so are 28/29 (UiController_OnShow / _OnHide). Slot 5 caches a pointer into a controller field; slot 6 nulls that SAME field. Reading one without the other is how a cached component pointer outlives the thing it points at.\n\n33 and 32 implementations respectively, all unnamed before this \u2014 the two densest unnamed slots in the Controller family, so naming them describes the binding lifecycle of every UI controller in the game at once. Found via tools/mine_vtable_interfaces.py. [2026-10-25 b9c3642884a8: relocated to 0x1403469e0 \u2014 slot 6 of the oCDtEntityCpntMinimapUiController primary vftable (0x140f072f0), which is this symbol's own locator; slot 5 is UiController_BindComponent. The decompile is the single store *(this+0x70) = 0, the field slot 5 fills. The old 0x14034c200 is mid-function (inside FUN_14034c1f0) in this build. Kept unverified: the pattern DB has no entry for it, so the loader still fails closed. Static evidence; not yet seen in game.]"
   },
   {
    "name": "Vector_Grow",
@@ -5114,7 +5103,7 @@
    "category": "skins",
    "va": "0x141436590",
    "status": "va",
-   "note": "Manager pointer global (relocated by the live image base) walked by the skin-grid populate path. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted.",
+   "note": "Manager pointer global (relocated by the live image base) walked by the skin-grid populate path. \u26a0 UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose \u2014 guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: STILL UNREFERENCED \u2014 no RIP-relative reference to this address, nor to +0x8..+0x40, anywhere in .text. va_globals_trusted is true for this build (the planted meta matches), so that gate does not protect reads of it here. Static evidence; not yet seen in game.]",
    "refs": [
     "src/loader/src/hook_skins.cpp"
    ]
@@ -5230,10 +5219,10 @@
    "name": "MetaClass_DestructInPlace",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401a9530",
+   "raw": "FUN_1401a1e80",
    "status": "unverified",
    "signature": "void(void* obj)",
-   "note": "Generic in-place destructor stored at metaclass ops+0x90 (ops = desc+0x88) by EVERY class registrar: 1784/1787 registrars store this exact address (registrars.tsv). Body = obj->vftable[2](obj, 0), i.e. the scalar-deleting dtor with flags 0 (destroy, don't free). Was not a Ghidra function before the sweep (only LEA refs, 3568). Confidence: confirmed (decompile + registrar store site, e.g. oCEntityValueModifierMaxComputer registrar FUN_14017f981). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Generic in-place destructor stored at metaclass ops+0x90 (ops = desc+0x88) by EVERY class registrar: 1784/1787 registrars store this exact address (registrars.tsv). Body = obj->vftable[2](obj, 0), i.e. the scalar-deleting dtor with flags 0 (destroy, don't free). Was not a Ghidra function before the sweep (only LEA refs, 3568). Confidence: confirmed (decompile + registrar store site, e.g. oCEntityValueModifierMaxComputer registrar FUN_14017f981). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Exact leaf bytes: mov rax,[rcx]; xor edx,edx; jmp [rax+0x10]. Registrar callback stores at *(desc+0x88)+0x90 tie it to the in-place destructor operation. Existing snapshot leaves this leaf undefined; no function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ],
@@ -5248,10 +5237,10 @@
    "name": "MetaClass_GetObjectClass",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401b9850",
+   "raw": "FUN_1401b21a0",
    "status": "unverified",
    "signature": "void*(void* obj)",
-   "note": "Generic adapter stored at class descriptor +0x80 (plVar2[0x10]) by all 1787 registrars: tail-jumps to obj->vftable[0] (the per-class virtual that returns the object's runtime metaclass). Undefined before the sweep (3574 LEA refs). Confidence: likely (store site certain; slot-0 meaning inferred). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Generic adapter stored at class descriptor +0x80 (plVar2[0x10]) by all 1787 registrars: tail-jumps to obj->vftable[0] (the per-class virtual that returns the object's runtime metaclass). Undefined before the sweep (3574 LEA refs). Confidence: likely (store site certain; slot-0 meaning inferred). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Exact leaf bytes load the object vtable and tail-jump to slot 0. Registrars store this adapter at desc+0x80. oCCustomFlagList slot 0, 0x1400be330, returns its registered descriptor 0x141470240 (focused-06). No function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -5260,10 +5249,10 @@
    "name": "MetaClass_DestructInPlace_Slot0",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401aaf30",
+   "raw": "FUN_1401a3880",
    "status": "unverified",
    "signature": "void(void* obj)",
-   "note": "Variant of MetaClass_DestructInPlace that calls obj->vftable[0](obj,0) \u2014 for class families whose deleting dtor is slot 0. 58 LEA refs from registrar-shaped functions (e.g. FUN_1402fa1a1, FUN_1403b9ff1). Undefined before the sweep. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Variant of MetaClass_DestructInPlace that calls obj->vftable[0](obj,0) \u2014 for class families whose deleting dtor is slot 0. 58 LEA refs from registrar-shaped functions (e.g. FUN_1402fa1a1, FUN_1403b9ff1). Undefined before the sweep. Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Leaf loads object vtable, clears EDX, and tail-jumps to slot 0. Registrar 0x14021f940 stores it in ops+0x90. Its oCBasicDamage vftable 0x140f081e8 slot 0 is 0x1401c71a0, a deleting destructor whose bit-0 flag controls freeing (focused-08). Clearing the flag destroys without freeing. No function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -5272,10 +5261,10 @@
    "name": "MetaClass_Construct_Zero16",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401a96e0",
+   "raw": "FUN_1401a2030",
    "status": "unverified",
    "signature": "void(void* obj)",
-   "note": "Placement-construct callback for 16-byte POD reflected types: zeroes two qwords. Stored at ops+0x80 by registrars (16 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Placement-construct callback for 16-byte POD reflected types: zeroes two qwords. Stored at ops+0x80 by registrars (16 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Leaf zeroes two qwords and returns. oCBox2 registrar 0x14021cfb0 declares size 16 and stores this pointer at ops+0x80 (focused-05). No function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -5284,10 +5273,10 @@
    "name": "MetaClass_Construct_Zero8",
    "kind": "function",
    "category": "engine-core",
-   "raw": "FUN_1401a9570",
+   "raw": "FUN_1401a1ec0",
    "status": "unverified",
    "signature": "void(void* obj)",
-   "note": "Placement-construct callback for 8-byte POD reflected types: zeroes one qword. Stored at ops+0x80 by registrars (12 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Placement-construct callback for 8-byte POD reflected types: zeroes one qword. Stored at ops+0x80 by registrars (12 LEA refs). Undefined before the sweep. Confidence: confirmed (decompile). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Leaf zeroes one qword and returns. oCFloatInterval registrar 0x14017f8b0 declares size 8 and stores it at ops+0x80 (focused-05). No function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -5368,10 +5357,10 @@
    "name": "StringFormat_ArgString",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_14052c7d0",
+   "raw": "FUN_14052a050",
    "status": "unverified",
    "signature": "void(oCString* arg, oCString* out, FormatSpec* spec)",
-   "note": "Per-type argument formatter for the engine's string-format: if spec text (spec+8) isn't a literal '%...', handles 'f' (quote), 'U' (toupper) and 'u' (tolower) on the oCString argument, else plain append. Reached via sweep-defined JMP thunk 0x14021e680 (128 LEA refs). Siblings: thunks 0x14021e6a0->FUN_14052c510, 0x14021e690->FUN_14052c760, 0x140166de0->FUN_14052c3d0, 0x1402b9d30->FUN_14052c650 (16-bit arg, 'x' hex). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Per-type argument formatter for the engine's string-format: if spec text (spec+8) isn't a literal '%...', handles 'f' (quote), 'U' (toupper) and 'u' (tolower) on the oCString argument, else plain append. Reached via sweep-defined JMP thunk 0x14021e680 (128 LEA refs). Siblings: thunks 0x14021e6a0->FUN_14052c510, 0x14021e690->FUN_14052c760, 0x140166de0->FUN_14052c3d0, 0x1402b9d30->FUN_14052c650 (16-bit arg, 'x' hex). Confidence: likely. [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Literal %-spec path delegates directly to the formatting helper; otherwise f adds single quotes, U calls toupper, u calls tolower, and the default appends. Existing thunk 0x1402188d0 jumps here (focused-05). Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
@@ -5380,10 +5369,10 @@
    "name": "StringFormat_ArgPointer",
    "kind": "function",
    "category": "ui",
-   "raw": "FUN_1402c44f0",
+   "raw": "FUN_1402bd340",
    "status": "unverified",
    "signature": "void(void** arg, oCString* out, FormatSpec* spec)",
-   "note": "Pointer argument formatter: default spec '0x%016p' unless the spec text starts with '%'. Undefined before the sweep (10 LEA refs). Confidence: confirmed (decompile + string). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.]",
+   "note": "Pointer argument formatter: default spec '0x%016p' unless the spec text starts with '%'. Undefined before the sweep (10 LEA refs). Confidence: confirmed (decompile + string). [2026-10-10 undefined-code sweep: headless define+decompile of code Ghidra left undefined; static evidence only, not proven in game. Ctors were reached through each class registrar's metaclass ops+0x80 construct slot (ops = desc+0x88), the same slot that leads to the known EnemyDefinition_ctor and NamedEvent_GiveMagicalObject_Ctor.] [2026-10-25 b9c3642884a8 CLI: Leaf loads spec+8, dereferences the pointer argument, chooses default 0x%016p unless the spec begins with %, and tail-jumps to 0x1402bd450. Ten references; standalone leaf is undefined in the snapshot. A separate four-argument adapter at 0x1405101d0 shares the literal, so the literal alone was not sufficient; argument routing distinguishes the requested three-argument formatter. No function was created. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "docs/_re"
    ]
