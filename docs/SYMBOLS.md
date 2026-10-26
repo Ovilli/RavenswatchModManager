@@ -41,14 +41,14 @@ Total: **347** symbols across 27 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `EnemyCamp_Stage3Filter` | `0x140323830` | ❓ unverified |  | void(void* candidatesVec, void* searchFilter) |
+| `EnemyCamp_Stage3Filter` | `0x1403152a0` | ❓ unverified |  | void(void* candidatesVec, void* searchFilter) |
 | `EnemyCamp_TierSelector` | `0x1403372a0` | ✅ ok |  | void(void* selector) |
 | `EnemyCamp_TribeEntryBuilder` | `0x140338930` | ✅ ok |  | void(void* selector, void* specialEntry, void* outEntries, float mult) |
 | `EnemyDef_PostLoad` | `0x140315ce0` | ✅ ok |  | bool(void* enemyDef) |
 | `EnemyDefinition_ctor` | `0x1401d8d10` | ✅ ok |  | void*(void* self) |
 | `EnemyTribeDef_PostLoad` | `0x140316fc0` | ✅ ok |  | bool(void* tribeDef) |
 | `EnemyTribeDefinition_ctor` | `0x1400bdd20` | ✅ ok |  | void*(void* self) |
-| `Enemy_RuntimeSpawnPicker` | `0x140364360` | ❓ unverified |  | void(void* spawnerCpnt) |
+| `Enemy_RuntimeSpawnPicker` | `0x14033a1c0` | ❓ unverified |  | void(void* spawnerCpnt) |
 | `MapCtx_DistributeEnemyCampTiers` | `0x1401e2370` | ✅ ok |  | void(void* mapSceneContext) |
 
 ## engine
@@ -70,19 +70,19 @@ Total: **347** symbols across 27 categories.
 | `ClassRegistry_Global` | `0x141436b90` | 📍 va |  | Global class-descriptor registry: ptr to {descPtr array @+0x0, u32 count @+0x8}. Scanne… |
 | `Component_GetTypeId` | `0x1401e0490` | ✅ ok |  | uint32_t(void* component) |
 | `Controller_GetFieldByKey` | `0x14039f470` | ✅ ok |  | void*(void* controller, uint32_t key) |
-| `CustomFlagFilter_Serialize` | `0x140182180` | ✅ ok |  | bool(void* flagFilter, void* reader) |
-| `CustomFlagList_Serialize` | `0x140181f90` | ✅ ok |  | bool(void* flagList, void* reader) |
+| `CustomFlagFilter_Serialize` | `0x140182180` | ❓ unverified |  | bool(void* flagFilter, void* reader) |
+| `CustomFlagList_Serialize` | `0x140668a70` | ❓ unverified |  | bool(void* flagList, void* reader) |
 | `Engine_MainThreadId` | `0x14143d0c8` | 📍 va |  | Thread id of the engine main thread. LevelLoad_ProgressTick compares GetCurrentThreadId… |
 | `Engine_Singleton` | `0x141436a88` | 📍 va |  | Pointer to the oe::Engine singleton (object at 0x14143daf0; ctor FUN_1404564d0 stores b… |
 | `GameScene_FindContextByTester` | `0x14066b290` | ✅ ok |  | void*(void* gameScene, void* kindOfTypeTester) |
 | `MetaClass_AddMember` | `0x140509a70` | ✅ ok |  | void(void* metaClass, void* member, uint32_t id, void* name, void* unused, void* userData) |
-| `MetaClass_Construct_Zero16` | `0x1401a96e0` | ❓ unverified |  | void(void* obj) |
-| `MetaClass_Construct_Zero8` | `0x1401a9570` | ❓ unverified |  | void(void* obj) |
-| `MetaClass_DestructInPlace` | `0x1401a9530` | ❓ unverified | ✔ | void(void* obj) |
-| `MetaClass_DestructInPlace_Slot0` | `0x1401aaf30` | ❓ unverified |  | void(void* obj) |
+| `MetaClass_Construct_Zero16` | `0x1401a2030` | ❓ unverified |  | void(void* obj) |
+| `MetaClass_Construct_Zero8` | `0x1401a1ec0` | ❓ unverified |  | void(void* obj) |
+| `MetaClass_DestructInPlace` | `0x1401a1e80` | ❓ unverified | ✔ | void(void* obj) |
+| `MetaClass_DestructInPlace_Slot0` | `0x1401a3880` | ❓ unverified |  | void(void* obj) |
 | `MetaClass_FindMember` | `0x14050bd60` | ✅ ok |  | void* (void* metaClass, uint32_t nameOrId, void* kind, bool searchParents) |
-| `MetaClass_GetObjectClass` | `0x1401b9850` | ❓ unverified |  | void*(void* obj) |
-| `Profiler_GetThreadScopeStack` | `0x14053a660` | ❓ unverified |  | void*(void) |
+| `MetaClass_GetObjectClass` | `0x1401b21a0` | ❓ unverified |  | void*(void* obj) |
+| `Profiler_GetThreadScopeStack` | `0x1405220f0` | ❓ unverified |  | void*(void) |
 | `Property_EvaluateByGuid` | `0x1406aa0a0` | ✅ ok |  | bool(void* ctx, void* container, void* guid16, float* out) |
 | `ResourceRef_Serialize` | `0x1401c1900` | ✅ ok |  | bool(void* reader, void* refSlot) |
 | `Serializer_GetClassVersion` | `0x1404fcd60` | ✅ ok |  | void*(void* reader, void* out, uint32_t classHash) |
@@ -95,7 +95,7 @@ Total: **347** symbols across 27 categories.
 | `Serializer_ReadVectorU8` | `0x14035dda0` | ✅ ok |  | bool(void* serializer, void* vec) |
 | `Serializer_ResolveObjectId` | `0x1405001c0` | ✅ ok |  | bool(void* loader, void** out, const char* label) |
 | `ServiceRegistry_Global` | `0x14146f740` | 📍 va |  | Global engine service registry: service array @+0x30, u32 count @+0x38; each entry -> s… |
-| `StringVector_Serialize` | `0x140684f30` | ❓ unverified |  | bool(void* reader, void* strVec) |
+| `StringVector_Serialize` | `0x14066bb60` | ❓ unverified |  | bool(void* reader, void* strVec) |
 | `Vector_InsertRange` | `0x14014e030` | ✅ ok | ✔ | void*(void* vector, unsigned index, unsigned count) |
 
 ## entity
@@ -120,7 +120,7 @@ Total: **347** symbols across 27 categories.
 | `EntityValueUnion_InitAsType` | `0x14082b650` | ✅ ok | ✔ | void(void*, uint32_t) |
 | `EntityValue_Get` | `0x1403bf260` | ✅ ok | ✔ | void(void* valueCtx, oCEntityValueUnion* out, uint32_t crcKey) |
 | `EntityValue_Lookup` | `0x1407484d0` | ✅ ok | ✔ | oCEntityValueUnion*(void* store, oCEntityValueUnion* out, uint32_t crcKey) |
-| `Entity_AllocInstance` | `0x1406a8d80` | ❓ unverified | ✔ | void*(void* allocator) |
+| `Entity_AllocInstance` | `0x14068f580` | ❓ unverified | ✔ | void*(void* allocator) |
 | `Entity_DispatchHit` | `0x1406e2470` | ✅ ok | ✔ | void(oCEntity* target, oCEntityHitData* hit) |
 | `Entity_FindComponentByType` | `0x1406e19a0` | ✅ ok | ✔ | oIEntityCpnt*(oCEntitySpawnerGo* go, oCMetaClass* meta) |
 | `Entity_FindMagicalObjectComponent` | `0x1406fb8a2` | ❓ unverified | ✔ | void*(void* instance, void* mo_component_meta) |
@@ -161,7 +161,7 @@ Total: **347** symbols across 27 categories.
 | `Event_LevelUp` → `level_up` | `0x1401f0750` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401ef520` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
 | `Hero_GainRerollHandler` | `0x1403b3510` | ✅ ok |  | void(void* hero, void* ev) |
-| `Id_HashString` | `0x14033f7a0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
+| `Id_HashString` | `0x1405281b0` | ❓ unverified |  | Runtime string -> 32-bit id hasher: standard CRC32 over the name bytes (init 0xffffffff… |
 | `NamedEvent_ChannelMap_Find` | `0x14066c3d0` | ✅ ok | ✔ | iter*(void* channel_map, iter* out, uint32_t* event_id) |
 | `NamedEvent_Delete` | `0x14011ff10` | ✅ ok | ✔ | void(oCGameNamedEvent* ev) |
 | `NamedEvent_Dispatch` | `0x140669e60` | ✅ ok | ✔ | void(void* dispatcher, oCGameNamedEvent* ev) |
@@ -225,7 +225,7 @@ Total: **347** symbols across 27 categories.
 | `Hero_GrantMagicalObject` | `0x1403a0170` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* def, uint16_t count, char dupFlag, void*… |
 | `InitialLoading_SpawnMagicalObjects` | `0x14025b160` | ✅ ok |  | Boot 'InitialLoading - MagicalObject SpawnAllObjects' caller that invokes SpawnAllObjec… |
 | `MagicalObjectPool_Grow` | `0x140156de0` | ❓ unverified | ✔ | void(void* pool_plus_0x10, uint32_t count, uint32_t by) |
-| `MagicalObjectPool_SourceLookup` | `0x14025e3e0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
+| `MagicalObjectPool_SourceLookup` | `0x140253ea0` | ❓ unverified | ✔ | void*(void* pool, void* out, void* id) |
 | `MagicalObject_RegisterInstance` | `0x1403b46c0` | ✅ ok | ✔ | void(oCDtEntityCpntHeroController* hero, void* instance, char addToActive) |
 | `MagicalObject_SpawnAllObjects` | `0x140253540` | ✅ ok | ✔ | void(void* pool, void* scene) |
 | `g_MagicalObjectPool` | `0x141436ad0` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x1414365d0); confirmed via readers … |
@@ -310,7 +310,7 @@ Total: **347** symbols across 27 categories.
 | `Netcode_ConnectionFactory` | `0x140b274f0` | ✅ ok |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
 | `Netcode_ConnectionRegistry_Emplace` | `0x140b2ea80` | ✅ ok |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
 | `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
-| `Netcode_EntityReplSetup` | `0x14073dda0` | ❓ unverified | ✔ | void(void* replContext) |
+| `Netcode_EntityReplSetup` | `0x140720350` | ❓ unverified | ✔ | void(void* replContext) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
 | `P2PSession_OnFcm2NewHost` | `0x1408b70b0` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
@@ -366,7 +366,7 @@ Total: **347** symbols across 27 categories.
 | `LevelDatabase_BuildAndRegister` | `0x14047cf20` | ✅ ok |  | bool(void* db, void* level, bool flag) |
 | `LevelLoad_AbortPredicate` | `0x140456c30` | ✅ ok |  | uint32_t() |
 | `LevelLoad_ProgressTick` | `0x140515e20` | ✅ ok |  | uint32_t(float delta) |
-| `LevelObject_DestroyVectors` | `0x140476f60` | ❓ unverified |  | void(void* container) |
+| `LevelObject_DestroyVectors` | `0x140476f00` | ❓ unverified |  | void(void* container) |
 | `LevelObject_LoadOrCreate` | `0x14047c180` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char link, char flag, void* lvlId, void* re… |
 | `LevelStream_LoadLevel` | `0x14047b490` | ✅ ok |  | bool(void* mgr, void* key, void** outLevel, char applyLinks, void* userData) |
 | `LevelStream_LoadStep` | `0x140476710` | ✅ ok |  | bool(void* container, void* resourceSlot, void* lvlId, void* links) |
@@ -394,7 +394,7 @@ Total: **347** symbols across 27 categories.
 | `RewardItem_Serialize` | `0x14031f4f0` | ✅ ok |  | bool(void* oCItem, void* reader) |
 | `RewardSelectorSettings_Serialize` | `0x14033ac50` | ✅ ok |  | bool(void* settings, void* reader) |
 | `RewardType_Serialize` | `0x14031f980` | ✅ ok |  | bool(void* oCType, void* reader) |
-| `Reward_GenerateAndDistribute` | `0x1401ecd10` | ❓ unverified |  | void(void* mapSceneContext) |
+| `Reward_GenerateAndDistribute` | `0x1401e3340` | ❓ unverified |  | void(void* mapSceneContext) |
 | `Reward_InitAllRewards` | `0x1401e3340` | ✅ ok |  | _InitAllRewards (7351 bytes): reward-type registrar. The actual reward roller is a sibl… |
 
 ## session
@@ -464,8 +464,8 @@ Total: **347** symbols across 27 categories.
 | `OptionsMenu_SelectCategory` | `0x1403f6010` | ✅ ok | ✔ | void(void* optionsCtrl, void* tabButtonGameUi) |
 | `OptionsMenu_SpawnMultiChoice` | `0x1403fc7e0` | ✅ ok | ✔ | void*(void* elementFactory, void* templateRef, void* rowParent) |
 | `PauseMenu_GetActionCallback` | `0x14034d380` | ✅ ok | ✔ | void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused) |
-| `StringFormat_ArgPointer` | `0x1402c44f0` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
-| `StringFormat_ArgString` | `0x14052c7d0` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
+| `StringFormat_ArgPointer` | `0x1402bd340` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
+| `StringFormat_ArgString` | `0x14052a050` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
 | `StringVector_AssignFromArray` | `0x1401ba310` | ✅ ok | ✔ | void(void* vec, const oCString* items, u32 count) |
 | `UiButton_InputPoll` | `0x1407d4ec0` | ✅ ok | ✔ | void(ButtonUiCpntArray* cpnts) |
 | `UiButton_PressCommit` | `0x14069f030` | ✅ ok | ✔ | void(oCUINavigableZoneDesc* widget) |
@@ -473,7 +473,7 @@ Total: **347** symbols across 27 categories.
 | `UiController_BindComponent` | `0x140346960` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
-| `UiController_UnbindComponent` | `0x14034c200` | ❓ unverified |  | void(void* uiController) |
+| `UiController_UnbindComponent` | `0x1403469e0` | ❓ unverified |  | void(void* uiController) |
 
 ## world
 
