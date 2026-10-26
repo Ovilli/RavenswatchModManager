@@ -2,6 +2,15 @@
   "generated": "2026-10-26",
   "entries": [
     {
+      "version": "5.9.27",
+      "date": "2026-10-26",
+      "summary": "Windows Title bar dragging fix by Skigim",
+      "highlights": [
+        "See changelog"
+      ],
+      "loader_version": 49
+    },
+    {
       "version": "",
       "date": "2026-10-26",
       "summary": "Symbol map corrections for build b9c3642: two mis-mapped flag serializers dropped, 16 more engine functions located (#66)",
@@ -515,20 +524,6 @@
       "summary": "Fix: online / party code failing on Windows while the loader is installed",
       "highlights": [
         "Fix: online / party code failing on Windows while the loader is installed"
-      ]
-    },
-    {
-      "version": "5.9.10",
-      "date": "2026-10-09",
-      "summary": "Build your own talents in the editor: a new step-by-step builder, abilities that grow bigger, and effects borrowed from other heroes.",
-      "highlights": [
-        "Editor: a new custom-talent builder. Pick the talent to replace, name it, and add building blocks or start from an example. Ideas it can't build yet (\"POWER spawns a tornado\") can be sent to us from the same screen.",
-        "Talent builder: \"Make an ability bigger\" grows an ability's area, length or width while you own the talent. Tested in game: Melusine's POWER area.",
-        "Talent builder: borrow a talent's effect from another hero (9 talents can move, e.g. Sun Wukong's Focused Strikes on Piper's Virtuoso). Its numbers follow your card's rarity.",
-        "Talent builder: bonuses that last until \"your next ATTACK\" and bonuses that can trigger \"at most once every N seconds\".",
-        "Editor: reopening a mod keeps your custom talents editable, and the editor says when it can't find the game.",
-        "For mod makers: rsmm diff shows what applying one mod changes, rsmm watch checks a mod before applying it, and mistyped mod names and commands get a suggestion.",
-        "Fixed: profile, install, sign-in and background-helper bugs in the app, and several security gaps."
       ]
     }
   ]
