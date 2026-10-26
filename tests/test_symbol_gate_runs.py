@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,10 @@ EXIT_CANNOT_RUN = 3
 
 #: Bare environment: no venv, no inherited PYTHONPATH.
 _BARE_ENV = {"PATH": "/usr/bin:/bin", "HOME": "/tmp"}
+if sys.platform == "win32":
+    # Windows Path.home() uses USERPROFILE, not HOME. Keep the child isolated
+    # while giving import-time game-path discovery a usable home directory.
+    _BARE_ENV["USERPROFILE"] = tempfile.gettempdir()
 
 
 def _run_bare(script: Path, *args: str) -> subprocess.CompletedProcess:
