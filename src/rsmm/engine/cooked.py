@@ -145,14 +145,11 @@ def _find_section_end(data: bytes, start_pos: int) -> int:
     """Return absolute offset past the matching END marker for the BEGIN at
     `start_pos - 4`. Handles nested BEGIN/END pairs (depth-balanced).
 
-    Markers are aligned to wherever they appear in the byte stream — when
-    scanning we must NOT step by 1 byte through arbitrary payload, since
-    payload bytes can incidentally match a marker prefix. Markers are however
-    always written aligned to natural u32 boundaries within sections. We
-    therefore scan with stride 4 starting from `start_pos`.
-
-    A scalar byte stride would risk misaligned false positives inside payload
-    floats/ints whose bytes might happen to spell 0x11 0x11 0xbb 0xaa.
+    Takes the earliest marker at ANY byte offset (see the loop comment — it
+    is not a stride-4 walk). Payload bytes that happen to spell a marker would
+    cut the section short; no shipped file does (every root class round-trips
+    byte-stable), so that is a known ceiling of a scanner that does not decode
+    payloads.
     """
     depth = 1
     pos = start_pos

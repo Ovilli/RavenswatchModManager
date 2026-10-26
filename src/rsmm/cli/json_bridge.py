@@ -839,8 +839,9 @@ def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
     * ``rsmm pack`` refuses (e.g. vanilla-byte safety check);
     * the slugified id can't satisfy the API's slug pattern.
     """
+    # Same guard as config/uninstall: this folder gets zipped and published.
     src = MODS_DIR / mod_id
-    if not src.is_dir():
+    if not _is_plain_mod_id(mod_id) or not src.is_dir():
         return {"ok": False, "error": f"no such mod folder: {src}"}
 
     mf = src / "manifest.toml"

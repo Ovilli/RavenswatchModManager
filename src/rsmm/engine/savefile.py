@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rsmm.engine.paths import BACKUP_SUFFIX
+from rsmm.engine.safeio import atomic_write_bytes
 
 HEADER_SIZE = 0x10
 CRC_OFFSET = 0x0C
@@ -168,7 +169,9 @@ def write(save: Save, path: str | Path | None = None, *, backup: bool = True) ->
     resign(save)
     if backup and out.exists():
         shutil.copy2(out, out.with_suffix(out.suffix + BACKUP_SUFFIX))
-    out.write_bytes(bytes(save.data))
+    # Atomic: a crash or full disk mid-write must leave the old profile, not a
+    # truncated one.
+    atomic_write_bytes(out, bytes(save.data))
     return out
 
 

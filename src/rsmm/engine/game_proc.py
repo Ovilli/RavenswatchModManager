@@ -32,7 +32,12 @@ _PROBE_TIMEOUT_SEC = 5
 def _run(cmd: list[str]) -> subprocess.CompletedProcess | None:
     try:
         return subprocess.run(
-            cmd, capture_output=True, text=True, check=False,
+            # errors="replace": tasklist prints its localized "no tasks" banner
+            # in the OEM codepage, which the ANSI default can fail to decode
+            # (German "ausgeführt": 0x81 is undefined in cp1252) — that raised
+            # UnicodeDecodeError out of every apply. Only the ASCII exe name
+            # is matched, so lossy decoding is exact enough.
+            cmd, capture_output=True, text=True, errors="replace", check=False,
             timeout=_PROBE_TIMEOUT_SEC,
             # Windows: don't flash a console window when the desktop app
             # shells out to the frozen sidecar.

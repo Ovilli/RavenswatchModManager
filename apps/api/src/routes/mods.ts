@@ -787,6 +787,7 @@ modsRouter.post(
     const rows = await db
       .select({
         assetUrl: schema.modVersions.assetUrl,
+        sha256: schema.modVersions.sha256,
         modId: schema.mods.id,
         ownerId: schema.mods.ownerId,
       })
@@ -807,9 +808,10 @@ modsRouter.post(
     if (!exists) return c.json({ error: 'upload not completed' }, 400);
 
     // Scanning is optional (see env.ts): when VirusTotal isn't configured, mark
-    // the version skipped so the client can proceed.
+    // the version skipped so the client can proceed. Guarded by the sha we just
+    // checked, so a re-presign in between can't inherit the verdict.
     if (!virusTotalConfigured()) {
-      await markScan(versionId, 'skipped');
+      await markScan(versionId, 'skipped', row.sha256);
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
 

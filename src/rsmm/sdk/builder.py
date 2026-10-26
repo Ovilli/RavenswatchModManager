@@ -532,10 +532,25 @@ class ModBuilder:
                 self._write_tags(staging)
             if any(d.kind == "item" for d in self._content.defs):
                 self._write_item_init(staging)
-            if dst.exists():
-                shutil.rmtree(dst)
+            # Park the old tree beside dst (same filesystem, so the rename is
+            # atomic) and drop it only once the new tree is in place — the
+            # staging dir may be on another filesystem, where move is a copy
+            # that can fail half-way.
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(staging), str(dst))
+            # "_" prefix: every mods/ scan skips it if a crash leaves it behind.
+            old = dst.with_name(f"_{dst.name}.rsmm_old")
+            if old.exists():
+                shutil.rmtree(old)
+            if dst.exists():
+                dst.rename(old)
+            try:
+                shutil.move(str(staging), str(dst))
+            except BaseException:
+                shutil.rmtree(dst, ignore_errors=True)
+                if old.exists():
+                    old.rename(dst)
+                raise
+            shutil.rmtree(old, ignore_errors=True)
         return dst
 
     # ---- helpers ------------------------------------------------------

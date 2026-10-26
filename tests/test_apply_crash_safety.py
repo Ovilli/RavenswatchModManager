@@ -6,6 +6,7 @@ mod-*added* file there is no `.rsmm.bak` for `restore --all` to sweep either,
 so it used to stay in the install forever with nothing tracking it.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -451,3 +452,67 @@ def test_game_update_recovery_clears_the_manifest_backup_too(tmp_path, monkeypat
     # The rebuild must see the POST-update manifest, not the pristine copy.
     assert rebuilt_from == [str(manifest)]
     assert Path(rebuilt_from[0]).read_text(encoding="utf-8") == "live-post-update\n"
+
+
+def test_game_update_recovery_keeps_originals_the_update_did_not_touch(tmp_path, monkeypatch):
+    """Regression: recovery swept EVERY .rsmm.bak, including the vanilla
+    original of an override the update never rewrote.
+
+    Steam patches only the files whose depot content changed. An override on
+    any other file survives the update, and its backup is the only vanilla
+    copy left. Deleting it and clearing state made the next apply back up the
+    MOD's bytes as "the original", so `restore --all` reinstalled mod content
+    for good. Untouched overrides must be restored; rewritten ones must keep
+    the update's bytes and lose the stale backup.
+    """
+    from rsmm.cli import apply_mods
+
+    game = tmp_path / "game"
+    cooking = game / apply_mods.COOKING_REL
+    cooking.mkdir(parents=True)
+    (game / "Ravenswatch.exe").write_bytes(b"v2" * 64)
+    monkeypatch.setattr("rsmm.engine.find_iyg.main", lambda p=None: 0)
+    monkeypatch.setattr(apply_mods, "is_vanilla_encoded", lambda enc: True)
+
+    def override(name: str, vanilla: bytes, mod: bytes) -> Path:
+        dest = cooking / name
+        dest.write_bytes(mod)
+        (cooking / (name + apply_mods.BACKUP_SUFFIX)).write_bytes(vanilla)
+        return dest
+
+    untouched = override("Kept", b"vanilla-kept", b"mod-kept")
+    patched = override("Patched", b"vanilla-old", b"mod-patched")
+    patched.write_bytes(b"vanilla-new-from-update")   # the update rewrote this one
+
+    state = apply_mods.State(cooking)
+    for name, mod in (("Kept", b"mod-kept"), ("Patched", b"mod-patched")):
+        state.active[name] = {"mod": "m", "src_sha256": hashlib.sha256(mod).hexdigest(),
+                              "orig_sha256": "x"}
+    state.save()
+
+    assert apply_mods._recover_game_update(cooking, game) is True
+
+    assert untouched.read_bytes() == b"vanilla-kept"
+    assert patched.read_bytes() == b"vanilla-new-from-update"
+    assert not list(cooking.glob("*" + apply_mods.BACKUP_SUFFIX))
+
+
+def test_game_update_recovery_restores_an_untouched_manifest(tmp_path, monkeypatch):
+    """A UsedRscList.ot the update did not rewrite still carries our appended
+    records; its pristine backup must be put back, not swept."""
+    from rsmm.cli import apply_mods
+
+    game = tmp_path / "game"
+    cooking = game / apply_mods.COOKING_REL
+    cooking.mkdir(parents=True)
+    (game / "Ravenswatch.exe").write_bytes(b"v2" * 64)
+    monkeypatch.setattr("rsmm.engine.find_iyg.main", lambda p=None: 0)
+
+    manifest = game / apply_mods.USEDRSCLIST_REL
+    manifest.write_text("1\nA\nB\nmodded-1\nmodded-2\nmodded-3\n", encoding="utf-8")
+    bak = manifest.with_name(manifest.name + apply_mods.BACKUP_SUFFIX)
+    bak.write_text("1\nA\nB\n", encoding="utf-8")
+
+    assert apply_mods._recover_game_update(cooking, game) is True
+    assert manifest.read_text(encoding="utf-8") == "1\nA\nB\n"
+    assert not bak.exists()

@@ -39,6 +39,14 @@ ACCEPTED_OVERRIDES = (
 )
 RECOMMENDED_LAUNCH_OPTIONS = 'WINEDLLOVERRIDES="winhttp=n,b" %command%'
 
+# localconfig.vdf is UTF-8 and full of other people's text (friend nicknames,
+# other games' launch options). The locale default (cp1252 on most Windows)
+# turned every byte it doesn't define — 0x81, 0x8D, 0x8F, 0x90, 0x9D, all
+# common UTF-8 continuation bytes — into "?" on the write-back, corrupting
+# every non-ASCII string in the file. surrogateescape round-trips the exact
+# bytes, even where the file is not valid UTF-8.
+_VDF_IO = {"encoding": "utf-8", "errors": "surrogateescape"}
+
 
 def _steam_root() -> Path | None:
     """Locate Steam install dir across Linux (Flatpak/native) and Windows."""
@@ -105,7 +113,7 @@ def _read_launch_options(vdf_path: Path, app_id: str) -> str | None:
     LaunchOptions, None if no block exists at all.
     """
     try:
-        text = vdf_path.read_text(errors="replace")
+        text = vdf_path.read_text(**_VDF_IO)
     except OSError:
         return None
     # Use a balanced-brace scanner instead of a fixed regex: the app
@@ -251,7 +259,8 @@ def _is_steam_running() -> bool:
         try:
             r = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq steam.exe", "/NH"],
-                capture_output=True, text=True,
+                # OEM-codepage banner; see engine/game_proc.py::_run.
+                capture_output=True, text=True, errors="replace",
             )
             return "steam.exe" in (r.stdout or "").lower()
         except FileNotFoundError:
@@ -322,7 +331,7 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
     success. NEVER call this with Steam running — Steam rewrites the
     file on exit and would clobber our edit.
     """
-    text = vdf_path.read_text(errors="replace")
+    text = vdf_path.read_text(**_VDF_IO)
     found = _find_app_block(text, app_id)
     if not found:
         print(f"  no '{app_id}' app block found in {vdf_path}",
@@ -351,11 +360,11 @@ def _write_launch_options(vdf_path: Path, app_id: str, new_value: str) -> bool:
 
     bak = vdf_path.with_suffix(vdf_path.suffix + BACKUP_SUFFIX)
     if not bak.exists():
-        bak.write_text(text, errors="replace")
+        bak.write_text(text, **_VDF_IO)
     # Atomic write: a Steam crash mid-write was previously enough to
     # leave localconfig.vdf truncated, which Steam then refused to load.
     tmp = vdf_path.with_suffix(vdf_path.suffix + ".rsmm.tmp")
-    tmp.write_text(new_text, errors="replace")
+    tmp.write_text(new_text, **_VDF_IO)
     tmp.replace(vdf_path)
     return True
 
