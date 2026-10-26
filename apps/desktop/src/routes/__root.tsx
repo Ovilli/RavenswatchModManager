@@ -2,7 +2,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal, X } from 'lucide-react';
-import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
@@ -88,11 +87,6 @@ function useNav(): Nav[] {
   }, [conflictCount, location.pathname]);
 }
 
-type AppRegionStyle = CSSProperties & { WebkitAppRegion?: 'drag' | 'no-drag' };
-
-const dragStyle: AppRegionStyle = { WebkitAppRegion: 'drag' };
-const noDragStyle: AppRegionStyle = { WebkitAppRegion: 'no-drag' };
-
 function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed: boolean }) {
   const t = useT();
   const installed = useApp((s) => s.installed);
@@ -147,20 +141,22 @@ function StatusStrip() {
     // matter how high its own z-index, is confined here and painted before the
     // `.grimoire-card`s below (they are `backdrop-filter` stacking contexts too,
     // and later in the DOM). An explicit z-index lifts the whole strip instead.
-    <div className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm">
+    <div
+      className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm"
+      data-tauri-drag-region
+    >
+      {/* Tauri checks the element under the pointer, so mark the empty-space
+          containers too. Controls and their children stay unmarked. */}
       {/* The left half yields space, the right half does not: the launch
-          buttons must never be squeezed, so the profile name truncates first.
-          It keeps `dragStyle` even though it holds no text of its own — the
-          empty run to the left of the picker is the window's drag handle. */}
-      <div className="flex min-w-0 items-center gap-3" style={dragStyle}>
-        {/* `no-drag`, or the frameless window swallows the click. */}
-        <div className="min-w-0" style={noDragStyle}>
+          buttons must never be squeezed, so the profile name truncates first. */}
+      <div className="flex min-w-0 items-center gap-3" data-tauri-drag-region>
+        <div className="min-w-0">
           <ProfilePopover compact />
         </div>
       </div>
 
-      <div className="flex min-w-0 shrink items-center gap-2">
-        <div className="flex shrink-0 items-center gap-2 pr-2" style={noDragStyle}>
+      <div className="flex min-w-0 shrink items-center gap-2" data-tauri-drag-region>
+        <div className="flex shrink-0 items-center gap-2 pr-2" data-tauri-drag-region>
           <Button
             type="button"
             size="sm"
@@ -231,7 +227,7 @@ function StatusStrip() {
             expendable thing in this row. The cut-off is where the row measurably
             stops fitting beside the sidebar (it overflowed from `lg`, 1024px, up
             to 1340px), not a standard breakpoint. */}
-        <div className="hidden items-center gap-2 min-[1340px]:flex" style={noDragStyle}>
+        <div className="hidden items-center gap-2 min-[1340px]:flex" data-tauri-drag-region>
           <StatPill value={enabled} label={t('enabled')} />
           <StatPill value={disabled} label={t('disabled')} />
           {outdated > 0 ? <StatPill value={outdated} label={t('updates')} tone="gilt" /> : null}
@@ -409,7 +405,7 @@ function WindowControls() {
   if (!available) return null;
 
   return (
-    <div className="window-controls ml-3 flex items-center gap-2" style={noDragStyle}>
+    <div className="window-controls ml-3 flex items-center gap-2" data-tauri-drag-region>
       <button
         type="button"
         title={t('Minimize')}
