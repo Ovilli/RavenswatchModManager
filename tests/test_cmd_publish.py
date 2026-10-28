@@ -63,7 +63,18 @@ class FakeApi(BaseHTTPRequestHandler):
             states = srv.plan.setdefault("states", ["queued", "clean"])
             state = states.pop(0) if len(states) > 1 else states[0]
             return self._reply(200, {"status": state, "position": 0})
+        if (method, self.path) == ("POST", "/api/guides"):
+            if srv.plan.get("guide_owner"):
+                return self._reply(409, {"error": "slug already in use"})
+            return self._reply(201, {"guide": {"slug": body["slug"]}})
+        if method == "PATCH" and self.path.startswith("/api/guides/"):
+            if srv.plan.get("guide_owner") == "someone-else":
+                return self._reply(403, {"error": "forbidden"})
+            return self._reply(200, {"ok": True})
         return self._reply(404, {"error": "not found"})
+
+    def do_PATCH(self):
+        self._handle("PATCH")
 
     def do_GET(self):
         self._handle("GET")
@@ -201,3 +212,61 @@ def test_the_token_is_not_accepted_as_an_argument(capsys):
     # There is no --token flag: arguments land in shell history and `ps`.
     with pytest.raises(SystemExit):
         P.main(["my-mod", "--token", TOKEN])
+
+
+GUIDE = """+++
+title = "How damage works"
+summary = "The full hit formula."
++++
+# Damage
+
+Body text.
+"""
+
+
+def test_publish_guide_creates_then_submits(api, monkeypatch, tmp_path):
+    monkeypatch.setenv("RSMM_API_TOKEN", TOKEN)
+    f = tmp_path / "how-damage-works.md"
+    f.write_text(GUIDE, encoding="utf-8")
+    lines: list[str] = []
+    assert P.publish_guide(f, out=lines.append) == 0
+    calls = [(m, p, b) for m, p, _a, b in api.calls]
+    assert calls[1] == ("POST", "/api/guides", {
+        "slug": "how-damage-works", "title": "How damage works",
+        "summary": "The full hit formula.", "body": "# Damage\n\nBody text."})
+    assert calls[2] == ("PATCH", "/api/guides/how-damage-works", {"status": "pending"})
+    assert lines[-1].startswith("Created how-damage-works; submitted for review")
+
+
+def test_publish_guide_updates_an_existing_own_guide(api, monkeypatch, tmp_path):
+    monkeypatch.setenv("RSMM_API_TOKEN", TOKEN)
+    api.plan["guide_owner"] = "me"
+    f = tmp_path / "g.md"
+    f.write_text(GUIDE.replace("+++\n#", 'slug = "dmg"\n+++\n#'), encoding="utf-8")
+    lines: list[str] = []
+    assert P.publish_guide(f, out=lines.append) == 0
+    patch = api.calls[2]
+    assert patch[:2] == ("PATCH", "/api/guides/dmg") and "slug" not in patch[3]
+    assert lines[-1].startswith("Updated dmg")
+
+
+def test_publish_guide_refuses_someone_elses_slug(api, monkeypatch, tmp_path):
+    monkeypatch.setenv("RSMM_API_TOKEN", TOKEN)
+    api.plan["guide_owner"] = "someone-else"
+    f = tmp_path / "taken.md"
+    f.write_text(GUIDE, encoding="utf-8")
+    with pytest.raises(P.PublishError, match="belongs to another account"):
+        P.publish_guide(f)
+
+
+@pytest.mark.parametrize("text,match", [
+    ("# no front matter", "front matter"),
+    ('+++\nsummary = "x"\n+++\nbody', "needs a title"),
+    ('+++\ntitle = "t"\n+++\n', "body is empty"),
+    ('+++\ntitle = "t"\nslug = "Bad Slug"\n+++\nbody', "slug"),
+])
+def test_bad_guide_files_fail_before_the_network(tmp_path, text, match):
+    f = tmp_path / "guide.md"
+    f.write_text(text, encoding="utf-8")
+    with pytest.raises(P.PublishError, match=match):
+        P.read_guide(f)

@@ -4,6 +4,7 @@
     rsmm publish logout             forget the stored token
     rsmm publish whoami             show which account the token publishes as
     rsmm publish <mod> [--wait] [--timeout SECONDS]
+    rsmm publish guide <file.md>    create or update a guide and submit it for review
 
 One command does what the website's publish page does: lint the mod, pack it
 (refusing shipped game bytes), ask the API for a presigned upload, PUT the zip
@@ -275,6 +276,79 @@ def publish(mod_id: str, *, wait: bool = True, timeout: float = 900,
     return 0
 
 
+# --- guides -------------------------------------------------------------------
+
+GUIDE_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,79}$")
+
+
+def read_guide(path: Path) -> dict[str, Any]:
+    """A guide file: TOML front matter between ``+++`` lines, then Markdown.
+
+        +++
+        title = "How damage works"
+        summary = "One line for the guide list."   # optional
+        image = "https://…/cover.png"              # optional
+        slug = "how-damage-works"                  # optional, default: file name
+        +++
+        # Body in Markdown…
+    """
+    import tomllib
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise PublishError(f"cannot read {path}: {e.strerror}") from None
+    m = re.match(r"\A\+\+\+\r?\n(.*?)\r?\n\+\+\+\r?\n(.*)\Z", text, re.S)
+    if not m:
+        raise PublishError(f"{path}: start the file with a +++ front matter block (title = \"…\")")
+    try:
+        meta = tomllib.loads(m.group(1))
+    except tomllib.TOMLDecodeError as e:
+        raise PublishError(f"{path}: front matter: {e}") from None
+    body = m.group(2).strip()
+    slug = str(meta.get("slug") or path.stem.lower())
+    title = str(meta.get("title") or "").strip()
+    if not GUIDE_SLUG_RE.match(slug):
+        raise PublishError(f"slug {slug!r}: use 2-80 lowercase letters, digits, - or _")
+    if not title:
+        raise PublishError(f"{path}: front matter needs a title")
+    if not body:
+        raise PublishError(f"{path}: the guide body is empty")
+    guide: dict[str, Any] = {"slug": slug, "title": title, "body": body,
+                             "summary": meta.get("summary") or None}
+    if meta.get("image"):
+        guide["imageUrl"] = meta["image"]
+    return guide
+
+
+def publish_guide(path: Path, out=print) -> int:
+    guide = read_guide(path)
+    token = resolve_token()
+    me = whoami(token)
+    slug = guide["slug"]
+    out(f"Publishing guide {slug} as {me.get('name') or me.get('id')} ({mask(token)})")
+
+    status, payload = _request("POST", "/api/guides", token, guide)
+    created = status == 201
+    if status == 409:  # the slug exists: update it, which only works if it is ours
+        fields = {k: v for k, v in guide.items() if k != "slug"}
+        status, payload = _request("PATCH", f"/api/guides/{slug}", token, fields)
+        if status == 403:
+            raise PublishError(f"the guide slug {slug!r} belongs to another account")
+    if status == 429:
+        raise PublishError("guide write rate limit reached; try again in a minute")
+    if status not in (200, 201):
+        raise PublishError(_error(payload, f"saving the guide failed (HTTP {status})"))
+
+    # New guides start as drafts; submit for the admin review that makes it public.
+    status, payload = _request("PATCH", f"/api/guides/{slug}", token, {"status": "pending"})
+    if status != 200:
+        raise PublishError(_error(payload, f"submitting the guide failed (HTTP {status})"))
+    out(f"{'Created' if created else 'Updated'} {slug}; submitted for review. "
+        f"It goes public once an admin approves it.")
+    return 0
+
+
 # --- CLI ----------------------------------------------------------------------
 
 def _login(out=print) -> int:
@@ -305,7 +379,8 @@ def _logout(out=print) -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(prog="rsmm publish", description=__doc__.split("\n\n")[0])
-    ap.add_argument("target", help="login | logout | whoami | <mod id>")
+    ap.add_argument("target", help="login | logout | whoami | guide | <mod id>")
+    ap.add_argument("file", nargs="?", help="with `guide`: the Markdown file to publish")
     ap.add_argument("--wait", action="store_true",
                     help="stay until the malware scan finishes and report the verdict")
     # The old opt-out, from when waiting was the default; still accepted.
@@ -323,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
             me = whoami(token)
             print(f"{me.get('name') or '?'} ({me.get('id')}) via {mask(token)} on {api_base()}")
             return 0
+        if args.target == "guide":
+            if not args.file:
+                raise PublishError("usage: rsmm publish guide <file.md>")
+            return publish_guide(Path(args.file))
         # Resolve the id before anything touches the network or the token, so
         # a typo is answered at once and the upload names the real folder.
         from rsmm.cli._suggest import UnknownMod, resolve_mod

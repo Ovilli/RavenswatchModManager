@@ -232,9 +232,28 @@ server and a token cannot skip it.
 ./rsmm publish logout
 ```
 
+`rsmm publish guide <file.md>` publishes a guide the same way. The file starts
+with TOML front matter, then the Markdown body:
+
+```md
++++
+title = "How damage works"
+summary = "One line for the guide list."   # optional
+image = "https://…/cover.png"              # optional cover
+slug = "how-damage-works"                  # optional, default: the file name
++++
+# How damage works
+…
+```
+
+The first run creates the guide; later runs update it. Either way it is
+submitted for review and goes public once an admin approves it, and every
+edit to an approved guide goes back through review.
+
 Create the token on your account page under **API tokens**. It is shown once,
-and it can publish new versions of **your own** mods and nothing else. It cannot
-change your account, create more tokens, delete mods or moderate. Every token
+and it can publish new versions of **your own** mods and create or edit **your
+own** guides, nothing else. It cannot change your account, create more tokens,
+delete mods or guides, approve anything or moderate. Every token
 expires (30 days to a year), you can hold ten at a time, and you get an email
 whenever one is created.
 

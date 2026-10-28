@@ -48,6 +48,8 @@ describe('route allowlist', () => {
     expect(isTokenRoute('POST', '/api/mods/upload')).toBe(true);
     expect(isTokenRoute('POST', SCAN)).toBe(true);
     expect(isTokenRoute('GET', `${SCAN}-status`)).toBe(true);
+    expect(isTokenRoute('POST', '/api/guides')).toBe(true);
+    expect(isTokenRoute('PATCH', '/api/guides/damage-formula')).toBe(true);
   });
 
   it.each([
@@ -62,6 +64,11 @@ describe('route allowlist', () => {
     ['POST', '/api/mods/upload/../../me/tokens'],
     ['POST', '/api/moderation/reports'],
     ['POST', '/api/auth/change-password'],
+    ['DELETE', '/api/guides/damage-formula'],
+    ['GET', '/api/guides/pending'],
+    ['POST', '/api/guides/damage-formula/approve'],
+    ['POST', '/api/guides/damage-formula/image'],
+    ['PATCH', '/api/guides/damage-formula/reviews'],
   ])('refuses %s %s', (method, path) => {
     expect(isTokenRoute(method, path)).toBe(false);
   });

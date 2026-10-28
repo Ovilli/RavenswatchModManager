@@ -158,7 +158,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
         ("compat",   "",                           "analyze requires/conflicts/replaces graph"),
         ("diff",     "<id> [--all] [--json]",      "game files a mod changes + overlaps"),
         ("pack",     "<id> [--allow-vanilla]",     "bundle mods/<id>/ into a zip"),
-        ("publish",  "<id> | login | whoami",      "upload a mod to the store with an API token"),
+        ("publish",  "<id> | guide <md> | login",  "upload a mod or guide with an API token"),
         ("build",    "[--skip-loader]",            "asset map + loader + merge + apply"),
         ("schema",   "",                           "emit the manifest JSON schema"),
         ("items",    "",                           "browse the magic-item corpus"),
