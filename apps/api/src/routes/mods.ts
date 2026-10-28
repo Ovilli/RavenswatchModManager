@@ -29,7 +29,13 @@ import {
   queueInfo,
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
-import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
+import {
+  deleteObject,
+  modUploadKey,
+  presignModImage,
+  presignModUpload,
+  remoteObjectExists,
+} from '../storage.js';
 import type { AppEnv } from '../types.js';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -1041,6 +1047,50 @@ modsRouter.post(
       c.get('log').error('version create error', { err: errString(err) });
       return c.json({ error: 'failed to create version' }, 500);
     }
+  },
+);
+
+// Delete one version: its row and its stored zip. The mod's owner or an admin
+// only — co-authors can publish versions but, as with deleting the whole mod,
+// not destroy them. Download counts survive: mod_downloads.version_id is
+// ON DELETE SET NULL, so the mod's totals do not drop.
+modsRouter.use('/versions/:versionId', ownerLimiter);
+modsRouter.delete(
+  '/versions/:versionId',
+  zValidator('param', versionScanParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { versionId } = c.req.valid('param');
+    const db = getDb();
+
+    const rows = await db
+      .select({
+        id: schema.modVersions.id,
+        version: schema.modVersions.version,
+        sha256: schema.modVersions.sha256,
+        slug: schema.mods.slug,
+        ownerId: schema.mods.ownerId,
+      })
+      .from(schema.modVersions)
+      .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+      .where(eq(schema.modVersions.id, versionId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (row.ownerId !== user.id && !isAdmin(user.id)) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    await db.delete(schema.modVersions).where(eq(schema.modVersions.id, row.id));
+    // The row is what makes a version downloadable, so it goes first; a failed
+    // storage delete only leaves an unreachable object behind.
+    try {
+      await deleteObject(modUploadKey(row.slug, row.version, row.sha256));
+    } catch (err) {
+      c.get('log').warn('version zip delete failed', { versionId, err: errString(err) });
+    }
+    return c.json({ ok: true });
   },
 );
 

@@ -584,6 +584,12 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       remove: (slug: string) =>
         request(`/api/mods/${encodeURIComponent(slug)}/delete`, { method: 'DELETE' }, okSchema),
+      removeVersion: (versionId: string) =>
+        request(
+          `/api/mods/versions/${encodeURIComponent(versionId)}`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
       reviews: (slug: string) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/reviews`,
