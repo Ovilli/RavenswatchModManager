@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
+  BookOpen,
   Heart,
   Library,
   LogOut,
@@ -65,6 +66,7 @@ const navLinks = [
 const userMenuLinks = [
   { href: '/publish' as const, label: 'Publish', icon: Upload },
   { href: '/my-mods' as const, label: 'My Mods', icon: Library },
+  { href: '/my-guides' as const, label: 'My Guides', icon: BookOpen },
   { href: '/account/follows' as const, label: 'Followed Mods', icon: Heart },
   { href: '/account' as const, label: 'Account', icon: Settings },
 ];

@@ -6,7 +6,7 @@ import { ArrowLeft, Check, Loader2, Pencil, Star, Trash2, X } from 'lucide-react
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { useEditingFlag } from '../../../lib/use-editing-flag';
@@ -61,6 +61,15 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+  // Whether `[slug]/layout.tsx` rendered the title and body. It does for an
+  // approved guide, except from an ISR copy cached while the guide was still
+  // in review: then the page must render them itself, or a freshly approved
+  // guide shows up empty until the cache expires.
+  const [serverProse, setServerProse] = useState(true);
+  useEffect(() => {
+    setServerProse(!!document.querySelector('[data-server-prose]'));
+  }, []);
 
   const g = guide.data;
   const isOwner = !!session?.user && g?.ownerId === session.user.id;
@@ -122,6 +131,8 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
     );
   }
 
+  const renderHere = g.status !== 'approved' || !serverProse;
+
   const startEditing = () => {
     setEditTitle(g.title);
     setEditSummary(g.summary ?? '');
@@ -140,14 +151,14 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
   return (
     <main
       className={`container mx-auto max-w-3xl space-y-6 px-6 pb-12 ${
-        g.status === 'approved' ? 'pt-6' : 'pt-12'
+        renderHere ? 'pt-12' : 'pt-6'
       }`}
     >
       <div className="flex items-center justify-between">
         {/* An approved guide gets its back link from the server-rendered block
             in `[slug]/layout.tsx`; a draft has no such block, so it needs one
             here. */}
-        {g.status !== 'approved' ? (
+        {renderHere ? (
           <Link
             href={'/guides' as Route}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
@@ -171,7 +182,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
 
       {/* An approved guide's cover is server-rendered with the rest of the
           prose; a draft has no server block, so it still renders here. */}
-      {g.imageUrl && !editing && g.status !== 'approved' ? (
+      {g.imageUrl && !editing && renderHere ? (
         <div className="aspect-[21/9] w-full overflow-hidden rounded-lg bg-muted">
           <img src={g.imageUrl} alt={`${g.title} cover`} className="h-full w-full object-cover" />
         </div>
@@ -205,7 +216,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
       // them on the page. A draft or in-review guide is not in that server
       // fetch (it is visible only to its author's session), so it still
       // renders here.
-      g.status !== 'approved' ? (
+      renderHere ? (
         <>
           <header className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight">{g.title}</h1>

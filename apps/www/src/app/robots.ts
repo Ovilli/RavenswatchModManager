@@ -9,7 +9,7 @@ import type { MetadataRoute } from 'next';
  * report this file used to generate. The documented fix is the opposite of
  * intuition: let Googlebot crawl them and let it read `noindex`. That lives in
  * `src/lib/noindex.ts`, applied by a `layout.tsx` in each private segment
- * (`/auth`, `/account`, `/my-mods`, `/publish`, `/admin`, `/notifications`,
+ * (`/auth`, `/account`, `/my-mods`, `/my-guides`, `/publish`, `/admin`, `/notifications`,
  * plus the `/c/new` and `/guides/new` forms).
  *
  * Crawling leaks nothing: every one of those screens fetches its data
@@ -24,6 +24,7 @@ const PRIVATE = [
   '/auth/',
   '/account',
   '/my-mods',
+  '/my-guides',
   '/publish',
   '/admin',
   '/notifications',
