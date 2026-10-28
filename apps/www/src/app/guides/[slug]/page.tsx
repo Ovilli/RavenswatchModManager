@@ -52,6 +52,16 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewBody, setReviewBody] = useState('');
 
+  // Same query as the nav's admin link (shared cache). Gates the moderation
+  // buttons only; the API enforces the admin check itself.
+  const whoami = useQuery({
+    queryKey: ['me', 'whoami'],
+    queryFn: () => api.me.whoami(),
+    enabled: !!session,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
   const g = guide.data;
   const isOwner = !!session?.user && g?.ownerId === session.user.id;
   const userReview = reviews.data?.items.find((r) => r.userId === session?.user?.id);
@@ -251,9 +261,9 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
         </div>
       ) : null}
 
-      {session?.user && !isOwner && g.status === 'pending' ? (
-        // Admin moderation — the API enforces the actual admin check; these
-        // buttons just 403 for non-admins.
+      {whoami.data?.isAdmin && g.status === 'pending' ? (
+        // Admin moderation, including an admin's own guide (the API allows
+        // that); the API enforces the actual admin check.
         <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-4">
           <Button
             type="button"
