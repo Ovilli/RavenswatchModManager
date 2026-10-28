@@ -238,7 +238,18 @@ function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
 
-moderationRouter.get('/stats', async (c) => {
+// The Stats tab's period. Every series and every `range` total covers the last
+// `days` days; the fixed d1/d7/d30 figures stay for the cards that name them.
+const statsQuerySchema = z.object({
+  days: z.coerce
+    .number()
+    .int()
+    .refine((n) => [7, 30, 90, 365].includes(n))
+    .default(30),
+});
+
+moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) => {
+  const { days } = c.req.valid('query');
   const db = getDb();
   const d1 = daysAgo(1);
   const d7 = daysAgo(7);
@@ -390,25 +401,33 @@ moderationRouter.get('/stats', async (c) => {
     .orderBy(sql`count(*) desc`)
     .limit(8);
 
-  // 30-day series for the sparklines. Both are dense: generate_series supplies
-  // the days with no rows so the chart does not silently compress a quiet week.
-  const signupSeriesQ = db.execute(sql`
-    select to_char(d.day, 'YYYY-MM-DD') as day,
-           count(u.id)::int as n
-    from generate_series(current_date - 29, current_date, interval '1 day') as d(day)
-    left join "user" u on u.created_at::date = d.day
-    group by d.day
-    order by d.day
-  `);
-
-  const downloadSeriesQ = db.execute(sql`
-    select to_char(d.day, 'YYYY-MM-DD') as day,
-           coalesce(sum(md.count), 0)::int as n
-    from generate_series(current_date - 29, current_date, interval '1 day') as d(day)
-    left join mod_downloads md on md.day = d.day
-    group by d.day
-    order by d.day
-  `);
+  // Daily series for the charts, dense over the chosen period: generate_series
+  // supplies the days with no rows so a quiet week is not silently compressed.
+  // Each is `count`/`sum` per day of one table; `days` is validated above, so
+  // interpolating it is safe.
+  const span = sql.raw(String(days - 1));
+  const dailySeries = (from: ReturnType<typeof sql>) =>
+    db.execute(sql`
+      select to_char(d.day, 'YYYY-MM-DD') as day, coalesce(t.n, 0)::int as n
+      from generate_series(current_date - ${span}, current_date, interval '1 day') as d(day)
+      left join (${from}) t on t.day = d.day
+      order by d.day
+    `);
+  const signupSeriesQ = dailySeries(
+    sql`select created_at::date as day, count(*) as n from "user" group by 1`,
+  );
+  const downloadSeriesQ = dailySeries(
+    sql`select day, sum(count) as n from mod_downloads group by 1`,
+  );
+  const uploadSeriesQ = dailySeries(
+    sql`select created_at::date as day, count(*) as n from mod_versions group by 1`,
+  );
+  const applySeriesQ = dailySeries(
+    sql`select created_at::date as day, count(*) as n from telemetry_runs group by 1`,
+  );
+  const crashSeriesQ = dailySeries(
+    sql`select created_at::date as day, count(*) as n from crash_reports group by 1`,
+  );
 
   const [
     users,
@@ -429,6 +448,9 @@ moderationRouter.get('/stats', async (c) => {
     versionSplit,
     signupSeries,
     downloadSeries,
+    uploadSeries,
+    applySeries,
+    crashSeries,
   ] = await Promise.all([
     usersQ,
     activeQ,
@@ -448,6 +470,9 @@ moderationRouter.get('/stats', async (c) => {
     versionSplitQ,
     signupSeriesQ,
     downloadSeriesQ,
+    uploadSeriesQ,
+    applySeriesQ,
+    crashSeriesQ,
   ]);
 
   // db.execute returns a driver result whose row container differs between the
@@ -503,9 +528,50 @@ moderationRouter.get('/stats', async (c) => {
       versionSplit,
     },
     topMods,
+    days,
     series: {
       signups: rowsOf(signupSeries),
       downloads: rowsOf(downloadSeries),
+      uploads: rowsOf(uploadSeries),
+      applies: rowsOf(applySeries),
+      crashes: rowsOf(crashSeries),
     },
+  });
+});
+
+// Mod versions and their malware scan, newest first: everything not yet
+// cleared (queued, pending, flagged, error) regardless of age, plus the last 30
+// days of finished scans. The website links each to its VirusTotal report by
+// sha256 — the file hash is the VT file id.
+moderationRouter.get('/versions', async (c) => {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: schema.modVersions.id,
+      modSlug: schema.mods.slug,
+      modName: schema.mods.name,
+      version: schema.modVersions.version,
+      sha256: schema.modVersions.sha256,
+      sizeBytes: schema.modVersions.sizeBytes,
+      scanStatus: schema.modVersions.scanStatus,
+      scanStats: schema.modVersions.scanStats,
+      createdAt: schema.modVersions.createdAt,
+      scanQueuedAt: schema.modVersions.scanQueuedAt,
+      scannedAt: schema.modVersions.scannedAt,
+    })
+    .from(schema.modVersions)
+    .innerJoin(schema.mods, eq(schema.mods.id, schema.modVersions.modId))
+    .where(
+      sql`${schema.modVersions.scanStatus} not in ('clean', 'skipped') or ${schema.modVersions.createdAt} >= ${daysAgo(30)}`,
+    )
+    .orderBy(desc(schema.modVersions.createdAt))
+    .limit(100);
+  return c.json({
+    items: rows.map((r) => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+      scanQueuedAt: r.scanQueuedAt?.toISOString() ?? null,
+      scannedAt: r.scannedAt?.toISOString() ?? null,
+    })),
   });
 });

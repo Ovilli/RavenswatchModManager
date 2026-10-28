@@ -1,7 +1,7 @@
 'use client';
 
-import { Spinner } from '@rsmm/ui';
-import { useQuery } from '@tanstack/react-query';
+import { Spinner, buttonVariants } from '@rsmm/ui';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   Activity,
   AlertTriangle,
@@ -13,7 +13,9 @@ import {
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
+import { useState } from 'react';
 import { api } from '../../lib/api';
+import { TrendChart } from './trend-chart';
 
 type Stats = Awaited<ReturnType<typeof api.moderation.stats>>;
 type Tone = 'default' | 'warn' | 'bad';
@@ -21,19 +23,30 @@ type Tone = 'default' | 'warn' | 'bad';
 const nf = new Intl.NumberFormat();
 const fmt = (n: number | null | undefined) => (n == null ? '—' : nf.format(n));
 
-/** The admin console's shared stats query: the page header reads the same
- *  snapshot for its attention chips, so both share one cache entry. */
-export function useAdminStats(enabled = true) {
+/** The admin console's stats query. The Inbox reads the default 30-day
+ *  snapshot for its counts, so with the default period both share one entry. */
+export function useAdminStats(enabled = true, days: Days = 30) {
   return useQuery({
-    queryKey: ['admin', 'stats'],
-    queryFn: () => api.moderation.stats(),
+    queryKey: ['admin', 'stats', days],
+    queryFn: () => api.moderation.stats(days),
     enabled,
     // The console is opened to check on things; a minute-old snapshot is fine
     // and keeps a page refresh from re-running eighteen aggregates.
     staleTime: 60_000,
     retry: false,
+    // Switching the period keeps the old charts up (faded) until the new
+    // numbers arrive, instead of flashing a spinner.
+    placeholderData: keepPreviousData,
   });
 }
+
+export type Days = 7 | 30 | 90 | 365;
+const PERIODS: { days: Days; label: string }[] = [
+  { days: 7, label: 'Last 7 days' },
+  { days: 30, label: 'Last 30 days' },
+  { days: 90, label: 'Last 90 days' },
+  { days: 365, label: 'Last year' },
+];
 
 const TONE_EDGE: Record<Tone, string> = {
   default: 'border-l-border',
@@ -66,76 +79,6 @@ function Stat({
         {value}
       </div>
       {sub ? <div className="mt-2 text-xs text-muted-foreground">{sub}</div> : null}
-    </div>
-  );
-}
-
-/**
- * 30-day sparkline. Inline SVG on a 0..max scale with a flat baseline for an
- * all-zero series, so a quiet month draws a line rather than dividing by zero.
- * A soft fill under the line and a dot on today make the shape readable at a
- * glance; the numbers stay in the text for screen readers.
- */
-function Spark({
-  data,
-  label,
-  id,
-}: { data: { day: string; n: number }[]; label: string; id: string }) {
-  if (data.length === 0) return null;
-  const max = Math.max(...data.map((d) => d.n), 1);
-  const w = 100;
-  const h = 32;
-  const step = data.length > 1 ? w / (data.length - 1) : 0;
-  const pts = data.map((d, i) => [i * step, h - (d.n / max) * (h - 2) - 1] as const);
-  const line = pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-  const area = `0,${h} ${line} ${w},${h}`;
-  const total = data.reduce((s, d) => s + d.n, 0);
-  const today = data[data.length - 1]?.n ?? 0;
-  const last = pts[pts.length - 1];
-  return (
-    <div className="grimoire-card p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="font-display text-xl tabular-nums text-parchment">{fmt(total)}</span>
-      </div>
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        className="mt-2 h-12 w-full text-crimson"
-        role="img"
-        aria-label={`${label}: ${total} over the last 30 days, peak ${max} in a day, ${today} today`}
-      >
-        <defs>
-          <linearGradient id={`spark-${id}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="currentColor" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <polygon points={area} fill={`url(#spark-${id})`} />
-        <polyline
-          points={line}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.75}
-          vectorEffect="non-scaling-stroke"
-          strokeLinejoin="round"
-        />
-        {last ? (
-          <circle
-            cx={last[0]}
-            cy={last[1]}
-            r={1.6}
-            className="fill-gilt"
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
-      </svg>
-      <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-        <span>last 30 days</span>
-        <span className="tabular-nums">
-          peak {fmt(max)}/day · {fmt(today)} today
-        </span>
-      </div>
     </div>
   );
 }
@@ -222,7 +165,8 @@ function Ranked({
 
 /** One queue item that has something waiting; the strip shows only these. */
 export function AdminOverview() {
-  const stats = useAdminStats();
+  const [days, setDays] = useState<Days>(30);
+  const stats = useAdminStats(true, days);
 
   if (stats.isLoading) {
     return (
@@ -245,8 +189,48 @@ export function AdminOverview() {
     s.consent.telemetryOff + s.consent.telemetryAnonymous + s.consent.telemetryLinked;
   const pct = (n: number) => (consentTotal ? `${Math.round((n / consentTotal) * 100)}%` : '—');
 
+  const dimmed = stats.isPlaceholderData;
   return (
     <div className="space-y-10">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Period for the charts">
+        {PERIODS.map((p) => (
+          <button
+            key={p.days}
+            type="button"
+            aria-pressed={days === p.days}
+            onClick={() => setDays(p.days)}
+            className={buttonVariants({
+              variant: days === p.days ? 'default' : 'outline',
+              size: 'sm',
+            })}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <Section title="Activity" icon={Activity}>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="lg:col-span-2">
+            <TrendChart label="Mod downloads" data={s.series.downloads} dimmed={dimmed} tall />
+          </div>
+          <TrendChart label="Sign-ups" data={s.series.signups} dimmed={dimmed} />
+          {s.series.uploads ? (
+            <TrendChart label="Versions uploaded" data={s.series.uploads} dimmed={dimmed} />
+          ) : null}
+          {s.series.applies ? (
+            <TrendChart
+              label="Mod installs (app applies)"
+              data={s.series.applies}
+              dimmed={dimmed}
+            />
+          ) : null}
+          {s.series.crashes ? (
+            <TrendChart label="Crash reports" data={s.series.crashes} dimmed={dimmed} />
+          ) : null}
+        </div>
+      </Section>
+
       <Section title="Audience" icon={Users}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat
@@ -270,10 +254,6 @@ export function AdminOverview() {
             sub={`${fmt(s.users.banned)} banned accounts`}
             tone={s.users.banned > 0 ? 'warn' : 'default'}
           />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Spark id="signups" data={s.series.signups} label="Sign-ups" />
-          <Spark id="downloads" data={s.series.downloads} label="Mod downloads" />
         </div>
       </Section>
 

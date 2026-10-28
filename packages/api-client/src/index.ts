@@ -432,7 +432,30 @@ export function createApiClient(options: ApiClientOptions) {
       versionSplit: z.array(z.object({ version: z.string(), n: z.number().int() })),
     }),
     topMods: z.array(z.object({ slug: z.string(), name: z.string(), downloads: z.number().int() })),
-    series: z.object({ signups: daySeries, downloads: daySeries }),
+    // Optional while an older API is still deployed: the website must not
+    // fail the whole stats parse over a series it can live without.
+    days: z.number().int().optional(),
+    series: z.object({
+      signups: daySeries,
+      downloads: daySeries,
+      uploads: daySeries.optional(),
+      applies: daySeries.optional(),
+      crashes: daySeries.optional(),
+    }),
+  });
+
+  const scanVersionSchema = z.object({
+    id: z.string(),
+    modSlug: z.string(),
+    modName: z.string(),
+    version: z.string(),
+    sha256: z.string(),
+    sizeBytes: z.number(),
+    scanStatus: z.string(),
+    scanStats: z.record(z.number()).nullable(),
+    createdAt: z.string(),
+    scanQueuedAt: z.string().nullable(),
+    scannedAt: z.string().nullable(),
   });
 
   const statsResponseSchema = z.object({
@@ -634,7 +657,14 @@ export function createApiClient(options: ApiClientOptions) {
     },
     moderation: {
       /** Admin-only business overview powering the console's Overview tab. */
-      stats: () => request('/api/moderation/stats', { method: 'GET' }, adminStatsResponseSchema),
+      stats: (days = 30) =>
+        request(`/api/moderation/stats?days=${days}`, { method: 'GET' }, adminStatsResponseSchema),
+      versions: () =>
+        request(
+          '/api/moderation/versions',
+          { method: 'GET' },
+          z.object({ items: z.array(scanVersionSchema) }),
+        ),
       reports: (status?: 'open' | 'reviewing' | 'resolved' | 'dismissed') =>
         request(
           `/api/moderation/reports${status ? `?status=${status}` : ''}`,

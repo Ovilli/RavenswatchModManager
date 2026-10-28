@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
 import { AdminOverview, useAdminStats } from './overview';
+import { ScanList } from './scan-list';
 
 type Status = 'open' | 'reviewing' | 'resolved' | 'dismissed';
 
@@ -155,9 +156,7 @@ export default function AdminPage() {
   const scans = {
     flagged: stats.data?.versions?.flagged ?? 0,
     errors: stats.data?.versions?.scanErrors ?? 0,
-    waiting: stats.data?.versions?.awaitingScan ?? 0,
   };
-  const scanCount = scans.flagged + scans.errors + scans.waiting;
   const waiting = openCount + guides.length + scans.flagged + scans.errors;
   const pane: Pane = picked ?? (waiting > 0 ? 'inbox' : 'stats');
   // Don't pick the opening tab until the counts are in, or it opens on Stats
@@ -244,7 +243,7 @@ export default function AdminPage() {
             <Check className="h-8 w-8 text-gilt/80" aria-hidden />
             <p className="text-lg font-semibold text-parchment">Nothing is waiting on you</p>
             <p className="text-sm text-muted-foreground">
-              No guides to review, no open reports, no failed scans.
+              No guides to review, no open reports, no flagged or failed scans.
             </p>
           </div>
         ) : null}
@@ -308,33 +307,13 @@ export default function AdminPage() {
           </section>
         ) : null}
 
-        {scanCount > 0 ? (
-          <section className="space-y-3">
-            <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-              <ShieldAlert className="h-5 w-5 text-gilt/80" aria-hidden />
-              Mod scans
-            </h2>
-            <div className="grimoire-card flex flex-wrap gap-x-8 gap-y-2 p-5 text-sm">
-              {scans.flagged > 0 ? (
-                <span className="text-destructive">
-                  <strong className="font-display text-xl">{scans.flagged}</strong> flagged by the
-                  malware scan
-                </span>
-              ) : null}
-              {scans.errors > 0 ? (
-                <span className="text-gilt">
-                  <strong className="font-display text-xl">{scans.errors}</strong> scans errored
-                </span>
-              ) : null}
-              {scans.waiting > 0 ? (
-                <span className="text-muted-foreground">
-                  <strong className="font-display text-xl text-parchment">{scans.waiting}</strong>{' '}
-                  still scanning
-                </span>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+            <ShieldAlert className="h-5 w-5 text-gilt/80" aria-hidden />
+            Mod scans
+          </h2>
+          <ScanList />
+        </section>
 
         <section className="space-y-3">
           <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
