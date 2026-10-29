@@ -1,6 +1,19 @@
 {
-  "generated": "2026-10-26",
+  "generated": "2026-10-29",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-10-29",
+      "summary": "Hero builder: make a hero and build its abilities from blocks; much faster apply",
+      "highlights": [
+        "New Hero tab in the editor: pick a hero to build on, name it, then give each button a new ability from blocks: fire any projectile (enemies' too) in fans or side by side, hit areas, heals, waits and repeats",
+        "Projectiles can burn, poison, root, curse, explode, ricochet, return (Kintaro's axe) and refresh their lifetime on hit (the Snow Queen's shard)",
+        "Scarlet-based heroes can be locked to wolf form, and any button can be removed",
+        "Items can grant Stars of Fate on a trigger, e.g. +1 every time night begins",
+        "rsmm apply builds custom heroes far faster (minutes down to seconds)"
+      ],
+      "cli_version": 19
+    },
     {
       "version": "5.9.27",
       "date": "2026-10-26",
@@ -515,15 +528,6 @@
         "Log screen: \"Open folder\" shows every saved run, and \"Delete logs\" clears them.",
         "Shared logs and crash reports now show your real RSMM version instead of 0.0.0-dev.",
         "Talent builder: \"Hits apply a status\" makes one of a hero's hits Chill, Ignite, Bleed, Weaken, make Vulnerable or Root while you own the talent (not yet tested in game)."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 31,
-      "date": "2026-10-09",
-      "summary": "Fix: online / party code failing on Windows while the loader is installed",
-      "highlights": [
-        "Fix: online / party code failing on Windows while the loader is installed"
       ]
     }
   ]
