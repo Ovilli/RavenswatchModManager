@@ -23,11 +23,12 @@ import { authClient } from './lib/auth-client';
 import { firstSightOfDeepLink, reportDesktopAuthFailure } from './lib/desktop-auth';
 import { setLocale, t } from './lib/i18n';
 import { onGameStateChanged } from './lib/session-cache';
-import { wireGlobalErrorHandlers } from './lib/telemetry';
+import { pingInstall, wireGlobalErrorHandlers } from './lib/telemetry';
 import { routeTree } from './routeTree.gen';
 import { useApp } from './store';
 
 wireGlobalErrorHandlers();
+void pingInstall();
 
 // Typeface + UI scale live on <html>, so they must be written before the
 // first paint — a React effect would flash the default face on every start.

@@ -114,6 +114,13 @@ export default function PrivacyPage() {
                 long it took.
               </li>
               <li>
+                <strong className="text-foreground">Install count</strong> — once a day when the app
+                is opened: a random install id generated on your machine, the RSMM version and your
+                operating system family. It is never stored with your account and is used only to
+                count how many installs are active. Turn it off with <em>Count this install</em> in
+                the app’s Settings → Privacy, or by setting usage reports to <em>don’t send</em>.
+              </li>
+              <li>
                 <strong className="text-foreground">Crash reports</strong> — the error type, message
                 and stack trace when the app hits an unhandled error. A stack trace can incidentally
                 contain file paths from your machine, which is why this is a separate choice from

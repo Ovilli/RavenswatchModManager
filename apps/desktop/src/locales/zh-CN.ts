@@ -632,6 +632,9 @@ export const zhCN: Record<string, string> = {
   'Select filtered': '选中筛选结果',
   'Selected mods uninstalled.': '所选模组已卸载。',
   'Send crash reports': '发送崩溃报告',
+  'Count this install': '统计此安装',
+  'Once a day, send a random install id, the RSMM version and OS so we know how many people use the manager. Never linked to your account; no mod list, no file paths.':
+    '每天发送一次随机安装 ID、RSMM 版本和操作系统，让我们了解有多少人在使用管理器。绝不与你的账户关联；不包含模组列表和文件路径。',
   'Set the game folder in Settings → Paths, then run the command again.':
     '请在“设置 → 路径”中设置游戏文件夹，然后重新运行该命令。',
   'Set your game install path under General, then reopen Settings to manage loader features.':

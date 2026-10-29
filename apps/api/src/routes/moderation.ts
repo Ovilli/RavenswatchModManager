@@ -368,6 +368,17 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
     })
     .from(schema.crashReports);
 
+  // Distinct installs that opened the app in each window — the honest user
+  // count (see installPings). `total` is every install still inside retention.
+  const installsQ = db
+    .select({
+      total: sql<number>`count(distinct ${schema.installPings.installId})::int`,
+      d1: sql<number>`count(distinct ${schema.installPings.installId}) filter (where ${schema.installPings.day} >= current_date - 1)::int`,
+      d7: sql<number>`count(distinct ${schema.installPings.installId}) filter (where ${schema.installPings.day} >= current_date - 7)::int`,
+      d30: sql<number>`count(distinct ${schema.installPings.installId}) filter (where ${schema.installPings.day} >= current_date - 30)::int`,
+    })
+    .from(schema.installPings);
+
   const topModsQ = db
     .select({
       slug: schema.mods.slug,
@@ -425,6 +436,14 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
   const applySeriesQ = dailySeries(
     sql`select created_at::date as day, count(*) as n from telemetry_runs group by 1`,
   );
+  const activeInstallSeriesQ = dailySeries(
+    sql`select day, count(*) as n from install_pings group by 1`,
+  );
+  // An install's first ping is the day it was installed (or first updated to a
+  // build that pings).
+  const newInstallSeriesQ = dailySeries(
+    sql`select first_day as day, count(*) as n from (select min(day) as first_day from install_pings group by install_id) f group by 1`,
+  );
   const crashSeriesQ = dailySeries(
     sql`select created_at::date as day, count(*) as n from crash_reports group by 1`,
   );
@@ -451,6 +470,9 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
     uploadSeries,
     applySeries,
     crashSeries,
+    installs,
+    activeInstallSeries,
+    newInstallSeries,
   ] = await Promise.all([
     usersQ,
     activeQ,
@@ -473,6 +495,9 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
     uploadSeriesQ,
     applySeriesQ,
     crashSeriesQ,
+    installsQ,
+    activeInstallSeriesQ,
+    newInstallSeriesQ,
   ]);
 
   // db.execute returns a driver result whose row container differs between the
@@ -505,6 +530,7 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
     mods: mods[0] ?? null,
     versions: versions[0] ?? null,
     downloads: downloads[0] ?? null,
+    installs: installs[0] ?? null,
     reviews: {
       total: engagement[0]?.reviews ?? 0,
       new7d: engagement[0]?.new7d ?? 0,
@@ -535,6 +561,8 @@ moderationRouter.get('/stats', zValidator('query', statsQuerySchema), async (c) 
       uploads: rowsOf(uploadSeries),
       applies: rowsOf(applySeries),
       crashes: rowsOf(crashSeries),
+      activeInstalls: rowsOf(activeInstallSeries),
+      newInstalls: rowsOf(newInstallSeries),
     },
   });
 });

@@ -1,9 +1,12 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -27,6 +30,28 @@ export const telemetryRuns = pgTable(
   (table) => ({
     createdIdx: index('telemetry_runs_created_idx').on(table.createdAt),
     okIdx: index('telemetry_runs_ok_idx').on(table.ok),
+  }),
+);
+
+/**
+ * One row per desktop install per day it was opened — the real active-install
+ * count, since GitHub's release-asset download numbers count updater fetches,
+ * CI and bots alongside people. `installId` is a random UUID the app mints
+ * locally on first launch; it is never joined to an account (no `userId`
+ * column on purpose), so the table is anonymous by construction. The PK makes
+ * a repeat ping on the same day an upsert, not a new row.
+ */
+export const installPings = pgTable(
+  'install_pings',
+  {
+    installId: uuid('install_id').notNull(),
+    day: date('day').notNull().default(sql`CURRENT_DATE`),
+    rsmmVersion: varchar('rsmm_version', { length: 32 }).notNull(),
+    os: varchar('os', { length: 16 }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.installId, table.day] }),
+    dayIdx: index('install_pings_day_idx').on(table.day),
   }),
 );
 

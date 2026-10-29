@@ -31,6 +31,16 @@ export const telemetryRunSchema = z.object({
 
 export type TelemetryRun = z.infer<typeof telemetryRunSchema>;
 
+/** Daily "this install is alive" ping. `installId` is minted locally and
+ * random — it identifies an install, never a person. */
+export const installPingSchema = z.object({
+  installId: z.string().uuid(),
+  rsmmVersion: z.string().max(32),
+  os: osSchema,
+});
+
+export type InstallPing = z.infer<typeof installPingSchema>;
+
 export const crashReportSchema = z.object({
   rsmmVersion: z.string().max(32),
   os: osSchema,

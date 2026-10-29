@@ -47,6 +47,9 @@ async function purgeExpiredTelemetry(): Promise<{ runs: number; crashes: number 
     .delete(schema.crashReports)
     .where(lt(schema.crashReports.createdAt, cutoff))
     .returning({ id: schema.crashReports.id });
+  await db
+    .delete(schema.installPings)
+    .where(lt(schema.installPings.day, cutoff.toISOString().slice(0, 10)));
   return { runs: runs.length, crashes: crashes.length };
 }
 

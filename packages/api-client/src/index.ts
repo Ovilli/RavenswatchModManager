@@ -9,6 +9,7 @@ import {
   type GuideImagePresign,
   type GuidePatch,
   type GuideReviewUpsert,
+  type InstallPing,
   type LogShareCreate,
   type ModImagePresign,
   type ModListItem,
@@ -409,6 +410,15 @@ export function createApiClient(options: ApiClientOptions) {
         d30: z.number().int(),
       })
       .nullable(),
+    installs: z
+      .object({
+        total: z.number().int(),
+        d1: z.number().int(),
+        d7: z.number().int(),
+        d30: z.number().int(),
+      })
+      .nullable()
+      .optional(),
     reviews: z.object({
       total: z.number().int(),
       new7d: z.number().int(),
@@ -441,6 +451,8 @@ export function createApiClient(options: ApiClientOptions) {
       uploads: daySeries.optional(),
       applies: daySeries.optional(),
       crashes: daySeries.optional(),
+      activeInstalls: daySeries.optional(),
+      newInstalls: daySeries.optional(),
     }),
   });
 
@@ -976,6 +988,8 @@ export function createApiClient(options: ApiClientOptions) {
     telemetry: {
       run: (body: TelemetryRun) =>
         request('/api/telemetry/run', { method: 'POST', body: JSON.stringify(body) }, okSchema),
+      ping: (body: InstallPing) =>
+        request('/api/telemetry/ping', { method: 'POST', body: JSON.stringify(body) }, okSchema),
       crash: (body: CrashReport) =>
         request('/api/telemetry/crash', { method: 'POST', body: JSON.stringify(body) }, okSchema),
     },

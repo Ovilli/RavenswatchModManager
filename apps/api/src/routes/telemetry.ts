@@ -4,6 +4,7 @@ import {
   TELEMETRY_LEVEL_DEFAULT,
   type TelemetryLevel,
   crashReportSchema,
+  installPingSchema,
   telemetryLevelSchema,
   telemetryRunSchema,
 } from '@rsmm/schemas';
@@ -59,6 +60,15 @@ telemetryRouter.use(
   }),
 );
 telemetryRouter.use(
+  '/ping',
+  createRateLimiter({
+    name: 'telemetry-ping',
+    windowMs: 60_000,
+    maxHits: 10,
+    keyFrom: telemetryKey,
+  }),
+);
+telemetryRouter.use(
   '/crash',
   createRateLimiter({
     name: 'telemetry-crash',
@@ -85,6 +95,23 @@ telemetryRouter.post('/run', zValidator('json', telemetryRunSchema), async (c) =
       ok: body.ok,
       durationMs: body.durationMs,
       payload: body.payload ?? null,
+    });
+  return c.json({ ok: true as const });
+});
+
+// Active-install ping. Never stores the account — only the account's 'off'
+// is honoured, the same way /run honours it.
+telemetryRouter.post('/ping', zValidator('json', installPingSchema), async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  if ((await resolveLevel(user?.id, 'telemetryLevel')) === 'off')
+    return c.json({ ok: true as const });
+  await getDb()
+    .insert(schema.installPings)
+    .values({ installId: body.installId, rsmmVersion: body.rsmmVersion, os: body.os })
+    .onConflictDoUpdate({
+      target: [schema.installPings.installId, schema.installPings.day],
+      set: { rsmmVersion: body.rsmmVersion, os: body.os },
     });
   return c.json({ ok: true as const });
 });

@@ -46,6 +46,25 @@ export async function reportCrash(args: {
   await appendLauncherLog('error', 'Frontend crash reported', crashPayload);
 }
 
+const INSTALL_ID_KEY = 'rsmm.installId';
+
+/** Tell the API this install was opened today. The id is random and local —
+ * the API upserts one row per install per day, so calling this on every
+ * launch (or from every window) is fine. */
+export async function pingInstall() {
+  if (!useApp.getState().settings.usageReports) return;
+  try {
+    let installId = localStorage.getItem(INSTALL_ID_KEY);
+    if (!installId) {
+      installId = crypto.randomUUID();
+      localStorage.setItem(INSTALL_ID_KEY, installId);
+    }
+    await api.telemetry.ping({ installId, rsmmVersion: RSMM_VERSION, os: detectOs() });
+  } catch {
+    // best-effort
+  }
+}
+
 export function wireGlobalErrorHandlers() {
   if (typeof window === 'undefined') return;
   window.addEventListener('error', (e) => {

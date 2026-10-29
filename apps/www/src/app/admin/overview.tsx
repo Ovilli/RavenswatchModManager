@@ -214,6 +214,16 @@ export function AdminOverview() {
           <div className="lg:col-span-2">
             <TrendChart label="Mod downloads" data={s.series.downloads} dimmed={dimmed} tall />
           </div>
+          {s.series.activeInstalls ? (
+            <TrendChart
+              label="Active installs (app opened)"
+              data={s.series.activeInstalls}
+              dimmed={dimmed}
+            />
+          ) : null}
+          {s.series.newInstalls ? (
+            <TrendChart label="New installs" data={s.series.newInstalls} dimmed={dimmed} />
+          ) : null}
           <TrendChart label="Sign-ups" data={s.series.signups} dimmed={dimmed} />
           {s.series.uploads ? (
             <TrendChart label="Versions uploaded" data={s.series.uploads} dimmed={dimmed} />
@@ -313,6 +323,17 @@ export function AdminOverview() {
           </div>
         </Section>
       </div>
+
+      {s.installs ? (
+        <Section title="Installs" icon={Users}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Active (24h)" value={fmt(s.installs.d1)} />
+            <Stat label="Active (7d)" value={fmt(s.installs.d7)} />
+            <Stat label="Active (30d)" value={fmt(s.installs.d30)} />
+            <Stat label="Seen (12 months)" value={fmt(s.installs.total)} sub="distinct installs" />
+          </div>
+        </Section>
+      ) : null}
 
       <Section title="Client health" icon={Activity}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
