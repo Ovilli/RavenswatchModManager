@@ -1061,6 +1061,53 @@ pick it, and the base's abilities (Piper's rats and notes) working in a run.
 How the pieces connect is written up in `docs/_re/kinds/heroes.md` under "How a
 hero is assembled from data".
 
+### Building abilities from blocks (`kit`)
+
+The editor's **Hero** tab writes a `[content.kit]` table: a hero's form and,
+per button (`attack`, `power`, `special`, `defense`, `ultimate`, `ultimate2`,
+`trait`, `dash`), `"none"` or a new ability made of blocks that run top to
+bottom:
+
+```toml
+[content.kit]
+form = "wolf"                      # Scarlet-type heroes: "wolf" or "human"
+dash = "none"
+power = { replace = true, steps = [
+    { anim = "Characters\\Heroes\\RED\\Animations\\Skills\\RED_Wolf_Dash_Default.fbx" },
+    { fire = "Heroes/Hero_Piper/Hero_Piper_Ghost_Note_Projectile", angles = [-20, 0, 20], damage = 150, burn = 4, explode = 3 },
+    { wait = 0.3 },
+    { repeat = 3, every = 0.15, steps = [
+        { fire = "Heroes/Hero_Juliet/Hero_Juliet_Projectile", ricochet = 3 },
+    ] },
+    { fire = "Heroes/Hero_Kintaro/Hero_Kintaro_Thrown_Axe", reads = { "Max Rebound" = 4 } },
+    { hit = { radius = 6, damage = 200, delay = 0.2 } },
+    { heal = 20 },
+] }
+```
+
+- **`fire`**: any shipped projectile or attack, an enemy's included. `angles`
+  fan it (degrees, 0 = facing), `offsets` set shots side by side (metres),
+  `speed`. Projectiles also take `damage` (%), `lifetime` (s), `size`,
+  `knockback`, `stagger`, `explode` (radius), status effects `burn`, `poison`,
+  `root` (seconds) and `curse`, `vulnerable` (`true`), set per shot on the
+  generic projectile model. `ricochet` (bounces) and `ricochet_damage` (%)
+  work on Juliet's projectiles. A projectile that reads its own hero
+  (Kintaro's axe: rebounds, so it RETURNS; the Snow Queen's shard: seeking,
+  each hit REFRESHING its lifetime) fires as a copy of your hero's own;
+  `reads` sets those numbers (`{ "Skill Seeking Available" = true }`), each
+  defaulting to the original hero's.
+- **`hit`**: an area attack at that moment (`radius` m, `damage` %, `delay` s).
+- **`heal`**: health, in the units of the hero's own heals.
+- **`anim`**: one of the base hero's own clips plays instead of the button's.
+- **`replace = true`** cuts the button's own hits and spawns, keeping its
+  animation and flow.
+
+Each block is built from parts the base already has (its projectile spawner,
+timers, spawner values), so what a base cannot do is refused with the reason
+when you save. **None of this is proven in game yet** (2026-10-29): the open
+questions are whether enemy projectiles fired by a hero hurt enemies, and
+whether the status flags take effect.
+
 ---
 
 ## Where to go next

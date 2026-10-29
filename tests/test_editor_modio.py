@@ -284,6 +284,33 @@ def test_a_custom_hero_block_is_added_for_ability_changes():
         M.add_hero_block(new, "BeowulfEdit", "Beowulf", "x")
 
 
+def test_a_heros_name_and_description_are_set_in_place():
+    """The Abilities tab's "Your hero" box: the name line is rewritten, a missing
+    description goes under the id, and the steps stay where they were."""
+    out = M.set_hero_info(HERO_MANIFEST, "Nyx", name="Blood Wolf", description='A "wolf"')
+    hero = M.hero_blocks(out)[0]
+    assert (hero["name"], hero["description"]) == ("Blood Wolf", 'A "wolf"')
+    assert tomllib.loads(out)["content"][1]["id"] == "A"
+    assert M.set_hero_info(out, "Nyx", name="Blood Wolf", description='A "wolf"') == out
+    with pytest.raises(C.EditorError):
+        M.set_hero_info(HERO_MANIFEST, "Nope", name="x")
+
+
+def test_a_named_custom_hero_takes_its_id_from_the_name(tmp_path, monkeypatch):
+    from rsmm.cli.editor import abilities as AB
+    monkeypatch.setattr(AB, "_heroes", lambda: ["Red", "Piper"])
+    monkeypatch.setattr(AB, "_herodef", lambda h: h)
+    path = tmp_path / "manifest.toml"
+    path.write_text('[mod]\nid = "m"\n')
+    assert AB._add_hero(path, "Red", "custom", name="blood wolf",
+                        description="Wolf only") == "BloodWolf"
+    assert AB._add_hero(path, "Red", "custom", name="Blood Wolf") == "BloodWolf2"
+    assert AB._add_hero(path, "Red", "custom", name="Red") == "Red2"   # never a shipped id
+    first = M.hero_blocks(path.read_text())[0]
+    assert (first["name"], first["description"], first["base"]) == (
+        "blood wolf", "Wolf only", "Red")
+
+
 def test_an_in_place_ability_block_marks_the_mod_experimental():
     """`ability` is an experimental kind: `rsmm lint` fails a mod that uses it
     without `[mod] experimental = true`, so adding one sets the flag."""
@@ -432,3 +459,77 @@ def test_save_refuses_blocks_that_would_fail_in_apply(tmp_path, monkeypatch):
                        match=r"not saved: 1 block\(s\).*talent t_builder: no talent"):
         C._save(req)
     assert not (tmp_path / "new_mod").exists()
+
+
+def test_a_heros_kit_is_written_replaced_and_removed():
+    kit = {"form": "wolf", "dash": "none", "power": {"fire": "Enemies/X/Shot"}}
+    out = M.set_hero_kit(HERO_MANIFEST, "Nyx", kit)
+    assert tomllib.loads(out)["content"][0]["kit"] == kit
+    assert tomllib.loads(out)["content"][1]["id"] == "A"
+    assert M.set_hero_kit(out, "Nyx", kit) == out, "saving twice changed the file"
+    again = M.set_hero_kit(out, "Nyx", {"dash": "none"})
+    assert tomllib.loads(again)["content"][0]["kit"] == {"dash": "none"}
+    assert "kit" not in tomllib.loads(M.set_hero_kit(again, "Nyx", {}))["content"][0]
+
+
+def test_the_hero_tab_saves_a_hero_whose_kit_builds_and_refuses_one_that_does_not(tmp_path):
+    from types import SimpleNamespace
+
+    from rsmm.cli.editor import herobuilder as HB
+    from rsmm.engine import corpus
+    if corpus.read("EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot"
+                   ".EntitySettingsResource.gen") is None:
+        pytest.skip("no hero corpus")
+    (tmp_path / "m").mkdir()
+    (tmp_path / "m" / "manifest.toml").write_text('[mod]\nid = "m"\n')
+    kit = {"form": "wolf", "dash": "none"}
+    req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path), body={
+        "mod": "m", "base": "Red", "hero_name": "Blood Wolf", "hero_description": "Wolf only",
+        "kit": kit})
+    got = HB._save(req)
+    assert got == {"mod": "m", "block": "BloodWolf"}
+    hero = tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0]
+    assert (hero["kind"], hero["name"], hero["kit"]) == ("hero", "Blood Wolf", kit)
+    req.body.update(block="BloodWolf", kit={"form": "wolf"})       # an update, in place
+    HB._save(req)
+    assert tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0][
+        "kit"] == {"form": "wolf"}
+    req.body.update(block="", base="Piper", kit={"dash": "none"})
+    with pytest.raises(ValueError, match="outside its own files"):
+        HB._save(req)
+    opts = HB.options("Red")
+    assert opts["form"] and opts["slots"]["dash"]["none"]
+    assert opts["slots"]["power"]["when_wolf"] == "Event Wolf Primary Ability Active"
+
+
+def test_a_built_ability_unrolls_its_timeline_and_saves():
+    from types import SimpleNamespace
+
+    from rsmm.engine import corpus
+    from rsmm.engine import hero_kit as HK
+    plan = HK.timeline([{"fire": "A"}, {"wait": 0.3},
+                        {"repeat": 2, "every": 0.2, "steps": [{"fire": "B"}]}, {"fire": "C"}])
+    assert [(t, b.get("fire")) for t, b in plan] == [(0.0, "A"), (0.3, "B"), (0.5, "B"),
+                                                     (0.7, "C")]
+    with pytest.raises(HK.KitError):
+        HK.timeline([{"wait": 0.3, "fire": "A"}])
+    if corpus.read("EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot"
+                   ".EntitySettingsResource.gen") is None:
+        pytest.skip("no hero corpus")
+    import tempfile
+    from pathlib import Path
+
+    from rsmm.cli.editor import herobuilder as HB
+    clip = next(c["path"] for c in HB.options("Red")["clips"] if "Wolf" in c["path"])
+    laser = "Enemies/Tentacle_Nightmares/Projectile_Tentacle_Nightmare_Laser_Shot"
+    kit = {"form": "wolf", "power": {"replace": True, "steps": [
+        {"anim": clip}, {"fire": laser, "angles": [-20, 0, 20]}, {"wait": 0.3},
+        {"repeat": 2, "every": 0.2, "steps": [{"fire": laser}]}]}}
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "m").mkdir()
+        (Path(d) / "m" / "manifest.toml").write_text('[mod]\nid = "m"\n')
+        req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=Path(d)), body={
+            "mod": "m", "base": "Red", "hero_name": "Howler", "kit": kit})
+        assert HB._save(req)["block"] == "Howler"
+        saved = tomllib.loads((Path(d) / "m" / "manifest.toml").read_text())["content"][0]
+        assert saved["kit"] == kit

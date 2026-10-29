@@ -49,7 +49,7 @@ iframe[hidden] { display: none; }
   <h2 id="welcome-title">Welcome to the RSMM Editor</h2>
   <div class="muted">Make Ravenswatch mods without writing code. Nothing touches the game until you apply a mod.</div>
   <ol>
-    <li><b>Pick what to change in the tabs at the top</b>Items, Talents, Scripts, Abilities and Map are separate editors. A dot on a tab means it has changes you have not saved yet.</li>
+    <li><b>Pick what to change in the tabs at the top</b>Items, Talents, Scripts, Hero, Abilities and Map are separate editors. A dot on a tab means it has changes you have not saved yet.</li>
     <li><b>Edit an item, or make a new one</b>Open an item and choose <i>Edit</i> to change the game's own, or <i>New item from it</i> for a separate copy. <i>+ New custom item</i> starts one for you.</li>
     <li><b>Watch the card</b>The preview is drawn with the game's own art and follows every change you type.</li>
     <li><b>Save to a mod</b>The bar at the bottom collects every change. <i>Add to mod</i> writes them; <code>rsmm apply</code> puts the mod in the game.</li>
@@ -57,6 +57,7 @@ iframe[hidden] { display: none; }
   <div class="acts">
     <button type="button" id="w-close">Look around</button>
     <button type="button" id="w-talents">Edit talents</button>
+    <button type="button" id="w-hero">Make a hero</button>
     <button type="button" id="w-item" class="primary">Make a custom item</button>
   </div>
 </dialog>
@@ -66,7 +67,7 @@ const TABS = __RSMM_TABS__;
 const GAME = __RSMM_GAME__;
 // What each tab edits, under its name.
 const BLURB = { items: "Change or copy magic items", talents: "Hero talent cards & numbers", scripts: "Test grants & block scripts",
-  abilities: "Hero ability numbers & links", map: "Chapter maps & tiles", save: "Items in your profile" };
+  hero: "Build a hero of your own", abilities: "Hero ability numbers & links", map: "Chapter maps & tiles", save: "Items in your profile" };
 const frames = {};
 const nav = document.getElementById("nav"), main = document.getElementById("main");
 for (const [key, [label]] of Object.entries(TABS)) {
@@ -118,6 +119,7 @@ tour.onclick = openWelcome;
 welcome.addEventListener("cancel", () => { try { localStorage.setItem(WELCOME_KEY, "1"); } catch (e) {} });
 document.getElementById("w-close").onclick = closeWelcome;
 document.getElementById("w-talents").onclick = () => { closeWelcome(); rsmmOpen("talents", {}); };
+document.getElementById("w-hero").onclick = () => { closeWelcome(); rsmmOpen("hero", { newHero: true }); };
 document.getElementById("w-item").onclick = () => { closeWelcome(); rsmmOpen("items", { newItem: true }); };
 
 // A frame is made on first visit and then kept, so switching tabs never loses

@@ -163,7 +163,8 @@ class Effect:
     """One effect. Without ``seconds`` it is ALWAYS ON while the item is held
     (a plain stat item's shape: a modifier on the equipped state's
     ``while_active``, or gated by ``during``); with ``seconds`` it is a timed
-    bonus after ``on``."""
+    bonus after ``on``. Stars of Fate is a gain: once on pickup, or ``amount``
+    more each time ``on`` fires (no ``seconds``)."""
     stat: str
     amount: float | int
     seconds: float | None = None
@@ -212,13 +213,20 @@ class Effect:
         if during is not None and during not in DURING:
             raise ItemEffectError(f"effect during = {during!r}: one of {', '.join(DURING)}")
         timed = "seconds" in raw or ("on" in raw and raw.get("on") not in DURING)
+        if is_stars and timed:
+            # A gain, not a bonus: each trigger grants `amount` (no duration).
+            if "seconds" in raw or during:
+                raise ItemEffectError("Stars of Fate is a gain, not a bonus: give it an "
+                                      "'on' trigger alone (no seconds or during)")
+            timed = False
         if timed and "seconds" not in raw:
             raise ItemEffectError("effect: a trigger ('on') needs 'seconds' (how long the "
                                   "bonus lasts); leave both out for an always-on bonus")
-        if is_stars and (timed or during):
-            raise ItemEffectError("Stars of Fate is gained on pickup and cannot have a "
-                                  "trigger or duration")
-        on = str(raw.get("on", "damage_taken")) if timed else None
+        if is_stars and during:
+            raise ItemEffectError("Stars of Fate is a gain, not a bonus: it cannot have "
+                                  "a 'during'")
+        on = (str(raw.get("on", "damage_taken")) if timed
+              else str(raw["on"]) if is_stars and "on" in raw else None)
         if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
         for k in ("amount", "seconds"):
@@ -296,7 +304,10 @@ def _pickup_state(ef: EntityFile) -> str:
 def add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read=None,
                       slots: list | None = None, state: str | None = None) -> None:
     """A resource-gain component copied from Star Fragment, giving ``amount``
-    Stars of Fate on pickup (or when ``state`` activates)."""
+    Stars of Fate on pickup (or when ``state`` activates). With ``effect.on``
+    the trigger's listener fires the gain each time instead, listening while
+    the equipped state (or ``state``) is on: shipped Full_Heal_At_Day_Night
+    wires its Day/Night Event Listeners straight to its resource gain."""
     from . import entity_check as CK
     raw = (read or CK._corpus_reader)(_STAR_FRAGMENT)
     if raw is None:
@@ -318,8 +329,13 @@ def add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read=None,
     gain_name = "Dt Resource Gain" + sfx
     w.add(_RESOURCE_GAIN, gain_name, decoded, flags=0x10001)
 
-    target_state = state if state is not None else _pickup_state(w.ef)
-    w.ef.add_ref(target_state, "activates", gain_name)
+    if effect.on is not None:
+        listener = add_listener(w, effect.on, sfx, w.link(gain_name, _RESOURCE_GAIN), read=read)
+        w.ef.add_ref(state if state is not None else _equipped_state(w.ef),
+                     "while_active", listener)
+    else:
+        target_state = state if state is not None else _pickup_state(w.ef)
+        w.ef.add_ref(target_state, "activates", gain_name)
     if slots is not None:
         slots.append((val_name, False))
 
@@ -695,6 +711,9 @@ def describe(effects: list[Effect], *, one_line: bool = False) -> str:
             n += 2
         elif e.during:
             lines.append(f"{DURING[e.during][1]}, {amount}")
+            n += 1
+        elif e.on:                                      # a gain per trigger (Stars of Fate)
+            lines.append(f"{TRIGGERS[e.on].text}, gain {amount}")
             n += 1
         else:
             lines.append(amount)

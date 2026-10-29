@@ -38,6 +38,7 @@ import struct
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
+from pathlib import Path
 
 from . import cooked, rsc_cache
 from . import entity_graph as EG
@@ -156,6 +157,7 @@ def _references(ef: EntityFile, g: EG.EntityGraph, before: EG.EntityGraph,
     own = g.by_guid()
     inherited: dict[bytes, str] | None = None
     reached: set[str] | None = None
+    templates: dict[str | None, set[bytes]] = {}
     out = []
     for c in g.components:
         links = list(c.refs) + ([c.override] if c.override else [])
@@ -163,8 +165,19 @@ def _references(ef: EntityFile, g: EG.EntityGraph, before: EG.EntityGraph,
             # Reads its value ON its source entity (an item's "hero health" reads
             # the hero's Character_Common value), so the link binds there.
             links = [c.override] if c.override else []
+        spawned: set[bytes] = set()
+        if c.cls == "oCEntityCpntSpawnerValueSettings":
+            # Sets a number ON the entity it spawns (Kintaro's bear sets its
+            # AOE's radius this way), so its target binds in that template or
+            # what the template inherits, not in this file.
+            tmpl = next((x for x in c.literals if x.endswith(".entity.ot")), None)
+            if tmpl not in templates:          # a kit has dozens, on a few templates
+                raw = read(tmpl) if tmpl else None
+                templates[tmpl] = (set(_ancestors(raw, read))
+                                   | {x.guid for x in EG.parse(raw).components}) if raw else set()
+            spawned = templates[tmpl]
         for r in links:
-            if (c.guid, r.guid) in old or r.guid in own:
+            if (c.guid, r.guid) in old or r.guid in own or r.guid in spawned:
                 continue
             if inherited is None:
                 inherited = _ancestors(ef.to_bytes(), read)
@@ -203,15 +216,46 @@ def _entity_of(r: EG.Ref) -> str | None:
 
 @cache
 def _guid_index() -> dict[bytes, frozenset[str]]:
-    """Component GUID -> stems of the shipped entities that hold it."""
+    """Component GUID -> stems of the shipped entities that hold it. Built from
+    every entity in the game (~10 s), so it is kept on disk under a key of
+    those files' names, sizes and times: once per game build, not per apply."""
+    import hashlib
+    import os
+    import pickle
+
     from . import corpus
+    rels = [r for r in corpus.rels("EntitySettings/") if r.endswith(".EntitySettingsResource.gen")]
+    h = hashlib.blake2b(digest_size=16)
+    h.update(corpus.source().encode())
+    for rel in rels:
+        f = corpus.mirror_path(rel) or corpus.install_path(rel)
+        try:
+            st = f.stat() if f else None
+        except OSError:
+            st = None
+        h.update(f"{rel}|{st.st_size if st else -1}|{int(st.st_mtime) if st else 0}\n".encode())
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "rsmm"
+    path = base / f"guid_index-{h.hexdigest()}.pickle"
+    try:
+        return pickle.loads(path.read_bytes())
+    except (OSError, pickle.UnpicklingError, EOFError, ValueError):
+        pass
     idx: dict[bytes, set[str]] = {}
-    for rel in corpus.rels("EntitySettings/"):
-        if rel.endswith(".EntitySettingsResource.gen"):
-            stem = rel.rsplit("/", 1)[-1].removesuffix(".entity.ot.EntitySettingsResource.gen")
-            for c in EG.parse(corpus.read(rel)).components:
-                idx.setdefault(c.guid, set()).add(stem)
-    return {k: frozenset(v) for k, v in idx.items()}
+    for rel in rels:
+        stem = rel.rsplit("/", 1)[-1].removesuffix(".entity.ot.EntitySettingsResource.gen")
+        for c in EG.parse(corpus.read(rel)).components:
+            idx.setdefault(c.guid, set()).add(stem)
+    out = {k: frozenset(v) for k, v in idx.items()}
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        for old in base.glob("guid_index-*.pickle"):
+            old.unlink(missing_ok=True)     # one game build kept
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_bytes(pickle.dumps(out, protocol=pickle.HIGHEST_PROTOCOL))
+        tmp.replace(path)
+    except OSError:
+        pass                                # a cache, never required
+    return out
 
 
 @cache

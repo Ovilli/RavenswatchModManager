@@ -616,3 +616,35 @@ def test_item_stars_of_fate():
     d_swap = P.decode(comps_swap["Dt Resource Gain"])
     assert d_swap["bytes_1"] == struct.pack("<I", 6)
     assert CK.check(ent_swap, _shield(), name="Stars_Swap_Item") == []
+
+
+def test_item_stars_of_fate_on_trigger():
+    # "+1 Star of Fate each night": the night listener fires the resource gain
+    # directly (Full_Heal_At_Day_Night's shape), listening while equipped; the
+    # pickup state no longer grants it.
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import item_effect as IE
+    files = C.build_magic_item(new_id="Night_Stars", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Common",
+                               effect=[{"stat": "Stars of Fate", "amount": 1, "on": "night_start"}])
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    ef = EntityFile(ent, "Night_Stars")
+
+    def items(part, fld):
+        return [it.text for f in EF.fields(ef.component(part)) if f.name == fld for it in f.items]
+
+    held = items(IE._equipped_state(ef), "while_active")
+    assert any("Night Event Listener Effect" in t for t in held)
+    assert not any("Dt Resource Gain Effect" in t for t in items("State Picked Up", "activates"))
+    comps = {c.name: c for c in EG.parse(ent).components}
+    gain = comps["Dt Resource Gain Effect"]
+    assert any(r.guid == gain.guid for r in comps["Night Event Listener Effect"].refs)
+    assert CK.check(ent, _shield(), name="Night_Stars") == []
+
+    e = IE.Effect.parse({"stat": "Stars of Fate", "amount": 1, "on": "night_start"})
+    assert (e.on, e.seconds) == ("night_start", None)
+    assert IE.describe([e]) == "• When night begins, gain #+{0}@ #Stars of Fate@"
+    for bad in ({"seconds": 5}, {"during": "night"}):
+        with pytest.raises(IE.ItemEffectError):
+            IE.Effect.parse({"stat": "Stars of Fate", "amount": 1, "on": "night_start", **bad})

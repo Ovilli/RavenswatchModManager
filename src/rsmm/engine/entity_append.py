@@ -94,7 +94,8 @@ def _render_vector(offset: int, trailer: bytes, ids: list[int]) -> bytes:
             + struct.pack(f"<{len(ids)}I", *ids) + tail)
 
 
-def place_new_components(raw: bytes, first_new: int) -> bytes:
+def place_new_components(raw: bytes, first_new: int,
+                         names: dict[int, str] | None = None) -> bytes:
     """``raw`` with every component id from ``first_new`` on moved to where the
     game's own files would have it in the component vector.
 
@@ -108,7 +109,9 @@ def place_new_components(raw: bytes, first_new: int) -> bytes:
     does not depend on the runs, so it is NOT known to fix that. A new component
     goes into its class's run, before the first name that sorts after it, or
     starts its class's run before the first run of a later class. Ids before
-    ``first_new`` keep their places, so a shipped file is left as shipped."""
+    ``first_new`` keep their places, so a shipped file is left as shipped.
+    ``names`` (object id -> component name), when the caller already has them,
+    saves parsing the whole file again."""
     from . import entity_graph as EG
     cf = cooked.parse(raw)
     trailer = cf.sections[-1].payload
@@ -116,10 +119,11 @@ def place_new_components(raw: bytes, first_new: int) -> bytes:
     if not any(i >= first_new for i in ids):
         return raw
     _count, directory = _directory(cf)
-    comps = {c.index - 1: c for c in EG.parse(raw).components}
+    if names is None:
+        names = {c.index - 1: c.name for c in EG.parse(raw).components}
 
     def name(i: int) -> str:
-        return comps[i].name if i in comps else ""
+        return names.get(i, "")
 
     out = [i for i in ids if i < first_new]
     for new in sorted((i for i in ids if i >= first_new), key=lambda i: (directory[i], name(i))):

@@ -1265,7 +1265,7 @@ function effectsForm(E, blank, key = "effects") {
         else x.amount = Math.round(x.amount);
       }
       if (v === "Stars of Fate") {
-        delete x.seconds; delete x.on; delete x.during; delete x.refresh;
+        delete x.seconds; delete x.during; delete x.refresh;
       }
       changed();
     });
@@ -1276,7 +1276,12 @@ function effectsForm(E, blank, key = "effects") {
       : "In the stat's own unit: crit chance 0.1 is +10%, armour 5 is +5.";
     const isStars = x.stat === "Stars of Fate";
     const f = el("div", { class: "form" });
-    if (!isStars) f.append(el("label", { text: "When" }), when);
+    // Stars of Fate is a gain: once on pickup, or again each time a trigger fires.
+    const starsWhen = el("select", {}, el("option", { value: "", text: "Once, on pickup" }),
+      ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t + " (each time)" })));
+    starsWhen.value = x.on || "";
+    starsWhen.onchange = () => { set("on", starsWhen.value || undefined); changed(); };
+    f.append(el("label", { text: "When" }), isStars ? starsWhen : when);
     f.append(
       el("label", { text: "Stat" }), el("div", {}, stat, unread),
       el("label", { text: "Amount" }), el("div", {}, num("amount", isInt ? "1" : "0.01", isInt ? "1" : undefined),

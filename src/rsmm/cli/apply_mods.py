@@ -1943,7 +1943,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     Returns the number of files synced.
     """
     game_mods = game_dir / "mods"
-    game_mods.mkdir(exist_ok=True)
+    if not dry_run:
+        game_mods.mkdir(exist_ok=True)
     synced = 0
 
     if not mods:
@@ -1956,7 +1957,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 
         enabled = mod.enabled
         dst_dir = game_mods / mod_dir.name
-        dst_dir.mkdir(exist_ok=True)
+        if not dry_run:                 # a dry run left an empty folder per mod
+            dst_dir.mkdir(exist_ok=True)
 
         # Sync manifest (always).
         if _sync_one_file(manifest, dst_dir / "manifest.toml", dry_run):
@@ -2572,7 +2574,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 verify_landed(enc, mod_id, dest, src_sha)
 
     if manifest_syncs:
-        print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
+        print(f"{'Would sync' if args.dry_run else 'Synced'} {manifest_syncs} mod file(s) "
+              "(manifests/lua) to game mods directory")
 
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])

@@ -286,12 +286,14 @@ def _hero_blocks(req: Request) -> dict:
             "others": sorted({b["base"] for b in blocks if b["base"] not in bases})}
 
 
-def _add_hero(path, hero: str, mode: str = "inplace") -> str:
+def _add_hero(path, hero: str, mode: str = "inplace", *, name: str = "",
+              description: str = "") -> str:
     """Append a block for ``hero``'s ability steps to the manifest at ``path`` and
     return its id. ``mode`` ``"inplace"`` (the default) edits the shipped hero
     itself; ``"custom"`` builds a separate, extra hero and leaves the shipped one
-    alone. A paid DLC hero's custom copy carries ``dlc_owner = true``, the
-    author's word that they own it (the build refuses the clone without it)."""
+    alone, named ``name`` (its id is the name's letters and digits). A paid DLC
+    hero's custom copy carries ``dlc_owner = true``, the author's word that they
+    own it (the build refuses the clone without it)."""
     import re
 
     from rsmm.cli.editor import modio
@@ -311,12 +313,17 @@ def _add_hero(path, hero: str, mode: str = "inplace") -> str:
     paid = bool(_bases(hero) & _dlc())
     used = {b["id"] for b in modio.hero_blocks(text)}
     # A hero with ability steps is a custom hero: its id is letters and digits only.
-    stem = re.sub(r"[^A-Za-z0-9]+", "", hero) + "Edit"
+    # Unnamed (the Abilities tab's quick path): "<Hero> (edited)", id <Hero>Edit.
+    stem = re.sub(r"[^A-Za-z0-9]+", "", name.title() if " " in name.strip() else name)
+    if not stem or not stem[0].isalpha():
+        stem = re.sub(r"[^A-Za-z0-9]+", "", hero) + "Edit"
+    name = name.strip() or f"{hero.replace('_', ' ')} (edited)"
     block_id, n = stem, 2
-    while block_id in used:
+    while block_id in used or block_id.lower() in {h.lower() for h in _heroes()}:
         block_id, n = f"{stem}{n}", n + 1
-    name = f"{hero.replace('_', ' ')} (edited)"
-    extra = {"dlc_owner": True} if paid else {}
+    extra = {"description": description.strip()} if description.strip() else {}
+    if paid:
+        extra["dlc_owner"] = True
     path.write_text(modio.add_hero_block(text, block_id, _herodef(hero), name, **extra),
                     encoding="utf-8")
     return block_id
@@ -327,7 +334,23 @@ def _new_hero(req: Request) -> dict:
     changes have somewhere to be saved."""
     path = _manifest(req, str(req.body.get("mod") or ""))
     return {"block": _add_hero(path, str(req.body.get("hero") or ""),
-                               str(req.body.get("mode") or "inplace"))}
+                               str(req.body.get("mode") or "inplace"),
+                               name=str(req.body.get("hero_name") or ""),
+                               description=str(req.body.get("hero_description") or ""))}
+
+
+def _hero_info(req: Request) -> dict:
+    """Set a custom hero's name and description (the select screen's text)."""
+    from rsmm.cli.editor import modio
+    path = _manifest(req, str(req.body.get("mod") or ""))
+    name = str(req.body.get("name") or "").strip()
+    if not name:
+        raise ValueError("a hero needs a name")
+    fields = {"name": name, "description": str(req.body.get("description") or "").strip()}
+    path.write_text(modio.set_hero_info(path.read_text(encoding="utf-8"),
+                                        str(req.body.get("block") or ""), **fields),
+                    encoding="utf-8")
+    return fields
 
 
 def _dlc() -> frozenset:
@@ -348,7 +371,9 @@ def _create_mod(req: Request, hero: str) -> tuple[str, str]:
     where = C.save([], mod_id, root, create=True, name=str(req.body.get("name") or ""),
                    meta=meta if isinstance(meta, dict) else None)
     try:
-        return mod_id, _add_hero(where, hero, str(req.body.get("mode") or "inplace"))
+        return mod_id, _add_hero(where, hero, str(req.body.get("mode") or "inplace"),
+                                 name=str(req.body.get("hero_name") or ""),
+                                 description=str(req.body.get("hero_description") or ""))
     except Exception:
         shutil.rmtree(root / mod_id, ignore_errors=True)      # no half-made mod
         raise
@@ -429,5 +454,6 @@ ROUTES = {
     ("GET", "/api/heroblocks"): _hero_blocks,
     ("POST", "/api/save"): _save,
     ("POST", "/api/newhero"): _new_hero,
+    ("POST", "/api/heroinfo"): _hero_info,
     ("POST", "/api/import"): _import,
 }

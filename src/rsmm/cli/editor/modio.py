@@ -393,6 +393,7 @@ def hero_blocks(text: str, kind: str = "hero") -> list[dict]:
     return [{"id": str(c.get("id") or ""), "kind": kind,
              "base": str(c.get("base") or c.get("hero") or ""),
              "name": str(c.get("name") or c.get("id") or ""),
+             "description": str(c.get("description") or ""),
              "steps": [s for s in c.get("abilities") or [] if isinstance(s, dict)]}
             for c in _content(text) if c.get("kind") == kind]
 
@@ -509,6 +510,95 @@ def set_hero_abilities(text: str, block_id: str, steps: list[dict],
     if _content(new) != want:
         raise EditorError("could not write the steps into that hero block cleanly (its "
                           "abilities may be written inline); edit manifest.toml by hand")
+    return re.sub(r"\n{3,}", "\n\n", new)
+
+
+def set_hero_info(text: str, block_id: str, **fields: str) -> str:
+    """``text`` with custom hero ``block_id``'s top-level ``fields`` (``name``,
+    ``description``) set: each key's line rewritten in place, or added under the
+    block's ``id`` line. Refuses unless the result parses to exactly that change."""
+    from .content import _toml
+    lines = text.splitlines(keepends=True)
+    start = None
+    for i, line in enumerate(lines):
+        if _HEADER_RE.match(line) and line.strip().startswith("[[content]]"):
+            end = next((j for j in range(i + 1, len(lines)) if _HEADER_RE.match(lines[j])),
+                       len(lines))
+            try:
+                got = tomllib.loads("".join(lines[i:end])).get("content", [{}])[0]
+            except tomllib.TOMLDecodeError:
+                continue
+            if got.get("kind") == "hero" and got.get("id") == block_id:
+                start = i
+                break
+    if start is None:
+        raise EditorError(f"no hero block {block_id!r} in manifest.toml")
+    for key, value in fields.items():
+        row = f"{key} = {_toml(value)}\n"
+        at = next((j for j in range(start + 1, end)
+                   if re.match(rf"\s*{key}\s*=", lines[j])), None)
+        if at is not None:
+            lines[at] = row
+        else:
+            idl = next((j for j in range(start + 1, end) if re.match(r"\s*id\s*=", lines[j])),
+                       start)
+            lines.insert(idl + 1, row)
+            end += 1
+    new = "".join(lines)
+    want = [{**c, **fields} if c.get("kind") == "hero" and c.get("id") == block_id else c
+            for c in _content(text)]
+    if _content(new) != want:
+        raise EditorError("could not write the hero's name cleanly (a value may span "
+                          "several lines); edit manifest.toml by hand")
+    return new
+
+
+def set_hero_kit(text: str, block_id: str, kit: dict) -> str:
+    """``text`` with custom hero ``block_id``'s ``[content.kit]`` (the Hero tab's
+    building blocks) replaced by ``kit``; an empty kit removes the table.
+    Refuses unless the result parses to exactly that change."""
+    from .content import _toml
+    lines = text.splitlines(keepends=True)
+    heads = [(i, m.group(1), line.strip().startswith("[["))
+             for i, line in enumerate(lines) if (m := _HEADER_RE.match(line))]
+    span = None
+    for n, (i, name, arr) in enumerate(heads):
+        if not (arr and name == "content"):
+            continue
+        end = next((j for j, nm, _a in heads[n + 1:] if not nm.startswith("content.")),
+                   len(lines))
+        try:
+            got = tomllib.loads("".join(lines[i:end])).get("content", [{}])[0]
+        except tomllib.TOMLDecodeError:
+            continue
+        if got.get("kind") == "hero" and got.get("id") == block_id:
+            span = (n, i, end)
+    if span is None:
+        raise EditorError(f"no hero block {block_id!r} in manifest.toml")
+    n, start, end = span
+    while end > start and lines[end - 1].lstrip().startswith("#"):
+        end -= 1                        # the next block's own comment
+    inner = [(i, name) for i, name, _a in heads[n + 1:] if start < i < end]
+    drop: set[int] = set()
+    for k, (i, name) in enumerate(inner):
+        if name == "content.kit":
+            stop = inner[k + 1][0] if k + 1 < len(inner) else end
+            drop.update(range(i, stop))
+    body = "".join(x for k, x in enumerate(lines[start:end], start) if k not in drop)
+    body = body.rstrip("\n") + "\n"
+    if kit:
+        body += "\n[content.kit]\n" + "".join(f"{k} = {_toml(v)}\n" for k, v in kit.items())
+    new = "".join(lines[:start]) + body + ("\n" if end < len(lines) else "") + "".join(lines[end:])
+    want = []
+    for c in _content(text):
+        if c.get("kind") == "hero" and c.get("id") == block_id:
+            c = {k: v for k, v in c.items() if k != "kit"}
+            if kit:
+                c["kit"] = kit
+        want.append(c)
+    if _content(new) != want:
+        raise EditorError("could not write the hero's kit cleanly (it may be written "
+                          "inline); edit manifest.toml by hand")
     return re.sub(r"\n{3,}", "\n\n", new)
 
 

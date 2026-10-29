@@ -132,35 +132,39 @@ def parse(raw: bytes, name: str = "") -> EntityGraph:
     cf = cooked.parse(raw)
     classes = [c.name for c in cf.classes]
     picker_cls = classes.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in classes else -1
-    comps: list[Component] = []
-    for si, sec in enumerate(cf.sections[1:-1], 1):
-        p = sec.payload
-        if len(p) < 4 or picker_cls < 0:
-            continue
-        ci = struct.unpack_from("<I", p, 0)[0]
-        if ci >= len(classes):
-            continue
-        pickers = _pickers(p, picker_cls)
-        if not pickers or pickers[0][0] != 4:
-            continue                       # not a component record
-        first = pickers[0][1]
-        # Header picker is fixed-size when empty (16 + 4); its END follows the path.
-        after = 4 + 8 + 16 + 4 + len(first.path.encode("ascii")) + 4
-        own = p[after:after + 16]
-        # lstr name, u32 flags, lstr group — read by position: the group is
-        # EMPTY in many override records, which a string scan cannot see.
-        head = _header_strings(p, after + 16)
-        if len(own) != 16 or head is None:
-            continue
-        cname, group, body_from = head
-        refs = [r for off, r in pickers[1:] if off >= body_from and r.path]
-        ref_paths = {r.path for r in refs}
-        literals = [s for o, s in ES._scan_payload(p) if o >= body_from and s not in ref_paths]
-        override = first if first.path else None
-        body = p[body_from:]
-        comps.append(Component(si, classes[ci], cname, group, own, override, refs, literals,
-                               body, classes))
+    comps = [c for si, sec in enumerate(cf.sections[1:-1], 1)
+             if (c := component_at(sec.payload, si, classes, picker_cls)) is not None]
     return EntityGraph(name, comps)
+
+
+def component_at(p: bytes, si: int, classes: list[str], picker_cls: int) -> Component | None:
+    """The component in section ``si`` (payload ``p``), or None when it is a
+    sub-object. Each section reads on its own, so an editor can re-read only
+    the ones an edit changed (``EntityFile.graph``)."""
+    if len(p) < 4 or picker_cls < 0:
+        return None
+    ci = struct.unpack_from("<I", p, 0)[0]
+    if ci >= len(classes):
+        return None
+    pickers = _pickers(p, picker_cls)
+    if not pickers or pickers[0][0] != 4:
+        return None                        # not a component record
+    first = pickers[0][1]
+    # Header picker is fixed-size when empty (16 + 4); its END follows the path.
+    after = 4 + 8 + 16 + 4 + len(first.path.encode("ascii")) + 4
+    own = p[after:after + 16]
+    # lstr name, u32 flags, lstr group — read by position: the group is
+    # EMPTY in many override records, which a string scan cannot see.
+    head = _header_strings(p, after + 16)
+    if len(own) != 16 or head is None:
+        return None
+    cname, group, body_from = head
+    refs = [r for off, r in pickers[1:] if off >= body_from and r.path]
+    ref_paths = {r.path for r in refs}
+    literals = [s for o, s in ES._scan_payload(p) if o >= body_from and s not in ref_paths]
+    override = first if first.path else None
+    body = p[body_from:]
+    return Component(si, classes[ci], cname, group, own, override, refs, literals, body, classes)
 
 
 # --------------------------------------------------------------------------

@@ -1120,6 +1120,12 @@ effect       = { stat = "Crit chance", amount = 0.3, seconds = 5, on = "damage_t
   kill" or "on crit": no item listens for those. The item's icon counts the
   bonus down. Each trigger restarts the full time;
   `refresh = false` lets a running bonus finish first.
+- **Stars of Fate** (rerolls) is a gain, not a bonus: `{ stat = "Stars of
+  Fate", amount = 1 }` gives them once on pickup, and with `on` (and no
+  `seconds`) it gives `amount` more every time the trigger fires:
+  `{ stat = "Stars of Fate", amount = 1, on = "night_start" }` is "+1 Star of
+  Fate each night", wired as the shipped Full_Heal_At_Day_Night wires its
+  heal. Not yet playtested.
 - **`amount`** is in the stat's own unit (crit chance 0.3 = +30%). For
   `Vitality` and the `Attack power` stats, enter the points shown in game:
   `15` gives +15 vitality or +15% attack power; rsmm writes the game's raw
