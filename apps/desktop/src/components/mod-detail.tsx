@@ -2,17 +2,7 @@ import { ApiError } from '@rsmm/api-client';
 import { cn } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useCanGoBack, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  Globe,
-  Play,
-  Plus,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, ExternalLink, Globe, Play, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
@@ -42,6 +32,7 @@ import {
 } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
 import { OverlayButton } from './overlay-button';
+import { ScreenshotLightbox } from './screenshot-lightbox';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
 
@@ -630,18 +621,6 @@ function ScreenshotGallery({
   const next = useCallback(() => {
     setIdx((i) => (i == null ? i : (i + 1) % shots.length));
   }, [shots.length]);
-  useEffect(() => {
-    if (idx == null) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') close();
-      else if (e.key === 'ArrowLeft') prev();
-      else if (e.key === 'ArrowRight') next();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [idx, close, prev, next]);
-
-  const active = idx != null ? shots[idx] : null;
 
   return (
     <>
@@ -677,76 +656,15 @@ function ScreenshotGallery({
           </li>
         ))}
       </ul>
-      {active ? (
-        <dialog
-          open
-          aria-label={
-            active.caption || t('{name} screenshot {n}', { name: modName, n: (idx ?? 0) + 1 })
-          }
-          className="fixed inset-0 z-[90] bg-pitch/95"
-        >
-          <div className="absolute inset-0 overflow-y-auto">
-            <button
-              type="button"
-              onClick={close}
-              className="absolute inset-0 h-full w-full cursor-default"
-              aria-label={t('Close preview')}
-            />
-            <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
-              <figure
-                onClick={(e) => e.stopPropagation()}
-                className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
-              >
-                <img
-                  src={active.url}
-                  alt={
-                    active.caption ||
-                    t('{name} screenshot {n}', { name: modName, n: (idx ?? 0) + 1 })
-                  }
-                  className="max-w-full rounded-md object-contain shadow-2xl"
-                />
-                <figcaption className="max-w-3xl text-center text-sm text-ash">
-                  {active.caption ||
-                    t('Screenshot {n} of {total}', {
-                      n: (idx ?? 0) + 1,
-                      total: shots.length,
-                    })}
-                </figcaption>
-                <p className="font-mono text-xs text-ash/70">
-                  {(idx ?? 0) + 1} / {shots.length}
-                </p>
-              </figure>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            className="fixed right-4 top-4 z-20 rounded-md bg-oxblood/60 p-2 text-parchment hover:bg-oxblood"
-            aria-label={t('Close')}
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {shots.length > 1 ? (
-            <>
-              <button
-                type="button"
-                onClick={prev}
-                className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-                aria-label={t('Previous')}
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-                aria-label={t('Next')}
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
-            </>
-          ) : null}
-        </dialog>
+      {idx != null ? (
+        <ScreenshotLightbox
+          shots={shots}
+          idx={idx}
+          name={modName}
+          onClose={close}
+          onPrev={prev}
+          onNext={next}
+        />
       ) : null}
     </>
   );

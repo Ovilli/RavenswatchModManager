@@ -64,3 +64,4 @@ Prose docs now live as a Starlight site in `apps/docs/` (deployed to `docs.rsmm.
 | SDK/CLI reference (generated) | `rsmm docs-gen` writes plain Markdown to `docs/api/` **and** Starlight pages to `apps/docs/src/content/docs/reference/sdk-api/`; CI `--check`s both. Source of truth = `@sdk_export` registrations. |
 | Authoring mods | `apps/docs/src/content/docs/guides/modding.md` |
 | Tauri updater specifics | `apps/desktop/UPDATER.md` |
+| Desktop design system (tokens, surfaces, type, components) | `apps/desktop/DESIGN.md` |

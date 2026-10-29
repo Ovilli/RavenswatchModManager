@@ -50,7 +50,7 @@ function AuthorPage() {
             value={path}
             onChange={(e) => setPath(e.target.value)}
             placeholder="/path/to/Cooking/.../File.yqz"
-            className="font-data flex-1 rounded-md border border-border bg-parchment-shadow px-3 py-2 text-parchment outline-none placeholder:text-ash focus:border-crimson"
+            className="field-grim font-data flex-1"
             spellCheck={false}
           />
           <Button
@@ -151,7 +151,7 @@ function InfoView({ info }: { info: CookedInfo }) {
           {info.sections.map((s) => (
             <li
               key={s.index}
-              className="flex items-baseline justify-between rounded-md border border-border bg-parchment-shadow/40 px-3 py-2"
+              className="flex items-baseline justify-between rounded border border-parchment/5 bg-pitch/50 px-3 py-2"
             >
               <span className="text-ash">[{s.index}]</span>
               <span className="text-parchment">{s.size} B</span>

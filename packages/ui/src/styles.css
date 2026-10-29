@@ -229,8 +229,18 @@
      That is the grey box the command palette was painting under itself.
 
      Reset once here rather than on each `className`: there are five of these
-     and the next one would have shipped with the same box. */
+     and the next one would have shipped with the same box.
+
+     The size goes too. The UA gives a dialog `width`/`height: fit-content`,
+     which `fixed inset-0` does not override, so each overlay shrank to its
+     own content and sat centred by `margin: auto`: the command palette's
+     backdrop dimmed a box around the palette instead of the window (and the
+     palette ignored its `pt-[12vh]`), and the screenshot viewer — all of
+     whose content is absolutely positioned — collapsed to 0×0, showing its
+     buttons and no image. `auto` lets the inset decide. */
   dialog {
+    width: auto;
+    height: auto;
     max-width: none;
     max-height: none;
     padding: 0;
@@ -258,6 +268,7 @@
   .wc-btn:focus-visible,
   .select-inline:focus-visible,
   .input-grim:focus-visible,
+  .field-grim:focus-visible,
   .select-grim:focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
@@ -636,6 +647,28 @@
     color: hsl(var(--ash));
   }
   .input-grim:focus {
+    border-color: hsl(var(--gilt) / 0.7);
+  }
+
+  /* A plain text field or textarea: `.input-grim` without the left padding it
+     keeps for a leading search icon. Eleven fields were composing this by
+     hand as `border bg-pitch/60 focus:border-gilt/60 focus:outline-none` —
+     square, where every other control is rounded, and with the outline
+     utility outranking `:focus-visible`, so tabbing into one drew no ring at
+     all. Face, size and width stay with the call site: a path field is
+     `font-data`, a search box beside a select is `flex-1`. */
+  .field-grim {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    background-color: hsl(var(--pitch) / 0.64);
+    color: hsl(var(--parchment));
+    transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .field-grim::placeholder {
+    color: hsl(var(--ash));
+  }
+  .field-grim:focus {
     border-color: hsl(var(--gilt) / 0.7);
   }
 
