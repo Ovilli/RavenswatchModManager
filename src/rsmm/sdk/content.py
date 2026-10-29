@@ -163,6 +163,25 @@ KIND_CONFIDENCE: dict[str, str] = {
 CONFIDENCE_LEVELS = ("confirmed", "experimental", "guess")
 
 
+#: Fields that make an otherwise confirmed kind unverified: the block they sit
+#: in is rated as the field is. `rsmm lint` reads the same table.
+FIELD_CONFIDENCE: dict[tuple[str, str], str] = {
+    ("enemy", "ai"): "experimental",  # a clone's own AI entity (engine/enemy_ai.py): a new-
+                                      # named variant entity + pool entry, static RE only
+                                      # (docs/_re/kinds/enemy-ai.md), not yet seen in game
+    ("enemy", "reskin"): "experimental",  # the same, plus a copied family model with its
+                                          # meshes/animations swapped; unproven in game
+}
+
+
+def content_confidence(kind: str, fields) -> str:
+    """The rating of one block: its kind's, lowered by any field in
+    :data:`FIELD_CONFIDENCE` it sets."""
+    levels = [kind_confidence(kind)] + [c for (k, f), c in FIELD_CONFIDENCE.items()
+                                        if k == kind and f in fields]
+    return max(levels, key=CONFIDENCE_LEVELS.index)
+
+
 def kind_confidence(kind: str) -> str:
     """Return the honesty rating for ``kind`` (see :data:`KIND_CONFIDENCE`).
 
@@ -277,10 +296,13 @@ class ContentRegistry:
             raise ContentError(
                 f"unknown content kind {kind!r}; supported: {', '.join(KINDS)}"
             )
-        conf = kind_confidence(kind)
+        conf = content_confidence(kind, fields)
         if conf != "confirmed" and not self.experimental:
+            risky = [f for (k, f) in FIELD_CONFIDENCE if k == kind and f in fields]
+            what = (f"kind {kind!r}" if kind_confidence(kind) == conf
+                    else f"{kind} with {', '.join(risky)}")
             raise ContentError(
-                f"kind {kind!r} is {conf!r}: its emitted bytes are not verified "
+                f"{what} is {conf!r}: its emitted bytes are not verified "
                 "in-game and may not appear or may crash. To use it anyway, "
                 "opt in with sdk.Mod(..., experimental=True). See "
                 "docs/MODDING.md 'Content kinds & confidence'."

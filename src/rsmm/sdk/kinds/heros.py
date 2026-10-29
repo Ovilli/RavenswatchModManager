@@ -977,7 +977,11 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
     from .poi import _reachable
     lines: list[str] = []
     found: set[str] = set()
-    for def_rel in corpus.rels("Definitions/", ".gen"):
+    # Definitions first; then entities, whose caches are the only ones naming
+    # some art (a skin's full-resolution material: a herodef lists _LowRes).
+    import itertools
+    for def_rel in itertools.chain(corpus.rels("Definitions/", ".gen"),
+                                   corpus.rels("EntitySettings/", ".gen")):
         raw = corpus.read(RC.cache_path_for(def_rel))
         if raw is None:
             continue
@@ -991,7 +995,7 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
             break
     missing = sorted(set(targets) - found)
     if missing:
-        raise ContentError(f"hero {hid}: no shipped preload cache lists "
+        raise ContentError(f"{hid}: no shipped preload cache lists "
                            f"{', '.join(map(repr, missing))}, so it cannot be referenced "
                            f"safely (a resource the caches miss is a crash at load)")
     seen, extra = _reachable(targets, lines, out_dir)

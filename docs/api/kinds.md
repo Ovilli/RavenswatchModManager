@@ -31,6 +31,13 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `challenge` | ❓ guess | `rsmm.sdk.kinds.challenges` | Custom **challenge** content builder — a new entry on the challenge screen. |
 | `scenery` | ⚠️ experimental | `rsmm.sdk.kinds.scenery` | Chapter scenery content builder. |
 
+A block that sets one of these fields is rated as the field, whatever its kind's rating (`FIELD_CONFIDENCE`):
+
+| Kind | Field | Confidence |
+|---|---|---|
+| `enemy` | `ai` | ⚠️ experimental |
+| `enemy` | `reskin` | ⚠️ experimental |
+
 ## What a rating means
 
 | Rating | Meaning | To ship it |

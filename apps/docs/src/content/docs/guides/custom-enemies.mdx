@@ -53,6 +53,99 @@ controller.
 
 Run `./rsmm apply` to cook and register the definition.
 
+## Custom AI <Badge text="Experimental" variant="caution" />
+
+A clone shares its base's AI until you give it an `ai` table. Then it gets an
+entity of its own: a copy of the base's variant with your numbers and attack
+order applied. The copy is also added to every biome pool that streams the
+base, and the base itself is not touched. How the AI works is described in
+[Enemy AI (RE)](https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/_re/kinds/enemy-ai.md).
+
+```toml title="mods/RabidWolves/manifest.toml"
+[mod]
+id = "RabidWolves"
+experimental = true          # `ai` is not proven in game yet
+
+[[content]]
+kind = "enemy"
+id   = "Rabid_Wolf"
+base = "Standard_Wolf_Timber"
+
+[content.ai]
+detect_radius = 12           # notices heroes from 12 units (vanilla 6)
+aggro_delay   = 0.1          # reacts in 0.1 s (vanilla 0.5)
+leash         = 80           # chases twice as far before going home (vanilla 40)
+attacks = ["Attack Giant Leap", "Attack Bite"]   # priority order
+```
+
+| Key | Part it sets | Vanilla |
+|---|---|---|
+| `detect_radius` | Wandering Target Detection Radius Default | 6 |
+| `alerted_detect_radius` | Wandering Target Detection Radius Alerted | 16 |
+| `alert_radius` | Wandering Alert Detection Radius (allies in combat this close alert it) | 9 |
+| `aggro_delay` / `alerted_aggro_delay` | Wandering Target Delay Default / Alerted | 0.5 / 0.25 s |
+| `roam_distance` | Wandering Roam Distance | 5 |
+| `chase_radius` | Fighting Target Detection Radius | 30 |
+| `leash` | Fighting Max Leash Distance | 40 |
+| `attack_min` / `attack_best` / `attack_max` | Fighting Seek Min / Best / Max Attack Distance | 1 / 2 / 3.5 |
+| `give_up_delay` | Fighting Exit Delay | 3 s |
+| `values` | any other number by part name, e.g. `{ "Attack Bite Cooldown Value" = 1 }` | |
+| `attacks` | the family's attacks this enemy uses, highest priority first | the base's |
+
+The vanilla column is the NPC_Common default; a family or variant may already
+override it (Timber's attack distances are its own). `attacks` can name any
+attack group of the enemy's family (`rsmm entity-graph
+'Enemies\Wolves\Wolves_Model.entity.ot'` lists them as `Attack …` groups), so a
+Timber wolf can learn the Alpha's Giant Leap. The other entries (leash, U-turn,
+seek, target lost) keep their places around them. Scripted enemies with no
+fighting selector of their own (scarecrows, eggs) refuse `attacks`.
+
+### New attacks: `ai.new_attacks` <Badge text="Experimental" variant="caution" />
+
+Beyond its family's own attacks, an enemy can get new ones. Each one is a copy
+of a family attack (its state, condition, cooldown, hit and timing), renamed,
+with animations and numbers of its own. Add it to `attacks` like any other.
+
+```toml
+[[content.ai.new_attacks]]
+name = "Attack Belly Slam"               # must start with "Attack "
+from = "Attack Giant Leap"               # the family attack it copies
+animations = { "Attack Giant Leap Anim" = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Bear_FishSlam_Ultimate1_In.fbx" }
+values     = { "Attack Giant Leap Radius Value" = 6 }
+```
+
+`animations` and `values` name the **source's** parts, as
+`rsmm entity-graph '<family model>' --group "<from>"` lists them. Inside the copy,
+`from` becomes `name` in every part name (`State Attack Belly Slam`). The
+copies live in the clone's own family model, so the base family is untouched.
+Hit timing follows the animation. An attack's hits, effects and sounds are timed in
+seconds on its animation component, and the attack ends with the clip. So every
+swapped animation (here or in `reskin`) has those times scaled by the new
+clip's length over the old one's. Without that, a shorter animation never reaches
+its hit.
+
+### New body and animations: `reskin` <Badge text="Experimental" variant="caution" />
+
+`reskin` maps a path the enemy's family uses to one it should use instead:
+its mesh, material, and every animation. The clone then gets a copy of its
+family model (`<id>_Model.entity.ot`) with the swaps applied, so the base is
+not changed. Everything swapped in is preloaded through the clone's resource
+cache, borrowed from the shipped caches that already list it, so any shipped
+art works, even a hero's.
+
+```toml
+[content.reskin]
+"Characters\\Enemies\\Wolves\\Wolf_Alpha_GEO.fbx"                  = "Characters\\Heroes\\Kintaro\\Kintaro_Bear_GEO.fbx"
+"Characters\\Enemies\\Wolves\\Animations\\Wolf_Alpha_GiantLeap.fbx" = "Characters\\Heroes\\Kintaro\\Animations\\Bear_Kintaro_Leap.fbx"
+```
+
+An attack's hit timing is data on its animation component, not in the FBX.
+A swapped animation's times are scaled to its length (see above), so pair moves
+of the same role: the hit lands at the same point of the move, not the same
+second. A swap whose source the enemy does not use is an
+error that lists the art it does use. `mods/kuma-bear` (Kintaro's bear as an
+elite wolf-camp enemy) is a full example.
+
 ## How enemies spawn
 
 Spawning is **selector-driven**, not a direct "place enemy X" call. The chain:

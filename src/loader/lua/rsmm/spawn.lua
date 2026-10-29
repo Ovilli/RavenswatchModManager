@@ -423,5 +423,212 @@ return function(env)
 
     function M.why() return _why end
 
+    -- TEMPLATES BY PATH, for an entity nothing has spawned yet (a mod enemy
+    -- before its first camp). Every loaded resource sits in the default
+    -- archive's path index, the SwissTable Resource_LookupByPath probes (see
+    -- ResourceArchive_Default in data/symbols.json): control bytes +0x38, 0x18
+    -- slots +0x40 = {oCString key, ..., resource @+0x10}, mask +0x50, more
+    -- archives through +0xb8. The table is READ, never called: the engine's
+    -- lookup lowercases its argument in place and takes the archive's lock.
+    -- A linear scan with a length filter: once per call, not per frame.
+    local ARCHIVE_VA, IMG_BASE = R.engine.va("ResourceArchive_Default"), 0x140000000
+    local A_CTRL, A_SLOTS, A_MASK, A_NEXT = 0x38, 0x40, 0x50, 0xb8
+    local SLOT, SLOT_LEN, SLOT_RES = 0x18, 0x08, 0x10
+    local MASK_MAX, ARCHIVES_MAX = 0x100000, 8
+
+    -- Every full slot of every archive in the chain: fn(key, resource) for
+    -- each; stops when fn returns true. Returns archives walked, slots full.
+    local function each_resource(fn)
+        local base = I.module_base and I.module_base()
+        if not base or base == 0 then return nil, "module base unknown" end
+        local arch, hops, full = base + (ARCHIVE_VA - IMG_BASE), 0, 0
+        while R.ptr.plausible(arch) and hops < ARCHIVES_MAX do
+            local ctrl, slots = I.read_u64(arch + A_CTRL), I.read_u64(arch + A_SLOTS)
+            local mask = I.read_u64(arch + A_MASK)
+            if ctrl and slots and mask and mask > 0 and mask < MASK_MAX
+               and R.ptr.plausible(slots) then
+                for i = 0, mask do
+                    local c = I.read_u8(ctrl + i)
+                    if c and c < 0x80 then
+                        full = full + 1
+                        local sl = slots + i * SLOT
+                        if fn(sl, I.read_u32(sl + SLOT_LEN)) then return hops + 1, full end
+                    end
+                end
+            end
+            arch, hops = I.read_u64(arch + A_NEXT), hops + 1
+        end
+        return hops, full
+    end
+
+    local function key_of(sl) return I.read_cstr(I.read_u64(sl) or 0) end
+
+    --- The loaded oCEntitySettingsResource for a decoded path
+    --- ("Enemies\\Wolves\\Kuma.entity.ot"), or nil and why. Read-only. A key
+    --- that carries a root in front ("EntitySettings\\...") matches too.
+    function M.template_named(path)
+        if type(path) ~= "string" or path == "" then
+            _why = "template_named(path): path must be a non-empty string"; return nil, _why
+        end
+        if not (env._va_ok and env._va_ok("R.spawn.template_named")) then
+            _why = "va-gate closed (build != symbol map)"; return nil, _why
+        end
+        local want = path:gsub("/", "\\"):lower()
+        local hit, bad
+        local hops, full = each_resource(function(sl, n)
+            n = n and (n & 0x7fffffff) or 0
+            if n < #want then return false end
+            local key = key_of(sl)
+            if type(key) ~= "string" then return false end
+            key = key:lower()
+            if key ~= want and key:sub(-#want - 1) ~= "\\" .. want then return false end
+            local res = I.read_u64(sl + SLOT_RES)
+            if is(res, "oCEntitySettingsResource") then hit = res; return true end
+            bad = res
+            return false
+        end)
+        if hit then return hit end
+        if hops == nil then _why = full; return nil, _why end
+        _why = bad and string.format("%s is loaded but not an entity (rtti %s)", path,
+                                     tostring(R.rtti.name(bad)))
+               or string.format("%s is not loaded (%d archive(s), %d resources)", path,
+                                hops, full)
+        return nil, _why
+    end
+
+    --- Diagnostics: up to `max` loaded resource paths containing `substr`
+    --- (case-insensitive), plus how many archives and resources were walked.
+    function M.loaded_like(substr, max)
+        substr, max = tostring(substr or ""):lower(), max or 20
+        local out = {}
+        local hops, full = each_resource(function(sl)
+            local key = key_of(sl)
+            if type(key) == "string" and key:lower():find(substr, 1, true) then
+                out[#out + 1] = key
+            end
+            return #out >= max
+        end)
+        return out, hops, full
+    end
+
+    -- LOADING AN ENEMY NO CAMP HAS BUILT YET. A definition's preload closure and
+    -- its body are not resident after the level loads; they arrive when a camp
+    -- first picks it. Enemy_RuntimeSpawnPicker does exactly two things to the
+    -- def it picks (Ghidra 2026-10-29, b9c3642884a8):
+    --     Definition_LoadPreloadSet(def + 0x68, NULL)
+    --     ResourceRef_Resolve(def + 0x288, classDesc, def + 0x2b8, NULL)
+    -- classDesc = *(def + 0x2a8), else EntitySettings_ClassDescDefault. The
+    -- picker then takes its own reference and releases def + 0x2b8; this leaves
+    -- that one reference in place, so the body stays loaded for the session.
+    -- Everything each call dereferences is proven first.
+    local DEF_PRELOAD, DEF_REF, DEF_REF_CLASS = 0x68, 0x288, 0x2a8
+    local DEF_REF_MODE, DEF_REF_OUT = 0x2b0, 0x2b8      -- ref block +0x28, +0x30
+    local PRELOAD_COUNT, PRELOAD_STRIDE, PRELOAD_MAX = 0x200, 0x10, 64
+    local PROVIDER_ID, PROVIDERS_MAX = 0x53b64d, 64
+    local CLASSDESC_VA = R.engine.va("EntitySettings_ClassDescDefault")
+
+    local function path_is(s, want)
+        if type(s) ~= "string" then return false end
+        s = s:gsub("/", "\\"):lower()
+        return s == want or s:sub(-#want - 1) == "\\" .. want
+    end
+
+    -- The live enemy definition whose entity ref names `want` (lowercased).
+    local function enemy_def(want)
+        if not (R.defs and R.defs.instances) then return nil end
+        for _, d in ipairs(R.defs.instances("oCDtEnemyDefinition") or {}) do
+            -- ref block: {char* name, u32, char* parentPath, u32, ...}
+            if path_is(I.read_cstr(I.read_u64(d + DEF_REF) or 0), want)
+               or path_is(I.read_cstr(I.read_u64(d + DEF_REF + 0x10) or 0), want) then
+                return d
+            end
+        end
+    end
+
+    -- ResourceRef_Resolve dereferences NULL when no provider matches, so the
+    -- descriptor must carry one: array at +0x30, count at +0x38, entry id at
+    -- +0x8, provider object (with a vtable) at entry +0x10.
+    local function has_provider(cd)
+        if not R.ptr.plausible(cd) then return false end
+        local arr, n = I.read_u64(cd + 0x30), I.read_u32(cd + 0x38)
+        if not n or n == 0 or n > PROVIDERS_MAX or not R.ptr.plausible(arr) then return false end
+        for i = 0, n - 1 do
+            local e = I.read_u64(arr + i * 8)
+            if R.ptr.plausible(e) and I.read_u32(e + 8) == PROVIDER_ID then
+                return R.ptr.has_vtable(I.read_u64(e + 0x10))
+            end
+        end
+        return false
+    end
+
+    -- {u32 n, ptr cache entry} records, count at set + 0x200; each entry's
+    -- archive id is read at +0x20.
+    local function preload_set_ok(set)
+        local n = I.read_u32(set + PRELOAD_COUNT)
+        if not n or n > PRELOAD_MAX then return false end
+        for i = 0, n - 1 do
+            local e = I.read_u64(set + i * PRELOAD_STRIDE + 8)
+            if not R.ptr.plausible(e) or I.read_u64(e + 0x20) == nil then return false end
+        end
+        return true
+    end
+
+    --- MAIN THREAD ONLY. Load the body of the enemy whose definition names the
+    --- entity at `path`, the way a camp does on its first pick, and return it
+    --- (an oCEntitySettingsResource), or nil and why.
+    function M.load_enemy(path)
+        if type(path) ~= "string" or path == "" then return refuse("load_enemy(path): no path") end
+        if not (env._va_ok and env._va_ok("R.spawn.load_enemy")) then
+            return refuse("load_enemy: va-gate closed (build != symbol map)")
+        end
+        local want = path:gsub("/", "\\"):lower()
+        local def = enemy_def(want)
+        if not def then
+            return refuse(path .. ": no enemy definition for it is loaded "
+                          .. "(its tribe is not on this map)")
+        end
+        local cur = I.read_u64(def + DEF_REF_OUT)
+        if is(cur, "oCEntitySettingsResource") then return cur end
+        if cur ~= 0 then return refuse(string.format("%s: def+0x2b8 holds 0x%x", path, cur or -1)) end
+        if I.read_u8(def + DEF_REF_MODE) ~= 0 then
+            return refuse(path .. ": the entity ref is in release mode")
+        end
+        local cd = I.read_u64(def + DEF_REF_CLASS)
+        if not cd or cd == 0 then
+            local base = I.module_base and I.module_base()
+            if not base or base == 0 then return refuse("load_enemy: module base unknown") end
+            cd = base + (CLASSDESC_VA - IMG_BASE)
+        end
+        -- Validated here rather than through call_safe: both callees return
+        -- void, and call_safe's nil cannot tell a refusal from a void return.
+        if not preload_set_ok(def + DEF_PRELOAD) then
+            return refuse(path .. ": its preload set does not have the shipped layout")
+        end
+        if not has_provider(cd) then
+            return refuse(path .. ": its entity class has no resource provider")
+        end
+        R.engine.call("Definition_LoadPreloadSet", def + DEF_PRELOAD, 0)
+        R.engine.call("ResourceRef_Resolve", def + DEF_REF, cd, def + DEF_REF_OUT, 0)
+        local res = I.read_u64(def + DEF_REF_OUT)
+        if is(res, "oCEntitySettingsResource") then return res end
+        return refuse(string.format("%s: resolved to 0x%x (rtti %s), not an entity yet",
+                      path, res or 0, tostring(R.rtti.name(res))))
+    end
+
+    --- Queue a spawn of the entity at `path`, at the hero (+ opts.offset). An
+    --- enemy no camp has built yet is loaded first, on the main thread, so a
+    --- true return means QUEUED: opts.on_spawned(entity) is what says it worked,
+    --- and M.why() says why not.
+    function M.named(path, opts)
+        local res, why = M.template_named(path)
+        if res then return M.near(res, opts) end
+        if not (env._va_ok and env._va_ok("R.spawn.load_enemy")) then return false, why end
+        R.schedule.next_main(function()
+            local r = M.load_enemy(path)
+            if r then M.near(r, opts) end
+        end)
+        return true
+    end
+
     return M
 end

@@ -242,6 +242,21 @@ class EntityFile:
             if len(fit) == 1 and not (vfit and fit[0] not in vfit):
                 owned[x] = fit[0]
                 del ambiguous[x]
+        # Last, the neighbours: an owner's id list is consecutive ids in
+        # consecutive u32 slots, so a candidate whose owner also owns x-1 in the
+        # slot before it or x+1 in the slot after sits INSIDE that list.
+        # Measured on Wolves_Model (Update 6): #512 is a number 212 places
+        # spell, and only `Attack Giant Leap Condition` holds #510/#511 at
+        # +257/+261, #512 at +265 and #513 at +269. Taken only when exactly one
+        # candidate has a neighbour.
+        for x, cands in list(ambiguous.items()):
+            near = [p for p in cands
+                    if any((q := owned.get(y)) is not None and q.owner == p.owner
+                           and q.offset == p.offset + d
+                           for y, d in ((x - 1, -4), (x + 1, 4)))]
+            if len(near) == 1:
+                owned[x] = near[0]
+                del ambiguous[x]
         return owned, ambiguous
 
     def _owner_class(self, obj: int) -> str:

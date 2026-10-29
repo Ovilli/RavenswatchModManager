@@ -486,11 +486,49 @@ def add_placement(level_bytes: bytes, ref: str,
     k, ln = _entity_ref_span(bytes(block))
     raw = ref.encode("utf-8")
     block[k:k + 4 + ln] = struct.pack("<I", len(raw)) + raw
+    return _append(cf, sec, inner, g, bytes(block), g.class_idx[tmpl_i])
 
+
+def copy_object(level_bytes: bytes, has: bytes, swaps: dict[bytes, bytes], *,
+                rename: str | None = None) -> bytes:
+    """Return `level_bytes` with one more object: a copy of the one object whose
+    block contains `has`, with each length-prefixed string in `swaps` replaced.
+
+    For objects that are not placements -- an `EntityPooling` entry is a name,
+    a few settings and an inline resource ref, with no transform -- through the
+    same three writes as :func:`add_placement`. `rename` replaces the object's
+    own name (the string after its class index). The template must own nothing
+    (its only nested block is an inline resource ref), or the copy would share
+    its children."""
+    cf, sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    hits = [i for i, (_b, _e, p) in enumerate(g.objects) if has in p]
+    if len(hits) != 1:
+        raise LevelPlacementError(f"{len(hits)} objects hold {has!r}; need exactly one")
+    i = hits[0]
+    block = g.objects[i][2]
+    if block.count(cooked.MARK_BEGIN) > 1:
+        raise LevelPlacementError("the template frames sub-structure of its own; "
+                                  "copying it would share what it owns")
+    for old, new in swaps.items():
+        lp = struct.pack("<I", len(old)) + old
+        if block.count(lp) != 1:
+            raise LevelPlacementError(f"template holds {old!r} {block.count(lp)} times")
+        block = block.replace(lp, struct.pack("<I", len(new)) + new)
+    if rename is not None:
+        (n,) = struct.unpack_from("<I", block, 4)
+        raw = rename.encode("utf-8")
+        block = block[:4] + struct.pack("<I", len(raw)) + raw + block[8 + n:]
+    return _append(cf, sec, inner, g, block, g.class_idx[i])
+
+
+def _append(cf, sec: bytes, inner: bytes, g: _Graph, block: bytes, cls: int) -> bytes:
+    if g.count > _MAX_OBJECTS - 1:
+        raise LevelPlacementError(f"level already holds {g.count} objects")
     # 1. the object table: one more object, of the template's class.
     table = (struct.pack("<I", g.count + 1)
              + struct.pack(f"<{g.count}I", *g.class_idx)
-             + struct.pack("<I", g.class_idx[tmpl_i]))
+             + struct.pack("<I", cls))
 
     # 3. the root's vector: one more id, which is the new object's position.
     root = g.root[2]
@@ -515,7 +553,7 @@ def add_placement(level_bytes: bytes, ref: str,
     new_inner = (inner[:ot_begin]
                  + _frame(table)
                  + inner[ot_end:root_begin]      # 2. every existing payload, in order
-                 + _frame(bytes(block))          #    then ours, id == g.count
+                 + _frame(block)                 #    then ours, id == g.count
                  + _frame(new_root))
 
     new_sec = bytearray(sec[:_INNER_OFF]) + new_inner
