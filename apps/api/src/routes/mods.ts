@@ -18,15 +18,15 @@ import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
-import { notify, notifyFollowers, notifyReview, notifyReviewReply } from '../notify.js';
+import { notify, notifyReview, notifyReviewReply } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
   SERVABLE_STATUSES,
   enqueueScan,
   isServable,
-  markScan,
   queueInfo,
+  releaseVersion,
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
 import {
@@ -817,7 +817,7 @@ modsRouter.post(
     // the version skipped so the client can proceed. Guarded by the sha we just
     // checked, so a re-presign in between can't inherit the verdict.
     if (!virusTotalConfigured()) {
-      await markScan(versionId, 'skipped', row.sha256);
+      await releaseVersion(versionId, row.sha256, 'skipped');
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
 
@@ -975,15 +975,6 @@ modsRouter.post(
     if (!existing) return c.json({ error: 'not found' }, 404);
     if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
 
-    // Only a genuinely new version fans out to followers — re-uploading an
-    // existing version (onConflictDoUpdate) must not re-notify.
-    const priorVersion = await db.query.modVersions.findFirst({
-      where: and(
-        eq(schema.modVersions.modId, existing.id),
-        eq(schema.modVersions.version, body.version),
-      ),
-    });
-
     const signed = await presignModUpload({
       slug,
       version: body.version,
@@ -1024,18 +1015,8 @@ modsRouter.post(
         .set({ updatedAt: new Date() })
         .where(eq(schema.mods.id, existing.id));
 
-      if (!priorVersion) {
-        await notifyFollowers(
-          existing.id,
-          {
-            type: 'mod_new_version',
-            title: `${existing.name} released v${body.version}`,
-            body: body.changelog ?? null,
-            link: `/registry/${existing.slug}`,
-          },
-          user.id,
-        );
-      }
+      // Followers hear about it once it is downloadable: releaseVersion in
+      // scan-service.ts, which every publish path goes through.
 
       return c.json({
         uploadUrl: signed.uploadUrl,

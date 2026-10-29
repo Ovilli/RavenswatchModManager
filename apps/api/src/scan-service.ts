@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
 import { type SQL, and, eq, lt, notInArray, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
-import { notify } from './notify.js';
+import { notify, notifyFollowers } from './notify.js';
 import { deleteObject, fetchPublicObject, getObjectBytes, modUploadKey } from './storage.js';
 import {
   MAX_VT_LARGE_BYTES,
@@ -171,6 +171,11 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     }
   }
 
+  // First clean verdict on these bytes = the version is released: tell its
+  // followers. Done before the stats write below (which sets the same status),
+  // so the conditional update in releaseVersion still sees the old status.
+  if (status === 'clean') await releaseVersion(target.id, target.sha256, 'clean');
+
   // Keyed on the sha256 as well as the id: a scan takes ~20s, and a re-presign
   // in that window points the row at different bytes (resetting it to
   // 'pending'). Without the sha guard this verdict — for the OLD bytes — would
@@ -232,6 +237,55 @@ export async function markScan(
     .update(schema.modVersions)
     .set({ scanStatus: status, scannedAt: new Date() })
     .where(sha256 ? scanTargetIs(versionId, sha256) : eq(schema.modVersions.id, versionId));
+}
+
+/**
+ * Make a version servable and, if this call is the one that did it, tell the
+ * mod's followers it is out. This is the only place followers hear about a new
+ * version, so every publish path (website, desktop app, `rsmm publish`)
+ * notifies exactly once, and only once the version can actually be downloaded.
+ *
+ * The status change is a single conditional UPDATE: it only matches a row that
+ * is not servable yet, so a routine re-scan of a clean version (which never
+ * leaves 'clean') or two scans finishing together cannot notify twice.
+ */
+export async function releaseVersion(
+  versionId: string,
+  sha256: string,
+  status: 'clean' | 'skipped',
+): Promise<boolean> {
+  const db = getDb();
+  const released = await db
+    .update(schema.modVersions)
+    .set({ scanStatus: status, scannedAt: new Date() })
+    .where(
+      and(
+        scanTargetIs(versionId, sha256),
+        notInArray(schema.modVersions.scanStatus, [...SERVABLE_STATUSES]),
+      ),
+    )
+    .returning({
+      modId: schema.modVersions.modId,
+      version: schema.modVersions.version,
+      changelog: schema.modVersions.changelog,
+    });
+  const row = released[0];
+  if (!row) return false;
+
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.id, row.modId) });
+  if (mod) {
+    await notifyFollowers(
+      mod.id,
+      {
+        type: 'mod_new_version',
+        title: `${mod.name} released v${row.version}`,
+        body: row.changelog ?? null,
+        link: `/registry/${mod.slug}`,
+      },
+      mod.ownerId,
+    );
+  }
+  return true;
 }
 
 function scanTargetIs(versionId: string, sha256: string) {
