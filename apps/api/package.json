@@ -28,7 +28,7 @@
     "nodemailer": "^10.1.4",
     "pg": "8.13.1",
     "ws": "8.21.0",
-    "zod": "3.25.76"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
