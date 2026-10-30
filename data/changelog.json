@@ -1,6 +1,47 @@
 {
-  "generated": "2026-10-26",
+  "generated": "2026-10-30",
   "entries": [
+    {
+      "version": "5.9.29",
+      "date": "2026-10-30",
+      "summary": "style(desktop): write the design system down, share the text field and screenshot viewer, size dialogs to the window ",
+      "highlights": [
+        "Skigim"
+      ],
+      "loader_version": 49
+    },
+    {
+      "version": "5.9.28",
+      "date": "2026-10-29",
+      "summary": "Hero builder and anonymous install counting.",
+      "highlights": [
+        "Hero builder: build a hero's abilities from blocks, with much faster apply",
+        "The app now sends one anonymous ping a day so we can count real installs — turn it off in Settings → Privacy"
+      ],
+      "loader_version": 49
+    },
+    {
+      "version": "",
+      "date": "2026-10-29",
+      "summary": "Hero builder: make a hero and build its abilities from blocks; much faster apply",
+      "highlights": [
+        "New Hero tab in the editor: pick a hero to build on, name it, then give each button a new ability from blocks: fire any projectile (enemies' too) in fans or side by side, hit areas, heals, waits and repeats",
+        "Projectiles can burn, poison, root, curse, explode, ricochet, return (Kintaro's axe) and refresh their lifetime on hit (the Snow Queen's shard)",
+        "Scarlet-based heroes can be locked to wolf form, and any button can be removed",
+        "Items can grant Stars of Fate on a trigger, e.g. +1 every time night begins",
+        "rsmm apply builds custom heroes far faster (minutes down to seconds)"
+      ],
+      "cli_version": 19
+    },
+    {
+      "version": "5.9.27",
+      "date": "2026-10-26",
+      "summary": "Windows Title bar dragging fix by Skigim",
+      "highlights": [
+        "See changelog"
+      ],
+      "loader_version": 49
+    },
     {
       "version": "",
       "date": "2026-10-26",
@@ -485,50 +526,6 @@
         "Share log: \"Copy report\" puts the same redacted report on your clipboard if you would rather not upload it.",
         "Mod authors: rsmm lint now catches Lua that reads a variable above the line that declares it (it is always nil in game), and POI components that would load but show no icon or prompt.",
         "Mod authors: an item whose base is not a shipped item is now an error with a suggestion, instead of silently making nothing."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 32,
-      "date": "2026-10-09",
-      "summary": "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)",
-      "highlights": [
-        "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)"
-      ]
-    },
-    {
-      "version": "5.9.11",
-      "date": "2026-10-09",
-      "summary": "Online works again on Windows with RSMM, mods from the hub no longer stop the game from launching, and the Log screen can open and clear its logs.",
-      "highlights": [
-        "Fixed: on Windows, launching through RSMM could leave you offline with no party code, even with no mods enabled. The game now uses Windows' own networking library while modded.",
-        "Fixed: \"rsmm apply failed\" (IndexError) on launch after installing No Overtime Tint, or another mod that edits game entities, from the hub.",
-        "Log screen: \"Open folder\" shows every saved run, and \"Delete logs\" clears them.",
-        "Shared logs and crash reports now show your real RSMM version instead of 0.0.0-dev.",
-        "Talent builder: \"Hits apply a status\" makes one of a hero's hits Chill, Ignite, Bleed, Weaken, make Vulnerable or Root while you own the talent (not yet tested in game)."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 31,
-      "date": "2026-10-09",
-      "summary": "Fix: online / party code failing on Windows while the loader is installed",
-      "highlights": [
-        "Fix: online / party code failing on Windows while the loader is installed"
-      ]
-    },
-    {
-      "version": "5.9.10",
-      "date": "2026-10-09",
-      "summary": "Build your own talents in the editor: a new step-by-step builder, abilities that grow bigger, and effects borrowed from other heroes.",
-      "highlights": [
-        "Editor: a new custom-talent builder. Pick the talent to replace, name it, and add building blocks or start from an example. Ideas it can't build yet (\"POWER spawns a tornado\") can be sent to us from the same screen.",
-        "Talent builder: \"Make an ability bigger\" grows an ability's area, length or width while you own the talent. Tested in game: Melusine's POWER area.",
-        "Talent builder: borrow a talent's effect from another hero (9 talents can move, e.g. Sun Wukong's Focused Strikes on Piper's Virtuoso). Its numbers follow your card's rarity.",
-        "Talent builder: bonuses that last until \"your next ATTACK\" and bonuses that can trigger \"at most once every N seconds\".",
-        "Editor: reopening a mod keeps your custom talents editable, and the editor says when it can't find the game.",
-        "For mod makers: rsmm diff shows what applying one mod changes, rsmm watch checks a mod before applying it, and mistyped mod names and commands get a suggestion.",
-        "Fixed: profile, install, sign-in and background-helper bugs in the app, and several security gaps."
       ]
     }
   ]

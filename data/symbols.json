@@ -4027,7 +4027,7 @@
    "raw": "FUN_1404924e0",
    "status": "ok",
    "signature": "void(void* refBlock, void* classDesc, void** outResolved, void* policy)",
-   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]\n\n[2026-09-11] Two modes, chosen by the byte at refBlock+0x28. Non-zero = RELEASE: decrement the refcount at (*outResolved)+0x8, call the destructor through (*(outResolved))+0x10 vtable+0x8 when it hits zero, null the slot, return. Zero = RESOLVE: scan the class descriptor's provider array (data at classDesc+0x30, count at +0x38) for the entry whose id at +0x8 equals 0x53b64d, then call provider vtable+0x18 with (provider, refBlock, *policy, outResolved, 0). \u26a0 If no provider matches, the code dereferences a null pointer rather than returning -- it assumes the provider exists. 0x53b64d is generic: it occurs 71 times across the exe at every resource-resolve site, so it identifies the RESOURCE-PROVIDER ROLE, not any particular class, and is not a discriminator worth chasing.",
+   "note": "Generic typed resource-ref resolver. Ref block layout (0x38 bytes): {char* name, u32 hash, char* parentPath, u32 hash2, void* classDescriptor @+0x20, u8 resolved @+0x28, void* resolvedPtr @+0x30}. Resolving loads the target resource on demand. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction (garbage); no unique anchor found to re-locate in the new build. Pattern stripped so the loader fails closed. Needs manual RE.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.] [RELOCATED to FUN_140492540 2026-08-09, hand-confirmed: Called by both PostLoad routines. Resolved flag read at +0x28 and resolved pointer written through param_3, per the 0x38-byte ref block in the note; looks up service id 0x53b64d.]\n\n[2026-09-11] Two modes, chosen by the byte at refBlock+0x28. Non-zero = RELEASE: decrement the refcount at (*outResolved)+0x8, call the destructor through (*(outResolved))+0x10 vtable+0x8 when it hits zero, null the slot, return. Zero = RESOLVE: scan the class descriptor's provider array (data at classDesc+0x30, count at +0x38) for the entry whose id at +0x8 equals 0x53b64d, then call provider vtable+0x18 with (provider, refBlock, *policy, outResolved, 0). \u26a0 If no provider matches, the code dereferences a null pointer rather than returning -- it assumes the provider exists. 0x53b64d is generic: it occurs 71 times across the exe at every resource-resolve site, so it identifies the RESOURCE-PROVIDER ROLE, not any particular class, and is not a discriminator worth chasing.\n\n[2026-10-29, b9c3642884a8, Ghidra] Callable as `ResourceRef_Resolve(def+0x288, classDesc, def+0x2b8, NULL)`, the exact call Enemy_RuntimeSpawnPicker makes on the def it picks (classDesc = *(def+0x2a8), else EntitySettings_ClassDescDefault). A NULL policy is allowed: the resolver fetches the provider's default through provider vtable+0x20. The caller must first prove classDesc has a provider with id 0x53b64d (array classDesc+0x30, count +0x38), because a miss is a NULL deref, not a return. Used by R.spawn.load_enemy (rsmm/spawn.lua).",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ],
@@ -4041,7 +4041,35 @@
      "0x30",
      "0x38"
     ]
+   },
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*"
+    ]
    }
+  },
+  {
+   "name": "Definition_LoadPreloadSet",
+   "kind": "function",
+   "category": "resource",
+   "raw": "FUN_1404aa7f0",
+   "status": "ok",
+   "signature": "void(void* preloadSet, int* outCount)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Loads every entry of a definition's preload set: the vector at def+0x68, 16-byte entries {u32 n, ptr cacheEntry} with the count at set+0x200. For each entry it finds the archive whose id matches *(cacheEntry+0x20) in the archive list at DAT_141436ab8 and calls FUN_1404a0d70, the archive load path (which runs Resource_LookupByPath first). outCount may be NULL. Enemy_RuntimeSpawnPicker calls it as (def+0x68, 0) on the def it picks, right before ResourceRef_Resolve(def+0x288, ...): a definition's preload closure is NOT resident after the level loads; it arrives the first time a camp picks that enemy, which is why a mod enemy's body is missing from ResourceArchive_Default until then (Ghidra 2026-10-29, b9c3642884a8; static only).",
+   "refs": [
+    "src/loader/lua/rsmm/spawn.lua"
+   ]
   },
   {
    "name": "ResourceRef_Serialize",
@@ -4075,6 +4103,30 @@
    "refs": [
     "src/loader/src/hook_items.cpp",
     "docs/_re"
+   ]
+  },
+  {
+   "name": "ResourceArchive_Default",
+   "kind": "data",
+   "category": "resource",
+   "va": "0x141472240",
+   "status": "va",
+   "signature": null,
+   "note": "The default resource archive: a static object, constructed on first use by its getter FUN_14049cf10 (thread-safe-init guard DAT_141472208, ctor FUN_14049ab30), which FUN_1404a1980 passes as Resource_LookupByPath's map. Its path index is an absl SwissTable: control bytes at +0x38 (high bit clear = full), 0x18-byte slots at +0x40 = {oCString key {char*, u32 len|flags}, ..., resource* @+0x10}, capacity mask at +0x50; FUN_1404a0690 walks a chain of archives through +0xb8 when the first misses. Keys are the lowercased decoded path ('\\\\' separators). The engine's lookup takes the critical section at +0x70 and lowercases its argument in place, so R.spawn.template_named READS the table on the main thread instead of calling in (Ghidra 2026-10-29, static only).",
+   "refs": [
+    "src/loader/lua/rsmm/spawn.lua"
+   ]
+  },
+  {
+   "name": "EntitySettings_ClassDescDefault",
+   "kind": "data",
+   "category": "resource",
+   "va": "0x14146fd90",
+   "status": "va",
+   "signature": null,
+   "note": "The class descriptor Enemy_RuntimeSpawnPicker passes to ResourceRef_Resolve for a def's entity ref when the ref block's own descriptor (def+0x2a8) is null: `classDesc = *(def+0x2a8) ? *(def+0x2a8) : &DAT_14146fd90` (b9c3642884a8). Address of the descriptor itself, not a pointer to it.",
+   "refs": [
+    "src/loader/lua/rsmm/spawn.lua"
    ]
   },
   {

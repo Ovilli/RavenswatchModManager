@@ -11,6 +11,7 @@ import re
 
 import pytest
 
+from rsmm.engine import corpus
 from rsmm.engine import enemy_pools as EP
 from rsmm.engine import rsc_cache as RC
 from rsmm.sdk.content import ContentDef, ContentError
@@ -285,6 +286,43 @@ def test_malformed_ability_steps_are_refused(tmp_path, step, msg):
         _emit(tmp_path, id="Nyx", abilities=[step])
 
 
+_RED = "EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot.EntitySettingsResource.gen"
+
+
+@needs_corpus
+def test_a_third_combo_step_from_a_renamed_clone_and_a_copied_combo_entry():
+    """The Blood Wolf combo (a community manifest): clone step 2 under exact
+    names, then append a copy of the combo's second entry pointed at it."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    step2, step3 = "State Wolf Basic Attack Step 2", "State Wolf Basic Attack Step 3"
+    out = AE.apply({"Hero_Red": corpus.read(_RED)}, [
+        {"clone": [step2], "rename": {step2: step3}},
+        {"add_subobject": "Wolf Basic Attack Combo.bytes_4", "donor_index": 1,
+         "replace_ref": {step2: step3}},
+    ], main="Hero_Red", seed="t")
+    ef = EntityFile(out.files["Hero_Red"], "Hero_Red")
+    combo = ef.component("Wolf Basic Attack Combo")
+    f = next(x for x in EF.fields(combo) if x.name == "bytes_4")
+    ids = f.text.split()
+    assert ids[0] == "03"                     # three entries now
+    new = int("".join(reversed(ids[-4:])), 16)
+    assert ef.component(step3).guid in bytes(ef.objects[new])
+
+
+@needs_corpus
+@pytest.mark.parametrize("step,msg", [
+    ({"clone": ["Wolf Basic Attack Combo"], "renme": {}}, "no key renme"),
+    ({"clone": ["Wolf Basic Attack Combo"], "rename": {"Other": "X"}}, "does not copy"),
+    ({"add_subobject": "Wolf Basic Attack Combo.bytes_4", "donor_index": 5}, "entries 0..1"),
+])
+def test_bad_new_steps_are_refused(step, msg):
+    from rsmm.engine import ability_edit as AE
+    with pytest.raises(AE.AbilityEditError, match=msg):
+        AE.apply({"Hero_Red": corpus.read(_RED)}, [step], main="Hero_Red", seed="t")
+
+
 @needs_corpus
 @needs_install
 def test_cards_of_its_own_repoint_its_controllers_and_leave_the_base_alone(tmp_path):
@@ -495,3 +533,63 @@ def test_a_hidden_mesh_is_an_invisible_copy_on_the_same_skeleton(tmp_path):
     assert len(bound) == 1
     with pytest.raises(ContentError, match="not a mesh"):
         _emit(tmp_path, id="Nyx", base="Beowulf", hide=["No_Such_GEO"])
+
+
+@needs_corpus
+def test_every_hero_tab_block_builds_on_scarlet():
+    """The Hero tab's blocks (mods/hero-builder-test's kit): fire with fan,
+    side offsets and per-shot numbers and status effects, a hit area, a heal,
+    wait and repeat, all expand into steps that pass the ability check."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import hero_kit as HK
+    laser = "Enemies/Tentacle_Nightmares/Projectile_Tentacle_Nightmare_Laser_Shot"
+    kit = {"form": "wolf", "dash": "none",
+           "power": {"replace": True, "steps": [
+               {"fire": "Heroes/Hero_Piper/Hero_Piper_Ghost_Note_Projectile",
+                "offsets": [-1, 0, 1], "damage": 150, "burn": 4, "explode": 3},
+               {"wait": 0.3}, {"hit": {"radius": 6, "damage": 200}}]},
+           "special": {"replace": True, "steps": [
+               {"heal": 30}, {"fire": laser, "angles": [-25, 0, 25], "poison": 3, "curse": True}]},
+           "ultimate": {"replace": True, "steps": [
+               {"repeat": 5, "every": 0.15, "steps": [{"fire": laser, "damage": 120}]},
+               {"hit": {"radius": 9, "damage": 300, "delay": 0.5}}]}}
+    steps = HK.expand(kit, corpus.read(_RED), "Hero_Red")
+    out = AE.apply({"Hero_Red": corpus.read(_RED)}, steps, main="Hero_Red", seed="t")
+    assert HK.HIT_ENTITY in out.resources
+    names = " ".join(s.get("rename", {}).get(next(iter(s.get("rename") or {"": ""})), "")
+                     for s in steps if "rename" in s)
+    for part in ("Kit Power Shot 3", "Kit Power Hit 4 Radius", "Kit Special Heal",
+                 "Kit Power Shot 1 Burn Time", "Kit Ultimate Moment 5 Timer"):
+        assert part in names, part
+    with pytest.raises(HK.KitError, match="0.5..30"):
+        HK.expand({"power": {"steps": [{"hit": {"radius": 99}}]}}, corpus.read(_RED), "Hero_Red")
+
+
+@needs_corpus
+@needs_install
+def test_a_projectile_that_reads_its_hero_fires_as_a_copy_reading_this_hero(tmp_path):
+    """Return (Kintaro's axe: rebounds and timeout from Kintaro) and refresh
+    (the Snow Queen's shard: seeking from her) on a Scarlet clone: each fires
+    as a copy of the hero's own whose reads aim at numbers in this hero."""
+    from rsmm.engine import entity_graph as EG
+    kit = {"power": {"steps": [{"fire": "Heroes/Hero_Kintaro/Hero_Kintaro_Thrown_Axe",
+                                "reads": {"Max Rebound": 4}}]},
+           "special": {"steps": [{"fire": "Heroes/Hero_Snow_Queen/Hero_Snow_Queen_Projectile",
+                                  "reads": {"Skill Seeking Available": True}}]}}
+    heros.emit("m", ContentDef(kind="hero", id="Howler", fields={"base": "Red", "kit": kit}),
+               tmp_path)
+    copies = sorted(tmp_path.rglob("Hero_Howler_Kit*.EntitySettingsResource.gen"))
+    assert [p.name.split(".")[0] for p in copies] == ["Hero_Howler_Kit1", "Hero_Howler_Kit2"]
+    main = next(tmp_path.rglob("Hero_Howler.entity.ot.EntitySettingsResource.gen"))
+    hero = {c.guid: c.name for c in EG.parse(main.read_bytes()).components}
+    for p in copies:
+        reads = [c for c in EG.parse(p.read_bytes()).components
+                 if c.cls == "oCEntityCpntGetValueSettings" and c.name.startswith("Owner ")]
+        assert reads
+        for c in reads:
+            assert "Heroes\\Hero_Red\\Hero_Howler.entity.ot" in c.literals, c.name
+            assert hero.get(c.refs[-1].guid, "").startswith("Kit Copy"), c.name
+    # Preloaded by every skin's cache (the hero's main entity has none of its own).
+    caches = [p.read_text(errors="replace")
+              for p in tmp_path.rglob("Hero_Howler_*.UsedRscCache.ot")]
+    assert caches and all("Hero_Howler_Kit1.entity.ot" in t for t in caches)

@@ -96,20 +96,6 @@ DECODED_TO_ENCODED_LANG = {
 ALL_LANGS = list(DECODED_TO_ENCODED_LANG.keys())
 
 
-def find_banks(cooking: Path, asset_map: dict[str, str]) -> dict[str, Path]:
-    """short_name (e.g. 'Common', 'Hero_Beowulf_Common') -> base-file Path."""
-    out: dict[str, Path] = {}
-    for enc, dec in asset_map.items():
-        if not dec.endswith(".LocalText.gen"):
-            continue
-        leaf = dec.split("\\")[-1]
-        short = leaf.split("~")[0]
-        p = cooking / Path(*enc.split("\\"))
-        if p.exists():
-            out[short] = p
-    return out
-
-
 def lang_path_for(base: Path, lang_decoded: str) -> Path:
     enc = DECODED_TO_ENCODED_LANG.get(lang_decoded.upper())
     if not enc:

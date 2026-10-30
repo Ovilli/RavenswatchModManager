@@ -38,6 +38,7 @@ number that was not a pointer, would load and misbehave with nothing logged.
 
 from __future__ import annotations
 
+import hashlib
 import struct
 import uuid
 from collections import defaultdict
@@ -89,6 +90,11 @@ class EntityFile:
         # Components added from here on are placed in their class's run of the
         # vector when written (entity_append.place_new_components).
         self._first_new = len(self.objects)
+        self._parts: dict[int, tuple[bytes, EG.Component | None]] = {}
+        self._pointers_key: bytes | None = None
+        self._span_cache: dict = {}
+        self._pointers: tuple = ({}, {})
+        self._parts_classes: list[str] = []
 
     # ---- reading ---------------------------------------------------------
 
@@ -97,18 +103,38 @@ class EntityFile:
         return component_vector(bytes(self.trailer))[1]
 
     def to_bytes(self) -> bytes:
+        out = self._emit()
+        self._check(out)
+        return out
+
+    def _emit(self) -> bytes:
         n = len(self.objects)
         classes = [struct.unpack_from("<I", o, 0)[0] for o in self.objects]
         directory = struct.pack(f"<I{n}I", n, *classes)
         self.cf.sections = ([cooked.Section(directory)]
                             + [cooked.Section(bytes(o)) for o in self.objects]
                             + [cooked.Section(bytes(self.trailer))])
-        out = place_new_components(cooked.emit(self.cf), self._first_new)
-        self._check(out)
-        return out
+        return place_new_components(cooked.emit(self.cf), self._first_new,
+                                    {c.index - 1: c.name for c in self.graph().components})
 
     def graph(self) -> EG.EntityGraph:
-        return EG.parse(self.to_bytes(), self.name)
+        # Each part is read once and kept until its bytes change: an edit
+        # touches a few parts, and re-reading all 1,250 of a hero per lookup
+        # (thousands of lookups in a kit) made `rsmm apply` take minutes.
+        classes = [c.name for c in self.cf.classes]
+        if classes != self._parts_classes:
+            self._parts, self._parts_classes = {}, classes
+        picker = classes.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in classes else -1
+        comps = []
+        for i, o in enumerate(self.objects):
+            hit = self._parts.get(i)
+            if hit is None or hit[0] != o:
+                raw = bytes(o)
+                hit = (raw, EG.component_at(raw, i + 1, classes, picker))
+                self._parts[i] = hit
+            if hit[1] is not None:
+                comps.append(hit[1])
+        return EG.EntityGraph(self.name, comps)
 
     def component(self, name: str) -> EG.Component:
         """The unique component called ``name`` (or ``Group\\Name``)."""
@@ -127,7 +153,35 @@ class EntityFile:
 
     def pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
         """``(owned, ambiguous)``: each sub-object id's pointer, and the
-        candidates for those whose pointer could not be pinned down."""
+        candidates for those whose pointer could not be pinned down. Kept
+        until the file changes (a clone asks twice, a kit clones dozens of
+        times, and each answer scans every object)."""
+        h = hashlib.blake2b(digest_size=16)
+        for o in self.objects:
+            h.update(len(o).to_bytes(4, "little"))
+            h.update(o)
+        h.update(self.trailer)
+        h.update("|".join(c.name for c in self.cf.classes).encode())
+        key = h.digest()
+        if self._pointers_key != key:
+            self._pointers = self._scan_pointers()
+            self._pointers_key = key
+        owned, ambiguous = self._pointers
+        return dict(owned), {k: list(v) for k, v in ambiguous.items()}
+
+    def _spans(self, o: int, special: set[int]) -> list[tuple[int, int]]:
+        """``_raw_spans`` of object ``o`` (the trailer when ``o`` is past the
+        objects), kept until its bytes change: a pointer scan reads every
+        object and an edit changes a few."""
+        p = self.objects[o] if o < len(self.objects) else self.trailer
+        key = (o, frozenset(special))
+        hit = self._span_cache.get(key)
+        if hit is None or hit[0] != p:
+            hit = (bytes(p), _raw_spans(bytes(p), special))
+            self._span_cache[key] = hit
+        return hit[1]
+
+    def _scan_pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
         n = len(self.objects)
         comps = set(self.component_ids)
         is_sub = [x not in comps for x in range(n)]
@@ -142,7 +196,7 @@ class EntityFile:
             if o == n:
                 voff, ids = component_vector(bytes(p))
                 start = voff + 4 + 4 * len(ids)
-            for a, b in _raw_spans(p, special):
+            for a, b in self._spans(o, special):
                 i = max(a, start)
                 while i + 4 <= b:
                     c = struct.unpack_from("<I", p, i)[0]
@@ -187,6 +241,21 @@ class EntityFile:
                 vfit = [p for p in vfit if p in fit]
             if len(fit) == 1 and not (vfit and fit[0] not in vfit):
                 owned[x] = fit[0]
+                del ambiguous[x]
+        # Last, the neighbours: an owner's id list is consecutive ids in
+        # consecutive u32 slots, so a candidate whose owner also owns x-1 in the
+        # slot before it or x+1 in the slot after sits INSIDE that list.
+        # Measured on Wolves_Model (Update 6): #512 is a number 212 places
+        # spell, and only `Attack Giant Leap Condition` holds #510/#511 at
+        # +257/+261, #512 at +265 and #513 at +269. Taken only when exactly one
+        # candidate has a neighbour.
+        for x, cands in list(ambiguous.items()):
+            near = [p for p in cands
+                    if any((q := owned.get(y)) is not None and q.owner == p.owner
+                           and q.offset == p.offset + d
+                           for y, d in ((x - 1, -4), (x + 1, 4)))]
+            if len(near) == 1:
+                owned[x] = near[0]
                 del ambiguous[x]
         return owned, ambiguous
 
@@ -279,7 +348,8 @@ class EntityFile:
         ids = ids + [new_id[o] for o in comps]
         self.trailer[voff:voff + 4 + 4 * (len(ids) - len(comps))] = (
             struct.pack("<I", len(ids)) + struct.pack(f"<{len(ids)}I", *ids))
-        self.to_bytes()
+        # Checked when written (to_bytes): a full check per copy made a kit of
+        # dozens of copies take minutes.
         return paths
 
     # ---- fields ------------------------------------------------------------
@@ -451,7 +521,7 @@ class EntityFile:
         label_end = at + a + len(new) - 4
         p = bytes(self.objects[obj])
         try:
-            acc = _Accessors(cooked.parse(self.to_bytes()))
+            acc = _Accessors(cooked.parse(self._emit()))
             p = fix_accessor(p, label_end, old[8:24], new[8:24], acc,
                              _picker_path(old), _picker_path(new))
             p = fix_format_slot(p, at + a, label_end, new[8:24], acc)
@@ -609,8 +679,7 @@ class EntityFile:
         at = len(p) - len(c.body) + f.offset
         p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
         struct.pack_into("<I", p, at, n + 1)
-        self.to_bytes()
-        return new_id
+        return new_id                   # checked when written (to_bytes)
 
     def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
@@ -950,7 +1019,9 @@ class EntityFile:
     def _check(self, raw: bytes) -> None:
         cf = cooked.parse(raw)
         validate_layout(cf)
-        g = EG.parse(raw)
+        # `raw` is always this file as it is now: its parts are the per-part
+        # cache's, not a second full parse of the bytes.
+        g = self.graph()
         k = len(component_vector(cf.sections[-1].payload)[1])
         if len(g.components) != k:
             raise EntityEditError(f"{len(g.components)} components parse, vector has {k}")
@@ -1053,27 +1124,27 @@ def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
 
 
 @cache
-def _kind_labels() -> dict[str, str]:
-    """Component class -> the ``[Kind]`` label references to it carry, learned
-    from the shipped corpus (the label is the editor's display name for the
-    class, which the exe does not hold)."""
+def kind_label(cls: str) -> str:
+    """The ``[Kind]`` label references to a ``cls`` component carry: the most
+    common among the first references to one found in the corpus. Stops early
+    (a whole-corpus vote per run cost ~10 s of every `rsmm apply`)."""
     from . import corpus
-    votes: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    votes: dict[str, int] = defaultdict(int)
     for rel in corpus.rels("EntitySettings/"):
         if not rel.endswith(".EntitySettingsResource.gen"):
             continue
-        g = EG.parse(corpus.read(rel))
+        raw = corpus.read(rel)
+        if raw is None or cls.encode() not in raw:
+            continue
+        g = EG.parse(raw)
         idx = g.by_guid()
         for c in g.components:
             for r in c.refs:
                 t = idx.get(r.guid)
-                if t is not None and r.kind:
-                    votes[t.cls][r.kind] += 1
-    return {cls: max(v, key=v.get) for cls, v in votes.items()}
-
-
-def kind_label(cls: str) -> str:
-    got = _kind_labels().get(cls)
-    if got is None:
+                if t is not None and t.cls == cls and r.kind:
+                    votes[r.kind] += 1
+        if sum(votes.values()) >= 20:
+            break
+    if not votes:
         raise EntityEditError(f"no reference in the game names a {cls}; cannot label one")
-    return got
+    return max(votes, key=votes.get)

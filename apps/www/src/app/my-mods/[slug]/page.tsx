@@ -459,6 +459,14 @@ export default function ManageModPage() {
     },
   });
 
+  const removeVersion = useMutation({
+    mutationFn: (versionId: string) => api.mods.removeVersion(versionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
+      qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+    },
+  });
+
   const remove = useMutation({
     mutationFn: () => api.mods.remove(slug),
     onSuccess: () => {
@@ -891,6 +899,13 @@ export default function ManageModPage() {
             /* ─── Versions ─── */
             <section className="grimoire-card space-y-4 p-5">
               <h2 className="text-lg font-semibold">Versions</h2>
+              {removeVersion.isError ? (
+                <p className="text-sm text-destructive">
+                  Could not delete that version
+                  {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
+                  Only the mod&apos;s owner can delete versions.
+                </p>
+              ) : null}
               {versions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No versions published yet.</p>
               ) : (
@@ -921,6 +936,25 @@ export default function ManageModPage() {
                             <div className="flex items-center gap-2">
                               <ScanBadge versionId={v.id} />
                               <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                disabled={removeVersion.isPending}
+                                aria-label={`Delete version ${v.version}`}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
+                                    )
+                                  ) {
+                                    removeVersion.mutate(v.id);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                              </Button>
                             </div>
                           </div>
                           {v.scanStatus &&

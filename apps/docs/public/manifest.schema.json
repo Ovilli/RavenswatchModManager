@@ -250,6 +250,7 @@
             "then": {
               "properties": {
                 "add_flags": {},
+                "ai": {},
                 "base": {},
                 "casts": {},
                 "cross_biome": {},
@@ -267,6 +268,7 @@
                 "pools": {},
                 "power": {},
                 "repoint_pools": {},
+                "reskin": {},
                 "schema_version": {},
                 "seed": {},
                 "tribe": {},
@@ -343,6 +345,7 @@
                 "hide": {},
                 "id": {},
                 "kind": {},
+                "kit": {},
                 "memoirs": {},
                 "model": {},
                 "mra": {},

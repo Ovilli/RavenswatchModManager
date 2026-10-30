@@ -474,7 +474,7 @@ function LogPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('Search the log...')}
-            className="font-data min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+            className="field-grim font-data min-w-56 flex-1 text-sm"
           />
           <Select value={tag} onChange={setTag} ariaLabel={t('Filter by subsystem')}>
             <option value="all">{t('All subsystems')}</option>
@@ -666,7 +666,7 @@ function Select({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         aria-label={ariaLabel}
-        className="select-grim font-data max-w-64 appearance-none truncate border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+        className="select-grim font-data max-w-64 appearance-none truncate py-2 pl-3 pr-9 text-sm"
       >
         {children}
       </select>

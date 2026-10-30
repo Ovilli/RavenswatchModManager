@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero Builder</title>
+<style>{{common.css}}</style>
+<style>
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px;
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0 8px 0 0; }
+main { max-width: 860px; margin: 0 auto; padding: 16px 16px 120px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+.card h2 { font-size: 15px; margin: 0 0 2px; }
+.card > .muted { margin: 0 0 12px; }
+.muted { color: var(--muted); font-size: 13px; }
+.grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 12px; align-items: center; }
+.grid input, .grid select, .grid textarea { width: 100%; box-sizing: border-box; }
+textarea { min-height: 54px; resize: vertical; font: inherit; }
+.slot { display: grid; grid-template-columns: 110px 210px 1fr; gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.slot:first-of-type { border-top: none; }
+.slot b { padding-top: 6px; }
+.slot .pick input { width: 100%; box-sizing: border-box; }
+.why { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.forms { display: flex; gap: 8px; flex-wrap: wrap; }
+.forms label { border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; cursor: pointer; }
+.forms label:has(input:checked) { border-color: var(--accentline); background: var(--accentbg, transparent); font-weight: 600; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 12px; align-items: center;
+         padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+#status { flex: 1; } #status.bad { color: var(--bad, #c33); } #status.ok { color: var(--good, #3a8); }
+button.primary { background: var(--accent); color: var(--onaccent); border: none; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+button.primary:disabled { opacity: .5; cursor: default; }
+.tl { grid-column: 1 / -1; border-left: 3px solid var(--accentline); margin: 4px 0 2px 6px; padding: 6px 0 6px 12px; }
+.blk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line);
+       border-radius: 9px; padding: 8px 10px; margin: 6px 0; }
+.blk .k { font-weight: 600; min-width: 110px; }
+.blk input[type=number] { width: 70px; }
+.blk .grow { flex: 1; min-width: 200px; }
+.blk .x { margin-left: auto; display: flex; gap: 4px; }
+.blk .x button, .adds button { font-size: 12px; padding: 3px 8px; }
+.inner { flex-basis: 100%; border-left: 2px dashed var(--line); padding-left: 10px; }
+.adds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+@media (max-width: 640px) { .slot { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hero Builder</h1>
+  <label>Mod <select id="mod"></select></label>
+  <label>Hero <select id="pick"></select></label>
+  <span id="busy" class="muted"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>Who</h2>
+    <p class="muted">Your hero starts as a copy of a shipped hero: its body, moves and everything you do not change below.</p>
+    <div class="grid">
+      <label for="base">Built on</label><select id="base"></select>
+      <label for="name">Name</label><input id="name" placeholder="e.g. Blood Wolf">
+      <label for="desc">Description</label><textarea id="desc" placeholder="Shown on the hero select screen"></textarea>
+    </div>
+  </section>
+  <section class="card" id="formCard" hidden>
+    <h2>Form</h2>
+    <p class="muted">This hero changes form. Pick whether yours does.</p>
+    <div class="forms">
+      <label><input type="radio" name="form" value=""> Switches at night, as the original</label>
+      <label><input type="radio" name="form" value="wolf"> Always wolf</label>
+      <label><input type="radio" name="form" value="human"> Never turns <span class="muted">(untested)</span></label>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Abilities</h2>
+    <p class="muted">For each button, keep what the original does, take it away, or have it also fire a projectile from anywhere in the game (an enemy's included). Greyed-out choices say why this hero cannot do them yet.</p>
+    <div id="slots"></div>
+  </section>
+  <section class="card">
+    <h2>Numbers and wiring</h2>
+    <p class="muted">Damage, cooldowns and everything the blocks above do not cover are in the Abilities tab. Save here first, then pick “a new hero built on it” there and choose this hero.</p>
+    <button type="button" id="advanced">Open the Abilities tab</button>
+  </section>
+</main>
+<footer>
+  <div id="status" class="muted">Pick what your hero is built on and give it a name.</div>
+  <button id="save" class="primary" disabled>Save hero</button>
+</footer>
+<datalist id="projList"></datalist>
+<script>{{common.js}}</script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else if (k === "text") e.textContent = v; else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+const SLOTS = [["attack", "Attack"], ["power", "Power"], ["special", "Special"], ["defense", "Defense"],
+  ["ultimate", "Ultimate"], ["ultimate2", "Ultimate 2"], ["trait", "Trait"], ["dash", "Dash"]];
+const NEW_MOD = "__new__", NEW_HERO = "__new__";
+// The game's names for heroes whose files say something else.
+const HERO_NAME = { Red: "Scarlet", Geppetto: "Pinocchio", SunWukong: "Sun Wukong", Snow_Queen: "Snow Queen" };
+const heroName = (h) => HERO_NAME[h] || h.replace(/_/g, " ");
+const S = { mod: NEW_MOD, hero: NEW_HERO, heroes: [], opts: null, kit: {}, tags: [], projs: [], dirty: false };
+const setStatus = (cls, text) => { $("status").className = cls; $("status").textContent = text; };
+
+async function loadMods() {
+  const { mods, tags } = await api("api/mods");
+  S.tags = tags || [];
+  $("mod").replaceChildren(el("option", { value: NEW_MOD, text: "New mod…" }),
+    ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
+  if (!mods.some(m => m.id === S.mod)) S.mod = NEW_MOD;
+  $("mod").value = S.mod;
+}
+async function loadHeroes() {
+  S.heroes = S.mod === NEW_MOD ? [] : (await api(`api/heroes?mod=${encodeURIComponent(S.mod)}`)).heroes;
+  $("pick").replaceChildren(el("option", { value: NEW_HERO, text: "+ New hero" }),
+    ...S.heroes.map(h => el("option", { value: h.id, text: `${h.name} (on ${heroName(h.base)})` })));
+  if (!S.heroes.some(h => h.id === S.hero)) S.hero = NEW_HERO;
+  $("pick").value = S.hero;
+  await openHero();
+}
+async function openHero() {
+  const h = S.heroes.find(x => x.id === S.hero);
+  if (h) {
+    $("base").value = h.base; $("name").value = h.name; $("desc").value = h.description;
+    S.kit = JSON.parse(JSON.stringify(h.kit || {}));
+  } else { S.kit = {}; }
+  $("base").disabled = !!h;     // a hero's base is its body: change it by making a new hero
+  await loadOptions();
+}
+async function loadOptions() {
+  $("busy").textContent = "Reading " + heroName($("base").value) + "…";
+  try { S.opts = await api(`api/options?base=${encodeURIComponent($("base").value)}`); }
+  catch (e) { setStatus("bad", e.message); S.opts = null; }
+  $("busy").textContent = "";
+  draw();
+}
+function draw() {
+  const o = S.opts; if (!o) return;
+  $("formCard").hidden = !o.form;
+  if (!o.form) delete S.kit.form;
+  for (const r of document.querySelectorAll("input[name=form]")) r.checked = (r.value === (S.kit.form || ""));
+  $("slots").replaceChildren(...SLOTS.map(([slot, label]) => slotRow(slot, label, o.slots[slot])));
+  drawSave();
+}
+function slotRow(slot, label, can) {
+  const cur = S.kit[slot], mode = cur === "none" ? "none" : cur && cur.steps ? "build"
+    : cur && cur.fire !== undefined ? "fire" : "";
+  const sel = el("select", { "aria-label": label },
+    el("option", { value: "", text: "Keep as the original" }),
+    el("option", { value: "none", text: "Remove it", disabled: !can.none && mode !== "none" }),
+    el("option", { value: "fire", text: "Also fire a projectile…", disabled: !can.fire && mode !== "fire" }),
+    el("option", { value: "build", text: "Build a new ability…" }));
+  sel.value = mode;
+  const right = el("div", { class: "pick" });
+  if (mode === "fire") {
+    const inp = el("input", { list: "projList", placeholder: "Type to search: laser, rain, fireball…", value: cur.fire ? projName(cur.fire) : "" });
+    inp.addEventListener("change", () => {
+      const p = S.projs.find(x => x.label === inp.value || x.path === inp.value);
+      if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
+      S.kit[slot] = { fire: p.path }; changed();
+    });
+    const when = S.kit.form === "wolf" && can.when_wolf ? can.when_wolf : can.when;
+    right.append(inp, el("div", { class: "why", text: `Fires when “${when}” starts.` }));
+  } else {
+    // Plain words here; the build's own reason is on hover for whoever wants it.
+    const no = [!can.none && "remove", !can.fire && "fire a projectile from"].filter(Boolean);
+    if (no.length) right.append(el("div", { class: "why",
+      text: `On ${heroName($("base").value)} you cannot ${no.join(" or ")} this button yet.`,
+      title: [can.none_why, can.fire_why].filter(Boolean).join("\n") }));
+  }
+  sel.addEventListener("change", () => {
+    if (sel.value === "") delete S.kit[slot];
+    else if (sel.value === "none") S.kit[slot] = "none";
+    else if (sel.value === "build") S.kit[slot] = { replace: true, steps: [] };
+    else S.kit[slot] = { fire: "" };
+    changed(); draw();
+  });
+  const row = el("div", { class: "slot" }, el("b", { text: label }), sel, right);
+  if (mode === "build") {
+    right.replaceChildren(el("label", { class: "why" },
+      el("input", { type: "checkbox", checked: cur.replace !== false || null,
+        onchange: (e) => { cur.replace = e.target.checked; changed(); } }),
+      " Replace the original's hits (keep only what you build)"));
+    row.append(el("div", { class: "tl" }, blocks(cur.steps, true),
+      el("div", { class: "why", text: `Starts when “${S.kit.form === "wolf" && can.when_wolf ? can.when_wolf : can.when || "the ability"}” starts. Blocks run top to bottom; Wait moves time on.` })));
+  }
+  return row;
+}
+// A built ability: blocks run top to bottom, `wait` moves time on, `repeat` runs
+// its own blocks N times `every` seconds apart. Saved as the kit's `steps`.
+const BLOCK = {
+  anim: ["Play animation", () => ({ anim: (S.opts.clips[0] || {}).path || "" })],
+  fire: ["Fire projectile", () => ({ fire: "", angles: [0] })],
+  hit: ["Hit area", () => ({ hit: { radius: 4, damage: 100 } })],
+  heal: ["Heal", () => ({ heal: 20 })],
+  wait: ["Wait", () => ({ wait: 0.3 })],
+  repeat: ["Repeat", () => ({ repeat: 3, every: 0.2, steps: [] })],
+};
+function blocks(list, top) {
+  const box = el("div");
+  list.forEach((b, i) => box.append(blockRow(list, i, top)));
+  box.append(el("div", { class: "adds" }, ...Object.entries(BLOCK)
+    .filter(([k]) => top || k !== "repeat")
+    .map(([k, [label, make]]) => el("button", { type: "button", text: "+ " + label,
+      onclick: () => { list.push(make()); changed(); draw(); } }))));
+  return box;
+}
+function blockRow(list, i, top) {
+  const b = list[i], kind = Object.keys(BLOCK).find(k => k in b);
+  const num = (key, step, min, max) => el("input", { type: "number", step, min, max, value: b[key],
+    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { b[key] = n; changed(); } } });
+  const body = [];
+  if (kind === "anim") {
+    const sel = el("select", { class: "grow", onchange: (e) => { b.anim = e.target.value; changed(); } },
+      ...S.opts.clips.map(c => el("option", { value: c.path, text: c.name })));
+    sel.value = b.anim; body.push(sel, el("span", { class: "why", text: "plays instead of the button's own animation" }));
+  } else if (kind === "fire") {
+    const inp = el("input", { class: "grow", list: "projList", placeholder: "Type to search: laser, rain, fireball…",
+      value: b.fire ? projName(b.fire) : "" });
+    inp.addEventListener("change", () => {
+      const p = S.projs.find(x => x.label === inp.value || x.path === inp.value);
+      if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
+      b.fire = p.path; changed(); draw();
+    });
+    const ang = el("input", { value: (b.angles || [0]).join(", "), style: "width:120px",
+      title: "Directions in degrees, 0 = where the hero faces. Several make a fan: -20, 0, 20" });
+    ang.addEventListener("change", () => {
+      const v = ang.value.split(/[ ,]+/).filter(Boolean).map(Number);
+      if (!v.length || !v.every(Number.isFinite)) { setStatus("bad", "Directions are numbers in degrees, e.g. -20, 0, 20"); return; }
+      b.angles = v; changed();
+    });
+    body.push(inp, el("span", { class: "why", text: "directions" }), ang);
+    const proj = S.projs.find(x => x.path === b.fire);
+    if (proj && proj.tags.length) body.push(el("span", { class: "why", text: proj.tags.join(" · ") }));
+    body.push(el("div", { class: "inner" }, ...shotOptions(b, proj)));
+  } else if (kind === "heal") {
+    body.push(num("heal", "1", 1, 10000), el("span", { class: "why", text: "health (in the units of the hero's own heals)" }));
+  } else if (kind === "hit") {
+    const h = b.hit, hn = (key, step, unit) => el("label", {}, el("input", { type: "number", step, value: h[key] ?? "",
+      placeholder: key === "delay" ? "0" : "", style: "width:70px",
+      onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) h[key] = n; else delete h[key]; changed(); } }), " " + unit);
+    body.push(hn("radius", "0.5", "m around"), hn("damage", "10", "% damage"), hn("delay", "0.1", "s delay"));
+  } else if (kind === "wait") {
+    body.push(num("wait", "0.05", 0, 30), el("span", { text: "seconds" }));
+  } else {
+    body.push(num("repeat", "1", 1, 20), el("span", { text: "times, every" }), num("every", "0.05", 0, 10),
+      el("span", { text: "seconds" }), el("div", { class: "inner" }, blocks(b.steps, false)));
+  }
+  const move = (d) => { const j = i + d; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; changed(); draw(); };
+  return el("div", { class: "blk" }, el("span", { class: "k", text: BLOCK[kind][0] }), ...body,
+    el("span", { class: "x" },
+      el("button", { type: "button", text: "↑", title: "Move up", onclick: () => move(-1) }),
+      el("button", { type: "button", text: "↓", title: "Move down", onclick: () => move(1) }),
+      el("button", { type: "button", text: "✕", title: "Remove", onclick: () => { list.splice(i, 1); changed(); draw(); } })));
+}
+// Per-shot options a projectile takes (Projectile_Model's own numbers and
+// status flags, set per spawn). An entity that is not a projectile takes none.
+const SHOT = [["damage", "% damage", "10"], ["speed", "speed", "1"], ["lifetime", "s lifetime", "0.1"],
+  ["size", "× size", "0.1"], ["knockback", "knockback", "1"], ["explode", "m explosion", "0.5"]];
+const STATUS = [["burn", "Burn"], ["poison", "Poison"], ["root", "Root"], ["curse", "Curse", true], ["vulnerable", "Vulnerable", true]];
+function shotOptions(b, proj) {
+  if (proj && !proj.options) return [el("span", { class: "why", text: "Not a generic projectile: no damage or effect options." }), ...readRows(b)];
+  const opt = (key, unit, step) => el("label", {}, el("input", { type: "number", step, value: b[key] ?? "", placeholder: "–", style: "width:64px",
+    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) b[key] = n; else delete b[key]; changed(); } }), " " + unit);
+  const offs = el("input", { value: (b.offsets || []).join(", "), placeholder: "e.g. -1, 0, 1", style: "width:110px",
+    title: "Side offsets in metres: shots side by side instead of fanned out" });
+  offs.addEventListener("change", () => {
+    const v = offs.value.split(/[ ,]+/).filter(Boolean).map(Number);
+    if (v.some(x => !Number.isFinite(x))) { setStatus("bad", "Offsets are numbers in metres, e.g. -1, 0, 1"); return; }
+    if (v.length) b.offsets = v; else delete b.offsets; changed();
+  });
+  const st = STATUS.map(([key, label, flag]) => {
+    const on = b[key] !== undefined;
+    const box = el("input", { type: "checkbox", checked: on || null, onchange: (e) => {
+      if (e.target.checked) b[key] = flag ? true : 3; else delete b[key]; changed(); draw(); } });
+    const secs = !flag && on ? el("input", { type: "number", step: "0.5", value: b[key], style: "width:52px",
+      onchange: (e) => { const n = parseFloat(e.target.value); if (n > 0) { b[key] = n; changed(); } } }) : null;
+    return el("label", {}, box, " " + label, ...(secs ? [" ", secs, " s"] : []));
+  });
+  // Juliet's projectiles bounce on to the next enemy as often as the spawn says.
+  const bounce = proj && proj.tags.includes("ricochet")
+    ? [el("div", { class: "adds" }, el("span", { class: "why", text: "ricochet:" }),
+        opt("ricochet", "bounces", "1"), opt("ricochet_damage", "% per bounce", "10"))] : [];
+  return [el("div", { class: "adds" }, ...SHOT.map(([k, u, s]) => opt(k, u, s))), ...bounce, ...readRows(b),
+    el("div", { class: "adds" }, el("span", { class: "why", text: "side by side:" }), offs),
+    el("div", { class: "adds" }, el("span", { class: "why", text: "on hit:" }), ...st)];
+}
+// A projectile that reads its own hero (Kintaro's axe: rebounds; the Snow Queen's
+// shard: seeking) fires as a copy of yours, reading these numbers instead.
+const READS = {};
+function readRows(b) {
+  if (!b.fire) return [];
+  const r = READS[b.fire];
+  if (r === undefined) {
+    READS[b.fire] = null;
+    api(`api/reads?path=${encodeURIComponent(b.fire)}`).then(j => { READS[b.fire] = j.reads; draw(); })
+      .catch(() => { READS[b.fire] = []; });
+    return [];
+  }
+  if (!r || !r.length) return [];
+  b.reads = b.reads || {};
+  const rows = r.map(x => {
+    const cur = x.label in b.reads ? b.reads[x.label] : x.default;
+    const set = (v) => { if (v === x.default) delete b.reads[x.label]; else b.reads[x.label] = v;
+      if (!Object.keys(b.reads).length) delete b.reads; changed(); };
+    const inp = x.type === "bool"
+      ? el("input", { type: "checkbox", checked: cur || null, onchange: (e) => { b.reads = b.reads || {}; set(e.target.checked); } })
+      : el("input", { type: "number", step: x.type === "int" ? "1" : "0.1", value: cur, style: "width:64px",
+          onchange: (e) => { const n = x.type === "int" ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
+            if (Number.isFinite(n)) { b.reads = b.reads || {}; set(n); } } });
+    return el("label", { title: `Its own hero's value: ${x.default}` }, inp, " " + x.label);
+  });
+  return [el("div", { class: "adds" }, el("span", { class: "why",
+    text: "fires as your own copy, reading:" }), ...rows)];
+}
+const projName = (path) => (S.projs.find(x => x.path === path) || { label: path }).label;
+function changed() { S.dirty = true; drawSave(); tellShell(); }
+function drawSave() {
+  const named = !!$("name").value.trim();
+  $("save").disabled = !named || !S.opts;
+  $("save").textContent = S.mod === NEW_MOD ? "Create mod…" : S.hero === NEW_HERO ? "Add hero to mod" : "Save hero";
+  if (!named) setStatus("muted", "Give your hero a name.");
+  else if (S.dirty) setStatus("muted", "Not saved yet.");
+}
+window.rsmmUnsaved = () => S.dirty ? { count: 1, kept: false } : null;
+
+$("mod").addEventListener("change", async () => {
+  S.mod = $("mod").value; S.hero = NEW_HERO;
+  try { localStorage.setItem("hb-mod", S.mod); } catch (e) {}
+  await loadHeroes();
+});
+$("pick").addEventListener("change", async () => { S.hero = $("pick").value; S.dirty = false; await openHero(); });
+$("base").addEventListener("change", () => { S.kit = {}; changed(); loadOptions(); });
+for (const id of ["name", "desc"]) $(id).addEventListener("input", changed);
+for (const r of document.querySelectorAll("input[name=form]")) r.addEventListener("change", () => {
+  if (r.value) S.kit.form = r.value; else delete S.kit.form; changed(); draw();
+});
+$("advanced").addEventListener("click", () => {
+  try { if (window.parent.rsmmOpen && window.parent.rsmmOpen("abilities", { hero: $("base").value })) return; } catch (e) {}
+  setStatus("muted", "Open the Abilities tab at the top.");
+});
+$("save").addEventListener("click", async () => {
+  // A fire with no projectile picked yet would build nothing.
+  const empty = (steps) => (steps || []).some(b => b.fire === "" || (b.steps && empty(b.steps)));
+  const bad = SLOTS.find(([s]) => S.kit[s] && (S.kit[s].fire === "" || empty(S.kit[s].steps)));
+  if (bad) { setStatus("bad", `${bad[1]}: pick a projectile first.`); return; }
+  const body = { base: $("base").value, hero_name: $("name").value.trim(),
+    hero_description: $("desc").value.trim(), kit: S.kit,
+    block: S.hero === NEW_HERO ? "" : S.hero };
+  let error = "";
+  try {
+    for (;;) {
+      let got = null;
+      if (S.mod === NEW_MOD) { got = await askNewModDialog(S.tags, error); if (!got) return; }
+      try {
+        const j = await api("api/save", got ? { ...body, create: true, mod: got.id, meta: got.meta } : { ...body, mod: S.mod });
+        S.mod = j.mod; S.hero = j.block; S.dirty = false;
+        try { localStorage.setItem("hb-mod", S.mod); } catch (e) {}
+        await loadMods(); await loadHeroes(); tellShell();
+        setStatus("ok", `✓ Saved ${j.block} in ${j.mod}. Run rsmm restore --all, rsmm apply, rsmm install-loader, then find it on the hero select screen.`);
+        return;
+      } catch (e) { if (!got) throw e; error = e.message; }
+    }
+  } catch (e) { setStatus("bad", e.message); }
+});
+
+(async () => {
+  try {
+    const [{ heroes }, { projectiles }] = await Promise.all([api("api/bases"), api("api/projectiles")]);
+    $("base").replaceChildren(...heroes.map(h => el("option", { value: h, text: heroName(h) })));
+    $("base").value = heroes.includes("Red") ? "Red" : heroes[0];
+    S.projs = projectiles.map(p => ({ ...p, label: `${p.name} — ${p.group}` + (p.tags.length ? ` (${p.tags.join(", ")})` : "") }));
+    $("projList").replaceChildren(...S.projs.map(p => el("option", { value: p.label })));
+    try { S.mod = localStorage.getItem("hb-mod") || NEW_MOD; } catch (e) {}
+    await loadMods();
+    await loadHeroes();
+  } catch (e) { setStatus("bad", e.message); }
+  try { if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady("hero", () => $("name").focus()); } catch (e) {}
+})();
+</script>
+</body>
+</html>

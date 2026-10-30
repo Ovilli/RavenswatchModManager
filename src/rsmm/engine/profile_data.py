@@ -184,7 +184,11 @@ def parse(save: SF.Save) -> Profile:
         objects.append(node)
     root = recs[-1]
     p = root.start + 8
+    if p + 4 > root.end:
+        raise SF.SaveFormatError(f"{save.path}: the profile is truncated")
     (n,) = struct.unpack_from("<I", d, p)
+    if p + 4 + 4 * n > root.end:
+        raise SF.SaveFormatError(f"{save.path}: the profile's object list overruns it")
     refs = list(struct.unpack_from(f"<{n}I", d, p + 4))
     p += 4 + 4 * n
     player, p = _obj(save, d, p)

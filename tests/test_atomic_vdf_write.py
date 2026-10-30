@@ -147,3 +147,27 @@ def test_escaped_value_round_trips_through_reader(tmp_path):
     assert _write_launch_options(p, APP_ID, value)
     assert _read_launch_options(p, APP_ID) == value
     assert p.read_text(encoding="utf-8").count('"LaunchOptions"') == 1
+
+
+def test_rewrite_preserves_every_other_byte(tmp_path):
+    """Everything outside our LaunchOptions value comes back byte-for-byte.
+
+    Regression: the file was read and written in the locale codepage with
+    errors="replace". On a cp1252 Windows that turned UTF-8 continuation
+    bytes it does not define (0x81 in Cyrillic "с", …) into "?", corrupting
+    every friend nickname in localconfig.vdf. The stray 0xff here is not
+    valid UTF-8 at all, so a lossy decode fails this on any platform.
+    """
+    p = _make_vdf(tmp_path, "{\n\t\t\t\t\t\t\"LastPlayed\"\t\t\"0\"\n\t\t\t\t\t}")
+    other = '\t"friends"\t{ "PersonaName"\t\t"сергей" }\n'.encode() + b'\t"junk"\t\t"\xff"\n'
+    raw = p.read_bytes()
+    head, tail = raw.split(b"{", 1)
+    p.write_bytes(head + b"{\n" + other + tail)
+    before = p.read_bytes()
+
+    assert _write_launch_options(p, APP_ID, "rsmm-vanilla")
+    after = p.read_bytes()
+    assert other in after
+    assert after.replace(b'\n\t\t\t\t\t\t"LaunchOptions"\t\t"rsmm-vanilla"', b"") == before
+    bak = p.with_suffix(p.suffix + ".rsmm.bak")
+    assert bak.read_bytes() == before

@@ -56,6 +56,8 @@ def parse(data: bytes) -> GameFont:
     at += map_len * 4
     base = struct.unpack_from("<f", data, at)[0]
     n = struct.unpack_from("<I", data, at + 8)[0]
+    if at + 12 + n > len(data):
+        raise ValueError("font page name does not fit the file")
     page = data[at + 12:at + 12 + n].decode("utf-8", "replace")
     glyphs = {}
     for cp, gi in enumerate(index):

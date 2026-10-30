@@ -51,12 +51,6 @@ def _children(mods_root: Path) -> list[str]:
         return []
 
 
-def mod_folders(mods_root: Path) -> list[str]:
-    """Folder names under mods/ a user means by a mod id: everything except
-    the `_`/`.`-prefixed ones apply skips (`_merged`, `.git`, …)."""
-    return [c for c in _children(mods_root) if not c.startswith(("_", "."))]
-
-
 def resolve_mod(arg: str, mods_root: Path) -> str:
     """The mod folder name under `mods_root` that `arg` means.
 

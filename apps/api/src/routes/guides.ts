@@ -238,7 +238,12 @@ guidesRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
 
   const head = row[0];
   if (!head) return c.json({ error: 'not found' }, 404);
-  if (!canViewGuide(head, user?.id)) return c.json({ error: 'not found' }, 404);
+  // 403, not 404: the www detail layout renders from an ANONYMOUS server fetch
+  // and turns a 404 into a hard notFound(), which hid a draft or in-review
+  // guide from its own author and from the admin reviewing it. A 403 lets the
+  // page render and the client re-fetch with the viewer's session. It reveals
+  // only that the slug exists, which POST already does with its 409.
+  if (!canViewGuide(head, user?.id)) return c.json({ error: 'not public' }, 403);
 
   return c.json({
     id: head.id,

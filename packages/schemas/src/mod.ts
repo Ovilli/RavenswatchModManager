@@ -181,13 +181,20 @@ export const modVersionSchema = z.object({
 
 export type ModVersion = z.infer<typeof modVersionSchema>;
 
-export const modUploadRequestSchema = z.object({
-  slug: modSlugSchema,
-  version: semverSchema,
-  manifest: modManifestSchema,
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  sizeBytes: z.number().int().positive(),
-});
+export const modUploadRequestSchema = z
+  .object({
+    slug: modSlugSchema,
+    version: semverSchema,
+    manifest: modManifestSchema,
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    sizeBytes: z.number().int().positive(),
+  })
+  // Same rule as modVersionCreateSchema below — see the note there.
+  .refine((v) => v.manifest.version === v.version, {
+    message:
+      'version must match the version inside the packed manifest — bump [mod].version and re-pack',
+    path: ['version'],
+  });
 
 export type ModUploadRequest = z.infer<typeof modUploadRequestSchema>;
 

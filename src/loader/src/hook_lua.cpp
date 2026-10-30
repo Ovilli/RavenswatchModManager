@@ -49,6 +49,7 @@ extern "C" {
 #include "loader.h"
 #include "hook_util.h"
 #include "lua_err.h"
+#include "mem_safe.h"
 
 #include "MinHook.h"
 
@@ -242,8 +243,12 @@ void push_arg(lua_State* L, char t, std::uint64_t v) {
             lua_pushnumber(L, d); break;
         }
         case 's': {
-            auto p = reinterpret_cast<const char*>(v);
-            if (p) lua_pushstring(L, p); else lua_pushnil(L);
+            // The pointer is whatever the game passed in that register; a
+            // wrong 's' in a mod's signature or a stale string must not fault.
+            if (!v || !mem_accessible(v, 1, false)) { lua_pushnil(L); break; }
+            char buf[1024];
+            const std::size_t n = mem_read_cstr(v, buf, sizeof(buf));
+            lua_pushlstring(L, buf, n);
             break;
         }
         default: lua_pushnil(L); break;

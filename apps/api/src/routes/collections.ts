@@ -76,7 +76,9 @@ collectionsRouter.get('/', async (c) => {
       ownerImage: schema.users.image,
       modCount: sql<number>`(
         select count(*)::int from ${schema.collectionMods}
+        inner join ${schema.mods} on ${schema.mods.id} = ${schema.collectionMods.modId}
         where ${schema.collectionMods.collectionId} = ${outerCollectionId}
+          and ${schema.mods.takedownStatus} = 'active'
       )`,
     })
     .from(schema.collections)
@@ -122,7 +124,9 @@ collectionsRouter.get('/mine', async (c) => {
       updatedAt: schema.collections.updatedAt,
       modCount: sql<number>`(
         select count(*)::int from ${schema.collectionMods}
+        inner join ${schema.mods} on ${schema.mods.id} = ${schema.collectionMods.modId}
         where ${schema.collectionMods.collectionId} = ${outerCollectionId}
+          and ${schema.mods.takedownStatus} = 'active'
       )`,
     })
     .from(schema.collections)
@@ -229,6 +233,7 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
         select ${schema.modVersions.version}
         from ${schema.modVersions}
         where ${schema.modVersions.modId} = ${outerModId}
+          and ${schema.modVersions.scanStatus} in ('clean', 'skipped')
         order by ${schema.modVersions.createdAt} desc
         limit 1
       )`,
@@ -240,7 +245,9 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
     })
     .from(schema.collectionMods)
     .innerJoin(schema.mods, eq(schema.mods.id, schema.collectionMods.modId))
-    .where(eq(schema.collectionMods.collectionId, head.id))
+    // Admin takedown gate, same as the public mod list: a delisted mod drops out
+    // of every collection rather than staying discoverable through one.
+    .where(and(eq(schema.collectionMods.collectionId, head.id), eq(schema.mods.takedownStatus, 'active')))
     .orderBy(asc(schema.collectionMods.position), asc(schema.collectionMods.addedAt));
 
   return c.json({

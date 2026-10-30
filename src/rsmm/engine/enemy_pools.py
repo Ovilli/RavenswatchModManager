@@ -97,16 +97,6 @@ def pool_files() -> list[tuple[str, Path]]:
     return out
 
 
-def pool_entities(path: Path) -> list[str]:
-    """Enemy entity refs listed in one pooling asset, in file order.
-
-    Filtered to ``Enemies\\...`` because a pool also streams the biome's props
-    and VFX; everything outside that prefix is not a spawn candidate under any
-    reading.
-    """
-    return _pool_entities_bytes(path.read_bytes())
-
-
 def _pool_entities_bytes(raw: bytes) -> list[str]:
     from .cooked_schemas.asset_refs import _decode
 

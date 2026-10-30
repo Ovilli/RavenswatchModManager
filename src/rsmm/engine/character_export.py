@@ -145,10 +145,6 @@ def texture_png(ref: str | None, mode: str = "color") -> bytes | None:
     return image.encode_png(w, h, rgba)
 
 
-def albedo_png(ref: str | None) -> bytes | None:
-    return texture_png(ref, "color")
-
-
 def material_slots(mat_ref: str | None, scope: str | None = "Characters") -> dict[str, str]:
     """``{"ALB"|"MRA"|"NRM": texture ref}`` from a ``.mat.ot`` (``u_ALB`` ...).
 

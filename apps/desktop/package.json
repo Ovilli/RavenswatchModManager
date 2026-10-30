@@ -1,6 +1,6 @@
 {
   "name": "desktop",
-  "version": "5.9.26",
+  "version": "5.9.29",
   "private": true,
   "type": "module",
   "scripts": {
@@ -61,6 +61,6 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3",
     "vite": "6.4.5",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

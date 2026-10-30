@@ -30,7 +30,6 @@ from __future__ import annotations
 import base64
 import math
 import re
-import struct
 from array import array
 
 from . import corpus
@@ -239,7 +238,3 @@ def apply(chapter, level: str, edits: dict) -> tuple[bytes, list[str]]:
     return out, notes
 
 
-def unpack_xf(b64: str) -> list[float]:
-    """Test helper: the ``xf`` floats of :func:`scenery_json` back as a list."""
-    raw = base64.b64decode(b64)
-    return list(struct.unpack(f"<{len(raw) // 4}f", raw))

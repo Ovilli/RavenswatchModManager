@@ -18,18 +18,24 @@ import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
-import { notify, notifyFollowers, notifyReview, notifyReviewReply } from '../notify.js';
+import { notify, notifyReview, notifyReviewReply } from '../notify.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
   SERVABLE_STATUSES,
   enqueueScan,
   isServable,
-  markScan,
   queueInfo,
+  releaseVersion,
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
-import { presignModImage, presignModUpload, remoteObjectExists } from '../storage.js';
+import {
+  deleteObject,
+  modUploadKey,
+  presignModImage,
+  presignModUpload,
+  remoteObjectExists,
+} from '../storage.js';
 import type { AppEnv } from '../types.js';
 
 export const modsRouter = new Hono<AppEnv>();
@@ -787,6 +793,7 @@ modsRouter.post(
     const rows = await db
       .select({
         assetUrl: schema.modVersions.assetUrl,
+        sha256: schema.modVersions.sha256,
         modId: schema.mods.id,
         ownerId: schema.mods.ownerId,
       })
@@ -807,9 +814,10 @@ modsRouter.post(
     if (!exists) return c.json({ error: 'upload not completed' }, 400);
 
     // Scanning is optional (see env.ts): when VirusTotal isn't configured, mark
-    // the version skipped so the client can proceed.
+    // the version skipped so the client can proceed. Guarded by the sha we just
+    // checked, so a re-presign in between can't inherit the verdict.
     if (!virusTotalConfigured()) {
-      await markScan(versionId, 'skipped');
+      await releaseVersion(versionId, row.sha256, 'skipped');
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
 
@@ -967,15 +975,6 @@ modsRouter.post(
     if (!existing) return c.json({ error: 'not found' }, 404);
     if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
 
-    // Only a genuinely new version fans out to followers — re-uploading an
-    // existing version (onConflictDoUpdate) must not re-notify.
-    const priorVersion = await db.query.modVersions.findFirst({
-      where: and(
-        eq(schema.modVersions.modId, existing.id),
-        eq(schema.modVersions.version, body.version),
-      ),
-    });
-
     const signed = await presignModUpload({
       slug,
       version: body.version,
@@ -1016,18 +1015,8 @@ modsRouter.post(
         .set({ updatedAt: new Date() })
         .where(eq(schema.mods.id, existing.id));
 
-      if (!priorVersion) {
-        await notifyFollowers(
-          existing.id,
-          {
-            type: 'mod_new_version',
-            title: `${existing.name} released v${body.version}`,
-            body: body.changelog ?? null,
-            link: `/registry/${existing.slug}`,
-          },
-          user.id,
-        );
-      }
+      // Followers hear about it once it is downloadable: releaseVersion in
+      // scan-service.ts, which every publish path goes through.
 
       return c.json({
         uploadUrl: signed.uploadUrl,
@@ -1039,6 +1028,50 @@ modsRouter.post(
       c.get('log').error('version create error', { err: errString(err) });
       return c.json({ error: 'failed to create version' }, 500);
     }
+  },
+);
+
+// Delete one version: its row and its stored zip. The mod's owner or an admin
+// only — co-authors can publish versions but, as with deleting the whole mod,
+// not destroy them. Download counts survive: mod_downloads.version_id is
+// ON DELETE SET NULL, so the mod's totals do not drop.
+modsRouter.use('/versions/:versionId', ownerLimiter);
+modsRouter.delete(
+  '/versions/:versionId',
+  zValidator('param', versionScanParamSchema),
+  async (c) => {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'unauthorized' }, 401);
+    const { versionId } = c.req.valid('param');
+    const db = getDb();
+
+    const rows = await db
+      .select({
+        id: schema.modVersions.id,
+        version: schema.modVersions.version,
+        sha256: schema.modVersions.sha256,
+        slug: schema.mods.slug,
+        ownerId: schema.mods.ownerId,
+      })
+      .from(schema.modVersions)
+      .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+      .where(eq(schema.modVersions.id, versionId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (row.ownerId !== user.id && !isAdmin(user.id)) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
+
+    await db.delete(schema.modVersions).where(eq(schema.modVersions.id, row.id));
+    // The row is what makes a version downloadable, so it goes first; a failed
+    // storage delete only leaves an unreachable object behind.
+    try {
+      await deleteObject(modUploadKey(row.slug, row.version, row.sha256));
+    } catch (err) {
+      c.get('log').warn('version zip delete failed', { versionId, err: errString(err) });
+    }
+    return c.json({ ok: true });
   },
 );
 

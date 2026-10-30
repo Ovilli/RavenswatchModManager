@@ -97,13 +97,14 @@ export function ServerProse({
       </Link>
 
       {image?.url ? (
-        <div className="group relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
-          {/* Plain <img>: mod art lives on arbitrary remote hosts, which next/image would need allowlisted one by one. Same choice the client pages made. */}
+        <div className="group relative mx-auto w-fit max-w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
+          {/* Plain <img>: mod art lives on arbitrary remote hosts, which next/image would need allowlisted one by one. Same choice the client pages made.
+              Shown at its uploaded aspect ratio (no crop); the height cap keeps portrait art from pushing the page below the fold. */}
           <img
-            loading="lazy"
             src={image.url}
             alt={image.alt}
-            className={`h-full w-full object-cover ${
+            fetchPriority="high"
+            className={`block max-h-[32rem] w-auto max-w-full ${
               image.nsfw
                 ? 'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100'
                 : ''

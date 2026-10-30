@@ -103,6 +103,8 @@ export interface AppSettings {
   /** Send frontend crash reports to the RSMM API. Local launcher-log entries
    * are written either way — this only controls what leaves the machine. */
   crashReports: boolean;
+  /** Send the daily anonymous "app opened" ping (install id, version, OS). */
+  usageReports: boolean;
 }
 
 interface State {
@@ -338,6 +340,7 @@ export function hydrateSettings(
     // stored `false` must survive, so this can't be a truthiness coercion
     // of a possibly-undefined value.
     crashReports: merged.crashReports !== false,
+    usageReports: merged.usageReports !== false,
     // An unknown tag (a build that shipped a language this one dropped, a
     // hand-edited blob) falls back to English rather than leaving the UI
     // looking up messages in a catalog that does not exist.
@@ -391,6 +394,7 @@ export const useApp = create<State>()(
         sidebarCollapsed: false,
         browseView: 'grid',
         crashReports: true,
+        usageReports: true,
         fontFamily: DEFAULT_FONT,
         fontScale: DEFAULT_FONT_SCALE,
       },

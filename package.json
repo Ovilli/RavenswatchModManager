@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
-    "next": "15.5.27",
+    "next": "15.5.28",
     "turbo": "2.9.14",
     "typescript": "5.7.3"
   },
@@ -45,13 +45,13 @@
       "smol-toml": "^1.9.0",
       "baseline-browser-mapping": ">=2.11.0",
       "sharp": "^0.35.5",
-      "fast-uri": "^3.1.6",
+      "fast-uri": "^3.1.9",
       "js-yaml@3": "^3.15.2",
       "js-yaml@4": "^4.3.2",
       "postcss@8": "^8.5.18",
       "browserslist": ">=4.28.7",
       "devalue": "^5.9.2",
-      "dompurify@3": "^3.4.13",
+      "dompurify@3": "^3.4.17",
       "esbuild@<0.25.0": "^0.25.0",
       "esbuild@>=0.27.3 <0.28.1": "^0.28.1",
       "yaml@2": "^2.8.3",
@@ -60,7 +60,9 @@
       "http-cache-semantics@4": "^4.3.0",
       "seroval@1": "^1.6.3",
       "source-map-js@1": "^1.2.2",
-      "katex": "^0.18.2"
+      "katex": "^0.18.2",
+      "undici@8": "^8.12.2",
+      "zod@4": "^4.6.6"
     }
   }
 }

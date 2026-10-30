@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **350** symbols across 27 categories.
+Total: **353** symbols across 27 categories.
 
 ## analytics
 
@@ -361,8 +361,10 @@ Total: **350** symbols across 27 categories.
 | `BinarySaver_CollectDependencies` | `0x1404fc920` | ✅ ok |  | bool(void* saver, void* rootObject) |
 | `BinarySaver_WriteGraph` | `0x140501570` | ✅ ok | ✔ | bool(void* saver, void* rootObject, const char* label, void* ctx) |
 | `BinarySaver_WriteObject` | `0x140501210` | ✅ ok | ✔ | bool(void* saver, void* object, const char* label, bool flag) |
+| `Definition_LoadPreloadSet` | `0x1404aa7f0` | ✅ ok | ✔ | void(void* preloadSet, int* outCount) |
 | `Definition_PreloadResourceCache` | `0x14030bae0` | ✅ ok |  | void(void* definition) |
 | `Definitions_LoadGroup` | `0x14030ae30` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
+| `EntitySettings_ClassDescDefault` | `0x14146fd90` | 📍 va |  | The class descriptor Enemy_RuntimeSpawnPicker passes to ResourceRef_Resolve for a def's… |
 | `FileStream_Open` | `0x140539bc0` | ✅ ok |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x14025b160` | ✅ ok |  | void(void* nameFilter) |
 | `LevelBinary_Load` | `0x1404764a0` | ✅ ok |  | bool(void* container, void* stream, void* lvlId, void* links) |
@@ -381,9 +383,10 @@ Total: **350** symbols across 27 categories.
 | `Registry_EnumInstances` | `0x14023b9a0` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x14030c500` | ✅ ok |  | void(void* definition) |
 | `Registry_UnregisterInstance` | `0x14030c580` | ✅ ok | ✔ | void(void*) |
+| `ResourceArchive_Default` | `0x141472240` | 📍 va |  | The default resource archive: a static object, constructed on first use by its getter F… |
 | `ResourceCache_Parse` | `0x1404929b0` | ✅ ok |  | bool(void* outVector, void* cachePath) |
 | `ResourceCache_Submit` | `0x1404aa340` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
-| `ResourceRef_Resolve` | `0x1404924e0` | ✅ ok |  | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
+| `ResourceRef_Resolve` | `0x1404924e0` | ✅ ok | ✔ | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
 | `Resource_LookupByPath` | `0x14049b240` | ✅ ok | ✔ | void*(const char* decoded_path, void*, void*, void*) |
 
 ## rewards

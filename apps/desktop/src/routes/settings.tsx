@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import { Activity, ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Fleuron, Panel, SectionHeader } from '../components/chrome';
@@ -296,7 +296,7 @@ function SourcesPanel() {
             }
           }}
           placeholder="https://example.invalid/registry"
-          className="font-mono flex-1 border border-border bg-pitch/60 px-3 py-2 text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+          className="field-grim font-mono flex-1"
           aria-invalid={sourceError ? true : undefined}
         />
         <button
@@ -438,14 +438,14 @@ function LauncherLogPanel() {
           onChange={(e) => setLogQuery(e.target.value)}
           placeholder={t('Search launcher log...')}
           aria-label={t('Search launcher log')}
-          className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+          className="field-grim font-mono min-w-56 flex-1 text-sm"
         />
         <div className="relative inline-flex">
           <select
             value={logLevel}
             onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
             aria-label={t('Filter the launcher log by level')}
-            className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+            className="select-grim font-mono appearance-none py-2 pl-3 pr-9 text-sm"
           >
             <option value="all">{t('All levels')}</option>
             <option value="info">{t('Info')}</option>
@@ -568,6 +568,25 @@ function PrivacyPanel() {
           <span className="font-serif-italic mt-1 block text-sm text-ash">
             {t(
               'When the app hits an unexpected error, send the error type, message, stack trace, RSMM version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no account details. Turning this off keeps crashes in your local launcher log only.',
+            )}
+          </span>
+        </span>
+      </label>
+      <label className="mt-4 flex cursor-pointer items-start gap-3 text-parchment">
+        <input
+          type="checkbox"
+          checked={settings.usageReports}
+          onChange={(e) => update({ usageReports: e.target.checked })}
+          className="mt-1 h-4 w-4 accent-crimson"
+        />
+        <span>
+          <span className="font-mono text-sm flex items-center gap-2">
+            <Activity className="h-4 w-4 text-crimson" />
+            {t('Count this install')}
+          </span>
+          <span className="font-serif-italic mt-1 block text-sm text-ash">
+            {t(
+              'Once a day, send a random install id, the RSMM version and OS so we know how many people use the manager. Never linked to your account; no mod list, no file paths.',
             )}
           </span>
         </span>
@@ -934,7 +953,7 @@ function OnlineServerPanel() {
               placeholder="http://host:8090"
               aria-label={t('Server address')}
               spellCheck={false}
-              className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+              className="field-grim font-mono min-w-56 flex-1 text-sm"
             />
             <button
               type="submit"
@@ -1334,7 +1353,7 @@ function Field({
           commit(e.target.value);
         }}
         placeholder={placeholder}
-        className="font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment focus:border-gilt/60 focus:outline-none"
+        className="field-grim font-mono w-full"
         aria-invalid={error ? true : undefined}
       />
       {error ? (

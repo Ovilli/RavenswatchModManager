@@ -224,6 +224,13 @@ def _kinds_page() -> tuple[str, str, str, str]:
     ]
     for kind, rating, mod_name, summary in rows:
         lines.append(f"| `{kind}` | {rating} | `{mod_name}` | {summary} |")
+    from rsmm.sdk.content import FIELD_CONFIDENCE
+    if FIELD_CONFIDENCE:
+        lines += ["", "A block that sets one of these fields is rated as the field, "
+                  "whatever its kind's rating (`FIELD_CONFIDENCE`):", "",
+                  "| Kind | Field | Confidence |", "|---|---|---|"]
+        lines += [f"| `{k}` | `{f}` | {badge.get(r, r)} |"
+                  for (k, f), r in FIELD_CONFIDENCE.items()]
     lines += [
         "",
         "## What a rating means",

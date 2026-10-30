@@ -148,13 +148,14 @@ const TABS = {
   items: ["Items", "content", "content/?tab=items"],
   talents: ["Talents", "content", "content/?tab=talents"],
   scripts: ["Scripts", "content", "content/?tab=scripts"],
+  hero: ["Hero", "hero", "hero/"],
   abilities: ["Abilities", "abilities", "abilities/"],
   map: ["Map", "map", "map/"],
 };
 // What each tab edits, under its name (the same words as `rsmm editor`'s shell).
 const BLURB = {
   items: "Change or copy magic items", talents: "Hero talent cards & numbers", scripts: "Test grants & block scripts",
-  abilities: "Hero ability numbers & links", map: "Chapter maps & tiles",
+  hero: "Build a hero of your own", abilities: "Hero ability numbers & links", map: "Chapter maps & tiles",
 };
 const $ = (id) => document.getElementById(id);
 // Set here, not in the markup: Astro's HTML types do not know the attribute.

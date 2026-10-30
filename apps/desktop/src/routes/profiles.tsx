@@ -265,7 +265,7 @@ function ProfilesPage() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             rows={4}
-            className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
+            className="field-grim font-mono w-full resize-none p-3"
             placeholder={t('base64-encoded profile…')}
           />
           {importError ? (
@@ -294,7 +294,7 @@ function ProfilesPage() {
             value={backupCode}
             onChange={(e) => setBackupCode(e.target.value)}
             rows={4}
-            className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
+            className="field-grim font-mono w-full resize-none p-3"
             placeholder={t('base64-encoded backup…')}
           />
           {backupError ? (

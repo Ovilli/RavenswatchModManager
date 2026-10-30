@@ -11,6 +11,8 @@ One step per table::
     as = "Echo"                           new group name (required for a group)
     suffix = " Echo"                      appended to every copied part's name
                                           (default: " " + as)
+    rename = { "Step 2" = "Step 3" }      exact new names for some copies (the
+                                          rest take the suffix)
     from = "Juliet"                       copy from another hero's entity, or
                                           any entity by its path under
                                           EntitySettings ("Objects/Magical_Objects/
@@ -38,6 +40,16 @@ One step per table::
     percent = "Descripton Format.obj_4"   a card slot shown x100 as a percentage
     value = true                          (false: the plain number)
 
+    retarget = "My Spawner Value"         point the part's link into ANOTHER
+    node = "Heroes\\Hero_Kintaro\\Hero_Kintaro_Special_Delayed_AOE.entity.ot|Radius"
+                                          entity at that node (a spawner value's
+                                          target: the spawned entity's number)
+
+    add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
+    donor_index = 1                       ``donor_index`` of that id list (a
+    replace_ref = { "Step 2" = "Step 3" } combo's steps), its links to the
+                                          named parts re-pointed
+
 ``entity = "FX"`` (or a full stem) on any step targets another member of the
 family, e.g. ``Hero_Piper_FX``; the default is the gameplay entity.
 
@@ -53,7 +65,13 @@ from dataclasses import dataclass, field
 from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
-_OPS = ("clone", "set", "link", "add_link", "remove_link", "percent")
+_OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
+        "retarget")
+#: Every key a step may carry; anything else is a typo that would otherwise be
+#: ignored silently (a `rename` the old clone did not read left its copies
+#: under the default suffix, and the next step found nothing).
+_KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
+         "donor_index", "replace_ref", "node"}
 
 
 class AbilityEditError(ValueError):
@@ -103,11 +121,18 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
         ops = [op for op in _OPS if op in step]
         if len(ops) != 1:
             raise AbilityEditError(f"ability step {n} needs exactly one of {', '.join(_OPS)}")
+        unknown = set(step) - _KEYS
+        if unknown:
+            raise AbilityEditError(f"ability step {n} has no key {', '.join(sorted(unknown))}")
         op = ops[0]
         try:
             ef = member(step)
             if op == "clone":
                 _clone(ef, step, f"{seed}:{n}", read)
+            elif op == "add_subobject":
+                _add_subobject(ef, step)
+            elif op == "retarget":
+                _retarget(ef, step, read)
             else:
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part:
@@ -138,7 +163,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
 
     out = Result(dict(files))
     for stem, ef in edits.items():
-        edited = ef.to_bytes()
+        try:
+            edited = ef.to_bytes()
+        except EntityEditError as e:
+            raise AbilityEditError(f"the ability edits to {stem} do not hold together: {e}") from e
         issues = CK.check(edited, files[stem], name=stem, read=read)
         errs = list(CK.errors(issues))
         if errs:
@@ -187,5 +215,67 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
         names = [what] if isinstance(what, str) else [str(x) for x in what]
         regroup = {}
     suffix = str(step.get("suffix", f" {new_group}" if new_group else " Copy"))
-    ef.clone(names, rename={x: x + suffix for x in names}, group=regroup, seed=seed,
+    rename = step.get("rename") or {}
+    if not isinstance(rename, dict) or set(rename) - set(names):
+        raise AbilityEditError(f"rename maps copied parts to new names; it names "
+                               f"{', '.join(sorted(set(rename) - set(names))) or rename!r}, "
+                               "which this clone does not copy")
+    ef.clone(names, rename={x: str(rename.get(x, x + suffix)) for x in names},
+             group=regroup, seed=seed,
              source=None if src is ef else src)
+
+
+def _add_subobject(ef: EntityFile, step: dict) -> None:
+    """Append a copy of entry ``donor_index`` of id list ``Part.field``, its
+    links to ``replace_ref``'s keys re-pointed at the values (part names)."""
+    from . import entity_fields as EF
+    part, _, fld = str(step["add_subobject"]).rpartition(".")
+    if not part:
+        raise AbilityEditError("add_subobject names 'Part.field' (an id list)")
+    c = ef.component(part)
+    f = next((x for x in EF.fields(c) if x.name == fld), None)
+    if f is None:
+        raise AbilityEditError(f"{part!r} has no field {fld!r}")
+    count = int.from_bytes(c.body[f.offset:f.offset + 4], "little")
+    i = step.get("donor_index")
+    if isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < count:
+        raise AbilityEditError(f"donor_index: {part}.{fld} has entries 0..{count - 1}")
+    obj = int.from_bytes(c.body[f.offset + 4 + 4 * i:f.offset + 8 + 4 * i], "little")
+    refs = {ef.component(str(old)).guid: str(new)
+            for old, new in (step.get("replace_ref") or {}).items()}
+    ef.add_subobject(part, fld, ef, obj, refs=refs)
+
+
+def _retarget(ef: EntityFile, step: dict, read) -> None:
+    """Point ``retarget``'s link into another entity at ``node``
+    (``<entity ref>|<part name>``): its links of that node's kind that lead
+    outside this file move there (a spawner value's ``target_value``)."""
+    from . import entity_graph as EG
+    from .entity_graph_edit import kind_label
+    ref, _, name = str(step.get("node") or "").partition("|")
+    raw = read(ref) if ref and name else None
+    if raw is None:
+        raise AbilityEditError(f"retarget: no entity {ref!r} (node is '<entity>|<part>')")
+    stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    hits = [c for c in EG.parse(raw, stem).components if c.name == name]
+    if len(hits) != 1:
+        raise AbilityEditError(f"retarget: {stem} has {len(hits)} parts named {name!r}")
+    node = hits[0]
+    kind = kind_label(node.cls)
+    label = f"[{kind}] {stem}\\" + (f"{node.group}\\" if node.group else "") + node.name
+    # `Part.field` names the link (a spawner value's `target_value`): whatever
+    # it holds now, inside this file or out, moves. Plain `Part`: its links of
+    # that kind leading outside this file.
+    pname, _, fld = str(step["retarget"]).partition(".")
+    part = ef.component(pname)
+    if fld:
+        # Written whatever it held: a spawner value's target can be empty.
+        from .hero_kit import point
+        point(ef, pname, fld, node.guid, label)
+        return
+    mine = {c.guid for c in ef.graph().components}
+    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(f"[{kind}] ")]
+    if not old:
+        raise AbilityEditError(f"retarget: {part.name!r} has no outside {kind} link to move")
+    for g in dict.fromkeys(old):
+        ef.retarget_external(part.name, g, node.guid, label)

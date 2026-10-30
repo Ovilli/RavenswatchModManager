@@ -668,7 +668,7 @@ function ConfigFieldRow({
             type="checkbox"
             checked={Boolean(value)}
             onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-border bg-pitch/60 text-gilt focus:ring-gilt/40"
+            className="h-4 w-4 rounded border-border bg-pitch/60 text-gilt"
           />
           <span className="text-sm text-ash">{value ? t('Enabled') : t('Disabled')}</span>
         </div>
@@ -677,7 +677,7 @@ function ConfigFieldRow({
           id={id}
           value={String(value)}
           onChange={(e) => onChange(e.target.value)}
-          className="select-grim font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+          className="select-grim font-mono w-full px-3 py-2 text-sm"
         >
           {field.choices.length > 0 ? (
             field.choices.map((choice) => (

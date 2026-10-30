@@ -125,6 +125,15 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
 <header>
   <h1>Ability Editor</h1>
   <label>Hero <select id="hero" title="The shipped hero whose abilities you are looking at. Your custom hero uses this one as its base."></select></label>
+  <label>Changes go into <select id="how" title="What saving does">
+      <option value="inplace">this hero itself</option>
+      <option value="custom">a new hero built on it</option>
+    </select></label>
+  <span id="heroInfo" hidden title="Your hero's name and description on the hero select screen">
+    <input id="heroName" placeholder="Your hero's name" style="width:150px">
+    <input id="heroDesc" placeholder="Description on the select screen" style="width:210px">
+    <button id="heroInfoSave" type="button" class="small" hidden>Save name</button>
+  </span>
   <label class="tiny muted">File <select id="entity" title="A hero is several files. Almost everything lives in the main one; FX is visual effects, the rest are pets, projectiles and skins."></select></label>
   <input id="find" type="search" placeholder="Find a part by name…" style="min-width:220px" title="Type part of a name to list every match on one page, then Enter to jump to the first">
   <button id="helpBtn" class="small">How does this work?</button>
@@ -148,7 +157,7 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
       <ol>
         <li>Pick an ability on the left.</li>
         <li>Type a new number in the box and press <b>Enter</b>. The row turns purple and the change is checked straight away. <b>↺</b> puts the original back.</li>
-        <li>When the bar at the bottom says <b>Ready to build</b>, choose your mod at the bottom and press <b>Save to mod</b>: the changes go into its custom hero built on this hero, and come back when you open it again. Then run <code>rsmm apply</code>.</li>
+        <li>When the bar at the bottom says <b>Ready to build</b>, pick your mod at the bottom and press <b>Save to mod</b>. <b>Changes go into</b> (top) decides whether they change this hero or make a new hero of your own. Then run <code>rsmm apply</code>.</li>
       </ol>
       Nothing here touches your game until you apply. To see <i>what triggers what</i>, or change it, use the <b>How it works</b> tab.
       <div style="margin-top:6px"><button class="small" id="helpOk">Got it, hide this</button></div>
@@ -165,10 +174,6 @@ details { margin-top: 8px; } summary { cursor: pointer; color: var(--muted); }
 <section id="bar">
   <div class="head">
     <div id="status" class="idle">No changes yet.</div>
-    <select id="how" title="What saving does to the hero">
-      <option value="inplace">Change the original hero</option>
-      <option value="custom">Make a separate custom hero</option>
-    </select>
     <select id="mod" title="The mod to save into"></select>
     <select id="block" title="Your custom hero in that mod, built on this hero" hidden></select>
     <button id="save" class="primary" title="Write these changes into your custom hero in the chosen mod" disabled>Save to mod</button>
@@ -337,6 +342,19 @@ const byId = (id) => S.data.components.find(c => c.id === id);
 const groupsOf = () => { const m = new Map(); for (const c of S.data.components) m.set(c.group, (m.get(c.group) || 0) + 1); return new Map([...m].sort()); };
 const kindOfGroup = (g) => g.startsWith("Ability") ? "Abilities" : g.startsWith("Skill") ? "Talents" : "Other";
 const cardOf = (g) => (S.data.cards || {})[g];
+// The game's word for each ability slot; the engine's group names ("Ability
+// Primary") are what the files say, kept small under it.
+const SLOT = { Basic: "Attack", Primary: "Power", Secondary: "Special", Defensive: "Defense",
+  Dash: "Dash", Trait: "Trait", "Ultimate 1": "Ultimate 1", "Ultimate 2": "Ultimate 2",
+  Common: "Shared by every ability" };
+function niceGroup(g) {
+  if (!g) return "General";
+  const card = cardOf(g);
+  if (card && card.name) return card.name;
+  const m = g.match(/^Ability (?:(Wolf|Alt) )?(.+)$/);
+  if (m && SLOT[m[2]]) return (m[1] ? m[1] + " " : "") + SLOT[m[2]];
+  return g.replace(/^Skill /, "");
+}
 // The parts of ability `g` a filter `q` matches: its own name (or its talent card's
 // name or text) matching brings the whole ability, otherwise just the parts named so.
 function matchParts(g, q) {
@@ -394,11 +412,11 @@ function drawGroups() {
     out.push(el("h3", { text: sect }));
     for (const [g, n] of rows) out.push(el("div", { class: "grp" + (g === S.group ? " on" : ""), title: `${n} parts`,
       onclick: () => selectGroup(g) },
-      el("div", {}, ...hl(g || "General", f), cardOf(g) ? el("div", { class: "tiny muted" }, ...hl(cardOf(g).name, f)) : null),
+      el("div", {}, ...hl(niceGroup(g), f), niceGroup(g) !== (g || "General") ? el("div", { class: "tiny muted" }, ...hl(g, f)) : null),
       el("span", { text: f ? `${matchParts(g, f).length} of ${n}` : n })));
   }
   $("groups").replaceChildren(...out);
-  $("groupTitle").textContent = f ? `Matches for “${f}”` : S.group || (groupsOf().has("") ? "General" : "Pick an ability");
+  $("groupTitle").textContent = f ? `Matches for “${f}”` : S.group ? niceGroup(S.group) : (groupsOf().has("") ? "General" : "Pick an ability");
 }
 
 // ---- the Numbers tab ------------------------------------------------------------
@@ -528,6 +546,10 @@ function numberRows(parts, group) {
     if (!literal(f)) continue;
     (ADVANCED.test(f.name) ? tech : main).push([c, f]);
   }
+  // Only a part's own named number is what a modder means by "the ability's
+  // numbers" (Damage Multiplier Day, Shots Delay). Selector entries, math
+  // operands and signal payloads are the ability's wiring: folded under "More".
+  for (const r of main.splice(0)) (r[0].cls === "Value" && r[2] === undefined ? main : tech).push(r);
   // Plain numbers first (what a beginner is looking for), yes/no last.
   const rank = ([c, f, s]) => s !== undefined ? 1 : (c.cls === "Value" ? 0 : 1) + (literal(f).bool ? 2 : 0);
   main.sort((a, b) => rank(a) - rank(b) || short(a[0].name, group).localeCompare(short(b[0].name, group)));
@@ -558,7 +580,7 @@ function drawFiltered(q) {
         nMore ? (() => {
           const box = el("div", {});
           const d = el("details", {}, el("summary", { text: `Technical settings and shapes of these parts (${nMore})` }), box);
-          d.addEventListener("toggle", () => { if (d.open && !box.firstChild) box.append(...tech.map(([c, f]) => numberRow(c, f)), ...slots.map(([c, f, i]) => numberRow(c, f, i))); });
+          d.addEventListener("toggle", () => { if (d.open && !box.firstChild) box.append(...tech.map(([c, f, i]) => numberRow(c, f, i)), ...slots.map(([c, f, i]) => numberRow(c, f, i))); });
           return d;
         })() : null);
     }
@@ -651,16 +673,16 @@ function drawNumbers() {
   const parts = S.data.components.filter(c => c.group === S.group);
   const { main, tech, slots } = numberRows(parts, S.group);
   const out = [];
-  if (!main.length) out.push(el("div", { class: "muted", text: "This ability has no plain numbers to change. Its parts only link to each other: use the Diagram tab." }));
-  else out.push(el("div", { class: "sect", text: `Numbers in ${S.group} (${main.length})` }), el("div", {}, ...main.map(([c, f, i]) => numberRow(c, f, i))));
-  if (tech.length) out.push(el("details", {}, el("summary", { text: `Technical settings (${tech.length}): internal flags whose meaning is not known yet` }),
-    el("div", {}, ...tech.map(([c, f]) => numberRow(c, f)))));
+  if (!main.length) out.push(el("div", { class: "muted", text: "This ability has no named numbers of its own. Open “More numbers” below, or use the How it works tab." }));
+  else out.push(el("div", { class: "sect", text: `Numbers in ${niceGroup(S.group)} (${main.length})` }), el("div", {}, ...main.map(([c, f, i]) => numberRow(c, f, i))));
+  if (tech.length) out.push(el("details", {}, el("summary", { text: `More numbers (${tech.length}): inside the ability's math, choices and signals. Change these only if you know what they feed` }),
+    el("div", {}, ...tech.map(([c, f, i]) => numberRow(c, f, i)))));
   if (slots.length) out.push(el("details", { open: slots.some(([c, f, i]) => findStep("set", `${c.name}.${f.name}[${i}]`)) || undefined },
     el("summary", { text: `Positions, sizes and shapes (${slots.length}): the numbers inside a part's settings, such as where a spawn appears and how it is turned` }),
     el("div", {}, ...slots.map(([c, f, i]) => numberRow(c, f, i)))));
   out.push(el("div", { class: "card" },
     el("b", { text: "Make a copy of this ability" }),
-    el("div", { class: "tiny muted", text: "The copy gets its own parts (their names end with the new name). It does nothing until something links to it: afterwards, use the Diagram tab to point one of your parts at it." }),
+    el("div", { class: "tiny muted", text: "The copy gets its own parts (their names end with the new name). It does nothing until something links to it: afterwards, use the How it works tab to point one of your parts at it." }),
     el("div", { class: "row" }, el("input", { id: "cloneAs", placeholder: "New name, e.g. Echo", style: "flex:1" }),
       el("button", { class: "primary", text: "Copy ability", onclick: () => { const as = $("cloneAs").value.trim(); if (as) addStep({ clone: S.group, as }); else $("cloneAs").focus(); } }))));
   $("numList").replaceChildren(...out);
@@ -770,7 +792,6 @@ function nice(c) {
   n = n.replace(/\s+/g, " ").trim();
   return n || c.name;
 }
-const niceGroup = (g) => (g || "General").replace(/^(Skill|Ability) /, "");
 
 function flowEdges() {
   const out = new Map(), into = new Map();
@@ -1265,14 +1286,20 @@ function drawSave() {
   // A copied ability adds parts: only a custom hero builds those.
   const clones = inPlace() && S.steps.some(x => "clone" in x);
   const fresh = S.mod === NEW_MOD;           // the mod is made when Save is pressed
-  $("save").disabled = (fresh ? !S.steps.length : !S.block || same) || clones || !!(S.data && S.data.error);
+  // A new custom hero is worth creating before any change: it is the hero itself.
+  const startHero = fresh && !inPlace() && !!$("heroName").value.trim();
+  $("save").disabled = (fresh ? !S.steps.length && !startHero : !S.block || same) || clones || !!(S.data && S.data.error);
+  $("heroInfo").hidden = inPlace();
+  $("heroInfoSave").hidden = !S.block || inPlace();
   $("save").textContent = fresh ? "Create mod…" : same ? "Saved" : "Save to mod";
   // Say why it is grey, and offer the fix where there is one.
   let why = "", offer = "";
   if (same && !fresh) why = "";
+  else if (startHero && !S.steps.length) why = `Creating a mod with your hero ${$("heroName").value.trim()}, built on ${heroLabel()}.`;
+  else if (fresh && !inPlace() && !S.steps.length) why = "Name your hero in the box below, or change an ability first.";
   else if (!S.steps.length) why = "No changes yet: type a new number and press Enter (the row turns purple).";
   else if (S.data && S.data.error) why = "Fix the step marked in red first.";
-  else if (clones) why = "Copying an ability needs a custom hero: switch the box on the left to “Make a separate custom hero”.";
+  else if (clones) why = "Copying an ability needs a new hero: at the top, set “Changes go into” to “a new hero built on it”.";
   else if (fresh) {
     why = inPlace() ? `Creating a mod that changes the original ${heroLabel()}.`
       : `Creating a mod with a custom ${heroLabel()}, an extra hero in the list.` + ((S.dlc || []).includes(S.hero)
@@ -1292,7 +1319,14 @@ function drawSave() {
 }
 $("newHero").addEventListener("click", async () => {
   try {
-    const j = await post("api/newhero", { mod: S.mod, hero: S.hero, mode: S.how });
+    let name = $("heroName").value.trim();
+    if (!inPlace() && !name) {
+      name = (prompt(`Name your hero (built on ${heroLabel()}):`) || "").trim();
+      if (!name) return;
+      $("heroName").value = name;
+    }
+    const j = await post("api/newhero", { mod: S.mod, hero: S.hero, mode: S.how,
+      hero_name: name, hero_description: $("heroDesc").value.trim() });
     await loadBlocks();
     setStatus("ok", inPlace() ? `Added ${j.block} to ${S.mod}: it edits the original ${heroLabel()}. Now press Save to mod.`
       : `Created ${j.block} in ${S.mod}, built on ${S.hero}. Now press Save to mod.`);
@@ -1318,7 +1352,7 @@ async function loadBlocks() {
   const kind = inPlace() ? "ability" : "hero";
   S.blocks = j.blocks.filter(b => b.kind === kind);
   if (!S.blocks.length) {
-    const other = j.blocks.length ? ` (it has ${j.blocks.length} for ${inPlace() ? "a custom hero" : "an in-place edit"}: change the box on the left to use it)` : "";
+    const other = j.blocks.length ? ` (it has ${j.blocks.length} for ${inPlace() ? "a custom hero" : "an in-place edit"}: switch “Changes go into” at the top to use it)` : "";
     S.note = inPlace() ? `${S.mod} does not change ${heroLabel()} yet${other}.`
       : `${S.mod} has no custom hero built on ${heroLabel()}${other}.`;
     setStatus("warn", S.note);
@@ -1333,6 +1367,7 @@ function openBlock(id) {
   const b = S.blocks.find(x => x.id === id);
   if (!b) return;
   S.block = id; $("block").value = id;
+  $("heroName").value = b.name || ""; $("heroDesc").value = b.description || "";
   const theirs = JSON.stringify(b.steps);
   S.saved = theirs;
   // Your unsaved changes win only if you say so; otherwise the hero's saved ones load.
@@ -1351,6 +1386,15 @@ $("mod").addEventListener("change", () => {
   loadBlocks();
 });
 $("block").addEventListener("change", () => openBlock($("block").value));
+$("heroName").addEventListener("input", drawSave);
+$("heroInfoSave").addEventListener("click", async () => {
+  try {
+    const j = await post("api/heroinfo", { mod: S.mod, block: S.block,
+      name: $("heroName").value, description: $("heroDesc").value });
+    const b = S.blocks.find(x => x.id === S.block); if (b) Object.assign(b, j);
+    setStatus("ok", `✓ ${S.block} is now called “${j.name}” on the hero select screen.`);
+  } catch (e) { setStatus("bad", e.message); }
+});
 try { S.how = localStorage.getItem("ae-how") === "custom" ? "custom" : "inplace"; } catch (e) { S.how = "inplace"; }
 $("how").value = S.how;
 $("how").addEventListener("change", () => {
@@ -1372,7 +1416,9 @@ $("save").addEventListener("click", async () => {
       }
       try {
         const j = await post("api/save", create
-          ? { ...body, create: true, mod: got.id, meta: got.meta, mode: S.how } : { ...body, mod: S.mod });
+          ? { ...body, create: true, mod: got.id, meta: got.meta, mode: S.how,
+              hero_name: $("heroName").value.trim(), hero_description: $("heroDesc").value.trim() }
+          : { ...body, mod: S.mod });
         if (create) {
           S.mod = j.mod;
           try { localStorage.setItem("ae-mod", S.mod); } catch (e) {}
@@ -1453,6 +1499,15 @@ try { if (localStorage.getItem("ae-help")) $("help").hidden = true; } catch (e) 
 // that are filed under another name (e.g. "_old Skill ...") are matched loosely,
 // and one that matches nothing still lands on the right hero.
 async function focusAbility(t) {
+  if (t && t.newHero) {                 // the welcome screen's "Make a hero"
+    S.how = "custom"; $("how").value = "custom";
+    try { localStorage.setItem("ae-how", S.how); } catch (e) {}
+    await loadBlocks();
+    $("heroName").focus();
+    setStatus("ok", "Make a hero: pick the hero to build on (top), name yours in the bar at the bottom, "
+      + "then press Create mod… (or Create a custom … in a mod you have). Change its abilities here any time.");
+    return;
+  }
   if (!t || typeof t.hero !== "string") return;
   if (t.hero !== S.hero) {
     if (![...$("hero").options].some(o => o.value === t.hero)) return;

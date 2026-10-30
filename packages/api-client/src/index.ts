@@ -9,6 +9,7 @@ import {
   type GuideImagePresign,
   type GuidePatch,
   type GuideReviewUpsert,
+  type InstallPing,
   type LogShareCreate,
   type ModImagePresign,
   type ModListItem,
@@ -409,6 +410,15 @@ export function createApiClient(options: ApiClientOptions) {
         d30: z.number().int(),
       })
       .nullable(),
+    installs: z
+      .object({
+        total: z.number().int(),
+        d1: z.number().int(),
+        d7: z.number().int(),
+        d30: z.number().int(),
+      })
+      .nullable()
+      .optional(),
     reviews: z.object({
       total: z.number().int(),
       new7d: z.number().int(),
@@ -432,7 +442,32 @@ export function createApiClient(options: ApiClientOptions) {
       versionSplit: z.array(z.object({ version: z.string(), n: z.number().int() })),
     }),
     topMods: z.array(z.object({ slug: z.string(), name: z.string(), downloads: z.number().int() })),
-    series: z.object({ signups: daySeries, downloads: daySeries }),
+    // Optional while an older API is still deployed: the website must not
+    // fail the whole stats parse over a series it can live without.
+    days: z.number().int().optional(),
+    series: z.object({
+      signups: daySeries,
+      downloads: daySeries,
+      uploads: daySeries.optional(),
+      applies: daySeries.optional(),
+      crashes: daySeries.optional(),
+      activeInstalls: daySeries.optional(),
+      newInstalls: daySeries.optional(),
+    }),
+  });
+
+  const scanVersionSchema = z.object({
+    id: z.string(),
+    modSlug: z.string(),
+    modName: z.string(),
+    version: z.string(),
+    sha256: z.string(),
+    sizeBytes: z.number(),
+    scanStatus: z.string(),
+    scanStats: z.record(z.number()).nullable(),
+    createdAt: z.string(),
+    scanQueuedAt: z.string().nullable(),
+    scannedAt: z.string().nullable(),
   });
 
   const statsResponseSchema = z.object({
@@ -561,6 +596,12 @@ export function createApiClient(options: ApiClientOptions) {
         ),
       remove: (slug: string) =>
         request(`/api/mods/${encodeURIComponent(slug)}/delete`, { method: 'DELETE' }, okSchema),
+      removeVersion: (versionId: string) =>
+        request(
+          `/api/mods/versions/${encodeURIComponent(versionId)}`,
+          { method: 'DELETE' },
+          okSchema,
+        ),
       reviews: (slug: string) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/reviews`,
@@ -634,7 +675,14 @@ export function createApiClient(options: ApiClientOptions) {
     },
     moderation: {
       /** Admin-only business overview powering the console's Overview tab. */
-      stats: () => request('/api/moderation/stats', { method: 'GET' }, adminStatsResponseSchema),
+      stats: (days = 30) =>
+        request(`/api/moderation/stats?days=${days}`, { method: 'GET' }, adminStatsResponseSchema),
+      versions: () =>
+        request(
+          '/api/moderation/versions',
+          { method: 'GET' },
+          z.object({ items: z.array(scanVersionSchema) }),
+        ),
       reports: (status?: 'open' | 'reviewing' | 'resolved' | 'dismissed') =>
         request(
           `/api/moderation/reports${status ? `?status=${status}` : ''}`,
@@ -940,6 +988,8 @@ export function createApiClient(options: ApiClientOptions) {
     telemetry: {
       run: (body: TelemetryRun) =>
         request('/api/telemetry/run', { method: 'POST', body: JSON.stringify(body) }, okSchema),
+      ping: (body: InstallPing) =>
+        request('/api/telemetry/ping', { method: 'POST', body: JSON.stringify(body) }, okSchema),
       crash: (body: CrashReport) =>
         request('/api/telemetry/crash', { method: 'POST', body: JSON.stringify(body) }, okSchema),
     },

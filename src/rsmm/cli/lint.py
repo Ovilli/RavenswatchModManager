@@ -669,9 +669,9 @@ def _lint_content(modname: str, blocks: list[dict],
     believing it works."""
     errs = warns = 0
     try:
-        from rsmm.sdk.content import kind_confidence
+        from rsmm.sdk.content import content_confidence
     except ImportError:
-        def kind_confidence(_k: str) -> str:  # pragma: no cover
+        def content_confidence(_k: str, _f) -> str:  # pragma: no cover
             return "confirmed"
     # Shape + confidence gate run for every kind, even ones with no deep
     # validator. An unknown field is an error for the same reason the
@@ -695,7 +695,7 @@ def _lint_content(modname: str, blocks: list[dict],
             continue
         errs += _report_unknown(mod_s, where, c, allowed)
         errs += _check_base(mod_s, where, str(kind), c.get("base"))
-        conf = kind_confidence(str(kind))
+        conf = content_confidence(str(kind), c)
         if conf == "confirmed":
             continue
         if not experimental:

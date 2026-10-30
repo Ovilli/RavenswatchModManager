@@ -92,6 +92,14 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         reads as a page still to write when ``placeholder`` is set. Once any
         page is the hero's own, the pages lose the base's voice-over (the
         recordings are named after the base) and are silent.
+    ``kit`` (table)  the hero builder's blocks: ``form`` (``"wolf"`` /
+        ``"human"`` for Scarlet-type heroes), and per slot (``attack``,
+        ``power``, ``special``, ``defense``, ``ultimate``, ``ultimate2``,
+        ``trait``, ``dash``) ``"none"``, ``{ fire = <entity>, when = <state> }``, or
+        a built ability ``{ replace = true, steps = [...] }`` (blocks ``fire`` with
+        ``angles``, ``wait``, ``repeat`` with ``every`` and ``steps``, ``anim``).
+        Expanded into ``abilities`` steps, run before the hand-written ones;
+        see ``engine/hero_kit.py``.
     ``attacks`` (list)  ``[[content.attacks]]``: attacks of the hero's own,
         each replacing an ability slot: a projectile entity of its own
         (``Hero_<id>_<attack>``, on the engine's generic hero projectile) with
@@ -157,7 +165,7 @@ _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albed
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
                      "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
-                     "dlc_owner"})
+                     "dlc_owner", "kit"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot) that are not heroes: a hero of
 #: that name would still collide with the alias. (Kintaro was one until he
@@ -296,11 +304,35 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     attacks = f.get("attacks") or []
     if not isinstance(attacks, list) or not all(isinstance(a, dict) for a in attacks):
         raise ContentError(f"hero {hid}: 'attacks' is a list of tables")
+    kit = f.get("kit")
+    kit_copies: list = []             # projectiles of the hero's own (hero_kit.Copy)
+    if kit:
+        # The hero builder's blocks, as steps run before the hand-written ones
+        # (engine/hero_kit.py): so `abilities` can build on what they made.
+        from ...engine import hero_kit as HK
+        main_ref = next(r for r in b.family
+                        if r.rsplit("\\", 1)[-1] == f"{b.stem}.entity.ot")
+        try:
+            main = corpus.read(H.entity_rel(main_ref))
+            abilities = HK.expand(kit, main, b.stem, hid=hid, copies=kit_copies) + list(abilities)
+            # `anim` blocks: the slot's clip swapped for another of the hero's
+            # own, in this hero's files only (the `references` swap).
+            references = {**HK.anim_swaps(kit, main, b.stem), **references}
+        except HK.KitError as e:
+            raise ContentError(f"hero {hid}: {e}") from e
     own = bool(f.get("own_entity") or f.get("model") or textures or weapons
                or animations or outfits or values or references or abilities or skills
                or attacks or f.get("placeholder") or f.get("effects") or f.get("hide"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
     art: list[str] = []               # preload-cache lines for the new art
+    # Shipped resources to preload, borrowed from shipped caches in ONE pass
+    # before the caches are written: each pass reads and walks every shipped
+    # cache, and one per source made a hero build take minutes.
+    borrow: list[str] = []
+    for c in kit_copies:
+        # A copy preloads as itself plus everything its source does.
+        art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
+        borrow.append(c.source)
 
     def material(donor: str | None, maps: dict, tag: str, what: str) -> str:
         """Clone ``donor`` with the mod's maps (``{"albedo": path, ...}``)."""
@@ -441,8 +473,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         # A swapped-in resource the preload caches do not list is a null in
         # the preloaded vector (the stale-cache crash), so borrow its closure
         # from a shipped cache that already loads it.
-        art.extend(_borrow_closure([str(v) for v in references.values()
-                                    if "\\" in str(v) and "." in str(v)], out_dir, hid))
+        borrow.extend(str(v) for v in references.values() if "\\" in str(v) and "." in str(v))
 
     # Talent cards of the hero's own. A card's text is read by the key its
     # skill controller names (the herodef row is not what is shown, 2026-09-12),
@@ -571,7 +602,9 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # anything is written (engine/ability_edit.py).
             from ...engine import ability_edit as AE
             try:
-                res = AE.apply(base_bytes, abilities, main=b.stem, seed=f"{mod_id}:{hid}")
+                read = HK.reader(kit_copies) if kit_copies else None
+                res = AE.apply(base_bytes, abilities, main=b.stem, seed=f"{mod_id}:{hid}",
+                               read=read)
             except AE.AbilityEditError as e:
                 raise ContentError(f"hero {hid}: {e}") from e
             base_bytes = res.files
@@ -580,8 +613,9 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # An attack's own projectile is preloaded by the lines its build
             # recorded (the entity, its mesh, maps and effects); no shipped
             # cache can list it, so it is not borrowed.
-            own_refs = {a.entity_ref for a in attack_entities}
-            art.extend(_borrow_closure(sorted(res.resources - own_refs), out_dir, hid))
+            own_refs = {a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies}
+            borrow.extend(res.resources - own_refs)
+        art.extend(_borrow_closure(sorted(set(borrow)), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
                   R.cooked(base_bytes[stem_of[ref]], b.alias.guid, guid)
                   for ref in b.family}
@@ -598,6 +632,11 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             blob = ES.replace_strings(built.entity, swaps, require_all=False)
             # Fresh part ids: it must not share the template projectile's.
             put(built.entity_rel, PC.restamp_entity_guids(blob, built.entity_rel))
+        for c in kit_copies:
+            # Its reads of its owner aimed at this hero's final entity.
+            mref = R.entity_ref(main_ref)
+            blob = HK.build_copy(c, family[H.entity_rel(mref)], mref)
+            put(H.entity_rel(c.ref), PC.restamp_entity_guids(blob, H.entity_rel(c.ref)))
         put(H.APP_SETTINGS_DECODED, H.add_alias(
             app, H.Alias(guid, f"Hero_{hid}", R.entity_ref(b.alias.stream))).encode(
                 "utf-8", errors="surrogateescape"))
@@ -778,7 +817,8 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     extra = tuple(art + portrait_lines
                   + [f"EntitySettings|{r}|oCEntitySettingsResource" for r, _n in outfit_refs])
     lines = RC.parse(herodef_cache)
-    lines = [ln for ln in lines if ln != _self_line(HD.stem(base) or base)] + [_self_line(hid)]
+    own = _self_line(HD.stem(base) or base)     # once: it lists every herodef
+    lines = [ln for ln in lines if ln != own] + [_self_line(hid)]
     base_cache = RC.render(sorted(set(lines)))
     put(RC.cache_path_for(_rel(hid)),
         R.cache(base_cache, extra) if R is not None
@@ -937,7 +977,11 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
     from .poi import _reachable
     lines: list[str] = []
     found: set[str] = set()
-    for def_rel in corpus.rels("Definitions/", ".gen"):
+    # Definitions first; then entities, whose caches are the only ones naming
+    # some art (a skin's full-resolution material: a herodef lists _LowRes).
+    import itertools
+    for def_rel in itertools.chain(corpus.rels("Definitions/", ".gen"),
+                                   corpus.rels("EntitySettings/", ".gen")):
         raw = corpus.read(RC.cache_path_for(def_rel))
         if raw is None:
             continue
@@ -951,7 +995,7 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
             break
     missing = sorted(set(targets) - found)
     if missing:
-        raise ContentError(f"hero {hid}: no shipped preload cache lists "
+        raise ContentError(f"{hid}: no shipped preload cache lists "
                            f"{', '.join(map(repr, missing))}, so it cannot be referenced "
                            f"safely (a resource the caches miss is a crash at load)")
     seen, extra = _reachable(targets, lines, out_dir)

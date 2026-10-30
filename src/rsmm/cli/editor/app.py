@@ -36,6 +36,7 @@ TABS = {
     "items": ("Items", "/content/?tab=items"),
     "talents": ("Talents", "/content/?tab=talents"),
     "scripts": ("Scripts", "/content/?tab=scripts"),
+    "hero": ("Hero", "/hero/"),
     "abilities": ("Abilities", "/abilities/"),
     "map": ("Map", "/map/"),
     "save": ("Save file", "/save/"),
@@ -130,8 +131,8 @@ Route = Callable[[Request], object]
 
 
 def _editors() -> dict[str, object]:
-    from rsmm.cli.editor import abilities, content, maps, saves
-    return {m.MOUNT: m for m in (content, abilities, maps, saves)}
+    from rsmm.cli.editor import abilities, content, herobuilder, maps, saves
+    return {m.MOUNT: m for m in (content, herobuilder, abilities, maps, saves)}
 
 
 @cache

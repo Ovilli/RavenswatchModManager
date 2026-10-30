@@ -6,6 +6,7 @@ import { Coffee, Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
 import { Alegreya, Alegreya_Sans, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
 import Link from 'next/link';
+import Script from 'next/script';
 import { BanGate } from './components/ban-gate';
 import { Nav } from './nav';
 import { Providers } from './providers';
@@ -65,6 +66,8 @@ export const metadata: Metadata = {
   // hosts compete as separate URLs and split their own ranking signals.
   alternates: { canonical: '/' },
   icons: '/logo.png',
+  // AdSense site-ownership verification (alongside the loader script).
+  other: { 'google-adsense-account': 'ca-pub-9139637424510522' },
   // Site-wide social-card defaults. Per-mod / per-collection pages override
   // title/description/images in their own layout's generateMetadata.
   openGraph: {
@@ -292,6 +295,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </footer>
         <Analytics />
         <SpeedInsights />
+        {/* Google AdSense loader (Auto Ads). Production only — Google rejects
+            the script from localhost/preview. Website only, never the desktop app. */}
+        {process.env.NODE_ENV === 'production' ? (
+          <Script
+            id="adsbygoogle-init"
+            strategy="afterInteractive"
+            async
+            crossOrigin="anonymous"
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9139637424510522"
+          />
+        ) : null}
       </body>
     </html>
   );

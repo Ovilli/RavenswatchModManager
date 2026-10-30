@@ -225,28 +225,6 @@ def _parse_main_body(payload: bytes) -> tuple[list[Bone], int, bool, tuple, int]
     return bones, submesh_count, has_skeleton, aabb, len(payload)
 
 
-def _skip_subobject(buf: bytes, pos: int) -> int:
-    """Advance past one BEGIN..END bracketed sub-object. Stride-4 scan."""
-    assert buf[pos:pos + 4] == MARK_BEGIN
-    pos += 4
-    depth = 1
-    n = len(buf)
-    while pos + 4 <= n:
-        tag = buf[pos:pos + 4]
-        if tag == MARK_BEGIN:
-            depth += 1
-            pos += 4
-            continue
-        if tag == MARK_END:
-            depth -= 1
-            pos += 4
-            if depth == 0:
-                return pos
-            continue
-        pos += 1
-    raise ValueError("unterminated sub-object")
-
-
 # oCMeshBuffer default-buffer / uncompressed vertex stride (Stage 5c.i, SOLVED).
 # 48 B = position(12) + normal(12) + uv0(8) + tangent(12) + handedness(4).
 _VERTEX_STRIDE = 48

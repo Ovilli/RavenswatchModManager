@@ -44,7 +44,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "enemy": frozenset({
         # mode = "clone"
         "base", "name", "display_name", "tribe", "flags", "add_flags",
-        "power", "weight", "entity",
+        "power", "weight", "entity", "ai", "reskin",
         # mode = "override"
         "mode", "pools", "enemies", "exclude", "mix", "seed", "cross_biome",
         "imports", "repoint_pools", "casts",
@@ -55,7 +55,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "base", "name", "description", "model", "transform", "albedo", "mra",
         "normal", "portrait", "own_entity", "weapons", "animations", "outfits",
         "values", "references", "abilities", "skills",
-        "placeholder", "memoirs", "effects", "hide", "attacks", "dlc_owner",
+        "placeholder", "memoirs", "effects", "hide", "attacks", "dlc_owner", "kit",
     }),
     "ability": frozenset({"hero", "abilities"}),
     "entity": frozenset({"entity", "steps"}),

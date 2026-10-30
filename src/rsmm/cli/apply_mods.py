@@ -1943,7 +1943,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
     Returns the number of files synced.
     """
     game_mods = game_dir / "mods"
-    game_mods.mkdir(exist_ok=True)
+    if not dry_run:
+        game_mods.mkdir(exist_ok=True)
     synced = 0
 
     if not mods:
@@ -1956,7 +1957,8 @@ def _sync_mod_manifests(mods: list[Mod], game_dir: Path, dry_run: bool) -> int:
 
         enabled = mod.enabled
         dst_dir = game_mods / mod_dir.name
-        dst_dir.mkdir(exist_ok=True)
+        if not dry_run:                 # a dry run left an empty folder per mod
+            dst_dir.mkdir(exist_ok=True)
 
         # Sync manifest (always).
         if _sync_one_file(manifest, dst_dir / "manifest.toml", dry_run):
@@ -2184,7 +2186,44 @@ def _recover_game_update(cooking: Path, game_dir: Path) -> bool:
 
     print("Game update detected. Recovering...", flush=True)
 
-    # 1. Clear stale backups — they point to pre-update originals.
+    # 0. Put back every override the update did NOT rewrite. Steam patches only
+    # the files whose depot content changed; an override on any other file is
+    # still on disk, and its .rsmm.bak is still the one true vanilla copy.
+    # Sweeping that backup and then clearing state made the next apply back up
+    # the MOD's bytes as "the original" — so `restore --all` reinstalled mod
+    # content for good. A file still holding exactly the bytes we wrote cannot
+    # have been touched by the update, so a normal restore is correct for it
+    # (and drops mod-added files the same way an uninstall would).
+    state = State(cooking)
+    kept = 0
+    for enc, entry in list(state.active.items()):
+        want = entry.get("src_sha256")
+        try:
+            dest = encoded_to_dest(enc, cooking, game_dir)
+            untouched = bool(want) and dest.is_file() and sha256(dest) == want
+        except (OSError, ValueError):
+            untouched = False
+        if untouched and restore_one(enc, cooking, game_dir, state, dry_run=False):
+            kept += 1
+    if kept:
+        print(f"  + restored {kept} override(s) the update left in place")
+    # Same rule for the manifest: one the update did not rewrite still starts
+    # with the pristine backup and ends with our records — dropping the backup
+    # would turn those records into "vanilla" for every later apply.
+    manifest = game_dir / USEDRSCLIST_REL
+    manifest_bak = manifest.with_name(manifest.name + BACKUP_SUFFIX)
+    if manifest_bak.exists() and manifest.exists():
+        try:
+            pristine = _read_usedrsclist(manifest_bak)
+            live = _read_usedrsclist(manifest)
+        except (OSError, ValueError):
+            pristine = live = None
+        if (pristine and live and pristine[0] == live[0]
+                and live[1][:len(pristine[1])] == pristine[1]):
+            restore_usedrsclist(game_dir, dry_run=False)
+
+    # 1. Clear stale backups — what remains are pre-update originals of files
+    # the update rewrote.
     #
     # UsedRscList.ot's backup lives one level ABOVE `cooking` (it sits in
     # DarkTalesResources/, not DarkTalesResources/_Cooking/), so the rglob
@@ -2376,7 +2415,9 @@ def _print_apply_summary(additions, removals, synthesized, blocked: int,
 
 
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
-    _recover_game_update(cooking, game_dir)
+    # Recovery deletes backups and state; a dry run must not.
+    if not args.dry_run:
+        _recover_game_update(cooking, game_dir)
     if not _refresh_stale_asset_map(game_dir):
         return 1
     dec2enc = load_asset_map(repo)
@@ -2533,7 +2574,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 verify_landed(enc, mod_id, dest, src_sha)
 
     if manifest_syncs:
-        print(f"Synced {manifest_syncs} mod file(s) (manifests/lua) to game mods directory")
+        print(f"{'Would sync' if args.dry_run else 'Synced'} {manifest_syncs} mod file(s) "
+              "(manifests/lua) to game mods directory")
 
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])

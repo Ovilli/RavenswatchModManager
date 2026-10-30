@@ -10405,6 +10405,102 @@ do
     R.damage.is_enemy = is_enemy
     I.write_u32(SP + 0x18, 0); I.write_u64(SP + 0x28, 0)
 
+    -- template_named reads the default archive's path index the way
+    -- Resource_LookupByPath probes it: ctrl +0x38 (high bit clear = full),
+    -- 0x18-byte slots +0x40 = {char* key, u32 len, ..., resource @+0x10},
+    -- mask +0x50, chained archives at +0xb8. Lowercased keys, '\' separators.
+    local ARCH = I.module_base() + (VA["ResourceArchive_Default"] - 0x140000000)
+    local CTRL, SLOTS, KEYS = 0x66000000, 0x66100000, 0x66200000
+    local function key(addr, s)
+        for i = 1, #s do I.write_u8(addr + i - 1, s:byte(i)) end
+        I.write_u8(addr + #s, 0)
+        return addr
+    end
+    for i = 0, 15 do I.write_u8(CTRL + i, 0x80) end
+    local function slot(i, k, res)
+        I.write_u8(CTRL + i, 0x12)
+        I.write_u64(SLOTS + i * 0x18, key(KEYS + i * 0x100, k))
+        I.write_u32(SLOTS + i * 0x18 + 8, #k | 0x80000000)
+        I.write_u64(SLOTS + i * 0x18 + 0x10, res)
+    end
+    slot(3, "enemies\\wolves\\kumb.entity.ot", LOOSE)           -- same length, other path
+    slot(5, "enemies\\wolves\\kuma.entity.ot", RES)
+    slot(9, "enemies\\wolves\\notent.entity.ot", LOOSE)
+    I.write_u64(ARCH + 0x38, CTRL); I.write_u64(ARCH + 0x40, SLOTS)
+    I.write_u64(ARCH + 0x50, 15); I.write_u64(ARCH + 0xb8, 0)
+    check(R.spawn.template_named("Enemies\\Wolves\\Kuma.entity.ot") == RES,
+          "template_named finds a loaded entity by path, case-insensitively")
+    check(R.spawn.template_named("Enemies/Wolves/Kuma.entity.ot") == RES,
+          "and takes '/' separators")
+    check(R.spawn.template_named("Enemies\\Wolves\\Bear.entity.ot") == nil,
+          "a path the archive does not hold is nil")
+    check(R.spawn.template_named("Enemies\\Wolves\\NotEnt.entity.ot") == nil,
+          "a loaded resource that is not an entity is refused")
+    slot(11, "entitysettings\\enemies\\hogs\\boar.entity.ot", RES)
+    check(R.spawn.template_named("Enemies\\Hogs\\Boar.entity.ot") == RES,
+          "a key with a root in front of the path matches too")
+    check(R.spawn.template_named("Hogs\\Boar.entity.ot") == RES,
+          "on a whole path component")
+    check(R.spawn.template_named("ogs\\Boar.entity.ot") == nil,
+          "but never on half a folder name")
+    local keys, archives, n = R.spawn.loaded_like("WOLVES")
+    check(#keys == 3 and archives == 1 and n == 4,
+          "loaded_like lists matching keys and counts what it walked")
+    calls = {}
+    check(R.spawn.named("Enemies\\Wolves\\Kuma.entity.ot", { offset = { 3, 0, 0 } }) == true,
+          "named() queues a spawn of it")
+    R.schedule._main_tick()
+    check(calls[1] and calls[1].settings == RES + 0x98 and about(calls[1].pos[1], 13),
+          "at the hero plus the offset, from the resource's embedded settings")
+    -- load_enemy: an enemy no camp has built is loaded the way the picker does
+    -- it, preload set then entity ref, and only after the provider the resolver
+    -- dereferences unconditionally is proven to exist.
+    local DEF, CD, PARR, PROV, PSET_E = 0x67000000, 0x67100000, 0x67110000, 0x67120000, 0x67130000
+    local RES2 = 0x67200000
+    obj(RES2, "oCEntitySettingsResource"); settings(RES2 + 0x98)
+    key(0x67300000, "Enemies\\Wolves\\Bear2.entity.ot")
+    I.write_u64(DEF + 0x288, 0x67300000)
+    I.write_u64(DEF + 0x2a8, CD)
+    I.write_u64(CD + 0x30, PARR); I.write_u32(CD + 0x38, 1)
+    I.write_u64(PARR, PROV); I.write_u32(PROV + 8, 0x53b64d)
+    I.write_u64(PROV + 0x10, obj(0x67140000, "oCResourceProvider"))
+    I.write_u32(DEF + 0x68 + 0x200, 1); I.write_u64(DEF + 0x68 + 8, PSET_E)
+    I.write_u64(PSET_E + 0x20, 7)
+    local loaded, resolved = {}, {}
+    engine["Definition_LoadPreloadSet"] = function(set, n) loaded[#loaded + 1] = { set, n } end
+    engine["ResourceRef_Resolve"] = function(ref, cd, out, pol)
+        resolved[#resolved + 1] = { ref, cd, out, pol }
+        I.write_u64(out, RES2)
+    end
+    local saved_instances = R.defs.instances
+    R.defs.instances = function(cls) return cls == "oCDtEnemyDefinition" and { DEF } or {} end
+
+    calls = {}
+    local spawned
+    check(R.spawn.named("Enemies\\Wolves\\Bear2.entity.ot",
+                        { on_spawned = function(e) spawned = e end }) == true,
+          "named() queues a load for an entity nothing has built")
+    R.schedule._main_tick(); R.schedule._main_tick()
+    check(#loaded == 1 and loaded[1][1] == DEF + 0x68 and loaded[1][2] == 0,
+          "the def's preload set loads first: (def+0x68, NULL)")
+    check(#resolved == 1 and resolved[1][1] == DEF + 0x288 and resolved[1][2] == CD
+          and resolved[1][3] == DEF + 0x2b8 and resolved[1][4] == 0,
+          "then the entity ref: (def+0x288, classDesc, def+0x2b8, NULL policy)")
+    check(calls[1] and calls[1].settings == RES2 + 0x98 and spawned ~= nil,
+          "and the loaded body is spawned")
+    check(R.spawn.load_enemy("Enemies\\Wolves\\Bear2.entity.ot") == RES2 and #resolved == 1,
+          "a body already resolved is reused, not resolved again")
+
+    I.write_u64(DEF + 0x2b8, 0); I.write_u32(PROV + 8, 0x1234)
+    check(R.spawn.load_enemy("Enemies\\Wolves\\Bear2.entity.ot") == nil and #resolved == 1,
+          "a class with no 0x53b64d provider is refused before the engine is called")
+    check(R.spawn.load_enemy("Enemies\\Wolves\\Nope.entity.ot") == nil,
+          "a path no loaded definition names is refused")
+    R.defs.instances = saved_instances
+    engine["Definition_LoadPreloadSet"], engine["ResourceRef_Resolve"] = nil, nil
+
+    I.write_u64(ARCH + 0x38, 0); I.write_u64(ARCH + 0x40, 0); I.write_u64(ARCH + 0x50, 0)
+
     engine["EntityStore_CreateEntity"] = nil
     I.write_u64(ENT, saved_ent_vft)
 end

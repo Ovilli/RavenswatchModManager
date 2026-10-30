@@ -9,8 +9,10 @@
 // * A token is honoured on the PUBLISH endpoints only (`TOKEN_ROUTES`). On every
 //   other route a request carrying one is anonymous: a leaked token can upload a
 //   version of its owner's mods — which still has to pass the malware scan before
-//   anyone can download it — but it cannot read the account, change a password,
-//   delete a mod, create or list tokens, or moderate.
+//   anyone can download it — and create or edit its owner's guides, which an
+//   edit always sends back to the admin review queue before anyone else sees
+//   it. It cannot read the account, change a password, delete a mod or guide,
+//   create or list tokens, approve anything, or moderate.
 // * Tokens are minted and revoked from a signed-in session only, so a stolen
 //   token cannot mint a replacement or undo its own revocation.
 // * Every token expires (max 365 days) and a user holds at most
@@ -64,6 +66,10 @@ export const TOKEN_ROUTES: ReadonlyArray<{ method: string; path: RegExp }> = [
   // Finalize + queue the malware scan, then poll it.
   { method: 'POST', path: new RegExp(`^/api/mods/versions/${UUID}/scan/?$`) },
   { method: 'GET', path: new RegExp(`^/api/mods/versions/${UUID}/scan-status/?$`) },
+  // `rsmm publish guide`: create a guide, or edit + submit one you own. Both
+  // handlers owner-check; content edits re-queue for admin review.
+  { method: 'POST', path: /^\/api\/guides\/?$/ },
+  { method: 'PATCH', path: /^\/api\/guides\/[a-z0-9][a-z0-9_-]{1,79}\/?$/ },
 ];
 
 export function isTokenRoute(method: string, path: string): boolean {

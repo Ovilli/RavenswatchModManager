@@ -2,16 +2,7 @@ import { ApiError, isRateLimited } from '@rsmm/api-client';
 import { ProgressBar } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Loader2,
-  Plus,
-  UserPlus,
-  X,
-} from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Plus, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
@@ -26,6 +17,7 @@ import {
   StatPill,
 } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
+import { ScreenshotLightbox } from '../components/screenshot-lightbox';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
@@ -482,97 +474,5 @@ function Row({ k, v }: { k: string; v: string }) {
         <StatPill value={v} className="tracking-normal" />
       </dd>
     </div>
-  );
-}
-
-function ScreenshotLightbox({
-  shots,
-  idx,
-  onClose,
-  onPrev,
-  onNext,
-}: {
-  shots: { url: string; caption?: string }[];
-  idx: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const t = useT();
-  const active = shots[idx];
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft') onPrev();
-      else if (e.key === 'ArrowRight') onNext();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onPrev, onNext]);
-
-  if (!active) return null;
-
-  return (
-    <dialog
-      open
-      aria-label={active.caption || t('Screenshot {n}', { n: idx + 1 })}
-      className="fixed inset-0 z-[90] bg-pitch/95"
-    >
-      <div className="absolute inset-0 overflow-y-auto">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute inset-0 h-full w-full cursor-default"
-          aria-label={t('Close preview')}
-        />
-        <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
-          <figure
-            onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
-          >
-            <img
-              src={active.url}
-              alt={active.caption || t('Screenshot {n}', { n: idx + 1 })}
-              className="max-w-full rounded-md object-contain shadow-2xl"
-            />
-            <figcaption className="max-w-3xl text-center text-sm text-ash">
-              {active.caption ||
-                t('Screenshot {n} of {total}', { n: idx + 1, total: shots.length })}
-            </figcaption>
-            <p className="font-mono text-xs text-ash/70">
-              {idx + 1} / {shots.length}
-            </p>
-          </figure>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="fixed right-4 top-4 z-20 rounded-md bg-oxblood/60 p-2 text-parchment hover:bg-oxblood"
-        aria-label={t('Close')}
-      >
-        <X className="h-5 w-5" />
-      </button>
-      {shots.length > 1 ? (
-        <>
-          <button
-            type="button"
-            onClick={onPrev}
-            className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-            aria-label={t('Previous')}
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-oxblood/60 p-3 text-parchment hover:bg-oxblood"
-            aria-label={t('Next')}
-          >
-            <ChevronRight className="h-6 w-6" />
-          </button>
-        </>
-      ) : null}
-    </dialog>
   );
 }

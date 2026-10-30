@@ -662,32 +662,6 @@ def load_corpus(corpus_dir: Path) -> list[bytes]:
             for p in sorted(corpus_dir.rglob("*.EntitySettingsResource.gen"))]
 
 
-def load_link_anchors(mo_dir: Path) -> list[bytes]:
-    """Cooked bytes of the parent prefab/registry entities a magical object
-    links to **by GUID** but which live *outside* ``mo_dir``.
-
-    These MUST be part of the GUID-ownership corpus. :func:`own_node_guids`
-    treats a GUID seen in <=1 corpus file as the item's own node and re-mints
-    it; a cross-file link to one of these parents is present in exactly one
-    *item* file, so without the parent in the corpus it is misclassified as
-    own and re-minted — severing the item's link to its parent model. The
-    clone then still loads (and may even drop), but the engine's
-    ``MagicalObjectEntityCollector`` never registers it, so it is absent from
-    the magical-objects pool and the compendium entirely.
-
-    ``mo_dir`` is ``.../EntitySettings/Objects/Magical_Objects``. The anchors
-    are its siblings one and two levels up; missing files are skipped.
-    """
-    objects = mo_dir.parent          # .../EntitySettings/Objects
-    entitysettings = objects.parent  # .../EntitySettings
-    candidates = (
-        objects / "Magical_Objects_Model.entity.ot.EntitySettingsResource.gen",
-        entitysettings / "Objects_Common"
-        / "Magical_Object_Model.entity.ot.EntitySettingsResource.gen",
-    )
-    return [p.read_bytes() for p in candidates if p.is_file()]
-
-
 #: Decoded path of the magical-objects text bank (base = keys file).
 MAGIC_TEXT_BANK = "Text/Magical_Objects~GAM.xls.LocalText.gen"
 
@@ -814,7 +788,37 @@ def build_magic_item(
         # A modifier name that embeds the base id was renamed with the item.
         names = {m.name for m in IM.list_modifiers(ent)}
         target = modifier if modifier in names else modifier.replace(base_id, new_id)
-        ent = IM.set_modifier_stat(ent, target, stat)
+        if stat == IM.STARS_OF_FATE:
+            from . import entity_fields as EF
+            from . import entity_parts as P
+            from . import item_effect as IE
+            from .entity_graph_edit import EntityFile
+            _, amounts = item_numbers(ent)
+            ef = EntityFile(ent, new_id)
+            for c in ef.graph().components:
+                for f in EF.fields(c):
+                    if f.kind == "ref[]":
+                        for i in reversed(range(len(f.items))):
+                            if f.items[i].text.rstrip().rsplit("\\", 1)[-1] == target:
+                                ef.remove_ref(c.name, f.name, i)
+                    elif (f.kind == "ref" and f.text
+                          and f.text.rstrip().rsplit("\\", 1)[-1] == target):
+                        ef.set_ref(c.name, f.name, None)
+            val_name = ((amounts.get(modifier) or {}).get("label")
+                        or (amounts.get(target) or {}).get("label"))
+            amount = 1
+            if val_name:
+                cur_v = part_literal(ent, val_name)
+                for vp in (value_patches or []):
+                    if vp[0] == val_name:
+                        cur_v = vp[2]
+                if cur_v is not None and cur_v > 0:
+                    amount = int(round(cur_v))
+            w = P.PartWriter(ef, f"mod_star:{new_id}")
+            IE.add_stars_of_fate(w, IE.Effect(IM.STARS_OF_FATE, amount), "")
+            ent = ef.to_bytes()
+        else:
+            ent = IM.set_modifier_stat(ent, target, stat)
     for vp in (value_patches or []):
         label, old, new = vp[0], vp[1], vp[2]
         clear = len(vp) > 3 and bool(vp[3])

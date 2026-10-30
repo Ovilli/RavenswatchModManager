@@ -110,6 +110,13 @@ inline CustomizeChallengePage_OnToggleModifier_fn CustomizeChallengePage_OnToggl
     return reinterpret_cast<CustomizeChallengePage_OnToggleModifier_fn>(rsmm::fn_resolve(Sym::CustomizeChallengePage_OnToggleModifier_Pattern));
 }
 
+// Definition_LoadPreloadSet  (Definition_LoadPreloadSet)
+//   void(void* preloadSet, int* outCount)
+using Definition_LoadPreloadSet_fn = void(*)(void*, void*);
+inline Definition_LoadPreloadSet_fn Definition_LoadPreloadSet() {
+    return reinterpret_cast<Definition_LoadPreloadSet_fn>(rsmm::fn_resolve(Sym::Definition_LoadPreloadSet_Pattern));
+}
+
 // Definition_PostLoad  (Definition_PostLoad)
 //   bool(void* definition)
 using Definition_PostLoad_fn = uint32_t(*)(void*);
@@ -747,6 +754,13 @@ inline Registry_EnumInstances_fn Registry_EnumInstances() {
 using Registry_UnregisterInstance_fn = void(*)(void*);
 inline Registry_UnregisterInstance_fn Registry_UnregisterInstance() {
     return reinterpret_cast<Registry_UnregisterInstance_fn>(rsmm::fn_resolve(Sym::Registry_UnregisterInstance_Pattern));
+}
+
+// ResourceRef_Resolve  (ResourceRef_Resolve)
+//   void(void* refBlock, void* classDesc, void** outResolved, void* policy)
+using ResourceRef_Resolve_fn = void(*)(void*, void*, void*, void*);
+inline ResourceRef_Resolve_fn ResourceRef_Resolve() {
+    return reinterpret_cast<ResourceRef_Resolve_fn>(rsmm::fn_resolve(Sym::ResourceRef_Resolve_Pattern));
 }
 
 // Resource_LookupByPath  (Resource_LookupByPath)

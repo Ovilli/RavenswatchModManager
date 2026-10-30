@@ -266,6 +266,10 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                    like its base). HP/damage/name live on that entity —
                    not yet patchable, so a clone shares the base's stats
                    and on-screen name until entity cloning lands.
+        ``ai``     table: the clone gets its own copy of the base's entity
+                   with AI numbers (``detect_radius``, ``leash``, ... or
+                   ``values`` by part name) and ``attacks`` (priority order)
+                   applied. See :mod:`rsmm.engine.enemy_ai`. Experimental.
 
     Returns the def at ``<out_dir>/Definitions/Enemies/<id>.enemydef.ot.DtEnemyDefinition.gen``
     and its sibling ``<id>.enemydef.UsedRscCache.ot`` (see :func:`_emit_clone_cache`).
@@ -356,6 +360,17 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         ns = body["entity_ref"][0] or "EntitySettings"
         body["entity_ref"] = [ns, entity]
 
+    # The AI lives on the entity, which the clone shares with its base until it
+    # gets one of its own: a retuned copy of the base's, streamed by every
+    # biome pool that streams the base (see `_emit_ai`).
+    ai_files: list[Path] = []
+    own_entity, own_lines = None, []
+    if defn.fields.get("ai") is not None or defn.fields.get("reskin") is not None:
+        own_entity, ai_files, own_lines = _emit_ai(
+            mod_id, defn, body["entity_ref"][1] or "",
+            _tribe_of_ref(body["tribe_ref"][1] or ""), out_dir)
+        body["entity_ref"] = [body["entity_ref"][0] or "EntitySettings", own_entity]
+
     # --- re-emit cooked record under the new id --------------------------- #
     cf.sections[-1] = cooked.Section(payload=spec.encode_body(body))
     new_cooked = cooked.emit(cf)
@@ -369,11 +384,125 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         mod_id, defn.id, base, body["tribe_ref"][1], body["flags"],
         body["power"],
     )
-    return [dest, _emit_clone_cache(defn.id, base, decoded_rel, body, entity, out_dir)]
+    return [dest, _emit_clone_cache(defn.id, base, decoded_rel, body, entity, out_dir,
+                                    own_lines=own_lines), *ai_files]
+
+
+def _emit_ai(mod_id: str, defn: ContentDef, base_entity: str, tribe: str | None,
+             out_dir: Path) -> tuple[str, list[Path], list[str]]:
+    """The clone's own entity, ``<base's folder>\\<id>.entity.ot``: the base's
+    variant with ``ai`` applied (`rsmm.engine.enemy_ai`), plus every biome
+    pool that streams the base, now streaming it too. An entity no pool lists
+    is never loaded for that biome, so the def would resolve to nothing.
+
+    ``reskin`` (path -> path) also copies the family model, as
+    ``<id>_Model.entity.ot``, with the swaps applied to both, and borrows the
+    preload closure of everything swapped in from the shipped caches that
+    already list it. Returns the entity ref, the files and the cache lines."""
+    from ...engine import enemy_ai as AI
+    ai = defn.fields.get("ai") or {}
+    swaps = defn.fields.get("reskin") or {}
+    if not isinstance(ai, dict) or not isinstance(swaps, dict):
+        raise ContentError(f"enemy {defn.id}: 'ai' and 'reskin' must be tables.")
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in swaps.items()):
+        raise ContentError(f"enemy {defn.id}: 'reskin' maps a path to a path.")
+    if defn.fields.get("entity") is not None:
+        raise ContentError(f"enemy {defn.id}: set 'entity' or 'ai'/'reskin', not both — "
+                           f"those build the clone an entity of its own from the base's.")
+    folder = base_entity.replace("/", "\\").rsplit("\\", 1)[0]
+    ref = f"{folder}\\{defn.id}.entity.ot"
+    if corpus.exists(AI.entity_rel(ref)):
+        raise ContentError(f"enemy {defn.id}: {ref} is a shipped entity; pick another id.")
+    lines = [f"EntitySettings|{ref}|oCEntitySettingsResource"]
+    files: list[Path] = []
+    new_attacks = ai.get("new_attacks") or []
+    try:
+        read, borrow = corpus.read, list(swaps.values())
+        if new_attacks:
+            # Attacks live in the family model, so they are added to the copy
+            # FIRST, and the variant's selector is built against that copy.
+            from ...engine import entity_components as ECM
+            old_model = (ECM.parents(corpus.read(AI.entity_rel(base_entity)) or b"") or [""])[0]
+            model_raw = corpus.read(AI.entity_rel(old_model)) if old_model else None
+            if model_raw is None:
+                raise AI.EnemyAiError(f"{base_entity} has no family model to add attacks to")
+            model_raw, anims = AI.add_attacks(model_raw, AI._stem(old_model), new_attacks,
+                                              seed=f"{folder}\\{defn.id}_Model.entity.ot")
+            borrow += anims
+            model_rel = AI.entity_rel(old_model)
+
+            def read(rel, _raw=model_raw):
+                return _raw if rel == model_rel else corpus.read(rel)
+        blob = AI.build(base_entity, ai, seed=ref, read=read)
+        if swaps or new_attacks:
+            model_ref = f"{folder}\\{defn.id}_Model.entity.ot"
+            if corpus.exists(AI.entity_rel(model_ref)):
+                raise ContentError(f"enemy {defn.id}: {model_ref} is a shipped entity.")
+            blob, model = AI.reskin(blob, model_ref, swaps, read=read)
+            files.append(_put(out_dir, AI.entity_rel(model_ref), model))
+            lines.append(f"EntitySettings|{model_ref}|oCEntitySettingsResource")
+            if borrow:
+                from .heros import _borrow_closure
+                lines += _borrow_closure(sorted(set(borrow)), out_dir, defn.id)
+    except AI.EnemyAiError as e:
+        raise ContentError(f"enemy {defn.id}: {e}") from e
+    dest = _put(out_dir, AI.entity_rel(ref), blob)
+    # Streamed wherever the base is, and wherever the clone's tribe fights: a
+    # def loads on every map listing its tribe, and a camp there may pick it.
+    # Each new pool entry copies an entry of that pool (the base's, else one of
+    # the tribe's own enemies), so it carries that biome's pool settings.
+    tribe_ents = {r["entity"].lower() for r in EP.enemy_index().values()
+                  if r["tribe"] == tribe and r["entity"]}
+    pools = []
+    for biome, ents in EP.pools().items():
+        donor = next((e for e in ents if e.lower() == base_entity.lower()), None) \
+            or next((e for e in ents if e.lower() in tribe_ents), None)
+        if donor is not None:
+            p = _append_pool(biome, donor, ref, out_dir, defn.id)
+            if p is not None:
+                pools.append(p)
+    if not pools:
+        raise ContentError(f"enemy {defn.id}: no biome pool streams {base_entity}, so "
+                           f"its copy would never load; clone a camp enemy.")
+    _log.info("enemy %s/%s: own AI entity %s (pooled in %d biome(s))",
+              mod_id, defn.id, ref, len(pools))
+    return ref, [dest, *files, *pools], lines
+
+
+def _put(out_dir: Path, rel: str, blob: bytes) -> Path:
+    dest = out_dir / Path(*rel.split("/"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(blob)
+    return dest
+
+
+def _append_pool(biome: str, base: str, ref: str, out_dir: Path, defn_id: str) -> Path | None:
+    """Add a pooling entry for ``ref`` to ``biome``'s ``EntityPooling`` level: a
+    copy of ``base``'s entry (same pool settings), renamed. Read from this
+    mod's own copy when an earlier block already wrote one. None when listed."""
+    from ...engine import level_placements as LP
+    rel = EP.pool_cooked_rel(biome)
+    dest = out_dir / Path(*rel.split("/"))
+    raw = dest.read_bytes() if dest.is_file() else EP.corpus_read(rel)
+    if raw is None:
+        raise SchemaNotMined(f"enemy {defn_id}: {rel} is missing, so {biome}'s pool "
+                             f"cannot stream the clone's entity.")
+    if ref.encode("utf-8") in raw:
+        return None
+    try:
+        new = LP.copy_object(raw, base.encode("utf-8"),
+                             {base.encode("utf-8"): ref.encode("utf-8")},
+                             rename=f"{defn_id}_PoolingSettings")
+    except LP.LevelPlacementError as e:
+        raise ContentError(f"enemy {defn_id}: {biome}'s pool: {e}") from e
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(new)
+    return dest
 
 
 def _emit_clone_cache(clone_id: str, base: str, decoded_rel: str, body: dict,
-                      entity: str | None, out_dir: Path) -> Path:
+                      entity: str | None, out_dir: Path, *,
+                      own_lines: list[str] = ()) -> Path:
     """Write the clone's own ``<id>.enemydef.UsedRscCache.ot``.
 
     81 of 81 shipped enemydefs carry one, and a clone used to ship without it —
@@ -417,6 +546,9 @@ def _emit_clone_cache(clone_id: str, base: str, decoded_rel: str, body: dict,
                 f"so the closure of {entity!r} cannot be borrowed."
             )
         lines |= set(RC.parse(donor))
+    # The clone's own entity (and family model copy, and the art a reskin
+    # swapped in) on top of the base's closure.
+    lines |= set(own_lines)
 
     dest = out_dir / Path(*RC.cache_path_for(decoded_rel).split("/"))
     dest.parent.mkdir(parents=True, exist_ok=True)

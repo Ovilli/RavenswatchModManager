@@ -3063,10 +3063,11 @@ end
 --   R.spawn.copy(entity, {offset={2,0,0}}) another of that entity, beside it
 --   R.spawn.near(template, {offset=...})   at the hero
 --   R.spawn.at(template, {x,y,z}, opts)    queued to the main thread
+--   R.spawn.named(path, {offset=...})      a loaded entity, by its path, at the hero
 --
 -- Refused on a session client. Not yet proven in-game; see the module header.
 do
-    local ok, x = _submodule_fn("spawn", { R = R, I = I })
+    local ok, x = _submodule_fn("spawn", { R = R, I = I, _va_ok = _va_ok })
     if ok and type(x) == "table" then R.spawn = x end
 end
 

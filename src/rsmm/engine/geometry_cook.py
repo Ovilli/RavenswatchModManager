@@ -187,23 +187,6 @@ def glb_to_submeshes(glb_bytes: bytes) -> list[_geo.SubMesh]:
     return _glb_parse(glb_bytes)[0]
 
 
-def glb_skin_influences(glb_bytes: bytes) -> list[Influences | None]:
-    """Per-submesh bone influences from the .glb's own skin, or None entries.
-
-    This is the data a hand-rigged mesh carries and the cooker used to throw
-    away: `skins[].joints` gives node indices, the node's `name` gives the
-    bone name, and `JOINTS_0` indexes into that joints array. Reading it is
-    what lets a mesh built in Blender be bound by NAME to the game skeleton
-    instead of having weights guessed from the nearest original vertices.
-
-    Note that an `rsmm uncook` .glb reports no skin at all — the cooked
-    weights ride in `extras.rsmm.cooked_b64`, not in glTF skinning — so this
-    returns None entries for one. Re-rigging in Blender is what produces a
-    real skin.
-    """
-    return _glb_parse(glb_bytes)[1]
-
-
 def _glb_parse(glb_bytes: bytes) -> tuple[list[_geo.SubMesh],
                                           list[Influences | None]]:
     from .unify import read_glb

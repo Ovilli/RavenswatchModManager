@@ -293,6 +293,11 @@ def resolve_stat(stat: str | int) -> int:
     return key
 
 
+#: Not a modifier stat: a resource gain copied from Star Fragment
+#: (``item_effect.add_stars_of_fate``), offered alongside the real stats.
+STARS_OF_FATE = "Stars of Fate"
+
+
 def is_integer_stat(stat: str | int) -> bool:
     """Whether ``stat`` is an integer quantity (free rerolls, charges, tallies)
     rather than a floating-point ratio/fraction/amount: as the game's own
@@ -300,6 +305,8 @@ def is_integer_stat(stat: str | int) -> bool:
     alone missed 7, Extra MO Choice and Rooted among them, so +1 of them wrote
     the bits of 1.0 into an int). A stat no shipped modifier gives falls back
     to its name."""
+    if str(stat) == STARS_OF_FATE:
+        return True
     try:
         key = resolve_stat(stat)
     except ItemModifierError:
