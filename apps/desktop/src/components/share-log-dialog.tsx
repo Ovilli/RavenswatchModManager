@@ -1,7 +1,8 @@
 import { isRateLimited } from '@rsmm/api-client';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Check, Copy, ExternalLink, Link2, Loader2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, describeApiError } from '../lib/api';
 import { RSMM_VERSION } from '../lib/app-version';
 import { doctorStatus } from '../lib/doctor-status';
@@ -12,7 +13,7 @@ import { buildLogReport, describeLoader } from '../lib/log-share';
 import type { DoctorCheck, LocalMod } from '../lib/rsmm';
 import { listLocalMods } from '../lib/rsmm';
 import { detectOs } from '../lib/telemetry';
-import { Button, CopyButton, Fleuron, MonoTag, Panel } from './chrome';
+import { Button, CopyButton, Fleuron, MonoTag, Panel, useModalChrome } from './chrome';
 import { useToast } from './toast';
 
 /**
@@ -49,6 +50,9 @@ export function ShareLogDialog({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState<{ url: string; expiresAt: string } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const onKeyDown = useModalChrome(cardRef, onClose);
 
   // Gathered up front, not at upload time: the preview has to show what will
   // actually be sent, and a fetch hidden behind the button would make the
@@ -153,12 +157,30 @@ export function ShareLogDialog({
       })
     : '';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-pitch/80 p-4">
-      <Panel className="max-h-[90vh] w-full max-w-3xl overflow-auto">
+  // Portalled for the same reason as the install picker on Browse: inside the
+  // route's `animate-page-in` box, `fixed` is relative to the page, not the
+  // window. It used to have no dialog role, no Escape and no focus move, so
+  // Tab walked the whole app behind it.
+  return createPortal(
+    <div
+      // biome-ignore lint/a11y/useSemanticElements: see ai-disclosure.tsx — <dialog>'s top-layer backdrop conflicts with the app's overlay stacking
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
+      onKeyDown={onKeyDown}
+    >
+      <div className="absolute inset-0 bg-pitch/80" />
+      <div
+        ref={cardRef}
+        tabIndex={-1}
+        className="grimoire-card grimoire-card--raised relative max-h-[90vh] w-full max-w-3xl overflow-auto p-6 focus:outline-none"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-fraktur text-2xl text-parchment">{t('Share this log')}</h3>
+            <h3 id={titleId} className="font-fraktur text-2xl text-parchment">
+              {t('Share this log')}
+            </h3>
             <p className="font-serif-italic mt-1 text-sm text-ash">
               {t(
                 'Uploads the log once and gives you a link to paste into a bug report — no more pasting thousands of lines into chat.',
@@ -182,7 +204,7 @@ export function ShareLogDialog({
             <p className="font-serif-italic text-parchment">
               {t('Uploaded. Paste this link wherever you are asking for help.')}
             </p>
-            <div className="flex flex-wrap items-center gap-2 border border-gilt/40 bg-pitch/60 p-3">
+            <Panel variant="inset" className="flex flex-wrap items-center gap-2 border-gilt/40 p-3">
               <span className="font-data min-w-0 flex-1 break-all text-sm text-gilt">
                 {shared.url}
               </span>
@@ -191,7 +213,7 @@ export function ShareLogDialog({
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 {t('Open')}
               </Button>
-            </div>
+            </Panel>
             <p className="font-serif-italic text-xs text-ash">
               {t(
                 'The link stops working on {date} and the text is deleted then. Anyone with the link can read it, so treat it as public.',
@@ -207,9 +229,7 @@ export function ShareLogDialog({
         ) : (
           <div className="space-y-3">
             <label className="block">
-              <span className="font-mono text-xs uppercase tracking-wider text-ash">
-                {t('What went wrong? (optional)')}
-              </span>
+              <span className="font-mono text-xs text-ash">{t('What went wrong? (optional)')}</span>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -267,7 +287,7 @@ export function ShareLogDialog({
             </div>
 
             {showPreview ? (
-              <pre className="font-data max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-pitch/60 p-3 text-xs text-parchment/90">
+              <pre className="grimoire-card grimoire-card--inset font-data max-h-64 overflow-auto whitespace-pre-wrap break-words p-3 text-xs text-parchment/90">
                 {report.content}
               </pre>
             ) : null}
@@ -306,8 +326,9 @@ export function ShareLogDialog({
             </div>
           </div>
         )}
-      </Panel>
-    </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
