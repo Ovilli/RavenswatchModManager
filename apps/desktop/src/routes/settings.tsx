@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Activity, ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
-import { Fleuron, Panel, SectionHeader } from '../components/chrome';
+import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
 import { UpdaterSettings } from '../components/updater';
@@ -299,13 +299,9 @@ function SourcesPanel() {
           className="field-grim font-mono flex-1"
           aria-invalid={sourceError ? true : undefined}
         />
-        <button
-          type="button"
-          onClick={addSource}
-          className="border border-crimson bg-crimson/80 px-3 py-2 text-parchment hover:bg-oxblood"
-        >
+        <Button type="button" variant="primary" onClick={addSource}>
           {t('Add')}
-        </button>
+        </Button>
       </div>
       {sourceError ? (
         <p className="font-mono mt-2 text-sm text-crimson" role="alert">
@@ -415,20 +411,17 @@ function LauncherLogPanel() {
               {t('live')}
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => refreshLog().catch(() => undefined)}
-            className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment"
-          >
+          <Button type="button" size="sm" onClick={() => refreshLog().catch(() => undefined)}>
             {loadingLog ? t('Refreshing…') : t('Refresh')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant="danger"
             onClick={() => onClearLog().catch(() => undefined)}
-            className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood"
           >
             {t('Clear')}
-          </button>
+          </Button>
         </div>
       </div>
       <Fleuron className="my-3" />
@@ -459,13 +452,13 @@ function LauncherLogPanel() {
         </div>
       </div>
       {filteredEntries.length === 0 ? (
-        <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
+        <p className="grimoire-card grimoire-card--inset font-serif-italic p-3 text-ash">
           {logEntries.length > 0
             ? t('No launcher log entries match the current filters.')
             : t('No launcher log entries yet. Launch the game once and they will show up here.')}
         </p>
       ) : (
-        <ul className="max-h-72 divide-y divide-border/60 overflow-auto border border-border bg-pitch/60">
+        <ul className="grimoire-card grimoire-card--inset max-h-72 divide-y divide-border/60 overflow-auto">
           {filteredEntries.map((entry, i) => (
             // Log lines carry no id and repeat verbatim, so position is
             // part of the identity.
@@ -955,31 +948,32 @@ function OnlineServerPanel() {
               spellCheck={false}
               className="field-grim font-mono min-w-56 flex-1 text-sm"
             />
-            <button
+            <Button
               type="submit"
+              size="sm"
+              variant="primary"
               disabled={busy !== null || !draft.trim() || unchanged}
-              className="border border-crimson bg-crimson/80 px-3 py-2 text-sm text-parchment hover:bg-oxblood disabled:opacity-40"
             >
               {busy === 'save' ? t('Saving…') : t('Use this server')}
-            </button>
+            </Button>
             {state.url ? (
               <>
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   disabled={busy !== null}
                   onClick={() => run('check').catch(() => undefined)}
-                  className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40"
                 >
                   {busy === 'check' ? t('Checking…') : t('Check server')}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
                   disabled={busy !== null}
                   onClick={() => run('off').catch(() => undefined)}
-                  className="border border-border px-3 py-2 text-sm text-ash hover:border-gilt/50 hover:text-parchment disabled:opacity-40"
                 >
                   {t('Use official servers')}
-                </button>
+                </Button>
               </>
             ) : null}
           </form>
@@ -1194,9 +1188,9 @@ function LoaderFlagsPanel() {
                       {flag.label}
                     </span>
                     {!flag.safe ? (
-                      <span className="font-mono rounded border border-crimson/60 px-1.5 py-0.5 text-xs uppercase text-crimson">
+                      <MonoTag tone="crimson" className="uppercase">
                         {t('locked')}
-                      </span>
+                      </MonoTag>
                     ) : null}
                   </div>
                   <p
