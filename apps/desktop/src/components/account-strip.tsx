@@ -161,7 +161,7 @@ function ProfileMenu({ user }: { user: SessionUser }) {
       {open ? (
         <div
           role="menu"
-          className="absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden rounded border border-oxblood/50 bg-pitch/95 shadow-xl backdrop-blur-sm"
+          className="grimoire-card grimoire-card--raised absolute bottom-full left-2 right-2 z-50 mb-2 overflow-hidden"
         >
           <Link
             to="/settings"

@@ -1,9 +1,9 @@
 import { Cpu } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ackDisclosure, disclosureAck } from '../lib/first-run';
 import { useT } from '../lib/i18n-react';
-import { Button } from './chrome';
+import { Button, useModalChrome } from './chrome';
 
 /**
  * Revision of the disclosure text below. Bump it when the substance changes —
@@ -39,7 +39,6 @@ async function openExternal(url: string): Promise<void> {
  * never shown two stacked modals.
  */
 export function AiDisclosureDialog({ onAcknowledged }: { onAcknowledged?: () => void }) {
-  const t = useT();
   const [open, setOpen] = useState(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — the ack is read from storage, and re-running on a new onAcknowledged identity would reopen a dialog the user just closed
@@ -56,6 +55,21 @@ export function AiDisclosureDialog({ onAcknowledged }: { onAcknowledged?: () => 
     onAcknowledged?.();
   };
 
+  return <AiDisclosureCard onAccept={accept} />;
+}
+
+/**
+ * The card itself, split out like `ChangelogCard` so `useModalChrome` moves
+ * focus when the dialog OPENS rather than when the app shell mounts.
+ *
+ * No `onClose`: the note has to be answered, so Escape does nothing. Before
+ * this, focus stayed behind the overlay and Tab walked the whole shell.
+ */
+function AiDisclosureCard({ onAccept: accept }: { onAccept: () => void }) {
+  const t = useT();
+  const cardRef = useRef<HTMLDivElement>(null);
+  useModalChrome(cardRef);
+
   return createPortal(
     <div
       // biome-ignore lint/a11y/useSemanticElements: <dialog> needs an imperative showModal() and brings its own top-layer backdrop, which fights the app's overlay z-order; the other modals here use the same role="dialog" pattern
@@ -64,8 +78,12 @@ export function AiDisclosureDialog({ onAcknowledged }: { onAcknowledged?: () => 
       aria-labelledby="ai-disclosure-title"
       className="fixed inset-0 z-[85] flex items-center justify-center p-4 animate-fade-in"
     >
-      <div className="absolute inset-0 bg-pitch/90" />
-      <div className="grimoire-card relative flex max-h-[88vh] w-[min(620px,94vw)] flex-col p-6">
+      <div className="absolute inset-0 bg-pitch/80" />
+      <div
+        ref={cardRef}
+        tabIndex={-1}
+        className="grimoire-card grimoire-card--raised relative flex max-h-[88vh] w-[min(620px,94vw)] flex-col p-6 focus:outline-none"
+      >
         <header className="flex items-start gap-3">
           <div>
             <h2 id="ai-disclosure-title" className="font-fraktur text-2xl text-parchment">

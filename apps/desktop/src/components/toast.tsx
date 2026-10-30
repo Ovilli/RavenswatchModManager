@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useT } from '../lib/i18n-react';
+import { Button, useModalChrome } from './chrome';
 
 type ToastTone = 'default' | 'success' | 'error';
 
@@ -126,27 +127,17 @@ function DialogModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
   const fieldId = useId();
+  const multiline = state.kind === 'prompt' && state.opts.multiline;
+  const fieldRef = multiline ? textareaRef : inputRef;
 
+  // A prompt focuses its field, a confirm its OK button; either way focus
+  // returns to whatever opened the dialog.
+  const onChromeKeyDown = useModalChrome(isPrompt ? fieldRef : confirmBtnRef, cancel);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: select once, on open — re-running on a new ref would wipe a selection the user just made
   useEffect(() => {
-    triggerRef.current = document.activeElement as HTMLElement | null;
-    if (isPrompt) {
-      if (state.kind === 'prompt' && state.opts.multiline) {
-        textareaRef.current?.focus();
-        textareaRef.current?.select();
-      } else {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }
-    } else {
-      confirmBtnRef.current?.focus();
-    }
-    const trigger = triggerRef.current;
-    return () => {
-      trigger?.focus?.();
-    };
-  }, [isPrompt, state]);
+    if (isPrompt) fieldRef.current?.select();
+  }, []);
 
   function commit() {
     if (state.kind === 'prompt') state.resolve(value);
@@ -161,7 +152,6 @@ function DialogModal({
   }
 
   const opts = state.opts;
-  const multiline = state.kind === 'prompt' && state.opts.multiline;
 
   return (
     <dialog
@@ -169,17 +159,15 @@ function DialogModal({
       aria-label={opts.title}
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
       onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          cancel();
-        } else if (e.key === 'Enter' && !multiline) {
+        onChromeKeyDown(e);
+        if (e.key === 'Enter' && !multiline) {
           e.preventDefault();
           commit();
         }
       }}
     >
       <div className="absolute inset-0 bg-pitch/80" onClick={cancel} />
-      <div className="grimoire-card relative w-[min(480px,92vw)] p-5">
+      <div className="grimoire-card grimoire-card--raised relative w-[min(480px,92vw)] p-5">
         <h3 className="font-fraktur text-xl text-parchment">{opts.title}</h3>
         {state.kind === 'confirm' && state.opts.body ? (
           <p className="font-serif-italic text-ash mt-2">{state.opts.body}</p>
@@ -214,29 +202,16 @@ function DialogModal({
           </div>
         ) : null}
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={cancel}
-            className="border border-border px-3 py-1.5 text-ash hover:text-parchment"
-          >
+          <Button type="button" size="sm" onClick={cancel}>
             {(state.kind === 'confirm' && state.opts.cancelLabel) || t('Cancel')}
-          </button>
-          <button
-            type="button"
-            ref={confirmBtnRef}
-            onClick={commit}
-            className={`border px-3 py-1.5 text-parchment transition-colors duration-150 ${
-              state.kind === 'confirm' && state.opts.destructive
-                ? 'border-crimson bg-crimson/80 hover:bg-oxblood'
-                : 'border-crimson bg-crimson/80 hover:bg-oxblood'
-            }`}
-          >
+          </Button>
+          <Button type="button" size="sm" variant="primary" ref={confirmBtnRef} onClick={commit}>
             {/* Caller-supplied labels arrive already translated — the call
                 sites hold a `t` of their own. Only the default is ours. */}
             {state.kind === 'prompt'
               ? (state.opts.submitLabel ?? t('OK'))
               : (state.opts.confirmLabel ?? t('OK'))}
-          </button>
+          </Button>
         </div>
       </div>
     </dialog>

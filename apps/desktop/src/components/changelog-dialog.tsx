@@ -146,11 +146,11 @@ function ChangelogCard({
       className="fixed inset-0 z-[75] flex items-center justify-center p-4 animate-fade-in"
       onKeyDown={onKeyDown}
     >
-      <div className="absolute inset-0 bg-pitch/85" onClick={dismiss} />
+      <div className="absolute inset-0 bg-pitch/80" onClick={dismiss} />
       <div
         ref={cardRef}
         tabIndex={-1}
-        className="grimoire-card relative flex max-h-[86vh] w-[min(600px,94vw)] flex-col p-6 focus:outline-none"
+        className="grimoire-card grimoire-card--raised relative flex max-h-[86vh] w-[min(600px,94vw)] flex-col p-6 focus:outline-none"
       >
         <header className="flex items-start gap-3">
           <span className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-crimson/40 bg-crimson/10">

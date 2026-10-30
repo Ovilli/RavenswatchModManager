@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n-react';
 import { duplicateProfileWithMods } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
+import { Button } from './chrome';
 import { CheckIcon } from './icons/CheckIcon';
 import { useDialog, useToast } from './toast';
 
@@ -96,8 +97,8 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
         aria-controls={menuId}
         className={
           compact
-            ? 'flex max-w-[18rem] items-center gap-2 border border-border bg-pitch/60 px-2.5 py-1 text-left transition-colors duration-150 hover:border-gilt/50'
-            : 'flex w-full items-center justify-between border border-border bg-pitch/60 px-3 py-2 text-left transition-colors duration-150 hover:border-gilt/50'
+            ? 'flex max-w-[18rem] items-center gap-2 rounded border border-border bg-pitch/60 px-2.5 py-1 text-left transition-colors duration-150 hover:border-gilt/50'
+            : 'flex w-full items-center justify-between rounded border border-border bg-pitch/60 px-3 py-2 text-left transition-colors duration-150 hover:border-gilt/50'
         }
       >
         {compact ? (
@@ -133,8 +134,8 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
           // them, so the menu gets its own width and hangs from the left edge.
           className={
             compact
-              ? 'grimoire-card animate-fade-in absolute left-0 top-full z-40 mt-1 w-72'
-              : 'grimoire-card animate-fade-in absolute left-0 right-0 top-full z-40 mt-1'
+              ? 'grimoire-card grimoire-card--raised animate-fade-in absolute left-0 top-full z-40 mt-1 w-72'
+              : 'grimoire-card grimoire-card--raised animate-fade-in absolute left-0 right-0 top-full z-40 mt-1'
           }
         >
           <ul className="max-h-72 overflow-y-auto py-1">
@@ -164,25 +165,27 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
             ))}
           </ul>
           <div className="border-t border-border p-2 flex gap-2">
-            <button
+            <Button
               type="button"
+              size="sm"
               role="menuitem"
               onClick={onNewProfile}
-              className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
+              className="flex-1"
             >
               <Plus className="h-3.5 w-3.5" /> {t('New')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
               role="menuitem"
               onClick={() => {
                 setOpen(false);
                 if (active) void onDuplicate(active.id);
               }}
-              className="flex flex-1 items-center justify-center gap-2 border border-border px-2 py-1.5 text-sm hover:border-gilt/50"
+              className="flex-1"
             >
               <Copy className="h-3.5 w-3.5" /> {t('Duplicate')}
-            </button>
+            </Button>
           </div>
           <div className="border-t border-border p-2">
             <button

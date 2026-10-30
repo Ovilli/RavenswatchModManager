@@ -41,9 +41,7 @@ export default function PromotedBanner({ vertical }: { vertical?: boolean } = {}
             : 'grimoire-card flex items-center gap-3 px-3 py-2 max-w-md'
         }
       >
-        <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-          {t('ad slot offline')}
-        </span>
+        <span className="font-mono text-xs text-ash">{t('ad slot offline')}</span>
       </div>
     );
   }
