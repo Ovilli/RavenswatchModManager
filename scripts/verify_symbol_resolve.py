@@ -275,8 +275,8 @@ def main() -> int:
               f"{', '.join(missing)}", file=sys.stderr)
         print("Your local pattern DB is older than data/symbols.json (it is "
               "gitignored, so `git pull` never updates it). Refresh it:\n"
-              "  gh release download pattern-db -R Ovilli/RavenswatchModManager "
-              "-p function_patterns.json -D data --clobber\n"
+              "  curl -L -o data/function_patterns.json https://github.com/Ovilli/"
+              "RavenswatchModManager/releases/download/pattern-db/function_patterns.json\n"
               "or regenerate it with scripts/sync_symbol_patterns.py.", file=sys.stderr)
     if bad:
         print(f"\n{len(bad)} SYMBOL(S) FAIL the resolve gate:", file=sys.stderr)
