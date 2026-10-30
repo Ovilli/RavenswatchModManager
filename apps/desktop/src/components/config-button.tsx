@@ -15,10 +15,10 @@
  * schema (and any parse error in it) is loaded by the panel this opens.
  */
 import { SlidersHorizontal, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../lib/i18n-react';
-import { Button } from './chrome';
+import { Button, useModalChrome } from './chrome';
 import { ModConfigPanel } from './mod-config-panel';
 
 export function ConfigButton({
@@ -62,34 +62,12 @@ export function ConfigButton({
     discard();
   }, [dirty, discard]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      // Escape backs out of the discard prompt first, so it can never be the
-      // key that throws the edits away.
-      if (confirming) setConfirming(false);
-      else close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, close, confirming]);
-
-  // Move focus into the dialog on open and hand it back to the trigger on
-  // close. Escape is already handled above by a window listener, so this is
-  // the missing half: portalled to the body, the card comes after the whole
-  // app in DOM order, and without a focus move the first tab stop was the
-  // sidebar rather than anything in the panel.
-  const cardRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const trigger = document.activeElement as HTMLElement | null;
-    cardRef.current?.focus();
-    return () => {
-      trigger?.focus?.();
-    };
-  }, [open]);
+  // Escape backs out of the discard prompt first, so it can never be the key
+  // that throws the edits away.
+  const onEscape = useCallback(() => {
+    if (confirming) setConfirming(false);
+    else close();
+  }, [confirming, close]);
 
   const markDirty = useCallback((_id: string, next: boolean) => setDirty(next), []);
 
@@ -113,77 +91,107 @@ export function ConfigButton({
         <SlidersHorizontal className="h-4 w-4" />
       </button>
 
-      {open
-        ? createPortal(
-            <div
-              // biome-ignore lint/a11y/useSemanticElements: see ai-disclosure.tsx — <dialog>'s top-layer backdrop conflicts with the app's overlay stacking
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('Configure {name}', { name: modName ?? modId })}
-              className="fixed inset-0 z-[75] flex items-center justify-center p-4 animate-fade-in"
-              onClick={(e) => e.stopPropagation()}
+      {open ? (
+        <ConfigDialog
+          label={t('Configure {name}', { name: modName ?? modId })}
+          wide={wide}
+          onEscape={onEscape}
+          onBackdrop={close}
+        >
+          <header className="flex shrink-0 items-center justify-between gap-3 pb-3">
+            <h2 className="font-fraktur truncate text-xl text-parchment">{modName ?? modId}</h2>
+            <button
+              type="button"
+              onClick={close}
+              className="btn-grim shrink-0 px-2 py-1.5"
+              aria-label={t('Close config')}
+              title={t('Close')}
             >
-              <div className="absolute inset-0 bg-pitch/85" onClick={close} />
-              {/* Fixed-height column: header, then the only scroller. The close
-                  button used to hang off the card's top edge in a centred flex,
-                  so every height change the panel made (skeleton -> fields,
-                  error banner appearing) re-centred the card and dragged the
-                  button with it — sometimes clean off the top of the screen. */}
-              <div
-                ref={cardRef}
-                tabIndex={-1}
-                className={[
-                  'grimoire-card relative flex max-h-[90vh] flex-col p-4 focus:outline-none',
-                  wide ? 'w-[min(1320px,96vw)]' : 'w-[min(720px,94vw)]',
-                ].join(' ')}
-              >
-                <header className="flex shrink-0 items-center justify-between gap-3 pb-3">
-                  <h2 className="font-fraktur truncate text-xl text-parchment">
-                    {modName ?? modId}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={close}
-                    className="btn-grim shrink-0 px-2 py-1.5"
-                    aria-label={t('Close config')}
-                    title={t('Close')}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </header>
+              <X className="h-4 w-4" />
+            </button>
+          </header>
 
-                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <ModConfigPanel
-                    modId={modId}
-                    modName={modName ?? modId}
-                    enabled={enabled}
-                    onToggleEnabled={onToggleEnabled}
-                    onDirtyChange={markDirty}
-                    onWideChange={setWide}
-                    frameless
-                  />
-                </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <ModConfigPanel
+              modId={modId}
+              modName={modName ?? modId}
+              enabled={enabled}
+              onToggleEnabled={onToggleEnabled}
+              onDirtyChange={markDirty}
+              onWideChange={setWide}
+              frameless
+            />
+          </div>
 
-                {confirming ? (
-                  <div className="ember-banner mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
-                    <span className="font-serif-italic text-base">
-                      {t('Unsaved config changes. Discard them?')}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <Button type="button" size="sm" onClick={() => setConfirming(false)}>
-                        {t('Keep editing')}
-                      </Button>
-                      <Button type="button" size="sm" variant="danger" onClick={discard}>
-                        {t('Discard')}
-                      </Button>
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+          {confirming ? (
+            <div className="ember-banner mt-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <span className="font-serif-italic text-base">
+                {t('Unsaved config changes. Discard them?')}
+              </span>
+              <span className="flex items-center gap-2">
+                <Button type="button" size="sm" onClick={() => setConfirming(false)}>
+                  {t('Keep editing')}
+                </Button>
+                <Button type="button" size="sm" variant="danger" onClick={discard}>
+                  {t('Discard')}
+                </Button>
+              </span>
+            </div>
+          ) : null}
+        </ConfigDialog>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * The overlay and card. A component of its own so `useModalChrome` moves focus
+ * when the dialog OPENS (the button is mounted for as long as its row is):
+ * portalled to the body, the card comes after the whole app in DOM order, and
+ * without the move the first tab stop was the sidebar.
+ */
+function ConfigDialog({
+  label,
+  wide,
+  onEscape,
+  onBackdrop,
+  children,
+}: {
+  label: string;
+  wide: boolean;
+  onEscape: () => void;
+  onBackdrop: () => void;
+  children: ReactNode;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = useModalChrome(cardRef, onEscape);
+  return createPortal(
+    <div
+      // biome-ignore lint/a11y/useSemanticElements: see ai-disclosure.tsx — <dialog>'s top-layer backdrop conflicts with the app's overlay stacking
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-[75] flex items-center justify-center p-4 animate-fade-in"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={onKeyDown}
+    >
+      <div className="absolute inset-0 bg-pitch/80" onClick={onBackdrop} />
+      {/* Fixed-height column: header, then the only scroller. The close
+          button used to hang off the card's top edge in a centred flex,
+          so every height change the panel made (skeleton -> fields,
+          error banner appearing) re-centred the card and dragged the
+          button with it — sometimes clean off the top of the screen. */}
+      <div
+        ref={cardRef}
+        tabIndex={-1}
+        className={[
+          'grimoire-card grimoire-card--raised relative flex max-h-[90vh] flex-col p-4 focus:outline-none',
+          wide ? 'w-[min(1320px,96vw)]' : 'w-[min(720px,94vw)]',
+        ].join(' ')}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
   );
 }

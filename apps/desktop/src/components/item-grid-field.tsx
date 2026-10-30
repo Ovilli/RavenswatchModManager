@@ -495,7 +495,7 @@ function GridCard({
                 const next = Number.parseInt(e.target.value, 10);
                 if (Number.isFinite(next)) onChange(withNumber(spec, value, options, id, next));
               }}
-              className="w-10 min-w-0 appearance-none bg-transparent text-center font-data text-[#f3e3a8] text-xs focus:outline-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-10 min-w-0 appearance-none bg-transparent text-center font-data text-[#f3e3a8] text-xs [&::-webkit-inner-spin-button]:appearance-none"
             />
           ) : (
             <span className="w-10 text-center font-data text-ash text-xs">{n}</span>

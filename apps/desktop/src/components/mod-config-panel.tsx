@@ -425,7 +425,7 @@ function MultiSelectField({
           is not guessable from the list itself. It gets a word, a box, and a
           sentence above the row saying what the two controls do. */}
       {value.length > 0 ? (
-        <div className="space-y-1.5 rounded border border-border bg-pitch/30 p-2">
+        <Panel variant="inset" className="space-y-1.5 p-2">
           <p className="text-ash text-xs">
             {onMove && siblings.length > 0
               ? t('In this list — “Move to” sends one to another list, ✕ removes it.')
@@ -479,7 +479,7 @@ function MultiSelectField({
               </li>
             ))}
           </ul>
-        </div>
+        </Panel>
       ) : null}
 
       <div className="flex items-center gap-2">
@@ -505,7 +505,7 @@ function MultiSelectField({
         ) : null}
       </div>
 
-      <div className="max-h-96 space-y-2 overflow-y-auto rounded border border-border bg-pitch/40 p-2">
+      <Panel variant="inset" className="max-h-96 space-y-2 overflow-y-auto p-2">
         {shown.length === 0 ? (
           <p className="p-2 text-center text-sm text-ash">
             {t('Nothing matches “{query}”.', { query: search })}
@@ -519,12 +519,7 @@ function MultiSelectField({
             return (
               <Fragment key={opt.id}>
                 {heading ? (
-                  <p
-                    className={[
-                      'px-1 pt-2 font-fraktur text-xs uppercase tracking-wide',
-                      tone.text,
-                    ].join(' ')}
-                  >
+                  <p className={['px-1 pt-2 font-fraktur text-xs uppercase', tone.text].join(' ')}>
                     {heading}
                   </p>
                 ) : null}
@@ -555,7 +550,7 @@ function MultiSelectField({
                     // never uniform grey.
                     <span
                       className={[
-                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[0.65rem]',
+                        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs',
                         on ? 'border-crimson/60' : 'border-border',
                         tone.text,
                       ].join(' ')}
@@ -583,7 +578,7 @@ function MultiSelectField({
             );
           })
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -635,7 +630,9 @@ function ConfigFieldRow({
   }
 
   return (
-    <label htmlFor={id} className="block space-y-1.5">
+    // A bool's control is the switch inside: with no `htmlFor`, clicking the
+    // label text presses it, as it did the checkbox this replaced.
+    <label htmlFor={field.type === 'bool' ? undefined : id} className="block space-y-1.5">
       <div className="flex items-center justify-between gap-3">
         <span className="font-data text-sm text-parchment">{label}</span>
         {field.type === 'enum' && field.choices.length > 0 ? (
@@ -663,13 +660,7 @@ function ConfigFieldRow({
         />
       ) : field.type === 'bool' ? (
         <div className="flex items-center gap-2">
-          <input
-            id={id}
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 rounded border-border bg-pitch/60 text-gilt"
-          />
+          <InkSwitch on={Boolean(value)} onClick={() => onChange(!value)} label={label} />
           <span className="text-sm text-ash">{value ? t('Enabled') : t('Disabled')}</span>
         </div>
       ) : field.type === 'enum' ? (

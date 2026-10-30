@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Button,
   CopyButton,
@@ -46,7 +47,6 @@ import {
   filterLibraryRows,
   groupByCategory,
 } from '../lib/library-filter';
-import type { ReactNode } from 'react';
 import type { ModCategory } from '../lib/mod-types';
 import { disableHookWarning, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
@@ -678,7 +678,7 @@ function LibraryPage() {
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
                     key={i}
-                    className="min-h-[15rem] rounded border border-border bg-pitch/40"
+                    className="grimoire-card min-h-[15rem]"
                   />
                 ))}
               </div>
@@ -1215,7 +1215,7 @@ function DependencyStrip({
   if (mod.dependencies.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-xs tracking-[0.18em] text-ash">{t('Requires')}</span>
+      <span className="font-mono text-xs text-ash">{t('Requires')}</span>
       {mod.dependencies.map((depId) => {
         const dep = getMod(depId);
         const enabled = dep ? isEnabledIn(profile, depId) : false;
@@ -1227,22 +1227,24 @@ function DependencyStrip({
           );
         }
         return enabled ? (
-          <Link
-            key={depId}
-            to="/mod/$slug"
-            params={{ slug: dep.slug }}
-            className="inline-flex items-center gap-1 rounded-full border border-gilt/40 bg-gilt/10 px-2 py-1 font-mono text-xs text-gilt hover:border-gilt/70 hover:text-parchment"
-          >
-            {dep.name}
+          <Link key={depId} to="/mod/$slug" params={{ slug: dep.slug }} className="rounded-sm">
+            <MonoTag
+              tone="gilt"
+              className="transition-colors duration-150 hover:border-gilt/80 hover:text-parchment"
+            >
+              {dep.name}
+            </MonoTag>
           </Link>
         ) : (
           <button
             key={depId}
             type="button"
             onClick={() => onEnableDependency(depId)}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-pitch/55 px-2 py-1 font-mono text-xs text-ash hover:border-gilt/50 hover:text-parchment"
+            className="rounded-sm"
           >
-            {dep.name}
+            <MonoTag className="transition-colors duration-150 hover:border-gilt/50 hover:text-parchment">
+              {dep.name}
+            </MonoTag>
           </button>
         );
       })}
