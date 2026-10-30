@@ -180,10 +180,10 @@ function ConflictsPage() {
                     return (
                       <div
                         key={id}
-                        className={`border p-4 ${
+                        className={`p-4 ${
                           enabled
-                            ? 'border-crimson/70 bg-crimson/10'
-                            : 'border-border bg-pitch/40 opacity-70'
+                            ? 'border border-crimson/70 bg-crimson/10'
+                            : 'grimoire-card grimoire-card--inset opacity-70'
                         }`}
                       >
                         <Link

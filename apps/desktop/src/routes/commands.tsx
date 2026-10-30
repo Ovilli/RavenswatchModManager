@@ -297,7 +297,7 @@ function CommandsPage() {
             <p className="font-serif-italic text-ash">{t('No commands have been run yet.')}</p>
           ) : (
             entries.map((entry) => (
-              <div key={entry.id} className="border border-border bg-pitch/60 p-4">
+              <div key={entry.id} className="grimoire-card grimoire-card--inset p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <p className="font-serif-italic text-parchment">{entry.label}</p>
