@@ -115,6 +115,13 @@ SCHEMAS: dict[str, list[tuple[str, ...]]] = {
         ("flag_a", "bool"), ("flag_b", "bool"), ("acceleration", "value"),
         ("braking", "value"), ("value_8", "value"), ("epsilon?", "f32"),
         ("on_change?", "obj"), ("on_changed?", "obj")],
+    "UiLayouterEntityCpntSettings": [
+        ("count", "value"), ("columns", "value"), ("spawner", "ref"), ("game_ui", "ref"),
+        ("frame", "obj"), ("item_size_ref", "obj"),
+        ("layout_mode", "u32"), ("vertical_sizing", "u32"), ("horizontal_sizing", "u32"),
+        ("flag_344", "bool"), ("resize_frame_width", "bool"), ("resize_frame_height", "bool"),
+        ("nav_up?", "obj"), ("nav_down?", "obj"), ("nav_left?", "obj"), ("nav_right?", "obj"),
+        ("flag_tail", "bool")],
     "oCDtEntityCpntResourceGainSettings": [
         ("bytes_1", "bytes"), ("value_2", "value"), ("obj_3", "obj"), ("value_4", "value"),
         ("value_5", "value"), ("value_6", "value"), ("value_7", "value"), ("bytes_8", "bytes"),

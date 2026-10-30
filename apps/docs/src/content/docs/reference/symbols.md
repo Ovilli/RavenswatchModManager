@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **350** symbols across 27 categories.
+Total: **353** symbols across 27 categories.
 
 ## analytics
 
@@ -349,6 +349,8 @@ Total: **350** symbols across 27 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `CustomizeChallengePage_CollectSelectedDefs` | `0x1404276b0` | ✅ ok | ✔ | void(void* pageCtrl, void* indexVec, void* outDefsVec) |
+| `CustomizeChallengePage_OnToggleModifier` | `0x140427a10` | ✅ ok | ✔ | void(void* pageCtrl, void* modifierUiCtrl) |
 | `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
 
@@ -358,6 +360,7 @@ Total: **350** symbols across 27 categories.
 |------|---------|--------|----------|------------------|
 | `GameModifierLock_OnStateChange` | `0x140257f50` | ✅ ok | ✔ | The 'Playing with Modifiers will not unlock Difficulties, Achievements or Outfits' rule… |
 | `RunRoster_Apply` | `0x14026aa30` | ✅ ok | ✔ | Stores a roster into the run state: FUN_1401dd670(game+0x6d8, roster) (so game+0x728 = … |
+| `RunRoster_ApplyModifiers` | `0x14026ac10` | ✅ ok | ✔ | void(void* rootGs, void* roster) |
 | `RunRoster_Build` | `0x1402691e0` | ✅ ok | ✔ | Builds the run's hero ROSTER into param_2 (an OUT container; ctor 0x1400c3250 / dtor 0x… |
 
 ## registry

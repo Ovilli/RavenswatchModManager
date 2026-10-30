@@ -473,6 +473,10 @@ constexpr std::uintptr_t Lobby_SetRequestedHero = 0x140267b60ull;
 constexpr const char* Lobby_SetRequestedHero_Pattern = "Lobby_SetRequestedHero";
 
 // --- options ---
+constexpr std::uintptr_t CustomizeChallengePage_CollectSelectedDefs = 0x1404276b0ull;
+constexpr const char* CustomizeChallengePage_CollectSelectedDefs_Pattern = "CustomizeChallengePage_CollectSelectedDefs";
+constexpr std::uintptr_t CustomizeChallengePage_OnToggleModifier = 0x140427a10ull;
+constexpr const char* CustomizeChallengePage_OnToggleModifier_Pattern = "CustomizeChallengePage_OnToggleModifier";
 constexpr std::uintptr_t GameModifierUi_PadSelectedSlots = 0x14035b570ull;
 constexpr const char* GameModifierUi_PadSelectedSlots_Pattern = "GameModifierUi_PadSelectedSlots";
 constexpr std::uintptr_t g_GameOptions = 0x141436a18ull;
@@ -482,6 +486,8 @@ constexpr std::uintptr_t GameModifierLock_OnStateChange = 0x140257f50ull;
 constexpr const char* GameModifierLock_OnStateChange_Pattern = "GameModifierLock_OnStateChange";
 constexpr std::uintptr_t RunRoster_Apply = 0x14026aa30ull;
 constexpr const char* RunRoster_Apply_Pattern = "RunRoster_Apply";
+constexpr std::uintptr_t RunRoster_ApplyModifiers = 0x14026ac10ull;
+constexpr const char* RunRoster_ApplyModifiers_Pattern = "RunRoster_ApplyModifiers";
 constexpr std::uintptr_t RunRoster_Build = 0x1402691e0ull;
 constexpr const char* RunRoster_Build_Pattern = "RunRoster_Build";
 

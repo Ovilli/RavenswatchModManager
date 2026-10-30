@@ -138,3 +138,20 @@ def test_when_gates_any_step_on_a_bool_field(tmp_path):
     assert entities._resolve_config(d, steps, root) == [{"remove_link": "C.l[0]"}]
     with pytest.raises(ContentError, match="on/off"):
         entities._resolve_config(d, [{"remove_link": "C.l[0]", "when": "health"}], root)
+
+
+@needs_corpus
+def test_ui_layouter_fields_edit_cleanly(tmp_path):
+    written = _emit(
+        tmp_path,
+        {"set": "GameModifier List Ui Layouter.layout_mode", "value": 5},
+        {"set": "GameModifier List Ui Layouter.columns", "value": 2},
+        {"set": "GameModifier List Ui Layouter.vertical_sizing", "value": 3},
+        {"set": "GameModifier List Ui Layouter.horizontal_sizing", "value": 3},
+        entity="GameUis/All_Book_Pages/Play_Book_Page",
+    )
+    blob = written[0].read_bytes()
+    assert _links(blob, "GameModifier List Ui Layouter", "layout_mode") == "5"
+    assert _links(blob, "GameModifier List Ui Layouter", "columns") == "int 2"
+    assert _links(blob, "GameModifier List Ui Layouter", "vertical_sizing") == "3"
+    assert _links(blob, "GameModifier List Ui Layouter", "horizontal_sizing") == "3"
