@@ -487,6 +487,78 @@
    ]
   },
   {
+   "name": "CustomizeChallengePage_CollectSelectedDefs",
+   "kind": "function",
+   "category": "options",
+   "raw": "FUN_1404276b0",
+   "status": "ok",
+   "signature": "void(void* pageCtrl, void* indexVec, void* outDefsVec)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Translates the CustomizeChallengePageUiControllerEntityCpnt working modifier-index vector (rdx = this+0x280, oTVector<u32>) into a sorted vector of GameModifierDefinition* pointers (r8 = outDefsVec) by looking up each u32 index in the GameModifierDefinition library table and sorting via qsort. Called by CustomizeChallengePage_OnToggleModifier (0x140427a10) immediately after mutating this+0x280 and before CustomizeChallengePage_RefreshSummaryUi (0x1404277e0), as well as on page enter (0x140426586) and validate (0x140427b96). Backs R.modifier.max_selected.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "CustomizeChallengePage_OnToggleModifier",
+   "kind": "function",
+   "category": "options",
+   "raw": "FUN_140427a10",
+   "status": "ok",
+   "signature": "void(void* pageCtrl, void* modifierUiCtrl)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Click handler for a modifier card on Customize_Challenge_Book_Page (registered as a delegate at this+0x1b0+0x328 in OnStart 0x140426806, which is why vtable sweeps missed it). rcx = CustomizeChallengePageUiControllerEntityCpnt*, rdx = GameModifierUiControllerEntityCpnt* (clicked modifier index u32 at rdx+0x238). Walks the working selected-indices vector at rcx+0x280 (oTVector<u32>: data +0x280, count +0x288, cap +0x28c): if the clicked index is already present, removes it by swapping with data[count-1] and decrementing count (no 5-cap on removal). If absent, checks `cmp dword ptr [rcx+0x288], 5; jae fail` at 0x140427a82 \u2014 THIS is the sole 5-modifier selection cap in the game. When count < 5, appends the index via Vector_InsertRange_u32 (0x14014ddc0), plays Modifier Added Success FMod Event, sets Is Active Value on [rcx+0x2a0][idx], and calls CustomizeChallengePage_CollectSelectedDefs (0x1404276b0) + RefreshSummaryUi (0x1404277e0). Backs R.modifier.max_selected.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ]
+  },
+  {
+   "name": "RunRoster_ApplyModifiers",
+   "kind": "function",
+   "category": "progression",
+   "raw": "FUN_14026ac10",
+   "status": "ok",
+   "signature": "void(void* rootGs, void* roster)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Applies the roster's GameModifierDefinition* vector (`roster+0x28`, count `roster+0x30`) to the run: copies it into `rootGs+0x148`, writes each modifier's save record into `*(DAT_1414369e8+0x20)+0x1e8`, spawns each modifier's state machine (`def+0x3a8`) into the game scene via `FUN_1401f8620`, and tail-calls `FUN_140267f00(rootGs, rootGs+0x148)` to write the modifier registry indices (`def+0x3dc`) back into `run_settings.modifiers` (`*(session+0x278)+0x420`). Called from `RunRoster_Build` (`0x14026a62b`, after `RunRoster_Build` populates `roster+0x28` with a hardcoded 5-modifier cap at `0x140269ad9`) and from `RunRoster_Apply` (`0x14026abf1`, when `flag==0` on clients). Hooking here before the body runs lets `R.modifier.max_selected(n)` append the 6th..nth selected modifiers from `run_settings.modifiers` into `roster+0x28` before `rootGs+0x148`, the modifier state machines, and `run_settings.modifiers` are populated.",
+   "refs": [
+    "src/loader/lib/rsmm.lua"
+   ],
+   "locator": {
+    "called_by": [
+     "RunRoster_Build",
+     "RunRoster_Apply"
+    ],
+    "offsets": [
+     "0x28",
+     "0x30",
+     "0x148",
+     "0x150",
+     "0x1e8",
+     "0x3a8"
+    ]
+   }
+  },
+  {
    "name": "DayNightCycle_InitCycle",
    "kind": "function",
    "category": "gameplay",

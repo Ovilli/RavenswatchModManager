@@ -96,6 +96,20 @@ inline CharacterController_ClearStagger_fn CharacterController_ClearStagger() {
     return reinterpret_cast<CharacterController_ClearStagger_fn>(rsmm::fn_resolve(Sym::CharacterController_ClearStagger_Pattern));
 }
 
+// CustomizeChallengePage_CollectSelectedDefs  (CustomizeChallengePage_CollectSelectedDefs)
+//   void(void* pageCtrl, void* indexVec, void* outDefsVec)
+using CustomizeChallengePage_CollectSelectedDefs_fn = void(*)(void*, void*, void*);
+inline CustomizeChallengePage_CollectSelectedDefs_fn CustomizeChallengePage_CollectSelectedDefs() {
+    return reinterpret_cast<CustomizeChallengePage_CollectSelectedDefs_fn>(rsmm::fn_resolve(Sym::CustomizeChallengePage_CollectSelectedDefs_Pattern));
+}
+
+// CustomizeChallengePage_OnToggleModifier  (CustomizeChallengePage_OnToggleModifier)
+//   void(void* pageCtrl, void* modifierUiCtrl)
+using CustomizeChallengePage_OnToggleModifier_fn = void(*)(void*, void*);
+inline CustomizeChallengePage_OnToggleModifier_fn CustomizeChallengePage_OnToggleModifier() {
+    return reinterpret_cast<CustomizeChallengePage_OnToggleModifier_fn>(rsmm::fn_resolve(Sym::CustomizeChallengePage_OnToggleModifier_Pattern));
+}
+
 // Definition_PostLoad  (Definition_PostLoad)
 //   bool(void* definition)
 using Definition_PostLoad_fn = uint32_t(*)(void*);
@@ -746,6 +760,13 @@ inline Resource_LookupByPath_fn Resource_LookupByPath() {
 using RunRoster_Apply_fn = void(*)(void*, void*, bool);
 inline RunRoster_Apply_fn RunRoster_Apply() {
     return reinterpret_cast<RunRoster_Apply_fn>(rsmm::fn_resolve(Sym::RunRoster_Apply_Pattern));
+}
+
+// RunRoster_ApplyModifiers  (RunRoster_ApplyModifiers)
+//   void(void* rootGs, void* roster)
+using RunRoster_ApplyModifiers_fn = void(*)(void*, void*);
+inline RunRoster_ApplyModifiers_fn RunRoster_ApplyModifiers() {
+    return reinterpret_cast<RunRoster_ApplyModifiers_fn>(rsmm::fn_resolve(Sym::RunRoster_ApplyModifiers_Pattern));
 }
 
 // RunRoster_Build  (RunRoster_Build)

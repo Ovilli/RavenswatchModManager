@@ -1657,6 +1657,184 @@ function R.modifier.allow_unlocks(on)
     return _unlock_bypass_hooked
 end
 
+--- Allow selecting up to `n` modifiers (1..32) on Customize_Challenge_Book_Page.
+--
+-- CustomizeChallengePage_OnToggleModifier (0x140427a10) removes any already-
+-- selected modifier without checking count, then checks `count < 5` before
+-- appending a newly clicked modifier index to `this+0x280` (oTVector<u32>) and
+-- calling CustomizeChallengePage_CollectSelectedDefs (0x1404276b0). When 5..n-1
+-- modifiers are selected and the player clicks an unselected modifier, we
+-- ensure capacity >= 32, stash `data[4]` + `count`, and set `count = 4` so the
+-- original takes its normal add branch (sound, active card state, insert into
+-- `data[4]`), then restore `data[4]` and move the new index to `data[count]`
+-- at the entry of CollectSelectedDefs.
+do
+local _max_selected_target, _max_selected_hooked, _max_selected_pending = nil, false, nil
+local _mod_defs = {}
+
+local function _def_for_idx(idx)
+    local d = _mod_defs[idx]
+    if R.ptr.plausible(d) then return d end
+    if R.defs and R.defs.instances then
+        for _, def in ipairs(R.defs.instances("oe::dt::GameModifierDefinition") or {}) do
+            local k = R.ptr.plausible(def) and I.read_u32(def + 0x3dc)
+            if k then _mod_defs[k] = def end
+        end
+    end
+    d = _mod_defs[idx]
+    return R.ptr.plausible(d) and d or nil
+end
+
+function R.modifier.max_selected(n)
+    if n == nil then return _max_selected_target end
+    if type(n) ~= "number" or n ~= math.floor(n) or n < 1 or n > 32 then
+        error("R.modifier.max_selected: expected an integer from 1 to 32", 2)
+    end
+    _max_selected_target = n
+    if _max_selected_hooked then return true end
+    if not (R.hook and R.engine and R.engine.resolve and I.read_u32 and I.write_u32 and I.read_u64) then
+        return false
+    end
+    local va_toggle  = R.engine.resolve("CustomizeChallengePage_OnToggleModifier")
+    local va_collect = R.engine.resolve("CustomizeChallengePage_CollectSelectedDefs")
+    local va_apply   = R.engine.resolve("RunRoster_ApplyModifiers")
+    if not (va_toggle and va_toggle ~= 0 and va_collect and va_collect ~= 0 and va_apply and va_apply ~= 0) then
+        R.log("[rsmm.modifier] max_selected: symbols unavailable on this build")
+        return false
+    end
+    local ok1, slot1, why1 = pcall(R.hook, va_collect, "vppp", function(this, vec, out_defs, next)
+        local p = _max_selected_pending
+        if p and vec == p.vec and p.val4 then
+            _max_selected_pending = nil
+            local data = I.read_u64(vec)
+            if data and data ~= 0 then
+                local added = I.read_u32(data + 16)
+                if added then
+                    I.write_u32(data + p.count * 4, added)
+                    I.write_u32(data + 16, p.val4)
+                    I.write_u32(vec + 8, p.count + 1)
+                end
+            end
+        end
+        if R.ptr.plausible(this) then
+            local all_data = I.read_u64(this + 0x210)
+            local all_count = I.read_u32(this + 0x218)
+            if R.ptr.plausible(all_data) and all_count and all_count <= 64 then
+                for i = 0, all_count - 1 do
+                    local def = I.read_u64(all_data + i * 8)
+                    local idx = R.ptr.plausible(def) and I.read_u32(def + 0x3dc)
+                    if idx then _mod_defs[idx] = def end
+                end
+            end
+        end
+        next(this, vec, out_defs)
+        return 0
+    end)
+    if not (ok1 and slot1) then
+        R.log("[rsmm.modifier] max_selected collect hook failed: " .. tostring(why1 or slot1))
+        return false
+    end
+    local ok2, slot2, why2 = pcall(R.hook, va_toggle, "vpp", function(this, item, next)
+        _max_selected_pending = nil
+        local limit = _max_selected_target
+        if limit and this and this ~= 0 and item and item ~= 0 then
+            local idx = I.read_u32(item + 0x238)
+            local vec = this + 0x280
+            local data = I.read_u64(vec)
+            local count = I.read_u32(vec + 8)
+            local cap = I.read_u32(vec + 0xc)
+            if idx and count and cap and count <= 64 and cap >= count then
+                local already = false
+                if count > 0 and data and data ~= 0 then
+                    for i = 0, count - 1 do
+                        if I.read_u32(data + i * 4) == idx then
+                            already = true
+                            break
+                        end
+                    end
+                end
+                if not already then
+                    if count >= 5 and count < limit and data and data ~= 0 then
+                        if cap < 32 and R.engine.call_safe then
+                            R.engine.call_safe("Vector_Grow", { { 1, R.ptr.plausible } }, vec, 0, 32)
+                            data = I.read_u64(vec)
+                            cap = I.read_u32(vec + 0xc) or 0
+                        end
+                        if data and data ~= 0 and cap > count then
+                            local val4 = I.read_u32(data + 16)
+                            if val4 then
+                                _max_selected_pending = { vec = vec, count = count, val4 = val4 }
+                                I.write_u32(vec + 8, 4)
+                            end
+                        end
+                    elseif count < 5 and count >= limit then
+                        _max_selected_pending = { vec = vec, restore_count = count }
+                        I.write_u32(vec + 8, 5)
+                    end
+                end
+            end
+        end
+        next(this, item)
+        local p = _max_selected_pending
+        if p then
+            _max_selected_pending = nil
+            if p.restore_count then
+                I.write_u32(p.vec + 8, p.restore_count)
+            elseif p.val4 then
+                local d = I.read_u64(p.vec)
+                if d and d ~= 0 then I.write_u32(d + 16, p.val4) end
+                I.write_u32(p.vec + 8, p.count)
+            end
+        end
+        return 0
+    end)
+    if not (ok2 and slot2) then
+        if R.unhook then pcall(R.unhook, slot1) end
+        R.log("[rsmm.modifier] max_selected toggle hook failed: " .. tostring(why2 or slot2))
+        return false
+    end
+    local ok3, slot3, why3 = pcall(R.hook, va_apply, "vpp", function(root_gs, roster, next)
+        local limit = _max_selected_target
+        if limit and limit > 5 and R.ptr.plausible(root_gs) and R.ptr.plausible(roster)
+                and R.engine.call_safe and I.write_u64 then
+            local r_vec = roster + 0x28
+            local r_count = I.read_u32(r_vec + 8)
+            local session = I.read_u64(root_gs + 0xa0)
+            local party = R.ptr.plausible(session) and I.read_u64(session + 0x278)
+            local s_vec = R.ptr.plausible(party) and (party + 0x420)
+            local s_data = s_vec and I.read_u64(s_vec)
+            local s_count = s_vec and I.read_u32(s_vec + 8)
+            if r_count == 5 and s_count and s_count > 5 and s_count <= 64 and R.ptr.plausible(s_data) then
+                local want = math.min(s_count, limit)
+                for i = 5, want - 1 do
+                    local idx = I.read_u32(s_data + i * 4)
+                    local def = idx and _def_for_idx(idx)
+                    if def then
+                        local at = I.read_u32(r_vec + 8)
+                        local slot = at and R.engine.call_safe("Vector_InsertRange",
+                            { { 1, R.ptr.plausible } }, r_vec, at, 1)
+                        if slot and slot ~= 0 then
+                            I.write_u64(slot, def)
+                        end
+                    end
+                end
+                R.log(("[rsmm.modifier] roster modifiers expanded: 5 -> %d"):format(I.read_u32(r_vec + 8) or 5))
+            end
+        end
+        next(root_gs, roster)
+        return 0
+    end)
+    if not (ok3 and slot3) then
+        if R.unhook then pcall(R.unhook, slot1); pcall(R.unhook, slot2) end
+        R.log("[rsmm.modifier] max_selected apply hook failed: " .. tostring(why3 or slot3))
+        return false
+    end
+    _max_selected_hooked = true
+    R.log(("[rsmm.modifier] max_selected(%d) armed"):format(_max_selected_target))
+    return true
+end
+end
+
 -- Set a named modifier in the global context. MAIN THREAD only (wrap in
 -- R.schedule.next_main). Returns true when the value reads back as written;
 -- false otherwise, with the reason in R.modifier.why().
