@@ -215,7 +215,7 @@ export function ShareLogDialog({
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
                 placeholder={t('Crashes a few seconds after entering Dark Hills with 3 mods on.')}
-                className="mt-1 w-full border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+                className="field-grim mt-1 w-full text-sm"
               />
             </label>
 

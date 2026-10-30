@@ -199,7 +199,7 @@ function DialogModal({
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={state.opts.placeholder}
                 rows={4}
-                className="font-mono w-full resize-none border border-border bg-pitch/60 p-3 text-parchment focus:border-gilt/60 focus:outline-none"
+                className="field-grim font-mono w-full resize-none p-3"
               />
             ) : (
               <input
@@ -208,7 +208,7 @@ function DialogModal({
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={state.opts.placeholder}
-                className="font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment focus:border-gilt/60 focus:outline-none"
+                className="field-grim font-mono w-full"
               />
             )}
           </div>

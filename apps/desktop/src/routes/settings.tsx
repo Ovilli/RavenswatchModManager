@@ -296,7 +296,7 @@ function SourcesPanel() {
             }
           }}
           placeholder="https://example.invalid/registry"
-          className="font-mono flex-1 border border-border bg-pitch/60 px-3 py-2 text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+          className="field-grim font-mono flex-1"
           aria-invalid={sourceError ? true : undefined}
         />
         <button
@@ -438,14 +438,14 @@ function LauncherLogPanel() {
           onChange={(e) => setLogQuery(e.target.value)}
           placeholder={t('Search launcher log...')}
           aria-label={t('Search launcher log')}
-          className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+          className="field-grim font-mono min-w-56 flex-1 text-sm"
         />
         <div className="relative inline-flex">
           <select
             value={logLevel}
             onChange={(e) => setLogLevel(e.target.value as 'all' | 'info' | 'warn' | 'error')}
             aria-label={t('Filter the launcher log by level')}
-            className="select-grim font-mono appearance-none border border-border bg-pitch/60 py-2 pl-3 pr-9 text-sm text-parchment focus:border-gilt/60 focus:outline-none"
+            className="select-grim font-mono appearance-none py-2 pl-3 pr-9 text-sm"
           >
             <option value="all">{t('All levels')}</option>
             <option value="info">{t('Info')}</option>
@@ -953,7 +953,7 @@ function OnlineServerPanel() {
               placeholder="http://host:8090"
               aria-label={t('Server address')}
               spellCheck={false}
-              className="font-mono min-w-56 flex-1 border border-border bg-pitch/60 px-3 py-2 text-sm text-parchment placeholder:text-ash focus:border-gilt/60 focus:outline-none"
+              className="field-grim font-mono min-w-56 flex-1 text-sm"
             />
             <button
               type="submit"
@@ -1353,7 +1353,7 @@ function Field({
           commit(e.target.value);
         }}
         placeholder={placeholder}
-        className="font-mono w-full border border-border bg-pitch/60 px-3 py-2 text-parchment focus:border-gilt/60 focus:outline-none"
+        className="field-grim font-mono w-full"
         aria-invalid={error ? true : undefined}
       />
       {error ? (
