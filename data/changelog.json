@@ -1,6 +1,15 @@
 {
-  "generated": "2026-10-29",
+  "generated": "2026-10-30",
   "entries": [
+    {
+      "version": "5.9.29",
+      "date": "2026-10-30",
+      "summary": "style(desktop): write the design system down, share the text field and screenshot viewer, size dialogs to the window ",
+      "highlights": [
+        "Skigim"
+      ],
+      "loader_version": 49
+    },
     {
       "version": "5.9.28",
       "date": "2026-10-29",
@@ -517,15 +526,6 @@
         "Share log: \"Copy report\" puts the same redacted report on your clipboard if you would rather not upload it.",
         "Mod authors: rsmm lint now catches Lua that reads a variable above the line that declares it (it is always nil in game), and POI components that would load but show no icon or prompt.",
         "Mod authors: an item whose base is not a shipped item is now an error with a suggestion, instead of silently making nothing."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 32,
-      "date": "2026-10-09",
-      "summary": "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)",
-      "highlights": [
-        "Fix: no online / no party code on Windows while the loader is installed (the 5.9.11 fix was incomplete)"
       ]
     }
   ]
