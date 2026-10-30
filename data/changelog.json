@@ -4,6 +4,16 @@
     {
       "version": "",
       "date": "2026-10-30",
+      "summary": "update-loader now refreshes the pattern DB with a new SDK (fixes 'symbols unavailable' for R.modifier.max_selected); clearer resolve-gate message for a stale local pattern DB",
+      "highlights": [
+        "Custom Mode modifier cap mods work right after a loader update — no manual update-data needed",
+        "Clearer message when a source checkout's pattern DB is out of date"
+      ],
+      "cli_version": 21
+    },
+    {
+      "version": "",
+      "date": "2026-10-30",
       "summary": "Custom Mode: R.modifier.max_selected(n) raises the 5-modifier cap (book page + run start); UiLayouterEntityCpntSettings schema for entity mods (#72)",
       "highlights": [
         "Custom Mode: R.modifier.max_selected(n) raises the 5-modifier cap (book page + run start); UiLayouterEntityCpntSettings schema for entity mods (#72)"
@@ -512,18 +522,6 @@
       "highlights": [
         "Mods can remove a random item, or every item, of a rarity (R.give.remove_random / remove_all)",
         "Mods can give a second copy of a random common, rare or epic item (R.give.duplicate_random)"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 33,
-      "date": "2026-10-10",
-      "summary": "New SDK APIs: R.ability (reset/reduce cooldowns, add/remove charges), R.shards.gain (shards as a pickup, gain bonuses apply), R.ingredient (add/remove keys and other ingredients), R.xp.set_level / set_xp.",
-      "highlights": [
-        "Mods can reset or shorten ability cooldowns and add charges (R.ability)",
-        "Mods can give dream shards as a pickup, so shard-gain bonuses apply (R.shards.gain)",
-        "Mods can give or take keys and other ingredients (R.ingredient)",
-        "Mods can set the party level directly (R.xp.set_level)"
       ]
     }
   ]
