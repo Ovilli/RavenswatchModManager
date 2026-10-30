@@ -9,7 +9,8 @@ from rsmm.engine import data_update
 def _stub(monkeypatch, db_status):
     calls = []
     monkeypatch.setattr(cmd, "check", lambda g: {"status": "update_available"})
-    monkeypatch.setattr(cmd, "apply_update", lambda g, s: {"status": "updated", "installed_version": 50})
+    updated = {"status": "updated", "installed_version": 50}
+    monkeypatch.setattr(cmd, "apply_update", lambda g, s: updated)
     monkeypatch.setattr(data_update, "check", lambda g: {"status": db_status})
     monkeypatch.setattr(data_update, "apply_update", lambda g, s: calls.append(g))
     return calls
