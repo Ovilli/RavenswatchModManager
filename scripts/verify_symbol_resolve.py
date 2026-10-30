@@ -265,6 +265,19 @@ def main() -> int:
 
     print(f"checked {checked} ok function symbols "
           f"+ {anchors_checked} anchor entry point(s)")
+    # A symbol with no pattern at all cannot resolve mid-instruction — nearly
+    # always the gitignored local DB predates a symbols.json pull. Telling that
+    # user to "recover the address" sent them hunting a bug that isn't there.
+    missing = [n for n, why in bad if why == "no pattern in DB for status=ok symbol"]
+    bad = [(n, why) for n, why in bad if n not in missing]
+    if missing:
+        print(f"\n{len(missing)} ok symbol(s) have NO pattern in {DB.name}: "
+              f"{', '.join(missing)}", file=sys.stderr)
+        print("Your local pattern DB is older than data/symbols.json (it is "
+              "gitignored, so `git pull` never updates it). Refresh it:\n"
+              "  gh release download pattern-db -R Ovilli/RavenswatchModManager "
+              "-p function_patterns.json -D data --clobber\n"
+              "or regenerate it with scripts/sync_symbol_patterns.py.", file=sys.stderr)
     if bad:
         print(f"\n{len(bad)} SYMBOL(S) FAIL the resolve gate:", file=sys.stderr)
         for n, why in bad:
@@ -272,6 +285,7 @@ def main() -> int:
         print("\nThese resolve mid-instruction — the loader would call/detour into "
               "garbage. Recover the correct address or downgrade to 'unverified' + "
               "strip the pattern. See the symbol-remap-false-ok memory.", file=sys.stderr)
+    if missing or bad:
         return 1
     print("OK: every ok function symbol resolves to a function boundary.")
     return 0
