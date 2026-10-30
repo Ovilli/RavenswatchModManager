@@ -26,6 +26,22 @@ def _emit_json(state: dict) -> None:
     print(json.dumps({k: v for k, v in state.items() if not k.startswith("_")}))
 
 
+def _refresh_pattern_db(game_dir: Path) -> None:
+    """A new SDK may call symbols the planted pattern DB predates, and nothing
+    else refetches a DB that exists for the same game build — so v50's
+    R.modifier.max_selected reported "symbols unavailable" until a manual
+    `rsmm update-data`. Advisory: stderr only, so `--json` stays parseable."""
+    from rsmm.engine import data_update
+    try:
+        st = data_update.check(game_dir)
+        if st["status"] != "up_to_date":
+            data_update.apply_update(game_dir, st)
+            print("  refreshed the pattern DB", file=sys.stderr)
+    except (data_update.DataUpdateError, OSError) as e:
+        print(f"update-loader: pattern DB not refreshed ({e}); "
+              f"run `rsmm update-data`", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="rsmm update-loader",
@@ -55,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
         state = check(game_dir)
         if state["status"] == "update_available" and not args.check:
             state = apply_update(game_dir, state)
+            if state["status"] == "updated":
+                _refresh_pattern_db(game_dir)
 
         if args.as_json:
             _emit_json(state)
