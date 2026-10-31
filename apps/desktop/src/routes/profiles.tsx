@@ -7,8 +7,8 @@ import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/ch
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
-import { validateProfileName } from '../lib/profile-name';
 import { duplicateProfileWithMods } from '../lib/profile-mods';
+import { validateProfileName } from '../lib/profile-name';
 import { listLocalMods, listLocalModsForProfiles, modsRoot } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
 import { getMod, isEnabledIn, splitProfileMods, splitProfileModsAgainst, useApp } from '../store';
@@ -426,7 +426,7 @@ function ProfilesPage() {
                         );
                       }
                       return (
-                        <li key={id} className="text-crimson/80" title={id}>
+                        <li key={id} className="text-crimson" title={id}>
                           {id} <span className="font-mono text-xs">{t('— not on disk')}</span>
                         </li>
                       );

@@ -604,6 +604,10 @@ export function OverlayHud({ modId }: { modId: string }) {
   // window is taller than the board — before auto-fit runs, or when the player
   // has sized it by hand — the surplus stays transparent instead of rendering
   // as an empty slab of card over the game.
+  //
+  // `bg-pitch/85` + `backdrop-blur-sm` are deliberate, and the one exception to
+  // the opaque-surface rule (DESIGN.md, Surfaces): this card sits over the
+  // running game, which should stay faintly visible through it.
   return (
     <div
       ref={card}
@@ -639,7 +643,7 @@ export function OverlayHud({ modId }: { modId: string }) {
               type="button"
               onClick={() => void resetWindow()}
               title={t('Reset size and position')}
-              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-parchment"
+              className="rounded-sm p-1 text-ash transition-colors duration-150 hover:text-parchment"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
@@ -649,7 +653,7 @@ export function OverlayHud({ modId }: { modId: string }) {
               type="button"
               onClick={() => setCompact((c) => !c)}
               title={compact ? t('Show details') : t('Compact')}
-              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-parchment"
+              className="rounded-sm p-1 text-ash transition-colors duration-150 hover:text-parchment"
             >
               {compact ? (
                 <Maximize2 className="h-3.5 w-3.5" />
@@ -666,7 +670,7 @@ export function OverlayHud({ modId }: { modId: string }) {
                 ? t('Click-through on — press Ctrl+Alt+O (or use Settings) to undo')
                 : t('Let clicks pass through to the game')
             }
-            className={`rounded-sm p-1 transition-colors hover:bg-char/40 hover:text-parchment ${
+            className={`rounded-sm p-1 transition-colors duration-150 hover:text-parchment ${
               clickThrough ? 'text-gilt' : 'text-ash'
             }`}
           >
@@ -681,7 +685,7 @@ export function OverlayHud({ modId }: { modId: string }) {
               type="button"
               onClick={() => native && void getCurrentWindow().close()}
               title={t('Close overlay')}
-              className="rounded-sm p-1 text-ash transition-colors hover:bg-char/40 hover:text-crimson"
+              className="rounded-sm p-1 text-ash transition-colors duration-150 hover:text-crimson"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -712,7 +716,7 @@ export function OverlayHud({ modId }: { modId: string }) {
             <ul className="grid gap-x-2 py-1" style={{ gridTemplateColumns: tracks }}>
               {showHeader && (
                 // Column labels are the MOD's own copy, shown as declared.
-                <li className="col-span-full grid grid-cols-subgrid items-end border-l-2 border-transparent px-2 pb-0.5 text-[0.65rem] uppercase tracking-[0.12em] text-ash">
+                <li className="col-span-full grid grid-cols-subgrid items-end border-l-2 border-transparent px-2 pb-0.5 font-mono text-xs text-ash">
                   {ranked ? <span /> : null}
                   {columns.map((col) => (
                     <span

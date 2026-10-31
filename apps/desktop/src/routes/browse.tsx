@@ -16,7 +16,16 @@ import {
 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, CopyButton, Cover, MonoTag, SectionHeader, StatPill } from '../components/chrome';
+import {
+  Button,
+  CopyButton,
+  Cover,
+  MonoTag,
+  Panel,
+  SectionHeader,
+  StatPill,
+  useModalChrome,
+} from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { ModDetail } from '../components/mod-detail';
 import { useToast } from '../components/toast';
@@ -414,9 +423,9 @@ function BrowsePage() {
                 onChange={(e) => update({ showNsfw: e.target.checked })}
                 className="h-4 w-4 accent-crimson"
               />
-              <span className="inline-flex items-center gap-1 rounded border border-crimson/30 bg-crimson/10 px-1.5 py-0.5 font-mono text-xs uppercase tracking-widest text-crimson/80">
-                <EyeOff className="h-3 w-3" /> NSFW
-              </span>
+              <MonoTag tone="crimson">
+                <EyeOff className="mr-1 h-3 w-3" /> NSFW
+              </MonoTag>
             </label>
             <fieldset className="ml-auto flex items-center gap-1">
               <legend className="sr-only">{t('Layout')}</legend>
@@ -502,10 +511,10 @@ function BrowsePage() {
                 </button>
               </div>
               <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
-              <div className="font-mono text-xs text-ash bg-pitch/30 px-2 py-1 rounded">
+              <Panel variant="inset" className="font-mono px-2 py-1 text-xs text-ash">
                 {getApiBaseUrl()} <span className="text-oxblood/60">|</span> {t('origin:')}{' '}
                 {window.location.origin}
-              </div>
+              </Panel>
             </div>
           ) : null}
 
@@ -544,7 +553,7 @@ function BrowsePage() {
                         navigate({ to: '/collection/$slug', params: { slug: c.slug } });
                       }
                     }}
-                    className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none"
+                    className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60"
                   >
                     {c.imageUrl ? (
                       <Cover
@@ -644,7 +653,7 @@ function BrowsePage() {
                             }
                           }}
                           aria-current={selected === m.slug ? 'true' : undefined}
-                          className={`grimoire-card flex cursor-pointer flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none ${
+                          className={`grimoire-card flex cursor-pointer flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
                             selected === m.slug ? 'border-gilt/70 bg-gilt/5' : ''
                           }`}
                         >
@@ -858,7 +867,7 @@ function ModRow({
         }
       }}
       aria-current={active ? 'true' : undefined}
-      className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 focus:outline-none ${
+      className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
         active ? 'border-gilt/70 bg-gilt/5' : ''
       }`}
     >
@@ -873,9 +882,9 @@ function ModRow({
             {m.name}
           </span>
           {m.nsfw ? (
-            <span className="font-mono shrink-0 rounded border border-crimson/30 bg-crimson/10 px-1 text-xs uppercase tracking-widest text-crimson/80">
+            <MonoTag tone="crimson" className="shrink-0 uppercase">
               {t('nsfw')}
-            </span>
+            </MonoTag>
           ) : null}
         </div>
         <p className="font-mono truncate text-xs text-ash">
@@ -911,7 +920,8 @@ function ModRow({
   );
 }
 
-/** One toggleable facet in the filter bar. */
+/** One toggleable facet in the filter bar. `font-data`, like the `MonoTag` tags
+ * it filters: the facet and the tag on a card read as the same word. */
 function FilterChip({
   active,
   onClick,
@@ -926,7 +936,7 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`font-mono rounded border px-2 py-0.5 text-xs lowercase transition-colors duration-150 ${
+      className={`font-data rounded border px-2 py-0.5 text-xs transition-colors duration-150 ${
         active
           ? 'border-gilt/70 bg-gilt/15 text-parchment'
           : 'border-border text-smoke hover:border-gilt/40 hover:text-parchment'
@@ -954,6 +964,12 @@ function ProfilePicker({
   const selectable = profiles.filter((p) => p.id !== 'default');
   const [creating, setCreating] = useState(selectable.length === 0);
   const nameRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDialogElement>(null);
+  // Focus starts on the dialog (nothing in the profile list is focused when it
+  // renders, so Escape would never reach onKeyDown) and returns to Install on
+  // close. Declared before the effect below so a create form opening on mount
+  // still ends up with focus in its field.
+  const onKeyDown = useModalChrome(rootRef, onCancel);
 
   // Focus the field ONCE, when the create form appears. An inline
   // `ref={(el) => el?.focus()}` has a new identity every render, so React
@@ -963,13 +979,6 @@ function ProfilePicker({
     if (creating) nameRef.current?.focus();
   }, [creating]);
   const [name, setName] = useState('');
-  const rootRef = useRef<HTMLDialogElement>(null);
-
-  // Escape only reaches onKeyDown when focus is inside the dialog, and nothing
-  // here is focused when the profile list (rather than the name field) renders.
-  useEffect(() => {
-    rootRef.current?.focus();
-  }, []);
 
   // Portalled to <body> on purpose. Rendered in place, this lands inside
   // `main > .animate-page-in`, whose transform animation makes it the
@@ -984,15 +993,10 @@ function ProfilePicker({
       tabIndex={-1}
       aria-label={t('Choose profile')}
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in outline-none"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          onCancel();
-        }
-      }}
+      onKeyDown={onKeyDown}
     >
       <div className="absolute inset-0 bg-pitch/80" onClick={onCancel} />
-      <div className="grimoire-card relative w-[min(480px,92vw)] p-5">
+      <div className="grimoire-card grimoire-card--raised relative w-[min(480px,92vw)] p-5">
         <h3 className="font-fraktur text-xl text-parchment">{t('Install to profile')}</h3>
         <p className="font-serif-italic text-ash mt-2">
           <TParts

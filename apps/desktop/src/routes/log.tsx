@@ -513,7 +513,7 @@ function LogPage() {
         ) : null}
 
         {idle ? (
-          <div className="border border-border bg-pitch/60 p-3">
+          <Panel variant="inset" className="p-3">
             <p className="font-serif-italic text-ash">
               {t('Ravenswatch is not running. Its log shows here as soon as you start it.')}
             </p>
@@ -527,7 +527,7 @@ function LogPage() {
                 {t('Show the last run')}
               </Button>
             ) : null}
-          </div>
+          </Panel>
         ) : (
           <LogBody
             loading={loading}
@@ -627,7 +627,7 @@ function HealthBanner({
                 {disabled.map((m) => (
                   <li
                     key={m.id}
-                    className="flex flex-wrap items-center gap-2 border border-border bg-pitch/60 px-3 py-2"
+                    className="grimoire-card grimoire-card--inset flex flex-wrap items-center gap-2 px-3 py-2"
                   >
                     <span className="font-data text-sm text-parchment">{m.id}</span>
                     <span className="font-serif-italic min-w-0 flex-1 text-xs text-ash">
@@ -711,7 +711,7 @@ function LogBody({
   }
   if (!meta?.exists) {
     return (
-      <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
+      <p className="grimoire-card grimoire-card--inset font-serif-italic p-3 text-ash">
         {t(
           'No loader log yet. It appears the first time you launch Modded with the script loader installed — asset and texture mods work without it and never write here.',
         )}
@@ -720,7 +720,7 @@ function LogBody({
   }
   if (lines.length === 0) {
     return (
-      <p className="font-serif-italic border border-border bg-pitch/60 p-3 text-ash">
+      <p className="grimoire-card grimoire-card--inset font-serif-italic p-3 text-ash">
         {total > 0
           ? t('No lines match the current filters.')
           : t('The log is empty for this run — the loader attached but wrote nothing.')}
@@ -731,7 +731,7 @@ function LogBody({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      className="max-h-[60vh] overflow-auto border border-border bg-pitch/60"
+      className="grimoire-card grimoire-card--inset max-h-[60vh] overflow-auto"
     >
       <ul className="divide-y divide-border/40">
         {lines.map((line, i) => (

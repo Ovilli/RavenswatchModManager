@@ -83,7 +83,7 @@ export function CommandResult({
             {t('Error detail')}
           </summary>
           <div className="flex items-start gap-2 border-t border-border/70 p-3">
-            <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-data text-xs text-crimson/90">
+            <pre className="max-h-64 flex-1 overflow-auto whitespace-pre-wrap font-data text-xs text-crimson">
               {error}
             </pre>
             <CopyButton value={error} />

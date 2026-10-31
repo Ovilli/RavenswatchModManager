@@ -236,7 +236,7 @@ function SignInPage() {
                 <Github className="h-4 w-4" /> {t('Continue with GitHub')}
               </Button>
             ) : null}
-            <div className="flex items-center gap-3 pt-1 font-mono text-xs uppercase tracking-[0.18em] text-ash">
+            <div className="flex items-center gap-3 pt-1 font-mono text-xs text-ash">
               <div className="h-px flex-1 bg-ash/30" />
               <span>{t('or')}</span>
               <div className="h-px flex-1 bg-ash/30" />
@@ -245,9 +245,7 @@ function SignInPage() {
         ) : null}
         <form className="space-y-4" onSubmit={onSubmit}>
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-              {t('Email')}
-            </span>
+            <span className="font-mono text-xs text-ash">{t('Email')}</span>
             <input
               type="email"
               autoComplete="email"
@@ -260,9 +258,7 @@ function SignInPage() {
           </label>
 
           <label className="block space-y-1">
-            <span className="font-mono text-xs uppercase tracking-[0.22em] text-ash">
-              {t('Password')}
-            </span>
+            <span className="font-mono text-xs text-ash">{t('Password')}</span>
             <input
               type="password"
               autoComplete={isSignup ? 'new-password' : 'current-password'}

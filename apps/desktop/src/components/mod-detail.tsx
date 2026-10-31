@@ -602,7 +602,7 @@ function GalleryVideo({ url, modName }: { url: string; modName: string }) {
       className="group flex aspect-video w-full items-center justify-center gap-2 overflow-hidden rounded border border-oxblood/30 bg-pitch text-ash transition-colors hover:border-crimson hover:text-parchment"
     >
       <Play className="h-6 w-6" />
-      <span className="font-mono text-xs uppercase tracking-[0.2em]">{t('Play video')}</span>
+      <span className="font-mono text-xs">{t('Play video')}</span>
     </button>
   );
 }

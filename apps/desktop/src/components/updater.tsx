@@ -35,7 +35,7 @@ import {
   relaunchApp,
   relaunchMigrated,
 } from '../lib/updater';
-import { Button, Fleuron, useModalChrome } from './chrome';
+import { Button, Fleuron, Panel, useModalChrome } from './chrome';
 import { useDialog, useToast } from './toast';
 
 interface UpdateStatus {
@@ -281,7 +281,7 @@ function UpdateBlocker({
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/90"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-pitch/80"
       onKeyDown={onKeyDown}
     >
       <div
@@ -353,11 +353,11 @@ export function UpdaterBanner() {
           </div>
 
           {v.body ? (
-            <div className="mt-4 max-h-32 overflow-y-auto rounded border border-oxblood/30 bg-pitch/60 p-3">
+            <Panel variant="inset" className="mt-4 max-h-32 overflow-y-auto p-3">
               <pre className="font-mono whitespace-pre-wrap text-xs text-ash leading-relaxed">
                 {v.body}
               </pre>
-            </div>
+            </Panel>
           ) : null}
 
           <div className="mt-6 flex flex-col items-center gap-3">
@@ -443,7 +443,7 @@ export function UpdaterBanner() {
           <Fleuron className="my-5" />
 
           <p className="font-mono text-ash">{t('Installed at')}</p>
-          <p className="mt-1 break-all border border-border bg-pitch/60 px-3 py-2 font-data text-ash">
+          <p className="grimoire-card grimoire-card--inset mt-1 break-all px-3 py-2 font-data text-ash">
             {m.path}
           </p>
 
@@ -932,7 +932,7 @@ export function UpdaterSettings() {
 
   return (
     <div className="space-y-3">
-      <div className="border border-border bg-pitch/40 px-3 py-2">
+      <Panel variant="inset" className="px-3 py-2">
         <VersionRow
           label={t('Launcher')}
           value={`v${appVersion}`}
@@ -954,7 +954,7 @@ export function UpdaterSettings() {
             }
           />
         ) : null}
-      </div>
+      </Panel>
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" size="sm" variant="primary" onClick={onCheck} disabled={busy}>
@@ -990,7 +990,10 @@ export function UpdaterSettings() {
       </div>
 
       {migratable ? (
-        <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
+        <Panel
+          variant="inset"
+          className="flex flex-wrap items-center gap-3 border-gilt/40 px-3 py-2"
+        >
           <p className="flex-1 text-parchment text-sm">
             {t("This copy can't update itself.")}
             <span className="mt-1 block font-data text-ash text-xs">{migratable.reason}</span>
@@ -1006,7 +1009,7 @@ export function UpdaterSettings() {
           >
             <Download className="h-3.5 w-3.5" /> {t('Install to ~/Applications')}
           </Button>
-        </div>
+        </Panel>
       ) : null}
 
       {loaderBusy && loaderProgress ? (
@@ -1029,7 +1032,10 @@ export function UpdaterSettings() {
       ) : null}
 
       {needsGameRestart ? (
-        <div className="flex flex-wrap items-center gap-3 border border-gilt/40 bg-pitch/40 px-3 py-2">
+        <Panel
+          variant="inset"
+          className="flex flex-wrap items-center gap-3 border-gilt/40 px-3 py-2"
+        >
           <p className="flex-1 text-parchment text-sm">
             {t(
               'The new loader takes effect in a fresh session — a running game keeps the one it started with.',
@@ -1045,7 +1051,7 @@ export function UpdaterSettings() {
             <RefreshCw className={`h-3.5 w-3.5 ${restarting ? 'animate-spin' : ''}`} />
             {restarting ? t('Restarting…') : t('Restart Ravenswatch')}
           </Button>
-        </div>
+        </Panel>
       ) : null}
 
       {loaderError ? (
@@ -1057,7 +1063,7 @@ export function UpdaterSettings() {
       ) : null}
 
       {status.state === 'ready' && status.update?.body ? (
-        <pre className="font-mono whitespace-pre-wrap text-ash text-sm border border-border bg-pitch/40 p-3 max-h-48 overflow-y-auto">
+        <pre className="grimoire-card grimoire-card--inset font-mono whitespace-pre-wrap text-ash text-sm p-3 max-h-48 overflow-y-auto">
           {status.update.body}
         </pre>
       ) : null}

@@ -48,6 +48,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 - A container that needs its own background and border uses one of these, not a hand-composed `bg-pitch/60 border border-border`.
 - **Modal backdrop:** `bg-pitch/80` on an `absolute inset-0` layer behind a raised card, opened with `animate-fade-in`. The full-screen image viewer uses `bg-pitch/95`, because it replaces the screen rather than sitting over it.
 - No `backdrop-blur` on surfaces. They are opaque, and the blur forced compositing layers that hid a WebKitGTK scroll artifact (see the `body` comment in `styles.css`).
+- **Exception: the in-game overlay HUD** (`components/overlay-hud.tsx`). Its card is `bg-pitch/85` with `backdrop-blur-sm`, because it sits in its own window over the running game, which should stay faintly visible through it. Nothing in the main window follows it.
 
 ## Text
 

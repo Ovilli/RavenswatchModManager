@@ -142,7 +142,7 @@ function StatusStrip() {
     // `.grimoire-card`s below (they are `backdrop-filter` stacking contexts too,
     // and later in the DOM). An explicit z-index lifts the whole strip instead.
     <div
-      className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2 backdrop-blur-sm"
+      className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2"
       data-tauri-drag-region
     >
       {/* Tauri checks the element under the pointer, so mark the empty-space
@@ -204,7 +204,7 @@ function StatusStrip() {
           // buttons, so a fixed width made the strip wider than a narrow
           // window and pushed the window controls off the edge. It gives
           // ground first now — the full text is a copy button away.
-          <span className="flex min-w-0 items-center gap-2 text-xs text-destructive" role="alert">
+          <span className="flex min-w-0 items-center gap-2 text-xs text-crimson" role="alert">
             <span className="min-w-0 flex-1 truncate">{launchError}</span>
             <CopyButton value={t('Launch error: {error}', { error: launchError })} />
             {/* A failed launch used to pin its message into the status strip

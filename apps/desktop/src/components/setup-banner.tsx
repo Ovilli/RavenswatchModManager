@@ -379,7 +379,7 @@ export function SetupBanner() {
                 <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-0.5" aria-hidden />
               )}
               <span className={c.ok ? 'text-ash' : 'text-parchment'}>
-                <span className="uppercase tracking-wider text-xs mr-2">{c.status}</span>
+                <span className="uppercase text-xs mr-2">{c.status}</span>
                 {c.label}
                 {!c.ok && c.detail ? (
                   <span className="font-serif-italic mt-0.5 block normal-case tracking-normal text-ash">
