@@ -381,6 +381,36 @@ def test_a_relinked_number_takes_its_new_targets_accessor():
 
 
 @needs_corpus
+def test_a_copy_across_class_versions_is_refused():
+    """Character_Common's damage records are version 1.23, Scarlet's bomb's
+    1.21: a copied record is read with the wrong layout and the bomb never
+    loaded in game (2026-11-01). Copying the bomb's own record works."""
+    from rsmm.engine import ability_edit as AE
+    files = {"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": corpus.read(_RED_BOMB)}
+    with pytest.raises(AE.AbilityEditError, match="version 1.21 of it, the source 1.23"):
+        AE.apply(files, [{"entity": "Bomb", "clone": ["Bleed Damage"],
+                          "from": "Character_Common/Character_Common"}],
+                 main="Hero_Red", seed="t")
+    AE.apply(files, [{"entity": "Bomb", "clone": ["Explosion Damage Heroes"],
+                      "rename": {"Explosion Damage Heroes": "Bleed Damage"}}],
+             main="Hero_Red", seed="t")
+
+
+@needs_corpus
+def test_linking_a_literal_number_makes_it_read_the_target():
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    out = AE.apply({"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": corpus.read(_RED_BOMB)}, [
+        {"entity": "Bomb", "link": "Explosion Damage Heroes.value_2",
+         "to": "Explosion Damage Multiplier"},
+    ], main="Hero_Red", seed="t")
+    ef = EntityFile(out.files["Hero_Red_Bomb"], "Hero_Red_Bomb")
+    f = next(x for x in EF.fields(ef.component("Explosion Damage Heroes")) if x.name == "value_2")
+    assert f.text.endswith("Hero_Red_Bomb\\Explosion Damage Multiplier")
+
+
+@needs_corpus
 def test_sub_objects_copy_in_from_another_entity_and_replace_in_place():
     """The burst wears Carmilla's blood VFX: entry 0 of the bomb's Fx list
     becomes a copy of her orb's, in the same place; another is appended."""

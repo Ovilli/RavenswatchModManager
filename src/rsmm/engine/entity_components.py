@@ -62,7 +62,20 @@ def extend_class_table(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile,
     ``donor_cf``.  Their parent classes must already exist in the host (every
     entity carries the ``oIEntityCpntSettings`` / ``oISerializable`` bases)."""
     def add(name: str) -> None:
-        if _class_index_of(host_cf, name) is not None:
+        if (hi := _class_index_of(host_cf, name)) is not None:
+            # A record is laid out by its class VERSION, and the file declares
+            # one version per class: a copy from a file with another version is
+            # read with the wrong layout. Nothing reports it; the entity just
+            # fails to load (Character_Common's Bleed Damage, 1.23, copied into
+            # Scarlet's bomb, 1.21: the bomb never spawned, 2026-11-01).
+            h, d = host_cf.classes[hi], donor_cf.classes[_class_index_of(donor_cf, name)]
+            if (h.version_major, h.version_minor) != (d.version_major, d.version_minor):
+                raise EntityComponentError(
+                    f"cannot copy a {name} record: this entity uses version "
+                    f"{h.version_major}.{h.version_minor} of it, the source "
+                    f"{d.version_major}.{d.version_minor}, and the game would read the "
+                    f"copy with the wrong layout. Copy the part from an entity with the "
+                    f"same version (often one of this entity's own parts) instead")
             return
         donor = donor_cf.classes[_class_index_of(donor_cf, name)]
         if not any(c.class_id == donor.parent_id for c in host_cf.classes):

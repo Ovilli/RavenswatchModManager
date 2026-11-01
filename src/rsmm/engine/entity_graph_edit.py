@@ -509,6 +509,15 @@ class EntityFile:
             a, b = self._obj_token_span(c, f, "ref", int(idx.rstrip("]")), field)
         else:
             c, f, at = self._field(comp, field)
+            if f.kind == "value" and target and " <- " not in f.text:
+                # A literal number: make the slot READ the target instead (the
+                # bomb's copied damage record, whose amount is a plain 50).
+                n = next((i for i, t in enumerate(self._value_pickers(c))
+                          if f.offset <= t.offset < f.offset + f.size), None)
+                if n is None:
+                    raise EntityEditError(f"{c.name!r}.{field} has no number slot to point")
+                self.source_value(comp, n, target)
+                return
             a, b = self._picker_span(c, f)
         obj = c.index - 1
         old = bytes(self.objects[obj][at + a:at + b])
