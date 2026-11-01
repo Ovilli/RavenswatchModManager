@@ -1181,6 +1181,44 @@ effects = [
   the magical-object model every item inherits. With no `name` it is named
   after its id; it has no super effect unless `super_effects` gives it one.
 
+### Conditions (`during`)
+
+`during` holds an effect on only while a condition is true, on always-on and
+timed effects alike (a timed one then needs its trigger and the condition), in
+`effects` and `super_effects`:
+
+```toml
+[[content]]
+kind    = "item"
+id      = "Lone_Wolf_Charm"
+rarity  = "Rare"
+effects = [
+  { stat = "Crit chance", amount = 0.15, during = "day" },
+  { stat = "Attack power", amount = 50, during = "no_allies_nearby" },   # 8 m
+]
+```
+
+- **`day`** / **`night`**: the global flags Scarlet and Piper read.
+- **`no_allies_nearby`**: on while no living hero but the holder is within
+  `radius` metres, so always on in a solo run. A hero counts while it carries
+  "Can Fight", which it has in its Default, Hit Stunned and Staggered
+  behaviours: a downed or dead teammate does not count, one using an ability
+  does, and one in a cinematic, a map teleport or an interaction drops out for
+  that moment. Summons (Kintaro's Bear, Geppetto's Dummy, clones) never count.
+  rsmm writes the parts as the shipped ones: Holy Grail's search around its
+  holder, Sun Wukong's "Can Fight" filter and Snow Queen's detector count,
+  which includes the holder (on while it is at most 1). Proven in game, solo
+  and in co-op: off while a living teammate is in range, on again when they
+  leave, are downed or die, in later chapters and continued runs too. Not yet
+  playtested with three or four players.
+- **`radius`** is how far it looks, in metres (default 8).
+- **`ally_flag`** swaps "Can Fight" for another flag. The hero filter still
+  applies, so a flag only summons carry (`"Bear"`) matches nothing.
+- **`height = [below, above]`** is how far below and above the holder a hero
+  still counts, in metres. The default `[-0.5, 1.5]` is every shipped hero
+  search's band.
+- Effects with the same `radius`, `ally_flag` and `height` share one detector.
+
 ### Super effects (`super_effects`)
 
 A super effect is what an item does once the hero holds enough copies of it:

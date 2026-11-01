@@ -394,6 +394,38 @@ def test_day_and_night_effects_build_and_describe():
     assert CK.check(ent, _shield(), name="Solar_Lunar_Charm") == []
 
 
+def test_no_allies_nearby_effects_build_and_describe():
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine import item_effect as IE
+    effs = [{"stat": "Crit chance", "amount": 0.15, "during": "no_allies_nearby"},
+            {"stat": "Crit damage", "amount": 0.3, "seconds": 4, "on": "dash",
+             "during": "no_allies_nearby"},
+            {"stat": "Crit chance", "amount": 0.05, "during": "no_allies_nearby", "radius": 3},
+            {"stat": "Armour", "amount": 8, "percent": False, "during": "no_allies_nearby",
+             "ally_flag": "Bear"}]
+    parsed = IE.parse_effects(effs)
+    assert [(e.radius, e.ally_flag, e.height) for e in parsed][::2] == [
+        (8.0, "Can Fight", (-0.5, 1.5)), (3.0, "Can Fight", (-0.5, 1.5))]
+    assert IE.describe(parsed[:1]) == "• With no living ally nearby, #+{0}%@ #Crit chance@"
+    for bad, msg in (({"during": "night", "radius": 5}, "radius only applies"),
+                     ({"during": "no_allies_nearby", "height": [1, 0]}, "height must be")):
+        with pytest.raises(IE.ItemEffectError, match=msg):
+            IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, **bad})
+    files = C.build_magic_item(new_id="Lone_Charm", base_id="Increase_Shield",
+                               base_cooked=_shield(), corpus=[], rarity="Rare",
+                               effect=effs, super_effect=False)
+    ent = next(b for p, b in files.items() if p.endswith(".gen"))
+    # One detector per radius and flag, held once by the equipped state.
+    eq = next(f for f in EF.fields(EntityFile(ent, "x").component("State Picked Up"))
+              if f.name == "while_active")
+    held = [i.text.rstrip().rsplit("\\", 1)[-1] for i in eq.items]
+    assert sorted(n for n in held if "Gpn Detector" in n) == [
+        "No Allies Nearby Gpn Detector 3m", "No Allies Nearby Gpn Detector 8m",
+        "No Allies Nearby Gpn Detector 8m Bear"]
+    assert item_warnings(ent, _shield(), set()) == []
+    assert CK.check(ent, _shield(), name="Lone_Charm") == []
+
+
 def test_item_effects_scale_with_duplicate_count():
     """Always-on and timed effects multiply their amount by Amount Selector,
     so duplicate item copies held in-game stack additively."""

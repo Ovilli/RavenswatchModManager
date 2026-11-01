@@ -17,6 +17,9 @@ they are byte for byte what copying the proven parts produced
   filter, as the shipped items listen for it) that switches on a trigger state,
   which restarts the timer (off, then on), so every trigger refreshes the full
   duration;
+* a ``during`` condition is one more test on the tester that holds the
+  modifier: a global bool for day and night (``DURING``), a detector's count of
+  the living heroes around the holder for ``no_allies_nearby``;
 * the base's own stat effects are cut unless ``keep_base_effect`` (the base is
   the item's look, not its behaviour);
 * the card's ``{0}``, ``{1}``... are each effect's numbers, so the card always
@@ -136,14 +139,25 @@ TRIGGERS = {
 #: "Is Daytime Tester" and "Is Nighttime Tester" (which hold State Daytime and
 #: State Nighttime on for Scarlet and Piper).
 _IS_DAYTIME, _IS_NIGHTTIME = 0x17d8d89b, 0x17d8d89c
+#: ``no_allies_nearby`` has no global key (``_no_allies_test``).
+NO_ALLIES = "no_allies_nearby"
 DURING = {
     "day": ("Active only during day", "During the day", _IS_DAYTIME),
     "night": ("Active only during night", "During the night", _IS_NIGHTTIME),
+    NO_ALLIES: ("Active only with no living ally nearby", "With no living ally nearby", None),
 }
+#: ``no_allies_nearby``'s defaults: the radius in metres, the flag a hero needs
+#: to count (only Hero_Common defines it, so summons never do), and the height
+#: band below and above the holder every shipped hero search uses.
+NEARBY_RADIUS = 8.0
+ALLY_FLAG = "Can Fight"
+NEARBY_HEIGHT = (-0.5, 1.5)
 
 #: Accessor keys a value picker reads another part through (``items.md``): a
-#: Timer's time left, a listener's "fired", a GetValue's value.
+#: Timer's time left, a listener's "fired", a GetValue's value, a Gpn
+#: detector's count (Snow Queen's Chilled Crit tests read it).
 _TIMER_LEFT, _LISTENER_FIRED, _GOT_VALUE = 0x16831980, 0x12e4a37e, 0x16abf2eb
+_DETECTOR_COUNT = 0x0fd28686
 #: Where damage_taken's "hero is alive" check reads the hero's health from.
 _HERO = ("EntitySettings", "Heroes\\Hero_Common\\Hero_Common.entity.ot")
 _HEALTH = ("Character_Common\\Character_Common.entity.ot", "Base\\Health Ratio")
@@ -174,6 +188,9 @@ class Effect:
     percent: bool = True        # the card shows the amount x100 with a %
     keep_base_effect: bool = False
     per_level: bool = False     # grows with hero level, as Fairy Dust's shield
+    radius: float | None = None  # how far ``during = "no_allies_nearby"`` looks
+    ally_flag: str | None = None  # what it counts as an ally (ALLY_FLAG)
+    height: tuple[float, float] | None = None  # vertical band (NEARBY_HEIGHT)
 
     @property
     def timed(self) -> bool:
@@ -229,14 +246,30 @@ class Effect:
               else str(raw["on"]) if is_stars and "on" in raw else None)
         if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
-        for k in ("amount", "seconds"):
+        for k in ("amount", "seconds", "radius"):
             if k in raw and (isinstance(raw[k], bool) or not isinstance(raw[k], (int, float))):
                 raise ItemEffectError(f"effect {k} must be a number")
-        for k in ("amount", "seconds"):
+        for k in ("amount", "seconds", "radius"):
             if k in raw and not math.isfinite(raw[k]):
                 raise ItemEffectError(f"effect {k} must be a finite number")
         if timed and raw["seconds"] <= 0:
             raise ItemEffectError("effect seconds must be above 0")
+        for k in ("radius", "ally_flag", "height"):
+            if k in raw and during != NO_ALLIES:
+                raise ItemEffectError(f"effect {k} only applies to during = {NO_ALLIES!r}")
+        if "radius" in raw and raw["radius"] <= 0:
+            raise ItemEffectError("effect radius must be above 0")
+        if "ally_flag" in raw and (not isinstance(raw["ally_flag"], str)
+                                   or not raw["ally_flag"].strip()):
+            raise ItemEffectError("effect ally_flag must be a flag name, e.g. 'Can Fight'")
+        if "height" in raw:
+            h = raw["height"]
+            if (not isinstance(h, (list, tuple)) or len(h) != 2
+                    or any(isinstance(x, bool) or not isinstance(x, (int, float))
+                           or not math.isfinite(x) for x in h)
+                    or not h[0] < h[1]):
+                raise ItemEffectError("effect height must be [below, above] in metres, "
+                                      "below < above, e.g. [-0.5, 1.5]")
         for k in ("refresh", "percent", "keep_base_effect", "per_level"):
             if k in raw and not isinstance(raw[k], bool):
                 raise ItemEffectError(f"effect {k} must be true or false")
@@ -255,7 +288,11 @@ class Effect:
                    seconds=float(raw["seconds"]) if timed else None, on=on, during=during,
                    refresh=raw.get("refresh", True), percent=percent,
                    keep_base_effect=raw.get("keep_base_effect", False),
-                   per_level=raw.get("per_level", False))
+                   per_level=raw.get("per_level", False),
+                   radius=float(raw.get("radius", NEARBY_RADIUS)) if during == NO_ALLIES else None,
+                   ally_flag=str(raw.get("ally_flag", ALLY_FLAG)) if during == NO_ALLIES else None,
+                   height=(tuple(float(x) for x in raw.get("height", NEARBY_HEIGHT))
+                           if during == NO_ALLIES else None))
 
 
 def parse_effects(raw) -> list[Effect]:
@@ -557,6 +594,133 @@ def _bool_test(w: P.PartWriter, key: int) -> int:
                  + struct.pack("<I", 0))
 
 
+# --- "no living ally nearby" ---------------------------------------------------
+#
+# A Gpn detector counts the heroes its traverser finds around the holder; the
+# count includes the holder, so the condition is a count of at most 1. The
+# parts are the shipped ones: Defense_Heal's "Heal Heroes Gpn Traverser" (Holy
+# Grail searches around its holder), Sun Wukong's "Can Fight" tester (on only
+# in Default, Hit Stunned and Staggered: downed and dead heroes drop out), and
+# Snow Queen's Chilled Crit detector and int test, with operator 5 (<=) against
+# 1 where hers is 2 (>) against 0.
+#
+# PROVEN in game 2026-10-31 (solo and two-player co-op): off while a living
+# teammate is in range, on when they leave, are downed or die. Not yet
+# exercised: three or four players.
+#
+# No owner test: Carmilla's self tester (mode 0) matches its owner, but
+# inverted it excludes every hero, so the search never sees a teammate.
+
+_TRAVERSER = "oCEntityCpntGpnTraverserSettings"
+_DETECTOR = "oCEntityCpntGpnDetectorSettings"
+_HERO_LAYER = 0x1724391e
+_AT_MOST = 5
+#: A node locator's tail: u32 0, then an identity 4x4 transform.
+_NODE_LOCATOR_TAIL = struct.pack("<I16f", 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+_ANY_FILTER = struct.pack("<I4I", 4, 2, 2, 2, 2)
+#: Defense_Heal's hero mask (A, B) = (2, 1), 2 = either. It matches remote
+#: players' heroes; (1, 2) is the ally support effects' mask.
+_HERO_MASK = struct.pack("<6I", _HERO_LAYER, 1, 2, 1, 1, 0)
+_VEC3 = 3
+_ON, _OFF = P.Num(P.BOOL, b"\x01"), P.Num(P.BOOL, b"\x00")
+
+
+def _vec3(x: float, y: float, z: float) -> P.Num:
+    return P.Num(_VEC3, struct.pack("<3f", x, y, z))
+
+
+def _locator(w: P.PartWriter) -> bytes:
+    """A node locator at the entity itself."""
+    return w.obj("oCEntity3dNodeCpntLocatorSettings",
+                 P.link_bytes(_NONE, w.ci) + _NODE_LOCATOR_TAIL)
+
+
+def _locator_3d(w: P.PartWriter) -> bytes:
+    """The entity's own position, as every shipped traverser and detector
+    leaves it."""
+    def num(n: P.Num) -> bytes:
+        return P.num_bytes(n, w.ci)
+    z4 = bytes(4)
+    transform = w.obj("oCEntity3dTransformPicker",
+                      z4 + num(P.Num.f32(0)) * 3 + num(_vec3(0, 0, 0))
+                      + z4 + num(P.Num.f32(0)) * 3 + num(_vec3(0, 0, 0))
+                      + z4 + num(P.Num.f32(1)) * 3)
+    return w.obj("oCEntity3dLocatorSettings", _locator(w) + z4 + num(_vec3(0, 0, 0)) + z4
+                 + _locator(w) + num(_vec3(0, 0, 1)) + z4 + num(P.Num.f32(1)) + transform)
+
+
+def _gpn_tester(w: P.PartWriter, cls: str, body: bytes, *, invert: bool = False) -> int:
+    """A Gpn tester sub-object: on, ``invert`` (passes when its check fails),
+    then its own fields."""
+    return w.sub(cls, P.num_bytes(_ON, w.ci) + P.num_bytes(_ON if invert else _OFF, w.ci)
+                 + body)
+
+
+def _add_no_allies_detector(w: P.PartWriter, name: str, tag: str, effect: Effect) -> None:
+    """Add the traverser and the detector ``name`` holding what it finds."""
+    def num(n: P.Num) -> bytes:
+        return P.num_bytes(n, w.ci)
+    below, above = effect.height
+    radius = _value(w, f"No Allies Nearby Radius {tag}", effect.radius)
+    around = w.sub("oCEntityGpnAroundPositionTraverserSettings",
+                   num(_ON) + b"\x00" + _locator_3d(w) + bytes(4) + num(P.Num.f32(0))
+                   + num(P.Num(P.F32, struct.pack("<f", effect.radius), source=radius,
+                               key=_READ_VALUE)))
+    tests = [_gpn_tester(w, "oCEntityGpnFlagMaskTesterSettings", w.obj("oCGpnFilter", _HERO_MASK)),
+             _gpn_tester(w, "oCEntityGpnFlagTesterSettings", P._lstr(effect.ally_flag)),
+             _gpn_tester(w, "oCEntityGpnFlagTesterSettings", P._lstr("Building"), invert=True)]
+    # The height band is stored above, then below.
+    common =w.obj("oCEntityGpnTraverserCommonSettings",
+                   w.obj("oCGpnFilter", bytes(4) + _ANY_FILTER + _ANY_FILTER + bytes(4))
+                   + num(P.Num.f32(0)) + _locator(w) + b"\x00\x00\x01\x00\x00"
+                   + num(_OFF) + num(_OFF) + num(P.Num.f32(above)) + num(P.Num.f32(below))
+                   + num(P.Num.f32(0)))
+    combiner = w.obj("oCEntityGpnTesterCombinerSettings",
+                     num(_ON) + num(_OFF) + b"\x01"
+                     + struct.pack(f"<I{len(tests)}I", len(tests), *tests))
+    traverser = w.add(_TRAVERSER, f"No Allies Nearby Gpn Traverser {tag}", flags=0x101,
+                      body=common + struct.pack("<III", _HERO_LAYER, 1, around) + combiner)
+    w.add(_DETECTOR, name, flags=0x1,
+          body=P.link_bytes(_NONE, w.ci) * 2 + P.link_bytes(traverser, w.ci)
+          + P.link_bytes(_NONE, w.ci) + _locator_3d(w))
+
+
+def _no_allies_detector(w: P.PartWriter, state: str, effect: Effect) -> P.Link:
+    """The detector of ``effect``'s heroes around the holder, held on by
+    ``state``; effects with the same settings share one."""
+    below, above = effect.height
+    tag = f"{effect.radius:g}m"
+    if effect.ally_flag != ALLY_FLAG:
+        tag += f" {effect.ally_flag}"
+    if effect.height != NEARBY_HEIGHT:
+        tag += f" h{below:g}..{above:g}"
+    name = f"No Allies Nearby Gpn Detector {tag}"
+    d = P.PartWriter(w.ef, f"no-allies:{w.ef.name}:{tag}")
+    if not any(c.name == name for c in w.ef.graph().components):
+        _add_no_allies_detector(d, name, tag, effect)
+    held = next(f for f in EF.fields(w.ef.component(state)) if f.name == "while_active")
+    if not any(i.text.rstrip().endswith("\\" + name) for i in held.items):
+        w.ef.add_ref(state, "while_active", name)
+    return d.link(name, _DETECTOR)
+
+
+def _no_allies_test(w: P.PartWriter, state: str, effect: Effect) -> int:
+    """A condition: no living hero but the holder is within ``effect.radius``
+    (the count, which includes the holder, is at most 1)."""
+    count = P.Num(P.INT, bytes(4), source=_no_allies_detector(w, state, effect),
+                  key=_DETECTOR_COUNT)
+    return w.sub("oCEntityCpntIntTestSettings", P.num_bytes(count, w.ci)
+                 + P.num_bytes(P.Num.int(1), w.ci) + struct.pack("<I", _AT_MOST))
+
+
+def _during_test(w: P.PartWriter, effect: Effect, state: str) -> int:
+    """The condition ``effect.during`` names; ``state`` is what runs the effect
+    (the equipped state, or the super effect's)."""
+    if effect.during == NO_ALLIES:
+        return _no_allies_test(w, state, effect)
+    return _bool_test(w, DURING[effect.during][2])
+
+
 def _tester(w: P.PartWriter, name: str, tests: list[int], *, every: bool, flags: int,
             on_true: P.Link = _NONE, holds: P.Link = _NONE) -> P.Link:
     """True while ``tests`` hold (all of them when ``every``); switches
@@ -598,7 +762,7 @@ def _add_passive(w: P.PartWriter, effect: Effect, sfx: str, equipped: str,
     tester, _timer_n, mod, _seconds_n, amount, op = (n + sfx for n in _TIMED)
     mod_link, slot_node = _amount_parts(w, effect, mod, amount, op, scale, sfx)
     if effect.during:
-        _tester(w, tester, [_bool_test(w, DURING[effect.during][2])], every=False,
+        _tester(w, tester, [_during_test(w, effect, equipped)], every=False,
                 flags=0x1, holds=mod_link)
         w.ef.add_ref(equipped, "while_active", tester)
     else:
@@ -621,7 +785,7 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
         "flag": 0, **_timer_tail(w)}, flags=0x1)
     tests = [_float_test(w, timer_link, _TIMER_LEFT)]
     if effect.during:
-        tests.append(_bool_test(w, DURING[effect.during][2]))
+        tests.append(_during_test(w, effect, equipped))
     _tester(w, tester, tests, every=len(tests) > 1, flags=0x1, holds=mod_link)
     w.add(_STATE, state, {
         "activates": [timer_link], "deactivates?": [timer_link] if effect.refresh else [],
