@@ -148,7 +148,7 @@ export function createApiClient(options: ApiClientOptions) {
   async function attempt<T>(
     path: string,
     init: RequestInit,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T, unknown>,
   ): Promise<T> {
     const baseUrl = options.baseUrl.replace(/\/+$/, '');
     const ctrl = new AbortController();
@@ -213,7 +213,7 @@ export function createApiClient(options: ApiClientOptions) {
   async function request<T>(
     path: string,
     init: RequestInit,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    schema: z.ZodType<T, unknown>,
   ): Promise<T> {
     const method = (init.method ?? 'GET').toUpperCase();
     const mayRetry = RETRYABLE_METHODS.has(method);
@@ -312,7 +312,7 @@ export function createApiClient(options: ApiClientOptions) {
     status: scanStatusEnum,
     position: z.number().int().nullable(),
     etaSeconds: z.number().int().nullable(),
-    stats: z.record(z.number()).optional(),
+    stats: z.record(z.string(), z.number()).optional(),
   });
   const imagePresignResponseSchema = z.object({
     uploadUrl: z.string().url(),
@@ -464,7 +464,7 @@ export function createApiClient(options: ApiClientOptions) {
     sha256: z.string(),
     sizeBytes: z.number(),
     scanStatus: z.string(),
-    scanStats: z.record(z.number()).nullable(),
+    scanStats: z.record(z.string(), z.number()).nullable(),
     createdAt: z.string(),
     scanQueuedAt: z.string().nullable(),
     scannedAt: z.string().nullable(),
