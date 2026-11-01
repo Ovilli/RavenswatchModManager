@@ -131,6 +131,7 @@ class HeroBase:
     body_fbx: str | None = None     # Characters\Heroes\Piper\Piper_GEO.fbx
     body_mat: str | None = None     # Characters\Heroes\Piper\Textures\M_Piper.mat.ot
     family: list[str] = field(default_factory=list)   # entity refs to clone
+    satellites: list[str] = field(default_factory=list)  # their per-hero UI (satellites())
 
     @property
     def art_dir(self) -> str:
@@ -182,6 +183,7 @@ def resolve_base(herodef: str, app_text: str) -> HeroBase:
     base = HeroBase(herodef, folder, stem, alias, default, bank,
                     family=sorted(f"Heroes\\{folder}\\{s}.entity.ot" for s in fam
                                   if s == stem or s.startswith(stem + "_")))
+    base.satellites = satellites(base.family)
     main = corpus.read(entity_rel(alias.stream))
     base.body_fbx = _graphic_mesh(main, "Character Mesh") if main else None
     dts = _strings(sraw)
@@ -194,6 +196,39 @@ def resolve_base(herodef: str, app_text: str) -> HeroBase:
                      or mat_after(lambda t: t.startswith("[Value]") and " Mesh " in t
                                   and t.endswith(" Material Value")))
     return base
+
+
+#: Where a hero's own UI lives: its life bar (``Life_Bar_Hero_Red``: Scarlet's
+#: rage, Merlin's potency, Sun Wukong's timer) and Romeo's panache token.
+SATELLITE_DIR = "GameUis\\Common_Ui\\"
+
+
+def satellites(family: list[str]) -> list[str]:
+    """The UI entities the family reaches that read a family member BY NAME
+    (``] Hero_Red\\Life Bar\\...``). They sit outside the hero's folder, so a
+    clone that renames only its family leaves them reading the base's names,
+    which nothing answers to: the clone's life bar loses everything its hero
+    feeds it (the gauge, the combo). They are cloned with the family.
+
+    Only ``SATELLITE_DIR``: the book pages and parents that also read heroes
+    by name (``Hero_Meta_Progression``, ``Character_Common``) are shared by
+    every hero and must keep reading the real ones."""
+    names = [r.rsplit("\\", 1)[-1][:-len(".entity.ot")] for r in family]
+    reads = re.compile(r"\] (" + "|".join(map(re.escape, names)) + r")\\")
+    out: list[str] = []
+    seen: set[str] = set()
+    todo = list(family)
+    while todo:
+        raw = corpus.read(entity_rel(todo.pop()))
+        for t in _strings(raw) if raw else ():
+            if (t.startswith(SATELLITE_DIR) and t.endswith(".entity.ot")
+                    and t not in seen):
+                seen.add(t)
+                sraw = corpus.read(entity_rel(t))
+                if sraw and any(reads.search(x) for x in _strings(sraw)):
+                    out.append(t)
+                    todo.append(t)
+    return sorted(out)
 
 
 def _graphic_mesh(raw: bytes, label: str) -> str | None:
@@ -237,6 +272,15 @@ class Renamer:
         stems = sorted((r.rsplit("\\", 1)[-1][:-len(".entity.ot")] for r in self.base.family),
                        key=len, reverse=True)
         self._stems = {s: self.new_stem + s[len(self.base.stem):] for s in stems}
+        # A satellite keeps its folder and takes the hero's name as a suffix
+        # (Life_Bar_Hero_Red -> Life_Bar_Hero_Red_BloodWolf); it reads itself by
+        # scope too, so its name is renamed like a family member's.
+        tail = self.new_stem.removeprefix("Hero_")
+        for ref in self.base.satellites:
+            old = ref[len(SATELLITE_DIR):-len(".entity.ot")]
+            self._stems[old] = f"{old}_{tail}"
+            self.extra.setdefault(ref, f"{SATELLITE_DIR}{old}_{tail}.entity.ot")
+        stems = sorted(self._stems, key=len, reverse=True)
         alt = "|".join(map(re.escape, stems))
         self._scope = re.compile(r"(\] )(" + alt + r")(?=\\)")
         self._path = re.compile(re.escape(f"Heroes\\{self.base.folder}\\")

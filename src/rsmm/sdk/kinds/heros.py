@@ -626,6 +626,9 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             ecache = corpus.read(RC.cache_path_for(rel))
             if ecache is not None:
                 put(RC.cache_path_for(new_rel), R.cache(ecache, tuple(art)))
+        for ref in b.satellites:
+            # Its UI (the life bar), reading this hero's names instead of the base's.
+            put(H.entity_rel(R.entity_ref(ref)), R.cooked(corpus.read(H.entity_rel(ref))))
         for built in attack_entities:
             # Its trail/impact name the base's effects; the swaps turn them
             # into this hero's recoloured copies (and leave anything else).
@@ -827,7 +830,8 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     # 4. Identities of its own. Last, so the family, the outfits' copied
     #    override record and the herodef all go through ONE mapping.
     if R is not None:
-        mapping = H.family_guid_map([corpus.read(H.entity_rel(r)) for r in b.family],
+        mapping = H.family_guid_map([corpus.read(H.entity_rel(r))
+                                     for r in (*b.family, *b.satellites)],
                                     f"{mod_id}:{hid}")
         outfit_files = {H.entity_rel(r) for r, _n in outfit_refs}
         for path in written:
