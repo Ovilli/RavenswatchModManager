@@ -1,6 +1,16 @@
 {
-  "generated": "2026-10-30",
+  "generated": "2026-11-01",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-01",
+      "summary": "Custom heroes get their own life bar (rage, combo, timers); new override and replace_subobject ability steps, add_subobject copies from other entities",
+      "highlights": [
+        "Custom heroes now get their own life bar, so a Scarlet clone shows its rage gauge and combo points",
+        "New ability steps: override (replace an inherited part) and replace_subobject; add_subobject can copy from another hero"
+      ],
+      "cli_version": 22
+    },
     {
       "version": "",
       "date": "2026-10-30",
@@ -512,16 +522,6 @@
         "Mods can upgrade talents: random, lowest, a specific one, or straight to legendary (R.talent.upgrade*)",
         "Mods can add a random ultimate talent or reset every talent (R.talent.add_random_ultimate / reset)",
         "Mods can clear status effects and stagger (R.status.clear)"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 34,
-      "date": "2026-10-10",
-      "summary": "New SDK APIs: R.give.remove_random, R.give.remove_all and R.give.duplicate_random take items away or copy one, by rarity or for any.",
-      "highlights": [
-        "Mods can remove a random item, or every item, of a rarity (R.give.remove_random / remove_all)",
-        "Mods can give a second copy of a random common, rare or epic item (R.give.duplicate_random)"
       ]
     }
   ]
