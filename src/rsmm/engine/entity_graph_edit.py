@@ -513,15 +513,23 @@ class EntityFile:
         obj = c.index - 1
         old = bytes(self.objects[obj][at + a:at + b])
         new = self._picker(target)
-        self.objects[obj][at + a:at + b] = new
         # A reference inside a value picker is followed by the ACCESSOR the
         # target is read with, which depends on the target's class and value
         # type; a stale one reads the new target with the wrong method and
         # returns garbage (entity_append.fix_accessor has the RE).
+        # Learn the accessors BEFORE the swap: afterwards this very picker
+        # reads the target with its stale accessor, `resolve` counts it as the
+        # file's own evidence and keeps it. A bleed modifier moved from a
+        # selector onto an operation kept the selector's 0x0fd2c964 and dealt
+        # 0 bleed in game (Blood Wolf, 2026-11-01).
+        try:
+            acc = _Accessors(cooked.parse(self._emit()))
+        except (EntityAppendError, EntityEditError) as e:
+            raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
+        self.objects[obj][at + a:at + b] = new
         label_end = at + a + len(new) - 4
         p = bytes(self.objects[obj])
         try:
-            acc = _Accessors(cooked.parse(self._emit()))
             p = fix_accessor(p, label_end, old[8:24], new[8:24], acc,
                              _picker_path(old), _picker_path(new))
             p = fix_format_slot(p, at + a, label_end, new[8:24], acc)

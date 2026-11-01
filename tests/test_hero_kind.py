@@ -362,6 +362,25 @@ def test_an_override_replaces_the_ancestors_part_instead_of_adding_one():
 
 
 @needs_corpus
+def test_a_relinked_number_takes_its_new_targets_accessor():
+    """A modifier moved from a selector onto an operation must read it with the
+    operation's accessor. set_ref learned accessors AFTER writing the link, so
+    the half-edited link was counted as the file's own evidence and kept the
+    selector's: Blood Wolf's 3rd hit dealt 0 bleed in game (2026-11-01)."""
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = EntityFile(corpus.read(_RED), "Hero_Red")
+    op = "Wolf Basic Attack Supposed Damage Operation"
+    ef.clone([op], rename={op: "Bleed Op"}, seed="a")
+    ef.clone(["Skill Primary Bleed Modifier"],
+             rename={"Skill Primary Bleed Modifier": "Bleed Mod"}, seed="b")
+    ef.set_ref("Bleed Mod", "amount", "Bleed Op")
+    p = bytes(ef.objects[ef.component("Bleed Mod").index - 1])
+    at = p.find(b"\\Bleed Op") + len(b"\\Bleed Op") + 4
+    assert p[at:at + 4] == EntityFile.F32_ACCESSOR[
+        "oCEntityCpntValueOperationsSettings"].to_bytes(4, "little")
+
+
+@needs_corpus
 def test_sub_objects_copy_in_from_another_entity_and_replace_in_place():
     """The burst wears Carmilla's blood VFX: entry 0 of the bomb's Fx list
     becomes a copy of her orb's, in the same place; another is appended."""
