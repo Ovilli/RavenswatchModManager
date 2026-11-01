@@ -4,6 +4,18 @@
     {
       "version": "",
       "date": "2026-11-01",
+      "summary": "Hero builder: one-byte flag fields can be set (bleed from a spawned bomb now respects armour plates); Hero tab writes lint-valid bases; Sun Wukong talents open again; greyed Save explains why",
+      "highlights": [
+        "Hero builder: set can now change one-byte flag fields (lets a bomb's bleed respect armour plates)",
+        "Editor Hero tab: heroes it creates no longer fail rsmm lint (base was written as Red_Update6)",
+        "Editor: Sun Wukong talent mods open again",
+        "Editor Hero tab: a greyed-out Save button now says why"
+      ],
+      "cli_version": 24
+    },
+    {
+      "version": "",
+      "date": "2026-11-01",
       "summary": "Hero builder: spawned objects (bombs, orbs) can now carry their own bleed; ability steps refuse copying parts across data versions; link can point a plain number at a value",
       "highlights": [
         "Heroes: bleed applied by a spawned bomb now deals damage (it needs its own damage owner)",
@@ -511,17 +523,6 @@
       "summary": "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run",
       "highlights": [
         "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 36,
-      "date": "2026-10-10",
-      "summary": "New SDK APIs: R.melody.choose/remove by name (the old GUID-based choose never worked), R.control.lock/unlock/release, R.run.next_chapter/win/lose (current chapter only).",
-      "highlights": [
-        "Mods can start collecting a melody by name, or remove one (R.melody.choose / remove)",
-        "Mods can freeze and release the player's controls (R.control.lock / release)",
-        "Mods can finish the chapter, win or lose the run (R.run.next_chapter / win / lose)"
       ]
     }
   ]
