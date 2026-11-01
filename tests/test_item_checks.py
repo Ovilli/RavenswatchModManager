@@ -402,26 +402,34 @@ def test_no_allies_nearby_effects_build_and_describe():
              "during": "no_allies_nearby"},
             {"stat": "Crit chance", "amount": 0.05, "during": "no_allies_nearby", "radius": 3},
             {"stat": "Armour", "amount": 8, "percent": False, "during": "no_allies_nearby",
-             "ally_flag": "Bear"}]
+             "height": [-1, 2]}]
     parsed = IE.parse_effects(effs)
-    assert [(e.radius, e.ally_flag, e.height) for e in parsed][::2] == [
-        (8.0, "Can Fight", (-0.5, 1.5)), (3.0, "Can Fight", (-0.5, 1.5))]
+    assert [(e.radius, e.height) for e in parsed][::2] == [(8.0, (-0.5, 1.5)), (3.0, (-0.5, 1.5))]
     assert IE.describe(parsed[:1]) == "• With no living ally nearby, #+{0}%@ #Crit chance@"
     for bad, msg in (({"during": "night", "radius": 5}, "radius only applies"),
-                     ({"during": "no_allies_nearby", "height": [1, 0]}, "height must be")):
+                     ({"during": "no_allies_nearby", "height": [1, 0]}, "height must be"),
+                     ({"during": "no_allies_nearby", "ally_flag": "Bear"}, "no field ally_flag")):
         with pytest.raises(IE.ItemEffectError, match=msg):
             IE.Effect.parse({"stat": "Crit chance", "amount": 0.1, **bad})
     files = C.build_magic_item(new_id="Lone_Charm", base_id="Increase_Shield",
                                base_cooked=_shield(), corpus=[], rarity="Rare",
-                               effect=effs, super_effect=False)
+                               effect=effs,
+                               super_effects=[{"stat": "Crit chance", "amount": 0.1,
+                                               "during": "no_allies_nearby"}])
     ent = next(b for p, b in files.items() if p.endswith(".gen"))
-    # One detector per radius and flag, held once by the equipped state.
+    # One detector per radius and height, held once by the equipped state.
     eq = next(f for f in EF.fields(EntityFile(ent, "x").component("State Picked Up"))
               if f.name == "while_active")
     held = [i.text.rstrip().rsplit("\\", 1)[-1] for i in eq.items]
     assert sorted(n for n in held if "Gpn Detector" in n) == [
         "No Allies Nearby Gpn Detector 3m", "No Allies Nearby Gpn Detector 8m",
-        "No Allies Nearby Gpn Detector 8m Bear"]
+        "No Allies Nearby Gpn Detector 8m h-1..2"]
+    # The super effect's detector is its own, never the equipped state's.
+    names = {c.name for c in EntityFile(ent, "x").graph().components}
+    supers = {n for n in names if n.startswith("No Allies Nearby Gpn Detector 8m ")
+              and n != "No Allies Nearby Gpn Detector 8m h-1..2"}
+    assert len(supers) == 1 and not supers & set(held)
+    assert IE._num_tag(8.0) == "8" and IE._num_tag(8.0000001) != "8"
     assert item_warnings(ent, _shield(), set()) == []
     assert CK.check(ent, _shield(), name="Lone_Charm") == []
 

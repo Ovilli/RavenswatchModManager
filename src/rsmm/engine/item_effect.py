@@ -147,8 +147,9 @@ DURING = {
     NO_ALLIES: ("Active only with no living ally nearby", "With no living ally nearby", None),
 }
 #: ``no_allies_nearby``'s defaults: the radius in metres, the flag a hero needs
-#: to count (only Hero_Common defines it, so summons never do), and the height
-#: band below and above the holder every shipped hero search uses.
+#: to count (only Hero_Common defines it, so summons never do; fixed, as a
+#: flag no hero carries matches nothing and leaves the effect always on), and
+#: the height band below and above the holder every shipped hero search uses.
 NEARBY_RADIUS = 8.0
 ALLY_FLAG = "Can Fight"
 NEARBY_HEIGHT = (-0.5, 1.5)
@@ -189,7 +190,6 @@ class Effect:
     keep_base_effect: bool = False
     per_level: bool = False     # grows with hero level, as Fairy Dust's shield
     radius: float | None = None  # how far ``during = "no_allies_nearby"`` looks
-    ally_flag: str | None = None  # what it counts as an ally (ALLY_FLAG)
     height: tuple[float, float] | None = None  # vertical band (NEARBY_HEIGHT)
 
     @property
@@ -254,14 +254,11 @@ class Effect:
                 raise ItemEffectError(f"effect {k} must be a finite number")
         if timed and raw["seconds"] <= 0:
             raise ItemEffectError("effect seconds must be above 0")
-        for k in ("radius", "ally_flag", "height"):
+        for k in ("radius", "height"):
             if k in raw and during != NO_ALLIES:
                 raise ItemEffectError(f"effect {k} only applies to during = {NO_ALLIES!r}")
         if "radius" in raw and raw["radius"] <= 0:
             raise ItemEffectError("effect radius must be above 0")
-        if "ally_flag" in raw and (not isinstance(raw["ally_flag"], str)
-                                   or not raw["ally_flag"].strip()):
-            raise ItemEffectError("effect ally_flag must be a flag name, e.g. 'Can Fight'")
         if "height" in raw:
             h = raw["height"]
             if (not isinstance(h, (list, tuple)) or len(h) != 2
@@ -290,7 +287,6 @@ class Effect:
                    keep_base_effect=raw.get("keep_base_effect", False),
                    per_level=raw.get("per_level", False),
                    radius=float(raw.get("radius", NEARBY_RADIUS)) if during == NO_ALLIES else None,
-                   ally_flag=str(raw.get("ally_flag", ALLY_FLAG)) if during == NO_ALLIES else None,
                    height=(tuple(float(x) for x in raw.get("height", NEARBY_HEIGHT))
                            if during == NO_ALLIES else None))
 
@@ -667,10 +663,10 @@ def _add_no_allies_detector(w: P.PartWriter, name: str, tag: str, effect: Effect
                    + num(P.Num(P.F32, struct.pack("<f", effect.radius), source=radius,
                                key=_READ_VALUE)))
     tests = [_gpn_tester(w, "oCEntityGpnFlagMaskTesterSettings", w.obj("oCGpnFilter", _HERO_MASK)),
-             _gpn_tester(w, "oCEntityGpnFlagTesterSettings", P._lstr(effect.ally_flag)),
+             _gpn_tester(w, "oCEntityGpnFlagTesterSettings", P._lstr(ALLY_FLAG)),
              _gpn_tester(w, "oCEntityGpnFlagTesterSettings", P._lstr("Building"), invert=True)]
     # The height band is stored above, then below.
-    common =w.obj("oCEntityGpnTraverserCommonSettings",
+    common = w.obj("oCEntityGpnTraverserCommonSettings",
                    w.obj("oCGpnFilter", bytes(4) + _ANY_FILTER + _ANY_FILTER + bytes(4))
                    + num(P.Num.f32(0)) + _locator(w) + b"\x00\x00\x01\x00\x00"
                    + num(_OFF) + num(_OFF) + num(P.Num.f32(above)) + num(P.Num.f32(below))
@@ -685,15 +681,27 @@ def _add_no_allies_detector(w: P.PartWriter, name: str, tag: str, effect: Effect
           + P.link_bytes(_NONE, w.ci) + _locator_3d(w))
 
 
+def _num_tag(x: float) -> str:
+    """``x`` for a part name: short, but never equal for two different values."""
+    return f"{x:g}" if float(f"{x:g}") == x else repr(x)
+
+
 def _no_allies_detector(w: P.PartWriter, state: str, effect: Effect) -> P.Link:
     """The detector of ``effect``'s heroes around the holder, held on by
-    ``state``; effects with the same settings share one."""
+    ``state``; effects with the same settings run from the same state share
+    one. A super effect gets its own: one detector held by two states would
+    hang on whether ``while_active`` is refcounted, which no shipped item
+    shows."""
     below, above = effect.height
-    tag = f"{effect.radius:g}m"
-    if effect.ally_flag != ALLY_FLAG:
-        tag += f" {effect.ally_flag}"
+    tag = f"{_num_tag(effect.radius)}m"
     if effect.height != NEARBY_HEIGHT:
-        tag += f" h{below:g}..{above:g}"
+        tag += f" h{_num_tag(below)}..{_num_tag(above)}"
+    try:
+        equipped = _equipped_state(w.ef)
+    except ItemEffectError:
+        equipped = None
+    if state != equipped:
+        tag += f" {state}"
     name = f"No Allies Nearby Gpn Detector {tag}"
     d = P.PartWriter(w.ef, f"no-allies:{w.ef.name}:{tag}")
     if not any(c.name == name for c in w.ef.graph().components):

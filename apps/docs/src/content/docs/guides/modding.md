@@ -1212,12 +1212,11 @@ effects = [
   leave, are downed or die, in later chapters and continued runs too. Not yet
   playtested with three or four players.
 - **`radius`** is how far it looks, in metres (default 8).
-- **`ally_flag`** swaps "Can Fight" for another flag. The hero filter still
-  applies, so a flag only summons carry (`"Bear"`) matches nothing.
 - **`height = [below, above]`** is how far below and above the holder a hero
   still counts, in metres. The default `[-0.5, 1.5]` is every shipped hero
   search's band.
-- Effects with the same `radius`, `ally_flag` and `height` share one detector.
+- Effects with the same `radius` and `height` share one detector; a super
+  effect gets its own.
 
 ### Super effects (`super_effects`)
 
