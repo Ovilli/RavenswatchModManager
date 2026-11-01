@@ -356,6 +356,22 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     aim = _obj_refs(node, "obj_4") if node else []
     yaw_ref = next((i for i, r in enumerate(aim) if "Y Angle" in r), None)
     x_ref = next((i for i, r in enumerate(aim) if "X Offset" in r), None)
+    # Links the shipped node already holds into its OWN entity that lead to no
+    # part at all: Merlin's aim reads "Potency Rune Node Angle Value", defined
+    # nowhere in the game. The game ignores it; the build check refuses it on
+    # a copy, which made every Fire and Hit block on Merlin fail to save.
+    own = {c.name for c in g.components}
+    dangling = [(f.name, i) for f in (EF.fields(node) if node else []) if f.kind == "obj"
+                for i, r in enumerate(_obj_refs(node, f.name))
+                if r and r.startswith(g.name + "\\")
+                and r.rstrip().rstrip('"').rsplit("\\", 1)[-1] not in own]
+
+    def clear_dangling(nd: str) -> None:
+        # Inside a number slot a link cannot just go: point it at a plain 0,
+        # what the game read through the missing part.
+        for fld, i in dangling:
+            steps.append({"link": f"{nd}.{fld}[{i}]",
+                          "to": num(f"{nd.removeprefix(tag + ' ')} {fld} {i} Zero", 0.0)})
     n_values = sum(len(f.items) for f in EF.fields(spawner) if f.name == "spawner_values") \
         if spawner else 0
     sv_donor = next((c for c in g.components if c.cls == "oCEntityCpntSpawnerValueSettings"
@@ -446,6 +462,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
             steps += [{"clone": [spawner.name, node.name],
                        "rename": {spawner.name: sp, node.name: nd}},
                       {"set": f"{sp}.template[1]", "value": HIT_ENTITY}]
+            clear_dangling(nd)
             steps += [{"remove_link": f"{sp}.spawner_values[0]"}] * n_values
             for key, (target, default, _, _, scale) in HIT_VALUES.items():
                 setv(sp, HIT_ENTITY, key.title(), target,
@@ -470,6 +487,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
             steps += [{"clone": [spawner.name, node.name],
                        "rename": {spawner.name: sp, node.name: nd}},
                       {"set": f"{sp}.template[1]", "value": shot}]
+            clear_dangling(nd)
             steps += [{"remove_link": f"{sp}.spawner_values[0]"}] * n_values
             if deg:
                 rad = math.radians(float(deg))

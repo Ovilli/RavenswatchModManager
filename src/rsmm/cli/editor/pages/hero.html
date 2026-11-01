@@ -156,7 +156,7 @@ function slotRow(slot, label, can) {
     el("option", { value: "", text: "Keep as the original" }),
     el("option", { value: "none", text: "Remove it", disabled: !can.none && mode !== "none" }),
     el("option", { value: "fire", text: "Also fire a projectile…", disabled: !can.fire && mode !== "fire" }),
-    el("option", { value: "build", text: "Build a new ability…" }));
+    el("option", { value: "build", text: "Build a new ability…", disabled: can.build === false && mode !== "build" }));
   sel.value = mode;
   const right = el("div", { class: "pick" });
   if (mode === "fire") {
@@ -170,10 +170,11 @@ function slotRow(slot, label, can) {
     right.append(inp, el("div", { class: "why", text: `Fires when “${when}” starts.` }));
   } else {
     // Plain words here; the build's own reason is on hover for whoever wants it.
-    const no = [!can.none && "remove", !can.fire && "fire a projectile from"].filter(Boolean);
+    const no = [!can.none && "remove", !can.fire && "fire a projectile from",
+      can.build === false && "build a new ability on"].filter(Boolean);
     if (no.length) right.append(el("div", { class: "why",
       text: `On ${heroName($("base").value)} you cannot ${no.join(" or ")} this button yet.`,
-      title: [can.none_why, can.fire_why].filter(Boolean).join("\n") }));
+      title: [can.none_why, can.fire_why, can.build_why].filter(Boolean).join("\n") }));
   }
   sel.addEventListener("change", () => {
     if (sel.value === "") delete S.kit[slot];
@@ -188,7 +189,7 @@ function slotRow(slot, label, can) {
       el("input", { type: "checkbox", checked: cur.replace !== false || null,
         onchange: (e) => { cur.replace = e.target.checked; changed(); } }),
       " Replace the original's hits (keep only what you build)"));
-    row.append(el("div", { class: "tl" }, blocks(cur.steps, true),
+    row.append(el("div", { class: "tl" }, blocks(cur.steps, true, can),
       el("div", { class: "why", text: `Starts when “${S.kit.form === "wolf" && can.when_wolf ? can.when_wolf : can.when || "the ability"}” starts. Blocks run top to bottom; Wait moves time on.` })));
   }
   return row;
@@ -203,16 +204,33 @@ const BLOCK = {
   wait: ["Wait", () => ({ wait: 0.3 })],
   repeat: ["Repeat", () => ({ repeat: 3, every: 0.2, steps: [] })],
 };
-function blocks(list, top) {
+// Why a block cannot build on this slot, or "" when it can: the server tried
+// each block alone (api/options), exactly as a save would. Fire and Hit area
+// both spawn from the base's aimed spawner (Carmilla and Sun Wukong have none).
+function blockWhy(kind, can) {
+  const hero = heroName($("base").value);
+  if (!can) return "";
+  if ((kind === "fire" || kind === "hit") && !can.fire)
+    return `${hero} has nothing to launch projectiles or hit areas from yet.`;
+  if (kind === "anim" && can.anim === false) return `This button has no animation of ${hero}'s to swap.`;
+  if (kind === "heal" && can.heal === false) return `${hero} has no heal to copy.`;
+  return "";
+}
+function blocks(list, top, can) {
   const box = el("div");
-  list.forEach((b, i) => box.append(blockRow(list, i, top)));
+  list.forEach((b, i) => box.append(blockRow(list, i, top, can)));
   box.append(el("div", { class: "adds" }, ...Object.entries(BLOCK)
     .filter(([k]) => top || k !== "repeat")
-    .map(([k, [label, make]]) => el("button", { type: "button", text: "+ " + label,
-      onclick: () => { list.push(make()); changed(); draw(); } }))));
+    .map(([k, [label, make]]) => {
+      const why = blockWhy(k, can);
+      return el("button", { type: "button", text: "+ " + label, disabled: !!why, title: why || null,
+        onclick: () => { list.push(make()); changed(); draw(); } });
+    })));
+  const why = ["fire", "hit", "anim", "heal"].map(k => blockWhy(k, can)).filter(Boolean);
+  if (why.length && top) box.append(el("div", { class: "why", text: [...new Set(why)].join(" ") }));
   return box;
 }
-function blockRow(list, i, top) {
+function blockRow(list, i, top, can) {
   const b = list[i], kind = Object.keys(BLOCK).find(k => k in b);
   const num = (key, step, min, max) => el("input", { type: "number", step, min, max, value: b[key],
     onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { b[key] = n; changed(); } } });
@@ -251,9 +269,11 @@ function blockRow(list, i, top) {
     body.push(num("wait", "0.05", 0, 30), el("span", { text: "seconds" }));
   } else {
     body.push(num("repeat", "1", 1, 20), el("span", { text: "times, every" }), num("every", "0.05", 0, 10),
-      el("span", { text: "seconds" }), el("div", { class: "inner" }, blocks(b.steps, false)));
+      el("span", { text: "seconds" }), el("div", { class: "inner" }, blocks(b.steps, false, can)));
   }
   const move = (d) => { const j = i + d; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; changed(); draw(); };
+  const bad = blockWhy(kind, can);
+  if (bad) body.push(el("div", { class: "why", style: "color:var(--bad, #c33)", text: `⚠ This block will not save: ${bad} Remove it.` }));
   return el("div", { class: "blk" }, el("span", { class: "k", text: BLOCK[kind][0] }), ...body,
     el("span", { class: "x" },
       el("button", { type: "button", text: "↑", title: "Move up", onclick: () => move(-1) }),

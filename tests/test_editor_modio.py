@@ -537,3 +537,24 @@ def test_a_built_ability_unrolls_its_timeline_and_saves():
         assert HB._save(req)["block"] == "Howler"
         saved = tomllib.loads((Path(d) / "m" / "manifest.toml").read_text())["content"][0]
         assert saved["kit"] == kit
+
+
+def test_the_hero_tab_only_offers_blocks_that_save():
+    """The page offered blocks that could not save: Fire/Hit on Merlin (his
+    aim node links a part that exists nowhere), Build on Juliet's special,
+    Play animation on Kintaro's power, Heal on the Snow Queen."""
+    from rsmm.cli.editor import herobuilder as HB
+    from rsmm.engine import corpus
+    if corpus.read("EntitySettings/Heroes/Hero_Merlin/Hero_Merlin.entity.ot"
+                   ".EntitySettingsResource.gen") is None:
+        pytest.skip("no hero corpus")
+    shot = "Enemies/Baba_Yaga_Boss/Baba_Yaga_Cauldron_Mortar_Projectile_Dark"
+    assert HB.options("Merlin")["slots"]["attack"]["fire"]
+    HB.check("Merlin", {"attack": {"fire": shot}})
+    HB.check("Merlin", {"power": {"replace": True,
+                                  "steps": [{"hit": {"radius": 3, "damage": 80}}]}})
+    assert not HB.options("Juliet")["slots"]["special"]["build"]
+    assert not HB.options("Kintaro")["slots"]["power"]["anim"]
+    assert not HB.options("Snow_Queen")["slots"]["power"]["heal"]
+    red = HB.options("Red")["slots"]["power"]
+    assert red["build"] and red["anim"] and red["heal"] and red["fire"]

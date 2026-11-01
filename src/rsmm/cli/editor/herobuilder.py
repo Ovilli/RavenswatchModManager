@@ -45,18 +45,39 @@ def options(base: str) -> dict:
 
     form_ok, form_why, _ = tries({"form": "wolf"})
     probe = "Enemies/Tentacle_Nightmares/Projectile_Tentacle_Nightmare_Laser_Shot"
+    clips = [{"path": c, "name": c.rsplit("\\", 1)[-1].removesuffix(".fbx").replace("_", " ")}
+             for c in HK.hero_clips(main)]
     slots = {}
     for slot in HK.SLOTS:
         none_ok, none_why, _ = tries({slot: "none"})
         fire_ok, fire_why, steps = tries({slot: {"fire": probe}})
         wolf_ok, _, wsteps = (tries({"form": "wolf", slot: {"fire": probe}}) if form_ok
                               else (False, "", []))
+        # Every block the page offers, tried alone on this slot: a built
+        # ability needs a state to start on, Play animation a clip of the
+        # slot's own to swap, Heal a heal of the base's to copy. Without these
+        # the page offered blocks that could not save (Juliet's special,
+        # Kintaro's power animation, any Snow Queen heal).
+        build_ok, build_why, _ = tries({slot: {"replace": True, "steps": [{"wait": 0.1}]}})
+        anim_kit = ({slot: {"replace": True, "steps": [{"anim": clips[0]["path"]}]}}
+                    if clips else None)
+        anim_ok, anim_why, _ = (tries(anim_kit) if anim_kit
+                                else (False, "this hero has no animations to play", []))
+        if anim_ok:
+            # The swap itself is checked apart from the expansion (anim_swaps),
+            # exactly as a save does.
+            try:
+                HK.anim_swaps(anim_kit, main, stem)
+            except HK.KitError as e:
+                anim_ok, anim_why = False, str(e).split(": ", 1)[-1]
+        heal_ok, heal_why, _ = tries({slot: {"replace": True, "steps": [{"heal": 10}]}})
         slots[slot] = {"none": none_ok, "none_why": none_why, "fire": fire_ok,
                        "fire_why": fire_why,
+                       "build": build_ok, "build_why": build_why,
+                       "anim": anim_ok, "anim_why": anim_why,
+                       "heal": heal_ok, "heal_why": heal_why,
                        "when": steps[-1]["add_link"].split(".")[0] if fire_ok else "",
                        "when_wolf": wsteps[-1]["add_link"].split(".")[0] if wolf_ok else ""}
-    clips = [{"path": c, "name": c.rsplit("\\", 1)[-1].removesuffix(".fbx").replace("_", " ")}
-             for c in HK.hero_clips(main)]
     return {"form": form_ok, "form_why": form_why, "slots": slots, "clips": clips}
 
 
