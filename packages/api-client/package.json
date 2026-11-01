@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@rsmm/schemas": "workspace:*",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
