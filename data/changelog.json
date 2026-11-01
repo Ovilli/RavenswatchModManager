@@ -4,6 +4,17 @@
     {
       "version": "",
       "date": "2026-11-01",
+      "summary": "Hero builder: spawned objects (bombs, orbs) can now carry their own bleed; ability steps refuse copying parts across data versions; link can point a plain number at a value",
+      "highlights": [
+        "Heroes: bleed applied by a spawned bomb now deals damage (it needs its own damage owner)",
+        "Hero ability steps: copying a part from a newer-version entity is refused with a clear error instead of silently breaking the entity",
+        "Hero ability steps: link can now make a plain number read another part"
+      ],
+      "cli_version": 23
+    },
+    {
+      "version": "",
+      "date": "2026-11-01",
       "summary": "Custom heroes get their own life bar (rage, combo, timers); new override and replace_subobject ability steps, add_subobject copies from other entities",
       "highlights": [
         "Custom heroes now get their own life bar, so a Scarlet clone shows its rage gauge and combo points",
@@ -511,17 +522,6 @@
         "Mods can start collecting a melody by name, or remove one (R.melody.choose / remove)",
         "Mods can freeze and release the player's controls (R.control.lock / release)",
         "Mods can finish the chapter, win or lose the run (R.run.next_chapter / win / lose)"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 35,
-      "date": "2026-10-10",
-      "summary": "New SDK APIs: R.talent.reset / upgrade_random / upgrade_lowest / upgrade / add_random_ultimate change talents during a run; R.status.clear / clear_stagger cleanse the hero.",
-      "highlights": [
-        "Mods can upgrade talents: random, lowest, a specific one, or straight to legendary (R.talent.upgrade*)",
-        "Mods can add a random ultimate talent or reset every talent (R.talent.add_random_ultimate / reset)",
-        "Mods can clear status effects and stagger (R.status.clear)"
       ]
     }
   ]
