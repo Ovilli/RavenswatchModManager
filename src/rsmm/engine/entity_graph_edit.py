@@ -396,6 +396,15 @@ class EntityFile:
             struct.pack_into({"bool": "<?", "u32": "<I", "f32": "<f"}[f.kind], p,
                              at + f.offset, _as(f.kind, value))
             return
+        if f.kind == "bytes" and f.size == 1:
+            # An undecoded single byte (a damage record's bytes_30, 1 on bombs
+            # and 0 on DoT damage): a 0..255 integer, or true/false.
+            if isinstance(value, bool):
+                value = int(value)
+            if not isinstance(value, int) or not 0 <= value <= 255:
+                raise EntityEditError(f"{field!r} is one byte: give 0..255 or true/false")
+            p[at + f.offset] = value
+            return
         if f.kind != "value":
             raise EntityEditError(f"{field!r} is a {f.kind}, not a literal")
         sub = EG.Component(0, c.cls, "", "", b"", None,

@@ -397,6 +397,24 @@ def test_a_copy_across_class_versions_is_refused():
 
 
 @needs_corpus
+def test_a_one_byte_flag_field_can_be_set():
+    """A damage record's bytes_30 is 1 on Scarlet's bomb and 0 on DoT damage;
+    left at 1 the bomb's bleed ignored armour plates in game (2026-11-01)."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = {"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": corpus.read(_RED_BOMB)}
+    out = AE.apply(files, [{"entity": "Bomb", "set": "Explosion Damage.bytes_30", "value": 0}],
+                   main="Hero_Red", seed="t")
+    ef = EntityFile(out.files["Hero_Red_Bomb"], "Hero_Red_Bomb")
+    assert next(f.text for f in EF.fields(ef.component("Explosion Damage"))
+                if f.name == "bytes_30") == "00"
+    with pytest.raises(AE.AbilityEditError, match="one byte"):
+        AE.apply(files, [{"entity": "Bomb", "set": "Explosion Damage.bytes_30", "value": 300}],
+                 main="Hero_Red", seed="t")
+
+
+@needs_corpus
 def test_linking_a_literal_number_makes_it_read_the_target():
     from rsmm.engine import ability_edit as AE
     from rsmm.engine import entity_fields as EF
