@@ -134,14 +134,15 @@ async function openHero() {
   await loadOptions();
 }
 async function loadOptions() {
+  S.opts = null; S.optsError = ""; drawSave();
   $("busy").textContent = "Reading " + heroName($("base").value) + "…";
   try { S.opts = await api(`api/options?base=${encodeURIComponent($("base").value)}`); }
-  catch (e) { setStatus("bad", e.message); S.opts = null; }
+  catch (e) { S.optsError = e.message || String(e); }
   $("busy").textContent = "";
   draw();
 }
 function draw() {
-  const o = S.opts; if (!o) return;
+  const o = S.opts; if (!o) { drawSave(); return; }
   $("formCard").hidden = !o.form;
   if (!o.form) delete S.kit.form;
   for (const r of document.querySelectorAll("input[name=form]")) r.checked = (r.value === (S.kit.form || ""));
@@ -325,7 +326,11 @@ function drawSave() {
   const named = !!$("name").value.trim();
   $("save").disabled = !named || !S.opts;
   $("save").textContent = S.mod === NEW_MOD ? "Create mod…" : S.hero === NEW_HERO ? "Add hero to mod" : "Save hero";
-  if (!named) setStatus("muted", "Give your hero a name.");
+  // A greyed-out button always says why (a user read it as "broken").
+  const hero = heroName($("base").value || "");
+  if (S.optsError) setStatus("bad", `Could not read ${hero}: ${S.optsError} Pick the base again to retry.`);
+  else if (!S.opts) setStatus("muted", `Reading ${hero}… Save unlocks when it is done.`);
+  else if (!named) setStatus("muted", "Give your hero a name (top of the page) to enable saving.");
   else if (S.dirty) setStatus("muted", "Not saved yet.");
 }
 window.rsmmUnsaved = () => S.dirty ? { count: 1, kept: false } : null;

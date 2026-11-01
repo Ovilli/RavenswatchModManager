@@ -490,6 +490,10 @@ def test_the_hero_tab_saves_a_hero_whose_kit_builds_and_refuses_one_that_does_no
     assert got == {"mod": "m", "block": "BloodWolf"}
     hero = tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0]
     assert (hero["kind"], hero["name"], hero["kit"]) == ("hero", "Blood Wolf", kit)
+    # The base is the hero NAME lint accepts, never the Update 6 herodef stem
+    # ("Red_Update6" failed `rsmm lint` on every hero the editor made).
+    from rsmm.sdk.kinds import heros
+    assert hero["base"] == "Red" and hero["base"] in heros.shipped_heroes()
     req.body.update(block="BloodWolf", kit={"form": "wolf"})       # an update, in place
     HB._save(req)
     assert tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0][

@@ -742,7 +742,9 @@ def _hero_of(name: str) -> str:
     heroes = C.heroes()
     if name in heroes:
         return name
-    back = {v: k for k, v in C._herodefs().items()}       # Sun_Wukong -> SunWukong
+    from rsmm.engine import herodefs
+    # Sun_Wukong (its name) or Sun_Wukong_Update6 (its herodef) -> SunWukong
+    back = {s: k for k, v in C._herodefs().items() for s in (v, herodefs.hero_name(v))}
     if name in back:
         return back[name]
     raise EditorError(f"no hero {name!r}")

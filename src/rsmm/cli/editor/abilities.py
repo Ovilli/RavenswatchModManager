@@ -252,14 +252,20 @@ def _manifest(req: Request, mod_id: str):
 
 
 def _herodef(hero: str) -> str:
+    """The hero NAME a ``base`` is written as (``Sun_Wukong``, ``Red``): what
+    ``rsmm lint`` and the hero kind list. Not the herodef file stem, which since
+    Update 6 is ``Red_Update6`` and fails lint as "not a shipped hero"."""
     from rsmm.cli.editor import content as C
-    return C._herodefs().get(hero, hero)
+    from rsmm.engine import herodefs
+    return herodefs.hero_name(C._herodefs().get(hero, hero))
 
 
 def _bases(hero: str) -> set[str]:
     """The ``base`` spellings a hero block may use for ``hero``: its folder
-    name (``SunWukong``) or its herodef (``Sun_Wukong``)."""
-    return {hero, _herodef(hero)}
+    name (``SunWukong``), its name (``Sun_Wukong``), or its herodef stem
+    (``Sun_Wukong_Update6``, what the editor wrote before)."""
+    from rsmm.cli.editor import content as C
+    return {hero, _herodef(hero), C._herodefs().get(hero, hero)}
 
 
 def _mods(req: Request) -> dict:

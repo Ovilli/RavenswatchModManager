@@ -125,7 +125,7 @@ def _heroes_in(req: Request) -> dict:
     path = AB._manifest(req, req.arg("mod"))
     blocks = [c for c in modio._content(path.read_text(encoding="utf-8"))
               if c.get("kind") == "hero"]
-    herodefs = {AB._herodef(h): h for h in AB._heroes()}
+    herodefs = {b: h for h in AB._heroes() for b in AB._bases(h)}
     return {"heroes": [{"id": c.get("id"), "base": herodefs.get(c.get("base"), c.get("base")),
                         "name": c.get("name") or c.get("id"),
                         "description": c.get("description") or "",
