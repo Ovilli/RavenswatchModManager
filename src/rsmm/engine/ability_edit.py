@@ -66,12 +66,12 @@ from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
-        "retarget")
+        "replace_subobject", "override", "retarget")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "replace_ref", "node"}
+         "donor_index", "donor", "replace_ref", "node"}
 
 
 class AbilityEditError(ValueError):
@@ -130,7 +130,11 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
             if op == "clone":
                 _clone(ef, step, f"{seed}:{n}", read)
             elif op == "add_subobject":
-                _add_subobject(ef, step)
+                _add_subobject(ef, step, read)
+            elif op == "replace_subobject":
+                _replace_subobject(ef, step, read)
+            elif op == "override":
+                _override(ef, step, f"{seed}:{n}", read)
             elif op == "retarget":
                 _retarget(ef, step, read)
             else:
@@ -225,25 +229,112 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
              source=None if src is ef else src)
 
 
-def _add_subobject(ef: EntityFile, step: dict) -> None:
-    """Append a copy of entry ``donor_index`` of id list ``Part.field``, its
-    links to ``replace_ref``'s keys re-pointed at the values (part names)."""
-    from . import entity_fields as EF
-    part, _, fld = str(step["add_subobject"]).rpartition(".")
+def _source(ef: EntityFile, step: dict, read) -> EntityFile:
+    """The entity a step copies from: ``from`` (a hero or an entity path), or
+    the one it edits."""
+    if not step.get("from"):
+        return ef
+    ref = source_entity_ref(str(step["from"]))
+    raw = read(ref)
+    if raw is None:
+        raise AbilityEditError(f"no entity {ref}")
+    return EntityFile(raw, ref.rsplit("\\", 1)[-1][:-len(".entity.ot")])
+
+
+def _list_entry(ef: EntityFile, spec: str, what: str) -> tuple[str, str, int | None]:
+    """``Part.field[i]`` (or ``Part.field``) -> part, field, i."""
+    part, _, fld = spec.rpartition(".")
     if not part:
-        raise AbilityEditError("add_subobject names 'Part.field' (an id list)")
+        raise AbilityEditError(f"{what} names 'Part.field[i]' (an id list entry)")
+    fld, _, idx = fld.partition("[")
+    if not idx:
+        return part, fld, None
+    try:
+        return part, fld, int(idx.rstrip("]"))
+    except ValueError:
+        raise AbilityEditError(f"{what} = {spec!r}: the index must be a number") from None
+
+
+def _list_ids(ef: EntityFile, part: str, fld: str) -> list[int]:
+    from . import entity_fields as EF
     c = ef.component(part)
     f = next((x for x in EF.fields(c) if x.name == fld), None)
     if f is None:
         raise AbilityEditError(f"{part!r} has no field {fld!r}")
-    count = int.from_bytes(c.body[f.offset:f.offset + 4], "little")
-    i = step.get("donor_index")
-    if isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < count:
-        raise AbilityEditError(f"donor_index: {part}.{fld} has entries 0..{count - 1}")
-    obj = int.from_bytes(c.body[f.offset + 4 + 4 * i:f.offset + 8 + 4 * i], "little")
-    refs = {ef.component(str(old)).guid: str(new)
+    n = int.from_bytes(c.body[f.offset:f.offset + 4], "little")
+    if f.size != 4 + 4 * n:
+        raise AbilityEditError(f"{part}.{fld} is not an id list")
+    return [int.from_bytes(c.body[f.offset + 4 + 4 * i:f.offset + 8 + 4 * i], "little")
+            for i in range(n)]
+
+
+def _donor(ef: EntityFile, step: dict, read, part: str, fld: str) -> tuple[EntityFile, int, dict]:
+    """The sub-object a step copies and its re-pointed links: ``donor =
+    'Part.field[i]'`` in ``from`` (or this entity), else entry ``donor_index``
+    of the edited list itself. ``replace_ref`` keys are the donor's part names,
+    values this entity's."""
+    src = _source(ef, step, read)
+    if step.get("donor") is not None:
+        dpart, dfld, i = _list_entry(src, str(step["donor"]), "donor")
+        if i is None:
+            raise AbilityEditError("donor names one entry: 'Part.field[i]'")
+    elif src is ef:
+        dpart, dfld, i = part, fld, step.get("donor_index")
+    else:
+        raise AbilityEditError("copying from another entity needs donor = 'Part.field[i]'")
+    ids = _list_ids(src, dpart, dfld)
+    if isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < len(ids):
+        raise AbilityEditError(f"donor: {dpart}.{dfld} has entries 0..{len(ids) - 1}")
+    refs = {src.component(str(old)).guid: str(new)
             for old, new in (step.get("replace_ref") or {}).items()}
-    ef.add_subobject(part, fld, ef, obj, refs=refs)
+    return src, ids[i], refs
+
+
+def _add_subobject(ef: EntityFile, step: dict, read) -> None:
+    """Append a copy of a sub-object (``_donor``) to id list ``Part.field``."""
+    part, fld, i = _list_entry(ef, str(step["add_subobject"]), "add_subobject")
+    if i is not None:
+        raise AbilityEditError("add_subobject appends: name the list, 'Part.field'")
+    src, obj, refs = _donor(ef, step, read, part, fld)
+    ef.add_subobject(part, fld, src, obj, refs=refs)
+
+
+def _replace_subobject(ef: EntityFile, step: dict, read) -> None:
+    """Put a copy of a sub-object (``_donor``) in place of entry
+    ``Part.field[i]``: same list position, so whatever selects that entry
+    (an Fx selector's slot) now gets the copy."""
+    part, fld, i = _list_entry(ef, str(step["replace_subobject"]), "replace_subobject")
+    if i is None:
+        raise AbilityEditError("replace_subobject names one entry: 'Part.field[i]'")
+    src, obj, refs = _donor(ef, step, read, part, fld)
+    ef.replace_subobject(part, fld, i, src, obj, refs=refs)
+
+
+def _override(ef: EntityFile, step: dict, seed: str, read) -> None:
+    """Give this entity its own version of an ANCESTOR's part: a copy marked as
+    that part's override, so the engine builds it INSTEAD of the ancestor's
+    (a plain clone would be a second part built next to it). ``from`` is the
+    ancestor; ``set`` steps then change the copy."""
+    from .entity_check import _ancestors
+    from .entity_graph_edit import kind_label
+    name = str(step["override"])
+    if not step.get("from"):
+        raise AbilityEditError("override needs from = the ancestor entity that has the part")
+    src = _source(ef, step, read)
+    hits = [c for c in src.graph().components if c.name == name]
+    if len(hits) != 1:
+        raise AbilityEditError(f"override: {src.name} has {len(hits)} parts named {name!r}")
+    anc = hits[0]
+    if _ancestors(ef.to_bytes(), read).get(anc.guid) != src.name:
+        raise AbilityEditError(f"override: {src.name} is not an ancestor of {ef.name}; "
+                               "an override of it would never apply")
+    if any(c.name == name or (c.override and c.override.guid == anc.guid)
+           for c in ef.graph().components):
+        raise AbilityEditError(f"override: {ef.name} already has a part {name!r} "
+                               "(set it directly)")
+    ef.clone([name], rename={name: name}, seed=seed, source=src)
+    path = anc.path if anc.group else anc.name
+    ef.set_override(name, anc.guid, f"[{kind_label(anc.cls)}] {src.name}\\{path}")
 
 
 def _retarget(ef: EntityFile, step: dict, read) -> None:

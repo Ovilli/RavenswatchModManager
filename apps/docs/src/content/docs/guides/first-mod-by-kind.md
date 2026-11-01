@@ -1008,6 +1008,22 @@ to    = "State Secondary Ability Echo"
     and point the node's angle at a value of your own
     (`link = "Attack Shoot 3d Node 02 Copy.obj_4[5]"`).
   - `add_link = "Part.list"` + `to`, and `remove_link = "Part.list[i]"`.
+  - `override = "Part"` + `from = "<ancestor entity>"`: the hero's own
+    version of a part it INHERITS (from `Hero_Common`, `Hero_Alt_Form_Common`,
+    ...). The copy replaces the ancestor's part; a `clone` would be a second
+    part the game builds next to it. Change it with `set` steps after. Blood
+    Wolf starts as the wolf this way:
+    `{ override = "Initialize In Default Form Value", from = "Heroes/Hero_Common/Hero_Alt_Form_Common" }`
+    then `{ set = "Initialize In Default Form Value.value", value = false }`.
+  - `add_subobject = "Part.list"` appends a copy of one sub-object (a damage
+    record's debuff, an effect's FX setup): `donor_index = i` copies entry
+    `i` of the same list; `from` + `donor = "Other Part.list[i]"` copies one
+    from another entity. `replace_ref = { "Their Part" = "Your Part" }`
+    re-points the copy's links (keys are the donor's part names).
+    `replace_subobject = "Part.list[i]"` takes the same `from` / `donor` /
+    `replace_ref` and puts the copy IN PLACE of entry `i`, so whatever picks
+    that entry (an Fx selector) now gets the copy. Both refuse a sub-object
+    that owns sub-objects of its own.
   Add `entity = "FX"` to a step to edit another entity of the family.
   The **Abilities** tab of `rsmm editor` builds these steps for you.
   It opens on **Numbers**: every number the chosen ability uses, by name

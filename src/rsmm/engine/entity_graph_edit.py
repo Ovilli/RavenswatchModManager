@@ -649,6 +649,54 @@ class EntityFile:
         n = struct.unpack_from("<I", c.body, f.offset)[0]
         if f.size != 4 + 4 * n:
             raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
+        payload = self._copy_subobject(donor, obj, refs, switch)
+        new_id = len(self.objects)
+        self.objects.append(payload)
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + f.offset
+        p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
+        struct.pack_into("<I", p, at, n + 1)
+        return new_id                   # checked when written (to_bytes)
+
+    def replace_subobject(self, owner: str, list_field: str, index: int, donor: EntityFile,
+                          obj: int, *, refs: dict[bytes, str] | None = None) -> int:
+        """Replace entry ``index`` of ``owner``'s id list ``list_field`` with a
+        copy of ``donor``'s sub-object ``obj`` (``add_subobject``'s copy rules).
+        The entry keeps its id and its place in the list; only what it is
+        changes. Fails closed on an entry that owns sub-objects, which would be
+        left behind unreferenced."""
+        c = self.component(owner)
+        f = next((x for x in EF.fields(c) if x.name == list_field), None)
+        if f is None:
+            raise EntityEditError(f"{owner!r} has no field {list_field!r}")
+        n = struct.unpack_from("<I", c.body, f.offset)[0]
+        if f.size != 4 + 4 * n:
+            raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
+        if not 0 <= index < n:
+            raise EntityEditError(f"{owner}.{list_field} has entries 0..{n - 1}")
+        old = struct.unpack_from("<I", c.body, f.offset + 4 + 4 * index)[0]
+        if self.subtree({old}):
+            raise EntityEditError(f"{owner}.{list_field}[{index}] owns sub-objects of its "
+                                  "own; not replaced")
+        self.objects[old] = bytearray(self._copy_subobject(donor, obj, refs, None))
+        return old
+
+    def set_override(self, comp: str, guid: bytes, label: str) -> None:
+        """Make ``comp`` the override of an ancestor's component (``guid``, its
+        ``[Kind] Scope\\Path`` label): a REPLACEMENT of that part, where a plain
+        record would be a second one the engine builds next to it."""
+        from . import entity_parts as P
+        c = self.component(comp)
+        p = self.objects[c.index - 1]
+        start = 4
+        head = len(P._B) + 4 + 16
+        end = start + head + 4 + struct.unpack_from("<I", p, start + head)[0] + len(P._E)
+        if bytes(p[start:start + len(P._B)]) != P._B or bytes(p[end - len(P._E):end]) != P._E:
+            raise EntityEditError(f"{comp!r}: its record has no override link where expected")
+        p[start:end] = P.link_bytes(P.Link(guid, label), P.PartWriter(self, "override").ci)
+
+    def _copy_subobject(self, donor: EntityFile, obj: int, refs: dict[bytes, str] | None,
+                        switch: str | None) -> bytearray:
         if donor.subtree({obj}):
             raise EntityEditError(f"sub-object #{obj} owns sub-objects of its own; not copied")
         payload = bytes(donor.objects[obj])
@@ -673,13 +721,7 @@ class EntityFile:
             if a < 0 or u < 0:
                 raise EntityEditError(f"sub-object #{obj} has no number slot to switch")
             payload[a + 8:u] = b"\x01\x00" + self._picker(switch) + struct.pack("<I", acc)
-        new_id = len(self.objects)
-        self.objects.append(payload)
-        p = self.objects[c.index - 1]
-        at = len(p) - len(c.body) + f.offset
-        p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
-        struct.pack_into("<I", p, at, n + 1)
-        return new_id                   # checked when written (to_bytes)
+        return payload
 
     def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER

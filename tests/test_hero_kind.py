@@ -141,6 +141,32 @@ def test_an_own_entity_hero_clones_the_family_and_adds_an_alias(tmp_path):
 
 
 @needs_corpus
+def test_an_own_entity_hero_gets_its_own_life_bar_reading_its_names(tmp_path):
+    """Scarlet's life bar reads ``] Hero_Red\\Life Bar\\...`` by name; a clone
+    that keeps it shows no rage or combo (reported on a Red clone, 2026-11)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import hero_cook as H
+    from rsmm.engine import prop_cook as PC
+    files = heros.emit("m", ContentDef(kind="hero", id="Nyx",
+                                       fields={"base": "Red", "own_entity": True}), tmp_path)
+    bar = next(p for p in files if p.name.startswith("Life_Bar_Hero_Red_Nyx.entity.ot"))
+    ts = [t for _s, _o, t in ES.list_strings(bar.read_bytes())]
+    assert any(t.startswith("[") and "] Hero_Nyx\\" in t for t in ts)
+    assert not any("] Hero_Red\\" in t or "] Life_Bar_Hero_Red\\" in t for t in ts)
+    main = next(p for p in files if p.name.startswith("Hero_Nyx.entity.ot"))
+    refs = [t for _s, _o, t in ES.list_strings(main.read_bytes())]
+    assert "GameUis\\Common_Ui\\Life_Bar_Hero_Red_Nyx.entity.ot" in refs
+    assert "GameUis\\Common_Ui\\Life_Bar_Hero_Red.entity.ot" not in refs
+    shipped = set(PC.component_guids(corpus.read(
+        H.entity_rel("GameUis\\Common_Ui\\Life_Bar_Hero_Red.entity.ot"))))
+    assert not shipped & set(PC.component_guids(bar.read_bytes()))
+    # Piper has no hero-specific UI: nothing outside her folder is cloned.
+    piper = _emit(tmp_path / "p", id="Nyx", own_entity=True)
+    assert not any("GameUis" in p.as_posix() for p in piper)
+
+
+@needs_corpus
 def test_a_custom_hero_id_must_be_a_plain_name(tmp_path):
     with pytest.raises(ContentError, match="letters and digits|reserved"):
         _emit(tmp_path, id="Alice", name="X")
@@ -311,11 +337,71 @@ def test_a_third_combo_step_from_a_renamed_clone_and_a_copied_combo_entry():
     assert ef.component(step3).guid in bytes(ef.objects[new])
 
 
+_RED_BOMB = "EntitySettings/Heroes/Hero_Red/Hero_Red_Bomb.entity.ot.EntitySettingsResource.gen"
+_ALT_FORM = "Heroes/Hero_Common/Hero_Alt_Form_Common"
+_FORM_VALUE = "Initialize In Default Form Value"
+_ORB = "Heroes/Hero_Carmilla/Hero_Carmilla_Power_Orb"
+
+
+@needs_corpus
+def test_an_override_replaces_the_ancestors_part_instead_of_adding_one():
+    """Blood Wolf starts in wolf form: its own version of Hero_Alt_Form_Common's
+    form value, marked as that part's override (a clone would be a second)."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine.entity_graph_edit import EntityFile
+    out = AE.apply({"Hero_Red": corpus.read(_RED)}, [
+        {"override": _FORM_VALUE, "from": _ALT_FORM},
+        {"set": f"{_FORM_VALUE}.value", "value": False},
+    ], main="Hero_Red", seed="t")
+    mine = [c for c in EntityFile(out.files["Hero_Red"], "Hero_Red").graph().components
+            if c.name == _FORM_VALUE]
+    anc = EntityFile(corpus.read(f"EntitySettings/{_ALT_FORM}.entity.ot"
+                                 ".EntitySettingsResource.gen"), "Hero_Alt_Form_Common")
+    assert len(mine) == 1 and mine[0].override.guid == anc.component(_FORM_VALUE).guid
+    assert mine[0].override.path.endswith(f"] Hero_Alt_Form_Common\\Base\\{_FORM_VALUE}")
+
+
+@needs_corpus
+def test_sub_objects_copy_in_from_another_entity_and_replace_in_place():
+    """The burst wears Carmilla's blood VFX: entry 0 of the bomb's Fx list
+    becomes a copy of her orb's, in the same place; another is appended."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    def fx(raw):
+        ef = EntityFile(raw, "Hero_Red_Bomb")
+        c = ef.component("Fx_Explosion")
+        f = next(x for x in EF.fields(c) if x.name == "bytes_1")
+        n = int.from_bytes(c.body[f.offset:f.offset + 4], "little")
+        ids = [int.from_bytes(c.body[f.offset + 4 + 4 * i:f.offset + 8 + 4 * i], "little")
+               for i in range(n)]
+        return [bytes(ef.objects[i]) for i in ids]
+    before = fx(corpus.read(_RED_BOMB))
+    out = AE.apply({"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": corpus.read(_RED_BOMB)}, [
+        {"entity": "Bomb", "replace_subobject": "Fx_Explosion.bytes_1[0]", "from": _ORB,
+         "donor": "Explosion Fx Active.bytes_1[0]",
+         "replace_ref": {"Mesh": "Mesh", "Owner Explosion Radius Get Value": "Explosion Radius",
+                         "Owner Current Radius Get Value": "Explosion Radius"}},
+        {"entity": "Bomb", "add_subobject": "Fx_Explosion.bytes_1", "from": _ORB,
+         "donor": "Explosion Fx Active.bytes_1[1]", "replace_ref": {"Mesh": "Mesh"}},
+    ], main="Hero_Red", seed="t")
+    after = fx(out.files["Hero_Red_Bomb"])
+    assert len(after) == len(before) + 1 and after[1:3] == before[1:3]
+    assert b"Carmilla_Power_Orb_Explosion_01" in after[0]
+    assert b"RED_Bomb_Explosion_5m" not in after[0]
+    assert b"Carmilla_Power_Orb_Core_Explosion_01" in after[-1]
+
+
 @needs_corpus
 @pytest.mark.parametrize("step,msg", [
     ({"clone": ["Wolf Basic Attack Combo"], "renme": {}}, "no key renme"),
     ({"clone": ["Wolf Basic Attack Combo"], "rename": {"Other": "X"}}, "does not copy"),
     ({"add_subobject": "Wolf Basic Attack Combo.bytes_4", "donor_index": 5}, "entries 0..1"),
+    ({"override": _FORM_VALUE}, "needs from"),
+    ({"override": "Explosion Damage", "from": "Heroes/Hero_Red/Hero_Red_Bomb"},
+     "not an ancestor"),
+    ({"replace_subobject": "Wolf Basic Attack Combo.bytes_4"}, "names one entry"),
+    ({"add_subobject": "Wolf Basic Attack Combo.bytes_4", "from": _ORB}, "needs donor"),
 ])
 def test_bad_new_steps_are_refused(step, msg):
     from rsmm.engine import ability_edit as AE
