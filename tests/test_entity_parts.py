@@ -202,6 +202,81 @@ def test_day_and_night_bool_tests_match_character_common(during, shipped_tester)
     assert (sub_norm(built, "Crit Chance Modifier Active Tester" + IE.SUFFIX)
             == sub_norm(cc, shipped_tester))
 
+# --- "no living ally nearby" ------------------------------------------------------
+
+_HEROES = "EntitySettings/Heroes/"
+_DEFENSE_HEAL = _MO + "Legendary/Defense_Heal.entity.ot.EntitySettingsResource.gen"
+_WUKONG = _HEROES + "Hero_SunWukong/Hero_SunWukong.entity.ot.EntitySettingsResource.gen"
+_SNOW_QUEEN = _HEROES + "Hero_Snow_Queen/Hero_Snow_Queen.entity.ot.EntitySettingsResource.gen"
+
+
+def _norm(raw: bytes, names: list[str]) -> bytes:
+    """``raw`` with each class tag as its name and each reference picker as
+    ``REF`` / ``NOREF``."""
+    out, i = b"", 0
+    while (j := raw.find(cooked.MARK_BEGIN, i)) >= 0:
+        cls = names[struct.unpack_from("<I", raw, j + 4)[0]]
+        out += raw[i:j + 4] + cls.encode()
+        i = j + 8
+        if cls == P.PICKER:
+            n = struct.unpack_from("<I", raw, i + 16)[0]
+            out += b"NOREF" if not n and raw[i:i + 16] == bytes(16) else b"REF"
+            i += 20 + n
+    return out + raw[i:]
+
+
+def _objects(raw: bytes, cls: str, *, has: bytes = b"") -> list[bytes]:
+    """The normalized sub-objects and component bodies of class ``cls``."""
+    ef = EntityFile(raw, "x")
+    names = [k.name for k in ef.cf.classes]
+    comps = {c.index - 1: c for c in ef.graph().components}
+    out = []
+    for i, o in enumerate(ef.objects):
+        o = bytes(o)
+        if names[struct.unpack_from("<I", o, 0)[0]] != cls or has not in o:
+            continue
+        out.append(_norm(comps[i].body if i in comps else o[4:], names))
+    return out
+
+
+def _shipped_entity(rel: str) -> bytes:
+    raw = corpus.read(rel)
+    if raw is None:
+        pytest.skip("shipped entities not available (no mirror, no install)")
+    return raw
+
+
+def test_no_allies_parts_match_the_shipped_ones():
+    """Holy Grail's search and testers, Wukong's "Can Fight", Snow Queen's
+    detector, and her count test with <= 1 where hers is > 0."""
+    built = _build([{"stat": "Crit chance", "amount": 0.2, "during": "no_allies_nearby"}])
+    heal, queen = _shipped_entity(_DEFENSE_HEAL), _shipped_entity(_SNOW_QUEEN)
+    for cls, has, donor in (("oCEntityGpnFlagMaskTesterSettings", b"", heal),
+                            ("oCEntityGpnFlagTesterSettings", b"Building", heal),
+                            ("oCEntityGpnFlagTesterSettings", b"Can Fight",
+                             _shipped_entity(_WUKONG))):
+        assert _objects(built, cls, has=has) == _objects(donor, cls, has=has), cls
+    assert _objects(built, "oCEntityGpnSelfGpnTesterSettings") == []
+    assert (_objects(built, "oCEntityGpnAroundPositionTraverserSettings")
+            == [o.replace(struct.pack("<f", 10.0), struct.pack("<f", 8.0))
+                for o in _objects(heal, "oCEntityGpnAroundPositionTraverserSettings")])
+    (ours,), (theirs,) = _objects(built, IE._TRAVERSER), _objects(heal, IE._TRAVERSER)
+    cut = struct.pack("<II", IE._HERO_LAYER, 1)                # then the testers
+    assert ours[:ours.index(cut) + 8] == theirs[:theirs.index(cut) + 8]
+    # Written parts carry the mode-1 prefix, as 51 of the 76 shipped detectors do.
+    (det,) = _objects(built, IE._DETECTOR)
+    (hers,) = _objects(queen, IE._DETECTOR, has=b"Chilled Crit Target Det")
+    assert det[:7] == P.BASE_PREFIX and det[7:] == hers[7:]
+
+    def limit(n: int) -> bytes:
+        return P.UNION.encode() + struct.pack("<IIi", P.INT, 0, n)
+    (shipped, *_) = _objects(queen, "oCEntityCpntIntTestSettings", has=b"Chilled Crit Target Det")
+    head, found, tail = shipped[:-4].rpartition(limit(0))
+    assert found and shipped.endswith(struct.pack("<I", 2))
+    assert _objects(built, "oCEntityCpntIntTestSettings") == [
+        head + limit(1) + tail + struct.pack("<I", IE._AT_MOST)]
+
+
 # --- super effects ---------------------------------------------------------------
 
 def _super_state_refs(ent: bytes, item_id: str) -> list[str]:
