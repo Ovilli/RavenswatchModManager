@@ -165,7 +165,7 @@ _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albed
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
                      "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
-                     "dlc_owner", "kit"})
+                     "dlc_owner", "kit", "borrow"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot) that are not heroes: a hero of
 #: that name would still collide with the alias. (Kintaro was one until he
@@ -329,6 +329,9 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     # before the caches are written: each pass reads and walks every shipped
     # cache, and one per source made a hero build take minutes.
     borrow: list[str] = []
+    if "borrow" in f:
+        borrow_spec = f["borrow"] if isinstance(f["borrow"], list) else [f["borrow"]]
+        borrow.extend(str(s) for s in borrow_spec)
     for c in kit_copies:
         # A copy preloads as itself plus everything its source does.
         art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
@@ -602,9 +605,18 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # anything is written (engine/ability_edit.py).
             from ...engine import ability_edit as AE
             try:
-                read = HK.reader(kit_copies) if kit_copies else None
+                from ...engine import entity_check as CK
+                def read_asset(ref: str):
+                    p = out_dir / H.entity_rel(ref)
+                    if p.exists():
+                        return p.read_bytes()
+                    p2 = out_dir / Path(*ref.replace("\\", "/").split("/"))
+                    if p2.exists():
+                        return p2.read_bytes()
+                    base_r = HK.reader(kit_copies) if kit_copies else CK._corpus_reader
+                    return base_r(ref)
                 res = AE.apply(base_bytes, abilities, main=b.stem, seed=f"{mod_id}:{hid}",
-                               read=read)
+                               read=read_asset)
             except AE.AbilityEditError as e:
                 raise ContentError(f"hero {hid}: {e}") from e
             base_bytes = res.files
@@ -613,7 +625,10 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # An attack's own projectile is preloaded by the lines its build
             # recorded (the entity, its mesh, maps and effects); no shipped
             # cache can list it, so it is not borrowed.
-            own_refs = {a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies}
+            # Assets provided by the mod itself in out_dir are already supplied.
+            mod_assets = {r for r in res.resources if (out_dir / H.entity_rel(r)).exists()
+                          or (out_dir / Path(*r.replace("\\", "/").split("/"))).exists()}
+            own_refs = {a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies} | mod_assets
             borrow.extend(res.resources - own_refs)
         art.extend(_borrow_closure(sorted(set(borrow)), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
