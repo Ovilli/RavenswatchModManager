@@ -128,16 +128,16 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     throw new Error('stored object does not match the declared sha256');
   }
 
-  // A file VirusTotal analysed recently needs no new upload: its report by
-  // hash is the verdict, for one lookup instead of four. Re-submitting a
-  // known file mostly yields an analysis still 'queued' after our three
-  // polls, or a 409 while the previous submission is still running.
+  // A file VirusTotal has already analysed needs no new upload: its report by
+  // hash is the verdict for these exact bytes, however old, for one lookup
+  // instead of four. Re-submitting a known file mostly yields an analysis
+  // still 'queued' after our three polls — which lands as 'pending' and hides
+  // the version — or a 409 while the previous submission is still running.
   const report = await getVirusTotalFileReport(storedSha).catch((err: unknown) => {
     if (err instanceof VirusTotalRateLimitError) throw err;
     return null;
   });
-  const analysedAt = report?.analysedAt?.getTime();
-  if (report && analysedAt && Date.now() - analysedAt < RESCAN_AFTER_MS) verdict = report;
+  if (report?.status === 'completed') verdict = report;
   if (!verdict) {
     try {
       analysis = bytes
@@ -272,6 +272,15 @@ export async function releaseVersion(
   const row = released[0];
   if (!row) return false;
 
+  // A version that was ever downloaded was servable before — knocked back to
+  // 'pending'/'error' by the retired weekly re-scan. Coming back is not a
+  // release; its followers already heard about it.
+  const seen = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.modDownloads)
+    .where(eq(schema.modDownloads.versionId, versionId));
+  if ((seen[0]?.n ?? 0) > 0) return true;
+
   const mod = await db.query.mods.findFirst({ where: eq(schema.mods.id, row.modId) });
   if (mod) {
     await notifyFollowers(
@@ -303,9 +312,12 @@ function scanTargetIs(versionId: string, sha256: string) {
  *  inside the 4-lookups/min free-tier budget. Also the unit for ETA math. */
 export const SCAN_TICK_SECONDS = 60;
 
-/** Re-scan a clean/errored version once it's older than this, so newer VT
- *  signatures catch malware that was undetectable at upload time. */
-const RESCAN_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+// There is deliberately NO routine re-scan of clean versions. It used to run
+// weekly, and it is what kept published mods disappearing: the stale report
+// forced a fresh VT submission, a known file rarely finishes inside three
+// polls, so a clean version was written back 'pending' (or 'error' on a VT
+// blip) and the fail-closed gate hid it. A version's bytes are immutable once
+// servable (canReplaceVersionBytes), so one clean verdict covers them.
 
 /** Retry a 'pending' verdict (VT hadn't finished analysing when we last
  *  polled) after this long. Without a retry lane these rows are stuck
@@ -395,7 +407,7 @@ export async function queueInfo(versionId: string): Promise<QueueInfo | null> {
 
 /**
  * One unit of worker work: scan the oldest queued version; if the queue is
- * empty, re-scan the least-recently-scanned stale version. Returns a short
+ * empty, retry a 'pending' or 'error' one that is due. Returns a short
  * description of what it did (or null when there was nothing to do).
  *
  * A rate-limit while submitting leaves the row queued so the next tick retries.
@@ -459,13 +471,8 @@ async function drainOnceInner(): Promise<{ id: string; action: string; status?: 
       sql`${schema.modVersions.scannedAt} asc nulls first`,
     );
     if (errored) return { target: errored, action: 'retry' as const };
-    // 4) Otherwise a stale clean row due for a routine signature refresh.
-    const cutoff = new Date(Date.now() - RESCAN_AFTER_MS);
-    const stale = await selectTarget(
-      and(eq(schema.modVersions.scanStatus, 'clean'), lt(schema.modVersions.scannedAt, cutoff)),
-      sql`${schema.modVersions.scannedAt} asc nulls first`,
-    );
-    if (stale) return { target: stale, action: 'rescan' as const };
+    // Clean rows are never picked again (see the note above
+    // PENDING_RETRY_AFTER_MS).
     return null;
   };
 

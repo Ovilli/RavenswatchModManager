@@ -10,8 +10,9 @@ export type ScanStatus = 'queued' | 'pending' | 'clean' | 'flagged' | 'skipped' 
  * that were actually scanned clean, or explicitly skipped because scanning is
  * disabled server-side, are downloadable. Everything else — 'pending' (freshly
  * uploaded, not yet scanned), 'queued', 'flagged', and 'error' — is withheld so
- * there is no window in which un-scanned bytes are downloadable. The rescan
- * loop revisits 'error' rows, so a transient scan failure self-heals.
+ * there is no window in which un-scanned bytes are downloadable. The scan
+ * worker retries 'pending' and 'error' rows, so a transient scan failure
+ * self-heals; it never re-scans a 'clean' one.
  */
 export const SERVABLE_STATUSES = ['clean', 'skipped'] as const;
 
