@@ -138,7 +138,12 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
             elif op == "retarget":
                 _retarget(ef, step, read)
             else:
-                part, _, fld = str(step[op]).rpartition(".")
+                spec = str(step[op])
+                if ".cinebloc[" in spec:
+                    part, _, fld = spec.partition(".cinebloc[")
+                    fld = "cinebloc[" + fld
+                else:
+                    part, _, fld = spec.rpartition(".")
                 if not part:
                     raise AbilityEditError(f"{op} = {step[op]!r}: write it as 'Part.field'")
                 if op == "set":

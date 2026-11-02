@@ -11,6 +11,7 @@ import pytest
 from rsmm.engine import corpus
 from rsmm.engine import entity_fields as EF
 from rsmm.engine import entity_graph_edit as EE
+from rsmm.engine import entity_check as CK
 
 PIPER = "EntitySettings/Heroes/Hero_Piper/Hero_Piper.entity.ot.EntitySettingsResource.gen"
 JULIET = "EntitySettings/Heroes/Hero_Juliet/Hero_Juliet.entity.ot.EntitySettingsResource.gen"
@@ -184,3 +185,29 @@ def test_setting_a_linked_number_replaces_the_link():
     assert len(out) < len(raw)
     # Untouched fields keep their links.
     assert "<- [Value]" in _field(ef, "Melting Timer", "duration").text
+
+
+HERO_RED = "EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot.EntitySettingsResource.gen"
+
+
+@pytest.mark.skipif(corpus.read(HERO_RED) is None, reason="no Red in corpus")
+def test_cinebloc_start_and_ref():
+    raw = corpus.read(HERO_RED)
+    ef = EE.EntityFile(raw, "Hero_Red")
+    ef.set_value("Wolf Secondary Ability Default Anim", "cinebloc[1].start", 0.0)
+    ef.set_ref("Wolf Secondary Ability Default Anim", "cinebloc[2]", "")
+    out = ef.to_bytes()
+    assert len(out) > 0
+    issues = CK.check(out, raw, name="Hero_Red")
+    assert not list(CK.errors(issues))
+
+
+@pytest.mark.skipif(corpus.read(HERO_RED) is None, reason="no Red in corpus")
+def test_tester_condition_ref_can_be_retargeted():
+    raw = corpus.read(HERO_RED)
+    ef = EE.EntityFile(raw, "Hero_Red")
+    ef.set_ref("Skill Defensive Combo Trigger Tester", "test", "Skill Defensive Human Quest")
+    out = ef.to_bytes()
+    assert len(out) > 0
+    issues = CK.check(out, raw, name="Hero_Red")
+    assert not list(CK.errors(issues))

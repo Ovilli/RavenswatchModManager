@@ -381,6 +381,22 @@ class EntityFile:
                 raise EntityEditError(f"{field!r}: {c.name!r} has no object entry {i} in {base!r}")
             self._set_obj_literal(c, f.items[i], n, value, field)
             return
+        if base == "cinebloc":
+            c = self.component(comp)
+            idx_part, _, _prop = idx.rstrip("]").partition("].")
+            i = int(idx_part)
+            cin_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCCinematic"), -1)
+            cin_tag = cooked.MARK_BEGIN + struct.pack("<I", cin_cls)
+            p = self.objects[c.index - 1]
+            pos = p.find(cin_tag)
+            if cin_cls < 0 or pos < 0:
+                raise EntityEditError(f"{comp!r} has no oCCinematic")
+            count = struct.unpack_from("<I", p, pos + 8)[0]
+            if not 0 <= i < count:
+                raise EntityEditError(f"{comp!r} has {count} cineblocs, no {i}")
+            sub_id = struct.unpack_from("<I", p, pos + 12 + i * 4)[0]
+            struct.pack_into("<f", self.objects[sub_id], 4, float(value))
+            return
         if idx:
             c = self.component(comp)
             f = next((x for x in EF.fields(c) if x.name == base), None)
@@ -396,14 +412,22 @@ class EntityFile:
             struct.pack_into({"bool": "<?", "u32": "<I", "f32": "<f"}[f.kind], p,
                              at + f.offset, _as(f.kind, value))
             return
-        if f.kind == "bytes" and f.size == 1:
-            # An undecoded single byte (a damage record's bytes_30, 1 on bombs
-            # and 0 on DoT damage): a 0..255 integer, or true/false.
-            if isinstance(value, bool):
-                value = int(value)
-            if not isinstance(value, int) or not 0 <= value <= 255:
-                raise EntityEditError(f"{field!r} is one byte: give 0..255 or true/false")
-            p[at + f.offset] = value
+        if f.kind == "bytes":
+            if isinstance(value, str):
+                b_val = bytes.fromhex(value.replace(" ", ""))
+            elif isinstance(value, (bytes, bytearray)):
+                b_val = bytes(value)
+            elif isinstance(value, int) and f.size == 1:
+                if not 0 <= value <= 255:
+                    raise EntityEditError(f"{field!r} is one byte: give 0..255 or true/false")
+                b_val = bytes([value])
+            elif isinstance(value, bool) and f.size == 1:
+                b_val = bytes([int(value)])
+            else:
+                raise EntityEditError(f"{field!r} is {f.size} bytes: give hex string or 0..255")
+            if len(b_val) != f.size:
+                raise EntityEditError(f"{field!r} expects {f.size} bytes, got {len(b_val)}")
+            p[at + f.offset:at + f.offset + f.size] = b_val
             return
         if f.kind != "value":
             raise EntityEditError(f"{field!r} is a {f.kind}, not a literal")
@@ -504,6 +528,28 @@ class EntityFile:
         a selector's ``entries[0][0]`` (its condition) and ``entries[0][1]``
         (its value)) at component ``target`` or at nothing."""
         base, _, idx = field.partition("[")
+        if base == "cinebloc":
+            c = self.component(comp)
+            i = int(idx.rstrip("]"))
+            cin_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCCinematic"), -1)
+            cin_tag = cooked.MARK_BEGIN + struct.pack("<I", cin_cls)
+            p = self.objects[c.index - 1]
+            pos = p.find(cin_tag)
+            if cin_cls < 0 or pos < 0:
+                raise EntityEditError(f"{comp!r} has no oCCinematic")
+            count = struct.unpack_from("<I", p, pos + 8)[0]
+            if not 0 <= i < count:
+                raise EntityEditError(f"{comp!r} has {count} cineblocs, no {i}")
+            sub_id = struct.unpack_from("<I", p, pos + 12 + i * 4)[0]
+            picker_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCEntityCpntPicker"), -1)
+            pickers = EG._pickers(bytes(self.objects[sub_id]), picker_cls)
+            if not pickers:
+                raise EntityEditError(f"{comp!r} cinebloc {i} has no reference")
+            a = pickers[0][0]
+            strlen = struct.unpack_from("<I", self.objects[sub_id], a + 24)[0]
+            b = a + 8 + 16 + 4 + strlen + 4
+            self.objects[sub_id][a:b] = self._picker(target)
+            return
         c = self.component(comp)
         fo = next((x for x in EF.fields(c) if x.name == base), None)
         item, _, nth = idx.partition("][")
@@ -527,6 +573,16 @@ class EntityFile:
                     raise EntityEditError(f"{c.name!r}.{field} has no number slot to point")
                 self.source_value(comp, n, target)
                 return
+            if f.kind == "obj" and f.name == "test" and c.cls == "oCEntityCpntTesterSettings":
+                sub_ids = self.subtree({c.index - 1})
+                if sub_ids:
+                    sub = self.objects[sub_ids[0]]
+                    head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index("oCEntityCpntPicker"))
+                    pos = sub.find(head)
+                    if pos >= 0:
+                        strlen = struct.unpack_from("<I", sub, pos + 24)[0]
+                        sub[pos:pos + 28 + strlen + 4] = self._picker(target)
+                        return
             a, b = self._picker_span(c, f)
         obj = c.index - 1
         old = bytes(self.objects[obj][at + a:at + b])
@@ -1040,14 +1096,18 @@ class EntityFile:
     def _picker(self, target: str | None) -> bytes:
         names = [x.name for x in self.cf.classes]
         head = _B + struct.pack("<I", names.index("oCEntityCpntPicker"))
-        if target is None:
+        if not target:
             return head + bytes(16) + _lstr("") + _E
-        t = self.component(target)
-        # A node with no group is named `Scope\Name` by every shipped reference
-        # (Melusine's caster reads `...Power_Caster_Model\Owner Skill ...`), not
-        # `Scope\\Name`, which is what its empty-group path would give.
-        path = t.path if t.group else t.name
-        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
+        try:
+            t = self.component(target)
+            path = t.path if t.group else t.name
+            return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
+        except EntityEditError:
+            for c in self.graph().components:
+                for r in c.refs:
+                    if r.path.endswith("\\" + target) or r.path == target:
+                        return head + r.guid + _lstr(r.path) + _E
+            raise
 
     def _label(self, cls: str) -> str:
         """The ``[Kind]`` label for ``cls``: from this file's own references
