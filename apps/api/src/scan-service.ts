@@ -3,7 +3,13 @@ import { getDb, schema } from '@rsmm/db';
 import { type SQL, and, eq, lt, notInArray, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
 import { notify, notifyFollowers } from './notify.js';
-import { deleteObject, fetchPublicObject, getObjectBytes, modUploadKey } from './storage.js';
+import {
+  deleteObject,
+  fetchPublicObject,
+  getObjectBytes,
+  modUploadKey,
+  remoteObjectExists,
+} from './storage.js';
 import {
   MAX_VT_LARGE_BYTES,
   VirusTotalAlreadySubmittedError,
@@ -181,6 +187,8 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   // 'pending'). Without the sha guard this verdict — for the OLD bytes — would
   // land on the row and mark the never-scanned new ones clean. A no-op write
   // leaves the row pending, so the drain scans the new bytes on its own.
+  // Nor may it undo an admin's verdict made while this scan ran (see
+  // VERDICT_STATUSES): only a detection still overrides one.
   await db
     .update(schema.modVersions)
     .set({
@@ -189,7 +197,7 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
       scanStats: stats ? ({ ...stats } as Record<string, number>) : undefined,
       scannedAt: new Date(),
     })
-    .where(scanTargetIs(target.id, target.sha256));
+    .where(and(scanTargetIs(target.id, target.sha256), unlessDecided(status)));
 
   // Notify the owner (in-app + email) that their upload was flagged & removed.
   if (flagged) {
@@ -236,7 +244,101 @@ export async function markScan(
   await db
     .update(schema.modVersions)
     .set({ scanStatus: status, scannedAt: new Date() })
-    .where(sha256 ? scanTargetIs(versionId, sha256) : eq(schema.modVersions.id, versionId));
+    .where(
+      and(
+        sha256 ? scanTargetIs(versionId, sha256) : eq(schema.modVersions.id, versionId),
+        unlessDecided(status),
+      ),
+    );
+}
+
+/** Statuses that settle a version: servable, or flagged (by VirusTotal or an
+ *  admin's reject). Nothing the worker learns later reopens one. */
+const VERDICT_STATUSES = [...SERVABLE_STATUSES, 'flagged'] as const;
+
+/** The guard a scanner write needs so it cannot overturn a settled verdict —
+ *  an admin's approve or reject landing while the scan was in flight. A clean
+ *  result may still land on a servable row (it is the same answer); a
+ *  detection always lands. */
+function unlessDecided(status: ScanStatus) {
+  if (status === 'flagged') return undefined;
+  const keep: readonly string[] = status === 'clean' ? ['flagged'] : VERDICT_STATUSES;
+  return notInArray(schema.modVersions.scanStatus, [...keep]);
+}
+
+/**
+ * An admin's manual verdict on a version, overriding the scanner.
+ *
+ * approve: the version becomes servable ('clean') — also out of 'flagged', for
+ * a false positive. Refused when its file is no longer in the bucket (the
+ * scanner deletes a flagged upload): a servable row with no bytes behind it
+ * would only hand players a broken download.
+ *
+ * reject: the version is marked 'flagged' (hidden, download blocked, and no
+ * scan reopens it), its object is deleted, and the owner is told.
+ */
+export async function adminVerdict(
+  versionId: string,
+  verdict: 'approve' | 'reject',
+): Promise<{ status: ScanStatus } | { error: string; code: 404 | 409 }> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      slug: schema.mods.slug,
+      modName: schema.mods.name,
+      ownerId: schema.mods.ownerId,
+      version: schema.modVersions.version,
+      sha256: schema.modVersions.sha256,
+      assetUrl: schema.modVersions.assetUrl,
+      status: schema.modVersions.scanStatus,
+    })
+    .from(schema.modVersions)
+    .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
+    .where(eq(schema.modVersions.id, versionId))
+    .limit(1);
+  const v = rows[0];
+  if (!v) return { error: 'not found', code: 404 };
+
+  if (verdict === 'approve') {
+    if ((SERVABLE_STATUSES as readonly string[]).includes(v.status)) {
+      return { status: v.status as ScanStatus };
+    }
+    if (!(await remoteObjectExists(v.assetUrl))) {
+      return {
+        error: 'the file is gone (a flagged upload is deleted); the author has to upload it again',
+        code: 409,
+      };
+    }
+    await releaseVersion(versionId, v.sha256, 'clean', { overrideFlag: true });
+    return { status: 'clean' };
+  }
+
+  // Hidden first, then the bytes: a failed delete must not leave it servable.
+  await db
+    .update(schema.modVersions)
+    .set({ scanStatus: 'flagged', scannedAt: new Date() })
+    .where(scanTargetIs(versionId, v.sha256));
+  try {
+    await deleteObject(modUploadKey(v.slug, v.version, v.sha256));
+  } catch (err) {
+    console.error('failed to purge rejected object', { versionId, err: errString(err) });
+  }
+  if (v.ownerId) {
+    const owner = await db
+      .select({ email: schema.users.email })
+      .from(schema.users)
+      .where(eq(schema.users.id, v.ownerId))
+      .limit(1);
+    await notify({
+      userId: v.ownerId,
+      type: 'mod_flagged',
+      title: `Version ${v.version} of "${v.modName}" was rejected`,
+      body: 'A moderator reviewed this upload and rejected it; the file was removed. Contact support if you think this is a mistake.',
+      link: `/my-mods/${v.slug}`,
+      email: owner[0]?.email ?? null,
+    });
+  }
+  return { status: 'flagged' };
 }
 
 /**
@@ -253,17 +355,16 @@ export async function releaseVersion(
   versionId: string,
   sha256: string,
   status: 'clean' | 'skipped',
+  opts: { overrideFlag?: boolean } = {},
 ): Promise<boolean> {
   const db = getDb();
+  // A flagged row is only released by an admin's approve; a scan finishing
+  // after a reject must not bring it back.
+  const blocked = opts.overrideFlag ? [...SERVABLE_STATUSES] : [...VERDICT_STATUSES];
   const released = await db
     .update(schema.modVersions)
     .set({ scanStatus: status, scannedAt: new Date() })
-    .where(
-      and(
-        scanTargetIs(versionId, sha256),
-        notInArray(schema.modVersions.scanStatus, [...SERVABLE_STATUSES]),
-      ),
-    )
+    .where(and(scanTargetIs(versionId, sha256), notInArray(schema.modVersions.scanStatus, blocked)))
     .returning({
       modId: schema.modVersions.modId,
       version: schema.modVersions.version,

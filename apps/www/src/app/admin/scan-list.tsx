@@ -1,15 +1,17 @@
 'use client';
 
 import { Spinner, buttonVariants } from '@rsmm/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ExternalLink,
   Loader2,
   type LucideIcon,
   MinusCircle,
   ShieldAlert,
+  X,
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -64,6 +66,24 @@ export function ScanList() {
     retry: false,
   });
 
+  const qc = useQueryClient();
+  const decide = useMutation({
+    mutationFn: (v: { id: string; verdict: 'approve' | 'reject' }) =>
+      api.moderation.scanVerdict(v.id, v.verdict),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['admin', 'versions'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'stats'] });
+    },
+  });
+  const reject = (v: Version) => {
+    if (
+      window.confirm(
+        `Reject ${v.modName} v${v.version}? It is hidden for good, its file is deleted, and the author is told.`,
+      )
+    )
+      decide.mutate({ id: v.id, verdict: 'reject' });
+  };
+
   const items = list.data?.items ?? [];
   const open = items.filter((v) => !SETTLED.has(v.scanStatus));
   const shown = all ? items : open;
@@ -89,6 +109,12 @@ export function ScanList() {
           All uploads (30 days)
         </button>
       </div>
+
+      {decide.isError ? (
+        <p className="text-sm text-destructive" role="alert">
+          {decide.error instanceof Error ? decide.error.message : 'The verdict did not save.'}
+        </p>
+      ) : null}
 
       {list.isLoading ? (
         <div className="flex justify-center py-8">
@@ -140,14 +166,36 @@ export function ScanList() {
                     sha256 {v.sha256}
                   </p>
                 </div>
-                <a
-                  href={`https://www.virustotal.com/gui/file/${v.sha256}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${buttonVariants({ variant: 'outline', size: 'sm' })} shrink-0 gap-1.5`}
-                >
-                  VirusTotal <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                </a>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {SETTLED.has(v.scanStatus) ? null : (
+                    <button
+                      type="button"
+                      disabled={decide.isPending}
+                      onClick={() => decide.mutate({ id: v.id, verdict: 'approve' })}
+                      className={`${buttonVariants({ variant: 'outline', size: 'sm' })} gap-1.5`}
+                    >
+                      <Check className="h-3.5 w-3.5" aria-hidden /> Approve
+                    </button>
+                  )}
+                  {v.scanStatus === 'flagged' ? null : (
+                    <button
+                      type="button"
+                      disabled={decide.isPending}
+                      onClick={() => reject(v)}
+                      className={`${buttonVariants({ variant: 'outline', size: 'sm' })} gap-1.5 text-crimson`}
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden /> Reject
+                    </button>
+                  )}
+                  <a
+                    href={`https://www.virustotal.com/gui/file/${v.sha256}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${buttonVariants({ variant: 'outline', size: 'sm' })} gap-1.5`}
+                  >
+                    VirusTotal <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                  </a>
+                </div>
               </li>
             );
           })}

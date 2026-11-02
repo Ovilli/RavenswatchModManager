@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { notify } from '../notify.js';
+import { adminVerdict } from '../scan-service.js';
 import type { AppEnv } from '../types.js';
 
 export const moderationRouter = new Hono<AppEnv>();
@@ -603,3 +604,22 @@ moderationRouter.get('/versions', async (c) => {
     })),
   });
 });
+
+// An admin's manual scan verdict on one version: approve makes it servable
+// (also out of 'flagged', for a false positive), reject hides it for good and
+// deletes its file. See scan-service.ts::adminVerdict.
+const versionIdParamSchema = z.object({ id: z.string().uuid() });
+const verdictSchema = z.object({ verdict: z.enum(['approve', 'reject']) });
+
+moderationRouter.post(
+  '/versions/:id/verdict',
+  zValidator('param', versionIdParamSchema),
+  zValidator('json', verdictSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { verdict } = c.req.valid('json');
+    const r = await adminVerdict(id, verdict);
+    if ('error' in r) return c.json({ error: r.error }, r.code);
+    return c.json({ ok: true, status: r.status });
+  },
+);

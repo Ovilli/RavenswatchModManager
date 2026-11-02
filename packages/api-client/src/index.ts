@@ -683,6 +683,14 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'GET' },
           z.object({ items: z.array(scanVersionSchema) }),
         ),
+      /** Admin override of the malware scan: approve makes the version
+       *  downloadable, reject hides it and deletes its file. */
+      scanVerdict: (id: string, verdict: 'approve' | 'reject') =>
+        request(
+          `/api/moderation/versions/${encodeURIComponent(id)}/verdict`,
+          { method: 'POST', body: JSON.stringify({ verdict }) },
+          z.object({ ok: z.literal(true), status: z.string() }),
+        ),
       reports: (status?: 'open' | 'reviewing' | 'resolved' | 'dismissed') =>
         request(
           `/api/moderation/reports${status ? `?status=${status}` : ''}`,
