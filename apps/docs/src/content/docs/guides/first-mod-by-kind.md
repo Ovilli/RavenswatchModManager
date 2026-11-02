@@ -1114,6 +1114,20 @@ power = { replace = true, steps = [
   defaulting to the original hero's.
 - **`hit`**: an area attack at that moment (`radius` m, `damage` %, `delay` s).
 - **`heal`**: health, in the units of the hero's own heals.
+- **`summon`**: an enemy that fights for you, spawned ahead of the hero:
+  `{ summon = "Enemies/Wolves/Standard_Wolf_Timber" }` (also
+  `Standard_Wolf_Dire`, `Elite_Wolf_Alpha`). The hero gets a copy of it on the
+  allies' base (`Ally_Model`, as Sun Wukong's clone and Kintaro's bear) with
+  every attack turned on enemies. Experimental: it lives until it dies (no
+  timer yet), and its damage and health are the ally defaults, not scaled by
+  your hero.
+- **`pets`** (a kit key, not a block): creatures that follow the hero, the way
+  Piper's rats do:
+  `pets = { entity = "Enemies/Wolves/Standard_Wolf_Dire", count = 1, button = "trait" }`.
+  The enemy is copied onto the pet base (`Hero_Pet_Model`) with its attacks
+  turned on enemies; `count` (1..4) spawn around the hero at the start, the
+  select screen included. `button`'s ability is replaced by the attack order,
+  with no cooldown, and the pets come back when the fight ends. Experimental.
 - **`anim`**: one of the base hero's own clips plays instead of the button's.
 - **`replace = true`** cuts the button's own hits and spawns, keeping its
   animation and flow.

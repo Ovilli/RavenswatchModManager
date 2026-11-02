@@ -53,7 +53,7 @@ SLOTS = {
     "dash": ("Dash", "Dash"),
 }
 FORMS = ("wolf", "human")
-_KEYS = {"form", *SLOTS}
+_KEYS = {"form", "pets", *SLOTS}
 _PREVIEW_GATE = "Activate Hero Controller Tester"     # Hero_Common: on only in a run
 
 
@@ -66,10 +66,13 @@ class Copy:
     """A projectile of the hero's own: ``source`` copied to ``ref``, each of its
     reads of its owner hero (``reads``: get-value part -> value part in this
     hero) pointed at this hero instead. Built by :func:`build_copy` once the
-    hero's own entity exists."""
+    hero's own entity exists. A summoned ally (``engine/ally_summon.py``) comes
+    ready made: ``data`` is its bytes, identities included."""
     source: str
     ref: str
     reads: dict[str, str]
+    data: bytes | None = None
+    base: str | None = None
 
 
 @dataclass
@@ -96,6 +99,8 @@ def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
     form = kit.get("form")
     if form is not None:
         steps += _form(str(form), names)
+    if kit.get("pets") is not None:
+        steps += _pets(kit["pets"], g, form == "wolf", ctx)
     for slot in SLOTS:
         if slot not in kit:
             continue
@@ -242,7 +247,7 @@ INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
                       *PROJ_VALUES, *PROJ_STATUS},
              "wait": {"wait"}, "repeat": {"repeat", "every", "steps"},
-             "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"}}
+             "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"}, "summon": {"summon"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -266,7 +271,7 @@ def timeline(steps, t: float = 0.0) -> list[tuple[float, dict]]:
     for n, st in enumerate(steps, 1):
         kind = next((k for k in STEP_KEYS if k in st), None)
         if kind is None or set(st) - STEP_KEYS[kind]:
-            raise KitError(f"step {n} {st!r}: one of fire, hit, heal, wait, repeat, anim "
+            raise KitError(f"step {n} {st!r}: one of fire, hit, heal, summon, wait, repeat, anim "
                            "(with its own keys only)")
         if kind == "wait":
             w = st["wait"]
@@ -325,7 +330,7 @@ def timeline(steps, t: float = 0.0) -> list[tuple[float, dict]]:
 def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
     trigger = _trigger(slot, spec, g, wolf)
     plan = timeline(spec.get("steps") or [])
-    if not any("fire" in b or "hit" in b or "heal" in b for _, b in plan):
+    if not any("fire" in b or "hit" in b or "heal" in b or "summon" in b for _, b in plan):
         return _replace(trigger, g) if spec.get("replace") else []
     by = {c.guid: c for c in g.components}
 
@@ -341,7 +346,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
 
     aimed = [c for c in g.components
              if c.cls == "oCEntityCpntEntitySpawnerSettings" and node_of(c)]
-    needs_spawner = any("fire" in b or "hit" in b for _, b in plan)
+    needs_spawner = any("fire" in b or "hit" in b or "summon" in b for _, b in plan)
     if not aimed and needs_spawner:
         raise KitError(f"kit {slot}: this base has no spawner aiming through a 3D node "
                        "to build from (Carmilla and Sun Wukong have none)")
@@ -422,7 +427,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     has_values = bool(spawner) and any(f.name == "spawner_values" for f in EF.fields(spawner))
     moments: dict[float, str] = {0.0: trigger}
     for t, block in plan:
-        if not ("fire" in block or "hit" in block or "heal" in block):
+        if not ("fire" in block or "hit" in block or "heal" in block or "summon" in block):
             continue
         if t not in moments:
             k = len(moments)
@@ -469,10 +474,15 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                      float(block["hit"].get(key, default)) * scale)
             steps.append({"add_link": f"{moments[t]}.activates", "to": sp})
             continue
-        ent = _entity_ref(block["fire"])
-        shot = _copy_for(ent, block.get("reads") or {}, steps, ctx, slot)
-        angles = block.get("angles") or [0]
-        offsets = block.get("offsets") or []
+        if "summon" in block:
+            # An enemy as an ally, spawned where a shot would be (one, ahead).
+            ent = shot = _summon_for(block["summon"], ctx, slot)
+            angles, offsets = [0], []
+        else:
+            ent = _entity_ref(block["fire"])
+            shot = _copy_for(ent, block.get("reads") or {}, steps, ctx, slot)
+            angles = block.get("angles") or [0]
+            offsets = block.get("offsets") or []
         for what, xs in (("angles", angles), ("offsets", offsets)):
             if not isinstance(xs, list) or not all(
                     isinstance(a, (int, float)) and not isinstance(a, bool) for a in xs):
@@ -686,6 +696,103 @@ def _copy_for(ent: str, overrides: dict, steps: list[dict], ctx: _Ctx, slot: str
         parts[r["part"]] = part
     ctx.copies.append(Copy(ent, ref, parts))
     return ref
+
+
+#: How `pets` spawn: Sun Wukong's clone spawn (his ultimate's monkeys), whose
+#: spread pos picks spots around the hero and runs the spawner per spot, a
+#: plain value its count. (Piper's own spawner picks rat or rat king through a
+#: selector and has no template to point at another creature.)
+_WUKONG_SPAWN = {"Skill Ultimate 1 Special Monkey Spawner": "Kit Pet Spawner",
+                 "Skill Ultimate 1 Special Monkey Spread Pos": "Kit Pet Spread Pos",
+                 "Skill Ultimate 1 Special Monkey Pathfinding Profile":
+                     "Kit Pet Pathfinding Profile",
+                 "Special Monkey Random": "Kit Pet Random",
+                 "Skill Ultimate 1 Special Monkey Nb": "Kit Pet Count",
+                 # The spread's centre: the hero's own position (Character_Common's
+                 # Self Entity Listener, which every hero inherits).
+                 "Ultimate Ability 1 Direction Store": "Kit Pet Centre"}
+_PIPER_ORDERS = {"PET_MASTER_ATTACK_MOVE_ORDER Event Sender": "Kit Pet Attack Order",
+                 "PET_MASTER_RECALL_ORDER Event Sender": "Kit Pet Recall Order"}
+
+
+def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
+    """``pets = { entity = <enemy>, count = 1, button = "trait" }``: pets that
+    follow the hero, Piper's way. The enemy is copied onto Hero_Pet_Model
+    (follows its master, obeys PET_MASTER_* orders) with its attacks turned on
+    enemies; ``count`` of them spawn around the hero when it starts (the select
+    screen too, as Piper's rats). ``button``'s ability is replaced by the
+    attack order, with no cooldown; leaving combat recalls them (Piper's
+    recall: the order is held off while the hero fights)."""
+    from . import ally_summon as AS
+    if not isinstance(spec, dict) or not spec.get("entity"):
+        raise KitError('kit pets = { entity = "<enemy>", count = 1, button = "trait" }')
+    unknown = set(spec) - {"entity", "count", "button"}
+    if unknown:
+        raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
+    count = spec.get("count", 1)
+    if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 4:
+        raise KitError("kit pets count is 1..4 (each one is a creature in co-op)")
+    button = spec.get("button", "trait")
+    if button not in SLOTS:
+        raise KitError(f"kit pets button = {button!r}: one of {', '.join(SLOTS)}")
+    pet = _summon_for(spec["entity"], ctx, "pets", base=AS.PET_MODEL)
+
+    steps: list[dict] = [
+        {"clone": list(_WUKONG_SPAWN), "from": "SunWukong", "rename": dict(_WUKONG_SPAWN)},
+        {"set": "Kit Pet Spawner.template[1]", "value": pet},
+        {"set": "Kit Pet Count.value", "value": count},
+        # At start (the select screen too): the spread pos spawns them.
+        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Centre"},
+        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Random"},
+        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Spread Pos"}]
+
+    # The button: its own ability out, the attack order in, no cooldown.
+    trigger = _trigger(button, {}, g, wolf)
+    t = next(c for c in g.components if c.name == trigger)
+    for f in EF.fields(t):
+        if f.kind == "ref[]":
+            for _ in f.items:
+                steps.append({"remove_link": f"{trigger}.{f.name}[0]"})
+    steps += [{"clone": list(_PIPER_ORDERS), "from": "Piper", "rename": dict(_PIPER_ORDERS)},
+              {"add_link": f"{trigger}.activates", "to": "Kit Pet Attack Order"}]
+    ctrl = next((c for c in g.components if c.cls == "oCDtEntityCpntAbilityControllerSettings"
+                 and any(r.path.rstrip().endswith("\\" + trigger) for r in c.refs)), None)
+    if ctrl is not None:
+        steps.append({"set": f"{ctrl.name}.value_4", "value": 0.0})
+    # Recall once a fight ends: Piper's "is in combat" holds the order off.
+    # Heroes override it already (Scarlet and Piper as "Child State Is In
+    # Combat"); a hero that does not gets its own override.
+    combat = next((c.name for c in g.components if c.override is not None
+                   and c.override.path.rstrip().endswith("\\Child State Can Fight")), None)
+    if combat is None:
+        combat = "Child State Can Fight"
+        steps.append({"override": combat, "from": "Character_Common/Character_Common"})
+    steps.append({"add_link": f"{combat}.disables_while_active?", "to": "Kit Pet Recall Order"})
+    return steps
+
+
+def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None) -> str:
+    """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
+    hero's folder (its model layer and the variant, see ally_summon.build).
+    One copy per enemy, however many blocks summon it."""
+    from . import ally_summon as AS
+    src = _entity_ref(enemy)
+    for c in ctx.copies:
+        if c.data is not None and c.source == src and c.base == (base or None):
+            return c.ref
+    k = len(ctx.copies) + 1
+    stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Summon{k}"
+    variant_ref, model_ref = stem + ".entity.ot", stem + "_Model.entity.ot"
+    try:
+        out = AS.build(src, model_ref, variant_ref, f"{ctx.hid}:summon:{src}",
+                       base=base or AS.ALLY_MODEL)
+    except AS.SummonError as e:
+        raise KitError(f"kit {slot}: summon {enemy}: {e}") from None
+    from . import entity_components as EC
+    model_src = next(p for p in EC.parents(AS._read(src)) if p != AS.ENEMY_MODEL)
+    ctx.copies.append(Copy(model_src, model_ref, {}, out[model_ref], base))
+    ctx.copies.append(Copy(src, variant_ref, {}, out[variant_ref], base))
+    return variant_ref
 
 
 def reader(copies: list[Copy]):

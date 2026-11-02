@@ -636,6 +636,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # Fresh part ids: it must not share the template projectile's.
             put(built.entity_rel, PC.restamp_entity_guids(blob, built.entity_rel))
         for c in kit_copies:
+            if c.data is not None:
+                # A summoned ally: built whole, its two files sharing ONE
+                # identity mapping (a per-file restamp would cut the variant
+                # off from the model parts it overrides).
+                put(H.entity_rel(c.ref), c.data)
+                continue
             # Its reads of its owner aimed at this hero's final entity.
             mref = R.entity_ref(main_ref)
             blob = HK.build_copy(c, family[H.entity_rel(mref)], mref)

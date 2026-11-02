@@ -370,6 +370,24 @@ def parents(host_bytes: bytes) -> list[str]:
     return [path for _root, path in entries]
 
 
+def replace_parent(host_bytes: bytes, old: str, new: str) -> bytes:
+    """Return `host_bytes` inheriting entity ref `new` where it inherited `old`
+    (a wolf copied as an ally: Enemy_Model -> Ally_Model). Fails closed when
+    `old` is not a parent."""
+    cf = cooked.parse(host_bytes)
+    payload = cf.sections[-1].payload
+    start, end, entries = _parent_list_span(payload)
+    hits = [i for i, (_r, path) in enumerate(entries) if path == old]
+    if len(hits) != 1:
+        raise EntityComponentError(f"{old!r} is not a parent here (parents: "
+                                   f"{', '.join(p for _r, p in entries) or 'none'})")
+    entries[hits[0]] = (entries[hits[0]][0], new)
+    cf.sections[-1].payload = payload[:start] + _render_parents(entries) + payload[end:]
+    out = cooked.emit(cf)
+    _parent_list_span(cooked.parse(out).sections[-1].payload)
+    return out
+
+
 def add_parents(host_bytes: bytes, names: list[str]) -> bytes:
     """Return `host_bytes` inheriting the entity behind each name in `names`.
 
