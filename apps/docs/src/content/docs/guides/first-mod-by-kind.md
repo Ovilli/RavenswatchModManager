@@ -1024,7 +1024,22 @@ to    = "State Secondary Ability Echo"
     `replace_ref` and puts the copy IN PLACE of entry `i`, so whatever picks
     that entry (an Fx selector) now gets the copy. Both refuse a sub-object
     that owns sub-objects of its own.
+  - An animation's timeline: `set = "Anim Part.cinebloc[i].start"` moves when
+    bloc `i` fires (seconds), and `link = "Anim Part.cinebloc[i]"` with
+    `to = ""` unlinks the part that bloc acts on (or `to` another part).
+  - A tester's condition: `link = "Some Tester.test"` + `to` re-points the
+    state its test reads.
+  - Raw bytes: a `bytes_N` field takes a hex string of exactly its size
+    (`value = "00 00 80 3f"`); a one-byte field also takes 0..255 or true/false.
+  - A link to a part this file does not define but already references (one a
+    parent entity owns) resolves by that part's name, when the name is
+    unambiguous.
   Add `entity = "FX"` to a step to edit another entity of the family.
+  An edit that reaches a shipped resource no step recorded (a part of another
+  hero your links now read) needs it preloaded: list it in the hero's
+  `borrow = ["Heroes/Hero_X/Hero_X.entity.ot"]`; the build refuses one no
+  shipped preload cache lists. An entity your mod ships in its own `assets/`
+  is read from there and needs no borrow.
   The **Abilities** tab of `rsmm editor` builds these steps for you.
   It opens on **Numbers**: every number the chosen ability uses, by name
   (type a value, press Enter; ↺ resets it). The **Diagram** tab draws the

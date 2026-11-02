@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 
 from rsmm.engine import corpus
+from rsmm.engine import entity_check as CK
 from rsmm.engine import entity_fields as EF
 from rsmm.engine import entity_graph_edit as EE
-from rsmm.engine import entity_check as CK
 
 PIPER = "EntitySettings/Heroes/Hero_Piper/Hero_Piper.entity.ot.EntitySettingsResource.gen"
 JULIET = "EntitySettings/Heroes/Hero_Juliet/Hero_Juliet.entity.ot.EntitySettingsResource.gen"
@@ -188,26 +188,71 @@ def test_setting_a_linked_number_replaces_the_link():
 
 
 HERO_RED = "EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot.EntitySettingsResource.gen"
+needs_red = pytest.mark.skipif(corpus.read(HERO_RED) is None, reason="no Red in corpus")
+_ANIM = "Wolf Secondary Ability Default Anim"
 
 
-@pytest.mark.skipif(corpus.read(HERO_RED) is None, reason="no Red in corpus")
-def test_cinebloc_start_and_ref():
-    raw = corpus.read(HERO_RED)
-    ef = EE.EntityFile(raw, "Hero_Red")
-    ef.set_value("Wolf Secondary Ability Default Anim", "cinebloc[1].start", 0.0)
-    ef.set_ref("Wolf Secondary Ability Default Anim", "cinebloc[2]", "")
+def _red() -> EE.EntityFile:
+    return EE.EntityFile(corpus.read(HERO_RED), "Hero_Red")
+
+
+def _clean(ef: EE.EntityFile) -> EE.EntityFile:
+    """``ef`` written and read back, after the checker found nothing wrong."""
     out = ef.to_bytes()
-    assert len(out) > 0
-    issues = CK.check(out, raw, name="Hero_Red")
-    assert not list(CK.errors(issues))
+    assert not list(CK.errors(CK.check(out, corpus.read(HERO_RED), name="Hero_Red")))
+    return EE.EntityFile(out, "Hero_Red")
 
 
-@pytest.mark.skipif(corpus.read(HERO_RED) is None, reason="no Red in corpus")
-def test_tester_condition_ref_can_be_retargeted():
-    raw = corpus.read(HERO_RED)
-    ef = EE.EntityFile(raw, "Hero_Red")
+@needs_red
+def test_a_cine_bloc_start_moves_and_its_part_unlinks():
+    """An animatic's timeline: bloc 1 of Red's wolf secondary fires at 0.6 s;
+    moved to 0, and bloc 2's part (an Activate Entity Component bloc) cleared."""
+    import struct
+    ef = _red()
+    _c, b1 = ef._cinebloc(_ANIM, 1)
+    assert struct.unpack_from("<f", ef.objects[b1], 4)[0] == pytest.approx(0.6)
+    ef.set_value(_ANIM, "cinebloc[1].start", 0.0)
+    ef.set_ref(_ANIM, "cinebloc[2]", None)
+    back = _clean(ef)
+    _c, b1 = back._cinebloc(_ANIM, 1)
+    assert struct.unpack_from("<f", back.objects[b1], 4)[0] == 0.0
+    _c, b2 = back._cinebloc(_ANIM, 2)
+    a, _b = back._only_picker(b2, "bloc 2")
+    assert back.objects[b2][a + 8:a + 24] == bytes(16)
+
+
+@needs_red
+def test_a_cine_bloc_sets_only_its_start():
+    with pytest.raises(EE.EntityEditError, match="only its start"):
+        _red().set_value(_ANIM, "cinebloc[1].end", 1.0)
+    with pytest.raises(EE.EntityEditError, match="5 cine blocs, no 9"):
+        _red().set_value(_ANIM, "cinebloc[9].start", 1.0)
+
+
+@needs_red
+def test_a_tester_condition_can_be_retargeted():
+    """A tester's `test` is a Simple Bool Test reading one state; pointing it
+    elsewhere rewrites that reference, accessor and all."""
+    ef = _red()
+    want = ef.component("Skill Defensive Human Quest").guid
     ef.set_ref("Skill Defensive Combo Trigger Tester", "test", "Skill Defensive Human Quest")
-    out = ef.to_bytes()
-    assert len(out) > 0
-    issues = CK.check(out, raw, name="Hero_Red")
-    assert not list(CK.errors(issues))
+    back = _clean(ef)
+    c = back.component("Skill Defensive Combo Trigger Tester")
+    at = len(back.objects[c.index - 1]) - len(c.body)
+    sub = back._pointee(c, _field(back, c.name, "test"), at)
+    a, _b = back._only_picker(sub, "test")
+    assert bytes(back.objects[sub][a + 8:a + 24]) == want
+
+
+@needs
+def test_raw_bytes_take_hex_of_their_exact_size():
+    ef = _piper()
+    c = next(c for c in ef.graph().components
+             if any(f.kind == "bytes" and f.size == 4 for f in EF.fields(c)))
+    f = next(f for f in EF.fields(c) if f.kind == "bytes" and f.size == 4)
+    ef.set_value(c.name, f.name, "de ad be ef")
+    assert _field(ef, c.name, f.name).text.startswith("de ad be ef")
+    with pytest.raises(EE.EntityEditError, match="4 byte"):
+        ef.set_value(c.name, f.name, "dead")
+    with pytest.raises(EE.EntityEditError, match="not hex"):
+        ef.set_value(c.name, f.name, "zz zz zz zz")

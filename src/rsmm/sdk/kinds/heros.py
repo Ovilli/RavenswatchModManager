@@ -329,9 +329,15 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     # before the caches are written: each pass reads and walks every shipped
     # cache, and one per source made a hero build take minutes.
     borrow: list[str] = []
-    if "borrow" in f:
-        borrow_spec = f["borrow"] if isinstance(f["borrow"], list) else [f["borrow"]]
-        borrow.extend(str(s) for s in borrow_spec)
+    # `borrow = ["Heroes/Hero_X/Thing.entity.ot", ...]`: shipped resources the
+    # hero's edits reach that no build step records; each is preloaded with
+    # its shipped closure (and refused if no shipped cache lists it).
+    extra = f.get("borrow", [])
+    if isinstance(extra, str):
+        extra = [extra]
+    if not isinstance(extra, list) or not all(isinstance(x, str) for x in extra):
+        raise ContentError(f"hero {hid}: borrow is a list of resource paths")
+    borrow.extend(x.replace("/", "\\") for x in extra)
     for c in kit_copies:
         # A copy preloads as itself plus everything its source does.
         art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
@@ -604,19 +610,16 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # Wiring after numbers, on the same base names; checked before
             # anything is written (engine/ability_edit.py).
             from ...engine import ability_edit as AE
+            from ...engine import entity_check as CK
+            shipped = HK.reader(kit_copies) if kit_copies else CK._corpus_reader
+
+            def read(ref: str):
+                # An entity the mod ships in its own assets/ wins over the game's.
+                own = _mod_file(out_dir, ref)
+                return own.read_bytes() if own else shipped(ref)
             try:
-                from ...engine import entity_check as CK
-                def read_asset(ref: str):
-                    p = out_dir / H.entity_rel(ref)
-                    if p.exists():
-                        return p.read_bytes()
-                    p2 = out_dir / Path(*ref.replace("\\", "/").split("/"))
-                    if p2.exists():
-                        return p2.read_bytes()
-                    base_r = HK.reader(kit_copies) if kit_copies else CK._corpus_reader
-                    return base_r(ref)
                 res = AE.apply(base_bytes, abilities, main=b.stem, seed=f"{mod_id}:{hid}",
-                               read=read_asset)
+                               read=read)
             except AE.AbilityEditError as e:
                 raise ContentError(f"hero {hid}: {e}") from e
             base_bytes = res.files
@@ -625,10 +628,9 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # An attack's own projectile is preloaded by the lines its build
             # recorded (the entity, its mesh, maps and effects); no shipped
             # cache can list it, so it is not borrowed.
-            # Assets provided by the mod itself in out_dir are already supplied.
-            mod_assets = {r for r in res.resources if (out_dir / H.entity_rel(r)).exists()
-                          or (out_dir / Path(*r.replace("\\", "/").split("/"))).exists()}
-            own_refs = {a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies} | mod_assets
+            # Nor is an entity the mod ships itself: no shipped cache lists it.
+            own_refs = ({a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies}
+                        | {r for r in res.resources if _mod_file(out_dir, r)})
             borrow.extend(res.resources - own_refs)
         art.extend(_borrow_closure(sorted(set(borrow)), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
@@ -991,6 +993,16 @@ def _outfit_body(b, R, outfit: bytes, o: dict, i: int, hid: str, omat: str, mesh
     swaps = {t: new(t) for t in set(rec) if new(t) != t}
     return EC.copy_overrides(outfit, donor[1], target.split("] ", 1)[1],
                              only=("\\Base\\Character Mesh",), string_swaps=swaps)
+
+
+def _mod_file(out_dir: Path, ref: str) -> Path | None:
+    """The mod's own copy of entity ``ref`` in its assets/, if it ships one:
+    at its cooked name, or at the plain path the reference spells."""
+    from ...engine import hero_cook as H
+    for p in (out_dir / H.entity_rel(ref), out_dir / Path(*ref.split("\\"))):
+        if p.is_file():
+            return p
+    return None
 
 
 def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:

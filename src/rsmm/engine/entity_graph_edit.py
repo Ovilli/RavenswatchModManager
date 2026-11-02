@@ -382,20 +382,13 @@ class EntityFile:
             self._set_obj_literal(c, f.items[i], n, value, field)
             return
         if base == "cinebloc":
-            c = self.component(comp)
-            idx_part, _, _prop = idx.rstrip("]").partition("].")
-            i = int(idx_part)
-            cin_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCCinematic"), -1)
-            cin_tag = cooked.MARK_BEGIN + struct.pack("<I", cin_cls)
-            p = self.objects[c.index - 1]
-            pos = p.find(cin_tag)
-            if cin_cls < 0 or pos < 0:
-                raise EntityEditError(f"{comp!r} has no oCCinematic")
-            count = struct.unpack_from("<I", p, pos + 8)[0]
-            if not 0 <= i < count:
-                raise EntityEditError(f"{comp!r} has {count} cineblocs, no {i}")
-            sub_id = struct.unpack_from("<I", p, pos + 12 + i * 4)[0]
-            struct.pack_into("<f", self.objects[sub_id], 4, float(value))
+            # `cinebloc[i].start`: when bloc i of an animatic's timeline fires.
+            i, _, prop = idx.partition("]")
+            if prop != ".start" or not i.isdigit():
+                raise EntityEditError(f"{field!r}: a cine bloc sets only its start, "
+                                      "as cinebloc[i].start")
+            _c, sub = self._cinebloc(comp, int(i))
+            struct.pack_into("<f", self.objects[sub], 4, float(value))
             return
         if idx:
             c = self.component(comp)
@@ -413,21 +406,23 @@ class EntityFile:
                              at + f.offset, _as(f.kind, value))
             return
         if f.kind == "bytes":
+            # Undecoded bytes: a hex string of exactly the field's size, or for
+            # a single byte (a damage record's bytes_30, 1 on bombs and 0 on DoT
+            # damage) also a 0..255 integer or true/false.
             if isinstance(value, str):
-                b_val = bytes.fromhex(value.replace(" ", ""))
-            elif isinstance(value, (bytes, bytearray)):
-                b_val = bytes(value)
-            elif isinstance(value, int) and f.size == 1:
-                if not 0 <= value <= 255:
-                    raise EntityEditError(f"{field!r} is one byte: give 0..255 or true/false")
-                b_val = bytes([value])
-            elif isinstance(value, bool) and f.size == 1:
-                b_val = bytes([int(value)])
+                try:
+                    raw = bytes.fromhex(value.replace(" ", ""))
+                except ValueError:
+                    raise EntityEditError(f"{field!r}: {value!r} is not hex bytes") from None
+            elif isinstance(value, int) and f.size == 1 and 0 <= value <= 255:
+                raw = bytes([int(value)])
+            elif f.size == 1:
+                raise EntityEditError(f"{field!r} is one byte: give 0..255 or true/false")
             else:
-                raise EntityEditError(f"{field!r} is {f.size} bytes: give hex string or 0..255")
-            if len(b_val) != f.size:
-                raise EntityEditError(f"{field!r} expects {f.size} bytes, got {len(b_val)}")
-            p[at + f.offset:at + f.offset + f.size] = b_val
+                raise EntityEditError(f"{field!r} is {f.size} bytes: give them as hex")
+            if len(raw) != f.size:
+                raise EntityEditError(f"{field!r} is {f.size} byte(s), got {len(raw)}")
+            p[at + f.offset:at + f.offset + f.size] = raw
             return
         if f.kind != "value":
             raise EntityEditError(f"{field!r} is a {f.kind}, not a literal")
@@ -529,26 +524,10 @@ class EntityFile:
         (its value)) at component ``target`` or at nothing."""
         base, _, idx = field.partition("[")
         if base == "cinebloc":
-            c = self.component(comp)
-            i = int(idx.rstrip("]"))
-            cin_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCCinematic"), -1)
-            cin_tag = cooked.MARK_BEGIN + struct.pack("<I", cin_cls)
-            p = self.objects[c.index - 1]
-            pos = p.find(cin_tag)
-            if cin_cls < 0 or pos < 0:
-                raise EntityEditError(f"{comp!r} has no oCCinematic")
-            count = struct.unpack_from("<I", p, pos + 8)[0]
-            if not 0 <= i < count:
-                raise EntityEditError(f"{comp!r} has {count} cineblocs, no {i}")
-            sub_id = struct.unpack_from("<I", p, pos + 12 + i * 4)[0]
-            picker_cls = next((ci for ci, cl in enumerate(self.cf.classes) if cl.name == "oCEntityCpntPicker"), -1)
-            pickers = EG._pickers(bytes(self.objects[sub_id]), picker_cls)
-            if not pickers:
-                raise EntityEditError(f"{comp!r} cinebloc {i} has no reference")
-            a = pickers[0][0]
-            strlen = struct.unpack_from("<I", self.objects[sub_id], a + 24)[0]
-            b = a + 8 + 16 + 4 + strlen + 4
-            self.objects[sub_id][a:b] = self._picker(target)
+            # `cinebloc[i]`: the part bloc i of an animatic's timeline acts on.
+            c, sub = self._cinebloc(comp, int(idx.rstrip("]")))
+            self._repoint(sub, *self._only_picker(sub, f"{c.name}.{field}"), target,
+                          f"{c.name}.{field}")
             return
         c = self.component(comp)
         fo = next((x for x in EF.fields(c) if x.name == base), None)
@@ -573,19 +552,21 @@ class EntityFile:
                     raise EntityEditError(f"{c.name!r}.{field} has no number slot to point")
                 self.source_value(comp, n, target)
                 return
-            if f.kind == "obj" and f.name == "test" and c.cls == "oCEntityCpntTesterSettings":
-                sub_ids = self.subtree({c.index - 1})
-                if sub_ids:
-                    sub = self.objects[sub_ids[0]]
-                    head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index("oCEntityCpntPicker"))
-                    pos = sub.find(head)
-                    if pos >= 0:
-                        strlen = struct.unpack_from("<I", sub, pos + 24)[0]
-                        sub[pos:pos + 28 + strlen + 4] = self._picker(target)
-                        return
+            if f.kind == "obj" and not idx:
+                # An object field that points at a sub-object (a tester's
+                # `test`: a Simple Bool Test reading one state): its reference.
+                sub = self._pointee(c, f, at)
+                self._repoint(sub, *self._only_picker(sub, f"{c.name}.{field}"), target,
+                              f"{c.name}.{field}")
+                return
             a, b = self._picker_span(c, f)
-        obj = c.index - 1
-        old = bytes(self.objects[obj][at + a:at + b])
+        self._repoint(c.index - 1, at + a, at + b, target, f"{c.name}.{field}")
+
+    def _repoint(self, obj: int, a: int, b: int, target: str | None, what: str) -> None:
+        """Replace the picker at ``[a, b)`` of object ``obj`` with one naming
+        ``target`` (or nothing), fixing the accessor and talent-card format
+        that follow it."""
+        old = bytes(self.objects[obj][a:b])
         new = self._picker(target)
         # A reference inside a value picker is followed by the ACCESSOR the
         # target is read with, which depends on the target's class and value
@@ -599,18 +580,56 @@ class EntityFile:
         try:
             acc = _Accessors(cooked.parse(self._emit()))
         except (EntityAppendError, EntityEditError) as e:
-            raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
-        self.objects[obj][at + a:at + b] = new
-        label_end = at + a + len(new) - 4
+            raise EntityEditError(f"cannot point {what} at {target!r}: {e}") from e
+        self.objects[obj][a:b] = new
+        label_end = a + len(new) - 4
         p = bytes(self.objects[obj])
         try:
             p = fix_accessor(p, label_end, old[8:24], new[8:24], acc,
                              _picker_path(old), _picker_path(new))
-            p = fix_format_slot(p, at + a, label_end, new[8:24], acc)
+            p = fix_format_slot(p, a, label_end, new[8:24], acc)
         except (EntityAppendError, EntityEditError) as e:
-            self.objects[obj][at + a:at + a + len(new)] = old      # leave the file as it was
-            raise EntityEditError(f"cannot point {c.name}.{field} at {target!r}: {e}") from e
+            self.objects[obj][a:a + len(new)] = old      # leave the file as it was
+            raise EntityEditError(f"cannot point {what} at {target!r}: {e}") from e
         self.objects[obj][:] = p
+
+    def _cinebloc(self, comp: str, i: int) -> tuple[EG.Component, int]:
+        """``(component, sub-object id)`` of bloc ``i`` of ``comp``'s animatic
+        timeline. The inline ``oCCinematic`` holds ``u32 count`` + the blocs'
+        ids; a bloc is ``u32 class`` + ``f32 start`` + its own fields (Red's
+        Wolf Secondary Ability Default Anim: 5 blocs starting 0, 0.6, 0, 0, 1.02)."""
+        c = self.component(comp)
+        names = [x.name for x in self.cf.classes]
+        p = self.objects[c.index - 1]
+        pos = (p.find(_B + struct.pack("<I", names.index("oCCinematic")))
+               if "oCCinematic" in names else -1)
+        if pos < 0:
+            raise EntityEditError(f"{c.name!r} has no cine blocs (an animatic's timeline)")
+        count = struct.unpack_from("<I", p, pos + 8)[0]
+        if not 0 <= i < count:
+            raise EntityEditError(f"{c.name!r} has {count} cine blocs, no {i}")
+        return c, struct.unpack_from("<I", p, pos + 12 + 4 * i)[0]
+
+    def _pointee(self, c: EG.Component, f: EF.Field, at: int) -> int:
+        """The sub-object ``c``'s object field ``f`` points at."""
+        owned, _ambiguous = self.pointers()
+        lo, hi = at + f.offset, at + f.offset + f.size
+        hits = [x for x, ptr in owned.items()
+                if ptr.owner == c.index - 1 and lo <= ptr.offset < hi]
+        if len(hits) != 1:
+            raise EntityEditError(f"{c.name!r}.{f.name} points at no single sub-object; "
+                                  "use obj[n] for a reference written inside it")
+        return hits[0]
+
+    def _only_picker(self, obj: int, what: str) -> tuple[int, int]:
+        """``(start, end)`` of the one reference object ``obj`` holds."""
+        buf = bytes(self.objects[obj])
+        names = [x.name for x in self.cf.classes]
+        pickers = EG._pickers(buf, names.index("oCEntityCpntPicker"))
+        if len(pickers) != 1:
+            raise EntityEditError(f"{what} holds {len(pickers)} references, not one")
+        a = pickers[0][0]
+        return a, a + 32 + struct.unpack_from("<I", buf, a + 24)[0]
 
     # ---- number slots (value pickers) ----------------------------------------
     #
@@ -1100,14 +1119,25 @@ class EntityFile:
             return head + bytes(16) + _lstr("") + _E
         try:
             t = self.component(target)
-            path = t.path if t.group else t.name
-            return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
         except EntityEditError:
-            for c in self.graph().components:
-                for r in c.refs:
-                    if r.path.endswith("\\" + target) or r.path == target:
-                        return head + r.guid + _lstr(r.path) + _E
+            # Not a part of this file: a part it already references by that
+            # name (one of a parent entity's), reused exactly as written. Only
+            # when the name is unambiguous; otherwise the typo it usually is.
+            hits = {r.guid: r.path for c in self.graph().components for r in c.refs
+                    if r.path == target or r.path.rsplit("\\", 1)[-1] == target}
+            if len(hits) == 1:
+                guid, path = next(iter(hits.items()))
+                return head + guid + _lstr(path) + _E
+            if hits:
+                names = ", ".join(sorted(hits.values()))
+                raise EntityEditError(f"{target!r} names {len(hits)} different parts this "
+                                      f"file references: {names}") from None
             raise
+        # A node with no group is named `Scope\Name` by every shipped reference
+        # (Melusine's caster reads `...Power_Caster_Model\Owner Skill ...`), not
+        # `Scope\\Name`, which is what its empty-group path would give.
+        path = t.path if t.group else t.name
+        return head + t.guid + _lstr(f"[{self._label(t.cls)}] {self._scope()}\\{path}") + _E
 
     def _label(self, cls: str) -> str:
         """The ``[Kind]`` label for ``cls``: from this file's own references
