@@ -713,6 +713,14 @@ _WUKONG_SPAWN = {"Skill Ultimate 1 Special Monkey Spawner": "Kit Pet Spawner",
                  "Ultimate Ability 1 Direction Store": "Kit Pet Centre"}
 _PIPER_ORDERS = {"PET_MASTER_ATTACK_MOVE_ORDER Event Sender": "Kit Pet Attack Order",
                  "PET_MASTER_RECALL_ORDER Event Sender": "Kit Pet Recall Order"}
+_PIPER_HUD = {"HUD Trait Rats Amount": "Kit Pet HUD",
+              "HUD Trait Rats Amount Frame": "Kit Pet HUD Frame",
+              "HUD Trait Rats Amount Label": "Kit Pet HUD Alive Label",
+              "HUD Trait Rats Amount Label_1": "Kit Pet HUD Max Label",
+              "Alive Pets Entity Listener": "Kit Pet Alive Listener",
+              # The listener's COUNT as a whole number; a label linked to the
+              # listener itself reads its position.
+              "Teleporting Pets Count Store": "Kit Pet Alive Count"}
 
 
 def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
@@ -755,6 +763,24 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
                 steps.append({"remove_link": f"{trigger}.{f.name}[0]"})
     steps += [{"clone": list(_PIPER_ORDERS), "from": "Piper", "rename": dict(_PIPER_ORDERS)},
               {"add_link": f"{trigger}.activates", "to": "Kit Pet Attack Order"}]
+    # The cleared lists held what ENDED the state (Scarlet: the transform clip,
+    # whose end event deactivates it; Piper: her trait clip). A state that never
+    # ends keeps its ability in use, so the button stayed locked after the
+    # first press. A short timer ends it instead.
+    timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"), None)
+    empty = next((c for c in g.components
+                  if c.cls == "oCEntityCpntStateSettings" and not c.refs), None)
+    if timer is None or empty is None:
+        raise KitError(f"kit pets: this base has no timer or empty state to end the "
+                       f"{button} order with")
+    steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Order End"}},
+              {"add_link": "Kit Pet Order End.deactivates?", "to": trigger},
+              {"clone": [timer.name], "rename": {timer.name: "Kit Pet Order Timer"}},
+              {"set": "Kit Pet Order Timer.duration", "value": 0.2},
+              {"link": "Kit Pet Order Timer.on_tick", "to": ""},
+              {"link": "Kit Pet Order Timer.on_end", "to": "Kit Pet Order End"},
+              {"link": "Kit Pet Order Timer.state", "to": ""},
+              {"add_link": f"{trigger}.activates", "to": "Kit Pet Order Timer"}]
     ctrl = next((c for c in g.components if c.cls == "oCDtEntityCpntAbilityControllerSettings"
                  and any(r.path.rstrip().endswith("\\" + trigger) for r in c.refs)), None)
     if ctrl is not None:
@@ -768,6 +794,14 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
         combat = "Child State Can Fight"
         steps.append({"override": combat, "from": "Character_Common/Character_Common"})
     steps.append({"add_link": f"{combat}.disables_while_active?", "to": "Kit Pet Recall Order"})
+    # The counter over the trait icon, Piper's "alive / max": her HUD panel,
+    # frame and two labels, the alive one reading a copy of her pet listener
+    # (an inline filter, no link into her own parts), the max one the count.
+    steps += [{"clone": list(_PIPER_HUD), "from": "Piper", "rename": dict(_PIPER_HUD)},
+              {"link": "Kit Pet HUD Alive Label.value_23", "to": "Kit Pet Alive Count"},
+              {"link": "Kit Pet HUD Max Label.value_23", "to": "Kit Pet Count"},
+              # After the spawn, so the first count already sees them.
+              {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Alive Listener"}]
     return steps
 
 

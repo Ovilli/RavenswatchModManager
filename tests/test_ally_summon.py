@@ -93,7 +93,19 @@ def test_a_kit_pets_block_follows_piper_and_takes_the_trait(tmp_path):
     def refs(part, fld):
         f = next(x for x in EF.fields(hero.component(part)) if x.name == fld)
         return [i.text.strip().rsplit("\\", 1)[-1] for i in f.items]
-    assert refs("State Trait Ability", "activates") == ["Kit Pet Attack Order"]
+    assert refs("State Trait Ability", "activates") == ["Kit Pet Attack Order",
+                                                        "Kit Pet Order Timer"]
+    # The state ends itself again, or the trait stays in use (locked).
+    timer = {f.name: f.text for f in EF.fields(hero.component("Kit Pet Order Timer"))}
+    assert timer["on_end"].strip().endswith("\\Kit Pet Order End")
+    assert refs("Kit Pet Order End", "deactivates?") == ["State Trait Ability"]
+    # Piper's "alive / max" counter over the icon: alive through a whole-number
+    # copy of her pet listener's count (the listener itself reads a position).
+    alive = {f.name: f.text for f in EF.fields(hero.component("Kit Pet HUD Alive Label"))}
+    assert alive["value_23"].startswith("int") and alive["value_23"].endswith("Kit Pet Alive Count")
+    most = {f.name: f.text for f in EF.fields(hero.component("Kit Pet HUD Max Label"))}
+    assert most["value_23"].endswith("Kit Pet Count")
+    assert "Kit Pet Alive Listener" in refs("Child Event Initialize", "activates")
     assert "Kit Pet Spread Pos" in refs("Child Event Initialize", "activates")
     assert "Kit Pet Recall Order" in refs("Child State Is In Combat", "disables_while_active?")
     assert next(f.text for f in EF.fields(hero.component("Trait Ability Controller"))
