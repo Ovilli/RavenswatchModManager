@@ -378,7 +378,7 @@ def test_a_builder_block_opens_with_every_part_and_saves_back_the_same(tmp_path)
     if "Melusine" not in C.heroes():
         pytest.skip("no game data")
     (tmp_path / "built").mkdir()
-    (tmp_path / "built" / "manifest.toml").write_text(BUILDER_MOD)
+    (tmp_path / "built" / "manifest.toml").write_text(BUILDER_MOD, encoding="utf-8")
     got = M.load_mod(tmp_path, "built")
     assert got["kept"] == []
     E = got["talents"]["Melusine"]["edit"]

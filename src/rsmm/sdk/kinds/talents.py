@@ -428,7 +428,7 @@ def _files_named(files: list[corpus.CorpusFile], want: str | None) -> list[corpu
     ``Hero_SunWukong_Beads`` is also part of ``Hero_SunWukong_Beads_Explosion``."""
     if not want:
         return list(files)
-    w = want.lower().removesuffix(_GEN_SUFFIX.lower()).removesuffix(".entity")
+    w = want.replace("\\", "/").split("/")[-1].lower().removesuffix(_GEN_SUFFIX.lower()).removesuffix(".entity")
     exact = [q for q in files if _stem(q).lower() == w]
     return exact or [q for q in files if want.lower() in q.name.lower()]
 
@@ -769,8 +769,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"stats, add_stats, scale, on_hit, rebuild, include or int_patches given")
 
     # Candidate hero entity files (optionally narrowed by `file`).
-    candidates = [p for p in hero_dir.entity_files()
-                  if file_filter is None or file_filter in p.name.lower()]
+    candidates = _files_named(hero_dir.entity_files(), file_filter)
+
     if not candidates:
         raise ContentError(
             f"talent {defn.id}: no entity files in {hero_dir.name}"

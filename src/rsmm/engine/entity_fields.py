@@ -247,6 +247,13 @@ def _apply(c: EG.Component, items, spec) -> list[Field] | None:
                 return None
             out.append(Field(name, want, at, n, _prim_text(want, b[at:at + n])))
             at += n
+        elif want == "bytes":
+            nxt = next((s for s in starts if s >= at), len(b))
+            n = nxt - at
+            if n <= 0:
+                return None
+            out.append(Field(name, "bytes", at, n, b[at:at + n].hex(" ")))
+            at += n
         elif want.endswith("[]"):                  # u32 count, then count objects
             if at + 4 > len(b) or at in objs:
                 return None
