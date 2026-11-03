@@ -36,6 +36,24 @@ import {
 } from '@rsmm/schemas';
 import { z } from 'zod';
 
+export const modDetailResponseSchema = z.object({
+  mod: modListItemSchema.and(
+    z.object({
+      isFollowing: z.boolean().optional(),
+      // Viewer is the owner or a co-author.
+      isAuthor: z.boolean().optional(),
+      followerCount: z.number().int().optional(),
+      // Present for the owner/admin viewing a delisted mod; public callers
+      // never receive a non-active mod so these default to active.
+      takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),
+      takedownReason: z.string().nullable().optional(),
+    }),
+  ),
+  versions: z.array(modVersionSchema),
+});
+
+export type ModDetailResponse = z.infer<typeof modDetailResponseSchema>;
+
 export interface ApiClientOptions {
   baseUrl: string;
   fetch?: typeof fetch;
@@ -239,21 +257,6 @@ export function createApiClient(options: ApiClientOptions) {
     // Present only when the caller asked for `facets`; optional as well as
     // nullable so an older API build still validates.
     facets: z.object({ categories: facetSchema, tags: facetSchema }).nullable().optional(),
-  });
-  const modDetailResponseSchema = z.object({
-    mod: modListItemSchema.and(
-      z.object({
-        isFollowing: z.boolean().optional(),
-        // Viewer is the owner or a co-author.
-        isAuthor: z.boolean().optional(),
-        followerCount: z.number().int().optional(),
-        // Present for the owner/admin viewing a delisted mod; public callers
-        // never receive a non-active mod so these default to active.
-        takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),
-        takedownReason: z.string().nullable().optional(),
-      }),
-    ),
-    versions: z.array(modVersionSchema),
   });
   const notificationsResponseSchema = z.object({
     unread: z.number().int().nonnegative(),

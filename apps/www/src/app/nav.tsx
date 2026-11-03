@@ -314,11 +314,35 @@ function MobileMenu({ pathname }: { pathname: string }) {
 export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    // Secondary sticky navigation must meet the header's border box, including
+    // height changes from the mobile menu controls or authentication state.
+    const updateHeight = () => {
+      document.documentElement.style.setProperty(
+        '--site-header-height',
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty('--site-header-height');
+    };
+  }, []);
 
   const isActive = (href: string) => isActivePath(pathname, href);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
+    <header
+      ref={headerRef}
+      className="site-header sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl"
+    >
       <div className="container mx-auto flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <img

@@ -1,10 +1,7 @@
 import { jsonLd } from '@rsmm/schemas';
-import type { Metadata, Route } from 'next';
-import Link from 'next/link';
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
-import { ServerProse } from '../../components/server-prose';
-import { ModActions } from './mod-actions';
 
 const SITE = 'Ravenswatch Mod Manager';
 
@@ -30,7 +27,7 @@ interface Mod {
   description?: string | null;
   imageUrl?: string | null;
   nsfw?: boolean | null;
-  screenshots?: string[];
+  screenshots?: { url: string; caption?: string }[];
   rating?: number | null;
   ratingCount?: number | null;
   downloads?: number;
@@ -71,7 +68,7 @@ export async function generateMetadata({
   const description =
     mod.summary ?? `Install ${mod.name} for Ravenswatch in one click with the ${SITE}.`;
   // Prefer the cover image, fall back to the first screenshot.
-  const image = mod.imageUrl ?? mod.screenshots?.[0];
+  const image = mod.imageUrl ?? mod.screenshots?.[0]?.url;
 
   // Thin-content hygiene: a mod with no author-written summary or long
   // description is a near-empty page. Keep it reachable but out of the index so
@@ -102,35 +99,8 @@ export async function generateMetadata({
   };
 }
 
-// Mirrors the byline the client page used to render, so moving it to the
-// server is not also a copy change: author · version · updated date. The
-// author links to their profile, which is what the client page's separate
-// "More by …" row used to do.
-function ModByline({ mod }: { mod: Mod }) {
-  const author = mod.author ?? 'unknown';
-  const rest: string[] = [];
-  if (mod.latestVersion) rest.push(`v${mod.latestVersion}`);
-  if (mod.updatedAt) rest.push(`updated ${new Date(mod.updatedAt).toLocaleDateString('en-US')}`);
-  return (
-    <>
-      {mod.ownerId ? (
-        <Link
-          href={`/u/${mod.ownerId}` as Route}
-          title={`More mods by ${author}`}
-          className="text-foreground underline-offset-2 hover:text-gilt hover:underline"
-        >
-          {author}
-        </Link>
-      ) : (
-        author
-      )}
-      {rest.map((part) => ` · ${part}`).join('')}
-    </>
-  );
-}
-
 function modJsonLd(slug: string, mod: Mod) {
-  const image = mod.imageUrl ?? mod.screenshots?.[0];
+  const image = mod.imageUrl ?? mod.screenshots?.[0]?.url;
   // Google requires ratingCount/reviewCount alongside ratingValue, else the
   // whole rich result is rejected — only emit aggregateRating when both exist.
   const hasRating = mod.rating != null && mod.ratingCount != null && mod.ratingCount > 0;
@@ -195,38 +165,6 @@ export default async function Layout({
           dangerouslySetInnerHTML={{ __html: jsonLd(modJsonLd(slug, res.data)) }}
         />
       ) : null}
-      {/* Name, byline, summary, the action buttons and the description,
-          rendered here so the page has crawlable text before any client fetch
-          resolves and Download sits under the title rather than under a long
-          README. The client page below owns the gallery, versions, reviews
-          and the details sidebar. */}
-      {res.state === 'ok' ? (
-        <ServerProse
-          backHref="/registry"
-          backLabel="Back to Registry"
-          title={res.data.name ?? slug}
-          titleClassName="text-4xl font-bold tracking-tight"
-          byline={<ModByline mod={res.data} />}
-          summary={res.data.summary}
-          actions={<ModActions slug={slug} latestVersion={res.data.latestVersion} />}
-          image={{
-            url: res.data.imageUrl,
-            alt: `${res.data.name ?? slug} cover`,
-            nsfw: res.data.nsfw ?? false,
-          }}
-          body={res.data.description}
-          bodyHeading="About"
-          // The summary is already shown above; repeating it as the body read as a glitch.
-          bodyFallback={res.data.summary?.trim() ? null : 'No description available.'}
-          card
-        />
-      ) : (
-        // The API blipped on the server; the page below fetches again on the
-        // client, and the buttons appear once it has the mod.
-        <div className="relative container mx-auto px-6 pt-12">
-          <ModActions slug={slug} waitForClient />
-        </div>
-      )}
       {children}
     </>
   );
