@@ -157,6 +157,20 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                     ef.set_value(part, fld, step["value"])
                 elif op == "link":
                     ef.set_ref(part, fld, str(step.get("to") or "") or None)
+                elif op == "add_link" and step.get("from"):
+                    # A part of an entity this one inherits (Hero_Alt_Form_
+                    # Common's "State Anim Split Alt Form Enable"): by identity.
+                    from .entity_graph_edit import kind_label
+                    src = _source(ef, step, read)
+                    want = str(step["to"])
+                    hits = [c for c in src.graph().components if c.name == want]
+                    if len(hits) != 1:
+                        raise AbilityEditError(f"add_link: {src.name} has {len(hits)} parts "
+                                               f"named {want!r}")
+                    t = hits[0]
+                    label = (f"[{kind_label(t.cls)}] {src.name}\\"
+                             + (f"{t.group}\\" if t.group else "") + t.name)
+                    ef.add_external_ref(part, fld, t.guid, label)
                 elif op == "add_link":
                     ef.add_ref(part, fld, str(step["to"]))
                 elif op == "percent":

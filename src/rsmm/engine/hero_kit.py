@@ -255,7 +255,7 @@ STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricoche
                       *PROJ_VALUES, *PROJ_STATUS},
              "wait": {"wait"}, "repeat": {"repeat", "every", "steps"},
              "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
-             "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear"}}
+             "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear", "attack"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -501,7 +501,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
             ent = shot = _summon_for(block["summon"], ctx, slot,
                                      lifetime=block.get("lifetime"), burst=block.get("burst"),
                                      on_hit=bool(block.get("burst_on_hit")),
-                                     appear=block.get("appear"))
+                                     appear=block.get("appear"), attack=block.get("attack"))
             angles, offsets = [0], []
         else:
             ent = _entity_ref(block["fire"])
@@ -850,7 +850,8 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     if not isinstance(spec, dict) or not spec.get("entity"):
         raise KitError('kit pets = { entity = "<enemy>", count = 1, button = "trait" }')
     unknown = set(spec) - {"entity", "count", "button", "talent", "when", "counter", "appear",
-                           "spawn", "burst", "aggro", "lifetime", "burst_on_hit"}
+                           "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
+                           "hold"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -883,7 +884,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         pet = _summon_for(spec["entity"], ctx, "pets", base=AS.PET_MODEL,
                           appear=spec.get("appear"), burst=spec.get("burst"),
                           lifetime=spec.get("lifetime"),
-                          on_hit=bool(spec.get("burst_on_hit")))
+                          on_hit=bool(spec.get("burst_on_hit")), attack=spec.get("attack"))
 
     steps: list[dict] = [
         *pre,
@@ -956,7 +957,13 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         built = [s["to"] for s in earlier if s.get("add_link") == f"{trigger}.activates"]
         steps += [{"add_link": f"{talent}.disables_while_active?", "to": b} for b in built]
     else:
-        steps += _take_button(trigger, button, g, earlier, no_cooldown=spawn != "button")
+        # `hold`: how long the button's state lasts (what it holds while
+        # active runs that long: a howl's upper/lower body split).
+        hold = spec.get("hold", 0.2)
+        if isinstance(hold, bool) or not isinstance(hold, (int, float)) or hold <= 0:
+            raise KitError(f"kit pets hold is seconds, got {hold!r}")
+        steps += _take_button(trigger, button, g, earlier, no_cooldown=spawn != "button",
+                              hold=float(hold))
     combat, recall = _recall(g)
     steps += recall
     if spec.get("aggro"):
@@ -998,7 +1005,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
 
 def _take_button(trigger: str, button: str, g: EG.EntityGraph,
                  earlier: list[dict] = (), *, tag: str = "Kit Pet Order",
-                 no_cooldown: bool = True) -> list[dict]:
+                 no_cooldown: bool = True, hold: float = 0.2) -> list[dict]:
     """The button's own ability out, for what the kit puts on it (the pet
     order, or a slot block's timeline on the trait). Each link goes by name,
     past any a slot block already cut (``earlier``): by index, the extra
@@ -1031,7 +1038,7 @@ def _take_button(trigger: str, button: str, g: EG.EntityGraph,
     steps += [{"clone": [empty.name], "rename": {empty.name: end}},
               {"add_link": f"{end}.deactivates?", "to": trigger},
               {"clone": [timer.name], "rename": {timer.name: tm}},
-              {"set": f"{tm}.duration", "value": 0.2},
+              {"set": f"{tm}.duration", "value": hold},
               {"link": f"{tm}.on_tick", "to": ""},
               {"link": f"{tm}.on_end", "to": end},
               {"link": f"{tm}.state", "to": ""},
@@ -1099,7 +1106,8 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
 
 
 def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
-                lifetime=None, burst=None, on_hit: bool = False, appear=None) -> str:
+                lifetime=None, burst=None, on_hit: bool = False, appear=None,
+                attack=None) -> str:
     """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
     hero's folder (its model layer and the variant, see ally_summon.build).
     One copy per enemy and end, however many blocks summon it.
@@ -1121,7 +1129,7 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
     src = _entity_ref(enemy)
     if on_hit and not burst:
         raise KitError(f"kit {slot}: burst_on_hit needs a burst to spawn")
-    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear)
+    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear, attack)
     for c in ctx.copies:
         if (c.data is not None and c.source == src and c.base == (base or None)
                 and c.end == end):
@@ -1139,6 +1147,8 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
                       pet=base == AS.PET_MODEL, on_hit=on_hit)
     if appear:
         out = _appear(out, model_ref, str(appear), slot)
+    if attack:
+        out = _attack(out, model_ref, variant_ref, str(attack), slot)
     from . import entity_components as EC
     model_src = next(p for p in EC.parents(AS._read(src)) if p != AS.ENEMY_MODEL)
     reads = {"Kit Owner Seed Position": "Kit Pet Centre"} if base == AS.PET_MODEL else {}
@@ -1188,6 +1198,44 @@ def _pet_speed(out: dict[str, bytes], model_ref: str, variant_ref: str) -> list[
                        "entity": m_stem},
                       {"link": f"{extra}.value", "to": mine, "entity": m_stem}]
     return steps
+
+
+def _attack(out: dict[str, bytes], model_ref: str, variant_ref: str, attack: str,
+            slot: str) -> dict[str, bytes]:
+    """The enemy fights with its ``attack`` (``"Bite"``): the variant's fighting
+    selector picks its attack by an entry (a state and its condition, the
+    dire wolf's "Attack Double Slash", its claw); that entry now names
+    "State Attack <attack>" and "Attack <attack> Condition" of the model."""
+    from .entity_graph_edit import EntityFile, kind_label
+    model = EG.parse(out[model_ref])
+    by = {c.name: c for c in model.components}
+    m_stem = model_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    state, cond = by.get(f"State Attack {attack}"), by.get(f"Attack {attack} Condition")
+    if state is None or cond is None:
+        have = sorted(c.name[len("State Attack "):] for c in model.components
+                      if c.name.startswith("State Attack "))
+        raise KitError(f"kit {slot}: attack {attack!r}: this enemy's attacks are "
+                       f"{', '.join(have)}")
+    v_stem = variant_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    ef = EntityFile(out[variant_ref], v_stem)
+    sel = next((c for c in ef.graph().components if c.name == "Bhv Fighting State Selector"),
+               None)
+    if sel is None:
+        raise KitError(f"kit {slot}: attack: this enemy has no fighting selector of its own")
+    old = next((r for r in sel.refs if r.path.rstrip().startswith("[State]")
+                and "\\State Attack " in r.path), None)
+    if old is None:
+        raise KitError(f"kit {slot}: attack: its fighting selector names no attack")
+    old_name = old.path.rstrip().rstrip('"').rsplit("State Attack ", 1)[-1]
+    old_cond = next((r for r in sel.refs
+                     if r.path.rstrip().rstrip('"').endswith(f"Attack {old_name} Condition")), None)
+    for o, new in ((old, state), (old_cond, cond)):
+        if o is None or o.guid == new.guid:
+            continue
+        label = (f"[{kind_label(new.cls)}] {m_stem}\\" + (f"{new.group}\\" if new.group else "")
+                 + new.name)
+        ef.retarget_external(sel.name, o.guid, new.guid, label)
+    return {**out, variant_ref: ef.to_bytes()}
 
 
 def _appear(out: dict[str, bytes], model_ref: str, clip: str, slot: str) -> dict[str, bytes]:
