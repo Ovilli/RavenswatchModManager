@@ -209,6 +209,65 @@ def _patch_versiondef_heroes(pristine: bytes, paths: list[str]) -> bytes | None:
             + pristine[co + 4:vec_end] + add + pristine[vec_end:])
 
 
+def _patch_versiondef_aliases(pristine: bytes,
+                              entries: list[tuple[bytes, str]]) -> bytes | None:
+    """Append an ``AliasOverride`` {alias GUID -> entity} per ``entries``.
+
+    The versiondef's AliasOverride table is how Update 6 reaches a hero: each
+    shipped hero's alias (its ApplicationSettings GUID) is redirected to its
+    ``_Update6`` entity, which inherits the hero and carries the Update 6
+    layer (Scarlet's reworked Ultimate 1 among it). A custom hero has an alias
+    of its own and no entry, so the game built its pre-Update-6 entity and
+    that layer never loaded.
+
+    Layout (LiveOps6, 2026-11-03): each entry is its own object section,
+    ``u32 class | MARK_BEGIN AliasPicker | guid16 | MARK_END | lstr archive |
+    lstr stream``, in sections 1..n; section 0 is the poly-pointer header
+    (``u32 n`` + n class indexes); the root (last section) lists them as
+    ``u32 n`` + ids ``0..n-1``. A new entry is id n, inserted before the root,
+    and both vectors grow. Fails closed (None) on any other shape."""
+    from . import cooked
+    cf = cooked.parse(pristine)
+    names = [c.name for c in cf.classes]
+    if "AliasOverride" not in names or len(cf.sections) < 3:
+        return None
+    cls = names.index("AliasOverride")
+    head = cf.sections[0].payload
+    n = struct.unpack_from("<I", head, 0)[0]
+    if len(head) != 4 + 4 * n or any(struct.unpack_from("<I", head, 4 + 4 * i)[0] != cls
+                                     for i in range(n)):
+        return None
+    if len(cf.sections) != n + 2:
+        return None
+    root = cf.sections[-1].payload
+    ids = struct.pack(f"<I{n}I", n, *range(n))
+    at = root.find(ids)
+    if at < 0 or root.find(ids, at + 1) >= 0:
+        return None
+    have = {bytes(s.payload[12:28]) for s in cf.sections[1:n + 1]}
+    template = cf.sections[1].payload
+    if template[:4] != struct.pack("<I", cls) or template[4:8] != cooked.MARK_BEGIN:
+        return None
+    new = []
+    for guid, stream in entries:
+        if guid in have:
+            continue
+        sb = stream.encode("latin1")
+        body = (template[:12] + guid + cooked.MARK_END
+                + struct.pack("<I", len(b"EntitySettings")) + b"EntitySettings"
+                + struct.pack("<I", len(sb)) + sb)
+        new.append(cooked.Section(payload=body))
+        have.add(guid)
+    if not new:
+        return pristine
+    m = n + len(new)
+    cf.sections[0] = cooked.Section(payload=struct.pack(f"<I{m}I", m, *([cls] * m)))
+    cf.sections[-1] = cooked.Section(payload=root[:at] + struct.pack(f"<I{m}I", m, *range(m))
+                                     + root[at + len(ids):])
+    cf.sections[n + 1:n + 1] = new
+    return cooked.emit(cf)
+
+
 def _mo_vector_entries(b: bytes, co: int, cnt: int) -> list[tuple[int, int, str]]:
     """Split the MO vector into ``(start, end, path)`` per entry.
 
@@ -498,7 +557,8 @@ def collect_ban_placeholders(mods: list[Mod]) -> list[Placeholder]:
 def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                     dry_run: bool, bans: set[str] | None = None,
                     gen_owner: str | None = None,
-                    placeholders: list[Placeholder] | None = None) -> int:
+                    placeholders: list[Placeholder] | None = None,
+                    aliases: list | None = None) -> int:
     """Ensure every new magical-object entity in ``registrations`` is listed in
     the active LiveOps version manifest (.gen vector) AND its resource cache,
     so the engine loads + spawns it, and that every id in ``bans`` is NOT — so
@@ -518,6 +578,14 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
     backport never reached the game).
     """
     bans = bans or set()
+    # A custom hero's Update 6 layer: its alias -> its `_Update6` entity, when
+    # this apply registers one (see _patch_versiondef_aliases).
+    decoded = set(registrations.values())
+    alias_entries = []
+    for a in aliases or []:
+        upd = a.stream.removesuffix(".entity.ot") + "_Update6.entity.ot"
+        if f"EntitySettings/{upd.replace(chr(92), '/')}.EntitySettingsResource.gen" in decoded:
+            alias_entries.append((a.guid, upd))
     mo_paths = sorted(
         {p for d in registrations.values() if (p := _mo_versiondef_path(d))}
     )
@@ -540,7 +608,7 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                   file=sys.stderr)
     elif gen is not None:
         bak = gen.with_name(gen.name + BACKUP_SUFFIX)
-        if not mo_paths and not bans and not hero_paths:
+        if not mo_paths and not bans and not hero_paths and not alias_entries:
             if bak.exists() and not dry_run:
                 shutil.copy2(bak, gen)
                 bak.unlink()
@@ -560,6 +628,14 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                           f"{gen.name}; new heroes won't load", file=sys.stderr)
                 else:
                     patched = with_heroes
+            if patched is not None and alias_entries:
+                with_aliases = _patch_versiondef_aliases(patched, alias_entries)
+                if with_aliases is None:
+                    print("  [warn] could not locate the alias overrides in "
+                          f"{gen.name}; custom heroes run without their Update 6 "
+                          "layer", file=sys.stderr)
+                else:
+                    patched = with_aliases
             if patched is None:
                 print("  [warn] could not locate magical-object vector in "
                       f"{gen.name}; new item won't spawn", file=sys.stderr)
@@ -569,6 +645,8 @@ def sync_versiondef(game_dir: Path, registrations: dict[str, str],
                     what.append(f"registering {len(mo_paths)} item(s)")
                 if hero_paths:
                     what.append(f"registering {len(hero_paths)} hero(es)")
+                if alias_entries:
+                    what.append(f"giving {len(alias_entries)} hero(es) their Update 6 layer")
                 if bans:
                     what.append(f"banning {len(bans)} item(s)")
                 print(f"  [versiondef] {' + '.join(what)} in LiveOps manifest")

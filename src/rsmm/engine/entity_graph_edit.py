@@ -39,6 +39,7 @@ number that was not a pointer, would load and misbehave with nothing logged.
 from __future__ import annotations
 
 import hashlib
+import re
 import struct
 import uuid
 from collections import defaultdict
@@ -432,6 +433,22 @@ class EntityFile:
         if u is None:
             raise EntityEditError(f"{field!r} holds no literal")
         kind = u.text.split()[0]
+        if kind == "text" and isinstance(value, str):
+            # A one-string text (an "Alive Additional Flags Value" tag): its
+            # length-prefixed string swapped, the payload re-framed by to_bytes.
+            cur = re.findall(r"'([^']*)'", u.text)
+            span = bytes(p[at + f.offset + u.offset:at + f.offset + u.offset + u.size])
+            if len(cur) != 1 or span.count(_lstr(cur[0])) != 1:
+                raise EntityEditError(f"{field!r} is {u.text}; only a one-string text is set")
+            a = at + f.offset + u.offset + span.index(_lstr(cur[0]))
+            old = bytes(p)
+            p[a:a + len(_lstr(cur[0]))] = _lstr(value)
+            try:
+                self._check(self.to_bytes())
+            except EntityEditError:
+                p[:] = old
+                raise
+            return
         fmt = {"f32": "<f", "int": "<i", "bool": "<?", "vec2": "<2f", "vec3": "<3f",
                "vec4": "<4f"}.get(kind)
         if fmt is None:
@@ -621,6 +638,25 @@ class EntityFile:
                                   "use obj[n] for a reference written inside it")
         return hits[0]
 
+    def repoint_targets(self, comp: str, field: str, target: str) -> int:
+        """Point every collector under ``comp``'s ``field`` selector at
+        ``target``: a named-event sender's ``targets`` lists collectors, each
+        naming the spawner whose spawns receive the event (Piper's pet orders
+        name her two pet spawners). Returns how many were re-pointed."""
+        c, f, at = self._field(comp, field)
+        # The selector is written inline in the field; the collectors are the
+        # sub-objects it lists, owned by ``comp`` within the field's bytes.
+        owned, _ambiguous = self.pointers()
+        lo, hi = at + f.offset, at + f.offset + f.size
+        subs = sorted(x for x, ptr in owned.items()
+                      if ptr.owner == c.index - 1 and lo <= ptr.offset < hi)
+        if not subs:
+            raise EntityEditError(f"{comp!r}.{field} selects no collector")
+        for x in subs:
+            label = f"{comp}.{field} collector {x}"
+            self._repoint(x, *self._only_picker(x, label), target, label)
+        return len(subs)
+
     def _only_picker(self, obj: int, what: str) -> tuple[int, int]:
         """``(start, end)`` of the one reference object ``obj`` holds."""
         buf = bytes(self.objects[obj])
@@ -645,6 +681,9 @@ class EntityFile:
         "oCEntityCpntValueOperationsSettings": 0x17AE7811,
         "oCEntityCpntGetValueSettings": 0x16ABF2EB,
     }
+    #: A vec3 slot (union type 3) reading a get-value: Piper's rat reads its
+    #: attack seed position this way (Hero_Piper_Rat_Pet, 2026-11-03).
+    VEC3_ACCESSOR = {"oCEntityCpntGetValueSettings": 0x16ABF2EE}
     #: The same reads of an int node (Free Reroll, charges, the counts).
     INT_ACCESSOR = {
         "oCEntityCpntValueSettings": 0x0FD2C965,
@@ -669,9 +708,6 @@ class EntityFile:
         Timer: ``TIMER_ELAPSED`` / ``TIMER_TIME_LEFT``)."""
         c = self.component(comp)
         t = self.component(target)
-        acc = accessor if accessor is not None else self.F32_ACCESSOR.get(t.cls)
-        if acc is None:
-            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it as a number")
         vps = self._value_pickers(c)
         if not 0 <= n < len(vps):
             raise EntityEditError(f"{comp!r} has {len(vps)} number slots, no index {n}")
@@ -681,8 +717,14 @@ class EntityFile:
         u = p.find(union, at)
         if u < 0:
             raise EntityEditError(f"{comp!r}: number slot {n} has no value")
-        if struct.unpack_from("<I", p, u + 8)[0] != 0:
-            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal number")
+        kind = struct.unpack_from("<I", p, u + 8)[0]
+        table = {0: self.F32_ACCESSOR, 3: self.VEC3_ACCESSOR}.get(kind)
+        if table is None:
+            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal or vec3")
+        acc = accessor if accessor is not None else table.get(t.cls)
+        if acc is None:
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it into "
+                                  f"{'a vec3' if kind == 3 else 'a number'}")
         p[at:u] = b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
         u = p.find(union, at)
         struct.pack_into("<f", p, u + 16, 0.0)

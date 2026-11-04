@@ -1180,6 +1180,20 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
     return out
 
 
+def _installed_aliases(additions, game_dir: Path) -> list:
+    """The hero aliases of the ApplicationSettings.ot in force after this apply
+    (a custom hero's own alias among them): the one it installs, else the one
+    already installed (an unchanged file is not an addition)."""
+    from rsmm.engine import hero_cook as H
+    src = next((Path(s) for _e, s, d, _m in additions
+                if Path(d).name == Path(H.APP_SETTINGS).name), None)
+    if src is None:
+        src = game_dir / H.APP_SETTINGS
+    if not src.is_file():
+        return []
+    return H.aliases(src.read_text(encoding="utf-8", errors="surrogateescape"))
+
+
 def plan_apply(mods: list[Mod],
                dec2enc: dict[str, str],
                cooking: Path,
@@ -2477,7 +2491,8 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     versiondef_changes = sync_versiondef(game_dir, registrations, args.dry_run,
                                          bans=collect_item_bans(mods),
                                          gen_owner=vd_owner,
-                                         placeholders=collect_ban_placeholders(mods))
+                                         placeholders=collect_ban_placeholders(mods),
+                                         aliases=_installed_aliases(additions, game_dir))
     # The book's item grids are sized for the vanilla pool; widen any tier the
     # pool just outgrew so added items do not draw past their frame.
     page_enc = dec2enc.get(PAGE_DECODED)

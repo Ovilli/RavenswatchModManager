@@ -73,6 +73,12 @@ class Copy:
     reads: dict[str, str]
     data: bytes | None = None
     base: str | None = None
+    #: A summon's own end (lifetime, burst), so two blocks summoning the same
+    #: enemy differently get a copy each.
+    end: tuple = ()
+    #: A shipped entity spawned as it is (Piper's rat as a pet): nothing is
+    #: written, its preload is borrowed.
+    shipped: bool = False
 
 
 @dataclass
@@ -99,8 +105,6 @@ def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
     form = kit.get("form")
     if form is not None:
         steps += _form(str(form), names)
-    if kit.get("pets") is not None:
-        steps += _pets(kit["pets"], g, form == "wolf", ctx)
     for slot in SLOTS:
         if slot not in kit:
             continue
@@ -114,6 +118,9 @@ def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
         else:
             raise KitError(f"kit {slot} = {v!r}: \"none\", or "
                            "{ fire = <entity> }, or { steps = [...], replace = true }")
+    # After the slots: a talent-gated pets block holds off what they built.
+    if kit.get("pets") is not None:
+        steps += _pets(kit["pets"], g, form == "wolf", ctx, steps)
     return steps
 
 
@@ -247,7 +254,8 @@ INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
                       *PROJ_VALUES, *PROJ_STATUS},
              "wait": {"wait"}, "repeat": {"repeat", "every", "steps"},
-             "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"}, "summon": {"summon"}}
+             "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
+             "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -356,8 +364,15 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     number = pick(lambda c: c.cls == "oCEntityCpntValueSettings"
                   and any(f.name == "value" and f.text.startswith("f32")
                           for f in EF.fields(c)), "plain number")
-    timer = pick(lambda c: c.cls == "oCEntityCpntTimerSettings", "timer")
-    empty = pick(lambda c: c.cls == "oCEntityCpntStateSettings" and not c.refs, "empty state")
+    timer = pick(lambda c: c.cls == "oCEntityCpntTimerSettings" and c.override is None,
+                 "timer")
+    # A donor must be a part of its own, never an override: a clone keeps
+    # the override mark, so every copy of Scarlet's "Event Initialize Starting
+    # Modifiers" (an override of Character_Common's) replaced that one part
+    # instead of being added, and the live hero had none of them (probe,
+    # 2026-11-03: Kit Pet Spawn / Start / Order End all missing).
+    empty = pick(lambda c: c.cls == "oCEntityCpntStateSettings" and not c.refs
+                  and c.override is None, "empty state")
     aim = _obj_refs(node, "obj_4") if node else []
     yaw_ref = next((i for i, r in enumerate(aim) if "Y Angle" in r), None)
     x_ref = next((i for i, r in enumerate(aim) if "X Offset" in r), None)
@@ -387,7 +402,14 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                               for f in EF.fields(c))), None)
 
     tag = f"Kit {slot.title()}"
-    steps: list[dict] = _replace(trigger, g) if spec.get("replace") else []
+    if spec.get("replace") and slot == "trait":
+        # Scarlet's trait state plays her transform; cutting its hits alone
+        # (_replace) left that in. Taken whole, ended by a timer, unlocked
+        # from her talent; the timeline below is all it does.
+        steps: list[dict] = _take_button(trigger, slot, g, tag="Kit Trait",
+                                         no_cooldown=False)
+    else:
+        steps = _replace(trigger, g) if spec.get("replace") else []
     made = 0
 
     def num(label: str, value: float) -> str:
@@ -476,7 +498,10 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
             continue
         if "summon" in block:
             # An enemy as an ally, spawned where a shot would be (one, ahead).
-            ent = shot = _summon_for(block["summon"], ctx, slot)
+            ent = shot = _summon_for(block["summon"], ctx, slot,
+                                     lifetime=block.get("lifetime"), burst=block.get("burst"),
+                                     on_hit=bool(block.get("burst_on_hit")),
+                                     appear=block.get("appear"))
             angles, offsets = [0], []
         else:
             ent = _entity_ref(block["fire"])
@@ -536,7 +561,9 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                          whole=True)
                     setv(sp, RICOCHET_BASE, "Ricochet Damage", RICOCHET_DAMAGE,
                          float(block.get("ricochet_damage", 100)) * 0.01)
-            elif any(block.get(k) is not None for k in (*PROJ_VALUES, *PROJ_STATUS)):
+            elif "fire" in block and any(block.get(k) is not None
+                                         for k in (*PROJ_VALUES, *PROJ_STATUS)):
+                # (A summon's own lifetime is its end, not a projectile's.)
                 raise KitError(f"kit {slot}: {block['fire']} is not a projectile "
                                "(Projectile_Model); damage, lifetime and effects need one")
             steps.append({"add_link": f"{moments[t]}.activates", "to": sp})
@@ -546,6 +573,25 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
 def _is_projectile(ent: str) -> bool:
     """Whether ``ent`` inherits Projectile_Model (its generic numbers apply)."""
     return _inherits(ent, b"Projectile_Model\\")
+
+
+def _is_pet(ent: str) -> bool:
+    """Whether ``ent`` already is a pet: Hero_Pet_Model in its parent chain."""
+    from . import ally_summon as AS
+    from . import entity_check as CK
+    from . import entity_components as EC
+    todo, seen = [ent], set()
+    while todo:
+        ref = todo.pop()
+        raw = CK._corpus_reader(ref)
+        if ref in seen or not raw:
+            continue
+        seen.add(ref)
+        parents = EC.parents(raw)
+        if AS.PET_MODEL in parents:
+            return True
+        todo += parents
+    return False
 
 
 def _inherits(ent: str, needle: bytes) -> bool:
@@ -600,6 +646,12 @@ def anim_swaps(kit: dict, main: bytes, name: str) -> dict[str, str]:
             raise KitError(f"kit {slot}: anim {new[-1]!r} is not one of this hero's clips")
         word = SLOTS[slot][0]
         groups = ([f"Ability Wolf {word}"] if wolf else []) + [f"Ability {word}"]
+        # A slot fired from a named state plays that state's group's clip (a
+        # hero locked in its wolf form names its wolf state).
+        when = next((c.group for c in g.components if c.name == v.get("when")
+                     and c.cls == "oCEntityCpntStateSettings"), None)
+        if when:
+            groups.insert(0, when)
         old = next((m.group(0).decode() for grp in groups for c in g.components
                     if c.group == grp and c.cls == "oCEntityCpntAnimaticSettings"
                     for m in [re.search(rb"Characters\\[^\x00\"]+?\.fbx", c.body)] if m), None)
@@ -662,8 +714,50 @@ def owner_reads(ent: str) -> list[dict]:
                 default = (m[2] == "True") if kind == "bool" else (
                     int(m[2]) if kind == "int" else float(m[2]))
         out.append({"part": c.name, "label": read_label(c.name), "hero": hero,
-                    "type": kind, "default": default})
+                    "type": kind, "default": default, "own": target is not None})
     return out
+
+
+def _pet_copy(ent: str, ctx: _Ctx) -> tuple[str, list[dict]]:
+    """A shipped pet as the hero's own (``Hero_<id>_Pet<k>``). Piper's rat reads
+    13 values of its owner, most of them Piper's own parts (max attacks, damage
+    multiplier, alive pets); spawned by another hero those reads found nothing
+    and no rat ever appeared. Each read of a part only that hero has reads a
+    copy here holding her number; a read of a part every hero has (Hero_Common's
+    AP Trait, Character_Common's AP) keeps its link, read from this hero."""
+    from . import ally_summon as AS
+    from . import entity_check as CK
+    from . import entity_components as EC
+    raw = CK._corpus_reader(ent)
+    if raw is None or EC.parents(raw) != [AS.PET_MODEL]:
+        raise KitError(f"kit pets: {ent} must inherit Hero_Pet_Model directly (copy the "
+                       "pet itself, not a later version of it)")
+    for c in ctx.copies:
+        if c.source == ent and c.ref.endswith("_Pet.entity.ot"):
+            return c.ref, []
+    ref = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Pet.entity.ot"
+    steps: list[dict] = []
+    parts: dict[str, str | None] = {}
+    for r in owner_reads(ent):
+        if not r["own"]:
+            parts[r["part"]] = None
+            continue
+        if r["label"] == "Attack Seed Position":
+            # Where an attack order sends them: Piper stores her aim there on
+            # the trait; here the hero's own position, stored again on every
+            # order (_pets). A fixed copy would send them to the world origin.
+            parts[r["part"]] = "Kit Pet Centre"
+            continue
+        part = f"Kit Pet Read {r['label']}"
+        donor = _READ_DONORS[r["type"]]
+        v = r["default"]
+        v = bool(v) if r["type"] == "bool" else int(v) if r["type"] == "int" else v
+        steps += [{"clone": [donor], "from": "Projectile_Model/Projectile_Model",
+                   "rename": {donor: part}},
+                  {"set": f"{part}.value", "value": v}]
+        parts[r["part"]] = part
+    ctx.copies.append(Copy(ent, ref, parts))
+    return ref, steps
 
 
 def _copy_for(ent: str, overrides: dict, steps: list[dict], ctx: _Ctx, slot: str) -> str:
@@ -683,6 +777,12 @@ def _copy_for(ent: str, overrides: dict, steps: list[dict], ctx: _Ctx, slot: str
     ref = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Kit{k}.entity.ot"
     parts = {}
     for r in reads:
+        if not r.get("own", True) and r["label"] not in overrides:
+            # A part every hero has (Character_Common's AP and Level Damage,
+            # Hero_Common's AP Trait): read live from this hero, not frozen at
+            # the donor's inline 0 (a copied Geppetto dummy hit for nothing).
+            parts[r["part"]] = None
+            continue
         part = f"Kit Copy {k} {r['label']}"
         donor = _READ_DONORS[r["type"]]
         v = overrides.get(r["label"], r["default"])
@@ -713,28 +813,44 @@ _WUKONG_SPAWN = {"Skill Ultimate 1 Special Monkey Spawner": "Kit Pet Spawner",
                  "Ultimate Ability 1 Direction Store": "Kit Pet Centre"}
 _PIPER_ORDERS = {"PET_MASTER_ATTACK_MOVE_ORDER Event Sender": "Kit Pet Attack Order",
                  "PET_MASTER_RECALL_ORDER Event Sender": "Kit Pet Recall Order"}
+#: The trait controller's switches a base reads from a condition, as plain
+#: values: Scarlet's "Is Trait Ability Active Condition" (true only with her
+#: talent "Skill Trait Active") feeds these three; their inline values are the
+#: unlocked ones. Piper's whole set was tried first and froze every input after
+#: one press: her trait is an aimed command (playtest 2026-11-03).
+_TRAIT_UNLOCK = {"value_11": True, "value_12": False, "value_16": False}
 _PIPER_HUD = {"HUD Trait Rats Amount": "Kit Pet HUD",
               "HUD Trait Rats Amount Frame": "Kit Pet HUD Frame",
               "HUD Trait Rats Amount Label": "Kit Pet HUD Alive Label",
               "HUD Trait Rats Amount Label_1": "Kit Pet HUD Max Label",
               "Alive Pets Entity Listener": "Kit Pet Alive Listener",
-              # The listener's COUNT as a whole number; a label linked to the
-              # listener itself reads its position.
-              "Teleporting Pets Count Store": "Kit Pet Alive Count"}
+              # The listener's COUNT as a whole number, read live (a label linked
+              # to the listener itself reads its position). Not her "Teleporting
+              # Pets Count Store": a snapshot she fills only while they teleport,
+              # so a label on it stayed at 0.
+              "Trait Ability Alive Pets Operation": "Kit Pet Alive Count"}
 
 
-def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
+def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
+          earlier: list[dict] = ()) -> list[dict]:
     """``pets = { entity = <enemy>, count = 1, button = "trait" }``: pets that
     follow the hero, Piper's way. The enemy is copied onto Hero_Pet_Model
     (follows its master, obeys PET_MASTER_* orders) with its attacks turned on
     enemies; ``count`` of them spawn around the hero when it starts (the select
     screen too, as Piper's rats). ``button``'s ability is replaced by the
     attack order, with no cooldown; leaving combat recalls them (Piper's
-    recall: the order is held off while the hero fights)."""
+    recall: the order is held off while the hero fights).
+
+    With ``talent = "<talent state>"`` it all waits for that talent: picking it
+    spawns them, and while it is held the button sends the order on top of its
+    own ability, with what the kit's slot block built for that button (a
+    summon, a shot) switched off. ``when`` names the button's state, as in a
+    slot block (a hero locked in another form)."""
     from . import ally_summon as AS
     if not isinstance(spec, dict) or not spec.get("entity"):
         raise KitError('kit pets = { entity = "<enemy>", count = 1, button = "trait" }')
-    unknown = set(spec) - {"entity", "count", "button"}
+    unknown = set(spec) - {"entity", "count", "button", "talent", "when", "counter", "appear",
+                           "spawn", "burst", "aggro", "lifetime", "burst_on_hit"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -743,48 +859,202 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
     button = spec.get("button", "trait")
     if button not in SLOTS:
         raise KitError(f"kit pets button = {button!r}: one of {', '.join(SLOTS)}")
-    pet = _summon_for(spec["entity"], ctx, "pets", base=AS.PET_MODEL)
+    counter = spec.get("counter", button)
+    if counter != "none" and counter not in SLOTS:
+        raise KitError(f"kit pets counter = {counter!r}: \"none\" or one of {', '.join(SLOTS)}")
+    # "start": at the start of a run (Piper's); "button": one per press of the
+    # button, with its own cooldown (a bomber wolf, playtest 2026-11-04).
+    spawn = spec.get("spawn", "start")
+    if spawn not in ("start", "button"):
+        raise KitError(f"kit pets spawn = {spawn!r}: \"start\" or \"button\"")
+    if spawn == "button" and spec.get("talent"):
+        raise KitError("kit pets: spawn = \"button\" and a talent do not mix")
+    src = _entity_ref(spec["entity"])
+    if _is_pet(src):
+        # Already a pet (Piper's rat): her logic as shipped, in a copy of the
+        # hero's own whose reads of Piper read this hero (see _pet_copy).
+        if spec.get("appear"):
+            raise KitError("kit pets appear: only an enemy copy has a spawn clip to swap")
+        pet, pre = _pet_copy(src, ctx)
+    else:
+        pre = []
+        # A bomber pet: it bursts when it dies, on its first bite too
+        # (`burst_on_hit`, Pam's suicide wolves), or when `lifetime` runs out.
+        pet = _summon_for(spec["entity"], ctx, "pets", base=AS.PET_MODEL,
+                          appear=spec.get("appear"), burst=spec.get("burst"),
+                          lifetime=spec.get("lifetime"),
+                          on_hit=bool(spec.get("burst_on_hit")))
 
     steps: list[dict] = [
+        *pre,
         {"clone": list(_WUKONG_SPAWN), "from": "SunWukong", "rename": dict(_WUKONG_SPAWN)},
         {"set": "Kit Pet Spawner.template[1]", "value": pet},
-        {"set": "Kit Pet Count.value", "value": count},
-        # At start (the select screen too): the spread pos spawns them.
-        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Centre"},
-        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Random"},
-        {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Spread Pos"}]
+        {"set": "Kit Pet Count.value", "value": count}]
+    talent = spec.get("talent")
+    states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
+    if talent is not None and talent not in states:
+        raise KitError(f"kit pets talent = {talent!r} is not a state of this hero "
+                       "(a talent's state is its skill controller's, e.g. "
+                       "\"Skill Secondary Ignite\")")
+    # At the start of a run, or once the talent is picked: the spread pos
+    # spawns them. Not in the select screen: the preview copy runs Initialize
+    # too, and an enemy body there (no preview behaviour, as Piper's rats
+    # have) fell through the floor. Hero_Common's "in a run" tester gates it,
+    # as it gates Blood Wolf's wolf lock.
+    trigger = _trigger(button, {"when": spec.get("when")}, g, wolf)
+    start = trigger if spawn == "button" else talent
+    if start is None:
+        start = "Kit Pet Spawn"
+        empty = next((c for c in g.components
+                      if c.cls == "oCEntityCpntStateSettings" and not c.refs
+                  and c.override is None), None)
+        if empty is None:
+            raise KitError("kit pets: this base has no empty state to spawn them from")
+        # In a run only (Hero_Common's tester, as the wolf lock uses: it fires
+        # at Initialize, outside the select screen's preview), then a timer:
+        # at Initialize the hero does not stand in the world yet. A tester
+        # tests once, when it is switched on; Piper's "Behaviour Default" gate
+        # was still false then and never passed, so nothing ever reached the
+        # spawner (probe + Ghidra, 2026-11-03: activation queues the spawner,
+        # FUN_14072e460, and SpawnOne was never called for it).
+        timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
+                  and c.override is None), None)
+        if timer is None:
+            raise KitError("kit pets: this base has no timer to delay the spawn with")
+        steps += [{"clone": [empty.name], "rename": {empty.name: start}},
+                  {"clone": ["Activate Hero Controller Tester"], "from": "Hero_Common",
+                   "rename": {"Activate Hero Controller Tester": "Kit Pet In Run Tester"}},
+                  {"clone": [timer.name], "rename": {timer.name: "Kit Pet Start Timer"}},
+                  {"set": "Kit Pet Start Timer.duration", "value": 3.0},
+                  {"link": "Kit Pet Start Timer.on_tick", "to": ""},
+                  {"link": "Kit Pet Start Timer.on_end", "to": start},
+                  {"link": "Kit Pet Start Timer.state", "to": ""},
+                  # A tester's on_true is a state: one that starts the timer.
+                  {"clone": [empty.name], "rename": {empty.name: "Kit Pet Start"}},
+                  {"add_link": "Kit Pet Start.activates", "to": "Kit Pet Start Timer"},
+                  {"link": "Kit Pet In Run Tester.on_true", "to": "Kit Pet Start"},
+                  {"add_link": "Child Event Initialize.activates", "to": "Kit Pet In Run Tester"}]
+    steps += [{"add_link": f"{start}.activates", "to": "Kit Pet Centre"},
+              {"add_link": f"{start}.activates", "to": "Kit Pet Random"},
+              {"add_link": f"{start}.activates", "to": "Kit Pet Spread Pos"}]
+    # (The spread runs the spawner once per spot itself; switching the spawner
+    # on as well spawned a second pet, playtest 2026-11-03.)
 
-    # The button: its own ability out, the attack order in, no cooldown.
-    trigger = _trigger(button, {}, g, wolf)
+    steps += [{"clone": list(_PIPER_ORDERS), "from": "Piper", "rename": dict(_PIPER_ORDERS)},
+              # Piper's orders go to what HER two pet spawners spawned (each
+              # sender's targets = Spawned Entity Collectors naming them); left
+              # so, every press reached nobody (corpus, 2026-11-03).
+              {"retarget_targets": "Kit Pet Attack Order.targets", "to": "Kit Pet Spawner"},
+              {"retarget_targets": "Kit Pet Recall Order.targets", "to": "Kit Pet Spawner"},
+              # Where the order sends them (a copied pet reads it): stored first.
+              {"add_link": f"{trigger}.activates", "to": "Kit Pet Centre"},
+              {"add_link": f"{trigger}.activates", "to": "Kit Pet Attack Order"}]
+    if talent is not None:
+        # The button keeps its ability (and its own end); the talent holds off
+        # what the slot block added to it. Without the talent the order goes
+        # to no pet, which does nothing.
+        built = [s["to"] for s in earlier if s.get("add_link") == f"{trigger}.activates"]
+        steps += [{"add_link": f"{talent}.disables_while_active?", "to": b} for b in built]
+    else:
+        steps += _take_button(trigger, button, g, earlier, no_cooldown=spawn != "button")
+    combat, recall = _recall(g)
+    steps += recall
+    if spec.get("aggro"):
+        # Into the fight on its own: entering combat (the hero's "is in
+        # combat", whose hold is also what lets Piper's recall wait for a
+        # fight's end) sends the attack order around the hero, as a press of
+        # the button does. The pet's own wider detection (_summon_end) does
+        # the rest, as Piper's rats engage while following.
+        steps += [{"add_link": f"{combat}.activates", "to": "Kit Pet Centre"},
+                  {"add_link": f"{combat}.activates", "to": "Kit Pet Attack Order"}]
+        # And again every 1.5 s while the fight lasts: one order at its start
+        # left a pet spawned later, or done with its target, following and
+        # never fighting again (playtest 2026-11-04).
+        tmr = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
+                    and c.override is None), None)
+        empty = next((c for c in g.components if c.cls == "oCEntityCpntStateSettings"
+                      and not c.refs and c.override is None), None)
+        if tmr is None or empty is None:
+            raise KitError("kit pets aggro: this base has no timer or empty state to repeat with")
+        steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Aggro"}},
+                  {"add_link": "Kit Pet Aggro.activates", "to": "Kit Pet Centre"},
+                  {"add_link": "Kit Pet Aggro.activates", "to": "Kit Pet Attack Order"},
+                  {"clone": [tmr.name], "rename": {tmr.name: "Kit Pet Aggro Timer"}},
+                  {"set": "Kit Pet Aggro Timer.duration", "value": 1.5},
+                  {"set": "Kit Pet Aggro Timer.count", "value": 100000},
+                  {"link": "Kit Pet Aggro Timer.on_tick", "to": "Kit Pet Aggro"},
+                  {"link": "Kit Pet Aggro Timer.on_end", "to": ""},
+                  {"link": "Kit Pet Aggro Timer.state", "to": ""},
+                  {"add_link": f"{combat}.while_active", "to": "Kit Pet Aggro Timer"}]
+    if counter != "none":
+        steps += _counter(g, start)
+        # Count again on every order too (one may have died since).
+        steps.append({"add_link": f"{trigger}.activates", "to": "Kit Pet Recount"})
+        # Over that button's icon (Piper's sits on her trait).
+        word = SLOTS[counter][0].removesuffix(" 1").removesuffix(" 2")
+        steps.append({"set": "Kit Pet HUD.obj_6[0]", "value": f"{word}_Layout_Top"})
+    return steps
+
+
+def _take_button(trigger: str, button: str, g: EG.EntityGraph,
+                 earlier: list[dict] = (), *, tag: str = "Kit Pet Order",
+                 no_cooldown: bool = True) -> list[dict]:
+    """The button's own ability out, for what the kit puts on it (the pet
+    order, or a slot block's timeline on the trait). Each link goes by name,
+    past any a slot block already cut (``earlier``): by index, the extra
+    removals took the order with them. ``no_cooldown``: the pet order's, as
+    Piper's; a summon keeps the base's (Scarlet's charge-based trait at 0
+    never came back after one press, playtest 2026-11-03)."""
+    steps: list[dict] = []
     t = next(c for c in g.components if c.name == trigger)
     for f in EF.fields(t):
         if f.kind == "ref[]":
-            for _ in f.items:
-                steps.append({"remove_link": f"{trigger}.{f.name}[0]"})
-    steps += [{"clone": list(_PIPER_ORDERS), "from": "Piper", "rename": dict(_PIPER_ORDERS)},
-              {"add_link": f"{trigger}.activates", "to": "Kit Pet Attack Order"}]
+            gone = {s.get("to") for s in earlier
+                    if s.get("remove_link") == f"{trigger}.{f.name}"}
+            for it in f.items:
+                name = it.text.rstrip().rsplit("\\", 1)[-1].removesuffix('""')
+                if name not in gone:
+                    steps.append({"remove_link": f"{trigger}.{f.name}", "to": name})
     # The cleared lists held what ENDED the state (Scarlet: the transform clip,
     # whose end event deactivates it; Piper: her trait clip). A state that never
     # ends keeps its ability in use, so the button stayed locked after the
     # first press. A short timer ends it instead.
-    timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"), None)
+    timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
+                  and c.override is None), None)
     empty = next((c for c in g.components
-                  if c.cls == "oCEntityCpntStateSettings" and not c.refs), None)
+                  if c.cls == "oCEntityCpntStateSettings" and not c.refs
+                  and c.override is None), None)
     if timer is None or empty is None:
         raise KitError(f"kit pets: this base has no timer or empty state to end the "
                        f"{button} order with")
-    steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Order End"}},
-              {"add_link": "Kit Pet Order End.deactivates?", "to": trigger},
-              {"clone": [timer.name], "rename": {timer.name: "Kit Pet Order Timer"}},
-              {"set": "Kit Pet Order Timer.duration", "value": 0.2},
-              {"link": "Kit Pet Order Timer.on_tick", "to": ""},
-              {"link": "Kit Pet Order Timer.on_end", "to": "Kit Pet Order End"},
-              {"link": "Kit Pet Order Timer.state", "to": ""},
-              {"add_link": f"{trigger}.activates", "to": "Kit Pet Order Timer"}]
+    end, tm = f"{tag} End", f"{tag} Timer"
+    steps += [{"clone": [empty.name], "rename": {empty.name: end}},
+              {"add_link": f"{end}.deactivates?", "to": trigger},
+              {"clone": [timer.name], "rename": {timer.name: tm}},
+              {"set": f"{tm}.duration", "value": 0.2},
+              {"link": f"{tm}.on_tick", "to": ""},
+              {"link": f"{tm}.on_end", "to": end},
+              {"link": f"{tm}.state", "to": ""},
+              {"add_link": f"{trigger}.activates", "to": tm}]
     ctrl = next((c for c in g.components if c.cls == "oCDtEntityCpntAbilityControllerSettings"
                  and any(r.path.rstrip().endswith("\\" + trigger) for r in c.refs)), None)
     if ctrl is not None:
-        steps.append({"set": f"{ctrl.name}.value_4", "value": 0.0})
+        if no_cooldown:
+            steps.append({"set": f"{ctrl.name}.value_4", "value": 0.0})
+        if button == "trait":
+            # Usable without a talent. Scarlet's reads "Is Trait Ability Active
+            # Condition" into three of these: true only while her talent "Skill
+            # Trait Active" is held (manual transforming is a talent of hers),
+            # so without it the trait stayed locked (corpus, 2026-11-03).
+            for fld, v in _TRAIT_UNLOCK.items():
+                steps.append({"set": f"{ctrl.name}.{fld}", "value": v})
+    return steps
+
+
+def _recall(g: EG.EntityGraph) -> tuple[str, list[dict]]:
+    """The hero's "in combat" state and the steps that recall the pets once a
+    fight ends."""
+    steps: list[dict] = []
     # Recall once a fight ends: Piper's "is in combat" holds the order off.
     # Heroes override it already (Scarlet and Piper as "Child State Is In
     # Combat"); a hero that does not gets its own override.
@@ -794,39 +1064,311 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
         combat = "Child State Can Fight"
         steps.append({"override": combat, "from": "Character_Common/Character_Common"})
     steps.append({"add_link": f"{combat}.disables_while_active?", "to": "Kit Pet Recall Order"})
+    return combat, steps
+
+
+def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
+    steps: list[dict] = []
     # The counter over the trait icon, Piper's "alive / max": her HUD panel,
     # frame and two labels, the alive one reading a copy of her pet listener
     # (an inline filter, no link into her own parts), the max one the count.
     steps += [{"clone": list(_PIPER_HUD), "from": "Piper", "rename": dict(_PIPER_HUD)},
               {"link": "Kit Pet HUD Alive Label.value_23", "to": "Kit Pet Alive Count"},
               {"link": "Kit Pet HUD Max Label.value_23", "to": "Kit Pet Count"},
-              # After the spawn, so the first count already sees them.
-              {"add_link": "Child Event Initialize.activates", "to": "Kit Pet Alive Listener"}]
+              {"add_link": f"{start}.activates", "to": "Kit Pet Alive Listener"}]
+    # The listener counts when it is switched on, and the pets come a few
+    # frames after the spawn starts: Piper switches hers off and on again
+    # after every spawn. So does this, 0.5 s after the start.
+    timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
+                  and c.override is None), None)
+    empty = next((c for c in g.components
+                  if c.cls == "oCEntityCpntStateSettings" and not c.refs
+                  and c.override is None), None)
+    if timer is None or empty is None:
+        raise KitError("kit pets: this base has no timer or empty state to count them with")
+    steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Recount"}},
+              {"add_link": "Kit Pet Recount.deactivates?", "to": "Kit Pet Alive Listener"},
+              {"add_link": "Kit Pet Recount.activates", "to": "Kit Pet Alive Listener"},
+              {"clone": [timer.name], "rename": {timer.name: "Kit Pet Recount Timer"}},
+              {"set": "Kit Pet Recount Timer.duration", "value": 0.5},
+              {"link": "Kit Pet Recount Timer.on_tick", "to": ""},
+              {"link": "Kit Pet Recount Timer.on_end", "to": "Kit Pet Recount"},
+              {"link": "Kit Pet Recount Timer.state", "to": ""},
+              {"add_link": f"{start}.activates", "to": "Kit Pet Recount Timer"}]
     return steps
 
 
-def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None) -> str:
+def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
+                lifetime=None, burst=None, on_hit: bool = False, appear=None) -> str:
     """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
     hero's folder (its model layer and the variant, see ally_summon.build).
-    One copy per enemy, however many blocks summon it."""
+    One copy per enemy and end, however many blocks summon it.
+
+    ``lifetime`` (seconds): it dies on its own then, as Sun Wukong's clone.
+    ``burst`` (an entity): spawned where it dies, however it dies (killed or
+    run out), e.g. the hero's bleed bomb. ``on_hit``: its first attack ends it
+    there (a suicide wolf: it bursts on the enemy, not where its time ran out).
+    ``appear`` (one of the enemy's clips): played as it appears instead of its
+    own spawn clip (a wolf's climbs out of the ground). It must END: its end is
+    what finishes the spawn (Character_Common's appearance clip ends the
+    state), so a looping clip would keep it there."""
     from . import ally_summon as AS
+    if lifetime is not None and (isinstance(lifetime, bool)
+                                 or not isinstance(lifetime, (int, float)) or lifetime <= 0):
+        raise KitError(f"kit {slot}: lifetime is a number of seconds, got {lifetime!r}")
+    if burst is not None and not (isinstance(burst, str) and burst):
+        raise KitError(f"kit {slot}: burst is an entity path, got {burst!r}")
     src = _entity_ref(enemy)
+    if on_hit and not burst:
+        raise KitError(f"kit {slot}: burst_on_hit needs a burst to spawn")
+    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear)
     for c in ctx.copies:
-        if c.data is not None and c.source == src and c.base == (base or None):
+        if (c.data is not None and c.source == src and c.base == (base or None)
+                and c.end == end):
             return c.ref
-    k = len(ctx.copies) + 1
+    k = len({c.ref.removesuffix(".entity.ot").removesuffix("_Model")
+             for c in ctx.copies}) + 1
     stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Summon{k}"
     variant_ref, model_ref = stem + ".entity.ot", stem + "_Model.entity.ot"
     try:
-        out = AS.build(src, model_ref, variant_ref, f"{ctx.hid}:summon:{src}",
+        out = AS.build(src, model_ref, variant_ref, f"{ctx.hid}:summon:{src}:{end}",
                        base=base or AS.ALLY_MODEL)
     except AS.SummonError as e:
         raise KitError(f"kit {slot}: summon {enemy}: {e}") from None
+    out = _summon_end(out, model_ref, variant_ref, lifetime, end[1], slot,
+                      pet=base == AS.PET_MODEL, on_hit=on_hit)
+    if appear:
+        out = _appear(out, model_ref, str(appear), slot)
     from . import entity_components as EC
     model_src = next(p for p in EC.parents(AS._read(src)) if p != AS.ENEMY_MODEL)
-    ctx.copies.append(Copy(model_src, model_ref, {}, out[model_ref], base))
-    ctx.copies.append(Copy(src, variant_ref, {}, out[variant_ref], base))
+    reads = {"Kit Owner Seed Position": "Kit Pet Centre"} if base == AS.PET_MODEL else {}
+    ctx.copies.append(Copy(model_src, model_ref, reads, out[model_ref], base, end))
+    ctx.copies.append(Copy(src, variant_ref, {}, out[variant_ref], base, end))
     return variant_ref
+
+
+def _pet_speed(out: dict[str, bytes], model_ref: str, variant_ref: str) -> list[dict]:
+    """A pet keeps up with its master: Hero_Pet_Model's "Move Locomotion
+    Speed" reads the owner's run speed. An enemy's own override of that part
+    (a dire wolf's fixed 4 and 4.6, lower in the chain) replaced it, so the
+    copy trailed behind; each such override reads the owner again instead."""
+    from . import ally_summon as AS
+    from . import entity_check as CK
+    pet_model = AS.PET_MODEL.replace("\\", "/").removesuffix(".entity.ot")
+    pet = EG.parse(CK._corpus_reader(AS.PET_MODEL)).components
+    speed = next(c.override.guid for c in pet if c.name == "Move Locomotion Speed")
+    read = "Owner Move Locomotion Max Speed Get Value"
+    steps: list[dict] = []
+    for k, ref in enumerate((model_ref, variant_ref)):
+        stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        for c in EG.parse(out[ref]).components:
+            if c.override is not None and c.override.guid == speed:
+                mine = f"Kit Owner Run Speed {k + 1}"
+                steps += [{"clone": [read], "from": pet_model, "rename": {read: mine},
+                           "entity": stem},
+                          {"link": f"{c.name}.value", "to": mine, "entity": stem}]
+    # Steering as Piper's rats: re-path every 0.1 s (NPC_Common: 0.5) and turn
+    # at 10 pi rad/s (a wolf: 4 pi), or it swings wide and trails its master.
+    # A wolf's night run speed (a fixed 6) reads the owner's too.
+    m_stem = model_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    names = {c.name for c in EG.parse(out[model_ref]).components}
+    npc = "Enemies/NPC_Common/NPC_Common"
+    for part, value in (("Move Steering Path Update Period", 0.1),
+                        ("Move Locomotion Look At Max Rotation Speed Value", 31.4159)):
+        if part not in names:
+            steps.append({"override": part, "from": npc, "entity": m_stem})
+        steps.append({"set": f"{part}.value", "value": value, "entity": m_stem})
+    # A wolf's night and strafe speeds (fixed 6 and 2: it circles its target
+    # at a walk) read the owner's too, or it trailed behind (playtest).
+    for k, extra in enumerate(("Move Night Locomotion Max Speed",
+                               "Move Strafe Locomotion Max Speed")):
+        if extra in names:
+            mine = f"Kit Owner Run Speed Extra {k + 1}"
+            steps += [{"clone": [read], "from": pet_model, "rename": {read: mine},
+                       "entity": m_stem},
+                      {"link": f"{extra}.value", "to": mine, "entity": m_stem}]
+    return steps
+
+
+def _appear(out: dict[str, bytes], model_ref: str, clip: str, slot: str) -> dict[str, bytes]:
+    """The copy's "Spawning Default Appearance Anim" playing ``clip``."""
+    from . import entity_strings as ES
+    model = out[model_ref]
+    anim = next((c for c in EG.parse(model).components
+                 if c.name == "Spawning Default Appearance Anim"), None)
+    if anim is None:
+        raise KitError(f"kit {slot}: appear: this enemy has no spawn clip of its own")
+    old = re.search(rb"Characters\\[^\x00\"]+?\.fbx", anim.body)
+    have = set(re.findall(rb"Characters\\[^\x00\"]+?\.fbx", model))
+    want = clip.replace("/", "\\").encode()
+    if want not in have:
+        raise KitError(f"kit {slot}: appear {clip!r} is not one of this enemy's clips")
+    if re.search(rb"_Loop\.fbx$", want):
+        raise KitError(f"kit {slot}: appear {clip!r} loops; its end finishes the spawn")
+    blob = ES.replace_strings(model, {old.group(0).decode(): want.decode()},
+                              require_all=False)
+    return {**out, model_ref: blob}
+
+
+#: Where a summon's burst spawns: Beowulf's shockwave spawner drops its entity
+#: where he stands, unattached (no position source).
+_BURST_SPAWNER = ("Beowulf", "Primary Ability Effect Spawner")
+#: How Sun Wukong's clone ends its life: a timer that sends it into dying.
+_LIFE_TIMER = ("Heroes/Hero_SunWukong/Hero_SunWukong_Ultimate_1_AI_Clone", "Life Timer")
+
+
+def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetime,
+                burst: str | None, slot: str, pet: bool = False,
+                on_hit: bool = False) -> dict[str, bytes]:
+    """The summon's own end, built on its model copy: Character_Common's
+    "Child Behaviour Dying" (entered however it dies) spawns ``burst`` where it
+    stands; a life timer sends it into "Behaviour Dying" after ``lifetime`` s.
+    Neither Ally_Model nor NPC_Common overrides the two states they use.
+
+    A ``pet`` is also tagged as Piper's rats are ("Alive Additional Flags
+    Value" = Rat_Pet): the alive count over the button (a copy of her pet
+    listener) collects exactly that tag. A Piper in the same game counts
+    them too."""
+    from . import ability_edit as AE
+    from . import ally_summon as AS
+    from . import entity_check as CK
+    common = "Character_Common/Character_Common"
+    m_stem = model_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    v_stem = variant_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    steps: list[dict] = []
+    if burst:
+        donor_hero, donor = _BURST_SPAWNER
+        raw = CK._corpus_reader(f"Heroes\\Hero_{donor_hero}\\Hero_{donor_hero}.entity.ot")
+        d = next(c for c in EG.parse(raw).components if c.name == donor)
+        n_values = sum(len(f.items) for f in EF.fields(d) if f.name == "spawner_values")
+        steps += [{"clone": [donor], "from": donor_hero, "rename": {donor: "Kit Burst Spawner"}},
+                  {"set": "Kit Burst Spawner.template[1]", "value": burst}]
+        steps += [{"remove_link": "Kit Burst Spawner.spawner_values[0]"}] * n_values
+        steps += [{"override": "Child Behaviour Dying", "from": common},
+                  {"add_link": "Child Behaviour Dying.activates", "to": "Kit Burst Spawner"}]
+    if lifetime is not None:
+        src, timer = _LIFE_TIMER
+        steps += [{"clone": [timer], "from": src, "rename": {timer: "Kit Life Timer"}},
+                  {"set": "Kit Life Timer.duration", "value": float(lifetime)},
+                  # Inherited, so named by its entity (as the clone's own timer
+                  # chain ends: Death Tester -> Character_Common's state).
+                  {"retarget": "Kit Life Timer.on_end",
+                   "node": "Character_Common\\Character_Common.entity.ot|Behaviour Dying"},
+                  {"override": "Child Event Initialize", "from": common},
+                  {"add_link": "Child Event Initialize.activates", "to": "Kit Life Timer"}]
+    if on_hit:
+        # Each attack's impact moment (not a howl) starts a near-zero timer
+        # into dying, as the life timer does; dying spawns the burst there.
+        src, timer = _LIFE_TIMER
+        hits = [c.name for c in EG.parse(out[model_ref]).components
+                if c.cls == "oCEntityCpntStateSettings" and "Howl" not in c.name
+                and re.match(r"^Event Attack .*Impact$", c.name)]
+        if not hits:
+            raise KitError(f"kit {slot}: burst_on_hit: this enemy has no 'Event Attack "
+                           "... Impact' state to burst on")
+        steps += [{"clone": [timer], "from": src, "rename": {timer: "Kit Burst Timer"}},
+                  {"set": "Kit Burst Timer.duration", "value": 0.05},
+                  {"retarget": "Kit Burst Timer.on_end",
+                   "node": "Character_Common\\Character_Common.entity.ot|Behaviour Dying"}]
+        steps += [{"add_link": f"{h}.activates", "to": "Kit Burst Timer"} for h in hits]
+    # NPC_Common's wandering search looks for heroes (the hero layer), and
+    # neither Ally_Model nor a pet base overrides it: a summon that went to
+    # wander after spawning never found an enemy. Its own copy, flipped below.
+    wander = "Wandering Target Traverser"
+    if all(c.name != wander for c in EG.parse(out[model_ref]).components):
+        steps.append({"override": wander, "from": "Enemies/NPC_Common/NPC_Common"})
+    # NPC_Common warns before a spawn (2.5 s of summoning circle, the body
+    # below ground), unless the base says not to: Hero_Pet_Model and Sun
+    # Wukong's clone do; Ally_Model does not, so a summon lost 2.5 s of its
+    # life before it could move.
+    if not pet or burst:
+        # Enemies target what stands on the hero layer. The wolf registers on
+        # none of its own (Wolves_Model and Ally_Model have no GPN part), so no
+        # enemy attacked it and it never died to burst (playtest 2026-11-03).
+        # Sun Wukong's clone registers there with its own "GPN Hero", which
+        # reads only Character_Common parts every character has.
+        steps.append({"clone": ["GPN Hero"], "from": _LIFE_TIMER[0],
+                      "rename": {"GPN Hero": "Kit GPN Hero"}})
+        # And switched on as the clone does: while NPC_Common's "Child NPC
+        # State GPN Active" holds (a copy nothing switched on registered
+        # nowhere: enemies still ignored the wolf, playtest 2026-11-04).
+        # A pet's chain to that state is cut: Hero_Pet_Model replaces
+        # Character_Common's "State GPN Active" with one holding only soft
+        # collision and detection (pets are meant to be invisible to enemies),
+        # so NPC_Common's child states never run and the hook did nothing
+        # (playtest 2026-11-04). A bomber pet gets Character_Common's own
+        # state back, lower in the chain than the pet base's, so it wins.
+        # Geppetto's dummy (an ally enemies attack and damage) is this exact
+        # setup, with no side flag changed.
+        if pet:
+            steps.append({"override": "State GPN Active",
+                          "from": "Character_Common/Character_Common"})
+        gpn = "Child NPC State GPN Active"
+        if all(c.name != gpn for c in EG.parse(out[model_ref]).components):
+            steps.append({"override": gpn, "from": "Enemies/NPC_Common/NPC_Common"})
+        steps.append({"add_link": f"{gpn}.while_active", "to": "Kit GPN Hero"})
+    if not pet:
+        warn = "Spawning Use Warning"
+        if all(c.name != warn for c in EG.parse(out[model_ref]).components):
+            steps.append({"override": warn, "from": "Enemies/NPC_Common/NPC_Common"})
+        steps.append({"set": f"{warn}.value", "value": False})
+    # An enemy rises out of the ground for 1.5 s (NPC_Common's appearance);
+    # a summon appears as Sun Wukong's clone does, at once.
+    appear = "Spawning Appearance Duration"
+    if all(c.name != appear for c in EG.parse(out[model_ref]).components):
+        steps.append({"override": appear, "from": "Enemies/NPC_Common/NPC_Common"})
+    steps.append({"set": f"{appear}.value", "value": 0.1})
+    if pet:
+        # It notices enemies around its master on its own: Piper's rat looks
+        # 20-30 m out while following, the pet base only 10.
+        radius = "Fighting Target Detection Radius"
+        if all(c.name != radius for c in EG.parse(out[model_ref]).components):
+            steps.append({"override": radius, "from": "Enemies/NPC_Common/NPC_Common"})
+        steps.append({"set": f"{radius}.value", "value": 20.0})
+        # Where an attack order sends it: Hero_Pet_Model's "Attack Move Seed
+        # Position" is empty (the world origin), so after the first order the
+        # wolf walked off to nowhere and never fought again (playtest
+        # 2026-11-03). Piper's rat reads her aim store into it; this one reads
+        # the hero's "Kit Pet Centre" (its position, stored on every order),
+        # aimed at the hero when the files are written (Copy.reads).
+        seed, gv = "Attack Move Seed Position", "Kit Owner Seed Position"
+        if all(c.name != seed for c in EG.parse(out[model_ref]).components):
+            steps.append({"override": seed, "from": "Heroes/Hero_Pets/Hero_Pet_Model"})
+        steps += [{"clone": ["Attack Seed Position Get Value"],
+                   "from": "Heroes/Hero_Piper/Hero_Piper_Rat_Pet",
+                   "rename": {"Attack Seed Position Get Value": gv}},
+                  {"link": f"{seed}.value", "to": gv}]
+        flag = "Alive Additional Flags Value"
+        if all(c.name != flag for c in EG.parse(out[model_ref]).components):
+            steps.append({"override": flag, "from": common})
+        steps.append({"set": f"{flag}.value", "value": "Rat_Pet"})
+    # An enemy waits between attacks so a pack does not swarm the hero (a
+    # wolf: 3 s between any two, 1 s before the first); on our side that
+    # left it standing by its target doing nothing.
+    for c in EG.parse(out[model_ref]).components:
+        if c.cls == "oCEntityCpntTimerSettings" and c.group == "Bhv Fighting" \
+                and c.name.endswith("Attack Cooldown"):
+            wait = 0.25 if "Start" in c.name else 1.0
+            steps.append({"set": f"{c.name}.duration", "value": wait})
+    steps = [{**st, "entity": m_stem} for st in steps]
+    if pet:
+        steps += _pet_speed(out, model_ref, variant_ref)
+    files = {m_stem: out[model_ref], v_stem: out[variant_ref]}
+
+    def read(ref: str):
+        return out.get(ref) or CK._corpus_reader(ref)
+    try:
+        res = AE.apply(files, steps, main=v_stem, seed=f"{v_stem}:end", read=read)
+    except AE.AbilityEditError as e:
+        raise KitError(f"kit {slot}: summon end: {e}") from None
+    model = res.files[m_stem]
+    # The override and its sub-objects (its flag mask tester): every section
+    # up to the next part.
+    starts = sorted(c.index for c in EG.parse(model).components)
+    k = next(c.index for c in EG.parse(model).components if c.name == wander)
+    nxt = next((i for i in starts if i > k), None)
+    model, _n = AS.flip_side(model, only=set(range(k, nxt if nxt is not None else 1 << 30)))
+    return {model_ref: model, variant_ref: res.files[v_stem]}
 
 
 def reader(copies: list[Copy]):
@@ -842,7 +1384,7 @@ def build_copy(copy: Copy, main: bytes, main_ref: str) -> bytes:
     (``main``, its final gameplay entity at ``main_ref``)."""
     from . import entity_check as CK
     from .entity_graph_edit import EntityFile
-    raw = CK._corpus_reader(copy.source)
+    raw = copy.data if copy.data is not None else CK._corpus_reader(copy.source)
     if raw is None:
         raise KitError(f"{copy.source} is not in the game files")
     stem = copy.ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
@@ -850,6 +1392,11 @@ def build_copy(copy: Copy, main: bytes, main_ref: str) -> bytes:
     hero = {c.name: c for c in EG.parse(main).components}
     main_stem = main_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
     for gv, part in copy.reads.items():
+        if part is None:
+            # A part every hero has (Hero_Common's, Character_Common's): the
+            # same link, read from this hero.
+            ef.set_value(gv, "template[1]", main_ref)
+            continue
         v = hero.get(part)
         if v is None:
             raise KitError(f"the hero has no {part!r} for {stem} to read")

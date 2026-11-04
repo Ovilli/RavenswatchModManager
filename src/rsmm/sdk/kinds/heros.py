@@ -339,6 +339,10 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         raise ContentError(f"hero {hid}: borrow is a list of resource paths")
     borrow.extend(x.replace("/", "\\") for x in extra)
     for c in kit_copies:
+        if c.shipped:
+            # Spawned as shipped: preloaded as the game preloads it.
+            borrow.append(c.source)
+            continue
         # A copy preloads as itself plus everything its source does.
         art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
         borrow.append(c.source)
@@ -629,13 +633,23 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # recorded (the entity, its mesh, maps and effects); no shipped
             # cache can list it, so it is not borrowed.
             # Nor is an entity the mod ships itself: no shipped cache lists it.
-            own_refs = ({a.entity_ref for a in attack_entities} | {c.ref for c in kit_copies}
+            own_refs = ({a.entity_ref for a in attack_entities}
+                        | {c.ref for c in kit_copies if not c.shipped}
                         | {r for r in res.resources if _mod_file(out_dir, r)})
             borrow.extend(res.resources - own_refs)
         art.extend(_borrow_closure(sorted(set(borrow)), out_dir, hid))
         family = {H.entity_rel(R.entity_ref(ref)):
                   R.cooked(base_bytes[stem_of[ref]], b.alias.guid, guid)
                   for ref in b.family}
+        # Every renamed member preloads with the hero. The base's skin caches
+        # do not list all of them: Update 6 members (Scarlet's Update 6
+        # ultimate projectiles) are preloaded by LiveOps6.versiondef's cache,
+        # which names the base's files, not these. A spawner whose template is
+        # not loaded returns without spawning (EntitySpawner_SpawnOne reads the
+        # settings' resolved template at +0x1a8, Ghidra b9c3 2026-11-03): the
+        # ultimate fired nothing.
+        art.extend(f"EntitySettings|{R.entity_ref(ref)}|oCEntitySettingsResource"
+                   for ref in b.family)
         for ref in b.family:
             rel = H.entity_rel(ref)
             new_rel = H.entity_rel(R.entity_ref(ref))
@@ -653,11 +667,18 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # Fresh part ids: it must not share the template projectile's.
             put(built.entity_rel, PC.restamp_entity_guids(blob, built.entity_rel))
         for c in kit_copies:
+            if c.shipped:
+                continue
             if c.data is not None:
                 # A summoned ally: built whole, its two files sharing ONE
                 # identity mapping (a per-file restamp would cut the variant
-                # off from the model parts it overrides).
-                put(H.entity_rel(c.ref), c.data)
+                # off from the model parts it overrides). A pet's reads of its
+                # owner (where an attack order sends it) aimed at this hero.
+                blob = c.data
+                if c.reads:
+                    mref = R.entity_ref(main_ref)
+                    blob = HK.build_copy(c, family[H.entity_rel(mref)], mref)
+                put(H.entity_rel(c.ref), blob)
                 continue
             # Its reads of its owner aimed at this hero's final entity.
             mref = R.entity_ref(main_ref)

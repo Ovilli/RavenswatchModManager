@@ -66,7 +66,7 @@ from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
-        "replace_subobject", "override", "retarget")
+        "replace_subobject", "override", "retarget", "retarget_targets")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
@@ -137,6 +137,11 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 _override(ef, step, f"{seed}:{n}", read)
             elif op == "retarget":
                 _retarget(ef, step, read)
+            elif op == "retarget_targets":
+                part, _, fld = str(step[op]).rpartition(".")
+                if not part or not step.get("to"):
+                    raise AbilityEditError("retarget_targets = 'Sender.targets', to = <spawner>")
+                ef.repoint_targets(part, fld, str(step["to"]))
             else:
                 spec = str(step[op])
                 if ".cinebloc[" in spec:
@@ -223,6 +228,20 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
     else:
         names = [what] if isinstance(what, str) else [str(x) for x in what]
         regroup = {}
+    # A copy keeps its source's override mark: copying an override (Scarlet's
+    # "Event Initialize Starting Modifiers", an override of Character_Common's)
+    # yields a second override of the same ancestor part, which REPLACES it
+    # instead of adding a part. Every Kit Pet state made that way was missing
+    # from the live hero (probe, 2026-11-03).
+    by_name = {c.name: c for c in src.graph().components}
+    overrides = [x for x in names if not regroup
+                 and x in by_name and by_name[x].override is not None]
+    if overrides:
+        verb = "is an override" if len(overrides) == 1 else "are overrides"
+        raise AbilityEditError(
+            f"clone: {', '.join(overrides)} {verb}"
+            " of an ancestor's part; a copy would replace that part, not add one. "
+            "Copy a part of the entity's own, or use `override` to change the ancestor's")
     suffix = str(step.get("suffix", f" {new_group}" if new_group else " Copy"))
     rename = step.get("rename") or {}
     if not isinstance(rename, dict) or set(rename) - set(names):

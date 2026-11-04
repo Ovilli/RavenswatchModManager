@@ -55,44 +55,65 @@ def _read(ref: str) -> bytes:
     return raw
 
 
-def flip_side(raw: bytes) -> tuple[bytes, int]:
-    """``raw`` with every attack filter it owns mirrored: Ally and Enemy
-    swapped in both lists, the hero layer swapped for the one allies target.
-    Returns the bytes and how many filters."""
+def flip_side(raw: bytes, only: set[int] | None = None) -> tuple[bytes, int]:
+    """``raw`` with every attack and search filter it owns mirrored: Ally and
+    Enemy swapped in both lists, the hero layer swapped for the one allies
+    target. Returns the bytes and how many filters.
+
+    Two places hold them (Ghidra + corpus, 2026-11-03): a flag mask tester's
+    inline ``oCGpnFilter``, and a GPN traverser's, which ALSO names the layer
+    it queries after its last object (MARK_END x3 + u32). The wolf's in-range
+    checks ("Attack Bite No Root Motion Traverser") filter nothing and query
+    the hero layer: flipping testers alone left them seeing only heroes, so an
+    ally wolf stood next to enemies and never attacked. ``only``: the section
+    indexes to flip (an override added after the copy's own flip)."""
     cf = cooked.parse(raw)
     names = [c.name for c in cf.classes]
-    if "oCEntityGpnFlagMaskTesterSettings" not in names:
+    owners = {names.index(c) for c in ("oCEntityGpnFlagMaskTesterSettings",
+                                       "oCEntityCpntGpnTraverserSettings") if c in names}
+    if not owners or "oCGpnFilter" not in names:
         return raw, 0
-    tester = names.index("oCEntityGpnFlagMaskTesterSettings")
     filt = struct.pack("<I", names.index("oCGpnFilter"))
+    swap = {HERO_LAYER: ALLY_TARGET_LAYER, ALLY_TARGET_LAYER: HERO_LAYER}
+    tail = cooked.MARK_END * 3
     n = 0
-    for sec in cf.sections:
+    for k, sec in enumerate(cf.sections):
         p = bytearray(sec.payload)
-        if len(p) < 4 or struct.unpack_from("<I", p, 0)[0] != tester:
+        if len(p) < 4 or struct.unpack_from("<I", p, 0)[0] not in owners:
+            continue
+        if only is not None and k not in only:
             continue
         j = p.find(cooked.MARK_BEGIN + filt)
         if j < 0:
-            raise SummonError("a flag mask tester holds no filter where expected")
-        o = j + len(cooked.MARK_BEGIN) + 4
-        layer = struct.unpack_from("<I", p, o)[0]
-        if layer in (HERO_LAYER, ALLY_TARGET_LAYER):
-            struct.pack_into("<I", p, o, ALLY_TARGET_LAYER if layer == HERO_LAYER
-                             else HERO_LAYER)
-        o += 4
-        for _ in range(2):                                   # list A, list B
-            count = struct.unpack_from("<I", p, o)[0]
-            if count > 32:
-                raise SummonError(f"a filter list claims {count} flags; not a filter")
-            vals = list(struct.unpack_from(f"<{count}I", p, o + 4))
-            if any(v != 2 for v in vals):
-                # A short list (the wolf's "in range" check is just [Ally])
-                # grows with "either" entries so Enemy has a place to swap to.
-                vals += [2] * (ENEMY + 1 - len(vals))
-                vals[ALLY], vals[ENEMY] = vals[ENEMY], vals[ALLY]
-                p[o:o + 4 + 4 * count] = struct.pack(f"<I{len(vals)}I", len(vals), *vals)
-            o += 4 + 4 * len(vals)
+            raise SummonError("a flag mask tester or traverser holds no filter where expected")
+        while j >= 0:
+            o = j + len(cooked.MARK_BEGIN) + 4
+            layer = struct.unpack_from("<I", p, o)[0]
+            if layer in swap:
+                struct.pack_into("<I", p, o, swap[layer])
+            o += 4
+            for _ in range(2):                                   # list A, list B
+                count = struct.unpack_from("<I", p, o)[0]
+                if count > 32:
+                    raise SummonError(f"a filter list claims {count} flags; not a filter")
+                vals = list(struct.unpack_from(f"<{count}I", p, o + 4))
+                if any(v != 2 for v in vals):
+                    # A short list (the wolf's "in range" check is just [Ally])
+                    # grows with "either" entries so Enemy has a place to swap to.
+                    vals += [2] * (ENEMY + 1 - len(vals))
+                    vals[ALLY], vals[ENEMY] = vals[ENEMY], vals[ALLY]
+                    p[o:o + 4 + 4 * count] = struct.pack(f"<I{len(vals)}I", len(vals), *vals)
+                o += 4 + 4 * len(vals)
+            n += 1
+            j = p.find(cooked.MARK_BEGIN + filt, o)
+        # A traverser's query layer, after its last object.
+        t = p.rfind(tail)
+        if t >= 0 and t + len(tail) + 4 <= len(p):
+            q = t + len(tail)
+            layer = struct.unpack_from("<I", p, q)[0]
+            if layer in swap:
+                struct.pack_into("<I", p, q, swap[layer])
         sec.payload = bytes(p)
-        n += 1
     return cooked.emit(cf), n
 
 
