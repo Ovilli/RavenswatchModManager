@@ -134,6 +134,7 @@ def test_a_kit_pets_block_follows_piper_and_takes_the_trait(tmp_path):
                 if f.name == "value_4") == "f32 0"
 
 
+@needs_corpus
 def test_a_talent_gated_pets_block_waits_for_the_talent(tmp_path):
     """Pam's starter talent: the special summons until the talent is picked;
     then the wolves follow and the special orders them instead."""
@@ -164,6 +165,7 @@ def test_a_talent_gated_pets_block_waits_for_the_talent(tmp_path):
     assert "Secondary_Layout_Top" in layout
 
 
+@needs_corpus
 def test_a_summon_can_die_on_its_own_and_burst(tmp_path):
     """Pam's special: the wolf lives a while and, however it dies, leaves a
     bomb where it stood."""
@@ -186,6 +188,7 @@ def test_a_summon_can_die_on_its_own_and_burst(tmp_path):
     assert parts["Child Event Initialize"]["activates"].endswith("Kit Life Timer")
 
 
+@needs_corpus
 def test_an_ally_copy_searches_no_hero_layer(tmp_path):
     """Every filter AND every traverser's query layer is mirrored, the wolf's
     in-range checks and the inherited wandering search included: one left on
@@ -218,6 +221,7 @@ def test_an_ally_copy_searches_no_hero_layer(tmp_path):
     assert summon
 
 
+@needs_corpus
 def test_a_shipped_pet_is_copied_with_its_reads_aimed_at_the_hero(tmp_path):
     """Piper's rat as the pet: copied into the hero's folder, every read of
     Piper aimed at this hero (her own values as copies here, a shared part's
@@ -240,6 +244,7 @@ def test_a_shipped_pet_is_copied_with_its_reads_aimed_at_the_hero(tmp_path):
     assert reads["Attack Seed Position Get Value"]["value"].endswith("Kit Pet Centre")
 
 
+@needs_corpus
 def test_no_kit_part_is_an_override(tmp_path):
     """A copied override replaces its ancestor's part instead of adding one:
     every Kit Pet state copied from Scarlet's "Event Initialize Starting
@@ -271,6 +276,7 @@ def test_clone_refuses_an_override():
                  main="Hero_Red", seed="t")
 
 
+@needs_corpus
 def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
     """Pam's bomber wolf: one pet per press of the trait (its own cooldown),
     no counter, the attack order on entering combat, a burst when it dies, and
