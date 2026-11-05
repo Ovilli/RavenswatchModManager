@@ -289,7 +289,7 @@ def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
     files = heros.emit("m", ContentDef(kind="hero", id="Packer", fields={"base": "Red", "kit": {
         "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "button": "trait",
                  "spawn": "button", "counter": "none", "aggro": True,
-                 "burst": "Heroes/Hero_Red/Hero_Red_Bomb"}}}), tmp_path)
+                 "burst": "Heroes/Hero_Red/Hero_Red_Bomb", "lifetime": 20}}}), tmp_path)
     by = {p.name: p for p in files}
     hero = EntityFile(by["Hero_Packer.entity.ot.EntitySettingsResource.gen"].read_bytes(), "h")
 
@@ -307,6 +307,10 @@ def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
                      .read_bytes())
     kit = {c.name for c in model.components}
     assert {"Kit Burst Spawner", "Kit GPN Hero"} <= kit
+    # One burst per life: while dying, its timers cannot send it into dying again.
+    dying = next(c for c in model.components if c.name == "Child Behaviour Dying")
+    held = next(f.text for f in EF.fields(dying) if f.name == "disables_while_active?")
+    assert "Kit Life Timer" in held
     # Its "Targetable" flag (what enemies' target searches require) reads
     # Character_Common's "Is Alive Condition", not Sun Wukong's clone's hero
     # condition (Behaviour Default, which an NPC never enters: no enemy ever
@@ -330,7 +334,8 @@ def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
     files = heros.emit("m", ContentDef(kind="hero", id="Biter", fields={"base": "Red", "kit": {
         "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "attack": "Bite",
                  "attack_area": 2.0, "attack_speed": 1.35, "attack_debuffs": False,
-                 "attack_cooldown": 0.5, "attack_reach": 2.0, "attack_range": 3.0}}}),
+                 "attack_cooldown": 0.5, "attack_reach": 2.0, "attack_range": 3.0,
+                 "attack_targets": 0}}}),
         tmp_path)
     by = {p.name: p for p in files}
     ef = EntityFile(by["Hero_Biter_Summon1_Model.entity.ot.EntitySettingsResource.gen"]
@@ -349,6 +354,8 @@ def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
     assert "f32 0.5" in val("Attack Bite Cooldown Value Selector", "entries")
     assert "f32 2" not in val("Attack Bite Cooldown Value Selector", "entries")
     assert val("Fighting All Attack Cooldown", "duration").startswith("f32 0.5")
+    # Every enemy in the cone, not the best-scored one.
+    assert val("Attack Bite Gpn Target Best One Computer ", "value_5") == "int 0"
     # It commits to a bite from 3 m (a dire wolf: 4.5), aiming for 2 m.
     var = EntityFile(by["Hero_Biter_Summon1.entity.ot.EntitySettingsResource.gen"]
                      .read_bytes(), "v")

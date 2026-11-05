@@ -421,6 +421,7 @@ function attackFields(o, info) {
       optNum(o, "attack_area", "× width", "0.25", "Its hit cone this many times wider; the reach stays"),
       optNum(o, "attack_reach", "× reach", "0.25", "Its hit shape's radius this many times longer"),
       optNum(o, "attack_range", "m to commit", "0.5", "How close it gets before it starts the attack (a dire wolf: 4.5)"),
+      optNum(o, "attack_targets", "targets (0 = all)", "1", "How many one hit takes: 0 = everything in its shape (a wolf's bite: 1, the best-scored)"),
       optNum(o, "attack_speed", "× speed", "0.05", "Its clips play this much faster"),
       optNum(o, "attack_cooldown", "s between tries", "0.25", "How soon it tries the attack again (a wolf: 2–4 s)"),
       el("label", { title: "The statuses the attack applies (a wolf's bite roots)" },

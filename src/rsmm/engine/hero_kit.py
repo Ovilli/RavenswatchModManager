@@ -251,9 +251,9 @@ RICOCHET_DAMAGE = "Skill Defense Ricochet Damage Multiplier"
 #: Juliet's, every link of which is re-pointed, so nothing stays hers.
 INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 
-#: A summon's attack, untuned: (area, speed, debuffs, cooldown, reach, range);
-#: see _tune_attack.
-_NO_TUNING = (None, None, True, None, None, None)
+#: A summon's attack, untuned: (area, speed, debuffs, cooldown, reach, range,
+#: targets); see _tune_attack.
+_NO_TUNING = (None, None, True, None, None, None, None)
 
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
                       *PROJ_VALUES, *PROJ_STATUS},
@@ -261,7 +261,7 @@ STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricoche
              "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
              "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear", "attack",
                         "attack_area", "attack_speed", "attack_debuffs", "attack_cooldown",
-                        "attack_reach", "attack_range"}}
+                        "attack_reach", "attack_range", "attack_targets"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -859,8 +859,8 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     unknown = set(spec) - {"entity", "count", "button", "talent", "when", "counter", "appear",
                            "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
                            "hold", "attack_area", "attack_speed", "attack_debuffs",
-                           "attack_cooldown", "attack_reach", "attack_range", "count_talents",
-                           "count_card"}
+                           "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
+                           "count_talents", "count_card"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -1340,8 +1340,11 @@ def _attack_tuning_of(block: dict, slot: str) -> tuple:
     if rng is not None and (isinstance(rng, bool) or not isinstance(rng, (int, float))
                             or not 0.5 <= rng <= 20):
         raise KitError(f"kit {slot}: attack_range is metres, 0.5 to 20; got {rng!r}")
+    tg = block.get("attack_targets")
+    if tg is not None and (isinstance(tg, bool) or not isinstance(tg, int) or not 0 <= tg <= 20):
+        raise KitError(f"kit {slot}: attack_targets is how many it hits, 0 = all; got {tg!r}")
     return (*out, d, None if cd is None else float(cd), None if reach is None else float(reach),
-            None if rng is None else float(rng))
+            None if rng is None else float(rng), tg)
 
 
 def _cone_angle(p: bytearray, names: list[str]) -> int:
@@ -1386,7 +1389,7 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
       selector it reads), and the wait between ANY two attacks is no longer.
       A bite at something that cannot be hit yet (a treant rising from the
       ground) lands nothing; it tries again soon instead (Pam)."""
-    area, speed, debuffs, cooldown, reach, _range = tuning
+    area, speed, debuffs, cooldown, reach, _range, targets = tuning
     if tuning == _NO_TUNING:
         return out
     from .entity_graph_edit import EntityEditError, EntityFile
@@ -1436,6 +1439,22 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
             if "<-" in v.text:
                 raise KitError(f"kit {slot}: attack_area/reach: {n} is read from elsewhere")
             ef.set_value(by[n].name, "value", float(v.text.split()[-1]) * factor)
+    if targets is not None:
+        # How many one hit takes: its target computer's value_5. The Bite's
+        # "Best One" computer has 1 (scored by distance); every shipped area
+        # hit (Juliet's cone damage, Merlin's standing-stone AoE) has 0 = all
+        # in the shape. With 1, a wider cone let the score pick another enemy
+        # than the one the wolf lunged at (Pam: width 2.0 hit less than 1.2).
+        n_comp = 0
+        for ta in (c for c in comps if c.cls == "oCEntityCpntGpnTargetAttackSettings"):
+            comp = by.get(ref_name(ta, "ref_2") or "")
+            if comp is None or comp.cls != "oCEntityCpntGpnTargetComputerSettings":
+                continue
+            ef.set_value(comp.name, "value_5", targets)
+            n_comp += 1
+        if not n_comp:
+            raise KitError(f"kit {slot}: attack_targets: {attack} picks its targets with no "
+                           "target computer of its own")
     if cooldown is not None:
         tm = by.get(f"Attack {attack} Cooldown")
         if tm is None or tm.cls != "oCEntityCpntTimerSettings":
@@ -1651,6 +1670,17 @@ def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetim
                   {"retarget": "Kit Burst Timer.on_end",
                    "node": "Character_Common\\Character_Common.entity.ot|Behaviour Dying"}]
         steps += [{"add_link": f"{h}.activates", "to": "Kit Burst Timer"} for h in hits]
+    if burst:
+        # One burst per life. Dying is what spawns it, and a timer that fires
+        # again sends the summon into dying again: an impact landing after
+        # the burst timer already ended (the bite holds and bites on, and
+        # with attack_targets = 0 one bite impacts several enemies), or the
+        # life timer running out in the same moment. That burst twice, ~1% of
+        # the time (Pam, 2026-11-05). While dying, neither timer can start.
+        ender = [t for t, on in (("Kit Burst Timer", on_hit), ("Kit Life Timer",
+                                                                lifetime is not None)) if on]
+        steps += [{"add_link": "Child Behaviour Dying.disables_while_active?", "to": t}
+                  for t in ender]
     # NPC_Common's wandering search looks for heroes (the hero layer), and
     # neither Ally_Model nor a pet base overrides it: a summon that went to
     # wander after spawning never found an enemy. Its own copy, flipped below.
