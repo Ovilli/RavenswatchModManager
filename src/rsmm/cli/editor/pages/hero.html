@@ -75,6 +75,12 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <p class="muted">For each button, keep what the original does, take it away, or have it also fire a projectile from anywhere in the game (an enemy's included). Greyed-out choices say why this hero cannot do them yet.</p>
     <div id="slots"></div>
   </section>
+  <section class="card" id="petsCard">
+    <h2>Pets</h2>
+    <p class="muted">Creatures that follow your hero and fight for it, Piper's way: an enemy from anywhere in the game, turned to your side. They come at the start of a run, or one batch per press of a button. Leaving a fight calls them back.</p>
+    <label><input type="checkbox" id="petsOn"> This hero has pets</label>
+    <div id="pets"></div>
+  </section>
   <section class="card">
     <h2>Numbers and wiring</h2>
     <p class="muted">Damage, cooldowns and everything the blocks above do not cover are in the Abilities tab. Save here first, then pick “a new hero built on it” there and choose this hero.</p>
@@ -86,6 +92,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <button id="save" class="primary" disabled>Save hero</button>
 </footer>
 <datalist id="projList"></datalist>
+<datalist id="enemyList"></datalist>
 <script>{{common.js}}</script>
 <script>
 "use strict";
@@ -105,7 +112,7 @@ const NEW_MOD = "__new__", NEW_HERO = "__new__";
 // The game's names for heroes whose files say something else.
 const HERO_NAME = { Red: "Scarlet", Geppetto: "Pinocchio", SunWukong: "Sun Wukong", Snow_Queen: "Snow Queen" };
 const heroName = (h) => HERO_NAME[h] || h.replace(/_/g, " ");
-const S = { mod: NEW_MOD, hero: NEW_HERO, heroes: [], opts: null, kit: {}, tags: [], projs: [], dirty: false };
+const S = { mod: NEW_MOD, hero: NEW_HERO, heroes: [], opts: null, kit: {}, tags: [], projs: [], enemies: [], dirty: false };
 const setStatus = (cls, text) => { $("status").className = cls; $("status").textContent = text; };
 
 async function loadMods() {
@@ -147,6 +154,7 @@ function draw() {
   if (!o.form) delete S.kit.form;
   for (const r of document.querySelectorAll("input[name=form]")) r.checked = (r.value === (S.kit.form || ""));
   $("slots").replaceChildren(...SLOTS.map(([slot, label]) => slotRow(slot, label, o.slots[slot])));
+  drawPets();
   drawSave();
 }
 function slotRow(slot, label, can) {
@@ -201,6 +209,7 @@ const BLOCK = {
   fire: ["Fire projectile", () => ({ fire: "", angles: [0] })],
   hit: ["Hit area", () => ({ hit: { radius: 4, damage: 100 } })],
   heal: ["Heal", () => ({ heal: 20 })],
+  summon: ["Summon an ally", () => ({ summon: "", lifetime: 20 })],
   wait: ["Wait", () => ({ wait: 0.3 })],
   repeat: ["Repeat", () => ({ repeat: 3, every: 0.2, steps: [] })],
 };
@@ -210,8 +219,8 @@ const BLOCK = {
 function blockWhy(kind, can) {
   const hero = heroName($("base").value);
   if (!can) return "";
-  if ((kind === "fire" || kind === "hit") && !can.fire)
-    return `${hero} has nothing to launch projectiles or hit areas from yet.`;
+  if ((kind === "fire" || kind === "hit" || kind === "summon") && !can.fire)
+    return `${hero} has nothing to launch projectiles, hit areas or allies from yet.`;
   if (kind === "anim" && can.anim === false) return `This button has no animation of ${hero}'s to swap.`;
   if (kind === "heal" && can.heal === false) return `${hero} has no heal to copy.`;
   return "";
@@ -226,7 +235,7 @@ function blocks(list, top, can) {
       return el("button", { type: "button", text: "+ " + label, disabled: !!why, title: why || null,
         onclick: () => { list.push(make()); changed(); draw(); } });
     })));
-  const why = ["fire", "hit", "anim", "heal"].map(k => blockWhy(k, can)).filter(Boolean);
+  const why = ["fire", "hit", "anim", "heal", "summon"].map(k => blockWhy(k, can)).filter(Boolean);
   if (why.length && top) box.append(el("div", { class: "why", text: [...new Set(why)].join(" ") }));
   return box;
 }
@@ -260,6 +269,8 @@ function blockRow(list, i, top, can) {
     body.push(el("div", { class: "inner" }, ...shotOptions(b, proj)));
   } else if (kind === "heal") {
     body.push(num("heal", "1", 1, 10000), el("span", { class: "why", text: "health (in the units of the hero's own heals)" }));
+  } else if (kind === "summon") {
+    body.push(...allyFields(b, "summon"));
   } else if (kind === "hit") {
     const h = b.hit, hn = (key, step, unit) => el("label", {}, el("input", { type: "number", step, value: h[key] ?? "",
       placeholder: key === "delay" ? "0" : "", style: "width:70px",
@@ -341,6 +352,140 @@ function readRows(b) {
     text: "fires as your own copy, reading:" }), ...rows)];
 }
 const projName = (path) => (S.projs.find(x => x.path === path) || { label: path }).label;
+const enemyName = (path) => (S.enemies.find(x => x.path === path) || { label: path }).label;
+
+// An enemy's attacks and clips (api/enemy), fetched once each.
+const ENEMY = {};
+function enemyInfo(path) {
+  if (!path) return null;
+  if (ENEMY[path] === undefined) {
+    ENEMY[path] = null;
+    api(`api/enemy?path=${encodeURIComponent(path)}`).then(j => { ENEMY[path] = j; draw(); })
+      .catch(() => { ENEMY[path] = { attacks: [], clips: [] }; });
+  }
+  return ENEMY[path];
+}
+// A number field writing o[key] (cleared when left empty).
+function optNum(o, key, unit, step, title) {
+  return el("label", { title: title || null }, el("input", { type: "number", step, value: o[key] ?? "", placeholder: "–", style: "width:64px",
+    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) o[key] = n; else delete o[key]; changed(); } }), " " + unit);
+}
+// What a summoned ally and a pet share (engine/hero_kit.py `_summon_for`): the
+// enemy (`key`: "summon" in a block, "entity" for pets), how long it lives, what
+// it bursts into, the clip it appears with, and the attack it fights with, tuned
+// for a moving target.
+function allyFields(o, key) {
+  const out = [];
+  const inp = el("input", { class: "grow", list: "enemyList", placeholder: "Type to search: wolf, ghoul, treant…",
+    value: o[key] ? enemyName(o[key]) : "" });
+  inp.addEventListener("change", () => {
+    const p = S.enemies.find(x => x.label === inp.value || x.path === inp.value);
+    if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
+    o[key] = p.path; delete o.attack; delete o.appear; changed(); draw();
+  });
+  out.push(inp);
+  const info = enemyInfo(o[key]) || { attacks: [], clips: [] };
+  const own = (S.opts.own_entities || []);
+  const burst = el("select", { onchange: (e) => { if (e.target.value) o.burst = e.target.value; else { delete o.burst; delete o.burst_on_hit; } changed(); draw(); } },
+    el("option", { value: "", text: "nothing" }),
+    ...own.map(p => el("option", { value: p, text: p.split("/").pop().replace(/_/g, " ") })));
+  burst.value = o.burst || "";
+  const appear = el("select", { onchange: (e) => { if (e.target.value) o.appear = e.target.value; else delete o.appear; changed(); } },
+    el("option", { value: "", text: "its own spawn" }),
+    ...info.clips.map(c => el("option", { value: c.path, text: c.name })));
+  appear.value = o.appear || "";
+  out.push(el("div", { class: "inner" },
+    el("div", { class: "adds" }, optNum(o, "lifetime", "s lifetime", "1", "It dies on its own after this long"),
+      el("label", {}, "bursts into ", burst),
+      o.burst ? el("label", { title: "Its first attack that lands ends it there" },
+        el("input", { type: "checkbox", checked: o.burst_on_hit || null,
+          onchange: (e) => { if (e.target.checked) o.burst_on_hit = true; else delete o.burst_on_hit; changed(); } }),
+        " on its first hit") : null,
+      el("label", {}, "appears with ", appear)),
+    ...attackFields(o, info)));
+  return out;
+}
+// The attack it fights with, and how that attack is tuned (`attack_*`).
+function attackFields(o, info) {
+  const sel = el("select", { onchange: (e) => {
+      if (e.target.value) o.attack = e.target.value;
+      else for (const k of Object.keys(o)) if (k === "attack" || k.startsWith("attack_")) delete o[k];
+      changed(); draw(); } },
+    el("option", { value: "", text: "its usual attacks" }),
+    ...info.attacks.map(a => el("option", { value: a, text: a })));
+  sel.value = o.attack || "";
+  const rows = [el("div", { class: "adds" }, el("span", { class: "why", text: "fights with:" }), sel)];
+  if (o.attack) {
+    rows.push(el("div", { class: "adds" },
+      el("span", { class: "why", text: "tuned for a moving target:" }),
+      optNum(o, "attack_area", "× width", "0.25", "Its hit cone this many times wider; the reach stays"),
+      optNum(o, "attack_reach", "× reach", "0.25", "Its hit shape's radius this many times longer"),
+      optNum(o, "attack_range", "m to commit", "0.5", "How close it gets before it starts the attack (a dire wolf: 4.5)"),
+      optNum(o, "attack_speed", "× speed", "0.05", "Its clips play this much faster"),
+      optNum(o, "attack_cooldown", "s between tries", "0.25", "How soon it tries the attack again (a wolf: 2–4 s)"),
+      el("label", { title: "The statuses the attack applies (a wolf's bite roots)" },
+        el("input", { type: "checkbox", checked: o.attack_debuffs === false || null,
+          onchange: (e) => { if (e.target.checked) o.attack_debuffs = false; else delete o.attack_debuffs; changed(); } }),
+        " no statuses")));
+  }
+  return rows;
+}
+// The Pets card: kit `pets` (engine/hero_kit.py `_pets`).
+function drawPets() {
+  const p = S.kit.pets;
+  $("petsOn").checked = !!p;
+  if (!p) { $("pets").replaceChildren(); return; }
+  const o = S.opts, slotOpts = SLOTS.map(([s, l]) => el("option", { value: s, text: l }));
+  const sel = (key, def, opts, after) => { const s = el("select", { onchange: (e) => {
+      if (e.target.value === def) delete p[key]; else p[key] = e.target.value; changed(); if (after) draw(); } }, ...opts);
+    s.value = p[key] || def; return s; };
+  const button = p.button || "trait";
+  const when = el("select", { onchange: (e) => { if (e.target.value) p.when = e.target.value; else delete p.when; changed(); } },
+    el("option", { value: "", text: "automatic" }),
+    ...((o.slots[button] || {}).states || []).map(s => el("option", { value: s, text: s })));
+  when.value = p.when || "";
+  const counter = sel("counter", button, [el("option", { value: "none", text: "no counter" }),
+    ...SLOTS.map(([s, l]) => el("option", { value: s, text: `over ${l}` }))]);
+  const spawn = sel("spawn", "start", [el("option", { value: "start", text: "at the start of a run" }),
+    el("option", { value: "button", text: "one batch per press (its own cooldown)" })], true);
+  const card = el("select", { onchange: (e) => { if (e.target.value) p.count_card = e.target.value; else delete p.count_card; changed(); } },
+    el("option", { value: "", text: "no card" }),
+    ...(o.cards || []).map(c => el("option", { value: c.part, text: c.part.replace(/ Desc Format$/, "") })));
+  card.value = p.count_card || "";
+  const talents = p.count_talents || {};
+  const tRows = Object.entries(talents).map(([t, n]) => el("div", { class: "adds" },
+    el("span", {}, t), el("span", { class: "why", text: "adds" }),
+    el("input", { type: "number", step: "1", min: 1, max: 4, value: n, style: "width:52px",
+      onchange: (e) => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) { talents[t] = v; changed(); } } }),
+    el("button", { type: "button", text: "✕", onclick: () => { delete talents[t];
+      if (!Object.keys(talents).length) delete p.count_talents; changed(); draw(); } })));
+  const addT = el("select", { onchange: (e) => { if (!e.target.value) return;
+      p.count_talents = { ...talents, [e.target.value]: 1 }; changed(); draw(); } },
+    el("option", { value: "", text: "+ a talent that adds pets…" }),
+    ...(o.talents || []).filter(t => !(t in talents)).map(t => el("option", { value: t, text: t })));
+  $("pets").replaceChildren(el("div", { class: "blk" },
+    el("span", { class: "k", text: "Creature" }), ...allyFields(p, "entity")),
+    el("div", { class: "blk" }, el("span", { class: "k", text: "How many" }),
+      el("input", { type: "number", step: "1", min: 1, max: 4, value: p.count ?? 1, style: "width:52px",
+        onchange: (e) => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) { if (v === 1) delete p.count; else p.count = v; changed(); } } }),
+      el("span", { class: "why", text: p.spawn === "button" ? "per press" : "at the start" }),
+      el("div", { class: "inner" }, ...tRows, addT,
+        el("div", { class: "adds" }, el("span", { class: "why", text: "the count shows in the {0} of" }), card))),
+    el("div", { class: "blk" }, el("span", { class: "k", text: "Button" }),
+      sel("button", "trait", slotOpts, true), el("span", { class: "why", text: "on its state" }), when,
+      el("div", { class: "inner" },
+        el("div", { class: "adds" }, el("span", { class: "why", text: "they come" }), spawn),
+        el("div", { class: "adds" }, el("span", { class: "why", text: "counter:" }), counter,
+          optNum(p, "hold", "s the button stays on", "0.1", "How long the button's state lasts (what it holds while on runs that long)"),
+          el("label", { title: "They join a fight on their own as it starts, and again every 1.5 s while it lasts" },
+            el("input", { type: "checkbox", checked: p.aggro || null,
+              onchange: (e) => { if (e.target.checked) p.aggro = true; else delete p.aggro; changed(); } }),
+            " fight on their own")))));
+}
+$("petsOn").addEventListener("change", (e) => {
+  if (e.target.checked) S.kit.pets = { entity: "", button: "trait" }; else delete S.kit.pets;
+  changed(); draw();
+});
 function changed() { S.dirty = true; drawSave(); tellShell(); }
 function drawSave() {
   const named = !!$("name").value.trim();
@@ -372,9 +517,10 @@ $("advanced").addEventListener("click", () => {
 });
 $("save").addEventListener("click", async () => {
   // A fire with no projectile picked yet would build nothing.
-  const empty = (steps) => (steps || []).some(b => b.fire === "" || (b.steps && empty(b.steps)));
+  const empty = (steps) => (steps || []).some(b => b.fire === "" || b.summon === "" || (b.steps && empty(b.steps)));
   const bad = SLOTS.find(([s]) => S.kit[s] && (S.kit[s].fire === "" || empty(S.kit[s].steps)));
-  if (bad) { setStatus("bad", `${bad[1]}: pick a projectile first.`); return; }
+  if (bad) { setStatus("bad", `${bad[1]}: pick a projectile or creature first.`); return; }
+  if (S.kit.pets && !S.kit.pets.entity) { setStatus("bad", "Pets: pick a creature first."); return; }
   const body = { base: $("base").value, hero_name: $("name").value.trim(),
     hero_description: $("desc").value.trim(), kit: S.kit,
     block: S.hero === NEW_HERO ? "" : S.hero };
@@ -397,7 +543,10 @@ $("save").addEventListener("click", async () => {
 
 (async () => {
   try {
-    const [{ heroes }, { projectiles }] = await Promise.all([api("api/bases"), api("api/projectiles")]);
+    const [{ heroes }, { projectiles }, { enemies }] = await Promise.all([api("api/bases"),
+      api("api/projectiles"), api("api/summonables")]);
+    S.enemies = enemies.map(p => ({ ...p, label: `${p.name} — ${p.group}` }));
+    $("enemyList").replaceChildren(...S.enemies.map(p => el("option", { value: p.label })));
     $("base").replaceChildren(...heroes.map(h => el("option", { value: h, text: heroName(h) })));
     $("base").value = heroes.includes("Red") ? "Red" : heroes[0];
     S.projs = projectiles.map(p => ({ ...p, label: `${p.name} — ${p.group}` + (p.tags.length ? ` (${p.tags.join(", ")})` : "") }));

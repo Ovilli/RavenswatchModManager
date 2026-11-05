@@ -77,8 +77,101 @@ def options(base: str) -> dict:
                        "anim": anim_ok, "anim_why": anim_why,
                        "heal": heal_ok, "heal_why": heal_why,
                        "when": steps[-1]["add_link"].split(".")[0] if fire_ok else "",
-                       "when_wolf": wsteps[-1]["add_link"].split(".")[0] if wolf_ok else ""}
-    return {"form": form_ok, "form_why": form_why, "slots": slots, "clips": clips}
+                       "when_wolf": wsteps[-1]["add_link"].split(".")[0] if wolf_ok else "",
+                       "states": _slot_states(main, slot)}
+    return {"form": form_ok, "form_why": form_why, "slots": slots, "clips": clips,
+            **_pet_options(base, main)}
+
+
+def _slot_states(main: bytes, slot: str) -> list[str]:
+    """The states a slot's ability runs through, human and alt form: what a
+    pets block's ``when`` can name (Blood Wolf: "State Wolf Secondary Ability")."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_kit as HK
+    word = HK.SLOTS[slot][0]
+    groups = {f"Ability {word}", f"Ability Wolf {word}", f"Ability Alt {word}"}
+    return sorted(c.name for c in EG.parse(main).components
+                  if c.group in groups and c.cls == "oCEntityCpntStateSettings")
+
+
+def _pet_options(base: str, main: bytes) -> dict:
+    """What the Pets card and the Summon block pick from on ``base``: its
+    talents' states (a talent that adds pets), its cards' String Formats (where
+    the count shows) and the entities of its own folder (a burst)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_graph as EG
+    g = EG.parse(main)
+    states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
+    talents = sorted(c.group for c in g.components
+                     if c.cls.endswith("SkillControllerSettings") and c.group in states)
+    if not talents:
+        # A talent's state is the state named like its group ("Skill Secondary Ignite").
+        talents = sorted(n for n in states if n.startswith("Skill ")
+                         and any(c.group == n for c in g.components))
+    cards = [{"part": c.name, "key": next((x for x in c.literals if "_Desc" in x), "")}
+             for c in g.components if c.cls == "oCEntityCpntStringFormatValueSettings"
+             and "Desc" in c.name and c.group != "Skills"]
+    folder = f"EntitySettings/Heroes/Hero_{base}/"
+    own = sorted(r.removeprefix("EntitySettings/").split(".entity.ot")[0]
+                 for r in corpus.rels(folder, ".entity.ot.EntitySettingsResource.gen"))
+    return {"talents": talents, "cards": sorted(cards, key=lambda c: c["part"]),
+            "own_entities": [e for e in own if e != f"Heroes/Hero_{base}/Hero_{base}"]}
+
+
+@cache
+def summonables() -> list[dict]:
+    """Shipped enemies a ``summon`` or ``pets`` block can turn into allies: a
+    variant on a model of its own that sits on Enemy_Model (what
+    ``engine/ally_summon.build`` copies and re-parents)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_components as EC
+    from rsmm.engine.ally_summon import ENEMY_MODEL
+    out = []
+    for rel in corpus.rels("EntitySettings/Enemies/", ".entity.ot.EntitySettingsResource.gen"):
+        path = rel.removeprefix("EntitySettings/").split(".entity.ot")[0]
+        raw = corpus.read(rel)
+        if not raw or path.endswith("_Model"):
+            continue
+        try:
+            ps = EC.parents(raw)
+        except Exception:      # noqa: BLE001 — a file the parent walk cannot read is not offered
+            continue
+        model = next((p for p in ps if p.endswith("_Model.entity.ot")), None)
+        mraw = corpus.read(f"EntitySettings/{model.replace(chr(92), '/')}"
+                           ".EntitySettingsResource.gen") if model else None
+        if not mraw or ENEMY_MODEL not in EC.parents(mraw):
+            continue
+        out.append({"path": path, "name": path.rsplit("/", 1)[-1].replace("_", " "),
+                    "group": path.split("/")[1].replace("_", " ")})
+    return sorted(out, key=lambda x: (x["group"], x["name"]))
+
+
+@cache
+def enemy(path: str) -> dict:
+    """An enemy's attacks (what ``attack`` names) and clips (what ``appear``
+    plays instead of its spawn), read off its model."""
+    import re
+
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_components as EC
+    from rsmm.engine import entity_graph as EG
+    raw = corpus.read(f"EntitySettings/{path}.entity.ot.EntitySettingsResource.gen")
+    if raw is None:
+        raise ValueError(f"no shipped entity {path!r}")
+    model = next((p for p in EC.parents(raw) if p.endswith("_Model.entity.ot")), None)
+    mraw = corpus.read(f"EntitySettings/{model.replace(chr(92), '/')}"
+                       ".EntitySettingsResource.gen") if model else None
+    if not mraw:
+        return {"attacks": [], "clips": []}
+    names = {c.name for c in EG.parse(mraw).components}
+    attacks = sorted(n[len("State Attack "):] for n in names if n.startswith("State Attack ")
+                     and f"Attack {n[len('State Attack '):]} Condition" in names)
+    clips = sorted({m.decode() for m in re.findall(rb"Characters\\[^\x00\"]+?\.fbx", mraw)
+                    if not m.endswith(b"_Loop.fbx") and b"\\Animations\\" in m
+                    and b"\\Additives\\" not in m})   # hit flinches, not a whole clip
+    return {"attacks": attacks,
+            "clips": [{"path": c, "name": c.rsplit("\\", 1)[-1].removesuffix(".fbx")
+                       .replace("_", " ")} for c in clips]}
 
 
 #: What a projectile does on its own, read off its parts' names.
@@ -135,6 +228,18 @@ def _reads(path: str) -> list[dict]:
     return HK.owner_reads(HK._entity_ref(path))
 
 
+def _bursts(kit: dict, old: str, new: str) -> dict:
+    """``kit`` with every summon/pets ``burst`` that names ``old``'s own entity
+    (``Heroes/Hero_Red/Hero_Red_Bomb``) naming ``new``'s instead. A hero of its
+    own renames its base's family (Hero_Red_Bomb -> Hero_BloodWolf_Bomb, with
+    the mod's own edits); the page lists the base's names, the kit must spawn
+    the hero's (spawning the base's would burst Scarlet's unedited bomb)."""
+    import json
+    import re
+    pat = re.compile(r'("burst": ")(Heroes/Hero_[^/"]+/)' + re.escape(old) + r"_")
+    return json.loads(pat.sub(lambda m: m[1] + m[2] + new + "_", json.dumps(kit)))
+
+
 def _bases(req: Request) -> dict:
     from rsmm.cli.editor import abilities as AB
     return {"heroes": AB._heroes()}
@@ -147,11 +252,14 @@ def _heroes_in(req: Request) -> dict:
     blocks = [c for c in modio._content(path.read_text(encoding="utf-8"))
               if c.get("kind") == "hero"]
     herodefs = {b: h for h in AB._heroes() for b in AB._bases(h)}
-    return {"heroes": [{"id": c.get("id"), "base": herodefs.get(c.get("base"), c.get("base")),
-                        "name": c.get("name") or c.get("id"),
-                        "description": c.get("description") or "",
-                        "kit": c.get("kit") or {}, "steps": len(c.get("abilities") or [])}
-                       for c in blocks]}
+    out = []
+    for c in blocks:
+        base = herodefs.get(c.get("base"), c.get("base"))
+        kit = _bursts(c.get("kit") or {}, f"Hero_{c.get('id')}", f"Hero_{base}")
+        out.append({"id": c.get("id"), "base": base, "name": c.get("name") or c.get("id"),
+                    "description": c.get("description") or "",
+                    "kit": kit, "steps": len(c.get("abilities") or [])})
+    return {"heroes": out}
 
 
 def _save(req: Request) -> dict:
@@ -186,6 +294,7 @@ def _save(req: Request) -> dict:
             block = AB._add_hero(path, base, "custom", name=name, description=desc)
         text = path.read_text(encoding="utf-8")
         text = modio.set_hero_info(text, block, name=name, description=desc)
+        kit = _bursts(kit, f"Hero_{base}", f"Hero_{block}")
         path.write_text(modio.set_hero_kit(text, block, kit), encoding="utf-8")
     except Exception:
         if created:
@@ -204,6 +313,8 @@ ROUTES = {
     ("GET", "/api/options"): lambda req: options(req.arg("base")),
     ("GET", "/api/projectiles"): lambda req: {"projectiles": projectiles()},
     ("GET", "/api/reads"): lambda req: {"reads": _reads(req.arg("path"))},
+    ("GET", "/api/summonables"): lambda req: {"enemies": summonables()},
+    ("GET", "/api/enemy"): lambda req: enemy(req.arg("path")),
     ("GET", "/api/mods"): _mods,
     ("GET", "/api/heroes"): _heroes_in,
     ("POST", "/api/save"): _save,
