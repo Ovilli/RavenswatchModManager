@@ -307,3 +307,55 @@ def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
                      .read_bytes())
     kit = {c.name for c in model.components}
     assert {"Kit Burst Spawner", "Kit GPN Hero"} <= kit
+
+
+@needs_corpus
+def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
+    """Pam 2026-11-05: the bite's hit radius x2 (not the distance it bites
+    from), its clips 35% faster, no rooted on what it bites; and no summon
+    plays the enemy wind-up glow."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import _B, EntityEditError, EntityFile
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import heros
+    files = heros.emit("m", ContentDef(kind="hero", id="Biter", fields={"base": "Red", "kit": {
+        "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "attack": "Bite",
+                 "attack_area": 2.0, "attack_speed": 1.35, "attack_debuffs": False}}}),
+        tmp_path)
+    by = {p.name: p for p in files}
+    ef = EntityFile(by["Hero_Biter_Summon1_Model.entity.ot.EntitySettingsResource.gen"]
+                    .read_bytes(), "m")
+
+    def val(part, fld="value"):
+        return next(f.text for f in EF.fields(ef.component(part)) if f.name == fld)
+    assert val("Attack Bite Attack Traverser Radius").endswith(" 9.2")
+    assert val("Attack Bite No Root Motion Traverser Radius Value").endswith(" 4.2")
+    assert val("Attack Bite In Anim", "value_9").startswith("f32 1.35")
+    dmg = ef.component("Attack Bite Damage")
+    f = next(x for x in EF.fields(dmg) if x.name == "bytes_36")
+    (oid,) = struct.unpack_from("<I", dmg.body, f.offset + 4)
+    names = [x.name for x in ef.cf.classes]
+    p = ef.objects[oid]
+    u = p.find(_B + struct.pack("<I", names.index("oCEntityValueUnion")))
+    assert struct.unpack_from("<I", p, u + 8)[0] == 2 and p[u + 16] == 0
+    # The warm-up bloc now starts the inert timer, not the glow.
+    warm = ef.component("Attack Bite Warmup FX").guid
+    noop = ef.component("Kit No Warning").guid
+    targets = []
+    for c in ef.graph().components:
+        if c.cls != "oCEntityCpntAnimaticSettings":
+            continue
+        i = 0
+        while True:
+            try:
+                _c, sub = ef._cinebloc(c.name, i)
+            except EntityEditError:
+                break
+            q = ef.objects[sub]
+            at = q.find(_B + struct.pack("<I", names.index("oCEntityCpntPicker")))
+            if at >= 0:
+                targets.append(bytes(q[at + 8:at + 24]))
+            i += 1
+    assert warm not in targets and noop in targets
