@@ -79,6 +79,10 @@ class Copy:
     #: A shipped entity spawned as it is (Piper's rat as a pet): nothing is
     #: written, its preload is borrowed.
     shipped: bool = False
+    #: A summon's look of its own (``{model, albedo, mra, normal, transform}``):
+    #: the hero kind cooks it onto the enemy's body mesh and material and points
+    #: only this copy at them (``heros.py``).
+    look: dict | None = None
 
 
 @dataclass
@@ -261,7 +265,7 @@ STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricoche
              "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
              "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear", "attack",
                         "attack_area", "attack_speed", "attack_debuffs", "attack_cooldown",
-                        "attack_reach", "attack_range", "attack_targets"}}
+                        "attack_reach", "attack_range", "attack_targets", "look"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -508,7 +512,8 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                                      lifetime=block.get("lifetime"), burst=block.get("burst"),
                                      on_hit=bool(block.get("burst_on_hit")),
                                      appear=block.get("appear"), attack=block.get("attack"),
-                                     tuning=_attack_tuning_of(block, slot))
+                                     tuning=_attack_tuning_of(block, slot),
+                                     look=block.get("look"))
             angles, offsets = [0], []
         else:
             ent = _entity_ref(block["fire"])
@@ -860,7 +865,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                            "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
                            "hold", "attack_area", "attack_speed", "attack_debuffs",
                            "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
-                           "count_talents", "count_card"}
+                           "count_talents", "count_card", "look"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -894,7 +899,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                           appear=spec.get("appear"), burst=spec.get("burst"),
                           lifetime=spec.get("lifetime"),
                           on_hit=bool(spec.get("burst_on_hit")), attack=spec.get("attack"),
-                          tuning=_attack_tuning_of(spec, "pets"))
+                          tuning=_attack_tuning_of(spec, "pets"), look=spec.get("look"))
 
     steps: list[dict] = [
         *pre,
@@ -1175,7 +1180,7 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
 
 def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
                 lifetime=None, burst=None, on_hit: bool = False, appear=None,
-                attack=None, tuning: tuple = _NO_TUNING) -> str:
+                attack=None, tuning: tuple = _NO_TUNING, look=None) -> str:
     """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
     hero's folder (its model layer and the variant, see ally_summon.build).
     One copy per enemy and end, however many blocks summon it.
@@ -1200,7 +1205,15 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
     if tuning != _NO_TUNING and not attack:
         raise KitError(f"kit {slot}: attack_area/reach/speed/debuffs/cooldown tune the attack "
                        "named by `attack`; name one")
-    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear, attack, tuning)
+    if look is not None:
+        if not isinstance(look, dict) or not look.get("model") and not any(
+                look.get(k) for k in ("albedo", "mra", "normal")):
+            raise KitError(f"kit {slot}: look = {{ model = \"x.glb\", albedo = \"x.png\" }}")
+        unknown = set(look) - {"model", "albedo", "mra", "normal", "transform"}
+        if unknown:
+            raise KitError(f"kit {slot}: look has no {', '.join(sorted(unknown))}")
+    looks = tuple(sorted((k, repr(v)) for k, v in (look or {}).items()))
+    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear, attack, tuning, looks)
     for c in ctx.copies:
         if (c.data is not None and c.source == src and c.base == (base or None)
                 and c.end == end):
@@ -1226,8 +1239,8 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
     from . import entity_components as EC
     model_src = next(p for p in EC.parents(AS._read(src)) if p != AS.ENEMY_MODEL)
     reads = {"Kit Owner Seed Position": "Kit Pet Centre"} if base == AS.PET_MODEL else {}
-    ctx.copies.append(Copy(model_src, model_ref, reads, out[model_ref], base, end))
-    ctx.copies.append(Copy(src, variant_ref, {}, out[variant_ref], base, end))
+    ctx.copies.append(Copy(model_src, model_ref, reads, out[model_ref], base, end, look=look))
+    ctx.copies.append(Copy(src, variant_ref, {}, out[variant_ref], base, end, look=look))
     return variant_ref
 
 
@@ -1676,11 +1689,14 @@ def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetim
         # the burst timer already ended (the bite holds and bites on, and
         # with attack_targets = 0 one bite impacts several enemies), or the
         # life timer running out in the same moment. That burst twice, ~1% of
-        # the time (Pam, 2026-11-05). While dying, neither timer can start.
+        # the time (Pam, 2026-11-05). Dying STOPS both timers as it starts.
+        # Not `disables_while_active`: that holds a part off only while the
+        # state runs and switches it back on when dying ends, and the timers
+        # came back on, fired, and the wolf burst over and over (playtest
+        # 2026-11-05).
         ender = [t for t, on in (("Kit Burst Timer", on_hit), ("Kit Life Timer",
                                                                 lifetime is not None)) if on]
-        steps += [{"add_link": "Child Behaviour Dying.disables_while_active?", "to": t}
-                  for t in ender]
+        steps += [{"add_link": "Child Behaviour Dying.deactivates?", "to": t} for t in ender]
     # NPC_Common's wandering search looks for heroes (the hero layer), and
     # neither Ally_Model nor a pet base overrides it: a summon that went to
     # wander after spawning never found an enemy. Its own copy, flipped below.

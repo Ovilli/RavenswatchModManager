@@ -256,6 +256,20 @@ def _install_bank(game: Path, bank: str) -> Path:
     return p
 
 
+def _body_refs(raw: bytes) -> tuple[str | None, str | None]:
+    """The body mesh (.fbx) and material its "Character Mesh" draws, when the
+    entity sets them itself (a dire wolf's variant does; its model's is the
+    Timber wolf's, overridden)."""
+    from ...engine import entity_graph as EG
+    c = next((x for x in EG.parse(raw).components if x.name == "Character Mesh"
+              and x.cls == "oCEntityCpnt3dGraphicObjectSettings"), None)
+    if c is None:
+        return None, None
+    fbx = re.search(rb"Characters\\[^\x00\"]+?\.fbx", c.body)
+    mat = re.search(rb"Characters\\[^\x00\"]+?\.mat\.ot", c.body)
+    return (fbx.group(0).decode() if fbx else None, mat.group(0).decode() if mat else None)
+
+
 def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                  herodef: bytes, herodef_cache: bytes) -> list[Path]:
     from ...engine import character_export as CE
@@ -375,6 +389,35 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             corpus.read(PC.art_cooked_path(donor_fbx)), transform=transform))
         art.append(f"3D|{geo_ref}|oCGeometry")
         return geo_ref
+
+    # 0. A summon's look of its own (kit `look`): its GLB cooked onto the
+    # enemy's body mesh (skeleton, animations and bone weights kept; nearest-
+    # vertex weights when the GLB has no skin) and its maps into a copy of the
+    # enemy's material. Only this hero's copy points at them: the game's own
+    # enemies keep their look.
+    _looks: dict[int, dict[str, str]] = {}
+    for c in kit_copies:
+        if not c.look or c.data is None:
+            continue
+        # The variant's body wins (it overrides its model's: a dire wolf's model
+        # names the Alpha wolf's mesh), so look there first.
+        donor = next((k for k in sorted(kit_copies, key=lambda k: k.ref.endswith(
+                      "_Model.entity.ot")) if k.look is c.look and k.data is not None
+                      and _body_refs(k.data)[0]), None)
+        if donor is None:
+            raise ContentError(f"hero {hid}: look: {c.source} has no body mesh to replace")
+        fbx, mat = _body_refs(donor.data)
+        tag = donor.ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot").removeprefix("Hero_")
+        if id(c.look) not in _looks:
+            sw: dict[str, str] = {}
+            if c.look.get("model"):
+                sw[fbx] = mesh(fbx, c.look["model"], tag, "look.model", c.look.get("transform"))
+            if any(c.look.get(k) for k in _TEXTURE_FIELDS):
+                if not mat:
+                    raise ContentError(f"hero {hid}: look: {c.source}'s material was not found")
+                sw[mat] = material(mat, c.look, tag, "look")
+            _looks[id(c.look)] = sw
+        c.data = ES.replace_strings(c.data, _looks[id(c.look)], require_all=False)
 
     # 1. The look: a body of its own and a material of its own.
     if f.get("model"):

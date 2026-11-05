@@ -307,10 +307,12 @@ def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
                      .read_bytes())
     kit = {c.name for c in model.components}
     assert {"Kit Burst Spawner", "Kit GPN Hero"} <= kit
-    # One burst per life: while dying, its timers cannot send it into dying again.
+    # One burst per life: dying stops its timers once (never "while active":
+    # that switched them back on after dying and the wolf burst forever).
     dying = next(c for c in model.components if c.name == "Child Behaviour Dying")
-    held = next(f.text for f in EF.fields(dying) if f.name == "disables_while_active?")
-    assert "Kit Life Timer" in held
+    fields = {f.name: f.text for f in EF.fields(dying)}
+    assert "Kit Life Timer" in fields["deactivates?"]
+    assert "Kit Life Timer" not in fields["disables_while_active?"]
     # Its "Targetable" flag (what enemies' target searches require) reads
     # Character_Common's "Is Alive Condition", not Sun Wukong's clone's hero
     # condition (Behaviour Default, which an NPC never enters: no enemy ever
@@ -420,3 +422,19 @@ def test_talents_raise_the_pet_count_and_the_card_shows_it(tmp_path):
     assert "Kit Pet Count Add 2" in text("Kit Pet Count Total", "a")
     assert "Kit Pet Count Total" in text("Kit Pet Spread Pos", "value_2")
     assert "Kit Pet Count Total" in text("Wolf Secondary Ability Desc Format", "obj_4")
+
+
+@needs_corpus
+def test_a_summons_look_replaces_the_body_its_variant_draws():
+    """`look` swaps the body the leaf sets (a dire wolf's own, not the Alpha
+    wolf its model names) and refuses a table with nothing to change."""
+    from rsmm.engine import entity_check as CK
+    from rsmm.engine.hero_kit import KitError, _Ctx, _summon_for
+    from rsmm.sdk.kinds.heros import _body_refs
+    fbx, mat = _body_refs(CK._corpus_reader("Enemies\\Wolves\\Standard_Wolf_Dire.entity.ot"))
+    assert fbx.endswith("Wolf_Dire_Timber_GEO.fbx") and mat.endswith("M_WolfDire.mat.ot")
+    ctx = _Ctx(hid="Looker", folder="Hero_Red")
+    with pytest.raises(KitError, match="look"):
+        _summon_for("Enemies/Wolves/Standard_Wolf_Dire", ctx, "pets", look={"colour": "red"})
+    _summon_for("Enemies/Wolves/Standard_Wolf_Dire", ctx, "pets", look={"model": "a.glb"})
+    assert all(c.look == {"model": "a.glb"} for c in ctx.copies)
