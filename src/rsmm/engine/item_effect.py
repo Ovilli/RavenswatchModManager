@@ -291,15 +291,22 @@ class Effect:
                            if during == NO_ALLIES else None))
 
 
-def parse_effects(raw) -> list[Effect]:
-    """An ``effects`` list from a manifest (or one ``effect`` table), checked."""
+def parse_effects(raw) -> list[Effect | Action]:
+    """An ``effects`` list from a manifest (or one ``effect`` table), checked. A
+    table with ``action`` is an :class:`Action`, any other an :class:`Effect`."""
     if isinstance(raw, dict):
         raw = [raw]
     if not isinstance(raw, list) or not raw:
         raise ItemEffectError("effects must be a list of effect tables")
-    out = []
+    out: list[Effect | Action] = []
     for i, r in enumerate(raw, 1):
         try:
+            if isinstance(r, dict) and "action" in r:
+                if "stat" in r:
+                    raise ItemEffectError("give 'stat' (a bonus) or 'action' (something "
+                                          "the item does), not both")
+                out.append(Action.parse(r))
+                continue
             out.append(Effect.parse(r))
         except ItemEffectError as e:
             raise ItemEffectError(f"effects[{i}]: {e}") from None
@@ -373,6 +380,167 @@ def add_stars_of_fate(w: P.PartWriter, effect: Effect, sfx: str, read=None,
         slots.append((val_name, False))
 
 
+# --- actions: things an item DOES, not a stat it gives -------------------------
+#
+# A shipped item that resets a cooldown, upgrades talents, duplicates an item or
+# spawns consumables does it with one Named Event Sender: the game event's name,
+# the holder as its target (`_owner`), and for a counted event an int payload.
+# The ENGINE handles every one of these events natively (no shipped entity
+# listens for CLEAR_DASH_CD or UPGRADE_RANDOM_SKILL; the hero's controllers
+# subscribe in code), so sending it from data is the whole recipe. Every sender
+# below is written as the shipped item that sends that event writes it: its
+# mode, its payload form, header flags 0x101 (all 1040 shipped senders
+# round-trip through `entity_parts`). A trigger's listener fires the sender
+# directly, as Clear_Dash_Cooldown_On_Defense's three listeners do; with no
+# trigger it fires once on pickup, as the Sandman power-ups do.
+
+_SENDER = "oCEntityCpntNamedEventSenderSettings"
+
+#: ``reset_cooldown``'s abilities: the event each one's controller clears on,
+#: and the mode of the shipped sender of that event (Clear_Dash_Cooldown_On_Defense,
+#: Reduce_Ultimate_CD). POWER is the Primary controller, SPECIAL the Secondary
+#: (``talent_add_stat.ABILITY_CONTROLLERS``).
+COOLDOWN_EVENTS = {
+    "dash": ("CLEAR_DASH_CD", 1),
+    "power": ("CLEAR_PRIMARY_CD", 0),
+    "special": ("CLEAR_SECONDARY_CD", 0),
+    "defense": ("CLEAR_DEFENSIVE_CD", 0),
+}
+
+#: ``duplicate_item``'s rarities (the Sandman duplicate power-ups); "any" is
+#: Power_Up_Sandman_Medium_Duplicate_Object.
+DUPLICATE_EVENTS = {
+    "any": "DUPLICATE_RANDOM_MAGICAL_OBJECT",
+    "common": "DUPLICATE_RANDOM_COMMON_OBJECT",
+    "rare": "DUPLICATE_RANDOM_RARE_OBJECT",
+    "epic": "DUPLICATE_RANDOM_EPIC_OBJECT",
+}
+
+
+@dataclass(frozen=True)
+class ActionSpec:
+    """One ``action``: the card wording, and whether it takes a count."""
+    text: str                 # card text after the trigger ("{n}" = the count slot)
+    counted: bool = False     # sends ``amount`` as its int payload
+    options: tuple[str, ...] = ()   # the other fields it reads
+
+
+ACTIONS = {
+    "reset_cooldown": ActionSpec("remove {ability}'s cooldown", options=("ability",)),
+    "upgrade_talents": ActionSpec("upgrade #{n}@ random talent(s)", counted=True),
+    "upgrade_lowest_talent": ActionSpec("upgrade your lowest talent to #Legendary@"),
+    "duplicate_item": ActionSpec("duplicate a random {rarity}magical object",
+                                 options=("rarity",)),
+    "spawn_consumables": ActionSpec("spawn #{n}@ consumables", counted=True),
+    "relearn_talents": ActionSpec("relearn all your talents"),
+}
+
+#: The event each action sends, with its shipped sender's mode and the last
+#: byte of its owner collector (`_owner`): Spawn_Consumables' is 0, every other
+#: shipped sender of these events has 1.
+_ACTION_EVENTS = {
+    "upgrade_talents": ("UPGRADE_RANDOM_SKILL", 1, 1),
+    "upgrade_lowest_talent": ("UPGRADE_LOWER_SKILL_TO_LEGENDARY", 1, 1),
+    "spawn_consumables": ("SPAWN_CONSUMABLES", 0, 0),
+    "relearn_talents": ("RESET_SKILLS", 1, 1),
+}
+
+
+@dataclass(frozen=True)
+class Action:
+    """``{ action, on?, ability?, rarity?, amount? }``: the item does something
+    once on pickup, or each time ``on`` fires while it is held."""
+    action: str
+    on: str | None = None
+    ability: str | None = None      # reset_cooldown: dash/power/special/defense/all
+    rarity: str | None = None       # duplicate_item: any/common/rare/epic
+    amount: int = 1                 # a counted action's count
+    keep_base_effect: bool = False
+
+    @classmethod
+    def parse(cls, raw: dict) -> Action:
+        name = raw["action"]
+        spec = ACTIONS.get(name) if isinstance(name, str) else None
+        if spec is None:
+            raise ItemEffectError(f"effect action = {name!r}: one of {', '.join(ACTIONS)}")
+        allowed = {"action", "on", "keep_base_effect", *spec.options,
+                   *(("amount",) if spec.counted else ())}
+        unknown = set(raw) - allowed
+        if unknown:
+            raise ItemEffectError(f"effect action {name!r} has no field "
+                                  f"{', '.join(sorted(unknown))} (it takes "
+                                  f"{', '.join(sorted(allowed - {'action'}))})")
+        on = raw.get("on")
+        if on is not None and on not in TRIGGERS:
+            raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
+        ability = rarity = None
+        if name == "reset_cooldown":
+            ability = str(raw.get("ability", "")).lower()
+            if ability not in (*COOLDOWN_EVENTS, "all"):
+                raise ItemEffectError(f"reset_cooldown needs ability = one of "
+                                      f"{', '.join((*COOLDOWN_EVENTS, 'all'))}")
+        if name == "duplicate_item":
+            rarity = str(raw.get("rarity", "any")).lower()
+            if rarity not in DUPLICATE_EVENTS:
+                raise ItemEffectError(f"duplicate_item rarity = {rarity!r}: one of "
+                                      f"{', '.join(DUPLICATE_EVENTS)}")
+        amount = raw.get("amount", 1)
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount < 1:
+            raise ItemEffectError(f"effect action {name!r}: amount must be a whole "
+                                  f"number of at least 1, got {amount!r}")
+        keep = raw.get("keep_base_effect", False)
+        if not isinstance(keep, bool):
+            raise ItemEffectError("effect keep_base_effect must be true or false")
+        return cls(name, on, ability, rarity, amount, keep)
+
+    def events(self) -> list[tuple[str, int, int, str]]:
+        """``(event, sender mode, owner byte, part-name tag)`` for each sender."""
+        if self.action == "reset_cooldown":
+            abilities = list(COOLDOWN_EVENTS) if self.ability == "all" else [self.ability]
+            return [(*COOLDOWN_EVENTS[a], 1, a.title()) for a in abilities]
+        if self.action == "duplicate_item":
+            return [(DUPLICATE_EVENTS[self.rarity], 1, 1, "")]
+        return [(*_ACTION_EVENTS[self.action], "")]
+
+    def card_text(self, n: int) -> str:
+        """Its card wording (no trigger), the count at slot ``{n}``."""
+        if self.ability == "all":
+            return "remove the cooldowns of #POWER@, #SPECIAL@, #DEFENSE@ and #DASH@"
+        ability = f"#{(self.ability or '').upper()}@"
+        rarity = "" if self.rarity in (None, "any") else f"#{self.rarity.title()}@ "
+        return ACTIONS[self.action].text.format(ability=ability, rarity=rarity,
+                                                n=f"{{{n}}}")
+
+
+def add_action(w: P.PartWriter, action: Action, sfx: str, read=None,
+               slots: list | None = None, state: str | None = None) -> None:
+    """The sender(s) ``action`` needs, fired once when the item is picked up (or
+    ``state`` activates), or by ``action.on``'s listener while the equipped state
+    (or ``state``) is on."""
+    payload, val_name = P.Num(P.F32, bytes(4)), None
+    if ACTIONS[action.action].counted:
+        val_name = f"{action.action.replace('_', ' ').title()} Count{sfx}"
+        payload = P.Num(P.INT, bytes(4), source=_value(w, val_name, int(action.amount)),
+                        key=EntityFile.INT_ACCESSOR[_VALUE])
+    for event, mode, owner, tag in action.events():
+        tsfx = f" {tag}{sfx}" if tag else sfx
+        name = f"{event} Event Sender{tsfx}"
+        sender = w.add(_SENDER, name, {
+            "mode": mode, "event": event, "broadcast": 0,
+            "targets": w.ids("oCEntityCollectorSelectorSettings", [_owner(w, owner)]),
+            "flag_1c0": 0, "flag_1c1": 0, "flag_120": 1 if val_name else 0,
+            "payload": payload, "flag_1c2": 1}, flags=0x101)
+        if action.on is not None:
+            listener = add_listener(w, action.on, tsfx, sender, read=read)
+            w.ef.add_ref(state if state is not None else _equipped_state(w.ef),
+                         "while_active", listener)
+        else:
+            w.ef.add_ref(state if state is not None else _pickup_state(w.ef),
+                         "activates", name)
+    if slots is not None and val_name is not None:
+        slots.append((val_name, False))
+
+
 def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None) -> bytes:
     """``ent`` (an item entity, already renamed to ``item_id``) doing every one
     of ``effects``. The card's ``{0}``, ``{1}``... are each effect's numbers in
@@ -389,7 +557,9 @@ def apply_effects(ent: bytes, item_id: str, effects: list[Effect], *, read=None)
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"effect:{item_id}:{i}")
             sfx = _suffix(i)
-            if effect.stat == IM.STARS_OF_FATE:
+            if isinstance(effect, Action):
+                add_action(w, effect, sfx, read, slots)
+            elif effect.stat == IM.STARS_OF_FATE:
                 add_stars_of_fate(w, effect, sfx, read, slots)
             elif effect.timed:
                 _add_timed(w, effect, sfx, equipped, read, slots, scale=True)
@@ -448,7 +618,9 @@ def apply_super_effects(ent: bytes, item_id: str, effects: list[Effect], *,
         for i, effect in enumerate(effects):
             w = P.PartWriter(ef, f"super:{item_id}:{i}")
             sfx = SUPER_SUFFIX if i == 0 else f"{SUPER_SUFFIX} {i + 1}"
-            if effect.stat == IM.STARS_OF_FATE:
+            if isinstance(effect, Action):
+                add_action(w, effect, sfx, read, slots, state=state)
+            elif effect.stat == IM.STARS_OF_FATE:
                 add_stars_of_fate(w, effect, sfx, read, slots, state=state)
             elif effect.timed:
                 _add_timed(w, effect, sfx, state, read, slots)
@@ -871,6 +1043,14 @@ def describe(effects: list[Effect], *, one_line: bool = False) -> str:
     and the card printed a bulleted one as "???" (playtest 2026-10-24)."""
     lines, n = [], 0
     for e in effects:
+        if isinstance(e, Action):
+            what = e.card_text(n)
+            if e.on:
+                lines.append(f"{TRIGGERS[e.on].text}, {what}")
+            else:
+                lines.append(f"When picked up, {what}")
+            n += 1 if ACTIONS[e.action].counted else 0
+            continue
         # Attack power entered in points (10) still reads as a percent.
         pct = e.percent or _is_attack_power(e.stat)
         # A negative amount prints its own "-" (shipped curses: "-25%").
@@ -894,6 +1074,26 @@ def describe(effects: list[Effect], *, one_line: bool = False) -> str:
         return ", ".join(line if not i else line[0].lower() + line[1:]
                          for i, line in enumerate(lines))
     return "\n".join("• " + line for line in lines)
+
+
+#: Editor labels for the actions, in menu order.
+_ACTION_LABELS = {
+    "reset_cooldown": "Reset an ability's cooldown",
+    "upgrade_talents": "Upgrade random talents",
+    "upgrade_lowest_talent": "Upgrade the lowest talent to Legendary",
+    "duplicate_item": "Duplicate a random magical object",
+    "spawn_consumables": "Spawn consumables",
+    "relearn_talents": "Relearn all talents",
+}
+
+
+def action_menu() -> dict[str, dict]:
+    """``{action: {label, counted, options: {field: [choices]}}}`` for the
+    editor's action rows; the first choice of each option is its default."""
+    choices = {"ability": [*COOLDOWN_EVENTS, "all"], "rarity": list(DUPLICATE_EVENTS)}
+    return {name: {"label": _ACTION_LABELS[name], "counted": spec.counted,
+                   "options": {o: choices[o] for o in spec.options}}
+            for name, spec in ACTIONS.items()}
 
 
 def trigger_texts() -> dict[str, str]:

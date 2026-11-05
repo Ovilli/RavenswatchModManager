@@ -490,8 +490,12 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
                                     built in order; with no ``base`` the item
                                     is built from these alone and its card
                                     text is written from them when no
-                                    ``description`` is given.
-        ``effect`` (table)          ``{ stat, amount, seconds, on }``: on a
+                                    ``description`` is given. A table with
+                                    ``action`` (``item_effect.ACTIONS``:
+                                    reset_cooldown, upgrade_talents, ...)
+                                    makes the item DO that, once on pickup
+                                    or each time its ``on`` fires.
+        ``effect`` (table)        ``{ stat, amount, seconds, on }``: on a
                                     trigger (``item_effect.TRIGGERS``), gain
                                     ``amount`` of ``stat`` for ``seconds``
                                     (each trigger restarts it). Card ``{0}`` =

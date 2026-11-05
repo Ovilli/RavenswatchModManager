@@ -1220,6 +1220,7 @@ function effectsForm(E, blank, key = "effects") {
   };
   const changed = () => { saveDraft(); renderView(); refresh(); };
   list.forEach((x, i) => {
+    if (x.action !== undefined) { box.append(actionRow(x, i, list, changed)); return; }
     const timed = x.seconds !== undefined;
     const set = (k, val) => { if (val === undefined || val === "") delete x[k]; else x[k] = val; refresh(); };
     const when = el("select", {},
@@ -1297,7 +1298,8 @@ function effectsForm(E, blank, key = "effects") {
   const add = (row, text) => el("button", { type: "button", onclick: () => { list.push(row()); changed(); } }, text);
   box.append(el("div", { class: "addfx" },
     add(() => ({ stat: "Crit chance", amount: 0.1 }), "+ Always-on bonus"),
-    add(() => ({ stat: "Attack power", amount: 0.2, seconds: 5, on: "dash" }), "+ Bonus after a trigger")));
+    add(() => ({ stat: "Attack power", amount: 0.2, seconds: 5, on: "dash" }), "+ Bonus after a trigger"),
+    add(() => ({ action: "reset_cooldown", ability: "dash", on: "defense" }), "+ Action")));
   if (sup) return box;
   if (!blank && E.effects.length) {
     const keep = E.effects.some(x => x.keep_base_effect);
@@ -1306,6 +1308,49 @@ function effectsForm(E, blank, key = "effects") {
   }
   box.append(el("div", { id: "autohint", class: "hint", style: "margin:6px 0" }));
   return box;
+}
+// The effect actions the server knows (api/stats: item_effect.action_menu).
+S.actions = {};
+// One `effects` row with `action`: something the item DOES, once on pickup or
+// each time a trigger fires (item_effect.Action). Switching the action drops
+// the fields the new one does not take, so the row never carries a stray key
+// the item kind refuses.
+function actionRow(x, i, list, changed) {
+  const menu = S.actions[x.action] || { label: x.action, counted: false, options: {} };
+  const pick = el("select", {}, ...Object.entries(S.actions).map(([k, a]) => el("option", { value: k, text: a.label })));
+  if (!S.actions[x.action]) pick.append(el("option", { value: x.action, text: x.action }));
+  pick.value = x.action;
+  pick.onchange = () => {
+    const next = S.actions[pick.value];
+    for (const k of Object.keys(x)) if (!["action", "on", "keep_base_effect"].includes(k)) delete x[k];
+    x.action = pick.value;
+    for (const [opt, choices] of Object.entries(next.options)) x[opt] = choices[0];
+    if (next.counted) x.amount = 1;
+    changed();
+  };
+  const when = el("select", {}, el("option", { value: "", text: "Once, on pickup" }),
+    ...Object.entries(S.triggers).map(([k, t]) => el("option", { value: k, text: t + " (each time)" })));
+  when.value = x.on || "";
+  when.onchange = () => { if (when.value) x.on = when.value; else delete x.on; changed(); };
+  const f = el("div", { class: "form" });
+  f.append(el("label", { text: "When" }), when, el("label", { text: "Does" }), pick);
+  for (const [opt, choices] of Object.entries(menu.options)) {
+    const sel = el("select", {}, ...choices.map(c => el("option", { value: c, text: c })));
+    sel.value = x[opt] || choices[0];
+    sel.onchange = () => { x[opt] = sel.value; changed(); };
+    f.append(el("label", { text: opt === "ability" ? "Ability" : "Rarity" }), sel);
+  }
+  if (menu.counted) {
+    const inp = el("input", { type: "number", step: "1", min: "1", value: x.amount ?? 1 });
+    inp.oninput = () => { const n = parseInt(inp.value, 10); if (n >= 1) { x.amount = n; saveDraft(); refresh(); } };
+    f.append(el("label", { text: "How many" }), el("div", {}, inp,
+      el("div", { class: "hint", text: "A whole number. The card shows it as one of its numbers." })));
+  }
+  if (x.on === "damage_taken" && x.action !== "reset_cooldown") f.append(el("div"), el("div", { class: "hint bad",
+    text: "This runs on every hit you take. Nothing limits how often it fires." }));
+  return el("div", { class: "effect" },
+    el("div", { class: "effhead" }, el("b", { text: `Effect ${i + 1}: action` }),
+      removeBtn(() => { list.splice(i, 1); changed(); })), f);
 }
 // The card text written from the effects arrives with the preview, after the
 // form is drawn: fill the description's placeholder and the hint in place, so
@@ -3700,6 +3745,7 @@ async function saveAll(error) {
     const [it, ic, st, he, mo] = await Promise.all([get("api/items"), get("api/icons"), get("api/stats"), get("api/heroes"), get("api/mods")]);
     S.items = it.items; S.icons = ic.icons; S.stats = st.stats; S.heroes = he.heroes; S.mods = mo.mods;
     S.triggers = st.triggers || S.triggers;
+    S.actions = st.actions || S.actions;
     S.modTags = mo.tags || [];
     get("api/heroes/portraits").then(j => { S.portraits = j.portraits || {}; if (S.tab === "talents") renderList(); }).catch(() => {});
   } catch (e) { status("Could not read the game data: " + e.message, "st-bad"); }

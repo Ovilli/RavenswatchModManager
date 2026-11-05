@@ -322,3 +322,109 @@ def test_super_effects_replace_the_bases_own():
     assert _super_state_refs(ent, "Ace_Two") == ["Crit Chance Modifier Super Effect"]
     assert {m.name for m in IM.list_modifiers(ent) if m.super_effect} >= {
         "Crit Chance Modifier Super Effect"}
+
+
+# --- actions: an item that DOES something sends the game's own event ----------
+
+#: (action table, event, the shipped item that sends that event)
+_ACTION_SHIPPED = [
+    ({"action": "reset_cooldown", "ability": "dash", "on": "power"}, "CLEAR_DASH_CD",
+     "Legendary/Clear_Dash_Cooldown_On_Defense"),
+    ({"action": "reset_cooldown", "ability": "power", "on": "ultimate"}, "CLEAR_PRIMARY_CD",
+     "Epic/Reduce_Ultimate_CD"),
+    ({"action": "reset_cooldown", "ability": "defense", "on": "ultimate"},
+     "CLEAR_DEFENSIVE_CD", "Epic/Reduce_Ultimate_CD"),
+    ({"action": "spawn_consumables", "amount": 3}, "SPAWN_CONSUMABLES",
+     "Common/Spawn_Consumables"),
+    ({"action": "upgrade_talents", "amount": 2}, "UPGRADE_RANDOM_SKILL",
+     "Legendary/Upgrade_All_Talents_Once"),
+    ({"action": "upgrade_lowest_talent"}, "UPGRADE_LOWER_SKILL_TO_LEGENDARY",
+     "Powerups/Power_Up_Sandman_Major_Upgrade_Talent_To_Legendary"),
+    ({"action": "duplicate_item", "rarity": "rare"}, "DUPLICATE_RANDOM_RARE_OBJECT",
+     "Powerups/Power_Up_Sandman_Medium_Duplicate_Rare_Object"),
+    ({"action": "relearn_talents"}, "RESET_SKILLS",
+     "Powerups/Power_Up_Astral_Relearn_Talents_Model"),
+]
+
+
+def _sender(raw: bytes, event: str) -> tuple[dict, bytes]:
+    """The sender of ``event``: its fields (the payload's source as a flag, the
+    target list left out) and its one target sub-object, normalized."""
+    ef = EntityFile(raw, "x")
+    names = [k.name for k in ef.cf.classes]
+    c = next(c for c in ef.graph().components
+             if c.cls == IE._SENDER and P.decode(c)["event"] == event)
+    v = P.decode(c)
+    targets = v.pop("targets")
+    (tid,) = struct.unpack_from("<I", targets, len(targets) - 8)
+    pl = v.pop("payload")
+    v["payload"] = (pl.type, pl.source is not None or pl.value)
+    target = bytes(ef.objects[tid])
+    return v, names[struct.unpack_from("<I", target)[0]].encode() + _norm(target[4:], names)
+
+
+@pytest.mark.parametrize(("action", "event", "shipped"), _ACTION_SHIPPED,
+                         ids=[e for _a, e, _s in _ACTION_SHIPPED])
+def test_each_action_sends_its_event_as_the_shipped_item_does(action, event, shipped):
+    raw = _shipped_entity(f"{_MO}{shipped}.entity.ot.EntitySettingsResource.gen")
+    built = _blank("Action_Item_X", [action])
+    want, got = _sender(raw, event), _sender(built, event)
+    assert got[1] == want[1]                      # the holder, as the shipped target
+    assert got[0]["payload"][0] == want[0]["payload"][0]
+    if action.get("amount"):                      # a counted event reads a Value
+        assert got[0]["payload"][1] is True
+    assert {k: x for k, x in got[0].items() if k != "payload"} == {
+        k: x for k, x in want[0].items() if k != "payload"}
+
+
+def test_an_action_on_a_trigger_is_fired_by_its_listener_while_held():
+    built = _blank("Action_Item_X", [
+        {"action": "reset_cooldown", "ability": "all", "on": "ultimate"},
+        {"action": "spawn_consumables", "amount": 3, "on": "night_start"}])
+    g = EG.parse(built)
+    by = {c.guid: c for c in g.components}
+    fired = {}
+    for c in g.components:
+        if c.cls == IE._LISTENER:
+            v = P.decode(c)
+            fired[c.name] = [by[v[s].guid].name for s in ("ref_3", "ref_4", "ref_5")
+                             if v[s].guid in by]
+    assert sorted(fired.values()) == sorted(
+        [[f"CLEAR_{e}_CD Event Sender {a} Effect"] for e, a in
+         (("DASH", "Dash"), ("PRIMARY", "Power"), ("SECONDARY", "Special"),
+          ("DEFENSIVE", "Defense"))] + [["SPAWN_CONSUMABLES Event Sender Effect 2"]])
+    ef = EntityFile(built, "Action_Item_X")
+    held = next(c for c in g.components if c.name == IE._equipped_state(ef))
+    assert set(fired) <= {r.path.rsplit("\\", 1)[1] for r in held.refs}
+
+
+def test_an_action_without_a_trigger_runs_on_pickup_and_numbers_the_card():
+    built = _blank("Action_Item_X", [{"action": "upgrade_talents", "amount": 2},
+                                     {"stat": "Crit chance", "amount": 0.1}])
+    ef = EntityFile(built, "Action_Item_X")
+    g = EG.parse(built)
+    pickup = next(c for c in g.components if c.name == IE._pickup_state(ef))
+    assert "UPGRADE_RANDOM_SKILL Event Sender Effect" in {
+        r.path.rsplit("\\", 1)[1] for r in pickup.refs}
+    card = next(c for c in g.components if c.name == IE._DESCRIPTION)
+    assert [r.path.rsplit("\\", 1)[1] for r in card.refs][:1] == [
+        "Upgrade Talents Count Effect"]
+    assert IE.describe(IE.parse_effects([{"action": "upgrade_talents", "amount": 2}])) \
+        == "• When picked up, upgrade #{0}@ random talent(s)"
+
+
+@pytest.mark.parametrize("bad", [
+    {"action": "explode"},
+    {"action": "reset_cooldown"},
+    {"action": "reset_cooldown", "ability": "ultimate"},
+    {"action": "duplicate_item", "rarity": "legendary"},
+    {"action": "upgrade_talents", "amount": 0},
+    {"action": "upgrade_talents", "amount": 1.5},
+    {"action": "relearn_talents", "amount": 2},
+    {"action": "spawn_consumables", "seconds": 3},
+    {"action": "spawn_consumables", "on": "kill"},
+    {"action": "spawn_consumables", "stat": "Crit chance"},
+])
+def test_a_bad_action_is_refused(bad):
+    with pytest.raises(IE.ItemEffectError):
+        IE.parse_effects([bad])

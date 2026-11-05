@@ -1181,6 +1181,50 @@ effects = [
   the magical-object model every item inherits. With no `name` it is named
   after its id; it has no super effect unless `super_effects` gives it one.
 
+### Actions (`action`)
+
+An entry with `action` instead of `stat` makes the item **do** something
+rather than give a bonus: once when it is picked up, or every time `on` fires
+while it is held. It goes in `effects` and `super_effects` next to the stat
+entries:
+
+```toml
+[[content]]
+kind    = "item"
+id      = "Hourglass_Shard"
+rarity  = "Epic"
+effects = [
+  { action = "reset_cooldown", ability = "dash", on = "defense" },
+  { action = "upgrade_talents", amount = 1 },              # once, on pickup
+  { action = "spawn_consumables", amount = 2, on = "night_start" },
+]
+```
+
+| `action` | Extra fields | What it does |
+| --- | --- | --- |
+| `reset_cooldown` | `ability` = `dash`, `power`, `special`, `defense` or `all` | that ability is ready again |
+| `upgrade_talents` | `amount` (default 1) | upgrades that many random talents |
+| `upgrade_lowest_talent` | | your lowest talent becomes Legendary |
+| `duplicate_item` | `rarity` = `any` (default), `common`, `rare` or `epic` | a copy of a random magical object you hold |
+| `spawn_consumables` | `amount` (default 1) | drops that many consumables |
+| `relearn_talents` | | resets your talents to pick again |
+
+- `on` takes the same triggers as a timed bonus. With no `on` the action runs
+  once, when the item is picked up.
+- Each action sends the event the shipped item that does it sends (Clear Dash
+  Cooldown on Defense, Reduce Ultimate CD, Spawn Consumables, Upgrade All
+  Talents Once and the Sandman power-ups), written the same way. The game's own
+  code does the work, so rsmm adds nothing to the hero.
+- A counted action's `amount` is a card number (`{0}`, `{1}`... in order, as
+  for bonuses), and the card text is written from the actions when there is no
+  `description`.
+- Nothing limits how often an action fires: `duplicate_item` on
+  `damage_taken` duplicates an item on every hit.
+- **Not yet playtested.** The events are proven (shipped items and the loader's
+  `R.ability` / `R.talent` / `R.give` send them), but no item built this way has
+  been seen in game yet. There is no `ultimate` cooldown reset: no shipped item
+  sends that event from its data.
+
 ### Conditions (`during`)
 
 `during` holds an effect on only while a condition is true, on always-on and

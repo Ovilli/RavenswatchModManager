@@ -290,6 +290,12 @@ def _triggers() -> dict[str, str]:
     return trigger_texts()
 
 
+def _actions() -> dict[str, dict]:
+    """The effect ``action``s, for the editor's action rows."""
+    from rsmm.engine.item_effect import action_menu
+    return action_menu()
+
+
 def _hex(key: int) -> str:
     return f"0x{key:08x}"
 
@@ -1894,7 +1900,8 @@ ROUTES = {
     ("GET", "/api/item"): lambda req: item_detail(req.arg("id")),
     ("POST", "/api/item/preview"): lambda req: item_preview(req.body),
     ("GET", "/api/icons"): lambda req: {"icons": icon_stems()},
-    ("GET", "/api/stats"): lambda req: {"stats": stats(), "triggers": _triggers()},
+    ("GET", "/api/stats"): lambda req: {"stats": stats(), "triggers": _triggers(),
+                                        "actions": _actions()},
     ("GET", "/api/cardtex"): _card_texture,
     ("GET", "/api/cardfont"): _card_font,
     ("GET", "/api/icon"): _icon,
