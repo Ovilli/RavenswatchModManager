@@ -1,6 +1,18 @@
 {
-  "generated": "2026-11-01",
+  "generated": "2026-11-05",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-05",
+      "summary": "Item actions: items can reset cooldowns, upgrade talents, duplicate items and spawn consumables; editor support; two content-emit fixes",
+      "highlights": [
+        "Items can now DO things: an effects entry with `action` resets a cooldown, upgrades talents, duplicates an item or spawns consumables, once on pickup or on a trigger",
+        "The item editor has a \"+ Action\" row for them",
+        "A typo in a talent or item patch list no longer stops the whole apply for every mod",
+        "Packed talent mods no longer fail to emit on the installing player's machine"
+      ],
+      "cli_version": 25
+    },
     {
       "version": "",
       "date": "2026-11-01",
@@ -514,15 +526,6 @@
       "summary": "Lua SDK: R.status.watch_stagger()/stagger() read the hero's stagger values; R.melody.choose documented as not working (melodies are random); R.revive, R.status.clear and R.run.lose marked proven",
       "highlights": [
         "Lua SDK: R.status.watch_stagger()/stagger() read the hero's stagger values; R.melody.choose documented as not working (melodies are random); R.revive, R.status.clear and R.run.lose marked proven"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 37,
-      "date": "2026-10-10",
-      "summary": "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run",
-      "highlights": [
-        "Lua SDK: R.revive.tokens/add_token (experimental) — add party revive tokens during a run"
       ]
     }
   ]
