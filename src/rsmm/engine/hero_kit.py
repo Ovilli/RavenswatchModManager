@@ -251,12 +251,17 @@ RICOCHET_DAMAGE = "Skill Defense Ricochet Damage Multiplier"
 #: Juliet's, every link of which is re-pointed, so nothing stays hers.
 INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 
+#: A summon's attack, untuned: (area, speed, debuffs, cooldown, reach, range);
+#: see _tune_attack.
+_NO_TUNING = (None, None, True, None, None, None)
+
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
                       *PROJ_VALUES, *PROJ_STATUS},
              "wait": {"wait"}, "repeat": {"repeat", "every", "steps"},
              "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
              "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear", "attack",
-                        "attack_area", "attack_speed", "attack_debuffs"}}
+                        "attack_area", "attack_speed", "attack_debuffs", "attack_cooldown",
+                        "attack_reach", "attack_range"}}
 
 #: A hit area is a shipped hero AOE spawned at that moment, its numbers set per
 #: spawn by spawner values (how Kintaro's bear spawns this very entity: Damage
@@ -853,7 +858,9 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         raise KitError('kit pets = { entity = "<enemy>", count = 1, button = "trait" }')
     unknown = set(spec) - {"entity", "count", "button", "talent", "when", "counter", "appear",
                            "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
-                           "hold", "attack_area", "attack_speed", "attack_debuffs"}
+                           "hold", "attack_area", "attack_speed", "attack_debuffs",
+                           "attack_cooldown", "attack_reach", "attack_range", "count_talents",
+                           "count_card"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -894,6 +901,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         {"clone": list(_WUKONG_SPAWN), "from": "SunWukong", "rename": dict(_WUKONG_SPAWN)},
         {"set": "Kit Pet Spawner.template[1]", "value": pet},
         {"set": "Kit Pet Count.value", "value": count}]
+    steps += _pet_count_talents(spec, g)
     talent = spec.get("talent")
     states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
     if talent is not None and talent not in states:
@@ -1077,6 +1085,63 @@ def _recall(g: EG.EntityGraph) -> tuple[str, list[dict]]:
     return combat, steps
 
 
+#: A count a talent raises, the game's way: Geppetto's "Max Controllable
+#: Dummies" selector (4 while his Extra Charge talent is held, else 3) and
+#: Piper's "More Controllable Pets" count (her talent's amount + the default;
+#: operation 0 = add).
+_TALENT_COUNT = ("Geppetto", "Trait Ability Max Controllable Dummies Selector")
+_COUNT_ADD = ("Piper", "Skill Trait More Controllable Pets Count Operation")
+
+
+def _pet_count_talents(spec: dict, g: EG.EntityGraph) -> list[dict]:
+    """``count_talents = { "<talent state>" = n }``: while a talent's state is
+    held, each press calls ``n`` more pets (they stack). ``count_card =
+    "<String Format>"``: that card's ``{0}`` shows the count as it stands.
+
+    "Kit Pet Count Total" is what the spread and the HUD read: the base count
+    alone, or a chain of adds, one per talent, of a selector giving ``n``
+    while its talent is held and 0 otherwise."""
+    talents = spec.get("count_talents") or {}
+    if not isinstance(talents, dict):
+        raise KitError('kit pets count_talents = { "<talent state>" = <pets it adds> }')
+    states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
+    steps: list[dict] = []
+    total = "Kit Pet Count"
+    sel_src, sel = _TALENT_COUNT
+    add_src, add = _COUNT_ADD
+    for k, (state, n) in enumerate(talents.items(), 1):
+        if state not in states:
+            raise KitError(f"kit pets count_talents: the hero has no state {state!r}")
+        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 4:
+            raise KitError(f"kit pets count_talents: {state!r} adds 1..4 pets, got {n!r}")
+        s_k, o_k = f"Kit Pet Talent Count {k}", f"Kit Pet Count Add {k}"
+        steps += [{"clone": [sel], "from": sel_src, "rename": {sel: s_k}},
+                  {"link": f"{s_k}.entries[0][0]", "to": state},
+                  {"set": f"{s_k}.entries[0][1]", "value": n},
+                  {"set": f"{s_k}.entries[1][1]", "value": 0},
+                  {"clone": [add], "from": add_src, "rename": {add: o_k}},
+                  {"link": f"{o_k}.a", "to": s_k},
+                  {"link": f"{o_k}.b", "to": total}]
+        total = o_k
+    # One name for whatever the count is now (a talent-less total is the base).
+    steps += [{"clone": ["Kit Pet Count"], "rename": {"Kit Pet Count": "Kit Pet Zero Count"}},
+              {"set": "Kit Pet Zero Count.value", "value": 0},
+              {"clone": [add], "from": add_src, "rename": {add: "Kit Pet Count Total"}},
+              {"link": "Kit Pet Count Total.a", "to": total},
+              {"link": "Kit Pet Count Total.b", "to": "Kit Pet Zero Count"},
+              {"link": "Kit Pet Spread Pos.value_2", "to": "Kit Pet Count Total"}]
+    card = spec.get("count_card")
+    if card is not None:
+        part, _, slot = str(card).partition("[")
+        n = int(slot.rstrip("]")) if slot else 0
+        fmt = next((c for c in g.components if c.name == part), None)
+        if fmt is None or fmt.cls != "oCEntityCpntStringFormatValueSettings":
+            raise KitError(f"kit pets count_card: {part!r} is not one of the hero's String "
+                           "Formats (a card's text and its {N} numbers)")
+        steps.append({"link": f"{part}.obj_4[{n}]", "to": "Kit Pet Count Total"})
+    return steps
+
+
 def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
     steps: list[dict] = []
     # The counter over the trait icon, Piper's "alive / max": her HUD panel,
@@ -1084,7 +1149,7 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
     # (an inline filter, no link into her own parts), the max one the count.
     steps += [{"clone": list(_PIPER_HUD), "from": "Piper", "rename": dict(_PIPER_HUD)},
               {"link": "Kit Pet HUD Alive Label.value_23", "to": "Kit Pet Alive Count"},
-              {"link": "Kit Pet HUD Max Label.value_23", "to": "Kit Pet Count"},
+              {"link": "Kit Pet HUD Max Label.value_23", "to": "Kit Pet Count Total"},
               {"add_link": f"{start}.activates", "to": "Kit Pet Alive Listener"}]
     # The listener counts when it is switched on, and the pets come a few
     # frames after the spawn starts: Piper switches hers off and on again
@@ -1110,7 +1175,7 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
 
 def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
                 lifetime=None, burst=None, on_hit: bool = False, appear=None,
-                attack=None, tuning: tuple = (None, None, True)) -> str:
+                attack=None, tuning: tuple = _NO_TUNING) -> str:
     """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
     hero's folder (its model layer and the variant, see ally_summon.build).
     One copy per enemy and end, however many blocks summon it.
@@ -1132,8 +1197,8 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
     src = _entity_ref(enemy)
     if on_hit and not burst:
         raise KitError(f"kit {slot}: burst_on_hit needs a burst to spawn")
-    if tuning != (None, None, True) and not attack:
-        raise KitError(f"kit {slot}: attack_area/attack_speed/attack_debuffs tune the attack "
+    if tuning != _NO_TUNING and not attack:
+        raise KitError(f"kit {slot}: attack_area/reach/speed/debuffs/cooldown tune the attack "
                        "named by `attack`; name one")
     end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear, attack, tuning)
     for c in ctx.copies:
@@ -1156,6 +1221,8 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
     if attack:
         out = _attack(out, model_ref, variant_ref, str(attack), slot)
         out = _tune_attack(out, model_ref, str(attack), tuning, slot)
+        if tuning[5] is not None:
+            out = _attack_range(out, model_ref, variant_ref, tuning[5], slot)
     from . import entity_components as EC
     model_src = next(p for p in EC.parents(AS._read(src)) if p != AS.ENEMY_MODEL)
     reads = {"Kit Owner Seed Position": "Kit Pet Centre"} if base == AS.PET_MODEL else {}
@@ -1246,9 +1313,11 @@ def _attack(out: dict[str, bytes], model_ref: str, variant_ref: str, attack: str
 
 
 def _attack_tuning_of(block: dict, slot: str) -> tuple:
-    """``(area, speed, debuffs)`` of a summon block: ``attack_area`` (x the
-    attack's hit radius), ``attack_speed`` (x its clips' play speed),
-    ``attack_debuffs = false`` (its hit applies none of its statuses)."""
+    """``(area, speed, debuffs, cooldown, reach)`` of a summon block:
+    ``attack_area`` (x the width of its hit cone), ``attack_reach`` (x the
+    radius its hit shape reads), ``attack_speed`` (x its clips' play speed),
+    ``attack_debuffs = false`` (its hit applies none of its statuses),
+    ``attack_cooldown`` (seconds before it tries that attack again)."""
     out = []
     for key, hi in (("attack_area", 10.0), ("attack_speed", 5.0)):
         v = block.get(key)
@@ -1259,7 +1328,36 @@ def _attack_tuning_of(block: dict, slot: str) -> tuple:
     d = block.get("attack_debuffs", True)
     if not isinstance(d, bool):
         raise KitError(f"kit {slot}: attack_debuffs is true or false, got {d!r}")
-    return (*out, d)
+    cd = block.get("attack_cooldown")
+    if cd is not None and (isinstance(cd, bool) or not isinstance(cd, (int, float))
+                           or not 0 < cd <= 60):
+        raise KitError(f"kit {slot}: attack_cooldown is seconds above 0, up to 60; got {cd!r}")
+    reach = block.get("attack_reach")
+    if reach is not None and (isinstance(reach, bool) or not isinstance(reach, (int, float))
+                              or not 0 < reach <= 10):
+        raise KitError(f"kit {slot}: attack_reach is a multiplier above 0, up to 10; got {reach!r}")
+    rng = block.get("attack_range")
+    if rng is not None and (isinstance(rng, bool) or not isinstance(rng, (int, float))
+                            or not 0.5 <= rng <= 20):
+        raise KitError(f"kit {slot}: attack_range is metres, 0.5 to 20; got {rng!r}")
+    return (*out, d, None if cd is None else float(cd), None if reach is None else float(reach),
+            None if rng is None else float(rng))
+
+
+def _cone_angle(p: bytearray, names: list[str]) -> int:
+    """Offset of the f32 cone angle (full width, radians) in an in-cone
+    traverser's payload: its LAST number slot, a literal (the wolf's Bite:
+    0.5236, pi/6; shipped literals run 0.44 .. 2 pi). Fails
+    closed (-1) on anything else."""
+    from .entity_graph_edit import _B
+    vp = _B + struct.pack("<I", names.index("oCEntityCpntValuePicker"))
+    un = _B + struct.pack("<I", names.index("oCEntityValueUnion"))
+    a = p.rfind(vp)
+    u = p.find(un, a) if a >= 0 else -1
+    if a < 0 or u < 0 or p[a + 8] != 0 or struct.unpack_from("<I", p, u + 8)[0] != 0:
+        return -1
+    v = struct.unpack_from("<f", p, u + 16)[0]
+    return u + 16 if 0 < v <= 2 * math.pi else -1
 
 
 def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tuple,
@@ -1267,20 +1365,31 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
     """Enemy attacks are timed against heroes standing still; on our side the
     target moves (Pam, 2026-11-05). On the copy's "Attack <attack>" group:
 
-    * area: every Value named "...Radius" that the attack's HIT traverser
-      shape reads (Gpn Target Attack -> its computer -> its traverser), so the
-      distance the enemy decides to attack from (NPC_Common's Fighting Seek
-      Attack Distances) stays as it was. A wolf's Bite: the cone read
-      "Attack Bite Attack Traverser Radius" (4.6).
+    * area: the attack's HIT shape (Gpn Target Attack -> its computer -> its
+      traverser) covers ``area`` x the ground. A cone grows its ANGLE (its full
+      width in radians, the Bite's pi/6 = 30 deg; shipped cones run up to 2 pi),
+      capped at 2 pi. Any other shape grows its "...Radius" values by
+      sqrt(area).
+    * reach: those "...Radius" values times ``reach`` (a cone's too). The
+      Bite's cone starts 2.5 m BEHIND the wolf, so its 4.6 m ends ~2 m ahead:
+      enough for a hero it lunged at, short of a big enemy. x2 made it land
+      (Pam's playtest); x4 reached behind the target; only widening the cone
+      (reach x1) landed nothing at all.
+    Neither moves the distance the enemy decides to attack from (NPC_Common's
+    Fighting Seek Attack Distances).
     * speed: each animatic's play speed (value_9, the field a hero's
       Basic Attack Speed drives; its timeline's events scale with it).
     * debuffs off: each of the attack's damage debuffs gets its "is it on"
       slot (its first number) as a literal false. Removing the entry instead
-      would orphan its sub-object; the list keeps its shape."""
-    area, speed, debuffs = tuning
-    if (area, speed, debuffs) == (None, None, True):
+      would orphan its sub-object; the list keeps its shape.
+    * cooldown: "Attack <attack> Cooldown" lasts that long (every entry of the
+      selector it reads), and the wait between ANY two attacks is no longer.
+      A bite at something that cannot be hit yet (a treant rising from the
+      ground) lands nothing; it tries again soon instead (Pam)."""
+    area, speed, debuffs, cooldown, reach, _range = tuning
+    if tuning == _NO_TUNING:
         return out
-    from .entity_graph_edit import _B, EntityFile
+    from .entity_graph_edit import EntityEditError, EntityFile
     m_stem = model_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
     ef = EntityFile(out[model_ref], m_stem)
     group = f"Attack {attack}"
@@ -1294,25 +1403,57 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         t = (f.text if f else "").split(" <- ")[-1].strip() if f and "<-" in f.text else ""
         return t.rsplit("\\", 1)[-1].strip() if t else None
 
-    if area is not None:
-        radii: set[str] = set()
+    if area is not None or reach is not None:
+        # Radius name -> factor: a cone's grows by reach only (its angle takes
+        # the area); any other shape's by reach x sqrt(area).
+        grow: dict[str, float] = {}
+        cones = 0
         for ta in (c for c in comps if c.cls == "oCEntityCpntGpnTargetAttackSettings"):
             comp = by.get(ref_name(ta, "ref_2") or "")
             trav = by.get(ref_name(comp, "ref_3") or "") if comp else None
             if trav is None:
                 continue
             for x in ef.subtree({trav.index - 1}):
+                cone = ef._class(x) == "oCEntityGpnInConeTraverserSettings"
+                if cone and area is not None:
+                    at = _cone_angle(ef.objects[x], names)
+                    if at < 0:
+                        raise KitError(f"kit {slot}: attack_area: {attack}'s cone has no "
+                                       "literal angle to widen")
+                    v = struct.unpack_from("<f", ef.objects[x], at)[0]
+                    struct.pack_into("<f", ef.objects[x], at, min(v * area, 2 * math.pi))
+                    cones += 1
+                factor = (reach or 1.0) * (1.0 if cone else math.sqrt(area or 1.0))
                 for m in re.finditer(rb'\[Value\] [^"\x00]*?\\([^\\"\x00]+)""', ef.objects[x]):
                     n = m.group(1).decode().strip()
-                    if "Radius" in n and n in by:
-                        radii.add(n)
-        if not radii:
-            raise KitError(f"kit {slot}: attack_area: {attack}'s hit shape reads no radius value")
-        for n in sorted(radii):
+                    if "Radius" in n and n in by and factor != 1.0:
+                        grow[n] = factor
+        if (not cones and not grow) or (reach not in (None, 1.0) and not grow):
+            raise KitError(f"kit {slot}: attack_area/reach: {attack}'s hit shape has no "
+                           "angle or radius to grow")
+        for n, factor in sorted(grow.items()):
             v = next(f for f in EF.fields(by[n]) if f.name == "value")
             if "<-" in v.text:
-                raise KitError(f"kit {slot}: attack_area: {n} is read from elsewhere")
-            ef.set_value(by[n].name, "value", float(v.text.split()[-1]) * area)
+                raise KitError(f"kit {slot}: attack_area/reach: {n} is read from elsewhere")
+            ef.set_value(by[n].name, "value", float(v.text.split()[-1]) * factor)
+    if cooldown is not None:
+        tm = by.get(f"Attack {attack} Cooldown")
+        if tm is None or tm.cls != "oCEntityCpntTimerSettings":
+            raise KitError(f"kit {slot}: attack_cooldown: {attack} has no cooldown timer")
+        d = next(f for f in EF.fields(tm) if f.name == "duration")
+        sel = by.get(ref_name(tm, "duration") or "") if "<-" in d.text else None
+        if sel is not None and sel.cls == "oCEntityCpntValueSelectorSettings":
+            entries = next(f for f in EF.fields(sel) if f.name == "entries")
+            for i in range(len(entries.items)):
+                ef.set_value(sel.name, f"entries[{i}][1]", cooldown)
+        elif "<-" in d.text:
+            raise KitError(f"kit {slot}: attack_cooldown: its timer reads {d.text!r}")
+        ef.set_value(tm.name, "duration", cooldown)
+        for c in ef.graph().components:
+            if c.cls == "oCEntityCpntTimerSettings" and c.group == "Bhv Fighting" \
+                    and c.name.endswith("All Attack Cooldown"):
+                now = float(next(f for f in EF.fields(c) if f.name == "duration").text.split()[1])
+                ef.set_value(c.name, "duration", min(now, cooldown))
     if speed is not None:
         anims = 0
         for c in comps:
@@ -1326,8 +1467,6 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         if not anims:
             raise KitError(f"kit {slot}: attack_speed: {attack} has no clip of its own")
     if not debuffs:
-        vp = _B + struct.pack("<I", names.index("oCEntityCpntValuePicker"))
-        un = _B + struct.pack("<I", names.index("oCEntityValueUnion"))
         n_off = 0
         for c in comps:
             if c.cls != "oCDtEntityCpntDamageSettings":
@@ -1335,28 +1474,43 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
             f = next((x for x in EF.fields(c) if x.name == "bytes_36"), None)
             if f is None:
                 continue
-            cnt = struct.unpack_from("<I", c.body, f.offset)[0]
-            for k in range(cnt):
-                oid = struct.unpack_from("<I", c.body, f.offset + 4 + 4 * k)[0]
-                if ef._class(oid) != "oCDtDamageDebuffSettings":
-                    raise KitError(f"kit {slot}: attack_debuffs: {c.name} debuff {k} is a "
-                                   f"{ef._class(oid)}")
-                p = ef.objects[oid]
-                a = p.find(vp)
-                u = p.find(un, a)
-                if a < 0 or u < 0:
-                    raise KitError(f"kit {slot}: attack_debuffs: {c.name} debuff {k} has no switch")
-                if p[a + 8] != 0:             # read from a part: make it a literal
-                    p[a + 8:u] = b"\x00"
-                    u = a + 9
-                if struct.unpack_from("<I", p, u + 8)[0] != 2:
-                    raise KitError(f"kit {slot}: attack_debuffs: {c.name} debuff {k}'s switch "
-                                   "is not a true/false")
-                p[u + 16] = 0
+            for k in range(struct.unpack_from("<I", c.body, f.offset)[0]):
+                try:
+                    ef.switch_off_subobject(c.name, "bytes_36", k)
+                except EntityEditError as e:
+                    raise KitError(f"kit {slot}: attack_debuffs: {e}") from None
                 n_off += 1
         if not n_off:
             raise KitError(f"kit {slot}: attack_debuffs: {attack} applies no debuff")
     return {**out, model_ref: ef.to_bytes()}
+
+
+def _attack_range(out: dict[str, bytes], model_ref: str, variant_ref: str, rng: float,
+                  slot: str) -> dict[str, bytes]:
+    """How close the summon gets before it attacks: NPC_Common's "Fighting Seek
+    Max Attack Distance" (it attacks from within it) and "... Best ..." (where it
+    tries to stand), on whichever file of the copy sets them (a dire wolf's
+    variant: 4.5 and 3). An enemy commits from 4.5 m against a hero standing
+    still; a moving enemy left the bite's cone during its wind-up, so the bite
+    looked short (Pam's playtest 2026-11-05). This is not the bite's reach
+    (``attack_reach``): it is where the summon decides to start it."""
+    from .entity_graph_edit import EntityFile
+    names = ("Fighting Seek Max Attack Distance", "Fighting Seek Best Attack Distance")
+    done: set[str] = set()
+    new = dict(out)
+    for ref in (variant_ref, model_ref):
+        stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        ef = EntityFile(new[ref], stem)
+        have = {c.name for c in ef.graph().components}
+        for n in names:
+            if n in have and n not in done:
+                v = rng if "Max" in n else rng * 2 / 3
+                ef.set_value(n, "value", v)
+                done.add(n)
+        new[ref] = ef.to_bytes()
+    if "Fighting Seek Max Attack Distance" not in done:
+        raise KitError(f"kit {slot}: attack_range: the summon sets no attack distance of its own")
+    return new
 
 
 #: The wind-up glow every enemy attack plays (the wolf's Bite, Double Slash and
@@ -1511,8 +1665,11 @@ def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetim
         # Enemies target what stands on the hero layer. The wolf registers on
         # none of its own (Wolves_Model and Ally_Model have no GPN part), so no
         # enemy attacked it and it never died to burst (playtest 2026-11-03).
-        # Sun Wukong's clone registers there with its own "GPN Hero", which
-        # reads only Character_Common parts every character has.
+        # Sun Wukong's clone registers there with its own "GPN Hero". Its
+        # "Targetable" flag is what enemies' target searches require
+        # (NPC_Common's Fighting/Wandering Target Traversers test that flag
+        # by name; no side bit). It reads the clone's own "Is Targetable
+        # Condition", which _target_while_alive re-points after the steps.
         steps.append({"clone": ["GPN Hero"], "from": _LIFE_TIMER[0],
                       "rename": {"GPN Hero": "Kit GPN Hero"}})
         # And switched on as the clone does: while NPC_Common's "Child NPC
@@ -1590,6 +1747,8 @@ def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetim
     except AE.AbilityEditError as e:
         raise KitError(f"kit {slot}: summon end: {e}") from None
     model = res.files[m_stem]
+    if any(c.name == "Kit GPN Hero" for c in EG.parse(model).components):
+        model = _target_while_alive(model, m_stem, slot)
     # The override and its sub-objects (its flag mask tester): every section
     # up to the next part.
     starts = sorted(c.index for c in EG.parse(model).components)
@@ -1597,6 +1756,49 @@ def _summon_end(out: dict[str, bytes], model_ref: str, variant_ref: str, lifetim
     nxt = next((i for i in starts if i > k), None)
     model, _n = AS.flip_side(model, only=set(range(k, nxt if nxt is not None else 1 << 30)))
     return {model_ref: model, variant_ref: res.files[v_stem]}
+
+
+#: What a summon's "Targetable" flag reads: Character_Common's own (inherited
+#: by every character), the condition Geppetto's dummy (an ally enemies DO
+#: attack) registers as its "Is Alive" flag.
+_ALIVE = ("Character_Common\\Character_Common.entity.ot", "Is Alive Condition")
+
+
+def _target_while_alive(model: bytes, m_stem: str, slot: str) -> bytes:
+    """The summon's "Kit GPN Hero" "Targetable" flag reads "Is Alive
+    Condition" instead of Sun Wukong's clone's "Is Targetable Condition".
+
+    Enemies' target searches (NPC_Common's Fighting / Wandering Target
+    Traversers) query the hero layer and require the "Targetable" flag; they
+    test no side bit. The clone's condition is a HERO's: not concealed AND in
+    Behaviour Default / Hit Stunned / Staggered. An NPC never enters Behaviour
+    Default (it lives in Following / Fighting), so the flag was false all its
+    life and no enemy aggroed the wolf or hit it (playtest 2026-11-05). Copied
+    alone, the read also named a part the copy does not have."""
+    from . import entity_check as CK
+    from .entity_graph_edit import _B, _E, EntityFile, _lstr
+    path, part = _ALIVE
+    alive = next(c for c in EG.parse(CK._corpus_reader(path)).components if c.name == part)
+    clone_raw = CK._corpus_reader(_LIFE_TIMER[0].replace("/", "\\") + ".entity.ot")
+    clone = next(c for c in EG.parse(clone_raw).components if c.name == "Is Targetable Condition")
+    ef = EntityFile(model, m_stem)
+    gpn = ef.component("Kit GPN Hero")
+    head = _B + struct.pack("<I", [x.name for x in ef.cf.classes].index("oCEntityCpntPicker"))
+    label = f"[Cpnt Value Tester] Character_Common\\{alive.group}\\{part}"
+    new = head + alive.guid + _lstr(label) + _E
+    moved = 0
+    for x in ef.subtree({gpn.index - 1}):
+        p = ef.objects[x]
+        i = p.find(head + clone.guid)
+        if i < 0:
+            continue
+        end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+        p[i:end] = new
+        moved += 1
+    if moved != 1:
+        raise KitError(f"kit {slot}: summon: its GPN's Targetable flag read {moved} conditions, "
+                       "expected Sun Wukong's clone's one")
+    return ef.to_bytes()
 
 
 def reader(copies: list[Copy]):

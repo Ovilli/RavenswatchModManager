@@ -66,7 +66,7 @@ from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
-        "replace_subobject", "override", "retarget", "retarget_targets")
+        "replace_subobject", "switch_off", "override", "retarget", "retarget_targets")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
@@ -133,6 +133,12 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 _add_subobject(ef, step, read)
             elif op == "replace_subobject":
                 _replace_subobject(ef, step, read)
+            elif op == "switch_off":
+                # A damage debuff entry that never applies, kept in its list.
+                part, fld, i = _list_entry(ef, str(step["switch_off"]), "switch_off")
+                if i is None:
+                    raise AbilityEditError("switch_off names one entry: 'Part.field[i]'")
+                ef.switch_off_subobject(part, fld, i)
             elif op == "override":
                 _override(ef, step, f"{seed}:{n}", read)
             elif op == "retarget":

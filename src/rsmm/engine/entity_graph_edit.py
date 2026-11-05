@@ -824,6 +824,39 @@ class EntityFile:
         self.objects[old] = bytearray(self._copy_subobject(donor, obj, refs, None))
         return old
 
+    def switch_off_subobject(self, owner: str, list_field: str, index: int) -> int:
+        """Turn entry ``index`` of ``owner``'s id list off in place: its first
+        number slot (a damage debuff's "is it on", what ``add_subobject``'s
+        ``switch`` writes) becomes a literal false, whatever it read before.
+        Removing the entry instead would orphan its sub-object. Returns the id."""
+        c = self.component(owner)
+        f = next((x for x in EF.fields(c) if x.name == list_field), None)
+        if f is None:
+            raise EntityEditError(f"{owner!r} has no field {list_field!r}")
+        n = struct.unpack_from("<I", c.body, f.offset)[0]
+        if f.size != 4 + 4 * n:
+            raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
+        if not 0 <= index < n:
+            raise EntityEditError(f"{owner}.{list_field} has entries 0..{n - 1}")
+        oid = struct.unpack_from("<I", c.body, f.offset + 4 + 4 * index)[0]
+        if self._class(oid) != "oCDtDamageDebuffSettings":
+            raise EntityEditError(f"{owner}.{list_field}[{index}] is a {self._class(oid)}, "
+                                  "not a damage debuff")
+        p = self.objects[oid]
+        vp = _B + struct.pack("<I", self._class_index("oCEntityCpntValuePicker"))
+        un = _B + struct.pack("<I", self._class_index("oCEntityValueUnion"))
+        a = p.find(vp)
+        u = p.find(un, a) if a >= 0 else -1
+        if a < 0 or u < 0:
+            raise EntityEditError(f"{owner}.{list_field}[{index}] has no switch")
+        if p[a + 8] != 0:                    # read from a part: make it a literal
+            p[a + 8:u] = b"\x00"
+            u = a + 9
+        if struct.unpack_from("<I", p, u + 8)[0] != 2:
+            raise EntityEditError(f"{owner}.{list_field}[{index}]'s switch is not a true/false")
+        p[u + 16] = 0
+        return oid
+
     def set_override(self, comp: str, guid: bytes, label: str) -> None:
         """Make ``comp`` the override of an ancestor's component (``guid``, its
         ``[Kind] Scope\\Path`` label): a REPLACEMENT of that part, where a plain

@@ -110,7 +110,7 @@ def test_a_kit_pets_block_follows_piper_and_takes_the_trait(tmp_path):
     alive = {f.name: f.text for f in EF.fields(hero.component("Kit Pet HUD Alive Label"))}
     assert alive["value_23"].startswith("int") and alive["value_23"].endswith("Kit Pet Alive Count")
     most = {f.name: f.text for f in EF.fields(hero.component("Kit Pet HUD Max Label"))}
-    assert most["value_23"].endswith("Kit Pet Count")
+    assert most["value_23"].endswith("Kit Pet Count Total")
     assert "Kit Pet Alive Listener" in refs("Kit Pet Spawn", "activates")
     # In a run only: the select screen's preview copy would drop it.
     assert "Kit Pet In Run Tester" in refs("Child Event Initialize", "activates")
@@ -307,13 +307,20 @@ def test_a_bomber_pet_spawns_per_press_and_fights_on_its_own(tmp_path):
                      .read_bytes())
     kit = {c.name for c in model.components}
     assert {"Kit Burst Spawner", "Kit GPN Hero"} <= kit
+    # Its "Targetable" flag (what enemies' target searches require) reads
+    # Character_Common's "Is Alive Condition", not Sun Wukong's clone's hero
+    # condition (Behaviour Default, which an NPC never enters: no enemy ever
+    # aggroed the wolf, playtest 2026-11-05).
+    raw = by["Hero_Packer_Summon1_Model.entity.ot.EntitySettingsResource.gen"].read_bytes()
+    assert b"Hero_SunWukong_Ultimate_1_AI_Clone\\Base\\Is Targetable" not in raw
+    assert b"[Cpnt Value Tester] Character_Common\\Base\\Is Alive Condition" in raw
 
 
 @needs_corpus
 def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
-    """Pam 2026-11-05: the bite's hit radius x2 (not the distance it bites
-    from), its clips 35% faster, no rooted on what it bites; and no summon
-    plays the enemy wind-up glow."""
+    """Pam 2026-11-05: the bite's cone twice as wide and twice as long (not
+    the distance it bites from), its clips 35% faster, no rooted on what it bites,
+    a 0.5 s retry; and no summon plays the enemy wind-up glow."""
     import struct
 
     from rsmm.engine import entity_fields as EF
@@ -322,7 +329,8 @@ def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
     from rsmm.sdk.kinds import heros
     files = heros.emit("m", ContentDef(kind="hero", id="Biter", fields={"base": "Red", "kit": {
         "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "attack": "Bite",
-                 "attack_area": 2.0, "attack_speed": 1.35, "attack_debuffs": False}}}),
+                 "attack_area": 2.0, "attack_speed": 1.35, "attack_debuffs": False,
+                 "attack_cooldown": 0.5, "attack_reach": 2.0, "attack_range": 3.0}}}),
         tmp_path)
     by = {p.name: p for p in files}
     ef = EntityFile(by["Hero_Biter_Summon1_Model.entity.ot.EntitySettingsResource.gen"]
@@ -330,7 +338,25 @@ def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
 
     def val(part, fld="value"):
         return next(f.text for f in EF.fields(ef.component(part)) if f.name == fld)
+    # Reach and width apart: radius x2 (reach), cone angle x2 (area).
     assert val("Attack Bite Attack Traverser Radius").endswith(" 9.2")
+    cone = next(x for x in ef.subtree({ef.component("Attack Bite Traverser").index - 1})
+                if ef._class(x) == "oCEntityGpnInConeTraverserSettings")
+    from rsmm.engine.hero_kit import _cone_angle
+    at = _cone_angle(ef.objects[cone], [x.name for x in ef.cf.classes])
+    assert abs(struct.unpack_from("<f", ef.objects[cone], at)[0] - 2 * 0.5236) < 1e-3
+    assert val("Attack Bite Cooldown", "duration").startswith("f32 0.5")
+    assert "f32 0.5" in val("Attack Bite Cooldown Value Selector", "entries")
+    assert "f32 2" not in val("Attack Bite Cooldown Value Selector", "entries")
+    assert val("Fighting All Attack Cooldown", "duration").startswith("f32 0.5")
+    # It commits to a bite from 3 m (a dire wolf: 4.5), aiming for 2 m.
+    var = EntityFile(by["Hero_Biter_Summon1.entity.ot.EntitySettingsResource.gen"]
+                     .read_bytes(), "v")
+    vv = {c.name: c for c in var.graph().components}
+    assert next(f.text for f in EF.fields(vv["Fighting Seek Max Attack Distance"])
+                if f.name == "value").startswith("f32 3")
+    assert next(f.text for f in EF.fields(vv["Fighting Seek Best Attack Distance"])
+                if f.name == "value").startswith("f32 2")
     assert val("Attack Bite No Root Motion Traverser Radius Value").endswith(" 4.2")
     assert val("Attack Bite In Anim", "value_9").startswith("f32 1.35")
     dmg = ef.component("Attack Bite Damage")
@@ -359,3 +385,31 @@ def test_a_summons_bite_is_tuned_for_a_moving_target(tmp_path):
                 targets.append(bytes(q[at + 8:at + 24]))
             i += 1
     assert warm not in targets and noop in targets
+
+
+@needs_corpus
+def test_talents_raise_the_pet_count_and_the_card_shows_it(tmp_path):
+    """A talent adds pets per press (count_talents, Geppetto's selector + Piper's
+    add); the spread and the special's card ({0}) read the running total."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import heros
+    files = heros.emit("m", ContentDef(kind="hero", id="Counter", fields={"base": "Red", "kit": {
+        "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "button": "special",
+                 "spawn": "button", "counter": "none", "count": 1,
+                 "count_talents": {"Skill Secondary Quick Bombs": 1,
+                                   "Skill Secondary Ignite": 2},
+                 "count_card": "Wolf Secondary Ability Desc Format"}}}), tmp_path)
+    by = {p.name: p for p in files}
+    hero = EntityFile(by["Hero_Counter.entity.ot.EntitySettingsResource.gen"].read_bytes(), "h")
+
+    def text(part, fld):
+        return next(str(f.text) for f in EF.fields(hero.component(part)) if f.name == fld)
+    assert "Skill Secondary Quick Bombs" in text("Kit Pet Talent Count 1", "entries")
+    assert "int 1" in text("Kit Pet Talent Count 1", "entries")
+    assert "int 2" in text("Kit Pet Talent Count 2", "entries")
+    assert "Kit Pet Count Add 1" in text("Kit Pet Count Add 2", "b")
+    assert "Kit Pet Count Add 2" in text("Kit Pet Count Total", "a")
+    assert "Kit Pet Count Total" in text("Kit Pet Spread Pos", "value_2")
+    assert "Kit Pet Count Total" in text("Wolf Secondary Ability Desc Format", "obj_4")
