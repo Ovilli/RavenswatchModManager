@@ -167,13 +167,16 @@ def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
             label, old, new = vp.get("label"), vp.get("old"), vp.get("new")
             clear = bool(vp.get("clear_override", vp.get("clear", False)))
         else:
-            label, old, new = vp[0], vp[1], vp[2]
+            label, old, new = C.list_entry("value_patches", vp, 3, "[label, old, new]")
             clear = len(vp) > 3 and bool(vp[3])
         if not label or old is None or new is None:
             raise ContentError(
                 f"value_patches entry needs label/old/new, got {vp!r}"
             )
-        out.append((str(label), float(old), float(new), clear))
+        try:
+            out.append((str(label), float(old), float(new), clear))
+        except (TypeError, ValueError):
+            raise ContentError(f"value_patches entry {vp!r}: old/new must be numbers") from None
     return out
 
 

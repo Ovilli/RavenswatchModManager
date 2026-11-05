@@ -71,6 +71,19 @@ def slug_id(value: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in value)
 
 
+def list_entry(field: str, entry, n: int, shape: str) -> tuple:
+    """The first ``n`` elements of a list-form manifest entry (``[label, old,
+    new]``...), or a ``ContentError`` naming ``shape``.
+
+    An entry that is too short or not a list at all (a bare string, a number)
+    otherwise raised IndexError/TypeError out of the kind, which apply does not
+    catch: one typo in one mod aborted the apply for every mod."""
+    from ..content import ContentError
+    if not isinstance(entry, (list, tuple)) or len(entry) < n:
+        raise ContentError(f"{field} entry must be {shape} or a table, got {entry!r}")
+    return tuple(entry[:n])
+
+
 # --------------------------------------------------------------------------- #
 # Hashing.
 # --------------------------------------------------------------------------- #

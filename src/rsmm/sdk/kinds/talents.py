@@ -149,7 +149,7 @@ from ...engine import corpus
 from ...engine import entity_append as EA
 from ...engine import talent_values as TV
 from ...engine.entity_edit import EntityEdit
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -239,23 +239,10 @@ def _resolve_hero_dir(hero: str) -> _HeroDir | None:
 
 
 def _coerce_value_patches(raw) -> list[tuple[str, float, float, bool]]:
-    """Normalise ``value_patches`` into ``(label, old, new, clear_override)``.
-
-    Mirrors :func:`rsmm.sdk.kinds.items._coerce_value_patches`."""
-    out: list[tuple[str, float, float, bool]] = []
-    for vp in (raw or []):
-        clear = False
-        if isinstance(vp, dict):
-            label, old, new = vp.get("label"), vp.get("old"), vp.get("new")
-            clear = bool(vp.get("clear_override", vp.get("clear", False)))
-        else:
-            label, old, new = vp[0], vp[1], vp[2]
-            clear = len(vp) > 3 and bool(vp[3])
-        if not label or old is None or new is None:
-            raise ContentError(
-                f"value_patches entry needs label/old/new, got {vp!r}")
-        out.append((str(label), float(old), float(new), clear))
-    return out
+    """Normalise ``value_patches`` into ``(label, old, new, clear_override)``:
+    the item kind's parser, which takes the same entry forms."""
+    from .items import _coerce_value_patches as coerce
+    return coerce(raw)
 
 
 def _coerce_clone_nodes(raw) -> list[tuple[str, str, list, list, tuple[str, str] | None]]:
@@ -347,7 +334,10 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
             if rw.get("all"):
                 count = None
             elif rw.get("count") is not None:
-                count = int(rw["count"])
+                try:
+                    count = int(rw["count"])
+                except (TypeError, ValueError):
+                    raise ContentError(f"rewires entry {rw!r}: count must be a number") from None
             if rw.get("exact"):
                 opts["exact"] = True
             if rw.get("subtest_of"):
@@ -357,9 +347,13 @@ def _coerce_rewires(raw) -> list[tuple[str, str, dict]]:
                 if rw.get("within_span") is not None:
                     opts["within_span"] = int(rw["within_span"])
         else:
-            frm, to = rw[0], rw[1]
+            frm, to = C.list_entry("rewires", rw, 2, "[trigger, action]")
             if len(rw) > 2:
-                count = None if rw[2] in (None, "all") else int(rw[2])
+                try:
+                    count = None if rw[2] in (None, "all") else int(rw[2])
+                except (TypeError, ValueError):
+                    raise ContentError(
+                        f"rewires entry {rw!r}: count must be a number or 'all'") from None
         if not frm or not to:
             raise ContentError(
                 f"rewires entry needs trigger/action (from/to), got {rw!r}")
@@ -694,11 +688,16 @@ def _coerce_int_patches(raw) -> list[tuple[str, int, int, int]]:
             end_index = ip.get("end_index", ip.get("index"))
             old, new = ip.get("old"), ip.get("new")
         else:
-            label, end_index, old, new = ip[0], ip[1], ip[2], ip[3]
+            label, end_index, old, new = C.list_entry(
+                "int_patches", ip, 4, "[label, end_index, old, new]")
         if not label or end_index is None or old is None or new is None:
             raise ContentError(
                 f"int_patches entry needs label/end_index/old/new, got {ip!r}")
-        out.append((str(label), int(end_index), int(old), int(new)))
+        try:
+            out.append((str(label), int(end_index), int(old), int(new)))
+        except (TypeError, ValueError):
+            raise ContentError(
+                f"int_patches entry {ip!r}: end_index/old/new must be integers") from None
     return out
 
 
@@ -714,11 +713,16 @@ def _coerce_union_patches(raw) -> list[tuple[str, int, float, float]]:
             index = up.get("index")
             old, new = up.get("old"), up.get("new")
         else:
-            label, index, old, new = up[0], up[1], up[2], up[3]
+            label, index, old, new = C.list_entry(
+                "union_patches", up, 4, "[label, index, old, new]")
         if not label or index is None or old is None or new is None:
             raise ContentError(
                 f"union_patches entry needs label/index/old/new, got {up!r}")
-        out.append((str(label), int(index), float(old), float(new)))
+        try:
+            out.append((str(label), int(index), float(old), float(new)))
+        except (TypeError, ValueError):
+            raise ContentError(
+                f"union_patches entry {up!r}: index/old/new must be numbers") from None
     return out
 
 
@@ -792,7 +796,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     edited: dict[corpus.CorpusFile, bytes] = {}
     for p in builder_files:
         earlier = out_dir / Path(*p.rel.split("/"))
-        if earlier.is_file():
+        if written_this_run(earlier):
             edited[p] = earlier.read_bytes()
 
     # add_stats find their own file (the one holding the talent's controller),
@@ -978,7 +982,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 readers.append(edited[q])
                 continue
             earlier = out_dir / Path(*q.rel.split("/"))
-            readers.append(earlier.read_bytes() if earlier.is_file() else q.read_bytes())
+            readers.append(earlier.read_bytes() if written_this_run(earlier) else q.read_bytes())
         ed = EntityEdit(edited.get(p) or p.read_bytes(), readers=readers)
         try:
             for frm, to, opts in rewires:
