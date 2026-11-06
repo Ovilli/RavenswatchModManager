@@ -50,9 +50,16 @@ def names() -> list[str]:
     return sorted(stems())
 
 
+#: In-game display names whose files use another name. Scarlet ships as `Red`
+#: everywhere on disk (herodef, entities, art), so a modder writing the name
+#: the game shows would otherwise get "no such hero".
+_DISPLAY_ALIASES = {"scarlet": "red"}
+
+
 def _key(s: str) -> str:
     # `Sun_Wukong`, `Sun Wukong` and the folder spelling `SunWukong` are one hero.
-    return s.lower().replace(" ", "").replace("_", "")
+    k = s.lower().replace(" ", "").replace("_", "")
+    return _DISPLAY_ALIASES.get(k, k)
 
 
 def stem(hero: str) -> str | None:

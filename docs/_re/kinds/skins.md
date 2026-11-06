@@ -312,3 +312,34 @@ path, scoped to an existing slot's asset folder. Custom skins with unique
 AC/AL IDs that need new `<Skin>` folders must wait for the asset-registry
 format to be reverse-engineered (low priority — the reuse-vanilla-slot path
 handles the immediate use case).
+
+## ★ 2026-11-06 — the A3 verdict was wrong: per-hero skins are DATA (the herodef)
+
+The "asset registry" above was never needed. The skins a hero offers are
+sub-objects of its cooked herodef, and the engine loads skin N from a table
+built from that list (`HeroDef_LoadSkinEntity`, count @herodef+0x900). The 9
+SkinPack roster entries are the DLC *packs* (Steam ownership), not the per-hero
+skin list.
+
+Herodef object graph (all 12+1 shipped heroes, Update 6):
+
+* `sections[0]` = object table: `u32 n` + `n` class indices; object id `k` is
+  `sections[k+1]`; the root is the LAST section.
+* `SkinProfileDataSettings` object: `u32 class | GUID16 | … | title Text ref
+  (bank,row,key) | lstr "Ui" + icon png | lstr "EntitySettings" + skin entity |
+  oCGameLockSettings block (u32 count + condition object ids) | description and
+  unlock-condition Text refs`. Default has 0 conditions (always available); DLC
+  skins name an `AdditionalContentGameUnlockConditionSettings` object holding the
+  Steam DLC app id (0x370d84…); earned skins a game-event / progression one.
+* Root lists its skins as `u32 count | ids` (Scarlet `9 | 35..43`). Piper and
+  Snow Queen ship 10 — the skin pages are spawner-driven (Skin List Spawner +
+  HeroSkin_Miniature), not fixed slots.
+
+Adding a skin = append a copy of the FREE skin object as the last sub-object,
+grow the table, add the id to the root's list (`engine/herodef_skins.py`,
+`kind = "skin"`). Append-only matters: `skill_clone.clone_skill` inserted its
+row mid-table, renumbering every later object while the root's lists and every
+condition id kept the old numbers — the most likely cause of its two
+`HeroDef_PostLoad` crashes (talents stay WONT-FIX by decision; the cause is
+recorded here). The skin entity itself loads through its own UsedRscCache; the
+herodef cache only lists the icons. NOT yet seen in game.

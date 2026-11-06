@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity", "challenge", "scenery")
+         "entity", "challenge", "scenery", "skin")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -144,6 +144,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # constraints (a story tile like Wood_House forces 3 Treant camps).
                               # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
+    "skin": "confirmed",      # NEW skins appended to a shipped hero's skin list. PROVEN IN GAME
+                              # 2026-11-06: scarlet-crimson's tinted "Crimson" skin listed after
+                              # Scarlet's shipped ones and spawned in a run. The herodef edit is
+                              # append-only (no object id moves — the mistake that crashed
+                              # clone_skill); the skin pages and the engine's skin table are
+                              # count-driven.
     "scenery": "experimental",  # chapter scenery levels edited in place (move / sink / add an
                               # entity the chapter already places). Every shipped level
                               # rewrites byte-identically and the emit is anchored, but no

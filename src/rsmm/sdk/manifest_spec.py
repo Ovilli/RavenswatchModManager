@@ -84,6 +84,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
                           "remove_slots", "add_slots"}),
     "shop": frozenset({"prices", "price_scale", "offers", "slots", "config"}),
     "scenery": frozenset({"chapter", "level", "moves", "removes", "adds"}),
+    "skin": frozenset({"hero", "skins"}),
 }
 
 #: `[[patch]]` kinds: required and optional top-level keys (besides `kind`).

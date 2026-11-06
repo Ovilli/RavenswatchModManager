@@ -129,6 +129,7 @@
               "scenery",
               "shop",
               "skill",
+              "skin",
               "talent",
               "tilegen"
             ],
@@ -629,6 +630,28 @@
                 "name": {},
                 "schema_version": {},
                 "source": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "skin"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "hero": {},
+                "id": {},
+                "kind": {},
+                "schema_version": {},
+                "skins": {}
               },
               "additionalProperties": false
             }

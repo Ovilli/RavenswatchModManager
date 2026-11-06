@@ -810,6 +810,49 @@ global — every run fights the new boss there.
 
 ---
 
+## `skin` — new skins for a shipped hero
+
+**What the player sees.** One or more new skins at the end of a hero's skin
+list, in the hero book and on the hero-select page: always unlocked, with
+their own name, description and (optionally) icon. The hero keeps every skin
+the game ships.
+
+```toml
+[mod]
+id           = "ScarletSkins"
+name         = "Scarlet: Crimson & Frost"
+version      = "0.1.0"
+author       = "you"
+description  = "Two new skins for Scarlet."
+
+[[content]]
+kind = "skin"
+id   = "scarlet_skins"
+hero = "Scarlet"
+skins = [
+  { name = "Crimson", description = "Red as the hood.", tint = "#c41e1e" },
+  { name = "Frost", from = "Raven", tint = "#7ad0ff", icon = "art/frost_icon.png" },
+  { name = "Painted", albedo = "art/painted_ALB.png" },
+]
+```
+
+Each skin copies one of the hero's skins (`from`, default `Default`) and gives
+it a look of its own: `tint` recolours the albedo of every material that skin
+wears (a hero with a second form, like Scarlet's wolf, is recoloured too),
+keeping shading and line art; `albedo` / `mra` / `normal` are your own maps
+for the body material. `icon` is a PNG for the book; without it the source
+skin's icon is shown.
+
+**Prove it.** Open the hero book on that hero: the new skins follow the
+shipped ones. Pick one on the hero-select page and start a run wearing it.
+
+**Trap.** Put every skin for one hero in ONE block's `skins` list: two blocks
+for the same hero in a mod would overwrite each other, and the emit refuses
+it. Two *mods* adding skins to the same hero do not merge yet; the last one
+applied wins. A co-op partner without the mod sees your new skin as Default.
+
+---
+
 ## `hero` — add a hero to the roster
 
 **What the player sees.** A new portrait on the hero-select screen. With only

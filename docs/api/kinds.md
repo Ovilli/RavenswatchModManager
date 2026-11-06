@@ -6,7 +6,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**20 kinds** — 14 confirmed, 4 experimental, 2 guess.
+**21 kinds** — 15 confirmed, 4 experimental, 2 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -30,6 +30,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `entity` | ✅ confirmed | `rsmm.sdk.kinds.entities` | Edits to ONE shipped entity file, in place. |
 | `challenge` | ❓ guess | `rsmm.sdk.kinds.challenges` | Custom **challenge** content builder — a new entry on the challenge screen. |
 | `scenery` | ⚠️ experimental | `rsmm.sdk.kinds.scenery` | Chapter scenery content builder. |
+| `skin` | ✅ confirmed | `rsmm.sdk.kinds.skins` | ``kind = "skin"`` — NEW skins for a shipped hero, in the hero's own skin list. |
 
 A block that sets one of these fields is rated as the field, whatever its kind's rating (`FIELD_CONFIDENCE`):
 

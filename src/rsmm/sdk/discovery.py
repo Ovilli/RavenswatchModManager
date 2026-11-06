@@ -59,6 +59,7 @@ KIND_DIRS: dict[str, str] = {
     "melodies": "melody",
     "meshes": "mesh", "maps": "map",
     "pois": "poi",
+    "skins": "skin",
 }
 
 #: Accepted config filenames inside a def folder, most specific first. `<kind>`
