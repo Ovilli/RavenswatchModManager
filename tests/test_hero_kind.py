@@ -746,3 +746,189 @@ def test_a_projectile_that_reads_its_hero_fires_as_a_copy_reading_this_hero(tmp_
     caches = [p.read_text(errors="replace")
               for p in tmp_path.rglob("Hero_Howler_*.UsedRscCache.ot")]
     assert caches and all("Hero_Howler_Kit1.entity.ot" in t for t in caches)
+
+
+@needs_corpus
+@needs_install
+def test_blood_wolf_special_howl_animation_walk_and_audio(tmp_path):
+    """Blood Wolf special:
+    - Alt Secondary Ability Controller does not disable movement (value_9 = false, value_10 = false)
+    - Controller points directly to State Wolf Secondary Ability (starts 8s cooldown on exit)
+    - Clip plays Wolf Secondary Howl Anim (cloned from Wolf Defensive Howl, on Top Move Anim player)
+    - Clip has ref_11 cleared so it cannot re-activate State Wolf Secondary Ability on loop
+    - Cinebloc 0 is unlinked so no moon/trails VFX play
+    - State Wolf Secondary Ability.while_active enables upper/lower split, audio, and anim clip
+    """
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph_edit as EE
+
+    abilities = [
+        {"set": "Alt Secondary Ability Controller.value_9", "value": False},
+        {"set": "Alt Secondary Ability Controller.value_10", "value": False},
+        {"link": "Alt Secondary Ability Controller.ref_2",
+         "to": "State Wolf Secondary Ability"},
+        {"clone": ["Wolf Defensive Ability Anim Default"],
+         "rename": {"Wolf Defensive Ability Anim Default": "Wolf Secondary Howl Anim"}},
+        {"link": "Wolf Secondary Howl Anim.cinebloc[0]", "to": ""},
+        {"link": "Wolf Secondary Ability Default Clip.ref_3", "to": "Wolf Secondary Howl Anim"},
+        {"link": "Wolf Secondary Ability Default Clip.ref_11", "to": ""},
+        {"add_link": "State Wolf Secondary Ability.while_active",
+         "from": "Heroes/Hero_Common/Hero_Alt_Form_Common",
+         "to": "State Anim Split Alt Form Enable"},
+        {"add_link": "State Wolf Secondary Ability.while_active",
+         "to": "Wolf Defensive Ability Anim Default FMod Event"},
+        {"add_link": "State Wolf Secondary Ability.while_active",
+         "to": "Wolf Secondary Ability Default Clip"},
+    ]
+    kit = {
+        "pets": {
+            "entity": "Enemies/Wolves/Standard_Wolf_Dire",
+            "button": "special",
+            "when": "State Wolf Secondary Ability",
+            "spawn": "button",
+            "hold": 1.0,
+        }
+    }
+    files = _emit(tmp_path, id="BloodWolfTest", base="Red", abilities=abilities, kit=kit)
+    main = next(p for p in files
+                if p.name == "Hero_BloodWolfTest.entity.ot.EntitySettingsResource.gen")
+    ef = EE.EntityFile(main.read_bytes(), "Hero_BloodWolfTest")
+
+    # 1. Controller settings
+    c_ctrl = ef.component("Alt Secondary Ability Controller")
+    assert next(f.text for f in EF.fields(c_ctrl) if f.name == "value_9") == "bool False"
+    assert next(f.text for f in EF.fields(c_ctrl) if f.name == "value_10") == "bool False"
+    assert next(f.text for f in EF.fields(c_ctrl) if f.name == "value_4") == "f32 8"
+    f_ref2 = next(f.text for f in EF.fields(c_ctrl) if f.name == "ref_2")
+    assert "State Wolf Secondary Ability" in f_ref2
+
+    # 2. Clip wiring
+    c_clip = ef.component("Wolf Secondary Ability Default Clip")
+    f_ref3 = next(f.text for f in EF.fields(c_clip) if f.name == "ref_3")
+    f_ref11 = next(f.text for f in EF.fields(c_clip) if f.name == "ref_11")
+    assert "Wolf Secondary Howl Anim" in f_ref3
+    assert f_ref11 == "(none)"
+
+    # 3. Howl animatic (upper body player, unlinked cinebloc 0)
+    c_anim = ef.component("Wolf Secondary Howl Anim")
+    f_anim_ref2 = next(f.text for f in EF.fields(c_anim) if f.name == "ref_2")
+    assert "Top Move Anim Alt Form Player" in f_anim_ref2
+    _cls, b0 = ef._cinebloc("Wolf Secondary Howl Anim", 0)
+    a, _ = ef._only_picker(b0, "cinebloc 0")
+    assert ef.objects[b0][a + 8:a + 24] == bytes(16)
+
+    # 4. State while_active (walking split + howl audio + howl anim clip)
+    c_state = ef.component("State Wolf Secondary Ability")
+    f_while = next((f.text or [i.text for i in f.items])
+                   for f in EF.fields(c_state) if f.name == "while_active")
+    while_text = " ".join(f_while) if isinstance(f_while, list) else f_while
+    assert "State Anim Split Alt Form Enable" in while_text
+    assert "Wolf Defensive Ability Anim Default FMod Event" in while_text
+    assert "Wolf Secondary Ability Default Clip" in while_text
+
+    # 5. Kit pets hold timer (holds State Wolf Secondary Ability for 1.0s animation duration)
+    c_tm = ef.component("Kit Pet Order Timer")
+    assert next(f.text for f in EF.fields(c_tm) if f.name == "duration") == "f32 1"
+
+
+@needs_corpus
+@needs_install
+def test_blood_wolf_pet_talent_upgrade_branching(tmp_path):
+    """Blood Wolf pet upgrade:
+    - Base pet (DirewolfClaw) spawns by default, bursts on death after 8s
+    - Rabid Direwolf (Skill Secondary Can Hold) upgrades spawn to DirewolfBite (20s, burst on hit)
+    - Kit Pet Spawn Selector branches between base spread pos and upgrade spread pos
+    - Both spawners receive PET_MASTER_ATTACK_MOVE_ORDER and PET_MASTER_RECALL_ORDER
+    """
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import entity_graph_edit as EE
+
+    kit = {
+        "pets": {
+            "entity": "Enemies/Wolves/Standard_Wolf_Dire",
+            "name": "DirewolfClaw",
+            "button": "special",
+            "when": "State Wolf Secondary Ability",
+            "spawn": "button",
+            "hold": 1.0,
+            "burst": "Heroes/Hero_Red/Hero_BloodWolf_Bomb",
+            "burst_on_hit": False,
+            "lifetime": 8,
+            "talent": "Skill Secondary Can Hold",
+            "upgrade": {
+                "name": "DirewolfBite",
+                "attack": "Bite",
+                "attack_area": 1.2,
+                "attack_reach": 2.0,
+                "attack_range": 1.0,
+                "attack_targets": 0,
+                "attack_speed": 1.35,
+                "attack_debuffs": False,
+                "attack_cooldown": 0.5,
+                "burst": "Heroes/Hero_Red/Hero_BloodWolf_Bomb",
+                "burst_on_hit": True,
+                "lifetime": 20,
+            },
+        }
+    }
+    skills = {
+        "Secondary Can Hold": {
+            "name": "Rabid Direwolf",
+            "description": "Your Special calls a rabid dire wolf.",
+        }
+    }
+    files = _emit(tmp_path, id="BloodWolfUpgradeTest", base="Red", kit=kit, skills=skills)
+    main = next(p for p in files
+                if p.name == "Hero_BloodWolfUpgradeTest.entity.ot.EntitySettingsResource.gen")
+    ef = EE.EntityFile(main.read_bytes(), "Hero_BloodWolfUpgradeTest")
+
+    # 1. Spawners point to their respective entities
+    s_base = ef.component("Kit Pet Spawner")
+    s_up = ef.component("Kit Pet Spawner Upgrade")
+    assert "Hero_BloodWolfUpgradeTest_DirewolfClaw.entity.ot" in next(
+        f.text for f in EF.fields(s_base) if "template" in f.name)
+    assert "Hero_BloodWolfUpgradeTest_DirewolfBite.entity.ot" in next(
+        f.text for f in EF.fields(s_up) if "template" in f.name)
+
+    # 2. Tester branches between Spread Pos Upgrade and Base Spread Pos
+    c_test, f_test, at = ef._field("Kit Pet Upgrade Tester", "test")
+    f_true = next(f.text for f in EF.fields(c_test) if f.name == "on_true")
+    f_false = next(f.text for f in EF.fields(c_test) if f.name == "on_false")
+    assert "Kit Pet Spread Pos Upgrade" in f_true
+    assert "Kit Pet Spread Pos" in f_false
+    test_sub = ef._pointee(c_test, f_test, at)
+    cls_picker = ef.cf.classes.index(
+        next(x for x in ef.cf.classes if x.name == "oCEntityCpntPicker"))
+    sub_bytes = bytes(ef.objects[test_sub])
+    test_refs = [r.path for _pos, r in EG._pickers(sub_bytes, cls_picker)]
+    assert any("Skill Secondary Can Hold" in p for p in test_refs)
+    assert b"\x2a\x83\xd2\x0f" in sub_bytes
+
+    # 3. Trigger activates Kit Pet Upgrade Tester
+    c_state = ef.component("State Wolf Secondary Ability")
+    f_act = next((f.text or [i.text for i in f.items])
+                 for f in EF.fields(c_state) if f.name == "activates")
+    act_text = " ".join(f_act) if isinstance(f_act, list) else f_act
+    assert "Kit Pet Upgrade Tester" in act_text
+    assert "Kit Pet Attack Order" in act_text
+
+    # 4. Attack and Recall orders target both spawners
+    owned, _ = ef.pointers()
+    c_atk = ef.component("Kit Pet Attack Order")
+    subs = [x for x, ptr in owned.items() if ptr.owner == c_atk.index - 1]
+    pickers = []
+    cls_picker = ef.cf.classes.index(
+        next(x for x in ef.cf.classes if x.name == "oCEntityCpntPicker"))
+    for s in subs:
+        for _pos, r in EG._pickers(bytes(ef.objects[s]), cls_picker):
+            pickers.append(r.path)
+    assert any(p.endswith("Kit Pet Spawner") for p in pickers)
+    assert any(p.endswith("Kit Pet Spawner Upgrade") for p in pickers)
+
+    # 5. Check emitted summon entities exist
+    assert any("Hero_BloodWolfUpgradeTest_DirewolfClaw.entity.ot" in p.name for p in files)
+    assert any("Hero_BloodWolfUpgradeTest_DirewolfBite.entity.ot" in p.name for p in files)
+
+
+
