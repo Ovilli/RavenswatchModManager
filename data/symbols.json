@@ -3655,6 +3655,18 @@
    }
   },
   {
+   "name": "Netcode_ReconnectMaxRead",
+   "kind": "function",
+   "category": "netcode",
+   "anchor": {
+    "raw": "FUN_1402aaf80",
+    "offset": "0x3a7"
+   },
+   "status": "ok",
+   "signature": "(code location, not callable)",
+   "note": "The `movzx ecx, byte ptr [rip+disp32]` (0f b6 0d) inside Netcode_PeerStateTick that reads the MAX RECONNECTION window byte (default 60 s). hook_netcode.cpp decodes the rip-relative operand at runtime to find the four contiguous timeout bytes (target-1 .. target+2 = interrupt-drop 15 / max-reconnect 60 / show-UI 4 / max-connecting 5), so the reconnect patch follows the bytes across patches instead of carrying a .data RVA. Replaces the hardcoded RVA 0x12e5ed3, which went stale in Update 6 (bytes moved +0x1000 to 0x1412e6ed2..ed5 in b9c3642884a8) and silently disabled the patch. Install-time guard: opcode bytes must be 0f b6 0d and the four defaults must read 15/60/4/5."
+  },
+  {
    "name": "Netcode_SessionCtx_LocalGuid",
    "kind": "function",
    "category": "netcode",
@@ -3885,6 +3897,27 @@
      "slot": 53
     }
    }
+  },
+  {
+   "name": "RakPeer_Ctor",
+   "kind": "function",
+   "category": "netcode",
+   "raw": "FUN_140adc7b0",
+   "status": "ok",
+   "signature": "RakNet::RakPeer* (RakNet::RakPeer* this)",
+   "note": "RakNet::RakPeer::RakPeer(). Identified 2026-11-06 (b9c3642884a8) by its store of the RTTI vftable `RakNet::RakPeer::vftable` (0x140fb5db0) at +0x36. Sets `defaultTimeoutTime` (this+0x7ec) = 10000 ms at +0xeb0 (see RakPeer_DefaultTimeoutStore). Every RakPeer the game makes goes through here: the Stormancer backend link (which then sets its own timeout via RakNetConnection::setTimeout, FUN_140b9e310) AND the co-op P2P mesh (which never calls SetTimeoutTime, so it keeps the 10 s default). Not called by the loader; exists as the anchor parent."
+  },
+  {
+   "name": "RakPeer_DefaultTimeoutStore",
+   "kind": "function",
+   "category": "netcode",
+   "anchor": {
+    "raw": "FUN_140adc7b0",
+    "offset": "0xeb0"
+   },
+   "status": "ok",
+   "signature": "(code location, not callable)",
+   "note": "`mov dword ptr [rsi+0x7ec], 0x2710` (c7 86 ec 07 00 00 10 27 00 00) in RakPeer_Ctor: RakPeer::defaultTimeoutTime = 10000 ms. The co-op mesh RakPeer never overrides it (RakPeer::SetTimeoutTime = vtable slot 55 = 0x140ae2890; its only real-valued caller is the backend's RakNetConnection::setTimeout), and AssignSystemAddressToRemoteSystemList copies it into each remote system (+0x231c) at connect time (0x140ae666b). So >10 s of silence from a peer = ID_CONNECTION_LOST; from the HOST that tears the session down (P2PSession_OnFcm2NewHost case 0x16 -> FUN_1408b5cc0 Shutdown). hook_netcode.cpp rewrites the imm32 at boot (opt-in RSMM_P2P_TIMEOUT_SECONDS) so the EOS reconnect window can actually complete. Install-time guard: all 10 bytes must match."
   },
   {
    "name": "RakPeer_GetSystemList",

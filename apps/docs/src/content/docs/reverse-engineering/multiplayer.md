@@ -104,8 +104,9 @@ to lobby. The reconnect state machine above only saves **non-host** peers.
 | --- | --- | --- |
 | `FUN_1402afaa0` | `0x1402afaa0` | per-peer P2P connection-state tick |
 | `FUN_1402b4450` | `0x1402b4450` | remove one peer from the session array |
-| `DAT_1412e5ed3` | `0x1412e5ed3` | **max reconnection time (s)** — primary lever |
-| `DAT_1412e5ed2/4/5` | `0x1412e5ed2/4/5` | interrupt-drop / UI / max-connect timeouts |
+| `DAT_1412e5ed3` | `0x1412e5ed3` | **max reconnection time (s)** — moved to `0x1412e6ed3` in Update 6; now found at runtime via `Netcode_ReconnectMaxRead` |
+| `DAT_1412e5ed2/4/5` | `0x1412e5ed2/4/5` | interrupt-drop / UI / max-connect timeouts (`0x1412e6ed2/4/5` in Update 6) |
+| `RakPeer_DefaultTimeoutStore` | `0x140add660` (b9c3) | `RakPeer::defaultTimeoutTime = 10000` — the 10 s RakNet P2P timeout |
 | `DAT_141438fc0` | `0x141438fc0` | player array base (stride 0x60) |
 | `DAT_141439140` | `0x141439140` | player count |
 | peer `+0xCC` | — | connection-state enum (3 = connected) |
@@ -113,15 +114,54 @@ to lobby. The reconnect state machine above only saves **non-host** peers.
 ## Shipped: reconnect-window extension (loader)
 
 `src/loader/src/hook_netcode.cpp` (`install_netcode_patches`, wired in
-`dllmain.cpp`) rebases `0x1412e5ed3` onto the live module and overwrites the
-max-reconnection window. **Verify-then-patch**: it checks all four defaults
-(`15/60/4/5`) are present first, so a game update that relocates `.data` is
-detected and skipped rather than corrupting a random byte.
+`dllmain.cpp`) finds the max-reconnection byte by decoding the rip-relative
+operand of the `movzx` that reads it inside `Netcode_PeerStateTick`
+(symbol `Netcode_ReconnectMaxRead`, an anchor on the tick's pattern), then
+overwrites it. **Verify-then-patch**: it checks the instruction bytes and that
+all four defaults (`15/60/4/5`) are present first, so a game update is detected
+and skipped rather than corrupting a random byte.
+
+:::caution[Fixed 2026-11-06]
+Until then the patch used a fixed RVA (`0x12e5ed3`). Update 6 moved the bytes
+by `+0x1000`, so on that build the default check failed and the patch was
+**silently off**.
+:::
 
 Arm it (opt-in, like the other engine hooks):
 
 - env `RSMM_RECONNECT_SECONDS=1..255` (the new window), or
 - touch `mods/.rsmm_extend_reconnect` (uses default 250 s).
+
+### RakNet P2P timeout (the 10 s cut)
+
+The window above is the EOS-tunnel layer. On top of it the co-op mesh runs
+RakNet, and the game never calls `SetTimeoutTime` on that `RakPeer` (vtable
+slot 55; its only caller with a real value is Stormancer's
+`RakNetConnection::setTimeout`, which is the **backend** link). So the mesh
+keeps the constructor default, **10 s**. A peer that sends nothing for 10 s
+gets `ID_CONNECTION_LOST`, which the game logs with the reason
+`Racknet_TimeOut`. If that peer was the **host**, the packet handler tears the
+session down (`RakNet Shutdown`, then the state goes to `Disconnected`). That
+fires well inside the 60 s reconnect window, which is why the window never
+saved anyone. It matches the 2026-09-20 log, where `ID_CONNECTION_LOST` and
+"max reconnection time attempt" land in the same second.
+
+Common real-world triggers: a console suspended (sleep / HOME), Wi-Fi
+packet-loss bursts, or a long stall on the host.
+
+The loader can rewrite the constructor's `mov [rsi+0x7ec], 10000` immediate at
+boot (symbol `RakPeer_DefaultTimeoutStore`, an anchor on `RakPeer_Ctor`),
+before any session exists:
+
+- env `RSMM_P2P_TIMEOUT_SECONDS=10..300`, or
+- touch `mods/.rsmm_p2p_timeout` (uses default 60 s).
+
+It only affects machines running the loader. A Switch or other console player
+keeps the stock 10 s. The timeout is enforced by each side on its own
+connections, so raising it on a PC guest stops that guest from cutting a host
+that went quiet. A console guest still cuts that host at 10 s. Keep the
+reconnect window ≤ the P2P timeout. The loader warns when it isn't, because
+a drop longer than the RakNet timeout still ends the session.
 
 **What this fixes:** a **non-host** peer that drops (crash / network blip) now
 has up to ~4 min — match paused — for its client to auto-reconnect

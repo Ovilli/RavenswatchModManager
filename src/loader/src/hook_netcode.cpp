@@ -1,144 +1,235 @@
-// Netcode tweaks — extend the P2P reconnection window. See hook_netcode.h
-// and docs/_re/MULTIPLAYER.md.
+// Netcode tweaks — see hook_netcode.h and
+// apps/docs/src/content/docs/reverse-engineering/multiplayer.md.
 //
-// The per-peer connection-state tick (FUN_1402afaa0) gives a dropped peer
-// `kReconnectMaxRva` seconds (default 60) to come back before FUN_1402b4450
-// removes it from the session. These thresholds are baked uint8 seconds in
-// .data; we rebase them onto the running module and bump the max-reconnection
-// value. We refuse to write unless the four known defaults are all present, so
-// a game patch that relocates .data is detected (mismatch -> skip, no blind
-// poke at a shifted address).
+// Two opt-in patches, both verify-then-write and both located through
+// pattern-resolved symbols (never a hardcoded .data/.text address):
+//
+// 1. Reconnect window. Netcode_PeerStateTick gives a dropped EOS tunnel N
+//    seconds (default 60) to come back before Netcode_DropPeer removes it.
+//    The four thresholds are contiguous baked uint8 seconds in .data; we find
+//    them by decoding the rip-relative operand of the `movzx` that reads the
+//    window (Sym::Netcode_ReconnectMaxRead). This used to be a fixed RVA,
+//    which went stale in Update 6 (+0x1000) and silently disabled the patch.
+//
+// 2. RakNet P2P timeout. The co-op mesh runs RakNet over the EOS tunnel and
+//    never calls SetTimeoutTime, so it keeps RakPeer's constructor default of
+//    10 s. That is SHORTER than the reconnect window above: a peer silent for
+//    10 s gets ID_CONNECTION_LOST and, if it was the host, the session is torn
+//    down — before the EOS layer's reconnect can finish. We rewrite the
+//    constructor's `mov [rsi+0x7ec], 10000` immediate
+//    (Sym::RakPeer_DefaultTimeoutStore) at boot, before any session exists,
+//    so every RakPeer made afterwards starts with the longer timeout.
 
 #include "hook_netcode.h"
+#include "fn_resolver.h"
 #include "loader.h"
 #include "mem_safe.h"
+#include "symbols.gen.h"
 
 #include <windows.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 namespace rsmm {
 namespace {
 
-// Preferred image base the static analysis used; the live module may be ASLR-
-// rebased, so we work in RVAs off the real base.
-constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
+// ---- shared helpers ---------------------------------------------------------
 
-// RVAs of the four contiguous reconnect-timeout bytes (VA - kPreferredBase).
-constexpr std::uintptr_t kInterruptDropRva = 0x12e5ed2; // interrupted -> disconnect (s)
-constexpr std::uintptr_t kReconnectMaxRva  = 0x12e5ed3; // max reconnection time (s) <-- lever
-constexpr std::uintptr_t kReconnectUiRva   = 0x12e5ed4; // show reconnect UI after (s)
-constexpr std::uintptr_t kMaxConnectingRva = 0x12e5ed5; // max connecting time (s)
-
-// Known shipped defaults, in RVA order ed2..ed5. All four must match before we
-// touch anything (game-update guard).
-constexpr std::uint8_t kDefInterruptDrop = 15;
-constexpr std::uint8_t kDefReconnectMax  = 60;
-constexpr std::uint8_t kDefReconnectUi   = 4;
-constexpr std::uint8_t kDefMaxConnecting = 5;
-
-// Default new window when armed by the file marker (env can override).
-constexpr int kDefaultWindowSeconds = 250;
-
-std::uintptr_t game_base() {
-    HMODULE h = GetModuleHandleA("Ravenswatch.exe");
-    if (!h) h = GetModuleHandleA(nullptr);
-    return reinterpret_cast<std::uintptr_t>(h);
-}
-
-// Desired window from the environment (RSMM_RECONNECT_SECONDS), clamped to the
-// byte range. Returns 0 when unset/invalid.
-int window_from_env() {
+// Integer value of a valued env var, clamped to [lo, hi]. 0 when unset/invalid.
+int env_seconds(const char* name, int lo, int hi) {
     char buf[8] = {};
-    DWORD n = GetEnvironmentVariableA("RSMM_RECONNECT_SECONDS", buf, sizeof(buf));
+    DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
     if (n == 0 || n >= sizeof(buf)) return 0;
     int v = std::atoi(buf);
     if (v < 1) return 0;
-    if (v > 255) v = 255;
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
     return v;
 }
 
-bool file_marker_present() {
+// <game>/mods/<file> exists (the game dir is where our winhttp.dll lives).
+bool mods_marker_present(const char* file) {
     char buf[MAX_PATH];
     if (!GetModuleFileNameA(GetModuleHandleA("winhttp.dll"), buf, sizeof(buf))) return false;
     std::string p(buf);
     auto slash = p.find_last_of("\\/");
     if (slash == std::string::npos) return false;
-    std::string marker = p.substr(0, slash) + "\\mods\\.rsmm_extend_reconnect";
+    std::string marker = p.substr(0, slash) + "\\mods\\" + file;
     DWORD attr = GetFileAttributesA(marker.c_str());
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// Resolve an anchor symbol: its pattern names the PARENT function; the site is
+// parent + (Sym::Site - Sym::Parent). Proves the parent bytes still match and
+// that the parent is a real function entry. 0 on any failure.
+std::uintptr_t resolve_anchor(const char* tag, const char* pattern,
+                              std::uintptr_t offset) {
+    std::uintptr_t parent = fn_resolve(pattern);
+    if (parent == 0 || parent == static_cast<std::uintptr_t>(-1)) {
+        char b[160];
+        std::snprintf(b, sizeof(b), "[netcode] %s: pattern %s not found "
+                      "(run `rsmm update-data`); not patching", tag, pattern);
+        Loader::get().log_err(b);
+        return 0;
+    }
+    if (!fn_verify(pattern, parent) || !fn_is_function_start(parent)) {
+        char b[160];
+        std::snprintf(b, sizeof(b), "[netcode] %s: %s verify failed "
+                      "(game patched?); not patching", tag, pattern);
+        Loader::get().log_err(b);
+        return 0;
+    }
+    return parent + offset;
+}
+
+bool write_protected(void* dst, const void* src, size_t n) {
+    DWORD oldprot = 0;
+    if (!VirtualProtect(dst, n, PAGE_EXECUTE_READWRITE, &oldprot)) return false;
+    std::memcpy(dst, src, n);
+    DWORD tmp = 0;
+    VirtualProtect(dst, n, oldprot, &tmp);
+    FlushInstructionCache(GetCurrentProcess(), dst, n);
+    return true;
+}
+
+// ---- 1. reconnect window ----------------------------------------------------
+
+constexpr std::uintptr_t kWindowReadOff =
+    Sym::Netcode_ReconnectMaxRead - Sym::Netcode_PeerStateTick;
+static_assert(kWindowReadOff == 0x3a7,
+              "symbol map moved the reconnect-window read inside PeerStateTick");
+
+// Shipped defaults, in byte order: interrupt-drop / MAX RECONNECT / show-UI /
+// max-connecting (seconds). All four must match before we write.
+constexpr std::uint8_t kDefaults[4] = {15, 60, 4, 5};
+constexpr int kDefaultWindowSeconds = 250;
+
+// Returns the window written, or 0 when not armed / not patched.
+int patch_reconnect_window() {
+    const int env_window = env_seconds("RSMM_RECONNECT_SECONDS", 1, 255);
+    const bool by_file = mods_marker_present(".rsmm_extend_reconnect");
+    if (env_window == 0 && !by_file) {
+        Loader::get().log("[netcode] reconnect-window patch disabled "
+                          "(set RSMM_RECONNECT_SECONDS=1..255 or touch "
+                          "mods/.rsmm_extend_reconnect)");
+        return 0;
+    }
+    const int window = env_window != 0 ? env_window : kDefaultWindowSeconds;
+
+    const std::uintptr_t site = resolve_anchor(
+        "reconnect", Sym::Netcode_ReconnectMaxRead_Pattern, kWindowReadOff);
+    if (site == 0) return 0;
+
+    // movzx ecx, byte ptr [rip+disp32]  =  0f b6 0d <disp32>, 7 bytes.
+    const auto* insn = reinterpret_cast<const std::uint8_t*>(site);
+    if (!mem_readable(insn, 7) || insn[0] != 0x0F || insn[1] != 0xB6 || insn[2] != 0x0D) {
+        Loader::get().log("[netcode] reconnect: window read is not `movzx ecx, "
+                          "byte [rip+x]` (game patched?); not patching");
+        return 0;
+    }
+    std::int32_t disp = 0;
+    std::memcpy(&disp, insn + 3, sizeof(disp));
+    auto* window_byte = reinterpret_cast<std::uint8_t*>(site + 7 + disp);
+    std::uint8_t* bytes = window_byte - 1;  // interrupt-drop sits just before
+
+    if (!mem_readable(bytes, 4)) {
+        Loader::get().log("[netcode] reconnect: timeout bytes not mapped; not patching");
+        return 0;
+    }
+    if (std::memcmp(bytes, kDefaults, 4) != 0) {
+        char b[112];
+        std::snprintf(b, sizeof(b),
+                      "[netcode] reconnect defaults not found (%u/%u/%u/%u); "
+                      "game updated? not patching",
+                      bytes[0], bytes[1], bytes[2], bytes[3]);
+        Loader::get().log(b);
+        return 0;
+    }
+    const std::uint8_t v = static_cast<std::uint8_t>(window);
+    if (!write_protected(window_byte, &v, 1)) {
+        Loader::get().log_err("[netcode] reconnect: VirtualProtect failed; not patching");
+        return 0;
+    }
+    char b[112];
+    std::snprintf(b, sizeof(b),
+                  "[netcode] reconnect window %us -> %ds (a dropped peer can rejoin)",
+                  kDefaults[1], window);
+    Loader::get().log(b);
+    return window;
+}
+
+// ---- 2. RakNet P2P timeout --------------------------------------------------
+
+constexpr std::uintptr_t kTimeoutStoreOff =
+    Sym::RakPeer_DefaultTimeoutStore - Sym::RakPeer_Ctor;
+static_assert(kTimeoutStoreOff == 0xeb0,
+              "symbol map moved the defaultTimeoutTime store inside RakPeer_Ctor");
+
+// mov dword ptr [rsi+0x7ec], 0x2710  (defaultTimeoutTime = 10000 ms)
+constexpr std::uint8_t kTimeoutStore[10] = {0xC7, 0x86, 0xEC, 0x07, 0x00, 0x00,
+                                            0x10, 0x27, 0x00, 0x00};
+constexpr int kStockTimeoutSeconds = 10;
+constexpr int kDefaultP2PTimeoutSeconds = 60;
+
+// Returns the timeout written (seconds), or 0 when not armed / not patched.
+int patch_p2p_timeout() {
+    const int env_secs = env_seconds("RSMM_P2P_TIMEOUT_SECONDS",
+                                     kStockTimeoutSeconds, 300);
+    const bool by_file = mods_marker_present(".rsmm_p2p_timeout");
+    if (env_secs == 0 && !by_file) {
+        Loader::get().log("[netcode] P2P timeout patch disabled (stock 10 s; "
+                          "set RSMM_P2P_TIMEOUT_SECONDS=10..300 or touch "
+                          "mods/.rsmm_p2p_timeout)");
+        return 0;
+    }
+    const int secs = env_secs != 0 ? env_secs : kDefaultP2PTimeoutSeconds;
+
+    const std::uintptr_t site = resolve_anchor(
+        "p2p-timeout", Sym::RakPeer_DefaultTimeoutStore_Pattern, kTimeoutStoreOff);
+    if (site == 0) return 0;
+
+    auto* insn = reinterpret_cast<std::uint8_t*>(site);
+    if (!mem_readable(insn, sizeof(kTimeoutStore)) ||
+        std::memcmp(insn, kTimeoutStore, sizeof(kTimeoutStore)) != 0) {
+        Loader::get().log("[netcode] p2p-timeout: RakPeer ctor store is not "
+                          "`mov [rsi+0x7ec], 10000` (game patched?); not patching");
+        return 0;
+    }
+    const std::uint32_t ms = static_cast<std::uint32_t>(secs) * 1000u;
+    if (!write_protected(insn + 6, &ms, sizeof(ms))) {
+        Loader::get().log_err("[netcode] p2p-timeout: VirtualProtect failed; not patching");
+        return 0;
+    }
+    char b[128];
+    std::snprintf(b, sizeof(b),
+                  "[netcode] RakNet P2P timeout %ds -> %ds (a stalled peer or "
+                  "host is no longer cut at 10 s)",
+                  kStockTimeoutSeconds, secs);
+    Loader::get().log(b);
+    return secs;
 }
 
 } // namespace
 
 bool install_netcode_patches() {
-    const int env_window = window_from_env();
-    const bool by_file = file_marker_present();
-    if (env_window == 0 && !by_file) {
-        Loader::get().log("[netcode] reconnect-window patch disabled "
-                          "(set RSMM_RECONNECT_SECONDS=1..255 or touch "
-                          "mods/.rsmm_extend_reconnect)");
-        return false;
+    const int window = patch_reconnect_window();
+    const int timeout = patch_p2p_timeout();
+    // The RakNet layer sits ABOVE the EOS tunnel: once it times out, the
+    // session is gone no matter how long the tunnel is allowed to reconnect.
+    if (window > 0 && window > (timeout > 0 ? timeout : kStockTimeoutSeconds)) {
+        char b[176];
+        std::snprintf(b, sizeof(b),
+                      "[netcode] reconnect window %ds exceeds the RakNet "
+                      "P2P timeout %ds; drops longer than the timeout still end "
+                      "the session (raise RSMM_P2P_TIMEOUT_SECONDS)",
+                      window, timeout > 0 ? timeout : kStockTimeoutSeconds);
+        Loader::get().log_warn(b);
     }
-    const std::uint8_t window =
-        static_cast<std::uint8_t>(env_window != 0 ? env_window : kDefaultWindowSeconds);
-
-    const std::uintptr_t base = game_base();
-    if (base == 0) {
-        Loader::get().log_err("[netcode] could not resolve game module base; skipping");
-        return false;
-    }
-    // These are absolute .data RVAs — exactly the class of address the build
-    // fingerprint gate exists for. On a mismatched build they point at
-    // arbitrary bytes, and the four-default check below would be reading (and
-    // possibly writing) unrelated memory.
-    if (!Loader::get().va_globals_trusted()) {
-        Loader::get().log("[netcode] game build != symbol-map build; reconnect "
-                          "window not patched (run `rsmm update-data`)");
-        return false;
-    }
-
-    auto* ed2 = reinterpret_cast<std::uint8_t*>(base + kInterruptDropRva);
-    auto* ed3 = reinterpret_cast<std::uint8_t*>(base + kReconnectMaxRva);
-    auto* ed4 = reinterpret_cast<std::uint8_t*>(base + kReconnectUiRva);
-    auto* ed5 = reinterpret_cast<std::uint8_t*>(base + kMaxConnectingRva);
-
-    if (!mem_readable(ed2, 4)) {
-        Loader::get().log("[netcode] reconnect-timeout bytes not mapped at the "
-                          "recorded RVA; not patching");
-        return false;
-    }
-
-    // Game-update guard: all four defaults must be present at the rebased
-    // addresses, or .data has moved and we must not write.
-    if (*ed2 != kDefInterruptDrop || *ed3 != kDefReconnectMax ||
-        *ed4 != kDefReconnectUi  || *ed5 != kDefMaxConnecting) {
-        char b[96];
-        snprintf(b, sizeof(b),
-                 "[netcode] reconnect defaults not found (%u/%u/%u/%u); "
-                 "game updated? not patching",
-                 *ed2, *ed3, *ed4, *ed5);
-        Loader::get().log(b);
-        return false;
-    }
-
-    DWORD oldprot = 0;
-    if (!VirtualProtect(ed3, 1, PAGE_EXECUTE_READWRITE, &oldprot)) {
-        Loader::get().log_err("[netcode] VirtualProtect failed; not patching");
-        return false;
-    }
-    *ed3 = window;
-    DWORD tmp = 0;
-    VirtualProtect(ed3, 1, oldprot, &tmp);
-
-    char b[96];
-    snprintf(b, sizeof(b),
-             "[netcode] reconnect window %us -> %us (a dropped peer can rejoin)",
-             kDefReconnectMax, window);
-    Loader::get().log(b);
-    return true;
+    return window > 0 || timeout > 0;
 }
 
 } // namespace rsmm

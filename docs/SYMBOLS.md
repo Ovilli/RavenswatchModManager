@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **353** symbols across 27 categories.
+Total: **356** symbols across 27 categories.
 
 ## analytics
 
@@ -312,11 +312,14 @@ Total: **353** symbols across 27 categories.
 | `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
 | `Netcode_EntityReplSetup` | `0x140720350` | ❓ unverified | ✔ | void(void* replContext) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
+| `Netcode_ReconnectMaxRead` | `0x1402ab327` | ✅ ok |  | (code location, not callable) |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
 | `P2PSession_OnFcm2NewHost` | `0x1408b70b0` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
 | `P2PSession_SetState` | `0x14085ae80` | ✅ ok |  | void(oCDtP2PSessionSceneContext* ctx, int newState) |
 | `P2PSession_StateNames` | `0x140ee98a0` | 📍 va |  | struct { const char* s; uint32 len; } [14]  // 0x10 stride |
 | `RakNetConnection_Ctor` | `0x140b9ba80` | ✅ ok |  | Stormancer::RakNetConnection constructor. Ghidra 2026-08-21: installs Stormancer::IConn… |
+| `RakPeer_Ctor` | `0x140adc7b0` | ✅ ok |  | RakNet::RakPeer* (RakNet::RakPeer* this) |
+| `RakPeer_DefaultTimeoutStore` | `0x140add660` | ✅ ok |  | (code location, not callable) |
 | `RakPeer_GetGuidFromSystemAddress` | `0x140ae24c0` | ✅ ok |  | RakNetGUID(RakPeer* this, const SystemAddress& addr) |
 | `RakPeer_GetMyGUID` | `0x140ae2370` | ✅ ok |  | const RakNetGUID&(RakPeer* this) |
 | `RakPeer_GetSystemAddressFromGuid` | `0x140ae2660` | ✅ ok |  | SystemAddress(RakPeer* this, const RakNetGUID& guid) |
