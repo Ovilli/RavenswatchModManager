@@ -2,6 +2,17 @@
   "generated": "2026-11-06",
   "entries": [
     {
+      "version": "5.9.30",
+      "date": "2026-11-06",
+      "summary": "Mute any in-game sound you want, from a mod's config.",
+      "highlights": [
+        "New R.audio SDK: mute everything, a mixer category (music, voices, menus), a sound folder, or single sounds",
+        "New fmod-sounds config picker lists every sound from the installed game, including one list per hero",
+        "Multi-choice mod settings now reach a mod's Lua and are no longer lost when a mod saves another setting"
+      ],
+      "loader_version": 51
+    },
+    {
       "version": "",
       "date": "2026-11-06",
       "summary": "R.audio: mute any in-game sound — everything, a mixer category (music, voices, menus), a folder, or single events (FMOD export hooks, no game addresses). Multiselect config values now reach mod Lua and survive config rewrites.",
@@ -517,15 +528,6 @@
         "Online: the Damage Meter is now treated as a client-only mod again, so running it no longer marks you as modded for public matchmaking.",
         "Mod authors: 26 run events (hero death, chests, shop purchases, item and talent picks, chapter-end stats and more) are now listed with their fields in rsmm symbols events, and rsmm lint accepts them.",
         "Mod authors: R.status.watch_stagger() and R.status.stagger() read stagger values, and the Lua API docs record which calls are proven in game."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 39,
-      "date": "2026-10-10",
-      "summary": "Lua SDK: run-event catalog updated — 32 analytics events with their fields (hero_death, open_chest, sandman_buy, item/talent picks, chapter_end stats, ...); level_up_reach corrected to levelup_run",
-      "highlights": [
-        "Lua SDK: run-event catalog updated — 32 analytics events with their fields (hero_death, open_chest, sandman_buy, item/talent picks, chapter_end stats, ...); level_up_reach corrected to levelup_run"
       ]
     }
   ]
