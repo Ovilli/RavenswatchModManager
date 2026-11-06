@@ -56,18 +56,20 @@ def _check_source(name: str, raw: Any, type_: str | None = None) -> str | None:
     An `item-grid` cannot exist without one — its options ARE the provider's —
     so for that type a missing `source` is an error, not a static list.
     """
-    from .config_choices import PROVIDERS
+    from .config_choices import PROVIDERS, split_source
     if raw is None:
         if type_ == "item-grid":
             raise ConfigError(
                 f"{name}: an item-grid needs source = one of {', '.join(sorted(PROVIDERS))}")
         return None
     src = str(raw)
-    if src not in PROVIDERS:
+    try:
+        split_source(src)
+    except ValueError as exc:
         raise ConfigError(
             f"{name}: source {src!r} is not a known option provider "
-            f"(one of {', '.join(sorted(PROVIDERS))})"
-        )
+            f"(one of {', '.join(sorted(PROVIDERS))}): {exc}"
+        ) from None
     return src
 
 

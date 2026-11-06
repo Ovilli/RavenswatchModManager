@@ -3795,6 +3795,8 @@ R.config   = _submodule("config")
 R.i18n     = _submodule("i18n")
 R.api      = _submodule("api")
 R.schedule = _submodule("schedule")
+-- Master mute through FMOD (rsmm/audio.lua, hook_audio.cpp).
+R.audio    = _submodule("audio")
 
 -- Drive the schedule module's frame pump off the one true event bus.
 if R.schedule and R.schedule._tick then

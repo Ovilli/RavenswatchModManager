@@ -2082,6 +2082,41 @@ do
     check(health_state.disabled.badmod == "keeps crashing", "disable records a reason")
 end
 
+-- 16b. R.audio: master mute degrades on an old loader, reaches a new one ------
+do
+    check(R.audio ~= nil, "R.audio is wired into the SDK")
+    check(R.audio.mute(true) == false and not R.audio.available(),
+          "an old loader without audio bindings reports the mute did not land")
+    local native = { muted = false, hooked = true }
+    I.audio_mute = function(on) native.muted = on end
+    I.audio_status = function()
+        return { hooked = native.hooked, muted = native.muted, systems = 1, updates = 7, last_error = 0 }
+    end
+    check(R.audio.available(), "available once the hook is live")
+    check(R.audio.mute(true) and native.muted == true and R.audio.muted(), "mute reaches the loader")
+    check(R.audio.toggle() and native.muted == false, "toggle releases it")
+    check(R.audio.mute("yes") and native.muted == true, "a truthy value is coerced to a boolean")
+    R.audio.unmute()
+    check(R.audio.status().updates == 7, "status passes the native counters through")
+    native.hooked = false
+    check(not R.audio.available(), "not available when the hook did not arm")
+
+    -- select: "all" is the master switch, everything else goes to the targets.
+    I.audio_mute, I.audio_status = nil, nil
+    check(R.audio.select{ "bus:/Music" } == false,
+          "select on a loader without per-sound support says it did not land")
+    I.audio_mute = function(on) native.muted = on end
+    local sent
+    I.audio_targets = function(list) sent = list end
+    check(R.audio.select{ "bus:/Music", "ALL", 7, "event:/Heroes/Red" }, "select reaches the loader")
+    check(native.muted == true, "'all' (any case) turns the master mute on")
+    check(#sent == 2 and sent[1] == "bus:/Music" and sent[2] == "event:/Heroes/Red",
+          "'all' and non-strings are not passed as targets")
+    R.audio.select{}
+    check(native.muted == false and #sent == 0, "an empty selection releases everything")
+    I.audio_mute, I.audio_status, I.audio_targets = nil, nil, nil
+end
+
 -- 17. R.api crosses the (mocked) state boundary -----------------------------
 do
     R.api.expose{ api_name = "loot", version = "1.2.0",
@@ -10776,6 +10811,20 @@ do
     outside({ other = true })
     fire("tick")
     check(#got == 3 and got[3][1] == nil and got[3][2] == 200, "a removed key fires with nil")
+
+    -- A multiselect value arrives as a fresh table on every reload. Before
+    -- _same, `~=` compared identities and fired it on every file change.
+    local picks = {}
+    R.config.on_change("muted", function(new) picks[#picks + 1] = new end)
+    outside({ other = true, muted = { "bus:/Music" } })
+    fire("tick")
+    check(#picks == 1 and picks[1][1] == "bus:/Music", "a list value fires on_change")
+    outside({ other = true, muted = { "bus:/Music" }, extra = 1 })
+    fire("tick")
+    check(#picks == 1, "an equal list in a new table does not re-fire")
+    outside({ other = true, muted = { "bus:/Music", "event:/GUI" }, extra = 1 })
+    fire("tick")
+    check(#picks == 2 and #picks[2] == 2, "a changed list fires again")
 
     I.config_reload = nil                                 -- older DLL
     outside({ yaw = 1 })

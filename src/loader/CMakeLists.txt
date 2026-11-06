@@ -66,6 +66,7 @@ set(LOADER_SRC
     src/hook_gamevalues.cpp
     src/hook_netcode.cpp
     src/hook_backend.cpp
+    src/hook_audio.cpp
     src/hook_lua.cpp
     src/script_lua.cpp
     src/hook_util.cpp

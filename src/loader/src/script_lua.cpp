@@ -28,6 +28,7 @@ extern "C" {
 #include "hook_lua.h"
 #include "hook_items.h"
 #include "watchpoint.h"
+#include "hook_audio.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -178,6 +179,45 @@ int lua_mod_dir(lua_State* L) {
 int lua_self_id(lua_State* L) {
     auto* m = current_from_state(L);
     lua_pushstring(L, m ? m->id.c_str() : "");
+    return 1;
+}
+
+// R.audio backing: master mute through FMOD's exports (hook_audio.cpp).
+int lua_audio_mute(lua_State* L) {
+    audio_set_mute(lua_toboolean(L, 1) != 0);
+    return 0;
+}
+
+// rsmm._internal.audio_targets({ "bus:/Music", "event:/Heroes/Red", ... })
+//   Replaces the selected bus / event paths. Non-string entries are skipped.
+int lua_audio_targets(lua_State* L) {
+    std::vector<std::string> paths;
+    if (lua_istable(L, 1)) {
+        const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, 1));
+        for (lua_Integer i = 1; i <= n && i <= 4096; ++i) {
+            lua_rawgeti(L, 1, i);
+            if (lua_type(L, -1) == LUA_TSTRING) paths.emplace_back(lua_tostring(L, -1));
+            lua_pop(L, 1);
+        }
+    }
+    audio_set_targets(paths);
+    return 0;
+}
+
+int lua_audio_status(lua_State* L) {
+    const AudioStatus st = audio_status();
+    lua_createtable(L, 0, 11);
+    lua_pushboolean(L, st.hooked);          lua_setfield(L, -2, "hooked");
+    lua_pushboolean(L, st.studio_hooked);   lua_setfield(L, -2, "studio_hooked");
+    lua_pushboolean(L, st.muted);           lua_setfield(L, -2, "muted");
+    lua_pushinteger(L, st.systems);         lua_setfield(L, -2, "systems");
+    lua_pushinteger(L, static_cast<lua_Integer>(st.updates)); lua_setfield(L, -2, "updates");
+    lua_pushinteger(L, st.buses);           lua_setfield(L, -2, "buses");
+    lua_pushinteger(L, st.buses_muted);     lua_setfield(L, -2, "buses_muted");
+    lua_pushinteger(L, st.events);          lua_setfield(L, -2, "events");
+    lua_pushinteger(L, st.instances);       lua_setfield(L, -2, "instances");
+    lua_pushinteger(L, st.instances_muted); lua_setfield(L, -2, "instances_muted");
+    lua_pushinteger(L, st.last_error);      lua_setfield(L, -2, "last_error");
     return 1;
 }
 
@@ -464,6 +504,20 @@ bool push_config_table(lua_State* L, const std::filesystem::path& root) {
         else if (auto i = node.as_integer())        lua_pushinteger(L, (lua_Integer)**i);
         else if (auto f = node.as_floating_point()) lua_pushnumber(L, **f);
         else if (auto s = node.as_string())         lua_pushstring(L, (**s).c_str());
+        else if (auto a = node.as_array()) {
+            // A multiselect field: an array of primitives becomes a Lua
+            // sequence. Nested tables/arrays are skipped, never guessed at.
+            lua_createtable(L, static_cast<int>(a->size()), 0);
+            lua_Integer i = 0;
+            for (auto&& el : *a) {
+                if (auto eb = el.as_boolean())             lua_pushboolean(L, **eb ? 1 : 0);
+                else if (auto ei = el.as_integer())        lua_pushinteger(L, (lua_Integer)**ei);
+                else if (auto ef = el.as_floating_point()) lua_pushnumber(L, **ef);
+                else if (auto es = el.as_string())         lua_pushstring(L, (**es).c_str());
+                else continue;
+                lua_rawseti(L, -2, ++i);
+            }
+        }
         else continue;
         lua_setfield(L, -2, std::string(key.str()).c_str());
     }
@@ -502,7 +556,29 @@ bool config_write_file(lua_State* L, const std::filesystem::path& root) {
                 case LUA_TSTRING:
                     section.insert(k, std::string(lua_tostring(L, -1)));
                     break;
-                default: break;  // tables/functions never persist
+                case LUA_TTABLE: {
+                    // Arrays of primitives (multiselect fields) round-trip;
+                    // without this, R.config.set on ANY key rewrote the file
+                    // and silently dropped every multiselect selection.
+                    toml::array arr;
+                    const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, -1));
+                    for (lua_Integer i = 1; i <= n; ++i) {
+                        lua_rawgeti(L, -1, i);
+                        switch (lua_type(L, -1)) {
+                            case LUA_TBOOLEAN: arr.push_back((bool)lua_toboolean(L, -1)); break;
+                            case LUA_TNUMBER:
+                                if (lua_isinteger(L, -1)) arr.push_back((std::int64_t)lua_tointeger(L, -1));
+                                else arr.push_back((double)lua_tonumber(L, -1));
+                                break;
+                            case LUA_TSTRING: arr.push_back(std::string(lua_tostring(L, -1))); break;
+                            default: break;
+                        }
+                        lua_pop(L, 1);
+                    }
+                    section.insert(k, std::move(arr));
+                    break;
+                }
+                default: break;  // functions never persist
             }
         }
         lua_pop(L, 1);
@@ -532,6 +608,17 @@ int lua_config_get(lua_State* L) {
     if (!lua_istable(L, -1)) { lua_pushnil(L); return 1; }
     lua_pushvalue(L, 1);
     lua_gettable(L, -2);
+    if (lua_istable(L, -1)) {
+        // Hand out a COPY: the registry table is what config_write_file
+        // persists, so a mod editing the returned list in place would
+        // otherwise rewrite its saved config behind its own back.
+        const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, -1));
+        lua_createtable(L, static_cast<int>(n), 0);
+        for (lua_Integer i = 1; i <= n; ++i) {
+            lua_rawgeti(L, -2, i);
+            lua_rawseti(L, -2, i);
+        }
+    }
     return 1;
 }
 
@@ -1903,6 +1990,9 @@ void register_api(lua_State* L) {
         { "module_base",             lua_module_base },
         { "self_id",                 lua_self_id },
         { "now",                     lua_now },
+        { "audio_mute",              lua_audio_mute },
+        { "audio_status",            lua_audio_status },
+        { "audio_targets",           lua_audio_targets },
         { "health_count",            lua_health_count },
         { "health_last_error",       lua_health_last_error },
         { "health_disable",          lua_health_disable },

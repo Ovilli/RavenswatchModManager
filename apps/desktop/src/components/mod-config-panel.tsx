@@ -99,10 +99,13 @@ export function ModConfigPanel({
   const choices: Record<string, ModConfigChoice[]> = configQuery.data?.choices ?? {};
   // Game textures an `item-grid` field declared as its theme, per field.
   const themes: Record<string, Record<string, string>> = configQuery.data?.themes ?? {};
-  // A provider-backed field picks from the game's own catalog (items, so far),
-  // and `apply` turns that selection into rewritten cooked assets. That is the
-  // edit that costs a rebuild on the next launch, so it gets the louder wording.
-  const cooksAssets = Object.values(schemaFields ?? {}).some((f) => Boolean(f.source));
+  // A provider-backed field picks from the game's own catalog, and for most
+  // sources `apply` turns that selection into rewritten cooked assets. That is
+  // the edit that costs a rebuild on the next launch, so it gets the louder
+  // wording. Sources a mod only reads at runtime are exempt.
+  const cooksAssets = Object.values(schemaFields ?? {}).some(
+    (f) => Boolean(f.source) && !RUNTIME_ONLY_SOURCES.has(f.source ?? ''),
+  );
   const defaults = useMemo(() => buildDefaultDraft(schema), [schema]);
   const loadedDraft = useMemo(() => buildDraft(schema, loadedValues), [schema, loadedValues]);
   const validation = useMemo(
@@ -292,6 +295,10 @@ export function ModConfigPanel({
     </Shell>
   );
 }
+
+/** Option sources whose selection is read by the mod at runtime and never
+ *  baked into cooked assets (see `rsmm.sdk.config_choices.PROVIDERS`). */
+const RUNTIME_ONLY_SOURCES = new Set(['fmod-sounds']);
 
 function FramelessShell({ children }: { children: ReactNode }) {
   return <div>{children}</div>;

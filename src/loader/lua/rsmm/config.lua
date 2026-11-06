@@ -79,6 +79,21 @@ function M._fire(key, value, old)
     end
 end
 
+-- Value equality for the poll: multiselect fields arrive as fresh tables on
+-- every reload, so `~=` would report them changed every time the file moved.
+local function _same(a, b)
+    if a == b then return true end
+    if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then return false end
+    for i = 1, #a do if a[i] ~= b[i] then return false end end
+    return true
+end
+
+local function _show(v)
+    if type(v) == "table" then return "[" .. table.concat((function()
+        local t = {} for i = 1, #v do t[i] = tostring(v[i]) end return t end)(), ",") .. "]" end
+    return tostring(v)
+end
+
 function M._poll()
     local I = _native()
     if not (I and I.config_reload) then return end
@@ -89,7 +104,7 @@ function M._poll()
     _last = now
     local changed = {}
     for k, v in pairs(now) do
-        if old[k] ~= v then changed[#changed + 1] = k .. "=" .. tostring(v) end
+        if not _same(old[k], v) then changed[#changed + 1] = k .. "=" .. _show(v) end
     end
     if #changed > 0 and _G.rsmm and _G.rsmm.log then
         table.sort(changed)
@@ -97,7 +112,7 @@ function M._poll()
                     .. table.concat(changed, ", "))
     end
     for k, v in pairs(now) do
-        if old[k] ~= v then M._fire(k, v, old[k]) end
+        if not _same(old[k], v) then M._fire(k, v, old[k]) end
     end
     for k, v in pairs(old) do
         if now[k] == nil then M._fire(k, nil, v) end
