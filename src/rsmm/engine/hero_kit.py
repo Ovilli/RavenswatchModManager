@@ -865,7 +865,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                            "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
                            "hold", "attack_area", "attack_speed", "attack_debuffs",
                            "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
-                           "count_talents", "count_card", "look"}
+                           "count_talents", "count_card", "look", "name", "upgrade"}
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -882,7 +882,14 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     spawn = spec.get("spawn", "start")
     if spawn not in ("start", "button"):
         raise KitError(f"kit pets spawn = {spawn!r}: \"start\" or \"button\"")
-    if spawn == "button" and spec.get("talent"):
+    upgrade = spec.get("upgrade")
+    if upgrade is not None:
+        if not isinstance(upgrade, dict):
+            raise KitError("kit pets upgrade = { ... } is a table of upgraded pet properties")
+        if not spec.get("talent"):
+            raise KitError("kit pets: upgrade needs a talent to switch on "
+                           "(e.g. talent = \"Skill Secondary Can Hold\")")
+    if spawn == "button" and spec.get("talent") and not upgrade:
         raise KitError("kit pets: spawn = \"button\" and a talent do not mix")
     src = _entity_ref(spec["entity"])
     if _is_pet(src):
@@ -891,6 +898,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         if spec.get("appear"):
             raise KitError("kit pets appear: only an enemy copy has a spawn clip to swap")
         pet, pre = _pet_copy(src, ctx)
+        pet_up = None
     else:
         pre = []
         # A bomber pet: it bursts when it dies, on its first bite too
@@ -899,14 +907,41 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                           appear=spec.get("appear"), burst=spec.get("burst"),
                           lifetime=spec.get("lifetime"),
                           on_hit=bool(spec.get("burst_on_hit")), attack=spec.get("attack"),
-                          tuning=_attack_tuning_of(spec, "pets"), look=spec.get("look"))
+                          tuning=_attack_tuning_of(spec, "pets"), look=spec.get("look"),
+                          name=spec.get("name"))
+        if upgrade:
+            up_spec = {**spec, **upgrade}
+            pet_up = _summon_for(up_spec["entity"], ctx, "pets", base=AS.PET_MODEL,
+                                 appear=up_spec.get("appear"), burst=up_spec.get("burst"),
+                                 lifetime=up_spec.get("lifetime"),
+                                 on_hit=bool(up_spec.get("burst_on_hit")),
+                                 attack=up_spec.get("attack"),
+                                 tuning=_attack_tuning_of(up_spec, "pets"),
+                                 look=dict(up_spec["look"]) if up_spec.get("look") else None,
+                                 name=up_spec.get("name"))
+        else:
+            pet_up = None
 
     steps: list[dict] = [
         *pre,
         {"clone": list(_WUKONG_SPAWN), "from": "SunWukong", "rename": dict(_WUKONG_SPAWN)},
         {"set": "Kit Pet Spawner.template[1]", "value": pet},
         {"set": "Kit Pet Count.value", "value": count}]
+    if upgrade and pet_up:
+        steps += [
+            {"clone": ["Kit Pet Spawner", "Kit Pet Spread Pos"],
+             "rename": {"Kit Pet Spawner": "Kit Pet Spawner Upgrade",
+                        "Kit Pet Spread Pos": "Kit Pet Spread Pos Upgrade"}},
+            {"set": "Kit Pet Spawner Upgrade.template[1]", "value": pet_up},
+            {"clone": ["Teleport Out From Deathdoor Or Regular Tester"], "from": "Hero_Common",
+             "rename": {"Teleport Out From Deathdoor Or Regular Tester": "Kit Pet Upgrade Tester"}},
+            {"link": "Kit Pet Upgrade Tester.test", "to": str(spec["talent"])},
+            {"link": "Kit Pet Upgrade Tester.on_true", "to": "Kit Pet Spread Pos Upgrade"},
+            {"link": "Kit Pet Upgrade Tester.on_false", "to": "Kit Pet Spread Pos"},
+        ]
     steps += _pet_count_talents(spec, g)
+    if upgrade and pet_up:
+        steps.append({"link": "Kit Pet Spread Pos Upgrade.value_2", "to": "Kit Pet Count Total"})
     talent = spec.get("talent")
     states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
     if talent is not None and talent not in states:
@@ -951,22 +986,25 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                   {"add_link": "Kit Pet Start.activates", "to": "Kit Pet Start Timer"},
                   {"link": "Kit Pet In Run Tester.on_true", "to": "Kit Pet Start"},
                   {"add_link": "Child Event Initialize.activates", "to": "Kit Pet In Run Tester"}]
+    spawn_target = "Kit Pet Upgrade Tester" if (upgrade and pet_up) else "Kit Pet Spread Pos"
     steps += [{"add_link": f"{start}.activates", "to": "Kit Pet Centre"},
               {"add_link": f"{start}.activates", "to": "Kit Pet Random"},
-              {"add_link": f"{start}.activates", "to": "Kit Pet Spread Pos"}]
+              {"add_link": f"{start}.activates", "to": spawn_target}]
     # (The spread runs the spawner once per spot itself; switching the spawner
     # on as well spawned a second pet, playtest 2026-11-03.)
 
+    spawners = (["Kit Pet Spawner", "Kit Pet Spawner Upgrade"]
+                if (upgrade and pet_up) else "Kit Pet Spawner")
     steps += [{"clone": list(_PIPER_ORDERS), "from": "Piper", "rename": dict(_PIPER_ORDERS)},
               # Piper's orders go to what HER two pet spawners spawned (each
               # sender's targets = Spawned Entity Collectors naming them); left
               # so, every press reached nobody (corpus, 2026-11-03).
-              {"retarget_targets": "Kit Pet Attack Order.targets", "to": "Kit Pet Spawner"},
-              {"retarget_targets": "Kit Pet Recall Order.targets", "to": "Kit Pet Spawner"},
+              {"retarget_targets": "Kit Pet Attack Order.targets", "to": spawners},
+              {"retarget_targets": "Kit Pet Recall Order.targets", "to": spawners},
               # Where the order sends them (a copied pet reads it): stored first.
               {"add_link": f"{trigger}.activates", "to": "Kit Pet Centre"},
               {"add_link": f"{trigger}.activates", "to": "Kit Pet Attack Order"}]
-    if talent is not None:
+    if talent is not None and not upgrade:
         # The button keeps its ability (and its own end); the talent holds off
         # what the slot block added to it. Without the talent the order goes
         # to no pet, which does nothing.
@@ -1180,7 +1218,8 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
 
 def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
                 lifetime=None, burst=None, on_hit: bool = False, appear=None,
-                attack=None, tuning: tuple = _NO_TUNING, look=None) -> str:
+                attack=None, tuning: tuple = _NO_TUNING, look=None,
+                name: str | None = None) -> str:
     """The ref to spawn for ``summon = <enemy>``: an ally copy of it in the
     hero's folder (its model layer and the variant, see ally_summon.build).
     One copy per enemy and end, however many blocks summon it.
@@ -1213,14 +1252,18 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
         if unknown:
             raise KitError(f"kit {slot}: look has no {', '.join(sorted(unknown))}")
     looks = tuple(sorted((k, repr(v)) for k, v in (look or {}).items()))
-    end = (lifetime, _entity_ref(burst) if burst else None, on_hit, appear, attack, tuning, looks)
+    end = (lifetime, _entity_ref(burst) if burst else None, on_hit,
+           appear, attack, tuning, looks, name)
     for c in ctx.copies:
         if (c.data is not None and c.source == src and c.base == (base or None)
                 and c.end == end):
             return c.ref
-    k = len({c.ref.removesuffix(".entity.ot").removesuffix("_Model")
-             for c in ctx.copies}) + 1
-    stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Summon{k}"
+    if name:
+        stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_{name}"
+    else:
+        k = len({c.ref.removesuffix(".entity.ot").removesuffix("_Model")
+                 for c in ctx.copies}) + 1
+        stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_Summon{k}"
     variant_ref, model_ref = stem + ".entity.ot", stem + "_Model.entity.ot"
     try:
         out = AS.build(src, model_ref, variant_ref, f"{ctx.hid}:summon:{src}:{end}",

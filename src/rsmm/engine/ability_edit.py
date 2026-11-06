@@ -147,7 +147,7 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part or not step.get("to"):
                     raise AbilityEditError("retarget_targets = 'Sender.targets', to = <spawner>")
-                ef.repoint_targets(part, fld, str(step["to"]))
+                ef.repoint_targets(part, fld, step["to"])
             else:
                 spec = str(step[op])
                 if ".cinebloc[" in spec:
