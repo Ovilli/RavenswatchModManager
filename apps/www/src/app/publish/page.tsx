@@ -269,14 +269,11 @@ export default function PublishPage() {
         },
         what: 'mod archive upload',
         onProgress: (loaded, total) => setPhase({ kind: 'uploading-zip', loaded, total }),
+        confirmUpload: () => {
+          setPhase({ kind: 'scanning' });
+          return api.mods.scanVersion(presigned.versionId);
+        },
       });
-
-      // Scanning is async now: this enqueues the version and returns instantly
-      // with a place in line. The worker scans it within a minute or two; if it
-      // trips, the version is withheld + removed automatically. The author can
-      // close the page — status shows on the my-mods page.
-      setPhase({ kind: 'scanning' });
-      await api.mods.scanVersion(presigned.versionId);
 
       let imageUrl: string | null = null;
       if (image) {

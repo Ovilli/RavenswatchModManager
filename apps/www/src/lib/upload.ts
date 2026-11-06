@@ -38,9 +38,18 @@ export function putFile(
     headers: Record<string, string>;
     what: string;
     onProgress?: (loaded: number, total: number) => void;
+    confirmUpload?: () => Promise<unknown>;
   },
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const confirmUpload = async () => {
+      try {
+        await opts.confirmUpload?.();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
     for (const [k, v] of Object.entries(opts.headers)) xhr.setRequestHeader(k, v);
@@ -51,10 +60,13 @@ export function putFile(
       };
     }
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      if (xhr.status >= 200 && xhr.status < 300) void confirmUpload();
       else reject(new Error(formatObjectStorageError(xhr.status, xhr.responseText, opts.what)));
     };
-    xhr.onerror = () => reject(new Error(`${opts.what} failed: network error`));
+    xhr.onerror = () => {
+      if (opts.confirmUpload) void confirmUpload();
+      else reject(new Error(`${opts.what} failed: network error`));
+    };
     xhr.send(file);
   });
 }

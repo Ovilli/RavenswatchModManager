@@ -443,13 +443,11 @@ export default function ManageModPage() {
           },
           what: 'mod archive upload',
           onProgress: (loaded, total) => setZipProgress({ loaded, total }),
+          confirmUpload: () => api.mods.scanVersion(presigned.versionId),
         });
       } finally {
         setZipProgress(null);
       }
-      // Async scan: enqueue and return. The worker scans within a minute or two
-      // and withholds + removes the version automatically if it trips.
-      await api.mods.scanVersion(presigned.versionId);
     },
     onSuccess: () => {
       setNewZip(null);
