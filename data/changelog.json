@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-05",
+  "generated": "2026-11-06",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-06",
+      "summary": "R.audio: mute any in-game sound — everything, a mixer category (music, voices, menus), a folder, or single events (FMOD export hooks, no game addresses). Multiselect config values now reach mod Lua and survive config rewrites.",
+      "highlights": [
+        "R.audio: mute any in-game sound — everything, a mixer category (music, voices, menus), a folder, or single events (FMOD export hooks, no game addresses). Multiselect config values now reach mod Lua and survive config rewrites."
+      ],
+      "loader_version": 51
+    },
     {
       "version": "",
       "date": "2026-11-05",
@@ -517,15 +526,6 @@
       "summary": "Lua SDK: run-event catalog updated — 32 analytics events with their fields (hero_death, open_chest, sandman_buy, item/talent picks, chapter_end stats, ...); level_up_reach corrected to levelup_run",
       "highlights": [
         "Lua SDK: run-event catalog updated — 32 analytics events with their fields (hero_death, open_chest, sandman_buy, item/talent picks, chapter_end stats, ...); level_up_reach corrected to levelup_run"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 38,
-      "date": "2026-10-10",
-      "summary": "Lua SDK: R.status.watch_stagger()/stagger() read the hero's stagger values; R.melody.choose documented as not working (melodies are random); R.revive, R.status.clear and R.run.lose marked proven",
-      "highlights": [
-        "Lua SDK: R.status.watch_stagger()/stagger() read the hero's stagger values; R.melody.choose documented as not working (melodies are random); R.revive, R.status.clear and R.run.lose marked proven"
       ]
     }
   ]
