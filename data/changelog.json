@@ -2,6 +2,16 @@
   "generated": "2026-11-06",
   "entries": [
     {
+      "version": "",
+      "date": "2026-11-06",
+      "summary": "fmod-sounds config picker: mute any in-game sound from a mod's config (categories, folders, one list per hero); multiselect config fixes",
+      "highlights": [
+        "New fmod-sounds config option source: lists every sound from the installed game, including one list per hero",
+        "Multi-choice mod settings are no longer lost when a mod saves another setting"
+      ],
+      "cli_version": 26
+    },
+    {
       "version": "5.9.30",
       "date": "2026-11-06",
       "summary": "Mute any in-game sound you want, from a mod's config.",
@@ -518,16 +528,6 @@
         "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
         "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
         "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
-      ]
-    },
-    {
-      "version": "5.9.13",
-      "date": "2026-10-10",
-      "summary": "The Damage Meter no longer counts as a gameplay mod online, and mod authors get the full list of run events.",
-      "highlights": [
-        "Online: the Damage Meter is now treated as a client-only mod again, so running it no longer marks you as modded for public matchmaking.",
-        "Mod authors: 26 run events (hero death, chests, shop purchases, item and talent picks, chapter-end stats and more) are now listed with their fields in rsmm symbols events, and rsmm lint accepts them.",
-        "Mod authors: R.status.watch_stagger() and R.status.stagger() read stagger values, and the Lua API docs record which calls are proven in game."
       ]
     }
   ]
