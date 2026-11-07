@@ -1171,6 +1171,9 @@ power = { replace = true, steps = [
   `reads` sets those numbers (`{ "Skill Seeking Available" = true }`), each
   defaulting to the original hero's.
 - **`hit`**: an area attack at that moment (`radius` m, `damage` %, `delay` s).
+- **`forward`** (on `fire` and `hit`): how many metres ahead of the hero the
+  shot starts or the area lands (`{ hit = { radius = 3 }, forward = 2.5 }`:
+  where the axe comes down). Negative is behind.
 - **`heal`**: health, in the units of the hero's own heals.
 - **`summon`**: an enemy that fights for you, spawned ahead of the hero:
   `{ summon = "Enemies/Wolves/Standard_Wolf_Timber" }` (also
@@ -1195,6 +1198,63 @@ timers, spawner values), so what a base cannot do is refused with the reason
 when you save. **None of this is proven in game yet** (2026-10-29): the open
 questions are whether enemy projectiles fired by a hero hurt enemies, and
 whether the status flags take effect.
+
+#### Buttons of a hero written from scratch
+
+A hero with no `base` (`[content.frame]`) writes each button from data,
+`[content.frame.abilities.<button>]`: its `clip`, `duration`, `cooldown`,
+`name`/`description`, and `hits`, bursts around the hero at set times. A hit
+can do more than damage:
+
+```toml
+[content.frame.abilities.power]
+clip     = "anim:Timber"
+cooldown = 6
+hits     = [ { at = 0.45, radius = 3.5, damage = 120, stun = 1.0, knockback = 60, stagger = 20 } ]
+steps    = [ { wait = 0.45 }, { hit = { radius = 3, damage = 120 }, forward = 2.5 } ]
+
+[content.frame.abilities.trait]
+clip = "anim:Bean"
+hits = [ { at = 0.9, radius = 5, damage = 300, status = "Rooted" } ]
+```
+
+- `stun` (seconds), `knockback` and `stagger` are fields of the hit's damage
+  record; `status` puts `Rooted`, `Weak`, `Vulnerable`, `Bleed`, `Chilled` or
+  `Ignite` on whoever it hits (a copy of a shipped debuff, on only while the
+  button runs).
+- Every hit counts as its button's damage, so the hero's per-ability talents
+  (`Crit chance basic`, `Attack power secondary`, `Increase trait damage for
+  each debuff` ...) apply to it.
+- `steps` is the kit's timeline above (`fire`, `hit`, `heal`, `summon`, `wait`,
+  `repeat`), started by the button. The hero gets its own spawner and aim to
+  build from, so projectiles work without a base.
+
+Projectiles of the hero's own, `[content.frame.projectiles.<id>]`, are fired
+with `fire = "own:<id>"`: each is the engine's generic hero projectile (flight,
+hit, despawn) wearing your `model` (a static glb, +Y = flight) and `albedo` /
+`mra` / `normal`, with its own `scale`, `lifetime`, `trail` and `impact`
+effects (any shipped `.vfx.ot`). Speed, damage, size, explode, knockback and
+statuses are set per shot in the `fire` step:
+
+```toml
+[content.frame.projectiles.Bean]
+model  = "art/projectiles/bean.glb"
+albedo = "art/projectiles/props_alb.png"
+trail  = "Settings\\Heroes\\Hero_Kintaro_FX\\Kintaro_Skill_Forest_Spirit_Trail.vfx.ot"
+
+[content.frame.abilities.trait]
+steps = [ { fire = "own:Bean", angles = [0, 90, 180, 270], speed = 14, root = 2 } ]
+```
+
+A talent card is dealt at level-up; give 4 or 5 of them `starter = true` for
+the pick at the start of a run (a hero with none shows "available in an
+upcoming update" on every starting card). A hit's `fx` sets the burst's look
+(any shipped `.vfx.ot`; the default is the shared explosion, a fire burst).
+
+A talent's `actions` take the same: `{ on = "special", hits = [...], steps =
+[...] }` runs each time that ability (or event) fires while the talent is
+owned, its hits counting as that ability's damage. Unproven in game
+(2026-11-07).
 
 ---
 

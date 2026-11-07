@@ -56,7 +56,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "normal", "portrait", "own_entity", "weapons", "animations", "outfits",
         "values", "references", "abilities", "skills",
         "placeholder", "memoirs", "effects", "hide", "attacks", "dlc_owner", "kit",
-        "borrow",
+        "borrow", "materials", "talents", "frame",
     }),
     "ability": frozenset({"hero", "abilities"}),
     "entity": frozenset({"entity", "steps"}),

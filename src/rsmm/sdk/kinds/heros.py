@@ -54,7 +54,33 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         texture under a new name hung level load once (a POI minimap icon), so
         this is the riskiest field.
     ``weapons`` (table)  ``{"<graphic object label>" = {model, albedo, mra,
-        normal}}``: a weapon of the hero's own, in its entities only.
+        normal}}``: a weapon of the hero's own, in its entities only. A
+        material label with no attachment (a companion's, e.g. Beowulf's
+        ``"Chatacter Mesh Wyrm"``) takes maps only.
+    ``frame`` (true | table)  the hero WRITTEN FROM SCRATCH (engine/hero_frame.py):
+        its main, FX and skin entities hold only its own parts on the shared
+        hero base (Hero_Common by alias, Character_Common), not a copy of
+        ``base``'s. ``base`` then lends the herodef, alias and preload lists,
+        and ``rig`` (default the base's folder, e.g. ``Hero_Kintaro``) lends
+        only a skeleton and its on-foot clips (``hero_frame.rig_slots``) until
+        the hero has animations of its own. ``mesh`` / ``material`` name its
+        body (a ``materials`` repaint applies); ``slots`` overrides any slot's
+        fill. Talent rows become empty cards of its own (text from ``skills``).
+        Not yet with ``kit``, ``abilities``, ``attacks`` or ``talents``.
+        WITHOUT ``base`` (``_emit_scratch``): nothing of any hero is copied;
+        its herodef (engine/herodef_frame.py), alias, text and preload lists
+        are its own, and ``rig`` lends assets only. Then ``frame`` also takes
+        ``albedo`` (its body repainted), ``abilities`` (engine/hero_ability.py),
+        ``talents`` (``[{name, title, description, icon, add_stats,
+        actions}]``: its own talent list, the name's first word its book
+        column) and ``animations`` (``{name = {source, clip, template}}``:
+        a glb on the rig's skeleton cooked by anim_cook into a NEW clip of its
+        own; ``clip = "anim:<name>"`` in a slot or a button uses it).
+    ``materials`` (table)  ``{"<material>" = {albedo, mra, normal}}``: any
+        material the hero's own entities use, by file stem (``M_KintaroBear``)
+        or full ref, retextured in this hero's files only (its ``_LowRes``
+        twin follows). For a body ``albedo`` cannot pick: Kintaro's boy is his
+        ``M_Kintaro`` (the "Alt Form" mesh), his main mesh the bear.
     ``animations`` (table)  ``{"<base clip>" = "file.glb" | {source, clip,
         strict}}``: the clip is cooked under ``<id>_<clip>`` and only this
         hero's entities point at it (the ``animation`` kind changes the clip
@@ -165,7 +191,8 @@ _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albed
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
                      "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
-                     "dlc_owner", "kit", "borrow"})
+                     "dlc_owner", "kit", "borrow", "materials",
+                     "talents", "frame"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: Shipped alias names (ApplicationSettings.ot) that are not heroes: a hero of
 #: that name would still collide with the alias. (Kintaro was one until he
@@ -194,8 +221,12 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise ContentError(
             f"hero {defn.id}: unsupported field(s) {unknown}; known: {sorted(_FIELDS)}")
     base = defn.fields.get("base")
+    if not base and defn.fields.get("frame"):
+        # A hero of its own from the first byte: no shipped hero copied.
+        return _emit_scratch(mod_id, defn, out_dir)
     if not isinstance(base, str) or not base:
-        raise ContentError(f"hero {defn.id}: needs a 'base' (a shipped hero, e.g. Piper)")
+        raise ContentError(f"hero {defn.id}: needs a 'base' (a shipped hero, e.g. Piper), "
+                           "or a `frame` with a `rig` for a hero written from scratch")
     if base in DLC_HEROES and defn.fields.get("dlc_owner") is not True:
         raise ContentError(
             f"hero {defn.id}: {base} is a paid DLC hero. A clone plays for anyone who "
@@ -305,6 +336,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
 
     textures = {k: v for k, v in _TEXTURE_FIELDS.items() if f.get(k)}
     weapons = _table(f.get("weapons"), "weapons", hid)
+    materials = _table(f.get("materials"), "materials", hid)
     animations = _table(f.get("animations"), "animations", hid)
     outfits = f.get("outfits") or []
     if not isinstance(outfits, list) or not all(isinstance(o, dict) for o in outfits):
@@ -319,6 +351,30 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     if not isinstance(attacks, list) or not all(isinstance(a, dict) for a in attacks):
         raise ContentError(f"hero {hid}: 'attacks' is a list of tables")
     kit = f.get("kit")
+    frame = f.get("frame")
+    if frame is True:
+        frame = {}
+    if frame is not None:
+        if not isinstance(frame, dict) or set(frame) - {"rig", "mesh", "material", "slots",
+                                                        "abilities"}:
+            raise ContentError(f"hero {hid}: frame is true or a table of rig, mesh, "
+                               "material, slots, abilities")
+        clash = [k for k in ("kit", "abilities", "attacks", "talents") if f.get(k)]
+        if clash:
+            raise ContentError(f"hero {hid}: a frame hero is written from scratch; "
+                               f"{', '.join(clash)} edit a clone's files (not yet for a frame)")
+    # Talents of the hero's own (the talent builder, on this hero's copy): each
+    # slot's base logic cut and rebuilt from generated parts. Edits the base
+    # family's bytes before the kit, which then hangs each action's timeline
+    # on the trigger state written here.
+    talent_bytes: dict[str, bytes] = {}
+    talent_specs = _table(f.get("talents"), "talents", hid)
+    if talent_specs:
+        talent_bytes, hooks, cards = _build_talents(talent_specs, b, hid, mod_id)
+        if hooks:
+            kit = dict(kit or {})
+            kit["talents"] = list(kit.get("talents") or []) + hooks
+        skills = {**cards, **skills}
     kit_copies: list = []             # projectiles of the hero's own (hero_kit.Copy)
     if kit:
         # The hero builder's blocks, as steps run before the hand-written ones
@@ -327,14 +383,15 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         main_ref = next(r for r in b.family
                         if r.rsplit("\\", 1)[-1] == f"{b.stem}.entity.ot")
         try:
-            main = corpus.read(H.entity_rel(main_ref))
+            main = talent_bytes.get(b.stem) or corpus.read(H.entity_rel(main_ref))
             abilities = HK.expand(kit, main, b.stem, hid=hid, copies=kit_copies) + list(abilities)
             # `anim` blocks: the slot's clip swapped for another of the hero's
             # own, in this hero's files only (the `references` swap).
             references = {**HK.anim_swaps(kit, main, b.stem), **references}
         except HK.KitError as e:
             raise ContentError(f"hero {hid}: {e}") from e
-    own = bool(f.get("own_entity") or f.get("model") or textures or weapons
+    own = bool(f.get("own_entity") or f.get("model") or textures or weapons or materials
+               or talent_specs or frame is not None
                or animations or outfits or values or references or abilities or skills
                or attacks or f.get("placeholder") or f.get("effects") or f.get("hide"))
     swaps: dict[str, str] = {}        # whole-string swaps inside the family
@@ -364,19 +421,26 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
     def material(donor: str | None, maps: dict, tag: str, what: str) -> str:
         """Clone ``donor`` with the mod's maps (``{"albedo": path, ...}``)."""
         slots = CE.material_slots(donor)
+        # Beside the donor: a base whose main mesh is not its body (Kintaro's
+        # is the bear) has no art_dir, and "\Textures\M_x.mat.ot" names
+        # nothing, so the body drew invisible (select screen, 2026-11-06).
+        folder = (donor.rsplit("\\Textures\\", 1)[0] if donor and "\\Textures\\" in donor
+                  else b.art_dir)
+        if not folder:
+            raise ContentError(f"hero {hid}: {what}: cannot tell where {base}'s art lives")
         repoint = {}
         for field_name, slot in _TEXTURE_FIELDS.items():
             if not maps.get(field_name):
                 continue
             if slot not in slots:
                 raise ContentError(f"hero {hid}: {what}'s material has no {slot} map")
-            ref = f"{b.art_dir}\\Textures\\T_{tag}_{slot}.tga"
+            ref = f"{folder}\\Textures\\T_{tag}_{slot}.tga"
             put(PC.art_cooked_path(ref), PC.cook_texture(
                 _mod_source(out_dir, maps[field_name], hid, f"{what}.{field_name}")
                 .read_bytes()))
             repoint[slots[slot]] = ref
             art.append(f"3D|{ref}|oCTexture")
-        mat_ref = f"{b.art_dir}\\Textures\\M_{tag}.mat.ot"
+        mat_ref = f"{folder}\\Textures\\M_{tag}.mat.ot"
         put(PC.art_cooked_path(mat_ref),
             PC.clone_material(corpus.read(PC.art_cooked_path(donor)), repoint))
         art.append(f"3D|{mat_ref}|oCMaterial")
@@ -440,9 +504,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         att, mats = setup.get("attachments") or {}, setup.get("mats") or {}
         for n, (label, spec) in enumerate(sorted(weapons.items()), 1):
             spec = spec if isinstance(spec, dict) else {"model": spec}
-            if label not in att:
+            # A material-only label (a companion: Beowulf's "Chatacter Mesh
+            # Wyrm") takes maps but no model: it has no attachment to cook onto.
+            if label not in att and not (label in mats and not spec.get("model")):
+                have = sorted(att) + sorted(f"{m} (maps only)" for m in mats if m not in att)
                 raise ContentError(f"hero {hid}: {base} has no weapon {label!r}; "
-                                   f"have: {', '.join(sorted(att)) or 'none'}")
+                                   f"have: {', '.join(have) or 'none'}")
             tag = f"{hid}_Weapon{n}"
             if spec.get("model"):
                 swaps[att[label]["mesh"]] = mesh(att[label]["mesh"], spec["model"], tag,
@@ -457,6 +524,29 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
                 if not wmat:
                     raise ContentError(f"hero {hid}: {label}'s material was not found")
                 swaps[wmat] = material(wmat, spec, tag, f"weapons.{label}")
+
+    # Materials by name: any material the hero's own entities use (a mount's,
+    # a companion's, a second body: Kintaro's boy is his "Alt Form" mesh and
+    # his main mesh the bear), retextured in this hero's files only.
+    if materials:
+        named = sorted({t for ref in b.family
+                        for _s, _o, t in ES.list_strings(corpus.read(H.entity_rel(ref)))
+                        if t.endswith(".mat.ot") and not t.endswith("_LowRes.mat.ot")})
+        for n, (key, spec) in enumerate(sorted(materials.items()), 1):
+            if not isinstance(spec, dict) or not spec or set(spec) - set(_TEXTURE_FIELDS):
+                raise ContentError(f"hero {hid}: materials.{key} takes "
+                                   f"{', '.join(sorted(_TEXTURE_FIELDS))}")
+            stem = str(key).rsplit("\\", 1)[-1].removesuffix(".mat.ot")
+            hits = [m for m in named if m == key
+                    or m.rsplit("\\", 1)[-1].removesuffix(".mat.ot") == stem]
+            if len(hits) != 1:
+                raise ContentError(
+                    f"hero {hid}: materials names {key!r}, which is "
+                    f"{'ambiguous' if hits else 'not a material'} in {base}'s entities; have: "
+                    f"{', '.join(m.rsplit(chr(92), 1)[-1][:-len('.mat.ot')] for m in named)}")
+            new = material(hits[0], spec, f"{hid}_Mat{n}", f"materials.{key}")
+            swaps[hits[0]] = new
+            swaps[hits[0].replace(".mat.ot", "_LowRes.mat.ot")] = new
 
     # Attacks of the hero's own (engine/attack_build.py): each one a projectile
     # entity of its own, the steps that fire it, and its slot's animation.
@@ -646,7 +736,8 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         # Numbers first, on the base's bytes and names (as --list-values shows
         # them); the edit is in place, so renaming afterwards cannot move it.
         stem_of = {ref: ref.rsplit("\\", 1)[-1][:-len(".entity.ot")] for ref in b.family}
-        base_bytes = {stem_of[ref]: corpus.read(H.entity_rel(ref)) for ref in b.family}
+        base_bytes = {stem_of[ref]: talent_bytes.get(stem_of[ref]) or corpus.read(H.entity_rel(ref))
+                      for ref in b.family}
         if values:
             try:
                 base_bytes = H.set_values(base_bytes,
@@ -684,6 +775,12 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
         family = {H.entity_rel(R.entity_ref(ref)):
                   R.cooked(base_bytes[stem_of[ref]], b.alias.guid, guid)
                   for ref in b.family}
+        if frame is not None:
+            # The hero written from scratch: its own main, FX and skins replace
+            # the renamed copies (engine/hero_frame.py); the rest of the
+            # pipeline (herodef, alias, caches, text) is the clone's.
+            family.update(_frame_family(frame, b, R, H, app, herodef, guid, hid, mod_id,
+                                        swaps, corpus, bank_pairs))
         # Every renamed member preloads with the hero. The base's skin caches
         # do not list all of them: Update 6 members (Scarlet's Update 6
         # ultimate projectiles) are preloaded by LiveOps6.versiondef's cache,
@@ -1067,6 +1164,628 @@ def _mod_file(out_dir: Path, ref: str) -> Path | None:
         if p.is_file():
             return p
     return None
+
+
+_TALENT_KEYS = frozenset({"rebuild", "add_stats", "actions", "name", "description"})
+
+
+def _build_talents(specs: dict, b, hid: str, mod_id: str):
+    """The ``talents`` field: per talent slot, its base logic cut (``rebuild``,
+    default true), generated stat bonuses (``add_stats``, the talent kind's
+    entries without ``talent``) and generated actions (``actions``: ``{ on =
+    <game event>, steps = [...] }``, a kit timeline run each time the event
+    fires while the talent is owned). Returns the edited base family bytes by
+    file stem, the kit hooks for the actions, and the card relabels."""
+    from ...engine import corpus
+    from ...engine import hero_cook as H
+    from ...engine import talent_add_stat as TA
+    from .talents import _coerce_add_stats, _owns_talent
+    files = {ref.rsplit("\\", 1)[-1][:-len(".entity.ot")]: corpus.read(H.entity_rel(ref))
+             for ref in b.family}
+    edited: dict[str, bytes] = {}
+    hooks: list[dict] = []
+    cards: dict[str, dict] = {}
+    for talent, spec in specs.items():
+        talent = str(talent).removeprefix("Skill Controller ")
+        if not isinstance(spec, dict):
+            raise ContentError(f"hero {hid}: talents.{talent} is a table")
+        unknown = set(spec) - _TALENT_KEYS
+        if unknown:
+            raise ContentError(f"hero {hid}: talents.{talent} has no "
+                               f"{', '.join(sorted(unknown))}; it takes "
+                               f"{', '.join(sorted(_TALENT_KEYS))}")
+        ctl = f"Skill Controller {talent}".encode()
+        homes = [st for st, raw in files.items()
+                 if ctl in (edited.get(st) or raw or b"")]
+        if len(homes) > 1:
+            homes = [st for st in homes if _owns_talent(edited.get(st) or files[st], talent)]
+        if len(homes) != 1:
+            raise ContentError(f"hero {hid}: {len(homes)} of {b.stem}'s files hold a "
+                               f"talent {talent!r}")
+        home = homes[0]
+        raw = edited.get(home) or files[home]
+        seed = f"{mod_id}:{hid}:{talent}"
+        try:
+            if spec.get("rebuild", True):
+                raw, _cleared = TA.rebuild_talent(raw, talent=talent, seed=seed)
+            for e in _coerce_add_stats([{**x, "talent": talent} if isinstance(x, dict) else x
+                                        for x in (spec.get("add_stats") or [])]):
+                raw, _added = TA.add_stat(
+                    raw, talent=talent, stat=e["stat"], values=e["values"],
+                    percent=e["percent"], seed=seed, during=e["during"], after=e["after"],
+                    seconds=e["seconds"], cooldown=e["cooldown"], next_ability=e["next"],
+                    on=e["on"])
+            actions = spec.get("actions") or []
+            if not isinstance(actions, list) or not all(isinstance(a, dict) for a in actions):
+                raise ContentError(f"hero {hid}: talents.{talent}.actions is a list of "
+                                   "{ on = <game event>, steps = [...] }")
+            for n, a in enumerate(actions, 1):
+                if set(a) - {"on", "steps"} or not a.get("on") or not a.get("steps"):
+                    raise ContentError(f"hero {hid}: talents.{talent}.actions[{n}] is "
+                                       "{ on = <game event>, steps = [...] }")
+                if home != b.stem:
+                    raise ContentError(f"hero {hid}: talent {talent!r} lives in {home}, "
+                                       f"not {b.stem}; its actions cannot be built yet")
+                raw, state = TA.add_action_trigger(raw, talent=talent, on=str(a["on"]),
+                                                   n=n, seed=seed)
+                hooks.append({"when": state, "steps": a["steps"]})
+        except TA.AddStatError as e:
+            raise ContentError(f"hero {hid}: {e}") from e
+        edited[home] = raw
+        card = {k: spec[k] for k in ("name", "description") if spec.get(k)}
+        if card:
+            cards[talent] = card
+    return edited, hooks, cards
+
+
+#: Where a hero written from scratch keeps its files: the shared heroes'
+#: folder (a new cooked path needs a folder the game ships), and the bank its
+#: text is appended to.
+_SCRATCH_FOLDER, _SCRATCH_BANK = "Hero_Common", "Common~GAM.xls"
+_SCRATCH_SORT = 14000
+_SCRATCH_FIELDS = frozenset({"rig", "mesh", "material", "albedo", "slots", "abilities",
+                             "ultimates", "weapon",
+                             "talents", "sort", "portrait", "animations", "model",
+                             "projectiles"})
+#: ``clip = "anim:<name>"`` in a slot or a button names one of the hero's own
+#: clips (``frame.animations``).
+_OWN_CLIP = "anim:"
+
+
+def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    """A hero written from scratch (no ``base``): its own gameplay entities
+    (engine/hero_frame.py), its own buttons (engine/hero_ability.py), its own
+    roster record (engine/herodef_frame.py), alias, text and preload lists.
+    ``frame.rig`` lends ASSETS only (its skeleton, on-foot clips and UI art)."""
+    from ...engine import cooked, corpus
+    from ...engine import hero_ability as HA
+    from ...engine import hero_cook as H
+    from ...engine import hero_frame as HF
+    from ...engine import herodef_frame as HDF
+    from ...engine import prop_cook as PC
+    from ...engine import text_patches as TP
+    from ...engine.character_export import material_slots
+    from .meshes import _mod_source
+    hid, f = defn.id, defn.fields
+    if hid in _RESERVED_IDS or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", hid):
+        raise ContentError(f"hero {hid}: a hero id is letters and digits, not a reserved name")
+    frame = f.get("frame")
+    if not isinstance(frame, dict) or set(frame) - _SCRATCH_FIELDS:
+        raise ContentError(f"hero {hid}: frame is a table of {', '.join(sorted(_SCRATCH_FIELDS))}")
+    unknown = sorted(set(f) - {"frame", "name", "description", "memoirs"})
+    if unknown:
+        raise ContentError(f"hero {hid}: a hero written from scratch takes frame, name, "
+                           f"description, memoirs (not yet {', '.join(unknown)})")
+    rig = str(frame.get("rig") or "")
+    mesh, material = str(frame.get("mesh") or ""), str(frame.get("material") or "")
+    if not (rig and mesh and material):
+        raise ContentError(f"hero {hid}: frame needs rig, mesh and material (shipped assets)")
+    game = _game_dir()
+    app = H.pristine_app_settings(game)
+    if app is None:
+        raise SchemaNotMined("ApplicationSettings.ot is not in the game install")
+    aliases = {a.name: a for a in H.aliases(app)}
+    if "Hero_Common" not in aliases:
+        raise ContentError(f"hero {hid}: no Hero_Common alias in ApplicationSettings.ot")
+    rig_def = next((n for n, a in aliases.items() if n == rig), None)
+    rig_herodef = EP.corpus_read(_rel(HD.stem(rig.removeprefix("Hero_")) or ""))
+    if rig_def is None or rig_herodef is None:
+        raise ContentError(f"hero {hid}: rig {rig!r} is not a shipped hero (e.g. Hero_Kintaro)")
+    rig_rec = HDF.decode(rig_herodef)
+
+    written: list[Path] = []
+
+    def put(decoded: str, blob: bytes) -> None:
+        dest = out_dir / Path(*decoded.split("/"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+        written.append(dest)
+
+    def read(ref: str):
+        return corpus.read(H.entity_rel(ref))
+
+    scope = f"Hero_{hid}"
+    folder = f"Heroes\\{_SCRATCH_FOLDER}"
+    main_ref, fx_ref = f"{folder}\\{scope}.entity.ot", f"{folder}\\{scope}_FX.entity.ot"
+    skin_ref, lowres_ref = (f"{folder}\\{scope}_Default.entity.ot",
+                            f"{folder}\\{scope}_Default_LowRes.entity.ot")
+    bank = _SCRATCH_BANK
+    pairs: dict[str, str] = {}
+
+    def key(name: str, text) -> str:
+        k = f"{scope}_{name}"
+        pairs[k] = str(text)
+        return k
+
+    art: list[str] = []
+    # Its body material: the rig's, or a copy wearing the hero's own albedo.
+    if frame.get("albedo"):
+        slots = material_slots(material)
+        if "ALB" not in slots:
+            raise ContentError(f"hero {hid}: {material} has no albedo map")
+        here = material.rsplit("\\Textures\\", 1)[0]
+        tex = f"{here}\\Textures\\T_{scope}_ALB.tga"
+        put(PC.art_cooked_path(tex), PC.cook_texture(
+            _mod_source(out_dir, frame["albedo"], hid, "frame.albedo").read_bytes()))
+        mat = f"{here}\\Textures\\M_{scope}.mat.ot"
+        put(PC.art_cooked_path(mat), PC.clone_material(
+            corpus.read(PC.art_cooked_path(material)), {slots["ALB"]: tex}))
+        art += [f"3D|{tex}|oCTexture", f"3D|{mat}|oCMaterial"]
+        body_mat = mat
+    else:
+        body_mat = material
+
+    # Its own animations (step E): each a Blender clip on the rig's skeleton,
+    # cooked by anim_cook onto a rig clip as template (bone order, tail
+    # fields) into a NEW clip file of its own beside the rig's; the rig's
+    # clips are untouched. `clip = "anim:<name>"` then names it.
+    own_clips: dict[str, tuple[str, float]] = {}
+    anims = frame.get("animations") or {}
+    if anims:
+        from ...engine import anim_cook as AC
+        rig_dir = mesh.rsplit("\\", 1)[0] + "\\Animations"
+        for name, spec in sorted(anims.items()):
+            spec = spec if isinstance(spec, dict) else {"source": spec}
+            if not spec.get("source") or not spec.get("template"):
+                raise ContentError(f"hero {hid}: animations.{name} needs source (a .glb) "
+                                   "and template (a rig clip, e.g. Kintaro_FightingIdle_Loop)")
+            tpl_ref = f"{rig_dir}\\{spec['template']}.fbx"
+            tpl_raw = corpus.read(f"3D/{tpl_ref.replace(chr(92), '/')}.Animation.gen")
+            if tpl_raw is None:
+                raise ContentError(f"hero {hid}: animations.{name}: the rig has no clip "
+                                   f"{spec['template']!r}")
+            tcf = cooked.parse(tpl_raw)
+            glb = _mod_source(out_dir, spec["source"], hid, f"animations.{name}").read_bytes()
+            try:
+                payload, _notes = AC.cook(glb, b"".join(x.payload for x in tcf.sections),
+                                          name=spec.get("clip"), strict=bool(spec.get("strict")))
+            except AC.AnimCookError as e:
+                raise ContentError(f"hero {hid}: animation {name}: {e}") from e
+            head = len(tcf.sections[0].payload)
+            tcf.sections[0] = cooked.Section(payload=payload[:head])
+            tcf.sections[1] = cooked.Section(payload=payload[head:])
+            ref = f"{rig_dir}\\{scope}_{name}.fbx"
+            put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(tcf))
+            art.append(f"3D|{ref}|oCAnimation")
+            from ...engine.cooked_schemas import animation as A
+            own_clips[str(name)] = (ref, A.parse_payload(payload).duration)
+
+    def own(fill: dict, what: str) -> dict:
+        """``anim:<name>`` resolved to the hero's own clip (and its length)."""
+        fill = dict(fill)
+        clip = fill.get("clip")
+        clips = clip if isinstance(clip, list) else [clip]
+        out = []
+        for c in clips:
+            if isinstance(c, str) and c.startswith(_OWN_CLIP):
+                n = c[len(_OWN_CLIP):]
+                if n not in own_clips:
+                    raise ContentError(f"hero {hid}: {what}: no animations.{n}")
+                out.append(own_clips[n][0])
+                if not isinstance(clip, list) and "duration" not in fill:
+                    fill["duration"] = own_clips[n][1]
+            else:
+                out.append(c)
+        if clip is not None:
+            fill["clip"] = out if isinstance(clip, list) else out[0]
+        return fill
+
+    # Its own body (step D): a glb with the rig's bones at proportions of its
+    # own, cooked onto the rig's mesh as template, then its SKELETON rewritten
+    # with the glb armature's rest pose (engine/skeleton_codec.py), so mesh,
+    # skeleton and the clips retargeted onto that armature agree.
+    if frame.get("model"):
+        from ...engine import skeleton_codec as SK
+        glb = _mod_source(out_dir, frame["model"], hid, "frame.model").read_bytes()
+        template = corpus.read(PC.art_cooked_path(mesh))
+        if template is None:
+            raise ContentError(f"hero {hid}: the rig mesh {mesh!r} is not in the game files")
+        try:
+            geo = PC.cook_model(glb, template, transform={"skin": "gltf", "submeshes": "map"})
+            skel = SK.decode(geo)
+            rest = SK.locals_from_glb(glb)
+            missing = [b.name for b in skel.bones if b.name not in rest]
+            if missing:
+                raise ContentError(f"hero {hid}: frame.model has no bone(s) "
+                                   f"{', '.join(missing[:6])} of the rig")
+            geo = SK.encode(geo, SK.with_rest(skel, rest))
+        except SK.SkeletonError as e:
+            raise ContentError(f"hero {hid}: frame.model: {e}") from e
+        own_mesh = f"{mesh.rsplit(chr(92), 1)[0]}\\{scope}_GEO.fbx"
+        put(PC.art_cooked_path(own_mesh), geo)
+        art.append(f"3D|{own_mesh}|oCGeometry")
+        mesh = own_mesh
+
+    # Its talents: its own controllers (rows of its own herodef), and the 6
+    # ultimate rows on Hero_Common's own controllers, as every hero's are.
+    talents, rows = [], []
+    effects: dict[str, dict] = {}
+    hooks: list[dict] = []            # kit timelines (engine/hero_kit.py) on its own states
+    for n, t in enumerate(frame.get("talents") or []):
+        if not isinstance(t, dict) or not t.get("name"):
+            raise ContentError(f"hero {hid}: frame.talents[{n}] is {{ name, title, description }}")
+        name = str(t["name"])
+        word = re.sub(r"\W+", "_", name)
+        g = HF.guid(scope, f"talent:{name}")
+        fx_spec = {k: t[k] for k in ("add_stats", "actions") if t.get(k)}
+        if fx_spec:
+            effects[name] = fx_spec
+        for na, act in enumerate(t.get("actions") or [], 1):
+            if isinstance(act, dict) and act.get("steps"):
+                # A talent action's kit timeline, on its own action state.
+                from ...engine import talent_add_stat as TA
+                hooks.append({"when": TA.action_state_name(name, na), "steps": act["steps"]})
+        talents.append((name, g, {
+            "bank": bank, "name_key": key(f"Skill_{word}_Name", t.get("title", name)),
+            "desc_key": key(f"Skill_{word}_Desc", t.get("description", "")),
+            "icon": str(t.get("icon") or "Heroes\\Ultimate_Power_1_Default.png"),
+            # starting-pick cards (pool 0); the rest are dealt at level-up
+            "pool": HF.POOL_STARTER if t.get("starter") else HF.POOL_LEVEL_UP}))
+        rows.append(HDF.Talent(f"Skill Controller {name}", g))
+    hc = HF.common(read)
+    for c in hc.graph().components:
+        if c.name.startswith("Skill Controller Ultimate"):
+            rows.append(HDF.Talent(c.name, c.guid, ultimate=True))
+    # Its ultimate cards, on Hero_Common's own six controllers (left alone they
+    # are blank cards); an upgrade's effects hang off a state of its own.
+    ultimates = []
+    for uname, u in (frame.get("ultimates") or {}).items():
+        if not isinstance(u, dict):
+            raise ContentError(f"hero {hid}: ultimates.{uname} is {{ title, description, icon }}")
+        word = re.sub(r"\W+", "_", str(uname))
+        ultimates.append((str(uname), {
+            "bank": bank, "name_key": key(f"Skill_{word}_Name", u.get("title", uname)),
+            "desc_key": key(f"Skill_{word}_Desc", u.get("description", "")),
+            "icon": str(u.get("icon") or "")}))
+        fx_spec = {k: u[k] for k in ("add_stats", "actions") if u.get(k)}
+        if fx_spec:
+            effects[str(uname)] = fx_spec
+    # Its hand weapon: a shipped hero's, hung on its own body's weapon bone.
+    weapon = None
+    wspec = frame.get("weapon")
+    if wspec is not None:
+        if not isinstance(wspec, dict) or not wspec.get("from") or \
+                set(wspec) - {"from", "mesh", "material"}:
+            raise ContentError(f"hero {hid}: weapon is {{ from = <shipped hero>, mesh = <fbx>, "
+                               "material = <mat.ot> }")
+        from ...engine.entity_graph_edit import EntityFile as _WEF
+        wref = f"Heroes\\Hero_{wspec['from']}\\Hero_{wspec['from']}.entity.ot"
+        wraw = read(wref)
+        if wraw is None:
+            raise ContentError(f"hero {hid}: weapon.from = {wspec['from']!r} is not a shipped hero")
+        weapon = (_WEF(wraw, f"Hero_{wspec['from']}"), str(wspec.get("mesh") or ""),
+                  str(wspec.get("material") or ""))
+
+    abilities = []
+    for slot, raw in (frame.get("abilities") or {}).items():
+        raw = dict(raw)
+        word = str(slot).title()
+        if raw.get("steps"):
+            hooks.append({"when": f"State {word} Ability", "steps": raw["steps"]})
+        raw.pop("steps", None)
+        card = {}
+        if "name" in raw:
+            card["name_key"] = key(f"Ability_{word}_Name", raw.pop("name"))
+        if "description" in raw:
+            card["desc_key"] = key(f"Ability_{word}_Desc", raw.pop("description"))
+        try:
+            raw = own(raw, f"frame.abilities.{slot}")
+            abilities.append(HA.Ability.parse(str(slot), {**raw, "bank": bank, **card}))
+        except HA.AbilityError as e:
+            raise ContentError(f"hero {hid}: {e}") from e
+
+    try:
+        slots = HF.rig_slots(read, rig)
+        for slot, fill in (frame.get("slots") or {}).items():
+            slots[str(slot)] = own(dict(fill), f"frame.slots.{slot}")
+        main, fx, skin_values = HF.build_hero(
+            read, scope=scope, fx_ref=fx_ref, common_alias=aliases["Hero_Common"].guid,
+            mesh=mesh, material=body_mat, slots=slots, talents=talents,
+            abilities=abilities, effects=effects, seed=f"{mod_id}:{hid}", indicators=False,
+            ultimates=ultimates, weapon=weapon)
+    except (HF.FrameError, HA.AbilityError) as e:
+        raise ContentError(f"hero {hid}: {e}") from e
+
+    # Projectiles of its own (engine/attack_build.py): the engine's generic
+    # hero projectile wearing the mod's mesh and maps, its own lifetime, trail
+    # and impact; fired by `steps` as fire = "own:<id>", each shot tuned there
+    # (speed, damage, size, explode, knockback, root, burn ...).
+    own_projectiles: dict[str, bytes] = {}
+    own_ref: dict[str, str] = {}
+    projectiles = frame.get("projectiles") or {}
+    if projectiles:
+        from ...engine import attack_build as AB
+        here = mesh.rsplit("\\", 1)[0]
+
+        def p_mesh(donor_fbx: str, model: str, tag: str, what: str, transform) -> str:
+            geo_ref = f"{here}\\{tag}_GEO.fbx"
+            # a thrown prop: one rigid piece, never weights borrowed from the
+            # template's (they tear a shape that does not overlap it)
+            put(PC.art_cooked_path(geo_ref), PC.cook_model(
+                _mod_source(out_dir, model, hid, what).read_bytes(),
+                corpus.read(PC.art_cooked_path(donor_fbx)),
+                transform={**(transform or {}), "skin": "rigid"}))
+            art.append(f"3D|{geo_ref}|oCGeometry")
+            return geo_ref
+
+        def p_material(donor: str, maps: dict, tag: str, what: str) -> str:
+            mslots = material_slots(donor)
+            repoint = {}
+            for fld, slot in _TEXTURE_FIELDS.items():
+                if not maps.get(fld):
+                    continue
+                if slot not in mslots:
+                    raise ContentError(f"hero {hid}: {what}'s material has no {slot} map")
+                tref = f"{here}\\Textures\\T_{tag}_{slot}.tga"
+                put(PC.art_cooked_path(tref), PC.cook_texture(
+                    _mod_source(out_dir, maps[fld], hid, f"{what}.{fld}").read_bytes()))
+                repoint[mslots[slot]] = tref
+                art.append(f"3D|{tref}|oCTexture")
+            mref = f"{here}\\Textures\\M_{tag}.mat.ot"
+            put(PC.art_cooked_path(mref),
+                PC.clone_material(corpus.read(PC.art_cooked_path(donor)), repoint))
+            art.append(f"3D|{mref}|oCMaterial")
+            return mref
+
+        for pid, spec in sorted(projectiles.items()):
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", str(pid)) or not isinstance(spec, dict) \
+                    or set(spec) - AB.PROJECTILE_FIELDS:
+                raise ContentError(f"hero {hid}: projectiles.{pid}: a letters-and-digits id "
+                                   f"with {', '.join(sorted(AB.PROJECTILE_FIELDS))}")
+            stem = f"{scope}_{pid}"
+            ref = f"{folder}\\{stem}.entity.ot"
+            try:
+                own_projectiles[ref] = AB.projectile_entity(
+                    spec, stem=stem, tag=f"{hid}_{pid}", what=f"projectiles.{pid}",
+                    mesh=p_mesh, material=p_material)
+            except AB.AttackError as e:
+                raise ContentError(f"hero {hid}: {e}") from e
+            own_ref[str(pid)] = ref
+
+    def own_fire(steps):
+        """``fire = "own:<id>"`` -> that projectile's entity."""
+        out = []
+        for st in steps or []:
+            st = dict(st)
+            if isinstance(st.get("fire"), str) and st["fire"].startswith("own:"):
+                pid = st["fire"][4:]
+                if pid not in own_ref:
+                    raise ContentError(f"hero {hid}: fire = {st['fire']!r}: no projectiles.{pid}")
+                st["fire"] = own_ref[pid]
+            if st.get("steps"):
+                st["steps"] = own_fire(st["steps"])
+            out.append(st)
+        return out
+    hooks = [{**h, "steps": own_fire(h["steps"])} for h in hooks]
+
+    # Kit timelines (projectiles, hit areas placed ahead, heals, summons): the
+    # hero builder's kit, given donors of its own, run on its own states.
+    kit_copies: list = []
+    kit_resources: set[str] = set()
+    if hooks:
+        from ...engine import ability_edit as AE
+        from ...engine import hero_kit as HK
+        def shipped(ref: str):
+            return own_projectiles.get(ref) or HK.reader(kit_copies)(ref)
+        try:
+            main = AE.apply({scope: main}, HF.KIT_DONORS, main=scope,
+                            seed=f"{mod_id}:{hid}:kit-donors", read=shipped).files[scope]
+            steps = HK.expand({"talents": hooks}, main, scope, hid=hid, copies=kit_copies,
+                              own=own_projectiles)
+            res = AE.apply({scope: main}, steps, main=scope, seed=f"{mod_id}:{hid}:kit",
+                           read=shipped)
+        except (HK.KitError, AE.AbilityEditError) as e:
+            raise ContentError(f"hero {hid}: {e}") from e
+        main = res.files[scope]
+        kit_resources = set(res.resources)
+        for w in res.warnings:
+            print(f"warning: hero {hid}: {w}", file=sys.stderr)
+    # Range discs last (hero_ability.add_indicator says why).
+    if any(ab.indicator for ab in abilities):
+        from ...engine.entity_graph_edit import EntityFile as _EF
+        ief = _EF(main, scope)
+        try:
+            for ab in abilities:
+                HA.add_indicator(ief, ab, seed=f"{mod_id}:{hid}")
+        except HA.AbilityError as e:
+            raise ContentError(f"hero {hid}: {e}") from e
+        main = ief.to_bytes()
+    alias = H.alias_guid(mod_id, hid)
+    entities = {main_ref: main, fx_ref: fx}
+    for ref, blob in own_projectiles.items():
+        put(H.entity_rel(ref), PC.restamp_entity_guids(blob, H.entity_rel(ref)))
+        art.append(f"EntitySettings|{ref}|oCEntitySettingsResource")
+    for c in kit_copies:
+        if c.shipped:
+            continue
+        try:
+            blob = c.data if c.data is not None and not c.reads else \
+                HK.build_copy(c, main, main_ref)
+        except HK.KitError as e:
+            raise ContentError(f"hero {hid}: {e}") from e
+        if c.data is None:
+            blob = PC.restamp_entity_guids(blob, H.entity_rel(c.ref))
+        put(H.entity_rel(c.ref), blob)
+        art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
+    for ref in (skin_ref, lowres_ref):
+        entities[ref] = HF.skin_frame(alias, HF.guid(scope, ref), skin_values,
+                                      seed=f"{mod_id}:{hid}:{ref}")
+
+    # Its roster record, every value its own; the rig lends only UI art.
+    rr = rig_rec.root
+    pages = []
+    rig_pages = [d for c, d in rig_rec.objects if c == HDF.STORY]
+    for n, m in enumerate(f.get("memoirs") or [], 1):
+        if not isinstance(m, dict):
+            raise ContentError(f"hero {hid}: memoirs[{n}] is {{ title, text }}")
+        art_page = rig_pages[(n - 1) % len(rig_pages)] if rig_pages else None
+        pages.append(HDF.Page(
+            HDF.Text.of(bank, key(f"Memoir{n}_Title", m.get("title", ""))),
+            HDF.Text.of(bank, key(f"Memoir{n}_Desc", m.get("text", ""))),
+            art_page["footer"] if art_page else ("", ""),
+            art_page["footer_selected"] if art_page else ("", ""),
+            art_page["corner"] if art_page else ("", "")))
+    rig_skin = next((d for c, d in rig_rec.objects if c == HDF.SKIN), None)
+    portrait = ("Ui", str(frame["portrait"])) if frame.get("portrait") else rr["portrait"]
+    record = HDF.Record(
+        hid=hid, sort=int(frame.get("sort", _SCRATCH_SORT)),
+        name=HDF.Text.of(bank, key("Name", f.get("name") or hid)),
+        desc=HDF.Text.of(bank, key("Desc", f.get("description") or "")),
+        portrait=portrait,
+        book=(rr["book_standard"], rr["book_active"], rr["book_locked"],
+              rr["book_unavailable"]),
+        new_hero=rr["new_hero"], codex=list(rr["codex"]), talents=rows, pages=pages,
+        skins=[HDF.Skin(skin_ref, rig_skin["icon"] if rig_skin else ("", ""))],
+        lowres=lowres_ref)
+    herodef = HDF.build(record, rig_herodef)
+
+    # Its text: appended to the bank; every reference re-pointed at its row.
+    bank_path = _install_bank(game, bank)
+    rows_of = TP.appended_rows(bank_path, pairs)
+    dec = f"Text/{bank}.LocalText.gen"
+    for tok, blob in TP.append_bank_keys(bank_path, pairs).items():
+        put(dec if tok == "__base__" else dec + tok, blob)
+    for ref, blob in entities.items():
+        put(H.entity_rel(ref), TP.repoint_text_rows(blob, bank, rows_of))
+    put(_rel(hid), TP.repoint_text_rows(herodef, bank, rows_of))
+
+    # Its alias: what its skins inherit it through.
+    put(H.APP_SETTINGS_DECODED, H.add_alias(app, H.Alias(alias, scope, main_ref)).encode(
+        "utf-8", errors="surrogateescape"))
+
+    # Its preload lists: its own files, and the closure of every shipped asset
+    # its files name (the rig's mesh and clips, the shared hero base, UI art),
+    # taken from the game's own caches.
+    own = {main_ref, fx_ref, skin_ref, lowres_ref, *own_projectiles} | \
+        {c.ref for c in kit_copies if not c.shipped}
+    # its own projectiles preload what their template does (the generic hero
+    # projectile, its sounds) and their trail and impact effects
+    from ...engine import attack_build as _AB
+    targets = {*(kit_resources - own), *(c.source for c in kit_copies if not c.shipped),
+               *([_AB.TEMPLATE_REL.removeprefix("EntitySettings/")
+                  .removesuffix(".EntitySettingsResource.gen").replace("/", "\\")]
+                 if own_projectiles else []),
+               *(str(sp.get(k) or "") for sp in projectiles.values() for k in ("trail", "impact")
+                 if sp.get(k)),
+               "Heroes\\Hero_Common\\Hero_Common.entity.ot",
+               "Heroes\\Hero_Common\\Hero_Common_Update5.entity.ot",
+               "Character_Common\\Character_Common.entity.ot"}
+    for blob in [*entities.values(), herodef]:
+        for m in re.finditer(rb"[ -~]+?\.(?:fbx|png|mat\.ot|entity\.ot|vfx\.ot)", blob):
+            t = m.group(0).decode()
+            if t not in own and not t.startswith(("[", "Definitions")) and \
+                    f"\\T_{scope}_" not in t and f"\\M_{scope}" not in t and \
+                    f"\\{scope}_" not in t:      # its own clips: listed as art
+                targets.add(t)
+    lines = set(_borrow_closure(sorted(targets), out_dir, hid)) | set(art)
+    lines |= {f"EntitySettings|{r}|oCEntitySettingsResource" for r in own}
+    lines.add(_self_line(hid))
+    put(RC.cache_path_for(_rel(hid)), RC.render(sorted(lines)))
+    for ref in (skin_ref, lowres_ref):
+        put(RC.cache_path_for(H.entity_rel(ref)), RC.render(sorted(lines - {_self_line(hid)})))
+    return written
+
+
+def _frame_family(frame: dict, b, R, H, app: str, herodef: bytes, hero_alias: bytes,
+                  hid: str, mod_id: str, swaps: dict, corpus,
+                  bank_pairs: dict[str, str]) -> dict[str, bytes]:
+    """``{cooked rel: bytes}`` of the from-scratch hero's own files: main, FX,
+    and every skin of the base's (all wearing the hero's material). The
+    talent controllers carry the base rows' GUIDs, so the herodef's rows reach
+    them through the family mapping the pipeline applies to every file."""
+    import re
+
+    from ...engine import entity_components as EC
+    from ...engine import entity_graph as EG
+    from ...engine import hero_frame as HF
+
+    def read(ref: str):
+        return corpus.read(H.entity_rel(ref))
+
+    main_ref = next(r for r in b.family if r.rsplit("\\", 1)[-1] == f"{b.stem}.entity.ot")
+    main_raw = read(main_ref)
+    fx_base = EC.parents(main_raw)[0]
+    common_alias = next((a.guid for a in H.aliases(app) if a.name == "Hero_Common"), None)
+    if common_alias is None:
+        raise ContentError(f"hero {hid}: no Hero_Common alias in ApplicationSettings.ot")
+    rig = str(frame.get("rig") or b.folder)
+    mesh = str(frame.get("mesh") or b.body_fbx or "")
+    material = str(frame.get("material") or b.body_mat or "")
+    if not mesh or not material:
+        raise ContentError(f"hero {hid}: frame needs mesh and material (the base names none)")
+    material = swaps.get(material, material)       # a `materials` repaint applies
+    try:
+        slots = HF.rig_slots(read, rig)
+        for slot, fill in (frame.get("slots") or {}).items():
+            slots[str(slot)] = dict(fill)
+        # Talent rows: the base's controllers in herodef order, each card read
+        # through the hero's own text keys (the `skills` relabels) and icon.
+        keys = _skill_keys(b, H, corpus)
+        ctls = {c.guid: c for ref in b.family for c in EG.parse(read(ref) or b"").components
+                if c.name.startswith("Skill Controller ")}
+        talents = []
+        for g, c in sorted(((g, c) for g, c in ctls.items() if g in herodef),
+                           key=lambda gc: herodef.find(gc[0])):
+            talent = c.name.removeprefix("Skill Controller ")
+            bank, name_key, desc_key = keys.get(talent, (b.text_bank, "", ""))
+            icon = re.search(rb"[ -~]+?\.png", c.body)
+            talents.append((talent, g, {
+                "bank": bank, "name_key": swaps.get(name_key, name_key),
+                "desc_key": swaps.get(desc_key, desc_key),
+                "icon": icon.group(0).decode() if icon else ""}))
+        # Buttons written from data (engine/hero_ability.py); their card text
+        # appended to the base's bank as the hero's own keys.
+        from ...engine import hero_ability as HA
+        abilities = []
+        for slot, raw in (frame.get("abilities") or {}).items():
+            raw = dict(raw)
+            card = {k: raw.pop(k) for k in ("name", "description") if k in raw}
+            word = str(slot).title()
+            keys = {"name": f"Hero_{hid}_Ability_{word}_Name",
+                    "description": f"Hero_{hid}_Ability_{word}_Desc"}
+            for k, text in card.items():
+                bank_pairs[keys[k]] = str(text)
+            abilities.append(HA.Ability.parse(str(slot), {
+                **raw, "bank": b.text_bank,
+                **({"name_key": keys["name"]} if "name" in card else {}),
+                **({"desc_key": keys["description"]} if "description" in card else {})}))
+        main, fx, skin = HF.build_hero(
+            read, scope=f"Hero_{hid}", fx_ref=R.entity_ref(fx_base), common_alias=common_alias,
+            mesh=mesh, material=material, slots=slots, talents=talents,
+            abilities=abilities, seed=f"{mod_id}:{hid}")
+    except HA.AbilityError as e:
+        raise ContentError(f"hero {hid}: {e}") from e
+    except HF.FrameError as e:
+        raise ContentError(f"hero {hid}: frame: {e}") from e
+    out = {H.entity_rel(R.entity_ref(main_ref)): main, H.entity_rel(R.entity_ref(fx_base)): fx}
+    for ref in b.family:
+        raw = read(ref) or b""
+        if ref not in (main_ref, fx_base) and b.alias.guid in raw:
+            # A skin of the base (it inherits the hero by alias): the hero's own.
+            name = R.entity_ref(ref)
+            out[H.entity_rel(name)] = HF.skin_frame(hero_alias, HF.guid(f"Hero_{hid}", name),
+                                                    skin, seed=f"{mod_id}:{hid}:{name}")
+    return out
 
 
 def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:

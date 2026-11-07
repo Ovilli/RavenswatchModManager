@@ -601,7 +601,7 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
                                    f"{list(amounts.values())}")
 
     graph = EG.parse(raw)
-    ctl, state, fmt = card_parts(graph, talent)
+    ctl, state, fmt = card_parts(graph, talent, flat=len(set(amounts.values())) == 1)
 
     tag = held if invulnerable else f"{key:08x}"
     cond_state = None
@@ -719,8 +719,48 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
     return out, AddedStat(new_sel, new_mod, slot)
 
 
-def card_parts(graph: EG.EntityGraph, talent: str) -> tuple[EG.Component, EG.Component,
-                                                              EG.Component | None]:
+def action_state_name(talent: str, n: int) -> str:
+    return f"Skill {talent} Action {n}"
+
+
+def add_action_trigger(raw: bytes, *, talent: str, on: str, n: int = 1,
+                       seed: str = "") -> tuple[bytes, str]:
+    """Return ``raw`` with a new, empty state that switches on each time game
+    event ``on`` (``item_effect.TRIGGERS``: dash, power, special, defense,
+    ultimate, damage_taken, night_start ...) fires WHILE ``talent`` is owned,
+    and that state's name.
+
+    The listener is held by the talent's owned state's ``while_active`` (Romeo's
+    Panache shape, as ``add_stat``'s ``on``), so it hears nothing without the
+    talent. Nothing hangs off the new state yet: a hero kit timeline
+    (``hero_kit`` ``talents`` hook, ``when`` = this state) gives it its action.
+    Every part is written; the talent's own effect is untouched (``rebuild_talent``
+    turns that off)."""
+    from .item_effect import TRIGGERS, add_listener
+    if on not in TRIGGERS:
+        raise AddStatError(f"talent {talent!r}: on = {on!r}: one of {', '.join(TRIGGERS)}")
+    graph = EG.parse(raw)
+    ctl = next((c for c in graph.components if c.name == f"Skill Controller {talent}"), None)
+    if ctl is None:
+        raise AddStatError(f"no talent {talent!r} here (no 'Skill Controller {talent}')")
+    state = owned_state(graph, ctl, talent)
+    name = action_state_name(talent, n)
+    if any(c.name == name for c in graph.components):
+        raise AddStatError(f"talent {talent!r} already has an action {n}")
+    ef = GE.EntityFile(raw)
+    try:
+        w = TW.TalentWriter(ef, f"{seed or talent}:action:{n}", state.group)
+        fires = w.state(name, flags=_flags_of(ef, state.name), mode=_mode_of(state))
+        listener = add_listener(w, on, f" Skill {talent} Action {n}", fires,
+                                alive=False, group=w.group)
+        ef.add_ref(state.name, "while_active", listener)
+        return ef.to_bytes(), name
+    except (GE.EntityEditError, P.PartError) as e:
+        raise AddStatError(f"talent {talent!r}: {e}") from e
+
+
+def card_parts(graph: EG.EntityGraph, talent: str, *,
+               flat: bool = False) -> tuple[EG.Component, EG.Component, EG.Component | None]:
     """``(controller, owned state, card description format)`` of a talent: all
     a talent needs to take written parts."""
     ctl = next((c for c in graph.components if c.name == f"Skill Controller {talent}"), None)
@@ -729,8 +769,13 @@ def card_parts(graph: EG.EntityGraph, talent: str) -> tuple[EG.Component, EG.Com
     state = owned_state(graph, ctl, talent)
     # A card with rarities has numbers keyed on them; one with none (an
     # ultimate) would show only the Common number, whatever was asked for.
-    if not any(c.cls.endswith("ValueSelectorSettings") and any(r.guid == ctl.guid for r in c.refs)
-               for c in graph.components):
+    # A talent written from scratch (hero_frame.add_talent) has no number yet
+    # but has rarities like any non-ultimate card: only an ultimate is refused,
+    # and only when its number differs by rarity (``flat``: one number at every
+    # rarity, which is all an ultimate card can show).
+    if talent.startswith("Ultimate") and not flat and not any(
+            c.cls.endswith("ValueSelectorSettings") and any(r.guid == ctl.guid for r in c.refs)
+            for c in graph.components):
         raise AddStatError(f"talent {talent!r} has no per-rarity number, so its card has "
                            "no rarity a new number could scale with (ultimates are like this)")
     by_guid = graph.by_guid()
