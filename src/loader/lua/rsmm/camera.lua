@@ -40,21 +40,51 @@ local U_VALUE        = 0x10
 local U_TYPE         = 0x18      -- 0 = f32, 2 = bool
 local REC_LINK       = 0x58      -- u32 picker index; 0xffffffff = literal
 
--- name -> { record offset, unit, proven }. `deg` fields are radians in the file.
+-- name -> { record offset, unit, proven, spread }. `deg` fields are radians in
+-- the file.
+--
+-- `spread` is how a change to the default camera carries to the hero's other
+-- cameras. The game swaps the default camera out for whole stretches of play,
+-- not just for an ultimate: Kintaro on foot uses his own "Shared Camera"
+-- (Hero_Kintaro, Base\Child State Alt Form), Melusine's Sing Stance her "Wisp
+-- Camera", and the Baba Yaga house a boss "Camera TopDown" (1.06 cooked data).
+-- A field set on the default camera only snapped back to the shipped value for
+-- as long as any of those was active (camera-control on Kintaro, 2026-10-29).
+-- Kintaro's and Melusine's are components of the hero entity, so cameras()
+-- finds them (the Kintaro clip kept its yaw across the switch). The boss camera
+-- belongs to a map object, which this module does not reach yet.
+-- Copying one number to every camera would erase what makes them differ (the
+-- ultimate camera's look height is 0.5, the boss camera's distance 36), so:
+--   "abs"  every camera gets the same value;
+--   "add"  every camera moves by the default camera's change from its original;
+--   "mul"  every camera scales by the default camera's ratio to its original.
+-- nil leaves the other cameras alone: the ultimate cameras zoom by FOV (27.5
+-- against the default's 31), so a shared FOV would cancel the zoom.
 M.FIELDS = {
-    yaw      = { off = 0x3f8, unit = "deg", proven = true  },
-    pitch    = { off = 0x278, unit = "deg", proven = false },
-    distance = { off = 0x2f8, unit = "raw", proven = false },
+    yaw      = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
+    pitch    = { off = 0x278, unit = "deg", proven = false, spread = "add" },
+    distance = { off = 0x2f8, unit = "raw", proven = false, spread = "mul" },
     fov      = { off = 0x378, unit = "raw", proven = false },
-    height   = { off = 0x478, unit = "raw", proven = false },
+    height   = { off = 0x478, unit = "raw", proven = false, spread = "add" },
 }
 local DEFAULT_FLAG = 0xf8        -- value_16: true on "Default Camera" only
 
--- Fields that move every camera together. Rotating only the default view would
--- swing back to 45° whenever the zoom or ultimate camera takes over.
-local ALL_BY_DEFAULT = { yaw = true }
+-- settings ptr .. ":" .. off -> { at, v = original, w = what we last wrote }.
+-- `w` tells a record we changed from one the game rebuilt: when the number
+-- there is no longer ours, it is the new original.
+local _orig = {}
 
-local _orig = {}                 -- settings ptr .. ":" .. off -> original value
+local function _original(settings, off, at)
+    local now = I.read_f32(at)
+    if now == nil then return nil end
+    local key = ("%x:%x"):format(settings, off)
+    local o = _orig[key]
+    if o == nil or o.at ~= at or (o.w ~= nil and now ~= o.w) then
+        o = { at = at, v = now }
+        _orig[key] = o
+    end
+    return o.v, o
+end
 
 local function _plausible(p)
     return type(p) == "number" and p ~= 0 and R.ptr and R.ptr.plausible(p)
@@ -333,25 +363,66 @@ function M.get(name)
     return nil, "no default camera found"
 end
 
---- Set `name` live. Yaw moves every camera (so zooming keeps the rotation);
---- other fields change the default camera only unless `opts.all`. Returns the
---- number of cameras written, or nil + reason.
+local function _write(c, f, at, v)
+    local _, o = _original(c.settings, f.off, at)
+    if not o then return false end
+    I.write_f32(at, v)
+    o.w = I.read_f32(at)         -- as stored (f32), so the next compare is exact
+    return true
+end
+
+--- Set `name` live: the default camera takes `value`, and the hero's other
+--- cameras follow by the field's `spread` (see FIELDS), so the view keeps the
+--- setting when the game switches cameras. `opts.all = true` writes `value` to
+--- every camera as is; `opts.all = false` writes the default camera only.
+--- Returns the number of cameras written, or nil + reason.
 function M.set(name, value, opts)
     local f = _field(name)
     if type(value) ~= "number" or value ~= value then return nil, "value must be a number" end
     if not I.write_f32 then return nil, "loader too old" end
-    local all = (opts and opts.all ~= nil) and opts.all or ALL_BY_DEFAULT[name]
+    local spread = f.spread
+    if opts and opts.all == true then spread = "abs" end
+    if opts and opts.all == false then spread = nil end
     local cams, why = M.cameras()
     if not cams then return nil, why end
+    local want = _to_file(f, value)
+
+    -- The default camera's original is what "add" and "mul" are measured from.
+    local base
+    if spread == "add" or spread == "mul" then
+        for _, c in ipairs(cams) do
+            if c.default then
+                local at = _record(c.settings, f.off)
+                if at then base = _original(c.settings, f.off, at) end
+                if base then break end
+            end
+        end
+        if spread == "mul" and base == 0 then base = nil end
+        -- No readable default original: change only what was asked for.
+        if base == nil then spread = nil end
+    end
+
     local n, last = 0, nil
     for _, c in ipairs(cams) do
-        if all or c.default then
+        if c.default or spread then
             local at, err = _record(c.settings, f.off)
             if at then
-                local key = ("%x:%x"):format(c.settings, f.off)
-                if _orig[key] == nil then _orig[key] = { at = at, v = I.read_f32(at) } end
-                I.write_f32(at, _to_file(f, value))
-                n = n + 1
+                local v = want
+                if not c.default and spread ~= "abs" then
+                    local orig = _original(c.settings, f.off, at)
+                    if orig == nil then
+                        v = nil
+                    elseif spread == "add" then
+                        v = orig + (want - base)
+                    else
+                        v = orig * (want / base)
+                    end
+                end
+                if v ~= nil and _write(c, f, at, v) then
+                    n = n + 1
+                else
+                    last = "the camera record is no longer readable"
+                end
             else
                 last = err
             end
@@ -365,7 +436,9 @@ end
 function M.reset()
     local n = 0
     for key, o in pairs(_orig) do
-        if I.read_f32(o.at) ~= nil then I.write_f32(o.at, o.v); n = n + 1 end
+        -- Only a number that is still ours: a record the game rebuilt since
+        -- already holds its own value, and one we only read was never changed.
+        if o.w ~= nil and I.read_f32(o.at) == o.w then I.write_f32(o.at, o.v); n = n + 1 end
         _orig[key] = nil
     end
     return n

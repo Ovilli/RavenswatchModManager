@@ -10671,6 +10671,8 @@ do
         I.write_u64(CAM[i] + 0x10, SET[i])
         rec(SET[i], 0x3f8, math.rad(45))                -- yaw
         rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
+        rec(SET[i], 0x278, math.rad(i == 1 and 54 or 50)) -- pitch
+        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look height
         rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
         rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
     end
@@ -10691,8 +10693,27 @@ do
 
     check(R.camera.set("yaw", 135) == 2, "yaw moves every camera, so zooming keeps it")
     check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "zoom camera yaw written in radians")
-    check(R.camera.set("distance", 50) == 1, "other fields change the default camera only")
-    check(about(I.read_f32(SET[2] + 0x2f8 + 0x70), 9.05), "zoom distance untouched")
+    -- The game hands the view to another camera for whole stretches (Kintaro
+    -- on foot, Melusine's Wisp): a field set on the default camera alone
+    -- snapped back to the shipped value there. Each camera follows by the same
+    -- ratio / offset from its OWN original, so their differences survive.
+    local ZD = SET[2] + 0x2f8 + 0x70
+    check(R.camera.set("distance", 50) == 2, "distance carries to every camera")
+    check(about(I.read_f32(SET[1] + 0x2f8 + 0x70), 50), "default camera takes the value as given")
+    check(about(I.read_f32(ZD), 9.05 * 50 / 33), "other camera keeps its ratio to the default")
+    check(R.camera.set("distance", 66) == 2 and about(I.read_f32(ZD), 9.05 * 2),
+          "measured from the originals, not from the last write")
+    check(R.camera.set("pitch", 60) == 2 and about(I.read_f32(SET[2] + 0x278 + 0x70), math.rad(56)),
+          "pitch moves every camera by the same angle")
+    check(R.camera.set("height", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
+          "look height moves every camera by the same amount")
+    check(R.camera.set("distance", 20, { all = false }) == 1 and about(I.read_f32(ZD), 9.05 * 2),
+          "all = false: default camera only")
+    check(R.camera.set("distance", 20, { all = true }) == 2 and about(I.read_f32(ZD), 20),
+          "all = true: the same number everywhere")
+    I.write_f32(ZD, 12)                                 -- the game rebuilt the record
+    check(R.camera.set("distance", 66) == 2 and about(I.read_f32(ZD), 24),
+          "a number the game put back is that camera's new original")
 
     local n, why = R.camera.set("fov", 40)
     check(n == nil and why:find("linked"), "a linked field is refused, not written")
