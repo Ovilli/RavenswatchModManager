@@ -1256,6 +1256,56 @@ A talent's `actions` take the same: `{ on = "special", hits = [...], steps =
 owned, its hits counting as that ability's damage. Unproven in game
 (2026-11-07).
 
+Its pictures are its own when you give a PNG from the mod; anything left out
+shows the rig's. A value with `\` still names a picture the game ships.
+
+```toml
+[content.frame]
+portrait  = "art/ui/portrait.png"     # select screen, in-run HUD portrait
+book      = "art/ui/book.png"         # or { standard, active, locked, unavailable }
+new_hero  = "art/ui/new_hero.png"     # the "new hero" announcement
+skin_icon = "art/ui/skin.png"         # the Default skin's icon in the book
+codex     = ["art/ui/codex_1.png", "art/ui/codex_2.png"]   # cycled over the book's slots
+banner    = "art/ui/hud_banner.png"   # the HUD's ability banner (else Red's)
+
+[[content.frame.talents]]
+name = "Attack Sharp Axe"
+icon = "art/ui/sharp_axe.png"         # also on [content.frame.ultimates.<name>]
+```
+
+Its effects are written from data too: no shipped effect file is copied.
+Each `[content.frame.effects.<name>]` is a list of particle layers; name it
+anywhere an effect goes with `fx:<name>` (a hit's `fx`, a projectile's
+`trail` / `impact`, a talent action's hit).
+
+```toml
+# A sprite of the mod (white shape, alpha = outline), tinted by `colors`;
+# `soft = true` fades into the ground; `material` draws a shipped one instead.
+[content.frame.effects.WoodChips]
+layers = [
+  { texture = "art/fx/chip.png", burst = 14, lifetime = [0.35, 0.6], size = [0.25, 0.45], speed = 7, radius = 0.3, rotation = 180, colors = [[0.62, 0.42, 0.24, 1], [0.45, 0.3, 0.17, 0]], grow = [1.0, 0.7] },
+  { texture = "art/fx/puff.png", soft = true, burst = 4, lifetime = 0.5, size = 1.5 },
+]
+
+# A continuous one, for a projectile's trail.
+[content.frame.effects.BeanTrail]
+layers = [ { texture = "art/fx/spark.png", rate = 30, burst = 0, duration = 1.0, lifetime = [0.25, 0.4], size = 0.4, colors = [[0.75, 1, 0.5, 1], [0.5, 0.9, 0.3, 0]] } ]
+```
+
+Then `hits = [ { at = 0.3, radius = 2.5, fx = "fx:WoodChips" } ]` on a button,
+or `trail = "fx:BeanTrail"` on a projectile.
+
+A layer: `burst` particles at once and/or `rate` per second for `duration`
+seconds (from `delay`); each lives `lifetime` s at `size` m, flies `speed`
+m/s outward from a sphere of `radius` (`spread` degrees of it) plus `up` m/s,
+starts turned up to `rotation` degrees, and runs through `colors` (r, g, b,
+alpha) and `grow` (size multiples) over its life. Unproven in game
+(2026-11-08).
+
+Any picture slot of the hero base takes one too:
+`[content.frame.slots."<slot>"] texture = "art/x.png"`. Unproven in game
+(2026-11-08).
+
 ---
 
 ## Where to go next

@@ -373,9 +373,15 @@ def test_hits_do_not_shake_unless_asked_and_a_button_shows_its_range():
         "indicator": {"radius": 3.5, "forward": 2.5, "color": [0.5, 0.9, 0.3, 1]}})
     HA.build(ef, HF.common(_read), ab, seed="t")
     out = ef.to_bytes()
-    names = [m.decode() for m in re.findall(rb"[ -~]+?\.vfx\.ot", out)]
-    assert names.count(HA.SHAKES["none"]) == 1 and names.count(HA.SHAKES["light"]) == 1
-    assert HA.DONOR_SHAKE not in names
+    from rsmm.engine import projectile_frame as PF
+    played = []                          # each hit's Fx part: the effects it plays
+    for c in ef.graph().components:
+        if c.cls == "oCEntityCpntFxSettings" and c.name.endswith(" Fx"):
+            played.append(sorted(m.decode() for i in PF._fx_ids(ef, c.name)
+                                 for m in re.findall(rb"[ -~]+?\.vfx\.ot", ef.objects[i])))
+    shakes = [[n for n in p if "Camera_Shake" in n] for p in played]
+    assert sorted(shakes) == [[], [HA.SHAKES["light"]]]
+    assert not any("Kintaro" in n for p in played for n in p)
     g = {c.name: c for c in EG.parse(out, "Hero_T").components}
     disc = {f.name: f.text for f in EF.fields(g["Power Ability Indicator"])}
     assert disc["obj_3"].count("Power Ability Indicator Size") == 2 and "f32 2.5" in disc["obj_4"]

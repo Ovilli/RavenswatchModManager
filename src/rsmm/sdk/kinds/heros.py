@@ -165,6 +165,7 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
 
 from __future__ import annotations
 
+import math
 import re
 import sys
 from pathlib import Path
@@ -781,6 +782,7 @@ def _emit_custom(mod_id: str, defn: ContentDef, out_dir: Path, base: str,
             # pipeline (herodef, alias, caches, text) is the clone's.
             family.update(_frame_family(frame, b, R, H, app, herodef, guid, hid, mod_id,
                                         swaps, corpus, bank_pairs))
+            _no_effect(family.values(), put, art)
         # Every renamed member preloads with the hero. The base's skin caches
         # do not list all of them: Update 6 members (Scarlet's Update 6
         # ultimate projectiles) are preloaded by LiveOps6.versiondef's cache,
@@ -1246,7 +1248,40 @@ _SCRATCH_SORT = 14000
 _SCRATCH_FIELDS = frozenset({"rig", "mesh", "material", "albedo", "slots", "abilities",
                              "ultimates", "weapon",
                              "talents", "sort", "portrait", "animations", "model",
-                             "projectiles"})
+                             "projectiles", "book", "new_hero", "skin_icon", "codex",
+                             "banner", "effects"})
+#: An effect layer's particle material, written as the hero's own: the
+#: engine's sprite shader (texture = the shape, its colours tinted by the
+#: layer's `colors`, as most shipped billboard particles are drawn), in the
+#: format of the generic shape library's material (soft: fades into the
+#: ground). Its one texture is the layer's.
+_FX_MATERIAL = {False: ("Materials\\Dot_Blurred_Square_01.mat.ot",
+                        "Textures\\Shapes\\Dot_Blurred_Square_Alpha.png"),
+                True: ("Materials\\Dot_Blurred_Square_01_SOFT.mat.ot",
+                       "Textures\\Shapes\\Dot_Blurred_Square_Alpha.png")}
+#: Where a hero's own effects are written: a shipped effects folder.
+_FX_FOLDER = "Settings\\FX\\Common_FX"
+_FX_PREFIX = "fx:"
+
+
+def _fx_cooked(ref: str, suffix: str) -> str:
+    return "FX/" + ref.replace("\\", "/") + suffix
+
+
+def _no_effect(blobs, put, art: list[str]) -> None:
+    """The effect of nothing (vfx_writer.NO_EFFECT), written and preloaded
+    when a hero's files name it (a hit with ``shake = "none"``)."""
+    from ...engine import vfx_writer as VW
+    if not any(VW.NO_EFFECT.encode("latin-1") in b for b in blobs):
+        return
+    put(_fx_cooked(VW.NO_EFFECT, ".ScheduledVfxSettings.gen"), VW.build([], empty=True))
+    line = f"FX|{VW.NO_EFFECT}|oCScheduledVfxSettings"
+    if line not in art:
+        art.append(line)
+#: A talent card with no icon of its own; also the folder new card icons go in.
+_DEFAULT_ICON = "Heroes\\Ultimate_Power_1_Default.png"
+#: The book's four hero portraits, in herodef order.
+_BOOK_STATES = ("standard", "active", "locked", "unavailable")
 #: ``clip = "anim:<name>"`` in a slot or a button names one of the hero's own
 #: clips (``frame.animations``).
 _OWN_CLIP = "anim:"
@@ -1318,6 +1353,103 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         return k
 
     art: list[str] = []
+
+    def ui_art(value, sibling: str, name: str, what: str) -> tuple[str, str] | None:
+        """``value`` as a UI picture. A PNG in the mod (``art/x.png``) is cooked
+        as one of the hero's own, ``<scope>_<name>.png`` in ``sibling``'s
+        folder (a new cooked path needs a folder the game ships), and listed
+        in its preload caches (an icon or portrait loads through the herodef's
+        cache). A ``\\``-separated value names a picture the game ships."""
+        if not value:
+            return None
+        v = str(value)
+        if "\\" in v:
+            return ("Ui", v)
+        if not v.lower().endswith(".png"):
+            raise ContentError(f"hero {hid}: {what} is a .png in the mod or a shipped "
+                               f"UI path, got {v!r}")
+        new = f"{sibling.rsplit(chr(92), 1)[0]}\\{scope}_{re.sub(r'[^A-Za-z0-9]+', '_', name)}.png"
+        if new not in cooked_ui:
+            put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt",
+                PC.cook_texture(_mod_source(out_dir, v, hid, what).read_bytes()))
+            art.append(f"Ui|{new}|oCTexture")
+            cooked_ui.add(new)
+        return ("Ui", new)
+    cooked_ui: set[str] = set()
+
+    def own_art(value, rig_ref: tuple[str, str], name: str, what: str) -> tuple[str, str]:
+        """Its own picture when the frame gives one, else the rig's."""
+        return ui_art(value, rig_ref[1] or _DEFAULT_ICON, name, what) or rig_ref
+
+    rr = rig_rec.root
+    portrait = own_art(frame.get("portrait"), rr["portrait"], "Portrait", "frame.portrait")
+
+    # Its own effects (engine/vfx_writer.py): each written from its layers,
+    # no shipped effect copied; `fx:<name>` anywhere in the frame (a hit's fx,
+    # a projectile's trail / impact, a talent action's hit) names one.
+    own_fx: dict[str, str] = {}
+    own_fx_assets: set[str] = set()       # its own effect files, materials, textures
+    shipped_fx: set[str] = set()          # shipped materials its layers draw with
+    effects = frame.get("effects") or {}
+    if effects:
+        from ...engine import vfx_writer as VW
+        if not isinstance(effects, dict):
+            raise ContentError(f"hero {hid}: effects is a table of named effects")
+        for ename, espec in sorted(effects.items()):
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", str(ename)) or not isinstance(espec, dict):
+                raise ContentError(f"hero {hid}: effects.{ename}: a letters-and-digits name "
+                                   "with layers = [...]")
+            layers = []
+            for n, layer in enumerate(espec.get("layers") or [], 1):
+                if not isinstance(layer, dict):
+                    raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}] is a table")
+                layer = dict(layer)
+                tex = layer.pop("texture", None)
+                soft = bool(layer.pop("soft", False))
+                if tex:
+                    donor_mat, donor_tex = _FX_MATERIAL[soft]
+                    tag = f"{scope}_{ename}_{n}"
+                    tref = f"Textures\\Shapes\\{tag}.png"
+                    put(_fx_cooked(tref, PC.TEXTURE_SUFFIX), PC.cook_texture(_mod_source(
+                        out_dir, tex, hid, f"effects.{ename}.layers[{n}].texture").read_bytes()))
+                    mref = f"Materials\\{tag}.mat.ot"
+                    put(_fx_cooked(mref, ".Material.gen"), PC.clone_material(
+                        corpus.read(_fx_cooked(donor_mat, ".Material.gen")), {donor_tex: tref}))
+                    art += [f"FX|{tref}|oCTexture", f"FX|{mref}|oCMaterial"]
+                    own_fx_assets.update((tref, mref))
+                    layer["material"] = mref
+                elif not layer.get("material"):
+                    raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}] needs a "
+                                       "texture (a .png in the mod) or a shipped material")
+                else:
+                    shipped_fx.add(str(layer["material"]))
+                layer.setdefault("name", f"{ename} {n}")
+                layers.append(layer)
+            ref = f"{_FX_FOLDER}\\{scope}_{ename}.vfx.ot"
+            try:
+                blob = VW.build(layers, length=espec.get("length"))
+            except VW.EffectError as e:
+                raise ContentError(f"hero {hid}: effects.{ename}: {e}") from e
+            put(_fx_cooked(ref, ".ScheduledVfxSettings.gen"), blob)
+            art.append(f"FX|{ref}|oCScheduledVfxSettings")
+            own_fx[str(ename)] = ref
+            own_fx_assets.add(ref)
+
+    def with_own_fx(v, where: str = "frame"):
+        """Every ``fx:<name>`` string in ``v`` made that effect's path."""
+        if isinstance(v, str) and v.startswith(_FX_PREFIX):
+            name = v[len(_FX_PREFIX):]
+            if name not in own_fx:
+                raise ContentError(f"hero {hid}: {where}: no effects.{name}")
+            return own_fx[name]
+        if isinstance(v, dict):
+            return {k: with_own_fx(x, f"{where}.{k}") for k, x in v.items()}
+        if isinstance(v, list):
+            return [with_own_fx(x, f"{where}[{i}]") for i, x in enumerate(v)]
+        return v
+
+    frame = with_own_fx({k: x for k, x in frame.items() if k != "effects"})
+
     # Its body material: the rig's, or a copy wearing the hero's own albedo.
     if frame.get("albedo"):
         slots = material_slots(material)
@@ -1388,6 +1520,10 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 out.append(c)
         if clip is not None:
             fill["clip"] = out if isinstance(clip, list) else out[0]
+        if isinstance(fill.get("texture"), str):
+            # A picture slot: a PNG in the mod, or a shipped UI path.
+            fill["texture"] = ui_art(fill["texture"], _DEFAULT_ICON,
+                                     what.rsplit(".", 1)[-1], f"{what}.texture")
         return fill
 
     # Its own body (step D): a glb with the rig's bones at proportions of its
@@ -1438,7 +1574,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         talents.append((name, g, {
             "bank": bank, "name_key": key(f"Skill_{word}_Name", t.get("title", name)),
             "desc_key": key(f"Skill_{word}_Desc", t.get("description", "")),
-            "icon": str(t.get("icon") or "Heroes\\Ultimate_Power_1_Default.png"),
+            "icon": ui_art(t.get("icon") or _DEFAULT_ICON, _DEFAULT_ICON, f"Skill_{word}",
+                           f"frame.talents[{n}].icon")[1],
             # starting-pick cards (pool 0); the rest are dealt at level-up
             "pool": HF.POOL_STARTER if t.get("starter") else HF.POOL_LEVEL_UP}))
         rows.append(HDF.Talent(f"Skill Controller {name}", g))
@@ -1456,7 +1593,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         ultimates.append((str(uname), {
             "bank": bank, "name_key": key(f"Skill_{word}_Name", u.get("title", uname)),
             "desc_key": key(f"Skill_{word}_Desc", u.get("description", "")),
-            "icon": str(u.get("icon") or "")}))
+            "icon": (ui_art(u.get("icon"), _DEFAULT_ICON, f"Skill_{word}",
+                            f"frame.ultimates.{uname}.icon") or ("", ""))[1]}))
         fx_spec = {k: u[k] for k in ("add_stats", "actions") if u.get(k)}
         if fx_spec:
             effects[str(uname)] = fx_spec
@@ -1498,6 +1636,13 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         slots = HF.rig_slots(read, rig)
         for slot, fill in (frame.get("slots") or {}).items():
             slots[str(slot)] = own(dict(fill), f"frame.slots.{slot}")
+        # The HUD's portrait and ability banner: Hero_Common leaves the
+        # portrait blank and shows RED's banner; every shipped hero fills both.
+        slots.setdefault("Portrait Picture", {"texture": portrait})
+        if frame.get("banner"):
+            slots.setdefault("Abilities Banner Picture", {"texture": ui_art(
+                frame["banner"], "Heroes\\Red\\HUD_Banner_RED.png", "HUD_Banner",
+                "frame.banner")})
         main, fx, skin_values = HF.build_hero(
             read, scope=scope, fx_ref=fx_ref, common_alias=aliases["Hero_Common"].guid,
             mesh=mesh, material=body_mat, slots=slots, talents=talents,
@@ -1547,18 +1692,32 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             art.append(f"3D|{mref}|oCMaterial")
             return mref
 
+        from ...engine import projectile_frame as PF
         for pid, spec in sorted(projectiles.items()):
             if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", str(pid)) or not isinstance(spec, dict) \
-                    or set(spec) - AB.PROJECTILE_FIELDS:
+                    or set(spec) - PF.FIELDS:
                 raise ContentError(f"hero {hid}: projectiles.{pid}: a letters-and-digits id "
-                                   f"with {', '.join(sorted(AB.PROJECTILE_FIELDS))}")
-            stem = f"{scope}_{pid}"
+                                   f"with {', '.join(sorted(PF.FIELDS))}")
+            if not spec.get("model"):
+                raise ContentError(f"hero {hid}: projectiles.{pid} needs a `model` (its mesh)")
+            stem, tag, what = f"{scope}_{pid}", f"{hid}_{pid}", f"projectiles.{pid}"
             ref = f"{folder}\\{stem}.entity.ot"
+            # Written from data on the shared hero projectile (engine/
+            # projectile_frame.py): no shipped projectile is copied. The dagger
+            # mesh and material lend only their format (vertex layout, shader).
+            p_geo = p_mesh(AB.TEMPLATE_MESH, spec["model"], tag, f"{what}.model",
+                           {"fit": "none", "scale": float(spec.get("scale", 1.0))})
+            maps = {k: spec[k] for k in ("albedo", "mra", "normal") if spec.get(k)}
+            p_mat = p_material(AB.TEMPLATE_MAT, maps, tag, what) if maps else ""
             try:
-                own_projectiles[ref] = AB.projectile_entity(
-                    spec, stem=stem, tag=f"{hid}_{pid}", what=f"projectiles.{pid}",
-                    mesh=p_mesh, material=p_material)
-            except AB.AttackError as e:
+                own_projectiles[ref] = PF.build(
+                    read, stem=stem, mesh=p_geo, material=p_mat,
+                    lifetime=float(spec.get("lifetime", 1.0)),
+                    trail=str(spec.get("trail") or ""), impact=str(spec.get("impact") or ""),
+                    pierce=bool(spec.get("pierce", True)),
+                    size=float(spec.get("size", PF.SIZE)),
+                    pitch=math.radians(float(spec["pitch"])) if "pitch" in spec else PF.PITCH)
+            except PF.ProjectileError as e:
                 raise ContentError(f"hero {hid}: {e}") from e
             own_ref[str(pid)] = ref
 
@@ -1610,6 +1769,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e
         main = ief.to_bytes()
+    _no_effect([main, fx], put, art)
+    from ...engine import vfx_writer as _VW
+    own_fx_assets.add(_VW.NO_EFFECT)
     alias = H.alias_guid(mod_id, hid)
     entities = {main_ref: main, fx_ref: fx}
     for ref, blob in own_projectiles.items():
@@ -1646,16 +1808,34 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             art_page["footer_selected"] if art_page else ("", ""),
             art_page["corner"] if art_page else ("", "")))
     rig_skin = next((d for c, d in rig_rec.objects if c == HDF.SKIN), None)
-    portrait = ("Ui", str(frame["portrait"])) if frame.get("portrait") else rr["portrait"]
+    # Its UI art: each picture its own when the frame gives one (a PNG in the
+    # mod), else the rig's.
+    book_spec = frame.get("book")
+    if book_spec is not None and not isinstance(book_spec, str | dict):
+        raise ContentError(f"hero {hid}: frame.book is a .png or "
+                           f"{{ {', '.join(_BOOK_STATES)} }}")
+    book = tuple(
+        own_art(book_spec.get(s) if isinstance(book_spec, dict) else book_spec,
+                rr[f"book_{s}"], f"Book_{s.title()}", f"frame.book.{s}")
+        for s in _BOOK_STATES)
+    codex = list(rr["codex"])
+    if frame.get("codex"):
+        pics = frame["codex"]
+        if not isinstance(pics, list) or not pics:
+            raise ContentError(f"hero {hid}: frame.codex is a list of .png")
+        # The book has one slot per rig codex picture: fill each, cycling.
+        codex = [own_art(pics[i % len(pics)], codex[i], f"Codex_{i % len(pics) + 1}",
+                         f"frame.codex[{i % len(pics)}]") for i in range(len(codex))]
     record = HDF.Record(
         hid=hid, sort=int(frame.get("sort", _SCRATCH_SORT)),
         name=HDF.Text.of(bank, key("Name", f.get("name") or hid)),
         desc=HDF.Text.of(bank, key("Desc", f.get("description") or "")),
-        portrait=portrait,
-        book=(rr["book_standard"], rr["book_active"], rr["book_locked"],
-              rr["book_unavailable"]),
-        new_hero=rr["new_hero"], codex=list(rr["codex"]), talents=rows, pages=pages,
-        skins=[HDF.Skin(skin_ref, rig_skin["icon"] if rig_skin else ("", ""))],
+        portrait=portrait, book=book,
+        new_hero=own_art(frame.get("new_hero"), rr["new_hero"], "NewHero", "frame.new_hero"),
+        codex=codex, talents=rows, pages=pages,
+        skins=[HDF.Skin(skin_ref, own_art(frame.get("skin_icon"),
+                                          rig_skin["icon"] if rig_skin else ("", ""),
+                                          "Skin_Default", "frame.skin_icon"))],
         lowres=lowres_ref)
     herodef = HDF.build(record, rig_herodef)
 
@@ -1678,13 +1858,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # taken from the game's own caches.
     own = {main_ref, fx_ref, skin_ref, lowres_ref, *own_projectiles} | \
         {c.ref for c in kit_copies if not c.shipped}
-    # its own projectiles preload what their template does (the generic hero
-    # projectile, its sounds) and their trail and impact effects
-    from ...engine import attack_build as _AB
+    # its own projectiles preload the shared hero projectile they are written
+    # on (and what it preloads) and their trail and impact effects
+    from ...engine import projectile_frame as _PF
     targets = {*(kit_resources - own), *(c.source for c in kit_copies if not c.shipped),
-               *([_AB.TEMPLATE_REL.removeprefix("EntitySettings/")
-                  .removesuffix(".EntitySettingsResource.gen").replace("/", "\\")]
-                 if own_projectiles else []),
+               *([_PF.MODEL, _PF.BASE] if own_projectiles else []),
                *(str(sp.get(k) or "") for sp in projectiles.values() for k in ("trail", "impact")
                  if sp.get(k)),
                "Heroes\\Hero_Common\\Hero_Common.entity.ot",
@@ -1697,6 +1875,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     f"\\T_{scope}_" not in t and f"\\M_{scope}" not in t and \
                     f"\\{scope}_" not in t:      # its own clips: listed as art
                 targets.add(t)
+    # its own effects are listed as art; the shipped materials they draw with
+    # preload what the game's caches list for them
+    targets = (targets - own_fx_assets) | shipped_fx
     lines = set(_borrow_closure(sorted(targets), out_dir, hid)) | set(art)
     lines |= {f"EntitySettings|{r}|oCEntitySettingsResource" for r in own}
     lines.add(_self_line(hid))

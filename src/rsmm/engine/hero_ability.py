@@ -9,7 +9,7 @@ shipped hero's (Geppetto's power: ``ref_2`` -> ``State Primary Ability``,
 Behind the state, every part is written here, and the only parts used as a
 layout are the shared base's own (``Hero_Common``), never a hero's:
 
-* the ability state (factory) aims the hero (Kintaro's aimed ``Look At``),
+* the ability state (factory) aims the hero (Hero_Common's snap-to-cursor ``Look At``),
   plays its clip (the base dash's clip selector -> clip -> animatic, the
   animatic filled with this ability's clip and length), and starts its timers;
 * each hit is a timer (factory) whose end switches on a hit event: the base's
@@ -42,13 +42,14 @@ CONTROLLERS = {
     "ultimate2": "Ultimate Power 2 Controller",
 }
 _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
-#: How a button turns the hero: Kintaro's own aimed-ability look-at (his
-#: Secondary's; the same accessor his ultimates and Special Swipe read off the
-#: shared Hero Controller: the attack direction). The dash's look-at, used at
-#: first, turns the hero to the MOVE direction, so shots went where he walked,
-#: not where the player aimed (playtest 2026-11-07). Its only link is
-#: Hero_Common's Hero Controller, which every hero inherits.
-LOOK_AT_DONOR = ("Heroes\\Hero_Kintaro\\Hero_Kintaro.entity.ot", "Secondary Ability Look At")
+#: How a button turns the hero: Hero_Common's own dash "Initial Look At To
+#: Cursor", which reads the aim accessor (0xfd283d3 on the shared Hero
+#: Controller, the one every shipped aimed ability reads) and SNAPS to it
+#: (value_6). The dash's plain "Look At" turns to the MOVE direction (shots went
+#: where he walked, playtest 2026-11-07); Kintaro's Secondary look-at, used
+#: next, turns at 2 pi rad/s, so a shot fired 0.3 s into a wide turn left
+#: before he faced the cursor. No hero's part is copied.
+LOOK_AT = "Dash Ability Initial Look At To Cursor"
 _HIT = ("Event Critical Health Explosion", "Critical Health Explosion Attack",
         "Critical Health Explosion Damage", "Critical Health Explosion Radius",
         "Critical Health Explosion Traverser", "Critical Health Explosion Fx")
@@ -198,10 +199,14 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
 _HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", *HIT_FIELDS}
 
 #: The donor explosion shakes the camera (Common_FX's medium explosion shake)
-#: on EVERY hit; a hit shakes only when asked. "none" swaps it for Kintaro's
-#: shipped empty effect, the others for the matching shipped shake.
+#: on EVERY hit; a hit shakes only when asked. "none" points the shake's setup
+#: at an effect of nothing the SDK writes (vfx_writer.NO_EFFECT; was Kintaro's
+#: empty effect). It stays on the list: an unreferenced setup is a sub-object
+#: no later clone can attribute ("cannot tell whether sub-object ... belongs").
+#: The others swap in the matching shipped Common_FX shake.
 DONOR_SHAKE = "Settings\\FX\\Common_FX\\Camera_Shake_Explosion_Medium.vfx.ot"
-SHAKES = {"none": "Settings\\Heroes\\Hero_Kintaro_FX\\Kintaro_Ulti02_Null.vfx.ot",
+NO_FX = "Settings\\FX\\Common_FX\\RSMM_No_Effect.vfx.ot"
+SHAKES = {"none": NO_FX,
           "light": "Settings\\FX\\Common_FX\\Camera_Shake_Explosion_Light.vfx.ot",
           "medium": DONOR_SHAKE,
           "heavy": "Settings\\FX\\Common_FX\\Camera_Shake_Explosion_Heavy.vfx.ot"}
@@ -345,15 +350,9 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         ef.clone([f"Ability Dash\\{n}" for n in _CLIP], seed=f"{seed}:{ab.slot}:clip",
                  rename={n: n.replace("Dash Ability", tag) for n in _CLIP},
                  group={"Ability Dash": group}, source=hero_common)
-        from . import corpus
-        lref, look = LOOK_AT_DONOR
-        lrel = lref.replace(chr(92), "/")
-        lraw = corpus.read(f"EntitySettings/{lrel}.EntitySettingsResource.gen")
-        if lraw is None:
-            raise AbilityError(f"{lref} is not in the game files")
-        ldonor = EntityFile(lraw, "Hero_Kintaro")
+        look = LOOK_AT
         ef.clone([look], seed=f"{seed}:{ab.slot}:look", rename={look: f"{tag} Look At"},
-                 group={ldonor.component(look).group: group}, source=ldonor)
+                 group={hero_common.component(look).group: group}, source=hero_common)
         HF._set_clips(ef, f"{tag} Anim", [ab.clip])
         HF._set_duration(ef, f"{tag} Anim", length)
         w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)

@@ -154,13 +154,31 @@ return function(env)
     --- grant by name: it is how a stale offset shows up.
     function M.dump()
         local list = M.controllers()
-        R.log(string.format("[rsmm.talent] %d skill controller(s) on the hero", #list))
+        local per = {}
+        for _, e in ipairs(list) do per[e.category] = (per[e.category] or 0) + 1 end
+        R.log(string.format("[rsmm.talent] %d skill controller(s) on the hero; per pool "
+              .. "0=%d 1=%d 2=%d 3=%d 4=%d", #list, per[0] or 0, per[1] or 0, per[2] or 0,
+              per[3] or 0, per[4] or 0))
+        -- The next pick deals from the pool of the first EMPTY held slot
+        -- (offer builder 0x1403b27e0: slot pool at hero+0xff8+slot*0x20). An
+        -- empty pool there = an empty pick window that closes at once.
+        local h = hero()
+        if h then
+            local _, free = held_slot(h, -1)
+            if free then
+                R.log(string.format("[rsmm.talent] next pick: slot %d, pool %s", free,
+                      tostring(I.read_u32(h + HELD_BASE - 0x10 + free * HELD_STRIDE))))
+            end
+        end
         for _, e in ipairs(list) do
             local st = I.read_u64(e.ptr + C_STATE)
             local stname = (R.rtti and R.rtti.name and st and st ~= 0) and R.rtti.name(st) or nil
-            R.log(string.format("[rsmm.talent]   cat=%d tier=%s %s %s  @0x%x  state=%s",
+            -- +0x70 = the talent's roster-row profile, linked at load by matching
+            -- the hero's herodef (0x1402e80c0); 0 = the row was never found.
+            R.log(string.format("[rsmm.talent]   cat=%d tier=%s %s %s  @0x%x  state=%s row=%s",
                   e.category, tostring(e.tier), e.held and "HELD" or "    ",
-                  tostring(e.name), e.ptr, tostring(stname)))
+                  tostring(e.name), e.ptr, tostring(stname),
+                  (I.read_u64(e.ptr + 0x70) or 0) ~= 0 and "linked" or "NONE"))
         end
         return list
     end

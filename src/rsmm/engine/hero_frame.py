@@ -28,6 +28,7 @@ value. Sounds (an FMod event GUID + its 3D settings) come next.
 
 from __future__ import annotations
 
+import re
 import struct
 import uuid
 
@@ -131,7 +132,12 @@ def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
         raise FrameError(f"slot {slot!r} is already filled")
     try:
         ef.clone([c.path], seed=f"{seed}:{slot}", source=base)
-        ef.set_override(slot, c.guid, f"[{kind_label(c.cls)}] {base.name}\\{c.path}")
+        # When the base's part is itself an override (Hero_Common's "Dying
+        # Death Anim Default" overrides Character_Common's), every shipped hero
+        # overrides the ORIGINAL part's GUID under the base's label; an
+        # override record's own GUID is never resolved (see HERO_CONTROLLER).
+        target = c.override.guid if c.override is not None else c.guid
+        ef.set_override(slot, target, f"[{kind_label(c.cls)}] {base.name}\\{c.path}")
         if clip is not None:
             if c.cls not in _CLIPS:
                 raise FrameError(f"slot {slot!r} is a {c.cls}, not an animation")
@@ -245,9 +251,13 @@ def fill_body(ef: EntityFile, character_common: EntityFile, *, mesh: str, materi
         source_resource(ef, "Character Mesh", field, name)
 
 
-#: The shared hero controller every shipped talent links (an Update 5 override
-#: of Hero_Common's, which is how a hero reaches it).
-HERO_CONTROLLER = (bytes.fromhex("f8e4064e4c16cd4d8d9fd443c2078e59"),
+#: The shared hero controller every shipped talent links: Hero_Common's ORIGINAL
+#: part's GUID (bfe7f660..., 739 shipped links), under the Update 5 label. NOT
+#: the Update 5 override record's own GUID (f8e4064e...): nothing resolves a
+#: link by an override's own id, so a talent linked that way never found its
+#: hero controller (ctrl+0x78 null), never joined an offer pool, and every pick
+#: window closed empty (Jack, playtest 2026-11-08; activation 0x1402e8250).
+HERO_CONTROLLER = (bytes.fromhex("bfe7f6604385cb4887f6b4b79f6812a5"),
                    "[Dt Hero Controller] Hero_Common_Update5\\Hero Controller\\Hero Controller")
 #: The base's own talent card parts, used as the layout of a hero's talent.
 _CONTROLLER = "Skill Controller Ultimate 1 Upgrade 1"
@@ -481,14 +491,21 @@ _TEXTURE = struct.pack("<II", 6, 0)
 
 
 def _set_texture(ef: EntityFile, slot: str, root: str, path: str) -> None:
+    """The slot's one texture literal set to ``(root, path)``: empty in most
+    base slots, a shipped picture in a few (``Abilities Banner Picture``
+    holds Red's banner)."""
     c = ef.component(slot)
-    empty = P._lstr("") + P._lstr("")
-    at = c.body.find(_TEXTURE + empty)
-    if at < 0 or c.body.find(_TEXTURE + empty, at + 1) >= 0:
-        raise FrameError(f"slot {slot!r} holds no single empty texture")
+    hits = [m.start() for m in re.finditer(re.escape(_TEXTURE), c.body)]
+    if len(hits) != 1:
+        raise FrameError(f"slot {slot!r} holds {len(hits)} textures, not one")
+    at = hits[0] + len(_TEXTURE)
+    old = 0
+    for _ in range(2):                     # root, then path: u32 length + bytes
+        (n,) = struct.unpack_from("<I", c.body, at + old)
+        old += 4 + n
     p = ef.objects[c.index - 1]
-    a = len(p) - len(c.body) + at + len(_TEXTURE)
-    p[a:a + len(empty)] = P._lstr(root) + P._lstr(path)
+    a = len(p) - len(c.body) + at
+    p[a:a + old] = P._lstr(root) + P._lstr(path)
 
 
 def _set_duration(ef: EntityFile, slot: str, seconds: float) -> None:
@@ -545,21 +562,24 @@ def talent_effects(raw: bytes, hero_common: EntityFile, effects: dict[str, dict]
 
 #: What the hero builder's kit (engine/hero_kit.py) builds from, for a hero
 #: with no base to lend it: ability steps that copy, into the hero's own file,
-#: a projectile spawner of the shape every hero projectile uses (Kintaro's
-#: Ultimate 2: no attachment, aimed through one node), its aim (Hero_Common's
+#: a projectile spawner of the shape every hero projectile uses (no
+#: attachment, aimed through one node: Update 5's melody zone spawner), its aim (Hero_Common's
 #: Divine Revive node, which hangs off Character_Common's Entity Node, so no
 #: link leads into another hero; its yaw zeroed), a spawner value, a plain
 #: number and an empty state (Hero_Common's, all parts of their own). The node
 #: turns with the hero, so shots go where the button turned him: the buttons'
-#: look-at (hero_ability.LOOK_AT_DONOR) is what aims them.
+#: look-at (hero_ability.LOOK_AT) is what aims them.
 KIT_DONORS: list[dict] = [
     {"clone": ["Divine Revive 3d Node"], "from": "Heroes/Hero_Common/Hero_Common",
      "rename": {"Divine Revive 3d Node": "Kit Aim"}},
     {"set": "Kit Aim.obj_4[8]", "value": 0.0},
-    {"clone": ["Ultimate Ability 2 Projectile Spawner"], "from": "Kintaro",
-     "rename": {"Ultimate Ability 2 Projectile Spawner": "Kit Projectile Spawner"}},
+    # The shared base's own attack spawner (Update 5's melody zone): every
+    # field Kintaro's Ultimate 2 projectile spawner has, except the template,
+    # aim and values each shot re-sets; no hero's spawner is copied.
+    {"clone": ["Melody Deal Damage Around Attack Zone Spawner"],
+     "from": "Heroes/Hero_Common/Hero_Common_Update5",
+     "rename": {"Melody Deal Damage Around Attack Zone Spawner": "Kit Projectile Spawner"}},
     {"link": "Kit Projectile Spawner.position[0]", "to": "Kit Aim"},
-    {"remove_link": "Kit Projectile Spawner.spawner_values[0]"},
     {"remove_link": "Kit Projectile Spawner.spawner_values[0]"},
     {"clone": ["Bean Gain Spawner Value"], "from": "Heroes/Hero_Common/Hero_Common",
      "rename": {"Bean Gain Spawner Value": "Kit Spawner Value"}},

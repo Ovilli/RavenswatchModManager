@@ -896,6 +896,150 @@ def test_a_hero_with_no_base_copies_no_hero(tmp_path):
 
 @needs_corpus
 @needs_install
+def test_a_scratch_hero_links_original_parts_not_override_records(tmp_path):
+    """Every link and override a from-scratch hero writes names a shared
+    part's ORIGINAL GUID. A link to an override record's own GUID never
+    resolves: talents linked to Hero_Common_Update5's Hero Controller record
+    found no hero, joined no offer pool, and every pick window closed empty
+    (Jack, playtest 2026-11-08)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [{"name": "Attack One", "starter": True}, {"name": "Power Two"}]}}),
+        tmp_path / "assets")
+    records = set()
+    for scope in ("Hero_Common", "Hero_Common_Update5"):
+        ef = EntityFile(corpus.read(f"EntitySettings/Heroes/Hero_Common/{scope}.entity.ot"
+                                    ".EntitySettingsResource.gen"), scope)
+        records |= {c.guid for c in ef.graph().components if c.override is not None}
+    hc = EntityFile(corpus.read("EntitySettings/Heroes/Hero_Common/Hero_Common.entity.ot"
+                                ".EntitySettingsResource.gen"), "Hero_Common")
+    original = hc.component("Hero Controller").guid
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    raw = main.read_bytes()
+    assert not [g.hex() for g in records if g in raw]
+    ef = EntityFile(raw, "Hero_Solo")
+    for name in ("Skill Controller Attack One", "Skill Controller Power Two"):
+        c = ef.component(name)
+        f = next(f for f in EF.fields(c) if f.name == "ref_2")
+        assert original in c.body[f.offset:f.offset + f.size]
+
+
+def _png(path, rgba=(200, 40, 40, 255), size=8):
+    import struct
+    import zlib
+    row = b"\x00" + bytes(rgba) * size
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(row * size)) + chunk(b"IEND", b""))
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_effects_are_written_not_borrowed(tmp_path):
+    """`frame.effects`: an effect written from its layers (the layer's texture
+    in a material of the hero's own), named `fx:<name>` by a hit and by a
+    projectile's trail; it decodes as the effect it describes and is preloaded
+    with the hero."""
+    from rsmm.engine import vfx_codec as V
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "leaf.png")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "effects": {"Leaves": {"layers": [
+                {"texture": "art/leaf.png", "burst": 12, "lifetime": [0.4, 0.8],
+                 "size": [0.5, 0.9], "speed": 6, "colors": [[0.6, 1, 0.4, 1], [0.6, 1, 0.4, 0]]},
+                {"material": "Materials\\Glow_Orange_01.mat.ot", "size": 3, "lifetime": 0.2}]}},
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "hits": [{"at": 0.3, "fx": "fx:Leaves"}]}},
+            "projectiles": {"Bean": {"model": "art/bean.glb", "trail": "fx:Leaves"}}}}),
+        mod / "assets") if (mod / "art" / "bean.glb").exists() else None
+    if files is None:                 # no glb at hand: the effect and the hit alone
+        files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+            "frame": {
+                "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+                "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+                "effects": {"Leaves": {"layers": [
+                    {"texture": "art/leaf.png", "burst": 12, "lifetime": [0.4, 0.8],
+                     "speed": 6, "colors": [[0.6, 1, 0.4, 1], [0.6, 1, 0.4, 0]]},
+                    {"material": "Materials\\Glow_Orange_01.mat.ot", "size": 3}]}},
+                "abilities": {"power": {
+                    "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                    "duration": 0.9, "hits": [{"at": 0.3, "fx": "fx:Leaves"}]}}}}),
+            mod / "assets")
+    names = {p.name for p in files}
+    assert "Hero_Solo_Leaves.vfx.ot.ScheduledVfxSettings.gen" in names
+    assert "Hero_Solo_Leaves_1.mat.ot.Material.gen" in names
+    assert "Hero_Solo_Leaves_1.png.Texture.dxt" in names
+    vfx = next(p for p in files if p.name == "Hero_Solo_Leaves.vfx.ot.ScheduledVfxSettings.gen")
+    raw = vfx.read_bytes()
+    v = V.decode(raw)
+    assert V.encode(v) == raw
+    mats = [o.fields["material"] for o in v.objects
+            if o.cls == "oI3dBillboardParticleRendererSettings"]
+    assert mats == ["Materials\\Hero_Solo_Leaves_1.mat.ot", "Materials\\Glow_Orange_01.mat.ot"]
+    main = next(p for p in files
+                if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen").read_bytes()
+    assert b"Settings\\FX\\Common_FX\\Hero_Solo_Leaves.vfx.ot" in main
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    text = cache.read_text(encoding="utf-8", errors="replace")
+    assert "FX|Settings\\FX\\Common_FX\\Hero_Solo_Leaves.vfx.ot|oCScheduledVfxSettings" in text
+    assert "FX|Materials\\Glow_Orange_01.mat.ot|oCMaterial" in text
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_ui_art_is_its_own(tmp_path):
+    """Portrait, book portraits, new-hero picture, skin icon, codex, HUD banner
+    and talent/ultimate icons: a PNG in the mod is cooked as the hero's own
+    picture, named in its herodef/entity and listed in its preload cache; an
+    absent one keeps the rig's."""
+    from rsmm.engine import herodef_frame as HDF
+    mod = tmp_path / "mod"
+    for n in ("portrait", "book", "new", "skin", "c1", "banner", "icon", "ult"):
+        _png(mod / "art" / f"{n}.png")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "portrait": "art/portrait.png", "book": {"standard": "art/book.png"},
+            "new_hero": "art/new.png", "skin_icon": "art/skin.png", "codex": ["art/c1.png"],
+            "banner": "art/banner.png",
+            "talents": [{"name": "Attack One", "icon": "art/icon.png"}],
+            "ultimates": {"Ultimate Power 1": {"title": "U", "icon": "art/ult.png"}}}}),
+        mod / "assets")
+    ui = sorted(p.name for p in files if p.name.endswith(".png.Texture.dxt"))
+    assert ui == sorted(f"Hero_Solo_{n}.png.Texture.dxt" for n in (
+        "Portrait", "Book_Standard", "NewHero", "Skin_Default", "Codex_1", "HUD_Banner",
+        "Skill_Attack_One", "Skill_Ultimate_Power_1"))
+    h = HDF.decode(next(p for p in files if p.name.startswith("Solo.herodef.ot")).read_bytes())
+    r = h.root
+    assert r["portrait"][1].endswith("\\Hero_Solo_Portrait.png")
+    assert r["book_standard"][1].endswith("\\Hero_Solo_Book_Standard.png")
+    assert "Kintaro" in r["book_active"][1]                     # not given: the rig's
+    assert all(c[1].endswith("\\Hero_Solo_Codex_1.png") for c in r["codex"])
+    main = next(p for p in files
+                if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen").read_bytes()
+    for n in ("Portrait", "HUD_Banner", "Skill_Attack_One", "Skill_Ultimate_Power_1"):
+        assert f"Hero_Solo_{n}.png".encode() in main
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    text = cache.read_text(encoding="utf-8", errors="replace")
+    assert all(f"Hero_Solo_{n}.png|oCTexture" in text for n in ("Portrait", "Codex_1",
+                                                                 "Skill_Attack_One"))
+
+
+@needs_corpus
+@needs_install
 def test_a_scratch_heros_talents_take_effects(tmp_path):
     """A from-scratch talent takes a rarity stat (card {0}) and an action
     (area hits each time its event fires while owned)."""
