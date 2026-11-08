@@ -195,6 +195,12 @@ _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albed
                      "dlc_owner", "kit", "borrow", "materials",
                      "talents", "frame"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
+#: The engine's shared neutral character maps (Character_Grey.mat.ot):
+#: rig-map suffix -> (cooked root, reference). A frame hero with a model of
+#: its own wears these in place of the rig's UV-bound maps.
+_NEUTRAL_MAPS = {"_MRA.TGA": ("samples", "Dielectric_Rough.tga"),
+                 "_NRM.TGA": ("samples", "Textures\\NoNormal.png"),
+                 "_EMI.TGA": ("FX", "Textures\\Shapes\\Square_Black.png")}
 #: Shipped alias names (ApplicationSettings.ot) that are not heroes: a hero of
 #: that name would still collide with the alias. (Kintaro was one until he
 #: shipped in Update 6; the shipped-hero check covers him now.)
@@ -1287,6 +1293,16 @@ _BOOK_STATES = ("standard", "active", "locked", "unavailable")
 _OWN_CLIP = "anim:"
 
 
+def _descends(skel, i: int, ancestor: int) -> bool:
+    """Bone ``i`` sits below bone ``ancestor`` in ``skel``'s hierarchy."""
+    p = skel.bones[i].parent
+    while p >= 0:
+        if p == ancestor:
+            return True
+        p = skel.bones[p].parent
+    return False
+
+
 def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """A hero written from scratch (no ``base``): its own gameplay entities
     (engine/hero_frame.py), its own buttons (engine/hero_ability.py), its own
@@ -1460,8 +1476,21 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         put(PC.art_cooked_path(tex), PC.cook_texture(
             _mod_source(out_dir, frame["albedo"], hid, "frame.albedo").read_bytes()))
         mat = f"{here}\\Textures\\M_{scope}.mat.ot"
+        repoint, roots = {slots["ALB"]: tex}, {}
+        if frame.get("model"):
+            # Its own body has its own UV layout: the rig's normal, MRA and
+            # glow maps were painted for the RIG's, and on these UVs they put
+            # random bumps, shine and glow patches all over it (playtest
+            # 2026-11-08: blotchy, hatched book portrait). The engine's
+            # neutral ones instead, as Character_Grey.mat.ot uses them.
+            donor_refs = PC._refs_doc("oCMaterial", corpus.read(PC.art_cooked_path(material)))[1][
+                "asset_refs"]
+            for suffix, (root, neutral) in _NEUTRAL_MAPS.items():
+                old = next((r for r in donor_refs if r.upper().endswith(suffix)), None)
+                if old is not None:
+                    repoint[old], roots[old] = neutral, root
         put(PC.art_cooked_path(mat), PC.clone_material(
-            corpus.read(PC.art_cooked_path(material)), {slots["ALB"]: tex}))
+            corpus.read(PC.art_cooked_path(material)), repoint, roots))
         art += [f"3D|{tex}|oCTexture", f"3D|{mat}|oCMaterial"]
         body_mat = mat
     else:
@@ -1540,7 +1569,24 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             geo = PC.cook_model(glb, template, transform={"skin": "gltf", "submeshes": "map"})
             skel = SK.decode(geo)
             rest = SK.locals_from_glb(glb)
-            missing = [b.name for b in skel.bones if b.name not in rest]
+            # A whole branch may be left out (Kintaro's DEF.Bear.* rig on a
+            # hero with no bear): it keeps the rig's rest pose and drives
+            # nothing. So a missing bone is refused only when it is the root
+            # or some bone below it IS present (a hole inside the skeleton) --
+            # a model rigged to some other skeleton (mixamo names) misses the
+            # root itself.
+            names = [b.name for b in skel.bones]
+            present = [b.name in rest for b in skel.bones]
+
+            def gap(i: int) -> bool:
+                if present[i]:
+                    return False
+                p = skel.bones[i].parent
+                if p < 0:
+                    return True                     # the root must be there
+                return any(present[j] and _descends(skel, j, i)
+                           for j in range(len(names)))
+            missing = [names[i] for i in range(len(names)) if gap(i)]
             if missing:
                 raise ContentError(f"hero {hid}: frame.model has no bone(s) "
                                    f"{', '.join(missing[:6])} of the rig")
