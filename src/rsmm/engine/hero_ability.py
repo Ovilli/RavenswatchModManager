@@ -42,6 +42,9 @@ CONTROLLERS = {
     "ultimate2": "Ultimate Power 2 Controller",
 }
 _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
+#: Hero_Common's tester every shipped ability state activates on entry (see
+#: ``build``): it takes the body off the move/idle animation for the ability.
+MOVE_INERTIA = "Move Inertia Activation Tester"
 #: How a button turns the hero: Hero_Common's own dash "Initial Look At To
 #: Cursor", which reads the aim accessor (0xfd283d3 on the shared Hero
 #: Controller, the one every shipped aimed ability reads) and SNAPS to it
@@ -128,6 +131,13 @@ class Ability:
     bank: str = ""
     name_key: str = ""
     desc_key: str = ""
+    sound: str = ""                  # "<entity ref> | <FMod event part>": played at 0 s
+    #: TEMPORARY playtest bisection (2026-11-08: states died within a frame):
+    #: "no_end_state" = the end timer does not switch the state (its clip
+    #: ends it, as the dash's does), "no_inertia" = no move-inertia hand-over,
+    #: "bare" = both; "dash_state" / "released": see _bisect_state. Remove
+    #: once the cause is known.
+    variant: str = ""
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -136,7 +146,7 @@ class Ability:
         if not isinstance(raw, dict) or not raw.get("clip"):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
-                              "desc_key", "indicator"}
+                              "desc_key", "indicator", "sound", "variant"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         hits = parse_hits(raw.get("hits"), f"ability {slot}")
@@ -147,10 +157,15 @@ class Ability:
                     or not -30 <= float(ind.get("forward", 0.0)) <= 30:
                 raise AbilityError(f"ability {slot}: indicator is {{ radius (0.2..30 m), "
                                    "forward (-30..30 m), color = [r, g, b, a] }")
+        sound = str(raw.get("sound", ""))
+        if sound and (sound.count("|") != 1
+                      or not sound.split("|")[0].strip().endswith(".entity.ot")):
+            raise AbilityError(f"ability {slot}: sound is \"<Folder\\Entity.entity.ot> | "
+                               "<its FMod event part>\"")
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
-                   str(raw.get("desc_key", "")))
+                   str(raw.get("desc_key", "")), sound, str(raw.get("variant", "")))
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -336,6 +351,106 @@ def add_indicator(ef: EntityFile, ab: Ability, *, seed: str) -> None:
     ef.add_ref(f"State {tag}", "while_active", disc)
 
 
+#: Blocs of the dash's timeline that are the DASH's, not an ability's: its
+#: whoosh sound at 0 s and its dodge invulnerability (Character_Common's
+#: "State Intangible") at 0.35 s. Left in, every button played the dash sound
+#: and made the hero intangible (found 2026-11-08).
+_DASH_ONLY_BLOCS = (b"\\Ability Dash\\Dash Ability FMod Event", b"\\Base\\State Intangible")
+#: When an ability may end: ``ABILITY_EXIT`` fires at this share of its clip
+#: (Geppetto's power release: 0.43 s of 0.8 s; the dash's own 0.35 s was cut
+#: into every ability, whatever its length).
+EXIT_SHARE = 0.75
+
+
+def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) -> str:
+    """A shipped sound (``"<entity ref> | <FMod event part>"``, e.g. the Dark
+    Hills Jack NPC's ``Beanstalk ShakeImpact FMod Event``) copied into the hero
+    as its own part ``name``: an FMod event part holds its bank and event id
+    and links nothing, so the copy stands alone. Returns ``name``."""
+    from . import corpus
+    ref, part = (x.strip() for x in spec.split("|"))
+    raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
+    if raw is None:
+        raise AbilityError(f"sound: {ref} is not in the game files")
+    donor = EntityFile(raw, ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"))
+    try:
+        c = donor.component(part)
+    except EntityEditError as e:
+        raise AbilityError(f"sound: {ref} has no {part!r}") from e
+    if c.cls != "oCEntityCpntFModEventSettings":
+        raise AbilityError(f"sound: {part!r} is a {c.cls}, not an FMod event")
+    ef.clone([c.path], rename={part: name}, group={c.group: group}, seed=seed, source=donor)
+    return name
+
+
+def _repoint_bloc(ef: EntityFile, i: int, target: str) -> None:
+    """Bloc object ``i``'s link (an oCEntityCpntPicker: begin mark, class,
+    GUID, label, end mark) re-pointed at the part ``target``."""
+    import struct
+    names = [x.name for x in ef.cf.classes]
+    b = ef.objects[i]
+    at = bytes(b).find(P._B + struct.pack("<I", names.index("oCEntityCpntPicker")))
+    if at < 0:
+        raise AbilityError(f"timeline bloc {i}: no link")
+    n = struct.unpack_from("<I", b, at + 8 + 16)[0]
+    end = at + 8 + 16 + 4 + n + len(P._E)
+    b[at:end] = ef._picker(target)
+
+
+def own_timeline(ef: EntityFile, anim: str, length: float, *, sound: str = "") -> None:
+    """``anim``'s timeline (``oCCinematic``: bloc count, bloc object ids,
+    length), copied from the dash, made the ability's own: ``ABILITY_EXIT``
+    moves to ``EXIT_SHARE`` of ``length``, and each dash-only bloc starts after
+    the timeline ends, so it never fires. The blocs stay where they are (no
+    object leaves the file: only start times change). A bloc's start time is
+    the f32 after its class index."""
+    import struct
+
+    names = [x.name for x in ef.cf.classes]
+    c = ef.component(anim)
+    p = ef.objects[c.index - 1]
+    pos = p.find(P._B + struct.pack("<I", names.index("oCCinematic")))
+    if pos < 0:
+        raise AbilityError(f"{anim}: no timeline")
+    count = struct.unpack_from("<I", p, pos + 8)[0]
+    for i in struct.unpack_from(f"<{count}I", p, pos + 12):
+        bloc = ef.objects[i]
+        if sound and _DASH_ONLY_BLOCS[0] in bytes(bloc):
+            _repoint_bloc(ef, i, sound)        # its own sound, at the same 0 s
+        elif any(m in bytes(bloc) for m in _DASH_ONLY_BLOCS):
+            struct.pack_into("<f", bloc, 4, length + 60.0)
+        elif b"ABILITY_EXIT" in bytes(bloc):
+            struct.pack_into("<f", bloc, 4, max(0.2, EXIT_SHARE * length))
+
+
+def _bisect_state(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, ctl: str,
+                  state: str, tag: str, group: str, timers: list[str], seed: str) -> None:
+    """TEMPORARY playtest bisection (2026-11-08): the ability's own state dies
+    within a frame while the dash's lives. ``variant = "dash_state"`` points
+    the button at Hero_Common's own dash state (does the button side work?);
+    ``"released"`` adds the input-released flag + tester every shipped
+    ability state has. Remove once the cause is known."""
+    if ab.variant not in ("dash_state", "released"):
+        return
+    if ab.variant == "dash_state":
+        ds = hero_common.component("State Dash Ability")
+        ef.retarget_external(ctl, ef.component(state).guid, ds.guid,
+                             f"[State] {hero_common.name}\\{ds.path}")
+        return
+    # "released": the input-released flag + tester both shipped states have
+    # (the dash's and Geppetto's power): reset on entry, set on button-up.
+    names = ("Dash Ability Input Has Been Released Flag",
+             "Dash Ability Input Has Been Released Tester")
+    ef.clone([hero_common.component(n).path for n in names],
+             rename={n: n.replace("Dash Ability", tag) for n in names},
+             group={"Ability Dash": group}, seed=f"{seed}:{ab.slot}:released",
+             source=hero_common)
+    flag, tester = (n.replace("Dash Ability", tag) for n in names)
+    ef.set_ref(tester, "ref_6", None)          # the dash's active timer: not ours
+    ef.add_ref(state, "deactivates?", flag)
+    ef.add_ref(state, "while_active", tester)
+
+
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
           with_indicator: bool = True) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
@@ -355,23 +470,39 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                  group={hero_common.component(look).group: group}, source=hero_common)
         HF._set_clips(ef, f"{tag} Anim", [ab.clip])
         HF._set_duration(ef, f"{tag} Anim", length)
+        snd = (own_sound(ef, ab.sound, name=f"{tag} Sound", group=group,
+                         seed=f"{seed}:{ab.slot}:sound") if ab.sound else "")
+        own_timeline(ef, f"{tag} Anim", length, sound=snd)
         w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
         state = f"State {tag}"
         timers = hits(ef, hero_common, w, ab.hits, tag=tag, group=group,
                       seed=f"{seed}:{ab.slot}", kind=ab.slot)
         state_link = w.state(state, while_active=[TW.link_to(ef, f"{tag} Clip Selector"),
                                                   TW.link_to(ef, f"{tag} Look At")])
-        _timer(w, f"{tag} End Timer", length, ends=state_link)
+        _timer(w, f"{tag} End Timer", length,
+               ends=_NONE if ab.variant in ("no_end_state", "bare") else state_link)
         statuses(ef, ab.hits, tag=tag, switch=state, seed=f"{seed}:{ab.slot}")
         if with_indicator:
             add_indicator(ef, ab, seed=seed)
         for t in [*timers, f"{tag} End Timer"]:
             ef.add_ref(state, "activates", t)
+        # Hand the body to the ability: every shipped ability state (Geppetto's
+        # basic attack and power, Hero_Common's own dash) activates the shared
+        # move-inertia tester on entry (unconfirmed as the freeze's cause; see
+        # Ability.variant).
+        mi = hero_common.component(MOVE_INERTIA)
+        if ab.variant in ("no_inertia", "bare"):
+            mi = None
+        if mi is not None:
+            ef.add_external_ref(state, "activates", mi.guid,
+                                f"[{HF.kind_label(mi.cls)}] {hero_common.name}\\{mi.path}")
         ef.set_ref(f"{tag} Clip", "ref_11", state)
         # The button: the base's controller slot, pointed at this state.
         ctl = CONTROLLERS[ab.slot]
         HF.fill_slot(ef, hero_common, ctl, seed=seed)
         ef.set_ref(ctl, "ref_2", state)
+        _bisect_state(ef, hero_common, ab, ctl=ctl, state=state, tag=tag, group=group,
+                      timers=[*timers, f"{tag} End Timer"], seed=seed)
         ef.set_value(ctl, "value_4", 0.0 if ab.slot == "attack" else float(ab.cooldown))
         if ab.slot == "attack":
             for fld, on in ATTACK_SWITCHES.items():

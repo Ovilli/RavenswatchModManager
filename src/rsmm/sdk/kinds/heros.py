@@ -1649,16 +1649,56 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     wspec = frame.get("weapon")
     if wspec is not None:
         if not isinstance(wspec, dict) or not wspec.get("from") or \
-                set(wspec) - {"from", "mesh", "material"}:
+                set(wspec) - {"from", "mesh", "material", "model", "albedo"}:
             raise ContentError(f"hero {hid}: weapon is {{ from = <shipped hero>, mesh = <fbx>, "
-                               "material = <mat.ot> }")
+                               "material = <mat.ot>, model = <glb>, albedo = <png> }")
         from ...engine.entity_graph_edit import EntityFile as _WEF
         wref = f"Heroes\\Hero_{wspec['from']}\\Hero_{wspec['from']}.entity.ot"
         wraw = read(wref)
         if wraw is None:
             raise ContentError(f"hero {hid}: weapon.from = {wspec['from']!r} is not a shipped hero")
-        weapon = (_WEF(wraw, f"Hero_{wspec['from']}"), str(wspec.get("mesh") or ""),
-                  str(wspec.get("material") or ""))
+        donor_ef = _WEF(wraw, f"Hero_{wspec['from']}")
+        w_mesh, w_mat = str(wspec.get("mesh") or ""), str(wspec.get("material") or "")
+        if wspec.get("model"):
+            # Its OWN weapon: the donor lends only the hand-weapon layout (its
+            # bone, its hide state); the mesh is the hero's glb, authored in
+            # the weapon bone's space (handle along +Y, grip at the origin, as
+            # every shipped hand weapon is), placed as authored.
+            try:
+                d_body = donor_ef.component(HF.WEAPON_SLOT).body
+            except Exception as e:
+                raise ContentError(f"hero {hid}: {wspec['from']} has no hand weapon: {e}") from e
+            found = re.search(rb"Characters\\[ -~]*?\.fbx", d_body)
+            donor_geo = corpus.read(PC.art_cooked_path(found.group(0).decode())) if found else None
+            if donor_geo is None:
+                raise ContentError(f"hero {hid}: {wspec['from']}'s hand weapon mesh "
+                                   "is not readable")
+            w_here = mesh.rsplit("\\", 1)[0]
+            w_mesh = f"{w_here}\\{scope}_Weapon_GEO.fbx"
+            put(PC.art_cooked_path(w_mesh), PC.cook_model(
+                _mod_source(out_dir, wspec["model"], hid, "frame.weapon.model").read_bytes(),
+                donor_geo, transform={"skin": "rigid", "fit": "rig"}))
+            art.append(f"3D|{w_mesh}|oCGeometry")
+            if wspec.get("albedo"):
+                donor_mat = w_mat or HF._donor_weapon_material(donor_ef)
+                wslots = material_slots(donor_mat)
+                if "ALB" not in wslots:
+                    raise ContentError(f"hero {hid}: {donor_mat or 'the donor weapon'} "
+                                       "has no albedo map")
+                w_tex = f"{w_here}\\Textures\\T_{scope}_Weapon_ALB.tga"
+                put(PC.art_cooked_path(w_tex), PC.cook_texture(_mod_source(
+                    out_dir, wspec["albedo"], hid, "frame.weapon.albedo").read_bytes()))
+                donor_mat_raw = corpus.read(PC.art_cooked_path(donor_mat))
+                repoint, roots = {wslots["ALB"]: w_tex}, {}
+                # its own UVs: the donor's other maps would paint over it
+                for r in PC._refs_doc("oCMaterial", donor_mat_raw)[1]["asset_refs"]:
+                    for suffix, (root, neutral) in _NEUTRAL_MAPS.items():
+                        if r.upper().endswith(suffix):
+                            repoint[r], roots[r] = neutral, root
+                w_mat = f"{w_here}\\Textures\\M_{scope}_Weapon.mat.ot"
+                put(PC.art_cooked_path(w_mat), PC.clone_material(donor_mat_raw, repoint, roots))
+                art += [f"3D|{w_tex}|oCTexture", f"3D|{w_mat}|oCMaterial"]
+        weapon = (donor_ef, w_mesh, w_mat)
 
     abilities = []
     for slot, raw in (frame.get("abilities") or {}).items():

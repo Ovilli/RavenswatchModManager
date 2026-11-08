@@ -431,18 +431,29 @@ def add_weapon(ef: EntityFile, donor: EntityFile, character_common: EntityFile, 
             t = own.get(r.guid)
             if t is not None and t.override is not None:
                 ef.retarget_external(WEAPON_SLOT, r.guid, t.override.guid, t.override.path)
-            elif t is None and r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
-                # in a file the donor inherits (Kintaro's Bear_Common): the shared
-                # base's part of that name, which the hero inherits too
-                b = base_by_name.get(r.path.rsplit("\\", 1)[-1])
+            elif r.path.startswith("[Value]") and "Material" in r.path:
+                continue                    # the material Value: re-sourced below
+            elif r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
+                # A part of the donor's own (Aladdin's "Weapons Emissive Mix
+                # Shader Param") or of a file only it inherits (Kintaro's
+                # Bear_Common): the shared base's part of that name, which the
+                # hero inherits too -- else a link into a file the hero never
+                # loads, and the weapon draws nothing.
+                name = r.path.rsplit("\\", 1)[-1]
+                b = base_by_name.get(name) or base_by_name.get(name.removeprefix("Weapons "))
                 if b is None:
                     raise FrameError(f"weapon links {r.path}, which the hero cannot reach")
                 kind = r.path.split("] ", 1)[0]
                 ef.retarget_external(WEAPON_SLOT, r.guid, b.guid,
                                      f"{kind}] {character_common.name}\\{b.path}")
         # the material: the donor's skin's own, unless one is given
+        # The field reading the material Value, whatever the donor named it
+        # (Kintaro "Weapon In Right Hand Material", Aladdin "Weapon Mesh
+        # Material Value"); left on the donor's own Value it links into a file
+        # the hero does not inherit and the weapon draws nothing.
         mat_field = next((f.name for f in EF.fields(ef.component(WEAPON_SLOT))
-                          if f.kind == "value" and "Weapon In Right Hand Material" in f.text), None)
+                          if f.kind == "value" and "[Value]" in f.text
+                          and "Material" in f.text), None)
         if mat_field is not None:
             if not material:
                 material = _donor_weapon_material(donor)
@@ -472,13 +483,22 @@ def _donor_weapon_material(donor: EntityFile) -> str:
 
     from . import corpus
     stem = donor.name
+    # The weapon names its material Value by link; heroes name it differently
+    # (Kintaro "Weapon In Right Hand Material", Aladdin "Weapon Mesh Material
+    # Value"), and the skin overrides that Value with the real material.
+    names = {"Weapon In Right Hand Material"}
+    try:
+        names |= {r.path.rsplit("\\", 1)[-1] for r in donor.component(WEAPON_SLOT).refs
+                  if r.path.startswith("[Value]") and "Material" in r.path}
+    except EntityEditError:
+        pass
     for ref in (f"Heroes\\{stem}\\{stem}_Default.entity.ot", f"Heroes\\{stem}\\{stem}.entity.ot"):
         raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
         if not raw:
             continue
         from . import entity_graph as EG
         for c in EG.parse(raw).components:
-            if c.name == "Weapon In Right Hand Material":
+            if c.name in names:
                 m = re.search(rb"[ -~]+?\.mat\.ot", c.body)
                 if m and b"Dt_" not in m.group(0):
                     return m.group(0).decode()

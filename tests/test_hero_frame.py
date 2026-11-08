@@ -186,6 +186,29 @@ def test_an_ability_is_written_from_data():
     assert "Power Ability Hit 1 Timer" in state["activates"]
     assert "Power Ability End Timer" in state["activates"]
     assert "Power Ability Clip Selector" in state["while_active"]
+    # The body goes to the ability, as every shipped ability state does it;
+    # without this the clip never took over from walk/idle (frozen pose).
+    assert "[Cpnt Value Tester] Hero_Common\\Move\\Move Inertia Activation Tester" \
+        in state["activates"]
+    # Its timeline is its own, not the dash's: ABILITY_EXIT late in ITS clip,
+    # the dash's whoosh and dodge invulnerability pushed past its end.
+    import struct
+
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine.entity_graph_edit import EntityFile
+    e2 = EntityFile(out, "Hero_T")
+    names = [x.name for x in e2.cf.classes]
+    anim = e2.objects[e2.component("Power Ability Anim").index - 1]
+    at = anim.find(P._B + struct.pack("<I", names.index("oCCinematic")))
+    n = struct.unpack_from("<I", anim, at + 8)[0]
+    starts = {}
+    for i in struct.unpack_from(f"<{n}I", anim, at + 12):
+        b = bytes(e2.objects[i])
+        key = ("exit" if b"ABILITY_EXIT" in b else "intangible" if b"State Intangible" in b
+               else "dash sound" if b"Dash Ability FMod Event" in b else "other")
+        starts[key] = struct.unpack_from("<f", b, 4)[0]
+    assert starts["exit"] == pytest.approx(HA.EXIT_SHARE * 0.9, abs=1e-4)
+    assert starts["intangible"] > 0.9 and starts["dash sound"] > 0.9
     assert f("Power Ability Hit 1 Timer")["on_end"].endswith("\\Event Power Ability Hit 1")
     assert f("Power Ability End Timer")["state"].endswith("\\State Power Ability")
     assert f("Power Ability Hit 1 Radius")["value"] == "f32 3.5"
@@ -424,3 +447,53 @@ def test_ultimate_cards_and_hand_weapon_are_the_heros_own():
     assert "'DEF.Weapon.R'" in w["obj_2"] and b"Kintaro_Axe_GEO.fbx" in g[HF.WEAPON_SLOT].body
     with pytest.raises(HF.FrameError, match="one of"):
         HF.fill_ultimate(ef, hc, "Ultimate 3", bank="B", name_key="n", desc_key="d")
+
+
+@needs_corpus
+def test_a_hand_weapon_links_nothing_of_its_donor():
+    """A donor lends only the hand-weapon layout. Aladdin's sword links his own
+    material Value (named "Weapon Mesh Material Value", not Kintaro's name)
+    and his own "Weapons Emissive" shader params; left as they were, those are
+    links into a file the hero never loads and the weapon draws nothing."""
+    import re
+
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = _hero("Hero_T")
+    cc = HF.common(_read, "Character_Common")
+    ala = EntityFile(_read("Heroes\\Hero_Aladdin\\Hero_Aladdin.entity.ot"), "Hero_Aladdin")
+    HF.add_weapon(ef, ala, cc, mesh="Characters\\Heroes\\T\\T_Weapon_GEO.fbx",
+                  material="Characters\\Heroes\\T\\Textures\\M_T_Weapon.mat.ot", seed="t")
+    out = ef.to_bytes()
+    assert not re.findall(rb"\] Hero_Aladdin\\", out)
+    assert b"T_Weapon_GEO.fbx" in out and b"M_T_Weapon.mat.ot" in out
+
+
+@needs_corpus
+@needs_install
+def test_an_ability_plays_its_own_sound():
+    """``sound`` copies a shipped FMod event part into the hero as its own
+    ("<Tag> Sound") and the ability's timeline starts it at 0 s, in place of
+    the dash's whoosh the timeline was copied with."""
+    import struct
+
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = _hero("Hero_T")
+    ab = HA.Ability.parse("power", {
+        "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+        "duration": 0.9, "hits": [{"at": 0.3}],
+        "sound": "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Beanstalk ShakeImpact FMod Event"})
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    e2 = EntityFile(ef.to_bytes(), "Hero_T")
+    assert e2.component("Power Ability Sound").cls == "oCEntityCpntFModEventSettings"
+    names = [x.name for x in e2.cf.classes]
+    anim = e2.objects[e2.component("Power Ability Anim").index - 1]
+    at = anim.find(P._B + struct.pack("<I", names.index("oCCinematic")))
+    n = struct.unpack_from("<I", anim, at + 8)[0]
+    blocs = [bytes(e2.objects[i]) for i in struct.unpack_from(f"<{n}I", anim, at + 12)]
+    mine = [b for b in blocs if b"Power Ability Sound" in b]
+    assert len(mine) == 1 and struct.unpack_from("<f", mine[0], 4)[0] == 0.0
+    assert not any(b"Dash Ability FMod Event" in b for b in blocs)
+    with pytest.raises(HA.AbilityError, match="sound"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "sound": "no bar"})
