@@ -155,7 +155,7 @@ _HERO_CLASS = "oCDtHeroDefinition"
 #: opt-out: ownership is checked by the game, which nothing here can see.
 DLC_HEROES: Final[frozenset[str]] = frozenset({"Merlin"})
 _PAID_REF = re.compile(
-    r"(?:^|[\\/_])(?:%s)(?:[\\/_.]|$)" % "|".join(sorted(DLC_HEROES)), re.IGNORECASE)
+    r"(?:^|[\\/_])(?:" + "|".join(sorted(DLC_HEROES)) + r")(?:[\\/_.]|$)", re.IGNORECASE)
 
 
 def _refuse_paid(hid: str, refs) -> None:

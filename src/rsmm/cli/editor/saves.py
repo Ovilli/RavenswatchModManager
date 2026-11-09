@@ -5,9 +5,10 @@ record decoded with the engine's own layouts) and shows it by kind: items,
 heroes, talents, outfits, story pages, achievements, melodies, challenges and
 the player record, each named from the install's own definitions. What can be
 changed is what the game itself writes: an item's granted/reset state, a lock's
-unlocked/locked state (not for outfits or achievements, see ``_LOCK_READ_ONLY``), a hero's level and a talent's tier, each within the
-range the game's loader accepts. Every other field is shown and kept as it is;
-a suspended run is kept byte for byte.
+unlocked/locked state (not for outfits or achievements, see
+``_LOCK_READ_ONLY``), a hero's level and a talent's tier, each within the range
+the game's loader accepts. Every other field is shown and kept as it is; a
+suspended run is kept byte for byte.
 
 Writing is the one place rsmm touches a save, so it is fenced: the game must
 not be running (it keeps the profile in memory and would write its own copy
