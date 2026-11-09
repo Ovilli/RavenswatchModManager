@@ -2,6 +2,17 @@
   "generated": "2026-11-09",
   "entries": [
     {
+      "version": "5.9.31",
+      "date": "2026-11-09",
+      "summary": "Paid content stays paid, plus a tidier repo and docs.",
+      "highlights": [
+        "Paid DLC heroes can't be cloned or have their art borrowed, and the save editor no longer changes outfit or achievement locks.",
+        "Example mods moved to examples/; ExampleSeedPin now uses the SDK instead of raw addresses.",
+        "New contributing guide, security policy and bug report form."
+      ],
+      "loader_version": 53
+    },
+    {
       "version": "",
       "date": "2026-11-09",
       "summary": "Paid content stays paid: the hero-unlock helper no longer opens the DLC ownership gate, and the skin filter only shows outfit packs the loader itself created.",
@@ -513,15 +524,6 @@
       "highlights": [
         "Fixed: after installing a mod with an overlay, its Overlay button could stay greyed out for minutes. The app now refreshes overlays right after an install, an apply or a settings change.",
         "An overlay whose settings file is missing now still opens; only its controls are hidden, and hovering the button explains why."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 40,
-      "date": "2026-10-11",
-      "summary": "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options.",
-      "highlights": [
-        "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options."
       ]
     }
   ]
