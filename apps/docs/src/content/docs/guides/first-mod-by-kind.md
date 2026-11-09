@@ -379,8 +379,8 @@ is interactable, and a mod can confirm its own placements from Lua
 
 **Trap.** `kinds` must be slots that tiles of the base's size actually fill
 — a 40×40 base can never fill a 6×6 `Fountain` slot, and the emit says so.
-`weight` is a **tier**, not a spawn rate — raising it to make a POI
-commoner is backwards. Use `copies`, which buys pool entries one for one.
+`weight` sets the low end of the tile's **tier band**, not a spawn rate —
+raising it to make a POI commoner moves it up a tier instead. Use `copies`, which buys pool entries one for one.
 Browse bases with `./rsmm poi list`.
 
 ---

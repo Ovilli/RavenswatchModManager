@@ -69,11 +69,13 @@ def test_tiledef_exposes_kinds_size_and_icon():
 def test_tiledef_edits_survive_a_round_trip():
     raw = (TILES_DIR / "Avalon" / f"40x40_Avalon_Cauldron_T1{TC.GEN_SUFFIX}").read_bytes()
     td = TC.read(raw)
-    td.weight = 0.5
+    td.band_lo = 0.5
+    td.pick_weight = 0.25
     td.kinds = ["Wishing_Well"]
     td.icon = (td.icon[0], "Ui", "MiniMap\\Icons\\Map_Icons_Crow_Mark.png")
     back = TC.read(TC.write(td))
-    assert back.weight == pytest.approx(0.5)
+    assert back.band_lo == pytest.approx(0.5)
+    assert back.pick_weight == pytest.approx(0.25)
     assert back.kinds == ["Wishing_Well"]
     assert back.icon[2] == "MiniMap\\Icons\\Map_Icons_Crow_Mark.png"
     assert back.entity_ref == td.entity_ref
@@ -168,7 +170,7 @@ def test_emit_writes_clone_plus_one_mapdef_per_chapter(tmp_path):
     ]
     tile = tmp_path / rel[5]
     td = TC.read(tile.read_bytes())
-    assert td.weight == pytest.approx(0.333)
+    assert td.band_lo == pytest.approx(0.333)
     # The clone keeps the donor's prefab — that is what makes it a real structure.
     assert "Cauldron" in td.entity_ref[1]
 
@@ -1254,7 +1256,7 @@ def test_weight_is_a_tier_field_not_a_spawn_rate():
         if not m:
             continue
         tier = int(m.group(1))
-        w = TC.read(open(p, "rb").read()).weight
+        w = TC.read(open(p, "rb").read()).band_lo
         assert w == pytest.approx(poi.TIER_WEIGHTS[tier], abs=0.01), (p, w)
         seen += 1
     assert seen >= 20, f"expected the tier families, only matched {seen}"
@@ -1773,7 +1775,7 @@ def test_a_clone_keeps_its_donors_tier(tmp_path):
     files = poi.emit("mymod", ContentDef(kind="poi", id="clone", fields={
         "base": base, "chapters": ["Dark_Hills"]}), tmp_path)
     tile = next(f for f in files if f.name.endswith(f"clone{TC.GEN_SUFFIX}"))
-    assert TC.read(tile.read_bytes()).weight == pytest.approx(donor.weight)
+    assert TC.read(tile.read_bytes()).band_lo == pytest.approx(donor.band_lo)
 
 
 #: Every distinct `weight` the shipped corpus actually uses, measured across
@@ -1790,7 +1792,7 @@ def test_every_weight_the_game_ships_is_accepted(tmp_path, w):
     files = poi.emit("mymod", ContentDef(kind="poi", id="t", fields={
         "base": BASE, "chapters": ["Avalon"], "weight": w}), tmp_path)
     tile = next(f for f in files if f.name.endswith(f"t{TC.GEN_SUFFIX}"))
-    assert TC.read(tile.read_bytes()).weight == pytest.approx(w)
+    assert TC.read(tile.read_bytes()).band_lo == pytest.approx(w)
 
 
 @needs_corpus
@@ -1801,7 +1803,7 @@ def test_shipped_weights_are_not_only_the_tier_values():
     seen = set()
     for p in (TILES_DIR).rglob(f"*{TC.GEN_SUFFIX}"):
         try:
-            seen.add(round(TC.read(p.read_bytes()).weight, 6))
+            seen.add(round(TC.read(p.read_bytes()).band_lo, 6))
         except (ValueError, KeyError, IndexError, OSError, struct.error):
             pass
     off = {v for v in seen
