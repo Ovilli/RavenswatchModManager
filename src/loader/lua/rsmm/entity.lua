@@ -363,9 +363,11 @@ end
 -- allies and the mirror is the only thing between them and R.combat writing to
 -- somebody else's HP.
 --
--- The engine's own answer is the byte at +0x1d88. It is used to PREFER a
--- candidate, never to refuse one: a hero object mid-load reads 0 there, and
--- refusing on that would trade an ally-capture risk for never capturing at all.
+-- The engine's own answer is the byte at +0x1db0 (+0x1d88 before Update 6).
+-- R.entity.hero() uses it to PREFER a candidate, never to refuse one: a hero
+-- object mid-load reads 0 there, and refusing on that would trade an
+-- ally-capture risk for never capturing at all. Refusing is opt-in
+-- (`local_only`), for callers where an ally is worse than nothing.
 --
 -- ⚠ THESE LIVE ON R.entity, NOT IN LOCALS. rsmm.lua's module chunk is one Lua
 -- function and Lua caps a function at 200 locals; this section is already at the
@@ -375,6 +377,38 @@ end
 function R.entity._is_local(p)
     if not p or p == 0 then return false end
     return I.read_u8(p + ENTITY_ISLOCAL_OFF) == 1
+end
+
+-- The best candidate the engine flags as THIS machine's player, or nil.
+--
+-- The byte outranks every other signal: before 2026-11-08 it was consulted only
+-- by the ring pass, which ran only once slot 0 was empty or dead, so an ally
+-- the native spawn-init / give / gain paths published (or the pending "hero
+-- switch" promoted) was kept for the rest of the chapter. Measured in a
+-- Kintaro + Beowulf co-op run: the captured controller was the Beowulf ally's,
+-- and Kintaro's sat unused in the ring.
+--
+-- Order among byte-1 candidates keeps the old meanings: the pending slot first
+-- when it differs from slot 0 (it is the latest spawn, so a real hero switch
+-- still wins over the freed previous hero, which keeps reading plausible), then
+-- slot 0 (stability), then the ring in slot order. The byte is read FIRST, so
+-- an ally costs one guarded read and never the fingerprint or HP checks.
+-- Returns the pointer and a phrase for the capture line.
+function R.entity._local_candidate(h, pend)
+    local function mine(p)
+        return p ~= 0 and R.entity._is_local(p) and not R.entity._retired(p)
+            and R.entity._is_live(p)
+    end
+    if pend ~= 0 and pend ~= h and mine(pend) then return pend, "the pending slot" end
+    -- Slot 0 is not fingerprint-checked, as before: retiring it clears the slot.
+    if h ~= 0 and R.entity._is_local(h) and R.entity._is_live(h) then return h, "slot 0" end
+    for i = 0, HERO_RING_COUNT - 1 do
+        local okr, cand = pcall(I.shared_get, HERO_RING_FIRST + i)
+        if okr and type(cand) == "number" and cand ~= h and mine(cand) then
+            return cand, "ring slot " .. i
+        end
+    end
+    return nil
 end
 
 -- CHAPTER INVALIDATION -----------------------------------------------------
@@ -797,7 +831,24 @@ local function _diag_budget(limit)
     _hero_diag_n = _hero_diag_n + 1
     return true
 end
-function R.entity.hero()
+--- The local hero's controller, or nil.
+---
+--- `R.entity.hero()` prefers the candidate the engine flags as this machine's
+--- player (is-local byte at +0x1db0) on every path, and falls back to the
+--- others only while none reads 1, so capture survives a patch that moves the
+--- byte. `R.entity.hero({ local_only = true })` drops that fallback: nil unless
+--- the hero it returns reads 1. Use it where acting on an ally would be wrong
+--- (input, camera).
+function R.entity.hero(opts)
+    local h = R.entity._hero_pick()
+    if type(opts) == "table" and opts.local_only then
+        if h and R.entity._is_local(h) then return h end
+        return nil
+    end
+    return h
+end
+
+function R.entity._hero_pick()
     if I.shared_get then
         local ok, h = pcall(I.shared_get, SHARED_HERO_SLOT)
         h = (ok and type(h) == "number") and h or 0
@@ -807,6 +858,29 @@ function R.entity.hero()
         -- spawn-init hook stashes here are the character-select preview.
         if R.entity._scene() == false then
             return nil
+        end
+
+        -- LOCAL FIRST: any live candidate whose is-local byte reads 1 beats one
+        -- that reads 0, wherever either of them sits (see _local_candidate).
+        -- Everything below is the byte-0 fallback and runs only when no
+        -- candidate claims to be this machine's player.
+        local okl, lpend = pcall(I.shared_get, HERO_PENDING_SLOT)
+        lpend = (okl and type(lpend) == "number") and lpend or 0
+        local mine, from = R.entity._local_candidate(h, lpend)
+        if mine then
+            if mine == h then return h end
+            if I.shared_set then
+                pcall(I.shared_set, SHARED_HERO_SLOT, mine)
+                pcall(I.shared_set, HERO_AUTH_SLOT, 1)
+                if mine == lpend then pcall(I.shared_set, HERO_PENDING_SLOT, 0) end
+            end
+            _note_hero_candidate()
+            _log_capture("[rsmm.entity] hero CAPTURED 0x%x from %s (local_byte=1, "
+                         .. "was 0x%x local_byte=%s)%s",
+                         mine, from, h,
+                         h ~= 0 and tostring(I.read_u8(h + ENTITY_ISLOCAL_OFF)) or "-",
+                         _capture_latency())
+            return mine
         end
 
         -- HERO SWITCH: a spawn-init candidate that is BOTH different from the
@@ -862,13 +936,15 @@ function R.entity.hero()
         -- (the routine is hero-only); they simply go live at different times,
         -- so promote whichever validates first.
         --
-        -- TWO passes, local players first. The ring holds one candidate per HERO
-        -- in a co-op run, not one per machine, so "first plausible entry wins"
-        -- means "whichever ally the allocator happened to place in a lower ring
-        -- slot wins" — and R.combat would then heal, damage and buff somebody
-        -- else's character. The engine's is-local byte decides it when it is
-        -- readable; when nothing claims to be local the old behaviour stands,
-        -- so a build where that byte moved still captures.
+        -- The ring holds one candidate per HERO in a co-op run, not one per
+        -- machine, so "first plausible entry wins" means "whichever ally the
+        -- allocator happened to place in a lower ring slot wins" — and R.combat
+        -- would then heal, damage and buff somebody else's character. A ring
+        -- entry the is-local byte claims was already taken by the LOCAL FIRST
+        -- pass above; reaching here means nothing reads 1, so the old
+        -- behaviour stands and a build where that byte moved still captures.
+        -- (The _is_local test below is kept for a candidate whose byte flips
+        -- between the two reads.)
         local fallback, fallback_slot = nil, nil
         for i = 0, HERO_RING_COUNT - 1 do
             local okr, cand = pcall(I.shared_get, HERO_RING_FIRST + i)
