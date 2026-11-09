@@ -2179,30 +2179,6 @@
    ]
   },
   {
-   "name": "AdditionalContentGate_IsUnlocked",
-   "kind": "function",
-   "category": "heroes",
-   "raw": "FUN_1406979e0",
-   "status": "ok",
-   "signature": "bool(void* condition_data)",
-   "cabi": {
-    "ret": "uint32_t",
-    "params": [
-     "void*"
-    ]
-   },
-   "locator": {
-    "vftable": {
-     "class": "oe::AdditionalContentGameUnlockConditionData",
-     "slot": 14
-    }
-   },
-   "note": "Ownership / entitlement gate (DLC and bought content). Body is `cmp dword [rcx+0x28], 3; sete al; ret`, the vftable slot 14 of oe::AdditionalContentGameUnlockConditionData, verified in Ravenswatch.exe 2026-10-13 (vtable 0x140f27a70, RTTI name checked). Hooked by R.hero.unlock_progression only when the mod opts in to ownership gates (the unlock-heroes mod), which opens every ownership-gated hero for every player on the mod, including paid DLC. Replaces the stale 0x140699250 address in the older notes, which no longer holds this function.",
-   "refs": [
-    "src/loader/lib/rsmm.lua"
-   ]
-  },
-  {
    "name": "HeroRankLock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
@@ -3614,10 +3590,10 @@
      "void*"
     ]
    },
-   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
+   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See apps/docs/src/content/docs/reverse-engineering/multiplayer.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
-    "docs/_re/MULTIPLAYER.md"
+    "apps/docs/src/content/docs/reverse-engineering/multiplayer.md"
    ]
   },
   {
@@ -3749,7 +3725,7 @@
      "ID_FCM2_NEW_HOST: A new system {} has become host, GUID = {}"
     ]
    },
-   "note": "The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELECTION is delivered to the game. Carries all four `ID_FCM2_NEW_HOST:` log strings (taking over / become host first time / a new system {} has become host / system {} is host), each with the new host's GUID in hand.\n\n\u2605 THE FINDING (2026-09-20): the packet is fully decoded and then DELIBERATELY IGNORED mid-game. After the four logging branches converge:\n    if (ctx->state == 2 /*ConnectingToPeers*/ || ctx->state == 3 /*Pending*/) {\n        guid = ctx->[0x218]->[0x20] ? ctx->[0x218]->[0x48] : UNASSIGNED_RAKNET_GUID;\n        if (guid != UNASSIGNED_RAKNET_GUID)\n            P2PSession_SetState(ctx, 5 /*Connected*/);\n    }\nBoth guard globals (0x1412fee38, 0x1412fc8f8) read ffffffffffffffffffff0000 = UNASSIGNED_RAKNET_GUID, checked by hand. So FCM2 host election is wired for session SETUP ONLY: receiving NEW_HOST is how a joining client learns a host exists and flips to Connected. Once state == 5 the gate is false and this handler is a pure no-op -- which is exactly the mid-game host-leave case.\n\n\u26a0 This does NOT mean 'flip the gate and host migration works'. It means the NEW_HOST signal ARRIVES and is DECODED mid-run with the new host's GUID available; whether m_eMastership, replication origin checks and HostUnique survive a mid-run switch is still unanswered. The signal is not the blocker; read the migration sketch in docs/_re/MULTIPLAYER.md before building on this."
+   "note": "The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELECTION is delivered to the game. Carries all four `ID_FCM2_NEW_HOST:` log strings (taking over / become host first time / a new system {} has become host / system {} is host), each with the new host's GUID in hand.\n\n\u2605 THE FINDING (2026-09-20): the packet is fully decoded and then DELIBERATELY IGNORED mid-game. After the four logging branches converge:\n    if (ctx->state == 2 /*ConnectingToPeers*/ || ctx->state == 3 /*Pending*/) {\n        guid = ctx->[0x218]->[0x20] ? ctx->[0x218]->[0x48] : UNASSIGNED_RAKNET_GUID;\n        if (guid != UNASSIGNED_RAKNET_GUID)\n            P2PSession_SetState(ctx, 5 /*Connected*/);\n    }\nBoth guard globals (0x1412fee38, 0x1412fc8f8) read ffffffffffffffffffff0000 = UNASSIGNED_RAKNET_GUID, checked by hand. So FCM2 host election is wired for session SETUP ONLY: receiving NEW_HOST is how a joining client learns a host exists and flips to Connected. Once state == 5 the gate is false and this handler is a pure no-op -- which is exactly the mid-game host-leave case.\n\n\u26a0 This does NOT mean 'flip the gate and host migration works'. It means the NEW_HOST signal ARRIVES and is DECODED mid-run with the new host's GUID available; whether m_eMastership, replication origin checks and HostUnique survive a mid-run switch is still unanswered. The signal is not the blocker; read the migration sketch in apps/docs/src/content/docs/reverse-engineering/multiplayer.md before building on this."
   },
   {
    "name": "P2PSession_SetState",

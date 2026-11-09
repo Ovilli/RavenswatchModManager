@@ -2018,12 +2018,10 @@ R.hero = {}
 -- save — Profile_*.ob is checksummed and Steam Cloud would fight an edit
 -- anyway, so a runtime hook is the durable answer.
 --
--- OWNERSHIP GATES ARE OPENED TOO (a choice, 2026-10-13). The
--- oe::AdditionalContentGameUnlockConditionData::vftable[14] body is
--- `return *(int*)(this+0x28) == 3` (AdditionalContentGate_IsUnlocked). It is
--- hooked with the progression gates, so EVERY ownership-gated hero opens for
--- anyone running this mod, paid DLC included (Merlin). Nothing is written to the
--- save. The mod's README warns about it.
+-- OWNERSHIP GATES ARE NEVER OPENED. The same vftable slot on
+-- oe::AdditionalContentGameUnlockConditionData is the paid-content (DLC)
+-- check; it has no symbol in data/symbols.json on purpose, and
+-- tests/test_symbols.py keeps it that way. Paid heroes stay paid.
 --
 -- Returns the number of gates opened (0 if the symbols are unavailable on this
 -- build, which fails closed rather than guessing at an address).
@@ -2032,7 +2030,6 @@ local PROGRESSION_GATES = {
     "HeroRankLock_IsUnlocked",
     "HeroStoryUnlock_IsUnlocked",
     "ChallengeUnlock_IsUnlocked",
-    "AdditionalContentGate_IsUnlocked",
 }
 local _gates_hooked = false
 
@@ -2052,8 +2049,8 @@ function R.hero.unlock_progression()
             if ok and (slot ~= nil or why == "already-hooked") then n = n + 1 end
         end
     end
-    R.log(("[rsmm.hero] progression gates opened: %d/%d "
-           .. "(ownership gates included)"):format(n, #PROGRESSION_GATES))
+    R.log(("[rsmm.hero] progression gates opened: %d/%d"):format(
+        n, #PROGRESSION_GATES))
     return n
 end
 
@@ -2715,7 +2712,7 @@ end
 -- per-entity replication setup (Netcode_EntityReplSetup) decides master vs
 -- client; the role lives behind the net manager. Offsets are SDK-internal — a
 -- mod only sees (netmgr, role) and may return a number to overwrite role
--- (DANGEROUS: a live netcode write, can crash). See docs/_re/MULTIPLAYER.md.
+-- (DANGEROUS: a live netcode write, can crash). See https://docs.rsmm.me/reverse-engineering/multiplayer/.
 --
 --   R.net.on_repl_setup(function(netmgr, role, ctx)
 --       R.log("role", role)        -- 1 = client/non-master
@@ -3504,7 +3501,7 @@ local function _warn_unimpl(api)
     if _warned[api] then return end
     _warned[api] = true
     R.log("[rsmm." .. api .. "] NOT IMPLEMENTED yet — calls are recorded but "
-        .. "have no in-game effect. Track: docs/_re/HOOKPOINTS.md")
+        .. "have no in-game effect. Track: https://docs.rsmm.me/reverse-engineering/hookpoints/")
 end
 
 -- scaling: R.scaling.set("enemy_damage", function(act) return ({1,1.5,2})[act] end)

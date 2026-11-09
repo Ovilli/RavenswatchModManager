@@ -449,13 +449,9 @@ def test_no_symbol_for_the_ownership_unlock_gate():
     """
     smap = S.load_symbol_map()
     banned = ("additionalcontent", "ownership", "entitlement")
-    # Deliberate exception (2026-10-13): the ownership gate is opened by the
-    # unlock-heroes mod, a choice the owner made knowing it unlocks paid DLC.
-    allowed = {"AdditionalContentGate_IsUnlocked"}
     hits = [s.name for s in smap.symbols
             if any(b in s.name.lower() for b in banned)
-            and "isunlocked" in s.name.lower()
-            and s.name not in allowed]
+            and "isunlocked" in s.name.lower()]
     assert not hits, (
         f"{hits} exposes the ownership unlock gate. Progression, rank, story "
         f"and challenge gates are fair game; ownership is not."
@@ -468,11 +464,9 @@ def test_no_symbol_for_the_ownership_unlock_gate():
 # corpus and in the older one the docs quote — a remap that reintroduces
 # either should still trip.
 _OWNERSHIP_PATH_VAS = {
-    # oe::AdditionalContentGameUnlockConditionData::vftable slot 14 is the gate
-    # itself, now named AdditionalContentGate_IsUnlocked by a deliberate choice
-    # (see test_no_symbol_for_the_ownership_unlock_gate); the stale 0x140699250 is
-    # what the old notes quoted.
-    0x140699250,
+    # oe::AdditionalContentGameUnlockConditionData::vftable slot 14, the gate
+    # itself: current build, and the stale address the old notes quoted.
+    0x1406979E0, 0x140699250,
     # oCLocalAdditionalContentManager::vftable[1] — GetFileAttributesW on the
     # pack file; returns 3 when present.
     0x14065FF90, 0x140647440,
