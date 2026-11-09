@@ -68,11 +68,10 @@ readings were of half the pair.
 
 The 40-byte ``rest`` is preserved verbatim. Its first four floats are an RGBA
 that co-varies with the ``Editor`` icon category (an editor tint). The float at
-offset 24 is exposed as :attr:`TileDef.pick_weight`: ``1.0`` on every tile
-except a few families of variants that answer the same slot, each of which
-sums to ``1.0`` (thieves' stash rooms Combat / Cursed / Gold 0.5 / 0.4 / 0.1;
-Dark Hills Straw / Wood / Stone house 0.33 each). That reads as a relative
-pick weight among same-slot variants; it has not been confirmed in game.
+offset 24 is :attr:`TileDef.pick_weight`, the relative pick weight among
+tiles that answer the same slot: ``1.0`` on every tile except a few families of
+variants (thieves' stash rooms Combat / Cursed / Gold 0.5 / 0.4 / 0.1; Dark
+Hills Straw / Wood / Stone house 0.33 each).
 """
 
 from __future__ import annotations

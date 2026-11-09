@@ -278,10 +278,8 @@ about 80%. That is what the `poi` kind's `copies` field controls, and why it
 emits N distinct tiledefs rather than repeating one ref — `add_to_pool`
 de-duplicates, so a repeated ref would change nothing.
 
-**Pick weight (inferred, not confirmed in game).** The float at offset 24 of
-`rest` is `1.0` on every tile except the sets below. Each set is the variants
-for one slot, and the stash rooms and houses each sum to `1.0`, which reads as
-a relative pick weight among tiles that answer the same slot:
+**Pick weight.** The float at offset 24 of `rest` is the relative pick weight
+among tiles that answer the same slot. It is `1.0` on every tile except these:
 
 | Map | Tiles | `pick_weight` |
 |---|---|---|
@@ -291,10 +289,8 @@ a relative pick weight among tiles that answer the same slot:
 | Avalon | Mordred underground entrance, Fix / Interval | 0.5 each |
 | Storm Island | Sinbad cyclops cave / Roc quest cave | 0.5 each |
 
-Under pool share alone the three stash rooms would come up a third each. If the
-weight is what it looks like, `copies` still decides how many entries a tile
-has, and `pick_weight` scales each entry's odds. A clone keeps its base tile's
-`pick_weight`.
+`copies` decides how many entries a tile has, and `pick_weight` scales each
+entry's odds. A clone keeps its base tile's `pick_weight`.
 
 **Partly understood.** The 40-byte `rest`. Its first four floats are an RGBA
 that co-varies with the `Editor` icon category, so it reads as an editor tint.
