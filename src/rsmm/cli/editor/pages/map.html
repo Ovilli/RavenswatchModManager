@@ -1059,9 +1059,9 @@ function sampleLayout(seed) {
         && k.required.every(f => t.flags.includes(f)) && !k.excluded.some(f => t.flags.includes(f))
         && S.work.quotas.every((q, qi) => !q.flags.every(f => t.flags.includes(f)) || quota[qi] < q.limit));
       if (!fits.length) continue;
-      const total = fits.reduce((w, t) => w + (t.weight > 0 ? t.weight : 1), 0);
+      const total = fits.reduce((w, t) => w + (t.pick_weight > 0 ? t.pick_weight : 1), 0);
       let r = rnd() * total, tile = fits[fits.length - 1];
-      for (const t of fits) { r -= t.weight > 0 ? t.weight : 1; if (r <= 0) { tile = t; break; } }
+      for (const t of fits) { r -= t.pick_weight > 0 ? t.pick_weight : 1; if (r <= 0) { tile = t; break; } }
       S.work.quotas.forEach((q, qi) => { if (q.flags.every(f => tile.flags.includes(f))) quota[qi]++; });
       used.add(String(s.id)); placed.push({ kind: k.name, pos: s.pos }); out[String(s.id)] = tile.path; n++;
     }
