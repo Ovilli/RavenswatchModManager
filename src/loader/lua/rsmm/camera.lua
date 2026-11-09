@@ -308,7 +308,15 @@ end
 --- per RESEARCH seconds. Compare the list's settings pointers to notice a
 --- camera that appeared (camera-control re-applies then).
 local RESCAN, RESEARCH = 1.0, 15
-M.SEARCH_SLICE = 0.004           -- seconds of search per call
+M.SEARCH_SLICE = 0.008           -- seconds of search per slice
+-- Where the search found the cameras on the 2026-10 build (see above), as
+-- field offsets from the hero: two to a camera component, one to a settings
+-- object (through hero.owner).
+local PATHS = {
+    { 0x1e0, 0x2b0, 0x548 },
+    { 0x300, 0x568, 0x160 },
+    { 0x08, 0x640, 0x70 },
+}
 local _scan_at, _none = nil, nil -- _none: the reason, while the hero has no camera
 local _known = {}                -- settings ptr -> entry, from searches
 local _job, _job_for = nil, nil
@@ -321,7 +329,8 @@ end
 -- The search after its first slice runs on its own timer, one slice every
 -- STEP_EVERY seconds, so its share of the loader thread stays small however
 -- often cameras() is called. cameras() only picks up the finished result.
-local STEP_EVERY = 0.05
+local STEP_EVERY = 0.025
+local _hit_logged = false
 local _job_done, _pumping = nil, false
 
 --- One slice of a running search; false when there is nothing left to do.
@@ -393,6 +402,28 @@ function M.cameras()
         for _, c in ipairs(out) do if c.default then return true end end
         return false
     end
+    -- The paths the search found before, tried first: a handful of reads, and
+    -- the class check at the end makes a stale path a miss, never a wrong
+    -- camera. The sliced search alone took over 30 s to reach the camera (Kintaro,
+    -- 2026-11-08), and nothing applied until it did.
+    if not has_default() then
+        local first = #out + 1
+        for _, path in ipairs(PATHS) do
+            local p = hero
+            for _, off in ipairs(path) do
+                p = _plausible(p) and I.read_u64(p + off) or nil
+            end
+            if _plausible(p) then
+                if _is(p, CAMERA_CLASS) then
+                    add_component(p)
+                    add_entity(I.read_u64(p + 0x08))
+                else
+                    add_settings(p, nil)
+                end
+            end
+        end
+        for i = first, #out do _known[out[i].settings] = out[i] end
+    end
     -- A search for another hero, or for a default camera now known, is moot.
     if has_default() or _job_for ~= hero then _job = nil end
     if _job_done and (has_default() or _job_done.hero ~= hero) then _job_done = nil end
@@ -422,7 +453,16 @@ function M.cameras()
         for i = first, #out do _known[out[i].settings] = out[i] end
         -- Say what the search saw (once per session); a list without the
         -- default camera is kept anyway, since yaw still reaches it.
-        if not has_default() then _log_miss(hero, owners, job.hits, job.n) end
+        if not has_default() then
+            _log_miss(hero, owners, job.hits, job.n)
+        elseif not _hit_logged then
+            -- Where it was, so PATHS can be corrected from one log.
+            _hit_logged = true
+            R.log(("[rsmm.camera] search found the camera after %d object(s); paths:"):format(job.n))
+            for i = 1, math.min(#job.hits, 12) do
+                R.log("[rsmm.camera]   " .. job.hits[i].path .. " = " .. job.hits[i].cls)
+            end
+        end
     end
 
     _cams_for, _scan_at = hero, now

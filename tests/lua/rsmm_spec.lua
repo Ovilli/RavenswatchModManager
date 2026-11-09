@@ -10867,8 +10867,8 @@ do
     local none_x, why_x = R.camera.cameras()
     check(none_x == nil and why_x:find("no top%-down camera"), "cameras that died are forgotten")
     dead = false
-    local HERO_S = 0x12f00000                           -- respawned: cameras 3 hops out again
-    I.write_u64(HERO_S + 0x1e0, A)
+    local HERO_S = 0x12f00000                           -- respawned: cameras 3 hops out again,
+    I.write_u64(HERO_S + 0x1e8, A)                      -- on a path the probe does not know
     R.entity.hero = function() return HERO_S end
     I.now = function() clock = clock + 1; return clock end  -- each look at the clock: a slice gone
     R.camera.SEARCH_SLICE = 0.5
@@ -10887,6 +10887,21 @@ do
     R.entity.hero = function() return HERO_Y end
     local kept = R.camera.cameras()
     check(kept and #kept == 2, "a new hero gets the cameras found before, in one call, no search")
+
+    -- The sliced search took over 30 s in game, so the paths it found before
+    -- are tried first: on a known path the cameras come back in one call
+    -- even with a slice too small to search anything.
+    dead = true
+    clock = clock + 2
+    R.camera.cameras()                                  -- forgets them
+    dead = false
+    local HERO_Q = 0x12f20000
+    I.write_u64(HERO_Q + 0x1e0, A)                      -- hero+0x1e0+0x2b0+0x548
+    R.entity.hero = function() return HERO_Q end
+    R.camera.SEARCH_SLICE = 0
+    local probed_q = R.camera.cameras()
+    check(probed_q and #probed_q == 2, "a camera on a known path is found in one call, no search")
+    R.camera.SEARCH_SLICE = 60
     I.now = real_now2
     R.rtti.name = rtti_s
 
