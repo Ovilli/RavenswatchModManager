@@ -115,3 +115,8 @@ coverage.xml
 coverage.json
 
 dist/*
+# Game-derived output: Ghidra decompiles of Ravenswatch.exe and cooked game files.
+# Kept local only; never commit.
+docs/_re/out/
+docs/ExampleMods/mods-archive/**/assets/
+docs/ExampleMods/mods-archive/.rsmm_text_merge/
