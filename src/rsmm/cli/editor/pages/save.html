@@ -86,9 +86,9 @@ const NOTES = {
   items: "Granted and Reset are the two states the game writes when it grants or resets an item; what each flag inside means is not decoded, so nothing else is offered.",
   heroes: "Level is the hero's level; the part after the point is progress to the next one. The game caps it at the hero's maximum when it loads. The other numbers are shown but not changed: what they count is not decoded.",
   talents: "Tier goes from -1 (none) to 3, the range the game itself uses. Unlocking sets the talent's lock the way the game does when its conditions are met.",
-  skins: "Unlocking sets the outfit's lock the way the game does when its conditions are met (it shows as new until you look at it). Locking is not permanent: the game opens a lock again if its conditions are already met.",
+  skins: "Shown as they are. Outfit locks are not changed here: some outfits are paid content, and the save does not say which.",
   story: "Unlocking sets the page's lock the way the game does when its conditions are met. Locking is not permanent: the game opens a lock again if its conditions are already met.",
-  achievements: "Unlocking sets the achievement's lock in your profile. It does not unlock a Steam achievement.",
+  achievements: "Shown as they are. Achievements are earned in game, so their locks are not changed here.",
   melodies: "Shown as they are. What these values mean is not decoded, so they are not changed.",
   challenges: "Shown as they are. What this value means is not decoded, so it is not changed.",
 };
@@ -242,7 +242,8 @@ function rowView(sec, r, redraw) {
     sel.onchange = () => onSet("tier", Number(sel.value));
     tr.append(el("td", {}, sel), lockCell(r, onSet));
   }
-  if (["skins", "story", "achievements"].includes(sec.key)) tr.append(lockCell(r, onSet));
+  if (sec.key === "story") tr.append(lockCell(r, onSet));
+  if (["skins", "achievements"].includes(sec.key)) tr.append(el("td", {}, el("span", { class: "badge " + r.lock, text: LOCK[r.lock] }), r.new ? el("span", { class: "badge new", text: "new" }) : null));
   if (["melodies", "challenges"].includes(sec.key)) tr.append(el("td", { class: "raw", title: "Not decoded: shown, never changed", text: Object.entries(r.info).map(([k, v]) => k + " " + v).join(" · ") }));
   return tr;
 }

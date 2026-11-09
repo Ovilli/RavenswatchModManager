@@ -323,10 +323,8 @@ class ModBuilder:
 
         Note: registering the slot is verified, but the engine's skin-grid
         populate (``FUN_1401f0f10``) only renders a node as a button when the
-        manager filter (vtable[1]) returns ``3``. Two derived filter variants
-        exist: the Steam build checks ``ISteamApps::BIsDLCEnabled`` via the
-        node key (``+0x3c``); the local build checks a DLC entitlement file
-        path at ``node+0x80``. A brand-new key is rejected by both gates, so
+        manager filter (vtable[1]) returns ``3``. That filter is the game's
+        pack-ownership check, and a brand-new key fails it, so
         the slot is on the roster list but invisible by default. To prove the
         button path in-game, build the loader and run with
         ``RSMM_SKIN_FORCE_SHOW=1`` — it force-pushes the node into the grid

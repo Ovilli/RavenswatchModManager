@@ -221,14 +221,13 @@ def test_writing_backs_up_both_files_and_keeps_them_identical(install, tmp_path)
     from rsmm.cli.editor import saves
     save_dir, raw = install
     j = saves._write(_req({"profile": "Profile_1.ob", "changes": [
-        _change(1, G2, "item", "granted"), _change(4, SN, "lock", "unlocked"),
+        _change(1, G2, "item", "granted"),
         _change(2, H, "level", 8), _change(3, SK, "tier", 3)]}))
     main = (save_dir / "Profile_1.ob").read_bytes()
     temp = (save_dir / "Profile_1_Temp.ob").read_bytes()
     assert main == temp != raw and len(main) == len(raw)
     p = PD.parse(SF.load(save_dir / "Profile_1.ob"))
     assert PD.item_state(p.objects[1]) == "granted" and p.objects[2].get("level") == 8.0
-    assert PD.lock_state(p.objects[4].children["lock"]) == "unlocked"
     assert p.objects[3].get("tier") == 3
     backup = tmp_path / "data" / "save_backups" / j["backup"]
     assert (backup / "Profile_1.ob").read_bytes() == raw
@@ -276,3 +275,14 @@ def test_putting_a_backup_back_backs_up_the_current_file_first(install):
     assert (save_dir / "Profile_1.ob").read_bytes() == raw
     undo = saves._backup_root() / j["undo"][0] / "Profile_1.ob"
     assert undo.read_bytes() == edited
+
+
+def test_outfit_and_achievement_locks_are_never_written(install):
+    """Outfits include paid DLC packs and achievements mirror Steam: the editor
+    shows their locks but refuses to change them."""
+    from rsmm.cli.editor import saves
+    save_dir, raw = install
+    with pytest.raises(ValueError, match="can't be changed"):
+        saves._write(_req({"profile": "Profile_1.ob",
+                           "changes": [_change(4, SN, "lock", "unlocked")]}))
+    assert (save_dir / "Profile_1.ob").read_bytes() == raw

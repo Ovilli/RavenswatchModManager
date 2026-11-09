@@ -5,7 +5,7 @@ record decoded with the engine's own layouts) and shows it by kind: items,
 heroes, talents, outfits, story pages, achievements, melodies, challenges and
 the player record, each named from the install's own definitions. What can be
 changed is what the game itself writes: an item's granted/reset state, a lock's
-unlocked/locked state, a hero's level and a talent's tier, each within the
+unlocked/locked state (not for outfits or achievements, see ``_LOCK_READ_ONLY``), a hero's level and a talent's tier, each within the
 range the game's loader accepts. Every other field is shown and kept as it is;
 a suspended run is kept byte for byte.
 
@@ -49,6 +49,9 @@ SECTIONS = [
     ("melodies", "Melodies", "MelodyProfileData"),
     ("challenges", "Challenges", "ChallengeProfileData"),
 ]
+#: Locks shown but never written. Outfits include paid DLC packs, and nothing in
+#: the save says which; achievements are mirrored to Steam. Neither is ours to open.
+_LOCK_READ_ONLY = frozenset({"SkinProfileData", "AchievementProfileData"})
 #: Shown, never written: fields whose meaning is not decoded.
 _READ_ONLY = {
     "oCDtHeroProfileData": ("count30", "count32", "count34", "count36", "rank38", "flag108",
@@ -192,6 +195,8 @@ def _apply(save: SF.Save, n: PD.Node, field: str, value) -> None:
             raise ValueError("unknown item state")
         PD.set_item_state(save, n, value)
     elif field == "lock":
+        if n.cls in _LOCK_READ_ONLY:
+            raise ValueError("outfit and achievement locks can't be changed")
         if "lock" not in n.children or value not in PD.LOCK_STATES:
             raise ValueError("unknown lock state")
         PD.set_lock(save, n.children["lock"], value)

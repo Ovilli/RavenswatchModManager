@@ -349,25 +349,24 @@ void hook_grid_populate(void* ctx, void* arg) {
     }
 }
 
-// True if `node`'s pack key (+0x3c) belongs to one of our registered packs.
-// Guarded: this runs from the vtable-filter detour for EVERY roster node the
-// engine tests, including whatever the game hands it.
-bool is_our_node_key(void* node) {
-    std::int32_t key = 0;
-    if (!mem_load(static_cast<std::uint8_t*>(node) + kOffKey, &key)) return false;
-    for (const auto& d : g_packs) {
-        if (d.key == key) return true;
+// True only for a roster node this loader allocated itself. Matched by
+// POINTER, never by pack key: a key is mod-supplied data, and a mod that
+// declared a shipped DLC pack's key would otherwise make the filter show that
+// paid pack to a player who does not own it.
+bool is_our_node(void* node) {
+    for (void* ours : g_our_nodes) {
+        if (ours == node) return true;
     }
     return false;
 }
 
-// Grid-filter detour. The vanilla body gates a node on Steam-DLC ownership
-// (Steam build) or a file-existence check at node+0x80 (DRM-free build); we
-// short-circuit our own keys to 3 (= show) and forward every real DLC/skin
-// slot to the original so its gate is unchanged. Short-circuiting also keeps
-// our null node+0x80 away from the local filter's deref.
+// Grid-filter detour. The vanilla body is the game's ownership check for the
+// pack; we answer 3 (= show) only for nodes we created and forward every
+// other node, every shipped skin and paid pack included, to the original so
+// its gate is unchanged. Short-circuiting also keeps our null node+0x80 away
+// from the local filter's deref.
 int hook_filter(void* mgr, void* node) {
-    if (is_our_node_key(node)) return 3;
+    if (is_our_node(node)) return 3;
     return g_real_filter(mgr, node);
 }
 

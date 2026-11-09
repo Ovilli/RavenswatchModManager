@@ -1302,8 +1302,9 @@ function drawSave() {
   else if (clones) why = "Copying an ability needs a new hero: at the top, set “Changes go into” to “a new hero built on it”.";
   else if (fresh) {
     why = inPlace() ? `Creating a mod that changes the original ${heroLabel()}.`
-      : `Creating a mod with a custom ${heroLabel()}, an extra hero in the list.` + ((S.dlc || []).includes(S.hero)
-        ? ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.` : "");
+      : (S.dlc || []).includes(S.hero)
+        ? `${S.hero} is a paid hero, so it can only be changed in place: set “Changes go into” to the original.`
+        : `Creating a mod with a custom ${heroLabel()}, an extra hero in the list.`;
   } else if (!S.block) {
     if (inPlace()) {
       why = `${S.mod} does not change ${heroLabel()} yet. Saving edits the original ${heroLabel()} in place, for everyone who runs the mod.`;
@@ -1311,7 +1312,10 @@ function drawSave() {
     } else {
       why = `${S.mod} has no custom hero built on ${heroLabel()}. Changes are saved into a separate custom hero, an extra one in the hero list. The original ${heroLabel()} is not changed.`;
       offer = `Create a custom ${heroLabel()} in ${S.mod}`;
-      if ((S.dlc || []).includes(S.hero)) why += ` ${S.hero} is a paid hero: the copy is marked dlc_owner = true, so share the mod only with players who own the DLC.`;
+      if ((S.dlc || []).includes(S.hero)) {
+        why = `${S.hero} is a paid hero, so it can only be changed in place: set “Changes go into” to the original.`;
+        offer = "";
+      }
     }
   }
   $("saveWhy").textContent = why;

@@ -39,7 +39,8 @@ def test_clone_is_the_base_bytes_under_a_new_name_with_its_own_cache(tmp_path):
 
 @needs_corpus
 @pytest.mark.parametrize("fields,msg", [
-    ({"base": "Merlin"}, "dlc_owner"),
+    ({"base": "Merlin"}, "paid DLC hero"),
+    ({"base": "Merlin", "dlc_owner": True}, "unsupported field"),
     ({"base": "Nobody"}, "no shipped hero"),
     ({"display_name": "X"}, "unsupported field"),
 ])
@@ -49,17 +50,20 @@ def test_bad_clones_are_refused(tmp_path, fields, msg):
 
 
 @needs_corpus
-def test_a_paid_hero_clones_only_when_the_author_says_they_own_it(tmp_path):
-    """Merlin is paid DLC: a clone plays for anyone who installs the mod, so the
-    block must declare `dlc_owner = true`. Carmilla is not paid and needs no flag."""
-    with pytest.raises(ContentError, match="dlc_owner"):
+def test_a_paid_hero_is_never_a_base(tmp_path):
+    """Merlin is paid DLC: a clone would play for anyone who installs the mod, so
+    it is refused with no opt-out. Carmilla is not paid and clones normally."""
+    with pytest.raises(ContentError, match="paid DLC hero"):
         _emit(tmp_path, base="Merlin")
-    with pytest.raises(ContentError, match="dlc_owner"):
-        _emit(tmp_path, base="Merlin", dlc_owner=False)
-    gen, _cache = _emit(tmp_path, base="Merlin", dlc_owner=True)
-    assert gen.read_bytes() == EP.corpus_read(
-        "Definitions/Heroes/Merlin.herodef.ot.DtHeroDefinition.gen")
     _emit(tmp_path, id="Zz_Carmilla_Clone", base="Carmilla")
+
+
+def test_borrowing_a_paid_heros_art_is_refused():
+    from rsmm.sdk.kinds import heros as H
+    for ref in ("Heroes\\Hero_Merlin\\Merlin.entity.ot", "3D\\Characters\\Heroes\\Merlin\\M.mat"):
+        with pytest.raises(ContentError, match="paid DLC hero"):
+            H._refuse_paid("X", [ref])
+    H._refuse_paid("X", ["Heroes\\Hero_Piper\\Piper.entity.ot", "Merlinesque\\x.ot"])
 
 
 @needs_corpus
