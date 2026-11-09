@@ -667,7 +667,7 @@ LOCAL_INTERACTION_SUCCESS   the local peer's own copy
 ```
 
 That is a host-authoritative request/validate/commit shape, which matches the
-netcode ([MULTIPLAYER.md](../MULTIPLAYER.md)): a client *asks*, the host
+netcode ([MULTIPLAYER.md](https://docs.rsmm.me/reverse-engineering/multiplayer/)): a client *asks*, the host
 decides. A mod must therefore treat `REQUEST` as an intent that may not be
 granted and hang real effects off `SUCCESS` / `LOCAL_INTERACTION_SUCCESS`.
 All four of `REQUEST`/`VALIDATE`/`SUCCESS`/`LOCAL_INTERACTION_SUCCESS` were

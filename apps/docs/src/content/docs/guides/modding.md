@@ -5,7 +5,7 @@ description: Scaffold, build, test, and ship a mod — the single authoring guid
 
 This is the **single** authoring guide — scaffolding a mod through shipping a
 finished `.zip`. For CLI command details, see the [CLI Reference](/reference/cli/);
-for the SDK design rationale, [SDK_V3.md](/guides/sdk/).
+for the SDK design rationale, [SDK guide](/guides/sdk/).
 
 :::tip[New to modding?]
 This page is the complete reference, and it gets technical fast. If you haven't
@@ -300,7 +300,7 @@ The hook runs as the player, outside the game, with no sandbox, so it never runs
 
 Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
 
-See `mods/ExampleSeedPin/on_disable.py` for a canonical example.
+See `examples/ExampleSeedPin/on_disable.py` for a canonical example.
 
 ### ConsoleRuntime / dev_mode
 
@@ -322,7 +322,7 @@ unknown field is refused, with the nearest valid name.
 Every content kind is reachable with one call, `m.content(kind, id=..., **fields)`,
 whose fields are exactly the manifest's. Five kinds also have a named shortcut
 (`m.item`, `m.enemy`, `m.boss`, `m.map`, `m.hero`); the rest use `m.content`.
-Design rationale: [SDK_V3.md](/guides/sdk/).
+Design rationale: [SDK guide](/guides/sdk/).
 
 ### First mod
 
@@ -1348,7 +1348,7 @@ rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 
 To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/); the primitives above are the layer underneath.
 
-See `mods/ExampleLuaMod/init.lua` and `mods/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [docs/_re/CALLING_GAME_FUNCTIONS.md](/reverse-engineering/calling-game-functions/).
+See `examples/ExampleEngineCall/init.lua` and `examples/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [Calling game functions](/reverse-engineering/calling-game-functions/).
 
 ### Events
 
@@ -1792,7 +1792,7 @@ with sdk.Mod("MyMapMod", experimental=True) as m:   # required for any non-confi
     m.map("Twilight_Hills", base="Dark_Hills")
 ```
 
-See [docs/INTERNALS.md](/architecture/internals/) for the engine notes that ground all of the above, and [docs/ROADMAP.md](/project/roadmap/) for open work.
+See [Internals](/architecture/internals/) for the engine notes that ground all of the above, and [Roadmap](/project/roadmap/) for open work.
 
 ---
 

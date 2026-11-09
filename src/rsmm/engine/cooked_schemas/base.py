@@ -28,7 +28,8 @@ class NotReversedError(NotImplementedError):
 
     def __init__(self, class_name: str, status: str = "not yet reversed") -> None:
         super().__init__(
-            f"{class_name}: {status}. See docs/RE_NOTES.md for progress."
+            f"{class_name}: {status}. See "
+            "https://docs.rsmm.me/reverse-engineering/notes/ for progress."
         )
         self.class_name = class_name
 

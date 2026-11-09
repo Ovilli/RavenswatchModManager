@@ -319,7 +319,7 @@ Structural dump of a cooked file (class table, sections, embedded strings).
 ### `rsmm uncook <file>`
 
 Extract a cooked asset to an editable source-format file. Per-class schemas
-are reversed-engineered incrementally (see `docs/RE_NOTES.md`); when the
+are reversed-engineered incrementally (see [RE notes](/reverse-engineering/notes/)); when the
 schema isn't ready yet, `--raw` extracts section bytes directly so byte-level
 mods are unblocked.
 

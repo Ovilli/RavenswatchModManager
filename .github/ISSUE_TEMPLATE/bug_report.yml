@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in the app, the CLI, the loader or the website doesn't work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A problem with one mod? Report it on that mod's page first; its author can fix it fastest.
+        Security issue? Please use SECURITY.md instead of a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the app
+        2. Press Launch Modded
+        3. ...
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 10/11, Linux (native), Linux / Steam Deck (Proton), Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: RSMM version
+      description: Shown in the app under About, or the release you downloaded.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: rsmm doctor output
+      description: In the app, Commands → Doctor, or run `rsmm doctor`. Paste the whole output.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots (optional)
+      description: For loader / Lua mod issues, `rsmm log` shows the loader log.
+      render: text

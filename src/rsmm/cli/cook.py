@@ -59,7 +59,7 @@ def main() -> int:
         print(
             "cook currently requires --from <reference.yqz> to derive the "
             "container header + class table. Schema-only cooking lands once "
-            "per-class encoders are implemented (see docs/RE_NOTES.md).",
+            "per-class encoders are implemented (see https://docs.rsmm.me/reverse-engineering/notes/).",
             file=sys.stderr,
         )
         return 2

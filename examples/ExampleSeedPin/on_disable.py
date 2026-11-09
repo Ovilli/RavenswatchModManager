@@ -2,16 +2,17 @@
 """
 Deactivation hook for ExampleSeedPin.
 
-When the mod ran it called rsmm.write_u32 on the in-memory GameOptions
-"Forced seed" slot. The game then persisted that value to
-<game>/_Save/GameSettings.ini under `[Debug] Forced seed=<N>`. The mod
-itself only runs while enabled, so it has no way to unpin the seed when
-the user disables it — the ini line outlives the mod.
+When the mod ran it set the in-memory GameOptions "Forced seed" value and
+the "Dev" flag (via R.options; the engine only honours a forced seed while
+Dev is true). The game then persisted those values to
+<game>/_Save/GameSettings.ini under `[Debug]`. The mod itself only runs
+while enabled, so it has no way to unpin them when the user disables it —
+the ini lines outlive the mod.
 
 This hook fires from `./rsmm apply` whenever ExampleSeedPin flips
 enabled -> disabled in any manifest scan. It strips the `Forced seed=`
-line from `[Debug]` so the next launch starts with the game's default
-seed source again.
+and `Dev=` lines from `[Debug]` so the next launch starts with the game's
+default seed source (and retail behaviour) again.
 
 Env contract (set by rsmm.cli.apply_mods._run_deactivation_hooks):
 
@@ -28,7 +29,7 @@ import re
 import sys
 from pathlib import Path
 
-SEED_KEY_RE = re.compile(r"^\s*Forced\s+seed\s*=", re.IGNORECASE)
+SEED_KEY_RE = re.compile(r"^\s*(Forced\s+seed|Dev)\s*=", re.IGNORECASE)
 
 
 def main() -> int:
@@ -51,11 +52,11 @@ def main() -> int:
         out_lines.append(line)
 
     if removed == 0:
-        print("no `Forced seed=` line present; ini already clean")
+        print("no `Forced seed=` / `Dev=` line present; ini already clean")
         return 0
 
     ini.write_text("".join(out_lines), encoding="utf-8")
-    print(f"cleared {removed} `Forced seed=` line(s) from {ini}")
+    print(f"cleared {removed} `Forced seed=` / `Dev=` line(s) from {ini}")
     return 0
 
 

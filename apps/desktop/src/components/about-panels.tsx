@@ -112,7 +112,7 @@ export function AboutPanels() {
                 {t('Discord')}
               </a>
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager/blob/main/docs/INSTALLATION.md"
+                href="https://docs.rsmm.me/getting-started/install/"
                 target="_blank"
                 rel="noreferrer noopener"
                 className={`${buttonClass} btn-grim-primary`}

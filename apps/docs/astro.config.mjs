@@ -185,7 +185,7 @@ export default defineConfig({
             { label: 'UI & the book menu', slug: 'reverse-engineering/ui-menus' },
             { label: 'Seed + mapgen', slug: 'reverse-engineering/seed-mapgen' },
             { label: 'Multiplayer', slug: 'reverse-engineering/multiplayer' },
-            { label: 'Protector', slug: 'reverse-engineering/protector' },
+            { label: 'Loader compatibility', slug: 'reverse-engineering/loader-compatibility' },
           ],
         },
         {

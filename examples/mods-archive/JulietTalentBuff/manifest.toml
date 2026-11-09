@@ -13,7 +13,7 @@ tags        = ["balance", "talents", "juliet"]
 # entity at apply time and ships it as a plain asset override — no hand-edited
 # .gen committed. Discover any hero's editable values with `rsmm talents <Hero>`.
 # value_patches entries are [label, old, new] (add a 4th `true` to clear a
-# shadowed node's selector override before editing — see docs/MOD_AUTHORING.md).
+# shadowed node's selector override before editing — see https://docs.rsmm.me/guides/modding/).
 [[content]]
 kind = "talent"
 id   = "JulietTalentBuff"

@@ -126,7 +126,7 @@ unhook on mod disable`.
 ## Methodology used (so this is repeatable)
 
 1. `python3` over `out/strings.json` bucketed by feature-keyword
-   regex (see this commit's `_re/HOOKPOINTS.md` for the list).
+   regex (see this page for the list).
 2. `grep -rE "<exact string>" out/decompiled_all/` to find the
    containing functions.
 3. Most "feature event" strings (`Skill propose`, `Camp Difficulty

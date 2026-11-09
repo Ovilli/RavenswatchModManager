@@ -9,7 +9,7 @@ every enabled mod before the applier runs. Output:
   - unmet requirements (declared `requires` mod missing or wrong version)
   - circular requirement cycles
 
-See `docs/STRATEGY.md` §8.
+See `https://docs.rsmm.me/project/strategy/` §8.
 """
 
 from __future__ import annotations

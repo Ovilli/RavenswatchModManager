@@ -1764,7 +1764,7 @@ int lua_read_cstr(lua_State* L) {
 
 // rsmm.peek(addr [, size=8]) -> integer | nil   (size in {1,2,4,8})
 // Guarded raw read; nil on an unreadable address. Use to walk struct offsets
-// and pointer chains (e.g. the netcode role field) — see docs/_re/MULTIPLAYER.md.
+// and pointer chains (e.g. the netcode role field) — see https://docs.rsmm.me/reverse-engineering/multiplayer/.
 int lua_peek(lua_State* L) {
     auto addr = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto size = static_cast<int>(luaL_optinteger(L, 2, 8));

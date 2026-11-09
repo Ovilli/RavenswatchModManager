@@ -13,8 +13,9 @@ by the leaf class name reported in the cooked file's class table. Use
 `get(class_name)` to dispatch; a missing class returns a `RawHandler` that
 emits/consumes raw bytes (always works, no schema knowledge required).
 
-Reverse-engineering progress lives in `docs/RE_NOTES.md` — read that for the
-state of each schema. NotReversedError is the contract for "we know about this
+Reverse-engineering progress lives at
+https://docs.rsmm.me/reverse-engineering/notes/ — read that for the state of
+each schema. NotReversedError is the contract for "we know about this
 class but haven't finished the schema yet".
 """
 

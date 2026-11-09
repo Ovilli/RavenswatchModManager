@@ -25,7 +25,7 @@ STAT = ("GlobalValues/Avalon/Mordred_Quest/Mordred_Quest_Boss_Is_Dead"
 OT = "_root/DarkTalesResources/ApplicationSettings.ot"
 WUKONG = ("EntitySettings/Heroes/Hero_SunWukong/"
           "Hero_SunWukong.entity.ot.EntitySettingsResource.gen")
-WUKONG_MOD = (Path(__file__).resolve().parent.parent / "docs/ExampleMods/mods-archive"
+WUKONG_MOD = (Path(__file__).resolve().parent.parent / "examples/mods-archive"
               / "WukongFasterQuest/assets" / WUKONG)
 #: What WukongFasterQuest changes, as (label, vanilla, modded).
 WUKONG_EDITS = (

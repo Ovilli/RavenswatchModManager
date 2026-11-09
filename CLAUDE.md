@@ -53,7 +53,7 @@ Reverse-engineering / patch-day / data-mining commands (`rsmm symbols`, `scripts
 
 ## Useful docs
 
-Prose docs now live as a Starlight site in `apps/docs/` (deployed to `docs.rsmm.me`; `pnpm docs:dev` to preview). The old `docs/*.md` files are one-line stubs pointing at the site — edit the Markdown under `apps/docs/src/content/docs/` instead. The exception is the generated SDK/CLI reference (see below). `pnpm --filter docs build` runs `starlight-links-validator` (broken internal link → build fails, gated in CI) and `astro-mermaid` (```mermaid fences render as diagrams).
+Prose docs now live as a Starlight site in `apps/docs/` (deployed to `docs.rsmm.me`; `pnpm docs:dev` to preview). Edit the Markdown under `apps/docs/src/content/docs/`. What's left in `docs/` is generated (`docs/api/`, `docs/SYMBOLS.md`) or raw RE field notes (`docs/_re/`); example mods live in `examples/`. `pnpm --filter docs build` runs `starlight-links-validator` (broken internal link → build fails, gated in CI) and `astro-mermaid` (```mermaid fences render as diagrams).
 
 | Topic | File |
 |-------|------|

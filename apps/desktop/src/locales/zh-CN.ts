@@ -328,8 +328,8 @@ export const zhCN: Record<string, string> = {
     '无法连接索引——仅显示本地已安装的数据。',
   Info: '信息',
   Inspect: '检查',
-  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md.':
-    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 docs/RE_NOTES.md。',
+  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see https://docs.rsmm.me/reverse-engineering/notes/.':
+    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 https://docs.rsmm.me/reverse-engineering/notes/。',
   'Inspect cooked file': '检查烘焙文件',
   Inspecting: '正在检查',
   Install: '安装',

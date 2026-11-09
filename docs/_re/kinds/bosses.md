@@ -10,7 +10,7 @@
 > read from the binary.
 
 This page is the per-kind companion to
-[`../MOD_HOOKS.md`](../MOD_HOOKS.md) "Enemies & bosses" / "level-load
+[`../MOD_HOOKS.md`](https://docs.rsmm.me/reverse-engineering/mod-hooks/) "Enemies & bosses" / "level-load
 pipeline" notes. It focuses on **one** content kind: a custom boss
 encounter — a tagged enemy with a `oCDtBossTimerUiControllerEntityCpnt`
 component, wired into the existing named-event spawn fabric, and
@@ -322,11 +322,11 @@ Distinct from *creating* a boss (above):
 
 ## See also
 
-- [`../MOD_HOOKS.md`](../MOD_HOOKS.md) — `oCTLibrary` ABI, named-event
+- [`../MOD_HOOKS.md`](https://docs.rsmm.me/reverse-engineering/mod-hooks/) — `oCTLibrary` ABI, named-event
   level-load pipeline (stages 3/9/10/12), `EnemyDefInternal::SearchFilter`.
 - [`items.md`](items.md) — the `oCDtRewardDefinition` insertion recipe
   the reward-drop step reuses.
-- [`../GHIDRA_MCP.md`](../GHIDRA_MCP.md) — live RE harness.
+- [`../GHIDRA_MCP.md`](https://docs.rsmm.me/reverse-engineering/ghidra-mcp/) — live RE harness.
 - `docs/_re/out/class_registry.json` — confirms BossTimer is *not* a
   UID-keyed serializable type (component-only).
 - `docs/_re/out/libraries.json` — `oCDtEnemyDefinition` library

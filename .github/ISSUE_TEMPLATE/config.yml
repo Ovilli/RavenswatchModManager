@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://docs.rsmm.me
+    about: Install guide, FAQ, troubleshooting and the modding docs.
+  - name: Discord
+    url: https://discord.gg/dZbsKBWjSF
+    about: Questions, mod showcases and help from other modders.

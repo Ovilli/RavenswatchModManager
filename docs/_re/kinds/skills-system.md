@@ -274,7 +274,7 @@ implemented and tested (`tests/test_skill_clone.py`, 7 pass incl. a real-herodef
 round-trip: Aladdin 28→29 rows, other rows byte-identical). Rated **`guess`** —
 requires `experimental=true`. The emit logs the new skill's identity GUID; bind
 behaviour with `R.talent.on_pick("<lo>:<hi>", …)`. Example:
-`docs/ExampleMods/ExampleCustomSkill`. **OPEN: in-game hero-page/level-up load is
+`examples/ExampleCustomSkill`. **OPEN: in-game hero-page/level-up load is
 unproven** (skill-vector count repr unknown — see "Asset-diff results").
 
 ## TL;DR verdict (updated after asset-diff)
