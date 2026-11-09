@@ -229,12 +229,12 @@ BEGIN
 END
 u32   width                      footprint in tile units
 u32   height
-f32   weight                     mapgen pick weight
-f32   ratio                      1.0 on 204/237
+f32   band_lo                    tier band, low end
+f32   band_hi                    tier band, high end
 u32   child_count
 child[child_count]               nested BEGIN..END composite-tile blocks
 tresptr icon                     u8 resolved + lstr category + lstr path
-bytes rest[40]                   editor tint RGBA + 6 unmined scalars
+bytes rest[40]                   f32 tint[4], u32 x2, f32 pick_weight, u32 x3
 ```
 
 `tresptr` (u8 + two length-prefixed strings) is the same typed-resource-pointer
@@ -249,22 +249,26 @@ one (`6x6_Teleporter_01` → 6×6, `40x40_Wood_House` → 40×40). `icon` — ev
 non-empty path resolves to a shipped texture. `entity_ref` — the prefab that
 actually gets instantiated.
 
-**Certain, and initially got wrong.** `weight` is a **tier** field, not a spawn
-rate. Every tier-suffixed family in the corpus — cauldrons, grimoires and
-wishing wells, across all three biomes — carries exactly `T1=0.0`,
-`T2=0.333`, `T3=0.667`, with no exceptions:
+**Certain, and read wrong twice.** `band_lo` and `band_hi` are one thing: the
+low and high ends of the **tier band**, the range of placement values the tile
+may be placed at. Every tier-suffixed family in the corpus, across all three
+biomes, carries one tier each:
 
 | family | T1 | T2 | T3 |
 |---|---|---|---|
-| Cauldron | 0.0 | 0.33 | 0.66 |
-| Grimoire | 0.0 | 0.333 | 0.667 |
-| Wishing Well | 0.0 | 0.333 | 0.667 |
+| Cauldron | [0, 0.33] | [0.33, 0.66] | [0.66, 1] |
+| Grimoire | [0, 0.333] | [0.333, 0.667] | [0.667, 1] |
+| Wishing Well | [0, 0.333] | [0.333, 0.667] | [0.667, 1] |
 
-The first reading of this field was "mapgen pick weight; 0 = never rolled
-alone", inferred from the fact that all 149 zero-weight tiles are structural.
-That inference was backwards — T1 cauldrons carry weight 0.0 and obviously do
-appear in game. Raising `weight` to make a POI commoner marks it as a
-higher-tier variant instead, which if anything gates it behind run progression.
+Untiered tiles carry the range they may appear in: `[0, 1]` for blockers and
+most others, `[0.33, 1]` for thieves' stash entrances. That last one is
+checkable in play: stash entrances only appear with a yellow or red ring,
+never green.
+
+The low end was first read as "mapgen pick weight; 0 = never rolled alone",
+then as a tier value on its own, with the high end as an unexplained "ratio". Both readings saw half
+the pair. The `poi` kind's `weight` field still sets `band_lo` only; raising it
+to make a POI commoner moves its band up a tier instead.
 
 **How often a tile actually appears** is governed by pool share: a chapter fills
 a slot from the pool entries whose kind matches, so a tile's odds are
@@ -274,10 +278,25 @@ about 80%. That is what the `poi` kind's `copies` field controls, and why it
 emits N distinct tiledefs rather than repeating one ref — `add_to_pool`
 de-duplicates, so a repeated ref would change nothing.
 
-**Preserved, not understood.** The 40-byte `rest`. Its first four floats are an
-RGBA that co-varies with the `Editor` icon category, so it reads as an editor
-tint; the remaining six scalars (two of which take small integer values 0–4)
-are unmined. All 40 bytes round-trip verbatim.
+**Pick weight.** The float at offset 24 of `rest` is the relative pick weight
+among tiles that answer the same slot. It is `1.0` on every tile except these:
+
+| Map | Tiles | `pick_weight` |
+|---|---|---|
+| all three | Thieves' stash entrance: Combat / Cursed / Gold room | 0.5 / 0.4 / 0.1 |
+| all three | Thieves' stash entrance: Mirror room | 0.2 |
+| Dark Hills | Straw / Wood / Stone house | 0.33 each |
+| Avalon | Mordred underground entrance, Fix / Interval | 0.5 each |
+| Storm Island | Sinbad cyclops cave / Roc quest cave | 0.5 each |
+
+`copies` decides how many entries a tile has, and `pick_weight` scales each
+entry's odds. A clone keeps its base tile's `pick_weight`.
+
+**Partly understood.** The 40-byte `rest`. Its first four floats are an RGBA
+that co-varies with the `Editor` icon category, so it reads as an editor tint.
+Then two `u32` (0 on nearly every tile), the `f32` pick weight above, and three
+`u32` (`2 3 4` on every Thieves tile, `0 0 0` elsewhere; unmined). All 40
+bytes round-trip verbatim.
 
 ## `oCDtMapDefinition` tile pool
 

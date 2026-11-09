@@ -18,12 +18,12 @@ keeps everything else in ``_tail_hex``. This module types that tail:
     END
     u32   width                      slot footprint, in tile units (3, 6, 20, 40, 50, 64)
     u32   height
-    f32   weight                     TIER, not a spawn rate (see below)
-    f32   ratio                      second weight-ish scalar (1.0 on 204/237)
+    f32   band_lo                    tier band, low end (see below)
+    f32   band_hi                    tier band, high end
     u32   child_count
     child[child_count]               nested BEGIN..END composite-tile blocks
     tresptr icon                     u8 resolved + lstr category + lstr path
-    bytes rest[40]                   editor tint RGBA + 6 unmined scalars
+    bytes rest[40]                   f32 tint[4], u32 x2, f32 pick_weight, u32 x3
 
 Validated by parsing **all 237 shipped tiledefs with zero failures**, and every
 one re-emits byte-for-byte (``tests/test_tile_cook.py``).
@@ -54,15 +54,24 @@ the **mapdef** — see :mod:`rsmm.engine.map_pool`.
 Field semantics beyond the layout are only partly mined. ``kinds``, ``width``,
 ``height`` and ``icon`` are certain (name strings match the map's slot
 vocabulary exactly; width/height match the ``NxN_`` filename prefix on every
-tile that has one; icon paths resolve to real shipped textures). ``weight`` is a **tier**
-field, not a spawn rate: every tier-suffixed family in the corpus — cauldrons,
-grimoires and wishing wells, across all three biomes — carries exactly
-T1=0.0 / T2=0.333 / T3=0.667 with no exceptions, and T1 tiles plainly do appear
-in game. An earlier reading of it as "mapgen pick weight, 0 = never rolled" was
-wrong; how often a tile turns up is governed by how many pool entries share its
-kind. The 40-byte ``rest`` is preserved verbatim; its first four floats are an
-RGBA that co-varies with the ``Editor`` icon category, so it reads as an editor
-tint rather than anything gameplay-facing.
+tile that has one; icon paths resolve to real shipped textures).
+
+``band_lo`` / ``band_hi`` are the two ends of the **tier band**: the range of
+placement values the tile may be placed at. Every tier-suffixed family in the
+corpus (cauldrons, grimoires, wishing wells, across all three biomes) carries
+T1 ``[0, 0.33]``, T2 ``[0.33, 0.67]``, T3 ``[0.67, 1]`` (stored as 0.33 or
+0.333, 0.66 or 0.667). Untiered tiles carry the range they may appear in:
+``[0, 1]`` for blockers and most others, ``[0.33, 1]`` for thieves' stash
+entrances (they only appear with a yellow or red ring). ``band_lo`` was earlier
+read on its own as a tier value, and before that as a pick weight; both
+readings were of half the pair.
+
+The 40-byte ``rest`` is preserved verbatim. Its first four floats are an RGBA
+that co-varies with the ``Editor`` icon category (an editor tint). The float at
+offset 24 is :attr:`TileDef.pick_weight`, the relative pick weight among
+tiles that answer the same slot: ``1.0`` on every tile except a few families of
+variants (thieves' stash rooms Combat / Cursed / Gold 0.5 / 0.4 / 0.1; Dark
+Hills Straw / Wood / Stone house 0.33 each).
 """
 
 from __future__ import annotations
@@ -86,6 +95,8 @@ _KIND_PRELUDE = 4
 #: The trailing blob is a fixed 40 bytes on every shipped tile. Enforced so a
 #: game patch that grows the record fails loudly instead of silently truncating.
 _REST_LEN = 40
+#: Where the pick weight sits in ``rest``: after the f32 tint[4] and two u32.
+_PICK_WEIGHT_OFF = 24
 
 
 class TileCookError(ValueError):
@@ -100,8 +111,9 @@ class TileDef:
     kinds: list[str] = field(default_factory=list)
     width: int = 0
     height: int = 0
-    weight: float = 0.0
-    ratio: float = 1.0
+    #: Tier band: the range of placement values the tile may be placed at.
+    band_lo: float = 0.0
+    band_hi: float = 1.0
     #: Nested composite-tile blocks, kept as raw hex. These reference other
     #: tiles by name (corridors attached to a stairwell, etc.); nothing in the
     #: SDK edits them yet, so they round-trip untouched.
@@ -117,6 +129,17 @@ class TileDef:
     @property
     def has_icon(self) -> bool:
         return bool(self.icon[2])
+
+    @property
+    def pick_weight(self) -> float:
+        """Relative pick weight among same-slot variants (``rest`` offset 24)."""
+        return struct.unpack_from("<f", bytes.fromhex(self.rest_hex), _PICK_WEIGHT_OFF)[0]
+
+    @pick_weight.setter
+    def pick_weight(self, value: float) -> None:
+        rest = bytearray(bytes.fromhex(self.rest_hex))
+        struct.pack_into("<f", rest, _PICK_WEIGHT_OFF, float(value))
+        self.rest_hex = rest.hex()
 
 
 class _Reader:
@@ -202,8 +225,8 @@ def parse_tail(tail: bytes) -> TileDef:
     td = TileDef(kinds=kinds)
     td.width = r.u32()
     td.height = r.u32()
-    td.weight = r.f32()
-    td.ratio = r.f32()
+    td.band_lo = r.f32()
+    td.band_hi = r.f32()
 
     child_count = r.u32()
     if child_count > 64:
@@ -230,7 +253,7 @@ def build_tail(td: TileDef) -> bytes:
         raw = k.encode("latin1")
         out += struct.pack("<I", len(raw)) + raw
     out += _END
-    out += struct.pack("<IIff", td.width, td.height, td.weight, td.ratio)
+    out += struct.pack("<IIff", td.width, td.height, td.band_lo, td.band_hi)
     out += struct.pack("<I", len(td.children))
     for c in td.children:
         out += bytes.fromhex(c)

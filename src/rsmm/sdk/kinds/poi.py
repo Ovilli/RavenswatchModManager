@@ -48,8 +48,9 @@ Fields (the explicit ``[[content]]`` form)
     Which maps get it: ``Dark_Hills``, ``Avalon``, ``Storm_Island``. Baba Yaga
     is the scripted boss arena and has no tile pool, so it is rejected.
 ``weight`` (float, optional)
-    **Tier**, not a spawn rate — see :data:`TIER_WEIGHTS`. Raising it to make a
-    POI commoner is backwards; use ``copies``.
+    The low end of the tile's **tier band** (``TileDef.band_lo``), not a spawn
+    rate — see :data:`TIER_WEIGHTS`. The band's high end stays the base
+    tile's. Raising it to make a POI commoner is backwards; use ``copies``.
 ``copies`` (int, optional, default 1)
     How many pool entries this POI gets. A chapter fills a slot from the
     entries matching that slot's kind, so the share is
@@ -355,11 +356,11 @@ PRESETS: dict[str, dict] = {
 
 DEFAULT_PRESET = "clearing"
 
-#: `weight` is a TIER field, not a spawn frequency. Across every tier-suffixed
-#: family in the corpus — cauldrons, grimoires and wishing wells, in all three
-#: biomes — the T1/T2/T3 variants carry exactly these values, with no
-#: exceptions. T1 tiles sit at 0.0 and plainly do appear in game, so a 0 weight
-#: does NOT mean "never placed".
+#: `weight` sets the low end of the tile's tier band (`TileDef.band_lo`), not a
+#: spawn frequency. Across every tier-suffixed family in the corpus — cauldrons,
+#: grimoires and wishing wells, in all three biomes — the T1/T2/T3 bands start
+#: at these values, with no exceptions. T1 tiles start at 0.0 and plainly do
+#: appear in game, so a 0 weight does NOT mean "never placed".
 #:
 #: The practical consequence: raising `weight` to make something commoner is
 #: backwards. It marks the tile as a higher-tier variant, which if anything
@@ -931,7 +932,7 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
                 f"0.0 to ~0.67 (see TIER_WEIGHTS; it is a tier field, not a "
                 f"spawn rate — raise 'copies' or widen 'kinds' for frequency)."
             )
-        td.weight = float(w)
+        td.band_lo = float(w)
 
     if "kinds" in f:
         kinds = f["kinds"]
