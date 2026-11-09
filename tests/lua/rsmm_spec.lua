@@ -10655,6 +10655,10 @@ end
 -- value +0x70, type byte +0x78), record+0x58 == -1 for a literal.
 do
     check(R.camera ~= nil, "R.camera loaded")
+    -- Whole searches unless a case below says otherwise: a wall-clock slice
+    -- would make these depend on how fast the machine is.
+    local real_slice = R.camera.SEARCH_SLICE
+    R.camera.SEARCH_SLICE = 60
     local HERO_C, ARR = 0x12d00000, 0x12d10000
     local CAM = { 0x12d20000, 0x12d30000 }             -- default, zoom
     local SET = { 0x12d40000, 0x12d50000 }
@@ -10844,12 +10848,53 @@ do
     I.write_u64(FAKE + 0x10, BLOB)
     I.write_u32(BLOB + 0x3f8 + 0x58, 0xffffffff); I.write_u64(BLOB + 0x3f8 + 0x68, 4)
     R.entity.hero = function() return HERO_X end
-    check(R.camera.cameras() == nil, "an object is never taken for a camera without its class name")
+    local blob_taken = false
+    for _, c in ipairs(R.camera.cameras() or {}) do blob_taken = blob_taken or c.settings == BLOB end
+    check(not blob_taken, "an object is never taken for a camera without its class name")
+
+    -- Death and spectate (2026-11-08): every transform, death and respawn is a
+    -- new captured hero. A search run whole froze the game each time, so it
+    -- runs in slices, and what it found is kept across heroes.
+    local real_now2, clock = I.now, 2000
+    I.now = function() return clock end
+    local dead = true
+    local rtti_s = R.rtti.name
+    R.rtti.name = function(p)
+        if dead and (p == SET[1] or p == SET[2] or p == CAM[1] or p == CAM[2]) then return nil end
+        return rtti_s(p)
+    end
+    clock = clock + 2
+    local none_x, why_x = R.camera.cameras()
+    check(none_x == nil and why_x:find("no top%-down camera"), "cameras that died are forgotten")
+    dead = false
+    local HERO_S = 0x12f00000                           -- respawned: cameras 3 hops out again
+    I.write_u64(HERO_S + 0x1e0, A)
+    R.entity.hero = function() return HERO_S end
+    I.now = function() clock = clock + 1; return clock end  -- each look at the clock: a slice gone
+    R.camera.SEARCH_SLICE = 0.5
+    local calls, got, first_why = 0, nil, nil
+    repeat
+        calls = calls + 1
+        local why
+        got, why = R.camera.cameras()
+        first_why = first_why or why
+        if not got then R.camera._search_pump() end      -- what its timer does
+    until got or calls > 50
+    check(got and #got == 2 and calls > 1, "the search is spread over several slices")
+    check(first_why and first_why:find("search under way"), "and says so while it runs")
+    R.camera.SEARCH_SLICE = 60
+    local HERO_Y = 0x12f10000                           -- nothing reachable from this one
+    R.entity.hero = function() return HERO_Y end
+    local kept = R.camera.cameras()
+    check(kept and #kept == 2, "a new hero gets the cameras found before, in one call, no search")
+    I.now = real_now2
+    R.rtti.name = rtti_s
 
     R.entity.hero = function() return nil end
     local none, reason = R.camera.cameras()
     check(none == nil and reason:find("hero"), "no hero: nil plus why")
     R.entity.hero, R.rtti.name = real_hero, real_rtti
+    R.camera.SEARCH_SLICE = real_slice
 end
 
 -- Live config: a value written to config.toml OUTSIDE the game (the desktop

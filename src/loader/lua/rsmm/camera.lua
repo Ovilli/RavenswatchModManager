@@ -179,33 +179,47 @@ end
 -- class-id maps (238 + 7 components), so the controller keeps them somewhere
 -- else. This follows plausible pointers breadth-first, up to `depth` hops and
 -- `budget` objects, and records the field path to every object whose RTTI
--- names a TopDown camera or its settings. Page-guarded reads only; run once.
-local function _search(roots, depth, budget)
-    local hits, seen, queue, n = {}, {}, {}, 0
+-- names a TopDown camera or its settings. Page-guarded reads only.
+--
+-- It is a JOB advanced a few milliseconds per call, never run whole. Run whole
+-- it took long enough (2500 objects x 256 reads, each with an RTTI lookup) to
+-- hold the Lua state for seconds, and the game thread's Lua hooks (the damage
+-- meter's) waited on it: the game froze on every hero change, worst while dead
+-- and spectating, when it ran four times a tick (2026-11-08).
+local function _now() return (I.now and I.now()) or os.clock() end
+
+local function _search_new(roots, depth, budget)
+    local job = { hits = {}, seen = {}, queue = {}, qi = 1, n = 0, depth = depth, budget = budget }
     for _, r in ipairs(roots) do
-        if _plausible(r.ptr) and not seen[r.ptr] then
-            seen[r.ptr] = true
-            queue[#queue + 1] = { ptr = r.ptr, path = r.name, d = 0 }
+        if _plausible(r.ptr) and not job.seen[r.ptr] then
+            job.seen[r.ptr] = true
+            job.queue[#job.queue + 1] = { ptr = r.ptr, path = r.name, d = 0 }
         end
     end
-    local qi = 1
-    while qi <= #queue and n < budget do
-        local node = queue[qi]; qi = qi + 1; n = n + 1
+    return job
+end
+
+-- Advance `job` for about `slice` seconds; true once it is finished.
+local function _search_step(job, slice)
+    local stop = _now() + slice
+    while job.qi <= #job.queue and job.n < job.budget do
+        local node = job.queue[job.qi]; job.qi = job.qi + 1; job.n = job.n + 1
         for off = 0, 0x7f8, 8 do
             local p = I.read_u64(node.ptr + off)
-            if _plausible(p) and not seen[p] then
-                seen[p] = true
+            if _plausible(p) and not job.seen[p] then
+                job.seen[p] = true
                 local path = ("%s+0x%x"):format(node.path, off)
                 local cls = R.rtti.name(p)
                 if type(cls) == "string" and cls:find("TopDownCamera", 1, true) then
-                    hits[#hits + 1] = { ptr = p, cls = cls, path = path }
-                elseif node.d + 1 < depth then
-                    queue[#queue + 1] = { ptr = p, path = path, d = node.d + 1 }
+                    job.hits[#job.hits + 1] = { ptr = p, cls = cls, path = path }
+                elseif node.d + 1 < job.depth then
+                    job.queue[#job.queue + 1] = { ptr = p, path = path, d = node.d + 1 }
                 end
             end
         end
+        if _now() >= stop then break end
     end
-    return hits, n
+    return job.qi > #job.queue or job.n >= job.budget
 end
 
 -- Where the search starts: the controller, its owner and value context, every
@@ -278,34 +292,67 @@ end
 --- without one. The fourth found them by pointer search, three hops out —
 --- `hero+0x1e0+0x2b0+0x548` and `hero+0x300+0x568+0x160` (components) and
 --- `hero.owner+0x640+0x70` (settings). Those hops cross heap objects with no
---- known meaning, so they are not hard-coded: the search runs once per hero
---- (~0.6 s, background thread) and only RTTI-confirmed objects are kept. Each
---- camera component's own entity (+0x08) is then read for its siblings.
+--- known meaning, so they are not hard-coded: the search (see _search_step)
+--- runs a slice per call until done, and only RTTI-confirmed objects are kept.
+--- Each camera component's own entity (+0x08) is then read for its siblings.
 ---
 --- A hero's own cameras come and go: Kintaro's "Shared Camera" belongs to his
 --- on-foot state (Child State Alt Form) and is found only while he is on foot,
 --- and the one found at run start is not the one in use after a remount
 --- (2026-11-08: one launch found only it, the next only the default camera).
---- So the cheap pass over the hero's entities is redone every RESCAN seconds,
---- while the pointer search's finds are kept per hero and only re-searched
---- when the default camera is still missing. Compare the list's settings
---- pointers to notice a camera that appeared (camera-control re-applies then).
-local RESCAN, RESEARCH = 0.25, 10
-local _scan_at = nil
-local _found_for, _found, _search_at = nil, {}, nil
+--- So the cheap pass over the hero's entities is redone every RESCAN seconds.
+--- What the search finds is kept for the session, across hero changes, while
+--- its classes hold: the default camera is one object for every form Kintaro
+--- takes, and every transform, death and respawn is a new captured hero. A
+--- search runs only while no default camera is known, at most once per hero
+--- per RESEARCH seconds. Compare the list's settings pointers to notice a
+--- camera that appeared (camera-control re-applies then).
+local RESCAN, RESEARCH = 1.0, 15
+M.SEARCH_SLICE = 0.004           -- seconds of search per call
+local _scan_at, _none = nil, nil -- _none: the reason, while the hero has no camera
+local _known = {}                -- settings ptr -> entry, from searches
+local _job, _job_for = nil, nil
+local _searched = {}             -- hero -> when its last search ended
 
-local function _now() return (I.now and I.now()) or os.clock() end
+local function _alive(c)
+    return _is(c.settings, SETTINGS_CLASS) and (not c.component or _is(c.component, CAMERA_CLASS))
+end
+
+-- The search after its first slice runs on its own timer, one slice every
+-- STEP_EVERY seconds, so its share of the loader thread stays small however
+-- often cameras() is called. cameras() only picks up the finished result.
+local STEP_EVERY = 0.05
+local _job_done, _pumping = nil, false
+
+--- One slice of a running search; false when there is nothing left to do.
+function M._search_pump()
+    local job = _job
+    if not job then _pumping = false; return false end
+    if _search_step(job, M.SEARCH_SLICE) then
+        _job, _job_done, _pumping = nil, job, false
+        return false
+    end
+    return true
+end
+
+local function _start_pump()
+    if _pumping or not (R.schedule and R.schedule.after) then return end
+    _pumping = true
+    local function tick()
+        if M._search_pump() then R.schedule.after(STEP_EVERY, tick) end
+    end
+    R.schedule.after(STEP_EVERY, tick)
+end
 
 function M.cameras()
     if not (I and I.read_u64 and I.read_u32 and I.read_u8) then return nil, "loader too old" end
     local hero = R.entity and R.entity.hero and R.entity.hero()
     if not hero then return nil, "hero not captured (start a run)" end
     local now = _now()
-    if hero == _cams_for and _cams and _scan_at and now - _scan_at < RESCAN
-            and _still_valid(_cams) then
-        return _cams
+    if hero == _cams_for and not _job_done and _scan_at and now - _scan_at < RESCAN then
+        if _none then return nil, _none end
+        if _cams and _still_valid(_cams) then return _cams end
     end
-    if hero ~= _found_for then _found_for, _found, _search_at = hero, {}, nil end
 
     local out, seen = {}, {}
     local function add_settings(s, c)
@@ -332,9 +379,9 @@ function M.cameras()
     for _, o in ipairs(owners) do
         for _, c in ipairs(o.components) do add_component(c.ptr) end
     end
-    -- What earlier searches found for this hero, while it is still there.
-    for _, c in ipairs(_found) do
-        if (not c.component or _is(c.component, CAMERA_CLASS)) then add_settings(c.settings, c.component) end
+    -- What earlier searches found, for any hero, while it is still there.
+    for s, c in pairs(_known) do
+        if _alive(c) then add_settings(c.settings, c.component) else _known[s] = nil end
     end
     -- A hero's own camera (Kintaro's "Shared Camera", Melusine's "Wisp
     -- Camera") is a component of the hero entity, so the pass above can find it
@@ -346,13 +393,25 @@ function M.cameras()
         for _, c in ipairs(out) do if c.default then return true end end
         return false
     end
-    local hits, visited = {}, 0
-    -- The search is the slow part (~0.6 s): at most once per RESEARCH seconds.
-    if not has_default() and (_search_at == nil or now - _search_at >= RESEARCH) then
-        _search_at = now
+    -- A search for another hero, or for a default camera now known, is moot.
+    if has_default() or _job_for ~= hero then _job = nil end
+    if _job_done and (has_default() or _job_done.hero ~= hero) then _job_done = nil end
+    if not has_default() and not _job and not _job_done
+            and (_searched[hero] == nil or now - _searched[hero] >= RESEARCH) then
+        _job, _job_for = _search_new(_roots(hero, owners), 3, 2500), hero
+        _job.hero = hero
+        -- First slice now (a small or mocked search ends here), the rest timed.
+        if _search_step(_job, M.SEARCH_SLICE) then
+            _job_done, _job = _job, nil
+        else
+            _start_pump()
+        end
+    end
+    if _job_done then
+        local job = _job_done
+        _job_done, _job_for, _searched[hero] = nil, nil, now
         local first = #out + 1
-        hits, visited = _search(_roots(hero, owners), 3, 2500)
-        for _, h in ipairs(hits) do
+        for _, h in ipairs(job.hits) do
             if h.cls:sub(-#CAMERA_CLASS) == CAMERA_CLASS then
                 add_component(h.ptr)
                 add_entity(I.read_u64(h.ptr + 0x08))
@@ -360,17 +419,19 @@ function M.cameras()
                 add_settings(h.ptr, nil)
             end
         end
-        for i = first, #out do _found[#_found + 1] = out[i] end
-        -- Kept anyway (yaw still reaches them), but say what the search saw.
-        if #out > 0 and not has_default() then _log_miss(hero, owners, hits, visited) end
+        for i = first, #out do _known[out[i].settings] = out[i] end
+        -- Say what the search saw (once per session); a list without the
+        -- default camera is kept anyway, since yaw still reaches it.
+        if not has_default() then _log_miss(hero, owners, job.hits, job.n) end
     end
-    _scan_at = now
+
+    _cams_for, _scan_at = hero, now
     if #out == 0 then
-        _cams_for, _cams = nil, nil
-        _log_miss(hero, owners, hits, visited)
-        return nil, "no top-down camera on the hero"
+        _cams = nil
+        _none = _job and "looking for the camera (search under way)" or "no top-down camera on the hero"
+        return nil, _none
     end
-    _cams_for, _cams = hero, out
+    _cams, _none = out, nil
     return out
 end
 
