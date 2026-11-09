@@ -843,6 +843,13 @@ _PIPER_HUD = {"HUD Trait Rats Amount": "Kit Pet HUD",
               "Trait Ability Alive Pets Operation": "Kit Pet Alive Count"}
 
 
+_PET_KEYS = {"entity", "count", "button", "talent", "when", "counter", "appear",
+             "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
+             "hold", "attack_area", "attack_speed", "attack_debuffs",
+             "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
+             "count_talents", "count_card", "look", "name", "upgrade"}
+
+
 def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
           earlier: list[dict] = ()) -> list[dict]:
     """``pets = { entity = <enemy>, count = 1, button = "trait" }``: pets that
@@ -861,11 +868,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     from . import ally_summon as AS
     if not isinstance(spec, dict) or not spec.get("entity"):
         raise KitError('kit pets = { entity = "<enemy>", count = 1, button = "trait" }')
-    unknown = set(spec) - {"entity", "count", "button", "talent", "when", "counter", "appear",
-                           "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
-                           "hold", "attack_area", "attack_speed", "attack_debuffs",
-                           "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
-                           "count_talents", "count_card", "look", "name", "upgrade"}
+    unknown = set(spec) - _PET_KEYS
     if unknown:
         raise KitError(f"kit pets has no {', '.join(sorted(unknown))}")
     count = spec.get("count", 1)
@@ -889,6 +892,11 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         if not spec.get("talent"):
             raise KitError("kit pets: upgrade needs a talent to switch on "
                            "(e.g. talent = \"Skill Secondary Can Hold\")")
+        bad = set(upgrade) - (_PET_KEYS - {"count", "button", "talent", "when", "counter",
+                                           "spawn", "hold", "count_talents", "count_card",
+                                           "upgrade"})
+        if bad:
+            raise KitError(f"kit pets upgrade has no {', '.join(sorted(bad))}")
     if spawn == "button" and spec.get("talent") and not upgrade:
         raise KitError("kit pets: spawn = \"button\" and a talent do not mix")
     src = _entity_ref(spec["entity"])
@@ -897,6 +905,8 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         # hero's own whose reads of Piper read this hero (see _pet_copy).
         if spec.get("appear"):
             raise KitError("kit pets appear: only an enemy copy has a spawn clip to swap")
+        if upgrade:
+            raise KitError("kit pets upgrade: only an enemy copy can be upgraded")
         pet, pre = _pet_copy(src, ctx)
         pet_up = None
     else:
@@ -1259,7 +1269,12 @@ def _summon_for(enemy, ctx: _Ctx, slot: str, base: str | None = None, *,
                 and c.end == end):
             return c.ref
     if name:
+        # a file name: no path characters, and one copy per name
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,47}", name):
+            raise KitError(f"kit {slot}: name is letters, digits and _, got {name!r}")
         stem = f"Heroes\\{ctx.folder}\\Hero_{ctx.hid}_{name}"
+        if any(c.ref == stem + ".entity.ot" for c in ctx.copies):
+            raise KitError(f"kit {slot}: two different summons are both named {name!r}")
     else:
         k = len({c.ref.removesuffix(".entity.ot").removesuffix("_Model")
                  for c in ctx.copies}) + 1

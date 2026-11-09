@@ -931,4 +931,16 @@ def test_blood_wolf_pet_talent_upgrade_branching(tmp_path):
     assert any("Hero_BloodWolfUpgradeTest_DirewolfBite.entity.ot" in p.name for p in files)
 
 
-
+@needs_corpus
+@needs_install
+@pytest.mark.parametrize("pets, msg", [
+    ({"name": "..\\..\\Evil"}, "name is letters"),
+    ({"talent": "Skill Secondary Can Hold", "upgrade": {"count": 3}}, "upgrade has no count"),
+    ({"entity": "Heroes/Hero_Piper/Hero_Piper_Rat_Pet", "talent": "Skill Secondary Can Hold",
+      "upgrade": {"lifetime": 5}}, "only an enemy copy"),
+])
+def test_kit_pets_name_and_upgrade_are_checked(tmp_path, pets, msg):
+    kit = {"pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "button": "special",
+                    "when": "State Wolf Secondary Ability", **pets}}
+    with pytest.raises(ContentError, match=msg):
+        _emit(tmp_path, id="PetCheck", base="Red", kit=kit)
