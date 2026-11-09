@@ -98,6 +98,26 @@ local function _is(obj, cls)
     return n:sub(-#cls) == cls
 end
 
+-- Class name for a SEARCH: only objects whose first word is a vftable inside
+-- the game image, and looked up once per vftable. R.rtti.name is a dozen
+-- guarded reads plus a string; called on every pointer a search met, it made
+-- one search take ~13 s (2026-11-08). _is() stays uncached for the checks
+-- that guard a write.
+local _vt_cls = {}
+local function _cls(p)
+    local vt = I.read_u64(p)
+    if not (vt and R.ptr and R.ptr.in_image and R.ptr.in_image(vt)) then return nil end
+    local c = _vt_cls[vt]
+    if c == nil then
+        c = R.rtti and R.rtti.name and R.rtti.name(p) or false
+        _vt_cls[vt] = c
+    end
+    return c or nil
+end
+
+-- A class name without its namespace, for log paths.
+local function _short(c) return (c:gsub("^.*::", "")) end
+
 -- The record's inline f32, or nil + reason. `write` is checked the same way.
 local function _record(settings, off)
     local rec = settings + off
@@ -157,7 +177,7 @@ local function _entities(hero)
         local list = (direct and R.entity.components(e) or _owns_its_components(e)) or {}
         -- The class-id map only on a real oCEntity: a probed pointer field is
         -- anything, and its +0x5f0 is someone else's memory.
-        local n = R.rtti.name(e)
+        local n = _cls(e)
         if type(n) == "string" and n:sub(-8) == "oCEntity" then
             for _, c in ipairs(_map_components(e)) do list[#list + 1] = c end
         end
@@ -202,16 +222,24 @@ end
 -- Advance `job` for about `slice` seconds; true once it is finished.
 local function _search_step(job, slice)
     local stop = _now() + slice
+    local unpack = string.unpack
     while job.qi <= #job.queue and job.n < job.budget do
         local node = job.queue[job.qi]; job.qi = job.qi + 1; job.n = job.n + 1
-        for off = 0, 0x7f8, 8 do
-            local p = I.read_u64(node.ptr + off)
+        -- One guarded read for the object's first 0x800 bytes (it may come
+        -- back shorter near the end of a mapping), not 256 single reads.
+        local blk = I.read_block and I.read_block(node.ptr, 0x800)
+        local n = blk and (#blk // 8) or 256
+        for i = 0, n - 1 do
+            local off = i * 8
+            local p
+            if blk then p = unpack("<i8", blk, off + 1) else p = I.read_u64(node.ptr + off) end
             if _plausible(p) and not job.seen[p] then
                 job.seen[p] = true
-                local path = ("%s+0x%x"):format(node.path, off)
-                local cls = R.rtti.name(p)
-                if type(cls) == "string" and cls:find("TopDownCamera", 1, true) then
-                    job.hits[#job.hits + 1] = { ptr = p, cls = cls, path = path }
+                local cls = _cls(p)
+                local path = cls and ("%s+0x%x[%s]"):format(node.path, off, _short(cls))
+                    or ("%s+0x%x"):format(node.path, off)
+                if cls and cls:find("TopDownCamera", 1, true) then
+                    job.hits[#job.hits + 1] = { ptr = p, cls = cls, path = path, d = node.d + 1 }
                 elseif node.d + 1 < job.depth then
                     job.queue[#job.queue + 1] = { ptr = p, path = path, d = node.d + 1 }
                 end
@@ -308,7 +336,9 @@ end
 --- per RESEARCH seconds. Compare the list's settings pointers to notice a
 --- camera that appeared (camera-control re-applies then).
 local RESCAN, RESEARCH = 1.0, 15
-M.SEARCH_SLICE = 0.008           -- seconds of search per slice
+-- Seconds of search per slice. Timers fire on the loader's 500 ms "tick", so
+-- this is the search's share of each half second, not of 25 ms.
+M.SEARCH_SLICE = 0.025
 -- Where the search found the cameras on the 2026-10 build (see above), as
 -- field offsets from the hero: two to a camera component, one to a settings
 -- object (through hero.owner).
@@ -353,6 +383,87 @@ local function _start_pump()
     R.schedule.after(STEP_EVERY, tick)
 end
 
+-- WHERE THE CAMERAS ACTUALLY ARE (read live from outside the game, 2026-11-08,
+-- Kintaro + Beowulf co-op): plain components in the HERO ENTITY's +0x190
+-- component array, owner (+0x08) == that entity. Kintaro's entity held Shared
+-- Camera and both Ultimate Ability 1 cameras at [1043..1045] and Default /
+-- Ultimate Trigger Zoom / Zoom at [3004..3006] of 3880 components; Beowulf's
+-- held the three shared ones at [2662..2664] of 3538. R.entity.components
+-- refuses any array over 256 ("a real entity has tens"), so every pass above
+-- saw nothing and the slow search was the only way in: the 8-minute wait.
+--
+-- Every hero in the match is read, not only the captured one: in that session
+-- capture had taken the ally's controller, and Kintaro's own cameras were on
+-- the other entity. The candidate ring (shared slots 8..15) holds one
+-- controller per hero. A camera's settings object is shared by every hero that
+-- uses it ("Default Camera" was one object behind both heroes' components),
+-- and a camera only drives the screen of the machine it runs on, so writing an
+-- ally's is harmless.
+local ENT_CPNTS, ENT_COUNT, ENT_MAX = 0x190, 0x198, 16384
+local HERO_RING_FIRST, HERO_RING_COUNT = 8, 8
+local _ent_cache = {}            -- entity -> { arr, n, idx = { camera slots } }
+
+local function _is_camera_cpnt(cp)
+    local c = _plausible(cp) and _cls(cp)
+    return c and c:sub(-#CAMERA_CLASS) == CAMERA_CLASS or false
+end
+
+-- Hero controllers worth reading: the captured one and every live ring entry.
+local function _hero_controllers(hero)
+    local out, seen = {}, {}
+    local function add(h)
+        if _plausible(h) and not seen[h] then seen[h] = true; out[#out + 1] = h end
+    end
+    add(hero)
+    if I.shared_get then
+        for i = 0, HERO_RING_COUNT - 1 do
+            local ok, h = pcall(I.shared_get, HERO_RING_FIRST + i)
+            if ok and type(h) == "number" and h ~= 0
+                    and not (R.entity._retired and R.entity._retired(h))
+                    and (not R.entity._is_hero_object or R.entity._is_hero_object(h)) then
+                add(h)
+            end
+        end
+    end
+    return out
+end
+
+-- The camera components in entity `e`'s full component array. The array is
+-- read in blocks; the slots that held cameras are remembered, so while the
+-- array itself is unchanged only those few slots are re-read.
+local function _entity_cameras(e)
+    if not _plausible(e) then return {} end
+    local arr, n = I.read_u64(e + ENT_CPNTS), I.read_u32(e + ENT_COUNT)
+    if not (_plausible(arr) and n and n > 0 and n <= ENT_MAX) then return {} end
+    local c = _ent_cache[e]
+    if c and c.arr == arr and c.n == n then
+        local out = {}
+        for _, i in ipairs(c.idx) do
+            local cp = I.read_u64(arr + i * 8)
+            if _is_camera_cpnt(cp) then out[#out + 1] = cp end
+        end
+        if #out == #c.idx then return out end
+    end
+    local idx, out, unpack = {}, {}, string.unpack
+    local i = 0
+    while i < n do
+        local take = math.min(n - i, 0x2000)          -- read_block caps at 64 KB
+        local blk = I.read_block and I.read_block(arr + i * 8, take * 8)
+        for j = 0, take - 1 do
+            local cp
+            if blk and #blk >= (j + 1) * 8 then
+                cp = unpack("<i8", blk, j * 8 + 1)
+            else
+                cp = I.read_u64(arr + (i + j) * 8)
+            end
+            if _is_camera_cpnt(cp) then idx[#idx + 1] = i + j; out[#out + 1] = cp end
+        end
+        i = i + take
+    end
+    _ent_cache[e] = { arr = arr, n = n, idx = idx }
+    return out
+end
+
 function M.cameras()
     if not (I and I.read_u64 and I.read_u32 and I.read_u8) then return nil, "loader too old" end
     local hero = R.entity and R.entity.hero and R.entity.hero()
@@ -383,24 +494,32 @@ function M.cameras()
         end
     end
 
-    _owners_for, _owners = nil, nil      -- re-read: the hero's cameras come and go
-    local owners = _entities(hero)
-    for _, o in ipairs(owners) do
-        for _, c in ipairs(o.components) do add_component(c.ptr) end
+    local function has_default()
+        for _, c in ipairs(out) do if c.default then return true end end
+        return false
+    end
+
+    -- First and normally only pass: every hero entity's full component array
+    -- (see _entity_cameras). The controller itself is read too, since a test
+    -- double or a future build may hand back the entity directly.
+    for _, h in ipairs(_hero_controllers(hero)) do
+        for _, e in ipairs({ I.read_u64(h + 0x08), h }) do
+            for _, cp in ipairs(_entity_cameras(e)) do add_component(cp) end
+        end
+    end
+
+    -- Fallbacks, only while no default camera turned up there.
+    local owners = {}
+    if not has_default() then
+        _owners_for, _owners = nil, nil
+        owners = _entities(hero)
+        for _, o in ipairs(owners) do
+            for _, c in ipairs(o.components) do add_component(c.ptr) end
+        end
     end
     -- What earlier searches found, for any hero, while it is still there.
     for s, c in pairs(_known) do
         if _alive(c) then add_settings(c.settings, c.component) else _known[s] = nil end
-    end
-    -- A hero's own camera (Kintaro's "Shared Camera", Melusine's "Wisp
-    -- Camera") is a component of the hero entity, so the pass above can find it
-    -- and nothing else. The default camera is not, so search whenever it is
-    -- still missing: stopping at any hit left Kintaro with only his on-foot
-    -- camera, and every field but yaw failed with "no camera to change" (Kintaro,
-    -- 2026-11-08).
-    local function has_default()
-        for _, c in ipairs(out) do if c.default then return true end end
-        return false
     end
     -- The paths the search found before, tried first: a handful of reads, and
     -- the class check at the end makes a stale path a miss, never a wrong
@@ -605,6 +724,64 @@ function M.describe()
         R.log(("[rsmm.camera] #%d %s settings=0x%x %s"):format(
             i, c.default and "default" or "other", c.settings, table.concat(parts, " ")))
     end
+end
+
+--- DIAGNOSTIC. Search from the hero (and the scene, when R.run has seen the
+--- world) for EVERY top-down camera and log where each one sits: the pointer
+--- path with the class of each hop, the owning entity, whether it is the
+--- default camera, and its values. Runs whole, capped at `opts.limit` seconds
+--- (default 3), so the game can stall that long: for a run meant to map where
+--- the cameras live, never for a mod's normal poll.
+function M.explore(tag, opts)
+    opts = opts or {}
+    tag = tostring(tag or "manual")
+    if not (I and I.read_u64 and R.entity and R.entity.hero) then return end
+    local hero = R.entity.hero()
+    if not hero then R.log("[rsmm.camera] explore " .. tag .. ": no hero captured"); return end
+    local t0 = _now()
+    _owners_for, _owners = nil, nil
+    local owners = _entities(hero)
+    local roots = _roots(hero, owners)
+    local scene = R.run and R.run.world_owner and R.run.world_owner()
+    if scene then roots[#roots + 1] = { ptr = scene, name = "scene" } end
+    local job = _search_new(roots, opts.depth or 4, opts.budget or 6000)
+    local done = _search_step(job, opts.limit or 3.0)
+    R.log(("[rsmm.camera] explore %s: hero=0x%x %s, scene=%s; %d object(s) in %.2f s%s; %d camera object(s)")
+        :format(tag, hero, tostring(R.rtti.name(hero)),
+                scene and ("0x%x"):format(scene) or "not seen yet",
+                job.n, _now() - t0, done and "" or " (STOPPED at the time cap)", #job.hits))
+    for _, o in ipairs(owners) do
+        for _, c in ipairs(o.components) do
+            local n = R.rtti.name(c.ptr)
+            if type(n) == "string" and n:find("TopDownCamera", 1, true) then
+                R.log(("[rsmm.camera]   on hero entity 0x%x %s: 0x%x %s"):format(
+                    o.entity, tostring(R.rtti.name(o.entity)), c.ptr, n))
+            end
+        end
+    end
+    for i, h in ipairs(job.hits) do
+        local s, comp = h.ptr, nil
+        if h.cls:sub(-#CAMERA_CLASS) == CAMERA_CLASS then
+            comp, s = h.ptr, I.read_u64(h.ptr + CPNT_SETTINGS)
+        end
+        local vals = {}
+        if _plausible(s) and _is(s, SETTINGS_CLASS) then
+            for _, name in ipairs({ "distance", "pitch", "yaw", "height", "fov" }) do
+                local f = M.FIELDS[name]
+                local at, err = _record(s, f.off)
+                local v = at and _from_file(f, I.read_f32(at))
+                vals[#vals + 1] = name .. "=" .. (v and ("%.2f"):format(v) or (err and "linked" or "?"))
+            end
+        end
+        local owner = comp and I.read_u64(comp + 0x08)
+        R.log(("[rsmm.camera]   #%d %s %s, depth %d: %s"):format(i,
+            comp and "component" or "settings",
+            (_plausible(s) and _default_flag(s)) and "DEFAULT" or "other", h.d or 0, h.path))
+        R.log(("[rsmm.camera]      settings=0x%x owner=%s %s"):format(s or 0,
+            _plausible(owner) and ("0x%x %s"):format(owner, tostring(R.rtti.name(owner))) or "-",
+            table.concat(vals, " ")))
+    end
+    return job.hits
 end
 
 return function(env)
