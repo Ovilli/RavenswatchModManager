@@ -2522,6 +2522,84 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- 24c. The is-local byte outranks every other signal, on every path
+--
+-- 24b only covered the ring pass, and that pass ran only when slot 0 was empty
+-- or dead. Every other path published without asking: native spawn-init / give /
+-- gain wrote slot 0 for whichever hero fired them (allies included), the
+-- pending "hero switch" promoted the last hero to spawn, and a live slot 0 was
+-- kept forever. A Kintaro + Beowulf co-op run (2026-11-08) captured the Beowulf
+-- ally's controller that way while Kintaro's sat in the ring.
+-- ---------------------------------------------------------------------------
+do
+    shared[0], shared[2], shared[3] = 0, 0, 0
+    for i = 8, 15 do shared[i] = nil end
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+
+    local ALLY, MINE, MINE2 = 0x11600000, 0x11700000, 0x11800000
+    for _, p in ipairs({ ALLY, MINE, MINE2 }) do
+        I.write_f32(p + MAXHP_OFF, 100.0)
+        I.write_f32(p + HP_OFF, 100.0)
+        I.write_u64(p + HUDMIRROR_OFF, MIRROR)
+    end
+    I.write_f32(MIRROR, 100.0)
+    I.write_u8(ALLY + 0x1db0, 0)
+    I.write_u8(MINE + 0x1db0, 1)
+    I.write_u8(MINE2 + 0x1db0, 0)
+
+    -- An ally already published (native spawn-init / give / gain) and live.
+    shared[0] = ALLY
+    shared[8] = ALLY
+    shared[9] = MINE
+    check(Rr.entity.hero() == MINE,
+          "an ally in slot 0 is replaced by a ring candidate that reads local")
+    check(shared[0] == MINE and shared[1] == 1,
+          "and the local hero is published for the other mod states")
+    check(Rr.entity.hero({ local_only = true }) == MINE,
+          "local_only returns the hero when its byte reads 1")
+
+    -- The pending "hero switch" used to promote any live candidate that
+    -- differed from slot 0: the last hero to spawn won, ally or not.
+    shared[3] = ALLY
+    check(Rr.entity.hero() == MINE and shared[0] == MINE,
+          "the hero switch refuses a byte-0 pending candidate over a byte-1 hero")
+    -- A real switch still works: the new local hero spawns into the pending
+    -- slot while the freed previous one keeps reading plausible and local.
+    I.write_u8(MINE2 + 0x1db0, 1)
+    shared[3] = MINE2
+    check(Rr.entity.hero() == MINE2 and shared[0] == MINE2 and shared[3] == 0,
+          "a pending candidate that reads local still wins the hero switch")
+
+    -- Nothing reads 1 (a hero mid-load, or a patch that moved the byte).
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[0], shared[3] = 0, 0
+    I.write_u8(MINE + 0x1db0, 0)
+    I.write_f32(ALLY + MAXHP_OFF, 102.0)      -- fresh objects, not the retired fingerprints
+    I.write_f32(MINE + MAXHP_OFF, 102.0)
+    shared[8] = ALLY
+    shared[9] = MINE
+    check(Rr.entity.hero({ local_only = true }) == nil,
+          "local_only returns nil while no candidate reads 1")
+    check(Rr.entity.hero() == ALLY,
+          "the default falls back to a byte-0 candidate, so capture survives a moved byte")
+    -- The local hero finishes loading: its byte goes to 1.
+    I.write_u8(MINE + 0x1db0, 1)
+    check(Rr.entity.hero() == MINE and shared[0] == MINE,
+          "a published byte-0 hero is replaced as soon as a candidate reads 1")
+    check(Rr.entity.hero({ local_only = true }) == MINE,
+          "and local_only now returns it")
+
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[0], shared[1], shared[2], shared[3] = 0, 0, 0, 0
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+    shared[0] = HERO                       -- restore for later sections
+end
+
+-- ---------------------------------------------------------------------------
 -- 25. RSMM_ENABLE_HERO_CAPTURE off must mean off EVERYWHERE
 --
 -- The flag stopped the native hooks and nothing else: this Lua fallback then
@@ -10971,7 +11049,9 @@ do
     local real_iho, saved_ring = R.entity._is_hero_object, shared[8]
     R.entity._is_hero_object = function(p) return p == CTL_A or p == CTL_B end
     shared[8] = CTL_A
-    R.entity.hero = function() return CTL_B end
+    -- Nothing reads local here (the byte moved, or the hero is mid-load), so
+    -- the old sweep of every hero controller is the fallback.
+    R.entity.hero = function(o) if o and o.local_only then return nil end return CTL_B end
     R.camera.SEARCH_SLICE = 0
     clock3 = clock3 + 2
     local b1, s1 = I.reads.block, I.reads.single
@@ -10987,6 +11067,28 @@ do
     local again = R.camera.cameras()
     check(again and #again == 3 and I.reads.single - s2 < first_reads / 10,
           "a re-check reads only the slots that held cameras")
+    -- With a hero that reads local, only that hero's components are read: the
+    -- ally's are never touched, even though it is published and in the ring.
+    shared[9] = CTL_B
+    R.entity.hero = function(o) if o and o.local_only then return CTL_A end return CTL_B end
+    clock3 = clock3 + 2
+    -- (a function, not a block: the spec's main chunk is at Lua's 200-local cap)
+    ;(function()
+    local own = R.camera.cameras()
+    local own_c, ally_c = {}, false
+    for _, cam in ipairs(own or {}) do
+        own_c[cam.component] = true
+        if cam.component == DB_C or cam.component == ZB_C then ally_c = true end
+    end
+    check(own and #own == 3 and own_c[SH_C] and own_c[DEF_C] and own_c[ZA_C] and not ally_c,
+          "R.camera reads only the local hero's cameras once a hero reads local")
+    R.entity.hero = function(o) if o and o.local_only then return nil end return CTL_B end
+    clock3 = clock3 + 0.1
+    local back_sweep = R.camera.cameras()
+    check(back_sweep and #back_sweep == 3,
+          "losing the local hero is a new list at once, not the cached local one")
+    end)()
+    shared[9] = nil
     R.entity._is_hero_object, shared[8] = real_iho, saved_ring
     R.rtti.name = rtti_s
     I.now = real_now2

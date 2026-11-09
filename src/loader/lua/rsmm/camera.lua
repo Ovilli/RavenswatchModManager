@@ -294,7 +294,7 @@ local function _log_miss(hero, owners, hits, visited)
     end
 end
 
-local _cams_for, _cams = nil, nil
+local _cams_for, _cams, _cams_swept = nil, nil, nil
 
 local function _default_flag(s)
     local flag = s + DEFAULT_FLAG + UNION
@@ -392,13 +392,21 @@ end
 -- refuses any array over 256 ("a real entity has tens"), so every pass above
 -- saw nothing and the slow search was the only way in: the 8-minute wait.
 --
--- Every hero in the match is read, not only the captured one: in that session
--- capture had taken the ally's controller, and Kintaro's own cameras were on
--- the other entity. The candidate ring (shared slots 8..15) holds one
--- controller per hero. A camera's settings object is shared by every hero that
--- uses it ("Default Camera" was one object behind both heroes' components),
--- and a camera only drives the screen of the machine it runs on, so writing an
--- ally's is harmless.
+-- Whose cameras: the LOCAL hero's. In that session capture had taken the
+-- ally's controller, and Kintaro's own cameras were on the other entity.
+-- R.entity.hero now ranks every capture candidate by the engine's is-local
+-- byte, and `{ local_only = true }` returns a hero only when that byte reads 1,
+-- so that is the one read.
+--
+-- Only when no candidate reads 1 (a hero mid-load, or a patch that moved the
+-- byte) does this fall back to the old sweep: the captured hero plus every
+-- controller in the candidate ring (shared slots 8..15, one per hero). That is
+-- what the 2026-11-08 run that held the view all the way through Baba Yaga
+-- used, so a build where the byte stops working keeps the camera rather than
+-- losing it. Writing an ally's cameras there is harmless: a camera's settings
+-- object is shared by every hero that uses it ("Default Camera" was one object
+-- behind both heroes' components), and a camera only drives the screen of the
+-- machine it runs on.
 local ENT_CPNTS, ENT_COUNT, ENT_MAX = 0x190, 0x198, 16384
 local HERO_RING_FIRST, HERO_RING_COUNT = 8, 8
 local _ent_cache = {}            -- entity -> { arr, n, idx = { camera slots } }
@@ -408,14 +416,15 @@ local function _is_camera_cpnt(cp)
     return c and c:sub(-#CAMERA_CLASS) == CAMERA_CLASS or false
 end
 
--- Hero controllers worth reading: the captured one and every live ring entry.
-local function _hero_controllers(hero)
+-- Hero controllers worth reading: the local hero alone, or (`sweep`, nothing
+-- reads local) the captured one and every live ring entry.
+local function _hero_controllers(hero, sweep)
     local out, seen = {}, {}
     local function add(h)
         if _plausible(h) and not seen[h] then seen[h] = true; out[#out + 1] = h end
     end
     add(hero)
-    if I.shared_get then
+    if sweep and I.shared_get then
         for i = 0, HERO_RING_COUNT - 1 do
             local ok, h = pcall(I.shared_get, HERO_RING_FIRST + i)
             if ok and type(h) == "number" and h ~= 0
@@ -466,10 +475,13 @@ end
 
 function M.cameras()
     if not (I and I.read_u64 and I.read_u32 and I.read_u8) then return nil, "loader too old" end
-    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if not (R.entity and R.entity.hero) then return nil, "hero not captured (start a run)" end
+    local hero = R.entity.hero({ local_only = true })
+    local sweep = not hero
+    if sweep then hero = R.entity.hero() end
     if not hero then return nil, "hero not captured (start a run)" end
     local now = _now()
-    if hero == _cams_for and not _job_done and _scan_at and now - _scan_at < RESCAN then
+    if hero == _cams_for and sweep == _cams_swept and not _job_done and _scan_at and now - _scan_at < RESCAN then
         if _none then return nil, _none end
         if _cams and _still_valid(_cams) then return _cams end
     end
@@ -502,7 +514,7 @@ function M.cameras()
     -- First and normally only pass: every hero entity's full component array
     -- (see _entity_cameras). The controller itself is read too, since a test
     -- double or a future build may hand back the entity directly.
-    for _, h in ipairs(_hero_controllers(hero)) do
+    for _, h in ipairs(_hero_controllers(hero, sweep)) do
         for _, e in ipairs({ I.read_u64(h + 0x08), h }) do
             for _, cp in ipairs(_entity_cameras(e)) do add_component(cp) end
         end
@@ -584,7 +596,7 @@ function M.cameras()
         end
     end
 
-    _cams_for, _scan_at = hero, now
+    _cams_for, _cams_swept, _scan_at = hero, sweep, now
     if #out == 0 then
         _cams = nil
         _none = _job and "looking for the camera (search under way)" or "no top-down camera on the hero"
@@ -736,7 +748,7 @@ function M.explore(tag, opts)
     opts = opts or {}
     tag = tostring(tag or "manual")
     if not (I and I.read_u64 and R.entity and R.entity.hero) then return end
-    local hero = R.entity.hero()
+    local hero = R.entity.hero({ local_only = true }) or R.entity.hero()
     if not hero then R.log("[rsmm.camera] explore " .. tag .. ": no hero captured"); return end
     local t0 = _now()
     _owners_for, _owners = nil, nil
