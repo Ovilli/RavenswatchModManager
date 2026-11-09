@@ -3183,6 +3183,8 @@ end
 -- update). Components are found by RTTI name; every write is record-checked.
 --
 --   R.camera.set("yaw", 135)   -- degrees; rotates every hero camera
+--   R.camera.set("distance", 20) -- default camera 20; the others (Kintaro on
+--                              -- foot, Melusine's Wisp, ultimates) scale with it
 --   R.camera.get("yaw")        -- the default camera's value
 --   R.camera.reset()           -- put back what this session changed
 --   R.camera.describe()        -- log every camera's fields

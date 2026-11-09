@@ -10655,6 +10655,10 @@ end
 -- value +0x70, type byte +0x78), record+0x58 == -1 for a literal.
 do
     check(R.camera ~= nil, "R.camera loaded")
+    -- Whole searches unless a case below says otherwise: a wall-clock slice
+    -- would make these depend on how fast the machine is.
+    local real_slice = R.camera.SEARCH_SLICE
+    R.camera.SEARCH_SLICE = 60
     local HERO_C, ARR = 0x12d00000, 0x12d10000
     local CAM = { 0x12d20000, 0x12d30000 }             -- default, zoom
     local SET = { 0x12d40000, 0x12d50000 }
@@ -10667,10 +10671,17 @@ do
         mem[r + 0x78] = opts.type or 0
         if opts.type == 2 then mem[r + 0x70] = v else I.write_f32(r + 0x70, v) end
     end
+    -- Every real object the search can name starts with a vftable inside the
+    -- game image (the search skips anything else), one per mock object here.
+    local next_vt = I.module_base() + 0x1400000
+    local function vt(p) I.write_u64(p, next_vt); next_vt = next_vt + 8 end
     for i = 1, 2 do
+        vt(CAM[i]); vt(SET[i])
         I.write_u64(CAM[i] + 0x10, SET[i])
         rec(SET[i], 0x3f8, math.rad(45))                -- yaw
         rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
+        rec(SET[i], 0x278, math.rad(i == 1 and 54 or 50)) -- pitch
+        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look height
         rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
         rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
     end
@@ -10691,8 +10702,27 @@ do
 
     check(R.camera.set("yaw", 135) == 2, "yaw moves every camera, so zooming keeps it")
     check(about(I.read_f32(SET[2] + 0x3f8 + 0x70), math.rad(135)), "zoom camera yaw written in radians")
-    check(R.camera.set("distance", 50) == 1, "other fields change the default camera only")
-    check(about(I.read_f32(SET[2] + 0x2f8 + 0x70), 9.05), "zoom distance untouched")
+    -- The game hands the view to another camera for whole stretches (Kintaro
+    -- on foot, Melusine's Wisp): a field set on the default camera alone
+    -- snapped back to the shipped value there. Each camera follows by the same
+    -- ratio / offset from its OWN original, so their differences survive.
+    local ZD = SET[2] + 0x2f8 + 0x70
+    check(R.camera.set("distance", 50) == 2, "distance carries to every camera")
+    check(about(I.read_f32(SET[1] + 0x2f8 + 0x70), 50), "default camera takes the value as given")
+    check(about(I.read_f32(ZD), 9.05 * 50 / 33), "other camera keeps its ratio to the default")
+    check(R.camera.set("distance", 66) == 2 and about(I.read_f32(ZD), 9.05 * 2),
+          "measured from the originals, not from the last write")
+    check(R.camera.set("pitch", 60) == 2 and about(I.read_f32(SET[2] + 0x278 + 0x70), math.rad(56)),
+          "pitch moves every camera by the same angle")
+    check(R.camera.set("height", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
+          "look height moves every camera by the same amount")
+    check(R.camera.set("distance", 20, { all = false }) == 1 and about(I.read_f32(ZD), 9.05 * 2),
+          "all = false: default camera only")
+    check(R.camera.set("distance", 20, { all = true }) == 2 and about(I.read_f32(ZD), 20),
+          "all = true: the same number everywhere")
+    I.write_f32(ZD, 12)                                 -- the game rebuilt the record
+    check(R.camera.set("distance", 66) == 2 and about(I.read_f32(ZD), 24),
+          "a number the game put back is that camera's new original")
 
     local n, why = R.camera.set("fov", 40)
     check(n == nil and why:find("linked"), "a linked field is refused, not written")
@@ -10727,7 +10757,7 @@ do
     -- Third launch's finding: the cameras are in the oCEntity's CLASS-ID MAP
     -- (slots {u32 id; u64 cpnt} @+0x5f0, mask @+0x600), not the +0x190 array.
     local HERO_M, ENT_M, SLOTS = 0x12d90000, 0x12da0000, 0x12db0000
-    I.write_u64(HERO_M + 0x08, ENT_M)
+    I.write_u64(HERO_M + 0x08, ENT_M); vt(ENT_M)
     I.write_u64(ENT_M + 0x5f0, SLOTS)
     I.write_u64(ENT_M + 0x600, 3)                         -- 4 buckets
     I.write_u32(SLOTS + 0x10, 0x1111); I.write_u64(SLOTS + 0x18, CAM[1])
@@ -10762,18 +10792,211 @@ do
     check(chained and #chained == 2, "camera three hops out found, sibling read off its own entity")
     check(chained and (chained[1].default or chained[2].default), "the default camera is among them")
 
+    -- Kintaro (2026-11-08): his on-foot "Shared Camera" is a component of the
+    -- hero entity itself. Finding it must not end the search, or the default
+    -- camera is never found and every field but yaw has nothing to measure from.
+    local HERO_K, KARR, CAM_K, SET_K = 0x12e50000, 0x12e60000, 0x12e70000, 0x12e80000
+    I.write_u64(CAM_K + 0x10, SET_K); vt(CAM_K); vt(SET_K)
+    rec(SET_K, 0x3f8, math.rad(45)); rec(SET_K, 0x2f8, 20)
+    rec(SET_K, 0x278, math.rad(54)); rec(SET_K, 0x478, 1)
+    rec(SET_K, 0xf8, 0, { type = 2 })
+    I.write_u64(HERO_K + 0x190, KARR); I.write_u32(HERO_K + 0x198, 1)
+    I.write_u64(KARR, CAM_K)
+    I.write_u64(HERO_K + 0x1e0, A)                      -- default camera 3 hops out
+    local rtti_k = R.rtti.name
+    local CAM_K2, SET_K2 = 0x12e90000, 0x12ea0000
+    local alive = { [CAM_K] = true, [SET_K] = true }
+    R.rtti.name = function(p)
+        if alive[p] and (p == CAM_K or p == CAM_K2) then return "oe::oCEntityCpntTopDownCamera" end
+        if alive[p] and (p == SET_K or p == SET_K2) then return "oe::oCEntityCpntTopDownCameraSettings" end
+        return rtti_k(p)
+    end
+    R.entity.hero = function() return HERO_K end
+    local kin = R.camera.cameras()
+    local has_def = false
+    for _, c in ipairs(kin or {}) do has_def = has_def or c.default end
+    check(kin and #kin == 3 and has_def, "a hero's own camera does not stop the search for the default one")
+    check(R.camera.set("distance", 66) == 3 and about(I.read_f32(SET_K + 0x2f8 + 0x70), 40),
+          "the hero's own camera follows the default's ratio")
+    R.camera.reset()
+
+    -- The on-foot camera exists only while Kintaro is on foot. Mounted, it is
+    -- destroyed and drops out of the list; on foot again a NEW one (shipped
+    -- values) is built, and it is picked up without a hero change and without
+    -- searching again.
+    local real_now, t = I.now, 1000
+    I.now = function() return t end
+    alive[CAM_K], alive[SET_K] = nil, nil               -- mounted: camera destroyed
+    I.write_u32(HERO_K + 0x198, 0)
+    t = t + 1
+    local mounted = R.camera.cameras()
+    check(mounted and #mounted == 2, "a camera that went away drops out of the list")
+    I.write_u64(HERO_K + 0x1e0, 0)                      -- a re-search would now find nothing
+    I.write_u64(CAM_K2 + 0x10, SET_K2); vt(CAM_K2); vt(SET_K2) -- on foot again: a fresh camera
+    rec(SET_K2, 0x3f8, math.rad(45)); rec(SET_K2, 0x2f8, 20)
+    rec(SET_K2, 0x278, math.rad(54)); rec(SET_K2, 0x478, 1)
+    rec(SET_K2, 0xf8, 0, { type = 2 })
+    alive[CAM_K2], alive[SET_K2] = true, true
+    I.write_u64(KARR, CAM_K2); I.write_u32(HERO_K + 0x198, 1)
+    t = t + 1
+    local back = R.camera.cameras()
+    check(back and #back == 3, "a camera that appears later is picked up, the searched ones kept")
+    check(R.camera.set("distance", 66) == 3 and about(I.read_f32(SET_K2 + 0x2f8 + 0x70), 40),
+          "and it follows the default camera like the others")
+    R.camera.reset()
+    I.now = real_now
+    R.rtti.name = rtti_k
+
     local FAKE, HERO_X = 0x12e20000, 0x12e30000
     I.write_u64(HERO_X + 0x40, FAKE)
     local BLOB = 0x12e40000                            -- a settings-shaped block, no RTTI
     I.write_u64(FAKE + 0x10, BLOB)
     I.write_u32(BLOB + 0x3f8 + 0x58, 0xffffffff); I.write_u64(BLOB + 0x3f8 + 0x68, 4)
     R.entity.hero = function() return HERO_X end
-    check(R.camera.cameras() == nil, "an object is never taken for a camera without its class name")
+    local blob_taken = false
+    for _, c in ipairs(R.camera.cameras() or {}) do blob_taken = blob_taken or c.settings == BLOB end
+    check(not blob_taken, "an object is never taken for a camera without its class name")
+
+    -- Death and spectate (2026-11-08): every transform, death and respawn is a
+    -- new captured hero. A search run whole froze the game each time, so it
+    -- runs in slices, and what it found is kept across heroes.
+    local real_now2, clock = I.now, 2000
+    I.now = function() return clock end
+    local dead = true
+    local rtti_s = R.rtti.name
+    R.rtti.name = function(p)
+        if dead and (p == SET[1] or p == SET[2] or p == CAM[1] or p == CAM[2]) then return nil end
+        return rtti_s(p)
+    end
+    clock = clock + 2
+    local none_x, why_x = R.camera.cameras()
+    check(none_x == nil and why_x:find("no top%-down camera"), "cameras that died are forgotten")
+    dead = false
+    local HERO_S = 0x12f00000                           -- respawned: cameras 3 hops out again,
+    I.write_u64(HERO_S + 0x1e8, A)                      -- on a path the probe does not know
+    R.entity.hero = function() return HERO_S end
+    I.now = function() clock = clock + 1; return clock end  -- each look at the clock: a slice gone
+    R.camera.SEARCH_SLICE = 0.5
+    local calls, got, first_why = 0, nil, nil
+    repeat
+        calls = calls + 1
+        local why
+        got, why = R.camera.cameras()
+        first_why = first_why or why
+        if not got then R.camera._search_pump() end      -- what its timer does
+    until got or calls > 50
+    check(got and #got == 2 and calls > 1, "the search is spread over several slices")
+    check(first_why and first_why:find("search under way"), "and says so while it runs")
+    R.camera.SEARCH_SLICE = 60
+    local HERO_Y = 0x12f10000                           -- nothing reachable from this one
+    R.entity.hero = function() return HERO_Y end
+    local kept = R.camera.cameras()
+    check(kept and #kept == 2, "a new hero gets the cameras found before, in one call, no search")
+
+    -- The sliced search took over 30 s in game, so the paths it found before
+    -- are tried first: on a known path the cameras come back in one call
+    -- even with a slice too small to search anything.
+    dead = true
+    clock = clock + 2
+    R.camera.cameras()                                  -- forgets them
+    dead = false
+    local HERO_Q = 0x12f20000
+    I.write_u64(HERO_Q + 0x1e0, A)                      -- hero+0x1e0+0x2b0+0x548
+    R.entity.hero = function() return HERO_Q end
+    R.camera.SEARCH_SLICE = 0
+    local probed_q = R.camera.cameras()
+    check(probed_q and #probed_q == 2, "a camera on a known path is found in one call, no search")
+    R.camera.SEARCH_SLICE = 60
+
+    -- R.camera.explore (diagnostic run, 2026-11-08): every camera with its
+    -- full path, the class of each hop, and whether it is the default. And
+    -- the search reads an object in ONE block, not 256 single reads: the
+    -- per-pointer cost is what made the in-game search take ~13 s.
+    local saved_log, xlines = rsmm.log, {}
+    rsmm.log = function(...) xlines[#xlines + 1] = table.concat({ ... }, " ") end
+    local b0, s0 = I.reads.block, I.reads.single
+    local xhits = R.camera.explore("spec")
+    local blocks, singles = I.reads.block - b0, I.reads.single - s0
+    rsmm.log = saved_log
+    local xall = table.concat(xlines, "\n")
+    check(xhits and #xhits >= 1, "explore finds the cameras")
+    check(xall:find("hero+0x1e0+0x2b0+0x548[oCEntityCpntTopDownCamera]", 1, true)
+          and xall:find("DEFAULT", 1, true), "explore logs the path, hop classes and the default camera")
+    check(blocks > 0 and singles < blocks * 128, "the search reads objects in blocks, not word by word")
+    I.now = real_now2
+    R.rtti.name = rtti_s
+
+    -- The layout read live from the running game (2026-11-08, Kintaro with a
+    -- Beowulf ally): the cameras are plain components in each HERO ENTITY's
+    -- +0x190 array, thousands long. Capture had taken the ally's controller;
+    -- Kintaro's controller was in the candidate ring. A camera's settings
+    -- object is shared by every hero's component for it.
+    local rtti_l, gone = R.rtti.name, { [CAM[1]] = true, [CAM[2]] = true, [SET[1]] = true, [SET[2]] = true }
+    local clock3 = 5000
+    I.now = function() return clock3 end
+    local CTL_B, ENT_B, ARR_B = 0x13100000, 0x13110000, 0x13120000   -- ally, captured
+    local CTL_A, ENT_A, ARR_A = 0x13200000, 0x13210000, 0x13220000   -- Kintaro, in the ring
+    local FILL = 0x13300000                                        -- every other component
+    local DEF_C, DB_C, DEF_S = 0x13400000, 0x13450000, 0x13410000  -- "Default Camera"
+    local ZA_C, ZB_C, Z_S = 0x13430000, 0x13420000, 0x13440000     -- "Zoom Camera"
+    local SH_C, SH_S = 0x13460000, 0x13470000                      -- "Shared Camera"
+    local CAMS = { [DEF_C] = true, [DB_C] = true, [ZA_C] = true, [ZB_C] = true, [SH_C] = true }
+    local SETS = { [DEF_S] = true, [Z_S] = true, [SH_S] = true }
+    for _, o in ipairs({ FILL, DEF_C, DB_C, DEF_S, ZA_C, ZB_C, Z_S, SH_C, SH_S }) do vt(o) end
+    R.rtti.name = function(p)
+        if gone[p] then return nil end
+        if CAMS[p] then return "oCEntityCpntTopDownCamera" end
+        if SETS[p] then return "oCEntityCpntTopDownCameraSettings" end
+        return rtti_l(p)
+    end
+    R.entity.hero = function() return 0x13000000 end
+    clock3 = clock3 + 2
+    R.camera.cameras()                                  -- forgets what earlier searches found
+    local function camset(s, dist, default)
+        rec(s, 0x3f8, math.rad(45)); rec(s, 0x2f8, dist); rec(s, 0x278, math.rad(54))
+        rec(s, 0x478, 1); rec(s, 0xf8, default and 1 or 0, { type = 2 })
+    end
+    camset(DEF_S, 33, true); camset(Z_S, 9.05, false); camset(SH_S, 33, true)
+    I.write_u64(DEF_C + 0x10, DEF_S); I.write_u64(DB_C + 0x10, DEF_S)
+    I.write_u64(ZA_C + 0x10, Z_S); I.write_u64(ZB_C + 0x10, Z_S)
+    I.write_u64(SH_C + 0x10, SH_S)
+    local function cpnts(ent, arr, n, at)
+        for i = 0, n - 1 do I.write_u64(arr + i * 8, FILL) end
+        for i, cp in pairs(at) do I.write_u64(arr + i * 8, cp) end
+        I.write_u64(ent + 0x190, arr); I.write_u32(ent + 0x198, n)
+    end
+    cpnts(ENT_B, ARR_B, 3000, { [2662] = DB_C, [2664] = ZB_C })
+    cpnts(ENT_A, ARR_A, 3200, { [1043] = SH_C, [3004] = DEF_C, [3006] = ZA_C })
+    I.write_u64(CTL_B + 0x08, ENT_B); I.write_u64(CTL_A + 0x08, ENT_A)
+    local real_iho, saved_ring = R.entity._is_hero_object, shared[8]
+    R.entity._is_hero_object = function(p) return p == CTL_A or p == CTL_B end
+    shared[8] = CTL_A
+    R.entity.hero = function() return CTL_B end
+    R.camera.SEARCH_SLICE = 0
+    clock3 = clock3 + 2
+    local b1, s1 = I.reads.block, I.reads.single
+    local live = R.camera.cameras()
+    local first_reads = I.reads.single - s1
+    local got_s = {}
+    for _, cam in ipairs(live or {}) do got_s[cam.settings] = true end
+    check(live and #live == 3 and got_s[DEF_S] and got_s[Z_S] and got_s[SH_S],
+          "every hero's full component list is read: shared cameras once, Kintaro's own too, no search")
+    check(I.reads.block - b1 >= 2, "component lists are read in blocks")
+    clock3 = clock3 + 2
+    local s2 = I.reads.single
+    local again = R.camera.cameras()
+    check(again and #again == 3 and I.reads.single - s2 < first_reads / 10,
+          "a re-check reads only the slots that held cameras")
+    R.entity._is_hero_object, shared[8] = real_iho, saved_ring
+    R.rtti.name = rtti_s
+    I.now = real_now2
+    R.camera.SEARCH_SLICE = 60
 
     R.entity.hero = function() return nil end
     local none, reason = R.camera.cameras()
     check(none == nil and reason:find("hero"), "no hero: nil plus why")
     R.entity.hero, R.rtti.name = real_hero, real_rtti
+    R.camera.SEARCH_SLICE = real_slice
 end
 
 -- Live config: a value written to config.toml OUTSIDE the game (the desktop

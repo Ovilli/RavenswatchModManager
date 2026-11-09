@@ -87,6 +87,14 @@ return function(env)
 
     function M.world_ready() return live and world ~= nil and owner_is_world(world) end
 
+    --- The scene object (oCEntitySceneContext) that owns the world dispatcher,
+    --- or nil until it has been seen. For diagnostics: R.camera.explore
+    --- searches from it for cameras the map owns rather than the hero.
+    function M.world_owner()
+        if not (live and world ~= nil and owner_is_world(world)) then return nil end
+        return world - WORLD_DISPATCHER_OFF
+    end
+
     -- The game's own location values, when readable: never end a chapter from
     -- a menu, a loading screen, or a victory/defeat that is already playing.
     local BLOCKING = { "is_in_main_menu", "is_in_loading_screen",
