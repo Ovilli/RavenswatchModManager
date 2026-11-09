@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-09",
+      "summary": "Paid content stays paid: the hero-unlock helper no longer opens the DLC ownership gate, and the skin filter only shows outfit packs the loader itself created.",
+      "highlights": [
+        "Paid content stays paid: the hero-unlock helper no longer opens the DLC ownership gate, and the skin filter only shows outfit packs the loader itself created."
+      ],
+      "loader_version": 53
+    },
+    {
+      "version": "",
+      "date": "2026-11-09",
       "summary": "Camera mods: pitch, distance and look height now carry to every hero camera; cameras that appear after the first scan (or that a hero ships its own of) are picked up; the camera search runs in slices so it no longer stalls.",
       "highlights": [
         "Camera mods: pitch, distance and look height now carry to every hero camera; cameras that appear after the first scan (or that a hero ships its own of) are picked up; the camera search runs in slices so it no longer stalls."
@@ -513,18 +522,6 @@
       "summary": "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options.",
       "highlights": [
         "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options."
-      ]
-    },
-    {
-      "version": "5.9.15",
-      "date": "2026-10-11",
-      "summary": "Cleaner overlays you can always reset, working option dropdowns, mods in your language, and your own Steam launch options are left alone.",
-      "highlights": [
-        "Overlays: column headers, columns that line up, buttons that appear only on hover, and a window that fits the board exactly (no more grey box below it on Linux).",
-        "Overlays can no longer get stuck full-screen: a reset button and a command-palette entry put one back at its normal size, and a once-maximized overlay heals itself on reopen.",
-        "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
-        "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
-        "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
       ]
     }
   ]
