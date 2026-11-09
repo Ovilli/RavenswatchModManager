@@ -10795,9 +10795,11 @@ do
     I.write_u64(KARR, CAM_K)
     I.write_u64(HERO_K + 0x1e0, A)                      -- default camera 3 hops out
     local rtti_k = R.rtti.name
+    local CAM_K2, SET_K2 = 0x12e90000, 0x12ea0000
+    local alive = { [CAM_K] = true, [SET_K] = true }
     R.rtti.name = function(p)
-        if p == CAM_K then return "oe::oCEntityCpntTopDownCamera" end
-        if p == SET_K then return "oe::oCEntityCpntTopDownCameraSettings" end
+        if alive[p] and (p == CAM_K or p == CAM_K2) then return "oe::oCEntityCpntTopDownCamera" end
+        if alive[p] and (p == SET_K or p == SET_K2) then return "oe::oCEntityCpntTopDownCameraSettings" end
         return rtti_k(p)
     end
     R.entity.hero = function() return HERO_K end
@@ -10808,6 +10810,32 @@ do
     check(R.camera.set("distance", 66) == 3 and about(I.read_f32(SET_K + 0x2f8 + 0x70), 40),
           "the hero's own camera follows the default's ratio")
     R.camera.reset()
+
+    -- The on-foot camera exists only while Kintaro is on foot. Mounted, it is
+    -- destroyed and drops out of the list; on foot again a NEW one (shipped
+    -- values) is built, and it is picked up without a hero change and without
+    -- searching again.
+    local real_now, t = I.now, 1000
+    I.now = function() return t end
+    alive[CAM_K], alive[SET_K] = nil, nil               -- mounted: camera destroyed
+    I.write_u32(HERO_K + 0x198, 0)
+    t = t + 1
+    local mounted = R.camera.cameras()
+    check(mounted and #mounted == 2, "a camera that went away drops out of the list")
+    I.write_u64(HERO_K + 0x1e0, 0)                      -- a re-search would now find nothing
+    I.write_u64(CAM_K2 + 0x10, SET_K2)                  -- on foot again: a fresh camera
+    rec(SET_K2, 0x3f8, math.rad(45)); rec(SET_K2, 0x2f8, 20)
+    rec(SET_K2, 0x278, math.rad(54)); rec(SET_K2, 0x478, 1)
+    rec(SET_K2, 0xf8, 0, { type = 2 })
+    alive[CAM_K2], alive[SET_K2] = true, true
+    I.write_u64(KARR, CAM_K2); I.write_u32(HERO_K + 0x198, 1)
+    t = t + 1
+    local back = R.camera.cameras()
+    check(back and #back == 3, "a camera that appears later is picked up, the searched ones kept")
+    check(R.camera.set("distance", 66) == 3 and about(I.read_f32(SET_K2 + 0x2f8 + 0x70), 40),
+          "and it follows the default camera like the others")
+    R.camera.reset()
+    I.now = real_now
     R.rtti.name = rtti_k
 
     local FAKE, HERO_X = 0x12e20000, 0x12e30000

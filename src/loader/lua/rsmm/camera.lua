@@ -281,11 +281,31 @@ end
 --- known meaning, so they are not hard-coded: the search runs once per hero
 --- (~0.6 s, background thread) and only RTTI-confirmed objects are kept. Each
 --- camera component's own entity (+0x08) is then read for its siblings.
+---
+--- A hero's own cameras come and go: Kintaro's "Shared Camera" belongs to his
+--- on-foot state (Child State Alt Form) and is found only while he is on foot,
+--- and the one found at run start is not the one in use after a remount
+--- (2026-11-08: one launch found only it, the next only the default camera).
+--- So the cheap pass over the hero's entities is redone every RESCAN seconds,
+--- while the pointer search's finds are kept per hero and only re-searched
+--- when the default camera is still missing. Compare the list's settings
+--- pointers to notice a camera that appeared (camera-control re-applies then).
+local RESCAN, RESEARCH = 0.25, 10
+local _scan_at = nil
+local _found_for, _found, _search_at = nil, {}, nil
+
+local function _now() return (I.now and I.now()) or os.clock() end
+
 function M.cameras()
     if not (I and I.read_u64 and I.read_u32 and I.read_u8) then return nil, "loader too old" end
     local hero = R.entity and R.entity.hero and R.entity.hero()
     if not hero then return nil, "hero not captured (start a run)" end
-    if hero == _cams_for and _cams and _still_valid(_cams) then return _cams end
+    local now = _now()
+    if hero == _cams_for and _cams and _scan_at and now - _scan_at < RESCAN
+            and _still_valid(_cams) then
+        return _cams
+    end
+    if hero ~= _found_for then _found_for, _found, _search_at = hero, {}, nil end
 
     local out, seen = {}, {}
     local function add_settings(s, c)
@@ -307,9 +327,14 @@ function M.cameras()
         end
     end
 
+    _owners_for, _owners = nil, nil      -- re-read: the hero's cameras come and go
     local owners = _entities(hero)
     for _, o in ipairs(owners) do
         for _, c in ipairs(o.components) do add_component(c.ptr) end
+    end
+    -- What earlier searches found for this hero, while it is still there.
+    for _, c in ipairs(_found) do
+        if (not c.component or _is(c.component, CAMERA_CLASS)) then add_settings(c.settings, c.component) end
     end
     -- A hero's own camera (Kintaro's "Shared Camera", Melusine's "Wisp
     -- Camera") is a component of the hero entity, so the pass above can find it
@@ -322,7 +347,10 @@ function M.cameras()
         return false
     end
     local hits, visited = {}, 0
-    if not has_default() then
+    -- The search is the slow part (~0.6 s): at most once per RESEARCH seconds.
+    if not has_default() and (_search_at == nil or now - _search_at >= RESEARCH) then
+        _search_at = now
+        local first = #out + 1
         hits, visited = _search(_roots(hero, owners), 3, 2500)
         for _, h in ipairs(hits) do
             if h.cls:sub(-#CAMERA_CLASS) == CAMERA_CLASS then
@@ -332,14 +360,16 @@ function M.cameras()
                 add_settings(h.ptr, nil)
             end
         end
+        for i = first, #out do _found[#_found + 1] = out[i] end
+        -- Kept anyway (yaw still reaches them), but say what the search saw.
+        if #out > 0 and not has_default() then _log_miss(hero, owners, hits, visited) end
     end
+    _scan_at = now
     if #out == 0 then
-        _owners_for, _owners = nil, nil
+        _cams_for, _cams = nil, nil
         _log_miss(hero, owners, hits, visited)
         return nil, "no top-down camera on the hero"
     end
-    -- Kept anyway (yaw still reaches them), but say what the search saw.
-    if not has_default() then _log_miss(hero, owners, hits, visited) end
     _cams_for, _cams = hero, out
     return out
 end
