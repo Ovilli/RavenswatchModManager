@@ -10783,6 +10783,33 @@ do
     check(chained and #chained == 2, "camera three hops out found, sibling read off its own entity")
     check(chained and (chained[1].default or chained[2].default), "the default camera is among them")
 
+    -- Kintaro (2026-11-08): his on-foot "Shared Camera" is a component of the
+    -- hero entity itself. Finding it must not end the search, or the default
+    -- camera is never found and every field but yaw has nothing to measure from.
+    local HERO_K, KARR, CAM_K, SET_K = 0x12e50000, 0x12e60000, 0x12e70000, 0x12e80000
+    I.write_u64(CAM_K + 0x10, SET_K)
+    rec(SET_K, 0x3f8, math.rad(45)); rec(SET_K, 0x2f8, 20)
+    rec(SET_K, 0x278, math.rad(54)); rec(SET_K, 0x478, 1)
+    rec(SET_K, 0xf8, 0, { type = 2 })
+    I.write_u64(HERO_K + 0x190, KARR); I.write_u32(HERO_K + 0x198, 1)
+    I.write_u64(KARR, CAM_K)
+    I.write_u64(HERO_K + 0x1e0, A)                      -- default camera 3 hops out
+    local rtti_k = R.rtti.name
+    R.rtti.name = function(p)
+        if p == CAM_K then return "oe::oCEntityCpntTopDownCamera" end
+        if p == SET_K then return "oe::oCEntityCpntTopDownCameraSettings" end
+        return rtti_k(p)
+    end
+    R.entity.hero = function() return HERO_K end
+    local kin = R.camera.cameras()
+    local has_def = false
+    for _, c in ipairs(kin or {}) do has_def = has_def or c.default end
+    check(kin and #kin == 3 and has_def, "a hero's own camera does not stop the search for the default one")
+    check(R.camera.set("distance", 66) == 3 and about(I.read_f32(SET_K + 0x2f8 + 0x70), 40),
+          "the hero's own camera follows the default's ratio")
+    R.camera.reset()
+    R.rtti.name = rtti_k
+
     local FAKE, HERO_X = 0x12e20000, 0x12e30000
     I.write_u64(HERO_X + 0x40, FAKE)
     local BLOB = 0x12e40000                            -- a settings-shaped block, no RTTI

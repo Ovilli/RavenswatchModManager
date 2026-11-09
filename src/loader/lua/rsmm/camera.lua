@@ -311,8 +311,18 @@ function M.cameras()
     for _, o in ipairs(owners) do
         for _, c in ipairs(o.components) do add_component(c.ptr) end
     end
+    -- A hero's own camera (Kintaro's "Shared Camera", Melusine's "Wisp
+    -- Camera") is a component of the hero entity, so the pass above can find it
+    -- and nothing else. The default camera is not, so search whenever it is
+    -- still missing: stopping at any hit left Kintaro with only his on-foot
+    -- camera, and every field but yaw failed with "no camera to change" (Kintaro,
+    -- 2026-11-08).
+    local function has_default()
+        for _, c in ipairs(out) do if c.default then return true end end
+        return false
+    end
     local hits, visited = {}, 0
-    if #out == 0 then
+    if not has_default() then
         hits, visited = _search(_roots(hero, owners), 3, 2500)
         for _, h in ipairs(hits) do
             if h.cls:sub(-#CAMERA_CLASS) == CAMERA_CLASS then
@@ -328,6 +338,8 @@ function M.cameras()
         _log_miss(hero, owners, hits, visited)
         return nil, "no top-down camera on the hero"
     end
+    -- Kept anyway (yaw still reaches them), but say what the search saw.
+    if not has_default() then _log_miss(hero, owners, hits, visited) end
     _cams_for, _cams = hero, out
     return out
 end
@@ -428,7 +440,9 @@ function M.set(name, value, opts)
             end
         end
     end
-    if n == 0 then return nil, last or "no camera to change" end
+    if n == 0 then
+        return nil, last or ("no default camera among the %d found"):format(#cams)
+    end
     return n
 end
 
