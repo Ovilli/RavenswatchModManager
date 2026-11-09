@@ -343,9 +343,11 @@ def test_a_talent_controller_starts_active_like_a_shipped_one():
 
 @needs_corpus
 def test_an_attack_slot_is_switched_like_a_shipped_basic_attack():
-    """A state-driven attack is interruptible, has no cooldown and takes the
-    basic-attack input, as Carmilla's and Melusine's are; the base's empty slot
-    has all three the other way (the hero could not attack)."""
+    """A state-driven attack is interruptible and takes the basic-attack input,
+    as Carmilla's and Melusine's are (the base's empty slot has both the other
+    way: the hero could not attack). Its cooldown is the manifest's: those two
+    have 0 because their state paces them, and a from-scratch hero's at 0
+    could be spammed every frame (playtest 2026-11-08)."""
     from rsmm.engine import entity_fields as EF
     from rsmm.engine import entity_graph as EG
     from rsmm.engine import hero_ability as HA
@@ -357,7 +359,7 @@ def test_an_attack_slot_is_switched_like_a_shipped_basic_attack():
     g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
     ctl = {x.name: x.text for x in EF.fields(g["Basic Attack Controller"])}
     assert (ctl["value_4"], ctl["value_8"], ctl["value_11"], ctl["value_14"]) == \
-        ("f32 0", "bool True", "bool False", "bool True")
+        ("f32 0.1", "bool True", "bool False", "bool True")
 
 
 @needs_corpus
@@ -497,3 +499,57 @@ def test_an_ability_plays_its_own_sound():
     assert not any(b"Dash Ability FMod Event" in b for b in blocs)
     with pytest.raises(HA.AbilityError, match="sound"):
         HA.Ability.parse("power", {"clip": "x.fbx", "sound": "no bar"})
+
+
+@needs_corpus
+@needs_install
+def test_the_basic_attack_is_a_combo_of_the_heros_own():
+    """``combo``: the basic attack as shipped heroes build it. A shipped hero
+    lends only the layout (COMBO_DONOR); the combo answers the hero's own
+    state and controller, each step plays its own clip, and its timeline lands
+    the hero's own hit, sound and whoosh at the step's times. Nothing links
+    into the layout's hero once built."""
+    import re
+    import struct
+
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    snd = "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Voice Walla Jack Dodge FMod Event"
+    ab = HA.Ability.parse("attack", {"combo": [
+        {"clip": clip, "hit_at": 0.3, "link_at": 0.4, "exit_at": 0.5, "sound": snd,
+         "hits": [{"radius": 2.5, "damage": 100}]},
+        {"clip": clip, "hit_at": 0.35, "hits": [{"radius": 3}]}]})
+    ef = _hero("Hero_T")
+    assert HA.build(ef, HF.common(_read), ab, seed="t") == "State Attack Ability"
+    out = ef.to_bytes()
+    assert not re.findall(rb"\] Hero_(?!T\\|Common)[A-Za-z_]+\\", out)
+    e2 = EntityFile(out, "Hero_T")
+    combo = [r.path for r in e2.component("Attack Ability Combo").refs]
+    assert combo == ["[State] Hero_T\\Ability Attack\\State Attack Ability",
+                     "[Dt Ability Controller] Hero_T\\Hero Controller\\Basic Attack Controller"]
+    # the button and the state reach the combo through its selector only: a
+    # state that started the combo itself re-entered forever (game hung)
+    from rsmm.engine import entity_fields as EF
+    ctl = {f.name: f.text for f in EF.fields(e2.component("Basic Attack Controller"))}
+    assert ctl["ref_2"].endswith("\\Attack Ability Combo Selector")
+    st = {f.name: f.text for f in EF.fields(e2.component("State Attack Ability"))}
+    assert "Combo Selector" in st["on_enter?"] and "Combo\"" not in st["on_enter?"]
+    names = [x.name for x in e2.cf.classes]
+    anim = e2.component("Attack Ability Anim Step 1")
+    assert b"Kintaro_BasicAttack01.fbx" in anim.body
+    p = e2.objects[anim.index - 1]
+    at = p.find(P._B + struct.pack("<I", names.index("oCCinematic")))
+    n = struct.unpack_from("<I", p, at + 8)[0]
+    t = {}
+    for i in struct.unpack_from(f"<{n}I", p, at + 12):
+        b = bytes(e2.objects[i])
+        keys = (b"Step 1 Hit 1", b"COMBO_LINK", b"ABILITY_EXIT", b"Attack Ability Sound Step 1")
+        for key in keys:
+            if key in b:
+                t[key] = struct.unpack_from("<f", b, 4)[0]
+    assert t == pytest.approx({b"Step 1 Hit 1": 0.3, b"COMBO_LINK": 0.4, b"ABILITY_EXIT": 0.5,
+                               b"Attack Ability Sound Step 1": 0.0})
+    with pytest.raises(HA.AbilityError, match="2 steps"):
+        HA.Ability.parse("attack", {"combo": [{"clip": clip, "hits": [{}]}]})

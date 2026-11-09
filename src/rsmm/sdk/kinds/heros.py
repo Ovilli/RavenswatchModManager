@@ -1714,6 +1714,10 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             card["desc_key"] = key(f"Ability_{word}_Desc", raw.pop("description"))
         try:
             raw = own(raw, f"frame.abilities.{slot}")
+            if isinstance(raw.get("combo"), list):
+                raw["combo"] = [own(st, f"frame.abilities.{slot}.combo[{n}]")
+                                if isinstance(st, dict) else st
+                                for n, st in enumerate(raw["combo"])]
             abilities.append(HA.Ability.parse(str(slot), {**raw, "bank": bank, **card}))
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e

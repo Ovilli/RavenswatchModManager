@@ -138,15 +138,20 @@ class Ability:
     #: "bare" = both; "dash_state" / "released": see _bisect_state. Remove
     #: once the cause is known.
     variant: str = ""
+    #: The basic attack as shipped heroes do it: a combo of steps, each its
+    #: own clip whose TIMELINE lands the hit (see build_combo / COMBO_STEP_KEYS).
+    combo: list = field(default_factory=list)
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
         if slot not in CONTROLLERS:
             raise AbilityError(f"ability {slot!r}: one of {', '.join(CONTROLLERS)}")
+        if isinstance(raw, dict) and raw.get("combo") and not raw.get("clip"):
+            raw = {**raw, "clip": (raw["combo"][0] or {}).get("clip", "")}
         if not isinstance(raw, dict) or not raw.get("clip"):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
-                              "desc_key", "indicator", "sound", "variant"}
+                              "desc_key", "indicator", "sound", "variant", "combo"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         hits = parse_hits(raw.get("hits"), f"ability {slot}")
@@ -162,10 +167,24 @@ class Ability:
                       or not sound.split("|")[0].strip().endswith(".entity.ot")):
             raise AbilityError(f"ability {slot}: sound is \"<Folder\\Entity.entity.ot> | "
                                "<its FMod event part>\"")
+        combo = raw.get("combo") or []
+        if combo:
+            if slot != "attack":
+                raise AbilityError(f"ability {slot}: combo is for the basic attack")
+            if not isinstance(combo, list) or len(combo) != COMBO_STEPS \
+                    or not all(isinstance(st, dict) for st in combo):
+                raise AbilityError(f"ability {slot}: combo is a list of {COMBO_STEPS} steps")
+            for n, st in enumerate(combo, 1):
+                if set(st) - COMBO_STEP_KEYS or not st.get("clip"):
+                    raise AbilityError(f"ability {slot}: combo step {n} is {{ clip, "
+                                       f"{', '.join(sorted(COMBO_STEP_KEYS - {'clip'}))} }}")
+                if len(_step_hits(st, f"ability {slot} combo step {n}")) != 1:
+                    raise AbilityError(f"ability {slot}: combo step {n} lands one hit")
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
-                   str(raw.get("desc_key", "")), sound, str(raw.get("variant", "")))
+                   str(raw.get("desc_key", "")), sound, str(raw.get("variant", "")),
+                   [dict(st) for st in combo])
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -451,12 +470,174 @@ def _bisect_state(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, ctl: 
     ef.add_ref(state, "while_active", tester)
 
 
+#: The basic attack's combo layout. The shared base has none (an attack combo
+#: exists only inside heroes), so one shipped hero lends the LAYOUT only, as
+#: Aladdin's sword lends the hand-weapon slot: every link and every asset is
+#: re-pointed at the hero's own parts (build_combo). Geppetto's is two steps:
+#: combo -> step states -> clip selectors -> clips -> animatics, each step's
+#: timeline landing its hit ("Event ... Active Step N"), COMBO_LINK (when the
+#: next press chains) and ABILITY_EXIT (when he may move again).
+COMBO_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto", "Basic Ability")
+COMBO_STEPS = 2
+_COMBO_PARTS = ("{p} Combo Selector", "{p} Combo", "State {p} Step {n}",
+                "{p} Clip Selector Step {n}",
+                "{p} Clip Step {n}", "{p} Anim Step {n}")
+#: A combo step: its clip, when its hit lands, when the next press chains
+#: (COMBO_LINK) and when he may move (ABILITY_EXIT), seconds into the clip;
+#: its voice/swing sound at 0 s and its weapon whoosh at ``swing_at``.
+COMBO_STEP_KEYS = {"clip", "duration", "hit_at", "link_at", "exit_at", "sound", "swing",
+                   "swing_at", "hits"}
+
+
+def _step_hits(st: dict, what: str) -> list:
+    """A combo step's hits: its timeline lands them, at the step's ``hit_at``."""
+    todo = [{"at": st.get("hit_at", 0.0), **h} if isinstance(h, dict) else h
+            for h in (st.get("hits") or [])]
+    return parse_hits(todo, what)
+
+
+def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
+                tag: str, group: str) -> str:
+    """The basic attack as a combo (see ``COMBO_DONOR``). Returns its state.
+
+    The button enters the hero's attack state, which starts the combo on
+    entry; the combo runs its step states, each playing its own clip. Each
+    step's timeline is rewritten as the hero's: the donor's swing sound and
+    speed lines become the hero's sound parts, its hit event the hero's own
+    hit (``hits``, an area hit with its effect and shake), COMBO_LINK and
+    ABILITY_EXIT move to the step's times, and the donor's footsteps never
+    fire. Nothing links into the donor once built."""
+    import struct
+
+    from . import corpus
+    ref, name, pre = COMBO_DONOR
+    raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
+    if raw is None:
+        raise AbilityError("the combo layout's hero is not in the game files")
+    donor = EntityFile(raw, name)
+    parts = [p.format(p=pre, n=n) for p in _COMBO_PARTS for n in range(1, COMBO_STEPS + 1)]
+    parts = list(dict.fromkeys(parts))
+    ctl = CONTROLLERS[ab.slot]
+    HF.fill_slot(ef, hero_common, ctl, seed=seed)     # before the copy links to it
+    ef.clone([donor.component(p).path for p in parts],
+             rename={p: p.replace(pre, tag) for p in parts},
+             group={donor.component(parts[0]).group: group},
+             seed=f"{seed}:{ab.slot}:combo", source=donor)
+    combo = f"{tag} Combo"
+    w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
+    state = f"State {tag}"
+    w.state(state)
+    # its parent state and controller: the hero's (by the GUID the copied link
+    # holds -- a controller link names the shared base's slot, not the donor's)
+    mine = {f"State {pre}": state, "Basic Attack Controller": ctl}
+    for r in ef.component(combo).refs:
+        target = mine.get(r.path.rsplit("\\", 1)[-1])
+        if target and r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
+            ef.swap_refs(combo, r.guid, target)
+    # The button and the state go through the combo SELECTOR, as the donor's
+    # do: the combo switches its parent state on, so a state that started the
+    # combo itself re-entered forever and hung the game on the first press
+    # (playtest 2026-11-08). The selector's first entry is a talent finisher's
+    # combo, picked while that talent's state is on: here the hero's own combo
+    # behind a state of its own that nothing switches on, so the default
+    # (its combo) is always the one picked.
+    sel = f"{tag} Combo Selector"
+    never = f"State {tag} Finisher Off"
+    w.state(never)
+    for r in ef.component(sel).refs:
+        if r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
+            ef.swap_refs(sel, r.guid, combo if r.path.startswith("[Dt Attack Combo]") else never)
+    ef.add_ref(state, "on_enter?", sel)
+    mi = hero_common.component(MOVE_INERTIA)
+    ef.add_external_ref(state, "activates", mi.guid,
+                        f"[{HF.kind_label(mi.cls)}] {hero_common.name}\\{mi.path}")
+    ef.set_ref(ctl, "ref_2", sel)
+    names = [x.name for x in ef.cf.classes]
+    all_hits = []
+    for n, st in enumerate(ab.combo, 1):
+        clip = str(st["clip"])
+        length = float(st.get("duration") or HF.clip_length(clip) or 0)
+        if not length:
+            raise AbilityError(f"combo step {n}: the game has no clip {clip!r}")
+        anim = f"{tag} Anim Step {n}"
+        import re
+        old = re.search(rb"Characters\\[ -~]*?\.fbx", ef.component(anim).body)
+        if old is None:
+            raise AbilityError(f"combo step {n}: the layout's animatic names no clip")
+        HF.replace_in_slot(ef, anim, old.group(0).decode(), clip)
+        HF._set_duration(ef, anim, length)
+        step_hits = _step_hits(st, f"combo step {n}")
+        all_hits += step_hits
+        hits(ef, hero_common, w, step_hits, tag=f"{tag} Step {n}", group=group,
+             seed=f"{seed}:{ab.slot}:step{n}", kind=ab.slot)
+        hit_event = f"Event {tag} Step {n} Hit 1"
+        snd = (own_sound(ef, st["sound"], name=f"{tag} Sound Step {n}", group=group,
+                         seed=f"{seed}:{ab.slot}:sound{n}") if st.get("sound") else "")
+        swing = (own_sound(ef, st["swing"], name=f"{tag} Swing Sound Step {n}", group=group,
+                           seed=f"{seed}:{ab.slot}:swing{n}") if st.get("swing") else "")
+        hit_at = float(st.get("hit_at", 0.35 * length))
+        times = {"COMBO_LINK": float(st.get("link_at", hit_at + 0.1)),
+                 "ABILITY_EXIT": float(st.get("exit_at", hit_at + 0.2))}
+        c = ef.component(anim)
+        p = ef.objects[c.index - 1]
+        pos = p.find(P._B + struct.pack("<I", names.index("oCCinematic")))
+        count = struct.unpack_from("<I", p, pos + 8)[0]
+        for i in struct.unpack_from(f"<{count}I", p, pos + 12):
+            bloc = bytes(ef.objects[i])
+            if b"Default Attack Look At" in bloc:
+                continue                                    # Hero_Common's: shared
+            event = next((e for e in times if e.encode() in bloc), None)
+            if event:
+                struct.pack_into("<f", ef.objects[i], 4, times[event])
+            elif b"Active Step" in bloc:                    # the donor's hit
+                _repoint_bloc(ef, i, hit_event)
+                struct.pack_into("<f", ef.objects[i], 4, hit_at)
+            elif b"FMod Event Anim Step" in bloc and snd:   # its voice / swing at 0 s
+                _repoint_bloc(ef, i, snd)
+            elif b"Speed Lines Fx" in bloc and swing:       # the whoosh
+                _repoint_bloc(ef, i, swing)
+                struct.pack_into("<f", ef.objects[i], 4, float(st.get("swing_at", hit_at - 0.1)))
+            else:                                           # footsteps, unused donor parts
+                struct.pack_into("<f", ef.objects[i], 4, length + 60.0)
+                if donor.name.encode() in bloc:
+                    _repoint_bloc(ef, i, state)             # nothing links into the donor
+    statuses(ef, all_hits, tag=f"{tag} Combo", switch=state, seed=f"{seed}:{ab.slot}")
+    left = [r.path for p in parts for r in ef.component(p.replace(pre, tag)).refs
+            if r.path.split("] ", 1)[-1].startswith(donor.name + "\\")]
+    if left:
+        raise AbilityError(f"the combo still links its layout's hero: {left[:3]}")
+    return state
+
+
+def _button(ef: EntityFile, ab: Ability, ctl: str) -> None:
+    """The button's own settings: cooldown, the basic attack's switches, card text."""
+    # The manifest's cooldown, the basic attack's too: a combo is also paced by
+    # its timeline (COMBO_LINK / ABILITY_EXIT); a single-state attack has no
+    # other pacing, and at 0 it could be spammed every frame (playtest
+    # 2026-11-08). Shipped basic attacks use 0 or 1.
+    ef.set_value(ctl, "value_4", float(ab.cooldown))
+    if ab.slot == "attack":
+        for fld, on in ATTACK_SWITCHES.items():
+            ef.set_value(ctl, fld, on)
+    if ab.desc_key:
+        HF._set_text(ef, ctl, ab.bank, ab.desc_key)
+    if ab.name_key:
+        HF._set_text(ef, ctl, ab.bank, ab.name_key)
+
+
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
           with_indicator: bool = True) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
     word = ab.slot.title()
     group = f"Ability {word}"
     tag = f"{word} Ability"
+    if ab.combo:
+        try:
+            state = build_combo(ef, hero_common, ab, seed=seed, tag=tag, group=group)
+            _button(ef, ab, CONTROLLERS[ab.slot])
+        except (EntityEditError, HF.FrameError, P.PartError) as e:
+            raise AbilityError(f"ability {ab.slot}: {e}") from e
+        return state
     length = ab.duration if ab.duration is not None else HF.clip_length(ab.clip)
     if not length:
         raise AbilityError(f"ability {ab.slot}: the game has no clip {ab.clip!r}")
@@ -503,14 +684,7 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         ef.set_ref(ctl, "ref_2", state)
         _bisect_state(ef, hero_common, ab, ctl=ctl, state=state, tag=tag, group=group,
                       timers=[*timers, f"{tag} End Timer"], seed=seed)
-        ef.set_value(ctl, "value_4", 0.0 if ab.slot == "attack" else float(ab.cooldown))
-        if ab.slot == "attack":
-            for fld, on in ATTACK_SWITCHES.items():
-                ef.set_value(ctl, fld, on)
-        if ab.desc_key:
-            HF._set_text(ef, ctl, ab.bank, ab.desc_key)
-        if ab.name_key:
-            HF._set_text(ef, ctl, ab.bank, ab.name_key)
+        _button(ef, ab, ctl)
     except (EntityEditError, HF.FrameError, P.PartError) as e:
         raise AbilityError(f"ability {ab.slot}: {e}") from e
     return state

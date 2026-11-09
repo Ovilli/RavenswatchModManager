@@ -4004,7 +4004,7 @@ end
 
 -- Watch the hero's live components whose settings name matches `pattern`
 -- (a Lua pattern; e.g. "Ability" or "Attack Ability") and log every byte of
--- their first `opts.len` (default 0x60) instance bytes that changes, polled on
+-- their instance bytes [opts.from (0), +opts.len (0x60)) that changes, polled on
 -- the main thread every `opts.every` s (default 0.05). Which parts wake up
 -- when a button is pressed (state, clip selector, animatic, timers) shows in
 -- the log as their bytes flip (`opts.baseline` = N also logs each one's first
@@ -4014,6 +4014,7 @@ end
 function R.debug.watch_components(pattern, opts)
     opts = opts or {}
     local len, every = opts.len or 0x60, opts.every or 0.05
+    local from = opts.from or 0                 -- watch [from, from+len)
     local label = opts.label or ("watch " .. tostring(pattern))
     local ctrl = R.entity and R.entity.hero and R.entity.hero()
     local entity = (type(ctrl) == "number" and ctrl ~= 0) and I.read_u64(ctrl + 0x08) or nil
@@ -4034,7 +4035,7 @@ function R.debug.watch_components(pattern, opts)
         local nm = _ptr_plausible(sp) and I.read_cstr and I.read_cstr(sp, 160) or nil
         if nm and nm:find(pattern) then
             local snap = {}
-            for o = 0, len - 1 do snap[o] = I.read_u8(inst + o) end
+            for o = from, from + len - 1 do snap[o] = I.read_u8(inst + o) end
             watched[#watched + 1] = { inst = inst, name = nm, cls = R.rtti.name(settings) or "?", snap = snap }
         end
     end
@@ -4043,7 +4044,7 @@ function R.debug.watch_components(pattern, opts)
         local base = ""
         if opts.baseline then
             local hex = {}
-            for o = 0, math.min(len, opts.baseline) - 1 do hex[#hex + 1] = string.format("%02x", w.snap[o] or 0) end
+            for o = from, from + math.min(len, opts.baseline) - 1 do hex[#hex + 1] = string.format("%02x", w.snap[o] or 0) end
             base = " | " .. table.concat(hex)
         end
         R.log(string.format("[rsmm.debug] %s   0x%x %s | %s%s", label, w.inst, w.cls, w.name, base))
@@ -4052,7 +4053,7 @@ function R.debug.watch_components(pattern, opts)
     handle = R.schedule.every_main(every, function()
         for _, w in ipairs(watched) do
             local diffs = {}
-            for o = 0, len - 1 do
+            for o = from, from + len - 1 do
                 local b = I.read_u8(w.inst + o)
                 if b ~= nil and b ~= w.snap[o] then
                     diffs[#diffs + 1] = string.format("+%02x:%02x>%02x", o, w.snap[o] or 0, b)
