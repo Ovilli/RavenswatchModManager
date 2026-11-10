@@ -1598,6 +1598,26 @@ returns `nil` plus a reason when the bindings cannot be read.
 
 Handlers run on the game thread inside the input poll. Keep them short.
 
+### Camera zoom (`R.camera.zoom`)
+
+```lua
+R.camera.zoom(0.9, { duration = 0.25 })   --> true | nil, reason  (0.9 = 10% closer)
+R.camera.zoom_factor()                    --> target, current      (1 = the camera's own distance)
+R.camera.zoom_reset({ duration = 0.25 })
+```
+
+`zoom(step)` multiplies the zoom factor by `step` (0.05 to 20), and the game's
+own camera blender eases it in over `duration` seconds with its cosine curve.
+The factor scales the eye's distance to the look-at point on top of whatever
+top-down camera is active, so a hero's alternate cameras (Kintaro on foot,
+Melusine's wisp, ultimates) and boss fight cameras keep it through every switch.
+Boss death scenes are not zoomed. Menus, the hub book and end screens are left
+alone, and the factor carries over to the next chapter and the next run.
+
+Pair it with `R.input.on_wheel` for wheel zoom, and clamp against
+`R.camera.get("distance")` to keep the result in a range you choose.
+camera-control does exactly this.
+
 ### Overlays (`R.overlay`)
 
 The game gives a mod nowhere to draw a HUD, so a mod can publish one to the

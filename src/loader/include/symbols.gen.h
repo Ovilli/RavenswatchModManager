@@ -33,6 +33,19 @@ constexpr const char* Analytics_EmitSkillSelected_Pattern = "Analytics_EmitSkill
 constexpr std::uintptr_t Analytics_EmitUnlockSkill = 0x1401f19b0ull;
 constexpr const char* Analytics_EmitUnlockSkill_Pattern = "Analytics_EmitUnlockSkill";
 
+// --- camera ---
+constexpr std::uintptr_t CameraModifier_AddChild = 0x1406600b0ull;
+constexpr const char* CameraModifier_AddChild_Pattern = "CameraModifier_AddChild";
+constexpr std::uintptr_t CameraModifier_Evaluate = 0x14065feb0ull;
+constexpr const char* CameraModifier_Evaluate_Pattern = "CameraModifier_Evaluate";
+constexpr std::uintptr_t CameraModifier_RemoveChild = 0x1406601d0ull;
+constexpr const char* CameraModifier_RemoveChild_Pattern = "CameraModifier_RemoveChild";
+constexpr std::uintptr_t TopDownCamera_Activate = 0x1407e6440ull;
+constexpr const char* TopDownCamera_Activate_Pattern = "TopDownCamera_Activate";
+constexpr std::uintptr_t g_CameraModifier_vftable = 0x140f62ea0ull;
+constexpr std::uintptr_t g_CameraSceneContext_vftable = 0x140f0a910ull;
+constexpr std::uintptr_t g_ZoomCameraModifier_vftable = 0x140f62b38ull;
+
 // --- combat ---
 constexpr std::uintptr_t CharacterController_ClearStagger = 0x1403c3500ull;
 constexpr const char* CharacterController_ClearStagger_Pattern = "CharacterController_ClearStagger";

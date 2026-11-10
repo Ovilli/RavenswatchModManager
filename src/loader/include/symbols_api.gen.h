@@ -68,6 +68,20 @@ inline BookMenuUiController_OnShow_fn BookMenuUiController_OnShow() {
     return reinterpret_cast<BookMenuUiController_OnShow_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnShow_Pattern));
 }
 
+// CameraModifier_AddChild  (CameraModifier_AddChild)
+//   void(void* modifier, void* parent, bool instant)
+using CameraModifier_AddChild_fn = void(*)(void*, void*, bool);
+inline CameraModifier_AddChild_fn CameraModifier_AddChild() {
+    return reinterpret_cast<CameraModifier_AddChild_fn>(rsmm::fn_resolve(Sym::CameraModifier_AddChild_Pattern));
+}
+
+// CameraModifier_RemoveChild  (CameraModifier_RemoveChild)
+//   void(void* parent, void* modifier)
+using CameraModifier_RemoveChild_fn = void(*)(void*, void*);
+inline CameraModifier_RemoveChild_fn CameraModifier_RemoveChild() {
+    return reinterpret_cast<CameraModifier_RemoveChild_fn>(rsmm::fn_resolve(Sym::CameraModifier_RemoveChild_Pattern));
+}
+
 // ChallengeDef_PostLoad  (ChallengeDef_PostLoad)
 //   bool(void* definition)
 using ChallengeDef_PostLoad_fn = uint32_t(*)(void*);
