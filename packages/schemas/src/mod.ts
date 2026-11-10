@@ -203,6 +203,7 @@ export const MAX_MOD_PHOTOS = 13;
 
 /** Owner-only patch: edit mutable metadata. All fields optional. */
 export const modPatchSchema = z.object({
+  author: z.string().trim().min(1).max(128).nullable().optional(),
   name: z.string().min(1).max(128).optional(),
   summary: z.string().max(512).nullable().optional(),
   description: z.string().max(32_000).nullable().optional(),

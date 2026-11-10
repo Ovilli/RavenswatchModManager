@@ -2,13 +2,11 @@
 
 import { ApiError } from '@rsmm/api-client';
 import { type ModCategory, type ModPatch, modPatchSchema } from '@rsmm/schemas';
-import { Badge, Button, Input, ProgressBar, Spinner } from '@rsmm/ui';
+import { Badge, Button, Input, ProgressBar, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BarChart3,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   Loader2,
   Package,
@@ -16,7 +14,6 @@ import {
   Trash2,
   Upload,
   Users,
-  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -25,12 +22,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
 import { type ListingDraft, listingChanges, readListingDraft } from '../../../lib/listing-draft';
-import type { Screenshot } from '../../../lib/screenshot-gallery';
 import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../../lib/upload';
 import { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
-import { toEmbedUrl } from '../../../lib/video-embed';
 import { FileDrop } from '../../components/file-drop';
-import { MDEditor, MDPreview } from '../../components/md-editor';
+import { MDEditor } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
 import { ListingLeaveDialog, ListingSaveBar } from './listing-save-bar';
@@ -291,6 +286,7 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   // Form state for metadata edit
   const [name, setName] = useState('');
+  const [author, setAuthor] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState<string | undefined>('');
   const [category, setCategory] = useState<ModCategory | null>(null);
@@ -307,19 +303,12 @@ function ManageModEditor({ slug }: { slug: string }) {
   const { screenshots, coverUrl } = gallery;
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
   const [section, setSection] = useState<SectionId>('listing');
   const sectionNav = useRef<HTMLElement>(null);
   const sectionContent = useRef<HTMLDivElement>(null);
   const requestedSection = useRef<SectionId | null>(null);
   const editorReady =
-    !!session &&
-    !!detail.data &&
-    !sessionLoading &&
-    !detail.isLoading &&
-    !detail.isError &&
-    !previewMode;
+    !!session && !!detail.data && !sessionLoading && !detail.isLoading && !detail.isError;
 
   const selectSection = useCallback((id: SectionId) => {
     const target = document.getElementById(id);
@@ -434,6 +423,7 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   const restoreListing = useCallback((draft: ListingDraft) => {
     setName(draft.name);
+    setAuthor(draft.author);
     setSummary(draft.summary);
     setDescription(draft.description);
     setCategory(draft.category);
@@ -457,6 +447,7 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   const listing: ListingDraft = {
     name,
+    author,
     summary,
     description: description ?? '',
     category,
@@ -481,6 +472,8 @@ function ManageModEditor({ slug }: { slug: string }) {
       setSavedListing(snapshot);
       qc.invalidateQueries({ queryKey: ['my-mod', slug] });
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+      qc.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      qc.invalidateQueries({ queryKey: ['registry'] });
       if (document.activeElement?.closest('[aria-label="Listing changes"]'))
         document.getElementById(section)?.focus({ preventScroll: true });
     },
@@ -509,6 +502,7 @@ function ManageModEditor({ slug }: { slug: string }) {
       const issue = parsed.error.issues[0];
       const labels: Record<string, string> = {
         name: 'mod name',
+        author: 'author credit',
         repoUrl: 'repository URL',
         homepageUrl: 'homepage URL',
         screenshots: 'photos',
@@ -566,32 +560,6 @@ function ManageModEditor({ slug }: { slug: string }) {
   function removeVideo(idx: number) {
     setVideos(videos.filter((_, i) => i !== idx));
   }
-
-  // Lightbox keyboard nav — Esc closes, ←/→ paginate. Wired via
-  // useEffect so we don't leak listeners between mods.
-  const closeLightbox = useCallback(() => setLightboxIdx(null), []);
-  const prevImage = useCallback(() => {
-    setLightboxIdx((i) => {
-      if (i == null || screenshots.length === 0) return i;
-      return (i - 1 + screenshots.length) % screenshots.length;
-    });
-  }, [screenshots.length]);
-  const nextImage = useCallback(() => {
-    setLightboxIdx((i) => {
-      if (i == null || screenshots.length === 0) return i;
-      return (i + 1) % screenshots.length;
-    });
-  }, [screenshots.length]);
-  useEffect(() => {
-    if (lightboxIdx == null) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeLightbox();
-      else if (e.key === 'ArrowLeft') prevImage();
-      else if (e.key === 'ArrowRight') nextImage();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxIdx, closeLightbox, prevImage, nextImage]);
 
   // New version section
   const [newVersion, setNewVersion] = useState('');
@@ -701,52 +669,6 @@ function ManageModEditor({ slug }: { slug: string }) {
   const mod = detail.data.mod;
   const versions = detail.data.versions;
 
-  if (previewMode) {
-    return (
-      <main className="container mx-auto space-y-8 px-6 py-12">
-        {contextualSaveBar}
-        <PreviewHeader
-          modName={name.trim() || mod.name}
-          slug={mod.slug}
-          onExit={() => setPreviewMode(false)}
-        />
-        <PreviewBody
-          mod={{
-            name: name || mod.name,
-            summary,
-            author: mod.author,
-            latestVersion: mod.latestVersion,
-            updatedAt: mod.updatedAt,
-            category,
-            tags: tags
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean),
-            license: license || null,
-            // imageUrl is optional on ModListItem now that the schema sanitizes
-            // stored URLs; the preview wants an explicit null for "no image".
-            imageUrl: coverUrl,
-            downloads: mod.downloads ?? 0,
-          }}
-          description={description}
-          screenshots={screenshots}
-          videos={videos}
-          onLightbox={(i) => setLightboxIdx(i)}
-        />
-        {lightboxIdx != null && screenshots[lightboxIdx] ? (
-          <Lightbox
-            shot={screenshots[lightboxIdx]}
-            index={lightboxIdx}
-            total={screenshots.length}
-            onClose={closeLightbox}
-            onPrev={prevImage}
-            onNext={nextImage}
-          />
-        ) : null}
-      </main>
-    );
-  }
-
   const hasInReview = versions.some(
     (v) => v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped',
   );
@@ -788,29 +710,14 @@ function ManageModEditor({ slug }: { slug: string }) {
                       setValidationError(null);
                     }}
                   />
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads
-                    ·{mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
-                    {new Date(mod.updatedAt).toLocaleDateString()}
-                  </p>
-                  <div className="mt-3 flex gap-2 text-sm">
-                    <Link
-                      href={`/registry/${mod.slug}` as never}
-                      className="underline-offset-2 hover:underline"
-                    >
-                      View public page →
-                    </Link>
-                  </div>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-self-start"
-                onClick={() => setPreviewMode(true)}
+              <Link
+                href={`/registry/${mod.slug}` as never}
+                className={buttonVariants({ variant: 'outline', className: 'justify-self-start' })}
               >
-                <Eye className="h-4 w-4" /> Preview
-              </Button>
+                <Eye className="h-4 w-4" aria-hidden="true" /> View public page
+              </Link>
             </header>
 
             {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
@@ -845,6 +752,19 @@ function ManageModEditor({ slug }: { slug: string }) {
                     onChange={(e) => setSummary(e.target.value)}
                     maxLength={512}
                   />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="author">Author</Label>
+                  <Input
+                    id="author"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                    maxLength={128}
+                    aria-describedby="author-hint"
+                  />
+                  <p id="author-hint" className="text-xs text-muted-foreground">
+                    The name credited on the public mod page.
+                  </p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Description (Markdown)</Label>
@@ -1171,280 +1091,6 @@ function ManageModEditor({ slug }: { slug: string }) {
           </section>
         </div>
       </div>
-
-      {lightboxIdx != null && screenshots[lightboxIdx] ? (
-        <Lightbox
-          shot={screenshots[lightboxIdx]}
-          index={lightboxIdx}
-          total={screenshots.length}
-          onClose={closeLightbox}
-          onPrev={prevImage}
-          onNext={nextImage}
-        />
-      ) : null}
     </main>
-  );
-}
-
-function Lightbox({
-  shot,
-  index,
-  total,
-  onClose,
-  onPrev,
-  onNext,
-}: {
-  shot: Screenshot;
-  index: number;
-  total: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <dialog
-      open
-      aria-label={shot.caption || `Screenshot ${index + 1}`}
-      className="fixed inset-0 z-[90] bg-pitch/95 animate-fade-in"
-    >
-      <div className="absolute inset-0 overflow-y-auto">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute inset-0 h-full w-full cursor-default"
-          aria-label="Close preview"
-        />
-        <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
-          <figure
-            onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
-          >
-            <img
-              loading="lazy"
-              src={shot.url}
-              alt={shot.caption || `Screenshot ${index + 1}`}
-              className="max-w-full rounded-md object-contain shadow-2xl"
-            />
-            <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
-              {shot.caption || `Screenshot ${index + 1} of ${total}`}
-            </figcaption>
-            <p className="font-mono text-xs text-muted-foreground/70">
-              {index + 1} / {total}
-            </p>
-          </figure>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="fixed right-4 top-4 z-20 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
-        aria-label="Close"
-      >
-        <X className="h-5 w-5" />
-      </button>
-      {total > 1 ? (
-        <button
-          type="button"
-          onClick={onPrev}
-          className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
-          aria-label="Previous"
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-      ) : null}
-      {total > 1 ? (
-        <button
-          type="button"
-          onClick={onNext}
-          className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
-          aria-label="Next"
-        >
-          <ChevronRight className="h-6 w-6" />
-        </button>
-      ) : null}
-    </dialog>
-  );
-}
-
-function PreviewHeader({
-  modName,
-  slug,
-  onExit,
-}: {
-  modName: string;
-  slug: string;
-  onExit: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gilt/40 bg-gilt/5 px-4 py-2 text-sm">
-      <div>
-        <span className="font-semibold text-foreground">Preview</span>
-        <span className="ml-2 font-data text-muted-foreground">{slug}</span>
-        <span className="ml-2 text-muted-foreground">— {modName}</span>
-      </div>
-      <Button type="button" size="sm" variant="outline" onClick={onExit}>
-        <Pencil className="h-4 w-4" /> Back to edit
-      </Button>
-    </div>
-  );
-}
-
-function PreviewBody({
-  mod,
-  description,
-  screenshots,
-  videos,
-  onLightbox,
-}: {
-  mod: {
-    name: string;
-    summary: string;
-    author: string | null;
-    latestVersion: string | null;
-    updatedAt: string;
-    category: string | null;
-    tags: string[];
-    license: string | null;
-    imageUrl: string | null;
-    downloads: number;
-  };
-  description: string | undefined;
-  screenshots: Screenshot[];
-  videos: string[];
-  onLightbox: (idx: number) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {mod.imageUrl ? (
-        <div className="aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
-          <img
-            src={mod.imageUrl}
-            alt={`${mod.name} cover`}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      ) : null}
-      <header>
-        <h1 className="text-4xl font-bold tracking-tight">{mod.name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {mod.author ?? 'unknown'}
-          {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
-          {` · updated ${new Date(mod.updatedAt).toLocaleDateString()}`}
-        </p>
-      </header>
-      {mod.summary ? (
-        <p className="max-w-3xl text-lg text-muted-foreground">{mod.summary}</p>
-      ) : null}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="space-y-4 md:col-span-2">
-          {description?.trim() ? (
-            <div className="grimoire-card space-y-3 p-6">
-              <h2 className="text-xl font-bold tracking-tight">About</h2>
-              <div data-color-mode="dark" className="prose prose-sm prose-invert max-w-none">
-                <MDPreview source={description} style={{ background: 'transparent' }} />
-              </div>
-            </div>
-          ) : null}
-          {screenshots.length > 0 || videos.length > 0 ? (
-            <div className="grimoire-card space-y-4 p-6">
-              <h2 className="text-xl font-bold tracking-tight">Gallery</h2>
-              {videos.length > 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {videos.map((url) => {
-                    const embed = toEmbedUrl(url);
-                    return (
-                      <div key={url} className="aspect-video overflow-hidden rounded-md bg-muted">
-                        {embed ? (
-                          <iframe
-                            src={embed}
-                            title="Video preview"
-                            loading="lazy"
-                            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            allowFullScreen
-                            className="h-full w-full"
-                          />
-                        ) : (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex h-full w-full items-center justify-center text-sm underline"
-                          >
-                            {url}
-                          </a>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {screenshots.length > 0 ? (
-                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {screenshots.map((shot, idx) => (
-                    <li key={shot.url}>
-                      <button
-                        type="button"
-                        onClick={() => onLightbox(idx)}
-                        className="group block w-full text-left"
-                      >
-                        <div className="aspect-video overflow-hidden rounded-md bg-muted">
-                          <img
-                            src={shot.url}
-                            alt={shot.caption || `Screenshot ${idx + 1}`}
-                            loading="lazy"
-                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-                          />
-                        </div>
-                        {shot.caption ? (
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {shot.caption}
-                          </p>
-                        ) : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <aside className="space-y-4">
-          <div className="grimoire-card p-6">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Details
-            </h3>
-            <dl className="space-y-2 text-sm">
-              {mod.category ? <Row k="Category" v={mod.category} /> : null}
-              <Row k="Downloads" v={mod.downloads.toLocaleString()} />
-              {mod.latestVersion ? <Row k="Latest" v={`v${mod.latestVersion}`} /> : null}
-              {mod.license ? <Row k="License" v={mod.license} /> : null}
-            </dl>
-          </div>
-          {mod.tags.length > 0 ? (
-            <div className="grimoire-card p-6">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Tags
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {mod.tags.map((t) => (
-                  <Badge key={t} variant="secondary">
-                    {t}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted-foreground">{k}</dt>
-      <dd className="font-medium">{v}</dd>
-    </div>
   );
 }

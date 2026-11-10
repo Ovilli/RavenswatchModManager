@@ -4,6 +4,7 @@ import { type Screenshot, getListingPhotos, listingPhotoPatch } from './screensh
 
 export interface ListingDraft {
   name: string;
+  author: string;
   summary: string;
   description: string;
   category: ModCategory | null;
@@ -19,6 +20,7 @@ export interface ListingDraft {
 export function readListingDraft({ mod, versions }: ModDetailResponse): ListingDraft {
   return {
     name: mod.name,
+    author: mod.author ?? '',
     summary: mod.summary ?? '',
     // Only older responses omit description. An explicitly cleared description
     // must not resurrect the copy from a previously published version.
@@ -40,6 +42,7 @@ export function readListingDraft({ mod, versions }: ModDetailResponse): ListingD
 function listingPatch(draft: ListingDraft): ModPatch {
   return {
     name: draft.name.trim(),
+    author: draft.author.trim() || null,
     summary: draft.summary.trim() || null,
     description: draft.description.trim() || null,
     category: draft.category,

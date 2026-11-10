@@ -901,6 +901,7 @@ modsRouter.patch(
     // persist to the DB.
     const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
+    if (patch.author !== undefined) updates.authorName = patch.author;
     if (patch.summary !== undefined) updates.summary = patch.summary;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.license !== undefined) updates.license = patch.license;

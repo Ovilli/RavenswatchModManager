@@ -32,6 +32,7 @@ const [cover, other] = saved.photos as [Screenshot, Screenshot];
 
 describe('listing draft', () => {
   it('loads stored text, URLs and an unset category without making the listing dirty', () => {
+    expect(saved.author).toBe('Author');
     expect(saved.description).toBe('Saved description');
     expect(saved.repoUrl).toBe('https://github.com/example/mod');
     expect(saved.homepageUrl).toBe('https://example.com');
@@ -53,6 +54,18 @@ describe('listing draft', () => {
       summary: null,
       repoUrl: null,
     });
+  });
+
+  it('stages author credit changes and supports clearing and discarding them', () => {
+    expect(listingChanges(saved, { ...saved, author: ' New author ' })).toEqual({
+      author: 'New author',
+    });
+    expect(listingChanges(saved, { ...saved, author: '   ' })).toEqual({ author: null });
+    const cleared = readListingDraft({ ...detail, mod: { ...detail.mod, author: null } });
+    expect(cleared.author).toBe('');
+    expect(listingChanges(cleared, { ...cleared, author: ' ' })).toEqual({});
+    expect(listingChanges(saved, { ...saved, author: ' Author ' })).toEqual({});
+    expect(listingChanges(saved, { ...saved })).toEqual({});
   });
 
   it('combines metadata, videos, captions and cover ordering in one valid patch', () => {
