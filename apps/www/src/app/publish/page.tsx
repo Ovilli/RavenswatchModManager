@@ -354,7 +354,7 @@ export default function PublishPage() {
   }
 
   return (
-    <main className="container mx-auto max-w-3xl px-6 py-12">
+    <main className="container mx-auto px-6 py-12">
       <header className="mb-8">
         <h1 className="font-display text-5xl text-parchment">Publish a mod</h1>
         <p className="mt-2 text-sm text-muted-foreground">

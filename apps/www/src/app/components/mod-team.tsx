@@ -35,7 +35,7 @@ export function ModTeam({ slug }: { slug: string }) {
   const isOwner = !!session && team.data?.ownerId === session.user.id;
 
   return (
-    <section className="grimoire-card space-y-4 p-5">
+    <section className="space-y-4">
       <div className="flex items-center gap-2">
         <Users className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-semibold">Team</h2>

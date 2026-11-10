@@ -221,10 +221,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 reversible, and Windows/Linux only.
               </p>
               <div className="flex items-center gap-2 pt-1">
-                <Link
-                  href="/download"
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
+                <Link href="/download" className={buttonVariants({ size: 'sm' })}>
                   Download
                 </Link>
                 <a

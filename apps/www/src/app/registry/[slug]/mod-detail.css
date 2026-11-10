@@ -11,8 +11,6 @@ body:has(.mod-detail) > .site-header {
   --mod-muted: hsl(32 17% 68%);
   --mod-rule: hsl(var(--border));
   --mod-panel: hsl(var(--surface-1));
-  width: min(100% - 64px, 1120px);
-  margin-inline: auto;
   padding-block: 30px 80px;
   color: hsl(var(--foreground));
 }
@@ -835,7 +833,6 @@ body:has(.mod-detail) > .site-header {
 }
 @media (max-width: 760px) {
   .mod-detail {
-    width: calc(100% - 40px);
     padding-block: 18px 48px;
   }
   .mod-breadcrumb {

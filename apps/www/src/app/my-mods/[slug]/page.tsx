@@ -1,41 +1,36 @@
 'use client';
 
 import { ApiError } from '@rsmm/api-client';
-import type { ModCategory } from '@rsmm/schemas';
-import { Badge, Button, Input, ProgressBar, Spinner } from '@rsmm/ui';
+import { type ModCategory, type ModPatch, modPatchSchema } from '@rsmm/schemas';
+import { Badge, Button, Input, ProgressBar, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BarChart3,
-  ChevronLeft,
-  ChevronRight,
   Eye,
-  ImageIcon,
   Loader2,
   Package,
   Pencil,
-  Save,
   Trash2,
   Upload,
   Users,
-  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useNavigationGuard } from 'nextjs-nav-guard';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { type ListingDraft, listingChanges, readListingDraft } from '../../../lib/listing-draft';
 import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../../lib/upload';
-import { toEmbedUrl } from '../../../lib/video-embed';
+import { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
 import { FileDrop } from '../../components/file-drop';
-import { MDEditor, MDPreview } from '../../components/md-editor';
+import { MDEditor } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
-
-interface Screenshot {
-  url: string;
-  caption?: string;
-}
+import { ListingLeaveDialog, ListingSaveBar } from './listing-save-bar';
+import { ScreenshotEditor } from './screenshot-editor';
+import './editor.css';
 
 const CATEGORIES: ModCategory[] = [
   'gameplay',
@@ -50,12 +45,9 @@ const CATEGORIES: ModCategory[] = [
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
 
-/** Manage-page sections. One card pile per concern instead of one long scroll;
- *  the active section is kept in the URL hash so a reload (or a shared link,
- *  e.g. /my-mods/foo#versions) lands on the same section. */
+/** Anchor navigation for the continuous editor, with shareable section links. */
 const SECTIONS = [
   { id: 'listing', label: 'Listing', icon: Pencil },
-  { id: 'gallery', label: 'Gallery', icon: ImageIcon },
   { id: 'versions', label: 'Versions', icon: Package },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'team', label: 'Team', icon: Users },
@@ -65,19 +57,22 @@ type SectionId = (typeof SECTIONS)[number]['id'];
 
 function SectionNav({
   active,
+  navRef,
   onSelect,
   versionCount,
   hasInReview,
 }: {
   active: SectionId;
+  navRef: React.RefObject<HTMLElement | null>;
   onSelect: (id: SectionId) => void;
   versionCount: number;
   hasInReview: boolean;
 }) {
   return (
     <nav
+      ref={navRef}
       aria-label="Mod sections"
-      className="grimoire-card flex gap-1 overflow-x-auto p-2 md:sticky md:top-24 md:flex-col md:gap-1 md:self-start"
+      className="sticky top-[var(--site-header-height,61px)] z-30 flex h-16 gap-1 overflow-x-auto bg-background p-2 md:top-[calc(var(--site-header-height,61px)+24px)] md:h-auto md:flex-col md:self-start md:bg-transparent"
     >
       {SECTIONS.map((s) => {
         const isActive = active === s.id;
@@ -91,11 +86,15 @@ function SectionNav({
               ? 'bg-secondary/70 font-medium text-foreground'
               : 'text-muted-foreground hover:bg-secondary/40 hover:text-foreground';
         return (
-          <button
+          <a
             key={s.id}
-            type="button"
-            onClick={() => onSelect(s.id)}
-            aria-current={isActive ? 'true' : undefined}
+            href={`#${s.id}`}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              onSelect(s.id);
+            }}
+            aria-current={isActive ? 'location' : undefined}
             className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-full ${tone}`}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -113,7 +112,7 @@ function SectionNav({
                 </span>
               </span>
             ) : null}
-          </button>
+          </a>
         );
       })}
     </nav>
@@ -197,9 +196,85 @@ function ScanBadge({ versionId }: { versionId: string }) {
 }
 
 export default function ManageModPage() {
+  const { slug } = useParams<{ slug: string }>();
+  return <ManageModEditor key={slug} slug={slug} />;
+}
+
+function EditableModTitle({
+  value,
+  fallback,
+  onChange,
+}: {
+  value: string;
+  fallback: string;
+  onChange: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const original = useRef(value);
+  const restoreFocus = useRef(false);
+  const title = value.trim() || fallback;
+
+  useEffect(() => {
+    if (editing) {
+      input.current?.focus();
+      input.current?.select();
+    } else if (restoreFocus.current) {
+      trigger.current?.focus();
+      restoreFocus.current = false;
+    }
+  }, [editing]);
+
+  return (
+    <h1 aria-label={title} className="min-w-0 tracking-tight">
+      {editing ? (
+        <Input
+          ref={input}
+          aria-label="Display name"
+          className="mod-name-input"
+          value={value}
+          maxLength={128}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={() => {
+            onChange(value.trim() || original.current || fallback);
+            setEditing(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onChange(original.current);
+              restoreFocus.current = true;
+              setEditing(false);
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              restoreFocus.current = true;
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      ) : (
+        <button
+          ref={trigger}
+          type="button"
+          aria-label={`Edit mod name: ${title}`}
+          onClick={() => {
+            original.current = value;
+            setEditing(true);
+          }}
+          className="flex min-h-11 w-full items-center gap-3 rounded-md text-left hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="min-w-0 break-words">{title}</span>
+          <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      )}
+    </h1>
+  );
+}
+
+function ManageModEditor({ slug }: { slug: string }) {
   const router = useRouter();
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug;
   const qc = useQueryClient();
   const { data: session, isPending: sessionLoading } = useSession();
 
@@ -211,199 +286,280 @@ export default function ManageModPage() {
 
   // Form state for metadata edit
   const [name, setName] = useState('');
+  const [author, setAuthor] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState<string | undefined>('');
-  const [category, setCategory] = useState<ModCategory>('gameplay');
+  const [category, setCategory] = useState<ModCategory | null>(null);
   const [tags, setTags] = useState('');
   const [license, setLicense] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savedListing, setSavedListing] = useState<ListingDraft | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
+  const allowLeave = useRef(false);
   const [nsfw, setNsfw] = useState(false);
-  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const gallery = useScreenshotGallery(slug, detail.data?.mod);
+  const { screenshots, coverUrl } = gallery;
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
   const [section, setSection] = useState<SectionId>('listing');
-  // Adopt a section from the URL hash on first load (deep link / reload).
-  useEffect(() => {
-    const h = window.location.hash.slice(1);
-    if (SECTIONS.some((s) => s.id === h)) setSection(h as SectionId);
-  }, []);
+  const sectionNav = useRef<HTMLElement>(null);
+  const sectionContent = useRef<HTMLDivElement>(null);
+  const requestedSection = useRef<SectionId | null>(null);
+  const editorReady =
+    !!session && !!detail.data && !sessionLoading && !detail.isLoading && !detail.isError;
+
   const selectSection = useCallback((id: SectionId) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    requestedSection.current = id;
+    if (window.location.hash !== `#${id}`) window.history.pushState(null, '', `#${id}`);
     setSection(id);
-    window.history.replaceState(null, '', `#${id}`);
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
   }, []);
 
-  // Hydrate the form whenever the underlying detail row changes — this
-  // also covers the post-mutation refetch so the inputs reflect what
-  // the server actually persisted.
   useEffect(() => {
-    const mod = detail.data?.mod;
-    if (!mod) return;
-    setName(mod.name);
-    setSummary(mod.summary ?? '');
-    // The detail endpoint returns ModListItem-shaped data, which does
-    // not include the long markdown description. Fetch it lazily from
-    // the latest version's manifest as a sensible default.
-    const latestDesc =
-      typeof detail.data?.versions[0]?.manifestJson === 'object'
-        ? ((detail.data.versions[0].manifestJson as { description?: string })?.description ?? '')
-        : '';
-    setDescription(latestDesc);
-    setCategory((mod.category as ModCategory) ?? 'gameplay');
-    setTags(mod.tags.join(', '));
-    setLicense(mod.license ?? '');
-    setNsfw(mod.nsfw ?? false);
-    // repoUrl / homepageUrl are not on ModListItem; leave blank and
-    // let the user fill them on first save.
-    setRepoUrl('');
-    setHomepageUrl('');
-    setScreenshots(mod.screenshots ?? []);
-    setVideos(mod.videos ?? []);
-  }, [detail.data]);
-
-  const saveMeta = useMutation({
-    mutationFn: async () => {
-      const tagList = tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .slice(0, 16);
-      await api.mods.patch(slug, {
-        name: name.trim() || undefined,
-        summary: summary.trim() || null,
-        description: description?.trim() || null,
-        category,
-        tags: tagList,
-        license: license.trim() || null,
-        repoUrl: repoUrl.trim() || null,
-        homepageUrl: homepageUrl.trim() || null,
-        screenshots,
-        videos,
-        nsfw,
-      });
-    },
-    onSuccess: () => {
-      setSaveMessage('Saved.');
-      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
-      qc.invalidateQueries({ queryKey: ['me', 'mods'] });
-    },
-  });
-
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const uploadCover = useMutation({
-    mutationFn: async () => {
-      if (!coverFile) throw new Error('no file picked');
-      const presigned = await api.mods.presignImage(slug, {
-        contentType: coverFile.type as 'image/png' | 'image/jpeg' | 'image/webp',
-        sizeBytes: coverFile.size,
-      });
-      await putFile(presigned.uploadUrl, coverFile, {
-        headers: { 'Content-Type': coverFile.type },
-        what: 'cover image upload',
-      });
-      await api.mods.patch(slug, { imageUrl: presigned.publicUrl });
-    },
-    onSuccess: () => {
-      setCoverFile(null);
-      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
-      qc.invalidateQueries({ queryKey: ['me', 'mods'] });
-    },
-  });
-
-  const uploadScreenshot = useMutation({
-    mutationFn: async (file: File) => {
-      const presigned = await api.mods.presignImage(slug, {
-        contentType: file.type as 'image/png' | 'image/jpeg' | 'image/webp',
-        sizeBytes: file.size,
-      });
-      await putFile(presigned.uploadUrl, file, {
-        headers: { 'Content-Type': file.type },
-        what: 'screenshot upload',
-      });
-      const next: Screenshot[] = [...screenshots, { url: presigned.publicUrl }].slice(0, 12);
-      setScreenshots(next);
-      await api.mods.patch(slug, { screenshots: next });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
-    },
-  });
-
-  function removeScreenshot(idx: number) {
-    const next = screenshots.filter((_, i) => i !== idx);
-    setScreenshots(next);
-    api.mods.patch(slug, { screenshots: next }).catch((err) => {
-      console.error('screenshot remove failed', err);
-    });
-  }
-
-  // Debounced caption save — typing on every keystroke would hammer
-  // the API and race the user. Save on blur instead, plus a fallback
-  // commit if the user re-orders or removes anything.
-  function setCaption(idx: number, caption: string) {
-    setScreenshots((prev) => {
-      const next = prev.map((s, i) => (i === idx ? { ...s, caption } : s));
-      return next;
-    });
-  }
-  function commitCaption(idx: number) {
-    const next = screenshots.map((s, i) =>
-      i === idx ? { url: s.url, caption: s.caption?.trim() || undefined } : s,
+    if (!editorReady || !sectionContent.current) return;
+    const content = sectionContent.current;
+    const sections = SECTIONS.map(({ id }) => document.getElementById(id)).filter(
+      (node): node is HTMLElement => node !== null,
     );
-    setScreenshots(next);
-    api.mods.patch(slug, { screenshots: next }).catch((err) => {
-      console.error('caption save failed', err);
-    });
+    const first = sections[0];
+    if (!first) return;
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    let frame = 0;
+    let navigationFrame = 0;
+    const updateActive = () => {
+      frame = 0;
+      const offset = Number.parseFloat(getComputedStyle(first).scrollMarginTop) + 8;
+      const atBottom =
+        window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+      // Keep a clicked section selected during its scroll, including short sections
+      // near the footer that cannot reach the top. Manual scrolling resumes tracking.
+      const current = requestedSection.current
+        ? sections.find((node) => node.id === requestedSection.current)
+        : atBottom
+          ? sections[sections.length - 1]
+          : sections.reduce(
+              (active, node) => (node.getBoundingClientRect().top <= offset ? node : active),
+              first,
+            );
+      if (!current) return;
+      const id = current.id as SectionId;
+      setSection(id);
+      if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`);
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = requestAnimationFrame(updateActive);
+    };
+    const followHash = () => {
+      const hash = window.location.hash.slice(1);
+      const id = hash === 'gallery' ? 'listing' : hash;
+      const target = sections.find((node) => node.id === id);
+      if (target) {
+        requestedSection.current = id as SectionId;
+        setSection(id as SectionId);
+        // Run after history traversal finishes restoring the document's scroll.
+        cancelAnimationFrame(navigationFrame);
+        navigationFrame = requestAnimationFrame(() => {
+          target.focus({ preventScroll: true });
+          target.scrollIntoView({ block: 'start', behavior: 'instant' });
+          scheduleUpdate();
+        });
+      }
+      scheduleUpdate();
+    };
+    const resumeTracking = () => {
+      requestedSection.current = null;
+    };
+    const onScrollKey = (event: KeyboardEvent) => {
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key))
+        resumeTracking();
+    };
+    followHash();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('hashchange', followHash);
+    window.addEventListener('popstate', followHash);
+    window.addEventListener('wheel', resumeTracking, { passive: true });
+    window.addEventListener('touchstart', resumeTracking, { passive: true });
+    window.addEventListener('pointerdown', resumeTracking, { passive: true });
+    window.addEventListener('keydown', onScrollKey);
+    // Keep the active link correct as uploads, analytics, or form errors change section heights.
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(content);
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(navigationFrame);
+      observer.disconnect();
+      window.history.scrollRestoration = previousRestoration;
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('hashchange', followHash);
+      window.removeEventListener('popstate', followHash);
+      window.removeEventListener('wheel', resumeTracking);
+      window.removeEventListener('touchstart', resumeTracking);
+      window.removeEventListener('pointerdown', resumeTracking);
+      window.removeEventListener('keydown', onScrollKey);
+    };
+  }, [editorReady]);
+
+  useEffect(() => {
+    const nav = sectionNav.current;
+    const link = nav?.querySelector<HTMLAnchorElement>(`a[href="#${section}"]`);
+    if (!nav || !link) return;
+    if (link.offsetLeft < nav.scrollLeft) nav.scrollLeft = link.offsetLeft;
+    else if (link.offsetLeft + link.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollLeft = link.offsetLeft + link.offsetWidth - nav.clientWidth;
+  }, [section]);
+
+  const restoreListing = useCallback((draft: ListingDraft) => {
+    setName(draft.name);
+    setAuthor(draft.author);
+    setSummary(draft.summary);
+    setDescription(draft.description);
+    setCategory(draft.category);
+    setTags(draft.tags);
+    setLicense(draft.license);
+    setRepoUrl(draft.repoUrl);
+    setHomepageUrl(draft.homepageUrl);
+    setNsfw(draft.nsfw);
+    setVideos(draft.videos);
+  }, []);
+
+  // Hydrate once. Refetching versions or team data must not overwrite draft edits.
+  const metadataHydrated = useRef(false);
+  useEffect(() => {
+    if (!detail.data || metadataHydrated.current) return;
+    metadataHydrated.current = true;
+    const initial = readListingDraft(detail.data);
+    restoreListing(initial);
+    setSavedListing(initial);
+  }, [detail.data, restoreListing]);
+
+  const listing: ListingDraft = {
+    name,
+    author,
+    summary,
+    description: description ?? '',
+    category,
+    tags,
+    license,
+    repoUrl,
+    homepageUrl,
+    nsfw,
+    videos,
+    photos: screenshots,
+  };
+  const changes = savedListing ? listingChanges(savedListing, listing) : {};
+  const dirty = Object.keys(changes).length > 0;
+
+  const saveListing = useMutation({
+    mutationFn: async ({ patch }: { patch: ModPatch; snapshot: ListingDraft }) => {
+      await api.mods.patch(slug, patch);
+    },
+    onSuccess: (_result, { snapshot }) => {
+      // Only mark the submitted snapshot saved. Edits made while the request
+      // was running remain dirty, including new photo uploads or ordering.
+      setSavedListing(snapshot);
+      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
+      qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+      qc.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      qc.invalidateQueries({ queryKey: ['registry'] });
+      if (document.activeElement?.closest('[aria-label="Listing changes"]'))
+        document.getElementById(section)?.focus({ preventScroll: true });
+    },
+    onSettled: () => {
+      saveInFlight.current = false;
+    },
+  });
+
+  const hasUnsavedChanges = dirty || gallery.isUploading || saveListing.isPending;
+  const navigationGuard = useNavigationGuard({
+    enabled: ({ to, type }) => {
+      if (allowLeave.current || !hasUnsavedChanges) return false;
+      if (type === 'beforeunload' || type === 'refresh') return true;
+      const target = new URL(to, window.location.href);
+      // Section anchors are navigation within the same draft, not leaving it.
+      // During popstate the address bar already contains the destination.
+      // Compare with this editor's route, not window.location.pathname.
+      return target.pathname !== `/my-mods/${encodeURIComponent(slug)}`;
+    },
+  });
+
+  function saveChanges() {
+    if (!dirty || gallery.isUploading || saveInFlight.current) return;
+    const parsed = modPatchSchema.safeParse(changes);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const labels: Record<string, string> = {
+        name: 'mod name',
+        author: 'author credit',
+        repoUrl: 'repository URL',
+        homepageUrl: 'homepage URL',
+        screenshots: 'photos',
+        imageUrl: 'cover photo',
+        nsfw: 'mature content setting',
+      };
+      const field = String(issue?.path[0] ?? 'the listing');
+      setValidationError(`Check ${labels[field] ?? field}: ${issue?.message ?? 'Invalid value'}`);
+      return;
+    }
+    setValidationError(null);
+    saveInFlight.current = true;
+    saveListing.mutate({ patch: parsed.data, snapshot: listing });
   }
+
+  function discardChanges() {
+    if (!savedListing || saveInFlight.current) return;
+    restoreListing(savedListing);
+    gallery.reset(savedListing.photos);
+    setVideoInput('');
+    setValidationError(null);
+    saveListing.reset();
+    document.getElementById(section)?.focus({ preventScroll: true });
+  }
+
+  const contextualSaveBar = (
+    <>
+      <ListingLeaveDialog
+        active={navigationGuard.active}
+        saving={saveListing.isPending}
+        onStay={navigationGuard.reject}
+        onLeave={navigationGuard.accept}
+      />
+      {hasUnsavedChanges ? (
+        <ListingSaveBar
+          saving={saveListing.isPending}
+          uploading={gallery.isUploading}
+          error={
+            validationError || (saveListing.isError ? describeApiError(saveListing.error) : null)
+          }
+          onSave={saveChanges}
+          onDiscard={discardChanges}
+        />
+      ) : null}
+    </>
+  );
 
   function addVideo() {
     const trimmed = videoInput.trim();
-    if (!trimmed) return;
-    if (videos.length >= 8) return;
-    const next = [...videos, trimmed];
-    setVideos(next);
+    if (!trimmed || videos.length >= 8) return;
+    setVideos([...videos, trimmed]);
     setVideoInput('');
-    api.mods.patch(slug, { videos: next }).catch((err) => {
-      console.error('video add failed', err);
-    });
   }
 
   function removeVideo(idx: number) {
-    const next = videos.filter((_, i) => i !== idx);
-    setVideos(next);
-    api.mods.patch(slug, { videos: next }).catch((err) => {
-      console.error('video remove failed', err);
-    });
+    setVideos(videos.filter((_, i) => i !== idx));
   }
-
-  // Lightbox keyboard nav — Esc closes, ←/→ paginate. Wired via
-  // useEffect so we don't leak listeners between mods.
-  const closeLightbox = useCallback(() => setLightboxIdx(null), []);
-  const prevImage = useCallback(() => {
-    setLightboxIdx((i) => {
-      if (i == null || screenshots.length === 0) return i;
-      return (i - 1 + screenshots.length) % screenshots.length;
-    });
-  }, [screenshots.length]);
-  const nextImage = useCallback(() => {
-    setLightboxIdx((i) => {
-      if (i == null || screenshots.length === 0) return i;
-      return (i + 1) % screenshots.length;
-    });
-  }, [screenshots.length]);
-  useEffect(() => {
-    if (lightboxIdx == null) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeLightbox();
-      else if (e.key === 'ArrowLeft') prevImage();
-      else if (e.key === 'ArrowRight') nextImage();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxIdx, closeLightbox, prevImage, nextImage]);
 
   // New version section
   const [newVersion, setNewVersion] = useState('');
@@ -423,7 +579,7 @@ export default function ManageModPage() {
         version: newVersion,
         author: mod.author ?? undefined,
         summary: mod.summary ?? undefined,
-        description: description?.trim() || undefined,
+        description: savedListing?.description.trim() || undefined,
         license: mod.license ?? undefined,
         tags: mod.tags,
       };
@@ -469,6 +625,7 @@ export default function ManageModPage() {
     mutationFn: () => api.mods.remove(slug),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+      allowLeave.current = true;
       router.push('/my-mods');
     },
   });
@@ -512,340 +669,177 @@ export default function ManageModPage() {
   const mod = detail.data.mod;
   const versions = detail.data.versions;
 
-  if (previewMode) {
-    return (
-      <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
-        <PreviewHeader modName={mod.name} slug={mod.slug} onExit={() => setPreviewMode(false)} />
-        <PreviewBody
-          mod={{
-            name: name || mod.name,
-            summary: summary || mod.summary || '',
-            author: mod.author,
-            latestVersion: mod.latestVersion,
-            updatedAt: mod.updatedAt,
-            category,
-            tags: tags
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean),
-            license: license || mod.license,
-            // imageUrl is optional on ModListItem now that the schema sanitizes
-            // stored URLs; the preview wants an explicit null for "no image".
-            imageUrl: mod.imageUrl ?? null,
-            downloads: mod.downloads ?? 0,
-          }}
-          description={description}
-          screenshots={screenshots}
-          videos={videos}
-          onLightbox={(i) => setLightboxIdx(i)}
-        />
-        {lightboxIdx != null && screenshots[lightboxIdx] ? (
-          <Lightbox
-            shot={screenshots[lightboxIdx]}
-            index={lightboxIdx}
-            total={screenshots.length}
-            onClose={closeLightbox}
-            onPrev={prevImage}
-            onNext={nextImage}
-          />
-        ) : null}
-      </main>
-    );
-  }
-
   const hasInReview = versions.some(
     (v) => v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped',
   );
 
   return (
-    <main className="container mx-auto max-w-5xl space-y-8 px-6 py-12">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-4">
-          {mod.imageUrl ? (
-            <img
-              src={mod.imageUrl}
-              alt=""
-              className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
-            />
-          ) : null}
-          <div>
-            <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
-            <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads ·
-              {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
-              {new Date(mod.updatedAt).toLocaleDateString()}
-            </p>
-            <div className="mt-3 flex gap-2 text-sm">
-              <Link
-                href={`/registry/${mod.slug}` as never}
-                className="underline-offset-2 hover:underline"
-              >
-                View public page →
-              </Link>
-            </div>
-          </div>
-        </div>
-        <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
-          <Eye className="h-4 w-4" /> Preview
-        </Button>
-      </header>
-
-      {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
-        <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-          <div className="text-sm">
-            <p className="font-semibold text-destructive">
-              This mod has been {mod.takedownStatus === 'removed' ? 'removed' : 'hidden'} by a
-              moderator.
-            </p>
-            <p className="mt-1 text-muted-foreground">
-              It is not visible in the public registry or downloadable.
-              {mod.takedownReason ? ` Reason: ${mod.takedownReason}.` : ''} If you believe this was
-              a mistake,{' '}
-              <Link href="/contact" className="underline underline-offset-2">
-                contact the moderators
-              </Link>
-              .
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="gap-8 md:grid md:grid-cols-[200px_minmax(0,1fr)]">
+    <main className="mod-editor container mx-auto space-y-8 px-6 py-12">
+      {contextualSaveBar}
+      <div className="gap-8 [--editor-scroll-offset:calc(var(--site-header-height,61px)+88px)] md:grid md:grid-cols-[200px_minmax(0,1fr)] md:[--editor-scroll-offset:calc(var(--site-header-height,61px)+24px)]">
         <SectionNav
           active={section}
+          navRef={sectionNav}
           onSelect={selectSection}
           versionCount={versions.length}
           hasInReview={hasInReview}
         />
-        <div className="mt-6 min-w-0 space-y-8 md:mt-0">
-          {section === 'listing' ? (
-            <>
-              {/* ─── Cover ─── */}
-              <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Cover image</h2>
-                {mod.imageUrl ? (
-                  <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-muted">
-                    <img
-                      src={mod.imageUrl}
-                      alt={`${mod.name} cover`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No cover image yet.</p>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="cover">{mod.imageUrl ? 'Replace cover' : 'Add a cover'}</Label>
-                  <FileDrop
-                    id="cover"
-                    accept="image/png,image/jpeg,image/webp"
-                    label="Cover image"
-                    hint="PNG, JPEG or WebP, up to 8 MB, 16:9 looks best"
-                    file={coverFile}
-                    onFile={setCoverFile}
-                    preview
-                    disabled={uploadCover.isPending}
+        <div ref={sectionContent} className="mod-editor-sections mt-6 min-w-0 space-y-8 md:mt-0">
+          <section
+            id="listing"
+            aria-label="Listing"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-8 focus:outline-none"
+          >
+            <header className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="flex min-w-0 items-start gap-4">
+                {coverUrl ? (
+                  <img
+                    src={coverUrl}
+                    alt=""
+                    className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
                   />
-                  <Button
-                    onClick={() => uploadCover.mutate()}
-                    disabled={!coverFile || uploadCover.isPending}
-                    size="sm"
-                  >
-                    {uploadCover.isPending ? <Spinner /> : null} Upload cover
-                  </Button>
-                  {uploadCover.isError ? (
-                    <p className="text-xs text-destructive">
-                      {describeApiError(uploadCover.error)}
-                    </p>
-                  ) : null}
-                </div>
-              </section>
-
-              {/* ─── Metadata edit ─── */}
-              <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Metadata</h2>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="name">Display name</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="summary">Summary</Label>
-                    <Input
-                      id="summary"
-                      value={summary}
-                      onChange={(e) => setSummary(e.target.value)}
-                      maxLength={512}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Description (Markdown)</Label>
-                    <div data-color-mode="dark" className="md-editor-themed">
-                      <MDEditor value={description} onChange={setDescription} height={320} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Category</Label>
-                    <select
-                      id="category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as ModCategory)}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="license">License</Label>
-                    <Input
-                      id="license"
-                      value={license}
-                      onChange={(e) => setLicense(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="tags">Tags (comma-separated)</Label>
-                    <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <label className="flex cursor-pointer items-center gap-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={nsfw}
-                        onChange={(e) => setNsfw(e.target.checked)}
-                        className="h-4 w-4 rounded border-border accent-crimson"
-                      />
-                      <span className="text-sm font-medium leading-none">
-                        <strong>NSFW / mature content</strong>
-                      </span>
-                    </label>
-                    <p className="text-xs text-muted-foreground">
-                      If checked, the mod will be hidden behind a blur by default.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="repo">Repository URL</Label>
-                    <Input
-                      id="repo"
-                      type="url"
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="home">Homepage URL</Label>
-                    <Input
-                      id="home"
-                      type="url"
-                      value={homepageUrl}
-                      onChange={(e) => setHomepageUrl(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-end gap-3">
-                  {saveMessage ? (
-                    <span className="text-xs text-muted-foreground">{saveMessage}</span>
-                  ) : null}
-                  {saveMeta.isError ? (
-                    <span className="text-xs text-destructive">
-                      {describeApiError(saveMeta.error)}
-                    </span>
-                  ) : null}
-                  <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
-                    {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save metadata
-                  </Button>
-                </div>
-              </section>
-            </>
-          ) : null}
-
-          {section === 'gallery' ? (
-            /* ─── Gallery ─── */
-            <section className="grimoire-card space-y-4 p-5">
-              <div>
-                <h2 className="text-lg font-semibold">Gallery</h2>
-                <p className="text-xs text-muted-foreground">
-                  Up to 12 screenshots and 8 YouTube/Vimeo links.
-                </p>
-              </div>
-
-              {/* Screenshots */}
-              <div className="space-y-2">
-                <Label>Screenshots</Label>
-                {screenshots.length > 0 ? (
-                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {screenshots.map((shot, idx) => (
-                      <li
-                        key={shot.url}
-                        className="space-y-2 rounded-md border border-border/40 p-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setLightboxIdx(idx)}
-                          className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
-                        >
-                          <img
-                            loading="lazy"
-                            src={shot.url}
-                            alt={shot.caption || `Screenshot ${idx + 1}`}
-                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-                          />
-                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-                            click to preview
-                          </span>
-                        </button>
-                        <Input
-                          value={shot.caption ?? ''}
-                          onChange={(e) => setCaption(idx, (e.target as HTMLInputElement).value)}
-                          onBlur={() => commitCaption(idx)}
-                          placeholder="Caption (optional, max 200 chars)"
-                          maxLength={200}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => removeScreenshot(idx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Remove
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No screenshots yet.</p>
-                )}
-                {screenshots.length < 12 ? (
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadScreenshot.mutate(f);
-                      e.target.value = '';
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
+                  <EditableModTitle
+                    value={name}
+                    fallback={mod.name}
+                    onChange={(value) => {
+                      setName(value);
+                      setValidationError(null);
                     }}
-                    disabled={uploadScreenshot.isPending}
-                    className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
                   />
-                ) : null}
-                {uploadScreenshot.isPending ? (
-                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Spinner /> Uploading…
-                  </p>
-                ) : null}
-                {uploadScreenshot.isError ? (
-                  <p className="text-xs text-destructive">
-                    {describeApiError(uploadScreenshot.error)}
-                  </p>
-                ) : null}
+                </div>
               </div>
+              <Link
+                href={`/registry/${mod.slug}` as never}
+                className={buttonVariants({ variant: 'outline', className: 'justify-self-start' })}
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" /> View public page
+              </Link>
+            </header>
 
+            {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
+              <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-semibold text-destructive">
+                    This mod has been {mod.takedownStatus === 'removed' ? 'removed' : 'hidden'} by a
+                    moderator.
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    It is not visible in the public registry or downloadable.
+                    {mod.takedownReason ? ` Reason: ${mod.takedownReason}.` : ''} If you believe
+                    this was a mistake,{' '}
+                    <Link href="/contact" className="underline underline-offset-2">
+                      contact the moderators
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {/* ─── Metadata edit ─── */}
+            <section className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="summary">Summary</Label>
+                  <Input
+                    id="summary"
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    maxLength={512}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="author">Author</Label>
+                  <Input
+                    id="author"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                    maxLength={128}
+                    aria-describedby="author-hint"
+                  />
+                  <p id="author-hint" className="text-xs text-muted-foreground">
+                    The name credited on the public mod page.
+                  </p>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Description (Markdown)</Label>
+                  <div data-color-mode="dark" className="md-editor-themed min-h-80">
+                    <MDEditor value={description} onChange={setDescription} height={320} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <select
+                    id="category"
+                    value={category ?? ''}
+                    onChange={(e) => setCategory((e.target.value || null) as ModCategory | null)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">No category</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="license">License</Label>
+                  <Input
+                    id="license"
+                    value={license}
+                    onChange={(e) => setLicense(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="tags">Tags (comma-separated)</Label>
+                  <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="flex cursor-pointer items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={nsfw}
+                      onChange={(e) => setNsfw(e.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-crimson"
+                    />
+                    <span className="text-sm font-medium leading-none">
+                      <strong>NSFW / mature content</strong>
+                    </span>
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    If checked, the mod will be hidden behind a blur by default.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="repo">Repository URL</Label>
+                  <Input
+                    id="repo"
+                    type="url"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="home">Homepage URL</Label>
+                  <Input
+                    id="home"
+                    type="url"
+                    value={homepageUrl}
+                    onChange={(e) => setHomepageUrl(e.target.value)}
+                  />
+                </div>
+              </div>
+            </section>
+            <ScreenshotEditor gallery={gallery} />
+
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold">Videos</h2>
               {/* Videos */}
               <div className="space-y-2">
                 <Label>Videos (YouTube or Vimeo URLs)</Label>
@@ -891,471 +885,212 @@ export default function ManageModPage() {
                 ) : null}
               </div>
             </section>
-          ) : null}
+          </section>
 
-          {section === 'versions' ? (
-            /* ─── Versions ─── */
-            <section className="grimoire-card space-y-4 p-5">
-              <h2 className="text-lg font-semibold">Versions</h2>
-              {removeVersion.isError ? (
-                <p className="text-sm text-destructive">
-                  Could not delete that version
-                  {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
-                  Only the mod&apos;s owner can delete versions.
-                </p>
-              ) : null}
-              {versions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No versions published yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {versions
-                    .slice()
-                    .sort(
-                      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-                    )
-                    .map((v) => {
-                      // changelog isn't on the published ModVersion schema yet
-                      // because the public detail endpoint hasn't been
-                      // extended — read it from manifestJson as a fallback.
-                      const cl =
-                        typeof v.manifestJson === 'object'
-                          ? (v.manifestJson as { changelog?: string })?.changelog
-                          : undefined;
-                      return (
-                        <li key={v.id} className="grimoire-card p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-semibold">v{v.version}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {fmtBytes(v.sizeBytes)} ·{' '}
-                                {new Date(v.createdAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <ScanBadge versionId={v.id} />
-                              <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive hover:text-destructive"
-                                disabled={removeVersion.isPending}
-                                aria-label={`Delete version ${v.version}`}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
-                                    )
-                                  ) {
-                                    removeVersion.mutate(v.id);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                              </Button>
-                            </div>
-                          </div>
-                          {v.scanStatus &&
-                          v.scanStatus !== 'clean' &&
-                          v.scanStatus !== 'skipped' ? (
-                            <p
-                              className={`mt-2 text-xs ${
-                                v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
-                              }`}
-                            >
-                              {v.scanStatus === 'flagged'
-                                ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
-                                : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
-                            </p>
-                          ) : null}
-                          {cl ? (
-                            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                              {cl}
-                            </pre>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-
-              <div className="border-t border-border/40 pt-4">
-                <h3 className="text-sm font-semibold">Ship a new version</h3>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="newver">Version</Label>
-                    <Input
-                      id="newver"
-                      value={newVersion}
-                      onChange={(e) => setNewVersion(e.target.value)}
-                      placeholder="0.2.0"
-                      aria-invalid={
-                        newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
-                      }
-                    />
-                    {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
-                      <p className="text-xs text-destructive">
-                        Must be semver, e.g. 0.2.0 (three numbers separated by dots).
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="newzip">New archive</Label>
-                    <FileDrop
-                      id="newzip"
-                      accept=".zip,application/zip"
-                      label="Mod archive (.zip)"
-                      hint="up to 500 MB"
-                      file={newZip}
-                      onFile={setNewZip}
-                      disabled={newVersionMut.isPending}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Changelog (Markdown)</Label>
-                    <div data-color-mode="dark" className="md-editor-themed">
-                      <MDEditor value={changelog} onChange={setChangelog} height={200} />
-                    </div>
-                  </div>
-                </div>
-                {zipProgress ? (
-                  <ProgressBar
-                    className="mt-4"
-                    value={zipProgress.loaded}
-                    max={zipProgress.total}
-                    label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
-                  />
-                ) : null}
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  {newVersionMut.isError ? (
-                    <span className="text-xs text-destructive">
-                      {describeApiError(newVersionMut.error)}
-                    </span>
-                  ) : null}
-                  <Button
-                    onClick={() => newVersionMut.mutate()}
-                    disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
-                  >
-                    {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
-                    version
-                  </Button>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {section === 'analytics' ? <ModStats slug={slug} /> : null}
-          {section === 'team' ? <ModTeam slug={slug} /> : null}
-
-          {section === 'danger' ? (
-            /* ─── Danger zone ─── */
-            <section className="grimoire-card space-y-3 border-destructive/30 p-5">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-                <div>
-                  <h2 className="text-lg font-semibold">Danger zone</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Deleting removes the mod row and every published version. The slug becomes
-                    available for someone else to claim. This cannot be undone.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Delete "${mod.name}" and all its versions? This cannot be undone.`,
-                    )
-                  ) {
-                    remove.mutate();
-                  }
-                }}
-                disabled={remove.isPending}
-              >
-                {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
-              </Button>
-              {remove.isError ? (
-                <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
-              ) : null}
-            </section>
-          ) : null}
-        </div>
-      </div>
-
-      {lightboxIdx != null && screenshots[lightboxIdx] ? (
-        <Lightbox
-          shot={screenshots[lightboxIdx]}
-          index={lightboxIdx}
-          total={screenshots.length}
-          onClose={closeLightbox}
-          onPrev={prevImage}
-          onNext={nextImage}
-        />
-      ) : null}
-    </main>
-  );
-}
-
-function Lightbox({
-  shot,
-  index,
-  total,
-  onClose,
-  onPrev,
-  onNext,
-}: {
-  shot: Screenshot;
-  index: number;
-  total: number;
-  onClose: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <dialog
-      open
-      aria-label={shot.caption || `Screenshot ${index + 1}`}
-      className="fixed inset-0 z-[90] bg-pitch/95 animate-fade-in"
-    >
-      <div className="absolute inset-0 overflow-y-auto">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute inset-0 h-full w-full cursor-default"
-          aria-label="Close preview"
-        />
-        <div className="pointer-events-none relative flex min-h-full items-center justify-center px-4 py-16 sm:px-20">
-          <figure
-            onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto flex w-full max-w-6xl flex-col items-center gap-4"
+          <section
+            id="versions"
+            aria-labelledby="versions-heading"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-4 focus:outline-none"
           >
-            <img
-              loading="lazy"
-              src={shot.url}
-              alt={shot.caption || `Screenshot ${index + 1}`}
-              className="max-w-full rounded-md object-contain shadow-2xl"
-            />
-            <figcaption className="max-w-3xl text-center text-sm text-muted-foreground">
-              {shot.caption || `Screenshot ${index + 1} of ${total}`}
-            </figcaption>
-            <p className="font-mono text-xs text-muted-foreground/70">
-              {index + 1} / {total}
-            </p>
-          </figure>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="fixed right-4 top-4 z-20 rounded-md bg-background/80 p-2 text-foreground hover:bg-background"
-        aria-label="Close"
-      >
-        <X className="h-5 w-5" />
-      </button>
-      {total > 1 ? (
-        <button
-          type="button"
-          onClick={onPrev}
-          className="fixed left-2 sm:left-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
-          aria-label="Previous"
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-      ) : null}
-      {total > 1 ? (
-        <button
-          type="button"
-          onClick={onNext}
-          className="fixed right-2 sm:right-4 top-1/2 z-20 -translate-y-1/2 rounded-md bg-background/80 p-3 text-foreground hover:bg-background"
-          aria-label="Next"
-        >
-          <ChevronRight className="h-6 w-6" />
-        </button>
-      ) : null}
-    </dialog>
-  );
-}
-
-function PreviewHeader({
-  modName,
-  slug,
-  onExit,
-}: {
-  modName: string;
-  slug: string;
-  onExit: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gilt/40 bg-gilt/5 px-4 py-2 text-sm">
-      <div>
-        <span className="font-semibold text-foreground">Preview</span>
-        <span className="ml-2 font-data text-muted-foreground">{slug}</span>
-        <span className="ml-2 text-muted-foreground">— {modName}</span>
-      </div>
-      <Button type="button" size="sm" variant="outline" onClick={onExit}>
-        <Pencil className="h-4 w-4" /> Back to edit
-      </Button>
-    </div>
-  );
-}
-
-function PreviewBody({
-  mod,
-  description,
-  screenshots,
-  videos,
-  onLightbox,
-}: {
-  mod: {
-    name: string;
-    summary: string;
-    author: string | null;
-    latestVersion: string | null;
-    updatedAt: string;
-    category: string | null;
-    tags: string[];
-    license: string | null;
-    imageUrl: string | null;
-    downloads: number;
-  };
-  description: string | undefined;
-  screenshots: Screenshot[];
-  videos: string[];
-  onLightbox: (idx: number) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {mod.imageUrl ? (
-        <div className="aspect-[21/9] w-full overflow-hidden rounded-xl border border-border/50 bg-muted">
-          <img
-            src={mod.imageUrl}
-            alt={`${mod.name} cover`}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      ) : null}
-      <header>
-        <h1 className="text-4xl font-bold tracking-tight">{mod.name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {mod.author ?? 'unknown'}
-          {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
-          {` · updated ${new Date(mod.updatedAt).toLocaleDateString()}`}
-        </p>
-      </header>
-      {mod.summary ? (
-        <p className="max-w-3xl text-lg text-muted-foreground">{mod.summary}</p>
-      ) : null}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="space-y-4 md:col-span-2">
-          {description?.trim() ? (
-            <div className="grimoire-card space-y-3 p-6">
-              <h2 className="text-xl font-bold tracking-tight">About</h2>
-              <div data-color-mode="dark" className="prose prose-sm prose-invert max-w-none">
-                <MDPreview source={description} style={{ background: 'transparent' }} />
-              </div>
-            </div>
-          ) : null}
-          {screenshots.length > 0 || videos.length > 0 ? (
-            <div className="grimoire-card space-y-4 p-6">
-              <h2 className="text-xl font-bold tracking-tight">Gallery</h2>
-              {videos.length > 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {videos.map((url) => {
-                    const embed = toEmbedUrl(url);
+            <h2 id="versions-heading" className="text-lg font-semibold">
+              Versions
+            </h2>
+            {removeVersion.isError ? (
+              <p className="text-sm text-destructive">
+                Could not delete that version
+                {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
+                Only the mod&apos;s owner can delete versions.
+              </p>
+            ) : null}
+            {versions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No versions published yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {versions
+                  .slice()
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((v) => {
+                    // changelog isn't on the published ModVersion schema yet
+                    // because the public detail endpoint hasn't been
+                    // extended — read it from manifestJson as a fallback.
+                    const cl =
+                      typeof v.manifestJson === 'object'
+                        ? (v.manifestJson as { changelog?: string })?.changelog
+                        : undefined;
                     return (
-                      <div key={url} className="aspect-video overflow-hidden rounded-md bg-muted">
-                        {embed ? (
-                          <iframe
-                            src={embed}
-                            title="Video preview"
-                            loading="lazy"
-                            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            allowFullScreen
-                            className="h-full w-full"
-                          />
-                        ) : (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex h-full w-full items-center justify-center text-sm underline"
-                          >
-                            {url}
-                          </a>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {screenshots.length > 0 ? (
-                <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {screenshots.map((shot, idx) => (
-                    <li key={shot.url}>
-                      <button
-                        type="button"
-                        onClick={() => onLightbox(idx)}
-                        className="group block w-full text-left"
-                      >
-                        <div className="aspect-video overflow-hidden rounded-md bg-muted">
-                          <img
-                            src={shot.url}
-                            alt={shot.caption || `Screenshot ${idx + 1}`}
-                            loading="lazy"
-                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-                          />
+                      <li key={v.id} className="grimoire-card p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold">v{v.version}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ScanBadge versionId={v.id} />
+                            <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              disabled={removeVersion.isPending}
+                              aria-label={`Delete version ${v.version}`}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
+                                  )
+                                ) {
+                                  removeVersion.mutate(v.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </Button>
+                          </div>
                         </div>
-                        {shot.caption ? (
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {shot.caption}
+                        {v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped' ? (
+                          <p
+                            className={`mt-2 text-xs ${
+                              v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
+                            }`}
+                          >
+                            {v.scanStatus === 'flagged'
+                              ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
+                              : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
                           </p>
                         ) : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        {cl ? (
+                          <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                            {cl}
+                          </pre>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+
+            <div className="border-t border-border/40 pt-4">
+              <h3 className="text-sm font-semibold">Ship a new version</h3>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="newver">Version</Label>
+                  <Input
+                    id="newver"
+                    value={newVersion}
+                    onChange={(e) => setNewVersion(e.target.value)}
+                    placeholder="0.2.0"
+                    aria-invalid={
+                      newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
+                    }
+                  />
+                  {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
+                    <p className="text-xs text-destructive">
+                      Must be semver, e.g. 0.2.0 (three numbers separated by dots).
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newzip">New archive</Label>
+                  <FileDrop
+                    id="newzip"
+                    accept=".zip,application/zip"
+                    label="Mod archive (.zip)"
+                    hint="up to 500 MB"
+                    file={newZip}
+                    onFile={setNewZip}
+                    disabled={newVersionMut.isPending}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Changelog (Markdown)</Label>
+                  <div data-color-mode="dark" className="md-editor-themed min-h-[200px]">
+                    <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                  </div>
+                </div>
+              </div>
+              {zipProgress ? (
+                <ProgressBar
+                  className="mt-4"
+                  value={zipProgress.loaded}
+                  max={zipProgress.total}
+                  label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
+                />
               ) : null}
-            </div>
-          ) : null}
-        </div>
-        <aside className="space-y-4">
-          <div className="grimoire-card p-6">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Details
-            </h3>
-            <dl className="space-y-2 text-sm">
-              {mod.category ? <Row k="Category" v={mod.category} /> : null}
-              <Row k="Downloads" v={mod.downloads.toLocaleString()} />
-              {mod.latestVersion ? <Row k="Latest" v={`v${mod.latestVersion}`} /> : null}
-              {mod.license ? <Row k="License" v={mod.license} /> : null}
-            </dl>
-          </div>
-          {mod.tags.length > 0 ? (
-            <div className="grimoire-card p-6">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Tags
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {mod.tags.map((t) => (
-                  <Badge key={t} variant="secondary">
-                    {t}
-                  </Badge>
-                ))}
+              <div className="mt-4 flex items-center justify-end gap-3">
+                {newVersionMut.isError ? (
+                  <span className="text-xs text-destructive">
+                    {describeApiError(newVersionMut.error)}
+                  </span>
+                ) : null}
+                <Button
+                  onClick={() => newVersionMut.mutate()}
+                  disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
+                >
+                  {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
+                  version
+                </Button>
               </div>
             </div>
-          ) : null}
-        </aside>
-      </div>
-    </div>
-  );
-}
+          </section>
 
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted-foreground">{k}</dt>
-      <dd className="font-medium">{v}</dd>
-    </div>
+          <section
+            id="analytics"
+            aria-label="Analytics"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+          >
+            <ModStats slug={slug} />
+          </section>
+          <section
+            id="team"
+            aria-label="Team"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+          >
+            <ModTeam slug={slug} />
+          </section>
+
+          <section
+            id="danger"
+            aria-labelledby="danger-heading"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-3 focus:outline-none"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+              <h2 id="danger-heading" className="text-lg font-semibold">
+                Danger zone
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Deleting removes the mod row and every published version. The slug becomes available
+              for someone else to claim. This cannot be undone.
+            </p>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete "${mod.name}" and all its versions? This cannot be undone.`,
+                  )
+                ) {
+                  remove.mutate();
+                }
+              }}
+              disabled={remove.isPending}
+            >
+              {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
+            </Button>
+            {remove.isError ? (
+              <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
+            ) : null}
+          </section>
+        </div>
+      </div>
+    </main>
   );
 }
