@@ -1,11 +1,28 @@
-import { modImagePresignSchema } from '@rsmm/schemas';
+import { MAX_MOD_PHOTOS, modImagePresignSchema } from '@rsmm/schemas';
 
 export interface Screenshot {
   url: string;
   caption?: string;
 }
 
-export const MAX_SCREENSHOTS = 12;
+/** Merge legacy separate cover/gallery fields without losing images or captions. */
+export function getListingPhotos(
+  imageUrl: string | null | undefined,
+  screenshots: Screenshot[] = [],
+) {
+  const byUrl = new Map<string, Screenshot>();
+  if (imageUrl) byUrl.set(imageUrl, { url: imageUrl });
+  for (const shot of screenshots) {
+    const previous = byUrl.get(shot.url);
+    byUrl.set(shot.url, { ...shot, caption: previous?.caption || shot.caption });
+  }
+  return [...byUrl.values()];
+}
+
+/** Include the cover in screenshots so its caption survives future cover changes. */
+export function listingPhotoPatch(photos: Screenshot[]) {
+  return { imageUrl: photos[0]?.url ?? null, screenshots: photos };
+}
 
 export interface ScreenshotUploadIssue {
   file: File;
@@ -28,8 +45,8 @@ export function selectScreenshotFiles(files: File[], existingCount: number) {
         : file.size === 0
           ? 'This file is empty.'
           : 'Choose an image no larger than 8 MB.';
-    } else if (existingCount + accepted.length >= MAX_SCREENSHOTS) {
-      message = 'The gallery holds 12 screenshots. Remove an image before adding this one.';
+    } else if (existingCount + accepted.length >= MAX_MOD_PHOTOS) {
+      message = `The listing holds ${MAX_MOD_PHOTOS} photos. Delete a photo before adding this one.`;
     }
     if (message) issues.push({ file, message });
     else accepted.push(file);

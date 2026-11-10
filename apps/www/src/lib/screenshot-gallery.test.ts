@@ -1,8 +1,10 @@
+import { MAX_MOD_PHOTOS, modPatchSchema } from '@rsmm/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  MAX_SCREENSHOTS,
   type Screenshot,
   createScreenshotSaveQueue,
+  getListingPhotos,
+  listingPhotoPatch,
   moveScreenshot,
   selectScreenshotFiles,
   uploadScreenshotBatch,
@@ -15,9 +17,9 @@ function file(name: string, type = 'image/png', size = 100) {
 describe('screenshot selection', () => {
   it('keeps picker order and only accepts files that fit the remaining slots', () => {
     const files = [file('first.png'), file('second.png'), file('third.png')];
-    const result = selectScreenshotFiles(files, MAX_SCREENSHOTS - 2);
+    const result = selectScreenshotFiles(files, MAX_MOD_PHOTOS - 2);
     expect(result.accepted).toEqual(files.slice(0, 2));
-    expect(result.issues).toEqual([{ file: files[2], message: expect.stringContaining('12') }]);
+    expect(result.issues).toEqual([{ file: files[2], message: expect.stringContaining('13') }]);
   });
 
   it('rejects unsupported, empty and oversized files before upload without consuming a slot', () => {
@@ -32,7 +34,7 @@ describe('screenshot selection', () => {
   it('accepts JPEG and rejects every file when the gallery is full', () => {
     const jpeg = file('photo.jpg', 'image/jpeg');
     expect(selectScreenshotFiles([jpeg], 0).accepted).toEqual([jpeg]);
-    expect(selectScreenshotFiles([jpeg], MAX_SCREENSHOTS).accepted).toEqual([]);
+    expect(selectScreenshotFiles([jpeg], MAX_MOD_PHOTOS).accepted).toEqual([]);
     expect(selectScreenshotFiles([], 0)).toEqual({ accepted: [], issues: [] });
   });
 });
@@ -136,5 +138,57 @@ describe('screenshot ordering and persistence', () => {
     await enqueue(shots);
     expect(save).toHaveBeenCalledTimes(2);
     expect(save.mock.calls[1]?.[0]).toEqual(shots);
+  });
+});
+
+describe('unified listing photos', () => {
+  const cover = { url: 'https://cdn.example.com/cover.png', caption: 'Cover caption' };
+  const other = { url: 'https://cdn.example.com/other.png', caption: 'Gameplay' };
+
+  it('puts the legacy cover first, deduplicates URLs, and preserves its existing caption', () => {
+    expect(getListingPhotos(cover.url, [other, cover, { url: other.url }])).toEqual([cover, other]);
+    expect(getListingPhotos(cover.url)).toEqual([{ url: cover.url }]);
+    expect(getListingPhotos(null, [other])).toEqual([other]);
+    expect(getListingPhotos(undefined)).toEqual([]);
+  });
+
+  it('preserves a separate legacy cover and all 12 screenshots through a save and reload', () => {
+    const screenshots = Array.from({ length: 12 }, (_, index) => ({
+      url: `https://cdn.example.com/${index}.png`,
+      caption: `Photo ${index}`,
+    }));
+    const photos = getListingPhotos(cover.url, screenshots);
+    expect(photos).toHaveLength(MAX_MOD_PHOTOS);
+    const patch = modPatchSchema.parse(listingPhotoPatch(photos));
+    expect(getListingPhotos(patch.imageUrl, patch.screenshots)).toEqual(photos);
+    expect(modPatchSchema.safeParse(listingPhotoPatch([...photos, other])).success).toBe(false);
+  });
+
+  it('changes the cover and gallery atomically and keeps both captions after a cover swap', () => {
+    const next = moveScreenshot([cover, other], other.url, 0);
+    const patch = listingPhotoPatch(next);
+    expect(patch).toEqual({ imageUrl: other.url, screenshots: [other, cover] });
+    expect(getListingPhotos(patch.imageUrl, patch.screenshots)).toEqual([other, cover]);
+  });
+
+  it('promotes the next photo when deleting the cover and clears both fields when empty', () => {
+    expect(listingPhotoPatch([cover, other].filter((photo) => photo.url !== cover.url))).toEqual({
+      imageUrl: other.url,
+      screenshots: [other],
+    });
+    expect(listingPhotoPatch([])).toEqual({ imageUrl: null, screenshots: [] });
+    expect(listingPhotoPatch([other])).toEqual({ imageUrl: other.url, screenshots: [other] });
+  });
+
+  it('serializes cover swaps together with captions and removal', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const enqueue = createScreenshotSaveQueue((photos) => save(listingPhotoPatch(photos)));
+    const first = enqueue([cover, other]);
+    const second = enqueue([other, cover]);
+    const last = enqueue([]);
+    await Promise.all([first, second, last]);
+    expect(save.mock.calls.map(([patch]) => patch.imageUrl)).toEqual([cover.url, other.url, null]);
+    expect(save.mock.calls[1]?.[0].screenshots).toEqual([other, cover]);
+    expect(save.mock.calls[2]?.[0].screenshots).toEqual([]);
   });
 });

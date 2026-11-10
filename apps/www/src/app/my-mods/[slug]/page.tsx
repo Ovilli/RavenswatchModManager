@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  ImageIcon,
   Loader2,
   Package,
   Pencil,
@@ -53,7 +52,6 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
  *  e.g. /my-mods/foo#versions) lands on the same section. */
 const SECTIONS = [
   { id: 'listing', label: 'Listing', icon: Pencil },
-  { id: 'gallery', label: 'Gallery', icon: ImageIcon },
   { id: 'versions', label: 'Versions', icon: Package },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'team', label: 'Team', icon: Users },
@@ -221,8 +219,8 @@ function ManageModEditor({ slug }: { slug: string }) {
   const [homepageUrl, setHomepageUrl] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nsfw, setNsfw] = useState(false);
-  const gallery = useScreenshotGallery(slug, detail.data?.mod.screenshots);
-  const { screenshots } = gallery;
+  const gallery = useScreenshotGallery(slug, detail.data?.mod);
+  const { screenshots, coverUrl } = gallery;
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -231,6 +229,7 @@ function ManageModEditor({ slug }: { slug: string }) {
   // Adopt a section from the URL hash on first load (deep link / reload).
   useEffect(() => {
     const h = window.location.hash.slice(1);
+    if (h === 'gallery') window.history.replaceState(null, '', '#listing');
     if (SECTIONS.some((s) => s.id === h)) setSection(h as SectionId);
   }, []);
   const selectSection = useCallback((id: SectionId) => {
@@ -238,12 +237,12 @@ function ManageModEditor({ slug }: { slug: string }) {
     window.history.replaceState(null, '', `#${id}`);
   }, []);
 
-  // Hydrate the form whenever the underlying detail row changes — this
-  // also covers the post-mutation refetch so the inputs reflect what
-  // the server actually persisted.
+  // Hydrate once per mod: background refreshes must not overwrite unsaved listing edits.
+  const metadataHydrated = useRef(false);
   useEffect(() => {
     const mod = detail.data?.mod;
-    if (!mod) return;
+    if (!mod || metadataHydrated.current) return;
+    metadataHydrated.current = true;
     setName(mod.name);
     setSummary(mod.summary ?? '');
     // The detail endpoint returns ModListItem-shaped data, which does
@@ -287,27 +286,6 @@ function ManageModEditor({ slug }: { slug: string }) {
     },
     onSuccess: () => {
       setSaveMessage('Saved.');
-      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
-      qc.invalidateQueries({ queryKey: ['me', 'mods'] });
-    },
-  });
-
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const uploadCover = useMutation({
-    mutationFn: async () => {
-      if (!coverFile) throw new Error('no file picked');
-      const presigned = await api.mods.presignImage(slug, {
-        contentType: coverFile.type as 'image/png' | 'image/jpeg' | 'image/webp',
-        sizeBytes: coverFile.size,
-      });
-      await putFile(presigned.uploadUrl, coverFile, {
-        headers: { 'Content-Type': coverFile.type },
-        what: 'cover image upload',
-      });
-      await api.mods.patch(slug, { imageUrl: presigned.publicUrl });
-    },
-    onSuccess: () => {
-      setCoverFile(null);
       qc.invalidateQueries({ queryKey: ['my-mod', slug] });
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
     },
@@ -485,7 +463,7 @@ function ManageModEditor({ slug }: { slug: string }) {
             license: license || mod.license,
             // imageUrl is optional on ModListItem now that the schema sanitizes
             // stored URLs; the preview wants an explicit null for "no image".
-            imageUrl: mod.imageUrl ?? null,
+            imageUrl: coverUrl,
             downloads: mod.downloads ?? 0,
           }}
           description={description}
@@ -515,9 +493,9 @@ function ManageModEditor({ slug }: { slug: string }) {
     <main className="container mx-auto max-w-5xl space-y-8 px-6 py-12">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-4">
-          {mod.imageUrl ? (
+          {coverUrl ? (
             <img
-              src={mod.imageUrl}
+              src={coverUrl}
               alt=""
               className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
             />
@@ -576,50 +554,11 @@ function ManageModEditor({ slug }: { slug: string }) {
         <div className="mt-6 min-w-0 space-y-8 md:mt-0">
           {section === 'listing' ? (
             <>
-              {/* ─── Cover ─── */}
-              <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Cover image</h2>
-                {mod.imageUrl ? (
-                  <div className="aspect-[16/9] w-full overflow-hidden rounded-md bg-muted">
-                    <img
-                      src={mod.imageUrl}
-                      alt={`${mod.name} cover`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No cover image yet.</p>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="cover">{mod.imageUrl ? 'Replace cover' : 'Add a cover'}</Label>
-                  <FileDrop
-                    id="cover"
-                    accept="image/png,image/jpeg,image/webp"
-                    label="Cover image"
-                    hint="PNG, JPEG or WebP, up to 8 MB, 16:9 looks best"
-                    file={coverFile}
-                    onFile={setCoverFile}
-                    preview
-                    disabled={uploadCover.isPending}
-                  />
-                  <Button
-                    onClick={() => uploadCover.mutate()}
-                    disabled={!coverFile || uploadCover.isPending}
-                    size="sm"
-                  >
-                    {uploadCover.isPending ? <Spinner /> : null} Upload cover
-                  </Button>
-                  {uploadCover.isError ? (
-                    <p className="text-xs text-destructive">
-                      {describeApiError(uploadCover.error)}
-                    </p>
-                  ) : null}
-                </div>
-              </section>
+              <ScreenshotEditor gallery={gallery} />
 
               {/* ─── Metadata edit ─── */}
               <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Metadata</h2>
+                <h2 className="text-lg font-semibold">Listing details</h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="name">Display name</Label>
@@ -712,65 +651,58 @@ function ManageModEditor({ slug }: { slug: string }) {
                     </span>
                   ) : null}
                   <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
-                    {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save metadata
+                    {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save details
                   </Button>
                 </div>
               </section>
-            </>
-          ) : null}
-
-          {section === 'gallery' ? (
-            /* ─── Gallery ─── */
-            <section className="grimoire-card space-y-4 p-5">
-              <h2 className="text-lg font-semibold">Gallery</h2>
-
-              <ScreenshotEditor gallery={gallery} onPreview={setLightboxIdx} />
-
-              {/* Videos */}
-              <div className="space-y-2">
-                <Label>Videos (YouTube or Vimeo URLs)</Label>
-                {videos.length > 0 ? (
-                  <ul className="space-y-2">
-                    {videos.map((url, idx) => (
-                      <li
-                        key={url}
-                        className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
-                      >
-                        <span className="flex-1 truncate font-data text-xs">{url}</span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => removeVideo(idx)}
+              <section className="grimoire-card space-y-4 p-5">
+                <h2 className="text-lg font-semibold">Videos</h2>
+                {/* Videos */}
+                <div className="space-y-2">
+                  <Label>Videos (YouTube or Vimeo URLs)</Label>
+                  {videos.length > 0 ? (
+                    <ul className="space-y-2">
+                      {videos.map((url, idx) => (
+                        <li
+                          key={url}
+                          className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
                         >
-                          remove
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No videos yet.</p>
-                )}
-                {videos.length < 8 ? (
-                  <div className="flex gap-2">
-                    <Input
-                      value={videoInput}
-                      onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addVideo();
-                        }
-                      }}
-                      placeholder="https://www.youtube.com/watch?v=…"
-                    />
-                    <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
-                      Add
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            </section>
+                          <span className="flex-1 truncate font-data text-xs">{url}</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => removeVideo(idx)}
+                          >
+                            remove
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No videos yet.</p>
+                  )}
+                  {videos.length < 8 ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={videoInput}
+                        onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addVideo();
+                          }
+                        }}
+                        placeholder="https://www.youtube.com/watch?v=…"
+                      />
+                      <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
+                        Add
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </>
           ) : null}
 
           {section === 'versions' ? (

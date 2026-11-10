@@ -7,6 +7,8 @@ import {
   type Screenshot,
   type ScreenshotUploadIssue,
   createScreenshotSaveQueue,
+  getListingPhotos,
+  listingPhotoPatch,
   moveScreenshot,
   selectScreenshotFiles,
   uploadScreenshotBatch,
@@ -23,8 +25,13 @@ function describeError(error: unknown) {
 
 /** Mounted once per mod. Gallery writes own their state; metadata saves and
  * background query refreshes must not restore an older screenshot order. */
-export function useScreenshotGallery(slug: string, initial: Screenshot[] | undefined) {
-  const [screenshots, setScreenshots] = useState<Screenshot[]>(initial ?? []);
+export function useScreenshotGallery(
+  slug: string,
+  initial: { imageUrl?: string | null; screenshots?: Screenshot[] } | undefined,
+) {
+  const [screenshots, setScreenshots] = useState<Screenshot[]>(() =>
+    getListingPhotos(initial?.imageUrl, initial?.screenshots),
+  );
   const current = useRef(screenshots);
   const edited = useRef(false);
   const revision = useRef(0);
@@ -42,14 +49,15 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
   } | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const enqueueSave = useMemo(
-    () => createScreenshotSaveQueue((shots) => api.mods.patch(slug, { screenshots: shots })),
+    () => createScreenshotSaveQueue((shots) => api.mods.patch(slug, listingPhotoPatch(shots))),
     [slug],
   );
 
   useEffect(() => {
     if (edited.current || !initial) return;
-    current.current = initial;
-    setScreenshots(initial);
+    const photos = getListingPhotos(initial.imageUrl, initial.screenshots);
+    current.current = photos;
+    setScreenshots(photos);
   }, [initial]);
 
   function replace(next: Screenshot[]) {
@@ -83,20 +91,20 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
     if (next === current.current) return;
     replace(next);
     setAnnouncement(
-      `Screenshot moved to position ${next.findIndex((shot) => shot.url === url) + 1} of ${next.length}.`,
+      to === 0 ? 'Cover photo updated.' : `Photo moved to position ${to + 1} of ${next.length}.`,
     );
     void save();
   }
 
   function remove(url: string) {
     replace(current.current.filter((shot) => shot.url !== url));
-    setAnnouncement('Screenshot removed.');
+    setAnnouncement('Photo deleted.');
     void save();
   }
 
   function setCaption(url: string, caption: string) {
     replace(current.current.map((shot) => (shot.url === url ? { ...shot, caption } : shot)));
-    setSaveStatus('Unsaved caption.');
+    void save();
   }
 
   async function upload(files: File[]) {
@@ -118,7 +126,7 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
           });
           await putFile(presigned.uploadUrl, file, {
             headers: { 'Content-Type': file.type },
-            what: 'screenshot upload',
+            what: 'photo upload',
             onProgress: (loaded, total) => {
               setProgress((p) => (p ? { ...p, percent: Math.round((loaded / total) * 100) } : p));
             },
@@ -140,7 +148,7 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
         await save();
       }
       setAnnouncement(
-        `${result.screenshots.length} screenshot${result.screenshots.length === 1 ? '' : 's'} uploaded.`,
+        `${result.screenshots.length} photo${result.screenshots.length === 1 ? '' : 's'} uploaded.`,
       );
     } finally {
       uploading.current = false;
@@ -150,6 +158,7 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
 
   return {
     screenshots,
+    coverUrl: screenshots[0]?.url ?? null,
     move,
     remove,
     setCaption,
