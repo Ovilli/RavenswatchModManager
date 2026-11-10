@@ -32,6 +32,11 @@ bool script_run_mod_init(const std::string& mod_id,
 // this header free of the JSON dependency.
 void script_emit_event(const std::string& name);
 void script_emit_event_json(const std::string& name, const std::string& payload_json);
+// Same as script_emit_event_json, but never waits for the Lua lock: when another
+// thread holds it, nothing is emitted and false is returned. For per-frame
+// detours on the game thread (the input poll), which retry on the next frame
+// rather than stall it behind a handler running on the ticker.
+bool script_try_emit_event_json(const std::string& name, const std::string& payload_json);
 void script_reload_changed();   // re-run init.lua for any mod whose file changed
 void script_shutdown_all();
 

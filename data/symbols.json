@@ -6091,6 +6091,58 @@
    "refs": [
     "docs/_re/IN_GAME_UI.md"
    ]
+  },
+  {
+   "name": "Input_Poll",
+   "kind": "function",
+   "category": "input",
+   "raw": "FUN_14067ddd0",
+   "status": "ok",
+   "signature": "void(void* inputManager, const void* frameTime)",
+   "note": "Per-frame input poll (method on the *g_InputManager object; rdx = frame time, [rdx] added to held times, [rdx+4] copied to this+0x5c; returns nothing). Turns the mouse wheel into two virtual buttons: at 0x14067e401 / 0x14067e418 it calls the button setter FUN_1406811d0(record, &dt, down) on g_InputMouseWheelUp with down = [this+0xa0] > 0 and on g_InputMouseWheelDown with down = [this+0xa0] < 0, then zeroes this+0xa0 at 0x14067e6c3. The window procedure FUN_14057ac80 (WM_MOUSEWHEEL 0x20a, at 0x14057b380) STORES +1/-1 at [*g_InputManager]+0xa0 (does not accumulate, so notches between two polls collapse into one) and chains to CallWindowProcA (nothing is swallowed). this+0x60 is a blocked-frames countdown, decremented at 0x14067e74b; while non-zero the setter sets record flag 0x1. Skip branch: a callback at 0x14067de04 returning true, or this+0xaa != 0, jumps past the mouse block to 0x14067e249; a second callback there can skip to 0x14067e42f, past the wheel setters. Hooked by hook_input.cpp: reads +0xa0 before the original runs and counts a notch when the original consumed it (+0xa0 == 0 after) AND the matching record reads held (flag 0x4).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ],
+   "locator": {
+    "offsets": [
+     "0xa0",
+     "0x60",
+     "0xaa"
+    ]
+   }
+  },
+  {
+   "name": "g_InputManager",
+   "kind": "data",
+   "category": "input",
+   "va": "0x14146f8e8",
+   "status": "va",
+   "note": "Pointer to the input manager (*ptr = the object Input_Poll is called on). The window procedure FUN_14057ac80 writes the wheel direction (+1/-1, dword) at [*ptr]+0xa0; Input_Poll consumes and zeroes it. Of the 42 functions that touch this global, only those two access +0xa0 on the manager. hook_input.cpp does not read this global (it takes the manager from the poll's this); it is recorded for R.debug and for the next patch's re-derivation.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_InputMouseWheelUp",
+   "kind": "data",
+   "category": "input",
+   "va": "0x1414670a0",
+   "status": "va",
+   "note": "Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display 'Mouse wheel up') of the 12-byte key table at 0x141466c50 indexed by key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+). Record: u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 set while the manager's blocked countdown +0x60 is non-zero), +4 f32 held time, +8 f32. One notch reads pressed (0x0c) for one frame, then released (0x10). Direct readers are UI only (oCUIMenu list scroll, oCUIWindow zoom, hero story book, scroll panels, Compendium prev/next, UI mouse dispatcher); the only default bindings are Menu::AlternativePageNext/Prev. hook_input.cpp reads the held bit right after Input_Poll to confirm a notch.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_InputMouseWheelDown",
+   "kind": "data",
+   "category": "input",
+   "va": "0x1414670ac",
+   "status": "va",
+   "note": "Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of the key table at 0x141466c50, directly after g_InputMouseWheelUp. Same 12-byte layout; see that symbol.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
   }
  ],
  "_event_catalog_doc": "Observation events the loader republishes by raw name from the central telemetry sink (Analytics_SubmitNamedEvent). No address \u2014 the firehose detour reads the name at runtime, so any name the game adds also fires even if absent here. These are confirmed names harvested by string-xref (cluster 0x140f13a00-0x140f13f00); subscribe via R.on('<name>', cb) with RSMM_ENABLE_GAME_EVENTS=1. Shown by `rsmm symbols events`. Each entry's `fields` are the property names the emitter passes (literals in the emitting function, 2026-09-11 catalog); the loader decodes them onto the event table, so a handler reads ev.<field>. Entries with `confirmed` were seen firing in game with those fields (solo run, 2026-10-10); the rest are from the static catalog only.",

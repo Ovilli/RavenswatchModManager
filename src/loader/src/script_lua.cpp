@@ -29,6 +29,7 @@ extern "C" {
 #include "hook_items.h"
 #include "watchpoint.h"
 #include "hook_audio.h"
+#include "hook_input.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -202,6 +203,23 @@ int lua_audio_targets(lua_State* L) {
     }
     audio_set_targets(paths);
     return 0;
+}
+
+// rsmm._internal.input_armed() -> bool
+//   True once the Input_Poll detour is live (hook_input.cpp).
+int lua_input_armed(lua_State* L) {
+    lua_pushboolean(L, input_armed());
+    return 1;
+}
+
+// rsmm._internal.input_wheel_totals() -> up, down
+//   Wheel notches counted since launch.
+int lua_input_wheel_totals(lua_State* L) {
+    std::uint64_t up = 0, down = 0;
+    input_wheel_totals(&up, &down);
+    lua_pushinteger(L, static_cast<lua_Integer>(up));
+    lua_pushinteger(L, static_cast<lua_Integer>(down));
+    return 2;
 }
 
 int lua_audio_status(lua_State* L) {
@@ -1993,6 +2011,8 @@ void register_api(lua_State* L) {
         { "audio_mute",              lua_audio_mute },
         { "audio_status",            lua_audio_status },
         { "audio_targets",           lua_audio_targets },
+        { "input_armed",             lua_input_armed },
+        { "input_wheel_totals",      lua_input_wheel_totals },
         { "health_count",            lua_health_count },
         { "health_last_error",       lua_health_last_error },
         { "health_disable",          lua_health_disable },
@@ -2281,6 +2301,15 @@ void emit_locked(const std::string& name, PushPayload push_payload) {
 
 void script_emit_event(const std::string& name) {
     emit_locked(name, [](lua_State* L) { lua_newtable(L); });
+}
+
+bool script_try_emit_event_json(const std::string& name, const std::string& payload_json) {
+    // Recursive mutex: try_lock also succeeds when this thread already holds it,
+    // which is the same re-entry emit_locked allows.
+    std::unique_lock<std::recursive_mutex> g(g_mu, std::try_to_lock);
+    if (!g.owns_lock()) return false;
+    script_emit_event_json(name, payload_json);
+    return true;
 }
 
 void script_emit_event_json(const std::string& name, const std::string& payload_json) {

@@ -2819,12 +2819,12 @@ local function _options_obj_valid(obj)
 end
 
 local _opt_bad_warned = false
-local function _opt_value_addr(name)
-    local o = _OPT[name]
-    if not o then return nil, nil end
-    if not _va_ok("R.options") then return nil, nil end
+-- The validated GameOptions object, or nil. Shared with R.input, which reads
+-- the key-binding slots of the same registry.
+local function _options_obj()
+    if not _va_ok("R.options") then return nil end
     local base = I.module_base()
-    if not base or base == 0 then return nil, nil end
+    if not base or base == 0 then return nil end
     local obj = I.read_u64(base + (OPT_GAMEOPTIONS_VA - OPT_IMG_BASE))
     if not _ptr_plausible(obj) or not _options_obj_valid(obj) then
         if not _opt_bad_warned then
@@ -2832,8 +2832,16 @@ local function _opt_value_addr(name)
             R.log("[rsmm.options] g_GameOptions pointer failed validation — "
                 .. "refusing reads/writes this run (regenerate the symbol map)")
         end
-        return nil, nil
+        return nil
     end
+    return obj
+end
+
+local function _opt_value_addr(name)
+    local o = _OPT[name]
+    if not o then return nil, nil end
+    local obj = _options_obj()
+    if not obj then return nil, nil end
     return obj + o.off + OPT_VALUE_OFF, o.type
 end
 
@@ -3190,6 +3198,19 @@ end
 do
     local ok, x = _submodule_fn("camera", { R = R, I = I })
     if ok and type(x) == "table" then R.camera = x end
+end
+
+-- mouse wheel ------------------------------------------------------------
+--
+-- Lives in rsmm/input.lua. Wheel notches counted on the frame they happen by
+-- the loader's input-poll hook, delivered as the "input:wheel" event, plus a
+-- read of the player's key bindings to tell whether the wheel is free in a run.
+--
+--   R.input.on_wheel(function(steps, ev) ... end)   -- steps > 0 = wheel up
+--   R.input.wheel_free()                            -- false, action when rebound
+do
+    local ok, x = _submodule_fn("input", { R = R, I = I, options_obj = _options_obj })
+    if ok and type(x) == "table" then R.input = x end
 end
 
 -- player identity -------------------------------------------------------
