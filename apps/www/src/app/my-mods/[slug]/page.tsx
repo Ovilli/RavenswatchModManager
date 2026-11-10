@@ -722,12 +722,7 @@ function ManageModEditor({ slug }: { slug: string }) {
           {section === 'gallery' ? (
             /* ─── Gallery ─── */
             <section className="grimoire-card space-y-4 p-5">
-              <div>
-                <h2 className="text-lg font-semibold">Gallery</h2>
-                <p className="text-xs text-muted-foreground">
-                  Up to 12 screenshots and 8 YouTube/Vimeo links.
-                </p>
-              </div>
+              <h2 className="text-lg font-semibold">Gallery</h2>
 
               <ScreenshotEditor gallery={gallery} onPreview={setLightboxIdx} />
 

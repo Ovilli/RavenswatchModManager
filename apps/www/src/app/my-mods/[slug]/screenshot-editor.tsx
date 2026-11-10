@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/react';
 import { isSortable, useSortable } from '@dnd-kit/react/sortable';
 import { Button, Input, Spinner } from '@rsmm/ui';
-import { GripVertical, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { MAX_SCREENSHOTS, type Screenshot } from '../../../lib/screenshot-gallery';
 import type { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
 
@@ -38,16 +38,6 @@ export function ScreenshotEditor({
   const { screenshots, progress } = gallery;
   return (
     <div className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-medium">Screenshots</h3>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {screenshots.length} / {MAX_SCREENSHOTS}
-        </span>
-      </div>
-      <p id="screenshot-help" className="text-xs leading-relaxed text-muted-foreground">
-        Select multiple images at once. Drag an image by its grip to change the display order.
-        Changes save automatically.
-      </p>
       <p id="screenshot-reorder-help" className="sr-only">
         Press Space to pick up an image, use the arrow keys to move it, and press Space to drop.
         Press Escape to cancel.
@@ -61,7 +51,7 @@ export function ScreenshotEditor({
           type="file"
           accept="image/png,image/jpeg,image/webp"
           multiple
-          aria-describedby="screenshot-help screenshot-limits"
+          aria-describedby="screenshot-limits"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = '';
@@ -73,7 +63,7 @@ export function ScreenshotEditor({
         <p id="screenshot-limits" className="text-xs text-muted-foreground">
           {screenshots.length >= MAX_SCREENSHOTS
             ? 'Gallery full. Remove a screenshot to add another.'
-            : `PNG, JPEG, or WebP · Up to 8 MB each · ${MAX_SCREENSHOTS - screenshots.length} remaining`}
+            : 'PNG, JPEG, or WebP · Up to 8 MB each'}
         </p>
       </div>
       <div aria-live="polite" className="space-y-2 text-xs text-muted-foreground">
@@ -147,7 +137,6 @@ export function ScreenshotEditor({
                 key={shot.url}
                 shot={shot}
                 idx={idx}
-                total={screenshots.length}
                 gallery={gallery}
                 onPreview={onPreview}
               />
@@ -166,44 +155,27 @@ export function ScreenshotEditor({
 function SortableScreenshot({
   shot,
   idx,
-  total,
   gallery,
   onPreview,
 }: {
   shot: Screenshot;
   idx: number;
-  total: number;
   gallery: ReturnType<typeof useScreenshotGallery>;
   onPreview: (index: number) => void;
 }) {
-  const { ref, handleRef, isDragging } = useSortable({
+  const { ref, isDragging } = useSortable({
     id: shot.url,
     index: idx,
-    disabled: total < 2,
   });
   return (
     <li
       ref={ref}
-      className={`min-w-0 space-y-2 rounded-md border bg-card p-2 ${isDragging ? 'relative z-10 border-primary' : 'border-border/40'}`}
+      // biome-ignore lint/a11y/noRedundantRoles lint/a11y/useSemanticElements: Prevent dnd-kit from replacing list semantics with role="button" around nested controls.
+      role="listitem"
+      aria-label={`Reorder screenshot ${idx + 1}`}
+      aria-describedby="screenshot-reorder-help"
+      className={`min-w-0 space-y-2 rounded-md border bg-card p-3 cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isDragging ? 'relative z-10 border-primary' : 'border-border/40'}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="pl-1 text-xs tabular-nums text-muted-foreground">
-          {idx + 1} of {total}
-        </span>
-        <Button
-          ref={handleRef}
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={`Reorder screenshot ${idx + 1}`}
-          aria-describedby="screenshot-reorder-help"
-          title="Drag to reorder"
-          disabled={total < 2}
-          className="h-11 w-11 touch-none cursor-grab active:cursor-grabbing"
-        >
-          <GripVertical aria-hidden="true" className="h-4 w-4" />
-        </Button>
-      </div>
       <button
         type="button"
         onClick={() => onPreview(idx)}
