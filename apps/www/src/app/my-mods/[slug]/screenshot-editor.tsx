@@ -107,8 +107,7 @@ export function ScreenshotEditor({ gallery }: { gallery: Gallery }) {
       />
       <p id="photo-reorder-help" className="sr-only">
         The first photo is the cover. Press Space to pick up a photo, use the arrow keys to move it,
-        and press Space to drop. Press Escape to cancel. Photo options also let you change the
-        order.
+        and press Space to drop. Press Escape to cancel.
       </p>
       <div
         aria-live="polite"
@@ -284,7 +283,6 @@ function SortablePhoto({
       </span>
       <PhotoMenu
         idx={idx}
-        total={gallery.screenshots.length}
         onEdit={onEdit}
         onMove={(index) => gallery.move(shot.url, index)}
         onDelete={onDelete}
@@ -295,13 +293,11 @@ function SortablePhoto({
 
 function PhotoMenu({
   idx,
-  total,
   onEdit,
   onMove,
   onDelete,
 }: {
   idx: number;
-  total: number;
   onEdit: (trigger: HTMLButtonElement) => void;
   onMove: (index: number) => void;
   onDelete: () => void;
@@ -399,29 +395,7 @@ function PhotoMenu({
             if (trigger.current) onEdit(trigger.current);
           }}
         >
-          Edit
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          disabled={idx === 0}
-          onClick={() => {
-            close();
-            onMove(idx - 1);
-          }}
-        >
-          Move earlier
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          disabled={idx === total - 1}
-          onClick={() => {
-            close();
-            onMove(idx + 1);
-          }}
-        >
-          Move later
+          Add alt-text caption
         </button>
         <button
           type="button"
