@@ -1,14 +1,12 @@
 'use client';
 
 import { ApiError } from '@rsmm/api-client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import {
   type Screenshot,
   type ScreenshotUploadIssue,
-  createScreenshotSaveQueue,
   getListingPhotos,
-  listingPhotoPatch,
   moveScreenshot,
   selectScreenshotFiles,
   uploadScreenshotBatch,
@@ -23,8 +21,8 @@ function describeError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Mounted once per mod. Gallery writes own their state; metadata saves and
- * background query refreshes must not restore an older screenshot order. */
+/** Upload files to storage, but keep listing membership and order as a local
+ * draft until the page's contextual Save changes action commits them. */
 export function useScreenshotGallery(
   slug: string,
   initial: { imageUrl?: string | null; screenshots?: Screenshot[] } | undefined,
@@ -33,12 +31,10 @@ export function useScreenshotGallery(
     getListingPhotos(initial?.imageUrl, initial?.screenshots),
   );
   const current = useRef(screenshots);
-  const edited = useRef(false);
-  const revision = useRef(0);
-  const saveRequest = useRef(0);
+  const hydrated = useRef(false);
+  const generation = useRef(0);
   const uploading = useRef(false);
-  const [saveStatus, setSaveStatus] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [issues, setIssues] = useState<ScreenshotUploadIssue[]>([]);
   const [retryFiles, setRetryFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState<{
@@ -48,42 +44,35 @@ export function useScreenshotGallery(
     percent: number;
   } | null>(null);
   const [announcement, setAnnouncement] = useState('');
-  const enqueueSave = useMemo(
-    () => createScreenshotSaveQueue((shots) => api.mods.patch(slug, listingPhotoPatch(shots))),
-    [slug],
-  );
-
   useEffect(() => {
-    if (edited.current || !initial) return;
+    if (hydrated.current || !initial) return;
+    hydrated.current = true;
     const photos = getListingPhotos(initial.imageUrl, initial.screenshots);
     current.current = photos;
     setScreenshots(photos);
   }, [initial]);
 
+  useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
+
   function replace(next: Screenshot[]) {
-    edited.current = true;
-    revision.current += 1;
     current.current = next;
     setScreenshots(next);
   }
 
-  async function save() {
-    const savingRevision = revision.current;
-    const request = ++saveRequest.current;
-    setSaveStatus('Saving changes…');
-    setSaveError(null);
-    try {
-      await enqueueSave(current.current);
-      if (revision.current === savingRevision && saveRequest.current === request) {
-        setSaveStatus('All changes saved.');
-        setSaveError(null);
-      }
-    } catch (error) {
-      if (revision.current === savingRevision && saveRequest.current === request) {
-        setSaveStatus('');
-        setSaveError(describeError(error));
-      }
-    }
+  function reset(photos: Screenshot[]) {
+    // Ignore results from uploads discarded or abandoned while in flight.
+    generation.current += 1;
+    uploading.current = false;
+    setIsUploading(false);
+    setProgress(null);
+    setIssues([]);
+    setRetryFiles([]);
+    replace(photos);
   }
 
   function move(url: string, to: number) {
@@ -93,18 +82,15 @@ export function useScreenshotGallery(
     setAnnouncement(
       to === 0 ? 'Cover photo updated.' : `Photo moved to position ${to + 1} of ${next.length}.`,
     );
-    void save();
   }
 
   function remove(url: string) {
     replace(current.current.filter((shot) => shot.url !== url));
     setAnnouncement('Photo deleted.');
-    void save();
   }
 
   function setCaption(url: string, caption: string) {
     replace(current.current.map((shot) => (shot.url === url ? { ...shot, caption } : shot)));
-    void save();
   }
 
   async function upload(files: File[]) {
@@ -114,12 +100,13 @@ export function useScreenshotGallery(
     setRetryFiles([]);
     if (selection.accepted.length === 0) return;
     uploading.current = true;
-    // Prevent a background detail refetch from replacing local edits mid-batch.
-    edited.current = true;
+    setIsUploading(true);
+    const batch = generation.current;
     try {
       const result = await uploadScreenshotBatch(
         selection.accepted,
         async (file) => {
+          if (batch !== generation.current) throw new Error('Upload discarded');
           const presigned = await api.mods.presignImage(slug, {
             contentType: file.type as 'image/png' | 'image/jpeg' | 'image/webp',
             sizeBytes: file.size,
@@ -128,15 +115,18 @@ export function useScreenshotGallery(
             headers: { 'Content-Type': file.type },
             what: 'photo upload',
             onProgress: (loaded, total) => {
+              if (batch !== generation.current) return;
               setProgress((p) => (p ? { ...p, percent: Math.round((loaded / total) * 100) } : p));
             },
           });
           return presigned.publicUrl;
         },
         (file, index) => {
+          if (batch !== generation.current) return;
           setProgress({ name: file.name, index, total: selection.accepted.length, percent: 0 });
         },
       );
+      if (batch !== generation.current) return;
       setIssues([
         ...selection.issues,
         ...result.failures.map(({ file, error }) => ({ file, message: describeError(error) })),
@@ -145,14 +135,16 @@ export function useScreenshotGallery(
       if (result.screenshots.length > 0) {
         // Read the latest array: captions/removals/reordering may change during upload.
         replace([...current.current, ...result.screenshots]);
-        await save();
       }
       setAnnouncement(
         `${result.screenshots.length} photo${result.screenshots.length === 1 ? '' : 's'} uploaded.`,
       );
     } finally {
-      uploading.current = false;
-      setProgress(null);
+      if (batch === generation.current) {
+        uploading.current = false;
+        setIsUploading(false);
+        setProgress(null);
+      }
     }
   }
 
@@ -162,13 +154,12 @@ export function useScreenshotGallery(
     move,
     remove,
     setCaption,
-    save,
+    reset,
     upload,
     progress,
     issues,
     retryFiles,
-    saveStatus,
-    saveError,
+    isUploading,
     announcement,
   };
 }

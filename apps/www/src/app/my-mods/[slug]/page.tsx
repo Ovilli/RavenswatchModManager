@@ -1,7 +1,7 @@
 'use client';
 
 import { ApiError } from '@rsmm/api-client';
-import type { ModCategory } from '@rsmm/schemas';
+import { type ModCategory, type ModPatch, modPatchSchema } from '@rsmm/schemas';
 import { Badge, Button, Input, ProgressBar, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,7 +13,6 @@ import {
   Loader2,
   Package,
   Pencil,
-  Save,
   Trash2,
   Upload,
   Users,
@@ -21,9 +20,11 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useNavigationGuard } from 'nextjs-nav-guard';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import { type ListingDraft, listingChanges, readListingDraft } from '../../../lib/listing-draft';
 import type { Screenshot } from '../../../lib/screenshot-gallery';
 import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../../lib/upload';
 import { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
@@ -32,6 +33,7 @@ import { FileDrop } from '../../components/file-drop';
 import { MDEditor, MDPreview } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
+import { ListingLeaveDialog, ListingSaveBar } from './listing-save-bar';
 import { ScreenshotEditor } from './screenshot-editor';
 import './editor.css';
 
@@ -291,12 +293,15 @@ function ManageModEditor({ slug }: { slug: string }) {
   const [name, setName] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState<string | undefined>('');
-  const [category, setCategory] = useState<ModCategory>('gameplay');
+  const [category, setCategory] = useState<ModCategory | null>(null);
   const [tags, setTags] = useState('');
   const [license, setLicense] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savedListing, setSavedListing] = useState<ListingDraft | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const saveInFlight = useRef(false);
+  const allowLeave = useRef(false);
   const [nsfw, setNsfw] = useState(false);
   const gallery = useScreenshotGallery(slug, detail.data?.mod);
   const { screenshots, coverUrl } = gallery;
@@ -427,78 +432,139 @@ function ManageModEditor({ slug }: { slug: string }) {
       nav.scrollLeft = link.offsetLeft + link.offsetWidth - nav.clientWidth;
   }, [section]);
 
-  // Hydrate once per mod: background refreshes must not overwrite unsaved listing edits.
+  const restoreListing = useCallback((draft: ListingDraft) => {
+    setName(draft.name);
+    setSummary(draft.summary);
+    setDescription(draft.description);
+    setCategory(draft.category);
+    setTags(draft.tags);
+    setLicense(draft.license);
+    setRepoUrl(draft.repoUrl);
+    setHomepageUrl(draft.homepageUrl);
+    setNsfw(draft.nsfw);
+    setVideos(draft.videos);
+  }, []);
+
+  // Hydrate once. Refetching versions or team data must not overwrite draft edits.
   const metadataHydrated = useRef(false);
   useEffect(() => {
-    const mod = detail.data?.mod;
-    if (!mod || metadataHydrated.current) return;
+    if (!detail.data || metadataHydrated.current) return;
     metadataHydrated.current = true;
-    setName(mod.name);
-    setSummary(mod.summary ?? '');
-    // The detail endpoint returns ModListItem-shaped data, which does
-    // not include the long markdown description. Fetch it lazily from
-    // the latest version's manifest as a sensible default.
-    const latestDesc =
-      typeof detail.data?.versions[0]?.manifestJson === 'object'
-        ? ((detail.data.versions[0].manifestJson as { description?: string })?.description ?? '')
-        : '';
-    setDescription(latestDesc);
-    setCategory((mod.category as ModCategory) ?? 'gameplay');
-    setTags(mod.tags.join(', '));
-    setLicense(mod.license ?? '');
-    setNsfw(mod.nsfw ?? false);
-    // repoUrl / homepageUrl are not on ModListItem; leave blank and
-    // let the user fill them on first save.
-    setRepoUrl('');
-    setHomepageUrl('');
-    setVideos(mod.videos ?? []);
-  }, [detail.data]);
+    const initial = readListingDraft(detail.data);
+    restoreListing(initial);
+    setSavedListing(initial);
+  }, [detail.data, restoreListing]);
 
-  const saveMeta = useMutation({
-    mutationFn: async () => {
-      const tagList = tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .slice(0, 16);
-      await api.mods.patch(slug, {
-        name: name.trim() || undefined,
-        summary: summary.trim() || null,
-        description: description?.trim() || null,
-        category,
-        tags: tagList,
-        license: license.trim() || null,
-        repoUrl: repoUrl.trim() || null,
-        homepageUrl: homepageUrl.trim() || null,
-        videos,
-        nsfw,
-      });
+  const listing: ListingDraft = {
+    name,
+    summary,
+    description: description ?? '',
+    category,
+    tags,
+    license,
+    repoUrl,
+    homepageUrl,
+    nsfw,
+    videos,
+    photos: screenshots,
+  };
+  const changes = savedListing ? listingChanges(savedListing, listing) : {};
+  const dirty = Object.keys(changes).length > 0;
+
+  const saveListing = useMutation({
+    mutationFn: async ({ patch }: { patch: ModPatch; snapshot: ListingDraft }) => {
+      await api.mods.patch(slug, patch);
     },
-    onSuccess: () => {
-      setSaveMessage('Saved.');
+    onSuccess: (_result, { snapshot }) => {
+      // Only mark the submitted snapshot saved. Edits made while the request
+      // was running remain dirty, including new photo uploads or ordering.
+      setSavedListing(snapshot);
       qc.invalidateQueries({ queryKey: ['my-mod', slug] });
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+      if (document.activeElement?.closest('[aria-label="Listing changes"]'))
+        document.getElementById(section)?.focus({ preventScroll: true });
+    },
+    onSettled: () => {
+      saveInFlight.current = false;
     },
   });
 
+  const hasUnsavedChanges = dirty || gallery.isUploading || saveListing.isPending;
+  const navigationGuard = useNavigationGuard({
+    enabled: ({ to, type }) => {
+      if (allowLeave.current || !hasUnsavedChanges) return false;
+      if (type === 'beforeunload' || type === 'refresh') return true;
+      const target = new URL(to, window.location.href);
+      // Section anchors are navigation within the same draft, not leaving it.
+      // During popstate the address bar already contains the destination.
+      // Compare with this editor's route, not window.location.pathname.
+      return target.pathname !== `/my-mods/${encodeURIComponent(slug)}`;
+    },
+  });
+
+  function saveChanges() {
+    if (!dirty || gallery.isUploading || saveInFlight.current) return;
+    const parsed = modPatchSchema.safeParse(changes);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const labels: Record<string, string> = {
+        name: 'mod name',
+        repoUrl: 'repository URL',
+        homepageUrl: 'homepage URL',
+        screenshots: 'photos',
+        imageUrl: 'cover photo',
+        nsfw: 'mature content setting',
+      };
+      const field = String(issue?.path[0] ?? 'the listing');
+      setValidationError(`Check ${labels[field] ?? field}: ${issue?.message ?? 'Invalid value'}`);
+      return;
+    }
+    setValidationError(null);
+    saveInFlight.current = true;
+    saveListing.mutate({ patch: parsed.data, snapshot: listing });
+  }
+
+  function discardChanges() {
+    if (!savedListing || saveInFlight.current) return;
+    restoreListing(savedListing);
+    gallery.reset(savedListing.photos);
+    setVideoInput('');
+    setValidationError(null);
+    saveListing.reset();
+    document.getElementById(section)?.focus({ preventScroll: true });
+  }
+
+  const contextualSaveBar = (
+    <>
+      <ListingLeaveDialog
+        active={navigationGuard.active}
+        saving={saveListing.isPending}
+        onStay={navigationGuard.reject}
+        onLeave={navigationGuard.accept}
+      />
+      {hasUnsavedChanges ? (
+        <ListingSaveBar
+          saving={saveListing.isPending}
+          uploading={gallery.isUploading}
+          error={
+            validationError || (saveListing.isError ? describeApiError(saveListing.error) : null)
+          }
+          onSave={saveChanges}
+          onDiscard={discardChanges}
+        />
+      ) : null}
+    </>
+  );
+
   function addVideo() {
     const trimmed = videoInput.trim();
-    if (!trimmed) return;
-    if (videos.length >= 8) return;
-    const next = [...videos, trimmed];
-    setVideos(next);
+    if (!trimmed || videos.length >= 8) return;
+    setVideos([...videos, trimmed]);
     setVideoInput('');
-    api.mods.patch(slug, { videos: next }).catch((err) => {
-      console.error('video add failed', err);
-    });
   }
 
   function removeVideo(idx: number) {
-    const next = videos.filter((_, i) => i !== idx);
-    setVideos(next);
-    api.mods.patch(slug, { videos: next }).catch((err) => {
-      console.error('video remove failed', err);
-    });
+    setVideos(videos.filter((_, i) => i !== idx));
   }
 
   // Lightbox keyboard nav — Esc closes, ←/→ paginate. Wired via
@@ -545,7 +611,7 @@ function ManageModEditor({ slug }: { slug: string }) {
         version: newVersion,
         author: mod.author ?? undefined,
         summary: mod.summary ?? undefined,
-        description: description?.trim() || undefined,
+        description: savedListing?.description.trim() || undefined,
         license: mod.license ?? undefined,
         tags: mod.tags,
       };
@@ -591,6 +657,7 @@ function ManageModEditor({ slug }: { slug: string }) {
     mutationFn: () => api.mods.remove(slug),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
+      allowLeave.current = true;
       router.push('/my-mods');
     },
   });
@@ -637,6 +704,7 @@ function ManageModEditor({ slug }: { slug: string }) {
   if (previewMode) {
     return (
       <main className="container mx-auto space-y-8 px-6 py-12">
+        {contextualSaveBar}
         <PreviewHeader
           modName={name.trim() || mod.name}
           slug={mod.slug}
@@ -645,7 +713,7 @@ function ManageModEditor({ slug }: { slug: string }) {
         <PreviewBody
           mod={{
             name: name || mod.name,
-            summary: summary || mod.summary || '',
+            summary,
             author: mod.author,
             latestVersion: mod.latestVersion,
             updatedAt: mod.updatedAt,
@@ -654,7 +722,7 @@ function ManageModEditor({ slug }: { slug: string }) {
               .split(',')
               .map((t) => t.trim())
               .filter(Boolean),
-            license: license || mod.license,
+            license: license || null,
             // imageUrl is optional on ModListItem now that the schema sanitizes
             // stored URLs; the preview wants an explicit null for "no image".
             imageUrl: coverUrl,
@@ -685,6 +753,7 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   return (
     <main className="mod-editor container mx-auto space-y-8 px-6 py-12">
+      {contextualSaveBar}
       <div className="gap-8 [--editor-scroll-offset:calc(var(--site-header-height,61px)+88px)] md:grid md:grid-cols-[200px_minmax(0,1fr)] md:[--editor-scroll-offset:calc(var(--site-header-height,61px)+24px)]">
         <SectionNav
           active={section}
@@ -716,7 +785,7 @@ function ManageModEditor({ slug }: { slug: string }) {
                     fallback={mod.name}
                     onChange={(value) => {
                       setName(value);
-                      setSaveMessage(null);
+                      setValidationError(null);
                     }}
                   />
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -787,10 +856,11 @@ function ManageModEditor({ slug }: { slug: string }) {
                   <Label htmlFor="category">Category</Label>
                   <select
                     id="category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as ModCategory)}
+                    value={category ?? ''}
+                    onChange={(e) => setCategory((e.target.value || null) as ModCategory | null)}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
+                    <option value="">No category</option>
                     {CATEGORIES.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -844,19 +914,6 @@ function ManageModEditor({ slug }: { slug: string }) {
                     onChange={(e) => setHomepageUrl(e.target.value)}
                   />
                 </div>
-              </div>
-              <div className="flex items-center justify-end gap-3">
-                {saveMessage ? (
-                  <span className="text-xs text-muted-foreground">{saveMessage}</span>
-                ) : null}
-                {saveMeta.isError ? (
-                  <span className="text-xs text-destructive">
-                    {describeApiError(saveMeta.error)}
-                  </span>
-                ) : null}
-                <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
-                  {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save details
-                </Button>
               </div>
             </section>
             <ScreenshotEditor gallery={gallery} />

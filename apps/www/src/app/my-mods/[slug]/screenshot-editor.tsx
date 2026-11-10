@@ -127,18 +127,8 @@ export function ScreenshotEditor({ gallery }: { gallery: Gallery }) {
             />
           </>
         ) : null}
-        <span className="sr-only">
-          {gallery.saveStatus} {gallery.announcement}
-        </span>
+        <span className="sr-only">{gallery.announcement}</span>
       </div>
-      {gallery.saveError ? (
-        <div role="alert" className="space-y-2 text-sm">
-          <p className="break-words">Photo changes haven’t been saved. {gallery.saveError}</p>
-          <Button type="button" size="sm" variant="outline" onClick={() => void gallery.save()}>
-            Retry save
-          </Button>
-        </div>
-      ) : null}
       {gallery.issues.length > 0 ? (
         <div role="alert" className="space-y-2 text-sm">
           <p className="font-medium">Some photos couldn’t be added</p>
@@ -539,7 +529,7 @@ function PhotoEditor({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">Done</Button>
         </div>
       </form>
     </dialog>

@@ -72,3 +72,30 @@ body:has(.mod-editor) > .site-header {
   border-top: 1px solid hsl(var(--border));
   padding-top: 32px;
 }
+
+body:has(.listing-save-bar) {
+  padding-bottom: calc(var(--listing-save-bar-height, 96px) + 24px);
+}
+
+.listing-save-bar {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 45;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-1));
+  padding-block: 16px max(16px, env(safe-area-inset-bottom));
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.listing-save-bar-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+
+@media (min-width: 768px) {
+  .listing-save-bar-content {
+    margin-left: 232px;
+  }
+}

@@ -83,18 +83,3 @@ export function moveScreenshot(screenshots: Screenshot[], url: string, to: numbe
   if (shot) next.splice(to, 0, shot);
   return next;
 }
-
-/** Serialize complete gallery snapshots so a slower old request cannot win.
- * A rejected write is reported to its caller without blocking later edits. */
-export function createScreenshotSaveQueue(save: (shots: Screenshot[]) => Promise<unknown>) {
-  let tail: Promise<unknown> = Promise.resolve();
-  return (screenshots: Screenshot[]) => {
-    const snapshot = screenshots.map((shot) => ({
-      url: shot.url,
-      caption: shot.caption?.trim() || undefined,
-    }));
-    const result = tail.then(() => save(snapshot));
-    tail = result.catch(() => {});
-    return result;
-  };
-}

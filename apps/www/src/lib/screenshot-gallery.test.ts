@@ -2,7 +2,6 @@ import { MAX_MOD_PHOTOS, modPatchSchema } from '@rsmm/schemas';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type Screenshot,
-  createScreenshotSaveQueue,
   getListingPhotos,
   listingPhotoPatch,
   moveScreenshot,
@@ -104,41 +103,6 @@ describe('screenshot ordering and persistence', () => {
     expect(moveScreenshot(shots, 'missing', -1)).toBe(shots);
     expect(moveScreenshot([], 'missing', 1)).toEqual([]);
   });
-
-  it('serializes caption, reorder and removal saves so old writes cannot finish last', async () => {
-    let finish = () => {};
-    const save = vi
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<void>((resolve) => {
-            finish = resolve;
-          }),
-      )
-      .mockResolvedValue(undefined);
-    const enqueue = createScreenshotSaveQueue(save);
-    const caption = [{ ...shots[0], caption: ' Edited ' }, shots[1], shots[2]];
-    const reordered = moveScreenshot(caption, shots[1].url, 0);
-    const removed = reordered.slice(0, 2);
-    const first = enqueue(caption);
-    const second = enqueue(reordered);
-    const third = enqueue(removed);
-    await Promise.resolve();
-    expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0]?.[0][0].caption).toBe('Edited');
-    finish();
-    await Promise.all([first, second, third]);
-    expect(save.mock.calls[2]?.[0]).toEqual([shots[1], { ...shots[0], caption: 'Edited' }]);
-  });
-
-  it('reports a failed save and allows retry without uploading the files again', async () => {
-    const save = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(undefined);
-    const enqueue = createScreenshotSaveQueue(save);
-    await expect(enqueue(shots)).rejects.toThrow('Offline');
-    await enqueue(shots);
-    expect(save).toHaveBeenCalledTimes(2);
-    expect(save.mock.calls[1]?.[0]).toEqual(shots);
-  });
 });
 
 describe('unified listing photos', () => {
@@ -178,17 +142,5 @@ describe('unified listing photos', () => {
     });
     expect(listingPhotoPatch([])).toEqual({ imageUrl: null, screenshots: [] });
     expect(listingPhotoPatch([other])).toEqual({ imageUrl: other.url, screenshots: [other] });
-  });
-
-  it('serializes cover swaps together with captions and removal', async () => {
-    const save = vi.fn().mockResolvedValue(undefined);
-    const enqueue = createScreenshotSaveQueue((photos) => save(listingPhotoPatch(photos)));
-    const first = enqueue([cover, other]);
-    const second = enqueue([other, cover]);
-    const last = enqueue([]);
-    await Promise.all([first, second, last]);
-    expect(save.mock.calls.map(([patch]) => patch.imageUrl)).toEqual([cover.url, other.url, null]);
-    expect(save.mock.calls[1]?.[0].screenshots).toEqual([other, cover]);
-    expect(save.mock.calls[2]?.[0].screenshots).toEqual([]);
   });
 });
