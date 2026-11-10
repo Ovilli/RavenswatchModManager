@@ -73,7 +73,7 @@ function SectionNav({
   return (
     <nav
       aria-label="Mod sections"
-      className="grimoire-card flex gap-1 overflow-x-auto p-2 md:sticky md:top-24 md:flex-col md:gap-1 md:self-start"
+      className="flex gap-1 overflow-x-auto p-2 md:sticky md:top-24 md:flex-col md:gap-1 md:self-start"
     >
       {SECTIONS.map((s) => {
         const isActive = active === s.id;
