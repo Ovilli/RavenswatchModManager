@@ -1573,6 +1573,31 @@ a live co-op session. Until then, label unknown players by join order and let
 the player rename them (the damage-meter mod exposes `player_1..4` for exactly
 that).
 
+### Mouse wheel (`R.input`)
+
+```lua
+R.input.on_wheel(function(steps, ev)   -- steps > 0 = wheel up
+    if R.game.flag("is_menu_open") then return end
+    R.log("wheel " .. steps)
+end)
+R.input.wheel_free()     --> true | false, action | nil, reason
+R.input.wheel_totals()   --> up, down (notches since launch)
+```
+
+The loader counts a wheel notch on the frame the game's input poll reads it and
+posts the `input:wheel` event (`steps`, plus `up`/`down` totals and `blocked`,
+true when the game had input blocked, e.g. during a transition). Nothing is
+swallowed: menus, the hero book and scroll panels still get every notch, so a
+handler that acts in a run should skip menus, as above.
+
+By default nothing in a run reads the wheel. Out of the box it is bound only to
+the menu page alternates. `wheel_free()` reads the player's own key bindings and
+returns `false` plus the action name when they have bound the wheel to something
+else (an ability, a dash), so a mod can step aside instead of doubling up. It
+returns `nil` plus a reason when the bindings cannot be read.
+
+Handlers run on the game thread inside the input poll. Keep them short.
+
 ### Overlays (`R.overlay`)
 
 The game gives a mod nowhere to draw a HUD, so a mod can publish one to the
@@ -1727,8 +1752,9 @@ nothing) but changes the game. Declare `deterministic-shared` or
 
 For Lua, the client-only calls are the whole of `R.log`, `R.on`/`R.off`/`R.once`,
 `R.overlay`, `R.config`, `R.kv`, `R.schedule`, `R.exp`, `R.health`, `R.i18n`,
-`R.damage` and `R.camera`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
+`R.damage`, `R.camera` and `R.input`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
 `R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max`,
+`R.game.get`/`flag`/`cached`/`ready`/`describe`,
 `R.events.known`/`count`/`category` and `R.net.peers`. Anything else, including `R[...]` lookups or
 passing `R` to another function, counts as gameplay.
 

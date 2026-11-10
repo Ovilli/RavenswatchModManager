@@ -309,6 +309,13 @@ constexpr const char* HeroRankLock_IsUnlocked_Pattern = "HeroRankLock_IsUnlocked
 constexpr std::uintptr_t HeroStoryUnlock_IsUnlocked = 0x1402acca0ull;
 constexpr const char* HeroStoryUnlock_IsUnlocked_Pattern = "HeroStoryUnlock_IsUnlocked";
 
+// --- input ---
+constexpr std::uintptr_t Input_Poll = 0x14067ddd0ull;
+constexpr const char* Input_Poll_Pattern = "Input_Poll";
+constexpr std::uintptr_t g_InputManager = 0x14146f8e8ull;
+constexpr std::uintptr_t g_InputMouseWheelDown = 0x1414670acull;
+constexpr std::uintptr_t g_InputMouseWheelUp = 0x1414670a0ull;
+
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403be820ull;
 constexpr const char* Entity_GiveHandler_Pattern = "Entity_GiveHandler";

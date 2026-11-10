@@ -36,12 +36,13 @@ from pathlib import Path
 
 #: SDK namespaces whose every member is client-only: logging, timers, the mod's
 #: own config / storage / experiments, the HUD overlay, the read-only damage
-#: meter, the boot canary, local translation lookup, the camera, and the
-#: master audio mute (FMOD mixes on each machine; nothing is sent).
+#: meter, the boot canary, local translation lookup, the camera, the
+#: master audio mute (FMOD mixes on each machine; nothing is sent), and local
+#: mouse-wheel input plus a read of the player's own key bindings.
 CLIENT_NAMESPACES: frozenset[str] = frozenset({
     "log", "on", "off", "once", "on_match",
     "overlay", "exp", "kv", "config", "schedule", "health", "i18n",
-    "damage", "camera", "audio",
+    "damage", "camera", "audio", "input",
 })
 
 #: Single client-only functions inside otherwise-gameplay namespaces: reads.
@@ -58,6 +59,9 @@ CLIENT_CALLS: frozenset[str] = frozenset({
     # Logs the hero's live component list; reads only (R.debug.observe hooks,
     # so the namespace as a whole is not client-only).
     "debug.components",
+    # Reads of the global entity-value context ("Is menu open", "Current
+    # chapter"); R.game has no public setter.
+    "game.get", "game.flag", "game.cached", "game.ready", "game.describe",
 })
 
 

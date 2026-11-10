@@ -11528,5 +11528,98 @@ do
     check(ran and I.read_u8(COMP + 0x64) == 0x04, "free portrait passes through unchanged")
 end
 
+-- R.input: wheel notches from the loader's input-poll hook, and the player's
+-- key bindings read out of the g_GameOptions registry to tell whether the wheel
+-- does anything in a run. Bindings: 0x30-byte slots, name ptr +0x10, name
+-- length +0x18 (high bit set), current key id +0x28; Menu:: at +0x340 (21) and
+-- +0x730 (21), Explo:: at +0xb20 (10) and +0xd00 (10). Wheel up 92, down 93.
+do
+    check(R.input ~= nil, "R.input loaded")
+    local ok, why = R.input.available()
+    check(ok == false and why:find("too old"), "no wheel binding: unavailable, says why")
+    I.input_armed = function() return true end
+    I.input_wheel_totals = function() return 7, 4 end
+    check(R.input.available() == true, "armed hook: available")
+    local up, down = R.input.wheel_totals()
+    check(up == 7 and down == 4, "totals pass through")
+
+    local got = {}
+    local h = R.input.on_wheel(function(steps, ev) got[#got + 1] = { steps, ev } end)
+    fire("input:wheel", { steps = -2, up = 7, down = 4, blocked = false })
+    check(#got == 1 and got[1][1] == -2 and got[1][2].down == 4,
+          "on_wheel gets the net steps first and the payload second")
+    R.input.off(h)
+    fire("input:wheel", { steps = 1 })
+    check(#got == 1, "off stops delivery")
+
+    local function options(obj, opts)
+        opts = opts or {}
+        I.write_u64(0x140000000 + (VA["g_GameOptions"] - 0x140000000), obj)
+        I.write_u8(obj + 0x0030 + 0x28, 1)     -- "Dev"  reads as a real bool
+        I.write_u8(obj + 0x0060 + 0x28, 0)     -- "Test" reads as a real bool
+        local strings = obj + 0x100000
+        local function slot(base, i, name, key)
+            local sl = obj + base + i * 0x30
+            if name then
+                wbytes(strings, name .. "\0")
+                I.write_u64(sl + 0x10, strings)
+                I.write_u32(sl + 0x18, 0x80000000 | #name)
+                strings = strings + 0x40
+            end
+            I.write_u32(sl + 0x28, key or 0)
+        end
+        for i = 0, 20 do
+            local name = (i == 18 and "Menu::AlternativePageNext")
+                      or (i == 19 and "Menu::AlternativePagePrev")
+                      or ("Menu::Action" .. i)
+            if opts.moved and i == 5 then name = "Video::Something" end
+            slot(0x340, i, name, (i == 18 and 92) or (i == 19 and 93) or (30 + i))
+            slot(0x730, i, nil, 0)
+        end
+        for i = 0, 9 do
+            slot(0xb20, i, "Explo::Action" .. i, 40 + i)
+            slot(0xd00, i, nil, 0)
+        end
+    end
+    local OBJ = 0x61000000
+    options(OBJ)
+    local list = R.input.wheel_bindings()
+    check(list and #list == 2, "shipped layout: two wheel bindings")
+    check(R.input.wheel_free() == true, "only the menu page alternates: the wheel is free")
+
+    I.write_u32(OBJ + 0xd00 + 3 * 0x30 + 0x28, 93)            -- Explo pad slot 3 -> wheel down
+    local free, holder = R.input.wheel_free()
+    check(free == false and holder == "Explo::Action3", "a rebound in-run action holds the wheel")
+    list = R.input.wheel_bindings()
+    local hit
+    for _, b in ipairs(list) do if b.action == "Explo::Action3" then hit = b end end
+    check(hit and hit.key == "down" and hit.slot == "pad", "binding names action, key and slot")
+    I.write_u32(OBJ + 0xd00 + 3 * 0x30 + 0x28, 0)
+
+    I.write_u32(OBJ + 0x340 + 18 * 0x30 + 0x28, 93)           -- page next swapped to wheel down
+    free, holder = R.input.wheel_free()
+    check(free == false and holder == "Menu::AlternativePageNext",
+          "a shipped action on the other wheel direction is not the shipped binding")
+    I.write_u32(OBJ + 0x340 + 18 * 0x30 + 0x28, 92)
+
+    I.write_u32(OBJ + 0x730 + 4 * 0x30 + 0x28, 114)           -- live pad id above the old 0x6d cap
+    check(R.input.wheel_free() == true, "pad key ids up to 117 are real keys (live, 2026-11-09)")
+    I.write_u32(OBJ + 0x340 + 2 * 0x30 + 0x28, 0x200)         -- not a key id
+    local none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2 == "key options moved", "an out-of-range key id fails the read")
+    free, why2 = R.input.wheel_free()
+    check(free == nil and why2 == "key options moved", "wheel_free says it cannot tell")
+
+    options(0x62000000, { moved = true })
+    none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2 == "key options moved", "a slot name outside Menu:: means the layout moved")
+
+    I.write_u8(0x62000000 + 0x0030 + 0x28, 7)                  -- options object fails validation
+    none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2:find("not readable"), "an invalid options object is refused")
+
+    I.input_armed, I.input_wheel_totals = nil, nil
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)
