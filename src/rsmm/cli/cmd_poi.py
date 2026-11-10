@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from rsmm.engine import corpus
 from rsmm.engine import map_pool as MP
 from rsmm.engine import tile_cook as TC
 from rsmm.sdk.content import ContentError, SchemaNotMined
@@ -39,11 +40,13 @@ def _tile(base: str) -> TC.TileDef | None:
 def _pool_of(chapter: str) -> set[str]:
     """Tile stems (`<Biome>/<Name>`) already pooled by ``chapter``."""
     stem = P.CHAPTERS[chapter]
-    gen = P._MAPS_DIR / f"{stem}{MP.GEN_SUFFIX}"
-    if not gen.is_file():
+    # Through engine.corpus (mirror, then the install), like every other reader
+    # of a mapdef. `_MAPS_DIR` is a corpus-relative string, not a directory.
+    gen = corpus.read(f"{P._MAPS_DIR}/{stem}{MP.GEN_SUFFIX}")
+    if gen is None:
         return set()
     out = set()
-    for path in MP.read_pool(gen.read_bytes()) or []:
+    for path in MP.read_pool(gen) or []:
         parts = path.replace("\\", "/").split("/")
         if len(parts) >= 3:
             out.add(f"{parts[-2]}/{parts[-1].removesuffix('.tiledef.ot')}")
