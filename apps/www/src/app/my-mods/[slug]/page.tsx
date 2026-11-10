@@ -203,6 +203,79 @@ export default function ManageModPage() {
   return <ManageModEditor key={slug} slug={slug} />;
 }
 
+function EditableModTitle({
+  value,
+  fallback,
+  onChange,
+}: {
+  value: string;
+  fallback: string;
+  onChange: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const original = useRef(value);
+  const restoreFocus = useRef(false);
+  const title = value.trim() || fallback;
+
+  useEffect(() => {
+    if (editing) {
+      input.current?.focus();
+      input.current?.select();
+    } else if (restoreFocus.current) {
+      trigger.current?.focus();
+      restoreFocus.current = false;
+    }
+  }, [editing]);
+
+  return (
+    <h1 aria-label={title} className="min-w-0 tracking-tight">
+      {editing ? (
+        <Input
+          ref={input}
+          aria-label="Display name"
+          className="mod-name-input"
+          value={value}
+          maxLength={128}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={() => {
+            onChange(value.trim() || original.current || fallback);
+            setEditing(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onChange(original.current);
+              restoreFocus.current = true;
+              setEditing(false);
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              restoreFocus.current = true;
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      ) : (
+        <button
+          ref={trigger}
+          type="button"
+          aria-label={`Edit mod name: ${title}`}
+          onClick={() => {
+            original.current = value;
+            setEditing(true);
+          }}
+          className="flex min-h-11 w-full items-center gap-3 rounded-md text-left hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="min-w-0 break-words">{title}</span>
+          <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      )}
+    </h1>
+  );
+}
+
 function ManageModEditor({ slug }: { slug: string }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -564,7 +637,11 @@ function ManageModEditor({ slug }: { slug: string }) {
   if (previewMode) {
     return (
       <main className="container mx-auto space-y-8 px-6 py-12">
-        <PreviewHeader modName={mod.name} slug={mod.slug} onExit={() => setPreviewMode(false)} />
+        <PreviewHeader
+          modName={name.trim() || mod.name}
+          slug={mod.slug}
+          onExit={() => setPreviewMode(false)}
+        />
         <PreviewBody
           mod={{
             name: name || mod.name,
@@ -623,8 +700,8 @@ function ManageModEditor({ slug }: { slug: string }) {
             tabIndex={-1}
             className="scroll-mt-[var(--editor-scroll-offset)] space-y-8 focus:outline-none"
           >
-            <header className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-start gap-4">
+            <header className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="flex min-w-0 items-start gap-4">
                 {coverUrl ? (
                   <img
                     src={coverUrl}
@@ -632,9 +709,16 @@ function ManageModEditor({ slug }: { slug: string }) {
                     className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
                   />
                 ) : null}
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
-                  <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
+                  <EditableModTitle
+                    value={name}
+                    fallback={mod.name}
+                    onChange={(value) => {
+                      setName(value);
+                      setSaveMessage(null);
+                    }}
+                  />
                   <p className="mt-1 text-sm text-muted-foreground">
                     v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads
                     ·{mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
@@ -650,7 +734,12 @@ function ManageModEditor({ slug }: { slug: string }) {
                   </div>
                 </div>
               </div>
-              <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-self-start"
+                onClick={() => setPreviewMode(true)}
+              >
                 <Eye className="h-4 w-4" /> Preview
               </Button>
             </header>
@@ -676,16 +765,9 @@ function ManageModEditor({ slug }: { slug: string }) {
               </div>
             ) : null}
 
-            <ScreenshotEditor gallery={gallery} />
-
             {/* ─── Metadata edit ─── */}
             <section className="space-y-4">
-              <h2 className="text-lg font-semibold">Listing details</h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="name">Display name</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="summary">Summary</Label>
                   <Input
@@ -777,6 +859,8 @@ function ManageModEditor({ slug }: { slug: string }) {
                 </Button>
               </div>
             </section>
+            <ScreenshotEditor gallery={gallery} />
+
             <section className="space-y-4">
               <h2 className="text-lg font-semibold">Videos</h2>
               {/* Videos */}

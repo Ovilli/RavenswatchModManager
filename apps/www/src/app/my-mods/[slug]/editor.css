@@ -24,6 +24,16 @@ body:has(.mod-editor) > .site-header {
   line-height: 1.08;
 }
 
+.mod-editor .mod-name-input {
+  height: auto;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
 .mod-editor h2 {
   font-family: var(--font-display), Georgia, serif;
   font-size: 26px;
