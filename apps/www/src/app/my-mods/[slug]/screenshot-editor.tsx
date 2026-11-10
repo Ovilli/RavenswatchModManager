@@ -289,7 +289,7 @@ function SortablePhoto({
         loading={idx === 0 ? 'eager' : 'lazy'}
         className="pointer-events-none h-full w-full rounded-xl object-contain"
       />
-      <span className="absolute left-3 top-3 hidden rounded-md bg-background px-3 py-1.5 text-xs font-semibold text-foreground group-first/photo:block">
+      <span className="absolute left-3 top-3 hidden rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-pitch group-first/photo:block">
         Cover photo
       </span>
       <PhotoMenu
@@ -362,7 +362,7 @@ function PhotoMenu({
           event.preventDefault();
           show(event.key === 'ArrowUp');
         }}
-        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-background text-foreground shadow-md hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:right-3 sm:top-3"
+        className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-white text-pitch shadow-md hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:right-3 sm:top-3"
       >
         <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
       </button>
