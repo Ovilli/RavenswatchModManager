@@ -78,8 +78,8 @@ export function useScreenshotGallery(slug: string, initial: Screenshot[] | undef
     }
   }
 
-  function move(url: string, offset: -1 | 1) {
-    const next = moveScreenshot(current.current, url, offset);
+  function move(url: string, to: number) {
+    const next = moveScreenshot(current.current, url, to);
     if (next === current.current) return;
     replace(next);
     setAnnouncement(

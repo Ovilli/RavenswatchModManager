@@ -56,10 +56,11 @@ export async function uploadScreenshotBatch(
   return { screenshots, failures };
 }
 
-export function moveScreenshot(screenshots: Screenshot[], url: string, offset: -1 | 1) {
+export function moveScreenshot(screenshots: Screenshot[], url: string, to: number) {
   const from = screenshots.findIndex((shot) => shot.url === url);
-  const to = from + offset;
-  if (from < 0 || to < 0 || to >= screenshots.length) return screenshots;
+  if (from < 0 || from === to || !Number.isInteger(to) || to < 0 || to >= screenshots.length) {
+    return screenshots;
+  }
   const next = [...screenshots];
   const [shot] = next.splice(from, 1);
   if (shot) next.splice(to, 0, shot);

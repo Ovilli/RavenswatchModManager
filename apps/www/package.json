@@ -12,6 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@dnd-kit/dom": "0.5.3",
+    "@dnd-kit/react": "0.5.3",
     "@rsmm/api-client": "workspace:*",
     "@rsmm/schemas": "workspace:*",
     "@rsmm/ui": "workspace:*",

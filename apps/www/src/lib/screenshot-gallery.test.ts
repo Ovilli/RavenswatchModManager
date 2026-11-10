@@ -83,14 +83,22 @@ describe('screenshot ordering and persistence', () => {
   ];
 
   it('moves the image and its caption together without mutating the original', () => {
-    expect(moveScreenshot(shots, shots[1].url, -1)).toEqual([shots[1], shots[0], shots[2]]);
-    expect(moveScreenshot(shots, shots[1].url, 1)).toEqual([shots[0], shots[2], shots[1]]);
+    expect(moveScreenshot(shots, shots[1].url, 0)).toEqual([shots[1], shots[0], shots[2]]);
+    expect(moveScreenshot(shots, shots[1].url, 2)).toEqual([shots[0], shots[2], shots[1]]);
     expect(shots.map((shot) => shot.caption)).toEqual(['First', 'Second', 'Third']);
   });
 
-  it('leaves boundary moves and missing images unchanged', () => {
+  it('moves across multiple positions in either direction', () => {
+    expect(moveScreenshot(shots, shots[0].url, 2)).toEqual([shots[1], shots[2], shots[0]]);
+    expect(moveScreenshot(shots, shots[2].url, 0)).toEqual([shots[2], shots[0], shots[1]]);
+  });
+
+  it('leaves unchanged drops, invalid positions and missing images alone', () => {
+    expect(moveScreenshot(shots, shots[1].url, 1)).toBe(shots);
+    expect(moveScreenshot(shots, shots[1].url, Number.NaN)).toBe(shots);
+    expect(moveScreenshot(shots, shots[1].url, 0.5)).toBe(shots);
     expect(moveScreenshot(shots, shots[0].url, -1)).toBe(shots);
-    expect(moveScreenshot(shots, shots[2].url, 1)).toBe(shots);
+    expect(moveScreenshot(shots, shots[2].url, 3)).toBe(shots);
     expect(moveScreenshot(shots, 'missing', -1)).toBe(shots);
     expect(moveScreenshot([], 'missing', 1)).toEqual([]);
   });
@@ -108,7 +116,7 @@ describe('screenshot ordering and persistence', () => {
       .mockResolvedValue(undefined);
     const enqueue = createScreenshotSaveQueue(save);
     const caption = [{ ...shots[0], caption: ' Edited ' }, shots[1], shots[2]];
-    const reordered = moveScreenshot(caption, shots[1].url, -1);
+    const reordered = moveScreenshot(caption, shots[1].url, 0);
     const removed = reordered.slice(0, 2);
     const first = enqueue(caption);
     const second = enqueue(reordered);

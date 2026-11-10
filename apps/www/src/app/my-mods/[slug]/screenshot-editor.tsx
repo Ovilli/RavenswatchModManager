@@ -1,9 +1,32 @@
 'use client';
 
+import { Accessibility } from '@dnd-kit/dom';
+import {
+  DragDropProvider,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/react';
+import { isSortable, useSortable } from '@dnd-kit/react/sortable';
 import { Button, Input, Spinner } from '@rsmm/ui';
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
-import { MAX_SCREENSHOTS } from '../../../lib/screenshot-gallery';
+import { GripVertical, Trash2 } from 'lucide-react';
+import { MAX_SCREENSHOTS, type Screenshot } from '../../../lib/screenshot-gallery';
 import type { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
+
+const galleryAccessibility = Accessibility.configure({
+  announcements: {
+    dragstart({ operation: { source } }: DragStartEvent) {
+      if (isSortable(source)) return `Picked up screenshot ${source.initialIndex + 1}.`;
+    },
+    dragover({ operation: { source } }: DragOverEvent) {
+      if (isSortable(source)) return `Screenshot moved to position ${source.index + 1}.`;
+    },
+    dragend({ operation: { source }, canceled }: DragEndEvent) {
+      if (canceled) return 'Reordering canceled. The image order has not changed.';
+      if (isSortable(source)) return `Screenshot dropped at position ${source.index + 1}.`;
+    },
+  },
+});
 
 export function ScreenshotEditor({
   gallery,
@@ -22,8 +45,12 @@ export function ScreenshotEditor({
         </span>
       </div>
       <p id="screenshot-help" className="text-xs leading-relaxed text-muted-foreground">
-        Select multiple images at once. Use the arrows to change their display order. Changes save
-        automatically.
+        Select multiple images at once. Drag an image by its grip to change the display order.
+        Changes save automatically.
+      </p>
+      <p id="screenshot-reorder-help" className="sr-only">
+        Press Space to pick up an image, use the arrow keys to move it, and press Space to drop.
+        Press Escape to cancel.
       </p>
       <div className="space-y-2 pt-1">
         <label htmlFor="screenshot-files" className="block text-sm font-medium">
@@ -101,81 +128,115 @@ export function ScreenshotEditor({
         </div>
       ) : null}
       {screenshots.length > 0 ? (
-        <ol aria-label="Screenshot display order" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {screenshots.map((shot, idx) => (
-            <li key={shot.url} className="min-w-0 space-y-2 rounded-md border border-border/40 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="pl-1 text-xs tabular-nums text-muted-foreground">
-                  {idx + 1} of {screenshots.length}
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Move screenshot ${idx + 1} earlier`}
-                    title="Move earlier"
-                    aria-disabled={idx === 0}
-                    className="aria-disabled:opacity-40"
-                    onClick={() => gallery.move(shot.url, -1)}
-                  >
-                    <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Move screenshot ${idx + 1} later`}
-                    title="Move later"
-                    aria-disabled={idx === screenshots.length - 1}
-                    className="aria-disabled:opacity-40"
-                    onClick={() => gallery.move(shot.url, 1)}
-                  >
-                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onPreview(idx)}
-                aria-label={`Preview screenshot ${idx + 1}`}
-                className="group relative block aspect-video w-full overflow-hidden rounded bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <img
-                  loading="lazy"
-                  src={shot.url}
-                  alt={shot.caption || `Screenshot ${idx + 1}`}
-                  className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
-                />
-                <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
-                  Preview
-                </span>
-              </button>
-              <Input
-                aria-label={`Caption for screenshot ${idx + 1}`}
-                value={shot.caption ?? ''}
-                onChange={(e) => gallery.setCaption(shot.url, e.target.value)}
-                onBlur={() => void gallery.save()}
-                placeholder="Caption (optional, max 200 chars)"
-                maxLength={200}
+        <DragDropProvider
+          plugins={(defaults) =>
+            defaults.map((plugin) => (plugin === Accessibility ? galleryAccessibility : plugin))
+          }
+          onDragEnd={(event) => {
+            if (event.canceled) return;
+            const { source } = event.operation;
+            if (isSortable(source)) gallery.move(String(source.id), source.index);
+          }}
+        >
+          <ol
+            aria-label="Screenshot display order"
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            {screenshots.map((shot, idx) => (
+              <SortableScreenshot
+                key={shot.url}
+                shot={shot}
+                idx={idx}
+                total={screenshots.length}
+                gallery={gallery}
+                onPreview={onPreview}
               />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                aria-label={`Remove screenshot ${idx + 1}`}
-                onClick={() => gallery.remove(shot.url)}
-              >
-                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" /> Remove
-              </Button>
-            </li>
-          ))}
-        </ol>
+            ))}
+          </ol>
+        </DragDropProvider>
       ) : (
         <p className="py-3 text-sm text-muted-foreground">
           Add screenshots to show players what your mod looks like.
         </p>
       )}
     </div>
+  );
+}
+
+function SortableScreenshot({
+  shot,
+  idx,
+  total,
+  gallery,
+  onPreview,
+}: {
+  shot: Screenshot;
+  idx: number;
+  total: number;
+  gallery: ReturnType<typeof useScreenshotGallery>;
+  onPreview: (index: number) => void;
+}) {
+  const { ref, handleRef, isDragging } = useSortable({
+    id: shot.url,
+    index: idx,
+    disabled: total < 2,
+  });
+  return (
+    <li
+      ref={ref}
+      className={`min-w-0 space-y-2 rounded-md border bg-card p-2 ${isDragging ? 'relative z-10 border-primary' : 'border-border/40'}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="pl-1 text-xs tabular-nums text-muted-foreground">
+          {idx + 1} of {total}
+        </span>
+        <Button
+          ref={handleRef}
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Reorder screenshot ${idx + 1}`}
+          aria-describedby="screenshot-reorder-help"
+          title="Drag to reorder"
+          disabled={total < 2}
+          className="h-11 w-11 touch-none cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      </div>
+      <button
+        type="button"
+        onClick={() => onPreview(idx)}
+        aria-label={`Preview screenshot ${idx + 1}`}
+        className="group relative block aspect-video w-full overflow-hidden rounded bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img
+          loading="lazy"
+          src={shot.url}
+          alt={shot.caption || `Screenshot ${idx + 1}`}
+          className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
+        />
+        <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
+          Preview
+        </span>
+      </button>
+      <Input
+        aria-label={`Caption for screenshot ${idx + 1}`}
+        value={shot.caption ?? ''}
+        onChange={(e) => gallery.setCaption(shot.url, e.target.value)}
+        onBlur={() => void gallery.save()}
+        placeholder="Caption (optional, max 200 chars)"
+        maxLength={200}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-label={`Remove screenshot ${idx + 1}`}
+        onClick={() => gallery.remove(shot.url)}
+      >
+        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" /> Remove
+      </Button>
+    </li>
   );
 }
