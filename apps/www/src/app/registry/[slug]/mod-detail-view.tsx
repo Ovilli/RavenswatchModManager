@@ -47,7 +47,7 @@ export function ModDetailView({
   if (!data) {
     const notFound = detail.error instanceof ApiError && detail.error.status === 404;
     return (
-      <main className="mod-detail">
+      <main className="mod-detail container">
         <Link href="/registry" className="mod-back">
           <ArrowLeft size={16} aria-hidden />
           Back to mods
@@ -83,7 +83,7 @@ export function ModDetailView({
   const author = mod.author || 'Unknown author';
 
   return (
-    <main className="mod-detail">
+    <main className="mod-detail container">
       <nav aria-label="Breadcrumb" className="mod-breadcrumb">
         <Link href="/registry" className="mod-back">
           <ArrowLeft size={16} aria-hidden />

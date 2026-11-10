@@ -181,7 +181,7 @@ export default function AccountPage() {
   const user = session.user;
 
   return (
-    <main className="container mx-auto max-w-2xl space-y-8 px-6 py-12">
+    <main className="container mx-auto space-y-8 px-6 py-12">
       <header>
         <h1 className="font-display text-5xl text-parchment">Account</h1>
         <p className="mt-1 text-sm text-muted-foreground">Manage your profile and account.</p>

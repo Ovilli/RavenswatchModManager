@@ -33,6 +33,7 @@ import { MDEditor, MDPreview } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
 import { ScreenshotEditor } from './screenshot-editor';
+import './editor.css';
 
 const CATEGORIES: ModCategory[] = [
   'gameplay',
@@ -47,9 +48,7 @@ const CATEGORIES: ModCategory[] = [
 
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
 
-/** Manage-page sections. One card pile per concern instead of one long scroll;
- *  the active section is kept in the URL hash so a reload (or a shared link,
- *  e.g. /my-mods/foo#versions) lands on the same section. */
+/** Anchor navigation for the continuous editor, with shareable section links. */
 const SECTIONS = [
   { id: 'listing', label: 'Listing', icon: Pencil },
   { id: 'versions', label: 'Versions', icon: Package },
@@ -61,19 +60,22 @@ type SectionId = (typeof SECTIONS)[number]['id'];
 
 function SectionNav({
   active,
+  navRef,
   onSelect,
   versionCount,
   hasInReview,
 }: {
   active: SectionId;
+  navRef: React.RefObject<HTMLElement | null>;
   onSelect: (id: SectionId) => void;
   versionCount: number;
   hasInReview: boolean;
 }) {
   return (
     <nav
+      ref={navRef}
       aria-label="Mod sections"
-      className="flex gap-1 overflow-x-auto p-2 md:sticky md:top-24 md:flex-col md:gap-1 md:self-start"
+      className="sticky top-[var(--site-header-height,61px)] z-30 flex h-16 gap-1 overflow-x-auto bg-background p-2 md:top-[calc(var(--site-header-height,61px)+24px)] md:h-auto md:flex-col md:self-start md:bg-transparent"
     >
       {SECTIONS.map((s) => {
         const isActive = active === s.id;
@@ -87,11 +89,15 @@ function SectionNav({
               ? 'bg-secondary/70 font-medium text-foreground'
               : 'text-muted-foreground hover:bg-secondary/40 hover:text-foreground';
         return (
-          <button
+          <a
             key={s.id}
-            type="button"
-            onClick={() => onSelect(s.id)}
-            aria-current={isActive ? 'true' : undefined}
+            href={`#${s.id}`}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              onSelect(s.id);
+            }}
+            aria-current={isActive ? 'location' : undefined}
             className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:w-full ${tone}`}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -109,7 +115,7 @@ function SectionNav({
                 </span>
               </span>
             ) : null}
-          </button>
+          </a>
         );
       })}
     </nav>
@@ -226,16 +232,127 @@ function ManageModEditor({ slug }: { slug: string }) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [section, setSection] = useState<SectionId>('listing');
-  // Adopt a section from the URL hash on first load (deep link / reload).
-  useEffect(() => {
-    const h = window.location.hash.slice(1);
-    if (h === 'gallery') window.history.replaceState(null, '', '#listing');
-    if (SECTIONS.some((s) => s.id === h)) setSection(h as SectionId);
-  }, []);
+  const sectionNav = useRef<HTMLElement>(null);
+  const sectionContent = useRef<HTMLDivElement>(null);
+  const requestedSection = useRef<SectionId | null>(null);
+  const editorReady =
+    !!session &&
+    !!detail.data &&
+    !sessionLoading &&
+    !detail.isLoading &&
+    !detail.isError &&
+    !previewMode;
+
   const selectSection = useCallback((id: SectionId) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    requestedSection.current = id;
+    if (window.location.hash !== `#${id}`) window.history.pushState(null, '', `#${id}`);
     setSection(id);
-    window.history.replaceState(null, '', `#${id}`);
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
   }, []);
+
+  useEffect(() => {
+    if (!editorReady || !sectionContent.current) return;
+    const content = sectionContent.current;
+    const sections = SECTIONS.map(({ id }) => document.getElementById(id)).filter(
+      (node): node is HTMLElement => node !== null,
+    );
+    const first = sections[0];
+    if (!first) return;
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    let frame = 0;
+    let navigationFrame = 0;
+    const updateActive = () => {
+      frame = 0;
+      const offset = Number.parseFloat(getComputedStyle(first).scrollMarginTop) + 8;
+      const atBottom =
+        window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+      // Keep a clicked section selected during its scroll, including short sections
+      // near the footer that cannot reach the top. Manual scrolling resumes tracking.
+      const current = requestedSection.current
+        ? sections.find((node) => node.id === requestedSection.current)
+        : atBottom
+          ? sections[sections.length - 1]
+          : sections.reduce(
+              (active, node) => (node.getBoundingClientRect().top <= offset ? node : active),
+              first,
+            );
+      if (!current) return;
+      const id = current.id as SectionId;
+      setSection(id);
+      if (window.location.hash !== `#${id}`) window.history.replaceState(null, '', `#${id}`);
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = requestAnimationFrame(updateActive);
+    };
+    const followHash = () => {
+      const hash = window.location.hash.slice(1);
+      const id = hash === 'gallery' ? 'listing' : hash;
+      const target = sections.find((node) => node.id === id);
+      if (target) {
+        requestedSection.current = id as SectionId;
+        setSection(id as SectionId);
+        // Run after history traversal finishes restoring the document's scroll.
+        cancelAnimationFrame(navigationFrame);
+        navigationFrame = requestAnimationFrame(() => {
+          target.focus({ preventScroll: true });
+          target.scrollIntoView({ block: 'start', behavior: 'instant' });
+          scheduleUpdate();
+        });
+      }
+      scheduleUpdate();
+    };
+    const resumeTracking = () => {
+      requestedSection.current = null;
+    };
+    const onScrollKey = (event: KeyboardEvent) => {
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key))
+        resumeTracking();
+    };
+    followHash();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('hashchange', followHash);
+    window.addEventListener('popstate', followHash);
+    window.addEventListener('wheel', resumeTracking, { passive: true });
+    window.addEventListener('touchstart', resumeTracking, { passive: true });
+    window.addEventListener('pointerdown', resumeTracking, { passive: true });
+    window.addEventListener('keydown', onScrollKey);
+    // Keep the active link correct as uploads, analytics, or form errors change section heights.
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(content);
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(navigationFrame);
+      observer.disconnect();
+      window.history.scrollRestoration = previousRestoration;
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('hashchange', followHash);
+      window.removeEventListener('popstate', followHash);
+      window.removeEventListener('wheel', resumeTracking);
+      window.removeEventListener('touchstart', resumeTracking);
+      window.removeEventListener('pointerdown', resumeTracking);
+      window.removeEventListener('keydown', onScrollKey);
+    };
+  }, [editorReady]);
+
+  useEffect(() => {
+    const nav = sectionNav.current;
+    const link = nav?.querySelector<HTMLAnchorElement>(`a[href="#${section}"]`);
+    if (!nav || !link) return;
+    if (link.offsetLeft < nav.scrollLeft) nav.scrollLeft = link.offsetLeft;
+    else if (link.offsetLeft + link.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollLeft = link.offsetLeft + link.offsetWidth - nav.clientWidth;
+  }, [section]);
 
   // Hydrate once per mod: background refreshes must not overwrite unsaved listing edits.
   const metadataHydrated = useRef(false);
@@ -446,7 +563,7 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   if (previewMode) {
     return (
-      <main className="container mx-auto max-w-3xl space-y-8 px-6 py-12">
+      <main className="container mx-auto space-y-8 px-6 py-12">
         <PreviewHeader modName={mod.name} slug={mod.slug} onExit={() => setPreviewMode(false)} />
         <PreviewBody
           mod={{
@@ -490,7 +607,7 @@ function ManageModEditor({ slug }: { slug: string }) {
   );
 
   return (
-    <main className="container mx-auto max-w-5xl space-y-8 px-6 py-12">
+    <main className="mod-editor container mx-auto space-y-8 px-6 py-12">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-4">
           {coverUrl ? (
@@ -544,354 +661,375 @@ function ManageModEditor({ slug }: { slug: string }) {
         </div>
       ) : null}
 
-      <div className="gap-8 md:grid md:grid-cols-[200px_minmax(0,1fr)]">
+      <div className="gap-8 [--editor-scroll-offset:calc(var(--site-header-height,61px)+88px)] md:grid md:grid-cols-[200px_minmax(0,1fr)] md:[--editor-scroll-offset:calc(var(--site-header-height,61px)+24px)]">
         <SectionNav
           active={section}
+          navRef={sectionNav}
           onSelect={selectSection}
           versionCount={versions.length}
           hasInReview={hasInReview}
         />
-        <div className="mt-6 min-w-0 space-y-8 md:mt-0">
-          {section === 'listing' ? (
-            <>
-              <ScreenshotEditor gallery={gallery} />
+        <div ref={sectionContent} className="mod-editor-sections mt-6 min-w-0 space-y-8 md:mt-0">
+          <section
+            id="listing"
+            aria-label="Listing"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-8 focus:outline-none"
+          >
+            <ScreenshotEditor gallery={gallery} />
 
-              {/* ─── Metadata edit ─── */}
-              <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Listing details</h2>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="name">Display name</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="summary">Summary</Label>
-                    <Input
-                      id="summary"
-                      value={summary}
-                      onChange={(e) => setSummary(e.target.value)}
-                      maxLength={512}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Description (Markdown)</Label>
-                    <div data-color-mode="dark" className="md-editor-themed">
-                      <MDEditor value={description} onChange={setDescription} height={320} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Category</Label>
-                    <select
-                      id="category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as ModCategory)}
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="license">License</Label>
-                    <Input
-                      id="license"
-                      value={license}
-                      onChange={(e) => setLicense(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="tags">Tags (comma-separated)</Label>
-                    <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <label className="flex cursor-pointer items-center gap-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={nsfw}
-                        onChange={(e) => setNsfw(e.target.checked)}
-                        className="h-4 w-4 rounded border-border accent-crimson"
-                      />
-                      <span className="text-sm font-medium leading-none">
-                        <strong>NSFW / mature content</strong>
-                      </span>
-                    </label>
-                    <p className="text-xs text-muted-foreground">
-                      If checked, the mod will be hidden behind a blur by default.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="repo">Repository URL</Label>
-                    <Input
-                      id="repo"
-                      type="url"
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="home">Homepage URL</Label>
-                    <Input
-                      id="home"
-                      type="url"
-                      value={homepageUrl}
-                      onChange={(e) => setHomepageUrl(e.target.value)}
-                    />
-                  </div>
+            {/* ─── Metadata edit ─── */}
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold">Listing details</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="name">Display name</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
-                <div className="flex items-center justify-end gap-3">
-                  {saveMessage ? (
-                    <span className="text-xs text-muted-foreground">{saveMessage}</span>
-                  ) : null}
-                  {saveMeta.isError ? (
-                    <span className="text-xs text-destructive">
-                      {describeApiError(saveMeta.error)}
-                    </span>
-                  ) : null}
-                  <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
-                    {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save details
-                  </Button>
-                </div>
-              </section>
-              <section className="grimoire-card space-y-4 p-5">
-                <h2 className="text-lg font-semibold">Videos</h2>
-                {/* Videos */}
-                <div className="space-y-2">
-                  <Label>Videos (YouTube or Vimeo URLs)</Label>
-                  {videos.length > 0 ? (
-                    <ul className="space-y-2">
-                      {videos.map((url, idx) => (
-                        <li
-                          key={url}
-                          className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
-                        >
-                          <span className="flex-1 truncate font-data text-xs">{url}</span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeVideo(idx)}
-                          >
-                            remove
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No videos yet.</p>
-                  )}
-                  {videos.length < 8 ? (
-                    <div className="flex gap-2">
-                      <Input
-                        value={videoInput}
-                        onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addVideo();
-                          }
-                        }}
-                        placeholder="https://www.youtube.com/watch?v=…"
-                      />
-                      <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
-                        Add
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-            </>
-          ) : null}
-
-          {section === 'versions' ? (
-            /* ─── Versions ─── */
-            <section className="grimoire-card space-y-4 p-5">
-              <h2 className="text-lg font-semibold">Versions</h2>
-              {removeVersion.isError ? (
-                <p className="text-sm text-destructive">
-                  Could not delete that version
-                  {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
-                  Only the mod&apos;s owner can delete versions.
-                </p>
-              ) : null}
-              {versions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No versions published yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {versions
-                    .slice()
-                    .sort(
-                      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-                    )
-                    .map((v) => {
-                      // changelog isn't on the published ModVersion schema yet
-                      // because the public detail endpoint hasn't been
-                      // extended — read it from manifestJson as a fallback.
-                      const cl =
-                        typeof v.manifestJson === 'object'
-                          ? (v.manifestJson as { changelog?: string })?.changelog
-                          : undefined;
-                      return (
-                        <li key={v.id} className="grimoire-card p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-semibold">v{v.version}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {fmtBytes(v.sizeBytes)} ·{' '}
-                                {new Date(v.createdAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <ScanBadge versionId={v.id} />
-                              <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive hover:text-destructive"
-                                disabled={removeVersion.isPending}
-                                aria-label={`Delete version ${v.version}`}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
-                                    )
-                                  ) {
-                                    removeVersion.mutate(v.id);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                              </Button>
-                            </div>
-                          </div>
-                          {v.scanStatus &&
-                          v.scanStatus !== 'clean' &&
-                          v.scanStatus !== 'skipped' ? (
-                            <p
-                              className={`mt-2 text-xs ${
-                                v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
-                              }`}
-                            >
-                              {v.scanStatus === 'flagged'
-                                ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
-                                : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
-                            </p>
-                          ) : null}
-                          {cl ? (
-                            <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                              {cl}
-                            </pre>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-
-              <div className="border-t border-border/40 pt-4">
-                <h3 className="text-sm font-semibold">Ship a new version</h3>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="newver">Version</Label>
-                    <Input
-                      id="newver"
-                      value={newVersion}
-                      onChange={(e) => setNewVersion(e.target.value)}
-                      placeholder="0.2.0"
-                      aria-invalid={
-                        newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
-                      }
-                    />
-                    {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
-                      <p className="text-xs text-destructive">
-                        Must be semver, e.g. 0.2.0 (three numbers separated by dots).
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="newzip">New archive</Label>
-                    <FileDrop
-                      id="newzip"
-                      accept=".zip,application/zip"
-                      label="Mod archive (.zip)"
-                      hint="up to 500 MB"
-                      file={newZip}
-                      onFile={setNewZip}
-                      disabled={newVersionMut.isPending}
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label>Changelog (Markdown)</Label>
-                    <div data-color-mode="dark" className="md-editor-themed">
-                      <MDEditor value={changelog} onChange={setChangelog} height={200} />
-                    </div>
-                  </div>
-                </div>
-                {zipProgress ? (
-                  <ProgressBar
-                    className="mt-4"
-                    value={zipProgress.loaded}
-                    max={zipProgress.total}
-                    label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="summary">Summary</Label>
+                  <Input
+                    id="summary"
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    maxLength={512}
                   />
-                ) : null}
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  {newVersionMut.isError ? (
-                    <span className="text-xs text-destructive">
-                      {describeApiError(newVersionMut.error)}
-                    </span>
-                  ) : null}
-                  <Button
-                    onClick={() => newVersionMut.mutate()}
-                    disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
-                  >
-                    {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
-                    version
-                  </Button>
                 </div>
-              </div>
-            </section>
-          ) : null}
-
-          {section === 'analytics' ? <ModStats slug={slug} /> : null}
-          {section === 'team' ? <ModTeam slug={slug} /> : null}
-
-          {section === 'danger' ? (
-            /* ─── Danger zone ─── */
-            <section className="grimoire-card space-y-3 border-destructive/30 p-5">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-                <div>
-                  <h2 className="text-lg font-semibold">Danger zone</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Deleting removes the mod row and every published version. The slug becomes
-                    available for someone else to claim. This cannot be undone.
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Description (Markdown)</Label>
+                  <div data-color-mode="dark" className="md-editor-themed min-h-80">
+                    <MDEditor value={description} onChange={setDescription} height={320} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <select
+                    id="category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as ModCategory)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="license">License</Label>
+                  <Input
+                    id="license"
+                    value={license}
+                    onChange={(e) => setLicense(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="tags">Tags (comma-separated)</Label>
+                  <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="flex cursor-pointer items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={nsfw}
+                      onChange={(e) => setNsfw(e.target.checked)}
+                      className="h-4 w-4 rounded border-border accent-crimson"
+                    />
+                    <span className="text-sm font-medium leading-none">
+                      <strong>NSFW / mature content</strong>
+                    </span>
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    If checked, the mod will be hidden behind a blur by default.
                   </p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="repo">Repository URL</Label>
+                  <Input
+                    id="repo"
+                    type="url"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="home">Homepage URL</Label>
+                  <Input
+                    id="home"
+                    type="url"
+                    value={homepageUrl}
+                    onChange={(e) => setHomepageUrl(e.target.value)}
+                  />
+                </div>
               </div>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Delete "${mod.name}" and all its versions? This cannot be undone.`,
-                    )
-                  ) {
-                    remove.mutate();
-                  }
-                }}
-                disabled={remove.isPending}
-              >
-                {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
-              </Button>
-              {remove.isError ? (
-                <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
-              ) : null}
+              <div className="flex items-center justify-end gap-3">
+                {saveMessage ? (
+                  <span className="text-xs text-muted-foreground">{saveMessage}</span>
+                ) : null}
+                {saveMeta.isError ? (
+                  <span className="text-xs text-destructive">
+                    {describeApiError(saveMeta.error)}
+                  </span>
+                ) : null}
+                <Button onClick={() => saveMeta.mutate()} disabled={saveMeta.isPending}>
+                  {saveMeta.isPending ? <Spinner /> : <Save className="h-4 w-4" />} Save details
+                </Button>
+              </div>
             </section>
-          ) : null}
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold">Videos</h2>
+              {/* Videos */}
+              <div className="space-y-2">
+                <Label>Videos (YouTube or Vimeo URLs)</Label>
+                {videos.length > 0 ? (
+                  <ul className="space-y-2">
+                    {videos.map((url, idx) => (
+                      <li
+                        key={url}
+                        className="flex items-center gap-2 rounded-md border border-border/40 px-3 py-2"
+                      >
+                        <span className="flex-1 truncate font-data text-xs">{url}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeVideo(idx)}
+                        >
+                          remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No videos yet.</p>
+                )}
+                {videos.length < 8 ? (
+                  <div className="flex gap-2">
+                    <Input
+                      value={videoInput}
+                      onChange={(e) => setVideoInput((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addVideo();
+                        }
+                      }}
+                      placeholder="https://www.youtube.com/watch?v=…"
+                    />
+                    <Button type="button" onClick={addVideo} disabled={!videoInput.trim()}>
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </section>
+
+          <section
+            id="versions"
+            aria-labelledby="versions-heading"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-4 focus:outline-none"
+          >
+            <h2 id="versions-heading" className="text-lg font-semibold">
+              Versions
+            </h2>
+            {removeVersion.isError ? (
+              <p className="text-sm text-destructive">
+                Could not delete that version
+                {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
+                Only the mod&apos;s owner can delete versions.
+              </p>
+            ) : null}
+            {versions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No versions published yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {versions
+                  .slice()
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((v) => {
+                    // changelog isn't on the published ModVersion schema yet
+                    // because the public detail endpoint hasn't been
+                    // extended — read it from manifestJson as a fallback.
+                    const cl =
+                      typeof v.manifestJson === 'object'
+                        ? (v.manifestJson as { changelog?: string })?.changelog
+                        : undefined;
+                    return (
+                      <li key={v.id} className="grimoire-card p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold">v{v.version}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ScanBadge versionId={v.id} />
+                            <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              disabled={removeVersion.isPending}
+                              aria-label={`Delete version ${v.version}`}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
+                                  )
+                                ) {
+                                  removeVersion.mutate(v.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </Button>
+                          </div>
+                        </div>
+                        {v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped' ? (
+                          <p
+                            className={`mt-2 text-xs ${
+                              v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
+                            }`}
+                          >
+                            {v.scanStatus === 'flagged'
+                              ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
+                              : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
+                          </p>
+                        ) : null}
+                        {cl ? (
+                          <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                            {cl}
+                          </pre>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+
+            <div className="border-t border-border/40 pt-4">
+              <h3 className="text-sm font-semibold">Ship a new version</h3>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="newver">Version</Label>
+                  <Input
+                    id="newver"
+                    value={newVersion}
+                    onChange={(e) => setNewVersion(e.target.value)}
+                    placeholder="0.2.0"
+                    aria-invalid={
+                      newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
+                    }
+                  />
+                  {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
+                    <p className="text-xs text-destructive">
+                      Must be semver, e.g. 0.2.0 (three numbers separated by dots).
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newzip">New archive</Label>
+                  <FileDrop
+                    id="newzip"
+                    accept=".zip,application/zip"
+                    label="Mod archive (.zip)"
+                    hint="up to 500 MB"
+                    file={newZip}
+                    onFile={setNewZip}
+                    disabled={newVersionMut.isPending}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Changelog (Markdown)</Label>
+                  <div data-color-mode="dark" className="md-editor-themed min-h-[200px]">
+                    <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                  </div>
+                </div>
+              </div>
+              {zipProgress ? (
+                <ProgressBar
+                  className="mt-4"
+                  value={zipProgress.loaded}
+                  max={zipProgress.total}
+                  label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
+                />
+              ) : null}
+              <div className="mt-4 flex items-center justify-end gap-3">
+                {newVersionMut.isError ? (
+                  <span className="text-xs text-destructive">
+                    {describeApiError(newVersionMut.error)}
+                  </span>
+                ) : null}
+                <Button
+                  onClick={() => newVersionMut.mutate()}
+                  disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
+                >
+                  {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
+                  version
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="analytics"
+            aria-label="Analytics"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+          >
+            <ModStats slug={slug} />
+          </section>
+          <section
+            id="team"
+            aria-label="Team"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+          >
+            <ModTeam slug={slug} />
+          </section>
+
+          <section
+            id="danger"
+            aria-labelledby="danger-heading"
+            tabIndex={-1}
+            className="scroll-mt-[var(--editor-scroll-offset)] space-y-3 focus:outline-none"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
+              <div>
+                <h2 id="danger-heading" className="text-lg font-semibold">
+                  Danger zone
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Deleting removes the mod row and every published version. The slug becomes
+                  available for someone else to claim. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete "${mod.name}" and all its versions? This cannot be undone.`,
+                  )
+                ) {
+                  remove.mutate();
+                }
+              }}
+              disabled={remove.isPending}
+            >
+              {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
+            </Button>
+            {remove.isError ? (
+              <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
+            ) : null}
+          </section>
         </div>
       </div>
 
