@@ -25,17 +25,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
+import type { Screenshot } from '../../../lib/screenshot-gallery';
 import { fmtBytes, hexToBase64, putFile, sha256Hex } from '../../../lib/upload';
+import { useScreenshotGallery } from '../../../lib/use-screenshot-gallery';
 import { toEmbedUrl } from '../../../lib/video-embed';
 import { FileDrop } from '../../components/file-drop';
 import { MDEditor, MDPreview } from '../../components/md-editor';
 import { ModStats } from '../../components/mod-stats';
 import { ModTeam } from '../../components/mod-team';
-
-interface Screenshot {
-  url: string;
-  caption?: string;
-}
+import { ScreenshotEditor } from './screenshot-editor';
 
 const CATEGORIES: ModCategory[] = [
   'gameplay',
@@ -197,9 +195,12 @@ function ScanBadge({ versionId }: { versionId: string }) {
 }
 
 export default function ManageModPage() {
+  const { slug } = useParams<{ slug: string }>();
+  return <ManageModEditor key={slug} slug={slug} />;
+}
+
+function ManageModEditor({ slug }: { slug: string }) {
   const router = useRouter();
-  const params = useParams<{ slug: string }>();
-  const slug = params.slug;
   const qc = useQueryClient();
   const { data: session, isPending: sessionLoading } = useSession();
 
@@ -220,7 +221,8 @@ export default function ManageModPage() {
   const [homepageUrl, setHomepageUrl] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nsfw, setNsfw] = useState(false);
-  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const gallery = useScreenshotGallery(slug, detail.data?.mod.screenshots);
+  const { screenshots } = gallery;
   const [videos, setVideos] = useState<string[]>([]);
   const [videoInput, setVideoInput] = useState('');
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -260,7 +262,6 @@ export default function ManageModPage() {
     // let the user fill them on first save.
     setRepoUrl('');
     setHomepageUrl('');
-    setScreenshots(mod.screenshots ?? []);
     setVideos(mod.videos ?? []);
   }, [detail.data]);
 
@@ -280,7 +281,6 @@ export default function ManageModPage() {
         license: license.trim() || null,
         repoUrl: repoUrl.trim() || null,
         homepageUrl: homepageUrl.trim() || null,
-        screenshots,
         videos,
         nsfw,
       });
@@ -312,52 +312,6 @@ export default function ManageModPage() {
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
     },
   });
-
-  const uploadScreenshot = useMutation({
-    mutationFn: async (file: File) => {
-      const presigned = await api.mods.presignImage(slug, {
-        contentType: file.type as 'image/png' | 'image/jpeg' | 'image/webp',
-        sizeBytes: file.size,
-      });
-      await putFile(presigned.uploadUrl, file, {
-        headers: { 'Content-Type': file.type },
-        what: 'screenshot upload',
-      });
-      const next: Screenshot[] = [...screenshots, { url: presigned.publicUrl }].slice(0, 12);
-      setScreenshots(next);
-      await api.mods.patch(slug, { screenshots: next });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-mod', slug] });
-    },
-  });
-
-  function removeScreenshot(idx: number) {
-    const next = screenshots.filter((_, i) => i !== idx);
-    setScreenshots(next);
-    api.mods.patch(slug, { screenshots: next }).catch((err) => {
-      console.error('screenshot remove failed', err);
-    });
-  }
-
-  // Debounced caption save — typing on every keystroke would hammer
-  // the API and race the user. Save on blur instead, plus a fallback
-  // commit if the user re-orders or removes anything.
-  function setCaption(idx: number, caption: string) {
-    setScreenshots((prev) => {
-      const next = prev.map((s, i) => (i === idx ? { ...s, caption } : s));
-      return next;
-    });
-  }
-  function commitCaption(idx: number) {
-    const next = screenshots.map((s, i) =>
-      i === idx ? { url: s.url, caption: s.caption?.trim() || undefined } : s,
-    );
-    setScreenshots(next);
-    api.mods.patch(slug, { screenshots: next }).catch((err) => {
-      console.error('caption save failed', err);
-    });
-  }
 
   function addVideo() {
     const trimmed = videoInput.trim();
@@ -775,76 +729,7 @@ export default function ManageModPage() {
                 </p>
               </div>
 
-              {/* Screenshots */}
-              <div className="space-y-2">
-                <Label>Screenshots</Label>
-                {screenshots.length > 0 ? (
-                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {screenshots.map((shot, idx) => (
-                      <li
-                        key={shot.url}
-                        className="space-y-2 rounded-md border border-border/40 p-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setLightboxIdx(idx)}
-                          className="group relative block aspect-video w-full overflow-hidden rounded bg-muted"
-                        >
-                          <img
-                            loading="lazy"
-                            src={shot.url}
-                            alt={shot.caption || `Screenshot ${idx + 1}`}
-                            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-                          />
-                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-                            click to preview
-                          </span>
-                        </button>
-                        <Input
-                          value={shot.caption ?? ''}
-                          onChange={(e) => setCaption(idx, (e.target as HTMLInputElement).value)}
-                          onBlur={() => commitCaption(idx)}
-                          placeholder="Caption (optional, max 200 chars)"
-                          maxLength={200}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => removeScreenshot(idx)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Remove
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No screenshots yet.</p>
-                )}
-                {screenshots.length < 12 ? (
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadScreenshot.mutate(f);
-                      e.target.value = '';
-                    }}
-                    disabled={uploadScreenshot.isPending}
-                    className="block w-full text-sm text-muted-foreground file:mr-4 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-secondary/80"
-                  />
-                ) : null}
-                {uploadScreenshot.isPending ? (
-                  <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Spinner /> Uploading…
-                  </p>
-                ) : null}
-                {uploadScreenshot.isError ? (
-                  <p className="text-xs text-destructive">
-                    {describeApiError(uploadScreenshot.error)}
-                  </p>
-                ) : null}
-              </div>
+              <ScreenshotEditor gallery={gallery} onPreview={setLightboxIdx} />
 
               {/* Videos */}
               <div className="space-y-2">

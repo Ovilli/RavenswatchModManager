@@ -1,0 +1,132 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  MAX_SCREENSHOTS,
+  type Screenshot,
+  createScreenshotSaveQueue,
+  moveScreenshot,
+  selectScreenshotFiles,
+  uploadScreenshotBatch,
+} from './screenshot-gallery';
+
+function file(name: string, type = 'image/png', size = 100) {
+  return new File([new Uint8Array(size)], name, { type });
+}
+
+describe('screenshot selection', () => {
+  it('keeps picker order and only accepts files that fit the remaining slots', () => {
+    const files = [file('first.png'), file('second.png'), file('third.png')];
+    const result = selectScreenshotFiles(files, MAX_SCREENSHOTS - 2);
+    expect(result.accepted).toEqual(files.slice(0, 2));
+    expect(result.issues).toEqual([{ file: files[2], message: expect.stringContaining('12') }]);
+  });
+
+  it('rejects unsupported, empty and oversized files before upload without consuming a slot', () => {
+    const invalid = [file('gif.gif', 'image/gif'), file('empty.png', 'image/png', 0)];
+    const large = file('large.png', 'image/png', 8_000_001);
+    const valid = file('valid.webp', 'image/webp', 8_000_000);
+    const result = selectScreenshotFiles([...invalid, large, valid], 11);
+    expect(result.accepted).toEqual([valid]);
+    expect(result.issues.map((issue) => issue.file)).toEqual([...invalid, large]);
+  });
+
+  it('accepts JPEG and rejects every file when the gallery is full', () => {
+    const jpeg = file('photo.jpg', 'image/jpeg');
+    expect(selectScreenshotFiles([jpeg], 0).accepted).toEqual([jpeg]);
+    expect(selectScreenshotFiles([jpeg], MAX_SCREENSHOTS).accepted).toEqual([]);
+    expect(selectScreenshotFiles([], 0)).toEqual({ accepted: [], issues: [] });
+  });
+});
+
+describe('batch upload', () => {
+  it('continues after a failed file, keeps selection order, and returns only failures for retry', async () => {
+    const files = [file('one.png'), file('two.png'), file('three.png')];
+    const error = new Error('Storage unavailable');
+    const upload = vi.fn(async (image: File) => {
+      if (image === files[1]) throw error;
+      return `https://cdn.example.com/${image.name}`;
+    });
+    const onFile = vi.fn();
+    const result = await uploadScreenshotBatch(files, upload, onFile);
+    expect(result.screenshots).toEqual([
+      { url: 'https://cdn.example.com/one.png' },
+      { url: 'https://cdn.example.com/three.png' },
+    ]);
+    expect(result.failures).toEqual([{ file: files[1], error }]);
+    expect(onFile.mock.calls).toEqual(files.map((image, index) => [image, index]));
+    expect(upload).toHaveBeenCalledTimes(3);
+  });
+
+  it('never starts the next upload until the current one finishes', async () => {
+    let finish = (_url: string) => {};
+    const upload = vi
+      .fn<(_: File) => Promise<string>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue('https://cdn.example.com/two.png');
+    const result = uploadScreenshotBatch([file('one.png'), file('two.png')], upload, () => {});
+    expect(upload).toHaveBeenCalledTimes(1);
+    finish('https://cdn.example.com/one.png');
+    expect((await result).screenshots).toHaveLength(2);
+    expect(upload).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('screenshot ordering and persistence', () => {
+  const shots: [Screenshot, Screenshot, Screenshot] = [
+    { url: 'https://cdn.example.com/a.png', caption: 'First' },
+    { url: 'https://cdn.example.com/b.png', caption: 'Second' },
+    { url: 'https://cdn.example.com/c.png', caption: 'Third' },
+  ];
+
+  it('moves the image and its caption together without mutating the original', () => {
+    expect(moveScreenshot(shots, shots[1].url, -1)).toEqual([shots[1], shots[0], shots[2]]);
+    expect(moveScreenshot(shots, shots[1].url, 1)).toEqual([shots[0], shots[2], shots[1]]);
+    expect(shots.map((shot) => shot.caption)).toEqual(['First', 'Second', 'Third']);
+  });
+
+  it('leaves boundary moves and missing images unchanged', () => {
+    expect(moveScreenshot(shots, shots[0].url, -1)).toBe(shots);
+    expect(moveScreenshot(shots, shots[2].url, 1)).toBe(shots);
+    expect(moveScreenshot(shots, 'missing', -1)).toBe(shots);
+    expect(moveScreenshot([], 'missing', 1)).toEqual([]);
+  });
+
+  it('serializes caption, reorder and removal saves so old writes cannot finish last', async () => {
+    let finish = () => {};
+    const save = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const enqueue = createScreenshotSaveQueue(save);
+    const caption = [{ ...shots[0], caption: ' Edited ' }, shots[1], shots[2]];
+    const reordered = moveScreenshot(caption, shots[1].url, -1);
+    const removed = reordered.slice(0, 2);
+    const first = enqueue(caption);
+    const second = enqueue(reordered);
+    const third = enqueue(removed);
+    await Promise.resolve();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[0][0].caption).toBe('Edited');
+    finish();
+    await Promise.all([first, second, third]);
+    expect(save.mock.calls[2]?.[0]).toEqual([shots[1], { ...shots[0], caption: 'Edited' }]);
+  });
+
+  it('reports a failed save and allows retry without uploading the files again', async () => {
+    const save = vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(undefined);
+    const enqueue = createScreenshotSaveQueue(save);
+    await expect(enqueue(shots)).rejects.toThrow('Offline');
+    await enqueue(shots);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1]?.[0]).toEqual(shots);
+  });
+});
