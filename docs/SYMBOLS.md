@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **359** symbols across 28 categories.
+Total: **366** symbols across 29 categories.
 
 ## analytics
 
@@ -27,6 +27,18 @@ Total: **359** symbols across 28 categories.
 | `Analytics_EmitSkillProposed` | `0x1401f0c80` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
 | `Analytics_EmitSkillSelected` | `0x1401f0fa0` | ✅ ok |  | void(void* analyticsCtx, float* skillEvent, void* unused) |
 | `Analytics_EmitUnlockSkill` | `0x1401f19b0` | ✅ ok |  | void(void* analyticsCtx, void* args, void* unused) |
+
+## camera
+
+| name | address | status | callable | signature / note |
+|------|---------|--------|----------|------------------|
+| `CameraModifier_AddChild` | `0x1406600b0` | ✅ ok | ✔ | void(void* modifier, void* parent, bool instant) |
+| `CameraModifier_Evaluate` | `0x14065feb0` | ✅ ok |  | void(void* modifier, const float* dt, void* camState, float parentWeight) |
+| `CameraModifier_RemoveChild` | `0x1406601d0` | ✅ ok | ✔ | void(void* parent, void* modifier) |
+| `TopDownCamera_Activate` | `0x1407e6440` | ✅ ok |  | void(void* topDownCameraCpnt) |
+| `g_CameraModifier_vftable` | `0x140f62ea0` | 📍 va |  | vftable of oCCameraModifier (the base class; slot 2 destructor FUN_14065fdd0, slot 3 Ap… |
+| `g_CameraSceneContext_vftable` | `0x140f0a910` | 📍 va |  | vftable of oe::CameraSceneContext (ctor FUN_1401c8c40; reached through GameScene_FindCo… |
+| `g_ZoomCameraModifier_vftable` | `0x140f62b38` | 📍 va |  | vftable of oCZoomCameraModifier (0x38 bytes; slot 2 destructor FUN_1406618d0, slot 3 Ap… |
 
 ## combat
 

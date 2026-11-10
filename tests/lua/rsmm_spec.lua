@@ -11621,5 +11621,34 @@ do
     I.input_armed, I.input_wheel_totals = nil, nil
 end
 
+-- R.camera.zoom: queues a blended zoom with the loader (hook_camera.cpp).
+do
+    local okz, whyz = R.camera.zoom(0.9)
+    check(okz == nil and whyz:find("too old"), "no zoom binding: refused with a reason")
+    local armed, calls, resets = false, {}, {}
+    I.camera_zoom_armed = function() return armed end
+    I.camera_zoom = function(step, secs)
+        calls[#calls + 1] = { step, secs }
+        return step >= 0.05 and step <= 20
+    end
+    I.camera_zoom_reset = function(secs) resets[#resets + 1] = secs; return true end
+    I.camera_zoom_factor = function() return 0.81, 0.9 end
+    okz, whyz = R.camera.zoom(0.9)
+    check(okz == nil and whyz:find("not armed"), "unarmed hook: refused with a reason")
+    armed = true
+    check(R.camera.zoom(0.9) == true and calls[1][1] == 0.9 and about(calls[1][2], 0.25),
+          "default duration is 0.25 s")
+    check(R.camera.zoom(1.1, { duration = 0 }) == true and calls[2][2] == 0, "duration 0 is instant")
+    check(R.camera.zoom(1.1, { duration = -3 }) == true and calls[3][2] == 0, "negative duration clamps to 0")
+    okz, whyz = R.camera.zoom(100)
+    check(okz == nil and whyz:find("range"), "out-of-range step refused")
+    okz, whyz = R.camera.zoom("closer")
+    check(okz == nil and whyz:find("number"), "non-number step refused")
+    local target, current = R.camera.zoom_factor()
+    check(about(target, 0.81) and about(current, 0.9), "zoom_factor returns target then current")
+    check(R.camera.zoom_reset({ duration = 0.5 }) == true and resets[1] == 0.5, "reset passes its duration")
+    I.camera_zoom_armed, I.camera_zoom, I.camera_zoom_reset, I.camera_zoom_factor = nil, nil, nil, nil
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

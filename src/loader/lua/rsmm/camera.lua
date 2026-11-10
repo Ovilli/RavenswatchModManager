@@ -19,8 +19,10 @@
 -- +0x60: inline sentinel +0x68 (== 4), value +0x70, type byte +0x78 (0 = f32).
 -- The manifest's value_N fields map to records in file order, so value_7 is
 -- +0x3f8. ★ yaw (value_7) is PROVEN IN GAME (2026-10-02, data edit 45°→135°
--- rotated the view). The other names are read off comparing the three shipped
--- cameras and are NOT yet proven — `R.camera.FIELDS` marks which is which.
+-- rotated the view). ★ distance (+0x2f8) is PROVEN IN GAME (2026-11-09, a
+-- write moved the eye in and out; camera-control's wheel zoom clamps on it).
+-- The other names are read off comparing the three shipped cameras and are NOT
+-- yet proven — `R.camera.FIELDS` marks which is which.
 --
 -- Components are found by RTTI class name through R.entity.components, never
 -- by a vftable address, so a game patch that moves the vtable does not matter.
@@ -63,7 +65,7 @@ local REC_LINK       = 0x58      -- u32 picker index; 0xffffffff = literal
 M.FIELDS = {
     yaw      = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
     pitch    = { off = 0x278, unit = "deg", proven = false, spread = "add" },
-    distance = { off = 0x2f8, unit = "raw", proven = false, spread = "mul" },
+    distance = { off = 0x2f8, unit = "raw", proven = true,  spread = "mul" },
     fov      = { off = 0x378, unit = "raw", proven = false },
     height   = { off = 0x478, unit = "raw", proven = false, spread = "add" },
 }
@@ -794,6 +796,68 @@ function M.explore(tag, opts)
             table.concat(vals, " ")))
     end
     return job.hits
+end
+
+-- Native blended zoom ------------------------------------------------------
+--
+-- A distance written with M.set lands on the camera's next update: a snap. The
+-- game's own smooth camera changes go through its camera MODIFIER tree, where
+-- each modifier eases its weight in or out over its own duration. The loader
+-- (hook_camera.cpp) adds the engine's own oCZoomCameraModifier to that tree, so
+-- a zoom eases in with the game's cosine curve. The factor scales the eye's
+-- distance to the look-at point on top of whatever camera is active (Kintaro on
+-- foot, Melusine's Wisp, boss cameras), so it needs none of M.set's spread
+-- rules. Below 1 moves the camera in. Cutscenes are not zoomed.
+--
+--   R.camera.zoom(0.9)                      -- 10% closer, eased over 0.25 s
+--   R.camera.zoom(1.25, { duration = 0 })   -- instant
+--   R.camera.zoom_factor()                  -- target factor (1 = the camera's own)
+--   R.camera.zoom_reset({ duration = 0.5 })
+--
+-- The factor survives a chapter change; zoom_reset returns to 1.
+
+local ZOOM_DURATION = 0.25
+
+local function _zoom_ready()
+    if not (I and I.camera_zoom and I.camera_zoom_armed) then
+        return false, "loader too old (no camera zoom)"
+    end
+    if not I.camera_zoom_armed() then
+        return false, "camera zoom not armed (see the loader log)"
+    end
+    return true
+end
+
+local function _duration(opts)
+    local d = type(opts) == "table" and tonumber(opts.duration) or nil
+    if d == nil then return ZOOM_DURATION end
+    return math.max(0, d)
+end
+
+--- Multiply the camera's zoom factor by `step`, eased over opts.duration
+--- seconds (default 0.25; 0 is instant). true, or nil + reason.
+function M.zoom(step, opts)
+    local ok, why = _zoom_ready()
+    if not ok then return nil, why end
+    step = tonumber(step)
+    if not step or step ~= step then return nil, "step must be a number" end
+    if I.camera_zoom(step, _duration(opts)) then return true end
+    return nil, "step out of range (0.05 to 20)"
+end
+
+--- The factor once every queued step has eased in (1 = the camera's own
+--- distance), then the factor on the last rendered frame.
+function M.zoom_factor()
+    if not (I and I.camera_zoom_factor) then return 1, 1 end
+    return I.camera_zoom_factor()
+end
+
+--- Ease back to factor 1. true, or nil + reason.
+function M.zoom_reset(opts)
+    local ok, why = _zoom_ready()
+    if not ok then return nil, why end
+    if I.camera_zoom_reset(_duration(opts)) then return true end
+    return nil, "zoom reset refused"
 end
 
 return function(env)

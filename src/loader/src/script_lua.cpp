@@ -29,6 +29,7 @@ extern "C" {
 #include "hook_items.h"
 #include "watchpoint.h"
 #include "hook_audio.h"
+#include "hook_camera.h"
 #include "hook_input.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
@@ -219,6 +220,37 @@ int lua_input_wheel_totals(lua_State* L) {
     input_wheel_totals(&up, &down);
     lua_pushinteger(L, static_cast<lua_Integer>(up));
     lua_pushinteger(L, static_cast<lua_Integer>(down));
+    return 2;
+}
+
+// rsmm._internal.camera_zoom_armed() -> bool
+int lua_camera_zoom_armed(lua_State* L) {
+    lua_pushboolean(L, camera_zoom_armed());
+    return 1;
+}
+
+// rsmm._internal.camera_zoom(step, seconds) -> bool
+//   Queue a blended zoom by `step` (eye-distance multiplier; < 1 moves in).
+int lua_camera_zoom(lua_State* L) {
+    const float step = static_cast<float>(luaL_checknumber(L, 1));
+    const float secs = static_cast<float>(luaL_optnumber(L, 2, 0.2));
+    lua_pushboolean(L, camera_zoom_by(step, secs));
+    return 1;
+}
+
+// rsmm._internal.camera_zoom_reset(seconds) -> bool
+int lua_camera_zoom_reset(lua_State* L) {
+    const float secs = static_cast<float>(luaL_optnumber(L, 1, 0.2));
+    lua_pushboolean(L, camera_zoom_reset(secs));
+    return 1;
+}
+
+// rsmm._internal.camera_zoom_factor() -> target, current
+int lua_camera_zoom_factor(lua_State* L) {
+    float target = 1.0f, current = 1.0f;
+    camera_zoom_factor(&target, &current);
+    lua_pushnumber(L, target);
+    lua_pushnumber(L, current);
     return 2;
 }
 
@@ -2013,6 +2045,10 @@ void register_api(lua_State* L) {
         { "audio_targets",           lua_audio_targets },
         { "input_armed",             lua_input_armed },
         { "input_wheel_totals",      lua_input_wheel_totals },
+        { "camera_zoom_armed",       lua_camera_zoom_armed },
+        { "camera_zoom",             lua_camera_zoom },
+        { "camera_zoom_reset",       lua_camera_zoom_reset },
+        { "camera_zoom_factor",      lua_camera_zoom_factor },
         { "health_count",            lua_health_count },
         { "health_last_error",       lua_health_last_error },
         { "health_disable",          lua_health_disable },
