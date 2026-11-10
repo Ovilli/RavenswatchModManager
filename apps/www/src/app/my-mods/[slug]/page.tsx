@@ -608,59 +608,6 @@ function ManageModEditor({ slug }: { slug: string }) {
 
   return (
     <main className="mod-editor container mx-auto space-y-8 px-6 py-12">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-4">
-          {coverUrl ? (
-            <img
-              src={coverUrl}
-              alt=""
-              className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
-            />
-          ) : null}
-          <div>
-            <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
-            <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads ·
-              {mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
-              {new Date(mod.updatedAt).toLocaleDateString()}
-            </p>
-            <div className="mt-3 flex gap-2 text-sm">
-              <Link
-                href={`/registry/${mod.slug}` as never}
-                className="underline-offset-2 hover:underline"
-              >
-                View public page →
-              </Link>
-            </div>
-          </div>
-        </div>
-        <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
-          <Eye className="h-4 w-4" /> Preview
-        </Button>
-      </header>
-
-      {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
-        <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-          <div className="text-sm">
-            <p className="font-semibold text-destructive">
-              This mod has been {mod.takedownStatus === 'removed' ? 'removed' : 'hidden'} by a
-              moderator.
-            </p>
-            <p className="mt-1 text-muted-foreground">
-              It is not visible in the public registry or downloadable.
-              {mod.takedownReason ? ` Reason: ${mod.takedownReason}.` : ''} If you believe this was
-              a mistake,{' '}
-              <Link href="/contact" className="underline underline-offset-2">
-                contact the moderators
-              </Link>
-              .
-            </p>
-          </div>
-        </div>
-      ) : null}
-
       <div className="gap-8 [--editor-scroll-offset:calc(var(--site-header-height,61px)+88px)] md:grid md:grid-cols-[200px_minmax(0,1fr)] md:[--editor-scroll-offset:calc(var(--site-header-height,61px)+24px)]">
         <SectionNav
           active={section}
@@ -676,6 +623,59 @@ function ManageModEditor({ slug }: { slug: string }) {
             tabIndex={-1}
             className="scroll-mt-[var(--editor-scroll-offset)] space-y-8 focus:outline-none"
           >
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-4">
+                {coverUrl ? (
+                  <img
+                    src={coverUrl}
+                    alt=""
+                    className="mt-1 hidden h-12 w-12 shrink-0 rounded-md border border-border/40 object-cover sm:block"
+                  />
+                ) : null}
+                <div>
+                  <p className="font-data text-xs text-muted-foreground">{mod.slug}</p>
+                  <h1 className="text-3xl font-bold tracking-tight">{mod.name}</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    v{mod.latestVersion ?? '—'} · {(mod.downloads ?? 0).toLocaleString()} downloads
+                    ·{mod.category ? ` ${mod.category} · ` : ' '}updated{' '}
+                    {new Date(mod.updatedAt).toLocaleDateString()}
+                  </p>
+                  <div className="mt-3 flex gap-2 text-sm">
+                    <Link
+                      href={`/registry/${mod.slug}` as never}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      View public page →
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              <Button type="button" variant="outline" onClick={() => setPreviewMode(true)}>
+                <Eye className="h-4 w-4" /> Preview
+              </Button>
+            </header>
+
+            {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
+              <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-semibold text-destructive">
+                    This mod has been {mod.takedownStatus === 'removed' ? 'removed' : 'hidden'} by a
+                    moderator.
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    It is not visible in the public registry or downloadable.
+                    {mod.takedownReason ? ` Reason: ${mod.takedownReason}.` : ''} If you believe
+                    this was a mistake,{' '}
+                    <Link href="/contact" className="underline underline-offset-2">
+                      contact the moderators
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             <ScreenshotEditor gallery={gallery} />
 
             {/* ─── Metadata edit ─── */}
