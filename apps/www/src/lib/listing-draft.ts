@@ -1,5 +1,11 @@
 import type { ModDetailResponse } from '@rsmm/api-client';
-import type { ModCategory, ModPatch } from '@rsmm/schemas';
+import {
+  type ModCategory,
+  type ModPatch,
+  hasPrivateOnlyTag,
+  isPrivateOnlyTag,
+  setPrivateOnlyTag,
+} from '@rsmm/schemas';
 import { type Screenshot, getListingPhotos, listingPhotoPatch } from './screenshot-gallery';
 
 export interface ListingDraft {
@@ -9,6 +15,7 @@ export interface ListingDraft {
   description: string;
   category: ModCategory | null;
   tags: string;
+  privateOnly: boolean;
   license: string;
   repoUrl: string;
   homepageUrl: string;
@@ -29,7 +36,8 @@ export function readListingDraft({ mod, versions }: ModDetailResponse): ListingD
         ? (versions[0]?.manifestJson.description ?? '')
         : (mod.description ?? ''),
     category: mod.category,
-    tags: mod.tags.join(', '),
+    tags: mod.tags.filter((tag) => !isPrivateOnlyTag(tag)).join(', '),
+    privateOnly: hasPrivateOnlyTag(mod.tags),
     license: mod.license ?? '',
     repoUrl: mod.repoUrl ?? '',
     homepageUrl: mod.homepageUrl ?? '',
@@ -40,16 +48,17 @@ export function readListingDraft({ mod, versions }: ModDetailResponse): ListingD
 }
 
 function listingPatch(draft: ListingDraft): ModPatch {
+  const tags = draft.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
   return {
     name: draft.name.trim(),
     author: draft.author.trim() || null,
     summary: draft.summary.trim() || null,
     description: draft.description.trim() || null,
     category: draft.category,
-    tags: draft.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean),
+    tags: setPrivateOnlyTag(tags, draft.privateOnly || hasPrivateOnlyTag(tags)),
     license: draft.license.trim() || null,
     repoUrl: draft.repoUrl.trim() || null,
     homepageUrl: draft.homepageUrl.trim() || null,

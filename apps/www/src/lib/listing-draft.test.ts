@@ -31,6 +31,20 @@ const saved = readListingDraft(detail);
 const [cover, other] = saved.photos as [Screenshot, Screenshot];
 
 describe('listing draft', () => {
+  it('separates the protected label from editable tags and preserves it on ordinary edits', () => {
+    const restricted = readListingDraft({
+      ...detail,
+      mod: { ...detail.mod, tags: ['qol', ' CHEATS '] },
+    });
+    expect(restricted.privateOnly).toBe(true);
+    expect(restricted.tags).toBe('qol');
+    expect(listingChanges(restricted, { ...restricted, tags: 'cosmetic' })).toEqual({
+      tags: ['cosmetic', 'private-only'],
+    });
+    expect(listingChanges(saved, { ...saved, privateOnly: true })).toEqual({
+      tags: ['qol', 'private-only'],
+    });
+  });
   it('loads stored text, URLs and an unset category without making the listing dirty', () => {
     expect(saved.author).toBe('Author');
     expect(saved.description).toBe('Saved description');

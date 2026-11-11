@@ -1,6 +1,6 @@
 'use client';
 import { ApiError, type ModDetailResponse } from '@rsmm/api-client';
-import type { ModVersion } from '@rsmm/schemas';
+import { type ModVersion, hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
 import { Spinner } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowLeft, ChevronDown, Download, ExternalLink } from 'lucide-react';
@@ -20,6 +20,8 @@ import { MDPreview } from '../../components/md-editor';
 import { ReportModal } from '../../components/report-modal';
 import { ModActions } from './mod-actions';
 import { ModGallery } from './mod-gallery';
+import { ModPrivateOnlyControls } from './mod-private-only-controls';
+import { ModPrivateOnlyTag } from './mod-private-only-tag';
 import { ModRatingSummary, ReviewsSection } from './mod-reviews';
 import './mod-detail.css';
 
@@ -81,6 +83,8 @@ export function ModDetailView({
   const dependencies = Object.entries(mod.dependencies ?? {});
   const useServerDescription = initialData && mod.description === initialData.mod.description;
   const author = mod.author || 'Unknown author';
+  const privateOnly = hasPrivateOnlyTag(mod.tags);
+  const tags = mod.tags.filter((tag) => !isPrivateOnlyTag(tag));
 
   return (
     <main className="mod-detail container">
@@ -101,9 +105,10 @@ export function ModDetailView({
       <header className="mod-heading">
         {mod.tags.length > 0 || mod.nsfw ? (
           <div className="mod-labels">
-            {mod.tags.length > 0 ? (
+            {privateOnly ? <ModPrivateOnlyTag /> : null}
+            {tags.length > 0 ? (
               <ul className="mod-tags" aria-label="Mod tags">
-                {mod.tags.map((tag) => (
+                {tags.map((tag) => (
                   <li key={tag}>
                     <Link href={registryHref('tags', tag)} title={`More mods tagged ${tag}`}>
                       {tag}
@@ -187,6 +192,7 @@ export function ModDetailView({
             <div className="mod-report">
               <ReportModal slug={slug} />
             </div>
+            <ModPrivateOnlyControls slug={slug} privateOnly={privateOnly} />
           </aside>
           <div className="mod-reading">
             <section id="about" className="mod-section" aria-labelledby="mod-about-heading">

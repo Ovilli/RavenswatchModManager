@@ -5,6 +5,7 @@ export * from './html';
 export * from './log-share';
 export * from './mod';
 export * from './privacy';
+export * from './private-only';
 export * from './report';
 export * from './review';
 export * from './telemetry';
