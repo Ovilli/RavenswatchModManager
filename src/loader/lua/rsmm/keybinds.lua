@@ -15,10 +15,10 @@
 --   K.available()                              --> true | false, reason
 --
 -- add{} fields: id (1-32 letters, digits or _; unique within the mod), label
--- (the row title, 1-32 characters), key (keyboard / mouse key id, default 0 =
--- unbound), pad (gamepad key id, default 0). Key ids: keyboard 1-84, mouse
--- buttons 85-91, wheel up 92 / down 93, gamepad 94 and up. Handles also take
--- methods: zin:on_press(fn), zin:keys().
+-- (the row title, 1-32 characters), key (the Keyboard tab's default: keyboard
+-- 1-84, mouse buttons 85-91, wheel up 92 / down 93) and pad (the Gamepad tab's
+-- default: gamepad key ids 94 and up). Either defaults to 0, unbound. Handles
+-- also take methods: zin:on_press(fn), zin:keys().
 --
 -- Declare keybinds from init.lua, at load. The loader registers them with the
 -- game once, on the first input poll after every mod has loaded, and has the
@@ -39,6 +39,8 @@ local R, I
 
 local EVENT = "input:keybind"
 local KEY_MAX = 0xff
+-- Key id ranges by device (0 = unbound for either).
+local KEYBOARD_MAX, PAD_MIN = 93, 94
 local MAX_ID, MAX_LABEL = 32, 32
 
 local Keybind = {}
@@ -58,10 +60,10 @@ local function _resolve(b)
     return nil
 end
 
-local function _key(v, field)
-    if v == nil then return 0 end
-    if math.type(v) ~= "integer" or v < 0 or v > KEY_MAX then
-        return nil, field .. " must be a key id from 0 to " .. KEY_MAX
+local function _key(v, lo, hi, what)
+    if v == nil or v == 0 then return 0 end
+    if math.type(v) ~= "integer" or v < lo or v > hi then
+        return nil, what .. " (" .. lo .. "-" .. hi .. "), or 0"
     end
     return v
 end
@@ -69,7 +71,10 @@ end
 --- Are keybinds live? false + reason when they are not.
 function M.available()
     if not (I and I.keybinds_state) then return false, "loader too old (no keybinds)" end
-    local armed = I.keybinds_state()
+    local armed, _, failed = I.keybinds_state()
+    if failed then
+        return false, "registration with the game's settings failed (see the loader log)"
+    end
     if armed then return true end
     if I.va_trusted and I.va_trusted() == false then
         return false, "VA globals not trusted on this game build"
@@ -90,10 +95,10 @@ function M.add(spec)
     if type(label) ~= "string" or #label == 0 or #label > MAX_LABEL then
         return nil, "label must be 1-" .. MAX_LABEL .. " characters"
     end
-    local key, why = _key(spec.key, "key")
+    local key, why = _key(spec.key, 1, KEYBOARD_MAX, "key must be a keyboard or mouse key id")
     if not key then return nil, why end
     local pad
-    pad, why = _key(spec.pad, "pad")
+    pad, why = _key(spec.pad, PAD_MIN, KEY_MAX, "pad must be a gamepad key id")
     if not pad then return nil, why end
 
     if _mine[id] then return _mine[id] end

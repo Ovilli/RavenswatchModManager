@@ -1622,9 +1622,12 @@ keybind. A rebind, also from the pause menu in the middle of a run, takes effect
 on the next frame.
 
 `add` takes `id` (1-32 letters, digits or `_`, unique within the mod), `label`
-(1-32 characters), `key` and `pad` (default key ids, 0 = unbound). Key ids:
-keyboard 1-84, mouse buttons 85-91, wheel up 92 / down 93, gamepad 94 and up.
-The handle also has `zin:on_press(fn)` and `zin:keys()`.
+(1-32 characters), `key` (the Keyboard tab's default: keyboard 1-84, mouse
+buttons 85-91, wheel up 92 / down 93) and `pad` (the Gamepad tab's default:
+gamepad key ids 94 and up). Either defaults to 0, unbound, and an id from the
+other device is refused. The handle also has `zin:on_press(fn)` and
+`zin:keys()`. `available()` returns `false` and a reason when the hooks are off
+or registration with the game failed, so a mod can fall back.
 
 Add keybinds from `init.lua`. The loader registers every mod's keybinds with
 the game once, on the first input poll after all mods have loaded, and has the

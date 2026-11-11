@@ -11665,11 +11665,15 @@ do
         { { id = "A", label = "" }, "label" }, { { id = "A", label = string.rep("x", 33) }, "label" },
         { { id = "A", label = "x", key = 256 }, "key" }, { { id = "A", label = "x", key = 1.5 }, "key" },
         { { id = "A", label = "x", pad = -1 }, "pad" },
+        { { id = "A", label = "x", key = 94 }, "key" },     -- a gamepad id as the keyboard default
+        { { id = "A", label = "x", pad = 92 }, "pad" },     -- the wheel as the pad default
     }
     for _, case in ipairs(bad) do
         local hb, wb = K.add(case[1])
         check(hb == nil and wb:find(case[2]), "bad " .. case[2] .. " refused: " .. tostring(wb))
     end
+    local h0k = K.add{ id = "Unbound", label = "Unbound", key = 0, pad = 0 }
+    check(h0k and declared[#declared].kb == 0 and declared[#declared].pad == 0, "0 is valid for both devices")
     local hn, wn = K.add("ZoomIn")
     check(hn == nil and wn:find("table"), "add needs a table")
     closed = true
@@ -11682,7 +11686,7 @@ do
     check(zout:keys() == 44, "keys follow a rebind")
     check(K.keys("ZoomIn") == 92, "keys by id")
     local list = K.list()
-    check(#list == 2 and list[2].id == "ZoomOut" and list[2].key == 44 and list[2].label == "Zoom out",
+    check(#list == 3 and list[2].id == "ZoomOut" and list[2].key == 44 and list[2].label == "Zoom out",
           "list names every keybind with its current keys")
 
     local got = {}
@@ -11704,6 +11708,10 @@ do
     check(hu == nil and wu:find("not a keybind"), "on_press refuses a table that is not a handle")
     local hf, wf = K.on_press(zin, 5)
     check(hf == nil and wf:find("function"), "on_press needs a function")
+
+    I.keybinds_state = function() return true, false, true end
+    ok, why = K.available()
+    check(ok == false and why:find("registration"), "a failed registration: unavailable, says why")
 
     local real_va_trusted = I.va_trusted
     I.keybinds_state = function() return false, false end

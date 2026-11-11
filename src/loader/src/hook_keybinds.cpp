@@ -82,6 +82,10 @@ constexpr std::uintptr_t kRecStride    = 12;
 constexpr std::uint8_t   kRecPressed   = 0x08;
 constexpr std::uint8_t   kRecBlocked   = 0x01;
 constexpr std::uint32_t  kKeyMax       = 0xff;   // above this a key id is not a key
+// Key id ranges by device: keyboard 1-84, mouse buttons 85-91, wheel 92-93
+// (the Keyboard tab), gamepad 94 and up (the Gamepad tab). 0 = unbound.
+constexpr std::uint32_t  kKeyboardMax  = 93;
+constexpr std::uint32_t  kPadMin       = 94;
 
 constexpr int         kMaxBindings = 16;
 constexpr std::size_t kMaxId       = 32;
@@ -96,6 +100,10 @@ struct Binding {
     std::uint32_t pending = 0;
     bool pending_blocked = false;
     std::uint32_t seen_kb = 0, seen_pad = 0;
+    // What Lua reads (keybind_keys, from any thread). The options themselves
+    // are written by the game thread, the Controls menu and the settings
+    // worker, so readers get this copy, published by the poll every frame.
+    std::atomic<std::uint32_t> snap_kb{0}, snap_pad{0};
 };
 
 // Fixed storage: the game holds pointers into opt_kb / opt_pad for the whole
@@ -107,7 +115,7 @@ std::mutex g_decl_mu;
 std::atomic<bool> g_armed{false};          // menu + resolver hooks live
 std::atomic<bool> g_decls_closed{false};   // install ran: every init.lua is done
 std::atomic<bool> g_registered{false};
-bool g_register_failed = false;            // poll thread only
+std::atomic<bool> g_register_failed{false};  // terminal: the poll stops retrying
 bool g_told_late_tab = false;              // main thread only
 
 engine::GameOptionsManager_Register_fn    g_register     = nullptr;
@@ -179,7 +187,7 @@ void try_register() {
     if (!g_register || !g_request_load) {
         L.log_err("[keybinds] engine calls not resolved; " + std::to_string(n)
                   + " binding(s) not registered");
-        g_register_failed = true;
+        g_register_failed.store(true, std::memory_order_release);
         return;
     }
     std::uintptr_t mgr = 0, opts = 0;
@@ -196,7 +204,7 @@ void try_register() {
         || !mem_load(req + kReqRequested, &requested)
         || !mem_load(req + kReqCompleted, &completed)) {
         L.log_err("[keybinds] options manager not readable; bindings not registered");
-        g_register_failed = true;
+        g_register_failed.store(true, std::memory_order_release);
         return;
     }
     // completed == 0: the boot's own read has not run, so the request may not
@@ -215,8 +223,11 @@ void try_register() {
     // Saved keys: the game's own read of GameSettings.ini, synchronous.
     g_request_load(nullptr, reinterpret_cast<void*>(req));
     for (int i = 0; i < n; ++i) {
-        g_binds[i].seen_kb = value_of(g_binds[i].opt_kb);
-        g_binds[i].seen_pad = value_of(g_binds[i].opt_pad);
+        Binding& b = g_binds[i];
+        b.seen_kb = value_of(b.opt_kb);
+        b.seen_pad = value_of(b.opt_pad);
+        b.snap_kb.store(b.seen_kb, std::memory_order_relaxed);
+        b.snap_pad.store(b.seen_pad, std::memory_order_relaxed);
     }
     g_registered.store(true, std::memory_order_release);
     char line[160];
@@ -358,6 +369,8 @@ bool keybinds_armed() { return g_armed.load(std::memory_order_acquire); }
 
 bool keybinds_registered() { return g_registered.load(std::memory_order_acquire); }
 
+bool keybinds_failed() { return g_register_failed.load(std::memory_order_acquire); }
+
 int keybind_add(const std::string& mod, const std::string& id, const std::string& label,
                 std::uint32_t kb, std::uint32_t pad, std::string* err) {
     auto fail = [&](const std::string& why) {
@@ -376,7 +389,12 @@ int keybind_add(const std::string& mod, const std::string& id, const std::string
     if (mod.empty()) return fail("no mod id");
     if (!valid_id(id)) return fail("id must be 1-32 letters, digits or _");
     if (label.empty() || label.size() > kMaxLabel) return fail("label must be 1-32 characters");
-    if (kb > kKeyMax || pad > kKeyMax) return fail("key ids run 0-255");
+    if (kb != 0 && kb > kKeyboardMax) {
+        return fail("key must be a keyboard or mouse key id (1-93), or 0");
+    }
+    if (pad != 0 && (pad < kPadMin || pad > kKeyMax)) {
+        return fail("pad must be a gamepad key id (94-255), or 0");
+    }
     if (n >= kMaxBindings) {
         return fail("no room: " + std::to_string(kMaxBindings) + " keybinds across all mods");
     }
@@ -387,9 +405,9 @@ int keybind_add(const std::string& mod, const std::string& id, const std::string
     b.name = mod + "::" + id;
     b.def_kb = kb;
     b.def_pad = pad;
-    // Until registration the option holds the default, so keybind_keys reports it.
-    value_of(b.opt_kb) = kb;
-    value_of(b.opt_pad) = pad;
+    // Until registration Lua reads the defaults.
+    b.snap_kb.store(kb, std::memory_order_relaxed);
+    b.snap_pad.store(pad, std::memory_order_relaxed);
     g_count.store(n + 1, std::memory_order_release);
     return n;
 }
@@ -397,15 +415,15 @@ int keybind_add(const std::string& mod, const std::string& id, const std::string
 bool keybind_keys(int index, std::uint32_t* kb, std::uint32_t* pad) {
     if (index < 0 || index >= g_count.load(std::memory_order_acquire)) return false;
     Binding& b = g_binds[index];
-    if (kb) *kb = *static_cast<volatile std::uint32_t*>(&value_of(b.opt_kb));
-    if (pad) *pad = *static_cast<volatile std::uint32_t*>(&value_of(b.opt_pad));
+    if (kb) *kb = b.snap_kb.load(std::memory_order_relaxed);
+    if (pad) *pad = b.snap_pad.load(std::memory_order_relaxed);
     return true;
 }
 
 void keybinds_on_poll() {
     if (!g_armed.load(std::memory_order_acquire)) return;
     if (!g_registered.load(std::memory_order_acquire)) {
-        if (g_register_failed) return;
+        if (g_register_failed.load(std::memory_order_acquire)) return;
         try_register();
         return;
     }
@@ -417,6 +435,8 @@ void keybinds_on_poll() {
         Binding& b = g_binds[i];
         check_key(b, b.opt_kb, b.seen_kb, table);
         check_key(b, b.opt_pad, b.seen_pad, table);
+        b.snap_kb.store(b.seen_kb, std::memory_order_relaxed);
+        b.snap_pad.store(b.seen_pad, std::memory_order_relaxed);
         any = any || b.pending != 0;
     }
     if (any) deliver(n);

@@ -51,13 +51,20 @@ bool keybinds_armed();
 // True once the declared bindings have been registered with the game.
 bool keybinds_registered();
 
+// True when registration gave up for the session (the options manager could
+// not be read): no rows and no presses will appear.
+bool keybinds_failed();
+
 // Declare a binding for `mod`. Returns its index (>= 0), or -1 with `err` set.
 // Re-declaring the same mod + id returns the existing index (hot reload).
-// kb / pad are key ids (0 = unbound).
+// kb is a keyboard / mouse key id (1-93), pad a gamepad key id (94-255);
+// 0 = unbound for either.
 int keybind_add(const std::string& mod, const std::string& id, const std::string& label,
                 std::uint32_t kb, std::uint32_t pad, std::string* err);
 
-// Current keys of binding `index`. False when the index is unknown.
+// Current keys of binding `index`, from a snapshot the input poll publishes
+// every frame (the defaults until registration). Safe from any thread. False
+// when the index is unknown.
 bool keybind_keys(int index, std::uint32_t* kb, std::uint32_t* pad);
 
 // Called by the input poll detour after the original poll, on the game thread.
