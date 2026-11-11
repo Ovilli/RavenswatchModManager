@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
 import { notify } from '../notify.js';
+import { setStoredPrivateOnlyTag } from '../private-only.js';
 import { adminVerdict } from '../scan-service.js';
 import type { AppEnv } from '../types.js';
 
@@ -167,6 +168,23 @@ moderationRouter.post(
 );
 
 const featureSchema = z.object({ featured: z.boolean() });
+
+moderationRouter.patch(
+  '/mods/:slug/private-only',
+  zValidator('param', slugParamSchema),
+  zValidator('json', z.object({ privateOnly: z.boolean() })),
+  async (c) => {
+    const { slug } = c.req.valid('param');
+    const { privateOnly } = c.req.valid('json');
+    const rows = await getDb()
+      .update(schema.mods)
+      .set({ tags: setStoredPrivateOnlyTag(privateOnly), updatedAt: new Date() })
+      .where(eq(schema.mods.slug, slug))
+      .returning({ tags: schema.mods.tags });
+    if (!rows[0]) return c.json({ error: 'not found' }, 404);
+    return c.json({ ok: true, tags: rows[0].tags ?? [] });
+  },
+);
 
 moderationRouter.post(
   '/mods/:slug/feature',

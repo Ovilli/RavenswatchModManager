@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import {
+  hasPrivateOnlyTag,
   modCategorySchema,
   modImagePresignSchema,
   modPatchSchema,
@@ -9,6 +10,7 @@ import {
   reportCreateSchema,
   reviewReplySchema,
   reviewUpsertSchema,
+  setPrivateOnlyTag,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -19,6 +21,7 @@ import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyReview, notifyReviewReply } from '../notify.js';
+import { preservePrivateOnlyTags, setStoredPrivateOnlyTag } from '../private-only.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
@@ -663,7 +666,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
           license: body.manifest.license,
           repoUrl: body.manifest.repo_url,
           homepageUrl: body.manifest.homepage_url,
-          tags: body.manifest.tags,
+          tags: setPrivateOnlyTag(body.manifest.tags ?? [], hasPrivateOnlyTag(body.manifest.tags)),
           authorName: body.manifest.author,
           ownerId: user.id,
         })
@@ -676,7 +679,11 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
             license: body.manifest.license,
             repoUrl: body.manifest.repo_url,
             homepageUrl: body.manifest.homepage_url,
-            tags: body.manifest.tags,
+            // Publishing may add the protected label, never clear it. Evaluate
+            // the stored row inside the upsert to cover concurrent first uploads.
+            ...(body.manifest.tags !== undefined
+              ? { tags: preservePrivateOnlyTags(body.manifest.tags) }
+              : {}),
             authorName: body.manifest.author,
             ownerId: user.id,
             updatedAt: new Date(),
@@ -908,16 +915,31 @@ modsRouter.patch(
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
     if (patch.category !== undefined) updates.category = patch.category;
-    if (patch.tags !== undefined) updates.tags = patch.tags;
+    if (
+      patch.tags !== undefined &&
+      hasPrivateOnlyTag(existing.tags) &&
+      !hasPrivateOnlyTag(patch.tags) &&
+      !isAdmin(user.id)
+    ) {
+      return c.json({ error: 'Only RSMM admins can remove the Private games only label.' }, 403);
+    }
     if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
     if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
     if (patch.videos !== undefined) updates.videos = patch.videos;
     if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
-    if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
 
     const rows = await db
       .update(schema.mods)
-      .set(updates)
+      .set({
+        ...updates,
+        ...(patch.tags !== undefined
+          ? {
+              tags: isAdmin(user.id)
+                ? setPrivateOnlyTag(patch.tags, hasPrivateOnlyTag(patch.tags))
+                : preservePrivateOnlyTags(patch.tags),
+            }
+          : {}),
+      })
       .where(eq(schema.mods.id, existing.id))
       .returning();
     return c.json({ mod: rows[0] });
@@ -1013,7 +1035,12 @@ modsRouter.post(
 
       await db
         .update(schema.mods)
-        .set({ updatedAt: new Date() })
+        .set({
+          updatedAt: new Date(),
+          // A new release can declare the restriction without replacing the
+          // listing's ordinary tags or removing a previous restriction.
+          ...(hasPrivateOnlyTag(body.manifest.tags) ? { tags: setStoredPrivateOnlyTag(true) } : {}),
+        })
         .where(eq(schema.mods.id, existing.id));
 
       // Followers hear about it once it is downloadable: releaseVersion in

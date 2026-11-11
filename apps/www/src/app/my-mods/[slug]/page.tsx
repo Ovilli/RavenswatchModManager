@@ -1,7 +1,7 @@
 'use client';
 
 import { ApiError } from '@rsmm/api-client';
-import { type ModCategory, type ModPatch, modPatchSchema } from '@rsmm/schemas';
+import { type ModCategory, type ModPatch, hasPrivateOnlyTag, modPatchSchema } from '@rsmm/schemas';
 import { Badge, Button, Input, ProgressBar, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -291,6 +291,7 @@ function ManageModEditor({ slug }: { slug: string }) {
   const [description, setDescription] = useState<string | undefined>('');
   const [category, setCategory] = useState<ModCategory | null>(null);
   const [tags, setTags] = useState('');
+  const [privateOnly, setPrivateOnly] = useState(false);
   const [license, setLicense] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
@@ -428,6 +429,7 @@ function ManageModEditor({ slug }: { slug: string }) {
     setDescription(draft.description);
     setCategory(draft.category);
     setTags(draft.tags);
+    setPrivateOnly(draft.privateOnly);
     setLicense(draft.license);
     setRepoUrl(draft.repoUrl);
     setHomepageUrl(draft.homepageUrl);
@@ -452,6 +454,7 @@ function ManageModEditor({ slug }: { slug: string }) {
     description: description ?? '',
     category,
     tags,
+    privateOnly,
     license,
     repoUrl,
     homepageUrl,
@@ -469,7 +472,9 @@ function ManageModEditor({ slug }: { slug: string }) {
     onSuccess: (_result, { snapshot }) => {
       // Only mark the submitted snapshot saved. Edits made while the request
       // was running remain dirty, including new photo uploads or ordering.
-      setSavedListing(snapshot);
+      const savedPrivateOnly = snapshot.privateOnly || hasPrivateOnlyTag(snapshot.tags.split(','));
+      setSavedListing({ ...snapshot, privateOnly: savedPrivateOnly });
+      if (savedPrivateOnly) setPrivateOnly(true);
       qc.invalidateQueries({ queryKey: ['my-mod', slug] });
       qc.invalidateQueries({ queryKey: ['me', 'mods'] });
       qc.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
@@ -799,6 +804,23 @@ function ManageModEditor({ slug }: { slug: string }) {
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="tags">Tags (comma-separated)</Label>
                   <Input id="tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="flex items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={privateOnly}
+                      disabled={savedListing?.privateOnly || saveListing.isPending}
+                      onChange={(e) => setPrivateOnly(e.target.checked)}
+                      aria-describedby="private-only-hint"
+                      className="h-4 w-4 rounded border-border accent-crimson disabled:cursor-not-allowed"
+                    />
+                    <strong>Private games only</strong>
+                  </label>
+                  <p id="private-only-hint" className="text-xs text-muted-foreground">
+                    For mods that may give an unfair gameplay advantage. Once saved, only RSMM
+                    admins can remove this label.
+                  </p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="flex cursor-pointer items-center gap-3 text-sm">
