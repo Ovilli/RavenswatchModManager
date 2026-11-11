@@ -616,6 +616,8 @@ constexpr const char* LobbyMembers_Local_Pattern = "LobbyMembers_Local";
 constexpr std::uintptr_t LobbyPlayerName_Registry = 0x141470268ull;
 constexpr std::uintptr_t Netcode_PeerCount = 0x141439700ull;
 constexpr std::uintptr_t Netcode_PeerSlots = 0x141439580ull;
+constexpr std::uintptr_t Stormancer_StartMatchmaking = 0x140915d50ull;
+constexpr const char* Stormancer_StartMatchmaking_Pattern = "Stormancer_StartMatchmaking";
 
 // --- skill ---
 constexpr std::uintptr_t AbilityController_Ctor = 0x1402c3880ull;

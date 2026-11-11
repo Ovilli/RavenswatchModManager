@@ -264,3 +264,28 @@ def read_modpack(game_dir: Path) -> Modpack:
     # Gameplay mods run but could not be hashed (an old journal, an unreadable
     # runtime folder): say so rather than claim a fingerprint for part of them.
     return Modpack(None, label, "unknown", **common)
+
+
+#: Marker the loader reads at boot (`hook_online_gate.cpp`). Present = at least
+#: one gameplay mod runs, so the loader refuses public matchmaking. One line per
+#: gameplay mod (`<id>: <first reason>`) so the loader's log can say which.
+ONLINE_GATE_FILE = ".rsmm_gameplay"
+
+
+def write_online_gate(game_dir: Path) -> Modpack:
+    """Write (or remove) the public-matchmaking marker for what is applied now.
+
+    Called after every `apply`; `restore --all` clears `<game>/mods/` and the
+    loader with it, so it needs no call. Client-side and therefore bypassable
+    by design — it keeps an ordinary RSMM install honest, it is not anti-cheat.
+    """
+    pack = read_modpack(game_dir)
+    marker = Path(game_dir) / "mods" / ONLINE_GATE_FILE
+    if not pack.gameplay:
+        marker.unlink(missing_ok=True)
+        return pack
+    lines = [f"{name}: {reasons[0] if reasons else 'gameplay mod'}"
+             for name, reasons in pack.gameplay]
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return pack

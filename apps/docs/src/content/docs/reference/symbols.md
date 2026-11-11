@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **366** symbols across 29 categories.
+Total: **367** symbols across 29 categories.
 
 ## analytics
 
@@ -456,6 +456,7 @@ Total: **366** symbols across 29 categories.
 | `LobbyPlayerName_Registry` | `0x141470268` | 📍 va |  | std::string[]  // count at 0x141470270 |
 | `Netcode_PeerCount` | `0x141439700` | 📍 va |  | uint32_t |
 | `Netcode_PeerSlots` | `0x141439580` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
+| `Stormancer_StartMatchmaking` | `0x140915d50` | ✅ ok |  | void(void* stormancer_scene_ctx) |
 
 ## skill
 

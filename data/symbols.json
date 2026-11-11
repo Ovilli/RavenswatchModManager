@@ -5732,6 +5732,27 @@
    ]
   },
   {
+   "name": "Stormancer_StartMatchmaking",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140915d50",
+   "status": "ok",
+   "signature": "void(void* stormancer_scene_ctx)",
+   "locator": {
+    "offsets": [
+     "0x278",
+     "0x4ec",
+     "0x488",
+     "0xa0",
+     "0xf0",
+     "0xf8"
+    ],
+    "lines_min": 250,
+    "lines_max": 360
+   },
+   "note": "Starts a PUBLIC matchmaking search (Stormancer GameFinder) for the local party. Method of oCStormancerSceneContext (this = the scene context, the object at ui+0xa0). Builds the 'Analytics - Matchmaking start - difficulty: {} player count {}' log line through FUN_140950800, then queues the GameFinder find request. Two callers, both on the online book menu: FUN_14026c900 is the UI event handler - event 0x1c4d81e6 = the matchmaking button (calls this), event 0x194d13d1 = Join-With-Code (carries the code string and goes to FUN_1409134f0, never here); FUN_140263d10 is the per-frame menu tick that (re)starts the search while `FUN_14091d130(ctx) && !FUN_140915a00(ctx) && FUN_140915cb0(ctx)` holds - so a refused call is retried every frame until the player cancels. The text bank names the two menu pages Book_Page_Public_Search (with Matchmaking_Options_Player_Number) and Book_Page_Join_With_Code: matchmaking is the public path, party codes are not. Hooked by hook_online_gate.cpp to keep gameplay mods out of public matchmaking. Static RE on b9c3642884a8 2026-11-11; NOT yet proven in game."
+  },
+  {
    "name": "InGameMenuGs_OnEnter",
    "kind": "function",
    "category": "ui",

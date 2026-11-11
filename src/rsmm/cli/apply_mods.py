@@ -3102,7 +3102,24 @@ def main() -> int:
             print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
             return 1
         _protect_save_items(game_dir, args.dry_run)
+        if not args.dry_run:
+            _write_online_gate(game_dir)
         return rc
+
+
+def _write_online_gate(game_dir: Path) -> None:
+    """Tell the loader whether gameplay mods run, so it can refuse public
+    matchmaking (`hook_online_gate.cpp`). Never fails the apply."""
+    from rsmm.engine.modpack import write_online_gate
+    try:
+        pack = write_online_gate(game_dir)
+    except OSError as e:
+        print(f"  [warn] could not write the online gate: {e}", file=sys.stderr)
+        return
+    if pack.gameplay:
+        names = ", ".join(n for n, _ in pack.gameplay)
+        print(f"  [online] gameplay mods active ({names}): "
+              "public matchmaking is blocked; party-code games still work")
 
 
 if __name__ == "__main__":

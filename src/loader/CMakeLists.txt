@@ -67,6 +67,7 @@ set(LOADER_SRC
     src/hook_input.cpp
     src/hook_camera.cpp
     src/hook_netcode.cpp
+    src/hook_online_gate.cpp
     src/hook_backend.cpp
     src/hook_audio.cpp
     src/hook_lua.cpp
