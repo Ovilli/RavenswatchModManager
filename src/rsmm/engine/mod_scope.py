@@ -21,6 +21,9 @@ What counts as client-only:
   namespaces) and :data:`CLIENT_CALLS` (single functions). Any other ``R.*``
   path, dynamic access (``R[...]``), passing the SDK table around, the native
   ``rsmm.*`` bindings, or requiring an SDK internal (``rsmm.*``) is gameplay.
+  So is any way of obtaining the SDK that the scan cannot follow by name: a
+  ``require`` whose argument is not one plain string, the SDK bound anywhere
+  but ``local NAME = require "rsmm"``, and ``_G`` / ``_ENV`` / ``package``.
 
 Camera changes are client-only by decision (2026-10-05): the camera is local
 and nothing about it reaches another player. Map reveal is not — it is a
@@ -66,9 +69,23 @@ CLIENT_CALLS: frozenset[str] = frozenset({
 
 
 _IDENT = r"[A-Za-z_]\w*"
-_REQUIRE_RE = re.compile(
-    rf"(?:local\s+)?({_IDENT})\s*=\s*require\s*\(?\s*(['\"])([\w.]+)\2\s*\)?")
-_ANY_REQUIRE_RE = re.compile(r"require\s*\(?\s*(['\"])([\w.]+)\1")
+
+#: A module name `require` can be checked against: plain characters only, so
+#: an escape (`"\114smm"`) is not read as some other name.
+_MODULE_NAME_RE = re.compile(r"[\w.\-]+")
+#: Globals that reach the SDK without naming it: the global table, the
+#: environment, and the module cache that holds every loaded module. Only
+#: GLOBAL reads count: a field (`label.package`), a table key
+#: (`{ package = "HUD" }`) or a local of the same name is not these.
+_ENV_GLOBALS: dict[str, str] = {
+    "_G": "the global table (_G)",
+    "_ENV": "the environment table (_ENV)",
+    "package": "the module cache (package)",
+}
+#: Keywords a statement can directly follow (they end one, or open a block).
+_BEFORE_STATEMENT_KW = frozenset({
+    "do", "then", "else", "repeat", "end", "break", "true", "false", "nil",
+})
 
 
 @dataclass
@@ -133,21 +150,118 @@ def _blank_strings(src: str) -> str:
     return re.sub(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"", '""', src)
 
 
+def _can_start_statement(toks: list, k: int) -> bool:
+    """Whether a statement can begin at token `k`: the token before it ends a
+    statement (or opens a block) rather than continuing an expression or a
+    target list (`t.S`, `a, S`)."""
+    if k == 0:
+        return True
+    prev = toks[k - 1]
+    if prev.kind == "op":
+        return prev.text in (";", ")", "]", "}")
+    if prev.kind == "kw":
+        return prev.text in _BEFORE_STATEMENT_KW
+    return True  # a name, string or number ends the previous statement
+
+
+def _ends_statement(toks: list, k: int) -> bool:
+    """Whether the expression before token `k` is complete there, so nothing
+    (`.stat`, `or {}`, a call) carries the value further. Lua ignores line
+    breaks, so this looks at the next token, not the next line."""
+    if k >= len(toks):
+        return True
+    tok = toks[k]
+    if tok.kind == "op":
+        return tok.text == ";"
+    if tok.kind == "kw":
+        return tok.text not in ("and", "or")
+    return tok.kind == "name"
+
+
+def _sdk_access_reasons(src: str, aliases: set[str]) -> list[str]:
+    """Check how `src` reaches the SDK; add each binding that can be followed
+    to `aliases`, and return a reason for every other way in.
+
+    The scan in :func:`lua_reasons` follows the SDK by NAME, so it only works
+    while every way of obtaining the SDK is one it recognizes. Each check here
+    closes a way of getting the SDK under a name the scan never learns, which
+    would otherwise let a mod calling gameplay functions be classified
+    client-only. It works on Lua tokens and the walk's scopes, not on lines:
+    Lua ignores line breaks, and a field, table key or local named like a
+    global is not that global.
+    """
+    from rsmm.cli._lua_scope import LuaSyntaxError, walk
+
+    try:
+        w = walk(src)
+    except LuaSyntaxError as e:
+        return [f"its Lua cannot be parsed ({e}), so its use of the SDK "
+                "cannot be checked"]
+    toks = w.t
+    reasons: list[str] = []
+    unfollowed = ("stores the SDK somewhere other than a plain local "
+                  "(`local R = require \"rsmm\"`), so its use cannot be checked")
+    globals_read = {name for name, _ in w.globals}
+
+    for name, k in w.globals:
+        if name != "require":
+            continue
+        nxt = toks[k + 1] if k + 1 < len(toks) else None
+        if nxt is not None and nxt.kind == "str":
+            arg, end = nxt.text, k + 2
+        elif (nxt is not None and nxt.kind == "op" and nxt.text == "("
+              and k + 3 < len(toks) and toks[k + 2].kind == "str"
+              and toks[k + 3].kind == "op" and toks[k + 3].text == ")"):
+            arg, end = toks[k + 2].text, k + 4
+        else:
+            reasons.append("uses require with something other than a plain "
+                           "string, so what it loads cannot be checked")
+            continue
+        if not _MODULE_NAME_RE.fullmatch(arg):
+            reasons.append("uses require with something other than a plain "
+                           "string, so what it loads cannot be checked")
+            continue
+        if arg.startswith("rsmm."):
+            reasons.append(f"requires the SDK internal \"{arg}\"")
+            continue
+        if arg != "rsmm":
+            continue
+        if k in w.nested or not _ends_statement(toks, end):
+            reasons.append(unfollowed)
+            continue
+        if _can_start_statement(toks, k):
+            continue  # a bare `require "rsmm"` statement binds nothing
+        # `[local] NAME = require "rsmm"`, the one binding that can be followed.
+        eq, target = toks[k - 1], toks[k - 2] if k >= 2 else None
+        if not (eq.kind == "op" and eq.text == "=" and target is not None
+                and target.kind == "name"):
+            reasons.append(unfollowed)
+            continue
+        declared = k >= 3 and toks[k - 3].kind == "kw" and toks[k - 3].text == "local"
+        if not declared and not _can_start_statement(toks, k - 2):
+            reasons.append(unfollowed)
+            continue
+        if target.text == "_ENV":
+            # Every free name in the file would then be an SDK field.
+            reasons.append("makes the SDK its environment (_ENV), so its use "
+                           "cannot be checked")
+            continue
+        aliases.add(target.text)
+
+    for name, what in _ENV_GLOBALS.items():
+        if name in globals_read:
+            reasons.append(f"reaches {what}, which holds the SDK under a "
+                           "name that cannot be checked")
+    if "rsmm" in globals_read and "rsmm" not in aliases:
+        reasons.append("uses the native loader bindings (rsmm.*)")
+    return reasons
+
+
 def lua_reasons(src: str) -> list[str]:
     """Why this Lua source is gameplay; empty when it is client-only."""
-    code = _strip_comments(src)
-    reasons: list[str] = []
     aliases = {"R"}
-    for m in _REQUIRE_RE.finditer(code):
-        if m.group(3) == "rsmm":
-            aliases.add(m.group(1))
-    for m in _ANY_REQUIRE_RE.finditer(code):
-        if m.group(2).startswith("rsmm."):
-            reasons.append(f"requires the SDK internal \"{m.group(2)}\"")
-
-    code = _blank_strings(code)
-    if "rsmm" not in aliases and re.search(r"(?<![\w.])rsmm\s*[.\[:]", code):
-        reasons.append("uses the native loader bindings (rsmm.*)")
+    reasons = _sdk_access_reasons(src, aliases)
+    code = _blank_strings(_strip_comments(src))
 
     for alias in sorted(aliases):
         ref = re.compile(rf"(?<![\w.]){re.escape(alias)}\b((?:\s*\.\s*{_IDENT})*)(\s*[\[:]?)")
