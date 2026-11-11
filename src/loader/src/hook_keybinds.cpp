@@ -483,18 +483,32 @@ bool keybinds_registered() { return g_registered.load(std::memory_order_acquire)
 
 bool keybinds_failed() { return g_register_failed.load(std::memory_order_acquire); }
 
+bool keybinds_open() { return !g_decls_closed.load(std::memory_order_acquire); }
+
 int keybind_add(const std::string& mod, const std::string& id, const std::string& label,
                 std::uint32_t kb, std::uint32_t pad, std::string* err) {
     auto fail = [&](const std::string& why) {
         if (err) *err = why;
         return -1;
     };
+    // Refused up front when the bindings could never work, so a mod's add()
+    // result is the one check it needs to fall back on something else.
+    if (!Loader::get().va_globals_trusted()) {
+        return fail("keybinds are off on this game build (VA globals not trusted)");
+    }
     std::lock_guard<std::mutex> g(g_decl_mu);
+    const bool closed = g_decls_closed.load(std::memory_order_acquire);
+    if (closed && !g_armed.load(std::memory_order_acquire)) {
+        return fail("keybind hooks failed to install (see the loader log)");
+    }
+    if (g_register_failed.load(std::memory_order_acquire)) {
+        return fail("registration with the game's settings failed (see the loader log)");
+    }
     const int n = g_count.load(std::memory_order_relaxed);
     for (int i = 0; i < n; ++i) {
         if (g_binds[i].mod == mod && g_binds[i].id == id) return i;   // hot reload
     }
-    if (g_decls_closed.load(std::memory_order_acquire)) {
+    if (closed) {
         return fail("keybinds can only be added from init.lua (the bindings are already "
                     "registered with the game)");
     }

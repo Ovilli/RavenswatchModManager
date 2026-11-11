@@ -63,8 +63,14 @@ bool keybinds_registered();
 // not be read): no rows and no presses will appear.
 bool keybinds_failed();
 
+// True while declarations are still taken: before install_keybind_hooks runs,
+// which is after every mod's init.lua.
+bool keybinds_open();
+
 // Declare a binding for `mod`. Returns its index (>= 0), or -1 with `err` set.
 // Re-declaring the same mod + id returns the existing index (hot reload).
+// Refused when the bindings could never work: VA globals not trusted, the hooks
+// failed to install, or registration failed.
 // kb is a keyboard / mouse key id (1-93), pad a gamepad key id (94-255);
 // 0 = unbound for either.
 int keybind_add(const std::string& mod, const std::string& id, const std::string& label,

@@ -11709,6 +11709,62 @@ do
     local hf, wf = K.on_press(zin, 5)
     check(hf == nil and wf:find("function"), "on_press needs a function")
 
+    -- Presses in menus and blocked presses are dropped unless menus = true.
+    local real_flag = R.game.flag
+    local menu_open = false
+    R.game.flag = function(name)
+        if name == "is_menu_open" then return menu_open end
+        return false
+    end
+    local seen = {}
+    local hq = K.on_press(zin, function(n) seen[#seen + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = true })
+    check(#seen == 0, "a blocked press is dropped")
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen == 0, "a press in a menu is dropped")
+    menu_open = false
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 3, blocked = false })
+    check(#seen == 1 and seen[1] == 3, "a press in play is delivered")
+    K.off(hq)
+    closed = false
+    local hmenu = K.add{ id = "Menu", label = "Menu key", key = 5, menus = true }
+    check(hmenu and hmenu.menus == true, "menus = true is kept on the handle")
+    local seen_m = {}
+    local hq2 = K.on_press(hmenu, function(n, ev) seen_m[#seen_m + 1] = ev.blocked end)
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked = true })
+    check(#seen_m == 1 and seen_m[1] == true, "a menus keybind gets every press, blocked marked")
+    K.off(hq2)
+    menu_open = false
+    local hbm, wbm = K.add{ id = "Bad", label = "Bad", menus = "yes" }
+    check(hbm == nil and wbm:find("menus"), "menus must be a boolean")
+    R.game.flag = function() error("game values not ready") end
+    local seen_e = {}
+    local hq3 = K.on_press(zin, function(n) seen_e[#seen_e + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen_e == 1, "a menu check that raises does not drop the press")
+    K.off(hq3)
+    R.game.flag = real_flag
+
+    -- During init.lua the hooks are not installed yet: available, and add works.
+    local real_va = I.va_trusted
+    I.keybinds_state = function() return false, false, false, true end
+    I.va_trusted = function() return true end
+    check(K.available() == true, "declarations open on a trusted build: available")
+    check(K.add{ id = "Early", label = "Early" } ~= nil, "add during init.lua works before the hooks arm")
+    I.va_trusted = function() return false end
+    ok, why = K.available()
+    check(ok == false and why:find("not trusted"), "declarations open on an untrusted build: unavailable")
+    local hu2, wu2 = K.add{ id = "Untrusted", label = "Untrusted" }
+    check(hu2 == nil and wu2:find("not trusted"), "add on an untrusted build: refused with the reason")
+    I.va_trusted = real_va
+    I.keybinds_state = function() return false, false, false, false end
+    local hx, wx = K.add{ id = "AfterFail", label = "After fail" }
+    check(hx == nil and (wx:find("failed to install") or wx:find("not live")) ~= nil,
+          "add after the hooks failed to install: refused with the reason")
+    closed = true
+
     I.keybinds_state = function() return true, false, true end
     ok, why = K.available()
     check(ok == false and why:find("registration"), "a failed registration: unavailable, says why")

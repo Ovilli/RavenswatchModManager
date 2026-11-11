@@ -1604,10 +1604,13 @@ Handlers run on the game thread inside the input poll. Keep them short.
 local K = R.input.keybinds
 local zin  = K.add{ id = "ZoomIn",  label = "Zoom in",  key = 92 }   --> handle | nil, reason
 local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93 }
-K.on_press(zin, function(n, ev)          -- n = presses since the last delivery
-    if R.game.flag("is_menu_open") then return end
-    R.camera.zoom(0.9)
-end)
+if zin then
+    K.on_press(zin, function(n, ev)      -- n = presses since the last delivery
+        R.camera.zoom(0.9 ^ n)
+    end)
+else
+    -- no keybinds here (old loader, unknown game build): fall back
+end
 K.keys(zin)        --> keyboard key id, pad key id (0 = unbound)
 K.list()           --> { {id=, label=, key=, pad=}, ... }
 K.available()      --> true | false, reason
@@ -1625,9 +1628,14 @@ on the next frame.
 (1-32 characters), `key` (the Keyboard tab's default: keyboard 1-84, mouse
 buttons 85-91, wheel up 92 / down 93) and `pad` (the Gamepad tab's default:
 gamepad key ids 94 and up). Either defaults to 0, unbound, and an id from the
-other device is refused. The handle also has `zin:on_press(fn)` and
-`zin:keys()`. `available()` returns `false` and a reason when the hooks are off
-or registration with the game failed, so a mod can fall back.
+other device is refused. `menus = true` gets the keybind's presses in menus too
+(see below). The handle also has `zin:on_press(fn)` and `zin:keys()`.
+
+`add` is the only check a mod needs. It returns `nil` and a reason when
+keybinds cannot work here: a loader without them, a game build the loader does
+not trust, or hooks that failed to install. `available()` answers the same
+question without adding anything; during `init.lua` it is `true` when the
+loader will install the keybinds once every mod has loaded.
 
 Add keybinds from `init.lua`. The loader registers every mod's keybinds with
 the game once, on the first input poll after all mods have loaded, and has the
@@ -1638,8 +1646,10 @@ keybinds across all mods.
 
 `on_press` handlers run on the game thread inside the input poll, like
 `on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
-Presses arrive in menus too, since the game's UI still gets the key, so skip
-menus as above. A player who starts the game once without the loader and
+Presses made while a menu is open, or while the game has input blocked (during
+a transition), are dropped, since the game's UI gets those keys. A keybind added
+with `menus = true` gets every press, with `ev.blocked` set on the ones the game
+blocked. A player who starts the game once without the loader and
 changes a setting loses the saved keys (the game drops lines it does not know
 when it saves) and gets the defaults back.
 

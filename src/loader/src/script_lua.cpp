@@ -267,12 +267,13 @@ int lua_keybind_keys(lua_State* L) {
     return 2;
 }
 
-// rsmm._internal.keybinds_state() -> armed, registered, failed
+// rsmm._internal.keybinds_state() -> armed, registered, failed, open (declarations still taken)
 int lua_keybinds_state(lua_State* L) {
     lua_pushboolean(L, keybinds_armed());
     lua_pushboolean(L, keybinds_registered());
     lua_pushboolean(L, keybinds_failed());
-    return 3;
+    lua_pushboolean(L, keybinds_open());
+    return 4;
 }
 
 // rsmm._internal.camera_zoom_armed() -> bool

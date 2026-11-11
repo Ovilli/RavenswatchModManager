@@ -16,9 +16,10 @@
 --
 -- add{} fields: id (1-32 letters, digits or _; unique within the mod), label
 -- (the row title, 1-32 characters), key (the Keyboard tab's default: keyboard
--- 1-84, mouse buttons 85-91, wheel up 92 / down 93) and pad (the Gamepad tab's
--- default: gamepad key ids 94 and up). Either defaults to 0, unbound. Handles
--- also take methods: zin:on_press(fn), zin:keys().
+-- 1-84, mouse buttons 85-91, wheel up 92 / down 93), pad (the Gamepad tab's
+-- default: gamepad key ids 94 and up) and menus (true to get presses in menus
+-- too; see on_press). key and pad default to 0, unbound. Handles also take
+-- methods: zin:on_press(fn), zin:keys().
 --
 -- Declare keybinds from init.lua, at load. The loader registers them with the
 -- game once, on the first input poll after every mod has loaded, and has the
@@ -26,12 +27,19 @@
 -- that is refused. Re-adding an id this mod already declared returns the same
 -- handle, so a hot reload of init.lua keeps working.
 --
+-- add() is the one check a mod needs: it returns nil + reason when keybinds
+-- cannot work here (an old loader, an untrusted game build, hooks that failed
+-- to install), so a mod with a fallback writes `if not h then ... end`.
+-- available() answers the same question without declaring anything; during
+-- init.lua it is true when the loader will install the keybinds after init.
+--
 -- on_press handlers run on the GAME THREAD, inside the input poll, like
 -- R.input.on_wheel: keep them short. `n` is the number of presses since the
 -- last delivery (a wheel notch is one press); `ev` also carries `key` / `pad`
--- (the current keys) and `blocked` (the game had input blocked, e.g. during a
--- transition). Presses arrive in menus too: the game's UI still gets the key,
--- so a mod that acts on one should stay out of menus.
+-- (the current keys) and `blocked`. Presses made while a menu is open or while
+-- the game has input blocked (e.g. during a transition) are dropped: the game's
+-- UI gets those keys. A keybind added with `menus = true` gets every press, and
+-- `ev.blocked` says which ones the game had blocked.
 
 local M = {}
 
@@ -68,10 +76,21 @@ local function _key(v, lo, hi, what)
     return v
 end
 
---- Are keybinds live? false + reason when they are not.
+--- Is a game menu open? Read through R.game; false when it cannot tell.
+local function _in_menu()
+    local G = R and R.game
+    if not (G and G.flag) then return false end
+    local ok, open = pcall(function()
+        return G.flag("is_game_menu_open") == true or G.flag("is_menu_open") == true
+    end)
+    return ok and open == true
+end
+
+--- Do keybinds work here? false + reason when they do not. During init.lua,
+--- true when the loader will install them once every mod has loaded.
 function M.available()
     if not (I and I.keybinds_state) then return false, "loader too old (no keybinds)" end
-    local armed, _, failed = I.keybinds_state()
+    local armed, _, failed, open = I.keybinds_state()
     if failed then
         return false, "registration with the game's settings failed (see the loader log)"
     end
@@ -79,6 +98,7 @@ function M.available()
     if I.va_trusted and I.va_trusted() == false then
         return false, "VA globals not trusted on this game build"
     end
+    if open then return true end   -- installed after every init.lua
     if I.input_armed and not I.input_armed() then
         return false, "input poll hook not live (see the loader log)"
     end
@@ -100,19 +120,26 @@ function M.add(spec)
     local pad
     pad, why = _key(spec.pad, PAD_MIN, KEY_MAX, "pad must be a gamepad key id")
     if not pad then return nil, why end
+    if spec.menus ~= nil and type(spec.menus) ~= "boolean" then
+        return nil, "menus must be true or false"
+    end
 
+    local live
+    live, why = M.available()
+    if not live then return nil, why end
     if _mine[id] then return _mine[id] end
     if not (I and I.keybind_add) then return nil, "loader too old (no keybinds)" end
     local index, err = I.keybind_add(id, label, key, pad)
     if not index then return nil, err end
-    local h = setmetatable({ id = id, label = label, index = index,
+    local h = setmetatable({ id = id, label = label, index = index, menus = spec.menus == true,
                              default_key = key, default_pad = pad }, Keybind)
     _mine[id] = h
     _order[#_order + 1] = h
     return h
 end
 
---- Call fn(n, ev) when the keybind's key (keyboard or pad) is pressed.
+--- Call fn(n, ev) when the keybind's key (keyboard or pad) is pressed, in
+--- play (every press for a keybind added with menus = true).
 --- Returns a handle for off(), or nil + reason.
 function M.on_press(b, fn)
     local h = _resolve(b)
@@ -122,6 +149,7 @@ function M.on_press(b, fn)
     return R.on(EVENT, function(ev)
         if type(ev) ~= "table" or ev.id ~= h.id then return end
         if me and ev.mod ~= me then return end
+        if not h.menus and (ev.blocked == true or _in_menu()) then return end
         fn(tonumber(ev.presses) or 1, ev)
     end)
 end
