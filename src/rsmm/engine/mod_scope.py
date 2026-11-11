@@ -21,6 +21,9 @@ What counts as client-only:
   namespaces) and :data:`CLIENT_CALLS` (single functions). Any other ``R.*``
   path, dynamic access (``R[...]``), passing the SDK table around, the native
   ``rsmm.*`` bindings, or requiring an SDK internal (``rsmm.*``) is gameplay.
+  So is any way of obtaining the SDK that the scan cannot follow by name: a
+  ``require`` whose argument is not one plain string, the SDK bound anywhere
+  but ``local NAME = require "rsmm"``, and ``_G`` / ``_ENV`` / ``package``.
 
 Camera changes are client-only by decision (2026-10-05): the camera is local
 and nothing about it reaches another player. Map reveal is not — it is a
@@ -66,9 +69,29 @@ CLIENT_CALLS: frozenset[str] = frozenset({
 
 
 _IDENT = r"[A-Za-z_]\w*"
-_REQUIRE_RE = re.compile(
-    rf"(?:local\s+)?({_IDENT})\s*=\s*require\s*\(?\s*(['\"])([\w.]+)\2\s*\)?")
-_ANY_REQUIRE_RE = re.compile(r"require\s*\(?\s*(['\"])([\w.]+)\1")
+
+#: A ``require`` token used as a plain name (not a field or method called
+#: ``require``).
+_REQUIRE_TOKEN_RE = re.compile(r"(?<![\w.:])require\b")
+#: The only call shapes that can be checked: one plain string literal, with or
+#: without parentheses. Anything else (a concatenation, a variable, escapes,
+#: `pcall(require, ...)`) loads a module nobody can name statically.
+_REQUIRE_ARG_RE = re.compile(
+    r"""\s*(?:\(\s*(['"])([\w.\-]+)\1\s*\)|(['"])([\w.\-]+)\3)""")
+#: The one binding of the SDK that can be followed: `[local] NAME = require "rsmm"`
+#: as a whole statement. A field (`t.S = ...`), a second assignment target
+#: (`local a, S = 1, ...`), an argument or a return value carries the SDK
+#: somewhere the name-based scan cannot see.
+_SDK_BINDING_RE = re.compile(rf"^\s*(?:local\s+)?({_IDENT})\s*=\s*$")
+#: Globals that reach the SDK without naming it: the global table, the
+#: environment, and the module cache that holds every loaded module.
+_ENV_GLOBALS: dict[str, str] = {
+    "_G": "the global table (_G)",
+    "_ENV": "the environment table (_ENV)",
+    "package": "the module cache (package)",
+}
+_STRING_RE = re.compile(
+    r"\[(=*)\[.*?\]\1\]|'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"", re.S)
 
 
 @dataclass
@@ -133,20 +156,67 @@ def _blank_strings(src: str) -> str:
     return re.sub(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"", '""', src)
 
 
+def _mask_strings(code: str) -> str:
+    """Blank string contents but keep every offset, so a match found in the
+    masked text can be read back from the original at the same position."""
+    def keep_ends(m: re.Match) -> str:
+        s = m.group(0)
+        return s[0] + re.sub(r"[^\n]", " ", s[1:-1]) + s[-1]
+    return _STRING_RE.sub(keep_ends, code)
+
+
+def _require_reasons(code: str, aliases: set[str]) -> list[str]:
+    """Check every `require` in comment-stripped `code`; add each SDK binding
+    that can be followed to `aliases`, and return a reason for the rest.
+
+    The scan below follows the SDK by NAME, so it only works while every way of
+    obtaining the SDK is one it recognizes. Each check here closes a way of
+    getting the SDK under a name the scan never learns, which would otherwise
+    let a mod calling gameplay functions be classified client-only.
+    """
+    reasons: list[str] = []
+    masked = _mask_strings(code)
+    for tok in _REQUIRE_TOKEN_RE.finditer(masked):
+        arg = _REQUIRE_ARG_RE.match(code, tok.end())
+        if not arg:
+            reasons.append("uses require with something other than a plain "
+                           "string, so what it loads cannot be checked")
+            continue
+        module = arg.group(2) or arg.group(4)
+        if module.startswith("rsmm."):
+            reasons.append(f"requires the SDK internal \"{module}\"")
+            continue
+        if module != "rsmm":
+            continue
+        line_start = max(masked.rfind("\n", 0, tok.start()),
+                         masked.rfind(";", 0, tok.start())) + 1
+        rest = masked[arg.end():]
+        ends_statement = re.match(r"[ \t]*(?:;|\r?\n|$)", rest) is not None
+        before = masked[line_start:tok.start()]
+        if ends_statement and not before.strip():
+            continue  # a bare `require "rsmm"` statement binds nothing
+        bound = _SDK_BINDING_RE.match(before)
+        if bound and ends_statement:
+            aliases.add(bound.group(1))
+        else:
+            reasons.append("stores the SDK somewhere other than a plain local "
+                           "(`local R = require \"rsmm\"`), so its use cannot "
+                           "be checked")
+    return reasons
+
+
 def lua_reasons(src: str) -> list[str]:
     """Why this Lua source is gameplay; empty when it is client-only."""
     code = _strip_comments(src)
-    reasons: list[str] = []
     aliases = {"R"}
-    for m in _REQUIRE_RE.finditer(code):
-        if m.group(3) == "rsmm":
-            aliases.add(m.group(1))
-    for m in _ANY_REQUIRE_RE.finditer(code):
-        if m.group(2).startswith("rsmm."):
-            reasons.append(f"requires the SDK internal \"{m.group(2)}\"")
+    reasons = _require_reasons(code, aliases)
 
     code = _blank_strings(code)
-    if "rsmm" not in aliases and re.search(r"(?<![\w.])rsmm\s*[.\[:]", code):
+    for name, what in _ENV_GLOBALS.items():
+        if re.search(rf"(?<![\w.:]){re.escape(name)}\b", code):
+            reasons.append(f"reaches {what}, which holds the SDK under a "
+                           "name that cannot be checked")
+    if "rsmm" not in aliases and re.search(r"(?<![\w.:])rsmm\b", code):
         reasons.append("uses the native loader bindings (rsmm.*)")
 
     for alias in sorted(aliases):

@@ -87,6 +87,50 @@ def test_a_differently_named_sdk_alias_is_followed():
     assert any("sdk.give" in r for r in lua_reasons(src))
 
 
+CHEAT = '\nS.stat.modify(h, "move_speed", 2)'
+
+
+@pytest.mark.parametrize("src", [
+    # a require the scan cannot read the module name of
+    'local S = require("rs" .. "mm")' + CHEAT,
+    'local name = "rsmm"\nlocal S = require(name)' + CHEAT,
+    'local ok, S = pcall(require, "rsmm")' + CHEAT,
+    'local r = require\nlocal S = r "rsmm"' + CHEAT,
+    'local S = require("\\114smm")' + CHEAT,
+    # the SDK bound where the scan cannot follow it
+    'local t = {}\nt.S = require "rsmm"\nt.S.stat.modify(h, "move_speed", 2)',
+    'local a, S = 1, require "rsmm"' + CHEAT,
+    'use(require "rsmm")',
+    'return require "rsmm"',
+    'local S = require "rsmm" or {}' + CHEAT,
+    # the SDK reached through the environment or the module cache
+    'require "rsmm"\nlocal S = package.loaded["rsmm"]' + CHEAT,
+    'local S = _G["rsmm"]\nS.give_item(1)',
+    'local S = _G.rsmm\nS.give_item(1)',
+    'local S = _ENV.rsmm\nS.give_item(1)',
+    # the native bindings without a dot after the name
+    'local n = rsmm\nn.give_item(1)',
+])
+def test_obtaining_the_sdk_under_an_unchecked_name_is_gameplay(src):
+    # Each of these calls a gameplay function through a name the scan never
+    # learns. Before this was checked, every one was classified client-only,
+    # which kept the mod out of the public-matchmaking gate.
+    assert lua_reasons(src) != []
+
+
+@pytest.mark.parametrize("src", [
+    'local R = require "rsmm"\nR.log("x")',
+    "local R = require('rsmm');\nR.log('x')",
+    'local R = require("rsmm")\nlocal data = require "stats_gen"\nR.log(data)',
+    'require "rsmm"\nlocal R = require "rsmm"\nR.log("x")',
+    'local x = 1; local R = require "rsmm"\nR.log("x")',
+    # text, not code
+    'local R = require "rsmm"\nR.log("see _G or package.loaded or require(x)")',
+])
+def test_plain_sdk_bindings_stay_client_only(src):
+    assert lua_reasons(src) == []
+
+
 def test_sdk_internals_and_native_bindings_are_gameplay():
     assert lua_reasons('local d = require "rsmm.damage"') != []
     assert lua_reasons('rsmm.hook(0x140000000, function() end)') != []
