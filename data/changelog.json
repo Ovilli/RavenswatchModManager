@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-10",
+  "generated": "2026-11-11",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-11",
+      "summary": "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work.",
+      "highlights": [
+        "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work."
+      ],
+      "loader_version": 55
+    },
     {
       "version": "",
       "date": "2026-11-10",
@@ -516,14 +525,6 @@
         "Works with Ravenswatch Update 6 (the 12 October 2026 patch)",
         "Hero, talent and item mods work with the renamed Update 6 hero files",
         "Kintaro shows up as a hero"
-      ]
-    },
-    {
-      "version": "5.9.17",
-      "date": "2026-10-11",
-      "summary": "RSMM has a new logo.",
-      "highlights": [
-        "New app icon and logo: a red gear with a feather, across the app, the website and the docs."
       ]
     }
   ]
