@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-11",
+      "summary": "Gameplay-mod detection now checks SDK access per Lua token and scope, and treats access it cannot follow as gameplay.",
+      "highlights": [
+        "Gameplay-mod detection now checks SDK access per Lua token and scope, and treats access it cannot follow as gameplay."
+      ],
+      "cli_version": 28
+    },
+    {
+      "version": "",
+      "date": "2026-11-11",
       "summary": "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work.",
       "highlights": [
         "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work."
@@ -514,17 +523,6 @@
         "Hero, talent and item mods build against the renamed Update 6 hero files",
         "Installing the loader now replaces a pattern database left over from before the patch, so features like player names in the damage meter work again",
         "New `rsmm values backport` command: play an older patch's balance values as a local mod"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 41,
-      "date": "2026-10-12",
-      "summary": "Updated for Ravenswatch Update 6: the loader finds the game's functions again after the patch, and mods that change heroes, talents or items work with the new hero files.",
-      "highlights": [
-        "Works with Ravenswatch Update 6 (the 12 October 2026 patch)",
-        "Hero, talent and item mods work with the renamed Update 6 hero files",
-        "Kintaro shows up as a hero"
       ]
     }
   ]
