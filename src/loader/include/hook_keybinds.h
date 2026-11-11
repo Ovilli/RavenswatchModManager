@@ -28,6 +28,11 @@
 // is only ever made from the poll. A binding declared after that point is
 // refused: the re-read would not cover it.
 //
+// Registering hands the game pointers into this DLL (the option objects, the
+// strings their names alias, the rows' key pointers) and the game has no way
+// to take them back, so registration pins the loader module: once a mod has
+// keybinds, a dynamic unload no longer unmaps it.
+//
 // Presses are read from the key table's "pressed this frame" bit after the
 // poll and delivered as the Lua event "input:keybind" {mod, id, presses, key,
 // blocked}. Delivery never blocks the game thread; presses wait for the next

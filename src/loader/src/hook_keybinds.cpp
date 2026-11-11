@@ -212,6 +212,20 @@ void try_register() {
     // whole point of the re-read.
     if (kb_count == 0 || completed == 0 || requested != completed) return;
 
+    // From here the game holds pointers into this DLL: the settings registry
+    // keeps the option objects (g_binds), the Controls rows keep &key, and the
+    // option names alias our strings. The game has no unregister, so a dynamic
+    // unload (FreeLibrary in dllmain.cpp) would leave them dangling. Pin the
+    // loader instead: it stays mapped until the game exits.
+    HMODULE self = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                            reinterpret_cast<LPCWSTR>(&g_binds), &self)) {
+        L.log_err("[keybinds] could not pin the loader in memory; " + std::to_string(n)
+                  + " binding(s) not registered");
+        g_register_failed.store(true, std::memory_order_release);
+        return;
+    }
+
     const std::uintptr_t vtbl = rebase(Sym::InputKeyGameOption_vftable);
     for (int i = 0; i < n; ++i) {
         Binding& b = g_binds[i];
@@ -232,7 +246,8 @@ void try_register() {
     g_registered.store(true, std::memory_order_release);
     char line[160];
     std::snprintf(line, sizeof(line),
-                  "[keybinds] registered %d binding(s) and re-read GameSettings on thread %lu",
+                  "[keybinds] registered %d binding(s) and re-read GameSettings on thread %lu "
+                  "(loader pinned until exit)",
                   n, static_cast<unsigned long>(GetCurrentThreadId()));
     L.log(line);
 }
