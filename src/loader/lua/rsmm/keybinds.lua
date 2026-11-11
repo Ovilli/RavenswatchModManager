@@ -53,7 +53,8 @@ end
 
 local function _resolve(b)
     if type(b) == "string" then return _mine[b] end
-    if getmetatable(b) == Keybind and _mine[b.id] == b then return b end
+    -- A handle is the exact table add() stored, so identity is the whole check.
+    if type(b) == "table" and b.id ~= nil and _mine[b.id] == b then return b end
     return nil
 end
 
