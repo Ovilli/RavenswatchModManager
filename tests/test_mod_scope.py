@@ -110,6 +110,11 @@ CHEAT = '\nS.stat.modify(h, "move_speed", 2)'
     'local S = _ENV.rsmm\nS.give_item(1)',
     # the native bindings without a dot after the name
     'local n = rsmm\nn.give_item(1)',
+    # the SDK inside a table constructor, continued past a line break, or as
+    # the environment itself
+    'local S = { R = require "rsmm" }\nS.R.stat.modify(h, "move_speed", 2)',
+    'local S = require "rsmm"\n.stat\nS.modify(h, "move_speed", 2)',
+    'local _ENV = require "rsmm"\nstat.modify(h, "move_speed", 2)',
 ])
 def test_obtaining_the_sdk_under_an_unchecked_name_is_gameplay(src):
     # Each of these calls a gameplay function through a name the scan never
@@ -128,6 +133,30 @@ def test_obtaining_the_sdk_under_an_unchecked_name_is_gameplay(src):
     'local R = require "rsmm"\nR.log("see _G or package.loaded or require(x)")',
 ])
 def test_plain_sdk_bindings_stay_client_only(src):
+    assert lua_reasons(src) == []
+
+
+@pytest.mark.parametrize("binding", [
+    'local S =\n    require "rsmm"',
+    'local S\n=\nrequire\n"rsmm"',
+    'S =\n  require("rsmm")',
+])
+def test_a_binding_wrapped_across_lines_registers_its_alias(binding):
+    # Lua treats a line break as whitespace, so the alias must still be learned
+    # and the gameplay call through it reported by name.
+    reasons = lua_reasons(binding + CHEAT)
+    assert any("S.stat.modify" in r for r in reasons), reasons
+
+
+@pytest.mark.parametrize("src", [
+    'do local R = require "rsmm" end',
+    'R.on("x", function() local R = require "rsmm"; R.log(1) end)',
+    # names that only look like the loader's globals
+    'local R = require "rsmm"\nlocal label = { package = "HUD" }\nR.log(label.package)',
+    'local R = require "rsmm"\nlocal package = "HUD"\nR.log(package)',
+    'local R = require "rsmm"\nlocal t = { _G = 1, rsmm = 2 }\nR.log(t._G, t.rsmm)',
+])
+def test_bindings_in_blocks_and_lookalike_names_stay_client_only(src):
     assert lua_reasons(src) == []
 
 
