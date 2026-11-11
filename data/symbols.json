@@ -5871,6 +5871,158 @@
    ]
   },
   {
+   "name": "GameOptionsManager_Register",
+   "kind": "function",
+   "category": "options",
+   "status": "ok",
+   "raw": "FUN_14066a4f0",
+   "signature": "void(GameOptionsManager* mgr, u8 category, GameOption* option)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "note": "Pushes option onto the manager's category vector at mgr+0x130+cat*0x10 ({GameOption** data, u32 size, u32 cap}; grown by FUN_14014db80 when size+1 > cap, min 8, doubling, so the buffer can move) and sets option+0x21 = 1 (registered: enables the per-option lock). Categories are the GameSettings.ini sections (names at 0x140ee5c40): 4 Keyboard Inputs, 5 Gamepad Inputs. Everything the settings file saves or loads goes through this; GameOptions_InitKeySlots (FUN_1401c39e0) registers every vanilla key slot with it. Found 2026-11-10 by static reading on b9c3; the {data,size,cap} shape matches a live read of cat 4 on 2026-11-11.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "GameOptionsManager_RequestLoad",
+   "kind": "function",
+   "category": "options",
+   "status": "ok",
+   "raw": "FUN_140690ae0",
+   "signature": "void(void* unused, FileRequest* req /* = mgr+8 */)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Reads the bound settings file (GameSettings.ini) again. Bumps req+0x7c (requested sequence), posts {req, mode 0, seq} to the settings job queue (FUN_140698c30), wakes the I/O worker and SPINS until req+0x80 (completed sequence) catches up, so the call is synchronous and the walk (the GameOptionsManager serialize-all lambda FUN_14066c4c0) runs on the worker. rcx is ignored. Its twin FUN_140690b40 is the save (mode 1). The queue is single-producer (plain stores on the tail index), so CALL ONLY FROM THE GAME'S MAIN THREAD. The read writes every registered option's field from the file and calls ResetToDefault on an option with no line, without SetValue or listeners. The boot calls it once from FUN_1401cdd20 at 0x1401ce940 right after binding \"GameSettings\". Found 2026-11-11 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_BuildKeyboardControls",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f42a0",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Builds the Keyboard controls tab (OptionsMenu_AddCategory type byte 4): two multi-choice rows, then one key row per action whose visibility (0x140ed5a40) has bit 0, sorted by 0x140ed56c0, through FUN_1403f5850 (Menu actions) / OptionsMenu_SpawnExploKeyRow. The tab entry it adds is the newest 0x48-byte entry at optionsCtrl+0x208. Called by the Settings page build (slot 7, FUN_1403f0620) after OptionsMenu_BuildLastCategory. hook_keybinds.cpp detours it to append mod keybind rows. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_BuildGamepadControls",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f4870",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Builds the Gamepad controls tab (OptionsMenu_AddCategory type byte 5): key rows for actions whose visibility has bit 1. Same shape as OptionsMenu_BuildKeyboardControls; hook_keybinds.cpp detours it to append mod keybind rows. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_SpawnExploKeyRow",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f5b70",
+   "signature": "void(void* optionsCtrl, i32 exploIndex, void* tabEntry)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "note": "Spawns one key-binding row for Explo action exploIndex (0-9) in tabEntry and pushes it onto the entry's row vector (+0x20 data, +0x28 u32 count). Label from g_KeyActionLabels[21+i] (localized), action name from g_KeyActionNames[21+i] assigned to [row+0xa0]+0x340, then row+0x98 = &slot+0x28 of g_GameOptions' Explo keyboard (+0xb20) or pad (+0xd00) array by tabEntry+0x18 (4 = keyboard, else pad), the path flags (row+0xa8, row+0xaa, [row+0xa0]+0x33c), the title, and four handler binds including FUN_1403fcb10 (binds OptionsMenu_ClearDuplicateKey). The row writes the captured key through row+0x98 (proven in game 2026-11-11: write at 0x14045104e, mov rax,[rbx+0x98]; mov [rax],r12d), so it never sees the option object. hook_keybinds.cpp calls it and then repoints row+0x98, the name and the title at a mod keybind's option. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_ClearDuplicateKey",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f6b90",
+   "signature": "void(void* optionsCtrl, void* unused, u32 key)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Duplicate-key resolver, bound to every key row's key-assigned event by FUN_1403fcb10 and run BEFORE the row writes its new key. Walks the 31 vanilla actions (21 Menu, 10 Explo; visibility 0x140ed5a40, hidden actions skipped) and calls SetValue(0) (vtable +0x30) on each keyboard / pad slot whose key equals key, so the action that held it goes blank. It knows only the vanilla slots; hook_keybinds.cpp detours it to clear mod keybinds too. Proven in game 2026-11-11: rebinding Dash onto Trait's key zeroed Trait through InputKeyGameOption::SetValue (write at 0x1401012aa). Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_GameOptionsManager",
+   "kind": "data",
+   "category": "options",
+   "va": "0x141436a38",
+   "status": "va",
+   "note": "*ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the settings file request (GameOptionsManager_RequestLoad's req; +0x7c requested / +0x80 completed sequence), +0x18 bound file name, +0x68 bound serializer callbacks, +0x80 byte result flag of the last read, +0x130 13 category vectors ({GameOption** data, u32 size, u32 cap}, 0x10 each, names at 0x140ee5c40), +0x238/+0x240 per-option spinlock buckets hashed (FNV-1a) from option +0x8. Ctor FUN_14066a2c0. Read 2026-11-10/11 on b9c3 (static, then a live read in the controls-rows probe).",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "InputKeyGameOption_vftable",
+   "kind": "data",
+   "category": "options",
+   "va": "0x140efd440",
+   "status": "va",
+   "note": "vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spinlock hash key), +0x10 name oCString {char*, u32 len|0x80000000, u32 cap} = the ini key, +0x20 u8, +0x21 u8 registered, +0x28 u32 current key id, +0x2c u32 default key id (ctor FUN_1401b5e70 zeroes all of it). Slots: 3 Serialize 0x1401012c0 (hands the serializer +0x10 name and +0x28 value), 4 ResetToDefault 0x140101350 (+0x28 = +0x2c under the lock), 5 IsDefault 0x140101320, 6 SetValue 0x140101290 (+0x28 = *arg under the lock, no listeners). hook_keybinds.cpp builds mod keybind options on it. Read 2026-11-10 on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_InputKeyRecords",
+   "kind": "data",
+   "category": "input",
+   "va": "0x141466c50",
+   "status": "va",
+   "note": "The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
    "name": "OptionsMenu_AddCategory",
    "kind": "function",
    "category": "ui",

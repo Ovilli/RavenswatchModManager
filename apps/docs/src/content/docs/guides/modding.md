@@ -1598,6 +1598,48 @@ returns `nil` plus a reason when the bindings cannot be read.
 
 Handlers run on the game thread inside the input poll. Keep them short.
 
+### Keybinds (`R.input.keybinds`)
+
+```lua
+local K = R.input.keybinds
+local zin  = K.add{ id = "ZoomIn",  label = "Zoom in",  key = 92 }   --> handle | nil, reason
+local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93 }
+K.on_press(zin, function(n, ev)          -- n = presses since the last delivery
+    if R.game.flag("is_menu_open") then return end
+    R.camera.zoom(0.9)
+end)
+K.keys(zin)        --> keyboard key id, pad key id (0 = unbound)
+K.list()           --> { {id=, label=, key=, pad=}, ... }
+K.available()      --> true | false, reason
+```
+
+A keybind is a row in the game's own Settings > Controls menu, on the Keyboard
+tab and on the Gamepad tab, after the game's actions and titled with `label`.
+The player rebinds it there like any shipped action. The game saves it in
+`GameSettings.ini` under `<mod id>::<id>` and applies its duplicate-key rule: a
+key taken by one row is cleared from whatever held it, vanilla action or
+keybind. A rebind, also from the pause menu in the middle of a run, takes effect
+on the next frame.
+
+`add` takes `id` (1-32 letters, digits or `_`, unique within the mod), `label`
+(1-32 characters), `key` and `pad` (default key ids, 0 = unbound). Key ids:
+keyboard 1-84, mouse buttons 85-91, wheel up 92 / down 93, gamepad 94 and up.
+The handle also has `zin:on_press(fn)` and `zin:keys()`.
+
+Add keybinds from `init.lua`. The loader registers every mod's keybinds with
+the game once, on the first input poll after all mods have loaded, and has the
+game read `GameSettings.ini` again so the saved keys apply. A keybind added
+after that returns `nil` and a reason. Adding an id the mod already added
+returns the same handle, so a hot reload keeps working. There is room for 16
+keybinds across all mods.
+
+`on_press` handlers run on the game thread inside the input poll, like
+`on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
+Presses arrive in menus too, since the game's UI still gets the key, so skip
+menus as above. A player who starts the game once without the loader and
+changes a setting loses the saved keys (the game drops lines it does not know
+when it saves) and gets the defaults back.
+
 ### Camera zoom (`R.camera.zoom`)
 
 ```lua

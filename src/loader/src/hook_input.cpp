@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "hook_input.h"
+#include "hook_keybinds.h"   // keybinds_on_poll
 #include "hook_util.h"
 #include "loader.h"
 #include "mem_safe.h"
@@ -78,6 +79,8 @@ void detour_poll(void* mgr, const void* frame_time) {
     if (mgr == nullptr || !mem_load(field, &pre)) pre = 0;
 
     g_real(mgr, frame_time);
+    // Mod keybinds: registration on the first polls, then presses (hook_keybinds.cpp).
+    keybinds_on_poll();
 
     if (pre != 0) {
         hook_note_fire(g_poll_va);
