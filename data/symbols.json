@@ -5964,7 +5964,7 @@
      "void*"
     ]
    },
-   "note": "Spawns one key-binding row for Explo action exploIndex (0-9) in tabEntry and pushes it onto the entry's row vector (+0x20 data, +0x28 u32 count). Label from g_KeyActionLabels[21+i] (localized), action name from g_KeyActionNames[21+i] assigned to [row+0xa0]+0x340, then row+0x98 = &slot+0x28 of g_GameOptions' Explo keyboard (+0xb20) or pad (+0xd00) array by tabEntry+0x18 (4 = keyboard, else pad), the path flags (row+0xa8, row+0xaa, [row+0xa0]+0x33c), the title, and four handler binds including FUN_1403fcb10 (binds OptionsMenu_ClearDuplicateKey). The row writes the captured key through row+0x98 (proven in game 2026-11-11: write at 0x14045104e, mov rax,[rbx+0x98]; mov [rax],r12d), so it never sees the option object. hook_keybinds.cpp calls it and then repoints row+0x98, the name and the title at a mod keybind's option. Found 2026-11-10 by static reading on b9c3.",
+   "note": "Spawns one key-binding row for Explo action exploIndex (0-9) in tabEntry and pushes it onto the entry's row vector (+0x20 data, +0x28 u32 count). Label from g_KeyActionLabels[21+i] (localized), action name from g_KeyActionNames[21+i] assigned to [row+0xa0]+0x340, then row+0x98 = &slot+0x28 of g_GameOptions' Explo keyboard (+0xb20) or pad (+0xd00) array by tabEntry+0x18 (4 = keyboard, else pad), the path flags (row+0xa8, row+0xaa, [row+0xa0]+0x33c), the title, and four handler binds including FUN_1403fcb10 (binds OptionsMenu_ClearDuplicateKey). The row writes the captured key through row+0x98 (proven in game 2026-11-11: write at 0x14045104e, mov rax,[rbx+0x98]; mov [rax],r12d), so it never sees the option object. hook_keybinds.cpp calls it and then repoints row+0x98, the widget's action name and the title at a mod keybind's option. The name matters: the row's key icon reads the key from g_InputActionMap by that name, so a row left on Explo::DashAbility shows (and looks bound to) Dash's key. Found 2026-11-10 by static reading on b9c3.",
    "refs": [
     "src/loader/src/hook_keybinds.cpp"
    ]
@@ -5985,6 +5985,38 @@
     ]
    },
    "note": "Duplicate-key resolver, bound to every key row's key-assigned event by FUN_1403fcb10 and run BEFORE the row writes its new key. Walks the 31 vanilla actions (21 Menu, 10 Explo; visibility 0x140ed5a40, hidden actions skipped) and calls SetValue(0) (vtable +0x30) on each keyboard / pad slot whose key equals key, so the action that held it goes blank. It knows only the vanilla slots; hook_keybinds.cpp detours it to clear mod keybinds too. Proven in game 2026-11-11: rebinding Dash onto Trait's key zeroed Trait through InputKeyGameOption::SetValue (write at 0x1401012aa). Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "InputActionMap_Add",
+   "kind": "function",
+   "category": "input",
+   "status": "ok",
+   "raw": "FUN_140470c70",
+   "signature": "ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4])",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "const void*",
+     "const void*",
+     "const void*"
+    ]
+   },
+   "note": "Appends one entry to the name-keyed input action map (*g_InputActionMap) and returns it: grows the map's entry vector (FUN_140485000), fills the 0x60-byte entry with 0x107, assigns name (String_Assign, so the caller's string is copied), copies keyboard[4] to +0x10 and pad[4] to +0x20, +0x30, +0x40 and +0x50. Each key array is {key id, 0x107, 0x107, 0x107}. Its only caller is the map builder FUN_14024fe00 (once, at boot from 0x1401cd1ad), which adds the 31 vanilla actions by name plus a few fixed entries. hook_keybinds.cpp adds one entry per mod keybind so its Controls row has a key to show. Found 2026-11-11 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_InputActionMap",
+   "kind": "data",
+   "category": "input",
+   "va": "0x141436b68",
+   "status": "va",
+   "note": "*ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {data, u32 size, u32 cap}, entries 0x60: +0x00 name oCString {char*, u32 len|0x80000000, u32 cap}, +0x10 u32[4] keyboard keys, +0x20/+0x30/+0x40/+0x50 u32[4] pad keys (one per pad layout), 0x107 = none. Built once at boot (FUN_14024fe00 via InputActionMap_Add); FUN_140250860 rewrites the vanilla entries' keys from g_GameOptions when the options page changes a key (called from the row's after-capture handler FUN_1403f6380); it touches no entry whose name is not a vanilla action. The Controls key row's input-icon widget ([row+0xa0], ctor FUN_14046fb50, name at +0x340, keyboard/pad flags +0x33c/+0x33d) looks its key up here BY NAME every draw (FUN_14046fca0 from FUN_140470b00), not through row+0x98. So a row spawned from a vanilla template keeps showing the template action's key until its widget name is changed and the map has an entry under the new name. Read 2026-11-11 on b9c3.",
    "refs": [
     "src/loader/src/hook_keybinds.cpp"
    ]

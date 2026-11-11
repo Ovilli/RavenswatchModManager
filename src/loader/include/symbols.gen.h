@@ -323,8 +323,11 @@ constexpr std::uintptr_t HeroStoryUnlock_IsUnlocked = 0x1402acca0ull;
 constexpr const char* HeroStoryUnlock_IsUnlocked_Pattern = "HeroStoryUnlock_IsUnlocked";
 
 // --- input ---
+constexpr std::uintptr_t InputActionMap_Add = 0x140470c70ull;
+constexpr const char* InputActionMap_Add_Pattern = "InputActionMap_Add";
 constexpr std::uintptr_t Input_Poll = 0x14067ddd0ull;
 constexpr const char* Input_Poll_Pattern = "Input_Poll";
+constexpr std::uintptr_t g_InputActionMap = 0x141436b68ull;
 constexpr std::uintptr_t g_InputKeyRecords = 0x141466c50ull;
 constexpr std::uintptr_t g_InputManager = 0x14146f8e8ull;
 constexpr std::uintptr_t g_InputMouseWheelDown = 0x1414670acull;

@@ -11,7 +11,11 @@
 //   Options controller: +0x208 tab entries (0x48 each, count +0x210); entry
 //     +0x18 type byte (4 keyboard tab, 5 gamepad tab), +0x20 row vector
 //     {data, u32 count}.
-//   Key row: +0x98 u32* the key it shows and writes.
+//   Key row: +0x98 u32* the key it writes, +0xa0 its key icon widget, whose
+//     +0x340 oCString action name picks the input action map entry it draws.
+//   Input action map (*g_InputActionMap): +0x00 entry vector {data, u32 size},
+//     entries 0x60: +0x00 name oCString, +0x10 u32[4] keyboard keys, +0x20,
+//     +0x30, +0x40, +0x50 u32[4] pad keys; 0x107 = no key.
 
 #include <windows.h>
 
@@ -73,10 +77,22 @@ constexpr std::uintptr_t kTabRowCount  = 0x28;
 constexpr std::uint8_t   kTabKeyboard  = 4;
 constexpr std::uint8_t   kTabPad       = 5;
 constexpr std::uintptr_t kRowValue     = 0x98;
+constexpr std::uintptr_t kRowIcon      = 0xa0;
+constexpr std::uintptr_t kIconAction   = 0x340;
 // The vanilla row each mod row is spawned from: Explo::DashAbility, an
 // action the capture accepts any key for (rebound to keys 76 and 91 in the
-// 2026-11-11 probe). The row is then pointed at the mod's option and retitled.
+// 2026-11-11 probe). The row is then pointed at the mod's option, its key
+// icon at the mod's action map entry, and retitled.
 constexpr std::uint32_t  kTemplateExplo = 6;
+// Input action map
+constexpr std::uintptr_t kMapSize      = 0x08;
+constexpr std::uintptr_t kEntryStride  = 0x60;
+constexpr std::uintptr_t kEntryKb      = 0x10;
+constexpr std::uintptr_t kEntryPad     = 0x20;   // then +0x30, +0x40, +0x50
+constexpr int            kEntryPads    = 4;
+constexpr std::uintptr_t kKeysStride   = 0x10;
+constexpr std::uint32_t  kNoKey        = 0x107;
+constexpr std::uint32_t  kMapMax       = 4096;   // sanity bound on the entry count
 // Key table
 constexpr std::uintptr_t kRecStride    = 12;
 constexpr std::uint8_t   kRecPressed   = 0x08;
@@ -100,6 +116,7 @@ struct Binding {
     std::uint32_t pending = 0;
     bool pending_blocked = false;
     std::uint32_t seen_kb = 0, seen_pad = 0;
+    std::uint32_t map_index = UINT32_MAX;   // this binding's action map entry, if found
     // What Lua reads (keybind_keys, from any thread). The options themselves
     // are written by the game thread, the Controls menu and the settings
     // worker, so readers get this copy, published by the poll every frame.
@@ -117,11 +134,14 @@ std::atomic<bool> g_decls_closed{false};   // install ran: every init.lua is don
 std::atomic<bool> g_registered{false};
 std::atomic<bool> g_register_failed{false};  // terminal: the poll stops retrying
 bool g_told_late_tab = false;              // main thread only
+bool g_told_map = false;                   // poll thread only
 
 engine::GameOptionsManager_Register_fn    g_register     = nullptr;
 engine::GameOptionsManager_RequestLoad_fn g_request_load = nullptr;
 engine::OptionsMenu_SpawnExploKeyRow_fn   g_spawn_row    = nullptr;
 engine::OptionsMenuElement_SetTitle_fn    g_set_title    = nullptr;
+engine::String_Assign_fn                  g_str_assign   = nullptr;
+engine::InputActionMap_Add_fn             g_map_add      = nullptr;
 
 using build_fn = void (*)(void*, void*, void*);
 build_fn g_real_build_kb = nullptr;
@@ -173,6 +193,71 @@ void set_value(std::uint8_t* opt, std::uint32_t key) {
     using set_fn = void (*)(void*, const std::uint32_t*);
     auto** vt = *reinterpret_cast<set_fn**>(opt);
     vt[kSlotSetValue](opt, &key);
+}
+
+// --- input action map (input poll, game main thread) -------------------------
+//
+// A key row does not draw its key from row+0x98: its icon widget looks the key
+// up in the input action map by action name, every frame. The game builds the
+// map once at boot from the vanilla actions and only ever refreshes those, so
+// each binding gets an entry of its own (under its option name, which the
+// row's widget is given in add_rows), and the poll keeps the entry's keys
+// equal to the options.
+
+bool entry_named(std::uintptr_t entry, const std::string& name) {
+    OcStr s{};
+    if (!mem_load(entry, &s) || !s.p) return false;
+    if ((s.len & ~kLiteral) != name.size()) return false;
+    if (!mem_readable(s.p, name.size())) return false;
+    return std::memcmp(s.p, name.data(), name.size()) == 0;
+}
+
+void put_keys(std::uintptr_t keys, std::uint32_t key) {
+    auto* k = reinterpret_cast<std::uint32_t*>(keys);
+    if (k[0] != key) k[0] = key;
+}
+
+void sync_action_map(int n) {
+    std::uintptr_t map = 0, data = 0;
+    std::uint32_t size = 0;
+    if (!g_map_add || !mem_load(rebase(Sym::g_InputActionMap), &map) || !map
+        || !mem_load(map, &data) || !mem_load(map + kMapSize, &size)
+        || size > kMapMax || (size && !data)) {
+        return;   // not built yet (it is built at boot): the rows show no key meanwhile
+    }
+    for (int i = 0; i < n; ++i) {
+        Binding& b = g_binds[i];
+        std::uintptr_t entry = 0;
+        if (b.map_index < size && entry_named(data + b.map_index * kEntryStride, b.name)) {
+            entry = data + b.map_index * kEntryStride;
+        } else {
+            for (std::uint32_t j = 0; j < size && !entry; ++j) {
+                if (entry_named(data + j * kEntryStride, b.name)) {
+                    entry = data + j * kEntryStride;
+                    b.map_index = j;
+                }
+            }
+        }
+        if (!entry) {
+            const OcStr name = lit(b.name);
+            const std::uint32_t kb[4] = {value_of(b.opt_kb), kNoKey, kNoKey, kNoKey};
+            const std::uint32_t pad[4] = {value_of(b.opt_pad), kNoKey, kNoKey, kNoKey};
+            void* added = g_map_add(reinterpret_cast<void*>(map), &name, kb, pad);
+            // The add may have moved the entries: find it again next frame.
+            b.map_index = UINT32_MAX;
+            if (!added && !g_told_map) {
+                g_told_map = true;
+                Loader::get().log_err("[keybinds] could not add '" + b.name
+                                      + "' to the input action map; its rows show no key");
+            }
+            return;
+        }
+        if (!mem_writable(reinterpret_cast<void*>(entry), kEntryStride)) return;
+        put_keys(entry + kEntryKb, value_of(b.opt_kb));
+        for (int p = 0; p < kEntryPads; ++p) {
+            put_keys(entry + kEntryPad + p * kKeysStride, value_of(b.opt_pad));
+        }
+    }
 }
 
 // --- registration (input poll, game main thread) ----------------------------
@@ -243,6 +328,7 @@ void try_register() {
         b.snap_kb.store(b.seen_kb, std::memory_order_relaxed);
         b.snap_pad.store(b.seen_pad, std::memory_order_relaxed);
     }
+    sync_action_map(n);
     g_registered.store(true, std::memory_order_release);
     char line[160];
     std::snprintf(line, sizeof(line),
@@ -328,6 +414,17 @@ void add_rows(void* ctrl, std::uint32_t tab_index, std::uint8_t want_type) {
         }
         std::uint8_t* opt = want_type == kTabKeyboard ? b.opt_kb : b.opt_pad;
         *reinterpret_cast<std::uint32_t**>(row + kRowValue) = &value_of(opt);
+        // The key icon draws the action map entry its name picks: left on the
+        // template's name, the row shows Dash's key and looks bound to Dash.
+        std::uintptr_t icon = 0;
+        if (mem_load(row + kRowIcon, &icon) && icon
+            && mem_writable(reinterpret_cast<void*>(icon + kIconAction), sizeof(OcStr))) {
+            const OcStr action = lit(b.name);
+            g_str_assign(reinterpret_cast<void*>(icon + kIconAction), &action);
+        } else {
+            L.log_err("[keybinds] key icon not found on the row for '" + b.name
+                      + "'; it shows Dash's key");
+        }
         OcStr title = lit(b.label);   // aliases b.label, which lives for the session
         g_set_title(reinterpret_cast<void*>(row), &title);   // also re-reads row+0x98
         ++added;
@@ -454,6 +551,7 @@ void keybinds_on_poll() {
         b.snap_pad.store(b.seen_pad, std::memory_order_relaxed);
         any = any || b.pending != 0;
     }
+    sync_action_map(n);
     if (any) deliver(n);
 }
 
@@ -476,7 +574,9 @@ bool install_keybind_hooks() {
     if (!need("register option", Sym::GameOptionsManager_Register_Pattern, &g_register)
         || !need("request load", Sym::GameOptionsManager_RequestLoad_Pattern, &g_request_load)
         || !need("spawn key row", Sym::OptionsMenu_SpawnExploKeyRow_Pattern, &g_spawn_row)
-        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)) {
+        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
+        || !need("string assign", Sym::String_Assign_Pattern, &g_str_assign)
+        || !need("action map add", Sym::InputActionMap_Add_Pattern, &g_map_add)) {
         g_register = nullptr;
         g_request_load = nullptr;
         return false;

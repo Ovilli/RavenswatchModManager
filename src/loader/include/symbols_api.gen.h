@@ -519,6 +519,13 @@ inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
     return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
 }
 
+// InputActionMap_Add  (InputActionMap_Add)
+//   ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4])
+using InputActionMap_Add_fn = void*(*)(void*, const void*, const void*, const void*);
+inline InputActionMap_Add_fn InputActionMap_Add() {
+    return reinterpret_cast<InputActionMap_Add_fn>(rsmm::fn_resolve(Sym::InputActionMap_Add_Pattern));
+}
+
 // LoadingScreenUiController_OnHide  (LoadingScreenUiController_OnHide)
 //   void(void* uiController)
 using LoadingScreenUiController_OnHide_fn = void(*)(void*);

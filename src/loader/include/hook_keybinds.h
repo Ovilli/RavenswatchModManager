@@ -13,7 +13,10 @@
 //   * two InputKeyGameOption objects in loader memory (keyboard, pad), named
 //     "<mod id>::<id>", registered in categories 4 / 5;
 //   * one row per tab, spawned by the game's own Explo key-row spawner and
-//     then pointed at our option (value pointer and title);
+//     then pointed at our option (value pointer, key icon name and title);
+//   * one entry in the game's name-keyed input action map, which is where a
+//     row's key icon reads the key it shows (by the icon's action name, not
+//     through row+0x98), kept equal to our options by the poll;
 //   * the duplicate-key resolver extended to clear our options too;
 //   * a press check in the input poll on each binding's current key.
 //
