@@ -234,6 +234,12 @@ local function _menu_open(live)
     return nil
 end
 
+--- The first game screen that wants the cursor (pause menu, talent choice,
+--- Sandman shop, magical-object menu, cinematic, loading screen, main menu),
+--- or nil. live = true reads through the engine and is for the game thread
+--- only (input handlers); otherwise it reads R.game.cached.
+function M.cursor_screen(live) return _menu_open(live) end
+
 local _paused_by
 
 -- Tells the loader whether a menu is open and keeps the lease alive. Only the

@@ -47,7 +47,8 @@
 -- R.input.on_wheel: keep them short. `n` is the number of presses since the
 -- last delivery (a wheel notch is one press); `ev` also carries `key` / `pad`
 -- (the current keys). A handler gets only presses made in play: presses made
--- while a menu is open or while the game had input blocked (e.g. during a
+-- while a menu or another cursor screen is open (R.input.cursor_screen: the
+-- talent choice, the Sandman shop, ...) or while the game had input blocked (e.g. during a
 -- transition) are dropped, since the game's UI gets those keys, and so are
 -- presses that had to wait for the Lua lock (the menu check is only true of
 -- the frame it runs on). A keybind added with `menus = true` gets every press;
@@ -90,8 +91,13 @@ local function _key(v, lo, hi, what)
     return v
 end
 
---- Is a game menu open? Read through R.game; false when it cannot tell.
+--- Is a game menu open? Read through R.game; false when it cannot tell. Uses
+--- the same screen list as mouse-look (R.input.cursor_screen), so presses on the
+--- talent choice, the Sandman shop and the other cursor screens are dropped too.
+--- Only called from the press handler, which runs on the game thread.
 local function _in_menu()
+    local I = R and R.input
+    if I and I.cursor_screen then return I.cursor_screen(true) ~= nil end
     local G = R and R.game
     if not (G and G.flag) then return false end
     local ok, open = pcall(function()

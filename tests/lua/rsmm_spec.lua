@@ -11902,6 +11902,11 @@ do
     menu_open = false
     fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 3, blocked = false })
     check(#seen == 1 and seen[1] == 3, "a press in play is delivered")
+    local menu_flag = R.game.flag
+    R.game.flag = function(name) return name == "is_skill_menu_open" end
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen == 1, "a press on the talent choice is dropped (mouse-look's screen list)")
+    R.game.flag = menu_flag
     K.off(hq)
     closed = false
     local hmenu = K.add{ id = "Menu", label = "Menu key", key = 5, menus = true }
