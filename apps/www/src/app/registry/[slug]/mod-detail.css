@@ -985,3 +985,12 @@ body:has(.mod-detail) > .site-header {
     scroll-behavior: auto;
   }
 }
+/* "with Pam and Skigim": co-authors under the owner, in the muted label style. */
+.mod-author > .mod-coauthors {
+  font-size: 13px;
+  color: var(--mod-muted);
+}
+.mod-coauthors a {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
