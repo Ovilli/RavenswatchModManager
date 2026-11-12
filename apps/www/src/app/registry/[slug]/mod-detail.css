@@ -985,8 +985,9 @@ body:has(.mod-detail) > .site-header {
     scroll-behavior: auto;
   }
 }
-/* "with Pam and Skigim": co-authors under the owner, in the muted label style. */
-.mod-author > .mod-coauthors {
+/* "Ovilli with Pam and Skigim": co-authors on the owner's line, the "with"
+   in the muted label style. */
+.mod-coauthors {
   font-size: 13px;
   color: var(--mod-muted);
 }
