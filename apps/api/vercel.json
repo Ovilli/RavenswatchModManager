@@ -4,10 +4,7 @@
   "buildCommand": "pnpm --filter api vercel-build",
   "ignoreCommand": "sh ../../scripts/vercel-ignore-build.sh api",
   "git": {
-    "deploymentEnabled": {
-      "testing": false,
-      "dependabot/**": false
-    }
+    "deploymentEnabled": false
   },
   "crons": [
     {
