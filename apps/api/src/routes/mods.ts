@@ -16,10 +16,10 @@ import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
+import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
-import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyReview, notifyReviewReply } from '../notify.js';
 import { preservePrivateOnlyTags, setStoredPrivateOnlyTag } from '../private-only.js';
@@ -426,6 +426,18 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   const followerCount = followerRows.length;
   const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
 
+  // Co-authors, credited publicly beside "Created by" (name and handle are
+  // already public on each profile). Banned accounts are left out.
+  const coAuthors = await db
+    .select({
+      userId: schema.modAuthors.userId,
+      name: schema.users.name,
+      handle: schema.users.handle,
+    })
+    .from(schema.modAuthors)
+    .innerJoin(schema.users, eq(schema.users.id, schema.modAuthors.userId))
+    .where(and(eq(schema.modAuthors.modId, mod.id), eq(schema.users.banned, false)));
+
   return c.json({
     mod: {
       id: mod.id,
@@ -454,6 +466,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       isFollowing,
       isAuthor,
       followerCount,
+      coAuthors,
       dependencies:
         (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
