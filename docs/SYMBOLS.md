@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **378** symbols across 29 categories.
+Total: **379** symbols across 29 categories.
 
 ## analytics
 
@@ -238,6 +238,7 @@ Total: **378** symbols across 29 categories.
 | `g_InputManager` | `0x14146f8e8` | 📍 va |  | Pointer to the input manager (*ptr = the object Input_Poll is called on). The window pr… |
 | `g_InputMouseWheelDown` | `0x1414670ac` | 📍 va |  | Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of … |
 | `g_InputMouseWheelUp` | `0x1414670a0` | 📍 va |  | Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display… |
+| `g_MouseState` | `0x14146d9c8` | 📍 va |  | The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus … |
 
 ## items
 

@@ -11618,7 +11618,72 @@ do
     none, why2 = R.input.wheel_bindings()
     check(none == nil and why2:find("not readable"), "an invalid options object is refused")
 
+    -- Middle-button bindings (key id 89): nothing ships on it.
+    options(0x63000000)
+    local mid = R.input.middle_bindings()
+    check(mid and #mid == 0, "shipped layout: nothing on the middle button")
+    check(R.input.middle_free() == true, "shipped layout: the middle button is free")
+    I.write_u32(0x63000000 + 0xb20 + 6 * 0x30 + 0x28, 89)     -- Explo slot 6 -> middle
+    free, holder = R.input.middle_free()
+    check(free == false and holder == "Explo::Action6", "a bound in-run action holds the middle button")
+    mid = R.input.middle_bindings()
+    check(#mid == 1 and mid[1].key == "middle" and mid[1].slot == "primary",
+          "middle binding names action, key and slot")
+    check(R.input.wheel_free() == true, "a middle binding is not a wheel binding")
+    I.write_u32(0x63000000 + 0xb20 + 6 * 0x30 + 0x28, 46)
+    options(0x64000000, { moved = true })
+    none, why2 = R.input.middle_free()
+    check(none == nil and why2 == "key options moved", "middle_free says it cannot tell when the layout moved")
+
     I.input_armed, I.input_wheel_totals = nil, nil
+end
+
+-- R.input drag: the middle-button drag from the same hook, "input:drag"
+-- {phase, dx, dy, x, y, w, h, blocked, button}; state from I.input_drag_state().
+do
+    local ok, why = R.input.drag_available()
+    check(ok == false and why:find("too old"), "no drag binding: unavailable, says why")
+    local st, why0 = R.input.drag_state()
+    check(st == nil and why0:find("too old"), "no drag binding: no state")
+
+    I.input_armed = function() return true end
+    I.input_drag_state = function() end                        -- hook live, drag not armed
+    ok, why = R.input.drag_available()
+    check(ok == false and why:find("not readable"), "drag not armed: says the records did not read")
+    I.input_armed = function() return false end
+    va_trusted_val = false
+    ok, why = R.input.drag_available()
+    check(ok == false and why:find("not trusted"), "untrusted build: the poll hook's reason")
+    va_trusted_val = true
+
+    I.input_armed = function() return true end
+    I.input_drag_state = function() return true, 640.5, 360, 1920, 1080, 3, -12.5, 4 end
+    check(R.input.drag_available() == true, "armed drag: available")
+    st = R.input.drag_state()
+    check(st and st.held == true and st.x == 640.5 and st.y == 360 and st.w == 1920
+          and st.h == 1080 and st.drags == 3 and st.dx == -12.5 and st.dy == 4,
+          "drag_state passes every field through")
+
+    local got = {}
+    local h = R.input.on_drag(function(phase, dx, dy, ev) got[#got + 1] = { phase, dx, dy, ev } end)
+    fire("input:drag", { phase = "start", button = "middle", dx = 0, dy = 0, x = 10, y = 20,
+                         w = 1920, h = 1080, blocked = false })
+    fire("input:drag", { phase = "move", button = "middle", dx = 5.5, dy = -2, x = 15.5, y = 18,
+                         w = 1920, h = 1080, blocked = false })
+    fire("input:drag", { phase = "end", button = "middle", dx = 0, dy = 0, x = 15.5, y = 18,
+                         w = 1920, h = 1080, blocked = true })
+    check(#got == 3 and got[1][1] == "start" and got[2][1] == "move" and got[3][1] == "end",
+          "on_drag gets start, move, end in order")
+    check(got[2][2] == 5.5 and got[2][3] == -2 and got[2][4].x == 15.5,
+          "on_drag gets phase, dx, dy first and the payload last")
+    check(got[3][4].blocked == true and got[3][4].button == "middle", "payload carries blocked and button")
+    fire("input:drag", { phase = "move" })
+    check(got[4][2] == 0 and got[4][3] == 0, "a payload without dx/dy reads as no movement")
+    R.input.off(h)
+    fire("input:drag", { phase = "start" })
+    check(#got == 4, "off stops drag delivery")
+
+    I.input_armed, I.input_drag_state = nil, nil
 end
 
 -- R.input.keybinds: a mod's own keybinds as native Controls rows (hook_keybinds.cpp).

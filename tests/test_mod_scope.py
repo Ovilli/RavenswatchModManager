@@ -45,6 +45,9 @@ def make_mod(root: Path, *, manifest: str = "", lua: str | None = None,
     # a wheel handler: local input, a menu-state read, a key-binding read
     'R.input.on_wheel(function(n) if not R.game.flag("is_menu_open") '
     'and R.input.wheel_free() then R.log(n) end end)',
+    # a drag handler: local input, a menu-state read, a middle-binding read
+    'R.input.on_drag(function(phase, dx, dy) if not R.game.flag("is_menu_open") '
+    'and R.input.middle_free() then R.log(phase, dx, dy) end end)',
 ])
 def test_read_only_and_presentation_lua_is_client_only(body):
     assert lua_reasons(SDK + body) == []

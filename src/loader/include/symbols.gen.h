@@ -332,6 +332,7 @@ constexpr std::uintptr_t g_InputKeyRecords = 0x141466c50ull;
 constexpr std::uintptr_t g_InputManager = 0x14146f8e8ull;
 constexpr std::uintptr_t g_InputMouseWheelDown = 0x1414670acull;
 constexpr std::uintptr_t g_InputMouseWheelUp = 0x1414670a0ull;
+constexpr std::uintptr_t g_MouseState = 0x14146d9c8ull;
 
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403be820ull;

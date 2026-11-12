@@ -1,4 +1,5 @@
--- R.input — mouse-wheel notches from the game's own input poll.
+-- R.input — mouse-wheel notches and the middle-button drag from the game's own
+-- input poll.
 --
 -- WHERE THE WHEEL GOES. The window procedure stores +1 or -1 on the input
 -- manager, and the per-frame poll (Input_Poll) turns it into two virtual
@@ -9,6 +10,15 @@
 -- the "input:wheel" event. Nothing is swallowed: the game's UI still gets every
 -- notch, so a mod that acts on the wheel should stay out of menus.
 --
+-- WHERE A MIDDLE DRAG COMES FROM. The same poll writes the middle button's key
+-- record (id 89) every frame, and the game's UI update keeps the cursor in a
+-- record of its own. While the game reports the button held, the loader adds
+-- up how far the cursor moved between two polls and posts "input:drag": one
+-- "start", any number of "move", one "end". By default nothing in a run reads
+-- the middle button (only the UI does), unless the player binds an action to
+-- it; middle_free() reads that. The cursor stops at the window edge, so a drag
+-- does too.
+--
 --   R.input.available()        --> true | false, reason
 --   R.input.on_wheel(fn)       --> handle; fn(steps, ev)
 --   R.input.off(handle)
@@ -16,23 +26,36 @@
 --   R.input.wheel_bindings()   --> { {action=, key="up"|"down", slot="primary"|"pad"}, ... } | nil, reason
 --   R.input.wheel_free()       --> true | false, action | nil, reason
 --
+--   R.input.drag_available()   --> true | false, reason
+--   R.input.on_drag(fn)        --> handle; fn(phase, dx, dy, ev), phase "start"|"move"|"end"
+--   R.input.drag_state()       --> { held, x, y, w, h, drags, dx, dy } | nil, reason
+--   R.input.middle_bindings()  --> { {action=, key="middle", slot="primary"|"pad"}, ... } | nil, reason
+--   R.input.middle_free()      --> true | false, action | nil, reason
+--
 -- `steps` is the net number of notches since the last delivery, positive for
 -- wheel up. `ev` also carries `up`, `down` (totals) and `blocked` (the game had
 -- input blocked when the newest notch arrived, e.g. during a transition).
+--
+-- A drag's `dx`, `dy` are the pixels moved since the last delivered move (0 on
+-- start and end). `ev` also carries `x`, `y` (the game's cursor), `w`, `h` (its
+-- client size, to scale by), `blocked` and `button` ("middle"). A handler that
+-- subscribes mid-drag sees nothing until the next start.
 --
 -- Handlers run on the GAME THREAD, inside the input poll. Keep them short: read
 -- a value, queue a change, return.
 --
 -- Totals rather than a drain: every mod has its own Lua state, and a drain
 -- would let the first mod to ask take the others' notches. Diff against your
--- own last reading instead.
+-- own last reading instead (wheel_totals, drag_state().dx / .dy).
 
 local M = {}
 
 local R, I, options_obj
 
 local EVENT = "input:wheel"
+local DRAG_EVENT = "input:drag"
 local KEY_WHEEL_UP, KEY_WHEEL_DOWN = 92, 93
+local KEY_MOUSE_MIDDLE = 89
 -- Above this a key id is not a key: the layout moved. Keyboard ids run 1-84,
 -- mouse 85-93 (wheel 92/93), pad 94 up; the live pad bindings reach 117.
 local KEY_MAX = 0xff
@@ -54,6 +77,8 @@ local SHIPPED = {
     ["Menu::AlternativePageNext"] = "up",
     ["Menu::AlternativePagePrev"] = "down",
 }
+local WHEEL_KEYS = { [KEY_WHEEL_UP] = "up", [KEY_WHEEL_DOWN] = "down" }
+local MIDDLE_KEYS = { [KEY_MOUSE_MIDDLE] = "middle" }
 
 --- Is the wheel hook live? false + reason when it is not.
 function M.available()
@@ -81,6 +106,38 @@ function M.wheel_totals()
     return I.input_wheel_totals()
 end
 
+--- Is the middle drag live? false + reason when it is not.
+function M.drag_available()
+    if not (I and I.input_drag_state) then return false, "loader too old (no drag)" end
+    if I.input_drag_state() ~= nil then return true end
+    local ok, why = M.available()
+    if not ok then return false, why end
+    return false, "middle-button or cursor record not readable (see the loader log)"
+end
+
+--- Call fn(phase, dx, dy, ev) for every drag delivery, in order: "start",
+--- then "move" (dx, dy = pixels since the last move), then "end". Returns a handle.
+function M.on_drag(fn)
+    assert(type(fn) == "function", "R.input.on_drag: fn must be a function")
+    return R.on(DRAG_EVENT, function(ev)
+        ev = ev or {}
+        fn(ev.phase, tonumber(ev.dx) or 0, tonumber(ev.dy) or 0, ev)
+    end)
+end
+
+--- The drag right now: { held, x, y, w, h, drags, dx, dy }. x, y, w, h are the
+--- game's cursor and client size; drags counts starts since launch; dx, dy are
+--- the total movement while held since launch. nil + reason when not live.
+function M.drag_state()
+    if not (I and I.input_drag_state) then return nil, "loader too old (no drag)" end
+    local held, x, y, w, h, drags, dx, dy = I.input_drag_state()
+    if held == nil then
+        local _, why = M.drag_available()
+        return nil, why
+    end
+    return { held = held, x = x, y = y, w = w, h = h, drags = drags, dx = dx, dy = dy }
+end
+
 -- obj -> { [names offset] = { [i] = name } }. Names are static strings, so one
 -- read per options object is enough.
 local _names = {}
@@ -105,13 +162,9 @@ local function _name(obj, base, i)
     return name
 end
 
---- Every key option currently bound to the wheel:
---- { {action = "Explo::Dash", key = "up"|"down", slot = "primary"|"pad"}, ... }.
---- nil + reason when the options registry cannot be read or its layout moved
---- (a name that does not start with Menu:: / Explo::, or a key id out of range).
---- 62 guarded reads, so it is cheap enough to call on every notch, which also
---- picks up a rebind made from the pause menu mid-run.
-function M.wheel_bindings()
+-- Every key option whose current key is in `keys` ({[id] = label}):
+-- { {action =, key = label, slot =}, ... }, or nil + reason.
+local function _bindings(keys)
     local obj = options_obj and options_obj()
     if not obj then return nil, "options registry not readable" end
     local out = {}
@@ -123,16 +176,23 @@ function M.wheel_bindings()
             end
             local key = I.read_u32(obj + a.off + i * SLOT + KEY)
             if key == nil or key > KEY_MAX then return nil, "key options moved" end
-            if key == KEY_WHEEL_UP or key == KEY_WHEEL_DOWN then
-                out[#out + 1] = {
-                    action = name,
-                    key = key == KEY_WHEEL_UP and "up" or "down",
-                    slot = a.slot,
-                }
+            local label = keys[key]
+            if label then
+                out[#out + 1] = { action = name, key = label, slot = a.slot }
             end
         end
     end
     return out
+end
+
+--- Every key option currently bound to the wheel:
+--- { {action = "Explo::Dash", key = "up"|"down", slot = "primary"|"pad"}, ... }.
+--- nil + reason when the options registry cannot be read or its layout moved
+--- (a name that does not start with Menu:: / Explo::, or a key id out of range).
+--- 62 guarded reads, so it is cheap enough to call on every notch, which also
+--- picks up a rebind made from the pause menu mid-run.
+function M.wheel_bindings()
+    return _bindings(WHEEL_KEYS)
 end
 
 --- true when the wheel does nothing in a run: the only bindings on it are the
@@ -146,6 +206,22 @@ function M.wheel_free()
             return false, b.action
         end
     end
+    return true
+end
+
+--- Every key option currently bound to the middle mouse button (key id 89):
+--- { {action =, key = "middle", slot =}, ... }. Same reads and failures as
+--- wheel_bindings(). Mod keybinds (R.input.keybinds) are not in these slots.
+function M.middle_bindings()
+    return _bindings(MIDDLE_KEYS)
+end
+
+--- true when no game action is bound to the middle button (nothing ships bound
+--- to it). false + the first action holding it. nil + reason when unreadable.
+function M.middle_free()
+    local list, why = M.middle_bindings()
+    if not list then return nil, why end
+    if list[1] then return false, list[1].action end
     return true
 end
 

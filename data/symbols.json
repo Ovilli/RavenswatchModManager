@@ -6049,8 +6049,9 @@
    "category": "input",
    "va": "0x141466c50",
    "status": "va",
-   "note": "The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll.",
+   "note": "The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll. Mouse ids: 85 left, 86 right, 87 double left, 88 double right, 89 middle, 90 back, 91 forward (names KEY_MouseButton* in the table at 0x140ee6740). hook_input.cpp reads record 89's held bit after the poll for the middle drag.",
    "refs": [
+    "src/loader/src/hook_input.cpp",
     "src/loader/src/hook_keybinds.cpp"
    ]
   },
@@ -6304,7 +6305,7 @@
    "raw": "FUN_14067ddd0",
    "status": "ok",
    "signature": "void(void* inputManager, const void* frameTime)",
-   "note": "Per-frame input poll (method on the *g_InputManager object; rdx = frame time, [rdx] added to held times, [rdx+4] copied to this+0x5c; returns nothing). Turns the mouse wheel into two virtual buttons: at 0x14067e401 / 0x14067e418 it calls the button setter FUN_1406811d0(record, &dt, down) on g_InputMouseWheelUp with down = [this+0xa0] > 0 and on g_InputMouseWheelDown with down = [this+0xa0] < 0, then zeroes this+0xa0 at 0x14067e6c3. The window procedure FUN_14057ac80 (WM_MOUSEWHEEL 0x20a, at 0x14057b380) STORES +1/-1 at [*g_InputManager]+0xa0 (does not accumulate, so notches between two polls collapse into one) and chains to CallWindowProcA (nothing is swallowed). this+0x60 is a blocked-frames countdown, decremented at 0x14067e74b; while non-zero the setter sets record flag 0x1. Skip branch: a callback at 0x14067de04 returning true, or this+0xaa != 0, jumps past the mouse block to 0x14067e249; a second callback there can skip to 0x14067e42f, past the wheel setters. Hooked by hook_input.cpp: reads +0xa0 before the original runs and counts a notch when the original consumed it (+0xa0 == 0 after) AND the matching record reads held (flag 0x4).",
+   "note": "Per-frame input poll (method on the *g_InputManager object; rdx = frame time, [rdx] added to held times, [rdx+4] copied to this+0x5c; returns nothing). Turns the mouse wheel into two virtual buttons: at 0x14067e401 / 0x14067e418 it calls the button setter FUN_1406811d0(record, &dt, down) on g_InputMouseWheelUp with down = [this+0xa0] > 0 and on g_InputMouseWheelDown with down = [this+0xa0] < 0, then zeroes this+0xa0 at 0x14067e6c3. The window procedure FUN_14057ac80 (WM_MOUSEWHEEL 0x20a, at 0x14057b380) STORES +1/-1 at [*g_InputManager]+0xa0 (does not accumulate, so notches between two polls collapse into one) and chains to CallWindowProcA (nothing is swallowed). this+0x60 is a blocked-frames countdown, decremented at 0x14067e74b; while non-zero the setter sets record flag 0x1. Read/skip branch (re-read 2026-11-11): the callback at [0x141436bf8] (called at 0x14067de04; no callback = read) returning true jumps to 0x14067e249, which READS the keyboard (ids 1-84 via FUN_1406815d0 + GetAsyncKeyState) and the mouse; callback false with this+0xaa == 0 runs 0x14067de1b..0x14067e244, which only ages the records (held -> released) and jumps to 0x14067e663; callback false with this+0xaa != 0 asks again at 0x14067e272 and skips to 0x14067e42f, leaving the keyboard and mouse records as they were. +0xa0 is zeroed at 0x14067e6c3 on every path. Mouse block: GetAsyncKeyState VK_LBUTTON/RBUTTON/MBUTTON/XBUTTON1/XBUTTON2 -> key records 85/86/89/90/91 (0x14067e302..0x14067e3ac); records 87/88 are the left/right double clicks the window procedure queues at this+0xd0 (FUN_14067d4a0). Hooked by hook_input.cpp: reads +0xa0 before the original runs and counts a notch when the original consumed it (+0xa0 == 0 after) AND the matching record reads held (flag 0x4); after the original it also reads key record 89 (middle) for the R.input drag.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ],
@@ -6345,6 +6346,17 @@
    "va": "0x1414670ac",
    "status": "va",
    "note": "Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of the key table at 0x141466c50, directly after g_InputMouseWheelUp. Same 12-byte layout; see that symbol.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_MouseState",
+   "kind": "data",
+   "category": "input",
+   "va": "0x14146d9c8",
+   "status": "va",
+   "note": "The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. A cursor-lock mode (byte 0x141467b67, set to 0 by the input init FUN_14067cea0 and written nowhere else) would make FUN_14045ab40 recentre the cursor with SetCursorPos and fake the previous position; it is off in this build. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
