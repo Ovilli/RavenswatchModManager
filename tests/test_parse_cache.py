@@ -232,3 +232,56 @@ def test_synthesize_encoded_matches_the_linear_scan_on_the_real_install():
     assert sample
     for path in sample:
         assert apply_mods.synthesize_encoded(path, m) == _reference_synthesize(path, m)
+
+
+def _fake_corpus(tmp_path, monkeypatch, name="a"):
+    """A fake install holding one asset, RSMM_GAME_DIR pointed at it, no mirror."""
+    root = _install(tmp_path / name)
+    live = root / paths.COOKING_SUBDIR / "enc"
+    live.write_bytes(b"live-" + name.encode())
+    monkeypatch.setenv("RSMM_GAME_DIR", str(root))
+    monkeypatch.setattr(corpus, "UNCOOKED", tmp_path / "no-mirror")
+    monkeypatch.setattr(corpus, "_cooking_memo", None)
+    monkeypatch.setattr(corpus, "_mirror_memo", None)
+    import rsmm.engine.asset_map as am
+    monkeypatch.setattr(am, "decoded_to_encoded", lambda: {"X/y": "enc"})
+    return root, live
+
+
+def test_corpus_read_sees_game_dir_switch_at_once(tmp_path, monkeypatch):
+    _, _ = _fake_corpus(tmp_path, monkeypatch, "a")
+    assert corpus.read("X/y") == b"live-a"
+    b = _install(tmp_path / "b")
+    (b / paths.COOKING_SUBDIR / "enc").write_bytes(b"live-b")
+    monkeypatch.setenv("RSMM_GAME_DIR", str(b))
+    assert corpus.read("X/y") == b"live-b"
+    monkeypatch.setenv("RSMM_GAME_DIR", str(tmp_path / "nowhere"))
+    assert corpus.read("X/y") is None
+    assert corpus.cooking_dir() is None
+
+
+def test_corpus_read_prefers_backup_over_live(tmp_path, monkeypatch):
+    _, live = _fake_corpus(tmp_path, monkeypatch)
+    assert corpus.read("X/y") == b"live-a"
+    assert corpus.install_copies("X/y") == [live]
+    bak = live.with_name(live.name + ".rsmm.bak")
+    bak.write_bytes(b"pristine")
+    assert corpus.read("X/y") == b"pristine"
+    assert corpus.install_copies("X/y") == [live, bak]
+    assert corpus.install_path("X/y") == bak
+    live.unlink()
+    assert corpus.read("X/y") == b"pristine"
+
+
+def test_corpus_mirror_miss_memo_follows_uncooked_path(tmp_path, monkeypatch):
+    _fake_corpus(tmp_path, monkeypatch)
+    assert corpus.mirror_path("X/y") is None
+    assert corpus.read("X/y") == b"live-a"
+    mirror = tmp_path / "mirror"
+    (mirror / "X").mkdir(parents=True)
+    (mirror / "X" / "y").write_bytes(b"mirror")
+    monkeypatch.setattr(corpus, "UNCOOKED", mirror)
+    assert corpus.mirror_path("X/y") == mirror / "X" / "y"
+    assert corpus.read("X/y") == b"mirror"
+    monkeypatch.setattr(corpus, "UNCOOKED", tmp_path / "gone")
+    assert corpus.read("X/y") == b"live-a"
