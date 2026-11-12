@@ -1647,6 +1647,9 @@ puts the cursor back there every frame. `on_mouse_move` delivers the game's own
 `dx`/`dy`, in pixels, once per poll in which either is non-zero. `ev.locked` is
 true when the lock was on for that poll. With `hide = true` the operating
 system cursor is hidden while the lock is engaged and shown again on release.
+When the lock engages or resumes the loader first moves the cursor to the
+centre, and it posts no move event for the poll where the lock changes either
+way nor the two polls after it, so a pause or resume never delivers a jump.
 
 The lock pauses (released, cursor shown) while the game wants the cursor (the
 pause menu, talent choice, Sandman shop, magical-object menu, cinematic,

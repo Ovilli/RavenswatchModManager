@@ -19,7 +19,13 @@
 -- it; middle_free() reads that. The cursor stops at the window edge, so a drag
 -- does too.
 --
---   R.input.available()        --> true | false, reason
+-- MOUSE-LOOK TRANSITIONS. The first delta after the lock byte flips (engage,
+-- resume, pause, release) is measured across two frames of reference, so the
+-- loader parks the cursor on the centre before locking and posts no
+-- "input:mouse_move" for the flip poll and the two after it, dropping any
+-- queued movement too.
+--
+--   R.input.available()       --> true | false, reason
 --   R.input.on_wheel(fn)       --> handle; fn(steps, ev)
 --   R.input.off(handle)
 --   R.input.wheel_totals()     --> up, down (since launch)

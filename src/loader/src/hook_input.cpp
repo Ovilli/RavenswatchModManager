@@ -319,9 +319,17 @@ bool look_wanted() {
            GetTickCount64() < g_look_lease.load(std::memory_order_relaxed);
 }
 
+// Polls whose mouse-move samples are dropped after the lock byte changes: the
+// poll of the change, and the next two UI updates (the first of them differences
+// the cursor against a previous position left in the other frame of reference).
+constexpr int kLockSettlePolls = 3;
+std::atomic<int> g_lock_settle{0};
+
 void write_lock(std::uint8_t v) {
-    if (mem_writable(reinterpret_cast<const void*>(g_lock_flag), 1))
-        *reinterpret_cast<volatile std::uint8_t*>(g_lock_flag) = v;
+    if (!mem_writable(reinterpret_cast<const void*>(g_lock_flag), 1)) return;
+    auto* p = reinterpret_cast<volatile std::uint8_t*>(g_lock_flag);
+    if ((*p != 0) != (v != 0)) g_lock_settle.store(kLockSettlePolls, std::memory_order_relaxed);
+    *p = v;
 }
 
 void set_hidden(bool hide) {
@@ -367,6 +375,9 @@ void look_on_poll() {
     auto* c = reinterpret_cast<volatile float*>(g_lock_centre);
     c[0] = static_cast<float>(centre.x);
     c[1] = static_cast<float>(centre.y);
+    // Engage or resume: park the cursor on the centre first, so the first locked
+    // delta (cursor - centre) starts from zero, not from where the menu left it.
+    if (!g_lock_written.load()) SetCursorPos(centre.x, centre.y);
     write_lock(1);
     g_lock_written.store(true);
     set_hidden(g_look_hide.load(std::memory_order_relaxed));
@@ -489,7 +500,17 @@ void detour_poll(void* mgr, const void* frame_time) {
     }
     if (g_drag_armed.load(std::memory_order_relaxed))
         drag_on_poll(game_locked || g_look_active.load(std::memory_order_relaxed));
-    if (g_move_armed.load(std::memory_order_relaxed)) move_on_poll(game_locked);
+    if (g_move_armed.load(std::memory_order_relaxed)) {
+        // Lock byte changed recently: the delta is measured across two frames of
+        // reference. Drop it and anything queued, so nothing is merged or relabelled.
+        const int settle = g_lock_settle.load(std::memory_order_relaxed);
+        if (settle > 0) {
+            g_lock_settle.store(settle - 1, std::memory_order_relaxed);
+            g_mm_len = 0;
+        } else {
+            move_on_poll(game_locked);
+        }
+    }
 }
 
 } // namespace
