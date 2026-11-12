@@ -1,4 +1,5 @@
 import { ApiError } from '@rsmm/api-client';
+import { hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
 import { cn } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useCanGoBack, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
@@ -32,6 +33,7 @@ import {
 } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
 import { OverlayButton } from './overlay-button';
+import { PrivateGamesOnlyBadge } from './private-games-only-badge';
 import { ScreenshotLightbox } from './screenshot-lightbox';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
@@ -228,6 +230,8 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const description = apiMod?.description ?? liveBySlug?.description ?? '';
   const category = apiMod?.category ?? liveBySlug?.category ?? null;
   const tags = apiMod?.tags ?? liveBySlug?.tags ?? [];
+  const privateOnly = hasPrivateOnlyTag(tags);
+  const ordinaryTags = tags.filter((tag) => !isPrivateOnlyTag(tag));
   const rating = apiMod?.rating ?? null;
   const downloads = apiMod?.downloads ?? 0;
   const imageUrl = apiMod?.imageUrl ?? liveBySlug?.image ?? null;
@@ -288,6 +292,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         <CoverPlaceholder caption={`${slug}-hero.png`} className="aspect-[21/9]" />
       )}
 
+      {privateOnly ? <PrivateGamesOnlyBadge /> : null}
       <SectionHeader
         compact={embedded}
         title={name}
@@ -485,11 +490,11 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
             </Panel>
           ) : null}
 
-          {tags.length > 0 ? (
+          {ordinaryTags.length > 0 ? (
             <Panel>
               <h4 className="font-mono text-ash mb-3">{t('Tags')}</h4>
               <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => (
+                {ordinaryTags.map((t) => (
                   <MonoTag key={t}>{t}</MonoTag>
                 ))}
               </div>

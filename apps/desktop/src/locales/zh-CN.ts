@@ -48,6 +48,9 @@ export const zhCN: Record<string, string> = {
   Activate: '设为当前',
   Add: '添加',
   'Add mod': '添加模组',
+  'Private games only': '仅限私人游戏',
+  'This mod can only be used in solo and private multiplayer games because it may give an unfair advantage.':
+    '此模组仅可用于单人和私人多人游戏，因为它可能带来不公平的优势。',
   'Add to profile': '添加到方案',
   'Add {n} from disk': '从磁盘添加 {n} 个',
   'Added 1 mod from disk to this profile': '已从磁盘添加 1 个模组到此方案',
