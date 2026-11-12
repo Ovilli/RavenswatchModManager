@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-12",
+      "summary": "Bundles loader v57 with mouse drag and mouse-look support for mods.",
+      "highlights": [
+        "Bundles loader v57 with mouse drag and mouse-look support for mods."
+      ],
+      "cli_version": 30
+    },
+    {
+      "version": "",
+      "date": "2026-11-12",
       "summary": "Mods can turn the camera with a mouse drag and run a mouse-look mode; keybinds stay quiet on every menu screen; a mod saving settings no longer undoes a pause-menu change.",
       "highlights": [
         "Mods can read a held mouse-button drag (R.input.on_drag) and run a mouse-look mode that holds the cursor at the screen centre (R.input.mouse_look).",
@@ -511,15 +520,6 @@
       "highlights": [
         "Game folder setting in Settings is now used by every command; before, it was saved but ignored (#55).",
         "Steam installed anywhere (not just Program Files) is found automatically through the Windows registry."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 44,
-      "date": "2026-10-15",
-      "summary": "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange.",
-      "highlights": [
-        "R.modifier.allow_unlocks: opt-in, keeps achievement/outfit/difficulty tracking on during runs with modifiers (#54). Adds R.debug.observe. Needs the updated pattern DB for GameModifierLock_OnStateChange."
       ]
     }
   ]
