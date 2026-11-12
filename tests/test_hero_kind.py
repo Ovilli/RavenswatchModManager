@@ -1399,3 +1399,31 @@ def test_a_scratch_button_without_an_icon_wears_the_rigs(tmp_path):
     pairs = HA.icons_of(EntityFile(main.read_bytes(), "Hero_Solo"), "Primary Ability Controller")
     assert pairs == [(("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power.png"),
                       ("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power_Disabled.png"))]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_side_offsets_go_through_values_too(tmp_path):
+    """`offsets` (parallel shots) re-point the aim's X-offset value per shot, as
+    `angles` do the yaw: the node's inline numbers are ignored by the game."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9,
+                "steps": [{"fire": "Heroes/Hero_Red/Hero_Red_Projectile_Spike",
+                           "offsets": [-1, 1]}]}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    sides = []
+    for c in ef.graph().components:
+        if c.name.endswith(" Aim") and " Shot " in c.name:
+            f = next(x for x in EF.fields(c) if x.name == "obj_4")
+            side = next(seg for seg in f.text.split("<- ")[1:] if "Side" in seg)
+            v = ef.component(side.strip().rsplit("\\", 1)[-1])
+            sides.append(next(x.text for x in EF.fields(v) if x.name == "value"))
+    assert sorted(sides) == ["f32 -1", "f32 1"]

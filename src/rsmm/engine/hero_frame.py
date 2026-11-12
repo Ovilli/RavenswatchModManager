@@ -603,10 +603,15 @@ KIT_DONORS: list[dict] = [
     {"clone": ["AP Basic Value"], "from": "Heroes/Hero_Common/Hero_Common",
      "rename": {"AP Basic Value": "Kit Aim Y Angle"}},
     {"set": "Kit Aim Y Angle.value", "value": 0.0},
+    {"clone": ["AP Basic Value"], "from": "Heroes/Hero_Common/Hero_Common",
+     "rename": {"AP Basic Value": "Kit Aim X Offset"}},
+    {"set": "Kit Aim X Offset.value", "value": 0.0},
     # link slots, empty ones counted: 2 release direction, 3 X offset,
-    # 4 Y offset (shared), 5 Y angle
+    # 4 Y offset (shared), 5 Y angle. Yaw AND side offset read values of the
+    # hero's own, so `angles` and `offsets` each re-point them per shot (an
+    # inline number on the node is ignored by the game).
     {"link": "Kit Aim.obj_4[5]", "to": "Kit Aim Y Angle"},
-    {"link": "Kit Aim.obj_4[3]", "to": ""},
+    {"link": "Kit Aim.obj_4[3]", "to": "Kit Aim X Offset"},
     {"link": "Kit Aim.obj_4[2]", "to": ""},
     {"set": "Kit Aim.obj_4[8]", "value": 0.0},
     # The shared base's own attack spawner (Update 5's melody zone): every
