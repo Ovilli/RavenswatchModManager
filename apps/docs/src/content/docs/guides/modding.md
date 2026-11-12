@@ -1648,8 +1648,10 @@ puts the cursor back there every frame. `on_mouse_move` delivers the game's own
 true when the lock was on for that poll. With `hide = true` the operating
 system cursor is hidden while the lock is engaged and shown again on release.
 
-The lock pauses (released, cursor shown) while a game menu is open or the game
-window is not the foreground window, and resumes when that ends. The window
+The lock pauses (released, cursor shown) while the game wants the cursor (the
+pause menu, talent choice, Sandman shop, magical-object menu, book, cinematic,
+loading screen or main menu) or the game window is not the foreground window,
+and resumes when that ends. Each pause logs the flag that caused it. The window
 check is per frame. The menu check goes through `R.game.flag`, pushed to the
 loader on every mouse move and on the 500 ms tick, so a menu that opens while
 the mouse is still can take up to half a second to release the cursor. While the

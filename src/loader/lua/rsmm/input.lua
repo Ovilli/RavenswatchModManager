@@ -54,8 +54,11 @@
 -- per poll in which either is non-zero (merged if the Lua lock was busy); `ev`
 -- carries x, y, w, h, `locked` (the game's lock was on for that poll) and
 -- `blocked`. With opts.hide the OS cursor is hidden while the lock is engaged.
--- The lock PAUSES (released, cursor shown) while a game menu is open or the game
--- window is not the foreground window, and resumes when that ends. The window
+-- The lock PAUSES (released, cursor shown) while the game wants the cursor (the
+-- pause menu, talent choice, Sandman shop, magical-object menu, book, cinematic,
+-- loading screen or main menu; CURSOR_FLAGS) or the game window is not the
+-- foreground window, and resumes when that ends. Each pause and resume is logged
+-- with the flag that caused it. The window
 -- check is native and per frame; the menu check is read through R.game.flag and
 -- pushed to the loader from every mouse move and from the 500 ms tick, so a menu
 -- that opens while the mouse is still releases within a frame of the next move,
@@ -187,18 +190,37 @@ end
 
 local _look_on, _look_driver
 
+-- Every game state that wants the cursor. The pause menu sets the first two;
+-- the talent choice, the Sandman shop, the magical-object menu, the book,
+-- cinematics, loading screens and the main menu each have their own flag.
+local CURSOR_FLAGS = {
+    "is_game_menu_open", "is_menu_open", "is_skill_menu_open", "is_in_sandman_shop",
+    "is_mos_menu_open", "is_book_open", "is_in_cinematic", "is_in_loading_screen",
+    "is_in_main_menu", "is_in_pause",
+}
+
+-- The first flag that wants the cursor, or nil.
 local function _menu_open()
     local G = R and R.game
-    if not (G and G.flag) then return false end
-    local ok, open = pcall(function()
-        return G.flag("is_game_menu_open") == true or G.flag("is_menu_open") == true
-    end)
-    return ok and open == true
+    if not (G and G.flag) then return nil end
+    for _, name in ipairs(CURSOR_FLAGS) do
+        local ok, v = pcall(G.flag, name)
+        if ok and v == true then return name end
+    end
+    return nil
 end
+
+local _paused_by
 
 -- Tells the loader whether a menu is open and keeps the lease alive.
 local function _drive()
-    if _look_on and I and I.input_look_refresh then I.input_look_refresh(_menu_open()) end
+    if not (_look_on and I and I.input_look_refresh) then return end
+    local why = _menu_open()
+    if why ~= _paused_by then
+        R.log("[input] mouse-look " .. (why and ("paused: " .. why) or "resumed"))
+        _paused_by = why
+    end
+    I.input_look_refresh(why ~= nil)
 end
 
 --- Request mouse-look on or off. opts.hide (default false) hides the OS cursor
