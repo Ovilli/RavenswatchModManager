@@ -54,7 +54,8 @@ bytes[0x10:] — that variant is documented in rsmm.engine.save_container
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from typing import Literal
 
 MARK_BEGIN = b"\x11\x11\xbb\xaa"   # 0xAABB1111 little-endian
@@ -187,7 +188,7 @@ def _find_section_end(data: bytes, start_pos: int) -> int:
     raise ValueError("unterminated section: no matching END marker")
 
 
-def parse(data: bytes) -> CookedFile:
+def _parse_uncached(data: bytes) -> CookedFile:
     c = _Cursor(data)
     hdr_a = c.u32()
     flags = c.u32()
@@ -236,6 +237,26 @@ def parse(data: bytes) -> CookedFile:
         c.pos = section_end
 
     return cf
+
+
+@lru_cache(maxsize=256)
+def _parse_cached(data: bytes) -> CookedFile:
+    return _parse_uncached(data)
+
+
+def parse(data: bytes) -> CookedFile:
+    """Decode a container. Repeat parses of the same bytes reuse one decode;
+    every call still returns a fresh, independently mutable object graph
+    (callers edit `sections` / `classes` in place). Only exact `bytes` are
+    cached; other buffer types take the uncached path."""
+    if type(data) is not bytes:
+        return _parse_uncached(data)
+    cf = _parse_cached(data)
+    return replace(
+        cf,
+        classes=[replace(c) for c in cf.classes],
+        sections=[replace(s) for s in cf.sections],
+    )
 
 
 def emit(cf: CookedFile) -> bytes:

@@ -250,6 +250,35 @@ def default_game_dir() -> Path:
     return _scan_game_dir()
 
 
+_install_hit: Path | None = None
+
+
+def find_install_dir() -> Path | None:
+    """First `_game_dir_candidates()` entry holding the `_Cooking` tree, or None.
+
+    Only a hit is remembered (re-validated with one stat per call, rescanned if
+    it vanished); a miss is rescanned every time so a game installed while a
+    long-lived process runs is still found.
+    """
+    global _install_hit
+    hit = _install_hit
+    if hit is not None:
+        try:
+            if (hit / COOKING_REL).is_dir():
+                return hit
+        except OSError:
+            pass
+        _install_hit = None
+    for c in _game_dir_candidates():
+        try:
+            if (c / COOKING_REL).is_dir():
+                _install_hit = c
+                return c
+        except OSError:
+            continue
+    return None
+
+
 @cache
 def _scan_game_dir() -> Path:
     """Cached candidate scan. Slow on Windows with network drives."""

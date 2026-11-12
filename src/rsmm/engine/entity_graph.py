@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import re
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 
 from . import cooked
 from . import entity_strings as ES
@@ -127,14 +128,44 @@ def _header_strings(p: bytes, at: int) -> tuple[str, str, int] | None:
     return out[0], out[1], at
 
 
-def parse(raw: bytes, name: str = "") -> EntityGraph:
-    """Components of a cooked entity-settings file, with their edges."""
+def _parse_uncached(raw: bytes, name: str = "") -> EntityGraph:
     cf = cooked.parse(raw)
     classes = [c.name for c in cf.classes]
     picker_cls = classes.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in classes else -1
     comps = [c for si, sec in enumerate(cf.sections[1:-1], 1)
              if (c := component_at(sec.payload, si, classes, picker_cls)) is not None]
     return EntityGraph(name, comps)
+
+
+@lru_cache(maxsize=256)
+def _parse_cached(raw: bytes) -> EntityGraph:
+    return _parse_uncached(raw)
+
+
+def _copy_graph(g: EntityGraph, name: str) -> EntityGraph:
+    # One `classes` list per graph, shared by its components as a fresh parse does.
+    classes = list(g.components[0].classes) if g.components else []
+    comps = [
+        replace(
+            c,
+            override=replace(c.override) if c.override is not None else None,
+            refs=[replace(r) for r in c.refs],
+            literals=list(c.literals),
+            classes=classes,
+        )
+        for c in g.components
+    ]
+    return EntityGraph(name, comps)
+
+
+def parse(raw: bytes, name: str = "") -> EntityGraph:
+    """Components of a cooked entity-settings file, with their edges.
+
+    Repeat parses of the same bytes reuse one decode; each call returns a fresh,
+    independently mutable graph. Only exact `bytes` are cached."""
+    if type(raw) is not bytes:
+        return _parse_uncached(raw, name)
+    return _copy_graph(_parse_cached(raw), name)
 
 
 def component_at(p: bytes, si: int, classes: list[str], picker_cls: int) -> Component | None:

@@ -79,6 +79,7 @@ from rsmm.engine.paths import (
     MODS_DIR,
     USEDRSCLIST_REL,
     _game_dir_candidates,
+    find_install_dir,
     game_fingerprint,
     load_stored_fingerprint,
     save_fingerprint,
@@ -154,10 +155,7 @@ def find_game_dir() -> Path | None:
     if override:
         path = Path(os.path.expandvars(override)).expanduser()
         return path if (path / COOKING_REL).is_dir() else None
-    for c in _game_dir_candidates():
-        if (c / COOKING_REL).is_dir():
-            return c
-    return None
+    return find_install_dir()
 
 
 class Journal:
