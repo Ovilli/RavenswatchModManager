@@ -1,4 +1,4 @@
-// Mouse-wheel notches and the middle-button drag from Input_Poll — see
+// Mouse-wheel notches, the middle-button drag and mouse-look from Input_Poll — see
 // hook_input.h for the why.
 
 #include <windows.h>
@@ -22,6 +22,7 @@ namespace {
 
 constexpr const char* kEvent = "input:wheel";
 constexpr const char* kDragEvent = "input:drag";
+constexpr const char* kMoveEvent = "input:mouse_move";
 
 // Input manager field the window procedure stores the wheel direction in
 // (+1 / -1, a dword) and Input_Poll zeroes once it has set the buttons.
@@ -52,6 +53,8 @@ std::uintptr_t g_rec_up = 0;
 std::uintptr_t g_rec_down = 0;
 std::uintptr_t g_rec_middle = 0;
 std::uintptr_t g_mouse_state = 0;
+std::uintptr_t g_lock_flag = 0;     // Sym::g_CursorLockFlag (u8)
+std::uintptr_t g_lock_centre = 0;   // Sym::g_CursorLockCentre (f32 x, y; screen coordinates)
 
 std::atomic<bool> g_armed{false};
 std::atomic<std::uint64_t> g_up{0};
@@ -241,12 +244,16 @@ void try_deliver_drag() {
     g_qlen -= sent;
 }
 
-void drag_on_poll() {
+void drag_on_poll(bool locked) {
     std::uint8_t flags = 0;
     // An unreadable record counts as released: an open drag ends.
     const bool held = mem_load(g_rec_middle, &flags) && (flags & kHeld);
     const bool blocked = (flags & kBlocked) != 0;
-    if (held && !g_dragging) {
+    if (locked) {
+        // The cursor is recentred every frame, so position differences are
+        // not a drag: no start, and one in progress ends.
+        if (g_dragging) drag_end(blocked);
+    } else if (held && !g_dragging) {
         drag_begin(blocked);
     } else if (held) {
         drag_move(blocked);
@@ -255,6 +262,159 @@ void drag_on_poll() {
         drag_end(blocked);
     }
     if (g_qlen > 0) try_deliver_drag();
+}
+
+// --- mouse-look ---------------------------------------------------------------
+//
+// The game's UI update recentres the cursor and takes dx/dy against a centre
+// point while a lock byte is set (see hook_input.h). Requests come from any
+// thread; everything that touches the game's bytes or the OS cursor runs in the
+// poll detour.
+
+constexpr ULONGLONG kLookLeaseMs = 4000;
+
+std::atomic<bool> g_look_armed{false};
+std::atomic<bool> g_look_requested{false};
+std::atomic<bool> g_look_hide{false};
+std::atomic<bool> g_look_menu{false};
+std::atomic<ULONGLONG> g_look_lease{0};     // GetTickCount64 deadline
+std::atomic<bool> g_look_active{false};
+std::atomic<bool> g_look_paused{false};
+std::atomic<bool> g_look_hidden{false};
+std::atomic<bool> g_logged_look{false};
+
+// Game-thread state.
+HWND g_hwnd = nullptr;
+bool g_lock_written = false;   // the lock byte is 1 because of us
+
+struct FindCtx { DWORD pid; HWND best; long long area; };
+
+BOOL CALLBACK find_window_cb(HWND h, LPARAM lp) {
+    auto* c = reinterpret_cast<FindCtx*>(lp);
+    DWORD pid = 0;
+    GetWindowThreadProcessId(h, &pid);
+    if (pid != c->pid || !IsWindowVisible(h) || GetWindow(h, GW_OWNER) != nullptr) return TRUE;
+    RECT rc{};
+    if (!GetClientRect(h, &rc)) return TRUE;
+    const long long area = static_cast<long long>(rc.right) * rc.bottom;
+    if (area > c->area) { c->area = area; c->best = h; }
+    return TRUE;
+}
+
+// The game's window: the largest visible, unowned top-level window of this
+// process. Cached; looked up again when it goes away.
+HWND game_window() {
+    if (g_hwnd && IsWindow(g_hwnd)) return g_hwnd;
+    FindCtx c{GetCurrentProcessId(), nullptr, 0};
+    EnumWindows(find_window_cb, reinterpret_cast<LPARAM>(&c));
+    g_hwnd = c.best;
+    return g_hwnd;
+}
+
+bool look_wanted() {
+    return g_look_requested.load(std::memory_order_relaxed) &&
+           GetTickCount64() < g_look_lease.load(std::memory_order_relaxed);
+}
+
+void write_lock(std::uint8_t v) {
+    if (mem_writable(reinterpret_cast<const void*>(g_lock_flag), 1))
+        *reinterpret_cast<volatile std::uint8_t*>(g_lock_flag) = v;
+}
+
+void set_hidden(bool hide) {
+    if (hide == g_look_hidden.load(std::memory_order_relaxed)) return;
+    ShowCursor(hide ? FALSE : TRUE);
+    g_look_hidden.store(hide, std::memory_order_relaxed);
+}
+
+// Release: lock byte 0, cursor shown. Only touches what we changed.
+void look_release() {
+    if (g_lock_written) { write_lock(0); g_lock_written = false; }
+    set_hidden(false);
+    g_look_active.store(false, std::memory_order_relaxed);
+}
+
+void look_on_poll() {
+    if (!look_wanted()) {
+        g_look_paused.store(false, std::memory_order_relaxed);
+        look_release();
+        return;
+    }
+    HWND hw = game_window();
+    RECT rc{};
+    POINT centre{};
+    bool ok = hw && !IsIconic(hw) && GetForegroundWindow() == hw && GetClientRect(hw, &rc);
+    const bool menu = g_look_menu.load(std::memory_order_relaxed);
+    if (ok) {
+        centre = {rc.right / 2, rc.bottom / 2};
+        ok = rc.right > 0 && rc.bottom > 0 && ClientToScreen(hw, &centre);
+    }
+    // Not foreground / minimised / menu open: released, resumes by itself.
+    if (!ok || menu) {
+        g_look_paused.store(true, std::memory_order_relaxed);
+        look_release();
+        return;
+    }
+    g_look_paused.store(false, std::memory_order_relaxed);
+    if (!mem_writable(reinterpret_cast<const void*>(g_lock_centre), 2 * sizeof(float))) {
+        look_release();
+        return;
+    }
+    auto* c = reinterpret_cast<volatile float*>(g_lock_centre);
+    c[0] = static_cast<float>(centre.x);
+    c[1] = static_cast<float>(centre.y);
+    write_lock(1);
+    g_lock_written = true;
+    set_hidden(g_look_hide.load(std::memory_order_relaxed));
+    g_look_active.store(true, std::memory_order_relaxed);
+    if (!g_logged_look.exchange(true)) {
+        char line[128];
+        std::snprintf(line, sizeof(line), "[input] mouse-look engaged for the first time on thread %lu",
+                      static_cast<unsigned long>(GetCurrentThreadId()));
+        Loader::get().log(line);
+    }
+}
+
+// --- mouse move ---------------------------------------------------------------
+
+std::atomic<bool> g_move_armed{false};
+
+// Game-thread state: movement not yet delivered, consecutive polls merged.
+bool g_mm_pending = false;
+double g_mm_dx = 0.0, g_mm_dy = 0.0;
+float g_mm_x = 0.f, g_mm_y = 0.f, g_mm_w = 0.f, g_mm_h = 0.f;
+bool g_mm_locked = false, g_mm_blocked = false;
+
+void move_on_poll(bool locked) {
+    if (!script_has_handler(kMoveEvent)) {
+        g_mm_pending = false;
+        return;
+    }
+    MouseState s{};
+    if (mem_load(g_mouse_state, &s)) {
+        bool good = true;
+        for (float v : {s.x, s.y, s.w, s.h, s.dx, s.dy})
+            if (!std::isfinite(v) || std::fabs(v) > kPosLimit) good = false;
+        if (good && (s.dx != 0.f || s.dy != 0.f)) {
+            std::uint8_t flags = 0;
+            mem_load(g_rec_middle, &flags);
+            if (!g_mm_pending) { g_mm_dx = g_mm_dy = 0.0; g_mm_pending = true; }
+            g_mm_dx += s.dx;
+            g_mm_dy += s.dy;
+            g_mm_x = s.x; g_mm_y = s.y; g_mm_w = s.w; g_mm_h = s.h;
+            g_mm_locked = locked;
+            g_mm_blocked = (flags & kBlocked) != 0;
+        }
+    }
+    if (!g_mm_pending) return;
+    char json[256];
+    std::snprintf(json, sizeof(json),
+                  "{\"dx\":%.3f,\"dy\":%.3f,\"x\":%.3f,\"y\":%.3f,\"w\":%.3f,\"h\":%.3f,"
+                  "\"locked\":%s,\"blocked\":%s}",
+                  g_mm_dx, g_mm_dy, g_mm_x, g_mm_y, g_mm_w, g_mm_h,
+                  g_mm_locked ? "true" : "false", g_mm_blocked ? "true" : "false");
+    // Lua lock busy: keep it and merge the next frame's movement into it.
+    if (script_try_emit_event_json(kMoveEvent, json)) g_mm_pending = false;
 }
 
 void detour_poll(void* mgr, const void* frame_time) {
@@ -292,7 +452,16 @@ void detour_poll(void* mgr, const void* frame_time) {
     }
     if (g_pending.load(std::memory_order_relaxed) != 0) try_deliver();
 
-    if (g_drag_armed.load(std::memory_order_relaxed)) drag_on_poll();
+    // The byte as the game's UI update last saw it, before we change it below.
+    bool game_locked = false;
+    if (g_look_armed.load(std::memory_order_relaxed)) {
+        std::uint8_t lk = 0;
+        game_locked = mem_load(g_lock_flag, &lk) && lk != 0;
+        look_on_poll();
+    }
+    if (g_drag_armed.load(std::memory_order_relaxed))
+        drag_on_poll(game_locked || g_look_active.load(std::memory_order_relaxed));
+    if (g_move_armed.load(std::memory_order_relaxed)) move_on_poll(game_locked);
 }
 
 } // namespace
@@ -317,6 +486,42 @@ bool input_drag_state(InputDragState* out) {
     out->dx = g_drag_sum_dx.load(std::memory_order_relaxed);
     out->dy = g_drag_sum_dy.load(std::memory_order_relaxed);
     return true;
+}
+
+bool input_look_armed() { return g_look_armed.load(std::memory_order_acquire); }
+
+bool input_look_request(bool on, bool hide) {
+    if (!input_look_armed()) return false;
+    g_look_hide.store(hide, std::memory_order_relaxed);
+    g_look_lease.store(GetTickCount64() + kLookLeaseMs, std::memory_order_relaxed);
+    g_look_requested.store(on, std::memory_order_release);
+    return true;
+}
+
+void input_look_refresh(bool menu_open) {
+    g_look_menu.store(menu_open, std::memory_order_relaxed);
+    if (g_look_requested.load(std::memory_order_relaxed))
+        g_look_lease.store(GetTickCount64() + kLookLeaseMs, std::memory_order_relaxed);
+}
+
+bool input_look_state(InputLookState* out) {
+    if (!out || !input_look_armed()) return false;
+    out->requested = look_wanted();
+    out->active = g_look_active.load(std::memory_order_relaxed);
+    out->paused = out->requested && g_look_paused.load(std::memory_order_relaxed);
+    out->hidden = g_look_hidden.load(std::memory_order_relaxed);
+    return true;
+}
+
+void input_look_shutdown() {
+    g_look_requested.store(false, std::memory_order_release);
+    if (!g_lock_flag) return;
+    // Unload runs off the game thread. The lock byte is a plain write; the
+    // cursor count (ShowCursor) is per thread, so a hide we made cannot be
+    // undone from here - the poll normally releases it within a frame of the
+    // request going off, before this runs.
+    if (g_lock_written) { write_lock(0); g_lock_written = false; }
+    g_look_active.store(false, std::memory_order_relaxed);
 }
 
 bool install_input_hooks() {
@@ -350,6 +555,21 @@ bool install_input_hooks() {
     } else {
         Loader::get().log("[input] middle drag not armed: the middle-button or cursor "
                           "record is not readable");
+    }
+
+    // Mouse-look and the move event: the lock byte and centre must be writable
+    // and the cursor record readable. Any failure leaves them off, lock byte 0.
+    g_lock_flag = rebase(Sym::g_CursorLockFlag);
+    g_lock_centre = rebase(Sym::g_CursorLockCentre);
+    if (mem_load(g_mouse_state, &ms)) g_move_armed.store(true, std::memory_order_release);
+    if (g_move_armed.load(std::memory_order_relaxed) &&
+        mem_load(g_lock_flag, &probe) &&
+        mem_writable(reinterpret_cast<const void*>(g_lock_flag), 1) &&
+        mem_writable(reinterpret_cast<const void*>(g_lock_centre), 2 * sizeof(float))) {
+        g_look_armed.store(true, std::memory_order_release);
+    } else {
+        Loader::get().log("[input] mouse-look not armed: the cursor lock byte, centre "
+                          "or cursor record is not accessible");
     }
     return true;
 }

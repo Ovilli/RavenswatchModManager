@@ -359,6 +359,8 @@ ADDR: dict[str, int] = {
     "XpComponent_vftable": 0x140f1fad0,
     "g_CameraModifier_vftable": 0x140f62ea0,
     "g_CameraSceneContext_vftable": 0x140f0a910,
+    "g_CursorLockCentre": 0x14146d9c0,
+    "g_CursorLockFlag": 0x141467b67,
     "g_GameOptions": 0x141436a18,
     "g_GameOptionsManager": 0x141436a38,
     "g_GlobalEntityValueSceneContext_Tester_vftable": 0x140f06868,

@@ -242,6 +242,37 @@ int lua_input_drag_state(lua_State* L) {
     return 8;
 }
 
+// rsmm._internal.input_look_set(on, hide) -> true | false
+//   Request mouse-look (hook_input.cpp): the game's cursor lock with the
+//   window centre written for it. The game thread applies it on its next poll.
+//   false when it is not armed.
+int lua_input_look_set(lua_State* L) {
+    const bool on = lua_toboolean(L, 1) != 0;
+    const bool hide = lua_toboolean(L, 2) != 0;
+    lua_pushboolean(L, input_look_request(on, hide));
+    return 1;
+}
+
+// rsmm._internal.input_look_refresh(menu_open)
+//   Keeps a mouse-look request alive and says whether a game menu is open
+//   (the lock pauses while it is).
+int lua_input_look_refresh(lua_State* L) {
+    input_look_refresh(lua_toboolean(L, 1) != 0);
+    return 0;
+}
+
+// rsmm._internal.input_look_state() -> requested, active, paused, hidden | nothing
+//   Nothing when mouse-look is not armed.
+int lua_input_look_state(lua_State* L) {
+    InputLookState s{};
+    if (!input_look_state(&s)) return 0;
+    lua_pushboolean(L, s.requested);
+    lua_pushboolean(L, s.active);
+    lua_pushboolean(L, s.paused);
+    lua_pushboolean(L, s.hidden);
+    return 4;
+}
+
 // rsmm._internal.keybind_add(id, label, kb, pad) -> index | nil, err
 //   Declares a key binding for the calling mod (hook_keybinds.cpp). index is
 //   0-based and stable for the session; re-declaring the same id returns it.
@@ -2117,6 +2148,9 @@ void register_api(lua_State* L) {
         { "input_armed",             lua_input_armed },
         { "input_wheel_totals",      lua_input_wheel_totals },
         { "input_drag_state",        lua_input_drag_state },
+        { "input_look_set",          lua_input_look_set },
+        { "input_look_refresh",      lua_input_look_refresh },
+        { "input_look_state",        lua_input_look_state },
         { "keybind_add",             lua_keybind_add },
         { "keybind_keys",            lua_keybind_keys },
         { "keybinds_state",          lua_keybinds_state },

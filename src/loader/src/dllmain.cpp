@@ -341,6 +341,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
         }
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
+        rsmm::input_look_shutdown();   // lock byte 0 before the detour is unmapped
         // Every detour lives in this DLL's .text, which is about to be
         // unmapped — retire them all, not just the two that used to be here.
         rsmm::remove_event_hooks();

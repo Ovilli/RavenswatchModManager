@@ -1,5 +1,5 @@
--- R.input — mouse-wheel notches and the middle-button drag from the game's own
--- input poll.
+-- R.input — mouse-wheel notches, the middle-button drag and mouse-look from the
+-- game's own input poll.
 --
 -- WHERE THE WHEEL GOES. The window procedure stores +1 or -1 on the input
 -- manager, and the per-frame poll (Input_Poll) turns it into two virtual
@@ -32,6 +32,11 @@
 --   R.input.middle_bindings()  --> { {action=, key="middle", slot="primary"|"pad"}, ... } | nil, reason
 --   R.input.middle_free()      --> true | false, action | nil, reason
 --
+--   R.input.mouse_look_available()  --> true | false, reason
+--   R.input.mouse_look(on, opts)    --> true | nil, reason; opts.hide (default false)
+--   R.input.mouse_look_state()      --> { requested, active, paused, hidden } | nil, reason
+--   R.input.on_mouse_move(fn)       --> handle; fn(dx, dy, ev)
+--
 -- `steps` is the net number of notches since the last delivery, positive for
 -- wheel up. `ev` also carries `up`, `down` (totals) and `blocked` (the game had
 -- input blocked when the newest notch arrived, e.g. during a transition).
@@ -40,6 +45,26 @@
 -- start and end). `ev` also carries `x`, `y` (the game's cursor), `w`, `h` (its
 -- client size, to scale by), `blocked` and `button` ("middle"). A handler that
 -- subscribes mid-drag sees nothing until the next start.
+--
+-- MOUSE-LOOK. The game's UI update has a cursor-lock mode nothing turns on:
+-- with a lock byte set it reads the cursor, takes dx/dy against a centre point
+-- and moves the cursor back to the centre. mouse_look(true) asks the loader to
+-- write the game window's centre there and set the byte (on the game thread, in
+-- the input poll). on_mouse_move(fn) gets the game's own dx/dy in pixels, once
+-- per poll in which either is non-zero (merged if the Lua lock was busy); `ev`
+-- carries x, y, w, h, `locked` (the game's lock was on for that poll) and
+-- `blocked`. With opts.hide the OS cursor is hidden while the lock is engaged.
+-- The lock PAUSES (released, cursor shown) while a game menu is open or the game
+-- window is not the foreground window, and resumes when that ends. The window
+-- check is native and per frame; the menu check is read through R.game.flag and
+-- pushed to the loader from every mouse move and from the 500 ms tick, so a menu
+-- that opens while the mouse is still releases within a frame of the next move,
+-- or at worst 500 ms. While the lock is on, middle drags are suppressed (no
+-- start; one in progress ends). The request is a lease: it lapses a few seconds
+-- after this Lua state stops refreshing it (reload, unload), leaving the lock
+-- off and the cursor shown. It is one global state, last caller wins.
+-- Hero mouse-aim probably reads the window cursor, so a centred cursor aims at
+-- the screen centre (inferred, not traced).
 --
 -- Handlers run on the GAME THREAD, inside the input poll. Keep them short: read
 -- a value, queue a change, return.
@@ -56,6 +81,7 @@ local EVENT = "input:wheel"
 local DRAG_EVENT = "input:drag"
 local KEY_WHEEL_UP, KEY_WHEEL_DOWN = 92, 93
 local KEY_MOUSE_MIDDLE = 89
+local MOVE_EVENT = "input:mouse_move"
 -- Above this a key id is not a key: the layout moved. Keyboard ids run 1-84,
 -- mouse 85-93 (wheel 92/93), pad 94 up; the live pad bindings reach 117.
 local KEY_MAX = 0xff
@@ -136,6 +162,76 @@ function M.drag_state()
         return nil, why
     end
     return { held = held, x = x, y = y, w = w, h = h, drags = drags, dx = dx, dy = dy }
+end
+
+--- Is mouse-look live? true | false, reason.
+function M.mouse_look_available()
+    if not (I and I.input_look_state and I.input_look_set) then
+        return false, "loader too old (no mouse-look)"
+    end
+    if I.input_look_state() ~= nil then return true end
+    local ok, why = M.available()
+    if not ok then return false, why end
+    return false, "cursor lock byte, centre or cursor record not accessible (see the loader log)"
+end
+
+--- Call fn(dx, dy, ev) with the game's mouse movement (pixels since the last
+--- delivery). ev: x, y, w, h, locked, blocked. Returns a handle.
+function M.on_mouse_move(fn)
+    assert(type(fn) == "function", "R.input.on_mouse_move: fn must be a function")
+    return R.on(MOVE_EVENT, function(ev)
+        ev = ev or {}
+        fn(tonumber(ev.dx) or 0, tonumber(ev.dy) or 0, ev)
+    end)
+end
+
+local _look_on, _look_driver
+
+local function _menu_open()
+    local G = R and R.game
+    if not (G and G.flag) then return false end
+    local ok, open = pcall(function()
+        return G.flag("is_game_menu_open") == true or G.flag("is_menu_open") == true
+    end)
+    return ok and open == true
+end
+
+-- Tells the loader whether a menu is open and keeps the lease alive.
+local function _drive()
+    if _look_on and I and I.input_look_refresh then I.input_look_refresh(_menu_open()) end
+end
+
+--- Request mouse-look on or off. opts.hide (default false) hides the OS cursor
+--- while the lock is engaged. true | nil, reason.
+function M.mouse_look(on, opts)
+    if type(on) ~= "boolean" then return nil, "mouse_look(on, opts): on must be a boolean" end
+    if opts ~= nil and type(opts) ~= "table" then return nil, "opts must be a table" end
+    local hide = opts and opts.hide == true or false
+    local ok, why = M.mouse_look_available()
+    if not ok then return nil, why end
+    if not I.input_look_set(on, hide) then return nil, "mouse-look not armed" end
+    _look_on = on
+    if on then
+        _drive()
+        if not _look_driver then
+            _look_driver = {
+                R.on("tick", _drive),
+                R.on(MOVE_EVENT, _drive),
+            }
+        end
+    end
+    return true
+end
+
+--- { requested, active, paused, hidden } | nil, reason.
+function M.mouse_look_state()
+    if not (I and I.input_look_state) then return nil, "loader too old (no mouse-look)" end
+    local requested, active, paused, hidden = I.input_look_state()
+    if requested == nil then
+        local _, why = M.mouse_look_available()
+        return nil, why
+    end
+    return { requested = requested, active = active, paused = paused, hidden = hidden }
 end
 
 -- obj -> { [names offset] = { [i] = name } }. Names are static strings, so one

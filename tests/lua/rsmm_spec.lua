@@ -11686,6 +11686,78 @@ do
     I.input_armed, I.input_drag_state = nil, nil
 end
 
+-- R.input mouse-look: the game's cursor lock, requested natively (I.input_look_*),
+-- plus "input:mouse_move" {dx, dy, x, y, w, h, locked, blocked}.
+do
+    local ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("too old"), "no mouse-look binding: unavailable, says why")
+    local r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("too old"), "mouse_look on an old loader: nil, reason")
+    local st, why1 = R.input.mouse_look_state()
+    check(st == nil and why1:find("too old"), "no binding: no state")
+
+    local armed, sets, refreshes = false, {}, {}
+    I.input_look_state = function()
+        if not armed then return end
+        return true, true, false, true
+    end
+    I.input_look_set = function(on, hide) sets[#sets + 1] = { on, hide }; return true end
+    I.input_look_refresh = function(menu) refreshes[#refreshes + 1] = menu end
+    I.input_armed = function() return true end
+
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not accessible"), "binding present, not armed: says the records did not read")
+    r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("not accessible"), "mouse_look without the symbols: nil, reason")
+    check(#sets == 0, "nothing requested when unavailable")
+    I.input_armed = function() return false end
+    va_trusted_val = false
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not trusted"), "untrusted build: the poll hook's reason")
+    va_trusted_val = true
+    I.input_armed = function() return true end
+
+    armed = true
+    check(R.input.mouse_look_available() == true, "armed: available")
+    check(R.input.mouse_look("yes") == nil, "on must be a boolean")
+    check(R.input.mouse_look(true, 5) == nil, "opts must be a table")
+    check(R.input.mouse_look(true) == true, "mouse_look(true) succeeds")
+    check(sets[1][1] == true and sets[1][2] == false, "hide defaults to false")
+    check(R.input.mouse_look(true, { hide = true }) == true and sets[2][2] == true, "opts.hide reaches the loader")
+    check(#refreshes >= 1 and refreshes[#refreshes] == false, "the menu state is pushed on request (no menu)")
+
+    local flag = R.game.flag
+    R.game.flag = function(n) return n == "is_menu_open" end
+    local before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before + 1 and refreshes[#refreshes] == true, "tick pushes a menu-open state")
+    fire("input:mouse_move", { dx = 1, dy = 2 })
+    check(#refreshes == before + 2, "every mouse move pushes it too")
+    R.game.flag = flag
+
+    st = R.input.mouse_look_state()
+    check(st and st.requested == true and st.active == true and st.paused == false and st.hidden == true,
+          "mouse_look_state passes every field through")
+
+    check(R.input.mouse_look(false) == true and sets[#sets][1] == false, "mouse_look(false) releases")
+    before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before, "no refresh once the request is off")
+
+    local got = {}
+    local h = R.input.on_mouse_move(function(dx, dy, ev) got[#got + 1] = { dx, dy, ev } end)
+    fire("input:mouse_move", { dx = 3.5, dy = -2, x = 10, y = 20, w = 1920, h = 1080, locked = true, blocked = false })
+    check(#got == 1 and got[1][1] == 3.5 and got[1][2] == -2 and got[1][3].locked == true and got[1][3].w == 1920,
+          "on_mouse_move gets dx, dy first and the payload last")
+    fire("input:mouse_move", {})
+    check(got[2][1] == 0 and got[2][2] == 0, "a payload without dx/dy reads as no movement")
+    R.input.off(h)
+    fire("input:mouse_move", { dx = 1, dy = 1 })
+    check(#got == 2, "off stops mouse-move delivery")
+
+    I.input_look_state, I.input_look_set, I.input_look_refresh, I.input_armed = nil, nil, nil, nil
+end
+
 -- R.input.keybinds: a mod's own keybinds as native Controls rows (hook_keybinds.cpp).
 -- The loader side is mocked the way script_lua.cpp exposes it: keybind_add
 -- returns a 0-based index (the same one for a repeated mod + id) or nil, err;
