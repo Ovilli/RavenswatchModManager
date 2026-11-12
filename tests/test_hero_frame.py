@@ -37,6 +37,7 @@ needs_corpus = pytest.mark.skipif(not _corpus(), reason="no hero corpus")
 
 
 
+@needs_corpus
 def test_fx_frame_inherits_through_one_alias():
     alias, identity = bytes(range(16)), bytes(range(16, 32))
     raw = HF.fx_frame(alias, identity)
