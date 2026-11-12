@@ -21,8 +21,22 @@
 -- +0x3f8. ★ yaw (value_7) is PROVEN IN GAME (2026-10-02, data edit 45°→135°
 -- rotated the view). ★ distance (+0x2f8) is PROVEN IN GAME (2026-11-09, a
 -- write moved the eye in and out; camera-control's wheel zoom clamps on it).
--- The other names are read off comparing the three shipped cameras and are NOT
--- yet proven — `R.camera.FIELDS` marks which is which.
+-- ★ look_offset (+0x478) is PROVEN IN GAME (2026-11-12, a write slid the view
+-- along the ground). The other names come from the function that turns the records into the view
+-- (0x1407e6f10, run on activate and every frame) and are NOT yet proven in
+-- game — `R.camera.FIELDS` marks which is which.
+--
+-- WHAT THE VIEW IS. With P the followed hero's position, yaw Y and pitch X
+-- (both radians in the file; pitch is clamped to [0.01, 1.5] before use),
+-- look offset H and distance D:
+--   look-at = P + H * (sin Y, 0, cos Y)
+--   eye     = look-at + D * (cos X * sin Y, sin X, cos X * cos Y)
+--   up      = (0, 1, 0)
+-- So +0x478 is NOT a look height: it slides the look-at point along the
+-- ground in the yaw direction, toward the camera when positive, and the eye
+-- slides with it. Nothing in this function lifts the look-at off P's height.
+-- FOV (+0x378) is clamped to [1, 179] and corrected for aspect; near (+0x4f8)
+-- and far (+0x578) go to the camera's near/far modifier.
 --
 -- Components are found by RTTI class name through R.entity.components, never
 -- by a vftable address, so a game patch that moves the vtable does not matter.
@@ -56,19 +70,25 @@ local REC_LINK       = 0x58      -- u32 picker index; 0xffffffff = literal
 -- finds them (the Kintaro clip kept its yaw across the switch). The boss camera
 -- belongs to a map object, which this module does not reach yet.
 -- Copying one number to every camera would erase what makes them differ (the
--- ultimate camera's look height is 0.5, the boss camera's distance 36), so:
+-- ultimate camera's look offset is 0.5, the boss camera's distance 36), so:
 --   "abs"  every camera gets the same value;
 --   "add"  every camera moves by the default camera's change from its original;
 --   "mul"  every camera scales by the default camera's ratio to its original.
 -- nil leaves the other cameras alone: the ultimate cameras zoom by FOV (27.5
--- against the default's 31), so a shared FOV would cancel the zoom.
+-- against the default's 31), so a shared FOV would cancel the zoom. The clip
+-- planes are left alone too.
 M.FIELDS = {
-    yaw      = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
-    pitch    = { off = 0x278, unit = "deg", proven = false, spread = "add" },
-    distance = { off = 0x2f8, unit = "raw", proven = true,  spread = "mul" },
-    fov      = { off = 0x378, unit = "raw", proven = false },
-    height   = { off = 0x478, unit = "raw", proven = false, spread = "add" },
+    yaw         = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
+    pitch       = { off = 0x278, unit = "deg", proven = false, spread = "add" },
+    distance    = { off = 0x2f8, unit = "raw", proven = true,  spread = "mul" },
+    fov         = { off = 0x378, unit = "raw", proven = false },
+    look_offset = { off = 0x478, unit = "raw", proven = true,  spread = "add" },
+    near        = { off = 0x4f8, unit = "raw", proven = false },
+    far         = { off = 0x578, unit = "raw", proven = false },
 }
+-- `height` was this module's first name for look_offset. It still works for
+-- get/set, but pairs(FIELDS) does not list it twice.
+setmetatable(M.FIELDS, { __index = { height = M.FIELDS.look_offset } })
 local DEFAULT_FLAG = 0xf8        -- value_16: true on "Default Camera" only
 
 -- settings ptr .. ":" .. off -> { at, v = original, w = what we last wrote }.
@@ -780,7 +800,7 @@ function M.explore(tag, opts)
         end
         local vals = {}
         if _plausible(s) and _is(s, SETTINGS_CLASS) then
-            for _, name in ipairs({ "distance", "pitch", "yaw", "height", "fov" }) do
+            for _, name in ipairs({ "distance", "pitch", "yaw", "look_offset", "fov", "near", "far" }) do
                 local f = M.FIELDS[name]
                 local at, err = _record(s, f.off)
                 local v = at and _from_file(f, I.read_f32(at))

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowLeft, ChevronDown, Download, ExternalLink } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
 import {
@@ -83,6 +84,7 @@ export function ModDetailView({
   const dependencies = Object.entries(mod.dependencies ?? {});
   const useServerDescription = initialData && mod.description === initialData.mod.description;
   const author = mod.author || 'Unknown author';
+  const coAuthors = mod.coAuthors ?? [];
   const privateOnly = hasPrivateOnlyTag(mod.tags);
   const tags = mod.tags.filter((tag) => !isPrivateOnlyTag(tag));
 
@@ -176,11 +178,27 @@ export function ModDetailView({
               </span>
               <div className="mod-author">
                 <span>Created by</span>
-                {mod.ownerId ? (
-                  <Link href={`/u/${mod.ownerId}` as Route}>{author}</Link>
-                ) : (
-                  <strong>{author}</strong>
-                )}
+                <div className="mod-author-names">
+                  {mod.ownerId ? (
+                    <Link href={`/u/${mod.ownerId}` as Route}>{author}</Link>
+                  ) : (
+                    <strong>{author}</strong>
+                  )}
+                  {coAuthors.length > 0 ? (
+                    <span className="mod-coauthors">
+                      {' '}
+                      with{' '}
+                      {coAuthors.map((a, i) => (
+                        <Fragment key={a.userId}>
+                          {i > 0 ? (i === coAuthors.length - 1 ? ' and ' : ', ') : null}
+                          <Link href={`/u/${a.userId}` as Route}>
+                            {a.name ?? (a.handle ? `@${a.handle}` : 'a co-author')}
+                          </Link>
+                        </Fragment>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <FollowButton
                 key={`${slug}-${mod.isFollowing}`}

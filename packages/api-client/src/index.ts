@@ -43,6 +43,16 @@ export const modDetailResponseSchema = z.object({
       // Viewer is the owner or a co-author.
       isAuthor: z.boolean().optional(),
       followerCount: z.number().int().optional(),
+      // Credited beside "Created by"; older servers omit it.
+      coAuthors: z
+        .array(
+          z.object({
+            userId: z.string(),
+            name: z.string().nullable(),
+            handle: z.string().nullable(),
+          }),
+        )
+        .optional(),
       // Present for the owner/admin viewing a delisted mod; public callers
       // never receive a non-active mod so these default to active.
       takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),
@@ -354,8 +364,12 @@ export function createApiClient(options: ApiClientOptions) {
       // single author page — the profile route has never returned the field.
       joinedAt: z.string().optional(),
     }),
-    mods: z.array(modListItemSchema),
-    // null when the author has turned off public download counts.
+    // `role`: the user owns the mod or co-authors it (older servers omit it).
+    mods: z.array(
+      modListItemSchema.and(z.object({ role: z.enum(['owner', 'coauthor']).optional() })),
+    ),
+    // null when the author has turned off public download counts; counts only
+    // the mods the user owns.
     totalDownloads: z.number().int().nonnegative().nullable(),
   });
 

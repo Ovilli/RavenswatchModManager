@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Run everything, whatever changed.
+  workflow_dispatch:
 
 # Read-only token: nothing here writes to the repo, so a compromised step
 # or action cannot push, tag or edit releases with it.
@@ -12,8 +14,81 @@ permissions:
   contents: read
 
 jobs:
+  # Which jobs this change needs. A job whose inputs did not change is skipped
+  # (a skipped job counts as passed), so a website-only change does not wait on
+  # two PyInstaller builds and a Python-only one does not rebuild the loader.
+  # Each filter errs toward running: when in doubt a path is listed.
+  changes:
+    name: changes (which jobs to run)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      python: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.python }}
+      sidecar: ${{ github.event_name == 'workflow_dispatch' || steps.inputs.outputs.sidecar }}
+      ts: ${{ github.event_name == 'workflow_dispatch' || steps.inputs.outputs.ts }}
+      loader: ${{ github.event_name == 'workflow_dispatch' || steps.inputs.outputs.loader }}
+      docs_links: ${{ github.event_name == 'workflow_dispatch' || steps.inputs.outputs.docs_links }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: filter
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v4
+        with:
+          # `python` lists what it may SKIP for ("every" pattern must match):
+          # the tests read far outside src/ (the desktop app's tauri.conf.json
+          # and package.json, docs/, README, .github, tools/, examples/), so
+          # only changes confined to the web apps and shared TS packages skip.
+          predicate-quantifier: every
+          filters: |
+            python:
+              - '**'
+              - '!apps/www/**'
+              - '!apps/api/**'
+              - '!apps/desktop/src/**'
+              - '!packages/**'
+              - '!pnpm-lock.yaml'
+              - '!biome.json'
+              - '!turbo.json'
+          # The other filters list their inputs ("some" is enough).
+      - id: inputs
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            sidecar:
+              - 'src/rsmm/**'
+              - 'src/loader/**'
+              - 'data/**'
+              - 'scripts/build-sidecar.py'
+              - 'pyproject.toml'
+              - '.github/workflows/ci.yml'
+            ts:
+              - 'apps/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'biome.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'scripts/audit-supply-chain.mjs'
+              - '.github/workflows/ci.yml'
+            loader:
+              - 'src/loader/**'
+              - 'tests/lua/**'
+              - 'data/symbols.json'
+              - 'scripts/validate_loader_dll.py'
+              - '.github/workflows/ci.yml'
+            docs_links:
+              - 'apps/docs/src/content/**'
+              - '.github/workflows/ci.yml'
+
   python:
     name: python ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -78,6 +153,8 @@ jobs:
   # fails here instead of on a user's fresh install.
   sidecar:
     name: sidecar ${{ matrix.os }} (frozen CLI build + check)
+    needs: changes
+    if: needs.changes.outputs.sidecar == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -102,6 +179,8 @@ jobs:
 
   ts:
     name: typescript (biome + tsc + vitest)
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -142,6 +221,8 @@ jobs:
 
   loader-linux-mingw:
     name: loader (mingw-w64 cross-compile)
+    needs: changes
+    if: needs.changes.outputs.loader == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -178,6 +259,8 @@ jobs:
 
   docs-links:
     name: docs external links (lychee)
+    needs: changes
+    if: needs.changes.outputs.docs_links == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
