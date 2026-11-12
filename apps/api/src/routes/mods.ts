@@ -16,10 +16,10 @@ import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
+import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
-import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyReview, notifyReviewReply } from '../notify.js';
 import { preservePrivateOnlyTags, setStoredPrivateOnlyTag } from '../private-only.js';
@@ -426,6 +426,18 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   const followerCount = followerRows.length;
   const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
 
+  // Co-authors, credited publicly beside "Created by" (name and handle are
+  // already public on each profile). Banned accounts are left out.
+  const coAuthors = await db
+    .select({
+      userId: schema.modAuthors.userId,
+      name: schema.users.name,
+      handle: schema.users.handle,
+    })
+    .from(schema.modAuthors)
+    .innerJoin(schema.users, eq(schema.users.id, schema.modAuthors.userId))
+    .where(and(eq(schema.modAuthors.modId, mod.id), eq(schema.users.banned, false)));
+
   return c.json({
     mod: {
       id: mod.id,
@@ -454,6 +466,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       isFollowing,
       isAuthor,
       followerCount,
+      coAuthors,
       dependencies:
         (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
@@ -646,11 +659,17 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
         .where(eq(schema.mods.slug, body.slug))
         .for('update');
       const existing = lockedExisting[0];
-      // Any pre-existing row that isn't owned by the caller is off-limits —
-      // including rows with a null owner (seed/legacy data). Previously
-      // null-owner rows could be claimed and overwritten by any authenticated
-      // user. New slugs (existing === undefined) fall through and are created.
-      if (existing && existing.ownerId !== user.id) {
+      // A pre-existing row is open to its owner and its co-authors (the same
+      // rule as POST /:slug/versions: co-authors publish, so `rsmm publish`,
+      // the desktop app and /publish must let them too). A row with a null
+      // owner (seed/legacy data) stays off-limits: previously any
+      // authenticated user could claim and overwrite it. New slugs
+      // (existing === undefined) fall through and are created.
+      if (
+        existing &&
+        (existing.ownerId === null ||
+          (existing.ownerId !== user.id && !(await canManageMod(existing, user.id))))
+      ) {
         ownerConflict = true;
         // Throwing aborts the transaction; the catch below converts
         // this signal into a clean 403 instead of a 500.
@@ -686,13 +705,21 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
               ? { tags: preservePrivateOnlyTags(body.manifest.tags) }
               : {}),
             authorName: body.manifest.author,
-            ownerId: user.id,
+            // No ownerId: an upload never changes who owns the mod. It used to
+            // set the uploader, which would hand the mod to a co-author.
             updatedAt: new Date(),
           },
+          // A slug that did not exist when locked but was created since (two
+          // first uploads racing) is only updated by its owner; otherwise no
+          // row comes back and the caller gets the owner conflict below.
+          ...(existing ? {} : { setWhere: eq(schema.mods.ownerId, user.id) }),
         })
         .returning();
       const mod = modRows[0];
-      if (!mod) throw new Error('failed to upsert mod');
+      if (!mod) {
+        ownerConflict = true;
+        throw new Error('owner conflict');
+      }
 
       // Idempotent: re-presigning the same (mod_id, version) tuple
       // refreshes the row instead of dying on the unique-key. Without
@@ -745,7 +772,10 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     // belongs to a different user. Surface that as a 403 instead of
     // a 500 — `ownerConflict` is set inside the transaction body.
     if (ownerConflict) {
-      return c.json({ error: 'slug owned by another user' }, 403);
+      return c.json(
+        { error: 'slug owned by another user (ask its owner to add you as a co-author)' },
+        403,
+      );
     }
     if (versionPublished) {
       return c.json({ error: VERSION_PUBLISHED_ERROR }, 409);

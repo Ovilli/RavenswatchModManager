@@ -43,6 +43,16 @@ export const modDetailResponseSchema = z.object({
       // Viewer is the owner or a co-author.
       isAuthor: z.boolean().optional(),
       followerCount: z.number().int().optional(),
+      // Credited beside "Created by"; older servers omit it.
+      coAuthors: z
+        .array(
+          z.object({
+            userId: z.string(),
+            name: z.string().nullable(),
+            handle: z.string().nullable(),
+          }),
+        )
+        .optional(),
       // Present for the owner/admin viewing a delisted mod; public callers
       // never receive a non-active mod so these default to active.
       takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),

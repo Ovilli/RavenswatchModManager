@@ -184,6 +184,29 @@ describe('Private games only permission boundary', () => {
     }
   });
 
+  it('lets a co-author upload a version without taking the mod, and refuses a stranger', async () => {
+    const upload = (userId: string) =>
+      request(
+        userId,
+        '/api/mods/upload',
+        {
+          slug: 'sample',
+          version: '1.0.1',
+          sha256: 'b'.repeat(64),
+          sizeBytes: 100,
+          manifest: { id: 'sample', name: 'Sample', version: '1.0.1' },
+        },
+        'POST',
+      );
+    expect((await upload('coauthor')).status).toBe(200);
+    // the mod row's update never names an owner: a co-author's upload must not
+    // hand the mod to them (the old upsert set ownerId to the uploader)
+    for (const set of state.conflicts) expect(set).not.toHaveProperty('ownerId');
+    const refused = await upload('stranger');
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/co-author/);
+  });
+
   it('preserves the label on a new version and lets a release declare it without replacing other tags', async () => {
     for (const tags of [undefined, ['qol'], ['Private games only']]) {
       const response = await request(
