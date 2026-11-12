@@ -37,6 +37,11 @@ end
 function M.set(key, value)
     local I = _native()
     if not I or not I.config_set then return end
+    -- The native writes its WHOLE cached table back to config.toml and stamps
+    -- the new mtime, so an outside edit the tick has not polled yet would be
+    -- overwritten and never seen. Take it in first: its watchers fire and the
+    -- cache holds the edited values before this write goes out.
+    M._poll()
     local old = M.get(key)
     I.config_set(key, value)
     -- Our own change, not an outside edit: keep the poll's snapshot in step so

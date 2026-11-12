@@ -11180,6 +11180,41 @@ do
     I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
 end
 
+-- R.config.set and an unpolled outside edit. The native config_set writes its
+-- whole cached table to config.toml and stamps the new mtime, so an edit made
+-- outside the game since the last tick used to be overwritten with the cached
+-- value and never reach on_change (Distance 33 -> 60 in the pause menu, then
+-- the mod saves Rotation, and Distance is back to 33).
+do
+    local saved = { I.config_get, I.config_set, I.config_all, I.config_reload }
+    local function copy(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
+    local cache = { distance = 33, yaw = 45 }
+    local file, dirty = copy(cache), false
+    I.config_get = function(k) return cache[k] end
+    I.config_set = function(k, v)
+        cache[k] = v; file = copy(cache); dirty = false; return true
+    end
+    I.config_all = function() return copy(cache) end
+    I.config_reload = function()
+        if not dirty then return false end
+        dirty = false; cache = copy(file); return true
+    end
+
+    dirty = true
+    fire("tick")                                          -- the poll's snapshot is this file now
+    local seen = {}
+    R.config.on_change("distance", function(new, old) seen[#seen + 1] = { new, old } end)
+    file.distance, dirty = 60, true                       -- edited outside, not polled yet
+    R.config.set("yaw", 90)
+    check(file.distance == 60 and file.yaw == 90,
+          "set keeps an unpolled outside edit in the file it writes")
+    check(#seen == 1 and seen[1][1] == 60 and seen[1][2] == 33,
+          "the outside edit fires its watcher before the write")
+    fire("tick")
+    check(#seen == 1, "the edit is not fired again on the next tick")
+    I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
+end
+
 -- R.daynight: the chapter timer lives in the DarkTalesAppSettingsSection that
 -- DayNightCycle_InitCycle copies on every chapter load. Found by RTTI name in
 -- AppSettings_SectionList, range-checked before any write.
