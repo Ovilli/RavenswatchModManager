@@ -55,7 +55,7 @@
 -- carries x, y, w, h, `locked` (the game's lock was on for that poll) and
 -- `blocked`. With opts.hide the OS cursor is hidden while the lock is engaged.
 -- The lock PAUSES (released, cursor shown) while the game wants the cursor (the
--- pause menu, talent choice, Sandman shop, magical-object menu, book, cinematic,
+-- pause menu, talent choice, Sandman shop, magical-object menu, cinematic,
 -- loading screen or main menu; CURSOR_FLAGS) or the game window is not the
 -- foreground window, and resumes when that ends. Each pause and resume is logged
 -- with the flag that caused it. The window
@@ -191,11 +191,12 @@ end
 local _look_on, _look_driver
 
 -- Every game state that wants the cursor. The pause menu sets the first two;
--- the talent choice, the Sandman shop, the magical-object menu, the book,
--- cinematics, loading screens and the main menu each have their own flag.
+-- the talent choice, the Sandman shop, the magical-object menu, cinematics,
+-- loading screens and the main menu each have their own flag. is_book_open is
+-- left out: it reads true in ordinary play, so it would hold the lock off.
 local CURSOR_FLAGS = {
     "is_game_menu_open", "is_menu_open", "is_skill_menu_open", "is_in_sandman_shop",
-    "is_mos_menu_open", "is_book_open", "is_in_cinematic", "is_in_loading_screen",
+    "is_mos_menu_open", "is_in_cinematic", "is_in_loading_screen",
     "is_in_main_menu", "is_in_pause",
 }
 
