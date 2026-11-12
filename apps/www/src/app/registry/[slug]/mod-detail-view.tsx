@@ -178,24 +178,27 @@ export function ModDetailView({
               </span>
               <div className="mod-author">
                 <span>Created by</span>
-                {mod.ownerId ? (
-                  <Link href={`/u/${mod.ownerId}` as Route}>{author}</Link>
-                ) : (
-                  <strong>{author}</strong>
-                )}
-                {coAuthors.length > 0 ? (
-                  <span className="mod-coauthors">
-                    with{' '}
-                    {coAuthors.map((a, i) => (
-                      <Fragment key={a.userId}>
-                        {i > 0 ? (i === coAuthors.length - 1 ? ' and ' : ', ') : null}
-                        <Link href={`/u/${a.userId}` as Route}>
-                          {a.name ?? (a.handle ? `@${a.handle}` : 'a co-author')}
-                        </Link>
-                      </Fragment>
-                    ))}
-                  </span>
-                ) : null}
+                <div className="mod-author-names">
+                  {mod.ownerId ? (
+                    <Link href={`/u/${mod.ownerId}` as Route}>{author}</Link>
+                  ) : (
+                    <strong>{author}</strong>
+                  )}
+                  {coAuthors.length > 0 ? (
+                    <span className="mod-coauthors">
+                      {' '}
+                      with{' '}
+                      {coAuthors.map((a, i) => (
+                        <Fragment key={a.userId}>
+                          {i > 0 ? (i === coAuthors.length - 1 ? ' and ' : ', ') : null}
+                          <Link href={`/u/${a.userId}` as Route}>
+                            {a.name ?? (a.handle ? `@${a.handle}` : 'a co-author')}
+                          </Link>
+                        </Fragment>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <FollowButton
                 key={`${slug}-${mod.isFollowing}`}
