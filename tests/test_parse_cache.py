@@ -331,6 +331,82 @@ def test_synthesize_encoded_sees_an_in_place_value_change():
     assert apply_mods.synthesize_encoded("X/two", m) == "second!" + cipher.encode("two")
 
 
+def _count_reads(monkeypatch):
+    """Count reads of asset_map.json made through Path.read_text."""
+    reads = []
+    real = Path.read_text
+
+    def counting(self, *a, **kw):
+        if self == paths.ASSET_MAP_JSON:
+            reads.append(self)
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", counting)
+    return reads
+
+
+def test_index_on_a_fresh_map_builds_once_and_never_scans(monkeypatch):
+    if not paths.ASSET_MAP_JSON.is_file():
+        pytest.skip("no asset_map.json")
+    from rsmm.engine import asset_map
+    asset_map.decoded_to_encoded.cache_clear()
+    reads = _count_reads(monkeypatch)
+    scans, builds = [], []
+    real_build = apply_mods._build_prefixes
+    monkeypatch.setattr(apply_mods, "_scan_prefix",
+                        lambda *a: scans.append(a) or None)
+    monkeypatch.setattr(apply_mods, "_build_prefixes",
+                        lambda m: builds.append(1) or real_build(m))
+    m = apply_mods.load_asset_map()        # a fresh dict, not the shared one
+    index = apply_mods.PrefixIndex(m)
+    sample = [d for d in m if "/" in d][:2]
+    for dec in sample:
+        parent = dec.rpartition("/")[0]
+        got = apply_mods.synthesize_encoded(parent + "/zz_new", m, index=index)
+        assert got == _reference_synthesize(parent + "/zz_new", m)
+    assert apply_mods.resolve_special("Q/none/x.UsedRscCache.ot", m, index=index) is None
+    assert scans == [] and builds == [1]
+    assert len(reads) == 1                  # load_asset_map's, no second copy
+    assert asset_map.decoded_to_encoded.cache_info().currsize == 0
+
+
+def test_cold_shared_map_check_does_not_load_the_asset_map(monkeypatch):
+    from rsmm.engine import asset_map
+    asset_map.decoded_to_encoded.cache_clear()
+    reads = _count_reads(monkeypatch)
+    assert apply_mods._shared_map() is None
+    assert apply_mods.synthesize_encoded("X/two", {"X/one": "a!one"}) == (
+        "a!" + cipher.encode("two"))
+    assert reads == []
+    assert asset_map.decoded_to_encoded.cache_info().currsize == 0
+
+
+def test_index_matches_the_linear_scan_and_refresh_sees_edits():
+    m = _small_map()
+    index = apply_mods.PrefixIndex(m)
+    for dec in ["A/B/new", "C/D/new", "E/F/new", "Q/R/new", "G/H/new"]:
+        assert apply_mods.synthesize_encoded(dec, m, index=index) == (
+            _reference_synthesize(dec, m))
+    m["Q/R/sib"] = "qq" + chr(92) + "sib"
+    assert apply_mods.synthesize_encoded("Q/R/new", m, index=index) is None  # snapshot
+    index.refresh()
+    assert apply_mods.synthesize_encoded("Q/R/new", m, index=index) == (
+        _reference_synthesize("Q/R/new", m))
+
+
+def test_cmd_diff_resolve_with_an_index_does_not_rescan(monkeypatch):
+    from rsmm.cli import cmd_diff
+    m = _small_map()
+    scans = []
+    monkeypatch.setattr(apply_mods, "_scan_prefix", lambda *a: scans.append(a))
+    index = apply_mods.PrefixIndex(m)
+    for dec in ["A/B/n1", "A/B/n2", "C/D/n3", "Q/R/n4"]:
+        action, enc = cmd_diff._resolve(dec, m, None, index)
+        assert (action, enc) == (("add", _reference_synthesize(dec, m))
+                                 if _reference_synthesize(dec, m) else ("skip", None))
+    assert scans == []
+
+
 def test_find_install_dir_prefers_a_candidate_that_turns_valid_later(
         tmp_path, monkeypatch, install_cache):
     a = tmp_path / "preferred"

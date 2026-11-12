@@ -101,11 +101,12 @@ def _merged_family(decoded: str) -> str:
 
 
 def _resolve(decoded: str, dec2enc: dict[str, str],
-             game_dir: Path | None = None) -> tuple[str, str | None]:
+             game_dir: Path | None = None,
+             index=None) -> tuple[str, str | None]:
     """(action, encoded) exactly as `plan_apply` would decide it."""
     from rsmm.cli import apply_mods as A
 
-    enc = dec2enc.get(decoded) or A.resolve_special(decoded, dec2enc)
+    enc = dec2enc.get(decoded) or A.resolve_special(decoded, dec2enc, index=index)
     if enc and enc.startswith(A.ROOT_PREFIX):
         # A top-level install file (`_root/...`) is outside the cooked
         # manifest, so only the install itself can say whether the game ships
@@ -118,7 +119,7 @@ def _resolve(decoded: str, dec2enc: dict[str, str],
         return (_REPLACE if dest.exists() or bak.exists() else _ADD), enc
     if enc:
         return _REPLACE if A.is_vanilla_encoded(enc) else _ADD, enc
-    enc = A.synthesize_encoded(decoded, dec2enc)
+    enc = A.synthesize_encoded(decoded, dec2enc, index=index)
     return (_ADD, enc) if enc else (_SKIP, None)
 
 
@@ -182,7 +183,10 @@ def build_report(mod, mods: list, dec2enc: dict[str, str],
     """Everything `rsmm diff` prints, as data. `mods` is every discovered mod
     in apply order (the order `plan_apply` sees them); `active` is the
     install's override map (`read_active`), or None when it is unknown."""
+    from rsmm.cli.apply_mods import PrefixIndex
     from rsmm.cli.merge import _ranked, collect_patches
+
+    index = PrefixIndex(dec2enc)  # one scan of the map for the whole report
 
     # Who else writes each target. Enabled mods only — a disabled one installs
     # nothing — but the inspected mod is resolved even when it is disabled, so
@@ -192,14 +196,14 @@ def build_report(mod, mods: list, dec2enc: dict[str, str],
         if other.root == mod.root or not other.enabled:
             continue
         for _src, decoded in other.files():
-            _action, enc = _resolve(decoded, dec2enc, game_dir)
+            _action, enc = _resolve(decoded, dec2enc, game_dir, index)
             if enc:
                 writers.setdefault(enc, []).append(other.id)
 
     order = [m.id for m in mods]
     files: list[FileChange] = []
     for src, decoded in sorted(mod.files(), key=lambda f: f[1]):
-        action, enc = _resolve(decoded, dec2enc, game_dir)
+        action, enc = _resolve(decoded, dec2enc, game_dir, index)
         fc = FileChange(decoded, action, enc)
         if enc:
             fc.others = writers.get(enc, [])
