@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **367** symbols across 29 categories.
+Total: **378** symbols across 29 categories.
 
 ## analytics
 
@@ -231,7 +231,10 @@ Total: **367** symbols across 29 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
+| `InputActionMap_Add` | `0x140470c70` | ✅ ok | ✔ | ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4]) |
 | `Input_Poll` | `0x14067ddd0` | ✅ ok |  | void(void* inputManager, const void* frameTime) |
+| `g_InputActionMap` | `0x141436b68` | 📍 va |  | *ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {… |
+| `g_InputKeyRecords` | `0x141466c50` | 📍 va |  | The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel… |
 | `g_InputManager` | `0x14146f8e8` | 📍 va |  | Pointer to the input manager (*ptr = the object Input_Poll is called on). The window pr… |
 | `g_InputMouseWheelDown` | `0x1414670ac` | 📍 va |  | Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of … |
 | `g_InputMouseWheelUp` | `0x1414670a0` | 📍 va |  | Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display… |
@@ -359,7 +362,11 @@ Total: **367** symbols across 29 categories.
 | `CustomizeChallengePage_CollectSelectedDefs` | `0x1404276b0` | ✅ ok | ✔ | void(void* pageCtrl, void* indexVec, void* outDefsVec) |
 | `CustomizeChallengePage_OnToggleModifier` | `0x140427a10` | ✅ ok | ✔ | void(void* pageCtrl, void* modifierUiCtrl) |
 | `GameModifierUi_PadSelectedSlots` | `0x14035b570` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
+| `GameOptionsManager_Register` | `0x14066a4f0` | ✅ ok | ✔ | void(GameOptionsManager* mgr, u8 category, GameOption* option) |
+| `GameOptionsManager_RequestLoad` | `0x140690ae0` | ✅ ok | ✔ | void(void* unused, FileRequest* req /* = mgr+8 */) |
+| `InputKeyGameOption_vftable` | `0x140efd440` | 📍 va |  | vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spi… |
 | `g_GameOptions` | `0x141436a18` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
+| `g_GameOptionsManager` | `0x141436a38` | 📍 va |  | *ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the setting… |
 
 ## progression
 
@@ -490,8 +497,12 @@ Total: **367** symbols across 29 categories.
 | `OptionsMenuElement_SetTitle` | `0x14044ddf0` | ✅ ok | ✔ | void(void* element, const oCString* text) |
 | `OptionsMenu_AddCategory` | `0x1403f2060` | ✅ ok | ✔ | void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type) |
 | `OptionsMenu_AppendRow` | `0x1403f4d00` | ✅ ok | ✔ | void(void** ctx, void* category, void* row) |
+| `OptionsMenu_BuildGamepadControls` | `0x1403f4870` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
+| `OptionsMenu_BuildKeyboardControls` | `0x1403f42a0` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_BuildLastCategory` | `0x1403f4e30` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
+| `OptionsMenu_ClearDuplicateKey` | `0x1403f6b90` | ✅ ok | ✔ | void(void* optionsCtrl, void* unused, u32 key) |
 | `OptionsMenu_SelectCategory` | `0x1403f6010` | ✅ ok | ✔ | void(void* optionsCtrl, void* tabButtonGameUi) |
+| `OptionsMenu_SpawnExploKeyRow` | `0x1403f5b70` | ✅ ok | ✔ | void(void* optionsCtrl, i32 exploIndex, void* tabEntry) |
 | `OptionsMenu_SpawnMultiChoice` | `0x1403fc7e0` | ✅ ok | ✔ | void*(void* elementFactory, void* templateRef, void* rowParent) |
 | `PauseMenu_GetActionCallback` | `0x14034d380` | ✅ ok | ✔ | void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused) |
 | `StringFormat_ArgPointer` | `0x1402bd340` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |

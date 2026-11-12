@@ -31,6 +31,7 @@ extern "C" {
 #include "hook_audio.h"
 #include "hook_camera.h"
 #include "hook_input.h"
+#include "hook_keybinds.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -221,6 +222,58 @@ int lua_input_wheel_totals(lua_State* L) {
     lua_pushinteger(L, static_cast<lua_Integer>(up));
     lua_pushinteger(L, static_cast<lua_Integer>(down));
     return 2;
+}
+
+// rsmm._internal.keybind_add(id, label, kb, pad) -> index | nil, err
+//   Declares a key binding for the calling mod (hook_keybinds.cpp). index is
+//   0-based and stable for the session; re-declaring the same id returns it.
+int lua_keybind_add(lua_State* L) {
+    const char* id = luaL_checkstring(L, 1);
+    const char* label = luaL_checkstring(L, 2);
+    const lua_Integer kb = luaL_optinteger(L, 3, 0);
+    const lua_Integer pad = luaL_optinteger(L, 4, 0);
+    auto* m = current_from_state(L);
+    if (!m) {
+        lua_pushnil(L);
+        lua_pushstring(L, "no calling mod");
+        return 2;
+    }
+    if (kb < 0 || pad < 0 || kb > 0xff || pad > 0xff) {
+        lua_pushnil(L);
+        lua_pushstring(L, "key ids run 0-255");
+        return 2;
+    }
+    std::string err;
+    const int index = keybind_add(m->id, id, label, static_cast<std::uint32_t>(kb),
+                                  static_cast<std::uint32_t>(pad), &err);
+    if (index < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, err.c_str());
+        return 2;
+    }
+    lua_pushinteger(L, index);
+    return 1;
+}
+
+// rsmm._internal.keybind_keys(index) -> kb, pad | nil
+int lua_keybind_keys(lua_State* L) {
+    std::uint32_t kb = 0, pad = 0;
+    if (!keybind_keys(static_cast<int>(luaL_checkinteger(L, 1)), &kb, &pad)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, kb);
+    lua_pushinteger(L, pad);
+    return 2;
+}
+
+// rsmm._internal.keybinds_state() -> armed, registered, failed, open (declarations still taken)
+int lua_keybinds_state(lua_State* L) {
+    lua_pushboolean(L, keybinds_armed());
+    lua_pushboolean(L, keybinds_registered());
+    lua_pushboolean(L, keybinds_failed());
+    lua_pushboolean(L, keybinds_open());
+    return 4;
 }
 
 // rsmm._internal.camera_zoom_armed() -> bool
@@ -2045,6 +2098,9 @@ void register_api(lua_State* L) {
         { "audio_targets",           lua_audio_targets },
         { "input_armed",             lua_input_armed },
         { "input_wheel_totals",      lua_input_wheel_totals },
+        { "keybind_add",             lua_keybind_add },
+        { "keybind_keys",            lua_keybind_keys },
+        { "keybinds_state",          lua_keybinds_state },
         { "camera_zoom_armed",       lua_camera_zoom_armed },
         { "camera_zoom",             lua_camera_zoom },
         { "camera_zoom_reset",       lua_camera_zoom_reset },

@@ -3213,6 +3213,19 @@ do
     if ok and type(x) == "table" then R.input = x end
 end
 
+-- keybinds ----------------------------------------------------------------
+--
+-- Lives in rsmm/keybinds.lua. A mod's own key bindings as rows in the game's
+-- Settings > Controls tabs, saved in GameSettings.ini, with the game's
+-- duplicate-key rule; presses come from the loader's input-poll hook.
+--
+--   local zin = R.input.keybinds.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+--   R.input.keybinds.on_press(zin, function(n, ev) ... end)
+do
+    local ok, x = _submodule_fn("keybinds", { R = R, I = I })
+    if ok and type(x) == "table" and R.input then R.input.keybinds = x end
+end
+
 -- player identity -------------------------------------------------------
 --
 -- The LOCAL player's real display name, straight from Steam

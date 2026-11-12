@@ -11621,6 +11621,204 @@ do
     I.input_armed, I.input_wheel_totals = nil, nil
 end
 
+-- R.input.keybinds: a mod's own keybinds as native Controls rows (hook_keybinds.cpp).
+-- The loader side is mocked the way script_lua.cpp exposes it: keybind_add
+-- returns a 0-based index (the same one for a repeated mod + id) or nil, err;
+-- keybind_keys(index) the current keyboard and pad keys; keybinds_state()
+-- armed, registered. Presses arrive as "input:keybind" {mod, id, presses, ...}.
+do
+    local K = R.input and R.input.keybinds
+    check(K ~= nil, "R.input.keybinds loaded")
+    local ok, why = K.available()
+    check(ok == false and why:find("too old"), "no keybind binding: unavailable, says why")
+    local h0, w0 = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+    check(h0 == nil and w0:find("too old"), "add on an old loader: refused with a reason")
+
+    local declared, keys, closed = {}, {}, false
+    I.keybinds_state = function() return true, false end
+    I.keybind_add = function(id, label, kb, pad)
+        for i, d in ipairs(declared) do
+            if d.id == id then return i - 1 end
+        end
+        if closed then return nil, "keybinds can only be added from init.lua" end
+        declared[#declared + 1] = { id = id, label = label, kb = kb, pad = pad }
+        keys[#declared - 1] = { kb, pad }
+        return #declared - 1
+    end
+    I.keybind_keys = function(index)
+        local k = keys[index]
+        if not k then return nil end
+        return k[1], k[2]
+    end
+    check(K.available() == true, "armed hooks: available")
+
+    local zin = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+    local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93, pad = 101 }
+    check(zin and zin.index == 0 and zout and zout.index == 1, "add returns handles in order")
+    check(declared[2].kb == 93 and declared[2].pad == 101, "keys reach the loader")
+    check(declared[1].pad == 0, "pad defaults to unbound")
+    check(K.add{ id = "ZoomIn", label = "Zoom in", key = 92 } == zin, "re-adding an id returns its handle")
+
+    local bad = {
+        { {}, "id" }, { { id = "Zoom In", label = "x" }, "id" },
+        { { id = string.rep("a", 33), label = "x" }, "id" },
+        { { id = "A", label = "" }, "label" }, { { id = "A", label = string.rep("x", 33) }, "label" },
+        { { id = "A", label = "x", key = 256 }, "key" }, { { id = "A", label = "x", key = 1.5 }, "key" },
+        { { id = "A", label = "x", pad = -1 }, "pad" },
+        { { id = "A", label = "x", key = 94 }, "key" },     -- a gamepad id as the keyboard default
+        { { id = "A", label = "x", pad = 92 }, "pad" },     -- the wheel as the pad default
+    }
+    for _, case in ipairs(bad) do
+        local hb, wb = K.add(case[1])
+        check(hb == nil and wb:find(case[2]), "bad " .. case[2] .. " refused: " .. tostring(wb))
+    end
+    local h0k = K.add{ id = "Unbound", label = "Unbound", key = 0, pad = 0 }
+    check(h0k and declared[#declared].kb == 0 and declared[#declared].pad == 0, "0 is valid for both devices")
+    local hn, wn = K.add("ZoomIn")
+    check(hn == nil and wn:find("table"), "add needs a table")
+    closed = true
+    local hl, wl = K.add{ id = "Late", label = "Late" }
+    check(hl == nil and wl:find("init.lua"), "a keybind added after registration is refused")
+
+    local kb, pad = K.keys(zout)
+    check(kb == 93 and pad == 101, "keys read the loader")
+    keys[1] = { 44, 0 }                                       -- the player rebinds it
+    check(zout:keys() == 44, "keys follow a rebind")
+    check(K.keys("ZoomIn") == 92, "keys by id")
+    local list = K.list()
+    check(#list == 3 and list[2].id == "ZoomOut" and list[2].key == 44 and list[2].label == "Zoom out",
+          "list names every keybind with its current keys")
+
+    local got = {}
+    local hp = K.on_press(zin, function(n, ev) got[#got + 1] = { n, ev } end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 2, key = 92, blocked = false })
+    check(#got == 1 and got[1][1] == 2 and got[1][2].key == 92, "on_press gets the presses and the payload")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomOut", presses = 1 })
+    check(#got == 1, "another keybind's press is not delivered")
+    fire("input:keybind", { mod = "other_mod", id = "ZoomIn", presses = 1 })
+    check(#got == 1, "another mod's keybind with the same id is not delivered")
+    K.off(hp)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1 })
+    check(#got == 1, "off stops delivery")
+    local hm = zout:on_press(function(n) got[#got + 1] = { n } end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomOut", presses = 1 })
+    check(#got == 2 and got[2][1] == 1, "the handle's on_press method works")
+    K.off(hm)
+    local hu, wu = K.on_press({ id = "ZoomIn" }, function() end)
+    check(hu == nil and wu:find("not a keybind"), "on_press refuses a table that is not a handle")
+    local hf, wf = K.on_press(zin, 5)
+    check(hf == nil and wf:find("function"), "on_press needs a function")
+
+    -- Presses in menus and blocked presses are dropped unless menus = true.
+    local real_flag = R.game.flag
+    local menu_open = false
+    R.game.flag = function(name)
+        if name == "is_menu_open" then return menu_open end
+        return false
+    end
+    local seen = {}
+    local hq = K.on_press(zin, function(n) seen[#seen + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = true })
+    check(#seen == 0, "a blocked press is dropped")
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen == 0, "a press in a menu is dropped")
+    menu_open = false
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 3, blocked = false })
+    check(#seen == 1 and seen[1] == 3, "a press in play is delivered")
+    K.off(hq)
+    closed = false
+    local hmenu = K.add{ id = "Menu", label = "Menu key", key = 5, menus = true }
+    check(hmenu and hmenu.menus == true, "menus = true is kept on the handle")
+    local seen_m = {}
+    local hq2 = K.on_press(hmenu, function(n, ev) seen_m[#seen_m + 1] = ev.blocked end)
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked = true })
+    check(#seen_m == 1 and seen_m[1] == true, "a menus keybind gets every press, blocked marked")
+    K.off(hq2)
+    menu_open = false
+    -- Presses sorted by the loader when they were made.
+    local seen_p, seen_pm = {}, {}
+    local hp1 = K.on_press(zin, function(n) seen_p[#seen_p + 1] = n end)
+    local hp2 = K.on_press(hmenu, function(n) seen_pm[#seen_pm + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 2,
+                            late_presses = 0, blocked = true })
+    check(#seen_p == 0, "only blocked presses: nothing for an in-play keybind")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_p == 1 and seen_p[1] == 1, "an in-play keybind gets this frame's unblocked presses only")
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_pm == 1 and seen_pm[1] == 5, "a menus keybind gets every press")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 0,
+                            late_presses = 4, blocked = false })
+    check(#seen_p == 1, "late presses are not delivered to an in-play keybind")
+    K.off(hp1); K.off(hp2)
+    local hbm, wbm = K.add{ id = "Bad", label = "Bad", menus = "yes" }
+    check(hbm == nil and wbm:find("menus"), "menus must be a boolean")
+    R.game.flag = function() error("game values not ready") end
+    local seen_e = {}
+    local hq3 = K.on_press(zin, function(n) seen_e[#seen_e + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen_e == 1, "a menu check that raises does not drop the press")
+    K.off(hq3)
+    R.game.flag = real_flag
+
+    -- During init.lua the hooks are not installed yet: available, and add works.
+    local real_va = I.va_trusted
+    I.keybinds_state = function() return false, false, false, true end
+    I.va_trusted = function() return true end
+    check(K.available() == true, "declarations open on a trusted build: available")
+    check(K.add{ id = "Early", label = "Early" } ~= nil, "add during init.lua works before the hooks arm")
+    I.va_trusted = function() return false end
+    ok, why = K.available()
+    check(ok == false and why:find("not trusted"), "declarations open on an untrusted build: unavailable")
+    local hu2, wu2 = K.add{ id = "Untrusted", label = "Untrusted" }
+    check(hu2 == nil and wu2:find("not trusted"), "add on an untrusted build: refused with the reason")
+    -- on_ready: pending during init.lua, settled by the loader's announcement.
+    I.va_trusted = function() return true end
+    local r1 = {}
+    check(K.on_ready(function(ok, w) r1[#r1 + 1] = { ok, w } end) == true, "on_ready accepts a function")
+    check(#r1 == 0, "on_ready waits while the outcome is pending")
+    fire("input:keybinds_ready", { ok = false, reason = "keybind hooks failed to install" })
+    check(#r1 == 1 and r1[1][1] == false and r1[1][2]:find("failed to install"),
+          "on_ready reports a failure with its reason")
+    fire("input:keybinds_ready", { ok = true })
+    check(#r1 == 1, "on_ready fires once")
+    local r2 = {}
+    K.on_ready(function(ok) r2[#r2 + 1] = ok end)
+    fire("input:keybinds_ready", { ok = true })
+    check(#r2 == 1 and r2[1] == true, "on_ready reports keybinds that went live")
+    I.keybinds_state = function() return true, true, false, false end
+    local r3 = {}
+    K.on_ready(function(ok) r3[#r3 + 1] = ok end)
+    check(#r3 == 1 and r3[1] == true, "on_ready after registration: called right away")
+    I.keybinds_state = function() return true, false, true, false end
+    local r4 = {}
+    K.on_ready(function(ok, w) r4[#r4 + 1] = { ok, w } end)
+    check(#r4 == 1 and r4[1][1] == false and r4[1][2]:find("registration"),
+          "on_ready after a failed registration: called right away with the reason")
+    check(K.on_ready(5) == nil, "on_ready needs a function")
+    I.va_trusted = real_va
+    I.keybinds_state = function() return false, false, false, false end
+    local hx, wx = K.add{ id = "AfterFail", label = "After fail" }
+    check(hx == nil and (wx:find("failed to install") or wx:find("not live")) ~= nil,
+          "add after the hooks failed to install: refused with the reason")
+    closed = true
+
+    I.keybinds_state = function() return true, false, true end
+    ok, why = K.available()
+    check(ok == false and why:find("registration"), "a failed registration: unavailable, says why")
+
+    local real_va_trusted = I.va_trusted
+    I.keybinds_state = function() return false, false end
+    I.va_trusted = function() return false end
+    ok, why = K.available()
+    check(ok == false and why:find("not trusted"), "unarmed on an unknown build: says so")
+    I.keybinds_state, I.keybind_add, I.keybind_keys = nil, nil, nil
+    I.va_trusted = real_va_trusted
+end
+
 -- R.camera.zoom: queues a blended zoom with the loader (hook_camera.cpp).
 do
     local okz, whyz = R.camera.zoom(0.9)

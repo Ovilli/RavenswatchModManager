@@ -1598,6 +1598,70 @@ returns `nil` plus a reason when the bindings cannot be read.
 
 Handlers run on the game thread inside the input poll. Keep them short.
 
+### Keybinds (`R.input.keybinds`)
+
+```lua
+local K = R.input.keybinds
+local zin, why = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }  --> handle | nil, reason
+local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93 }
+local function fallback(why) --[[ e.g. read the wheel with R.input.on_wheel ]] end
+if zin then
+    K.on_press(zin, function(n, ev)      -- n = presses since the last delivery
+        R.camera.zoom(0.9 ^ n)
+    end)
+    K.on_ready(function(ok, why)         -- once, after every init.lua
+        if not ok then fallback(why) end
+    end)
+else
+    fallback(why)                        -- the reason add() refused
+end
+K.keys(zin)        --> keyboard key id, pad key id (0 = unbound)
+K.list()           --> { {id=, label=, key=, pad=}, ... }
+K.available()      --> true | false, reason
+```
+
+A keybind is a row in the game's own Settings > Controls menu, on the Keyboard
+tab and on the Gamepad tab, after the game's actions and titled with `label`.
+The player rebinds it there like any shipped action. The game saves it in
+`GameSettings.ini` under `<mod id>::<id>` and applies its duplicate-key rule: a
+key taken by one row is cleared from whatever held it, vanilla action or
+keybind. A rebind, also from the pause menu in the middle of a run, takes effect
+on the next frame.
+
+`add` takes `id` (1-32 letters, digits or `_`, unique within the mod), `label`
+(1-32 characters), `key` (the Keyboard tab's default: keyboard 1-84, mouse
+buttons 85-91, wheel up 92 / down 93) and `pad` (the Gamepad tab's default:
+gamepad key ids 94 and up). Either defaults to 0, unbound, and an id from the
+other device is refused. `menus = true` gets the keybind's presses in menus too
+(see below). The handle also has `zin:on_press(fn)` and `zin:keys()`.
+
+During `init.lua`, `add` queues the keybind. It returns `nil` and a reason
+when keybinds cannot work here at all: a loader without them, or a game build
+the loader does not trust. Whether a queued keybind goes live is settled after
+every `init.lua`, when the loader installs its hooks and registers the
+keybinds with the game. `on_ready(fn)` reports that once: `fn(true)`, or
+`fn(false, reason)` when they never will be. A mod with a fallback runs it from
+both places, as above. `available()` is `true` while that is still pending and
+nothing rules it out.
+
+Add keybinds from `init.lua`. The loader registers every mod's keybinds with
+the game once, on the first input poll after all mods have loaded, and has the
+game read `GameSettings.ini` again so the saved keys apply. A keybind added
+after that returns `nil` and a reason. Adding an id the mod already added
+returns the same handle, so a hot reload keeps working. There is room for 16
+keybinds across all mods.
+
+`on_press` handlers run on the game thread inside the input poll, like
+`on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
+A handler gets only presses made in play: presses made while a menu is open
+or while the game has input blocked (during a transition) are dropped, since the
+game's UI gets those keys, and so are presses that waited for the Lua lock (the
+loader sorts each press when it is made). A keybind added with `menus = true`
+gets every press; `ev.blocked_presses` and `ev.late_presses` count the blocked
+and the waiting ones. A player who starts the game once without the loader and
+changes a setting loses the saved keys (the game drops lines it does not know
+when it saves) and gets the defaults back.
+
 ### Camera zoom (`R.camera.zoom`)
 
 ```lua

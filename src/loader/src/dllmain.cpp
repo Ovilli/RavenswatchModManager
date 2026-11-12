@@ -39,6 +39,7 @@
 #include "hook_levelbuild.h"
 #include "hook_gamevalues.h"
 #include "hook_input.h"
+#include "hook_keybinds.h"
 #include "hook_camera.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
@@ -183,6 +184,7 @@ static void loader_thread_cxx() {
         install_guarded("hero_capture", rsmm::install_hero_capture);
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
         install_guarded("input",        rsmm::install_input_hooks);
+        install_guarded("keybinds",     rsmm::install_keybind_hooks);   // after input
         install_guarded("camera",       rsmm::install_camera_hooks);
         install_guarded("netcode",      rsmm::install_netcode_patches);
         install_guarded("online-gate",  rsmm::install_online_gate);

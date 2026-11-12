@@ -359,6 +359,20 @@ inline GameModifierUi_PadSelectedSlots_fn GameModifierUi_PadSelectedSlots() {
     return reinterpret_cast<GameModifierUi_PadSelectedSlots_fn>(rsmm::fn_resolve(Sym::GameModifierUi_PadSelectedSlots_Pattern));
 }
 
+// GameOptionsManager_Register  (GameOptionsManager_Register)
+//   void(GameOptionsManager* mgr, u8 category, GameOption* option)
+using GameOptionsManager_Register_fn = void(*)(void*, uint32_t, void*);
+inline GameOptionsManager_Register_fn GameOptionsManager_Register() {
+    return reinterpret_cast<GameOptionsManager_Register_fn>(rsmm::fn_resolve(Sym::GameOptionsManager_Register_Pattern));
+}
+
+// GameOptionsManager_RequestLoad  (GameOptionsManager_RequestLoad)
+//   void(void* unused, FileRequest* req /* = mgr+8 */)
+using GameOptionsManager_RequestLoad_fn = void(*)(void*, void*);
+inline GameOptionsManager_RequestLoad_fn GameOptionsManager_RequestLoad() {
+    return reinterpret_cast<GameOptionsManager_RequestLoad_fn>(rsmm::fn_resolve(Sym::GameOptionsManager_RequestLoad_Pattern));
+}
+
 // GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
 //   void*(void* self)
 using GroupLevelComponent_Ctor_fn = void*(*)(void*);
@@ -503,6 +517,13 @@ inline InGameMenuGs_OnLeave_fn InGameMenuGs_OnLeave() {
 using IngredientDef_PostLoad_fn = uint32_t(*)(void*);
 inline IngredientDef_PostLoad_fn IngredientDef_PostLoad() {
     return reinterpret_cast<IngredientDef_PostLoad_fn>(rsmm::fn_resolve(Sym::IngredientDef_PostLoad_Pattern));
+}
+
+// InputActionMap_Add  (InputActionMap_Add)
+//   ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4])
+using InputActionMap_Add_fn = void*(*)(void*, const void*, const void*, const void*);
+inline InputActionMap_Add_fn InputActionMap_Add() {
+    return reinterpret_cast<InputActionMap_Add_fn>(rsmm::fn_resolve(Sym::InputActionMap_Add_Pattern));
 }
 
 // LoadingScreenUiController_OnHide  (LoadingScreenUiController_OnHide)
@@ -714,6 +735,20 @@ inline OptionsMenu_AppendRow_fn OptionsMenu_AppendRow() {
     return reinterpret_cast<OptionsMenu_AppendRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AppendRow_Pattern));
 }
 
+// OptionsMenu_BuildGamepadControls  (OptionsMenu_BuildGamepadControls)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildGamepadControls_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildGamepadControls_fn OptionsMenu_BuildGamepadControls() {
+    return reinterpret_cast<OptionsMenu_BuildGamepadControls_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildGamepadControls_Pattern));
+}
+
+// OptionsMenu_BuildKeyboardControls  (OptionsMenu_BuildKeyboardControls)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildKeyboardControls_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildKeyboardControls_fn OptionsMenu_BuildKeyboardControls() {
+    return reinterpret_cast<OptionsMenu_BuildKeyboardControls_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildKeyboardControls_Pattern));
+}
+
 // OptionsMenu_BuildLastCategory  (OptionsMenu_BuildLastCategory)
 //   void(void* optionsCtrl, void* page, void* parent)
 using OptionsMenu_BuildLastCategory_fn = void(*)(void*, void*, void*);
@@ -721,11 +756,25 @@ inline OptionsMenu_BuildLastCategory_fn OptionsMenu_BuildLastCategory() {
     return reinterpret_cast<OptionsMenu_BuildLastCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildLastCategory_Pattern));
 }
 
+// OptionsMenu_ClearDuplicateKey  (OptionsMenu_ClearDuplicateKey)
+//   void(void* optionsCtrl, void* unused, u32 key)
+using OptionsMenu_ClearDuplicateKey_fn = void(*)(void*, void*, uint32_t);
+inline OptionsMenu_ClearDuplicateKey_fn OptionsMenu_ClearDuplicateKey() {
+    return reinterpret_cast<OptionsMenu_ClearDuplicateKey_fn>(rsmm::fn_resolve(Sym::OptionsMenu_ClearDuplicateKey_Pattern));
+}
+
 // OptionsMenu_SelectCategory  (OptionsMenu_SelectCategory)
 //   void(void* optionsCtrl, void* tabButtonGameUi)
 using OptionsMenu_SelectCategory_fn = void(*)(void*, void*);
 inline OptionsMenu_SelectCategory_fn OptionsMenu_SelectCategory() {
     return reinterpret_cast<OptionsMenu_SelectCategory_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SelectCategory_Pattern));
+}
+
+// OptionsMenu_SpawnExploKeyRow  (OptionsMenu_SpawnExploKeyRow)
+//   void(void* optionsCtrl, i32 exploIndex, void* tabEntry)
+using OptionsMenu_SpawnExploKeyRow_fn = void(*)(void*, uint32_t, void*);
+inline OptionsMenu_SpawnExploKeyRow_fn OptionsMenu_SpawnExploKeyRow() {
+    return reinterpret_cast<OptionsMenu_SpawnExploKeyRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnExploKeyRow_Pattern));
 }
 
 // OptionsMenu_SpawnMultiChoice  (OptionsMenu_SpawnMultiChoice)
