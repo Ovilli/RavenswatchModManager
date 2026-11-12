@@ -10757,7 +10757,9 @@ do
         rec(SET[i], 0x3f8, math.rad(45))                -- yaw
         rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
         rec(SET[i], 0x278, math.rad(i == 1 and 54 or 50)) -- pitch
-        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look height
+        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look offset
+        rec(SET[i], 0x4f8, i == 1 and 1 or 0.3)         -- near plane
+        rec(SET[i], 0x578, i == 1 and 500 or 300)       -- far plane
         rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
         rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
     end
@@ -10790,8 +10792,15 @@ do
           "measured from the originals, not from the last write")
     check(R.camera.set("pitch", 60) == 2 and about(I.read_f32(SET[2] + 0x278 + 0x70), math.rad(56)),
           "pitch moves every camera by the same angle")
-    check(R.camera.set("height", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
-          "look height moves every camera by the same amount")
+    check(R.camera.set("look_offset", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
+          "look offset moves every camera by the same amount")
+    check(R.camera.set("height", 2) == 2 and about(R.camera.get("look_offset"), 2)
+          and about(R.camera.get("height"), 2), "height is still a name for look_offset")
+    local listed = {}
+    for name in pairs(R.camera.FIELDS) do listed[name] = true end
+    check(listed.look_offset and not listed.height, "pairs(FIELDS) lists look_offset once")
+    check(R.camera.set("far", 800) == 1 and about(I.read_f32(SET[2] + 0x578 + 0x70), 300),
+          "the far plane is written on the default camera only")
     check(R.camera.set("distance", 20, { all = false }) == 1 and about(I.read_f32(ZD), 9.05 * 2),
           "all = false: default camera only")
     check(R.camera.set("distance", 20, { all = true }) == 2 and about(I.read_f32(ZD), 20),
