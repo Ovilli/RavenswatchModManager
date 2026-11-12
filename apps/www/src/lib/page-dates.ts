@@ -20,7 +20,7 @@ export const PAGE_UPDATED: Record<string, { date: string; dir: string }> = {
   '/contact': { date: '2026-07-02', dir: 'contact' },
   '/privacy': { date: '2026-10-29', dir: 'privacy' },
   '/legal': { date: '2026-09-01', dir: 'legal' },
-  '/dmca': { date: '2026-07-02', dir: 'dmca' },
+  '/dmca': { date: '2026-11-09', dir: 'dmca' },
 };
 
 /** The later of `a` and every parseable date in `rest`; undefined-safe. */

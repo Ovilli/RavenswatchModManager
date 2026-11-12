@@ -1697,6 +1697,31 @@ and the waiting ones. A player who starts the game once without the loader and
 changes a setting loses the saved keys (the game drops lines it does not know
 when it saves) and gets the defaults back.
 
+### Camera fields (`R.camera.get` / `R.camera.set`)
+
+```lua
+R.camera.get("pitch")              --> 54 | nil, reason   (degrees)
+R.camera.set("look_offset", 3)     --> cameras written | nil, reason
+R.camera.reset()                   -- put back everything R.camera changed
+```
+
+These read and write the hero's top-down camera settings live. The default
+camera takes the value, and the hero's other cameras (Kintaro on foot,
+Melusine's wisp, the ultimates) follow so the view keeps it when the game
+switches cameras. Pass `{ all = false }` to write the default camera only.
+
+| Field | Unit | What it does |
+|---|---|---|
+| `yaw` | degrees | Turns the camera around the hero. |
+| `pitch` | degrees | Tilt; the game clamps it to about 0.6 to 86. |
+| `distance` | units | Eye distance from the look-at point. |
+| `fov` | degrees | Field of view. Refused on the default camera, whose FOV is linked. |
+| `look_offset` | units | Slides the look-at point along the ground toward the camera (negative: away). It does not raise the view. `height` is an older name for it. |
+| `near`, `far` | units | Clip planes. Written on the default camera only. |
+
+`R.camera.FIELDS[name].proven` says whether a field has been checked in game;
+yaw, distance and look_offset have.
+
 ### Camera zoom (`R.camera.zoom`)
 
 ```lua
