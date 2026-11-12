@@ -1,0 +1,14 @@
+[mod]
+id = "rsmm-nameplate-diagnostic"
+name = "Host Crown Development Check"
+version = "0.0.1"
+author = "Arch"
+description = "Temporary read-only nameplate inspection. Does not draw a crown."
+license = "MIT"
+sdk_version = ">=3.0,<4"
+min_loader = 52
+enabled = true
+# RSMM conservatively classifies debug SDK access as gameplay.
+multiplayer_scope = "deterministic-shared"
+tags = ["development", "ui"]
+loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]

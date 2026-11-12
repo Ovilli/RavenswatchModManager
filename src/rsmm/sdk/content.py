@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity", "challenge", "scenery", "skin")
+         "entity", "challenge", "scenery", "skin", "nameplate_crown")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:
@@ -37,6 +37,7 @@ KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "
 #: enforces this. Keep this table honest — it is the single source of
 #: truth consumed by the SDK, the linter, and ``https://docs.rsmm.me/guides/modding/``.
 KIND_CONFIDENCE: dict[str, str] = {
+    "nameplate_crown": "experimental",  # overhead placement only; host filtering not implemented
     "item": "confirmed",      # mode="clone" verified in compendium + drops (2026-06-02).
                               # mode="ban" (dropping vanilla entries from the same
                               # LiveOps MO vector) is the exact inverse of that proven

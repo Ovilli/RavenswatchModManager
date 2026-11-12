@@ -60,6 +60,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     }),
     "ability": frozenset({"hero", "abilities"}),
     "entity": frozenset({"entity", "steps"}),
+    "nameplate_crown": frozenset({"preview", "width", "y"}),
     "talent": frozenset({
         "hero", "file", "value_patches", "int_patches", "union_patches",
         "rewires", "clone_nodes", "stats", "add_stats", "rebuild", "include", "scale",

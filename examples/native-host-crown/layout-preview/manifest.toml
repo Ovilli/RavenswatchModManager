@@ -1,0 +1,20 @@
+[mod]
+id = "host-crown-layout-preview"
+name = "Host Crown — Solo Layout Test"
+version = "0.0.1"
+author = "Arch"
+license = "MIT"
+summary = "Development preview of the native overhead crown placement."
+description = "Solo placement test only. Shows a crown on every applicable overhead nameplate; does not identify the host. Not a public release."
+sdk_version = ">=3.0,<4"
+enabled = true
+experimental = true
+multiplayer_scope = "deterministic-shared"
+tags = ["development", "ui"]
+
+[[content]]
+kind = "nameplate_crown"
+id = "overhead_crown"
+preview = true
+width = 0.20
+y = -0.12

@@ -1,5 +1,9 @@
 # In-game mod UI — recon (2026-10-24, build b9c3642884a8)
 
+For native **over-character nameplates**, see [NATIVE_NAMEPLATE.md](NATIVE_NAMEPLATE.md)
+and the [reproducible SDK examples](../../examples/native-host-crown/README.md).
+That surface differs from both the Settings builders and the teammate HUD.
+
 > **SUPERSEDED 2026-10-24 — the ImGui overlay below was removed.** It worked,
 > but painting our own book over the Settings page was too complicated and
 > looked wrong. The mod menu is now a **Mods tab inside the game's own Settings

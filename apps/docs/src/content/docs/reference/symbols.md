@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **378** symbols across 29 categories.
+Total: **383** symbols across 29 categories.
 
 ## analytics
 
@@ -531,6 +531,11 @@ Total: **378** symbols across 29 categories.
 | `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
 | `UiController_UnbindComponent` | `0x1403469e0` | ❓ unverified |  | void(void* uiController) |
+| `UiElementDesc_Serialize` | `0x140570920` | ❓ unverified |  | Static serializer recon on b9c3642884a8; oC2dElementDesc RTTI primary vtable slot 3. v1… |
+| `UiLabel_vftable` | `0x140f4f6e0` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
+| `UiLayoutWindow_vftable` | `0x140f4f808` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
+| `UiPictureDesc_Serialize` | `0x140574920` | ❓ unverified |  | Static serializer recon on b9c3642884a8; oC2dPictureDesc RTTI primary vtable slot 3. ca… |
+| `UiPicture_vftable` | `0x140f50d18` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
 
 ## world
 

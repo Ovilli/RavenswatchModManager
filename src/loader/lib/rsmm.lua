@@ -6444,6 +6444,9 @@ end)()
 
 R._internal = I
 
+-- Read-only native nameplate inspection; inert until explicitly called.
+_submodule_fn("nameplate_debug", { R = R, I = I })
+
 -- The SDK build stamp is printed by the LOADER (loader.cpp), not from here.
 -- It was briefly done in Lua via debug.getinfo + io.open, which broke every
 -- mod: apply_sandbox() deliberately removes `debug` and `io` from a mod state,

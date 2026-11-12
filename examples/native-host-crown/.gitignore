@@ -1,0 +1,2 @@
+# Build from each developer's installed game; never commit cooked resources.
+**/assets/

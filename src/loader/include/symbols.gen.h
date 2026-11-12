@@ -727,6 +727,13 @@ constexpr std::uintptr_t UiController_OnShow = 0x14034d280ull;
 constexpr const char* UiController_OnShow_Pattern = "UiController_OnShow";
 constexpr std::uintptr_t UiController_UnbindComponent = 0x1403469e0ull;
 // UiController_UnbindComponent_Pattern omitted: status=unverified
+constexpr std::uintptr_t UiElementDesc_Serialize = 0x140570920ull;
+// UiElementDesc_Serialize_Pattern omitted: status=unverified
+constexpr std::uintptr_t UiLabel_vftable = 0x140f4f6e0ull;
+constexpr std::uintptr_t UiLayoutWindow_vftable = 0x140f4f808ull;
+constexpr std::uintptr_t UiPictureDesc_Serialize = 0x140574920ull;
+// UiPictureDesc_Serialize_Pattern omitted: status=unverified
+constexpr std::uintptr_t UiPicture_vftable = 0x140f50d18ull;
 
 // --- world ---
 constexpr std::uintptr_t Chapter_Serialize = 0x140320bf0ull;
