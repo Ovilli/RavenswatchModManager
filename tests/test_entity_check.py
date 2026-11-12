@@ -90,3 +90,25 @@ def test_the_preload_caches_are_found_on_a_players_install(install_only):
         assert f"Definitions/Heroes/{herodefs.stem('Piper')}.herodef.UsedRscCache.ot" in hits
     finally:
         CK._cache_index.cache_clear()
+
+
+@needs
+def test_an_entity_inherits_through_an_alias():
+    """A hero written from scratch reaches Hero_Common through its FX file's
+    AliasPicker, not a parent path: given the alias table, the check follows
+    it (without, every link into the shared base read as dangling)."""
+    import uuid
+
+    from rsmm.engine import hero_frame as HF
+    common = "Heroes\\Hero_Common\\Hero_Common.entity.ot"
+    alias = uuid.uuid4().bytes
+    fx = HF.fx_frame(alias, uuid.uuid4().bytes)
+    hc = {c.guid for c in CK.EG.parse(corpus.read(CK.entity_rel(common))).components}
+    assert hc and hc <= set(CK._ancestors(fx, CK._corpus_reader, {alias: common}))
+    assert not set(CK._ancestors(fx, CK._corpus_reader))
+
+
+def test_an_unbound_link_is_not_a_link():
+    """The game leaves thousands of links with an all-zero target (a picker kept
+    for its label); they bind nothing and are never reported."""
+    assert CK._UNBOUND == bytes(16)

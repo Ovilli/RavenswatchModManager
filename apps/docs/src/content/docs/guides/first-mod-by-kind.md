@@ -1209,8 +1209,9 @@ can do more than damage:
 [content.frame.abilities.power]
 clip     = "anim:Timber"
 cooldown = 6
-hits     = [ { at = 0.45, radius = 3.5, damage = 120, stun = 1.0, knockback = 60, stagger = 20 } ]
-steps    = [ { wait = 0.45 }, { hit = { radius = 3, damage = 120 }, forward = 2.5 } ]
+icon     = "art/ui/timber.png"
+hits     = [ { at = 0.45, radius = 3.5, damage = 350, stun = 1.0, knockback = 60, stagger = 20 } ]
+steps    = [ { wait = 0.45 }, { hit = { radius = 3, damage = 250 }, forward = 2.5 } ]
 
 [content.frame.abilities.trait]
 clip = "anim:Bean"
@@ -1227,6 +1228,21 @@ hits = [ { at = 0.9, radius = 5, damage = 300, status = "Rooted" } ]
 - `steps` is the kit's timeline above (`fire`, `hit`, `heal`, `summon`, `wait`,
   `repeat`), started by the button. The hero gets its own spawner and aim to
   build from, so projectiles work without a base.
+- `icon` is the button's picture on the HUD: a PNG in the mod
+  (`icon = "art/ui/timber.png"`) or a picture the game ships
+  (`icon = "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png"`). The
+  greyed copy shown while it cools down is made for you (a shipped picture
+  uses its own `_Disabled` twin). Without `icon` the button is blank.
+- `damage` is a percentage of a normal hit. For scale, the shipped heroes deal
+  about 140–180 per basic attack, 250–900 with a power, around 150 per special
+  hit (finishers 600–900), and 800–4000 per ultimate hit, with ultimates on a
+  60–90 second cooldown.
+
+Every file of a hero written from scratch is checked while it is built: each
+link must reach a part the hero inherits (through Hero_Common's alias) or one
+of its own, and every resource it names must be preloaded. A mistake stops
+the build with the part's name, instead of a button that silently does nothing
+in game.
 
 Projectiles of the hero's own, `[content.frame.projectiles.<id>]`, are fired
 with `fire = "own:<id>"`: each is the engine's generic hero projectile (flight,

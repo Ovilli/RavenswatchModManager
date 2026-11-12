@@ -66,7 +66,8 @@ each piece is wired the way it is. NOT YET PROVEN IN GAME.
         WITHOUT ``base`` (``_emit_scratch``): nothing of any hero is copied;
         its herodef (engine/herodef_frame.py), alias, text and preload lists
         are its own, and ``rig`` lends assets only. Then ``frame`` also takes
-        ``albedo`` (its body repainted), ``abilities`` (engine/hero_ability.py),
+        ``albedo`` (its body repainted), ``abilities`` (engine/hero_ability.py;
+        each button may take an ``icon``: a mod PNG or a shipped UI path),
         ``talents`` (``[{name, title, description, icon, add_stats,
         actions}]``: its own talent list, the name's first word its book
         column) and ``animations`` (``{name = {source, clip, template}}``:
@@ -1397,6 +1398,31 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         return ("Ui", new)
     cooked_ui: set[str] = set()
 
+    def button_icons(value, name: str, what: str) -> tuple[tuple[str, str], tuple[str, str]]:
+        """A button's HUD picture and its cooled-down twin. A shipped picture
+        keeps its shipped ``_Disabled`` twin; a PNG in the mod gets one of its
+        own, greyed and darkened (shipped twins are the same picture dimmed)."""
+        from ...engine import icon_decode
+        from ...engine import image as IMG
+        icon = ui_art(value, _DEFAULT_ICON, name, what)
+        v = str(value)
+        if "\\" in v:
+            twin = re.sub(r"(?i)\.png$", "_Disabled.png", v)
+            return icon, (("Ui", twin) if corpus.exists(f"Ui/{twin.replace(chr(92), '/')}")
+                          else icon)
+        w, h, px = IMG.decode_png(_mod_source(out_dir, v, hid, what).read_bytes())
+        grey = bytearray(px)
+        for i in range(0, len(grey), 4):
+            y = int(0.3 * grey[i] + 0.59 * grey[i + 1] + 0.11 * grey[i + 2]) * 45 // 100
+            grey[i:i + 3] = bytes((y, y, y))
+        new = f"{icon[1][:-4]}_Disabled.png"
+        if new not in cooked_ui:
+            put(f"Ui/{new.replace(chr(92), '/')}.Texture.dxt",
+                PC.cook_texture(icon_decode.rgba_to_png(bytes(grey), w, h)))
+            art.append(f"Ui|{new}|oCTexture")
+            cooked_ui.add(new)
+        return icon, ("Ui", new)
+
     def own_art(value, rig_ref: tuple[str, str], name: str, what: str) -> tuple[str, str]:
         """Its own picture when the frame gives one, else the rig's."""
         return ui_art(value, rig_ref[1] or _DEFAULT_ICON, name, what) or rig_ref
@@ -1716,6 +1742,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             card["name_key"] = key(f"Ability_{word}_Name", raw.pop("name"))
         if "description" in raw:
             card["desc_key"] = key(f"Ability_{word}_Desc", raw.pop("description"))
+        if raw.get("icon"):
+            card["icon"], card["icon_disabled"] = button_icons(
+                raw.pop("icon"), f"Ability_{word}", f"frame.abilities.{slot}.icon")
         try:
             raw = own(raw, f"frame.abilities.{slot}")
             if isinstance(raw.get("combo"), list):
@@ -1978,7 +2007,40 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     put(RC.cache_path_for(_rel(hid)), RC.render(sorted(lines)))
     for ref in (skin_ref, lowres_ref):
         put(RC.cache_path_for(H.entity_rel(ref)), RC.render(sorted(lines - {_self_line(hid)})))
+    _check_scratch(hid, entities, app, H.Alias(alias, scope, main_ref), lines)
     return written
+
+
+def _check_scratch(hid: str, entities: dict[str, bytes], app: str, own_alias,
+                   lines: set[str]) -> None:
+    """Every file of a hero written from scratch, checked as a whole new file
+    (engine/entity_check.py): it holds together, each link reaches a part it
+    inherits (through parent paths AND aliases: its FX file reaches Hero_Common
+    by alias) or one of its own files, each resource it names is preloaded.
+    It has no original to vouch for its links, so nothing is waved through.
+    Errors stop the build; warnings are printed."""
+    from ...engine import entity_check as CK
+    from ...engine import hero_cook as H
+    aliases = {a.guid: a.stream for a in H.aliases(app)}
+    aliases[own_alias.guid] = own_alias.stream
+    by_stem = {ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"): blob
+               for ref, blob in entities.items()}
+
+    def read(ref: str):
+        own = by_stem.get(ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"))
+        return own if own is not None else CK._corpus_reader(ref)
+    cache = RC.render(sorted(lines))
+    problems = []
+    for ref, blob in entities.items():
+        stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        for i in CK.check(blob, None, name=stem, read=read, cache_text=cache, aliases=aliases):
+            if i.error:
+                problems.append(f"{stem}: {i.where}: {i.message}")
+            else:
+                print(f"warning: hero {hid}: {stem}: {i.where}: {i.message}", file=sys.stderr)
+    if problems:
+        raise ContentError(f"hero {hid}: {len(problems)} wiring problem(s), first: "
+                           + "; ".join(problems[:3]))
 
 
 def _frame_family(frame: dict, b, R, H, app: str, herodef: bytes, hero_alias: bytes,

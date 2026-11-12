@@ -246,6 +246,14 @@ class Effect:
               else str(raw["on"]) if is_stars and "on" in raw else None)
         if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
+        if isinstance(raw.get("amount"), str):
+            # "+40%" / "-60%" / "+10": text that says what it does
+            # (engine/stat_amount.py); a multiplier is refused with its equivalent.
+            from . import stat_amount as SA
+            try:
+                raw = {**raw, "amount": SA.parse(raw["amount"], "effect amount")}
+            except SA.AmountError as e:
+                raise ItemEffectError(str(e)) from e
         for k in ("amount", "seconds", "radius"):
             if k in raw and (isinstance(raw[k], bool) or not isinstance(raw[k], (int, float))):
                 raise ItemEffectError(f"effect {k} must be a number")

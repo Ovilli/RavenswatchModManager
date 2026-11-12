@@ -24,6 +24,7 @@ chains for the basic attack (one swing per press), sounds.
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass, field
 
 from . import entity_parts as P
@@ -45,6 +46,8 @@ _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
 #: Hero_Common's tester every shipped ability state activates on entry (see
 #: ``build``): it takes the body off the move/idle animation for the ability.
 MOVE_INERTIA = "Move Inertia Activation Tester"
+#: TEMPORARY bisection variants (see Ability.variant).
+_VARIANTS = {"no_end_state", "no_inertia", "bare", "look_enter", "dash_state", "released"}
 #: How a button turns the hero: Hero_Common's own dash "Initial Look At To
 #: Cursor", which reads the aim accessor (0xfd283d3 on the shared Hero
 #: Controller, the one every shipped aimed ability reads) and SNAPS to it
@@ -132,12 +135,22 @@ class Ability:
     name_key: str = ""
     desc_key: str = ""
     sound: str = ""                  # "<entity ref> | <FMod event part>": played at 0 s
-    #: TEMPORARY playtest bisection (2026-11-08: states died within a frame):
-    #: "no_end_state" = the end timer does not switch the state (its clip
-    #: ends it, as the dash's does), "no_inertia" = no move-inertia hand-over,
-    #: "bare" = both; "dash_state" / "released": see _bisect_state. Remove
+    #: Its HUD picture and the greyed one shown while it cools down, each
+    #: (root, path) of a cooked UI texture; empty = the button shows none.
+    icon: tuple[str, str] = ("", "")
+    icon_disabled: tuple[str, str] = ("", "")
+    #: TEMPORARY playtest bisection (2026-11-08: states died within a frame).
+    #: One or more of, joined with "+": "no_end_state" = the end timer does
+    #: not switch the state (its clip ends it, as the dash's does),
+    #: "no_inertia" = no move-inertia hand-over, "bare" = both, "look_enter" =
+    #: the aim turns once on entry (Geppetto's power) instead of every frame
+    #: while active; "dash_state" / "released": see _bisect_state. Remove
     #: once the cause is known.
     variant: str = ""
+
+    def has(self, *variants: str) -> bool:
+        """Whether this button's bisection variant includes any of these."""
+        return bool(set(self.variant.split("+")) & set(variants))
     #: The basic attack as shipped heroes do it: a combo of steps, each its
     #: own clip whose TIMELINE lands the hit (see build_combo / COMBO_STEP_KEYS).
     combo: list = field(default_factory=list)
@@ -151,9 +164,14 @@ class Ability:
         if not isinstance(raw, dict) or not raw.get("clip"):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
-                              "desc_key", "indicator", "sound", "variant", "combo"}
+                              "desc_key", "indicator", "sound", "variant", "combo",
+                              "icon", "icon_disabled"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
+        bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
+        if bad:
+            raise AbilityError(f"ability {slot}: variant {', '.join(sorted(bad))}; "
+                               f"known: {', '.join(sorted(_VARIANTS))} (join with +)")
         hits = parse_hits(raw.get("hits"), f"ability {slot}")
         ind = raw.get("indicator")
         if ind is not None:
@@ -180,11 +198,18 @@ class Ability:
                                        f"{', '.join(sorted(COMBO_STEP_KEYS - {'clip'}))} }}")
                 if len(_step_hits(st, f"ability {slot} combo step {n}")) != 1:
                     raise AbilityError(f"ability {slot}: combo step {n} lands one hit")
+        icons = []
+        for k in ("icon", "icon_disabled"):
+            v = raw.get(k) or ("", "")
+            if not (isinstance(v, (tuple, list)) and len(v) == 2
+                    and all(isinstance(x, str) for x in v)):
+                raise AbilityError(f"ability {slot}: {k} is (root, path) of a UI texture")
+            icons.append((str(v[0]), str(v[1])))
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
-                   str(raw.get("desc_key", "")), sound, str(raw.get("variant", "")),
-                   [dict(st) for st in combo])
+                   str(raw.get("desc_key", "")), sound, icons[0], icons[1],
+                   str(raw.get("variant", "")), [dict(st) for st in combo])
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -449,9 +474,9 @@ def _bisect_state(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, ctl: 
     the button at Hero_Common's own dash state (does the button side work?);
     ``"released"`` adds the input-released flag + tester every shipped
     ability state has. Remove once the cause is known."""
-    if ab.variant not in ("dash_state", "released"):
+    if not ab.has("dash_state", "released"):
         return
-    if ab.variant == "dash_state":
+    if ab.has("dash_state"):
         ds = hero_common.component("State Dash Ability")
         ef.retarget_external(ctl, ef.component(state).guid, ds.guid,
                              f"[State] {hero_common.name}\\{ds.path}")
@@ -623,6 +648,41 @@ def _button(ef: EntityFile, ab: Ability, ctl: str) -> None:
         HF._set_text(ef, ctl, ab.bank, ab.desc_key)
     if ab.name_key:
         HF._set_text(ef, ctl, ab.bank, ab.name_key)
+    if ab.icon[1]:
+        set_icon(ef, ctl, ab.icon, ab.icon_disabled if ab.icon_disabled[1] else ab.icon)
+
+
+#: The HUD picture of a button lives in an object its controller owns
+#: (bytes_13 = u32 1, u32 n, n object ids: one per step, Juliet's 4-hit attack
+#: has 4). Its body ends with two (root, path) string pairs, the picture and
+#: its cooled-down twin, after this marker; Hero_Common leaves both empty.
+ICON_CLASS = "oCDtAbilityAlternateIconSettings"
+_ICON_MARK = bytes.fromhex("2222bbaa2222bbaa")
+
+
+def set_icon(ef: EntityFile, ctl: str, icon: tuple[str, str],
+             disabled: tuple[str, str]) -> int:
+    """Give the button ``ctl`` its HUD pictures, on every step it owns; how many."""
+    from . import entity_fields as EF
+    c = ef.component(ctl)
+    f = next((x for x in EF.fields(c) if x.name == "bytes_13"), None)
+    raw = bytes(c.body[f.offset:f.offset + f.size]) if f is not None else b""
+    if len(raw) < 8:
+        raise AbilityError(f"{ctl}: no icon list")
+    n = struct.unpack_from("<I", raw, 4)[0]
+    if len(raw) != 8 + 4 * n or not n:
+        raise AbilityError(f"{ctl}: icon list of {len(raw)} bytes for {n} steps")
+    ids = struct.unpack_from(f"<{n}I", raw, 8)
+    for i in ids:
+        if ef._class(i) != ICON_CLASS:
+            raise AbilityError(f"{ctl}: object {i} is {ef._class(i)}, not {ICON_CLASS}")
+        obj = ef.objects[i]
+        at = bytes(obj).find(_ICON_MARK)
+        if at < 0 or bytes(obj).count(_ICON_MARK) != 1:
+            raise AbilityError(f"{ctl}: icon object {i} has no picture slots")
+        obj[at + len(_ICON_MARK):] = (P._lstr(icon[0]) + P._lstr(icon[1])
+                                      + P._lstr(disabled[0]) + P._lstr(disabled[1]))
+    return len(ids)
 
 
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
@@ -658,10 +718,13 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         state = f"State {tag}"
         timers = hits(ef, hero_common, w, ab.hits, tag=tag, group=group,
                       seed=f"{seed}:{ab.slot}", kind=ab.slot)
+        aim = TW.link_to(ef, f"{tag} Look At")
         state_link = w.state(state, while_active=[TW.link_to(ef, f"{tag} Clip Selector"),
-                                                  TW.link_to(ef, f"{tag} Look At")])
+                                                  *([] if ab.has("look_enter") else [aim])])
+        if ab.has("look_enter"):
+            ef.add_ref(state, "on_enter?", f"{tag} Look At")
         _timer(w, f"{tag} End Timer", length,
-               ends=_NONE if ab.variant in ("no_end_state", "bare") else state_link)
+               ends=_NONE if ab.has("no_end_state", "bare") else state_link)
         statuses(ef, ab.hits, tag=tag, switch=state, seed=f"{seed}:{ab.slot}")
         if with_indicator:
             add_indicator(ef, ab, seed=seed)
@@ -672,7 +735,7 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         # move-inertia tester on entry (unconfirmed as the freeze's cause; see
         # Ability.variant).
         mi = hero_common.component(MOVE_INERTIA)
-        if ab.variant in ("no_inertia", "bare"):
+        if ab.has("no_inertia", "bare"):
             mi = None
         if mi is not None:
             ef.add_external_ref(state, "activates", mi.guid,

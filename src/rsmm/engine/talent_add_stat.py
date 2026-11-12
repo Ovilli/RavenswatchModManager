@@ -44,6 +44,7 @@ from . import entity_fields as EF
 from . import entity_graph as EG
 from . import entity_graph_edit as GE
 from . import entity_parts as P
+from . import stat_amount as SA
 from . import talent_values as TV
 from . import talent_writer as TW
 from .item_modifier import (
@@ -490,22 +491,32 @@ def borrow_talent(raw: bytes, donor_raw: bytes, *, talent: str, other: str, hero
     return out
 
 
+def _amount(v, what: str) -> float:
+    try:
+        return SA.parse(v, what)
+    except SA.AmountError as e:
+        raise AddStatError(str(e)) from e
+
+
 def normalise_values(values) -> dict[str, float]:
-    """``{tier: amount}`` from one number, a 4-list (Common..Legendary), or a table."""
-    if isinstance(values, int | float) and not isinstance(values, bool):
-        return {t: float(values) for t in TIERS}
+    """``{tier: amount}`` from one value, a 4-list (Common..Legendary), or a
+    table. A value is a number or text that says what it does (``"+40%"``,
+    ``"-60%"``, ``"+10"``: engine/stat_amount.py); it is ADDED to the stat."""
+    if isinstance(values, int | float | str) and not isinstance(values, bool):
+        a = _amount(values, "values")
+        return dict.fromkeys(TIERS, a)
     if isinstance(values, list | tuple):
-        if len(values) != 4 or not all(isinstance(v, int | float) for v in values):
+        if len(values) != 4:
             raise AddStatError(f"values must be 4 numbers (Common, Rare, Epic, Legendary), "
                                f"got {values!r}")
-        return dict(zip(TIERS, (float(v) for v in values), strict=True))
+        return {t: _amount(v, f"values ({t})") for t, v in zip(TIERS, values, strict=True)}
     if isinstance(values, dict):
         out = {}
         for k, v in values.items():
             tier = next((t for t in TIERS if t.lower() == str(k).lower()), None)
-            if tier is None or not isinstance(v, int | float):
+            if tier is None:
                 raise AddStatError(f"values: {k!r} = {v!r} is not a rarity and a number")
-            out[tier] = float(v)
+            out[tier] = _amount(v, f"values ({tier})")
         missing = [t for t in TIERS if t not in out]
         if missing:
             raise AddStatError(f"values: missing {', '.join(missing)}")
@@ -580,6 +591,11 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
                 f"{stat!r} is something the game puts on whoever is hit, and an added stat "
                 f"applies to the hero itself, so {talent!r} would debuff its own hero")
         amounts = normalise_values(values)
+        # The read-back: what these numbers do, so a misread value ("x0.4"
+        # meant as -60% but written 0.4) shows before anyone plays it.
+        import sys
+        print(f"  talent {talent}: {SA.describe(stat_name(key) or str(stat), amounts, percent)}",
+              file=sys.stderr)
         if is_charge(key):
             heard = charges_heard()
             if heard and key not in heard:

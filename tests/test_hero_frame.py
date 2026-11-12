@@ -553,3 +553,54 @@ def test_the_basic_attack_is_a_combo_of_the_heros_own():
                                b"Attack Ability Sound Step 1": 0.0})
     with pytest.raises(HA.AbilityError, match="2 steps"):
         HA.Ability.parse("attack", {"combo": [{"clip": clip, "hits": [{}]}]})
+
+
+@needs_corpus
+@needs_install
+def test_a_button_shows_its_icon_and_its_cooled_down_twin():
+    """``icon``: the HUD picture lives in the object the controller owns
+    (oCDtAbilityAlternateIconSettings), left empty by Hero_Common: without it a
+    scratch hero's buttons were blank."""
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = _hero("Hero_T")
+    ab = HA.Ability.parse("power", {
+        "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+        "duration": 0.9, "icon": ("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png"),
+        "icon_disabled": ("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power_Disabled.png")})
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    e2 = EntityFile(ef.to_bytes(), "Hero_T")
+    icons = [bytes(p) for i, p in enumerate(e2.objects) if e2._class(i) == HA.ICON_CLASS
+             and b"Kintaro_Dismounted_Power" in p]
+    assert len(icons) == 1
+    from rsmm.engine import entity_parts as P
+    assert icons[0].endswith(
+        P._lstr("Ui") + P._lstr("Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png")
+        + P._lstr("Ui") + P._lstr("Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power_Disabled.png"))
+    with pytest.raises(HA.AbilityError, match="icon"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "icon": "just a string"})
+
+
+@needs_corpus
+@needs_install
+def test_bisection_variants_combine():
+    """TEMPORARY (freeze bisection): ``variant`` joins options with ``+``;
+    ``look_enter`` aims once on entry, as Geppetto's power does."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    ef = _hero("Hero_T")
+    ab = HA.Ability.parse("power", {
+        "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+        "duration": 0.9, "variant": "released+look_enter+no_end_state"})
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
+    state = {x.name: x.text for x in EF.fields(g["State Power Ability"])}
+    assert "Power Ability Look At" in state["on_enter?"]
+    assert "Power Ability Look At" not in state["while_active"]
+    assert "Input Has Been Released Tester" in state["while_active"]
+    assert "Input Has Been Released Flag" in state["deactivates?"]
+    timer = {x.name: x.text for x in EF.fields(g["Power Ability End Timer"])}
+    assert timer["state"] == "(none)"
+    with pytest.raises(HA.AbilityError, match="variant"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "variant": "released+nonsense"})
