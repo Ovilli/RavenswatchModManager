@@ -1598,6 +1598,34 @@ returns `nil` plus a reason when the bindings cannot be read.
 
 Handlers run on the game thread inside the input poll. Keep them short.
 
+### Middle-mouse drag (`R.input`)
+
+```lua
+R.input.on_drag(function(phase, dx, dy, ev)   -- "start", then "move"s, then "end"
+    if phase == "move" and not R.game.flag("is_menu_open") then
+        R.log(("dragged %.1f, %.1f of %dx%d"):format(dx, dy, ev.w, ev.h))
+    end
+end)
+R.input.drag_available() --> true | false, reason
+R.input.drag_state()     --> { held, x, y, w, h, drags, dx, dy } | nil, reason
+R.input.middle_free()    --> true | false, action | nil, reason
+```
+
+The game's own input poll reads the middle button every frame, and its UI
+update keeps the cursor position. While the game reports the button held, the
+loader adds up how far the cursor moved between two polls and posts
+`input:drag`: one `start`, any number of `move` (`dx`, `dy` in pixels since the
+last move), one `end`. The payload also carries the cursor (`x`, `y`), the
+window's client size (`w`, `h`, to make a drag resolution-independent),
+`blocked` and `button` (`"middle"`). A handler that subscribes mid-drag hears
+nothing until the next `start`.
+
+The cursor stops at the window edge, so a drag does too. Nothing is swallowed:
+the game's UI still sees the click. By default nothing in a run uses the middle
+button; `middle_free()` returns `false` plus the action name when the player has
+bound one to it. `drag_state()` gives the running totals (`drags` started, total
+`dx`/`dy` while held, since launch) for a mod that polls instead of listening.
+
 ### Keybinds (`R.input.keybinds`)
 
 ```lua

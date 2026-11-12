@@ -3200,14 +3200,18 @@ do
     if ok and type(x) == "table" then R.camera = x end
 end
 
--- mouse wheel ------------------------------------------------------------
+-- mouse wheel and middle drag ------------------------------------------
 --
 -- Lives in rsmm/input.lua. Wheel notches counted on the frame they happen by
--- the loader's input-poll hook, delivered as the "input:wheel" event, plus a
--- read of the player's key bindings to tell whether the wheel is free in a run.
+-- the loader's input-poll hook, delivered as the "input:wheel" event; the
+-- middle-button drag from the same hook as "input:drag" (start / move / end);
+-- plus a read of the player's key bindings to tell whether the wheel or the
+-- middle button is free in a run.
 --
 --   R.input.on_wheel(function(steps, ev) ... end)   -- steps > 0 = wheel up
 --   R.input.wheel_free()                            -- false, action when rebound
+--   R.input.on_drag(function(phase, dx, dy, ev) ... end)
+--   R.input.middle_free()                           -- false, action when bound
 do
     local ok, x = _submodule_fn("input", { R = R, I = I, options_obj = _options_obj })
     if ok and type(x) == "table" then R.input = x end

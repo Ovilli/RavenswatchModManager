@@ -224,6 +224,24 @@ int lua_input_wheel_totals(lua_State* L) {
     return 2;
 }
 
+// rsmm._internal.input_drag_state() -> held, x, y, w, h, drags, dx, dy | nothing
+//   The middle drag (hook_input.cpp): button held, the game's cursor and client
+//   size, drags started since launch, total movement while held since launch.
+//   Returns nothing when the drag is not armed.
+int lua_input_drag_state(lua_State* L) {
+    InputDragState s{};
+    if (!input_drag_state(&s)) return 0;
+    lua_pushboolean(L, s.held);
+    lua_pushnumber(L, s.x);
+    lua_pushnumber(L, s.y);
+    lua_pushnumber(L, s.w);
+    lua_pushnumber(L, s.h);
+    lua_pushinteger(L, static_cast<lua_Integer>(s.drags));
+    lua_pushnumber(L, s.dx);
+    lua_pushnumber(L, s.dy);
+    return 8;
+}
+
 // rsmm._internal.keybind_add(id, label, kb, pad) -> index | nil, err
 //   Declares a key binding for the calling mod (hook_keybinds.cpp). index is
 //   0-based and stable for the session; re-declaring the same id returns it.
@@ -2098,6 +2116,7 @@ void register_api(lua_State* L) {
         { "audio_targets",           lua_audio_targets },
         { "input_armed",             lua_input_armed },
         { "input_wheel_totals",      lua_input_wheel_totals },
+        { "input_drag_state",        lua_input_drag_state },
         { "keybind_add",             lua_keybind_add },
         { "keybind_keys",            lua_keybind_keys },
         { "keybinds_state",          lua_keybinds_state },

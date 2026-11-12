@@ -369,6 +369,7 @@ ADDR: dict[str, int] = {
     "g_InputMouseWheelUp": 0x1414670a0,
     "g_MagicalObjectComponentMeta": 0x141469098,
     "g_MagicalObjectPool": 0x141436ad0,
+    "g_MouseState": 0x14146d9c8,
     "g_RosterManager": 0x141436590,
     "g_StatReportRoot": 0x1414369e8,
     "g_ZoomCameraModifier_vftable": 0x140f62b38,
