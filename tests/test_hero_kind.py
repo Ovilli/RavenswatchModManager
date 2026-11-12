@@ -1325,3 +1325,57 @@ def test_kit_pets_name_and_upgrade_are_checked(tmp_path, pets, msg):
                     "when": "State Wolf Secondary Ability", **pets}}
     with pytest.raises(ContentError, match=msg):
         _emit(tmp_path, id="PetCheck", base="Red", kit=kit)
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_keeps_each_class_in_one_run(tmp_path):
+    """Every entity file a hero from scratch writes groups its components one
+    run per class, as all 4,769 shipped entities do (Jack's main had 23 of 25
+    classes split, its states in 66 runs, while his buttons froze)."""
+    from rsmm.engine import entity_append as EA
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [{"name": "Attack One", "starter": True}, {"name": "Power Two"}],
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "hits": [{"at": 0.3}]}}}}), tmp_path / "assets")
+    ents = [p for p in files if p.name.endswith(".EntitySettingsResource.gen")]
+    assert ents
+    assert {p.name: EA.class_runs_split(p.read_bytes()) for p in ents} == \
+        {p.name: [] for p in ents}
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_fan_turns_each_shot_through_a_yaw_value(tmp_path):
+    """A fan (`angles`) turns each shot through a VALUE its aim node reads, the
+    way Piper fans her notes: an inline yaw is ignored by the game (Jack's six
+    beans all flew one way, playtest 2026-11-12)."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9,
+                "steps": [{"fire": "Heroes/Hero_Red/Hero_Red_Projectile_Spike",
+                           "angles": [0, 90, 180]}]}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    aims = sorted(c.name for c in ef.graph().components
+                  if c.name.endswith(" Aim") and " Shot " in c.name)
+    assert len(aims) == 3
+    reads = []
+    for name in aims:
+        f = next(x for x in EF.fields(ef.component(name)) if x.name == "obj_4")
+        yaw = f.text.rsplit("<- [Value] ", 1)[-1]
+        reads.append(yaw.rsplit("\\", 1)[-1])
+        assert "Hero_Piper" not in f.text
+    values = {r: next(x.text for x in EF.fields(ef.component(r)) if x.name == "value")
+              for r in reads if r != "Kit Aim Y Angle"}
+    assert sorted(values.values()) == ["f32 1.5708", "f32 3.14159"]

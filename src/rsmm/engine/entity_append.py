@@ -140,6 +140,48 @@ def place_new_components(raw: bytes, first_new: int,
     return cooked.emit(cf)
 
 
+def group_class_runs(raw: bytes) -> bytes:
+    """``raw`` with its WHOLE component vector in the shipped layout: one
+    contiguous run per class, runs in class-table order, names in order within
+    a run (every one of the 4,769 shipped entities).
+
+    For a file written from nothing (a hero from scratch), where
+    :func:`place_new_components` cannot help: it keeps every id before
+    ``first_new`` where it is, and such a file is built over many writes, so
+    its ids were placed against a layout that was itself still growing. Jack's
+    main entity came out with 23 of its 25 classes split, its 66 ability and
+    talent states in 66 separate runs. Order inside the vector decides only
+    instantiation order (references are by GUID; the override merge skips by
+    GUID), so regrouping a file's own components changes nothing else."""
+    from . import entity_graph as EG
+    cf = cooked.parse(raw)
+    trailer = cf.sections[-1].payload
+    off, ids = component_vector(trailer)
+    _count, directory = _directory(cf)
+    names = {c.index - 1: c.name for c in EG.parse(raw).components}
+    out = sorted(ids, key=lambda i: (directory[i], names.get(i, "")))
+    if out == ids:
+        return raw
+    cf.sections[-1].payload = _render_vector(off, trailer, out)
+    return cooked.emit(cf)
+
+
+def class_runs_split(raw: bytes) -> list[str]:
+    """Class names whose components sit in more than one run of the vector."""
+    cf = cooked.parse(raw)
+    _off, ids = component_vector(cf.sections[-1].payload)
+    _count, directory = _directory(cf)
+    seen, split, prev = set(), set(), None
+    for i in ids:
+        c = directory[i]
+        if c != prev:
+            if c in seen:
+                split.add(c)
+            seen.add(c)
+        prev = c
+    return sorted(cf.classes[c].name for c in split)
+
+
 def validate_layout(cf: cooked.CookedFile) -> int:
     """Sanity-check directory↔record correspondence; return component count."""
     count, idxs = _directory(cf)

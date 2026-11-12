@@ -590,8 +590,24 @@ def talent_effects(raw: bytes, hero_common: EntityFile, effects: dict[str, dict]
 #: turns with the hero, so shots go where the button turned him: the buttons'
 #: look-at (hero_ability.LOOK_AT) is what aims them.
 KIT_DONORS: list[dict] = [
-    {"clone": ["Divine Revive 3d Node"], "from": "Heroes/Hero_Common/Hero_Common",
-     "rename": {"Divine Revive 3d Node": "Kit Aim"}},
+    # The aim: a node whose yaw READS A VALUE, the only way a fan turns. Shots
+    # through Hero_Common's Divine Revive node (yaw inline, no value) all flew
+    # the same way (Jack's 6-bean whirl, playtest 2026-11-12); Piper's notes
+    # fan through her node's "Y Angle" value (Cross Quake, PROVEN 2026-09-26).
+    # So Piper's straight-ahead node lends the LAYOUT only: its yaw reads a
+    # value of the hero's own (each shot re-points it at its angle,
+    # hero_kit.expand), her release-direction and X-offset selectors are
+    # unlinked (literal forward, 0), and the shared projectile Y offset stays.
+    {"clone": ["Attack Shoot 3d Node 01"], "from": "Heroes/Hero_Piper/Hero_Piper",
+     "rename": {"Attack Shoot 3d Node 01": "Kit Aim"}},
+    {"clone": ["AP Basic Value"], "from": "Heroes/Hero_Common/Hero_Common",
+     "rename": {"AP Basic Value": "Kit Aim Y Angle"}},
+    {"set": "Kit Aim Y Angle.value", "value": 0.0},
+    # link slots, empty ones counted: 2 release direction, 3 X offset,
+    # 4 Y offset (shared), 5 Y angle
+    {"link": "Kit Aim.obj_4[5]", "to": "Kit Aim Y Angle"},
+    {"link": "Kit Aim.obj_4[3]", "to": ""},
+    {"link": "Kit Aim.obj_4[2]", "to": ""},
     {"set": "Kit Aim.obj_4[8]", "value": 0.0},
     # The shared base's own attack spawner (Update 5's melody zone): every
     # field Kintaro's Ultimate 2 projectile spawner has, except the template,

@@ -1895,10 +1895,12 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     _no_effect([main, fx], put, art)
     from ...engine import vfx_writer as _VW
     own_fx_assets.add(_VW.NO_EFFECT)
+    from ...engine import entity_append as _EA
     alias = H.alias_guid(mod_id, hid)
     entities = {main_ref: main, fx_ref: fx}
     for ref, blob in own_projectiles.items():
-        put(H.entity_rel(ref), PC.restamp_entity_guids(blob, H.entity_rel(ref)))
+        put(H.entity_rel(ref), _EA.group_class_runs(
+            PC.restamp_entity_guids(blob, H.entity_rel(ref))))
         art.append(f"EntitySettings|{ref}|oCEntitySettingsResource")
     for c in kit_copies:
         if c.shipped:
@@ -1910,7 +1912,7 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             raise ContentError(f"hero {hid}: {e}") from e
         if c.data is None:
             blob = PC.restamp_entity_guids(blob, H.entity_rel(c.ref))
-        put(H.entity_rel(c.ref), blob)
+        put(H.entity_rel(c.ref), _EA.group_class_runs(blob))
         art.append(f"EntitySettings|{c.ref}|oCEntitySettingsResource")
     for ref in (skin_ref, lowres_ref):
         entities[ref] = HF.skin_frame(alias, HF.guid(scope, ref), skin_values,
@@ -1969,7 +1971,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     for tok, blob in TP.append_bank_keys(bank_path, pairs).items():
         put(dec if tok == "__base__" else dec + tok, blob)
     for ref, blob in entities.items():
-        put(H.entity_rel(ref), TP.repoint_text_rows(blob, bank, rows_of))
+        # one contiguous run per component class, as every shipped entity
+        # (entity_append.group_class_runs): built over many writes, the
+        # scratch files came out with nearly every class split
+        entities[ref] = _EA.group_class_runs(TP.repoint_text_rows(blob, bank, rows_of))
+        put(H.entity_rel(ref), entities[ref])
     put(_rel(hid), TP.repoint_text_rows(herodef, bank, rows_of))
 
     # Its alias: what its skins inherit it through.

@@ -432,7 +432,11 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     # 2026-11-03: Kit Pet Spawn / Start / Order End all missing).
     empty = pick(lambda c: c.cls == "oCEntityCpntStateSettings" and not c.refs
                   and c.override is None, "empty state")
-    aim = _obj_refs(node, "obj_4") if node else []
+    # Slot numbers as `link Part.obj_4[n]` counts them: EVERY link slot,
+    # empty ones too. Counting only the filled ones pointed a shot's yaw at
+    # Piper's X offset (her node's first two slots are empty: release
+    # direction is 2, X offset 3, Y offset 4, Y angle 5).
+    aim = _obj_ref_slots(node, "obj_4") if node else []
     yaw_ref = next((i for i, r in enumerate(aim) if "Y Angle" in r), None)
     x_ref = next((i for i, r in enumerate(aim) if "X Offset" in r), None)
     # Links the shipped node already holds into its OWN entity that lead to no
@@ -441,8 +445,9 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     # a copy, which made every Fire and Hit block on Merlin fail to save.
     own = {c.name for c in g.components}
     dangling = [(f.name, i) for f in (EF.fields(node) if node else []) if f.kind == "obj"
-                for i, r in enumerate(_obj_refs(node, f.name))
-                if r and r.startswith(g.name + "\\")
+                for i, slot in enumerate(_obj_ref_slots(node, f.name))
+                for r in [re.sub(r"^\[[^\]]+\] ", "", slot)]
+                if r and r != "(none)" and r.startswith(g.name + "\\")
                 and r.rstrip().rstrip('"').rsplit("\\", 1)[-1] not in own]
 
     def clear_dangling(nd: str) -> None:
@@ -663,6 +668,17 @@ def _is_pet(ent: str) -> bool:
 def _inherits(ent: str, needle: bytes) -> bool:
     raw = _read(ent)
     return bool(raw) and needle in raw
+
+
+def _obj_ref_slots(c: EG.Component, fld: str) -> list[str]:
+    """Every link slot of an object field, empty ones (``"(none)"``) included,
+    in the order ``link Part.fld[n]`` numbers them."""
+    f = next((x for x in EF.fields(c) if x.name == fld), None)
+    if f is None:
+        return []
+    sub = EG.Component(0, c.cls, "", "", b"", None,
+                       body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+    return [t.text for t in EG.tokens(sub) if t.kind == "ref"]
 
 
 def _obj_refs(c: EG.Component, fld: str) -> list[str]:
