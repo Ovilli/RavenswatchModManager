@@ -99,14 +99,14 @@ def tokenize(text: str) -> list[Tok]:
                 j += 1
             if j >= n:
                 raise LuaSyntaxError(f"line {start}: unterminated string")
-            out.append(Tok("str", "", start))
+            out.append(Tok("str", text[i + 1:j], start))   # raw, escapes kept
             i = j + 1
         elif c == "[" and (m := _LONG_OPEN.match(text, i)):
             close = "]" + m.group(1) + "]"
             j = text.find(close, m.end())
             if j < 0:
                 raise LuaSyntaxError(f"line {line}: unterminated long string")
-            out.append(Tok("str", "", line))
+            out.append(Tok("str", text[m.end():j], line))
             line += text.count("\n", i, j)
             i = j + len(close)
         elif (m := _NAME.match(text, i)):
@@ -141,6 +141,10 @@ class _Walk:
         self.pending: list[str] = []          # `for` vars, bound at its `do`
         self.globals: list[tuple[str, int]] = []   # (name, token index)
         self.top_level: dict[str, list[int]] = {}  # name -> decl token indexes
+        #: Token indexes read inside an open bracket of the current statement
+        #: (call arguments, a table constructor, an index). A function body
+        #: resets the stack, so its statements are not in here.
+        self.nested: set[int] = set()
 
     def at(self, k: int) -> Tok | None:
         return self.t[k] if 0 <= k < len(self.t) else None
@@ -198,6 +202,8 @@ class _Walk:
 
     def step(self, k: int) -> int:
         tok = self.t[k]
+        if self.brackets:
+            self.nested.add(k)
         if tok.kind == "kw":
             return self.keyword(tok, k)
         if tok.kind == "op":
@@ -310,6 +316,16 @@ class _Walk:
                 return False
             j += 1
         return False
+
+
+def walk(text: str) -> _Walk:
+    """Tokenize `text` and run the scope walk over it.
+
+    Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
+    """
+    w = _Walk(tokenize(text))
+    w.run()
+    return w
 
 
 def late_locals(text: str) -> list[LateLocal]:

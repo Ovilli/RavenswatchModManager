@@ -48,7 +48,7 @@ export const faqs = [
   },
   {
     q: 'Can I use mods in multiplayer?',
-    a: 'Cosmetic and client-side mods only affect your own game and are safe in co-op. Mods that change shared gameplay data are best used in single-player or when everyone in the lobby runs the same setup, since the host is authoritative over the match.',
+    a: 'Cosmetic and client-side mods (textures, sounds, HUDs, camera) only affect your own game and work everywhere, including public matchmaking. Mods that change gameplay are blocked from public matchmaking: play them solo or in a party-code game with friends who run the same setup.',
   },
   {
     q: 'How do I make my own mod?',

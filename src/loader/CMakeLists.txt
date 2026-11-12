@@ -64,7 +64,11 @@ set(LOADER_SRC
     src/hook_levelbuild.cpp
     src/hook_events.cpp
     src/hook_gamevalues.cpp
+    src/hook_input.cpp
+    src/hook_keybinds.cpp
+    src/hook_camera.cpp
     src/hook_netcode.cpp
+    src/hook_online_gate.cpp
     src/hook_backend.cpp
     src/hook_audio.cpp
     src/hook_lua.cpp

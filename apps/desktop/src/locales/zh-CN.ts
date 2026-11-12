@@ -48,6 +48,9 @@ export const zhCN: Record<string, string> = {
   Activate: '设为当前',
   Add: '添加',
   'Add mod': '添加模组',
+  'Private games only': '仅限私人游戏',
+  'This mod can only be used in solo and private multiplayer games because it may give an unfair advantage.':
+    '此模组仅可用于单人和私人多人游戏，因为它可能带来不公平的优势。',
   'Add to profile': '添加到方案',
   'Add {n} from disk': '从磁盘添加 {n} 个',
   'Added 1 mod from disk to this profile': '已从磁盘添加 1 个模组到此方案',
@@ -328,8 +331,8 @@ export const zhCN: Record<string, string> = {
     '无法连接索引——仅显示本地已安装的数据。',
   Info: '信息',
   Inspect: '检查',
-  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md.':
-    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 docs/RE_NOTES.md。',
+  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see https://docs.rsmm.me/reverse-engineering/notes/.':
+    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 https://docs.rsmm.me/reverse-engineering/notes/。',
   'Inspect cooked file': '检查烘焙文件',
   Inspecting: '正在检查',
   Install: '安装',

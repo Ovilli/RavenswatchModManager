@@ -2179,30 +2179,6 @@
    ]
   },
   {
-   "name": "AdditionalContentGate_IsUnlocked",
-   "kind": "function",
-   "category": "heroes",
-   "raw": "FUN_1406979e0",
-   "status": "ok",
-   "signature": "bool(void* condition_data)",
-   "cabi": {
-    "ret": "uint32_t",
-    "params": [
-     "void*"
-    ]
-   },
-   "locator": {
-    "vftable": {
-     "class": "oe::AdditionalContentGameUnlockConditionData",
-     "slot": 14
-    }
-   },
-   "note": "Ownership / entitlement gate (DLC and bought content). Body is `cmp dword [rcx+0x28], 3; sete al; ret`, the vftable slot 14 of oe::AdditionalContentGameUnlockConditionData, verified in Ravenswatch.exe 2026-10-13 (vtable 0x140f27a70, RTTI name checked). Hooked by R.hero.unlock_progression only when the mod opts in to ownership gates (the unlock-heroes mod), which opens every ownership-gated hero for every player on the mod, including paid DLC. Replaces the stale 0x140699250 address in the older notes, which no longer holds this function.",
-   "refs": [
-    "src/loader/lib/rsmm.lua"
-   ]
-  },
-  {
    "name": "HeroRankLock_IsUnlocked",
    "kind": "function",
    "category": "heroes",
@@ -3614,10 +3590,10 @@
      "void*"
     ]
    },
-   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See docs/_re/MULTIPLAYER.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
+   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See apps/docs/src/content/docs/reverse-engineering/multiplayer.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
-    "docs/_re/MULTIPLAYER.md"
+    "apps/docs/src/content/docs/reverse-engineering/multiplayer.md"
    ]
   },
   {
@@ -3749,7 +3725,7 @@
      "ID_FCM2_NEW_HOST: A new system {} has become host, GUID = {}"
     ]
    },
-   "note": "The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELECTION is delivered to the game. Carries all four `ID_FCM2_NEW_HOST:` log strings (taking over / become host first time / a new system {} has become host / system {} is host), each with the new host's GUID in hand.\n\n\u2605 THE FINDING (2026-09-20): the packet is fully decoded and then DELIBERATELY IGNORED mid-game. After the four logging branches converge:\n    if (ctx->state == 2 /*ConnectingToPeers*/ || ctx->state == 3 /*Pending*/) {\n        guid = ctx->[0x218]->[0x20] ? ctx->[0x218]->[0x48] : UNASSIGNED_RAKNET_GUID;\n        if (guid != UNASSIGNED_RAKNET_GUID)\n            P2PSession_SetState(ctx, 5 /*Connected*/);\n    }\nBoth guard globals (0x1412fee38, 0x1412fc8f8) read ffffffffffffffffffff0000 = UNASSIGNED_RAKNET_GUID, checked by hand. So FCM2 host election is wired for session SETUP ONLY: receiving NEW_HOST is how a joining client learns a host exists and flips to Connected. Once state == 5 the gate is false and this handler is a pure no-op -- which is exactly the mid-game host-leave case.\n\n\u26a0 This does NOT mean 'flip the gate and host migration works'. It means the NEW_HOST signal ARRIVES and is DECODED mid-run with the new host's GUID available; whether m_eMastership, replication origin checks and HostUnique survive a mid-run switch is still unanswered. The signal is not the blocker; read the migration sketch in docs/_re/MULTIPLAYER.md before building on this."
+   "note": "The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELECTION is delivered to the game. Carries all four `ID_FCM2_NEW_HOST:` log strings (taking over / become host first time / a new system {} has become host / system {} is host), each with the new host's GUID in hand.\n\n\u2605 THE FINDING (2026-09-20): the packet is fully decoded and then DELIBERATELY IGNORED mid-game. After the four logging branches converge:\n    if (ctx->state == 2 /*ConnectingToPeers*/ || ctx->state == 3 /*Pending*/) {\n        guid = ctx->[0x218]->[0x20] ? ctx->[0x218]->[0x48] : UNASSIGNED_RAKNET_GUID;\n        if (guid != UNASSIGNED_RAKNET_GUID)\n            P2PSession_SetState(ctx, 5 /*Connected*/);\n    }\nBoth guard globals (0x1412fee38, 0x1412fc8f8) read ffffffffffffffffffff0000 = UNASSIGNED_RAKNET_GUID, checked by hand. So FCM2 host election is wired for session SETUP ONLY: receiving NEW_HOST is how a joining client learns a host exists and flips to Connected. Once state == 5 the gate is false and this handler is a pure no-op -- which is exactly the mid-game host-leave case.\n\n\u26a0 This does NOT mean 'flip the gate and host migration works'. It means the NEW_HOST signal ARRIVES and is DECODED mid-run with the new host's GUID available; whether m_eMastership, replication origin checks and HostUnique survive a mid-run switch is still unanswered. The signal is not the blocker; read the migration sketch in apps/docs/src/content/docs/reverse-engineering/multiplayer.md before building on this."
   },
   {
    "name": "P2PSession_SetState",
@@ -4674,7 +4650,7 @@
      "slot": 3
     }
    },
-   "note": "Tile definition deserializer \u2014 vftable slot 3 on oCDtTileDefinition (vftable 0x140ed6048, found via RTTI type descriptor -> complete object locator). Calls Definition_DeserializeBase first and bails on failure, the same shape as the rest of the oCDtDefinition family.\n\n\u26a0 ALMOST EVERY FIELD IS VERSION-GATED, AND THE SHIPPED VERSION IS 1. Each optional block is guarded by `FUN_1404fce50(stream, out, 0x1781ca4d)` followed by a compare on the returned `+0x4`, which is the SCHEMA VERSION for class uid 0x1781ca4d. The gates read `< 2`, `< 3`, `< 5`, `< 6`, `< 7` and `< 8`, and each one SKIPS its block when the version is below the threshold.\n\nThe three tier/slot counts live behind the LAST of those:\n    if (version >= 8) {\n        read(&this->field_0x2fc);   // tier 1\n        read(&this->field_0x300);   // tier 2\n        read(&this->field_0x304);   // tier 3\n    }\n\nMEASURED IN THE CORPUS: the uid appears once per tiledef at file offset 0x35, immediately followed by the version \u2014 and it reads **1** in both a shipped tile (6x6_Bleeding_01) and a mod clone. Version 1 is below every gate, so on this build NONE of those optional fields is deserialized, the tier counts included.\n\nWHY THAT MATTERS: it kills a plausible-looking hypothesis. A playtest showed mod tiles reading 0/0/0 for the tier fields while two shipped tiles read non-zero, which looks exactly like \"our tiles ship a weight nobody set\". They do not \u2014 nobody's tiledef authors those fields on this build, because the deserializer never reaches them. Whatever gives a shipped tile a non-zero tier weight is assigned at RUNTIME from another source, and looking for it in the cooked file is a dead end. [2026-10-16 b9c3642884a8: relocated \u2014 oCDtTileDefinition vtable slot 3 + BinDiff + content candidate agree. Static evidence; not yet seen in game.]"
+   "note": "Tile definition deserializer \u2014 vftable slot 3 on oCDtTileDefinition (vftable 0x140ed6048, found via RTTI type descriptor -> complete object locator). Calls Definition_DeserializeBase first and bails on failure, the same shape as the rest of the oCDtDefinition family.\n\nAlmost every field is version-gated. Each optional block is guarded by `FUN_1404fce50(stream, out, 0x1781ca4d)` followed by a compare on the returned `+0x4`, which is the SCHEMA VERSION for class uid 0x1781ca4d. The gates read `< 2`, `< 3`, `< 5`, `< 6`, `< 7` and `< 8`, and each one SKIPS its block when the version is below the threshold.\n\nThe three tier/slot counts live behind the LAST of those:\n    if (version >= 8) {\n        read(&this->field_0x2fc);   // tier 1\n        read(&this->field_0x300);   // tier 2\n        read(&this->field_0x304);   // tier 3\n    }\n\nMEASURED IN THE CORPUS: the shipped version is **8**, so every gate passes and every optional block, the tier counts included, is read from the file. A class-table entry is `uid, 1, version, parent`, and in all 237 shipped tiledefs the one at file offset 0x35 reads `0x1781ca4d, 1, 8, 0x1768ce8e` (the parent is oCDtDefinition). The `1` after the uid is a constant present in every entry, not the version. [2026-10-16 b9c3642884a8: relocated \u2014 oCDtTileDefinition vtable slot 3 + BinDiff + content candidate agree. Static evidence; not yet seen in game.]"
   },
   {
    "name": "TileKindPool_ReportEmpty",
@@ -5756,6 +5732,27 @@
    ]
   },
   {
+   "name": "Stormancer_StartMatchmaking",
+   "kind": "function",
+   "category": "session",
+   "raw": "FUN_140915d50",
+   "status": "ok",
+   "signature": "void(void* stormancer_scene_ctx)",
+   "locator": {
+    "offsets": [
+     "0x278",
+     "0x4ec",
+     "0x488",
+     "0xa0",
+     "0xf0",
+     "0xf8"
+    ],
+    "lines_min": 250,
+    "lines_max": 360
+   },
+   "note": "Starts a PUBLIC matchmaking search (Stormancer GameFinder) for the local party. Method of oCStormancerSceneContext (this = the scene context, the object at ui+0xa0). Builds the 'Analytics - Matchmaking start - difficulty: {} player count {}' log line through FUN_140950800, then queues the GameFinder find request. Two callers, both on the online book menu: FUN_14026c900 is the UI event handler - event 0x1c4d81e6 = the matchmaking button (calls this), event 0x194d13d1 = Join-With-Code (carries the code string and goes to FUN_1409134f0, never here); FUN_140263d10 is the per-frame menu tick that (re)starts the search while `FUN_14091d130(ctx) && !FUN_140915a00(ctx) && FUN_140915cb0(ctx)` holds - so a refused call is retried every frame until the player cancels. The text bank names the two menu pages Book_Page_Public_Search (with Matchmaking_Options_Player_Number) and Book_Page_Join_With_Code: matchmaking is the public path, party codes are not. Hooked by hook_online_gate.cpp to keep gameplay mods out of public matchmaking. Static RE on b9c3642884a8 2026-11-11; NOT yet proven in game."
+  },
+  {
    "name": "InGameMenuGs_OnEnter",
    "kind": "function",
    "category": "ui",
@@ -5871,6 +5868,191 @@
    "note": "The LAST of the five hand-coded Settings tab builders the options controller's build (slot 7, FUN_1403f0620) calls in a row with the same (this, page=this+0x180, parent=this+0x188). Its category type byte is 8. The native mod menu detours it and appends its own tab after the original returns, so its rows sit after every vanilla multi-choice tab and before the keybinding tabs slot 7 adds next. Found 2026-10-24 by reading the Settings page build (vftable slot 7 of oe::dt::BookOptionsUiControllerEntityCpnt, FUN_1403f0620) on b9c3; static until the native-menu proof launch. Used by hook_settings_menu.cpp to add a Mods tab drawn by the game's own options UI.",
    "refs": [
     "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "GameOptionsManager_Register",
+   "kind": "function",
+   "category": "options",
+   "status": "ok",
+   "raw": "FUN_14066a4f0",
+   "signature": "void(GameOptionsManager* mgr, u8 category, GameOption* option)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "note": "Pushes option onto the manager's category vector at mgr+0x130+cat*0x10 ({GameOption** data, u32 size, u32 cap}; grown by FUN_14014db80 when size+1 > cap, min 8, doubling, so the buffer can move) and sets option+0x21 = 1 (registered: enables the per-option lock). Categories are the GameSettings.ini sections (names at 0x140ee5c40): 4 Keyboard Inputs, 5 Gamepad Inputs. Everything the settings file saves or loads goes through this; GameOptions_InitKeySlots (FUN_1401c39e0) registers every vanilla key slot with it. Found 2026-11-10 by static reading on b9c3; the {data,size,cap} shape matches a live read of cat 4 on 2026-11-11.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "GameOptionsManager_RequestLoad",
+   "kind": "function",
+   "category": "options",
+   "status": "ok",
+   "raw": "FUN_140690ae0",
+   "signature": "void(void* unused, FileRequest* req /* = mgr+8 */)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Reads the bound settings file (GameSettings.ini) again. Bumps req+0x7c (requested sequence), posts {req, mode 0, seq} to the settings job queue (FUN_140698c30), wakes the I/O worker and SPINS until req+0x80 (completed sequence) catches up, so the call is synchronous and the walk (the GameOptionsManager serialize-all lambda FUN_14066c4c0) runs on the worker. rcx is ignored. Its twin FUN_140690b40 is the save (mode 1). The queue is single-producer (plain stores on the tail index), so CALL ONLY FROM THE GAME'S MAIN THREAD. The read writes every registered option's field from the file and calls ResetToDefault on an option with no line, without SetValue or listeners. The boot calls it once from FUN_1401cdd20 at 0x1401ce940 right after binding \"GameSettings\". Found 2026-11-11 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_BuildKeyboardControls",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f42a0",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Builds the Keyboard controls tab (OptionsMenu_AddCategory type byte 4): two multi-choice rows, then one key row per action whose visibility (0x140ed5a40) has bit 0, sorted by 0x140ed56c0, through FUN_1403f5850 (Menu actions) / OptionsMenu_SpawnExploKeyRow. The tab entry it adds is the newest 0x48-byte entry at optionsCtrl+0x208. Called by the Settings page build (slot 7, FUN_1403f0620) after OptionsMenu_BuildLastCategory. hook_keybinds.cpp detours it to append mod keybind rows. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_BuildGamepadControls",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f4870",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Builds the Gamepad controls tab (OptionsMenu_AddCategory type byte 5): key rows for actions whose visibility has bit 1. Same shape as OptionsMenu_BuildKeyboardControls; hook_keybinds.cpp detours it to append mod keybind rows. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_SpawnExploKeyRow",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f5b70",
+   "signature": "void(void* optionsCtrl, i32 exploIndex, void* tabEntry)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "void*"
+    ]
+   },
+   "note": "Spawns one key-binding row for Explo action exploIndex (0-9) in tabEntry and pushes it onto the entry's row vector (+0x20 data, +0x28 u32 count). Label from g_KeyActionLabels[21+i] (localized), action name from g_KeyActionNames[21+i] assigned to [row+0xa0]+0x340, then row+0x98 = &slot+0x28 of g_GameOptions' Explo keyboard (+0xb20) or pad (+0xd00) array by tabEntry+0x18 (4 = keyboard, else pad), the path flags (row+0xa8, row+0xaa, [row+0xa0]+0x33c), the title, and four handler binds including FUN_1403fcb10 (binds OptionsMenu_ClearDuplicateKey). The row writes the captured key through row+0x98 (proven in game 2026-11-11: write at 0x14045104e, mov rax,[rbx+0x98]; mov [rax],r12d), so it never sees the option object. hook_keybinds.cpp calls it and then repoints row+0x98, the widget's action name and the title at a mod keybind's option. The name matters: the row's key icon reads the key from g_InputActionMap by that name, so a row left on Explo::DashAbility shows (and looks bound to) Dash's key. Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_ClearDuplicateKey",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f6b90",
+   "signature": "void(void* optionsCtrl, void* unused, u32 key)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "uint32_t"
+    ]
+   },
+   "note": "Duplicate-key resolver, bound to every key row's key-assigned event by FUN_1403fcb10 and run BEFORE the row writes its new key. Walks the 31 vanilla actions (21 Menu, 10 Explo; visibility 0x140ed5a40, hidden actions skipped) and calls SetValue(0) (vtable +0x30) on each keyboard / pad slot whose key equals key, so the action that held it goes blank. It knows only the vanilla slots; hook_keybinds.cpp detours it to clear mod keybinds too. Proven in game 2026-11-11: rebinding Dash onto Trait's key zeroed Trait through InputKeyGameOption::SetValue (write at 0x1401012aa). Found 2026-11-10 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "InputActionMap_Add",
+   "kind": "function",
+   "category": "input",
+   "status": "ok",
+   "raw": "FUN_140470c70",
+   "signature": "ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4])",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "const void*",
+     "const void*",
+     "const void*"
+    ]
+   },
+   "note": "Appends one entry to the name-keyed input action map (*g_InputActionMap) and returns it: grows the map's entry vector (FUN_140485000), fills the 0x60-byte entry with 0x107, assigns name (String_Assign, so the caller's string is copied), copies keyboard[4] to +0x10 and pad[4] to +0x20, +0x30, +0x40 and +0x50. Each key array is {key id, 0x107, 0x107, 0x107}. Its only caller is the map builder FUN_14024fe00 (once, at boot from 0x1401cd1ad), which adds the 31 vanilla actions by name plus a few fixed entries. hook_keybinds.cpp adds one entry per mod keybind so its Controls row has a key to show. Found 2026-11-11 by static reading on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_InputActionMap",
+   "kind": "data",
+   "category": "input",
+   "va": "0x141436b68",
+   "status": "va",
+   "note": "*ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {data, u32 size, u32 cap}, entries 0x60: +0x00 name oCString {char*, u32 len|0x80000000, u32 cap}, +0x10 u32[4] keyboard keys, +0x20/+0x30/+0x40/+0x50 u32[4] pad keys (one per pad layout), 0x107 = none. Built once at boot (FUN_14024fe00 via InputActionMap_Add); FUN_140250860 rewrites the vanilla entries' keys from g_GameOptions when the options page changes a key (called from the row's after-capture handler FUN_1403f6380); it touches no entry whose name is not a vanilla action. The Controls key row's input-icon widget ([row+0xa0], ctor FUN_14046fb50, name at +0x340, keyboard/pad flags +0x33c/+0x33d) looks its key up here BY NAME every draw (FUN_14046fca0 from FUN_140470b00), not through row+0x98. So a row spawned from a vanilla template keeps showing the template action's key until its widget name is changed and the map has an entry under the new name. Read 2026-11-11 on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_GameOptionsManager",
+   "kind": "data",
+   "category": "options",
+   "va": "0x141436a38",
+   "status": "va",
+   "note": "*ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the settings file request (GameOptionsManager_RequestLoad's req; +0x7c requested / +0x80 completed sequence), +0x18 bound file name, +0x68 bound serializer callbacks, +0x80 byte result flag of the last read, +0x130 13 category vectors ({GameOption** data, u32 size, u32 cap}, 0x10 each, names at 0x140ee5c40), +0x238/+0x240 per-option spinlock buckets hashed (FNV-1a) from option +0x8. Ctor FUN_14066a2c0. Read 2026-11-10/11 on b9c3 (static, then a live read in the controls-rows probe).",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "InputKeyGameOption_vftable",
+   "kind": "data",
+   "category": "options",
+   "va": "0x140efd440",
+   "status": "va",
+   "note": "vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spinlock hash key), +0x10 name oCString {char*, u32 len|0x80000000, u32 cap} = the ini key, +0x20 u8, +0x21 u8 registered, +0x28 u32 current key id, +0x2c u32 default key id (ctor FUN_1401b5e70 zeroes all of it). Slots: 3 Serialize 0x1401012c0 (hands the serializer +0x10 name and +0x28 value), 4 ResetToDefault 0x140101350 (+0x28 = +0x2c under the lock), 5 IsDefault 0x140101320, 6 SetValue 0x140101290 (+0x28 = *arg under the lock, no listeners). hook_keybinds.cpp builds mod keybind options on it. Read 2026-11-10 on b9c3.",
+   "refs": [
+    "src/loader/src/hook_keybinds.cpp"
+   ]
+  },
+  {
+   "name": "g_InputKeyRecords",
+   "kind": "data",
+   "category": "input",
+   "va": "0x141466c50",
+   "status": "va",
+   "note": "The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll. Mouse ids: 85 left, 86 right, 87 double left, 88 double right, 89 middle, 90 back, 91 forward (names KEY_MouseButton* in the table at 0x140ee6740). hook_input.cpp reads record 89's held bit after the poll for the middle drag.",
+   "refs": [
+    "src/loader/src/hook_input.cpp",
+    "src/loader/src/hook_keybinds.cpp"
    ]
   },
   {
@@ -6114,6 +6296,182 @@
    "note": "Loading screen UI controller DEACTIVATION: oCDtEntityCpntLoadingScreenUiController vftable slot 29, this class's own implementation of the Controller-family hide pair (see UiController_OnShow/OnHide for the slot's meaning). The in-game overlay hooks it to know when this UI covers the escape menu, so the escape menu's Mods button hides under it. Found 2026-10-24 by RTTI vftable lookup on b9c3; static until the next launch.",
    "refs": [
     "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "Input_Poll",
+   "kind": "function",
+   "category": "input",
+   "raw": "FUN_14067ddd0",
+   "status": "ok",
+   "signature": "void(void* inputManager, const void* frameTime)",
+   "note": "Per-frame input poll (method on the *g_InputManager object; rdx = frame time, [rdx] added to held times, [rdx+4] copied to this+0x5c; returns nothing). Turns the mouse wheel into two virtual buttons: at 0x14067e401 / 0x14067e418 it calls the button setter FUN_1406811d0(record, &dt, down) on g_InputMouseWheelUp with down = [this+0xa0] > 0 and on g_InputMouseWheelDown with down = [this+0xa0] < 0, then zeroes this+0xa0 at 0x14067e6c3. The window procedure FUN_14057ac80 (WM_MOUSEWHEEL 0x20a, at 0x14057b380) STORES +1/-1 at [*g_InputManager]+0xa0 (does not accumulate, so notches between two polls collapse into one) and chains to CallWindowProcA (nothing is swallowed). this+0x60 is a blocked-frames countdown, decremented at 0x14067e74b; while non-zero the setter sets record flag 0x1. Read/skip branch (re-read 2026-11-11): the callback at [0x141436bf8] (called at 0x14067de04; no callback = read) returning true jumps to 0x14067e249, which READS the keyboard (ids 1-84 via FUN_1406815d0 + GetAsyncKeyState) and the mouse; callback false with this+0xaa == 0 runs 0x14067de1b..0x14067e244, which only ages the records (held -> released) and jumps to 0x14067e663; callback false with this+0xaa != 0 asks again at 0x14067e272 and skips to 0x14067e42f, leaving the keyboard and mouse records as they were. +0xa0 is zeroed at 0x14067e6c3 on every path. Mouse block: GetAsyncKeyState VK_LBUTTON/RBUTTON/MBUTTON/XBUTTON1/XBUTTON2 -> key records 85/86/89/90/91 (0x14067e302..0x14067e3ac); records 87/88 are the left/right double clicks the window procedure queues at this+0xd0 (FUN_14067d4a0). Hooked by hook_input.cpp: reads +0xa0 before the original runs and counts a notch when the original consumed it (+0xa0 == 0 after) AND the matching record reads held (flag 0x4); after the original it also reads key record 89 (middle) for the R.input drag.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ],
+   "locator": {
+    "offsets": [
+     "0xa0",
+     "0x60",
+     "0xaa"
+    ]
+   }
+  },
+  {
+   "name": "g_InputManager",
+   "kind": "data",
+   "category": "input",
+   "va": "0x14146f8e8",
+   "status": "va",
+   "note": "Pointer to the input manager (*ptr = the object Input_Poll is called on). The window procedure FUN_14057ac80 writes the wheel direction (+1/-1, dword) at [*ptr]+0xa0; Input_Poll consumes and zeroes it. Of the 42 functions that touch this global, only those two access +0xa0 on the manager. hook_input.cpp does not read this global (it takes the manager from the poll's this); it is recorded for R.debug and for the next patch's re-derivation.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_InputMouseWheelUp",
+   "kind": "data",
+   "category": "input",
+   "va": "0x1414670a0",
+   "status": "va",
+   "note": "Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display 'Mouse wheel up') of the 12-byte key table at 0x141466c50 indexed by key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+). Record: u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 set while the manager's blocked countdown +0x60 is non-zero), +4 f32 held time, +8 f32. One notch reads pressed (0x0c) for one frame, then released (0x10). Direct readers are UI only (oCUIMenu list scroll, oCUIWindow zoom, hero story book, scroll panels, Compendium prev/next, UI mouse dispatcher); the only default bindings are Menu::AlternativePageNext/Prev. hook_input.cpp reads the held bit right after Input_Poll to confirm a notch.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_InputMouseWheelDown",
+   "kind": "data",
+   "category": "input",
+   "va": "0x1414670ac",
+   "status": "va",
+   "note": "Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of the key table at 0x141466c50, directly after g_InputMouseWheelUp. Same 12-byte layout; see that symbol.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_MouseState",
+   "kind": "data",
+   "category": "input",
+   "va": "0x14146d9c8",
+   "status": "va",
+   "note": "The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. A cursor-lock mode (byte 0x141467b67, set to 0 by the input init FUN_14067cea0 and written nowhere else) would make FUN_14045ab40 recentre the cursor with SetCursorPos and fake the previous position; it is off in this build. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "CameraModifier_Evaluate",
+   "kind": "function",
+   "category": "camera",
+   "raw": "FUN_14065feb0",
+   "status": "ok",
+   "signature": "void(void* modifier, const float* dt, void* camState, float parentWeight)",
+   "note": "Recursive evaluator of the camera modifier tree, run every frame on the root embedded at CameraSceneContext+0x78 (the context's oCCallScheduleStep callback FUN_1406add60 is a leaf that tail-jumps here with rcx = ctx+0x78, rdx = view+0x10, r8 = view+0x80 camera state, xmm3 = 1.0). oCCameraModifier layout: +0x08 u8 direction (1 in, 0 out), +0x09 u8 in-a-child-list, +0x0c f32 elapsed, +0x10 f32 duration, +0x14 f32 weight, +0x18 u32 curve (1 linear, 2/3 half-sine, 4 cosine in-out (cos((t-1)pi)+1)/2; any other value leaves the weight as is), +0x20 child array, +0x28 u32 count, +0x2c u32 capacity. Steps: if duration > 1e-7, elapsed += dt (in, capped at duration) or -= dt (out, floored at 0) and weight = curve(elapsed/duration); w = parentWeight * weight; if w > 0 call vftable slot 3 Apply(this, dt, state, w); recurse into children in array order, unlinking (+9 = 0) a child that is fading out with elapsed <= 0. It NEVER frees a child (the base destructor FUN_14065fdd0 frees only its own child array), so a modifier owned by the loader is never freed by the game. Camera state: look-at +0x00, eye +0x0c, up +0x18, FOV +0x30, dirty u8 +0x80. Hooked by hook_input.cpp to run the zoom bookkeeping on the thread that owns the tree, only when the modifier is the root (base vftable + CameraSceneContext vftable at modifier-0x78).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ],
+   "locator": {
+    "offsets": [
+     "0x8",
+     "0xc",
+     "0x10",
+     "0x14",
+     "0x18",
+     "0x20",
+     "0x28"
+    ]
+   }
+  },
+  {
+   "name": "CameraModifier_AddChild",
+   "kind": "function",
+   "category": "camera",
+   "raw": "FUN_1406600b0",
+   "status": "ok",
+   "signature": "void(void* modifier, void* parent, bool instant)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "bool"
+    ]
+   },
+   "note": "Adds `modifier` to `parent`'s child array (+0x20/+0x28, grown by FUN_14014e030). If it is already a child it is MOVED to the end instead (the search is over the parent's array, not the +9 flag). Then sets +9 = 1 and +8 = 1 (fading in). If `instant` or duration <= 1e-7: elapsed = duration, weight = 1; otherwise elapsed = 0 (weight follows on the next evaluation). The top-down camera's activate (oCEntityCpntTopDownCamera slot 28, FUN_1407e6440) adds its position and near/far modifiers through this with its in-transition duration. Remove is FUN_1406601d0(parent, modifier). Called by hook_input.cpp on the evaluator's thread to add the zoom modifiers and to move them back after the game's own.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_CameraModifier_vftable",
+   "kind": "data",
+   "category": "camera",
+   "va": "0x140f62ea0",
+   "status": "va",
+   "note": "vftable of oCCameraModifier (the base class; slot 2 destructor FUN_14065fdd0, slot 3 Apply). The root of the camera tree, embedded at CameraSceneContext+0x78, is exactly this class (stored by the context ctor FUN_1401c8c40). hook_input.cpp uses it with g_CameraSceneContext_vftable to recognise the root inside CameraModifier_Evaluate.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_ZoomCameraModifier_vftable",
+   "kind": "data",
+   "category": "camera",
+   "va": "0x140f62b38",
+   "status": "va",
+   "note": "vftable of oCZoomCameraModifier (0x38 bytes; slot 2 destructor FUN_1406618d0, slot 3 Apply FUN_140661960). +0x30 f32 zoom factor. Apply: f = lerp(1, zoom, weight); eye = look_at + (eye - look_at) * f, so below 1 moves the camera in. Ctor FUN_140667370 (registered by reflection, class id 0x115fa237, no direct code caller): base fields +8 dir 1, +9 0, elapsed 0, duration 1.0, weight 1.0, curve 0, no children, then this vftable and factor 1.0. hook_input.cpp builds its zoom modifiers with the same field values in loader-owned memory.",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_CameraSceneContext_vftable",
+   "kind": "data",
+   "category": "camera",
+   "va": "0x140f0a910",
+   "status": "va",
+   "note": "vftable of oe::CameraSceneContext (ctor FUN_1401c8c40; reached through GameScene_FindContextByTester with tester vftable 0x140f093a8). +0x28 oCCallScheduleStep whose callback FUN_1406add60 evaluates the root every frame; +0x78 the embedded root oCCameraModifier; +0xb8/+0xbc/+0xc0 hold 10.0 / 20.0 / 1.0 (meaning unknown).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "TopDownCamera_Activate",
+   "kind": "function",
+   "category": "camera",
+   "raw": "FUN_1407e6440",
+   "status": "ok",
+   "signature": "void(void* topDownCameraCpnt)",
+   "note": "oCEntityCpntTopDownCamera vftable (0x140f8ddb0) slot 28: activate. Builds the camera's oCPositionCameraModifier and oCNearFarCameraModifier (stored at component +0x188 / +0x190), sets their duration to the in-transition value (settings +0x178, component +0x78; rescaling elapsed if one was running), curve 4, and adds both to the camera root with CameraModifier_AddChild; `instant` is bit 1 of entity+0x220 (entity = [this+8]). Reads only rcx. Slot 29 FUN_1407e66e0 deactivates (out-transition, settings +0x1f8); slot 8 FUN_1407e6210 tears down; slot 5 FUN_1407e5e90 binds component +0x68+0x10*i to settings +0xf8+0x80*i. The loader camera zoom (hook_camera.cpp) detours this and records the component's two modifier pointers (+0x188 / +0x190) after the original runs: the zoom applies only while one of them is in the adopted camera tree, and keeps its own modifiers behind them; cinematic modifiers appended later are left after the zoom, so cutscenes are not zoomed.",
+   "refs": [
+    "src/loader/src/hook_camera.cpp"
+   ],
+   "locator": {
+    "vftable": {
+     "class": "oCEntityCpntTopDownCamera",
+     "slot": 28
+    }
+   }
+  },
+  {
+   "name": "CameraModifier_RemoveChild",
+   "kind": "function",
+   "category": "camera",
+   "raw": "FUN_1406601d0",
+   "status": "ok",
+   "signature": "void(void* parent, void* modifier)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Removes modifier from parent's child array (+0x20/+0x28): linear search, memmove (FUN_140cb8170) to close the gap, count - 1. Clears the modifier's +9 in-list flag whether or not it was found. Frees nothing. The counterpart of CameraModifier_AddChild. Called by hook_camera.cpp to take the loader's zoom modifiers out of a camera tree it is not zooming (another live CameraSceneContext, e.g. the menu-side scene the end-of-run book is drawn through), on that tree's own evaluation, and out of the run's tree while no top-down camera is in it.",
+   "refs": [
+    "src/loader/src/hook_camera.cpp"
    ]
   }
  ],

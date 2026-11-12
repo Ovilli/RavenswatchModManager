@@ -28,12 +28,8 @@ clone takes the next index, which no save has unlocked, so it may need
 
 Fields:
     ``base``  (str, required)  a shipped hero to clone, e.g. ``Piper``. A paid
-                               DLC hero (Merlin) is refused unless the block
-                               says ``dlc_owner = true``: a clone plays for
-                               anyone who installs the mod, so share it only
-                               with players who own the DLC.
-    ``dlc_owner`` (bool)       "I own the DLC ``base`` belongs to"; needed to
-                               clone a paid hero, ignored otherwise.
+                               DLC hero (Merlin) is refused: a clone would play
+                               for anyone who installs the mod, owner or not.
 
 With ``base`` alone the clone is its base in every respect (the proven path).
 Everything below makes it a hero of its own; see
@@ -181,18 +177,28 @@ _HEROES_DIR = "Definitions/Heroes"
 _GEN_SUFFIX = ".herodef.ot.DtHeroDefinition.gen"
 _HERO_CLASS = "oCDtHeroDefinition"
 
-#: Paid DLC heroes. A clone of one would play for a player who has not bought it,
-#: so cloning needs the author to say they own it: ``dlc_owner = true`` on the
-#: block. The flag is a declaration, not a check; ownership is a Steam
-#: entitlement the game makes, which nothing here can see.
+#: Paid DLC heroes. A clone of one, or a hero that borrows its art, would play
+#: for a player who has not bought it, so both are refused outright. There is no
+#: opt-out: ownership is checked by the game, which nothing here can see.
 DLC_HEROES: Final[frozenset[str]] = frozenset({"Merlin"})
+_PAID_REF = re.compile(
+    r"(?:^|[\\/_])(?:" + "|".join(sorted(DLC_HEROES)) + r")(?:[\\/_.]|$)", re.IGNORECASE)
+
+
+def _refuse_paid(hid: str, refs) -> None:
+    """Fail when any resource in ``refs`` belongs to a paid DLC hero."""
+    paid = sorted({r for r in refs if _PAID_REF.search(str(r))})
+    if paid:
+        raise ContentError(
+            f"hero {hid}: {paid[0]} belongs to a paid DLC hero; a mod can't hand paid "
+            f"content to players who haven't bought it")
 
 
 _FIELDS = frozenset({"base", "name", "description", "model", "transform", "albedo",
                      "mra", "normal", "portrait", "own_entity", "weapons",
                      "animations", "outfits", "values", "references", "abilities",
                      "skills", "placeholder", "memoirs", "effects", "hide", "attacks",
-                     "dlc_owner", "kit", "borrow", "materials",
+                     "kit", "borrow", "materials",
                      "talents", "frame"})
 _TEXTURE_FIELDS = {"albedo": "ALB", "mra": "MRA", "normal": "NRM"}
 #: The engine's shared neutral character maps (Character_Grey.mat.ot):
@@ -234,11 +240,10 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if not isinstance(base, str) or not base:
         raise ContentError(f"hero {defn.id}: needs a 'base' (a shipped hero, e.g. Piper), "
                            "or a `frame` with a `rig` for a hero written from scratch")
-    if base in DLC_HEROES and defn.fields.get("dlc_owner") is not True:
+    if base in DLC_HEROES:
         raise ContentError(
-            f"hero {defn.id}: {base} is a paid DLC hero. A clone plays for anyone who "
-            f"installs the mod, so add `dlc_owner = true` to this block to confirm you own "
-            f"the DLC, and share the mod only with players who do.")
+            f"hero {defn.id}: {base} is a paid DLC hero. A clone would play for anyone "
+            f"who installs the mod, so paid heroes can't be a base.")
     shipped = shipped_heroes()
     if defn.id in shipped or HD.stem(defn.id):
         raise ContentError(f"hero {defn.id}: the id collides with a shipped hero")
@@ -254,8 +259,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"hero {defn.id}: {base}'s herodef or resource cache is not in the "
             f"corpus or the game install")
 
-    # `dlc_owner` only unlocks cloning a paid hero: it does not make a hero of its own.
-    if set(defn.fields) - {"base", "dlc_owner"}:
+    if set(defn.fields) - {"base"}:
         return _emit_custom(mod_id, defn, out_dir, base, raw, cache)
 
     dest = out_dir / Path(*_rel(defn.id).split("/"))
@@ -2064,6 +2068,7 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
     shipped caches that already preload them (the way `poi` swaps do it)."""
     if not targets:
         return []
+    _refuse_paid(hid, targets)
     from ...engine import corpus
     from .poi import _reachable
     lines: list[str] = []
@@ -2216,13 +2221,13 @@ def _tinted_texture(cooked_raw: bytes, rgb, max_edge: int = 512) -> bytes | None
         return None
     px, w, h = icon_decode.resize_to_max(px, sch.width, sch.height, max_edge)
     r, g, b = rgb
+    # One lookup table per channel (same float expression as per-pixel), then
+    # strided slices: brightness is the per-pixel max of R, G, B.
+    lum = bytes(map(max, px[0::4], px[1::4], px[2::4]))
     out = bytearray(len(px))
-    for i in range(0, len(px), 4):
-        lum = max(px[i], px[i + 1], px[i + 2]) / 255
-        out[i] = int(r * lum * 255)
-        out[i + 1] = int(g * lum * 255)
-        out[i + 2] = int(b * lum * 255)
-        out[i + 3] = px[i + 3]
+    for off, c in enumerate((r, g, b)):
+        out[off::4] = lum.translate(bytes(int(c * (m / 255) * 255) for m in range(256)))
+    out[3::4] = px[3::4]
     return PC.cook_texture(icon_decode.rgba_to_png(bytes(out), w, h))
 
 

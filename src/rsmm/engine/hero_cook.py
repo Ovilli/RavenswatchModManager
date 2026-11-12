@@ -24,7 +24,9 @@ from __future__ import annotations
 import re
 import struct
 import uuid
+from array import array
 from dataclasses import dataclass, field
+from itertools import compress
 from pathlib import Path
 
 from rsmm.engine.paths import BACKUP_SUFFIX
@@ -380,13 +382,103 @@ def family_guid_map(base_files: list[bytes], seed: str) -> dict[bytes, bytes]:
             if old != bytes(_ENTITY_GUID_LEN)}
 
 
+def _replace_sequential(pl: bytes, mapping: dict[bytes, bytes]) -> bytes:
+    for old, new in mapping.items():
+        if old in pl:
+            pl = pl.replace(old, new)
+    return pl
+
+
+def _guid_prefixes(mapping: dict[bytes, bytes]):
+    """The set of leading u32s of every key, or None when the mapping is not
+    the uniform-length (>= 4 bytes, values too) shape the one-pass path is
+    exact for."""
+    keys = list(mapping)
+    if not keys or array("I").itemsize != 4:
+        return None
+    klen = len(keys[0])
+    if klen < 4 or any(len(k) != klen or len(v) != klen for k, v in mapping.items()):
+        return None
+    return {array("I", k[:4])[0] for k in keys}, klen
+
+
+def _guid_hits(pl: bytes, mapping: dict[bytes, bytes], prefixes: set, klen: int) -> list[int]:
+    """Every offset (overlaps included) where a key sits in ``pl``. Views the
+    payload as u32s at each of the four alignments and keeps the offsets whose
+    first u32 is some key's, so the scan stays in C; each is then verified."""
+    hits: list[int] = []
+    for a in range(4):
+        n = (len(pl) - a) // 4
+        if n <= 0:
+            break
+        words = array("I")
+        words.frombytes(pl[a:a + 4 * n])
+        for j in compress(range(n), map(prefixes.__contains__, words)):
+            at = a + 4 * j
+            if pl[at:at + klen] in mapping:
+                hits.append(at)
+    hits.sort()
+    return hits
+
+
+def _replace_one_pass(pl: bytes, mapping: dict[bytes, bytes], pats) -> bytes:
+    """``_replace_sequential`` in one scan. Sequential replacement only differs
+    from a single scan when matches overlap or a replacement itself contains a
+    key, so both are checked and fall back to the sequential loop."""
+    prefixes, klen = pats
+    hits = _guid_hits(pl, mapping, prefixes, klen)
+    if not hits:
+        return pl
+    if any(b - a < klen for a, b in zip(hits, hits[1:], strict=False)):
+        return _replace_sequential(pl, mapping)
+    parts: list[bytes] = []
+    last = 0
+    for at in hits:
+        parts.append(pl[last:at])
+        parts.append(mapping[pl[at:at + klen]])
+        last = at + klen
+    parts.append(pl[last:])
+    out = b"".join(parts)
+    if _creates_key(pl, out, hits, mapping, klen):
+        return _replace_sequential(pl, mapping)
+    return out
+
+
+def _creates_key(pl: bytes, out: bytes, hits: list[int], mapping: dict[bytes, bytes],
+                 klen: int) -> bool:
+    """Could any intermediate state of the sequential loop hold a key that the
+    one-pass result does not? Keys and values are all ``klen`` long and the
+    hits do not overlap, so nothing shifts: a key that exists only in some
+    intermediate state lies in a ``klen`` window overlapping a replaced span,
+    and such a window touches at most two spans. Every original/replaced mix of
+    the spans it touches is tried (the all-original one is the payload itself,
+    whose keys are the hits). Conservative: a True only means "go sequential"."""
+    n = len(pl)
+    prev_end = 0
+    for i, h in enumerate(hits):
+        nxt = hits[i + 1] if i + 1 < len(hits) else None
+        for s in range(max(h - klen + 1, prev_end, 0), min(h + klen, n - klen + 1)):
+            end = s + klen
+            old, new = pl[s:end], out[s:end]
+            if new in mapping:
+                return True
+            if nxt is not None and nxt < end:
+                cut = h + klen - s
+                if (new[:cut] + old[cut:] in mapping
+                        or old[:cut] + new[cut:] in mapping):
+                    return True
+        prev_end = h + klen
+    return False
+
+
 def apply_guid_map(raw: bytes, mapping: dict[bytes, bytes]) -> bytes:
     """Substitute ``mapping`` inside every section payload (never the header)."""
     cf = cooked.parse(raw)
+    pats = _guid_prefixes(mapping)
     for sec in cf.sections:
         pl = sec.payload
-        for old, new in mapping.items():
-            if old in pl:
-                pl = pl.replace(old, new)
-        sec.payload = pl
+        if pats is None:
+            sec.payload = _replace_sequential(pl, mapping)
+        else:
+            sec.payload = _replace_one_pass(pl, mapping, pats)
     return cooked.emit(cf)

@@ -3,7 +3,7 @@
 // Phase 3 of INTERNALS.md showed that MinHook on game-internal `.text`
 // functions worked end-to-end (FUN_1401145b0 + FUN_140487040 captured
 // per-launch resource-handle mappings). That implementation was pruned;
-// docs/_re/PROTECTOR.md then confirmed the protector is a one-shot
+// https://docs.rsmm.me/reverse-engineering/loader-compatibility/ then confirmed the protector is a one-shot
 // unpacker with no runtime integrity monitor, so the prune was scope
 // reduction, not a fix for an actual crash.
 //

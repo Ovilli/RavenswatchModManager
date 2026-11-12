@@ -50,7 +50,7 @@ export default function MyModsPage() {
   }
 
   return (
-    <main className="container mx-auto max-w-5xl px-6 py-12">
+    <main className="container mx-auto px-6 py-12">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-5xl text-parchment">My mods</h1>

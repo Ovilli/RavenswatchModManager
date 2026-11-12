@@ -315,3 +315,23 @@ def test_a_disabled_lua_mod_does_not_count(tmp_path):
     (d / "manifest.toml").write_text('[mod]\nid = "sprint"\n', encoding="utf-8")
 
     assert read_modpack(tmp_path).status == "vanilla"
+
+
+def test_online_gate_marker_follows_gameplay_mods(tmp_path):
+    # The loader refuses public matchmaking while this marker exists
+    # (src/loader/src/hook_online_gate.cpp), so it must name the gameplay mod
+    # and disappear once only client-only mods are left.
+    from rsmm.engine.modpack import ONLINE_GATE_FILE, write_online_gate
+
+    marker = tmp_path / "mods" / ONLINE_GATE_FILE
+    write_state(tmp_path, {"version": 1, "active": {}, "enabled_mods": []})
+    runtime_mod(tmp_path, "sprint", 'R.stat.modify(h, "move_speed", 2)')
+    runtime_mod(tmp_path, "damage-meter", "R.damage.enable()")
+
+    write_online_gate(tmp_path)
+    lines = marker.read_text(encoding="utf-8").splitlines()
+    assert [ln.split(":")[0] for ln in lines] == ["sprint"]
+
+    (tmp_path / "mods" / "sprint" / "init.lua").unlink()   # disabled
+    write_online_gate(tmp_path)
+    assert not marker.exists()

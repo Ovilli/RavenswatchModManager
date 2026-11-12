@@ -638,11 +638,12 @@ class EntityFile:
                                   "use obj[n] for a reference written inside it")
         return hits[0]
 
-    def repoint_targets(self, comp: str, field: str, target: str) -> int:
+    def repoint_targets(self, comp: str, field: str, target: str | list[str]) -> int:
         """Point every collector under ``comp``'s ``field`` selector at
-        ``target``: a named-event sender's ``targets`` lists collectors, each
-        naming the spawner whose spawns receive the event (Piper's pet orders
-        name her two pet spawners). Returns how many were re-pointed."""
+        ``target`` (or distribute them across ``target`` if given a list):
+        a named-event sender's ``targets`` lists collectors, each naming the
+        spawner whose spawns receive the event (Piper's pet orders name her
+        two pet spawners). Returns how many were re-pointed."""
         c, f, at = self._field(comp, field)
         # The selector is written inline in the field; the collectors are the
         # sub-objects it lists, owned by ``comp`` within the field's bytes.
@@ -652,9 +653,11 @@ class EntityFile:
                       if ptr.owner == c.index - 1 and lo <= ptr.offset < hi)
         if not subs:
             raise EntityEditError(f"{comp!r}.{field} selects no collector")
-        for x in subs:
+        targets = [target] if isinstance(target, str) else list(target)
+        for i, x in enumerate(subs):
+            t = targets[i % len(targets)]
             label = f"{comp}.{field} collector {x}"
-            self._repoint(x, *self._only_picker(x, label), target, label)
+            self._repoint(x, *self._only_picker(x, label), t, label)
         return len(subs)
 
     def _only_picker(self, obj: int, what: str) -> tuple[int, int]:

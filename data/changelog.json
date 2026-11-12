@@ -1,6 +1,80 @@
 {
-  "generated": "2026-11-06",
+  "generated": "2026-11-12",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-12",
+      "summary": "Adds the symbols behind mod keybinds in the Controls menu and bundles the loader that supports them.",
+      "highlights": [
+        "Adds the symbols behind mod keybinds in the Controls menu and bundles the loader that supports them."
+      ],
+      "cli_version": 29
+    },
+    {
+      "version": "",
+      "date": "2026-11-12",
+      "summary": "Mods can add their own keybinds to the Controls menu; players see and rebind them next to the game's keys.",
+      "highlights": [
+        "Mods can add their own keybinds to the Controls menu; players see and rebind them next to the game's keys."
+      ],
+      "loader_version": 56
+    },
+    {
+      "version": "",
+      "date": "2026-11-11",
+      "summary": "Gameplay-mod detection now checks SDK access per Lua token and scope, and treats access it cannot follow as gameplay.",
+      "highlights": [
+        "Gameplay-mod detection now checks SDK access per Lua token and scope, and treats access it cannot follow as gameplay."
+      ],
+      "cli_version": 28
+    },
+    {
+      "version": "",
+      "date": "2026-11-11",
+      "summary": "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work.",
+      "highlights": [
+        "Public matchmaking is blocked while gameplay-changing mods are applied; private lobbies still work."
+      ],
+      "loader_version": 55
+    },
+    {
+      "version": "",
+      "date": "2026-11-10",
+      "summary": "Skigim Input V.10",
+      "highlights": [
+        "Skigim Input V.10"
+      ],
+      "loader_version": 54
+    },
+    {
+      "version": "5.9.31",
+      "date": "2026-11-09",
+      "summary": "Paid content stays paid, plus a tidier repo and docs.",
+      "highlights": [
+        "Paid DLC heroes can't be cloned or have their art borrowed, and the save editor no longer changes outfit or achievement locks.",
+        "Example mods moved to examples/; ExampleSeedPin now uses the SDK instead of raw addresses.",
+        "New contributing guide, security policy and bug report form."
+      ],
+      "loader_version": 53
+    },
+    {
+      "version": "",
+      "date": "2026-11-09",
+      "summary": "Paid content stays paid: the hero-unlock helper no longer opens the DLC ownership gate, and the skin filter only shows outfit packs the loader itself created.",
+      "highlights": [
+        "Paid content stays paid: the hero-unlock helper no longer opens the DLC ownership gate, and the skin filter only shows outfit packs the loader itself created."
+      ],
+      "loader_version": 53
+    },
+    {
+      "version": "",
+      "date": "2026-11-09",
+      "summary": "Camera mods: pitch, distance and look height now carry to every hero camera; cameras that appear after the first scan (or that a hero ships its own of) are picked up; the camera search runs in slices so it no longer stalls.",
+      "highlights": [
+        "Camera mods: pitch, distance and look height now carry to every hero camera; cameras that appear after the first scan (or that a hero ships its own of) are picked up; the camera search runs in slices so it no longer stalls."
+      ],
+      "loader_version": 52
+    },
     {
       "version": "",
       "date": "2026-11-06",
@@ -443,91 +517,6 @@
       "summary": "update-loader",
       "highlights": [
         "update-loader"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 42,
-      "date": "2026-10-12",
-      "summary": "Ravenswatch Update 6 compatibility: fixes the damage meter naming you as another player, talent grants/upgrades, rerolls, dream shards, ingredients, melodies, game options and XP reading the wrong memory after the patch.",
-      "highlights": [
-        "Damage meter shows your own damage under your name again (Update 6 moved the hero data)",
-        "Hero detection works again: health and HUD reads fixed for Update 6",
-        "Talent grants, upgrades and random ultimates read the right talent slots again",
-        "Rerolls, dream shards, ingredients, melodies and stat modifiers use the correct engine events again",
-        "Game options (R.options) read and write the right settings again",
-        "SDK engine addresses now update with every game patch instead of going stale"
-      ]
-    },
-    {
-      "version": "5.9.18",
-      "date": "2026-10-12",
-      "summary": "Mod Manager updated for Ravenswatch Update 6: installing mods and the loader works with the patched game again.",
-      "highlights": [
-        "Hero, talent and item mods build against the renamed Update 6 hero files",
-        "Installing the loader now replaces a pattern database left over from before the patch, so features like player names in the damage meter work again",
-        "New `rsmm values backport` command: play an older patch's balance values as a local mod"
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 41,
-      "date": "2026-10-12",
-      "summary": "Updated for Ravenswatch Update 6: the loader finds the game's functions again after the patch, and mods that change heroes, talents or items work with the new hero files.",
-      "highlights": [
-        "Works with Ravenswatch Update 6 (the 12 October 2026 patch)",
-        "Hero, talent and item mods work with the renamed Update 6 hero files",
-        "Kintaro shows up as a hero"
-      ]
-    },
-    {
-      "version": "5.9.17",
-      "date": "2026-10-11",
-      "summary": "RSMM has a new logo.",
-      "highlights": [
-        "New app icon and logo: a red gear with a feather, across the app, the website and the docs."
-      ]
-    },
-    {
-      "version": "5.9.16",
-      "date": "2026-10-11",
-      "summary": "The Overlay button no longer stays greyed out after you install a mod.",
-      "highlights": [
-        "Fixed: after installing a mod with an overlay, its Overlay button could stay greyed out for minutes. The app now refreshes overlays right after an install, an apply or a settings change.",
-        "An overlay whose settings file is missing now still opens; only its controls are hidden, and hovering the button explains why."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 40,
-      "date": "2026-10-11",
-      "summary": "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options.",
-      "highlights": [
-        "Adds game-language-aware mod translations and cached game-value reads. Fixes launch-option handling so enabling or restoring the loader preserves the player's existing Steam options."
-      ]
-    },
-    {
-      "version": "5.9.15",
-      "date": "2026-10-11",
-      "summary": "Cleaner overlays you can always reset, working option dropdowns, mods in your language, and your own Steam launch options are left alone.",
-      "highlights": [
-        "Overlays: column headers, columns that line up, buttons that appear only on hover, and a window that fits the board exactly (no more grey box below it on Linux).",
-        "Overlays can no longer get stuck full-screen: a reset button and a command-palette entry put one back at its normal size, and a once-maximized overlay heals itself on reopen.",
-        "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
-        "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
-        "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
-      ]
-    },
-    {
-      "version": "5.9.14",
-      "date": "2026-10-11",
-      "summary": "Cleaner overlays you can always reset, working option dropdowns, mods in your language, and your own Steam launch options are left alone.",
-      "highlights": [
-        "Overlays: column headers, columns that line up, buttons that appear only on hover, and a window that fits the board exactly (no more grey box below it on Linux).",
-        "Overlays can no longer get stuck full-screen: a reset button and a command-palette entry put one back at its normal size, and a once-maximized overlay heals itself on reopen.",
-        "Option dropdowns in mod settings and overlays work again. Many mods listed their choices in a way the app did not read, so the menu was empty.",
-        "Mods can ship translations: with the app in Chinese, a translated mod shows its name, overlay and settings in Chinese.",
-        "Restoring the game and launching it from the app now keep your own Steam launch options (for example NVIDIA settings) instead of replacing them."
       ]
     }
   ]

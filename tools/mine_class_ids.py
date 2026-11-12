@@ -5,7 +5,9 @@ Every polymorphic engine class is registered at startup by a small generated
 routine that allocates a class descriptor, stamps the class SIZE, references
 the class NAME as a plain string, and writes a 32-bit id:
 
-    mov  edx, <size>                  ; 0x1e48 for the hero controller
+    mov  edx, <size>                  ; 0x1e70 for the hero controller (b9c3)
+    mov  r8d, 8                       ; alignment
+    call qword ptr [r9+0xd8]          ; the descriptor's allocate-instance slot
     lea  rax, [rip+<"oCDtEntityCpntHeroController">]
     ...
     mov  dword ptr [rbx+0x28], 0x155aac59       <- the class id
@@ -60,10 +62,20 @@ CONFIRMED = {
 
 # mov dword ptr [rbx+0x28], imm32 — the class id store.
 _ID_STORE = re.compile(rb"\xc7\x43\x28(....)", re.DOTALL)
-# mov edx, imm32 — the class size passed to the descriptor allocator.
-_SIZE = re.compile(rb"\xba(....)", re.DOTALL)
+# mov edx, imm32 — the class size — anchored to the `call [r9+0xd8]` it feeds
+# and to the vftable load before it (at most the alignment load and
+# `mov rcx, rbx` sit between size and call). A bare
+# search for 0xBA matched the byte inside an earlier instruction's operand in
+# 23 registrars and reported sizes like 0x8b4cffc0.
+_SIZE = re.compile(
+    rb"\x4c\x8b\x0b"                       # mov r9, [rbx]   (the descriptor's vftable)
+    rb"\xba(....)"                          # mov edx, <size>
+    rb".{0,12}?\x41\xff\x91\xd8\x00\x00\x00",  # call [r9+0xd8]
+    re.DOTALL)
 # Plain (non-RTTI) engine class names: oC*, oI*, oe*, oS*.
-_NAME = re.compile(rb"\x00(o[CIeS][A-Za-z0-9_]{4,60})\x00")
+# Lookarounds, not consumed NULs: two names packed with a single NUL between
+# them share that delimiter, and a consuming pattern skips the second one.
+_NAME = re.compile(rb"(?<=\x00)(o[CIeS][A-Za-z0-9_]{4,60})(?=\x00)")
 
 
 class Image:
@@ -105,7 +117,7 @@ class Image:
 def mine(img: Image) -> dict[str, dict]:
     names: dict[int, str] = {}
     for m in _NAME.finditer(img.data):
-        va = img.off_to_va(m.start() + 1)
+        va = img.off_to_va(m.start())
         if va is not None:
             names[va] = m.group(1).decode()
 

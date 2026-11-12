@@ -25,7 +25,7 @@ STAT = ("GlobalValues/Avalon/Mordred_Quest/Mordred_Quest_Boss_Is_Dead"
 OT = "_root/DarkTalesResources/ApplicationSettings.ot"
 WUKONG = ("EntitySettings/Heroes/Hero_SunWukong/"
           "Hero_SunWukong.entity.ot.EntitySettingsResource.gen")
-WUKONG_MOD = (Path(__file__).resolve().parent.parent / "docs/ExampleMods/mods-archive"
+WUKONG_MOD = (Path(__file__).resolve().parent.parent / "examples/mods-archive"
               / "WukongFasterQuest/assets" / WUKONG)
 #: What WukongFasterQuest changes, as (label, vanilla, modded).
 WUKONG_EDITS = (
@@ -136,6 +136,11 @@ def test_ot_override_that_adds_a_line_or_edits_an_unlabelled_block_is_left_alone
 
 # --- talent --------------------------------------------------------------------
 
+#: Real game bytes, kept local only (never committed) — CI has no copy.
+needs_wukong = pytest.mark.skipif(not WUKONG_MOD.exists(),
+                                  reason="needs a local WukongFasterQuest game file")
+
+
 def _wukong_vanilla() -> bytes:
     data = WUKONG_MOD.read_bytes()
     for label, vanilla, _modded in WUKONG_EDITS:
@@ -143,6 +148,7 @@ def _wukong_vanilla() -> bytes:
     return data
 
 
+@needs_wukong
 def test_hero_entity_value_edits_become_a_talent_block(mirror):
     mirror(WUKONG, _wukong_vanilla())
     s = P.suggest_file(WUKONG, WUKONG_MOD.read_bytes(), mod_id="WukongFasterQuest")
@@ -153,6 +159,7 @@ def test_hero_entity_value_edits_become_a_talent_block(mirror):
         (label, vanilla, modded) for label, vanilla, modded in WUKONG_EDITS)
 
 
+@needs_wukong
 def test_hero_entity_with_a_non_value_edit_gets_no_offer(mirror):
     mirror(WUKONG, _wukong_vanilla())
     cur = bytearray(WUKONG_MOD.read_bytes())
@@ -162,6 +169,7 @@ def test_hero_entity_with_a_non_value_edit_gets_no_offer(mirror):
 
 # --- per mod -------------------------------------------------------------------
 
+@needs_wukong
 def test_files_the_mods_own_content_emitted_are_not_raw_overrides(mirror, tmp_path):
     mirror(WUKONG, _wukong_vanilla())
     mirror(STAT, _global_float(1.0))

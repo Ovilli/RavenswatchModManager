@@ -677,6 +677,12 @@ export function createApiClient(options: ApiClientOptions) {
       },
     },
     moderation: {
+      setPrivateOnly: (slug: string, privateOnly: boolean) =>
+        request(
+          `/api/moderation/mods/${encodeURIComponent(slug)}/private-only`,
+          { method: 'PATCH', body: JSON.stringify({ privateOnly }) },
+          z.object({ ok: z.literal(true), tags: z.array(z.string()) }),
+        ),
       /** Admin-only business overview powering the console's Overview tab. */
       stats: (days = 30) =>
         request(`/api/moderation/stats?days=${days}`, { method: 'GET' }, adminStatsResponseSchema),

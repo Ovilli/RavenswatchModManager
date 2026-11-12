@@ -135,7 +135,7 @@ Fields:
                                marker after ``label``. Needs ``file``.
 
 This replaces hand-coded talent mods (the older flow shipped a manually
-byte-edited entity copy). See ``docs/MOD_AUTHORING.md`` and the
+byte-edited entity copy). See the modding guide (https://docs.rsmm.me/guides/modding/) and the
 ``talent-value-editing`` RE note.
 """
 
@@ -733,7 +733,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     if not hero or not isinstance(hero, str):
         raise SchemaNotMined(
             f"talent {defn.id}: needs a 'hero' name (e.g. Juliet) to locate "
-            f"its entity files. See docs/MOD_AUTHORING.md.")
+            f"its entity files. See https://docs.rsmm.me/guides/modding/.")
 
     hero_dir = _resolve_hero_dir(hero)
     if hero_dir is None:

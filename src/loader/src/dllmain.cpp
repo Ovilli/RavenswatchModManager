@@ -38,8 +38,12 @@
 #include "hook_levelload.h"
 #include "hook_levelbuild.h"
 #include "hook_gamevalues.h"
+#include "hook_input.h"
+#include "hook_keybinds.h"
+#include "hook_camera.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
+#include "hook_online_gate.h"
 #include "hook_backend.h"
 #include "hook_audio.h"
 #include "script_lua.h"
@@ -179,7 +183,11 @@ static void loader_thread_cxx() {
         // legacy per-state path until this arms; harmless.
         install_guarded("hero_capture", rsmm::install_hero_capture);
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
+        install_guarded("input",        rsmm::install_input_hooks);
+        install_guarded("keybinds",     rsmm::install_keybind_hooks);   // after input
+        install_guarded("camera",       rsmm::install_camera_hooks);
         install_guarded("netcode",      rsmm::install_netcode_patches);
+        install_guarded("online-gate",  rsmm::install_online_gate);
         install_guarded("backend",      rsmm::install_backend_redirect);
         install_guarded("audio",        rsmm::install_audio_hooks);
 

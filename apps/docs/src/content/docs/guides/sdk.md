@@ -461,12 +461,11 @@ No revocation list in v3 (out of scope). Users can hand-delete keys from
 
 The original plan was to install MinHook from a `PIMAGE_TLS_CALLBACK` inside
 `winhttp.dll`, which runs before the EXE's `_DllMainCRTStartup`, so patches
-would land ahead of an anti-tamper integrity sweep.
+would land before the game's own start-up code ran.
 
-It was never needed. [The protector
-teardown](/reverse-engineering/protector/) established that the AT is a
-one-shot unpacker with no runtime integrity monitor, so hooks installed from
-the ordinary loader thread are never re-checked. The scaffold sat behind
+It was never needed. [Loader
+compatibility](/reverse-engineering/loader-compatibility/) established that hooks
+installed from the ordinary loader thread stay in place for the session. The scaffold sat behind
 `RSMM_TLS_HOOK=1` for a year doing nothing but calling `MH_Initialize`
 early, and its "queue pending hooks" half was an empty stub — so it was
 removed. `R.hook` works from the normal `DllMain` path.

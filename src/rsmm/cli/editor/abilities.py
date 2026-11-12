@@ -298,8 +298,8 @@ def _add_hero(path, hero: str, mode: str = "inplace", *, name: str = "",
     return its id. ``mode`` ``"inplace"`` (the default) edits the shipped hero
     itself; ``"custom"`` builds a separate, extra hero and leaves the shipped one
     alone, named ``name`` (its id is the name's letters and digits). A paid DLC
-    hero's custom copy carries ``dlc_owner = true``, the author's word that they
-    own it (the build refuses the clone without it)."""
+    hero can only be edited in place: a custom copy would play for players who
+    have not bought it, so the build refuses it."""
     import re
 
     from rsmm.cli.editor import modio
@@ -316,7 +316,9 @@ def _add_hero(path, hero: str, mode: str = "inplace", *, name: str = "",
         return block_id
     if mode != "custom":
         raise ValueError(f"unknown mode {mode!r}")
-    paid = bool(_bases(hero) & _dlc())
+    if _bases(hero) & _dlc():
+        raise ValueError(f"{hero} is a paid DLC hero: edit it in place instead of "
+                         f"making a copy")
     used = {b["id"] for b in modio.hero_blocks(text)}
     # A hero with ability steps is a custom hero: its id is letters and digits only.
     # Unnamed (the Abilities tab's quick path): "<Hero> (edited)", id <Hero>Edit.
@@ -328,8 +330,6 @@ def _add_hero(path, hero: str, mode: str = "inplace", *, name: str = "",
     while block_id in used or block_id.lower() in {h.lower() for h in _heroes()}:
         block_id, n = f"{stem}{n}", n + 1
     extra = {"description": description.strip()} if description.strip() else {}
-    if paid:
-        extra["dlc_owner"] = True
     path.write_text(modio.add_hero_block(text, block_id, _herodef(hero), name, **extra),
                     encoding="utf-8")
     return block_id

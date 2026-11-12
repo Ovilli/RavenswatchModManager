@@ -2,11 +2,13 @@
 # Run target-function decompiler on existing Ghidra project.
 set -e
 
-GHIDRA=~/Documents/Programming/ghidra_11.3_PUBLIC
-PROJECT_DIR=~/Documents/Programming/RavenswatchModManager/re/project
+GHIDRA=${GHIDRA_HOME:?set GHIDRA_HOME to your Ghidra install}
+RE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$RE/project"
+SCRIPT_DIR="$RE/scripts"
+export RSMM_OUT="$RE/out"
+
 PROJECT_NAME=RSMM
-SCRIPT_DIR=~/Documents/Programming/RavenswatchModManager/re/scripts
-export RSMM_OUT=~/Documents/Programming/RavenswatchModManager/re/out
 
 "$GHIDRA/support/analyzeHeadless" "$PROJECT_DIR" "$PROJECT_NAME" \
     -process "Ravenswatch.exe" \

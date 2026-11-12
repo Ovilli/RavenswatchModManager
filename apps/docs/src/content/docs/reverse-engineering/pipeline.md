@@ -134,6 +134,8 @@ rebuild the loader, or publish.
 First run (imports + analyzes the exe; ~10–20 min):
 
 ```sh
+export GHIDRA_HOME=/path/to/ghidra          # every run_*.sh needs it
+export RAVENSWATCH_EXE=/path/to/Ravenswatch.exe   # run_analysis.sh only
 bash docs/_re/run_analysis.sh        # creates project, auto-analyzes
 bash docs/_re/run_dump_symbols.sh    # symbols.json + strings.json
 bash docs/_re/run_decompile_all.sh   # full pseudo-C corpus
@@ -211,10 +213,10 @@ they are copyrighted game bytes and must never be committed.
 
 See:
 
-- `docs/_re/CALLING_GAME_FUNCTIONS.md` — the runtime API
+- [Calling game functions](/reverse-engineering/calling-game-functions/) — the runtime API
   (`rsmm.resolve`, `rsmm.call`, memory r/w).
-- `docs/_re/SEED_MAPGEN.md` — worked example: the seed surface.
-- `mods/ExampleSeedPin/` — minimal mod that pins the run seed.
+- [Seed + mapgen](/reverse-engineering/seed-mapgen/) — worked example: the seed surface.
+- `examples/ExampleSeedPin/` — minimal mod that pins the run seed.
 
 ## What it doesn't enable
 

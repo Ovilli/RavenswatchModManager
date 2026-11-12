@@ -4,7 +4,7 @@ Centralizes the bits every kind needs so the per-kind modules stay
 focused on their own schema:
 
 * schema sentinels (``EMPTY_STRING_SENTINEL``, ``UNRESOLVED_NAME_HASH``)
-  read by the ctors documented in ``docs/_re/MOD_HOOKS.md`` and the
+  read by the ctors documented in ``https://docs.rsmm.me/reverse-engineering/mod-hooks/`` and the
   per-kind pages.
 * ``name_hash`` — FNV-1a-32 placeholder for ``oCResourcePath::hash``.
   The game's exact constants live in ``oCResourcePath::Set``; until

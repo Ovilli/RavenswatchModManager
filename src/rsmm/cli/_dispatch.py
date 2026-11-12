@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     if sub == "gui":
         print(
             "rsmm gui has moved. Run the desktop app (`pnpm desktop:dev`) "
-            "or open https://rsmm.me in a browser. See docs/SETUP.md.",
+            "or open https://rsmm.me in a browser. See https://docs.rsmm.me/contributing/setup/.",
             file=sys.stderr,
         )
         return 2

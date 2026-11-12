@@ -11,8 +11,6 @@ body:has(.mod-detail) > .site-header {
   --mod-muted: hsl(32 17% 68%);
   --mod-rule: hsl(var(--border));
   --mod-panel: hsl(var(--surface-1));
-  width: min(100% - 64px, 1120px);
-  margin-inline: auto;
   padding-block: 30px 80px;
   color: hsl(var(--foreground));
 }
@@ -146,6 +144,54 @@ body:has(.mod-detail) > .site-header {
 }
 .mod-tags a:hover {
   background: hsl(var(--char) / 0.65);
+}
+.mod-private-only-tag {
+  position: relative;
+  display: inline-flex;
+}
+.mod-private-only-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 5px;
+  background: hsl(var(--gilt) / 0.12);
+  color: hsl(var(--gilt));
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  cursor: help;
+}
+.mod-private-only-label:hover {
+  background: hsl(var(--gilt) / 0.2);
+}
+.mod-private-only-warning {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  width: min(320px, calc(100vw - 40px));
+  /* Keep the gap hoverable when moving from the tag into the warning. */
+  padding-top: 8px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+}
+.mod-private-only-warning > span {
+  display: block;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #000;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+.mod-private-only-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--mod-muted);
 }
 .mod-social-proof {
   display: flex;
@@ -835,7 +881,6 @@ body:has(.mod-detail) > .site-header {
 }
 @media (max-width: 760px) {
   .mod-detail {
-    width: calc(100% - 40px);
     padding-block: 18px 48px;
   }
   .mod-breadcrumb {

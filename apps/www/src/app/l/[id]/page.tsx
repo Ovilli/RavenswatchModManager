@@ -53,7 +53,7 @@ export default async function SharedLogPage({ params }: { params: Promise<{ id: 
   if (res.state === 'missing') notFound();
   if (res.state === 'error') {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-16">
+      <main className="container mx-auto px-6 py-16">
         <h1 className="text-2xl font-semibold">Could not load this log</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           The link is valid but the server did not answer. Try again in a moment.
@@ -67,7 +67,7 @@ export default async function SharedLogPage({ params }: { params: Promise<{ id: 
   const expires = new Date(log.expiresAt);
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
+    <main className="container mx-auto px-6 py-10">
       <h1 className="text-2xl font-semibold">Shared log</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Uploaded from the Ravenswatch Mod Manager desktop app to make a bug report readable.

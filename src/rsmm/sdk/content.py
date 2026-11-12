@@ -35,7 +35,7 @@ KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "
 #: ``sdk.Mod(..., experimental=True)`` (and the manifest records it), so
 #: nobody ships speculative content believing it works. ``rsmm lint``
 #: enforces this. Keep this table honest — it is the single source of
-#: truth consumed by the SDK, the linter, and ``docs/MODDING.md``.
+#: truth consumed by the SDK, the linter, and ``https://docs.rsmm.me/guides/modding/``.
 KIND_CONFIDENCE: dict[str, str] = {
     "item": "confirmed",      # mode="clone" verified in compendium + drops (2026-06-02).
                               # mode="ban" (dropping vanilla entries from the same
@@ -311,7 +311,7 @@ class ContentRegistry:
                 f"{what} is {conf!r}: its emitted bytes are not verified "
                 "in-game and may not appear or may crash. To use it anyway, "
                 "opt in with sdk.Mod(..., experimental=True). See "
-                "docs/MODDING.md 'Content kinds & confidence'."
+                "https://docs.rsmm.me/guides/modding/ 'Content kinds & confidence'."
             )
         if not id or not isinstance(id, str):
             raise ContentError(f"{kind}: id must be a non-empty string")

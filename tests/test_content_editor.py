@@ -537,3 +537,37 @@ def test_an_inherited_talent_can_take_a_stat_but_not_a_rebuild():
     assert info["ok"] and info["during"] == ["SPECIAL", "TRAIT"]
     assert info["rebuild"] is False and info["rebuildWhy"]
     assert card["file"] == "Hero_Romeo_Juliet_Common" and card["entries"]
+
+
+# --- on/off values -----------------------------------------------------------
+
+def test_an_on_off_value_travels_as_a_bool_and_becomes_a_zero_or_one_patch():
+    [(_k, _i, fields)] = _item(mode="replace", values=[
+        {"label": "Unique Value", "old": True, "new": False}])
+    assert fields["value_patches"] == [["Unique Value", 1.0, 0.0]]
+
+
+def test_a_number_value_still_refuses_a_bool():
+    with pytest.raises(E.EditorError, match="not a number"):
+        _item(mode="replace", values=[{"label": "A Value", "old": 0.5, "new": True}])
+
+
+def test_item_detail_marks_on_off_values_as_bool():
+    try:
+        detail = E.item_detail("Vitality_Per_Health_Globe")
+    except E.EditorError:
+        pytest.skip("no item corpus")
+    row = next(v for v in detail["values"] if v["label"] == "Unique Value")
+    assert row["type"] == "bool" and row["value"] is True
+
+
+def test_a_part_number_another_part_overrides_is_marked_shadowed():
+    try:
+        detail = E.item_detail("Gain_Passive_Heal")
+    except E.EditorError:
+        pytest.skip("no item corpus")
+    row = next(v for v in detail["values"] if v["label"] == "Passive Heal Ratio")
+    assert row["shadowed"] is True
+    [res] = E.check(E.item_defs({"base": "Gain_Passive_Heal", "mode": "replace", "values": [
+        {"label": row["label"], "old": row["value"], "new": 0.05, "shadowed": True}]}))
+    assert res["ok"], res

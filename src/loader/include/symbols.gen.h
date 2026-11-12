@@ -33,6 +33,19 @@ constexpr const char* Analytics_EmitSkillSelected_Pattern = "Analytics_EmitSkill
 constexpr std::uintptr_t Analytics_EmitUnlockSkill = 0x1401f19b0ull;
 constexpr const char* Analytics_EmitUnlockSkill_Pattern = "Analytics_EmitUnlockSkill";
 
+// --- camera ---
+constexpr std::uintptr_t CameraModifier_AddChild = 0x1406600b0ull;
+constexpr const char* CameraModifier_AddChild_Pattern = "CameraModifier_AddChild";
+constexpr std::uintptr_t CameraModifier_Evaluate = 0x14065feb0ull;
+constexpr const char* CameraModifier_Evaluate_Pattern = "CameraModifier_Evaluate";
+constexpr std::uintptr_t CameraModifier_RemoveChild = 0x1406601d0ull;
+constexpr const char* CameraModifier_RemoveChild_Pattern = "CameraModifier_RemoveChild";
+constexpr std::uintptr_t TopDownCamera_Activate = 0x1407e6440ull;
+constexpr const char* TopDownCamera_Activate_Pattern = "TopDownCamera_Activate";
+constexpr std::uintptr_t g_CameraModifier_vftable = 0x140f62ea0ull;
+constexpr std::uintptr_t g_CameraSceneContext_vftable = 0x140f0a910ull;
+constexpr std::uintptr_t g_ZoomCameraModifier_vftable = 0x140f62b38ull;
+
 // --- combat ---
 constexpr std::uintptr_t CharacterController_ClearStagger = 0x1403c3500ull;
 constexpr const char* CharacterController_ClearStagger_Pattern = "CharacterController_ClearStagger";
@@ -292,8 +305,6 @@ constexpr const char* XpComponent_XpForLevel_Pattern = "XpComponent_XpForLevel";
 constexpr std::uintptr_t XpComponent_vftable = 0x140f1fad0ull;
 
 // --- heroes ---
-constexpr std::uintptr_t AdditionalContentGate_IsUnlocked = 0x1406979e0ull;
-constexpr const char* AdditionalContentGate_IsUnlocked_Pattern = "AdditionalContentGate_IsUnlocked";
 constexpr std::uintptr_t ChallengeUnlock_IsUnlocked = 0x1402abce0ull;
 constexpr const char* ChallengeUnlock_IsUnlocked_Pattern = "ChallengeUnlock_IsUnlocked";
 constexpr std::uintptr_t HeroDef_Deserialize = 0x14031a570ull;
@@ -310,6 +321,18 @@ constexpr std::uintptr_t HeroRankLock_IsUnlocked = 0x1402ac6f0ull;
 constexpr const char* HeroRankLock_IsUnlocked_Pattern = "HeroRankLock_IsUnlocked";
 constexpr std::uintptr_t HeroStoryUnlock_IsUnlocked = 0x1402acca0ull;
 constexpr const char* HeroStoryUnlock_IsUnlocked_Pattern = "HeroStoryUnlock_IsUnlocked";
+
+// --- input ---
+constexpr std::uintptr_t InputActionMap_Add = 0x140470c70ull;
+constexpr const char* InputActionMap_Add_Pattern = "InputActionMap_Add";
+constexpr std::uintptr_t Input_Poll = 0x14067ddd0ull;
+constexpr const char* Input_Poll_Pattern = "Input_Poll";
+constexpr std::uintptr_t g_InputActionMap = 0x141436b68ull;
+constexpr std::uintptr_t g_InputKeyRecords = 0x141466c50ull;
+constexpr std::uintptr_t g_InputManager = 0x14146f8e8ull;
+constexpr std::uintptr_t g_InputMouseWheelDown = 0x1414670acull;
+constexpr std::uintptr_t g_InputMouseWheelUp = 0x1414670a0ull;
+constexpr std::uintptr_t g_MouseState = 0x14146d9c8ull;
 
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403be820ull;
@@ -485,7 +508,13 @@ constexpr std::uintptr_t CustomizeChallengePage_OnToggleModifier = 0x140427a10ul
 constexpr const char* CustomizeChallengePage_OnToggleModifier_Pattern = "CustomizeChallengePage_OnToggleModifier";
 constexpr std::uintptr_t GameModifierUi_PadSelectedSlots = 0x14035b570ull;
 constexpr const char* GameModifierUi_PadSelectedSlots_Pattern = "GameModifierUi_PadSelectedSlots";
+constexpr std::uintptr_t GameOptionsManager_Register = 0x14066a4f0ull;
+constexpr const char* GameOptionsManager_Register_Pattern = "GameOptionsManager_Register";
+constexpr std::uintptr_t GameOptionsManager_RequestLoad = 0x140690ae0ull;
+constexpr const char* GameOptionsManager_RequestLoad_Pattern = "GameOptionsManager_RequestLoad";
+constexpr std::uintptr_t InputKeyGameOption_vftable = 0x140efd440ull;
 constexpr std::uintptr_t g_GameOptions = 0x141436a18ull;
+constexpr std::uintptr_t g_GameOptionsManager = 0x141436a38ull;
 
 // --- progression ---
 constexpr std::uintptr_t GameModifierLock_OnStateChange = 0x140257f50ull;
@@ -598,6 +627,8 @@ constexpr const char* LobbyMembers_Local_Pattern = "LobbyMembers_Local";
 constexpr std::uintptr_t LobbyPlayerName_Registry = 0x141470268ull;
 constexpr std::uintptr_t Netcode_PeerCount = 0x141439700ull;
 constexpr std::uintptr_t Netcode_PeerSlots = 0x141439580ull;
+constexpr std::uintptr_t Stormancer_StartMatchmaking = 0x140915d50ull;
+constexpr const char* Stormancer_StartMatchmaking_Pattern = "Stormancer_StartMatchmaking";
 
 // --- skill ---
 constexpr std::uintptr_t AbilityController_Ctor = 0x1402c3880ull;
@@ -661,10 +692,18 @@ constexpr std::uintptr_t OptionsMenu_AddCategory = 0x1403f2060ull;
 constexpr const char* OptionsMenu_AddCategory_Pattern = "OptionsMenu_AddCategory";
 constexpr std::uintptr_t OptionsMenu_AppendRow = 0x1403f4d00ull;
 constexpr const char* OptionsMenu_AppendRow_Pattern = "OptionsMenu_AppendRow";
+constexpr std::uintptr_t OptionsMenu_BuildGamepadControls = 0x1403f4870ull;
+constexpr const char* OptionsMenu_BuildGamepadControls_Pattern = "OptionsMenu_BuildGamepadControls";
+constexpr std::uintptr_t OptionsMenu_BuildKeyboardControls = 0x1403f42a0ull;
+constexpr const char* OptionsMenu_BuildKeyboardControls_Pattern = "OptionsMenu_BuildKeyboardControls";
 constexpr std::uintptr_t OptionsMenu_BuildLastCategory = 0x1403f4e30ull;
 constexpr const char* OptionsMenu_BuildLastCategory_Pattern = "OptionsMenu_BuildLastCategory";
+constexpr std::uintptr_t OptionsMenu_ClearDuplicateKey = 0x1403f6b90ull;
+constexpr const char* OptionsMenu_ClearDuplicateKey_Pattern = "OptionsMenu_ClearDuplicateKey";
 constexpr std::uintptr_t OptionsMenu_SelectCategory = 0x1403f6010ull;
 constexpr const char* OptionsMenu_SelectCategory_Pattern = "OptionsMenu_SelectCategory";
+constexpr std::uintptr_t OptionsMenu_SpawnExploKeyRow = 0x1403f5b70ull;
+constexpr const char* OptionsMenu_SpawnExploKeyRow_Pattern = "OptionsMenu_SpawnExploKeyRow";
 constexpr std::uintptr_t OptionsMenu_SpawnMultiChoice = 0x1403fc7e0ull;
 constexpr const char* OptionsMenu_SpawnMultiChoice_Pattern = "OptionsMenu_SpawnMultiChoice";
 constexpr std::uintptr_t PauseMenu_GetActionCallback = 0x14034d380ull;

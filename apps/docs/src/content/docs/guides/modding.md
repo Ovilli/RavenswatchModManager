@@ -5,7 +5,7 @@ description: Scaffold, build, test, and ship a mod — the single authoring guid
 
 This is the **single** authoring guide — scaffolding a mod through shipping a
 finished `.zip`. For CLI command details, see the [CLI Reference](/reference/cli/);
-for the SDK design rationale, [SDK_V3.md](/guides/sdk/).
+for the SDK design rationale, [SDK guide](/guides/sdk/).
 
 :::tip[New to modding?]
 This page is the complete reference, and it gets technical fast. If you haven't
@@ -300,7 +300,7 @@ The hook runs as the player, outside the game, with no sandbox, so it never runs
 
 Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
 
-See `mods/ExampleSeedPin/on_disable.py` for a canonical example.
+See `examples/ExampleSeedPin/on_disable.py` for a canonical example.
 
 ### ConsoleRuntime / dev_mode
 
@@ -322,7 +322,7 @@ unknown field is refused, with the nearest valid name.
 Every content kind is reachable with one call, `m.content(kind, id=..., **fields)`,
 whose fields are exactly the manifest's. Five kinds also have a named shortcut
 (`m.item`, `m.enemy`, `m.boss`, `m.map`, `m.hero`); the rest use `m.content`.
-Design rationale: [SDK_V3.md](/guides/sdk/).
+Design rationale: [SDK guide](/guides/sdk/).
 
 ### First mod
 
@@ -1348,7 +1348,7 @@ rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 
 To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/); the primitives above are the layer underneath.
 
-See `mods/ExampleLuaMod/init.lua` and `mods/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [docs/_re/CALLING_GAME_FUNCTIONS.md](/reverse-engineering/calling-game-functions/).
+See `examples/ExampleEngineCall/init.lua` and `examples/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [Calling game functions](/reverse-engineering/calling-game-functions/).
 
 ### Events
 
@@ -1573,6 +1573,143 @@ a live co-op session. Until then, label unknown players by join order and let
 the player rename them (the damage-meter mod exposes `player_1..4` for exactly
 that).
 
+### Mouse wheel (`R.input`)
+
+```lua
+R.input.on_wheel(function(steps, ev)   -- steps > 0 = wheel up
+    if R.game.flag("is_menu_open") then return end
+    R.log("wheel " .. steps)
+end)
+R.input.wheel_free()     --> true | false, action | nil, reason
+R.input.wheel_totals()   --> up, down (notches since launch)
+```
+
+The loader counts a wheel notch on the frame the game's input poll reads it and
+posts the `input:wheel` event (`steps`, plus `up`/`down` totals and `blocked`,
+true when the game had input blocked, e.g. during a transition). Nothing is
+swallowed: menus, the hero book and scroll panels still get every notch, so a
+handler that acts in a run should skip menus, as above.
+
+By default nothing in a run reads the wheel. Out of the box it is bound only to
+the menu page alternates. `wheel_free()` reads the player's own key bindings and
+returns `false` plus the action name when they have bound the wheel to something
+else (an ability, a dash), so a mod can step aside instead of doubling up. It
+returns `nil` plus a reason when the bindings cannot be read.
+
+Handlers run on the game thread inside the input poll. Keep them short.
+
+### Middle-mouse drag (`R.input`)
+
+```lua
+R.input.on_drag(function(phase, dx, dy, ev)   -- "start", then "move"s, then "end"
+    if phase == "move" and not R.game.flag("is_menu_open") then
+        R.log(("dragged %.1f, %.1f of %dx%d"):format(dx, dy, ev.w, ev.h))
+    end
+end)
+R.input.drag_available() --> true | false, reason
+R.input.drag_state()     --> { held, x, y, w, h, drags, dx, dy } | nil, reason
+R.input.middle_free()    --> true | false, action | nil, reason
+```
+
+The game's own input poll reads the middle button every frame, and its UI
+update keeps the cursor position. While the game reports the button held, the
+loader adds up how far the cursor moved between two polls and posts
+`input:drag`: one `start`, any number of `move` (`dx`, `dy` in pixels since the
+last move), one `end`. The payload also carries the cursor (`x`, `y`), the
+window's client size (`w`, `h`, to make a drag resolution-independent),
+`blocked` and `button` (`"middle"`). A handler that subscribes mid-drag hears
+nothing until the next `start`.
+
+The cursor stops at the window edge, so a drag does too. Nothing is swallowed:
+the game's UI still sees the click. By default nothing in a run uses the middle
+button; `middle_free()` returns `false` plus the action name when the player has
+bound one to it. `drag_state()` gives the running totals (`drags` started, total
+`dx`/`dy` while held, since launch) for a mod that polls instead of listening.
+
+### Keybinds (`R.input.keybinds`)
+
+```lua
+local K = R.input.keybinds
+local zin, why = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }  --> handle | nil, reason
+local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93 }
+local function fallback(why) --[[ e.g. read the wheel with R.input.on_wheel ]] end
+if zin then
+    K.on_press(zin, function(n, ev)      -- n = presses since the last delivery
+        R.camera.zoom(0.9 ^ n)
+    end)
+    K.on_ready(function(ok, why)         -- once, after every init.lua
+        if not ok then fallback(why) end
+    end)
+else
+    fallback(why)                        -- the reason add() refused
+end
+K.keys(zin)        --> keyboard key id, pad key id (0 = unbound)
+K.list()           --> { {id=, label=, key=, pad=}, ... }
+K.available()      --> true | false, reason
+```
+
+A keybind is a row in the game's own Settings > Controls menu, on the Keyboard
+tab and on the Gamepad tab, after the game's actions and titled with `label`.
+The player rebinds it there like any shipped action. The game saves it in
+`GameSettings.ini` under `<mod id>::<id>` and applies its duplicate-key rule: a
+key taken by one row is cleared from whatever held it, vanilla action or
+keybind. A rebind, also from the pause menu in the middle of a run, takes effect
+on the next frame.
+
+`add` takes `id` (1-32 letters, digits or `_`, unique within the mod), `label`
+(1-32 characters), `key` (the Keyboard tab's default: keyboard 1-84, mouse
+buttons 85-91, wheel up 92 / down 93) and `pad` (the Gamepad tab's default:
+gamepad key ids 94 and up). Either defaults to 0, unbound, and an id from the
+other device is refused. `menus = true` gets the keybind's presses in menus too
+(see below). The handle also has `zin:on_press(fn)` and `zin:keys()`.
+
+During `init.lua`, `add` queues the keybind. It returns `nil` and a reason
+when keybinds cannot work here at all: a loader without them, or a game build
+the loader does not trust. Whether a queued keybind goes live is settled after
+every `init.lua`, when the loader installs its hooks and registers the
+keybinds with the game. `on_ready(fn)` reports that once: `fn(true)`, or
+`fn(false, reason)` when they never will be. A mod with a fallback runs it from
+both places, as above. `available()` is `true` while that is still pending and
+nothing rules it out.
+
+Add keybinds from `init.lua`. The loader registers every mod's keybinds with
+the game once, on the first input poll after all mods have loaded, and has the
+game read `GameSettings.ini` again so the saved keys apply. A keybind added
+after that returns `nil` and a reason. Adding an id the mod already added
+returns the same handle, so a hot reload keeps working. There is room for 16
+keybinds across all mods.
+
+`on_press` handlers run on the game thread inside the input poll, like
+`on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
+A handler gets only presses made in play: presses made while a menu is open
+or while the game has input blocked (during a transition) are dropped, since the
+game's UI gets those keys, and so are presses that waited for the Lua lock (the
+loader sorts each press when it is made). A keybind added with `menus = true`
+gets every press; `ev.blocked_presses` and `ev.late_presses` count the blocked
+and the waiting ones. A player who starts the game once without the loader and
+changes a setting loses the saved keys (the game drops lines it does not know
+when it saves) and gets the defaults back.
+
+### Camera zoom (`R.camera.zoom`)
+
+```lua
+R.camera.zoom(0.9, { duration = 0.25 })   --> true | nil, reason  (0.9 = 10% closer)
+R.camera.zoom_factor()                    --> target, current      (1 = the camera's own distance)
+R.camera.zoom_reset({ duration = 0.25 })
+```
+
+`zoom(step)` multiplies the zoom factor by `step` (0.05 to 20), and the game's
+own camera blender eases it in over `duration` seconds with its cosine curve.
+The factor scales the eye's distance to the look-at point on top of whatever
+top-down camera is active, so a hero's alternate cameras (Kintaro on foot,
+Melusine's wisp, ultimates) and boss fight cameras keep it through every switch.
+Boss death scenes are not zoomed. Menus, the hub book and end screens are left
+alone, and the factor carries over to the next chapter and the next run.
+
+Pair it with `R.input.on_wheel` for wheel zoom, and clamp against
+`R.camera.get("distance")` to keep the result in a range you choose.
+camera-control does exactly this.
+
 ### Overlays (`R.overlay`)
 
 The game gives a mod nowhere to draw a HUD, so a mod can publish one to the
@@ -1727,8 +1864,9 @@ nothing) but changes the game. Declare `deterministic-shared` or
 
 For Lua, the client-only calls are the whole of `R.log`, `R.on`/`R.off`/`R.once`,
 `R.overlay`, `R.config`, `R.kv`, `R.schedule`, `R.exp`, `R.health`, `R.i18n`,
-`R.damage` and `R.camera`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
+`R.damage`, `R.camera` and `R.input`, plus these reads: `R.entity.hero`/`ready`/`hp`/`hp_frac`/`max_hp`,
 `R.stat.get`/`cached`/`keys`/`names`, `R.hp.get`/`frac`/`max`,
+`R.game.get`/`flag`/`cached`/`ready`/`describe`,
 `R.events.known`/`count`/`category` and `R.net.peers`. Anything else, including `R[...]` lookups or
 passing `R` to another function, counts as gameplay.
 
@@ -1792,7 +1930,7 @@ with sdk.Mod("MyMapMod", experimental=True) as m:   # required for any non-confi
     m.map("Twilight_Hills", base="Dark_Hills")
 ```
 
-See [docs/INTERNALS.md](/architecture/internals/) for the engine notes that ground all of the above, and [docs/ROADMAP.md](/project/roadmap/) for open work.
+See [Internals](/architecture/internals/) for the engine notes that ground all of the above, and [Roadmap](/project/roadmap/) for open work.
 
 ---
 
