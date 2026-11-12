@@ -11737,6 +11737,23 @@ do
     check(#seen_m == 1 and seen_m[1] == true, "a menus keybind gets every press, blocked marked")
     K.off(hq2)
     menu_open = false
+    -- Presses sorted by the loader when they were made.
+    local seen_p, seen_pm = {}, {}
+    local hp1 = K.on_press(zin, function(n) seen_p[#seen_p + 1] = n end)
+    local hp2 = K.on_press(hmenu, function(n) seen_pm[#seen_pm + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 2,
+                            late_presses = 0, blocked = true })
+    check(#seen_p == 0, "only blocked presses: nothing for an in-play keybind")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_p == 1 and seen_p[1] == 1, "an in-play keybind gets this frame's unblocked presses only")
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_pm == 1 and seen_pm[1] == 5, "a menus keybind gets every press")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 0,
+                            late_presses = 4, blocked = false })
+    check(#seen_p == 1, "late presses are not delivered to an in-play keybind")
+    K.off(hp1); K.off(hp2)
     local hbm, wbm = K.add{ id = "Bad", label = "Bad", menus = "yes" }
     check(hbm == nil and wbm:find("menus"), "menus must be a boolean")
     R.game.flag = function() error("game values not ready") end
@@ -11758,6 +11775,30 @@ do
     check(ok == false and why:find("not trusted"), "declarations open on an untrusted build: unavailable")
     local hu2, wu2 = K.add{ id = "Untrusted", label = "Untrusted" }
     check(hu2 == nil and wu2:find("not trusted"), "add on an untrusted build: refused with the reason")
+    -- on_ready: pending during init.lua, settled by the loader's announcement.
+    I.va_trusted = function() return true end
+    local r1 = {}
+    check(K.on_ready(function(ok, w) r1[#r1 + 1] = { ok, w } end) == true, "on_ready accepts a function")
+    check(#r1 == 0, "on_ready waits while the outcome is pending")
+    fire("input:keybinds_ready", { ok = false, reason = "keybind hooks failed to install" })
+    check(#r1 == 1 and r1[1][1] == false and r1[1][2]:find("failed to install"),
+          "on_ready reports a failure with its reason")
+    fire("input:keybinds_ready", { ok = true })
+    check(#r1 == 1, "on_ready fires once")
+    local r2 = {}
+    K.on_ready(function(ok) r2[#r2 + 1] = ok end)
+    fire("input:keybinds_ready", { ok = true })
+    check(#r2 == 1 and r2[1] == true, "on_ready reports keybinds that went live")
+    I.keybinds_state = function() return true, true, false, false end
+    local r3 = {}
+    K.on_ready(function(ok) r3[#r3 + 1] = ok end)
+    check(#r3 == 1 and r3[1] == true, "on_ready after registration: called right away")
+    I.keybinds_state = function() return true, false, true, false end
+    local r4 = {}
+    K.on_ready(function(ok, w) r4[#r4 + 1] = { ok, w } end)
+    check(#r4 == 1 and r4[1][1] == false and r4[1][2]:find("registration"),
+          "on_ready after a failed registration: called right away with the reason")
+    check(K.on_ready(5) == nil, "on_ready needs a function")
     I.va_trusted = real_va
     I.keybinds_state = function() return false, false, false, false end
     local hx, wx = K.add{ id = "AfterFail", label = "After fail" }

@@ -19,6 +19,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cstdint>
@@ -113,8 +114,11 @@ struct Binding {
     alignas(16) std::uint8_t opt_kb[kOptSize] = {};
     alignas(16) std::uint8_t opt_pad[kOptSize] = {};
     // Poll thread only.
-    std::uint32_t pending = 0;
-    bool pending_blocked = false;
+    // Presses not yet delivered, sorted when each is recorded: Lua's menu
+    // check only means something on the frame the press was made.
+    std::uint32_t now_play = 0;      // this frame, input not blocked
+    std::uint32_t now_blocked = 0;   // this frame, the game had input blocked
+    std::uint32_t late = 0;          // earlier frames, when the Lua lock was busy
     std::uint32_t seen_kb = 0, seen_pad = 0;
     std::uint32_t map_index = UINT32_MAX;   // this binding's action map entry, if found
     // What Lua reads (keybind_keys, from any thread). The options themselves
@@ -262,6 +266,8 @@ void sync_action_map(int n) {
 
 // --- registration (input poll, game main thread) ----------------------------
 
+void register_failed(const std::string& why);   // below, with the outcome announcement
+
 void try_register() {
     auto& L = Loader::get();
     const int n = g_count.load(std::memory_order_acquire);
@@ -270,9 +276,8 @@ void try_register() {
         return;
     }
     if (!g_register || !g_request_load) {
-        L.log_err("[keybinds] engine calls not resolved; " + std::to_string(n)
-                  + " binding(s) not registered");
-        g_register_failed.store(true, std::memory_order_release);
+        register_failed("engine calls not resolved; " + std::to_string(n)
+                        + " binding(s) not registered");
         return;
     }
     std::uintptr_t mgr = 0, opts = 0;
@@ -288,8 +293,7 @@ void try_register() {
     if (!mem_load(mgr + kMgrCats + kCatKeyboard * kCatStride + kVecSize, &kb_count)
         || !mem_load(req + kReqRequested, &requested)
         || !mem_load(req + kReqCompleted, &completed)) {
-        L.log_err("[keybinds] options manager not readable; bindings not registered");
-        g_register_failed.store(true, std::memory_order_release);
+        register_failed("options manager not readable; bindings not registered");
         return;
     }
     // completed == 0: the boot's own read has not run, so the request may not
@@ -305,9 +309,8 @@ void try_register() {
     HMODULE self = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
                             reinterpret_cast<LPCWSTR>(&g_binds), &self)) {
-        L.log_err("[keybinds] could not pin the loader in memory; " + std::to_string(n)
-                  + " binding(s) not registered");
-        g_register_failed.store(true, std::memory_order_release);
+        register_failed("could not pin the loader in memory; " + std::to_string(n)
+                        + " binding(s) not registered");
         return;
     }
 
@@ -349,28 +352,60 @@ void check_key(Binding& b, std::uint8_t* opt, std::uint32_t& seen, std::uintptr_
     if (key == 0 || key > kKeyMax) return;
     std::uint8_t flags = 0;
     if (!mem_load(table + key * kRecStride, &flags) || !(flags & kRecPressed)) return;
-    ++b.pending;
-    b.pending_blocked = (flags & kRecBlocked) != 0;
+    if (flags & kRecBlocked) ++b.now_blocked; else ++b.now_play;
 }
+
+void clear_presses(Binding& b) { b.now_play = b.now_blocked = b.late = 0; }
 
 void deliver(int n) {
     // Nobody listening: drop the backlog so a late subscriber does not get it.
     if (!script_has_handler(kEvent)) {
-        for (int i = 0; i < n; ++i) g_binds[i].pending = 0;
+        for (int i = 0; i < n; ++i) clear_presses(g_binds[i]);
         return;
     }
     for (int i = 0; i < n; ++i) {
         Binding& b = g_binds[i];
-        if (b.pending == 0) continue;
+        if (b.now_play == 0 && b.now_blocked == 0 && b.late == 0) continue;
         const nlohmann::json ev = {
-            {"mod", b.mod}, {"id", b.id}, {"presses", b.pending},
+            {"mod", b.mod}, {"id", b.id},
+            {"presses", b.now_play}, {"blocked_presses", b.now_blocked},
+            {"late_presses", b.late}, {"blocked", b.now_blocked != 0},
             {"key", value_of(b.opt_kb)}, {"pad", value_of(b.opt_pad)},
-            {"blocked", b.pending_blocked},
         };
-        // Lua lock busy: keep the presses for the next frame.
+        // Lua lock busy: the presses wait, and next frame they are late.
         if (!script_try_emit_event_json(kEvent, ev.dump())) return;
-        b.pending = 0;
+        clear_presses(b);
     }
+}
+
+// --- the final result, for R.input.keybinds.on_ready -------------------------
+//
+// add() during init.lua only queues a declaration: whether the binding works
+// is settled later, when the hooks install (after every init.lua) and when the
+// first input poll registers the options with the game. The outcome is
+// announced once as "input:keybinds_ready" {ok, reason}.
+
+constexpr const char* kReadyEvent = "input:keybinds_ready";
+std::atomic<bool> g_ready_sent{false};
+std::string g_fail_reason;   // set before g_register_failed / an install failure
+
+void announce(bool ok, const std::string& why, bool may_wait) {
+    if (g_ready_sent.load(std::memory_order_acquire)) return;
+    nlohmann::json ev = {{"ok", ok}};
+    if (!ok) ev["reason"] = why;
+    if (may_wait) {   // the installer thread: waiting for the Lua lock is fine there
+        script_emit_event_json(kReadyEvent, ev.dump());
+    } else if (script_has_handler(kReadyEvent)
+               && !script_try_emit_event_json(kReadyEvent, ev.dump())) {
+        return;   // the poll tries again next frame
+    }
+    g_ready_sent.store(true, std::memory_order_release);
+}
+
+void register_failed(const std::string& why) {
+    Loader::get().log_err("[keybinds] " + why);
+    g_fail_reason = why;
+    g_register_failed.store(true, std::memory_order_release);
 }
 
 // --- menu rows (Settings build, game main thread) ---------------------------
@@ -549,25 +584,43 @@ bool keybind_keys(int index, std::uint32_t* kb, std::uint32_t* pad) {
 void keybinds_on_poll() {
     if (!g_armed.load(std::memory_order_acquire)) return;
     if (!g_registered.load(std::memory_order_acquire)) {
-        if (g_register_failed.load(std::memory_order_acquire)) return;
+        if (g_register_failed.load(std::memory_order_acquire)) {
+            announce(false, g_fail_reason, false);
+            return;
+        }
         try_register();
         return;
     }
+    announce(true, {}, false);
     const int n = g_count.load(std::memory_order_acquire);
     if (n == 0) return;
     const std::uintptr_t table = rebase(Sym::g_InputKeyRecords);
     bool any = false;
     for (int i = 0; i < n; ++i) {
         Binding& b = g_binds[i];
+        // What last frame could not deliver is late now.
+        b.late = std::min<std::uint32_t>(b.late + b.now_play + b.now_blocked, 1000);
+        b.now_play = b.now_blocked = 0;
         check_key(b, b.opt_kb, b.seen_kb, table);
         check_key(b, b.opt_pad, b.seen_pad, table);
         b.snap_kb.store(b.seen_kb, std::memory_order_relaxed);
         b.snap_pad.store(b.seen_pad, std::memory_order_relaxed);
-        any = any || b.pending != 0;
+        any = any || b.now_play != 0 || b.now_blocked != 0 || b.late != 0;
     }
     sync_action_map(n);
     if (any) deliver(n);
 }
+
+namespace {
+
+// Install failed: say so to the mods that declared keybinds (their on_ready).
+bool install_failed(const std::string& why) {
+    g_fail_reason = why;
+    if (g_count.load(std::memory_order_acquire) > 0) announce(false, why, true);
+    return false;
+}
+
+} // anonymous namespace
 
 bool install_keybind_hooks() {
     auto& L = Loader::get();
@@ -579,11 +632,11 @@ bool install_keybind_hooks() {
     // and the key table are raw VAs.
     if (!L.va_globals_trusted()) {
         L.log("[keybinds] not arming: VA globals are not trusted on this game build");
-        return false;
+        return install_failed("VA globals not trusted on this game build");
     }
     if (!input_armed()) {
         L.log("[keybinds] not arming: the input poll hook is not live");
-        return false;
+        return install_failed("input poll hook not live (see the loader log)");
     }
     if (!need("register option", Sym::GameOptionsManager_Register_Pattern, &g_register)
         || !need("request load", Sym::GameOptionsManager_RequestLoad_Pattern, &g_request_load)
@@ -593,7 +646,7 @@ bool install_keybind_hooks() {
         || !need("action map add", Sym::InputActionMap_Add_Pattern, &g_map_add)) {
         g_register = nullptr;
         g_request_load = nullptr;
-        return false;
+        return install_failed("keybind engine calls did not resolve (see the loader log)");
     }
     if (!hook_install("keybinds", "keyboard controls tab", Sym::OptionsMenu_BuildKeyboardControls_Pattern,
                       reinterpret_cast<void*>(&hook_build_kb),
@@ -607,7 +660,7 @@ bool install_keybind_hooks() {
         // Without the rows nobody can see or change a binding: register nothing.
         g_register = nullptr;
         g_request_load = nullptr;
-        return false;
+        return install_failed("keybind hooks failed to install (see the loader log)");
     }
     g_armed.store(true, std::memory_order_release);
     L.log("[keybinds] armed: " + std::to_string(n) + " binding(s) declared");

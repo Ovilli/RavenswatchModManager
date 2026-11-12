@@ -13,6 +13,7 @@
 --   K.keys(zin)                                --> keyboard key id, pad key id (0 = unbound)
 --   K.list()                                   --> { {id=, label=, key=, pad=}, ... }
 --   K.available()                              --> true | false, reason
+--   K.on_ready(function(ok, reason) ... end)   --> once: did the keybinds go live?
 --
 -- add{} fields: id (1-32 letters, digits or _; unique within the mod), label
 -- (the row title, 1-32 characters), key (the Keyboard tab's default: keyboard
@@ -27,25 +28,38 @@
 -- that is refused. Re-adding an id this mod already declared returns the same
 -- handle, so a hot reload of init.lua keeps working.
 --
--- add() is the one check a mod needs: it returns nil + reason when keybinds
--- cannot work here (an old loader, an untrusted game build, hooks that failed
--- to install), so a mod with a fallback writes `if not h then ... end`.
--- available() answers the same question without declaring anything; during
--- init.lua it is true when the loader will install the keybinds after init.
+-- add() during init.lua QUEUES a declaration. It returns nil + reason when
+-- keybinds cannot work here at all (an old loader, an untrusted game build,
+-- hooks that already failed), but whether a queued keybind goes live is only
+-- settled after every init.lua, when the loader installs its hooks and then
+-- registers the keybinds with the game. on_ready(fn) reports that outcome
+-- once: fn(true) when they are live, fn(false, reason) when they never will
+-- be. A mod with a fallback runs it from both places:
+--
+--   local zin, why = K.add{ ... }
+--   if not zin then fallback(why) else K.on_ready(function(ok, why2)
+--       if not ok then fallback(why2) end end) end
+--
+-- available() is true while that outcome is still pending and nothing rules
+-- it out, true once the keybinds are live, and false + reason otherwise.
 --
 -- on_press handlers run on the GAME THREAD, inside the input poll, like
 -- R.input.on_wheel: keep them short. `n` is the number of presses since the
 -- last delivery (a wheel notch is one press); `ev` also carries `key` / `pad`
--- (the current keys) and `blocked`. Presses made while a menu is open or while
--- the game has input blocked (e.g. during a transition) are dropped: the game's
--- UI gets those keys. A keybind added with `menus = true` gets every press, and
--- `ev.blocked` says which ones the game had blocked.
+-- (the current keys). A handler gets only presses made in play: presses made
+-- while a menu is open or while the game had input blocked (e.g. during a
+-- transition) are dropped, since the game's UI gets those keys, and so are
+-- presses that had to wait for the Lua lock (the menu check is only true of
+-- the frame it runs on). A keybind added with `menus = true` gets every press;
+-- its `ev.blocked_presses` and `ev.late_presses` count the blocked and the
+-- waiting ones within `n`.
 
 local M = {}
 
 local R, I
 
 local EVENT = "input:keybind"
+local READY_EVENT = "input:keybinds_ready"
 local KEY_MAX = 0xff
 -- Key id ranges by device (0 = unbound for either).
 local KEYBOARD_MAX, PAD_MIN = 93, 94
@@ -149,12 +163,56 @@ function M.on_press(b, fn)
     return R.on(EVENT, function(ev)
         if type(ev) ~= "table" or ev.id ~= h.id then return end
         if me and ev.mod ~= me then return end
-        if not h.menus and (ev.blocked == true or _in_menu()) then return end
-        fn(tonumber(ev.presses) or 1, ev)
+        local play = math.tointeger(ev.presses) or 0
+        local n
+        if h.menus then
+            n = play + (math.tointeger(ev.blocked_presses) or 0)
+                + (math.tointeger(ev.late_presses) or 0)
+        else
+            -- Only this frame's unblocked presses, and only out of menus. A
+            -- loader without blocked_presses marks a blocked batch instead.
+            if ev.blocked_presses == nil and ev.blocked == true then return end
+            if play <= 0 or _in_menu() then return end
+            n = play
+        end
+        if n > 0 then fn(n, ev) end
     end)
 end
 
 function M.off(handle) return R.off(handle) end
+
+-- Has the outcome of this session's keybinds been settled? true, ok, reason
+-- when it has; false while it is still pending.
+local function _outcome()
+    if not (I and I.keybinds_state) then return true, false, "loader too old (no keybinds)" end
+    local armed, registered, failed, open = I.keybinds_state()
+    if registered and not failed then return true, true end
+    local ok, why = M.available()
+    if not ok then return true, false, why end
+    if open or armed then return false end   -- installing, or registering on the first poll
+    return true, false, why or "keybinds unavailable"
+end
+
+--- Call fn(ok, reason) once, when this session's keybinds have gone live
+--- (ok = true) or when they never will (ok = false + reason). Right away when
+--- that is already settled. Returns true, or nil + reason.
+function M.on_ready(fn)
+    if type(fn) ~= "function" then return nil, "on_ready needs a function" end
+    local settled, ok, why = _outcome()
+    if settled then
+        fn(ok, why)
+        return true
+    end
+    local done, h = false, nil
+    h = R.on(READY_EVENT, function(ev)
+        if done then return end
+        done = true
+        if h then R.off(h) end
+        local live = type(ev) == "table" and ev.ok == true
+        fn(live, (not live) and (type(ev) == "table" and ev.reason or "keybinds unavailable") or nil)
+    end)
+    return true
+end
 
 --- The keybind's current keys: keyboard, pad (0 = unbound). nil + reason for
 --- an unknown keybind. Before the game has the keybind, the defaults.

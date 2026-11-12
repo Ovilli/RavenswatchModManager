@@ -1602,14 +1602,18 @@ Handlers run on the game thread inside the input poll. Keep them short.
 
 ```lua
 local K = R.input.keybinds
-local zin  = K.add{ id = "ZoomIn",  label = "Zoom in",  key = 92 }   --> handle | nil, reason
+local zin, why = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }  --> handle | nil, reason
 local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93 }
+local function fallback(why) --[[ e.g. read the wheel with R.input.on_wheel ]] end
 if zin then
     K.on_press(zin, function(n, ev)      -- n = presses since the last delivery
         R.camera.zoom(0.9 ^ n)
     end)
+    K.on_ready(function(ok, why)         -- once, after every init.lua
+        if not ok then fallback(why) end
+    end)
 else
-    -- no keybinds here (old loader, unknown game build): fall back
+    fallback(why)                        -- the reason add() refused
 end
 K.keys(zin)        --> keyboard key id, pad key id (0 = unbound)
 K.list()           --> { {id=, label=, key=, pad=}, ... }
@@ -1631,11 +1635,14 @@ gamepad key ids 94 and up). Either defaults to 0, unbound, and an id from the
 other device is refused. `menus = true` gets the keybind's presses in menus too
 (see below). The handle also has `zin:on_press(fn)` and `zin:keys()`.
 
-`add` is the only check a mod needs. It returns `nil` and a reason when
-keybinds cannot work here: a loader without them, a game build the loader does
-not trust, or hooks that failed to install. `available()` answers the same
-question without adding anything; during `init.lua` it is `true` when the
-loader will install the keybinds once every mod has loaded.
+During `init.lua`, `add` queues the keybind. It returns `nil` and a reason
+when keybinds cannot work here at all: a loader without them, or a game build
+the loader does not trust. Whether a queued keybind goes live is settled after
+every `init.lua`, when the loader installs its hooks and registers the
+keybinds with the game. `on_ready(fn)` reports that once: `fn(true)`, or
+`fn(false, reason)` when they never will be. A mod with a fallback runs it from
+both places, as above. `available()` is `true` while that is still pending and
+nothing rules it out.
 
 Add keybinds from `init.lua`. The loader registers every mod's keybinds with
 the game once, on the first input poll after all mods have loaded, and has the
@@ -1646,10 +1653,12 @@ keybinds across all mods.
 
 `on_press` handlers run on the game thread inside the input poll, like
 `on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
-Presses made while a menu is open, or while the game has input blocked (during
-a transition), are dropped, since the game's UI gets those keys. A keybind added
-with `menus = true` gets every press, with `ev.blocked` set on the ones the game
-blocked. A player who starts the game once without the loader and
+A handler gets only presses made in play: presses made while a menu is open
+or while the game has input blocked (during a transition) are dropped, since the
+game's UI gets those keys, and so are presses that waited for the Lua lock (the
+loader sorts each press when it is made). A keybind added with `menus = true`
+gets every press; `ev.blocked_presses` and `ev.late_presses` count the blocked
+and the waiting ones. A player who starts the game once without the loader and
 changes a setting loses the saved keys (the game drops lines it does not know
 when it saves) and gets the defaults back.
 

@@ -37,11 +37,19 @@
 // keybinds, a dynamic unload no longer unmaps it.
 //
 // Presses are read from the key table's "pressed this frame" bit after the
-// poll and delivered as the Lua event "input:keybind" {mod, id, presses, key,
-// blocked}. Delivery never blocks the game thread; presses wait for the next
-// frame when the Lua lock is busy. A rebind (including one from the pause
+// poll and delivered as the Lua event "input:keybind" {mod, id, presses,
+// blocked_presses, late_presses, blocked, key, pad}. Each press is sorted when
+// it is recorded: `presses` were made this frame with input not blocked,
+// `blocked_presses` this frame with the game's input blocked, `late_presses`
+// on earlier frames. Delivery never blocks the game thread; when the Lua lock
+// is busy the presses wait and become late, because the SDK's menu check is
+// only true of the frame it runs on. A rebind (including one from the pause
 // menu mid-run) takes effect on the next frame, since the poll reads the
 // option's current key every time.
+//
+// Whether the declared bindings work is settled after every init.lua: when the
+// hooks install, and when the first poll registers them. The outcome is
+// announced once as "input:keybinds_ready" {ok, reason}.
 #include <cstdint>
 #include <string>
 
