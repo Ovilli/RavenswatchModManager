@@ -660,6 +660,36 @@ ICON_CLASS = "oCDtAbilityAlternateIconSettings"
 _ICON_MARK = bytes.fromhex("2222bbaa2222bbaa")
 
 
+def icons_of(ef: EntityFile, ctl: str) -> list[tuple[tuple[str, str], tuple[str, str]]]:
+    """The HUD pictures button ``ctl`` holds, one (picture, cooled-down) pair
+    per step it owns (see :data:`ICON_CLASS`); empty pairs left out."""
+    from . import entity_fields as EF
+    c = ef.component(ctl)
+    f = next((x for x in EF.fields(c) if x.name == "bytes_13"), None)
+    raw = bytes(c.body[f.offset:f.offset + f.size]) if f is not None else b""
+    if len(raw) < 8:
+        return []
+    n = struct.unpack_from("<I", raw, 4)[0]
+    if len(raw) != 8 + 4 * n:
+        return []
+    out = []
+    for i in struct.unpack_from(f"<{n}I", raw, 8):
+        if ef._class(i) != ICON_CLASS:
+            continue
+        obj = bytes(ef.objects[i])
+        at = obj.find(_ICON_MARK)
+        if at < 0:
+            continue
+        pos, strs = at + len(_ICON_MARK), []
+        while pos + 4 <= len(obj) and len(strs) < 4:
+            (ln,) = struct.unpack_from("<I", obj, pos)
+            strs.append(obj[pos + 4:pos + 4 + ln].decode("latin-1"))
+            pos += 4 + ln
+        if len(strs) == 4 and strs[1]:
+            out.append(((strs[0], strs[1]), (strs[2], strs[3] or strs[1])))
+    return out
+
+
 def set_icon(ef: EntityFile, ctl: str, icon: tuple[str, str],
              disabled: tuple[str, str]) -> int:
     """Give the button ``ctl`` its HUD pictures, on every step it owns; how many."""

@@ -1730,6 +1730,24 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 art += [f"3D|{w_tex}|oCTexture", f"3D|{w_mat}|oCMaterial"]
         weapon = (donor_ef, w_mesh, w_mat)
 
+    rig_ef: list = []
+
+    def rig_icon(slot: str):
+        """The rig hero's HUD picture pair for button ``slot`` (its last step's)."""
+        from ...engine.entity_graph_edit import EntityEditError, EntityFile
+        if slot not in HA.CONTROLLERS:
+            return None
+        if not rig_ef:
+            raw_rig = read(aliases[rig].stream)
+            rig_ef.append(EntityFile(raw_rig, rig) if raw_rig else None)
+        if rig_ef[0] is None:
+            return None
+        try:
+            pairs = HA.icons_of(rig_ef[0], HA.CONTROLLERS[slot])
+        except EntityEditError:
+            return None
+        return pairs[-1] if pairs else None
+
     abilities = []
     for slot, raw in (frame.get("abilities") or {}).items():
         raw = dict(raw)
@@ -1745,6 +1763,10 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         if raw.get("icon"):
             card["icon"], card["icon_disabled"] = button_icons(
                 raw.pop("icon"), f"Ability_{word}", f"frame.abilities.{slot}.icon")
+        elif (lent := rig_icon(str(slot))) is not None:
+            # No picture given: the rig's own for that button, as the rig lends
+            # its other art until the hero has its own (else the HUD is blank).
+            card["icon"], card["icon_disabled"] = lent
         try:
             raw = own(raw, f"frame.abilities.{slot}")
             if isinstance(raw.get("combo"), list):

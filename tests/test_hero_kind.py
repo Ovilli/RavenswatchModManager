@@ -1379,3 +1379,23 @@ def test_a_scratch_heros_fan_turns_each_shot_through_a_yaw_value(tmp_path):
     values = {r: next(x.text for x in EF.fields(ef.component(r)) if x.name == "value")
               for r in reads if r != "Kit Aim Y Angle"}
     assert sorted(values.values()) == ["f32 1.5708", "f32 3.14159"]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_button_without_an_icon_wears_the_rigs(tmp_path):
+    """No `icon`: the button shows the rig hero's own picture for it (a blank
+    HUD button otherwise), as the rig lends its other art."""
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    pairs = HA.icons_of(EntityFile(main.read_bytes(), "Hero_Solo"), "Primary Ability Controller")
+    assert pairs == [(("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power.png"),
+                      ("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power_Disabled.png"))]
