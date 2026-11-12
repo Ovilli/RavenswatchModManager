@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
+import { parseAdminUserIds } from './admin-ids.js';
 import { resolveUpstashCredentials } from './rate-limit.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -78,12 +79,9 @@ export const env = {
   // canonical origin, which is the same call apps/www/src/lib/api-url.ts
   // already makes in the other direction for the same reason.
   webUrl: resolveWebUrl(),
-  // User IDs allowed to approve/reject community guides (comma-separated).
-  // Empty in dev — see guidesRouter approval endpoints.
-  adminUserIds: (process.env.ADMIN_USER_IDS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
+  // Platform admin user IDs, separated by commas, semicolons, spaces or
+  // newlines (see admin-ids.ts). Empty in dev — see admin.ts::isAdmin.
+  adminUserIds: parseAdminUserIds(process.env.ADMIN_USER_IDS),
   // Tauri WebView origins vary by platform and must always be accepted
   // regardless of the TRUSTED_ORIGINS env override:
   //   Linux WebKitGTK:   tauri://localhost
