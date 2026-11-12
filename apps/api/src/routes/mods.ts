@@ -19,6 +19,7 @@ import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
+import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyReview, notifyReviewReply } from '../notify.js';
 import { preservePrivateOnlyTags, setStoredPrivateOnlyTag } from '../private-only.js';
@@ -1168,8 +1169,31 @@ modsRouter.post(
     // Owner-only: co-authors can't grow the team.
     if (mod.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-    const target = await db.query.users.findFirst({ where: eq(schema.users.handle, handle) });
-    if (!target) return c.json({ error: 'no user with that handle' }, 404);
+    // A user id, a handle or a display name (see co-author.ts): many accounts have no
+    // handle, so a handle-only lookup could never add them.
+    const q = coAuthorQuery(handle);
+    const candidates = q
+      ? await db
+          .select({ id: schema.users.id, name: schema.users.name, handle: schema.users.handle })
+          .from(schema.users)
+          .where(
+            or(
+              eq(schema.users.id, q),
+              ilike(schema.users.handle, likeExact(q)),
+              ilike(schema.users.name, likeExact(q)),
+            ),
+          )
+          .limit(10)
+      : [];
+    const pick = pickCoAuthor(q, candidates);
+    if (pick.kind === 'ambiguous') {
+      return c.json(
+        { error: `${pick.count} users are called "${q}"; add them by their @handle instead` },
+        409,
+      );
+    }
+    if (pick.kind === 'none') return c.json({ error: `no user called "${q}"` }, 404);
+    const target = pick.user;
     if (target.id === mod.ownerId) return c.json({ error: 'owner is already an author' }, 400);
 
     await db

@@ -1,5 +1,6 @@
 'use client';
 import { Button, Input, Spinner } from '@rsmm/ui';
+import { ApiError } from '@rsmm/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Users, X } from 'lucide-react';
 import { useState } from 'react';
@@ -81,7 +82,7 @@ export function ModTeam({ slug }: { slug: string }) {
               }}
             >
               <Input
-                placeholder="Add co-author by handle"
+                placeholder="Add co-author by name, @handle or user ID"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
               />
@@ -90,11 +91,18 @@ export function ModTeam({ slug }: { slug: string }) {
               </Button>
             </form>
           )}
-          {add.isError && (
-            <p className="text-xs text-destructive">Could not add that user (check the handle).</p>
-          )}
+          {add.isError && <p className="text-xs text-destructive">{addError(add.error)}</p>}
         </>
       )}
     </section>
   );
+}
+
+/** The server's reason (no such user, two users with that name ...), else a generic line. */
+function addError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body as { error?: unknown } | null;
+    if (body && typeof body.error === 'string') return `Could not add: ${body.error}.`;
+  }
+  return 'Could not add that user.';
 }
