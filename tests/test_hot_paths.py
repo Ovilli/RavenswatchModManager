@@ -151,6 +151,55 @@ def test_apply_guid_map_random_payloads():
         assert hero_cook.apply_guid_map(raw, mapping) == _ref_apply_guid_map(raw, mapping)
 
 
+def test_apply_guid_map_key_that_exists_only_mid_sequence():
+    # Reviewer's case: the second rule's key (Y*8 + C*8) is built by the first
+    # rule's output and the third rule then eats part of it. Sequential gives
+    # X*8 + Z*16 + C*8; one pass over the original would give X*8 + Y*8 + D*16.
+    a, c, x, y, z, d = (bytes([n]) * 1 for n in b"ACXYZD")
+    payload = a * 16 + c * 16
+    mapping = {
+        a * 16: x * 8 + y * 8,
+        y * 8 + c * 8: z * 16,
+        c * 16: d * 16,
+    }
+    want = x * 8 + z * 16 + c * 8
+    assert hero_cook._replace_sequential(payload, mapping) == want
+    raw = _container([payload])
+    assert hero_cook.apply_guid_map(raw, mapping) == _ref_apply_guid_map(raw, mapping)
+    assert cooked.parse(hero_cook.apply_guid_map(raw, mapping)).sections[0].payload == want
+
+
+def test_apply_guid_map_differential_with_colliding_keys():
+    rng = random.Random(2024)
+    for alphabet in (b"ab", b"abc"):
+        pieces = [bytes(rng.choice(alphabet) for _ in range(4)) for _ in range(5)]
+        pieces = sorted(set(pieces))
+        def ident(pieces=pieces):
+            return b"".join(rng.choice(pieces) for _ in range(rng.choice((2, 3))))
+
+        for _ in range(400):
+            klen = 8
+            mapping = {}
+            for _ in range(rng.randrange(1, 6)):
+                k = ident()
+                if len(k) == klen:
+                    mapping[k] = ident()[:klen].ljust(klen, b"a")
+            if not mapping:
+                continue
+            pl = b"".join(rng.choice(pieces) for _ in range(rng.randrange(0, 14)))
+            if rng.random() < 0.5:
+                pl = bytes(rng.choice(alphabet) for _ in range(rng.randrange(0, 3))) + pl
+            raw = _container([pl])
+            assert hero_cook.apply_guid_map(raw, mapping) == _ref_apply_guid_map(raw, mapping), (
+                pl, mapping)
+
+
+def test_apply_guid_map_values_of_another_length_match_sequential():
+    mapping = {b"abcdefgh": b"xy", b"yzzzabcd": b"QQQQQQQQ"}
+    raw = _container([b"..abcdefghabcd.."])
+    assert hero_cook.apply_guid_map(raw, mapping) == _ref_apply_guid_map(raw, mapping)
+
+
 def test_apply_guid_map_real_entities():
     _installed()
     rels = _sample(corpus.rels("", ".EntitySettingsResource.gen"), 12)

@@ -174,7 +174,14 @@ def read(rel: str) -> bytes | None:
     for c in reversed(_install_candidates(rel)):
         try:
             return c.read_bytes()
+        except FileNotFoundError:
+            continue
         except OSError:
+            # Present but unreadable. A backup that is a file is the pristine
+            # copy, so don't fall back to the live file: it can hold an applied
+            # override, and the next apply would build on it.
+            if c.is_file():
+                return None
             continue
     return None
 
@@ -197,14 +204,6 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
     lists every asset the engine can load. Caches (`*.UsedRscCache.ot`) are the
     one family absent from it; they are read by name, never listed.
     """
-    return list(_rels(prefix, suffix, str(UNCOOKED), source(), str(cooking_dir())))
-
-
-@cache
-def _rels(prefix: str, suffix: str, _mirror: str, _store: str, _cooking: str) -> tuple[str, ...]:
-    # Filtering the ~80k asset_map keys costs ~15 ms and callers ask hundreds of
-    # times per run. Mirror, store and install dir are in the key, so a test that
-    # swaps or hides the mirror, or an install that appears later, gets its own answer.
     base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
     out: set[str] = set()
     if base.is_dir():
@@ -213,13 +212,32 @@ def _rels(prefix: str, suffix: str, _mirror: str, _store: str, _cooking: str) ->
             for p in base.rglob(f"*{suffix}") if p.is_file()
         )
         if UNCOOKED != DATA_DIR / "uncooked":
-            return tuple(sorted(out))
+            return sorted(out)
+    if cooking_dir() is not None:
+        out.update(_asset_map_rels(prefix, suffix))
+    return sorted(out)
+
+
+# Filtering the ~80k asset_map keys costs ~15 ms and callers ask hundreds of
+# times per run. The answers are kept per prefix/suffix against the one dict
+# `decoded_to_encoded()` returned (held strongly, so its id cannot be reused):
+# an asset-map rebuild returns a new dict and drops them all.
+_asset_rels_memo: tuple[dict[str, str], dict[tuple[str, str], tuple[str, ...]]] | None = None
+
+
+def _asset_map_rels(prefix: str, suffix: str) -> tuple[str, ...]:
+    global _asset_rels_memo
     from .asset_map import decoded_to_encoded
 
-    if cooking_dir() is not None:
-        out.update(k for k in decoded_to_encoded()
-                   if k.startswith(prefix) and k.endswith(suffix))
-    return tuple(sorted(out))
+    d = decoded_to_encoded()
+    memo = _asset_rels_memo
+    if memo is None or memo[0] is not d:
+        memo = _asset_rels_memo = (d, {})
+    got = memo[1].get((prefix, suffix))
+    if got is None:
+        got = memo[1][prefix, suffix] = tuple(
+            k for k in d if k.startswith(prefix) and k.endswith(suffix))
+    return got
 
 
 def stems(directory: str, suffix: str) -> list[str]:

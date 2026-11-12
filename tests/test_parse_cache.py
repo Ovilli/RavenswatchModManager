@@ -273,6 +273,21 @@ def test_corpus_read_prefers_backup_over_live(tmp_path, monkeypatch):
     assert corpus.read("X/y") == b"pristine"
 
 
+def test_corpus_read_never_falls_back_past_an_unreadable_backup(tmp_path, monkeypatch):
+    _, live = _fake_corpus(tmp_path, monkeypatch)
+    bak = live.with_name(live.name + ".rsmm.bak")
+    bak.write_bytes(b"pristine")
+    real = Path.read_bytes
+
+    def locked(self):
+        if self == bak:
+            raise PermissionError(self)
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    assert corpus.read("X/y") is None
+
+
 def test_corpus_mirror_miss_memo_follows_uncooked_path(tmp_path, monkeypatch):
     _fake_corpus(tmp_path, monkeypatch)
     assert corpus.mirror_path("X/y") is None
@@ -285,3 +300,47 @@ def test_corpus_mirror_miss_memo_follows_uncooked_path(tmp_path, monkeypatch):
     assert corpus.read("X/y") == b"mirror"
     monkeypatch.setattr(corpus, "UNCOOKED", tmp_path / "gone")
     assert corpus.read("X/y") == b"live-a"
+
+
+def test_corpus_rels_sees_a_file_added_under_an_existing_mirror(tmp_path, monkeypatch):
+    (tmp_path / "Zed").mkdir()
+    (tmp_path / "Zed" / "a.gen").write_bytes(b"")
+    monkeypatch.setattr(corpus, "UNCOOKED", tmp_path)
+    monkeypatch.setattr(corpus, "_mirror_memo", None)
+    assert corpus.rels("Zed/", ".gen") == ["Zed/a.gen"]
+    (tmp_path / "Zed" / "b.gen").write_bytes(b"")
+    assert corpus.rels("Zed/", ".gen") == ["Zed/a.gen", "Zed/b.gen"]
+
+
+def test_corpus_rels_follows_an_asset_map_rebuild(tmp_path, monkeypatch):
+    _fake_corpus(tmp_path, monkeypatch)
+    import rsmm.engine.asset_map as am
+    current = {"X/y": "enc"}
+    monkeypatch.setattr(am, "decoded_to_encoded", lambda: current)
+    monkeypatch.setattr(corpus, "_asset_rels_memo", None)
+    assert corpus.rels("X/", "") == ["X/y"]
+    assert corpus.rels("X/", "") == ["X/y"]
+    current = {"X/y": "enc", "X/z": "enc2"}      # a rebuild returns a new dict
+    assert corpus.rels("X/", "") == ["X/y", "X/z"]
+
+
+def test_synthesize_encoded_sees_an_in_place_value_change():
+    m = {"X/one": "first!one"}
+    assert apply_mods.synthesize_encoded("X/two", m) == "first!" + cipher.encode("two")
+    m["X/one"] = "second!one"
+    assert apply_mods.synthesize_encoded("X/two", m) == "second!" + cipher.encode("two")
+
+
+def test_find_install_dir_prefers_a_candidate_that_turns_valid_later(
+        tmp_path, monkeypatch, install_cache):
+    a = tmp_path / "preferred"
+    b = _install(tmp_path / "fallback")
+    now = [100.0]
+    monkeypatch.setattr(paths, "_monotonic", lambda: now[0])
+    monkeypatch.setattr(paths, "_game_dir_candidates", lambda: [a, b])
+    assert paths.find_install_dir() == b
+    _install(a)
+    now[0] += 1.0
+    assert paths.find_install_dir() == b          # inside the window: no rescan
+    now[0] += paths._INSTALL_HIT_TTL
+    assert paths.find_install_dir() == a

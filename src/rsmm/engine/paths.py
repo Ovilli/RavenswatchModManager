@@ -251,28 +251,36 @@ def default_game_dir() -> Path:
 
 
 _install_hit: Path | None = None
+_install_hit_at: float = 0.0
+#: How long a remembered install is trusted before the candidates are walked
+#: again, so a preferred one that turns valid later (Steam reporting another
+#: library) wins over the fallback found first.
+_INSTALL_HIT_TTL = 5.0
+_monotonic = time.monotonic  # the clock for the above; tests replace it
 
 
 def find_install_dir() -> Path | None:
     """First `_game_dir_candidates()` entry holding the `_Cooking` tree, or None.
 
-    Only a hit is remembered (re-validated with one stat per call, rescanned if
-    it vanished); a miss is rescanned every time so a game installed while a
-    long-lived process runs is still found.
+    Only a hit is remembered, for `_INSTALL_HIT_TTL` seconds and re-validated
+    with one stat per call (rescanned if it vanished); a miss is rescanned every
+    time so a game installed while a long-lived process runs is still found.
     """
-    global _install_hit
+    global _install_hit, _install_hit_at
     hit = _install_hit
     if hit is not None:
-        try:
-            if (hit / COOKING_REL).is_dir():
-                return hit
-        except OSError:
-            pass
+        if _monotonic() - _install_hit_at < _INSTALL_HIT_TTL:
+            try:
+                if (hit / COOKING_REL).is_dir():
+                    return hit
+            except OSError:
+                pass
         _install_hit = None
     for c in _game_dir_candidates():
         try:
             if (c / COOKING_REL).is_dir():
                 _install_hit = c
+                _install_hit_at = _monotonic()
                 return c
         except OSError:
             continue

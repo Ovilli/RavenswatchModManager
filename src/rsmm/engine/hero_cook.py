@@ -391,12 +391,13 @@ def _replace_sequential(pl: bytes, mapping: dict[bytes, bytes]) -> bytes:
 
 def _guid_prefixes(mapping: dict[bytes, bytes]):
     """The set of leading u32s of every key, or None when the mapping is not
-    the uniform-length (>= 4 bytes) shape the one-pass path is exact for."""
+    the uniform-length (>= 4 bytes, values too) shape the one-pass path is
+    exact for."""
     keys = list(mapping)
     if not keys or array("I").itemsize != 4:
         return None
     klen = len(keys[0])
-    if klen < 4 or any(len(k) != klen for k in keys):
+    if klen < 4 or any(len(k) != klen or len(v) != klen for k, v in mapping.items()):
         return None
     return {array("I", k[:4])[0] for k in keys}, klen
 
@@ -438,9 +439,36 @@ def _replace_one_pass(pl: bytes, mapping: dict[bytes, bytes], pats) -> bytes:
         last = at + klen
     parts.append(pl[last:])
     out = b"".join(parts)
-    if _guid_hits(out, mapping, prefixes, klen):
+    if _creates_key(pl, out, hits, mapping, klen):
         return _replace_sequential(pl, mapping)
     return out
+
+
+def _creates_key(pl: bytes, out: bytes, hits: list[int], mapping: dict[bytes, bytes],
+                 klen: int) -> bool:
+    """Could any intermediate state of the sequential loop hold a key that the
+    one-pass result does not? Keys and values are all ``klen`` long and the
+    hits do not overlap, so nothing shifts: a key that exists only in some
+    intermediate state lies in a ``klen`` window overlapping a replaced span,
+    and such a window touches at most two spans. Every original/replaced mix of
+    the spans it touches is tried (the all-original one is the payload itself,
+    whose keys are the hits). Conservative: a True only means "go sequential"."""
+    n = len(pl)
+    prev_end = 0
+    for i, h in enumerate(hits):
+        nxt = hits[i + 1] if i + 1 < len(hits) else None
+        for s in range(max(h - klen + 1, prev_end, 0), min(h + klen, n - klen + 1)):
+            end = s + klen
+            old, new = pl[s:end], out[s:end]
+            if new in mapping:
+                return True
+            if nxt is not None and nxt < end:
+                cut = h + klen - s
+                if (new[:cut] + old[cut:] in mapping
+                        or old[:cut] + new[cut:] in mapping):
+                    return True
+        prev_end = h + klen
+    return False
 
 
 def apply_guid_map(raw: bytes, mapping: dict[bytes, bytes]) -> bytes:

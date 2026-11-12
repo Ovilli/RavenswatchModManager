@@ -777,7 +777,13 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
         # Top-level resource (e.g. `samples`): no collapse, encode whole.
         return cipher.encode(decoded)
     parent, _, fname = decoded.rpartition("/")
-    prefix = _parent_prefixes(dec2enc).get(parent)
+    # The prefix index is only trusted for the shared loaded map, which is
+    # rebuilt as a new dict when it changes. Any other dict can be mutated in
+    # place (same identity, same len, different value), so it is scanned fresh.
+    if dec2enc is _shared_map():
+        prefix = _parent_prefixes(dec2enc).get(parent)
+    else:
+        prefix = _scan_prefix(parent, dec2enc)
     if prefix is None:
         return None
     return prefix + cipher.encode(fname)
@@ -786,6 +792,28 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
 # Single-slot memo: (the dict it was built from, its len then, the index).
 # Scanning the ~80k-entry map on every call made bulk callers take minutes.
 _PREFIX_MEMO: tuple[dict[str, str], int, dict[str, str]] | None = None
+
+
+def _shared_map() -> dict[str, str] | None:
+    from rsmm.engine.asset_map import decoded_to_encoded
+    try:
+        return decoded_to_encoded()
+    except (OSError, ValueError):
+        return None
+
+
+def _scan_prefix(parent: str, dec2enc: dict[str, str]) -> str | None:
+    """The linear scan `_parent_prefixes` indexes: the encoded prefix of the
+    first sibling of ``parent`` (in dict order) that has one."""
+    for dec, enc in dec2enc.items():
+        dec = dec.replace("\\", "/")
+        if "/" not in dec or dec.rsplit("/", 1)[0] != parent:
+            continue
+        cut = max(enc.rfind("\\"), enc.rfind("!"))
+        if cut == -1:
+            continue
+        return enc[: cut + 1]
+    return None
 
 
 def _parent_prefixes(dec2enc: dict[str, str]) -> dict[str, str]:
