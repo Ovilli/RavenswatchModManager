@@ -4,5 +4,8 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter www build",
   "ignoreCommand": "sh scripts/vercel-ignore-build.sh www",
+  "git": {
+    "deploymentEnabled": false
+  },
   "outputDirectory": "apps/www/.next"
 }
