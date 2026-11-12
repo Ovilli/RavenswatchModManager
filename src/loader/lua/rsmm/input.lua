@@ -51,21 +51,27 @@
 -- and moves the cursor back to the centre. mouse_look(true) asks the loader to
 -- write the game window's centre there and set the byte (on the game thread, in
 -- the input poll). on_mouse_move(fn) gets the game's own dx/dy in pixels, once
--- per poll in which either is non-zero (merged if the Lua lock was busy); `ev`
+-- per poll in which either is non-zero (merged only with a same-labelled poll if the Lua lock was busy); `ev`
 -- carries x, y, w, h, `locked` (the game's lock was on for that poll) and
 -- `blocked`. With opts.hide the OS cursor is hidden while the lock is engaged.
 -- The lock PAUSES (released, cursor shown) while the game wants the cursor (the
 -- pause menu, talent choice, Sandman shop, magical-object menu, cinematic,
 -- loading screen or main menu; CURSOR_FLAGS) or the game window is not the
 -- foreground window, and resumes when that ends. Each pause and resume is logged
--- with the flag that caused it. The window
--- check is native and per frame; the menu check is read through R.game.flag and
--- pushed to the loader from every mouse move and from the 500 ms tick, so a menu
--- that opens while the mouse is still releases within a frame of the next move,
--- or at worst 500 ms. While the lock is on, middle drags are suppressed (no
+-- with the flag that caused it. The window check is native and per frame. The
+-- menu check is pushed to the loader from two places. Every mouse move (game
+-- thread) reads the flags live through R.game.flag, so a menu releases within a
+-- frame of the next move. The 500 ms tick runs on a loader thread, which must
+-- not call into the scene map, so it reads R.game.cached instead (memory reads
+-- of the records the last move found): a menu that opens while the mouse is
+-- still releases within 500 ms, but only after one mouse move in the current
+-- scene (and again after a scene change, which drops the cache); until then it
+-- releases on the next move. While the lock is on, middle drags are suppressed (no
 -- start; one in progress ends). The request is a lease: it lapses a few seconds
 -- after this Lua state stops refreshing it (reload, unload), leaving the lock
--- off and the cursor shown. It is one global state, last caller wins.
+-- off and the cursor shown. It is one global state, last caller wins: each
+-- request gets an id, this Lua state refreshes only its own, so a mod that was
+-- superseded stops renewing the lease.
 -- Hero mouse-aim probably reads the window cursor, so a centred cursor aims at
 -- the screen centre (inferred, not traced).
 --
@@ -188,7 +194,7 @@ function M.on_mouse_move(fn)
     end)
 end
 
-local _look_on, _look_driver
+local _look_on, _look_driver, _look_id
 
 -- Every game state that wants the cursor. The pause menu sets the first two;
 -- the talent choice, the Sandman shop, the magical-object menu, cinematics,
@@ -200,28 +206,40 @@ local CURSOR_FLAGS = {
     "is_in_main_menu", "is_in_pause",
 }
 
--- The first flag that wants the cursor, or nil.
-local function _menu_open()
+-- The first flag that wants the cursor, or nil. `live` reads through the engine
+-- (R.game.flag -> SceneContextValue_Find) and is only for the game thread; the
+-- loader's "tick" thread must not touch the scene map, so everything else reads
+-- R.game.cached, which is page-guarded memory reads of the record the last
+-- game-thread read found (nil until one has run in this scene context).
+local function _menu_open(live)
     local G = R and R.game
-    if not (G and G.flag) then return nil end
+    if not G then return nil end
     for _, name in ipairs(CURSOR_FLAGS) do
-        local ok, v = pcall(G.flag, name)
-        if ok and v == true then return name end
+        if live then
+            if G.flag then
+                local ok, v = pcall(G.flag, name)
+                if ok and v == true then return name end
+            end
+        elseif G.cached then
+            local ok, v = pcall(G.cached, name)
+            if ok and type(v) == "number" and v ~= 0 then return name end
+        end
     end
     return nil
 end
 
 local _paused_by
 
--- Tells the loader whether a menu is open and keeps the lease alive.
-local function _drive()
+-- Tells the loader whether a menu is open and keeps the lease alive. Only the
+-- game-thread caller (the mouse-move event) passes live = true.
+local function _drive(live)
     if not (_look_on and I and I.input_look_refresh) then return end
-    local why = _menu_open()
+    local why = _menu_open(live == true)
     if why ~= _paused_by then
         R.log("[input] mouse-look " .. (why and ("paused: " .. why) or "resumed"))
         _paused_by = why
     end
-    I.input_look_refresh(why ~= nil)
+    I.input_look_refresh(why ~= nil, _look_id)
 end
 
 --- Request mouse-look on or off. opts.hide (default false) hides the OS cursor
@@ -232,14 +250,18 @@ function M.mouse_look(on, opts)
     local hide = opts and opts.hide == true or false
     local ok, why = M.mouse_look_available()
     if not ok then return nil, why end
-    if not I.input_look_set(on, hide) then return nil, "mouse-look not armed" end
+    local id = I.input_look_set(on, hide)
+    if not id then return nil, "mouse-look not armed" end
+    -- The request id binds every refresh to this request: once another mod
+    -- asks, ours stop renewing the lease. (An older loader returns true.)
+    _look_id = math.type(id) == "integer" and id or nil
     _look_on = on
     if on then
-        _drive()
+        _drive(false)
         if not _look_driver then
             _look_driver = {
-                R.on("tick", _drive),
-                R.on(MOVE_EVENT, _drive),
+                R.on("tick", function() _drive(false) end),
+                R.on(MOVE_EVENT, function() _drive(true) end),
             }
         end
     end

@@ -272,6 +272,7 @@ void drag_on_poll(bool locked) {
 // poll detour.
 
 constexpr ULONGLONG kLookLeaseMs = 4000;
+constexpr ULONGLONG kLookReleaseWaitMs = 250;   // unload waits this long for the game thread
 
 std::atomic<bool> g_look_armed{false};
 std::atomic<bool> g_look_requested{false};
@@ -285,7 +286,9 @@ std::atomic<bool> g_logged_look{false};
 
 // Game-thread state.
 HWND g_hwnd = nullptr;
-bool g_lock_written = false;   // the lock byte is 1 because of us
+std::atomic<bool> g_lock_written{false};   // the lock byte is 1 because of us (poll + unload paths)
+std::atomic<std::uint64_t> g_look_gen{0};          // id of the current request
+std::atomic<std::uint64_t> g_look_release_seq{0};  // bumped by each poll that released for "not wanted"
 
 struct FindCtx { DWORD pid; HWND best; long long area; };
 
@@ -329,7 +332,7 @@ void set_hidden(bool hide) {
 
 // Release: lock byte 0, cursor shown. Only touches what we changed.
 void look_release() {
-    if (g_lock_written) { write_lock(0); g_lock_written = false; }
+    if (g_lock_written.exchange(false)) write_lock(0);
     set_hidden(false);
     g_look_active.store(false, std::memory_order_relaxed);
 }
@@ -338,6 +341,7 @@ void look_on_poll() {
     if (!look_wanted()) {
         g_look_paused.store(false, std::memory_order_relaxed);
         look_release();
+        g_look_release_seq.fetch_add(1, std::memory_order_release);
         return;
     }
     HWND hw = game_window();
@@ -364,7 +368,7 @@ void look_on_poll() {
     c[0] = static_cast<float>(centre.x);
     c[1] = static_cast<float>(centre.y);
     write_lock(1);
-    g_lock_written = true;
+    g_lock_written.store(true);
     set_hidden(g_look_hide.load(std::memory_order_relaxed));
     g_look_active.store(true, std::memory_order_relaxed);
     if (!g_logged_look.exchange(true)) {
@@ -379,15 +383,38 @@ void look_on_poll() {
 
 std::atomic<bool> g_move_armed{false};
 
-// Game-thread state: movement not yet delivered, consecutive polls merged.
-bool g_mm_pending = false;
-double g_mm_dx = 0.0, g_mm_dy = 0.0;
-float g_mm_x = 0.f, g_mm_y = 0.f, g_mm_w = 0.f, g_mm_h = 0.f;
-bool g_mm_locked = false, g_mm_blocked = false;
+// Game-thread state: movement not yet delivered, in order. Consecutive polls
+// merge only when `locked` and `blocked` match, so Lua never sees a delta from
+// an unlocked poll labelled locked (or blocked movement labelled free).
+struct MoveItem {
+    double dx, dy;
+    float x, y, w, h;
+    bool locked, blocked;
+};
+constexpr int kMoveCap = 16;
+MoveItem g_mm_queue[kMoveCap];
+int g_mm_len = 0;
+
+void move_push(const MoveItem& it) {
+    if (g_mm_len > 0) {
+        MoveItem& tail = g_mm_queue[g_mm_len - 1];
+        const bool same = tail.locked == it.locked && tail.blocked == it.blocked;
+        // Full: fold into the tail rather than drop movement (the labels then
+        // follow the newest sample; only reachable after kMoveCap label changes
+        // with Lua busy throughout).
+        if (same || g_mm_len == kMoveCap) {
+            tail.dx += it.dx; tail.dy += it.dy;
+            tail.x = it.x; tail.y = it.y; tail.w = it.w; tail.h = it.h;
+            tail.locked = it.locked; tail.blocked = it.blocked;
+            return;
+        }
+    }
+    g_mm_queue[g_mm_len++] = it;
+}
 
 void move_on_poll(bool locked) {
     if (!script_has_handler(kMoveEvent)) {
-        g_mm_pending = false;
+        g_mm_len = 0;
         return;
     }
     MouseState s{};
@@ -398,23 +425,24 @@ void move_on_poll(bool locked) {
         if (good && (s.dx != 0.f || s.dy != 0.f)) {
             std::uint8_t flags = 0;
             mem_load(g_rec_middle, &flags);
-            if (!g_mm_pending) { g_mm_dx = g_mm_dy = 0.0; g_mm_pending = true; }
-            g_mm_dx += s.dx;
-            g_mm_dy += s.dy;
-            g_mm_x = s.x; g_mm_y = s.y; g_mm_w = s.w; g_mm_h = s.h;
-            g_mm_locked = locked;
-            g_mm_blocked = (flags & kBlocked) != 0;
+            move_push(MoveItem{s.dx, s.dy, s.x, s.y, s.w, s.h, locked, (flags & kBlocked) != 0});
         }
     }
-    if (!g_mm_pending) return;
-    char json[256];
-    std::snprintf(json, sizeof(json),
-                  "{\"dx\":%.3f,\"dy\":%.3f,\"x\":%.3f,\"y\":%.3f,\"w\":%.3f,\"h\":%.3f,"
-                  "\"locked\":%s,\"blocked\":%s}",
-                  g_mm_dx, g_mm_dy, g_mm_x, g_mm_y, g_mm_w, g_mm_h,
-                  g_mm_locked ? "true" : "false", g_mm_blocked ? "true" : "false");
-    // Lua lock busy: keep it and merge the next frame's movement into it.
-    if (script_try_emit_event_json(kMoveEvent, json)) g_mm_pending = false;
+    int sent = 0;
+    for (; sent < g_mm_len; ++sent) {
+        const MoveItem& it = g_mm_queue[sent];
+        char json[256];
+        std::snprintf(json, sizeof(json),
+                      "{\"dx\":%.3f,\"dy\":%.3f,\"x\":%.3f,\"y\":%.3f,\"w\":%.3f,\"h\":%.3f,"
+                      "\"locked\":%s,\"blocked\":%s}",
+                      it.dx, it.dy, it.x, it.y, it.w, it.h,
+                      it.locked ? "true" : "false", it.blocked ? "true" : "false");
+        // Lua lock busy: the rest waits, in order, for a later poll.
+        if (!script_try_emit_event_json(kMoveEvent, json)) break;
+    }
+    if (sent == 0) return;
+    for (int i = sent; i < g_mm_len; ++i) g_mm_queue[i - sent] = g_mm_queue[i];
+    g_mm_len -= sent;
 }
 
 void detour_poll(void* mgr, const void* frame_time) {
@@ -490,15 +518,19 @@ bool input_drag_state(InputDragState* out) {
 
 bool input_look_armed() { return g_look_armed.load(std::memory_order_acquire); }
 
-bool input_look_request(bool on, bool hide) {
-    if (!input_look_armed()) return false;
+std::uint64_t input_look_request(bool on, bool hide) {
+    if (!input_look_armed()) return 0;
+    const std::uint64_t id = g_look_gen.fetch_add(1, std::memory_order_acq_rel) + 1;
     g_look_hide.store(hide, std::memory_order_relaxed);
     g_look_lease.store(GetTickCount64() + kLookLeaseMs, std::memory_order_relaxed);
     g_look_requested.store(on, std::memory_order_release);
-    return true;
+    return id;
 }
 
-void input_look_refresh(bool menu_open) {
+void input_look_refresh(bool menu_open, std::uint64_t request_id) {
+    // A refresh from a superseded request (another mod asked since) must not
+    // renew the lease or steer the menu state. id 0 = an SDK from before ids.
+    if (request_id != 0 && request_id != g_look_gen.load(std::memory_order_acquire)) return;
     g_look_menu.store(menu_open, std::memory_order_relaxed);
     if (g_look_requested.load(std::memory_order_relaxed))
         g_look_lease.store(GetTickCount64() + kLookLeaseMs, std::memory_order_relaxed);
@@ -514,14 +546,24 @@ bool input_look_state(InputLookState* out) {
 }
 
 void input_look_shutdown() {
-    g_look_requested.store(false, std::memory_order_release);
     if (!g_lock_flag) return;
-    // Unload runs off the game thread. The lock byte is a plain write; the
-    // cursor count (ShowCursor) is per thread, so a hide we made cannot be
-    // undone from here - the poll normally releases it within a frame of the
-    // request going off, before this runs.
-    if (g_lock_written) { write_lock(0); g_lock_written = false; }
-    g_look_active.store(false, std::memory_order_relaxed);
+    // Unload runs off the game thread, and ShowCursor's count is per thread, so
+    // a hide we made can only be undone there. Turn the request off and let the
+    // next poll do the release (lock byte 0, cursor shown), then wait for it.
+    const std::uint64_t seq = g_look_release_seq.load(std::memory_order_acquire);
+    g_look_requested.store(false, std::memory_order_release);
+    const ULONGLONG deadline = GetTickCount64() + kLookReleaseWaitMs;
+    while (g_look_release_seq.load(std::memory_order_acquire) == seq &&
+           GetTickCount64() < deadline)
+        Sleep(5);
+    // The poll never came (game thread stalled): clear the byte ourselves. The
+    // cursor count cannot be balanced from here.
+    if (g_look_release_seq.load(std::memory_order_acquire) == seq) {
+        if (g_lock_written.exchange(false)) write_lock(0);
+        g_look_active.store(false, std::memory_order_relaxed);
+        Loader::get().log("[input] mouse-look release: no poll within the wait; lock byte "
+                          "cleared from the unload thread");
+    }
 }
 
 bool install_input_hooks() {

@@ -84,11 +84,15 @@ bool input_look_armed();
 // while the lock is engaged. Returns false when it is not armed. The game
 // thread applies it on its next poll. A request lapses after a few seconds
 // unless input_look_refresh() or another request keeps it alive, so a mod whose
-// Lua state is gone cannot leave the lock on.
-bool input_look_request(bool on, bool hide);
+// Lua state is gone cannot leave the lock on. Returns the request's id (never 0),
+// or 0 when not armed; a later request supersedes it.
+std::uint64_t input_look_request(bool on, bool hide);
 
-// Keep the request alive and tell the loader whether a game menu is open.
-void input_look_refresh(bool menu_open);
+// Keep the request alive and tell the loader whether a game menu is open. Only
+// the request `request_id` names can do this: once another request has
+// superseded it the call does nothing. 0 means "no id" (an older SDK) and
+// always applies.
+void input_look_refresh(bool menu_open, std::uint64_t request_id);
 
 struct InputLookState {
     bool requested;   // a mod asked for it
@@ -100,7 +104,8 @@ struct InputLookState {
 // Fills `out` and returns true when armed.
 bool input_look_state(InputLookState* out);
 
-// Lock byte 0 and cursor shown. Idempotent; called on unload.
+// Unload: asks the game thread (next poll) to release - lock byte 0, cursor shown -
+// and waits up to 250 ms; falls back to clearing the byte from the caller.
 void input_look_shutdown();
 
 } // namespace rsmm

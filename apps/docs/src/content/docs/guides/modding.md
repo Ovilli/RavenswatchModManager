@@ -1652,13 +1652,20 @@ The lock pauses (released, cursor shown) while the game wants the cursor (the
 pause menu, talent choice, Sandman shop, magical-object menu, cinematic,
 loading screen or main menu) or the game window is not the foreground window,
 and resumes when that ends. Each pause logs the flag that caused it. The window
-check is per frame. The menu check goes through `R.game.flag`, pushed to the
-loader on every mouse move and on the 500 ms tick, so a menu that opens while
-the mouse is still can take up to half a second to release the cursor. While the
+check is per frame. The menu check is pushed to the loader from two places.
+Every mouse move runs on the game thread and reads the flags live through
+`R.game.flag`, so a menu releases the cursor within a frame of the next move.
+The 500 ms tick runs on a loader thread that must not touch the game's scene
+map, so it reads `R.game.cached` instead (plain memory reads of the records the
+last move found). A menu that opens while the mouse is still therefore releases
+within half a second, but only after one mouse move in the current scene; after
+a scene change it waits for the next move. While the
 lock is on, middle-drag events are suppressed: no `start`, and a drag in
 progress ends. The request is a lease: if the mod's Lua state stops refreshing
 it (reload, unload), it lapses after a few seconds and leaves the lock off. It
-is one global state, so the last mod to call `mouse_look` wins. Without the
+is one global state, so the last mod to call `mouse_look` wins: each request
+gets an id and a mod only refreshes its own, so a superseded mod stops keeping
+the lock alive. Without the
 cursor symbols `mouse_look` returns `nil, reason`.
 
 Hero mouse-aim probably reads the window cursor, so a centred cursor aims at the

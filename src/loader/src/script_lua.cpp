@@ -245,19 +245,23 @@ int lua_input_drag_state(lua_State* L) {
 // rsmm._internal.input_look_set(on, hide) -> true | false
 //   Request mouse-look (hook_input.cpp): the game's cursor lock with the
 //   window centre written for it. The game thread applies it on its next poll.
-//   false when it is not armed.
+//   Returns the request id (integer), or false when it is not armed.
 int lua_input_look_set(lua_State* L) {
     const bool on = lua_toboolean(L, 1) != 0;
     const bool hide = lua_toboolean(L, 2) != 0;
-    lua_pushboolean(L, input_look_request(on, hide));
+    const std::uint64_t id = input_look_request(on, hide);
+    if (id == 0) lua_pushboolean(L, 0);
+    else lua_pushinteger(L, static_cast<lua_Integer>(id));
     return 1;
 }
 
-// rsmm._internal.input_look_refresh(menu_open)
+// rsmm._internal.input_look_refresh(menu_open, request_id)
 //   Keeps a mouse-look request alive and says whether a game menu is open
-//   (the lock pauses while it is).
+//   (the lock pauses while it is). Ignored unless request_id is the current
+//   request (nil = no id, always applies).
 int lua_input_look_refresh(lua_State* L) {
-    input_look_refresh(lua_toboolean(L, 1) != 0);
+    const std::uint64_t id = lua_isinteger(L, 2) ? static_cast<std::uint64_t>(lua_tointeger(L, 2)) : 0;
+    input_look_refresh(lua_toboolean(L, 1) != 0, id);
     return 0;
 }
 

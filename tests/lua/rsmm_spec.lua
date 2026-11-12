@@ -11696,13 +11696,13 @@ do
     local st, why1 = R.input.mouse_look_state()
     check(st == nil and why1:find("too old"), "no binding: no state")
 
-    local armed, sets, refreshes = false, {}, {}
+    local armed, sets, refreshes, ids, next_id = false, {}, {}, {}, 0
     I.input_look_state = function()
         if not armed then return end
         return true, true, false, true
     end
-    I.input_look_set = function(on, hide) sets[#sets + 1] = { on, hide }; return true end
-    I.input_look_refresh = function(menu) refreshes[#refreshes + 1] = menu end
+    I.input_look_set = function(on, hide) sets[#sets + 1] = { on, hide }; next_id = next_id + 1; return next_id end
+    I.input_look_refresh = function(menu, id) refreshes[#refreshes + 1] = menu; ids[#ids + 1] = id end
     I.input_armed = function() return true end
 
     ok, why = R.input.mouse_look_available()
@@ -11726,14 +11726,44 @@ do
     check(R.input.mouse_look(true, { hide = true }) == true and sets[2][2] == true, "opts.hide reaches the loader")
     check(#refreshes >= 1 and refreshes[#refreshes] == false, "the menu state is pushed on request (no menu)")
 
-    local flag = R.game.flag
-    R.game.flag = function(n) return n == "is_menu_open" end
+    check(ids[#ids] == 2, "refreshes carry this state's request id")
+    check(R.input.mouse_look(true) == true and next_id == 3, "each request gets a new id")
+
+    -- The tick runs on a loader thread: it must never call R.game.flag (an
+    -- engine call into the scene map); it reads R.game.cached. The mouse-move
+    -- event runs on the game thread and may read live.
+    local flag, cached = R.game.flag, R.game.cached
+    local flag_calls, menu = 0, false
+    R.game.flag = function(n)
+        -- count only calls made from input.lua (other tick handlers read flags too)
+        if debug.traceback():find("input.lua", 1, true) then flag_calls = flag_calls + 1 end
+        return menu and n == "is_menu_open"
+    end
+    R.game.cached = function(n) if menu and n == "is_menu_open" then return 1 end return 0 end
     local before = #refreshes
     fire("tick", {})
-    check(#refreshes == before + 1 and refreshes[#refreshes] == true, "tick pushes a menu-open state")
+    check(#refreshes == before + 1 and refreshes[#refreshes] == false, "tick: no menu in the cache")
+    menu = true
+    fire("tick", {})
+    check(refreshes[#refreshes] == true, "tick pushes a menu-open state from the cache")
+    check(flag_calls == 0, "tick never calls R.game.flag (no engine call off the game thread)")
+    check(ids[#ids] == 3, "the tick refresh carries the current request id")
     fire("input:mouse_move", { dx = 1, dy = 2 })
-    check(#refreshes == before + 2, "every mouse move pushes it too")
-    R.game.flag = flag
+    check(#refreshes == before + 3 and refreshes[#refreshes] == true, "every mouse move pushes it too")
+    check(flag_calls > 0, "the mouse-move path reads live on the game thread")
+    R.game.cached = function() return nil end
+    fire("tick", {})
+    check(refreshes[#refreshes] == false, "an empty cache reads as no menu (never raises)")
+    R.game.flag, R.game.cached = flag, cached
+
+    -- An older loader returns true from input_look_set: refreshes go without an id.
+    local old_set = I.input_look_set
+    I.input_look_set = function() return true end
+    check(R.input.mouse_look(true) == true, "an old loader's true is accepted")
+    local n_ids = #refreshes
+    fire("tick", {})
+    check(#refreshes == n_ids + 1 and ids[n_ids + 1] == nil, "no request id to send to an old loader")
+    I.input_look_set = old_set
 
     st = R.input.mouse_look_state()
     check(st and st.requested == true and st.active == true and st.paused == false and st.hidden == true,
