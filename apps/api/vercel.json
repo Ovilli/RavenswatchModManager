@@ -3,6 +3,12 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter api vercel-build",
   "ignoreCommand": "sh ../../scripts/vercel-ignore-build.sh api",
+  "git": {
+    "deploymentEnabled": {
+      "testing": false,
+      "dependabot/**": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/scan-drain",
