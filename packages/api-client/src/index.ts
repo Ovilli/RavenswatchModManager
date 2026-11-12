@@ -364,8 +364,12 @@ export function createApiClient(options: ApiClientOptions) {
       // single author page — the profile route has never returned the field.
       joinedAt: z.string().optional(),
     }),
-    mods: z.array(modListItemSchema),
-    // null when the author has turned off public download counts.
+    // `role`: the user owns the mod or co-authors it (older servers omit it).
+    mods: z.array(
+      modListItemSchema.and(z.object({ role: z.enum(['owner', 'coauthor']).optional() })),
+    ),
+    // null when the author has turned off public download counts; counts only
+    // the mods the user owns.
     totalDownloads: z.number().int().nonnegative().nullable(),
   });
 

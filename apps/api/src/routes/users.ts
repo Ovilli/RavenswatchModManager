@@ -18,8 +18,13 @@ const outerModId = sql.raw('"mods"."id"');
  * so we can route both UUID-style URLs and pretty `/u/<handle>` ones to
  * the same record. Returns a *trimmed* user object (no email, no
  * email-verified flag, no timestamps that would leak account age) plus
- * the list of mods owned by that user, formatted exactly like the
- * registry list response so the website can reuse its card components.
+ * the list of mods that user owns or co-authors (mod_authors), formatted
+ * exactly like the registry list response so the website can reuse its card
+ * components; each carries `role` ('owner' | 'coauthor').
+ *
+ * A co-authored mod's download figure follows ITS owner's
+ * publicDownloadCounts, not the profile's, and the profile's total counts
+ * only the mods the user owns, so a team's mod is not counted once per member.
  *
  * Two account privacy flags gate this response (see users.publicProfile /
  * users.publicDownloadCounts):
@@ -76,6 +81,11 @@ usersRouter.get('/:idOrHandle', async (c) => {
       tags: schema.mods.tags,
       featured: schema.mods.featured,
       ownerId: schema.mods.ownerId,
+      ownerPublicCounts: sql<boolean>`coalesce((
+        select ${schema.users.publicDownloadCounts}
+        from ${schema.users}
+        where ${schema.users.id} = "mods"."owner_id"
+      ), true)`,
       // Servable versions only, as on the registry list: a version still in
       // the malware scan, or one it flagged, is withheld everywhere else and
       // must not be advertised here either.
@@ -94,7 +104,19 @@ usersRouter.get('/:idOrHandle', async (c) => {
       ), 0)`,
     })
     .from(schema.mods)
-    .where(and(eq(schema.mods.ownerId, u.id), eq(schema.mods.takedownStatus, 'active')))
+    .where(
+      and(
+        or(
+          eq(schema.mods.ownerId, u.id),
+          sql`exists (
+            select 1 from ${schema.modAuthors}
+            where ${schema.modAuthors.modId} = ${outerModId}
+              and ${schema.modAuthors.userId} = ${u.id}
+          )`,
+        ),
+        eq(schema.mods.takedownStatus, 'active'),
+      ),
+    )
     .orderBy(desc(schema.mods.updatedAt));
 
   return c.json({
@@ -112,7 +134,13 @@ usersRouter.get('/:idOrHandle', async (c) => {
       summary: r.summary,
       license: r.license,
       latestVersion: r.latestVersion,
-      downloads: showDownloads ? r.downloads : null,
+      downloads: (
+        r.ownerId === u.id
+          ? showDownloads
+          : r.ownerPublicCounts || isAdmin(viewer?.id) || viewer?.id === r.ownerId
+      )
+        ? r.downloads
+        : null,
       updatedAt: r.updatedAt.toISOString(),
       category: r.category,
       imageUrl: r.imageUrl,
@@ -120,7 +148,10 @@ usersRouter.get('/:idOrHandle', async (c) => {
       tags: r.tags ?? [],
       featured: r.featured,
       ownerId: r.ownerId,
+      role: r.ownerId === u.id ? 'owner' : 'coauthor',
     })),
-    totalDownloads: showDownloads ? rows.reduce((s, r) => s + r.downloads, 0) : null,
+    totalDownloads: showDownloads
+      ? rows.filter((r) => r.ownerId === u.id).reduce((s, r) => s + r.downloads, 0)
+      : null,
   });
 });

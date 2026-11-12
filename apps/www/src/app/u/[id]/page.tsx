@@ -2,7 +2,7 @@
 import { ApiError } from '@rsmm/api-client';
 import { Badge, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Search, Star } from 'lucide-react';
+import { ArrowLeft, Search, Star, Users } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { use, useState } from 'react';
@@ -69,6 +69,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
   }
 
   const { user, mods, totalDownloads } = detail.data;
+  const coAuthored = mods.filter((m) => m.role === 'coauthor').length;
 
   // Every author's mods arrive in one response, so filtering and sorting run
   // here rather than as another API round-trip.
@@ -138,6 +139,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">
                 {mods.length} mod{mods.length === 1 ? '' : 's'}
+                {coAuthored > 0 ? ` · ${coAuthored} co-authored` : ''}
               </Badge>
               {totalDownloads != null ? (
                 <Badge variant="outline">{totalDownloads.toLocaleString()} total downloads</Badge>
@@ -277,6 +279,14 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
                     {m.featured ? (
                       <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
                         <Star className="mr-1 h-3 w-3" /> Featured
+                      </Badge>
+                    ) : null}
+                    {m.role === 'coauthor' ? (
+                      <Badge
+                        variant="outline"
+                        className="absolute right-2 top-2 bg-background/70 text-[0.65rem] backdrop-blur-sm"
+                      >
+                        <Users className="mr-1 h-3 w-3" /> Co-author
                       </Badge>
                     ) : null}
                   </div>
