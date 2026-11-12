@@ -6356,7 +6356,29 @@
    "category": "input",
    "va": "0x14146d9c8",
    "status": "va",
-   "note": "The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. A cursor-lock mode (byte 0x141467b67, set to 0 by the input init FUN_14067cea0 and written nowhere else) would make FUN_14045ab40 recentre the cursor with SetCursorPos and fake the previous position; it is off in this build. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
+   "note": "The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. With the cursor lock on (g_CursorLockFlag, off unless the loader sets it) FUN_14045ab40 recentres the cursor with SetCursorPos and dx/dy become screen cursor minus g_CursorLockCentre; the record is valid either way. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_CursorLockFlag",
+   "kind": "data",
+   "category": "input",
+   "va": "0x141467b67",
+   "status": "va",
+   "note": "Cursor-lock byte (u8). Its only reader is the UI update FUN_14045ab40: when it is set and the foreground callback at [0x141436bf8] (FUN_14045a480, true when a game window is the foreground window; no callback counts as yes) agrees, the update calls GetCursorPos, takes dx/dy = screen cursor minus g_CursorLockCentre, stores them in g_MouseState and SetCursorPos()es the cursor back to the centre. Set to 0 once by the input init FUN_14067cea0 and written by nothing else, so the game never turns it on; hook_input.cpp does, for R.input.mouse_look. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
+   "refs": [
+    "src/loader/src/hook_input.cpp"
+   ]
+  },
+  {
+   "name": "g_CursorLockCentre",
+   "kind": "data",
+   "category": "input",
+   "va": "0x14146d9c0",
+   "status": "va",
+   "note": "Two f32 (x at +0, y at +4): the SCREEN-coordinate point the cursor lock recentres to. Read by FUN_14045ab40 at 0x14045abeb / 0x14045ac1f and cast to int for SetCursorPos at 0x14045aca0. Nothing in the game writes them (they stay 0.0), so with g_CursorLockFlag set and no writer the game would pin the cursor to the screen corner every frame; hook_input.cpp writes the game window's client-area centre each poll while the lock is requested. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]

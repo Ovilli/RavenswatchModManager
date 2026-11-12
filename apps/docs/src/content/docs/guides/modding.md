@@ -1626,6 +1626,54 @@ button; `middle_free()` returns `false` plus the action name when the player has
 bound one to it. `drag_state()` gives the running totals (`drags` started, total
 `dx`/`dy` while held, since launch) for a mod that polls instead of listening.
 
+### Mouse-look (`R.input`)
+
+```lua
+R.input.mouse_look_available()           --> true | false, reason
+R.input.mouse_look(true, { hide = true }) --> true | nil, reason
+R.input.on_mouse_move(function(dx, dy, ev)
+    -- dx, dy: pixels moved since the last delivery
+    -- ev: x, y, w, h, locked, blocked
+end)
+R.input.mouse_look_state()               --> { requested, active, paused, hidden } | nil, reason
+R.input.mouse_look(false)
+```
+
+The game's UI update has a cursor-lock mode that nothing in the game turns on.
+`mouse_look(true)` asks the loader to turn it on: each input poll it writes the
+game window's client-area centre (screen coordinates) where the game expects it
+and sets the lock byte, so the game measures `dx`/`dy` against the centre and
+puts the cursor back there every frame. `on_mouse_move` delivers the game's own
+`dx`/`dy`, in pixels, once per poll in which either is non-zero. `ev.locked` is
+true when the lock was on for that poll. With `hide = true` the operating
+system cursor is hidden while the lock is engaged and shown again on release.
+When the lock engages or resumes the loader first moves the cursor to the
+centre, and it posts no move event for the poll where the lock changes either
+way nor the two polls after it, so a pause or resume never delivers a jump.
+
+The lock pauses (released, cursor shown) while the game wants the cursor (the
+pause menu, talent choice, Sandman shop, magical-object menu, cinematic,
+loading screen or main menu) or the game window is not the foreground window,
+and resumes when that ends. Each pause logs the flag that caused it. The window
+check is per frame. The menu check is pushed to the loader from two places.
+Every mouse move runs on the game thread and reads the flags live through
+`R.game.flag`, so a menu releases the cursor within a frame of the next move.
+The 500 ms tick runs on a loader thread that must not touch the game's scene
+map, so it reads `R.game.cached` instead (plain memory reads of the records the
+last move found). A menu that opens while the mouse is still therefore releases
+within half a second, but only after one mouse move in the current scene; after
+a scene change it waits for the next move. While the
+lock is on, middle-drag events are suppressed: no `start`, and a drag in
+progress ends. The request is a lease: if the mod's Lua state stops refreshing
+it (reload, unload), it lapses after a few seconds and leaves the lock off. It
+is one global state, so the last mod to call `mouse_look` wins: each request
+gets an id and a mod only refreshes its own, so a superseded mod stops keeping
+the lock alive. Without the
+cursor symbols `mouse_look` returns `nil, reason`.
+
+Hero mouse-aim probably reads the window cursor, so a centred cursor aims at the
+screen centre. That is inferred from the code, not traced in a run.
+
 ### Keybinds (`R.input.keybinds`)
 
 ```lua

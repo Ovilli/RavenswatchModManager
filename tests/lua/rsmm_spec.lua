@@ -11695,6 +11695,108 @@ do
     I.input_armed, I.input_drag_state = nil, nil
 end
 
+-- R.input mouse-look: the game's cursor lock, requested natively (I.input_look_*),
+-- plus "input:mouse_move" {dx, dy, x, y, w, h, locked, blocked}.
+do
+    local ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("too old"), "no mouse-look binding: unavailable, says why")
+    local r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("too old"), "mouse_look on an old loader: nil, reason")
+    local st, why1 = R.input.mouse_look_state()
+    check(st == nil and why1:find("too old"), "no binding: no state")
+
+    local armed, sets, refreshes, ids, next_id = false, {}, {}, {}, 0
+    I.input_look_state = function()
+        if not armed then return end
+        return true, true, false, true
+    end
+    I.input_look_set = function(on, hide) sets[#sets + 1] = { on, hide }; next_id = next_id + 1; return next_id end
+    I.input_look_refresh = function(menu, id) refreshes[#refreshes + 1] = menu; ids[#ids + 1] = id end
+    I.input_armed = function() return true end
+
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not accessible"), "binding present, not armed: says the records did not read")
+    r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("not accessible"), "mouse_look without the symbols: nil, reason")
+    check(#sets == 0, "nothing requested when unavailable")
+    I.input_armed = function() return false end
+    va_trusted_val = false
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not trusted"), "untrusted build: the poll hook's reason")
+    va_trusted_val = true
+    I.input_armed = function() return true end
+
+    armed = true
+    check(R.input.mouse_look_available() == true, "armed: available")
+    check(R.input.mouse_look("yes") == nil, "on must be a boolean")
+    check(R.input.mouse_look(true, 5) == nil, "opts must be a table")
+    check(R.input.mouse_look(true) == true, "mouse_look(true) succeeds")
+    check(sets[1][1] == true and sets[1][2] == false, "hide defaults to false")
+    check(R.input.mouse_look(true, { hide = true }) == true and sets[2][2] == true, "opts.hide reaches the loader")
+    check(#refreshes >= 1 and refreshes[#refreshes] == false, "the menu state is pushed on request (no menu)")
+
+    check(ids[#ids] == 2, "refreshes carry this state's request id")
+    check(R.input.mouse_look(true) == true and next_id == 3, "each request gets a new id")
+
+    -- The tick runs on a loader thread: it must never call R.game.flag (an
+    -- engine call into the scene map); it reads R.game.cached. The mouse-move
+    -- event runs on the game thread and may read live.
+    local flag, cached = R.game.flag, R.game.cached
+    local flag_calls, menu = 0, false
+    R.game.flag = function(n)
+        -- count only calls made from input.lua (other tick handlers read flags too)
+        if debug.traceback():find("input.lua", 1, true) then flag_calls = flag_calls + 1 end
+        return menu and n == "is_menu_open"
+    end
+    R.game.cached = function(n) if menu and n == "is_menu_open" then return 1 end return 0 end
+    local before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before + 1 and refreshes[#refreshes] == false, "tick: no menu in the cache")
+    menu = true
+    fire("tick", {})
+    check(refreshes[#refreshes] == true, "tick pushes a menu-open state from the cache")
+    check(flag_calls == 0, "tick never calls R.game.flag (no engine call off the game thread)")
+    check(ids[#ids] == 3, "the tick refresh carries the current request id")
+    fire("input:mouse_move", { dx = 1, dy = 2 })
+    check(#refreshes == before + 3 and refreshes[#refreshes] == true, "every mouse move pushes it too")
+    check(flag_calls > 0, "the mouse-move path reads live on the game thread")
+    R.game.cached = function() return nil end
+    fire("tick", {})
+    check(refreshes[#refreshes] == false, "an empty cache reads as no menu (never raises)")
+    R.game.flag, R.game.cached = flag, cached
+
+    -- An older loader returns true from input_look_set: refreshes go without an id.
+    local old_set = I.input_look_set
+    I.input_look_set = function() return true end
+    check(R.input.mouse_look(true) == true, "an old loader's true is accepted")
+    local n_ids = #refreshes
+    fire("tick", {})
+    check(#refreshes == n_ids + 1 and ids[n_ids + 1] == nil, "no request id to send to an old loader")
+    I.input_look_set = old_set
+
+    st = R.input.mouse_look_state()
+    check(st and st.requested == true and st.active == true and st.paused == false and st.hidden == true,
+          "mouse_look_state passes every field through")
+
+    check(R.input.mouse_look(false) == true and sets[#sets][1] == false, "mouse_look(false) releases")
+    before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before, "no refresh once the request is off")
+
+    local got = {}
+    local h = R.input.on_mouse_move(function(dx, dy, ev) got[#got + 1] = { dx, dy, ev } end)
+    fire("input:mouse_move", { dx = 3.5, dy = -2, x = 10, y = 20, w = 1920, h = 1080, locked = true, blocked = false })
+    check(#got == 1 and got[1][1] == 3.5 and got[1][2] == -2 and got[1][3].locked == true and got[1][3].w == 1920,
+          "on_mouse_move gets dx, dy first and the payload last")
+    fire("input:mouse_move", {})
+    check(got[2][1] == 0 and got[2][2] == 0, "a payload without dx/dy reads as no movement")
+    R.input.off(h)
+    fire("input:mouse_move", { dx = 1, dy = 1 })
+    check(#got == 2, "off stops mouse-move delivery")
+
+    I.input_look_state, I.input_look_set, I.input_look_refresh, I.input_armed = nil, nil, nil, nil
+end
+
 -- R.input.keybinds: a mod's own keybinds as native Controls rows (hook_keybinds.cpp).
 -- The loader side is mocked the way script_lua.cpp exposes it: keybind_add
 -- returns a 0-based index (the same one for a repeated mod + id) or nil, err;

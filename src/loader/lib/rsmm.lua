@@ -3212,6 +3212,8 @@ end
 --   R.input.wheel_free()                            -- false, action when rebound
 --   R.input.on_drag(function(phase, dx, dy, ev) ... end)
 --   R.input.middle_free()                           -- false, action when bound
+--   R.input.mouse_look(true, { hide = true })       -- the game's cursor lock, window centre set
+--   R.input.on_mouse_move(function(dx, dy, ev) ... end)
 do
     local ok, x = _submodule_fn("input", { R = R, I = I, options_obj = _options_obj })
     if ok and type(x) == "table" then R.input = x end
