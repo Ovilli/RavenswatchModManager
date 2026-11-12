@@ -133,7 +133,7 @@ def test_width_is_clamped():
 def test_full_width_is_not_capped_like_width(monkeypatch):
     import shutil as _sh
     monkeypatch.setattr(_sh, "get_terminal_size",
-                        lambda _d=None: os.terminal_size((200, 50)))
+                        lambda *_a, **_k: os.terminal_size((200, 50)))
     assert _term.width() == _term.MAX_WIDTH      # chrome stays aligned
     assert _term.full_width() == 200             # content gets the real width
 
@@ -141,7 +141,7 @@ def test_full_width_is_not_capped_like_width(monkeypatch):
 def test_full_width_has_a_floor(monkeypatch):
     import shutil as _sh
     monkeypatch.setattr(_sh, "get_terminal_size",
-                        lambda _d=None: os.terminal_size((5, 50)))
+                        lambda *_a, **_k: os.terminal_size((5, 50)))
     assert _term.full_width() == 40
 
 

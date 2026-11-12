@@ -1231,13 +1231,13 @@ def _tinted_texture(cooked_raw: bytes, rgb, max_edge: int = 512) -> bytes | None
         return None
     px, w, h = icon_decode.resize_to_max(px, sch.width, sch.height, max_edge)
     r, g, b = rgb
+    # One lookup table per channel (same float expression as per-pixel), then
+    # strided slices: brightness is the per-pixel max of R, G, B.
+    lum = bytes(map(max, px[0::4], px[1::4], px[2::4]))
     out = bytearray(len(px))
-    for i in range(0, len(px), 4):
-        lum = max(px[i], px[i + 1], px[i + 2]) / 255
-        out[i] = int(r * lum * 255)
-        out[i + 1] = int(g * lum * 255)
-        out[i + 2] = int(b * lum * 255)
-        out[i + 3] = px[i + 3]
+    for off, c in enumerate((r, g, b)):
+        out[off::4] = lum.translate(bytes(int(c * (m / 255) * 255) for m in range(256)))
+    out[3::4] = px[3::4]
     return PC.cook_texture(icon_decode.rgba_to_png(bytes(out), w, h))
 
 

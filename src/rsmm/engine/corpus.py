@@ -34,6 +34,8 @@ Two rules, both silent when broken:
 
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -46,16 +48,54 @@ from .paths import DATA_DIR
 UNCOOKED: Final = DATA_DIR / "uncooked"
 
 
+# A read costs a handful of stats, and a sweep makes tens of thousands of reads;
+# on Windows a stat is 0.2-0.4 ms, so re-proving "the install / mirror is still
+# there" on every read dominated the time. Both answers are therefore remembered
+# for _TTL seconds, keyed on every input that selects them (env override,
+# resolver functions, mirror path), so switching input is seen on the next call.
+# Only "same input, directory created/removed underneath us within _TTL" can be
+# stale, and only for hits: a miss is never remembered. Files are never cached.
+_TTL: Final = 0.25
+_cooking_memo: tuple[object, float, Path] | None = None
+_mirror_memo: tuple[object, float, bool] | None = None
+
+
 def cooking_dir() -> Path | None:
     """``<install>/DarkTalesResources/_Cooking``, or None without an install."""
-    from ..cli.apply_mods import find_game_dir
+    global _cooking_memo
+    from ..cli import apply_mods
+    from . import paths
     from .paths import COOKING_SUBDIR
 
-    game = find_game_dir()
+    key = (os.environ.get("RSMM_GAME_DIR"), apply_mods.find_game_dir, paths._game_dir_candidates)
+    now = time.monotonic()
+    memo = _cooking_memo
+    if memo is not None and memo[0] == key and now - memo[1] < _TTL:
+        return memo[2]
+    game = apply_mods.find_game_dir()
     if game is None:
         return None
     d = Path(game) / COOKING_SUBDIR
-    return d if d.is_dir() else None
+    if not d.is_dir():
+        return None
+    _cooking_memo = (key, now, d)
+    return d
+
+
+def _mirror_exists() -> bool:
+    """Is the `UNCOOKED` directory there? (A miss is remembered per `_TTL`,
+    keyed on the path so a monkeypatched `UNCOOKED` is seen at once.)"""
+    global _mirror_memo
+    key = UNCOOKED
+    now = time.monotonic()
+    memo = _mirror_memo
+    if memo is not None and memo[0] == key and now - memo[1] < _TTL:
+        return memo[2]
+    ok = UNCOOKED.is_dir()
+    # Only a miss is remembered: a present mirror is re-proven by each file's own
+    # stat anyway, and a mirror that appears is seen within _TTL.
+    _mirror_memo = None if ok else (key, now, False)
+    return ok
 
 
 def install_path(rel: str) -> Path | None:
@@ -70,6 +110,11 @@ def install_copies(rel: str) -> list[Path]:
     than the live file, so two files read one by one through `install_path`
     can come from different game builds; a reader whose files must agree
     (a font's glyph table and its page) tries the copies itself."""
+    return [c for c in _install_candidates(rel) if c.is_file()]
+
+
+def _install_candidates(rel: str) -> list[Path]:
+    """Where the live file and its backup would be (live first), unchecked."""
     from ..cli.apply_mods import resolve_special
     from .asset_map import decoded_to_encoded
 
@@ -81,11 +126,13 @@ def install_copies(rel: str) -> list[Path]:
     if not enc:
         return []
     p = cooking / enc.replace("\\", "/")
-    return [c for c in (p, p.with_name(p.name + BACKUP_SUFFIX)) if c.is_file()]
+    return [p, p.with_name(p.name + BACKUP_SUFFIX)]
 
 
 def mirror_path(rel: str) -> Path | None:
     """The mirror's copy of a decoded cooked path, if it has one."""
+    if not _mirror_exists():
+        return None
     p = UNCOOKED / Path(*rel.replace("\\", "/").split("/"))
     return p if p.is_file() else None
 
@@ -113,7 +160,7 @@ def read(rel: str) -> bytes | None:
     install copy wins so mods never patch stale entity files."""
     rel = rel.replace("\\", "/")
     p = UNCOOKED / Path(*rel.split("/"))
-    if p.is_file():
+    if _mirror_exists() and p.is_file():
         if UNCOOKED == DATA_DIR / "uncooked":
             src = install_path(rel)
             try:
@@ -122,17 +169,30 @@ def read(rel: str) -> bytes | None:
             except OSError:
                 pass
         return p.read_bytes()
-    src = install_path(rel)
-    try:
-        return src.read_bytes() if src is not None else None
-    except OSError:
-        return None
+    # Pristine copy first (backup, else live), opened directly: one syscall per
+    # copy instead of an is_file() stat plus the open.
+    for c in reversed(_install_candidates(rel)):
+        try:
+            return c.read_bytes()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # Present but unreadable. A backup that is a file is the pristine
+            # copy, so don't fall back to the live file: it can hold an applied
+            # override, and the next apply would build on it.
+            if c.is_file():
+                return None
+            continue
+    return None
 
 
 def exists(rel: str) -> bool:
     """Does the game ship this decoded path (mirror or install)?"""
     rel = rel.replace("\\", "/")
-    return (UNCOOKED / Path(*rel.split("/"))).is_file() or install_path(rel) is not None
+    return (
+        (_mirror_exists() and (UNCOOKED / Path(*rel.split("/"))).is_file())
+        or install_path(rel) is not None
+    )
 
 
 def rels(prefix: str = "", suffix: str = "") -> list[str]:
@@ -153,12 +213,31 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
         )
         if UNCOOKED != DATA_DIR / "uncooked":
             return sorted(out)
+    if cooking_dir() is not None:
+        out.update(_asset_map_rels(prefix, suffix))
+    return sorted(out)
+
+
+# Filtering the ~80k asset_map keys costs ~15 ms and callers ask hundreds of
+# times per run. The answers are kept per prefix/suffix against the one dict
+# `decoded_to_encoded()` returned (held strongly, so its id cannot be reused):
+# an asset-map rebuild returns a new dict and drops them all.
+_asset_rels_memo: tuple[dict[str, str], dict[tuple[str, str], tuple[str, ...]]] | None = None
+
+
+def _asset_map_rels(prefix: str, suffix: str) -> tuple[str, ...]:
+    global _asset_rels_memo
     from .asset_map import decoded_to_encoded
 
-    if cooking_dir() is not None:
-        out.update(k for k in decoded_to_encoded()
-                   if k.startswith(prefix) and k.endswith(suffix))
-    return sorted(out)
+    d = decoded_to_encoded()
+    memo = _asset_rels_memo
+    if memo is None or memo[0] is not d:
+        memo = _asset_rels_memo = (d, {})
+    got = memo[1].get((prefix, suffix))
+    if got is None:
+        got = memo[1][prefix, suffix] = tuple(
+            k for k in d if k.startswith(prefix) and k.endswith(suffix))
+    return got
 
 
 def stems(directory: str, suffix: str) -> list[str]:

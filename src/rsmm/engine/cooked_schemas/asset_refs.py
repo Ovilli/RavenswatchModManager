@@ -22,6 +22,7 @@ bytes exactly and edits stay localized.
 from __future__ import annotations
 
 import json
+import re
 import struct
 
 from .. import cooked
@@ -38,15 +39,23 @@ _MAX_REF = 300
 _ASSET_EXTS = (".ot", ".png", ".tga", ".dds", ".mat", ".gen", ".yqz", ".xls")
 
 
+_ASSET_EXTS_B = tuple(e.encode() for e in _ASSET_EXTS)
+_PRINTABLE = re.compile(rb"[\x20-\x7e]*")
+
+
 def _looks_like_ref(s: bytes) -> bool:
     if not (_MIN_REF <= len(s) <= _MAX_REF):
         return False
-    if not all(32 <= c < 127 for c in s):
+    if _PRINTABLE.fullmatch(s) is None:
         return False
-    low = s.lower()
     if b"\\" in s or b"/" in s:
         return True
-    return any(low.endswith(e.encode()) for e in _ASSET_EXTS)
+    return s.lower().endswith(_ASSET_EXTS_B)
+
+
+#: Offsets whose u32 (little-endian) is in 1..=_MAX_REF (300 = 0x012c).
+_LEN_AT = re.compile(
+    rb"(?=[\x01-\xff]\x00\x00\x00|[\x00-\x2c]\x01\x00\x00)")
 
 
 def _split_refs(concat: bytes) -> tuple[list[str], list[str], list[int]]:
@@ -63,9 +72,13 @@ def _split_refs(concat: bytes) -> tuple[list[str], list[str], list[int]]:
     n = len(concat)
     i = 0
     lit_start = 0
-    while i + 4 <= n:
+    for m in _LEN_AT.finditer(concat):
+        pos = m.start()
+        if pos < i:
+            continue
+        i = pos
         ln = struct.unpack_from("<I", concat, i)[0]
-        if 0 < ln <= _MAX_REF and i + 4 + ln <= n:
+        if i + 4 + ln <= n:
             cand = concat[i + 4:i + 4 + ln]
             if _looks_like_ref(cand):
                 literals.append(concat[lit_start:i].hex())
@@ -73,8 +86,6 @@ def _split_refs(concat: bytes) -> tuple[list[str], list[str], list[int]]:
                 offsets.append(i + 4)
                 i = i + 4 + ln
                 lit_start = i
-                continue
-        i += 1
     literals.append(concat[lit_start:].hex())
     return literals, refs, offsets
 
