@@ -1,0 +1,229 @@
+name: Deploy
+
+# Deploys the three Vercel projects (www, api, docs) from here instead of
+# Vercel's Git integration, which is switched off in each vercel.json
+# (git.deploymentEnabled: false).
+#
+# Why: Vercel's Ignored Build Step still CREATES a deployment and cancels it,
+# and those count toward Hobby's 100 deployments a day; with three projects
+# every push to any branch cost three (76 in one day, 58 of them previews).
+# Here the same path rules (scripts/vercel-ignore-build.sh) run on GitHub
+# BEFORE Vercel is contacted, so a push that touches only the Python CLI, the
+# loader or a mod creates no deployment at all.
+#
+# - main: after CI succeeds, each project whose inputs changed since the last
+#   successful run of this workflow is built here and deployed to production.
+#   A red CI never deploys.
+# - pull requests (from this repository; forks get no secrets): a preview of
+#   each project the PR changes, linked in a PR comment.
+# - Actions > Deploy > Run workflow: deploy one project or all of them by hand
+#   (also the way back after a failed run).
+#
+# Needs one repository secret, VERCEL_TOKEN (vercel.com/account/tokens, scoped
+# to the ovillis-projects team). Projects are found by name, so no IDs.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Project to deploy
+        type: choice
+        options: [all, www, api, docs]
+        default: all
+      environment:
+        description: Target
+        type: choice
+        options: [production, preview]
+        default: production
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deploy at a time per PR / for main; a newer push to a PR replaces the
+  # older preview run, production runs queue in order.
+  group: deploy-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  VERCEL_SCOPE: ovillis-projects
+  VERCEL_CLI: vercel@65.14.0
+
+jobs:
+  plan:
+    name: plan (which projects changed)
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+       && github.event.workflow_run.event == 'push')
+      || (github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository)
+      || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      projects: ${{ steps.pick.outputs.projects }}
+      sha: ${{ steps.refs.outputs.sha }}
+      environment: ${{ steps.refs.outputs.environment }}
+    steps:
+      - name: Resolve commit, baseline and target
+        id: refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          INPUT_ENV: ${{ inputs.environment }}
+        run: |
+          case "$EVENT" in
+            workflow_run)
+              sha="$RUN_SHA"; environment=production
+              # Baseline: the commit of the last SUCCESSFUL production run of
+              # this workflow, so a failed deploy is retried by the next one.
+              base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&event=workflow_run&status=success&per_page=1" \
+                     --jq '.workflow_runs[0].head_sha // empty' || true)
+              ;;
+            pull_request)
+              sha="$PR_HEAD"; base="$PR_BASE"; environment=preview ;;
+            workflow_dispatch)
+              sha="$GITHUB_SHA"; base=""; environment="$INPUT_ENV" ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "commit $sha, baseline ${base:-<none: deploy all>}, target $environment"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.refs.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Pick projects
+        id: pick
+        env:
+          BASE: ${{ steps.refs.outputs.base }}
+          SHA: ${{ steps.refs.outputs.sha }}
+          EVENT: ${{ github.event_name }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          HAS_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::warning::VERCEL_TOKEN is not set; nothing is deployed. Add it under Settings > Secrets and variables > Actions."
+            echo 'projects=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          picked=""
+          for p in www api docs; do
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              { [ "$INPUT_PROJECT" = all ] || [ "$INPUT_PROJECT" = "$p" ]; } && picked="$picked $p"
+              continue
+            fi
+            if [ -z "$BASE" ]; then
+              picked="$picked $p"; continue
+            fi
+            # The same rules Vercel's Ignored Build Step used: exit 0 = no
+            # input of this project changed.
+            if VERCEL_GIT_PREVIOUS_SHA="$BASE" VERCEL_GIT_COMMIT_SHA="$SHA" \
+                 sh scripts/vercel-ignore-build.sh "$p"; then
+              echo "$p: unchanged"
+            else
+              picked="$picked $p"
+            fi
+          done
+          json=$(printf '%s\n' $picked | jq -R . | jq -cs 'map(select(length > 0))')
+          echo "projects=$json" >> "$GITHUB_OUTPUT"
+          echo "deploying: ${picked:- nothing}"
+
+  deploy:
+    name: deploy ${{ matrix.project }} (${{ needs.plan.outputs.environment }})
+    needs: plan
+    if: needs.plan.outputs.projects != '[]' && needs.plan.outputs.projects != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.plan.outputs.projects) }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      ENVIRONMENT: ${{ needs.plan.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5.0.0
+        with:
+          version: 9.12.0
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install the Vercel CLI
+        run: npm install --global "$VERCEL_CLI"
+
+      - name: Link the Vercel project
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: |
+          case "$PROJECT" in
+            www)  name=ravenswatch-mod-manager ;;
+            api)  name=ravenswatch-mod-manager-api ;;
+            docs) name=ravenswatch-mod-manager-docs ;;
+          esac
+          vercel link --yes --project "$name" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          vercel pull --yes --environment="$ENVIRONMENT" --token "$VERCEL_TOKEN"
+
+      - name: Build
+        run: |
+          if [ "$ENVIRONMENT" = production ]; then
+            vercel build --prod --token "$VERCEL_TOKEN"
+          else
+            vercel build --token "$VERCEL_TOKEN"
+          fi
+
+      - name: Deploy
+        id: deploy
+        run: |
+          if [ "$ENVIRONMENT" = production ]; then
+            url=$(vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN")
+          else
+            url=$(vercel deploy --prebuilt --token "$VERCEL_TOKEN")
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### ${{ matrix.project }}: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Link the preview on the PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.deploy.outputs.url }}
+          PROJECT: ${{ matrix.project }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          # One comment per project, edited on every push.
+          marker="<!-- deploy-preview:$PROJECT -->"
+          body="$marker
+          **$PROJECT** preview for \`${SHA:0:7}\`: $URL"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+               --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" >/dev/null
+          fi

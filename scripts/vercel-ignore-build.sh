@@ -11,14 +11,15 @@
 # also replaces every warm instance, so each push cost a round of cold starts
 # (~730 ms CPU each before the lazy-import work) for nothing.
 #
-# A skip here still CREATES a deployment (Vercel starts it, runs this, cancels
-# it), and those count toward the Hobby plan's 100 deployments a day; with three
-# projects every push to any branch costs three. Branches whose previews nobody
-# reads are therefore not deployed at all: `git.deploymentEnabled` in each
-# project's vercel.json (root, apps/api, apps/docs) turns off `testing` and
-# `dependabot/**`. That setting is read from the pushed commit's vercel.json, so
-# a branch picks it up once it has merged main. 2026-11-12: 76 deployments in a
-# day, 58 of them previews.
+# Since 2026-11-12 this decides deploys from GitHub Actions
+# (.github/workflows/deploy.yml), which runs it BEFORE contacting Vercel. Run as
+# Vercel's Ignored Build Step, a skip still CREATED a deployment (started, then
+# cancelled), and those count toward the Hobby plan's 100 deployments a day:
+# with three projects every push to any branch cost three (76 in one day, 58 of
+# them previews). Vercel's own Git deploys are now off (git.deploymentEnabled:
+# false in each vercel.json: root, apps/api, apps/docs), so a project with no
+# changed input costs nothing. Vercel still runs ignoreCommand for a manual
+# redeploy from its dashboard.
 #
 # Fails toward building: a missing or unfetched base commit (Vercel clones
 # shallow) makes git diff exit 128, which builds. When adding a new input to a
