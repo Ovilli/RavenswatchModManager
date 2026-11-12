@@ -144,6 +144,14 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
     lists every asset the engine can load. Caches (`*.UsedRscCache.ot`) are the
     one family absent from it; they are read by name, never listed.
     """
+    return list(_rels(prefix, suffix, str(UNCOOKED), source(), str(cooking_dir())))
+
+
+@cache
+def _rels(prefix: str, suffix: str, _mirror: str, _store: str, _cooking: str) -> tuple[str, ...]:
+    # Filtering the ~80k asset_map keys costs ~15 ms and callers ask hundreds of
+    # times per run. Mirror, store and install dir are in the key, so a test that
+    # swaps or hides the mirror, or an install that appears later, gets its own answer.
     base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
     out: set[str] = set()
     if base.is_dir():
@@ -152,13 +160,13 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
             for p in base.rglob(f"*{suffix}") if p.is_file()
         )
         if UNCOOKED != DATA_DIR / "uncooked":
-            return sorted(out)
+            return tuple(sorted(out))
     from .asset_map import decoded_to_encoded
 
     if cooking_dir() is not None:
         out.update(k for k in decoded_to_encoded()
                    if k.startswith(prefix) and k.endswith(suffix))
-    return sorted(out)
+    return tuple(sorted(out))
 
 
 def stems(directory: str, suffix: str) -> list[str]:

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 import struct
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from . import cooked
@@ -146,12 +146,11 @@ def _copy_graph(g: EntityGraph, name: str) -> EntityGraph:
     # One `classes` list per graph, shared by its components as a fresh parse does.
     classes = list(g.components[0].classes) if g.components else []
     comps = [
-        replace(
-            c,
-            override=replace(c.override) if c.override is not None else None,
-            refs=[replace(r) for r in c.refs],
-            literals=list(c.literals),
-            classes=classes,
+        Component(
+            c.index, c.cls, c.name, c.group, c.guid,
+            Ref(c.override.guid, c.override.path) if c.override is not None else None,
+            [Ref(r.guid, r.path) for r in c.refs],
+            list(c.literals), c.body, classes,
         )
         for c in g.components
     ]

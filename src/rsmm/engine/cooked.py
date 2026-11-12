@@ -54,7 +54,7 @@ bytes[0x10:] — that variant is documented in rsmm.engine.save_container
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Literal
 
@@ -252,10 +252,11 @@ def parse(data: bytes) -> CookedFile:
     if type(data) is not bytes:
         return _parse_uncached(data)
     cf = _parse_cached(data)
-    return replace(
-        cf,
-        classes=[replace(c) for c in cf.classes],
-        sections=[replace(s) for s in cf.sections],
+    return CookedFile(
+        cf.variant, cf.hdr_a, cf.flags, cf.extra, cf.type_tag,
+        [ClassDef(c.name, c.class_id, c.version_major, c.version_minor, c.parent_id)
+         for c in cf.classes],
+        [Section(s.payload) for s in cf.sections],
     )
 
 

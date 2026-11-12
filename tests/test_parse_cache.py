@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.engine import cooked, entity_graph, paths
+from rsmm.engine import cooked, corpus, entity_graph, paths
 
 _OTHER = "[Comp] Scope"+chr(92)+"Group"+chr(92)+"Other"
 
@@ -79,6 +79,27 @@ def test_entity_graph_parse_returns_independent_objects():
     assert c2.literals == ["lit_string"]
     assert c2.classes == ["oCEntityCpntPicker", "oCThing"]
     assert c2.refs is not c.refs
+
+
+def test_entity_graph_copy_equals_original_component():
+    raw = _entity_bytes()
+    first = entity_graph.parse(raw, "E").components[0]
+    again = entity_graph.parse(raw, "E").components[0]
+    assert first == again and first is not again
+    assert first.refs[0] is not again.refs[0]
+
+
+def test_corpus_rels_returns_fresh_list_and_follows_the_mirror(tmp_path, monkeypatch):
+    one, two = tmp_path / "one", tmp_path / "two"
+    for root, rel in ((one, "Zed/a.gen"), (two, "Zed/b.gen")):
+        (root / "Zed").mkdir(parents=True)
+        (root / rel).write_bytes(b"")
+    monkeypatch.setattr(corpus, "UNCOOKED", one)
+    first = corpus.rels("Zed/", ".gen")
+    first.append("junk")
+    assert corpus.rels("Zed/", ".gen") == ["Zed/a.gen"]
+    monkeypatch.setattr(corpus, "UNCOOKED", two)
+    assert corpus.rels("Zed/", ".gen") == ["Zed/b.gen"]
 
 
 def test_entity_graph_non_bytes_matches_bytes():
