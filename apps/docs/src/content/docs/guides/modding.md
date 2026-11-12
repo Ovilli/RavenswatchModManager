@@ -1729,8 +1729,10 @@ keybinds across all mods.
 
 `on_press` handlers run on the game thread inside the input poll, like
 `on_wheel`. `ev` also carries `key` and `pad` (the current keys) and `blocked`.
-A handler gets only presses made in play: presses made while a menu is open
-or while the game has input blocked (during a transition) are dropped, since the
+A handler gets only presses made in play: presses made while a menu or another
+screen that wants the cursor is open (the same list mouse-look pauses on:
+talent choice, Sandman shop and the rest, `R.input.cursor_screen()`) or while
+the game has input blocked (during a transition) are dropped, since the
 game's UI gets those keys, and so are presses that waited for the Lua lock (the
 loader sorts each press when it is made). A keybind added with `menus = true`
 gets every press; `ev.blocked_presses` and `ev.late_presses` count the blocked
