@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  RegistryModCard,
   Spinner,
   buttonVariants,
 } from '@rsmm/ui';
@@ -32,7 +33,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
-import { ModCover } from '../../components/mod-cover';
 
 type Sort = 'popular' | 'recent' | 'rating';
 type View = 'grid' | 'list';
@@ -587,105 +587,22 @@ function RegistryInner() {
 /** Card layout — image, title, actions, summary, stats. */
 function ModGridCard({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
   return (
-    <div
-      className="grimoire-card cursor-pointer overflow-hidden"
-      tabIndex={0}
-      // biome-ignore lint/a11y/useSemanticElements: card-as-link composite with nested interactive children; wrapping with <a> would invalidate the descendant <a>/<button> tags Next.js Link inserts.
-      role="link"
-      onClick={(e) => {
-        const el = e.target as HTMLElement;
-        if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
-        onOpen();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <div className="relative">
-        {m.imageUrl ? (
-          <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-            <img
-              src={m.imageUrl}
-              alt={`${m.name} preview`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          </div>
-        ) : (
-          <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
-        )}
-        {m.featured ? (
-          <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
-            <Star className="mr-1 h-3 w-3" /> Featured
-          </Badge>
-        ) : null}
-        {m.nsfw ? (
-          <Badge className="absolute right-2 top-2 bg-crimson/15 text-[0.65rem] text-crimson border-crimson/40 backdrop-blur-sm">
-            <EyeOff className="mr-1 h-3 w-3" /> NSFW
-          </Badge>
-        ) : null}
-      </div>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <Link
-              href={`/registry/${m.slug}` as Route}
-              onClick={(e) => e.stopPropagation()}
-              className="hover:text-gilt transition-colors"
-            >
-              <CardTitle className="text-lg">{m.name}</CardTitle>
-            </Link>
-            <CardDescription className="mt-0.5">
-              {m.author ?? 'unknown'}
-              {m.latestVersion ? (
-                <Badge variant="outline" className="ml-2 text-[0.6rem]">
-                  v{m.latestVersion}
-                </Badge>
-              ) : null}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {m.latestVersion ? (
-              <a
-                href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
-                className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                title="Download mod archive"
-                aria-label={`Download ${m.name} archive`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
-            ) : null}
-            <a
-              href={`rsmm://mods/${m.slug}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              title="Open in RSMM desktop app"
-              aria-label={`Open ${m.name} in the RSMM desktop app`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+    <RegistryModCard
+      mod={m}
+      onOpen={onOpen}
+      actions={
+        <div className="flex shrink-0 items-center gap-1">
+          {m.latestVersion ? (
+            <a href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`} className={buttonVariants({ variant: 'outline', size: 'sm' })} title="Download mod archive" aria-label={`Download ${m.name} archive`}>
+              <Download className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
-          </div>
+          ) : null}
+          <a href={`rsmm://mods/${m.slug}`} className={buttonVariants({ variant: 'outline', size: 'sm' })} title="Open in RSMM desktop app" aria-label={`Open ${m.name} in the RSMM desktop app`}>
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {m.summary ? (
-          <p className="text-sm text-muted-foreground line-clamp-2">{m.summary}</p>
-        ) : null}
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
-            {m.downloads != null ? <span>{m.downloads.toLocaleString()} dl</span> : null}
-          </div>
-          <div className="flex items-center gap-1">
-            {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
-          </div>
-        </div>
-      </CardContent>
-    </div>
+      }
+    />
   );
 }
 
@@ -698,101 +615,16 @@ function ModGridCard({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
  */
 function ModListRow({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
   return (
-    <div
-      tabIndex={0}
-      // biome-ignore lint/a11y/useSemanticElements: row-as-link composite with nested interactive children; an <a> may not legally wrap them.
-      role="link"
-      aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
-      onClick={(e) => {
-        const el = e.target as HTMLElement;
-        if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
-        onOpen();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className="grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2"
-    >
-      {m.imageUrl ? (
-        <img
-          src={m.imageUrl}
-          alt=""
-          loading="lazy"
-          className="hidden h-10 w-16 shrink-0 rounded object-cover sm:block"
-        />
-      ) : (
-        <ModCover
-          seed={m.slug}
-          name={m.name}
-          size="sm"
-          className="hidden h-10 w-16 shrink-0 rounded sm:flex"
-        />
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <Link
-            href={`/registry/${m.slug}` as Route}
-            onClick={(e) => e.stopPropagation()}
-            className="truncate text-base leading-tight transition-colors hover:text-gilt"
-          >
-            {m.name}
-          </Link>
-          {m.featured ? (
-            <Star className="h-3 w-3 shrink-0 text-gilt" aria-label="Featured" />
-          ) : null}
-          {m.nsfw ? (
-            <span className="shrink-0 rounded border border-crimson/40 bg-crimson/10 px-1 font-mono text-[10px] uppercase tracking-widest text-crimson">
-              nsfw
-            </span>
-          ) : null}
+    <RegistryModCard
+      mod={m}
+      view="list"
+      onOpen={onOpen}
+      actions={
+        <div className="flex shrink-0 items-center gap-1">
+          {m.latestVersion ? <a href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`} className={buttonVariants({ variant: 'outline', size: 'sm' })} title="Download mod archive" aria-label={`Download ${m.name} archive`}><Download className="h-3.5 w-3.5" aria-hidden="true" /></a> : null}
+          <a href={`rsmm://mods/${m.slug}`} className={buttonVariants({ variant: 'outline', size: 'sm' })} title="Open in RSMM desktop app" aria-label={`Open ${m.name} in the RSMM desktop app`}><ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a>
         </div>
-        <p className="truncate text-xs text-muted-foreground">
-          {m.author ?? 'unknown'}
-          {m.latestVersion ? ` · v${m.latestVersion}` : ''}
-          {m.summary ? ` — ${m.summary}` : ''}
-        </p>
-      </div>
-
-      <div className="hidden w-24 shrink-0 md:block">
-        {m.category ? (
-          <Badge variant="secondary" className="text-[0.65rem]">
-            {m.category}
-          </Badge>
-        ) : null}
-      </div>
-      <div className="hidden w-14 shrink-0 text-right font-mono text-xs text-gilt lg:block">
-        {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-      </div>
-      <div className="hidden w-20 shrink-0 text-right font-mono text-xs text-muted-foreground lg:block">
-        {m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1">
-        {m.latestVersion ? (
-          <a
-            href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            title="Download mod archive"
-            aria-label={`Download ${m.name} archive`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Download className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        ) : null}
-        <a
-          href={`rsmm://mods/${m.slug}`}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          title="Open in RSMM desktop app"
-          aria-label={`Open ${m.name} in the RSMM desktop app`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-        </a>
-      </div>
-    </div>
+      }
+    />
   );
 }

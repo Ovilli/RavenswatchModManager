@@ -5,3 +5,6 @@ export { Badge } from './components/badge';
 export { Input } from './components/input';
 export { Spinner } from './components/spinner';
 export { ProgressBar } from './components/progress';
+export { RegistryModCard, type RegistryModCardData } from './components/registry-mod-card';
+export { RegistryModCover } from './components/registry-mod-cover';
+export { RegistryModDetailHeader } from './components/registry-mod-detail-header';
