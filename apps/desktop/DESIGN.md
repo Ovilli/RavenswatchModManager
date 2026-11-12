@@ -140,6 +140,12 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
 
 The shadcn-style components in `packages/ui/src/components/` serve the website. The desktop app uses its own helpers above.
 
+### Private games only
+
+Registry mods carrying a protected private-only tag use `PrivateGamesOnlyBadge` in browse cards, browse rows, and both detail layouts. Reuse the shared tag classifier so legacy aliases receive the same treatment. The warning remains visible regardless of the ordinary two-tag card limit; raw restriction tags are not repeated in the ordinary tag list.
+
+This badge matches the website: sentence-case gilt text, a warning triangle, and a gilt wash. Its translated explanation says the mod **may** give an unfair advantage. Hover, keyboard focus, or tap opens a black, borderless tooltip with a soft drop shadow (a deliberate exception to the usual raised-surface treatment). It is portaled outside scrolling panels, clamped to the viewport, and flips above the badge when needed. Escape, blur, outside press, and resizing dismiss it. Scrolling dismisses hover warnings; a focused badge keeps its warning anchored while visible. Activating the badge does not open the surrounding mod card or row. Text sizes follow the app's UI scale.
+
 ## Layers
 
 Overlay z-index, lowest to highest:
