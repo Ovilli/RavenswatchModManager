@@ -777,19 +777,40 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
         # Top-level resource (e.g. `samples`): no collapse, encode whole.
         return cipher.encode(decoded)
     parent, _, fname = decoded.rpartition("/")
+    prefix = _parent_prefixes(dec2enc).get(parent)
+    if prefix is None:
+        return None
+    return prefix + cipher.encode(fname)
+
+
+# Single-slot memo: (the dict it was built from, its len then, the index).
+# Scanning the ~80k-entry map on every call made bulk callers take minutes.
+_PREFIX_MEMO: tuple[dict[str, str], int, dict[str, str]] | None = None
+
+
+def _parent_prefixes(dec2enc: dict[str, str]) -> dict[str, str]:
+    """Map each decoded parent dir to the encoded prefix of the first
+    sibling (in dict order) that has one."""
+    global _PREFIX_MEMO
+    memo = _PREFIX_MEMO
+    if memo is not None and memo[0] is dec2enc and memo[1] == len(dec2enc):
+        return memo[2]
+    index: dict[str, str] = {}
     for dec, enc in dec2enc.items():
         dec = dec.replace("\\", "/")
         if "/" not in dec:
             continue
-        if dec.rsplit("/", 1)[0] != parent:
+        p = dec.rsplit("/", 1)[0]
+        if p in index:
             continue
         # The sibling's final component begins after its last separator,
         # which may be a real `\` directory join or a collapsed `!`.
         cut = max(enc.rfind("\\"), enc.rfind("!"))
         if cut == -1:
             continue
-        return enc[: cut + 1] + cipher.encode(fname)
-    return None
+        index[p] = enc[: cut + 1]
+    _PREFIX_MEMO = (dec2enc, len(dec2enc), index)
+    return index
 
 
 def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:

@@ -415,7 +415,7 @@ def _drive_pager(monkeypatch, lines, keys, cols=100, rows=40):
     import shutil as _sh
 
     monkeypatch.setattr(_sh, "get_terminal_size",
-                        lambda _d=None: os.terminal_size((cols, rows)))
+                        lambda *_a, **_k: os.terminal_size((cols, rows)))
     monkeypatch.setattr(cmd_shell._keys, "raw_session",
                         lambda *a, **k: contextlib.nullcontext())
     seq = iter(keys)

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.engine import cooked, corpus, entity_graph, paths
+from rsmm.cli import apply_mods
+from rsmm.engine import cipher, cooked, corpus, entity_graph, paths, rsc_cache
 
 _OTHER = "[Comp] Scope"+chr(92)+"Group"+chr(92)+"Other"
 
@@ -162,3 +163,72 @@ def test_find_install_dir_none_not_cached(tmp_path, monkeypatch, install_cache):
     assert paths.find_install_dir() is None
     _install(a)
     assert paths.find_install_dir() == a
+
+
+def _reference_synthesize(decoded, dec2enc):
+    """The original linear-scan algorithm, kept as the equivalence oracle."""
+    decoded = decoded.replace("\\", "/")
+    if "/" not in decoded:
+        return cipher.encode(decoded)
+    parent, _, fname = decoded.rpartition("/")
+    for dec, enc in dec2enc.items():
+        dec = dec.replace("\\", "/")
+        if "/" not in dec:
+            continue
+        if dec.rsplit("/", 1)[0] != parent:
+            continue
+        cut = max(enc.rfind("\\"), enc.rfind("!"))
+        if cut == -1:
+            continue
+        return enc[: cut + 1] + cipher.encode(fname)
+    return None
+
+
+def _small_map():
+    bs = chr(92)
+    return {
+        "top": "TOP",                              # top-level, skipped
+        "A/B/one": "xx" + bs + "yy" + bs + "one",  # backslash cut
+        "C/D/two": "zz!two",                       # bang cut
+        "E/F/bare": "nocut",                       # cut == -1, skipped
+        "E/F/good": "ee" + bs + "ff!good",         # later sibling wins
+        "G" + bs + "H" + bs + "back": "gg" + bs + "back",  # backslash decoded key
+    }
+
+
+@pytest.mark.parametrize("decoded", [
+    "A/B/new", "C/D/new", "E/F/new", "Q/R/new", "top2", "G/H/new",
+    "G" + chr(92) + "H" + chr(92) + "new2", "A" + chr(92) + "B" + chr(92) + "n3",
+])
+def test_synthesize_encoded_matches_the_linear_scan(decoded):
+    m = _small_map()
+    assert apply_mods.synthesize_encoded(decoded, m) == _reference_synthesize(decoded, m)
+
+
+def test_synthesize_encoded_sees_entries_added_to_the_same_dict():
+    m = _small_map()
+    assert apply_mods.synthesize_encoded("Q/R/new", m) is None
+    m["Q/R/sib"] = "qq" + chr(92) + "sib"
+    got = apply_mods.synthesize_encoded("Q/R/new", m)
+    assert got is not None
+    assert got == _reference_synthesize("Q/R/new", m)
+
+
+def test_synthesize_encoded_matches_the_linear_scan_on_the_real_install():
+    if corpus.cooking_dir() is None:
+        pytest.skip("no game install")
+    from rsmm.engine.asset_map import decoded_to_encoded
+    m = decoded_to_encoded()
+    # The oracle is the slow linear scan, so check one cache path per parent
+    # directory, capped, rather than every path.
+    by_parent = {}
+    for rel in corpus.rels("Definitions/") + corpus.rels("EntitySettings/"):
+        try:
+            path = rsc_cache.cache_path_for(rel)
+        except rsc_cache.CacheError:
+            continue
+        by_parent.setdefault(path.replace(chr(92), "/").rpartition("/")[0], path)
+    sample = [by_parent[k] for k in sorted(by_parent)][:40]
+    assert sample
+    for path in sample:
+        assert apply_mods.synthesize_encoded(path, m) == _reference_synthesize(path, m)
