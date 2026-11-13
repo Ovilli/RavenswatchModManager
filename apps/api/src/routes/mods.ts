@@ -29,18 +29,21 @@ import {
   SERVABLE_STATUSES,
   enqueueScan,
   isServable,
+  labelIfGameplay,
   queueInfo,
   releaseVersion,
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
 import {
   deleteObject,
+  fetchPublicObject,
   modUploadKey,
   presignModImage,
   presignModUpload,
   remoteObjectExists,
 } from '../storage.js';
 import type { AppEnv } from '../types.js';
+import { MAX_VT_LARGE_BYTES } from '../virus-total.js';
 
 export const modsRouter = new Hono<AppEnv>();
 
@@ -834,6 +837,7 @@ modsRouter.post(
         sha256: schema.modVersions.sha256,
         modId: schema.mods.id,
         ownerId: schema.mods.ownerId,
+        slug: schema.mods.slug,
       })
       .from(schema.modVersions)
       .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
@@ -855,6 +859,9 @@ modsRouter.post(
     // the version skipped so the client can proceed. Guarded by the sha we just
     // checked, so a re-presign in between can't inherit the verdict.
     if (!virusTotalConfigured()) {
+      // No malware scan, but the store still checks what the mod changes.
+      const bytes = await fetchPublicObject(row.assetUrl, MAX_VT_LARGE_BYTES);
+      await labelIfGameplay(row.slug, bytes?.bytes ?? null);
       await releaseVersion(versionId, row.sha256, 'skipped');
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }

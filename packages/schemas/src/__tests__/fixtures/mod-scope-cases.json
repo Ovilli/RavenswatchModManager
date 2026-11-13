@@ -1,0 +1,263 @@
+{
+  "lua": [
+    {
+      "src": "local R = require \"rsmm\"\nR.log(\"hi\")",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.on(\"run_start\", function() end)",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.overlay.publish({rows = {}})",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.damage.enable(); local t = R.damage.total()",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.camera.set(\"Default\", 1.5)",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.config.get(\"x\"); R.kv.set(\"a\", 1); R.schedule.every(1, function() end)",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nlocal h = R.entity.hero(); local hp = R.hp.get(h); local s = R.stat.get(h, \"x\")",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nlocal peers = R.net.peers()",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.log(\"x\")",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require('rsmm');\nR.log('x')",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require(\"rsmm\")\nlocal data = require \"stats_gen\"\nR.log(data)",
+      "gameplay": false
+    },
+    {
+      "src": "require \"rsmm\"\nlocal R = require \"rsmm\"\nR.log(\"x\")",
+      "gameplay": false
+    },
+    {
+      "src": "local x = 1; local R = require \"rsmm\"\nR.log(\"x\")",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.log(\"see _G or package.loaded or require(x)\")",
+      "gameplay": false
+    },
+    {
+      "src": "local S =\n    require \"rsmm\"\nS.log(1)",
+      "gameplay": false
+    },
+    {
+      "src": "S =\n  require(\"rsmm\")\nS.log(1)",
+      "gameplay": false
+    },
+    {
+      "src": "R.on(\"x\", function() local R = require \"rsmm\"; R.log(1) end)",
+      "gameplay": false
+    },
+    {
+      "src": "-- R.give.by_name(\"x\")\nlocal R = require \"rsmm\"\nR.log(\"R.give.by_name\")",
+      "gameplay": false
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.give.by_name(\"x\")",
+      "gameplay": true
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR.engine.call(\"X\")",
+      "gameplay": true
+    },
+    {
+      "src": "local R = require \"rsmm\"\nR[\"give\"].by_name(\"x\")",
+      "gameplay": true
+    },
+    {
+      "src": "local R = require \"rsmm\"\nlocal f = R; f.give.by_name(\"x\")",
+      "gameplay": true
+    },
+    {
+      "src": "local R = require \"rsmm\"\nhelper(R)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = require(\"rs\" .. \"mm\")\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local name = \"rsmm\"\nlocal S = require(name)\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local ok, S = pcall(require, \"rsmm\")\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local r = require\nlocal S = r \"rsmm\"\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local t = {}\nt.S = require \"rsmm\"\nt.S.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local a, S = 1, require \"rsmm\"\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "use(require \"rsmm\")",
+      "gameplay": true
+    },
+    {
+      "src": "return require \"rsmm\"",
+      "gameplay": true
+    },
+    {
+      "src": "local S = require \"rsmm\" or {}\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "require \"rsmm\"\nlocal S = package.loaded[\"rsmm\"]\nS.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = _G[\"rsmm\"]\nS.give_item(1)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = _G.rsmm\nS.give_item(1)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = _ENV.rsmm\nS.give_item(1)",
+      "gameplay": true
+    },
+    {
+      "src": "local n = rsmm\nn.give_item(1)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = { R = require \"rsmm\" }\nS.R.stat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local _ENV = require \"rsmm\"\nstat.modify(h, \"move_speed\", 2)",
+      "gameplay": true
+    },
+    {
+      "src": "local S = require \"rsmm.engine\"\nS.call(1)",
+      "gameplay": true
+    }
+  ],
+  "manifest": [
+    {
+      "src": "[mod]\nid = \"a\"\n",
+      "gameplay": false
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[[content]]\nkind = \"hero\"\n",
+      "gameplay": true
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[[patch]]\ntarget = \"x\"\n",
+      "gameplay": true
+    },
+    {
+      "src": "content = [{ kind = \"hero\" }]\n[mod]\nid = \"a\"\n",
+      "gameplay": true
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[overlay]\ncontent = \"hud\"\n",
+      "gameplay": false
+    }
+  ],
+  "asset": [
+    {
+      "path": "3D/Characters/x.tga.Texture.dxt",
+      "client_only": true
+    },
+    {
+      "path": "Audio/Music.bank",
+      "client_only": true
+    },
+    {
+      "path": "Text/Common~GAM.xls.LocalText.gen",
+      "client_only": true
+    },
+    {
+      "path": "EntitySettings/Heroes/Hero_X.entity.ot.EntitySettingsResource.gen",
+      "client_only": false
+    },
+    {
+      "path": "Definitions/Heroes/X.herodef.ot.DtHeroDefinition.gen",
+      "client_only": false
+    },
+    {
+      "path": "_root/DarkTalesResources/x.ot",
+      "client_only": false
+    }
+  ],
+  "client_namespaces": [
+    "audio",
+    "camera",
+    "config",
+    "damage",
+    "exp",
+    "health",
+    "i18n",
+    "input",
+    "kv",
+    "log",
+    "off",
+    "on",
+    "on_match",
+    "once",
+    "overlay",
+    "schedule"
+  ],
+  "client_calls": [
+    "debug.components",
+    "entity.capture_enabled",
+    "entity.hero",
+    "entity.hp",
+    "entity.hp_frac",
+    "entity.max_hp",
+    "entity.ready",
+    "events.category",
+    "events.count",
+    "events.known",
+    "game.cached",
+    "game.describe",
+    "game.flag",
+    "game.get",
+    "game.ready",
+    "hp.frac",
+    "hp.get",
+    "hp.max",
+    "lobby.allies",
+    "lobby.hero_name",
+    "lobby.members",
+    "net.peers",
+    "stat.cached",
+    "stat.get",
+    "stat.key",
+    "stat.keys",
+    "stat.names"
+  ]
+}

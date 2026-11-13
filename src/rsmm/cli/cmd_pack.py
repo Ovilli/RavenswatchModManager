@@ -265,6 +265,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [WARN] {mod_id} overwrites game install root file: {rel}",
               file=sys.stderr)
 
+    # The engine decides whether the mod changes the game (mod_scope): a
+    # gameplay mod's packed manifest carries the registry's "Private games
+    # only" label, so every way of publishing it (rsmm publish, the desktop
+    # app, a zip uploaded on the site) arrives labelled, without a moderator.
+    from rsmm.engine import mod_scope as MS
+    verdict = MS.classify_mod_dir(src)
+    labelled = False
     out_dir = dist_out_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{mod_id}.zip"
@@ -282,6 +289,10 @@ def main(argv: list[str] | None = None) -> int:
                 except (OSError, UnicodeDecodeError):
                     text = None
                 fixed = _stamp_enabled(text) if text is not None else None
+                if text is not None and not verdict.client_only:
+                    tagged = MS.stamp_private_only(fixed if fixed is not None else text)
+                    if tagged is not None:
+                        fixed, labelled = tagged, True
                 if fixed is not None:
                     # Keep the source file's timestamp: the archive should differ
                     # from a pack of the same tree only where the flag differs.
@@ -291,9 +302,13 @@ def main(argv: list[str] | None = None) -> int:
                     stamped = True
                     continue
             zf.write(f, name)
-    if stamped:
+    if stamped and not labelled:
         print(f"  [note] {mod_id} is disabled locally; packed as enabled "
               f"(the flag is your state, not the mod's)")
+    if not verdict.client_only:
+        why = "; ".join(verdict.reasons[:3]) + (" …" if len(verdict.reasons) > 3 else "")
+        print(f"  [note] {mod_id} changes the game ({why}): it is labelled "
+              f"\"Private games only\"{' in the packed manifest' if labelled else ''}")
     print(f"Wrote {out}")
     return 0
 

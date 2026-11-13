@@ -903,9 +903,14 @@ def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
         v = manifest.get(key)
         if isinstance(v, str) and v.strip():
             out_manifest[key] = v.strip()
+    # The "Private games only" label is the engine's call (mod_scope), not the
+    # author's: a mod that changes the game is published with it.
+    from rsmm.engine import mod_scope as MS
+    verdict = MS.classify_mod_dir(src)
     tags = manifest.get("tags")
-    if isinstance(tags, list):
-        out_manifest["tags"] = [str(t) for t in tags if isinstance(t, str)]
+    tags = MS.private_only_tags(tags if isinstance(tags, list) else [], verdict)
+    if tags:
+        out_manifest["tags"] = tags
     if isinstance(manifest.get("enabled"), bool):
         out_manifest["enabled"] = bool(manifest["enabled"])
     deps = _deps_map(manifest)
@@ -923,6 +928,9 @@ def pack_mod_metadata(mod_id: str) -> dict[str, Any]:
         "slug": slug,
         "version": version,
         "manifest": out_manifest,
+        # What the engine found (shown by `rsmm publish` and the desktop app).
+        "privateOnly": not verdict.client_only,
+        "privateOnlyReasons": verdict.reasons[:20],
     }
 
 

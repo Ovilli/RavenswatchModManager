@@ -351,7 +351,9 @@ def _pack_manifest(tmp_path, monkeypatch, mod_id: str, manifest: str) -> str:
     # longer says what the test thinks it says (CI, 2026-08-24).
     with (d / "manifest.toml").open("w", encoding="utf-8", newline="") as fh:
         fh.write(manifest)
-    (d / "assets" / "a.bin").write_bytes(b"my own bytes")
+    # A texture: presentation only, so the engine does not also label the mod
+    # "Private games only" (a game-data override would, and change the text).
+    (d / "assets" / "a.png.Texture.dxt").write_bytes(b"my own bytes")
     assert _run_pack(tmp_path, monkeypatch, mod_id) == 0
     with zipfile.ZipFile(tmp_path / "dist" / f"{mod_id}.zip") as zf:
         return zf.read(f"{mod_id}/manifest.toml").decode("utf-8")

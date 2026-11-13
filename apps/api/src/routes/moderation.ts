@@ -1,14 +1,17 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import { modTakedownSchema, reportResolveSchema, userBanSchema } from '@rsmm/schemas';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
+import { errString } from '../logger.js';
 import { notify } from '../notify.js';
 import { setStoredPrivateOnlyTag } from '../private-only.js';
-import { adminVerdict } from '../scan-service.js';
+import { SERVABLE_STATUSES, adminVerdict, labelIfGameplay } from '../scan-service.js';
+import { fetchPublicObject } from '../storage.js';
 import type { AppEnv } from '../types.js';
+import { MAX_VT_LARGE_BYTES } from '../virus-total.js';
 
 export const moderationRouter = new Hono<AppEnv>();
 
@@ -168,6 +171,66 @@ moderationRouter.post(
 );
 
 const featureSchema = z.object({ featured: z.boolean() });
+
+const backfillSchema = z.object({
+  limit: z.number().int().min(1).max(25).default(10),
+  offset: z.number().int().min(0).default(0),
+});
+
+/**
+ * Run the store's own "Private games only" check (scan-service
+ * labelIfGameplay) over published mods that were uploaded before it existed:
+ * each mod's newest servable version, `limit` mods from `offset` in slug
+ * order. Batched to stay inside a serverless request; call again with
+ * `next` until it is null. Only ever adds the label.
+ */
+moderationRouter.post(
+  '/mods/private-only/backfill',
+  zValidator('json', backfillSchema),
+  async (c) => {
+    const { limit, offset } = c.req.valid('json');
+    const db = getDb();
+    const mods = await db
+      .select({ id: schema.mods.id, slug: schema.mods.slug })
+      .from(schema.mods)
+      .orderBy(schema.mods.slug)
+      .limit(limit)
+      .offset(offset);
+    const results: { slug: string; labelled: boolean; reasons: string[]; error?: string }[] = [];
+    for (const mod of mods) {
+      const latest = await db
+        .select({ assetUrl: schema.modVersions.assetUrl })
+        .from(schema.modVersions)
+        .where(
+          and(
+            eq(schema.modVersions.modId, mod.id),
+            inArray(schema.modVersions.scanStatus, [...SERVABLE_STATUSES]),
+          ),
+        )
+        .orderBy(desc(schema.modVersions.createdAt))
+        .limit(1);
+      const version = latest[0];
+      if (!version) continue;
+      try {
+        const fetched = await fetchPublicObject(version.assetUrl, MAX_VT_LARGE_BYTES);
+        const reasons = await labelIfGameplay(mod.slug, fetched?.bytes ?? null);
+        results.push({
+          slug: mod.slug,
+          labelled: reasons.length > 0,
+          reasons: reasons.slice(0, 5),
+        });
+      } catch (err) {
+        results.push({ slug: mod.slug, labelled: false, reasons: [], error: errString(err) });
+      }
+    }
+    return c.json({
+      ok: true,
+      checked: results.length,
+      results,
+      next: mods.length === limit ? offset + limit : null,
+    });
+  },
+);
 
 moderationRouter.patch(
   '/mods/:slug/private-only',

@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { getDb, schema } from '@rsmm/db';
+import { hasPrivateOnlyTag } from '@rsmm/schemas';
 import { type SQL, and, eq, lt, notInArray, or, sql } from 'drizzle-orm';
 import { errString } from './logger.js';
+import { modArchiveScopeReasons } from './mod-archive.js';
 import { notify, notifyFollowers } from './notify.js';
+import { setStoredPrivateOnlyTag } from './private-only.js';
 import {
   deleteObject,
   fetchPublicObject,
@@ -133,6 +136,10 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
   if (!storedBytesMatchDeclared(storedSha, target.sha256)) {
     throw new Error('stored object does not match the declared sha256');
   }
+  // The store's own "Private games only" check, on these hashed bytes and
+  // before any verdict can release the version: it never relies on the tag
+  // the uploader's manifest carried.
+  await labelIfGameplay(target.slug, bytes);
 
   // A file VirusTotal has already analysed needs no new upload: its report by
   // hash is the verdict for these exact bytes, however old, for one lookup
@@ -228,6 +235,29 @@ export async function scanVersion(target: ScanTarget): Promise<ScanResult> {
     permalink: analysis?.permalink ?? `https://www.virustotal.com/gui/file/${storedSha}`,
     deleted,
   };
+}
+
+/**
+ * Give the mod the "Private games only" label when this archive changes the
+ * game the party plays (`@rsmm/schemas` modScopeReasons, the store's own copy
+ * of the engine's check). Only ever ADDS the label: an admin removes it.
+ * Fails closed: bytes that could not be read count as gameplay. Returns the
+ * reasons (empty: client-only).
+ */
+export async function labelIfGameplay(slug: string, bytes: Buffer | null): Promise<string[]> {
+  const reasons = bytes
+    ? modArchiveScopeReasons(bytes)
+    : ['the archive is too large for the store to check'];
+  if (reasons.length === 0) return reasons;
+  const db = getDb();
+  const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
+  if (!mod || hasPrivateOnlyTag(mod.tags)) return reasons;
+  await db
+    .update(schema.mods)
+    .set({ tags: setStoredPrivateOnlyTag(true), updatedAt: new Date() })
+    .where(eq(schema.mods.slug, slug));
+  console.info('labelled Private games only', { slug, reasons: reasons.slice(0, 5) });
+  return reasons;
 }
 
 /**

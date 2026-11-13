@@ -4,6 +4,7 @@ export * from './guide';
 export * from './html';
 export * from './log-share';
 export * from './mod';
+export * from './mod-scope';
 export * from './privacy';
 export * from './private-only';
 export * from './report';

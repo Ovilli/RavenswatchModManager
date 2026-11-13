@@ -12,5 +12,5 @@
     // which surfaced as four bare "Cannot find name" errors in non-test files.
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json"]
 }

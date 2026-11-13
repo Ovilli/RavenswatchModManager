@@ -215,6 +215,16 @@ Package a mod for distribution. Verifies no vanilla (unmodified game) bytes are 
 ./rsmm pack MyMod --allow-vanilla  # Skip vanilla-byte check (personal backups only)
 ```
 
+A mod that changes the game the party plays is packed with the store's
+**Private games only** label (the `private-only` tag in `[mod].tags` of the
+packed manifest; your own file is not touched). The engine decides this from
+what the mod contains, the same check that keeps public matchmaking closed
+while such a mod is applied: `[[content]]` or `[[patch]]` blocks, game data
+overrides other than textures, sound banks and text, and Lua that uses the
+SDK beyond the client-only calls (logging, overlay, damage meter, camera,
+reads). Pack prints why. Once a mod carries the label, only a store admin can
+remove it.
+
 ### `rsmm publish <id>`
 
 Upload a mod to the store in one command: lint, pack (with the vanilla-byte

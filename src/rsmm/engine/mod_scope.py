@@ -361,3 +361,78 @@ def classify_runtime(game_mod_dir: Path, decoded_assets: list[str]) -> ScopeVerd
             verdict.reasons.append(f"overrides game data ({dec})")
     verdict.reasons = sorted(set(verdict.reasons))
     return verdict
+
+
+# ---- the "Private games only" label -------------------------------------------
+
+#: The registry's label for a mod that changes the game the party plays
+#: (packages/schemas/src/private-only.ts). The site shows it, keeps the mod out
+#: of public lobbies' expectations, and only an admin can remove it.
+PRIVATE_ONLY_TAG = "private-only"
+#: Spellings the registry reads as the same label (keep in step with
+#: PRIVATE_ONLY_TAG_ALIASES in packages/schemas/src/private-only.ts).
+PRIVATE_ONLY_TAG_ALIASES = frozenset({
+    "private-only", "private only", "private-games-only", "private games only",
+    "cheat", "cheats",
+})
+
+_MOD_HEADER_RE = re.compile(r"^\[mod\][^\S\r\n]*(?:#[^\r\n]*)?\r?\n?", re.MULTILINE)
+_NEXT_TABLE_RE = re.compile(r"^\[", re.MULTILINE)
+_TAGS_RE = re.compile(r"^(?P<lhs>tags[^\S\r\n]*=[^\S\r\n]*)\[", re.MULTILINE)
+
+
+def has_private_only_tag(tags) -> bool:
+    return any(isinstance(t, str) and t.strip().lower() in PRIVATE_ONLY_TAG_ALIASES
+               for t in tags or ())
+
+
+def private_only_tags(tags, verdict: ScopeVerdict) -> list[str]:
+    """``tags`` with the "Private games only" label added when ``verdict`` says
+    the mod changes the game. The engine decides, not the author: a gameplay
+    mod is labelled whatever its manifest says, and a client-only mod keeps an
+    author's own label (it is theirs to ask for)."""
+    out = [str(t) for t in tags or () if isinstance(t, str)]
+    if not verdict.client_only and not has_private_only_tag(out):
+        out.append(PRIVATE_ONLY_TAG)
+    return out
+
+
+def stamp_private_only(text: str) -> str | None:
+    """``text`` (a manifest.toml) with the label added to ``[mod].tags``, or
+    None when it already has it or cannot be stamped safely. Only the
+    ``[mod]`` table is touched, the rest of the file keeps its bytes, and the
+    result must parse to the same manifest plus the label (else None)."""
+    try:
+        before = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+    mod = before.get("mod")
+    if not isinstance(mod, dict) or has_private_only_tag(mod.get("tags")):
+        return None
+    head = _MOD_HEADER_RE.search(text)
+    if head is None:
+        return None
+    rest = text[head.end():]
+    nxt = _NEXT_TABLE_RE.search(rest)
+    body = rest[:nxt.start()] if nxt else rest
+    tags = _TAGS_RE.search(body)
+    if tags is None:
+        nl = "\r\n" if "\r\n" in text else "\n"
+        body = f'tags = ["{PRIVATE_ONLY_TAG}"]{nl}' + body
+    else:
+        close = body.find("]", tags.end())
+        if close < 0:
+            return None
+        inner = body[tags.end():close]
+        sep = "" if not inner.strip() else ("" if inner.rstrip().endswith(",") else ",")
+        lead = "" if not inner.strip() else " "
+        body = (body[:close].rstrip(" \t") + f'{sep}{lead}"{PRIVATE_ONLY_TAG}"'
+                + (" " if inner.endswith(" ") and inner.strip() else "") + body[close:])
+    out = text[:head.end()] + body + (rest[nxt.start():] if nxt else "")
+    try:
+        after = tomllib.loads(out)
+    except tomllib.TOMLDecodeError:
+        return None
+    want = dict(before)
+    want["mod"] = {**mod, "tags": [*(mod.get("tags") or []), PRIVATE_ONLY_TAG]}
+    return out if after == want else None
