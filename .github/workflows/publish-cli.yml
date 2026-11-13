@@ -40,9 +40,11 @@ jobs:
         platform: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
+      # Pinned to the dispatched commit so every platform builds the same one
+      # and publish can record it as `built_from` (main may move meanwhile).
       - uses: actions/checkout@v5
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -141,6 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.notes }}
           DRY_RUN: ${{ inputs.dry_run }}
+          BUILT_FROM: ${{ github.sha }}
         run: |
           ARGS=(publish --archives cli-archives --notes "$NOTES")
           [ "$DRY_RUN" = "true" ] && ARGS+=(--dry-run)

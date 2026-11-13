@@ -144,6 +144,13 @@ def publish(archives: Path, notes: str, dry_run: bool) -> None:
     subprocess.run(["gh", "release", "upload", TAG, "--clobber", str(mpath), str(sig)], check=True)
 
     stamp["cli_version"] = nxt
+    # The commit the archives were built from (the workflow passes BUILT_FROM;
+    # a local run uses HEAD). Channel drift measures from it, not from the stamp
+    # commit, which a rebase can move past later merges.
+    built_from = os.environ.get("BUILT_FROM") or subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=REPO).stdout.strip()
+    if built_from:
+        stamp["built_from"] = built_from
     STAMP.write_text(json.dumps(stamp, indent=1) + "\n", encoding="utf-8")
     print(f"published cli v{nxt}; COMMIT {STAMP.relative_to(REPO)}")
 

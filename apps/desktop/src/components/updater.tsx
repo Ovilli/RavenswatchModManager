@@ -1,18 +1,25 @@
 import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
 import {
   describeCliSource,
   describeLoaderInstall,
+  getLaunchActive,
+  subscribeChannelPhases,
   trackCliUpdate,
   trackLoaderUpdate,
 } from '../lib/channel-status';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
-import { loaderStatus, noteLoaderResult } from '../lib/loader-status';
+import {
+  getNotedLoaderResult,
+  loaderStatus,
+  noteLoaderResult,
+  subscribeLoaderResult,
+} from '../lib/loader-status';
 import { quitApp } from '../lib/quit';
 import {
   type CliChannel,
@@ -683,6 +690,21 @@ export function VersionFooter() {
     };
   }, []);
 
+  // A loader installed later (start/focus check, a launch, Settings) refreshes
+  // the footer instead of leaving the version read at mount.
+  useEffect(
+    () =>
+      subscribeLoaderResult(() => {
+        const r = getNotedLoaderResult();
+        if (r) {
+          setLoaderText(
+            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+          );
+        }
+      }),
+    [],
+  );
+
   return (
     // `pointer-events-none`: this is a caption, not a control, and it sits over
     // the scrolling content — it must never eat a click meant for what is
@@ -756,6 +778,7 @@ export function UpdaterSettings() {
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
   const [loader, setLoader] = useState<UpdateLoaderResult | null>(null);
   const [loaderBusy, setLoaderBusy] = useState(false);
+  const launchActive = useSyncExternalStore(subscribeChannelPhases, getLaunchActive);
   const [loaderError, setLoaderError] = useState<string | null>(null);
   // Download progress for the loader bundle, mirroring what the launcher's own
   // updater shows. A few MB over an unknown link is long enough that a bare
@@ -829,6 +852,16 @@ export function UpdaterSettings() {
       alive = false;
     };
   }, []);
+
+  // Same refresh as the footer: a background loader install updates this row.
+  useEffect(
+    () =>
+      subscribeLoaderResult(() => {
+        const r = getNotedLoaderResult();
+        if (r) setLoader(r);
+      }),
+    [],
+  );
 
   /** Pull the signed loader DLL + Lua SDK bundle, if the channel is ahead. */
   const runLoaderUpdate = useCallback(async (): Promise<void> => {
@@ -967,7 +1000,14 @@ export function UpdaterSettings() {
       </Panel>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" size="sm" variant="primary" onClick={onCheck} disabled={busy}>
+        <Button
+          type="button"
+          size="sm"
+          variant="primary"
+          onClick={onCheck}
+          disabled={busy || launchActive}
+          title={launchActive ? t('Not while the game is launching') : undefined}
+        >
           <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
           {busy ? t('Checking…') : t('Check for updates')}
         </Button>
@@ -996,6 +1036,11 @@ export function UpdaterSettings() {
           >
             <Download className="h-3.5 w-3.5" /> {t('Open downloads page')}
           </Button>
+        ) : null}
+        {launchActive ? (
+          <span className="font-serif-italic text-ash text-sm">
+            {t('Not while the game is launching')}
+          </span>
         ) : null}
       </div>
 

@@ -279,11 +279,12 @@ def _warn_requires(mods_dir: Path, mod_id: str) -> None:
             game_dir = P.default_game_dir()
         except Exception:  # noqa: BLE001 - no install found; loader check falls back to bundled
             game_dir = None
-        why = R.unmet(req, game_dir)
+        res = R.check(req, game_dir)
     except (OSError, ValueError):
         return
-    if why:
-        print(f"  [warn] {mod_id}: {why}", file=sys.stderr)
+    for msg in (res["reason"], res["warning"]):
+        if msg:
+            print(f"  [warn] {mod_id}: {msg}", file=sys.stderr)
 
 
 def _flip(mods_dir: Path, mod_id: str, enabled: bool) -> bool:

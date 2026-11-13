@@ -533,7 +533,27 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
                           "stderr": f"could not update mod manifests: {e}"})
         if changed:
             note = "Matched the profile: " + ", ".join(changed) + "\n"
-    result = _collect_rsmm(["apply", *rest])
+    # The apply child records the mods its `[requires]` gate skipped here, so
+    # the app can say so instead of launching with one silently missing.
+    import tempfile
+    fd, skipped_path = tempfile.mkstemp(prefix="rsmm-skipped-", suffix=".json")
+    os.close(fd)
+    prior = os.environ.get("RSMM_SKIPPED_FILE")
+    os.environ["RSMM_SKIPPED_FILE"] = skipped_path    # the child inherits it
+    try:
+        result = _collect_rsmm(["apply", *rest])
+        try:
+            skipped = json.loads(Path(skipped_path).read_text(encoding="utf-8") or "[]")
+        except (OSError, ValueError):
+            skipped = []
+    finally:
+        if prior is None:
+            os.environ.pop("RSMM_SKIPPED_FILE", None)
+        else:
+            os.environ["RSMM_SKIPPED_FILE"] = prior
+        with contextlib.suppress(OSError):
+            os.unlink(skipped_path)
+    result["skipped"] = skipped if isinstance(skipped, list) else []
     result["stdout"] = note + result["stdout"]
     if menu:
         result["menuToggles"] = menu
@@ -1746,26 +1766,10 @@ def loader_install_state(game_dir: Path) -> dict[str, Any]:
     ``plantedVersion`` is the manifest's ``loader_version`` (the bundled stamp when
     there is no manifest and the DLL is the bundled one), else None.
     """
-    from rsmm.engine import loader_update as lu
-    from rsmm.engine.hashing import sha256_file
+    from rsmm.engine.mod_requires import loader_install
 
-    dll = game_dir / "winhttp.dll"
-    if not dll.is_file():
-        return {"plantedVersion": None, "loaderState": "none"}
-    manifest = lu.planted_manifest(game_dir)
-    if manifest is None:
-        if lu.plant_matches_bundle(game_dir) is True:
-            return {"plantedVersion": lu.bundled_version(), "loaderState": "release"}
-        return {"plantedVersion": None, "loaderState": "dev"}
-    version = manifest.get("loader_version")
-    version = version if isinstance(version, int) else None
-    entry = next((f for f in manifest.get("files") or []
-                  if isinstance(f, dict) and f.get("path") == "winhttp.dll"), None)
-    try:
-        dev = bool(entry) and sha256_file(dll) != entry.get("sha256")
-    except OSError:
-        dev = False
-    return {"plantedVersion": version, "loaderState": "dev" if dev else "release"}
+    inst = loader_install(game_dir)
+    return {"plantedVersion": inst["version"], "loaderState": inst["state"]}
 
 
 def cmd_update_loader(check_only: bool) -> int:

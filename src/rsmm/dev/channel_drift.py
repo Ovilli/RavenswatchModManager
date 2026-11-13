@@ -26,7 +26,9 @@ from pathlib import Path
 #: loader: scripts/publish_loader.sh packs the DLL and the Lua SDK, both under
 #:   src/loader.
 #: cli: scripts/build-sidecar.py freezes src/rsmm plus the data files its
-#:   BUNDLE lists that change by hand (the asset map). The stamps and
+#:   BUNDLE lists that change by hand (the asset map). `--require-loader`
+#:   also packages a built loader DLL plus src/loader/lib and src/loader/lua,
+#:   so src/loader (the DLL's sources, lib and lua included) counts. The stamps and
 #:   data/changelog.json are left out on purpose: the publish bots write them,
 #:   so listing them would make every publish look like drift on the other
 #:   channel.
@@ -41,7 +43,8 @@ CHANNELS: dict[str, dict] = {
         "label": "CLI",
         "stamp": "data/cli_version.json",
         "key": "cli_version",
-        "paths": ["src/rsmm", "data/asset_map.json", "data/asset_map.csv"],
+        "paths": ["src/rsmm", "src/loader", "data/asset_map.json",
+                  "data/asset_map.csv"],
     },
 }
 
@@ -73,6 +76,21 @@ def _version(repo: Path, stamp: str, key: str) -> int | None:
     return v if isinstance(v, int) else None
 
 
+def _built_from(repo: Path, stamp: str) -> str | None:
+    """The commit the published artifact was built from, when the stamp records it
+    (`built_from`, written at publish time) and this clone has that commit."""
+    try:
+        sha = json.loads((repo / stamp).read_text(encoding="utf-8")).get("built_from")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(sha, str) or not sha.strip():
+        return None
+    sha = sha.strip()
+    if _git(repo, "cat-file", "-e", f"{sha}^{{commit}}") is None:
+        return None
+    return sha
+
+
 def channel_state(repo: Path, name: str) -> dict:
     """One channel's drift: status is `current`, `behind` or `unknown`."""
     spec = CHANNELS[name]
@@ -90,7 +108,12 @@ def channel_state(repo: Path, name: str) -> dict:
     if is_shallow(repo):
         out["reason"] = "shallow clone"
         return out
-    last = (_git(repo, "log", "-1", "--format=%H", "--", spec["stamp"]) or "").strip()
+    # The publish workflows rebase the stamp commit onto whatever landed during
+    # the build, so a change can sit before the stamp without being in the
+    # artifact. `built_from` is the commit that was actually built; older stamps
+    # fall back to the stamp commit.
+    last = (_built_from(repo, spec["stamp"])
+            or (_git(repo, "log", "-1", "--format=%H", "--", spec["stamp"]) or "").strip())
     if not last:
         out["reason"] = "no publish commit found"
         return out
