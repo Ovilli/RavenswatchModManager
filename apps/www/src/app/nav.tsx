@@ -329,9 +329,11 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
     };
     updateHeight();
     const observer = new ResizeObserver(updateHeight);
-    observer.observe(header);
+    observer.observe(header, { box: 'border-box' });
+    window.addEventListener('resize', updateHeight);
     return () => {
       observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
       document.documentElement.style.removeProperty('--site-header-height');
     };
   }, []);

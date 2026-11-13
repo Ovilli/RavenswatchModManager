@@ -14,12 +14,12 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
   return (
     <Link
       href={`/registry/${mod.slug}` as Route}
-      className={`grimoire-card overflow-hidden group cursor-pointer transition-colors ${
+      className={`grimoire-card min-w-0 overflow-hidden group cursor-pointer transition-colors ${
         featured ? 'ring-1 ring-gilt/30 hover:border-gilt/60' : 'hover:border-gilt/40'
       }`}
     >
       {mod.imageUrl ? (
-        <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
+        <div className="aspect-video w-full overflow-hidden bg-muted">
           <img
             src={mod.imageUrl}
             alt={`${mod.name} preview`}
@@ -28,7 +28,7 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
           />
         </div>
       ) : (
-        <ModCover seed={mod.slug} name={mod.name} className="aspect-[4/3] w-full" />
+        <ModCover seed={mod.slug} name={mod.name} className="aspect-video w-full" />
       )}
       <div className="space-y-2 p-4">
         <div className="flex items-start justify-between gap-2">
@@ -37,6 +37,11 @@ export function ModCard({ mod, featured = false }: ModCardProps) {
               {mod.name}
             </h3>
             <p className="text-sm text-muted-foreground">by {mod.author ?? 'unknown'}</p>
+            {mod.nsfw ? (
+              <Badge variant="outline" className="mt-1 border-crimson/40 text-xs text-crimson-text">
+                Mature
+              </Badge>
+            ) : null}
           </div>
           {featured ? (
             <Badge className="shrink-0 bg-gilt/15 text-xs text-gilt border-gilt/30">
