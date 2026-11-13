@@ -697,6 +697,29 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'PATCH', body: JSON.stringify({ privateOnly }) },
           z.object({ ok: z.literal(true), tags: z.array(z.string()) }),
         ),
+      /**
+       * One batch of the store's own "Private games only" check over published
+       * mods (newest servable version each). Call again with `next` until it
+       * is null. Only ever adds the label.
+       */
+      privateOnlyBackfill: (offset = 0, limit = 10) =>
+        request(
+          '/api/moderation/mods/private-only/backfill',
+          { method: 'POST', body: JSON.stringify({ offset, limit }) },
+          z.object({
+            ok: z.literal(true),
+            checked: z.number(),
+            results: z.array(
+              z.object({
+                slug: z.string(),
+                labelled: z.boolean(),
+                reasons: z.array(z.string()),
+                error: z.string().optional(),
+              }),
+            ),
+            next: z.number().nullable(),
+          }),
+        ),
       /** Admin-only business overview powering the console's Overview tab. */
       stats: (days = 30) =>
         request(`/api/moderation/stats?days=${days}`, { method: 'GET' }, adminStatsResponseSchema),

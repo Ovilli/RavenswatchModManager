@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
 import { AdminOverview, useAdminStats } from './overview';
+import { PrivateOnlyCheck } from './private-only-check';
 import { ScanList } from './scan-list';
 
 type Status = 'open' | 'reviewing' | 'resolved' | 'dismissed';
@@ -313,6 +314,14 @@ export default function AdminPage() {
             Mod scans
           </h2>
           <ScanList />
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+            <ShieldAlert className="h-5 w-5 text-gilt/80" aria-hidden />
+            Private games only
+          </h2>
+          <PrivateOnlyCheck />
         </section>
 
         <section className="space-y-3">
