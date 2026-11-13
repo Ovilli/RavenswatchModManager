@@ -108,21 +108,24 @@ def _read(ref: str):
 
 def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
            copies: list[Copy] | None = None,
-           own: dict[str, bytes] | None = None) -> list[dict]:
+           own: dict[str, bytes] | None = None, folder: str | None = None) -> list[dict]:
     """``kit`` as ability steps on ``main`` (the base's gameplay entity).
     Projectile copies it needs are appended to ``copies``; ``own`` are
-    entities of the hero's own it may fire."""
+    entities of the hero's own it may fire. ``folder`` (under ``Heroes``)
+    is where its copies are written, by default ``name``'s: it must be a
+    folder the game ships, or apply cannot place a new file there (it has no
+    sibling to take the encoded path from, and skips it)."""
     _OWN.clear()
     _OWN.update(own or {})
     try:
-        return _expand(kit, main, name, hid=hid, copies=copies)
+        return _expand(kit, main, name, hid=hid, copies=copies, folder=folder)
     finally:
         _OWN.clear()
 
 
 def _expand(kit: dict, main: bytes, name: str, *, hid: str,
-            copies: list[Copy] | None) -> list[dict]:
-    ctx = _Ctx(hid, name, copies if copies is not None else [])
+            copies: list[Copy] | None, folder: str | None = None) -> list[dict]:
+    ctx = _Ctx(hid, folder or name, copies if copies is not None else [])
     if not isinstance(kit, dict):
         raise KitError("kit is a table")
     unknown = set(kit) - _KEYS
@@ -206,6 +209,32 @@ def _remove(slot: str, g: EG.EntityGraph) -> list[dict]:
         raise KitError(f"kit {slot} = \"none\": this base switches its {slot} on outside "
                        "its own files (Hero_Common), so there is no link to cut")
     return steps
+
+
+def _is_empty_event(c) -> bool:
+    """A state that links nothing, is a part of its own (not an override: a
+    clone keeps the mark and would REPLACE the ancestor's part) and is a
+    one-frame EVENT. The kit copies it as a trigger (a moment of a timeline, a
+    pet order's end, the pet spawn): switched on, it fires its links and goes
+    off by itself. A persistent copy stays on after the first time, and
+    switching on a state already on does nothing: Blood Wolf's special ended
+    once and then never again, locking every button (playtest 2026-11-13)."""
+    return (c.cls == "oCEntityCpntStateSettings" and not c.refs and c.override is None
+            and c.is_event)
+
+
+def _empty_event(g: EG.EntityGraph):
+    """The first part of ``g`` that ``_is_empty_event``, or None."""
+    return next((c for c in g.components if _is_empty_event(c)), None)
+
+
+def _trigger_step(empty, name: str) -> dict:
+    """The step that makes the trigger ``name``: a copy of ``empty`` (an empty
+    event of the file's own), or a new empty event when the file has none
+    (some shipped bases, a hero written from scratch before its first)."""
+    if empty is None:
+        return {"event": name}
+    return {"clone": [empty.name], "rename": {empty.name: name}}
 
 
 def _trigger(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool) -> str:
@@ -430,8 +459,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     # Modifiers" (an override of Character_Common's) replaced that one part
     # instead of being added, and the live hero had none of them (probe,
     # 2026-11-03: Kit Pet Spawn / Start / Order End all missing).
-    empty = pick(lambda c: c.cls == "oCEntityCpntStateSettings" and not c.refs
-                  and c.override is None, "empty state")
+    empty = _empty_event(g)          # None: the steps write a new one
     # Slot numbers as `link Part.obj_4[n]` counts them: EVERY link slot,
     # empty ones too. Counting only the filled ones pointed a shot's yaw at
     # Piper's X offset (her node's first two slots are empty: release
@@ -519,7 +547,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
         if t not in moments:
             k = len(moments)
             st, tm = f"{tag} Moment {k}", f"{tag} Moment {k} Timer"
-            steps += [{"clone": [empty.name], "rename": {empty.name: st}},
+            steps += [_trigger_step(empty, st),
                       {"clone": [timer.name], "rename": {timer.name: tm}},
                       # `set` works whether the copied timer's duration is a
                       # number or a link (the link becomes this number).
@@ -1036,11 +1064,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     start = trigger if spawn == "button" else talent
     if start is None:
         start = "Kit Pet Spawn"
-        empty = next((c for c in g.components
-                      if c.cls == "oCEntityCpntStateSettings" and not c.refs
-                  and c.override is None), None)
-        if empty is None:
-            raise KitError("kit pets: this base has no empty state to spawn them from")
+        empty = _empty_event(g)
         # In a run only (Hero_Common's tester, as the wolf lock uses: it fires
         # at Initialize, outside the select screen's preview), then a timer:
         # at Initialize the hero does not stand in the world yet. A tester
@@ -1052,7 +1076,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                   and c.override is None), None)
         if timer is None:
             raise KitError("kit pets: this base has no timer to delay the spawn with")
-        steps += [{"clone": [empty.name], "rename": {empty.name: start}},
+        steps += [_trigger_step(empty, start),
                   {"clone": ["Activate Hero Controller Tester"], "from": "Hero_Common",
                    "rename": {"Activate Hero Controller Tester": "Kit Pet In Run Tester"}},
                   {"clone": [timer.name], "rename": {timer.name: "Kit Pet Start Timer"}},
@@ -1061,7 +1085,7 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                   {"link": "Kit Pet Start Timer.on_end", "to": start},
                   {"link": "Kit Pet Start Timer.state", "to": ""},
                   # A tester's on_true is a state: one that starts the timer.
-                  {"clone": [empty.name], "rename": {empty.name: "Kit Pet Start"}},
+                  _trigger_step(empty, "Kit Pet Start"),
                   {"add_link": "Kit Pet Start.activates", "to": "Kit Pet Start Timer"},
                   {"link": "Kit Pet In Run Tester.on_true", "to": "Kit Pet Start"},
                   {"add_link": "Child Event Initialize.activates", "to": "Kit Pet In Run Tester"}]
@@ -1112,11 +1136,10 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         # never fighting again (playtest 2026-11-04).
         tmr = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
                     and c.override is None), None)
-        empty = next((c for c in g.components if c.cls == "oCEntityCpntStateSettings"
-                      and not c.refs and c.override is None), None)
-        if tmr is None or empty is None:
-            raise KitError("kit pets aggro: this base has no timer or empty state to repeat with")
-        steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Aggro"}},
+        empty = _empty_event(g)
+        if tmr is None:
+            raise KitError("kit pets aggro: this base has no timer to repeat with")
+        steps += [_trigger_step(empty, "Kit Pet Aggro"),
                   {"add_link": "Kit Pet Aggro.activates", "to": "Kit Pet Centre"},
                   {"add_link": "Kit Pet Aggro.activates", "to": "Kit Pet Attack Order"},
                   {"clone": [tmr.name], "rename": {tmr.name: "Kit Pet Aggro Timer"}},
@@ -1161,14 +1184,11 @@ def _take_button(trigger: str, button: str, g: EG.EntityGraph,
     # first press. A short timer ends it instead.
     timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
                   and c.override is None), None)
-    empty = next((c for c in g.components
-                  if c.cls == "oCEntityCpntStateSettings" and not c.refs
-                  and c.override is None), None)
-    if timer is None or empty is None:
-        raise KitError(f"kit pets: this base has no timer or empty state to end the "
-                       f"{button} order with")
+    empty = _empty_event(g)
+    if timer is None:
+        raise KitError(f"kit pets: this base has no timer to end the {button} order with")
     end, tm = f"{tag} End", f"{tag} Timer"
-    steps += [{"clone": [empty.name], "rename": {empty.name: end}},
+    steps += [_trigger_step(empty, end),
               {"add_link": f"{end}.deactivates?", "to": trigger},
               {"clone": [timer.name], "rename": {timer.name: tm}},
               {"set": f"{tm}.duration", "value": hold},
@@ -1278,12 +1298,10 @@ def _counter(g: EG.EntityGraph, start: str) -> list[dict]:
     # after every spawn. So does this, 0.5 s after the start.
     timer = next((c for c in g.components if c.cls == "oCEntityCpntTimerSettings"
                   and c.override is None), None)
-    empty = next((c for c in g.components
-                  if c.cls == "oCEntityCpntStateSettings" and not c.refs
-                  and c.override is None), None)
-    if timer is None or empty is None:
-        raise KitError("kit pets: this base has no timer or empty state to count them with")
-    steps += [{"clone": [empty.name], "rename": {empty.name: "Kit Pet Recount"}},
+    empty = _empty_event(g)
+    if timer is None:
+        raise KitError("kit pets: this base has no timer to count them with")
+    steps += [_trigger_step(empty, "Kit Pet Recount"),
               {"add_link": "Kit Pet Recount.deactivates?", "to": "Kit Pet Alive Listener"},
               {"add_link": "Kit Pet Recount.activates", "to": "Kit Pet Alive Listener"},
               {"clone": [timer.name], "rename": {timer.name: "Kit Pet Recount Timer"}},

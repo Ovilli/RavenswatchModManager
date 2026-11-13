@@ -1353,8 +1353,9 @@ combo = [                     # two to four steps
 ]
 
 [content.frame.abilities.trait]
-clip  = "anim:Pounce"
-lunge = { speed = 14, at = 0.05, duration = 0.25 }   # carried forward 14 m/s for 0.25 s
+clip        = "anim:Pounce"     # a clip whose root bone travels carries the hero with it
+root_motion = 0.5               # half the clip's travel; 0 = in place (default: all of it,
+                                # stopping when the target is in range, as shipped attacks)
 
 [content.frame.abilities.special]
 clip   = "anim:Howl"
@@ -1387,7 +1388,21 @@ steps = [ { summon = "Enemies/Wolves/Standard_Wolf_Dire", lifetime = 20, burst =
 ```
 
 It gets identities of its own and is preloaded with the hero, with whatever
-its edits brought in. A summon step's `look` (`{ albedo = "art/x.png" }`) is
+its edits brought in.
+
+`[content.frame] edits = [ ... ]` runs the same edit steps on the hero's own
+main entity once it is built: copy a part from a shipped hero, override a
+part of the shared base (`override` + `from = "Character_Common/Character_Common"`),
+put a debuff on one of its hits (`add_subobject` on `"<Button> Ability Hit <n> Damage.bytes_36"`).
+A value `"own:<Id>"` names one of its own entities:
+
+```toml
+[content.frame]
+edits = [
+  { clone = ["Blood Bomb Explode Listener", "Skill Power Special Bomb Spawner"], from = "Carmilla" },
+  { set = "Skill Power Special Bomb Spawner.template[1]", value = "own:Bomb" },
+]
+``` A summon step's `look` (`{ albedo = "art/x.png" }`) is
 written for a from-scratch hero too.
 
 ---

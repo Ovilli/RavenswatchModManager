@@ -1486,10 +1486,10 @@ def test_a_scratch_hero_on_a_two_form_rig_with_a_bleeding_combo_and_a_dressed_su
             "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
             "abilities": {
                 "attack": {"combo": [
-                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", "duration": 0.55,
-                     "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]},
-                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", "duration": 0.7,
-                     "hit_at": 0.3, "hits": [{"radius": 3, "damage": 180, "status": "Bleed"}]}]},
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx",
+                     "hit_at": 0.37, "hits": [{"radius": 2.8, "damage": 150}]},
+                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx",
+                     "hit_at": 0.23, "hits": [{"radius": 3, "damage": 180, "status": "Bleed"}]}]},
                 "special": {
                     "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
                     "steps": [{"summon": "Enemies/Wolves/Standard_Wolf_Dire", "lifetime": 20,
@@ -1520,7 +1520,8 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
     - the rig lends its bone layers: the move split and the physics layer
       with its physics part, on the hero's own skeleton;
     - a combo runs three steps (a copy of the layout's last step + entry);
-    - a button lunges (`lunge`) and may be used on the move (`moving`);
+    - animations move the hero by their root motion, as shipped; a button
+      may be used on the move (`moving`);
     - an entity of its own made from a shipped one (`entities`), named
       "own:<Id>" by a summon's `burst`, preloaded with what its edits bring;
     - a talent action fires on the trait button."""
@@ -1528,7 +1529,8 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
     from rsmm.engine import hero_frame as HF
     from rsmm.engine.entity_graph_edit import EntityFile
     skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
-    step = {"duration": 0.5, "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]}
+    step = {"hit_at": 0.37, "link_at": 0.42, "exit_at": 0.62,
+            "hits": [{"radius": 2.8, "damage": 150}]}
     files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
         "frame": {
             "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
@@ -1547,8 +1549,9 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
                     {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", **step},
                     {"clip": skills + "RED_Wolf_BasicAttack_Claws_2.fbx", **step},
                     {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", **step}]},
-                "trait": {"clip": skills + "RED_Wolf_Pimary_Bite_In.fbx", "duration": 0.6,
-                          "lunge": {"speed": 14, "at": 0.05, "duration": 0.25}},
+                "trait": {"clip": skills + "RED_Wolf_Pimary_Bite_In.fbx", "duration": 0.6},
+                "defense": {"clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
+                            "root_motion": 0},
                 "special": {
                     "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
                     "moving": True,
@@ -1592,10 +1595,18 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
         ["Attack Ability Anim Step 3", "State Attack Ability Step 3"]
     assert "Event Attack Ability Step 3 Hit 1" in parts
 
-    # the lunge and the button used on the move
-    move = next(f.text for f in EF.fields(parts["Trait Ability Lunge Move"])
-                if f.name == "value_2")
-    assert move == "f32 14" and not parts["Trait Ability Lunge Move"].refs
+    # root motion: every filled animation slot moves the hero as shipped (1),
+    # a button's animation reads Hero_Common's in-range selector, `root_motion`
+    # sets a number instead
+    def root(name):
+        return next(f.text for f in EF.fields(parts[name]) if f.name == "value_7")
+    assert root("Dash Ability Anim") == "f32 1"
+    assert root("Trait Ability Anim").endswith(
+        "Hero_Solo\\Ability Common\\Ability Root Motion Selector")
+    copy = {f.name: f.text for f in EF.fields(parts["Ability Root Motion Selector"])}
+    assert "Hero_Common\\Ability Common\\Ability In Range Default Condition" in copy["entries"]
+    assert root("Defense Ability Anim") == "f32 0"
+    # the button used on the move
     assert any(r.path.endswith("State Anim Split Enable")
                for r in parts["State Special Ability"].refs)
     ctl = {f.name: f.text for f in EF.fields(parts["Secondary Ability Controller"])}
@@ -1611,6 +1622,11 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
     assert not ours & theirs                       # identities of its own
     summon = b"".join(p.read_bytes() for p in files if "Solo_Summon1" in p.name)
     assert b"Hero_Solo_Bomb.entity.ot" in summon
+    # every entity it writes sits in a folder the game ships: apply cannot place
+    # a new file in a folder of its own (no sibling to take the encoded path
+    # from) and skipped Blood Wolf's wolf and bomb copy without an error
+    folders = {p.parent.name for p in files if p.name.endswith(".EntitySettingsResource.gen")}
+    assert folders == {"Hero_Common"}, folders
     cache = by_name["Solo.herodef.UsedRscCache.ot"].read_text()
     assert "Hero_Solo_Bomb.entity.ot|oCEntitySettingsResource" in cache
 
@@ -1619,14 +1635,138 @@ def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
     assert next(f.text for f in EF.fields(listener) if f.name == "listener") == "'Trait'"
 
 
-def test_a_combo_is_two_to_four_steps_and_a_lunge_is_checked():
+def test_a_combo_is_two_to_four_steps_and_root_motion_is_checked():
     from rsmm.engine import hero_ability as HA
     step = {"clip": "x.fbx", "hits": [{"radius": 2}]}
     for n in (1, 5):
         with pytest.raises(HA.AbilityError, match="2 to 4 steps"):
             HA.Ability.parse("attack", {"combo": [step] * n})
     assert len(HA.Ability.parse("attack", {"combo": [step] * 4}).combo) == 4
-    with pytest.raises(HA.AbilityError, match="lunge is"):
-        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 500, "duration": 1}})
-    with pytest.raises(HA.AbilityError, match="lunge is"):
-        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 10}})
+    for bad in (-1, 9, True, "1"):
+        with pytest.raises(HA.AbilityError, match="root_motion is"):
+            HA.Ability.parse("power", {"clip": "x.fbx", "root_motion": bad})
+    assert HA.Ability.parse("power", {"clip": "x.fbx", "root_motion": 0.5}).root_motion == 0.5
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_running_states_stay_on(tmp_path):
+    """Header bit 0x10000 makes a state a one-frame EVENT (1370 of 1373
+    shipped "Event ..." states carry it; 1049 of 1049 "State ..." states do
+    not). A button's state, a combo's, a lunge's and a talent's owned state
+    must stay on: written as events, every button of Jack and Blood Wolf
+    ended in the frame it started (no clip, no hit, no summon)."""
+    import struct
+
+    from rsmm.engine.entity_graph_edit import EntityFile
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    step = {"hit_at": 0.37, "hits": [{"radius": 2.8}]}
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+            "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+            "abilities": {
+                "attack": {"combo": [
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", **step},
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_2.fbx", **step}]},
+                "power": {"clip": skills + "RED_Wolf_Pimary_Bite_Out.fbx", "duration": 0.8,
+                          "hits": [{"at": 0.2}]}},
+            "talents": [{"name": "Passive Pelt", "title": "Pelt", "description": "x",
+                         "add_stats": [{"stat": "Armour", "values": [5, 8, 11, 15],
+                                        "percent": False}]}]}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+
+    def header(name: str) -> int:
+        c = ef.component(name)
+        p = bytes(ef.objects[c.index - 1])
+        return struct.unpack_from("<I", p, len(p) - len(c.body) - 8
+                                  - len(c.group.encode("latin-1")))[0]
+    for name in ("State Attack Ability", "State Attack Ability Finisher Off",
+                 "State Power Ability", "Skill Passive Pelt"):
+        assert not header(name) & 0x10000, f"{name} is written as a one-frame event"
+    assert header("Event Power Ability Hit 1") & 0x10000      # a real event stays one
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_late_steps_are_refused_and_its_pets_are_pets(tmp_path):
+    """A button's step timed after the button ends never happens (its timers
+    stop with its state): refused. A from-scratch hero's `pets` are written on
+    Hero_Pet_Model (they follow it and fight; a plain `summon` step stood
+    idle), in a folder the game ships, with that base preloaded."""
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    frame = {"rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+             "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot"}
+    with pytest.raises(ContentError, match="after the button ends"):
+        heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {**frame,
+            "abilities": {"power": {"clip": skills + "RED_Wolf_Pimary_Bite_Out.fbx",
+                                    "duration": 0.8,
+                                    "steps": [{"wait": 1.75}, {"hit": {"radius": 3}}]}}}}),
+            tmp_path / "late")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {**frame,
+        "abilities": {"special": {"clip": skills + "RED_Wolf_Defensive_Howl.fbx",
+                                  "duration": 0.6}},
+        "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "button": "special",
+                 "spawn": "button", "counter": "none", "aggro": True, "lifetime": 20}}}),
+        tmp_path / "assets")
+    model = next(p for p in files if p.name.endswith("_Model.entity.ot.EntitySettingsResource.gen"))
+    assert model.parent.name == "Hero_Common"
+    assert b"Heroes\\Hero_Pets\\Hero_Pet_Model.entity.ot" in model.read_bytes()
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot").read_text()
+    assert "EntitySettings|Heroes\\Hero_Pets\\Hero_Pet_Model.entity.ot|" in cache
+    # Every trigger the kit writes is a one-frame event: a persistent "Order
+    # End" ended the special once, then stayed on, and the second press locked
+    # every button (Blood Wolf, playtest 2026-11-13).
+    from rsmm.engine import entity_graph as EG
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    g = EG.parse(main.read_bytes(), "Hero_Solo")
+    kit = [c for c in g.components if c.cls == "oCEntityCpntStateSettings"
+           and c.name in ("Kit Pet Order End", "Kit Pet Aggro")]
+    assert len(kit) == 2 and all(c.is_event for c in kit), [(c.name, hex(c.flags)) for c in kit]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_edits_reach_its_own_parts_and_entities(tmp_path):
+    """`frame.edits` runs a clone hero's ability steps on a hero written from
+    scratch: Pam's blood seed (Carmilla's debuff on the power's bite, her burst
+    listener on Character_Common's Initialize, its spawner naming "own:Bomb")."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {
+        "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+        "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+        "entities": {"Bomb": {"from": "Heroes/Hero_Red/Hero_Red_Bomb"}},
+        "abilities": {"power": {"clip": skills + "RED_Wolf_Pimary_Bite_In.fbx", "duration": 0.9,
+                                "hits": [{"at": 0.45, "radius": 3, "damage": 250}]}},
+        "edits": [
+            {"clone": ["Skill Power Special Bomb Modifier",
+                       "Skill Power Special Bomb Time Before Explosion Value"], "from": "Carmilla",
+             "rename": {"Skill Power Special Bomb Modifier": "Seed Modifier",
+                        "Skill Power Special Bomb Time Before Explosion Value": "Seed Time"}},
+            {"clone": ["Blood Bomb Explode Listener", "Skill Power Special Bomb Spawner"],
+             "from": "Carmilla", "rename": {"Blood Bomb Explode Listener": "Seed Listener",
+                                            "Skill Power Special Bomb Spawner": "Seed Spawner"}},
+            {"remove_link": "Seed Spawner.spawner_values[0]"},
+            {"set": "Seed Spawner.template[1]", "value": "own:Bomb"},
+            {"override": "Child Event Initialize", "from": "Character_Common/Character_Common"},
+            {"add_link": "Child Event Initialize.activates", "to": "Seed Listener"},
+            {"add_subobject": "Power Ability Hit 1 Damage.bytes_36", "from": "Carmilla",
+             "donor": "Skill Defense Aoe Bleed Damage.bytes_36[0]",
+             "replace_ref": {"Skill Defense Aoe Bleed Modifier": "Seed Modifier"}}]}}),
+        tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    assert ef.component("Child Event Initialize").override is not None
+    spawner = {f.name: f.text for f in EF.fields(ef.component("Seed Spawner"))}
+    assert "Heroes\\\\Hero_Common\\\\Hero_Solo_Bomb.entity.ot" in spawner["template"]
+    d = ef.component("Power Ability Hit 1 Damage")
+    f = next(x for x in EF.fields(d) if x.name == "bytes_36")
+    n = struct.unpack_from("<I", d.body, f.offset)[0]
+    ids = struct.unpack_from(f"<{n}I", d.body, f.offset + 4)
+    seed = ef.component("Seed Modifier").guid
+    assert any(seed in bytes(ef.objects[i]) for i in ids)

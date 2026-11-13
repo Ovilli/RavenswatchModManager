@@ -42,6 +42,10 @@ CHARACTER_COMMON = "Character_Common\\Character_Common.entity.ot"
 #: The shared bases a hero's slots live in, by the scope their labels use.
 BASES = {"Hero_Common": HERO_COMMON, "Character_Common": CHARACTER_COMMON}
 _ANIMATIC = "oCEntityCpntAnimaticSettings"
+#: The hero's empty event state, the layout of every trigger the kit builds.
+KIT_EVENT = "Event Kit Trigger"
+#: An animatic's root-motion factor field (see fill_slot).
+ROOT_MOTION = "value_7"
 _VALUE = "oCEntityCpntValueSettings"
 #: Where an animation slot keeps its clip(s): (field, bytes before the first
 #: clip, how many clips). Each clip is a resource, two strings: empty in the
@@ -144,6 +148,12 @@ def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
             _set_clips(ef, slot, [clip] if isinstance(clip, str) else list(clip))
             if duration is not None:
                 _set_duration(ef, slot, float(duration))
+            if c.cls == _ANIMATIC:
+                # Its root-motion factor (value_7): how much of the clip's root
+                # bone travel moves the hero. The shared slot's is 0; every
+                # shipped hero's override of every shared animation is 1 (a
+                # dash at 0 plays in place: Blood Wolf, playtest 2026-11-13).
+                ef.set_value(slot, ROOT_MOTION, 1.0)
         if value is not None or texture is not None:
             if c.cls != _VALUE:
                 raise FrameError(f"slot {slot!r} is a {c.cls}, not a value")
@@ -466,7 +476,7 @@ def add_talent(ef: EntityFile, hero_common: EntityFile, talent: str, *, bank: st
     ctl, desc, state = (f"Skill Controller {talent}", f"Skill String Desc {talent}",
                         f"Skill {talent}")
     try:
-        TW.TalentWriter(ef, f"{seed}:{talent}", state).state(state, mode=2)
+        TW.TalentWriter(ef, f"{seed}:{talent}", state).state(state, mode=2, flags=TW.PERSISTENT)
         ef.clone([f"Skills\\{_CONTROLLER}", f"Skills\\{_DESC}"], seed=f"{seed}:{talent}",
                  rename={_CONTROLLER: ctl, _DESC: desc}, source=hero_common)
         base_ctl = hero_common.component("Hero Controller")
@@ -520,7 +530,7 @@ def fill_ultimate(ef: EntityFile, hero_common: EntityFile, name: str, *, bank: s
             _set_text(ef, fmt, bank, name_key)
         if "Upgrade" in name:
             state = f"Skill {name}"
-            TW.TalentWriter(ef, f"{seed}:{name}", state).state(state, mode=2)
+            TW.TalentWriter(ef, f"{seed}:{name}", state).state(state, mode=2, flags=TW.PERSISTENT)
             ef.set_ref(ctl, "ref_3", state)
         if icon:
             import re
@@ -885,6 +895,11 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
         if not any(c.name == slot for c in base.graph().components):
             raise FrameError(f"no shared slot {slot!r}")
         fill_slot(ef, base, slot, seed=seed, **fill)
+    # An empty one-frame event: the hero kit copies one as each trigger it
+    # builds (a timeline moment, a pet order's end). The shared bases' are
+    # all inherited parts, and the hero's own states are persistent.
+    from . import talent_writer as TW
+    TW.TalentWriter(ef, f"{seed}:kit-event", "Kit").state(KIT_EVENT, flags=TW.EVENT)
     if rig and bones:
         lend_layers(ef, read, rig, bones, seed=seed)
     # Sound slots (``fill_sound``): slot -> "<entity ref> | <FMod event part>".

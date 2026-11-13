@@ -47,10 +47,10 @@ _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
 #: Hero_Common's tester every shipped ability state activates on entry (see
 #: ``build``): it takes the body off the move/idle animation for the ability.
 MOVE_INERTIA = "Move Inertia Activation Tester"
-#: A lunge's move part: a shipped ability move (speed along the hero's
-#: forward axis while its state is on), its speed made a plain number.
-LUNGE_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto",
-               "Ultimate Ability 2 Move")
+#: A button animation's root motion, as shipped attacks read it: Hero_Common's
+#: selector, 1 (the clip's full travel) until the target is in range.
+ROOT_MOTION_SELECTOR = "Ability In Range Root Motion Value Selector"
+OWN_ROOT_MOTION = "Ability Root Motion Selector"
 #: `moving`: Hero_Common's state that turns the upper/lower body split on
 #: (the hero's "Move Split Layer" blends the ability over its walk), and the
 #: controller's two switches that stop movement while the ability runs (off
@@ -165,9 +165,10 @@ class Ability:
     #: The basic attack as shipped heroes do it: a combo of steps, each its
     #: own clip whose TIMELINE lands the hit (see build_combo / COMBO_STEP_KEYS).
     combo: list = field(default_factory=list)
-    #: ``{speed, at, duration}``: the hero is carried forward at ``speed`` m/s
-    #: from ``at`` s for ``duration`` s (a lunge, a leap's travel).
-    lunge: dict | None = None
+    #: How much of the clip's root-bone travel moves the hero (0 = in place);
+    #: None = Hero_Common's in-range selector, as shipped attacks use: the
+    #: clip's full travel, stopping at the target.
+    root_motion: float | None = None
     #: The hero may walk while the ability plays (the move split is on and
     #: the button does not stop movement).
     moving: bool = False
@@ -182,7 +183,7 @@ class Ability:
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
-                              "icon", "icon_disabled", "lunge", "moving"}
+                              "icon", "icon_disabled", "root_motion", "moving"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -223,20 +224,13 @@ class Ability:
                     and all(isinstance(x, str) for x in v)):
                 raise AbilityError(f"ability {slot}: {k} is (root, path) of a UI texture")
             icons.append((str(v[0]), str(v[1])))
-        lunge = raw.get("lunge")
-        if lunge is not None:
-            try:
-                ok = isinstance(lunge, dict) and not set(lunge) - {"speed", "at", "duration"} \
-                    and 0.5 <= float(lunge["speed"]) <= 60 \
-                    and 0 <= float(lunge.get("at", 0.0)) <= 30 \
-                    and 0.05 <= float(lunge["duration"]) <= 30
-            except (KeyError, TypeError, ValueError):
-                ok = False
-            if not ok:
-                raise AbilityError(f"ability {slot}: lunge is {{ speed (0.5..60 m/s), "
-                                   "at (s, default 0), duration (s) }")
-            if combo:
-                raise AbilityError(f"ability {slot}: a combo has no lunge")
+        rm = raw.get("root_motion")
+        if rm is not None and (isinstance(rm, bool) or not isinstance(rm, (int, float))
+                               or not 0 <= rm <= 5):
+            raise AbilityError(f"ability {slot}: root_motion is a factor 0..5 of the clip's "
+                               "own travel (0 = in place)")
+        if rm is not None and combo:
+            raise AbilityError(f"ability {slot}: a combo's steps keep the layout's root motion")
         if raw.get("moving") not in (None, True, False) or (raw.get("moving") and combo):
             raise AbilityError(f"ability {slot}: moving is true or false (not on a combo)")
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
@@ -244,7 +238,7 @@ class Ability:
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
                    str(raw.get("variant", "")), [dict(st) for st in combo],
-                   dict(lunge) if lunge else None, bool(raw.get("moving")))
+                   float(rm) if rm is not None else None, bool(raw.get("moving")))
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -545,6 +539,10 @@ COMBO_STEPS = 2
 #: count + entry ids, each entry naming its step state), and a third entry
 #: added this way ran in game on a clone of Scarlet's wolf (Blood Wolf 0.1).
 COMBO_MAX = 4
+#: How long a combo step must keep playing after its exit for the next press
+#: to chain (shipped steps keep 1-3 s; the shortest tail is Geppetto's step 2,
+#: 1.07 s).
+COMBO_TAIL = 0.5
 _COMBO_STEP_PARTS = ("State {p} Step {n}", "{p} Clip Selector Step {n}",
                      "{p} Clip Step {n}", "{p} Anim Step {n}")
 _COMBO_PARTS = ("{p} Combo Selector", "{p} Combo", "State {p} Step {n}",
@@ -609,7 +607,7 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
         parts += [p.format(p=pre, n=n) for p in _COMBO_STEP_PARTS]
     w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
     state = f"State {tag}"
-    w.state(state)
+    w.state(state, flags=TW.PERSISTENT)
     # its parent state and controller: the hero's (by the GUID the copied link
     # holds -- a controller link names the shared base's slot, not the donor's)
     mine = {f"State {pre}": state, "Basic Attack Controller": ctl}
@@ -626,7 +624,7 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
     # (its combo) is always the one picked.
     sel = f"{tag} Combo Selector"
     never = f"State {tag} Finisher Off"
-    w.state(never)
+    w.state(never, flags=TW.PERSISTENT)
     for r in ef.component(sel).refs:
         if r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
             ef.swap_refs(sel, r.guid, combo if r.path.startswith("[Dt Attack Combo]") else never)
@@ -659,6 +657,16 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
         hit_at = float(st.get("hit_at", 0.35 * length))
         times = {"COMBO_LINK": float(st.get("link_at", hit_at + 0.1)),
                  "ABILITY_EXIT": float(st.get("exit_at", hit_at + 0.2))}
+        if n < len(ab.combo) and length < times["ABILITY_EXIT"] + COMBO_TAIL:
+            # The next press chains only while this step still plays: shipped
+            # steps keep their whole clip (Scarlet's wolf claw: exit 0.62 s of
+            # 3.82 s). Cut at 0.55 s, Blood Wolf's first claw ended before the
+            # press was taken and the combo restarted every time.
+            raise AbilityError(
+                f"combo step {n}: it ends at {length:.2f} s, too soon after its exit "
+                f"({times['ABILITY_EXIT']:.2f} s) for the next press to chain; leave "
+                f"`duration` out (the whole clip) or make it at least "
+                f"{times['ABILITY_EXIT'] + COMBO_TAIL:.2f} s")
         c = ef.component(anim)
         p = ef.objects[c.index - 1]
         pos = p.find(P._B + struct.pack("<I", names.index("oCCinematic")))
@@ -803,6 +811,21 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                  group={hero_common.component(look).group: group}, source=hero_common)
         HF._set_clips(ef, f"{tag} Anim", [ab.clip])
         HF._set_duration(ef, f"{tag} Anim", length)
+        # Its root motion: copied from the base's empty dash slot it is 0, and
+        # a clip that travels (a lunge, a leap) played in place.
+        if ab.root_motion is not None:
+            ef.set_value(f"{tag} Anim", HF.ROOT_MOTION, ab.root_motion)
+        else:
+            # Read through the hero's own copy of the selector (its links into
+            # Hero_Common stay, which the hero inherits by alias): a number
+            # slot is re-pointed only at a part of this file.
+            if not any(c.name == OWN_ROOT_MOTION for c in ef.graph().components):
+                sel = hero_common.component(ROOT_MOTION_SELECTOR)
+                ef.clone([sel.path], rename={ROOT_MOTION_SELECTOR: OWN_ROOT_MOTION},
+                         group={sel.group: "Ability Common"}, seed=f"{seed}:root-motion",
+                         source=hero_common)
+            ef.set_value(f"{tag} Anim", HF.ROOT_MOTION, 1.0)
+            ef.set_ref(f"{tag} Anim", HF.ROOT_MOTION, OWN_ROOT_MOTION)
         snd = (own_sound(ef, ab.sound, name=f"{tag} Sound", group=group,
                          seed=f"{seed}:{ab.slot}:sound") if ab.sound else "")
         own_timeline(ef, f"{tag} Anim", length, sound=snd)
@@ -812,7 +835,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                       seed=f"{seed}:{ab.slot}", kind=ab.slot)
         aim = TW.link_to(ef, f"{tag} Look At")
         state_link = w.state(state, while_active=[TW.link_to(ef, f"{tag} Clip Selector"),
-                                                  *([] if ab.has("look_enter") else [aim])])
+                                                  *([] if ab.has("look_enter") else [aim])],
+                             flags=TW.PERSISTENT)
         if ab.has("look_enter"):
             ef.add_ref(state, "on_enter?", f"{tag} Look At")
         _timer(w, f"{tag} End Timer", length,
@@ -820,28 +844,6 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         statuses(ef, ab.hits, tag=tag, switch=state, seed=f"{seed}:{ab.slot}")
         if with_indicator:
             add_indicator(ef, ab, seed=seed)
-        if ab.lunge:
-            # A forward move of its own, as shipped abilities carry the hero
-            # (Geppetto's "Ultimate Ability 2 Move", Kintaro's leap): a move
-            # part held by a state of its own, switched on `at` s in and off
-            # `duration` s later by two timers the button starts.
-            from . import corpus
-            ref, dname, dpart = LUNGE_DONOR
-            raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}"
-                              ".EntitySettingsResource.gen")
-            if raw is None:
-                raise AbilityError("lunge: the move layout's hero is not in the game files")
-            donor = EntityFile(raw, dname)
-            move = f"{tag} Lunge Move"
-            ef.clone([donor.component(dpart).path], rename={dpart: move},
-                     group={donor.component(dpart).group: group},
-                     seed=f"{seed}:{ab.slot}:lunge", source=donor)
-            ef.set_value(move, "value_2", float(ab.lunge["speed"]))
-            at = float(ab.lunge.get("at", 0.0))
-            go = w.state(f"State {tag} Lunge", while_active=[TW.link_to(ef, move)])
-            _timer(w, f"{tag} Lunge Start Timer", at, on_end=go)
-            _timer(w, f"{tag} Lunge End Timer", at + float(ab.lunge["duration"]), ends=go)
-            timers += [f"{tag} Lunge Start Timer", f"{tag} Lunge End Timer"]
         if ab.moving:
             split = hero_common.component(SPLIT_ENABLE)
             ef.add_external_ref(state, "while_active", split.guid,

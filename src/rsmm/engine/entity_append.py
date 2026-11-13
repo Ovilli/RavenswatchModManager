@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from functools import cache
 
 from . import cooked
 
@@ -413,7 +414,7 @@ class _Accessors:
         if guid in self.by_target:
             return self.by_target[guid].most_common(1)[0][0]
         cls = self.cls_of.get(guid)
-        pairs = self.by_class.get(cls)
+        pairs = self.by_class.get(cls) or _shipped_accessors().get(cls)
         if not pairs:
             raise EntityAppendError(
                 f"no value picker in this file reads a {cls} — cannot choose "
@@ -427,6 +428,29 @@ class _Accessors:
                     f"no value picker in this file reads a {cls} of type {want}")
             return max(pairs.items(), key=lambda kv: kv[1])[0]
         return pairs.most_common(1)[0][0]
+
+
+#: Files whose value reads teach the accessor of a class a file has never read
+#: (a hero written from scratch starts with no value operation): the shared
+#: bases and the heroes the kit takes its layouts from. An accessor is fixed
+#: per class and value type, so any shipped read of the class tells it.
+_ACCESSOR_SOURCES = ("Character_Common/Character_Common", "Heroes/Hero_Common/Hero_Common",
+                     "Heroes/Hero_SunWukong/Hero_SunWukong", "Heroes/Hero_Piper/Hero_Piper")
+
+
+@cache
+def _shipped_accessors() -> dict:
+    from collections import Counter
+
+    from . import corpus
+    out: dict[str, Counter] = {}
+    for ref in _ACCESSOR_SOURCES:
+        raw = corpus.read(f"EntitySettings/{ref}.entity.ot.EntitySettingsResource.gen")
+        if raw is None:
+            continue
+        for cls, c in _Accessors(cooked.parse(raw)).by_class.items():
+            out.setdefault(cls, Counter()).update(c)
+    return out
 
 
 def format_slot_at(buf: bytes, picker_begin: int, acc: _Accessors) -> int | None:

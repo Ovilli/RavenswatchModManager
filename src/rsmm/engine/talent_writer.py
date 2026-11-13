@@ -63,6 +63,14 @@ def link_to(ef: GE.EntityFile, name: str) -> P.Link:
     return P._link(ef._picker(name), 0)[0]
 
 
+#: A state part's header flags. ``EVENT`` (bit 0x10000) is a one-frame pulse
+#: the engine switches off in the frame it starts; ``PERSISTENT`` stays on until
+#: something switches it off. Writing an ability's state as an event made every
+#: button of a hero written from scratch end in the frame it started: no clip,
+#: no hit, no summon (playtests 2026-11-08 .. 11-13; Jack and Blood Wolf).
+EVENT, PERSISTENT = 0x10001, 0x1
+
+
 class TalentWriter(P.PartWriter):
     """Writes parts into a hero's entity, all in one group (``Skill <T>``)."""
 
@@ -138,6 +146,11 @@ class TalentWriter(P.PartWriter):
 
     def state(self, name: str, *, activates=(), deactivates=(), while_active=(),
               flags: int = 0x10001, mode: int = 1) -> P.Link:
+        """A state part. The default ``flags`` (header bit ``EVENT``) make it a
+        one-frame EVENT, on for the frame it is switched on: right for a
+        trigger ("Event ..." states, 1370 of 1373 shipped). A state that must
+        STAY on (an ability running, a talent owned) takes ``flags=PERSISTENT``,
+        as 1049 of 1049 shipped "State ..." states do."""
         return self._add(_STATE, name, {
             "activates": list(activates), "deactivates?": list(deactivates), "list_2": [],
             "on_exit?": [], "disables_while_active?": [], "on_enter?": [],

@@ -1260,7 +1260,7 @@ _SCRATCH_FIELDS = frozenset({"rig", "mesh", "material", "albedo", "slots", "abil
                              "ultimates", "weapon",
                              "talents", "sort", "portrait", "animations", "model",
                              "projectiles", "book", "new_hero", "skin_icon", "codex",
-                             "banner", "effects", "sounds", "entities"})
+                             "banner", "effects", "sounds", "entities", "pets", "edits"})
 #: An effect layer's particle material, written as the hero's own: the
 #: engine's sprite shader (texture = the shape, its colours tinted by the
 #: layer's `colors`, as most shipped billboard particles are drawn), in the
@@ -1749,11 +1749,13 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         return pairs[-1] if pairs else None
 
     abilities = []
+    button_steps: dict[str, list] = {}
     for slot, raw in (frame.get("abilities") or {}).items():
         raw = dict(raw)
         word = str(slot).title()
         if raw.get("steps"):
             hooks.append({"when": f"State {word} Ability", "steps": raw["steps"]})
+            button_steps[str(slot)] = raw["steps"]
         raw.pop("steps", None)
         card = {}
         if "name" in raw:
@@ -1783,6 +1785,20 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             abilities.append(HA.Ability.parse(str(slot), {**raw, "bank": bank, **card}))
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e
+        # A button's steps run on timers its state starts, and a timer only
+        # advances while that state is on: a step timed after the button ends
+        # never happens (Blood Seed's bomb at 1.75 s on a 0.8 s bite).
+        if str(slot) in button_steps:
+            from ...engine import hero_kit as _HK
+            ab = abilities[-1]
+            length = ab.duration if ab.duration is not None else HF.clip_length(ab.clip)
+            late = [t for t, _b in _HK.timeline(button_steps[str(slot)])] if length else []
+            if late and max(late) > length:
+                raise ContentError(
+                    f"hero {hid}: abilities.{slot}: a step at {max(late):.2f} s comes after "
+                    f"the button ends ({length:.2f} s), so it never happens; shorten the "
+                    "wait, lengthen `duration`, or give the delay to what it fires "
+                    "(an entity of its own with its own timer)")
 
     try:
         slots = HF.rig_slots(read, rig)
@@ -1915,7 +1931,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # summon's `burst`. Its identities are its own (restamped when written).
     extra_targets: set[str] = set()
     made_entities: list[bytes] = []
-    for eid, spec in sorted(_table(frame.get("entities"), "frame.entities", hid).items()):
+    # One built from another of its own ("own:Bomb") comes after that one.
+    for eid, spec in sorted(_table(frame.get("entities"), "frame.entities", hid).items(),
+                            key=lambda kv: (str((kv[1] or {}).get("from", "")
+                                                if isinstance(kv[1], dict) else "")
+                                            .startswith("own:"), kv[0])):
         from ...engine import ability_edit as AE
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", str(eid)) or not isinstance(spec, dict) \
                 or set(spec) - {"from", "edits"} or not isinstance(spec.get("from"), str) \
@@ -1924,8 +1944,15 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                                "from = <a shipped entity>, edits = [ steps ]")
         if str(eid) in own_ref:
             raise ContentError(f"hero {hid}: entities.{eid}: a projectile has that id")
-        src_ref = AE.source_entity_ref(spec["from"])
-        src_raw = read(src_ref)
+        if spec["from"].startswith("own:"):
+            if spec["from"][4:] not in own_ref:
+                raise ContentError(f"hero {hid}: entities.{eid}: from = {spec['from']!r}: "
+                                   "no entity of its own by that id")
+            src_ref = own_ref[spec["from"][4:]]
+            src_raw = own_projectiles[src_ref]
+        else:
+            src_ref = AE.source_entity_ref(spec["from"])
+            src_raw = read(src_ref)
         if src_raw is None:
             raise ContentError(f"hero {hid}: entities.{eid}: the game has no {src_ref}")
         src_stem = src_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
@@ -1941,7 +1968,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         own_ref[str(eid)] = ref
         made_entities.append(res.files[src_stem])
         # it preloads what its source does, and what its edits brought in
-        extra_targets |= {src_ref, *res.resources}
+        extra_targets |= {*([] if spec["from"].startswith("own:") else [src_ref]),
+                          *res.resources}
 
     def own_fire(steps):
         """``fire = "own:<id>"`` / ``burst = "own:<id>"`` -> that entity of its own."""
@@ -1960,29 +1988,89 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             out.append(st)
         return out
     hooks = [{**h, "steps": own_fire(h["steps"])} for h in hooks]
+    # Pets of its own (the kit's `pets`: Hero_Pet_Model, so they follow the
+    # hero, take its attack orders and go for enemies; a plain `summon` step
+    # is an ally with no master and stood idle, Blood Wolf 2026-11-13).
+    # `when` defaults to the button's own state.
+    pets = frame.get("pets")
+    if pets is not None:
+        if not isinstance(pets, dict):
+            raise ContentError(f"hero {hid}: frame.pets is a table (the kit's pets block)")
+        pets = own_fire([dict(pets)])[0]
+        button = str(pets.get("button", "trait"))
+        pets.setdefault("when", f"State {button.title()} Ability")
 
     # Kit timelines (projectiles, hit areas placed ahead, heals, summons): the
     # hero builder's kit, given donors of its own, run on its own states.
     kit_copies: list = []
     kit_resources: set[str] = set()
-    if hooks:
+    if hooks or pets is not None:
         from ...engine import ability_edit as AE
         from ...engine import hero_kit as HK
         def shipped(ref: str):
+            # its own FX file too: the parent through which it inherits the
+            # shared bases (an override's ancestry check walks it)
+            if ref == fx_ref:
+                return fx
             return own_projectiles.get(ref) or HK.reader(kit_copies)(ref)
+        kit_aliases = {a.guid: a.stream for a in H.aliases(app)}
         try:
             main = AE.apply({scope: main}, HF.KIT_DONORS, main=scope,
-                            seed=f"{mod_id}:{hid}:kit-donors", read=shipped).files[scope]
-            steps = HK.expand({"talents": hooks}, main, scope, hid=hid, copies=kit_copies,
-                              own=own_projectiles)
+                            seed=f"{mod_id}:{hid}:kit-donors", read=shipped,
+                            aliases=kit_aliases).files[scope]
+            # its copies (summons, fired entities) beside its own files: a
+            # folder of its own name is one the game does not ship, and apply
+            # skipped every file in it (Blood Wolf's wolf never spawned).
+            kit = {"talents": hooks}
+            if pets is not None:
+                kit["pets"] = pets
+            steps = HK.expand(kit, main, scope, hid=hid, copies=kit_copies,
+                              own=own_projectiles, folder=_SCRATCH_FOLDER)
             res = AE.apply({scope: main}, steps, main=scope, seed=f"{mod_id}:{hid}:kit",
-                           read=shipped)
+                           read=shipped, aliases=kit_aliases)
         except (HK.KitError, AE.AbilityEditError) as e:
             raise ContentError(f"hero {hid}: {e}") from e
         main = res.files[scope]
         kit_resources = set(res.resources)
         for w in res.warnings:
             print(f"warning: hero {hid}: {w}", file=sys.stderr)
+    # Edits of its own (`frame.edits`): the ability steps a clone hero's
+    # `abilities` take (clone, override, set, link, add_subobject ...), on its
+    # main entity once it is built, checked as any edit. A string value or
+    # target "own:<Id>" names one of its own entities.
+    edits = frame.get("edits")
+    if edits is not None:
+        from ...engine import ability_edit as AE
+        from ...engine import hero_kit as HK
+        if not isinstance(edits, list) or not all(isinstance(e, dict) for e in edits):
+            raise ContentError(f"hero {hid}: frame.edits is a list of edit steps")
+
+        def own_values(v):
+            if isinstance(v, str) and v.startswith("own:"):
+                if v[4:] not in own_ref:
+                    raise ContentError(f"hero {hid}: edits: {v!r}: no entity of its own by "
+                                       "that id")
+                return own_ref[v[4:]]
+            if isinstance(v, list):
+                return [own_values(x) for x in v]
+            if isinstance(v, dict):
+                return {k: own_values(x) for k, x in v.items()}
+            return v
+
+        def edit_read(ref: str):
+            if ref == fx_ref:
+                return fx
+            return own_projectiles.get(ref) or HK.reader(kit_copies)(ref)
+        try:
+            res = AE.apply({scope: main}, [own_values(dict(e)) for e in edits], main=scope,
+                           seed=f"{mod_id}:{hid}:edits", read=edit_read,
+                           aliases={a.guid: a.stream for a in H.aliases(app)})
+        except AE.AbilityEditError as e:
+            raise ContentError(f"hero {hid}: edits: {e}") from e
+        main = res.files[scope]
+        kit_resources |= set(res.resources)
+        for w in res.warnings:
+            print(f"warning: hero {hid}: edits: {w}", file=sys.stderr)
     # Range discs last (hero_ability.add_indicator says why).
     if any(ab.indicator for ab in abilities):
         from ...engine.entity_graph_edit import EntityFile as _EF
@@ -2153,6 +2241,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     from ...engine import projectile_frame as _PF
     targets = {*(kit_resources - own),
                *(c.source for c in kit_copies if not c.shipped and c.source not in own),
+               # the base a summon or pet copy is written on (Hero_Pet_Model)
+               *(c.base for c in kit_copies if not c.shipped and c.base),
                *(extra_targets - own),
                *([_PF.MODEL, _PF.BASE] if own_projectiles else []),
                *(str(sp.get(k) or "") for sp in projectiles.values() for k in ("trail", "impact")
