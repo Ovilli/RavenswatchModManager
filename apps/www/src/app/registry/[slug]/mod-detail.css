@@ -178,7 +178,7 @@ body:has(.mod-detail) > .site-header {
   line-height: 1.5;
   color: hsl(var(--foreground));
 }
-.mod-private-only-warning > span {
+.mod-private-only-warning-content {
   display: block;
   padding: 14px 16px;
   border: 0;
@@ -192,6 +192,13 @@ body:has(.mod-detail) > .site-header {
   margin-top: 16px;
   font-size: 13px;
   color: var(--mod-muted);
+}
+.mod-private-only-warning .mod-private-only-controls {
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--border));
+}
+.mod-private-only-warning .mod-private-only-controls > button {
+  border-color: hsl(var(--crimson));
 }
 .mod-social-proof {
   display: flex;
@@ -283,26 +290,29 @@ body:has(.mod-detail) > .site-header {
   transition: background-color 140ms ease-out;
 }
 .mod-download {
-  flex-direction: column;
-  gap: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content);
   padding-block: 6px;
   background: hsl(var(--crimson));
   color: hsl(var(--parchment));
 }
+.mod-download-copy {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+}
 .mod-download-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  font-size: 1rem;
 }
 .mod-download:hover {
   background: hsl(var(--oxblood));
 }
 .mod-download-meta {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 400;
   color: inherit;
   font-variant-numeric: tabular-nums;

@@ -107,7 +107,7 @@ export function ModDetailView({
       <header className="mod-heading">
         {mod.tags.length > 0 || mod.nsfw ? (
           <div className="mod-labels">
-            {privateOnly ? <ModPrivateOnlyTag /> : null}
+            {privateOnly ? <ModPrivateOnlyTag slug={slug} /> : null}
             {tags.length > 0 ? (
               <ul className="mod-tags" aria-label="Mod tags">
                 {tags.map((tag) => (
@@ -210,7 +210,7 @@ export function ModDetailView({
             <div className="mod-report">
               <ReportModal slug={slug} />
             </div>
-            <ModPrivateOnlyControls slug={slug} privateOnly={privateOnly} />
+            {!privateOnly ? <ModPrivateOnlyControls slug={slug} privateOnly={false} /> : null}
           </aside>
           <div className="mod-reading">
             <section id="about" className="mod-section" aria-labelledby="mod-about-heading">
