@@ -199,7 +199,8 @@ pnpm --filter desktop dev:linux-soft     # Last resort: software GL
 ### Code style
 
 - Follow existing formatting in `src/` and `apps/`.
-- Use `clang-format` for C++ and `black` for Python where applicable.
+- Python must pass `ruff check src/ tests/ scripts/` (configured in `pyproject.toml`), and TypeScript `pnpm lint` (Biome). CI runs both.
+- C++ has no formatter config. Match the surrounding code in `src/loader/`.
 
 ### Pull requests
 
