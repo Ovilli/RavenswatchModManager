@@ -584,6 +584,23 @@ class EntityFile:
         ``target`` (or nothing), fixing the accessor and talent-card format
         that follow it."""
         old = bytes(self.objects[obj][a:b])
+        buf = self.objects[obj]
+        if target is None and buf[a - 2:a] == b"\x01\x00" \
+                and buf[b + 4:b + 8] == cooked.MARK_BEGIN:
+            # A link inside a NUMBER slot goes back to its plain number: the
+            # slot is `01 00 <picker> <u32 accessor> <number>` when it reads a
+            # part and `00 <number>` when it holds the number itself (Piper's
+            # aim node has both), so drop the flag, picker and accessor and
+            # keep the number. An empty picker would need an accessor for
+            # nothing, which the game never writes.
+            linked = bytes(buf[a - 2:b + 4])
+            buf[a - 2:b + 4] = b"\x00"
+            try:
+                self._check(self.to_bytes())
+            except EntityEditError as e:
+                buf[a - 2:a - 1] = linked              # leave the file as it was
+                raise EntityEditError(f"cannot unlink {what}: {e}") from e
+            return
         new = self._picker(target)
         # A reference inside a value picker is followed by the ACCESSOR the
         # target is read with, which depends on the target's class and value

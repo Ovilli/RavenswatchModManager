@@ -1168,6 +1168,13 @@ effects = [
 ]
 ```
 
+- An `amount` is **added** to the stat, in the stat's own unit: `0.1` on
+  `Crit chance` is +10%, `5` on `Armour` is +5. To make the meaning
+  unmistakable, write it as text: `amount = "+10%"`, `"-60%"`, `"+5"`. Bonuses
+  never multiply a stat, so a multiplier like `"x0.4"` is refused, and the
+  error tells you what to write instead (`"-60%"`). Talent `add_stats` values
+  take the same forms, and the build prints one line per bonus saying what
+  each rarity does, so you can check the numbers before playing.
 - With no `description`, the card text is written from the effects, one bullet
   each, numbered `{0}`, `{1}`... in order (a timed effect takes two: its
   amount, then its seconds). Write your own with the same numbering.

@@ -548,7 +548,13 @@ add_stats = [
 - `talent` is the card's row name (`Skill Controller Trait Fire` → `Trait Fire`).
 - `stat` is any stat from the stat list: the same names the item editor offers.
 - `values` is one number for every rarity, or four (Common, Rare, Epic, Legendary).
-  The number is in the stat's own unit: `0.25` on a cooldown stat is −25 %.
+  The number is in the stat's own unit and is **added** to the stat: `0.25` on a
+  cooldown stat is −25 %. Text says it unmistakably: `values = ["+40%", "+43%",
+  "+46%", "+50%"]`, `"-60%"` for a penalty, `"+10"` for a flat amount. A
+  multiplier (`"x0.4"`) is refused, because bonuses add up rather than scale the
+  stat; the error names the value to write instead (`"-60%"`). The build prints
+  one line per bonus with what each rarity does, e.g. `Attack power: +40% / +43%
+  / +46% / +50% (Common, Rare, Epic, Legendary), added to the hero's Attack power`.
 - The card gets a new number slot, the next `{N}` after the ones it has. Write it in
   the description with a `skill` block, for example `• #TRAIT@ cooldown &-{1}%~`.
   `percent = false` shows the number as it is, without multiplying by 100.

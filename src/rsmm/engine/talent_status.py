@@ -141,19 +141,17 @@ def reader(raw: bytes, *, flag_guid: bytes, flag_label: str, owner_resource: str
         raise StatusError(str(e)) from e
 
 
-def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, switch: str,
-                 talent: str, seed: str = "", scope: str = "") -> bytes:
-    """Return ``raw`` with damage record ``damage`` also putting ``status`` on
-    whoever it hits while ``switch`` (a state or true/false value of this file)
-    is on (step 3)."""
+def add_status(ef: GE.EntityFile, donor: GE.EntityFile, donor_raw: bytes, *, damage: str,
+               status: str, switch: str, talent: str, seed: str = "") -> None:
+    """``ef``'s damage record ``damage`` also puts ``status`` on whoever it hits
+    while ``switch`` (a state or true/false value of this file) is on (step 3),
+    in place."""
     if status not in DONORS:
         raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
     d = DONORS[status]
-    ef = GE.EntityFile(raw, scope)
     c = ef.component(damage)
     if not c.cls.endswith("CpntDamageSettings"):
         raise StatusError(f"{damage!r} is not a damage record")
-    donor = GE.EntityFile(donor_raw)
     obj = debuff_of(donor_raw, d.modifier)
     mod = f"Skill {talent} {status} On {damage}"
     if any(x.name == mod for x in ef.graph().components):
@@ -165,9 +163,30 @@ def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, swit
                  seed=f"{seed}:{talent}:{status}:{damage}")
         ef.add_subobject(damage, _DEBUFFS, donor, obj,
                          refs={donor.component(d.modifier).guid: mod}, switch=switch)
-        return ef.to_bytes()
     except GE.EntityEditError as e:
         raise StatusError(f"{damage!r}: {e}") from e
+
+
+def donor_of(status: str) -> tuple[GE.EntityFile, bytes]:
+    """The shipped entity holding ``status``'s donor debuff (game install or mirror)."""
+    from . import corpus
+    if status not in DONORS:
+        raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
+    raw = corpus.read(DONORS[status].rel)
+    return GE.EntityFile(raw), raw
+
+
+def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, switch: str,
+                 talent: str, seed: str = "", scope: str = "") -> bytes:
+    """Return ``raw`` with damage record ``damage`` also putting ``status`` on
+    whoever it hits while ``switch`` (a state or true/false value of this file)
+    is on (step 3)."""
+    if status not in DONORS:
+        raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
+    ef = GE.EntityFile(raw, scope)
+    add_status(ef, GE.EntityFile(donor_raw), donor_raw, damage=damage, status=status,
+               switch=switch, talent=talent, seed=seed)
+    return ef.to_bytes()
 
 
 def damages(files: list[tuple[str, bytes]], hero: str) -> list[dict]:

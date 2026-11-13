@@ -119,6 +119,14 @@ TRIGGERS = {
                         _ABILITY_USED, ("Ultimate",)),
     "power": Trigger("Use Power Game Event Listener", "After using your power",
                      _ABILITY_USED, ("Power",), ("NotAAbility",)),
+    # The basic attack and the trait send the same event under their own flag,
+    # with no exclusion: Barks_Manager's "Practice Game Event Listener"
+    # (Attack) and "Trait Game Event Listener", Piper's "Bark Trait Game Event
+    # Listener". Not yet exercised in game.
+    "attack": Trigger("Attack Use Event Listener", "After attacking", _ABILITY_USED,
+                      ("Attack",), flags=0x101, group="Practice"),
+    "trait": Trigger("Trait Use Event Listener", "After using your trait", _ABILITY_USED,
+                     ("Trait",), flags=0x101, group="Trait"),
     "day_start": Trigger("Day Event Listener", "When day begins", 0x17d8d8fa, flags=0x1),
     "night_start": Trigger("Night Event Listener", "When night begins", 0x17d8d8fc, flags=0x1),
     "talent_picked": Trigger("Skill Selected Game Event Listener", "After picking a talent",
@@ -246,6 +254,14 @@ class Effect:
               else str(raw["on"]) if is_stars and "on" in raw else None)
         if on is not None and on not in TRIGGERS:
             raise ItemEffectError(f"effect on = {on!r}: one of {', '.join(TRIGGERS)}")
+        if isinstance(raw.get("amount"), str):
+            # "+40%" / "-60%" / "+10": text that says what it does
+            # (engine/stat_amount.py); a multiplier is refused with its equivalent.
+            from . import stat_amount as SA
+            try:
+                raw = {**raw, "amount": SA.parse(raw["amount"], "effect amount")}
+            except SA.AmountError as e:
+                raise ItemEffectError(str(e)) from e
         for k in ("amount", "seconds", "radius"):
             if k in raw and (isinstance(raw[k], bool) or not isinstance(raw[k], (int, float))):
                 raise ItemEffectError(f"effect {k} must be a number")

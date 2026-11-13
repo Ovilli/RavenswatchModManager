@@ -4041,6 +4041,76 @@ function R.debug.components(entity, label)
     return out
 end
 
+-- Watch the hero's live components whose settings name matches `pattern`
+-- (a Lua pattern; e.g. "Ability" or "Attack Ability") and log every byte of
+-- their instance bytes [opts.from (0), +opts.len (0x60)) that changes, polled on
+-- the main thread every `opts.every` s (default 0.05). Which parts wake up
+-- when a button is pressed (state, clip selector, animatic, timers) shows in
+-- the log as their bytes flip (`opts.baseline` = N also logs each one's first
+-- N bytes at the start). Read-only, page-guarded: never writes, never
+-- calls the engine. Written for the from-scratch hero whose buttons froze
+-- (2026-11-08). Returns a stop() function; `opts.seconds` stops it itself.
+function R.debug.watch_components(pattern, opts)
+    opts = opts or {}
+    local len, every = opts.len or 0x60, opts.every or 0.05
+    local from = opts.from or 0                 -- watch [from, from+len)
+    local label = opts.label or ("watch " .. tostring(pattern))
+    local ctrl = R.entity and R.entity.hero and R.entity.hero()
+    local entity = (type(ctrl) == "number" and ctrl ~= 0) and I.read_u64(ctrl + 0x08) or nil
+    if not _ptr_plausible(entity) or R.rtti.name(entity) ~= "oCEntity" then
+        R.log(string.format("[rsmm.debug] %s: no hero entity yet", label))
+        return nil
+    end
+    local arr, n = I.read_u64(entity + 0x190), I.read_u32(entity + 0x198)
+    if not _ptr_plausible(arr) or type(n) ~= "number" or n == 0 or n > 8192 then
+        R.log(string.format("[rsmm.debug] %s: no component array", label))
+        return nil
+    end
+    local watched = {}
+    for pos = 0, n - 1 do
+        local inst = I.read_u64(arr + pos * 8)
+        local settings = _ptr_plausible(inst) and I.read_u64(inst + 0x10) or nil
+        local sp = _ptr_plausible(settings) and I.read_u64(settings + 0xe8) or nil
+        local nm = _ptr_plausible(sp) and I.read_cstr and I.read_cstr(sp, 160) or nil
+        if nm and nm:find(pattern) then
+            local snap = {}
+            for o = from, from + len - 1 do snap[o] = I.read_u8(inst + o) end
+            watched[#watched + 1] = { inst = inst, name = nm, cls = R.rtti.name(settings) or "?", snap = snap }
+        end
+    end
+    R.log(string.format("[rsmm.debug] %s: %d of %d components match", label, #watched, n))
+    for _, w in ipairs(watched) do
+        local base = ""
+        if opts.baseline then
+            local hex = {}
+            for o = from, from + math.min(len, opts.baseline) - 1 do hex[#hex + 1] = string.format("%02x", w.snap[o] or 0) end
+            base = " | " .. table.concat(hex)
+        end
+        R.log(string.format("[rsmm.debug] %s   0x%x %s | %s%s", label, w.inst, w.cls, w.name, base))
+    end
+    local t0, handle = os.clock(), nil
+    handle = R.schedule.every_main(every, function()
+        for _, w in ipairs(watched) do
+            local diffs = {}
+            for o = from, from + len - 1 do
+                local b = I.read_u8(w.inst + o)
+                if b ~= nil and b ~= w.snap[o] then
+                    diffs[#diffs + 1] = string.format("+%02x:%02x>%02x", o, w.snap[o] or 0, b)
+                    w.snap[o] = b
+                end
+            end
+            if #diffs > 0 then
+                R.log(string.format("[rsmm.debug] %s t=%.2f %s: %s", label, os.clock() - t0,
+                    w.name, table.concat(diffs, " ", 1, math.min(#diffs, 24))))
+            end
+        end
+        if opts.seconds and os.clock() - t0 > opts.seconds and handle then
+            R.schedule.cancel(handle)
+        end
+    end)
+    return function() if handle then R.schedule.cancel(handle) end end
+end
+
 -- Scan every pointer field of `obj` (0..max_off) for objects that hold a
 -- {data,count} pointer-vector at data_off/count_off (default the component
 -- array 0x190/0x198). Returns a list of {off, holder, count}; logs each.

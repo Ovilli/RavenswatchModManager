@@ -1170,6 +1170,9 @@ power = { replace = true, steps = [
   `reads` sets those numbers (`{ "Skill Seeking Available" = true }`), each
   defaulting to the original hero's.
 - **`hit`**: an area attack at that moment (`radius` m, `damage` %, `delay` s).
+- **`forward`** (on `fire` and `hit`): how many metres ahead of the hero the
+  shot starts or the area lands (`{ hit = { radius = 3 }, forward = 2.5 }`:
+  where the axe comes down). Negative is behind.
 - **`heal`**: health, in the units of the hero's own heals.
 - **`summon`**: an enemy that fights for you, spawned ahead of the hero:
   `{ summon = "Enemies/Wolves/Standard_Wolf_Timber" }` (also
@@ -1194,6 +1197,198 @@ timers, spawner values), so what a base cannot do is refused with the reason
 when you save. **None of this is proven in game yet** (2026-10-29): the open
 questions are whether enemy projectiles fired by a hero hurt enemies, and
 whether the status flags take effect.
+
+#### Buttons of a hero written from scratch
+
+A hero with no `base` (`[content.frame]`) writes each button from data,
+`[content.frame.abilities.<button>]`: its `clip`, `duration`, `cooldown`,
+`name`/`description`, and `hits`, bursts around the hero at set times. A hit
+can do more than damage:
+
+```toml
+[content.frame.abilities.power]
+clip     = "anim:Timber"
+cooldown = 6
+icon     = "art/ui/timber.png"
+hits     = [ { at = 0.45, radius = 3.5, damage = 350, stun = 1.0, knockback = 60, stagger = 20 } ]
+steps    = [ { wait = 0.45 }, { hit = { radius = 3, damage = 250 }, forward = 2.5 } ]
+
+[content.frame.abilities.trait]
+clip = "anim:Bean"
+hits = [ { at = 0.9, radius = 5, damage = 300, status = "Rooted" } ]
+```
+
+- `stun` (seconds), `knockback` and `stagger` are fields of the hit's damage
+  record; `status` puts `Rooted`, `Weak`, `Vulnerable`, `Bleed`, `Chilled` or
+  `Ignite` on whoever it hits (a copy of a shipped debuff, on only while the
+  button runs).
+- Every hit counts as its button's damage, so the hero's per-ability talents
+  (`Crit chance basic`, `Attack power secondary`, `Increase trait damage for
+  each debuff` ...) apply to it.
+- `steps` is the kit's timeline above (`fire`, `hit`, `heal`, `summon`, `wait`,
+  `repeat`), started by the button. The hero gets its own spawner and aim to
+  build from, so projectiles work without a base.
+- `icon` is the button's picture on the HUD: a PNG in the mod
+  (`icon = "art/ui/timber.png"`) or a picture the game ships
+  (`icon = "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png"`). The
+  greyed copy shown while it cools down is made for you (a shipped picture
+  uses its own `_Disabled` twin). Without `icon` the button is blank.
+- `damage` is a percentage of a normal hit. For scale, the shipped heroes deal
+  about 140–180 per basic attack, 250–900 with a power, around 150 per special
+  hit (finishers 600–900), and 800–4000 per ultimate hit, with ultimates on a
+  60–90 second cooldown.
+
+Every file of a hero written from scratch is checked while it is built: each
+link must reach a part the hero inherits (through Hero_Common's alias) or one
+of its own, and every resource it names must be preloaded. A mistake stops
+the build with the part's name, instead of a button that silently does nothing
+in game.
+
+Projectiles of the hero's own, `[content.frame.projectiles.<id>]`, are fired
+with `fire = "own:<id>"`: each is the engine's generic hero projectile (flight,
+hit, despawn) wearing your `model` (a static glb, +Y = flight) and `albedo` /
+`mra` / `normal`, with its own `scale`, `lifetime`, `trail` and `impact`
+effects (any shipped `.vfx.ot`). Speed, damage, size, explode, knockback and
+statuses are set per shot in the `fire` step:
+
+```toml
+[content.frame.projectiles.Bean]
+model  = "art/projectiles/bean.glb"
+albedo = "art/projectiles/props_alb.png"
+trail  = "Settings\\Heroes\\Hero_Kintaro_FX\\Kintaro_Skill_Forest_Spirit_Trail.vfx.ot"
+
+[content.frame.abilities.trait]
+steps = [ { fire = "own:Bean", angles = [0, 90, 180, 270], speed = 14, root = 2 } ]
+```
+
+A talent card is dealt at level-up; give 4 or 5 of them `starter = true` for
+the pick at the start of a run (a hero with none shows "available in an
+upcoming update" on every starting card). A hit's `fx` sets the burst's look
+(any shipped `.vfx.ot`; the default is the shared explosion, a fire burst).
+
+A talent's `actions` take the same: `{ on = "special", hits = [...], steps =
+[...] }` runs each time that ability (or event) fires while the talent is
+owned, its hits counting as that ability's damage. Unproven in game
+(2026-11-07).
+
+Its pictures are its own when you give a PNG from the mod; anything left out
+shows the rig's. A value with `\` still names a picture the game ships.
+
+```toml
+[content.frame]
+portrait  = "art/ui/portrait.png"     # select screen, in-run HUD portrait
+book      = "art/ui/book.png"         # or { standard, active, locked, unavailable }
+new_hero  = "art/ui/new_hero.png"     # the "new hero" announcement
+skin_icon = "art/ui/skin.png"         # the Default skin's icon in the book
+codex     = ["art/ui/codex_1.png", "art/ui/codex_2.png"]   # cycled over the book's slots
+banner    = "art/ui/hud_banner.png"   # the HUD's ability banner (else Red's)
+
+[[content.frame.talents]]
+name = "Attack Sharp Axe"
+icon = "art/ui/sharp_axe.png"         # also on [content.frame.ultimates.<name>]
+```
+
+Its effects are written from data too: no shipped effect file is copied.
+Each `[content.frame.effects.<name>]` is a list of particle layers; name it
+anywhere an effect goes with `fx:<name>` (a hit's `fx`, a projectile's
+`trail` / `impact`, a talent action's hit).
+
+```toml
+# A sprite of the mod (white shape, alpha = outline), tinted by `colors`;
+# `soft = true` fades into the ground; `material` draws a shipped one instead.
+[content.frame.effects.WoodChips]
+layers = [
+  { texture = "art/fx/chip.png", burst = 14, lifetime = [0.35, 0.6], size = [0.25, 0.45], speed = 7, radius = 0.3, rotation = 180, colors = [[0.62, 0.42, 0.24, 1], [0.45, 0.3, 0.17, 0]], grow = [1.0, 0.7] },
+  { texture = "art/fx/puff.png", soft = true, burst = 4, lifetime = 0.5, size = 1.5 },
+]
+
+# A continuous one, for a projectile's trail.
+[content.frame.effects.BeanTrail]
+layers = [ { texture = "art/fx/spark.png", rate = 30, burst = 0, duration = 1.0, lifetime = [0.25, 0.4], size = 0.4, colors = [[0.75, 1, 0.5, 1], [0.5, 0.9, 0.3, 0]] } ]
+```
+
+Then `hits = [ { at = 0.3, radius = 2.5, fx = "fx:WoodChips" } ]` on a button,
+or `trail = "fx:BeanTrail"` on a projectile.
+
+A layer: `burst` particles at once and/or `rate` per second for `duration`
+seconds (from `delay`); each lives `lifetime` s at `size` m, flies `speed`
+m/s outward from a sphere of `radius` (`spread` degrees of it) plus `up` m/s,
+starts turned up to `rotation` degrees, and runs through `colors` (r, g, b,
+alpha) and `grow` (size multiples) over its life. Unproven in game
+(2026-11-08).
+
+Any picture slot of the hero base takes one too:
+`[content.frame.slots."<slot>"] texture = "art/x.png"`. Unproven in game
+(2026-11-08).
+
+##### What the rig lends, and what you can change
+
+A hero written from scratch takes more than clips from its `rig`. Each is
+what every shipped hero fills in the shared hero base; all unproven in game
+(2026-11-13).
+
+- **Sounds.** Footsteps, the hurt voice, death, deathdoor, spawning,
+  teleporting and the book's sounds are the rig's (21 slots on Kintaro or
+  Scarlet). Name another shipped sound per slot, or `"none"` to keep the
+  shared base's generic one:
+
+  ```toml
+  [content.frame.sounds]
+  "Footstep FMod Event Default" = "Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot | Footstep FMod Event Default"
+  "Hurt Voice FMod Event"       = "none"
+  ```
+
+- **Bone layers.** The move split (upper body acts while the legs walk) and
+  the physics layer (fur, cloth, hair) are the rig's, when the hero's body has
+  the rig's bones: the rig mesh, or a `model` of your own on that armature.
+
+##### More a button can do
+
+```toml
+[content.frame.abilities.attack]
+combo = [                     # two to four steps
+  { clip = "anim:Claw1", hit_at = 0.2, hits = [ { radius = 2.8, damage = 150 } ] },
+  { clip = "anim:Claw2", hit_at = 0.2, hits = [ { radius = 2.8, damage = 150 } ] },
+  { clip = "anim:Finisher", hit_at = 0.3, hits = [ { radius = 3.2, damage = 180, status = "Bleed" } ] },
+]
+
+[content.frame.abilities.trait]
+clip  = "anim:Pounce"
+lunge = { speed = 14, at = 0.05, duration = 0.25 }   # carried forward 14 m/s for 0.25 s
+
+[content.frame.abilities.special]
+clip   = "anim:Howl"
+moving = true                 # may be used while walking
+icon          = "Heroes\\Red\\Ability_Wolf_Special.png"
+icon_disabled = "Heroes\\Red\\Ability_WOLF_Special_Disabled.png"   # when its name is not "<icon>_Disabled"
+```
+
+A talent's `actions` also fire on `attack` and `trait` now, beside `dash`,
+`power`, `special`, `defense` and `ultimate`.
+
+##### Entities of its own
+
+`[content.frame.entities.<Id>]` makes an entity of the hero's own from a
+shipped one: a copy of `from`, with `edits` (the same steps as a hero's
+`abilities`: `clone`, `set`, `link`, `add_link`, `remove_link`,
+`add_subobject`, `replace_subobject`, `switch_off` ...) applied and checked.
+Name it `"own:<Id>"` in a step's `fire` or a summon's `burst`:
+
+```toml
+[content.frame.entities.Bomb]
+from  = "Heroes/Hero_Red/Hero_Red_Bomb"
+edits = [
+  { set = "Explosion Timer.duration", value = 0.1 },
+  { remove_link = "State Exploding.activates", to = "Explosion Attack Heroes Tester" },
+]
+
+[content.frame.abilities.special]
+steps = [ { summon = "Enemies/Wolves/Standard_Wolf_Dire", lifetime = 20, burst = "own:Bomb", burst_on_hit = true } ]
+```
+
+It gets identities of its own and is preloaded with the hero, with whatever
+its edits brought in. A summon step's `look` (`{ albedo = "art/x.png" }`) is
+written for a from-scratch hero too.
 
 ---
 

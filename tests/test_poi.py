@@ -1942,3 +1942,28 @@ def test_cache_gates_catch_each_silent_poi_failure(tmp_path):
                for p in check_tile_cache_gates(mapdef, read, base))
     tile_cache.write_bytes(good_tile)
     assert check_tile_cache_gates(mapdef, read, base) == []
+
+
+def test_clone_material_moves_a_texture_to_another_root():
+    """Repointing a hero map at the engine's shared neutral ones changes its
+    ROOT too ("3D" -> "samples"/"FX"). The root string sits in the reference's
+    section, so the section must grow with it: before the fix it came out cut
+    short by exactly the root's growth (5 bytes for "samples")."""
+    from rsmm.engine import cooked, corpus
+    from rsmm.engine import entity_strings as ES
+    from rsmm.engine import prop_cook as PC
+    raw = corpus.read("3D/Characters/Character_Grey.mat.ot.Material.gen")
+    if raw is None:
+        pytest.skip("no game files")
+    grey = [s for _a, _b, s in ES.list_strings(raw)]
+    # Grey -> a "3D" texture and back must reproduce the shipped bytes.
+    there = PC.clone_material(raw, {"Dielectric_Rough.tga": "Characters\\T_X_MRA.tga"},
+                              {"Dielectric_Rough.tga": "3D"})
+    back = PC.clone_material(there, {"Characters\\T_X_MRA.tga": "Dielectric_Rough.tga"},
+                             {"Characters\\T_X_MRA.tga": "samples"})
+    assert back == raw
+    out = [s for _a, _b, s in ES.list_strings(there)]
+    i = out.index("u_MRA")
+    assert out[i + 1:i + 3] == ["3D", "Characters\\T_X_MRA.tga"]
+    assert len(cooked.parse(there).sections) == len(cooked.parse(raw).sections)
+    assert grey.index("u_MRA") == i

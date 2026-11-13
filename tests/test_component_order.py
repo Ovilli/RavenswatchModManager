@@ -72,3 +72,27 @@ def test_cloned_components_join_their_class_run(tmp_path):
     old = component_vector(vf.sections[-1].payload)[1]
     new = component_vector(cf.sections[-1].payload)[1]
     assert [i for i in new if i < len(vf.sections) - 2] == old
+
+
+def test_grouping_puts_every_class_in_one_run_and_keeps_every_component():
+    """A file built over many writes (a hero from scratch) is regrouped as a
+    whole: one run per class, the same components, nothing else changed."""
+    from rsmm.engine import cooked, corpus
+    from rsmm.engine import entity_append as EA
+    from rsmm.engine import entity_graph as EG
+    raw = corpus.read("EntitySettings/Heroes/Hero_Geppetto/Hero_Geppetto.entity.ot"
+                      ".EntitySettingsResource.gen")
+    if raw is None:
+        import pytest
+        pytest.skip("no hero corpus")
+    cf = cooked.parse(raw)
+    off, ids = EA.component_vector(cf.sections[-1].payload)
+    cf.sections[-1].payload = EA._render_vector(off, cf.sections[-1].payload, ids[::2] + ids[1::2])
+    scrambled = cooked.emit(cf)
+    assert EA.class_runs_split(scrambled)
+    fixed = EA.group_class_runs(scrambled)
+    assert EA.class_runs_split(fixed) == []
+    assert sorted(EA.component_vector(cooked.parse(fixed).sections[-1].payload)[1]) == sorted(ids)
+    guids = {c.guid for c in EG.parse(raw).components}
+    assert {c.guid for c in EG.parse(fixed).components} == guids
+    assert EA.class_runs_split(raw) == []

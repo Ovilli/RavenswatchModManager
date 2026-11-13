@@ -264,6 +264,36 @@ def test_a_weapon_keeps_its_authored_shape(tmp_path):
     assert verts(ours.read_bytes()) == pytest.approx(verts(shipped), abs=1e-5)
 
 
+@needs_corpus
+@needs_install
+def test_a_companion_material_takes_maps_but_no_model(tmp_path):
+    """Beowulf's Wyrm has a material of its own but no attachment: `weapons`
+    retextures it (Jack's Golden Hen) and refuses a model for it."""
+    (tmp_path / "gold.png").write_bytes(_tiny_png())
+    files = heros.emit("m", ContentDef(kind="hero", id="Jack", fields={
+        "base": "Beowulf", "weapons": {"Chatacter Mesh Wyrm": {"albedo": "gold.png"}}}),
+        tmp_path / "assets")
+    default = next(p for p in files if p.name.startswith("Hero_Jack_Default.entity.ot"))
+    assert b"M_Jack_Weapon1.mat.ot" in default.read_bytes()
+    assert b"M_BeowulfWyrm.mat.ot" not in default.read_bytes()
+    with pytest.raises(ContentError, match="maps only"):
+        heros.emit("m", ContentDef(kind="hero", id="Jack", fields={
+            "base": "Beowulf", "weapons": {"Chatacter Mesh Wyrm": {"model": "x.glb"}}}),
+            tmp_path / "assets2")
+
+
+def _tiny_png() -> bytes:
+    import struct
+    import zlib
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff))
+    raw = b"".join(b"\x00" + bytes([230, 180, 60, 255]) * 4 for _ in range(4))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 _ECHO = [
     {"clone": "Ability Secondary", "as": "Echo"},
     {"set": "Primary Ability Shots Delay.value", "value": 0.2},
@@ -724,6 +754,64 @@ def test_every_hero_tab_block_builds_on_scarlet():
 
 @needs_corpus
 @needs_install
+def test_hero_talents_are_rebuilt_from_generated_parts(tmp_path):
+    """`talents`: a slot's base logic cut, a generated stat and an action that
+    fires on a game event only while the talent is owned; `materials` repaints
+    a material by name (Kintaro's boy is his "Alt Form" mesh, not `albedo`'s)."""
+    from rsmm.engine import entity_graph as EG
+    (tmp_path / "boy.png").write_bytes(_tiny_png())
+    files = heros.emit("m", ContentDef(kind="hero", id="Jack", fields={
+        "base": "Kintaro",
+        "materials": {"M_Kintaro": {"albedo": "boy.png"}},
+        "talents": {
+            "Passive Move Speed": {
+                "name": "Light Feet", "description": "• Gain &+{0}%~ #MOVE SPEED@",
+                "add_stats": [{"stat": "Move Speed Ratio", "values": [0.1, 0.1, 0.1, 0.1]}]},
+            "Dash Attack": {"actions": [{"on": "dash", "steps": [{"hit": {"radius": 3}}]}]},
+        }}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Jack.entity.ot.EntitySettingsResource.gen")
+    names = {c.name for c in EG.parse(main.read_bytes(), "Hero_Jack").components}
+    assert {"Skill Passive Move Speed Rebuilt", "Skill Dash Attack Rebuilt",
+            "Skill Dash Attack Action 1"} <= names
+    assert any(n.startswith("Kit Talent 1") for n in names)
+    default = next(p for p in files if p.name.startswith("Hero_Jack_Default.entity.ot"))
+    assert b"M_Jack_Mat1.mat.ot" in default.read_bytes()
+    with pytest.raises(ContentError, match="not a material"):
+        heros.emit("m", ContentDef(kind="hero", id="Jack", fields={
+            "base": "Kintaro", "materials": {"M_Nope": {"albedo": "boy.png"}}}),
+            tmp_path / "assets2")
+    with pytest.raises(ContentError, match="on = "):
+        heros.emit("m", ContentDef(kind="hero", id="Jack", fields={
+            "base": "Kintaro", "talents": {"Dash Attack": {
+                "actions": [{"on": "nope", "steps": [{"heal": 1}]}]}}}),
+            tmp_path / "assets3")
+
+
+@needs_corpus
+@needs_install
+def test_kit_talent_hooks_sit_beside_the_slots(tmp_path):
+    """`talents` hangs timelines on talents' own events while the slots stay
+    free for the buttons (Jack: both on Beowulf)."""
+    from rsmm.engine import ability_edit as AE
+    from rsmm.engine import corpus
+    from rsmm.engine import hero_kit as HK
+    beo = "EntitySettings/Heroes/Hero_Beowulf/Hero_Beowulf.entity.ot.EntitySettingsResource.gen"
+    kit = {"defense": {"when": "Event Defensive Ability Attack Active",
+                       "steps": [{"hit": {"radius": 3}}]},
+           "talents": [{"when": "Event Skill Dash Attack Active",
+                        "steps": [{"hit": {"radius": 3}}]},
+                       {"when": "Event Skill Trait AOE Active", "steps": [{"heal": 40}]}]}
+    steps = HK.expand(kit, corpus.read(beo), "Hero_Beowulf")
+    AE.apply({"Hero_Beowulf": corpus.read(beo)}, steps, main="Hero_Beowulf", seed="t")
+    names = " ".join(v for s in steps for v in (s.get("rename") or {}).values())
+    for part in ("Kit Defense", "Kit Talent 1", "Kit Talent 2 Heal"):
+        assert part in names, part
+    with pytest.raises(HK.KitError, match="when is required"):
+        HK.expand({"talents": [{"steps": [{"heal": 1}]}]}, corpus.read(beo), "Hero_Beowulf")
+
+
+@needs_corpus
+@needs_install
 def test_a_projectile_that_reads_its_hero_fires_as_a_copy_reading_this_hero(tmp_path):
     """Return (Kintaro's axe: rebounds and timeout from Kintaro) and refresh
     (the Snow Queen's shard: seeking from her) on a Scarlet clone: each fires
@@ -750,6 +838,167 @@ def test_a_projectile_that_reads_its_hero_fires_as_a_copy_reading_this_hero(tmp_
     caches = [p.read_text(errors="replace")
               for p in tmp_path.rglob("Hero_Howler_*.UsedRscCache.ot")]
     assert caches and all("Hero_Howler_Kit1.entity.ot" in t for t in caches)
+
+
+@needs_corpus
+@needs_install
+def test_a_frame_hero_holds_no_other_heros_parts(tmp_path):
+    """`frame`: main and FX written from scratch on the shared base; every
+    herodef talent row reaches one of its own controllers."""
+    import re
+
+    from rsmm.engine import entity_components as EC
+    from rsmm.engine import entity_graph as EG
+    files = heros.emit("m", ContentDef(kind="hero", id="Self", fields={
+        "base": "Kintaro", "frame": {
+            "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot"}}),
+        tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Self.entity.ot.EntitySettingsResource.gen")
+    raw = main.read_bytes()
+    assert EC.parents(raw) == ["Heroes\\Hero_Kintaro\\Hero_Self_FX.entity.ot"]
+    assert set(re.findall(rb"\] (Hero_[A-Za-z_0-9]+)\\", raw)) <= {
+        b"Hero_Common", b"Hero_Common_Update5", b"Hero_Self"}
+    g = EG.parse(raw, "Hero_Self")
+    assert {c.override.path.split("] ", 1)[1].split("\\")[0]
+            for c in g.components if c.override} <= {"Hero_Common", "Character_Common"}
+    herodef = next(p for p in files if p.name.startswith("Self.herodef.ot")).read_bytes()
+    ctls = [c for c in g.components if c.name.startswith("Skill Controller ")]
+    assert len(ctls) == 22 and all(c.guid in herodef for c in ctls)
+    with pytest.raises(ContentError, match="from scratch"):
+        heros.emit("m", ContentDef(kind="hero", id="Self", fields={
+            "base": "Kintaro", "frame": True, "kit": {"dash": "none"}}), tmp_path / "a2")
+
+
+@needs_corpus
+@needs_install
+def test_a_hero_with_no_base_copies_no_hero(tmp_path):
+    """`frame` without `base`: entities, buttons and roster record written from
+    data; the rig lends assets only (no hero entity file is written but its own)."""
+    import re
+
+    from rsmm.engine import herodef_frame as HDF
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "name": "Solo", "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [{"name": "Attack One", "title": "One"}],
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "hits": [{"at": 0.3}]}}}}), tmp_path / "assets")
+    entities = [p for p in files if p.name.endswith(".EntitySettingsResource.gen")]
+    assert sorted(p.name.split(".")[0] for p in entities) == [
+        "Hero_Solo", "Hero_Solo_Default", "Hero_Solo_Default_LowRes", "Hero_Solo_FX"]
+    main = next(p for p in entities if p.name.startswith("Hero_Solo.entity")).read_bytes()
+    assert set(re.findall(rb"\] (Hero_[A-Za-z_0-9]+)\\", main)) <= {
+        b"Hero_Common", b"Hero_Common_Update5", b"Hero_Solo"}
+    h = HDF.decode(next(p for p in files if p.name.startswith("Solo.herodef.ot")).read_bytes())
+    rows = [d for c, d in h.objects if c == HDF.SKILL]
+    assert rows[0]["name"] == "Skill Controller Attack One" and rows[0]["controller"] in main
+    assert sum(1 for r in rows if r["tail"][5] == 1) == 6
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_links_original_parts_not_override_records(tmp_path):
+    """Every link and override a from-scratch hero writes names a shared
+    part's ORIGINAL GUID. A link to an override record's own GUID never
+    resolves: talents linked to Hero_Common_Update5's Hero Controller record
+    found no hero, joined no offer pool, and every pick window closed empty
+    (Jack, playtest 2026-11-08)."""
+    from rsmm.engine import corpus
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [{"name": "Attack One", "starter": True}, {"name": "Power Two"}]}}),
+        tmp_path / "assets")
+    records = set()
+    for scope in ("Hero_Common", "Hero_Common_Update5"):
+        ef = EntityFile(corpus.read(f"EntitySettings/Heroes/Hero_Common/{scope}.entity.ot"
+                                    ".EntitySettingsResource.gen"), scope)
+        records |= {c.guid for c in ef.graph().components if c.override is not None}
+    hc = EntityFile(corpus.read("EntitySettings/Heroes/Hero_Common/Hero_Common.entity.ot"
+                                ".EntitySettingsResource.gen"), "Hero_Common")
+    original = hc.component("Hero Controller").guid
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    raw = main.read_bytes()
+    assert not [g.hex() for g in records if g in raw]
+    ef = EntityFile(raw, "Hero_Solo")
+    for name in ("Skill Controller Attack One", "Skill Controller Power Two"):
+        c = ef.component(name)
+        f = next(f for f in EF.fields(c) if f.name == "ref_2")
+        assert original in c.body[f.offset:f.offset + f.size]
+
+
+def _png(path, rgba=(200, 40, 40, 255), size=8):
+    import struct
+    import zlib
+    row = b"\x00" + bytes(rgba) * size
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(row * size)) + chunk(b"IEND", b""))
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_effects_are_written_not_borrowed(tmp_path):
+    """`frame.effects`: an effect written from its layers (the layer's texture
+    in a material of the hero's own), named `fx:<name>` by a hit and by a
+    projectile's trail; it decodes as the effect it describes and is preloaded
+    with the hero."""
+    from rsmm.engine import vfx_codec as V
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "leaf.png")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "effects": {"Leaves": {"layers": [
+                {"texture": "art/leaf.png", "burst": 12, "lifetime": [0.4, 0.8],
+                 "size": [0.5, 0.9], "speed": 6, "colors": [[0.6, 1, 0.4, 1], [0.6, 1, 0.4, 0]]},
+                {"material": "Materials\\Glow_Orange_01.mat.ot", "size": 3, "lifetime": 0.2}]}},
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "hits": [{"at": 0.3, "fx": "fx:Leaves"}]}},
+            "projectiles": {"Bean": {"model": "art/bean.glb", "trail": "fx:Leaves"}}}}),
+        mod / "assets") if (mod / "art" / "bean.glb").exists() else None
+    if files is None:                 # no glb at hand: the effect and the hit alone
+        files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+            "frame": {
+                "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+                "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+                "effects": {"Leaves": {"layers": [
+                    {"texture": "art/leaf.png", "burst": 12, "lifetime": [0.4, 0.8],
+                     "speed": 6, "colors": [[0.6, 1, 0.4, 1], [0.6, 1, 0.4, 0]]},
+                    {"material": "Materials\\Glow_Orange_01.mat.ot", "size": 3}]}},
+                "abilities": {"power": {
+                    "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                    "duration": 0.9, "hits": [{"at": 0.3, "fx": "fx:Leaves"}]}}}}),
+            mod / "assets")
+    names = {p.name for p in files}
+    assert "Hero_Solo_Leaves.vfx.ot.ScheduledVfxSettings.gen" in names
+    assert "Hero_Solo_Leaves_1.mat.ot.Material.gen" in names
+    assert "Hero_Solo_Leaves_1.png.Texture.dxt" in names
+    vfx = next(p for p in files if p.name == "Hero_Solo_Leaves.vfx.ot.ScheduledVfxSettings.gen")
+    raw = vfx.read_bytes()
+    v = V.decode(raw)
+    assert V.encode(v) == raw
+    mats = [o.fields["material"] for o in v.objects
+            if o.cls == "oI3dBillboardParticleRendererSettings"]
+    assert mats == ["Materials\\Hero_Solo_Leaves_1.mat.ot", "Materials\\Glow_Orange_01.mat.ot"]
+    main = next(p for p in files
+                if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen").read_bytes()
+    assert b"Settings\\FX\\Common_FX\\Hero_Solo_Leaves.vfx.ot" in main
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    text = cache.read_text(encoding="utf-8", errors="replace")
+    assert "FX|Settings\\FX\\Common_FX\\Hero_Solo_Leaves.vfx.ot|oCScheduledVfxSettings" in text
+    assert "FX|Materials\\Glow_Orange_01.mat.ot|oCMaterial" in text
 
 
 @needs_corpus
@@ -833,6 +1082,75 @@ def test_blood_wolf_special_howl_animation_walk_and_audio(tmp_path):
     # 5. Kit pets hold timer (holds State Wolf Secondary Ability for 1.0s animation duration)
     c_tm = ef.component("Kit Pet Order Timer")
     assert next(f.text for f in EF.fields(c_tm) if f.name == "duration") == "f32 1"
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_ui_art_is_its_own(tmp_path):
+    """Portrait, book portraits, new-hero picture, skin icon, codex, HUD banner
+    and talent/ultimate icons: a PNG in the mod is cooked as the hero's own
+    picture, named in its herodef/entity and listed in its preload cache; an
+    absent one keeps the rig's."""
+    from rsmm.engine import herodef_frame as HDF
+    mod = tmp_path / "mod"
+    for n in ("portrait", "book", "new", "skin", "c1", "banner", "icon", "ult"):
+        _png(mod / "art" / f"{n}.png")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "portrait": "art/portrait.png", "book": {"standard": "art/book.png"},
+            "new_hero": "art/new.png", "skin_icon": "art/skin.png", "codex": ["art/c1.png"],
+            "banner": "art/banner.png",
+            "talents": [{"name": "Attack One", "icon": "art/icon.png"}],
+            "ultimates": {"Ultimate Power 1": {"title": "U", "icon": "art/ult.png"}}}}),
+        mod / "assets")
+    ui = sorted(p.name for p in files if p.name.endswith(".png.Texture.dxt"))
+    assert ui == sorted(f"Hero_Solo_{n}.png.Texture.dxt" for n in (
+        "Portrait", "Book_Standard", "NewHero", "Skin_Default", "Codex_1", "HUD_Banner",
+        "Skill_Attack_One", "Skill_Ultimate_Power_1"))
+    h = HDF.decode(next(p for p in files if p.name.startswith("Solo.herodef.ot")).read_bytes())
+    r = h.root
+    assert r["portrait"][1].endswith("\\Hero_Solo_Portrait.png")
+    assert r["book_standard"][1].endswith("\\Hero_Solo_Book_Standard.png")
+    assert "Kintaro" in r["book_active"][1]                     # not given: the rig's
+    assert all(c[1].endswith("\\Hero_Solo_Codex_1.png") for c in r["codex"])
+    main = next(p for p in files
+                if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen").read_bytes()
+    for n in ("Portrait", "HUD_Banner", "Skill_Attack_One", "Skill_Ultimate_Power_1"):
+        assert f"Hero_Solo_{n}.png".encode() in main
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    text = cache.read_text(encoding="utf-8", errors="replace")
+    assert all(f"Hero_Solo_{n}.png|oCTexture" in text for n in ("Portrait", "Codex_1",
+                                                                 "Skill_Attack_One"))
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_talents_take_effects(tmp_path):
+    """A from-scratch talent takes a rarity stat (card {0}) and an action
+    (area hits each time its event fires while owned)."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [
+                {"name": "Attack Edge", "description": "• +{0}",
+                 "add_stats": [{"stat": "Crit chance basic", "values": [0.1, 0.1, 0.1, 0.1]}]},
+                {"name": "Dash Burst",
+                 "actions": [{"on": "dash", "hits": [{"at": 0.2, "radius": 3}]}]}]}}),
+        tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    g = {c.name: c for c in EG.parse(main.read_bytes(), "Hero_Solo").components}
+    fmt = g["Skill String Desc Attack Edge"]
+    assert sum(1 for f in EF.fields(fmt) if f.name.startswith("obj_")) == 1
+    action = g["Skill Dash Burst Action 1"]
+    acts = next(f.text for f in EF.fields(action) if f.name == "activates")
+    assert "Dash Burst Action 1 Hit 1 Timer" in acts
+    owned = next(f.text for f in EF.fields(g["Skill Dash Burst"]) if f.name == "while_active")
+    assert "Listener" in owned
 
 
 @needs_corpus
@@ -937,6 +1255,65 @@ def test_blood_wolf_pet_talent_upgrade_branching(tmp_path):
 
 @needs_corpus
 @needs_install
+def test_a_scratch_hero_cooks_and_uses_its_own_clips(tmp_path):
+    """`frame.animations`: a glb cooked into a NEW clip of the hero's own beside
+    the rig's; `anim:<name>` puts it in a slot or a button and its preload."""
+    from rsmm.engine import cooked
+    from rsmm.engine.cooked_schemas import animation as A
+    rel = "3D/Characters/Heroes/Kintaro/Animations/Kintaro_BasicAttack01.fbx.Animation.gen"
+    payload = b"".join(s.payload for s in cooked.parse(corpus.read(rel)).sections)
+    (tmp_path / "chop.glb").write_bytes(A._build_glb_preview(A.parse_payload(payload), payload))
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "animations": {"Chop": {"source": "chop.glb", "template": "Kintaro_BasicAttack01"}},
+            "slots": {"Default Idle Anim": {"clip": "anim:Chop"}},
+            "abilities": {"attack": {"clip": "anim:Chop", "hits": [{"at": 0.2}]}}}}),
+        tmp_path / "assets")
+    clip = next(p for p in files if p.name == "Hero_Solo_Chop.fbx.Animation.gen")
+    assert b"".join(s.payload for s in cooked.parse(clip.read_bytes()).sections) == payload
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    assert main.read_bytes().count(b"Hero_Solo_Chop.fbx") == 2
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot").read_bytes()
+    assert b"Animations\\Hero_Solo_Chop.fbx|oCAnimation" in cache
+    with pytest.raises(ContentError, match="no animations.Nope"):
+        heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "slots": {"Default Idle Anim": {"clip": "anim:Nope"}}}}), tmp_path / "a2")
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_own_body_carries_its_own_skeleton(tmp_path):
+    """`frame.model`: the glb is cooked onto the rig mesh and the skeleton is
+    rewritten with the glb armature's rest pose (here: the rig's own, so it
+    must come back as the game's)."""
+    from rsmm.cli.cmd_export_character import main as export
+    from rsmm.engine import skeleton_codec as SK
+    glb = tmp_path / "body.glb"
+    try:
+        export(["Kintaro", "--clips", "", "-o", str(glb)])
+    except SystemExit:
+        pass
+    if not glb.exists():
+        pytest.skip("character export unavailable")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {
+        "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+        "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+        "model": "body.glb"}}), tmp_path / "assets")
+    geo = next(p for p in files if p.name == "Hero_Solo_GEO.fbx.Geometry.gen")
+    mine = {b.name: b for b in SK.decode(geo.read_bytes()).bones}
+    rig = SK.decode(corpus.read("3D/Characters/Heroes/Kintaro/Kintaro_GEO.fbx.Geometry.gen"))
+    for b in rig.bones:
+        assert max(abs(x - y) for x, y in zip(mine[b.name].local, b.local, strict=True)) < 1e-4
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    assert b"Hero_Solo_GEO.fbx" in main.read_bytes()
+
+
+@needs_corpus
+@needs_install
 @pytest.mark.parametrize("pets, msg", [
     ({"name": "..\\..\\Evil"}, "name is letters"),
     ({"talent": "Skill Secondary Can Hold", "upgrade": {"count": 3}}, "upgrade has no count"),
@@ -948,3 +1325,308 @@ def test_kit_pets_name_and_upgrade_are_checked(tmp_path, pets, msg):
                     "when": "State Wolf Secondary Ability", **pets}}
     with pytest.raises(ContentError, match=msg):
         _emit(tmp_path, id="PetCheck", base="Red", kit=kit)
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_keeps_each_class_in_one_run(tmp_path):
+    """Every entity file a hero from scratch writes groups its components one
+    run per class, as all 4,769 shipped entities do (Jack's main had 23 of 25
+    classes split, its states in 66 runs, while his buttons froze)."""
+    from rsmm.engine import entity_append as EA
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "talents": [{"name": "Attack One", "starter": True}, {"name": "Power Two"}],
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "hits": [{"at": 0.3}]}}}}), tmp_path / "assets")
+    ents = [p for p in files if p.name.endswith(".EntitySettingsResource.gen")]
+    assert ents
+    assert {p.name: EA.class_runs_split(p.read_bytes()) for p in ents} == \
+        {p.name: [] for p in ents}
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_fan_turns_each_shot_through_a_yaw_value(tmp_path):
+    """A fan (`angles`) turns each shot through a VALUE its aim node reads, the
+    way Piper fans her notes: an inline yaw is ignored by the game (Jack's six
+    beans all flew one way, playtest 2026-11-12)."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9,
+                "steps": [{"fire": "Heroes/Hero_Red/Hero_Red_Projectile_Spike",
+                           "angles": [0, 90, 180]}]}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    aims = sorted(c.name for c in ef.graph().components
+                  if c.name.endswith(" Aim") and " Shot " in c.name)
+    assert len(aims) == 3
+    reads = []
+    for name in aims:
+        f = next(x for x in EF.fields(ef.component(name)) if x.name == "obj_4")
+        yaw = f.text.rsplit("<- [Value] ", 1)[-1]
+        reads.append(yaw.rsplit("\\", 1)[-1])
+        assert "Hero_Piper" not in f.text
+    values = {r: next(x.text for x in EF.fields(ef.component(r)) if x.name == "value")
+              for r in reads if r != "Kit Aim Y Angle"}
+    assert sorted(values.values()) == ["f32 1.5708", "f32 3.14159"]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_button_without_an_icon_wears_the_rigs(tmp_path):
+    """No `icon`: the button shows the rig hero's own picture for it (a blank
+    HUD button otherwise), as the rig lends its other art."""
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"power": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    pairs = HA.icons_of(EntityFile(main.read_bytes(), "Hero_Solo"), "Primary Ability Controller")
+    assert pairs == [(("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power.png"),
+                      ("Ui", "Heroes\\Kintaro\\Ability_Kintaro_Mounted_Power_Disabled.png"))]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_heros_side_offsets_go_through_values_too(tmp_path):
+    """`offsets` (parallel shots) re-point the aim's X-offset value per shot, as
+    `angles` do the yaw: the node's inline numbers are ignored by the game."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9,
+                "steps": [{"fire": "Heroes/Hero_Red/Hero_Red_Projectile_Spike",
+                           "offsets": [-1, 1]}]}}}}), tmp_path / "assets")
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    sides = []
+    for c in ef.graph().components:
+        if c.name.endswith(" Aim") and " Shot " in c.name:
+            f = next(x for x in EF.fields(c) if x.name == "obj_4")
+            side = next(seg for seg in f.text.split("<- ")[1:] if "Side" in seg)
+            v = ef.component(side.strip().rsplit("\\", 1)[-1])
+            sides.append(next(x.text for x in EF.fields(v) if x.name == "value"))
+    assert sorted(sides) == ["f32 -1", "f32 1"]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_projectiles_material_names_only_preloaded_maps(tmp_path):
+    """A projectile's material is cloned from the template dagger's. A map the
+    projectile does not bring must not stay the dagger's: no preload cache of
+    this hero lists it (it would load as null), and it was painted for another
+    mesh. It wears the engine's neutral maps, and every map it names is in the
+    hero's preload cache."""
+    from rsmm.engine import gltf
+    from rsmm.engine import prop_cook as PC
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "bean.png")
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui}, indices=ii)]))
+    b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+    (mod / "art" / "bean.glb").write_bytes(b.build_glb())
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "projectiles": {"Bean": {"model": "art/bean.glb", "albedo": "art/bean.png"}},
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "steps": [{"fire": "own:Bean"}]}}}}), mod / "assets")
+    mat = next(p for p in files if p.name == "M_Solo_Bean.mat.ot.Material.gen").read_bytes()
+    refs = PC._refs_doc("oCMaterial", mat)[1]["asset_refs"]
+    assert not [r for r in refs if "Dagger" in r]
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes()) if ln.count("|") == 2}
+    assert not [r for r in refs if r not in listed]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_on_a_two_form_rig_with_a_bleeding_combo_and_a_dressed_summon(tmp_path):
+    """Three things a second from-scratch hero (a wolf on Scarlet's rig) hit:
+    - a two-form rig fills slots of its own form base (`Alt Form Preview
+      Default Animatic`) that the shared bases lack: they are not lent;
+    - a combo step's hit takes a `status` (it is put on that step's own
+      damage record; it used to stop the build);
+    - a summon step's `look` is written (its own material + map, the copy
+      pointed at it), not accepted and dropped."""
+    from rsmm.engine.entity_graph_edit import EntityFile
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "red.png")
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+            "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+            "abilities": {
+                "attack": {"combo": [
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", "duration": 0.55,
+                     "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]},
+                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", "duration": 0.7,
+                     "hit_at": 0.3, "hits": [{"radius": 3, "damage": 180, "status": "Bleed"}]}]},
+                "special": {
+                    "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
+                    "steps": [{"summon": "Enemies/Wolves/Standard_Wolf_Dire", "lifetime": 20,
+                               "look": {"albedo": "art/red.png"}}]}}}}), mod / "assets")
+    names = {p.name for p in files}
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    parts = {c.name for c in ef.graph().components}
+    assert "Alt Form Preview Default Animatic" not in parts
+    damage = ef.component("Attack Ability Step 2 Hit 1 Damage")
+    assert any("Bleed" in r.path for r in damage.refs) or b"Bleed" in ef.objects[damage.index - 1] \
+        or any("Bleed" in n for n in parts)
+    assert "M_Solo_Summon1.mat.ot.Material.gen" in names
+    assert "T_Solo_Summon1_ALB.tga.Texture.dxt" in names
+    summon = b"".join(p.read_bytes() for p in files if "Solo_Summon1" in p.name
+                      and p.name.endswith(".EntitySettingsResource.gen"))
+    assert b"Textures\\M_Solo_Summon1.mat.ot" in summon
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot").read_text()
+    assert "3D|Characters\\Enemies\\Wolves\\Textures\\M_Solo_Summon1.mat.ot|oCMaterial" in cache
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
+    """The parts a from-scratch hero lacked next to a shipped one:
+    - the rig lends its hero sounds (footsteps, hurt, death ...) as overrides
+      of the shared sound slots, `sounds` renames or drops one;
+    - the rig lends its bone layers: the move split and the physics layer
+      with its physics part, on the hero's own skeleton;
+    - a combo runs three steps (a copy of the layout's last step + entry);
+    - a button lunges (`lunge`) and may be used on the move (`moving`);
+    - an entity of its own made from a shipped one (`entities`), named
+      "own:<Id>" by a summon's `burst`, preloaded with what its edits bring;
+    - a talent action fires on the trait button."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_frame as HF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    step = {"duration": 0.5, "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]}
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+            "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+            "sounds": {"Hurt Voice FMod Event": "none",
+                       "Footstep FMod Event Default":
+                           "Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot | "
+                           "Footstep FMod Event Default"},
+            "entities": {"Bomb": {"from": "Heroes/Hero_Red/Hero_Red_Bomb", "edits": [
+                {"set": "Explosion Timer.duration", "value": 0.1},
+                {"clone": ["Explosion FMod Event Active"],
+                 "from": "Heroes/Hero_Carmilla/Hero_Carmilla_Power_Orb",
+                 "rename": {"Explosion FMod Event Active": "Blood Burst FMod Event"}}]}},
+            "abilities": {
+                "attack": {"combo": [
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", **step},
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_2.fbx", **step},
+                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", **step}]},
+                "trait": {"clip": skills + "RED_Wolf_Pimary_Bite_In.fbx", "duration": 0.6,
+                          "lunge": {"speed": 14, "at": 0.05, "duration": 0.25}},
+                "special": {
+                    "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
+                    "moving": True,
+                    "steps": [{"summon": "Enemies/Wolves/Standard_Wolf_Dire", "lifetime": 20,
+                               "burst": "own:Bomb", "burst_on_hit": True}]}},
+            "talents": [{"name": "Trait Tear", "title": "Tear", "description": "x",
+                         "actions": [{"on": "trait", "hits": [{"at": 0.5, "radius": 3}]}]}],
+        }}), tmp_path / "assets")
+    by_name = {p.name: p for p in files}
+    ef = EntityFile(by_name["Hero_Solo.entity.ot.EntitySettingsResource.gen"].read_bytes(),
+                    "Hero_Solo")
+    parts = {c.name: c for c in ef.graph().components}
+
+    # sounds: overrides of the shared slots; one dropped, one from another hero
+    lent = HF.rig_sounds(lambda r: corpus.read(
+        "EntitySettings/" + r.replace("\\", "/") + ".EntitySettingsResource.gen"), "Hero_Red")
+    assert len(lent) >= 15 and "Hurt Voice FMod Event" in lent
+    assert "Hurt Voice FMod Event" not in parts
+    steps = parts["Footstep FMod Event Default"]
+    assert steps.override is not None and "Character_Common" in steps.override.path
+    geppetto = EntityFile(corpus.read(
+        "EntitySettings/Heroes/Hero_Geppetto/Hero_Geppetto.entity.ot.EntitySettingsResource.gen"),
+        "Hero_Geppetto").component("Footstep FMod Event Default")
+    assert [f.text for f in EF.fields(steps) if f.name == "obj_2"] == \
+        [f.text for f in EF.fields(geppetto) if f.name == "obj_2"]
+    assert parts["Deathdooor FMod Event In"].override is not None
+
+    # bone layers on its own skeleton (the wolf's 98 bones)
+    assert HF.layer_bones(ef, "Move Split Layer") == 98
+    assert HF.layer_bones(ef, "Physic Layer") == 98
+    assert [r.path.rsplit("\\", 1)[-1] for r in parts["Physic Skeleton Anim"].refs] == \
+        ["Mesh Skeleton"]
+    assert any(r.path.endswith("Physic Skeleton Anim") for r in parts["Physic Layer"].refs)
+    assert not [r.path for n in ("Move Split Layer", "Physic Layer", "Physic Skeleton Anim")
+                for r in parts[n].refs if "Hero_Red" in r.path or "Alt_Form" in r.path]
+
+    # three combo steps, each with its own state, clip and entry
+    combo = next(f.text for f in EF.fields(parts["Attack Ability Combo"]) if f.name == "bytes_4")
+    assert combo.startswith("03 00 00 00")
+    assert [r.path.rsplit("\\", 1)[-1] for r in parts["Attack Ability Clip Step 3"].refs] == \
+        ["Attack Ability Anim Step 3", "State Attack Ability Step 3"]
+    assert "Event Attack Ability Step 3 Hit 1" in parts
+
+    # the lunge and the button used on the move
+    move = next(f.text for f in EF.fields(parts["Trait Ability Lunge Move"])
+                if f.name == "value_2")
+    assert move == "f32 14" and not parts["Trait Ability Lunge Move"].refs
+    assert any(r.path.endswith("State Anim Split Enable")
+               for r in parts["State Special Ability"].refs)
+    ctl = {f.name: f.text for f in EF.fields(parts["Secondary Ability Controller"])}
+    assert ctl["value_9"] == ctl["value_10"] == "bool False"
+
+    # its own bomb: written, burst into, and preloaded with what the edit brought
+    bomb = by_name["Hero_Solo_Bomb.entity.ot.EntitySettingsResource.gen"].read_bytes()
+    shipped = corpus.read(
+        "EntitySettings/Heroes/Hero_Red/Hero_Red_Bomb.entity.ot.EntitySettingsResource.gen")
+    assert b"Blood Burst FMod Event" in bomb
+    ours = {c.guid for c in EntityFile(bomb, "Hero_Solo_Bomb").graph().components}
+    theirs = {c.guid for c in EntityFile(shipped, "Hero_Red_Bomb").graph().components}
+    assert not ours & theirs                       # identities of its own
+    summon = b"".join(p.read_bytes() for p in files if "Solo_Summon1" in p.name)
+    assert b"Hero_Solo_Bomb.entity.ot" in summon
+    cache = by_name["Solo.herodef.UsedRscCache.ot"].read_text()
+    assert "Hero_Solo_Bomb.entity.ot|oCEntitySettingsResource" in cache
+
+    # a talent action on the trait button: its listener filters the Trait flag
+    listener = next(c for n, c in parts.items() if n.startswith("Trait Use Event Listener"))
+    assert next(f.text for f in EF.fields(listener) if f.name == "listener") == "'Trait'"
+
+
+def test_a_combo_is_two_to_four_steps_and_a_lunge_is_checked():
+    from rsmm.engine import hero_ability as HA
+    step = {"clip": "x.fbx", "hits": [{"radius": 2}]}
+    for n in (1, 5):
+        with pytest.raises(HA.AbilityError, match="2 to 4 steps"):
+            HA.Ability.parse("attack", {"combo": [step] * n})
+    assert len(HA.Ability.parse("attack", {"combo": [step] * 4}).combo) == 4
+    with pytest.raises(HA.AbilityError, match="lunge is"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 500, "duration": 1}})
+    with pytest.raises(HA.AbilityError, match="lunge is"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 10}})

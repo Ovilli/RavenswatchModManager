@@ -29,6 +29,10 @@ with the reason on one that does not:
   slot's ability goes off: the slot group's ``Event ... Active`` state (the
   Wolf/Alt variant under ``form = "wolf"``), or ``when``. Whether an ENEMY
   projectile fired this way hurts enemies is unproven.
+* ``talents = [{ when = <state>, steps = [...] }, ...]``: timelines hung on any
+  state, free of the slots (a talent's own event, e.g. ``Event Skill Trait
+  Battlecry Active``, fires only once the talent is owned), so a hero can
+  rebuild its buttons and its talents at once. ``when`` is required.
 """
 
 from __future__ import annotations
@@ -53,7 +57,7 @@ SLOTS = {
     "dash": ("Dash", "Dash"),
 }
 FORMS = ("wolf", "human")
-_KEYS = {"form", "pets", *SLOTS}
+_KEYS = {"form", "pets", "talents", *SLOTS}
 _PREVIEW_GATE = "Activate Hero Controller Tester"     # Hero_Common: on only in a run
 
 
@@ -92,17 +96,39 @@ class _Ctx:
     copies: list[Copy] = field(default_factory=list)
 
 
+#: Entities of the hero's own the kit may fire (``own``: ref -> bytes), read
+#: before the game's files: a projectile the mod builds is in neither.
+_OWN: dict[str, bytes] = {}
+
+
+def _read(ref: str):
+    from . import entity_check as CK
+    return _OWN.get(ref) or CK._corpus_reader(ref)
+
+
 def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
-           copies: list[Copy] | None = None) -> list[dict]:
+           copies: list[Copy] | None = None,
+           own: dict[str, bytes] | None = None) -> list[dict]:
     """``kit`` as ability steps on ``main`` (the base's gameplay entity).
-    Projectile copies it needs are appended to ``copies``."""
+    Projectile copies it needs are appended to ``copies``; ``own`` are
+    entities of the hero's own it may fire."""
+    _OWN.clear()
+    _OWN.update(own or {})
+    try:
+        return _expand(kit, main, name, hid=hid, copies=copies)
+    finally:
+        _OWN.clear()
+
+
+def _expand(kit: dict, main: bytes, name: str, *, hid: str,
+            copies: list[Copy] | None) -> list[dict]:
     ctx = _Ctx(hid, name, copies if copies is not None else [])
     if not isinstance(kit, dict):
         raise KitError("kit is a table")
     unknown = set(kit) - _KEYS
     if unknown:
         raise KitError(f"kit has no {', '.join(sorted(unknown))}; "
-                       f"it takes form, {', '.join(SLOTS)}")
+                       f"it takes form, pets, talents, {', '.join(SLOTS)}")
     g = EG.parse(main, name)
     names = {c.name for c in g.components}
     steps: list[dict] = []
@@ -122,6 +148,18 @@ def expand(kit: dict, main: bytes, name: str, *, hid: str = "Kit",
         else:
             raise KitError(f"kit {slot} = {v!r}: \"none\", or "
                            "{ fire = <entity> }, or { steps = [...], replace = true }")
+    # Talent hooks: a timeline per block on a state the block names (a talent's
+    # own event fires only once the talent is owned), free of the slots so a
+    # hero can change both its buttons and its talents.
+    hooks = kit.get("talents")
+    if hooks is not None:
+        if not isinstance(hooks, list) or not all(isinstance(h, dict) for h in hooks):
+            raise KitError("kit talents is a list of { when = <state>, steps = [...] }")
+        for n, h in enumerate(hooks, 1):
+            if not h.get("when") or set(h) - {"steps", "when"}:
+                raise KitError(f"kit talents[{n}]: {{ when = <state>, steps = [...] }} "
+                               "(when is required; replace is for slots only)")
+            steps += _moves(f"talent {n}", h, g, form == "wolf", ctx)
     # After the slots: a talent-gated pets block holds off what they built.
     if kit.get("pets") is not None:
         steps += _pets(kit["pets"], g, form == "wolf", ctx, steps)
@@ -236,6 +274,11 @@ PROJ_VALUES = {
     "stagger": ("Stagger Multiplier Default", 0.0, 100.0, 1.0),
     "explode": ("Splash Radius Value", 0.5, 30.0, 1.0),              # + Splash Value 1
 }
+#: ``forward``: metres ahead of the hero a shot starts / a hit area lands: the
+#: aim node's inline local offset Z (literal 5; literal 3 is the side offset X
+#: the kit's ``offsets`` already set, and the node's direction is +Z).
+_FORWARD = 5
+
 #: Status effects: option -> (flag value, duration value or None).
 PROJ_STATUS = {
     "burn": ("Applies Ignite Debuff Flag", "Ignite Duration Value"),
@@ -260,9 +303,9 @@ INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 _NO_TUNING = (None, None, True, None, None, None, None)
 
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
-                      *PROJ_VALUES, *PROJ_STATUS},
+                      "forward", *PROJ_VALUES, *PROJ_STATUS},
              "wait": {"wait"}, "repeat": {"repeat", "every", "steps"},
-             "anim": {"anim"}, "hit": {"hit"}, "heal": {"heal"},
+             "anim": {"anim"}, "hit": {"hit", "forward"}, "heal": {"heal"},
              "summon": {"summon", "lifetime", "burst", "burst_on_hit", "appear", "attack",
                         "attack_area", "attack_speed", "attack_debuffs", "attack_cooldown",
                         "attack_reach", "attack_range", "attack_targets", "look"}}
@@ -328,6 +371,10 @@ def timeline(steps, t: float = 0.0) -> list[tuple[float, dict]]:
                 if sp is not None and (isinstance(sp, bool) or not isinstance(sp, (int, float))
                                        or not 0 <= sp <= 200):
                     raise KitError(f"step {n}: speed is 0..200")
+            fw = st.get("forward")
+            if fw is not None and (isinstance(fw, bool) or not isinstance(fw, (int, float))
+                                   or not -30 <= fw <= 30):
+                raise KitError(f"step {n}: forward is -30..30 metres")
             if kind == "heal":
                 v = st["heal"]
                 if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= 10000:
@@ -371,7 +418,9 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     spawner = next((c for c in aimed if any("Projectile" in x for x in c.literals)),
                    aimed[0] if aimed else None)
     node = node_of(spawner) if spawner else None
-    number = pick(lambda c: c.cls == "oCEntityCpntValueSettings"
+    # Donors are parts of their own, never overrides (a clone keeps the
+    # override mark and would REPLACE the base's part; see `empty` below).
+    number = pick(lambda c: c.cls == "oCEntityCpntValueSettings" and c.override is None
                   and any(f.name == "value" and f.text.startswith("f32")
                           for f in EF.fields(c)), "plain number")
     timer = pick(lambda c: c.cls == "oCEntityCpntTimerSettings" and c.override is None,
@@ -383,7 +432,11 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     # 2026-11-03: Kit Pet Spawn / Start / Order End all missing).
     empty = pick(lambda c: c.cls == "oCEntityCpntStateSettings" and not c.refs
                   and c.override is None, "empty state")
-    aim = _obj_refs(node, "obj_4") if node else []
+    # Slot numbers as `link Part.obj_4[n]` counts them: EVERY link slot,
+    # empty ones too. Counting only the filled ones pointed a shot's yaw at
+    # Piper's X offset (her node's first two slots are empty: release
+    # direction is 2, X offset 3, Y offset 4, Y angle 5).
+    aim = _obj_ref_slots(node, "obj_4") if node else []
     yaw_ref = next((i for i, r in enumerate(aim) if "Y Angle" in r), None)
     x_ref = next((i for i, r in enumerate(aim) if "X Offset" in r), None)
     # Links the shipped node already holds into its OWN entity that lead to no
@@ -392,8 +445,9 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     # a copy, which made every Fire and Hit block on Merlin fail to save.
     own = {c.name for c in g.components}
     dangling = [(f.name, i) for f in (EF.fields(node) if node else []) if f.kind == "obj"
-                for i, r in enumerate(_obj_refs(node, f.name))
-                if r and r.startswith(g.name + "\\")
+                for i, slot in enumerate(_obj_ref_slots(node, f.name))
+                for r in [re.sub(r"^\[[^\]]+\] ", "", slot)]
+                if r and r != "(none)" and r.startswith(g.name + "\\")
                 and r.rstrip().rstrip('"').rsplit("\\", 1)[-1] not in own]
 
     def clear_dangling(nd: str) -> None:
@@ -405,6 +459,7 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
     n_values = sum(len(f.items) for f in EF.fields(spawner) if f.name == "spawner_values") \
         if spawner else 0
     sv_donor = next((c for c in g.components if c.cls == "oCEntityCpntSpawnerValueSettings"
+                     and c.override is None
                      and any(f.name == "value" and f.text.startswith("f32")
                              for f in EF.fields(c))), None)
     int_donor = next((c for c in g.components if c.cls == "oCEntityCpntSpawnerValueSettings"
@@ -500,6 +555,8 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                        "rename": {spawner.name: sp, node.name: nd}},
                       {"set": f"{sp}.template[1]", "value": HIT_ENTITY}]
             clear_dangling(nd)
+            if block.get("forward"):
+                steps.append({"set": f"{nd}.obj_4[{_FORWARD}]", "value": float(block["forward"])})
             steps += [{"remove_link": f"{sp}.spawner_values[0]"}] * n_values
             for key, (target, default, _, _, scale) in HIT_VALUES.items():
                 setv(sp, HIT_ENTITY, key.title(), target,
@@ -535,6 +592,8 @@ def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> l
                        "rename": {spawner.name: sp, node.name: nd}},
                       {"set": f"{sp}.template[1]", "value": shot}]
             clear_dangling(nd)
+            if block.get("forward"):
+                steps.append({"set": f"{nd}.obj_4[{_FORWARD}]", "value": float(block["forward"])})
             steps += [{"remove_link": f"{sp}.spawner_values[0]"}] * n_values
             if deg:
                 rad = math.radians(float(deg))
@@ -607,9 +666,19 @@ def _is_pet(ent: str) -> bool:
 
 
 def _inherits(ent: str, needle: bytes) -> bool:
-    from . import entity_check as CK
-    raw = CK._corpus_reader(ent)
+    raw = _read(ent)
     return bool(raw) and needle in raw
+
+
+def _obj_ref_slots(c: EG.Component, fld: str) -> list[str]:
+    """Every link slot of an object field, empty ones (``"(none)"``) included,
+    in the order ``link Part.fld[n]`` numbers them."""
+    f = next((x for x in EF.fields(c) if x.name == fld), None)
+    if f is None:
+        return []
+    sub = EG.Component(0, c.cls, "", "", b"", None,
+                       body=c.body[f.offset:f.offset + f.size], classes=c.classes)
+    return [t.text for t in EG.tokens(sub) if t.kind == "ref"]
 
 
 def _obj_refs(c: EG.Component, fld: str) -> list[str]:
@@ -703,7 +772,7 @@ def owner_reads(ent: str) -> list[dict]:
     """What projectile ``ent`` reads from its owner hero: ``{part, label, hero,
     type, default}`` per read, the default being that hero's own number."""
     from . import entity_check as CK
-    raw = CK._corpus_reader(ent)
+    raw = _read(ent)
     if raw is None:
         return []
     out = []

@@ -131,6 +131,45 @@ def _sound_guid(payload: bytes, where: str) -> int:
     return i + 4 + len(bank) + 4
 
 
+PROJECTILE_FIELDS = {"model", "albedo", "mra", "normal", "scale", "lifetime", "trail",
+                     "impact"}
+
+
+def projectile_entity(spec: dict, *, stem: str, tag: str, what: str, mesh, material,
+                      sounds_from: str | None = None, sounds: tuple[str, str] = (),
+                      trail: str = TEMPLATE_TRAIL, impact: str = TEMPLATE_IMPACT) -> bytes:
+    """A projectile entity of the hero's own (``stem``): the engine's generic
+    hero projectile with the mod's mesh and maps (``spec``: model, albedo /
+    mra / normal, scale, lifetime, trail, impact), its sounds taken from
+    ``sounds_from``'s ``sounds`` parts when given (else the template's)."""
+    if not spec.get("model"):
+        raise AttackError(f"{what}: a projectile needs a `model` (its mesh)")
+    raw = corpus.read(TEMPLATE_REL)
+    if raw is None:
+        raise AttackError("the projectile template is not in the game files")
+    ef = EntityFile(raw, stem)
+    ef.set_value("Lifetime Duration", "value", float(spec.get("lifetime", 1.0)))
+    if sounds_from:
+        donor = corpus.read(_entity_rel(sounds_from))
+        if donor is None:
+            raise AttackError(f"{sounds_from} is not in the game files")
+        def_ef = EntityFile(donor, sounds_from.rsplit("\\", 1)[-1][:-len(".entity.ot")])
+        for mine, theirs in zip(TEMPLATE_SOUNDS, sounds, strict=True):
+            src = bytes(def_ef.objects[def_ef.component(theirs).index - 1])
+            dst = ef.objects[ef.component(mine).index - 1]
+            a, b = _sound_guid(src, theirs), _sound_guid(bytes(dst), mine)
+            dst[b:b + 16] = src[a:a + 16]
+    maps = {k: spec[k] for k in ("albedo", "mra", "normal") if spec.get(k)}
+    transform = {"fit": "none", "scale": float(spec.get("scale", 1.0))}
+    swaps = {TEMPLATE_MESH: mesh(TEMPLATE_MESH, spec["model"], tag, f"{what}.model", transform),
+             TEMPLATE_TRAIL: str(spec.get("trail") or trail),
+             TEMPLATE_IMPACT: str(spec.get("impact") or impact)}
+    if maps:
+        swaps[TEMPLATE_MAT] = material(TEMPLATE_MAT, maps, tag, what)
+    from . import entity_strings as ES
+    return ES.replace_strings(ef.to_bytes(), swaps)
+
+
 def build(spec: dict, *, hero: str, base: str, base_main: bytes, mesh, material) -> Built:
     """Compile one ``[[content.attacks]]`` table. ``mesh``/``material`` are the
     hero kind's helpers (they cook the mod's files and record preload lines)."""
@@ -152,37 +191,12 @@ def build(spec: dict, *, hero: str, base: str, base_main: bytes, mesh, material)
     beats = spec.get("beats") or [[0]]
     if not (isinstance(beats, list) and all(isinstance(b, list) and b for b in beats)):
         raise AttackError(f"{aid}: `beats` is a list of angle lists, e.g. [[0, 180], [90, -90]]")
-    if not spec.get("model"):
-        raise AttackError(f"{aid}: an attack needs a `model` (its projectile's mesh)")
-
     # --- the projectile entity -------------------------------------------
     stem = f"Hero_{hero}_{aid}"
     ref = f"Heroes\\Hero_{base}\\{stem}.entity.ot"      # a shipped sibling folder
-    raw = corpus.read(TEMPLATE_REL)
-    if raw is None:
-        raise AttackError("the projectile template is not in the game files")
-    ef = EntityFile(raw, stem)
-    ef.set_value("Lifetime Duration", "value", float(spec.get("lifetime", 1.0)))
-    donor = corpus.read(_entity_rel(parts.projectile))
-    if donor is None:
-        raise AttackError(f"{parts.projectile} is not in the game files")
-    def_ef = EntityFile(donor, parts.projectile.rsplit("\\", 1)[-1][:-len(".entity.ot")])
-    for mine, theirs in zip(TEMPLATE_SOUNDS, parts.sounds, strict=True):
-        src = bytes(def_ef.objects[def_ef.component(theirs).index - 1])
-        dst = ef.objects[ef.component(mine).index - 1]
-        a, b = _sound_guid(src, theirs), _sound_guid(bytes(dst), mine)
-        dst[b:b + 16] = src[a:a + 16]
-    tag = f"{hero}_{aid}"
-    maps = {k: spec[k] for k in ("albedo", "mra", "normal") if spec.get(k)}
-    transform = {"fit": "none", "scale": float(spec.get("scale", 1.0))}
-    swaps = {TEMPLATE_MESH: mesh(TEMPLATE_MESH, spec["model"], tag, f"attacks.{aid}.model",
-                                 transform),
-             TEMPLATE_TRAIL: str(spec.get("trail") or parts.trail),
-             TEMPLATE_IMPACT: str(spec.get("impact") or parts.impact)}
-    if maps:
-        swaps[TEMPLATE_MAT] = material(TEMPLATE_MAT, maps, tag, f"attacks.{aid}")
-    from . import entity_strings as ES
-    entity = ES.replace_strings(ef.to_bytes(), swaps)
+    entity = projectile_entity(spec, stem=stem, tag=f"{hero}_{aid}", what=f"attacks.{aid}",
+                               mesh=mesh, material=material, sounds_from=parts.projectile,
+                               sounds=parts.sounds, trail=parts.trail, impact=parts.impact)
 
     # --- the wiring -----------------------------------------------------
     main = EntityFile(base_main, "base")
