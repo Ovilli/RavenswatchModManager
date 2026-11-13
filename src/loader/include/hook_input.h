@@ -1,5 +1,5 @@
 #pragma once
-// Mouse-wheel notches and the middle-button drag from the game's own input poll.
+// Mouse-wheel notches, the middle-button drag and mouse-look from the game's own input poll.
 //
 // WHY THIS EXISTS
 // ---------------
@@ -33,6 +33,21 @@
 // update runs, so reading it every poll could count a frame twice). Delivered
 // in order as "input:drag" {phase = start|move|end, dx, dy, x, y, w, h,
 // blocked, button = "middle"}, consecutive moves merged, same non-blocking rule.
+// While the cursor lock is on the cursor is recentred every frame, so the
+// position difference means nothing: no drag starts and one in progress ends.
+//
+// MOUSE-LOOK
+// ----------
+// The game's UI update (FUN_14045ab40) has a cursor-lock mode nothing turns on:
+// with the lock byte set it reads the cursor, takes dx/dy against a centre
+// point, and SetCursorPos()es back to the centre. The centre is two floats in
+// SCREEN coordinates that nothing writes. After the original poll the detour
+// writes the game window's client-area centre there and sets the lock byte while
+// a mod has requested it (R.input.mouse_look), and posts the game's own dx/dy
+// from g_MouseState as "input:mouse_move" {dx, dy, x, y, w, h, locked, blocked}
+// (merged when the Lua lock is busy). The lock is released (byte 0, cursor
+// shown) whenever the request is off, a menu is open (Lua reports it), or the
+// game window is not the foreground window.
 #include <cstdint>
 
 namespace rsmm {
@@ -60,5 +75,37 @@ struct InputDragState {
 
 // Fills `out` and returns true when the drag is armed.
 bool input_drag_state(InputDragState* out);
+
+// True once mouse-look can run: the poll detour is live and the lock byte, the
+// centre floats and the cursor record are all readable and writable.
+bool input_look_armed();
+
+// Request mouse-look on or off (any thread). `hide` also hides the OS cursor
+// while the lock is engaged. Returns false when it is not armed. The game
+// thread applies it on its next poll. A request lapses after a few seconds
+// unless input_look_refresh() or another request keeps it alive, so a mod whose
+// Lua state is gone cannot leave the lock on. Returns the request's id (never 0),
+// or 0 when not armed; a later request supersedes it.
+std::uint64_t input_look_request(bool on, bool hide);
+
+// Keep the request alive and tell the loader whether a game menu is open. Only
+// the request `request_id` names can do this: once another request has
+// superseded it the call does nothing. 0 means "no id" (an older SDK) and
+// always applies.
+void input_look_refresh(bool menu_open, std::uint64_t request_id);
+
+struct InputLookState {
+    bool requested;   // a mod asked for it
+    bool active;      // the lock is engaged right now
+    bool paused;      // requested but released (menu open, or the game is not foreground)
+    bool hidden;      // the OS cursor is hidden by us
+};
+
+// Fills `out` and returns true when armed.
+bool input_look_state(InputLookState* out);
+
+// Unload: asks the game thread (next poll) to release - lock byte 0, cursor shown -
+// and waits up to 250 ms; falls back to clearing the byte from the caller.
+void input_look_shutdown();
 
 } // namespace rsmm

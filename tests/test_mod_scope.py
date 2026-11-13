@@ -48,6 +48,9 @@ def make_mod(root: Path, *, manifest: str = "", lua: str | None = None,
     # a drag handler: local input, a menu-state read, a middle-binding read
     'R.input.on_drag(function(phase, dx, dy) if not R.game.flag("is_menu_open") '
     'and R.input.middle_free() then R.log(phase, dx, dy) end end)',
+    # mouse-look: a local cursor lock, its movement events and state read
+    'R.input.mouse_look(true, {hide = true}) R.input.on_mouse_move(function(dx, dy, ev) '
+    'if not ev.locked then R.log(dx, dy) end end) R.log(R.input.mouse_look_state())',
 ])
 def test_read_only_and_presentation_lua_is_client_only(body):
     assert lua_reasons(SDK + body) == []

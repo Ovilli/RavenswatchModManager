@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **379** symbols across 29 categories.
+Total: **381** symbols across 29 categories.
 
 ## analytics
 
@@ -249,6 +249,8 @@ Total: **379** symbols across 29 categories.
 |------|---------|--------|----------|------------------|
 | `InputActionMap_Add` | `0x140470c70` | ✅ ok | ✔ | ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4]) |
 | `Input_Poll` | `0x14067ddd0` | ✅ ok |  | void(void* inputManager, const void* frameTime) |
+| `g_CursorLockCentre` | `0x14146d9c0` | 📍 va |  | Two f32 (x at +0, y at +4): the SCREEN-coordinate point the cursor lock recentres to. R… |
+| `g_CursorLockFlag` | `0x141467b67` | 📍 va |  | Cursor-lock byte (u8). Its only reader is the UI update FUN_14045ab40: when it is set a… |
 | `g_InputActionMap` | `0x141436b68` | 📍 va |  | *ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {… |
 | `g_InputKeyRecords` | `0x141466c50` | 📍 va |  | The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel… |
 | `g_InputManager` | `0x14146f8e8` | 📍 va |  | Pointer to the input manager (*ptr = the object Input_Poll is called on). The window pr… |
