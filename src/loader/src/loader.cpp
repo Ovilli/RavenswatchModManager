@@ -570,10 +570,6 @@ void Loader::scan_mods(const fs::path& mods_dir) {
     std::sort(mods_.begin(), mods_.end(),
               [](const Mod& a, const Mod& b){ return a.load_order < b.load_order; });
     log("scan_mods found=" + std::to_string(mods_.size()));
-    for (const auto& m : mods_) {
-        if (!m.enabled) continue;
-        log("mod " + m.id + " v" + m.version + " (" + m.root.filename().string() + ")");
-    }
 }
 
 void Loader::apply_overrides() {

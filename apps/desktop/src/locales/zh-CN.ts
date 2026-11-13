@@ -403,6 +403,12 @@ export const zhCN: Record<string, string> = {
   'unknown error': '未知错误',
   none: '无',
   'Restart now': '立即重启',
+  'Not while the game is launching': '游戏启动期间不可用',
+  'Waiting for the game loader update to finish before launching vanilla…':
+    '正在等待游戏加载器更新完成，然后启动原版…',
+  'Skipped at launch - the game started without these mods:':
+    '启动时已跳过 - 游戏启动时未加载这些模组：',
+  '{id} was skipped: {reason}': '{id} 已被跳过：{reason}',
   'no answer after {seconds} s - launching with the current build':
     '{seconds} 秒内无响应 - 使用当前版本启动',
   dev: '开发版',

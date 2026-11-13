@@ -59,11 +59,39 @@ export function setChannelPhase(name: ChannelName, phase: ChannelPhase): void {
   for (const fn of listeners) fn();
 }
 
+let launchHold: 'vanilla' | 'modded' | null = null;
+
+/** Which launch is waiting on an in-flight loader update, or null. */
+export function getLaunchHold(): 'vanilla' | 'modded' | null {
+  return launchHold;
+}
+
+export function setLaunchHold(hold: 'vanilla' | 'modded' | null): void {
+  if (hold === launchHold) return;
+  launchHold = hold;
+  for (const fn of listeners) fn();
+}
+
+let launchDepth = 0;
+
+/** True while a launch is being handed off (see channel-triggers.ts). */
+export function getLaunchActive(): boolean {
+  return launchDepth > 0;
+}
+
+export function adjustLaunchDepth(delta: 1 | -1): void {
+  const was = launchDepth > 0;
+  launchDepth = Math.max(0, launchDepth + delta);
+  if (was !== launchDepth > 0) for (const fn of listeners) fn();
+}
+
 /** Tests only. */
 export function resetChannelPhases(): void {
+  launchDepth = 0;
   clearTimeout(timers.cli);
   clearTimeout(timers.loader);
   phases = { cli: IDLE, loader: IDLE };
+  launchHold = null;
 }
 
 /** The one-line banner text for a phase, or null when there is nothing to say. */
@@ -120,10 +148,33 @@ function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+let loaderFlight: Promise<unknown> | null = null;
+
+/** The loader update running right now (whoever started it), or null. A launch
+ *  must not hand off while this can still write `winhttp.dll`. */
+export function loaderUpdateInFlight(): Promise<unknown> | null {
+  return loaderFlight;
+}
+
 /** Loader update, with the phase published. Same result as `updateLoader`. */
-export async function trackLoaderUpdate(
+export function trackLoaderUpdate(
   opts: { onProgress?: (p: LoaderDownloadProgress) => void } = {},
 ): Promise<UpdateLoaderResult | null> {
+  const run = runTrackedLoaderUpdate(opts);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  loaderFlight = settled;
+  void settled.then(() => {
+    if (loaderFlight === settled) loaderFlight = null;
+  });
+  return run;
+}
+
+async function runTrackedLoaderUpdate(opts: {
+  onProgress?: (p: LoaderDownloadProgress) => void;
+}): Promise<UpdateLoaderResult | null> {
   setChannelPhase('loader', { kind: 'checking' });
   try {
     const r = await updateLoader({

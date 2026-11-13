@@ -74,7 +74,8 @@ def test_counts_only_each_channels_paths(repo: Path) -> None:
     assert s["loader"]["count"] == 2
     assert [c.split(" ", 1)[1] for c in s["loader"]["commits"]] == [
         "loader two", "loader one"]
-    assert s["cli"]["count"] == 1
+    # the CLI bundle carries the loader DLL, lib and lua, so src/loader counts too
+    assert s["cli"]["count"] == 3
     assert "2 commits behind main (src/loader)" in channel_drift.summary_line(
         s["loader"])
 
@@ -86,7 +87,7 @@ def test_new_publish_resets_that_channel_only(repo: Path) -> None:
     s = _by_name(channel_drift.drift(repo))
     assert s["loader"]["status"] == "current"
     assert s["loader"]["version"] == 6
-    assert s["cli"]["count"] == 1
+    assert s["cli"]["count"] == 2     # the loader publish does not reset the CLI
 
 
 def test_shallow_clone_is_unknown(repo: Path, tmp_path: Path) -> None:
@@ -136,4 +137,40 @@ def test_doctor_line_warns_in_git_checkout(repo: Path, monkeypatch) -> None:
     res = {r.code: r for r in doctor.check_channel_drift()}
     assert res["channel-drift.loader"].kind == "WARN"
     assert "newer than published loader v5" in res["channel-drift.loader"].label
-    assert res["channel-drift.cli"].kind == "OK"
+    assert res["channel-drift.cli"].kind == "WARN"   # the CLI bundles the loader runtime
+
+
+def _head(repo: Path) -> str:
+    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_built_from_catches_a_change_rebased_under_the_stamp(repo: Path) -> None:
+    built = _head(repo)
+    # Lands during the build, then the bump is rebased on top of it: the change is
+    # an ancestor of the stamp commit but not in the artifact.
+    _commit(repo, "src/loader/late.cpp", "x", "landed mid-build")
+    _commit(repo, "data/loader_version.json",
+            json.dumps({"loader_version": 6, "built_from": built}), "chore: publish v6")
+    s = _by_name(channel_drift.drift(repo))["loader"]
+    assert s["status"] == "behind"
+    assert [c.split(" ", 1)[1] for c in s["commits"]] == ["landed mid-build"]
+
+
+def test_stamp_without_built_from_falls_back_to_the_stamp_commit(repo: Path) -> None:
+    _commit(repo, "src/loader/late.cpp", "x", "before the stamp")
+    _stamp(repo, "loader", 6)
+    assert _by_name(channel_drift.drift(repo))["loader"]["status"] == "current"
+
+
+def test_unknown_built_from_falls_back_to_the_stamp_commit(repo: Path) -> None:
+    _commit(repo, "data/cli_version.json",
+            json.dumps({"cli_version": 8, "built_from": "0" * 40}), "chore: publish v8")
+    assert _by_name(channel_drift.drift(repo))["cli"]["status"] == "current"
+
+
+def test_cli_channel_counts_the_bundled_loader_runtime(repo: Path) -> None:
+    _commit(repo, "src/loader/lua/rsmm/x.lua", "x", "sdk submodule")
+    s = _by_name(channel_drift.drift(repo))
+    assert s["cli"]["status"] == "behind"
+    assert "src/loader" in s["cli"]["paths"]

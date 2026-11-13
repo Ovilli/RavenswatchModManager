@@ -4,6 +4,7 @@ import { defaultGameDir, isEnabledIn, useApp } from '../store';
 import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
 import { noteGameStateChanged, onGameStateChanged } from './session-cache';
+import { type SkippedMod, setSkippedMods } from './skipped-mods';
 import { isSafeProfileId } from './untrusted-state';
 
 interface ExecResult {
@@ -855,7 +856,12 @@ interface RunResult {
   /** `apply` only: mods switched on/off in game (Settings > Mods) since the
    * profile was saved. They won this apply; the store follows them. */
   menuToggles?: Record<string, boolean>;
+  /** `apply` only: mods left out because their manifest `[requires]` is newer
+   * than this CLI or loader. Absent from older CLIs. */
+  skipped?: SkippedMod[];
 }
+
+export type { SkippedMod };
 
 /** A repair doctor knows how to run for a finding. `manual` ones need a
  * human (close Steam, rebuild the DLL); `automatic` ones `--fix` can run. */
@@ -1431,8 +1437,14 @@ export const build = () => rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_
 
 const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: DEFAULT_TIMEOUT_MS });
 
-export const runVanilla = () =>
-  rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
+export async function runVanilla(): Promise<RunResult | null> {
+  await launchGate?.before('vanilla').catch(() => {});
+  try {
+    return await rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
+  } finally {
+    launchGate?.after('vanilla');
+  }
+}
 
 export const restoreAll = () => rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
 
@@ -1448,22 +1460,36 @@ export interface ActiveOverridesStatus {
 export const getActiveOverridesStatus = () =>
   rsmm<ActiveOverridesStatus>(['active-overrides'], { timeoutMs: LONG_TIMEOUT_MS });
 
-let preLaunchHook: (() => Promise<void>) | null = null;
+export type LaunchKind = 'vanilla' | 'modded';
 
-/** Work to finish before the game launches (the channel check, see
- *  channel-triggers.ts). Registered from there because it imports this module. */
-export function setPreLaunchHook(fn: (() => Promise<void>) | null): void {
-  preLaunchHook = fn;
+/** What the channel triggers need to know about a launch (see
+ *  channel-triggers.ts). Registered from there because it imports this module.
+ *  `before` finishes work that must not overlap the hand-off; `after` runs once
+ *  the launch call has returned or thrown. */
+export interface LaunchGate {
+  before: (kind: LaunchKind) => Promise<void>;
+  after: (kind: LaunchKind) => void;
+}
+
+let launchGate: LaunchGate | null = null;
+
+export function setLaunchGate(gate: LaunchGate | null): void {
+  launchGate = gate;
 }
 
 export async function runModded(): Promise<RunResult | null> {
-  // Never blocks the launch: the hook swallows its own failures.
-  await preLaunchHook?.().catch(() => {});
-  const applyResult = await applyMods();
-  if (applyResult && applyResult.ok === false) {
-    throw new RsmmExitError(['apply'], applyResult.code, applyResult.stdout, applyResult.stderr);
+  // Never blocks the launch: the gate swallows its own failures.
+  await launchGate?.before('modded').catch(() => {});
+  try {
+    const applyResult = await applyMods();
+    if (applyResult && applyResult.ok === false) {
+      throw new RsmmExitError(['apply'], applyResult.code, applyResult.stdout, applyResult.stderr);
+    }
+    setSkippedMods(applyResult?.skipped ?? []);
+    return await runGame();
+  } finally {
+    launchGate?.after('modded');
   }
-  return runGame();
 }
 
 // publish-to-index lives on the website now (see apps/www /publish and

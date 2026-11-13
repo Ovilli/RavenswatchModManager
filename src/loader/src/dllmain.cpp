@@ -137,13 +137,14 @@ static void loader_thread_cxx() {
         }
 
         for (const auto& m : L.mods()) {
-            if (!m.enabled) {
-                // Plain log, not a warning: disabling a mod is the user's choice.
-                // It used to be silent, which made "disabled" and "init.lua never
-                // ran" indistinguishable in the log.
-                L.log("[lua] " + m.id + " skipped (disabled in its manifest)");
-                continue;
-            }
+            // One line per mod, written after load_state() so it reports what
+            // actually happens (saved in-game toggles included), not manifest
+            // defaults. Plain log, not a warning: disabling is the user's
+            // choice. It used to be silent, which made "disabled" and
+            // "init.lua never ran" indistinguishable in the log.
+            L.log("mod " + m.id + " v" + m.version + " (" + m.root.filename().string() + ") " +
+                  (m.enabled ? "init" : "disabled"));
+            if (!m.enabled) continue;
             rsmm::script_run_mod_init(m.id, m.root);
         }
         // Lifecycle: "setup" fires after every mod's init.lua has run (so

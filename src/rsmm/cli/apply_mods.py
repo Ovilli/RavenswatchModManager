@@ -1271,17 +1271,40 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
     return out
 
 
-def apply_requires_gate(mods: list[Mod], game_dir: Path) -> list[Mod]:
+def requires_gate(mods: list[Mod], game_dir: Path) -> list[dict]:
     """Skip enabled mods whose `[requires]` is above this CLI / the loader that
-    will run. In-memory only, like the health quarantine; the others still apply."""
+    will run. In-memory only, like the health quarantine; the others still apply.
+    Returns the skipped mods as ``{"id", "reason", "needs": {"cli"?, "loader"?}}``."""
+    skipped: list[dict] = []
     for m in mods:
         if not m.enabled or not m.requires:
             continue
-        why = _req.unmet(m.requires, game_dir)
-        if why:
-            print(f"  [content] {m.id}: {why}", file=sys.stderr)
+        res = _req.check(m.requires, game_dir)
+        if res["warning"]:
+            print(f"  [content] {m.id}: {res['warning']}", file=sys.stderr)
+        if res["reason"]:
+            print(f"  [content] {m.id}: {res['reason']}", file=sys.stderr)
             m.enabled = False
+            skipped.append({"id": m.id, "reason": res["reason"],
+                            "needs": dict(res["needs"])})
+    return skipped
+
+
+def apply_requires_gate(mods: list[Mod], game_dir: Path) -> list[Mod]:
+    requires_gate(mods, game_dir)
     return mods
+
+
+def _write_skipped(skipped: list[dict]) -> None:
+    """Hand the skipped list to the JSON bridge, which runs this apply as a
+    child process and names the file in ``RSMM_SKIPPED_FILE``."""
+    path = os.environ.get("RSMM_SKIPPED_FILE")
+    if not path:
+        return
+    try:
+        Path(path).write_text(json.dumps(skipped), encoding="utf-8")
+    except OSError as e:
+        print(f"  [content] could not record skipped mods: {e}", file=sys.stderr)
 
 
 def _installed_aliases(additions, game_dir: Path) -> list:
@@ -2542,7 +2565,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
-    mods = apply_requires_gate(mods, game_dir)
+    _write_skipped(requires_gate(mods, game_dir))
     # Materialize [[content]] declarations before computing the asset
     # plan so the emitted files are picked up like any other asset.
     emit_content_blocks(mods, game_dir)
