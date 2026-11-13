@@ -229,8 +229,24 @@ def _replant_newer_loader(game_dir: Path) -> None:
               file=sys.stderr)
         return
     if result:
-        print(f"install-loader: replanted loader v{result['loader_version']} "
-              f"from the update channel ({len(result['planted'])} files)")
+        new = result["loader_version"]
+        # The platform script just planted this build's own DLL, which is what
+        # the replant overwrote. A prebuilt stamp means a channel build; no
+        # stamp means a local (dev) build whose changes are about to vanish.
+        try:
+            from rsmm.engine.loader_update import bundled_loader_dll, prebuilt_version
+            old = prebuilt_version(bundled_loader_dll())
+        except ImportError:
+            old = None
+        if old is None:
+            print(f"install-loader: warning: replaced the loader you just installed "
+                  f"(dev build, unstamped) with channel loader v{new} - your local "
+                  f"loader changes are not in the game ({len(result['planted'])} files)",
+                  file=sys.stderr)
+        else:
+            print(f"install-loader: replanted loader v{new} "
+                  f"from the update channel, over v{old} "
+                  f"({len(result['planted'])} files)")
 
 
 def _ensure_pattern_db(game_dir: Path) -> None:
