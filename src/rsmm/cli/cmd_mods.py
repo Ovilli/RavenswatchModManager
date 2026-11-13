@@ -267,11 +267,32 @@ def _resolve_ids(args, ap, mods_dir: Path, known: list[str],
     return None  # unreachable; ap.error exits
 
 
+def _warn_requires(mods_dir: Path, mod_id: str) -> None:
+    """Say so when the mod needs a newer CLI / loader than this install has."""
+    import tomllib
+
+    from ..engine import mod_requires as R
+    try:
+        with (mods_dir / mod_id / "manifest.toml").open("rb") as f:
+            req = R.parse_requires(tomllib.load(f).get("requires"))
+        try:
+            game_dir = P.default_game_dir()
+        except Exception:  # noqa: BLE001 - no install found; loader check falls back to bundled
+            game_dir = None
+        why = R.unmet(req, game_dir)
+    except (OSError, ValueError):
+        return
+    if why:
+        print(f"  [warn] {mod_id}: {why}", file=sys.stderr)
+
+
 def _flip(mods_dir: Path, mod_id: str, enabled: bool) -> bool:
     """Toggle one mod, print the outcome, return True unless it failed."""
     status = set_mod_enabled(mods_dir, mod_id, enabled)
     verb = "enable" if enabled else "disable"
     print(f"{verb:<8} {mod_id}: {status}")
+    if enabled and status in ("ok", "unchanged"):
+        _warn_requires(mods_dir, mod_id)
     return status in ("ok", "unchanged")
 
 
