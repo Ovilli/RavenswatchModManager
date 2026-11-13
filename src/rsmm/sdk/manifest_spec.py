@@ -134,6 +134,7 @@ MOD_FIELDS: dict[str, str] = {
 #: Top-level tables a manifest may contain.
 TOP_LEVEL: frozenset[str] = frozenset({
     "mod", "content", "patch", "overlay", "experiment", "config", "provides",
+    "requires",
 })
 
 
@@ -235,6 +236,17 @@ def json_schema() -> dict:
                     "required": ["kind", "id"],
                     "allOf": content_branches,
                 },
+            },
+            "requires": {
+                "type": "object",
+                "description": "Oldest RSMM CLI / loader version this mod runs on.",
+                "properties": {
+                    "cli": {"type": "integer", "minimum": 1,
+                            "description": "Oldest CLI version (cli_version)."},
+                    "loader": {"type": "integer", "minimum": 1,
+                               "description": "Oldest loader version."},
+                },
+                "additionalProperties": False,
             },
             "patch": {
                 "type": "array",

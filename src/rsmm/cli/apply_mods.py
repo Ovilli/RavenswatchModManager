@@ -55,6 +55,7 @@ from pathlib import Path
 
 from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
+from rsmm.engine import mod_requires as _req
 from rsmm.engine.compendium_layout import PAGE_DECODED, sync_compendium_columns
 
 # Moved to the engine (2026-09-26); re-exported for existing callers and tests.
@@ -72,6 +73,7 @@ from rsmm.engine.content_merge import (
 )
 from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
+from rsmm.engine.mod_requires import parse_requires
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     BACKUP_SUFFIX,
@@ -402,6 +404,8 @@ class Mod:
         if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
             raise ValueError("mod.loader_flags must be a list of flag names")
         self.loader_flags: list[str] = list(flags)
+        # `[requires]`: oldest CLI / loader this mod runs on (engine.mod_requires).
+        self.requires: dict[str, int] = parse_requires(tbl.get("requires"))
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
@@ -1233,7 +1237,9 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
                   file=sys.stderr)
             _drop_emitted(m)
         except (OSError, ValueError) as e:
-            print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
+            print(f"  [content] {m.id}: emit failed: {e} (RSMM CLI "
+                  f"v{_req.running_cli_version()} - a field this CLI doesn't know "
+                  "may need a newer RSMM)", file=sys.stderr)
             _drop_emitted(m)
         finally:
             logging.getLogger("rsmm").removeHandler(cap)
@@ -1263,6 +1269,19 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
             m.enabled = False
         out.append(m)
     return out
+
+
+def apply_requires_gate(mods: list[Mod], game_dir: Path) -> list[Mod]:
+    """Skip enabled mods whose `[requires]` is above this CLI / the loader that
+    will run. In-memory only, like the health quarantine; the others still apply."""
+    for m in mods:
+        if not m.enabled or not m.requires:
+            continue
+        why = _req.unmet(m.requires, game_dir)
+        if why:
+            print(f"  [content] {m.id}: {why}", file=sys.stderr)
+            m.enabled = False
+    return mods
 
 
 def _installed_aliases(additions, game_dir: Path) -> list:
@@ -2523,6 +2542,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
+    mods = apply_requires_gate(mods, game_dir)
     # Materialize [[content]] declarations before computing the asset
     # plan so the emitted files are picked up like any other asset.
     emit_content_blocks(mods, game_dir)
