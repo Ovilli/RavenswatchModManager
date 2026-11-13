@@ -14,14 +14,14 @@ export function ModActions({ slug, version }: { slug: string; version?: ModVersi
       {version && downloadUrl ? (
         <>
           <a className="mod-download" href={downloadUrl}>
-            <span className="mod-download-label">
-              <ArrowDownToLine size={20} aria-hidden />
-              <span>Download mod</span>
-            </span>
-            <span className="mod-download-meta">
-              Version {version.version}
-              <span aria-hidden>·</span>
-              {formatFileSize(version.sizeBytes)}
+            <ArrowDownToLine size={20} aria-hidden />
+            <span className="mod-download-copy">
+              <span className="mod-download-label">Download mod</span>
+              <span className="mod-download-meta">
+                <span>Version {version.version}</span>
+                <span aria-hidden>·</span>
+                <span>{formatFileSize(version.sizeBytes)}</span>
+              </span>
             </span>
           </a>
           <a className="mod-open-app" href={`rsmm://mods/${encodeURIComponent(slug)}`}>
