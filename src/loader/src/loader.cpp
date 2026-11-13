@@ -52,6 +52,61 @@ std::string sha256_file_hex(const fs::path& p) {
     BCryptCloseAlgorithmProvider(alg, 0);
     return out;
 }
+
+// First 12 hex chars of a file's SHA-256: identity for a log line, not
+// security. "?" on any failure; never throws, never blocks startup.
+std::string short_hash(const fs::path& p) {
+    try {
+        const auto h = sha256_file_hex(p);
+        return h.size() >= 12 ? h.substr(0, 12) : std::string("?");
+    } catch (...) {
+        return "?";
+    }
+}
+
+// Path of this DLL (the module that contains this function), or empty.
+fs::path own_module_path() {
+    HMODULE self = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&own_module_path), &self) || !self)
+        return {};
+    wchar_t buf[MAX_PATH * 2];
+    const DWORD n = GetModuleFileNameW(self, buf, static_cast<DWORD>(sizeof buf / sizeof buf[0]));
+    if (n == 0 || n >= sizeof buf / sizeof buf[0]) return {};
+    return fs::path(std::wstring(buf, n));
+}
+
+// Channel version stamp: `rsmm update-loader` plants <game>/rsmm/loader.manifest.json
+// (an install-loader of a local build plants none, and leaves an older one in
+// place). The manifest's files[] records winhttp.dll's sha256, so the version is
+// claimed only when it matches THIS DLL:
+//   "unstamped"                          no manifest
+//   "v<N>"                               manifest hash matches the running DLL
+//   "dev (manifest v<N> is for another build)"   it does not
+//   "v<N>?"                              cannot tell (no hash in manifest / DLL unreadable)
+std::string loader_stamp(const fs::path& game_dir, const std::string& own_sha) {
+    try {
+        std::ifstream f(game_dir / "rsmm" / "loader.manifest.json");
+        if (!f) return "unstamped";
+        const auto j = nlohmann::json::parse(f, nullptr, false);
+        if (!(j.is_object() && j.contains("loader_version") && j["loader_version"].is_number_integer()))
+            return "unstamped";
+        const std::string v = "v" + std::to_string(j["loader_version"].get<long long>());
+        std::string want;
+        if (j.contains("files") && j["files"].is_array()) {
+            for (const auto& e : j["files"]) {
+                if (e.is_object() && e.value("path", std::string{}) == "winhttp.dll") {
+                    want = e.value("sha256", std::string{});
+                    break;
+                }
+            }
+        }
+        if (want.empty() || own_sha.empty()) return v + "?";
+        return want == own_sha ? v : "dev (manifest " + v + " is for another build)";
+    } catch (...) {}
+    return "unstamped";
+}
 }
 
 Loader& Loader::get() {
@@ -229,7 +284,14 @@ void Loader::init(const fs::path& game_dir) {
     // `restore` had put the stock DLL back and once because the log was simply
     // older than the build. __DATE__/__TIME__ are the DLL's own compile time,
     // so this cannot drift out of sync with the binary that printed it.
-    log(std::string("loader build ") + __DATE__ " " __TIME__);
+    // The stamp and file hash say WHICH binary ran (channel vs local build).
+    {
+        const auto self = own_module_path();
+        std::string own_sha;
+        try { if (!self.empty()) own_sha = sha256_file_hex(self); } catch (...) {}
+        log("loader build " __DATE__ " " __TIME__ " stamp " + loader_stamp(game_dir_, own_sha)
+            + " hash " + (own_sha.size() >= 12 ? own_sha.substr(0, 12) : std::string("?")));
+    }
     // Say where the previous run went. Without this the archive is invisible
     // until someone thinks to go looking for the directory, and a naming
     // fallback ("unknown") would never be noticed at all.
@@ -249,7 +311,7 @@ void Loader::init(const fs::path& game_dir) {
         const auto sz = std::filesystem::file_size(sdk, sdk_ec);
         log("sdk build: rsmm.lua "
             + (sdk_ec ? std::string("MISSING - loader runtime not installed")
-                  : std::to_string(sz) + " bytes"));
+                  : std::to_string(sz) + " bytes hash " + short_hash(sdk)));
     }
     log("game_dir=" + game_dir_.string());
     log(std::string("host=") + exe_path);
@@ -508,6 +570,10 @@ void Loader::scan_mods(const fs::path& mods_dir) {
     std::sort(mods_.begin(), mods_.end(),
               [](const Mod& a, const Mod& b){ return a.load_order < b.load_order; });
     log("scan_mods found=" + std::to_string(mods_.size()));
+    for (const auto& m : mods_) {
+        if (!m.enabled) continue;
+        log("mod " + m.id + " v" + m.version + " (" + m.root.filename().string() + ")");
+    }
 }
 
 void Loader::apply_overrides() {
