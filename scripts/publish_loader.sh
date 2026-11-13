@@ -194,12 +194,17 @@ fi
 gh release upload "$TAG" \
     "$BUNDLE" "$STAGE/loader.manifest.json" "$SIG" --clobber
 
-python3 - "$NEXT" <<'PYEOF'
+# built_from: the commit the artifact was built from (the workflow records it
+# before the build; a local run uses HEAD), so channel drift measures from there
+# and not from the stamp commit, which a rebase can move past later merges.
+BUILT_FROM="${BUILT_FROM:-$(git rev-parse HEAD)}"
+python3 - "$NEXT" "$BUILT_FROM" <<'PYEOF'
 import json, sys
 from pathlib import Path
 p = Path("data/loader_version.json")
 d = json.loads(p.read_text())
 d["loader_version"] = int(sys.argv[1])
+d["built_from"] = sys.argv[2]
 p.write_text(json.dumps(d, indent=1) + "\n", encoding="utf-8")
 PYEOF
 

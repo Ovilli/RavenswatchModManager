@@ -292,6 +292,26 @@ or any Taplo-based editor autocomplete keys and underline the same mistakes as
 you type. The schema is generated from the same list lint uses, so the two
 never disagree.
 
+#### `[requires]`: the oldest RSMM a mod runs on
+
+A mod that uses a field added in a newer RSMM fails on an older one with an
+error about the field, which reads like a mistake in the mod. Declare the
+versions it needs in a top-level `[requires]` table and `rsmm apply` skips the
+mod with a plain message instead (the other mods still apply). Both keys are
+optional positive integers: `cli` is the CLI version (`cli_version` in
+`data/cli_version.json`), `loader` is the loader version. Any other key, or a
+non-integer value, is a `rsmm lint` error. This is separate from `[mod]
+requires`, which lists other mods.
+
+```toml
+[requires]
+cli    = 31
+loader = 58
+```
+
+An older install reports `needs RSMM CLI v31 or newer, this is v30 - update RSMM`
+or `needs loader v58 or newer, the installed loader is v57 - run rsmm update-loader`.
+
 ### on_disable.py (optional)
 
 Place next to `manifest.toml`. Fires from `./rsmm apply` when the mod flips `enabled = true → false`. Subprocess with 30s timeout; receives `RSMM_GAME_DIR`, `RSMM_COOKING`, `RSMM_MOD_DIR` env vars.

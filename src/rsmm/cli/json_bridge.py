@@ -533,7 +533,27 @@ def cmd_apply(rest: list[str], enabled_json: str | None = None) -> int:
                           "stderr": f"could not update mod manifests: {e}"})
         if changed:
             note = "Matched the profile: " + ", ".join(changed) + "\n"
-    result = _collect_rsmm(["apply", *rest])
+    # The apply child records the mods its `[requires]` gate skipped here, so
+    # the app can say so instead of launching with one silently missing.
+    import tempfile
+    fd, skipped_path = tempfile.mkstemp(prefix="rsmm-skipped-", suffix=".json")
+    os.close(fd)
+    prior = os.environ.get("RSMM_SKIPPED_FILE")
+    os.environ["RSMM_SKIPPED_FILE"] = skipped_path    # the child inherits it
+    try:
+        result = _collect_rsmm(["apply", *rest])
+        try:
+            skipped = json.loads(Path(skipped_path).read_text(encoding="utf-8") or "[]")
+        except (OSError, ValueError):
+            skipped = []
+    finally:
+        if prior is None:
+            os.environ.pop("RSMM_SKIPPED_FILE", None)
+        else:
+            os.environ["RSMM_SKIPPED_FILE"] = prior
+        with contextlib.suppress(OSError):
+            os.unlink(skipped_path)
+    result["skipped"] = skipped if isinstance(skipped, list) else []
     result["stdout"] = note + result["stdout"]
     if menu:
         result["menuToggles"] = menu
@@ -1737,6 +1757,21 @@ def _progress_reporter(phase: str, min_interval: float = 0.1):
     return report
 
 
+def loader_install_state(game_dir: Path) -> dict[str, Any]:
+    """What loader the game dir actually holds, for the app's version display.
+
+    ``loaderState`` is ``none`` (no winhttp.dll), ``dev`` (the DLL's sha256
+    differs from the planted ``loader.manifest.json``'s winhttp.dll entry, or, with
+    no manifest, from the DLL this build carries) or ``release``.
+    ``plantedVersion`` is the manifest's ``loader_version`` (the bundled stamp when
+    there is no manifest and the DLL is the bundled one), else None.
+    """
+    from rsmm.engine.mod_requires import loader_install
+
+    inst = loader_install(game_dir)
+    return {"plantedVersion": inst["version"], "loaderState": inst["state"]}
+
+
 def cmd_update_loader(check_only: bool) -> int:
     """
     Check for (and by default install) a newer loader DLL + Lua SDK from
@@ -1768,6 +1803,7 @@ def cmd_update_loader(check_only: bool) -> int:
             "notes": state.get("notes"),
             "planted": state.get("planted"),
             "error": state.get("error"),
+            **loader_install_state(game_dir),
         })
     except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
         return _emit({"ok": False, "status": "error", "error": str(e)})
