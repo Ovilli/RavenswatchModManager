@@ -100,19 +100,15 @@ export default function FollowedModsPage() {
               <div key={f.slug} className="space-y-2">
                 <ModCard
                   mod={{
-                    id: f.slug,
                     slug: f.slug,
                     name: f.name,
                     author: f.authorName ?? null,
                     summary: f.summary ?? null,
-                    license: null,
                     latestVersion: f.latestVersion ?? null,
                     downloads: f.downloads ?? 0,
-                    updatedAt: f.updatedAt ?? f.followedAt,
-                    category: (f.category as never) ?? null,
+                    category: f.category ?? null,
                     imageUrl: f.imageUrl,
                     rating: f.rating ?? null,
-                    tags: [],
                     nsfw: f.nsfw,
                   }}
                 />
