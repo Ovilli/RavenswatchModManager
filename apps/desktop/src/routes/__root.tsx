@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
+import { ChannelStatusBanner } from '../components/channel-status-banner';
 import { Button, CopyButton, StatPill, useModalChrome } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
@@ -547,6 +548,7 @@ function RootLayout() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <StatusStrip />
               <UpdaterBanner />
+              <ChannelStatusBanner />
               <main
                 ref={mainRef}
                 className="rsmm-main min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8"

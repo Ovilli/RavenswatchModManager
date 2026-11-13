@@ -251,6 +251,10 @@ export interface CliChannel {
   active: boolean;
   /** `cli_version` of the CLI the app runs, channel or bundled. */
   version: number;
+  /** `cli_version` of the CLI embedded in this app build. */
+  bundled?: number;
+  /** A downloaded build that becomes the running CLI at the next start. */
+  staged?: number | null;
 }
 
 let cliChannelPromise: Promise<CliChannel> | null = null;
@@ -1144,6 +1148,10 @@ export interface UpdateLoaderResult {
     | 'error';
   installedVersion?: number | null;
   remoteVersion?: number | null;
+  /** `loader_version` of `<game>/rsmm/loader.manifest.json`; null when none. */
+  plantedVersion?: number | null;
+  /** `none` = no winhttp.dll, `dev` = its sha256 differs from the manifest's entry. */
+  loaderState?: 'release' | 'dev' | 'none';
   rsmmVersion?: string | null;
   generated?: string | null;
   notes?: string | null;
@@ -1207,11 +1215,21 @@ export interface UpdateCliResult {
  * Stage the newest signed CLI build (rolling `cli` release); the app switches
  * to it on its next start. Lets a Python fix ship without an app release.
  */
-export function updateCli(): Promise<UpdateCliResult | null> {
+export function updateCli(
+  opts: { onProgress?: (p: LoaderDownloadProgress) => void } = {},
+): Promise<UpdateCliResult | null> {
   lastCliUpdatePromise = (async () => {
     const { dir } = await cliChannel();
     if (!dir) return null;
-    return rsmm<UpdateCliResult>(['update-cli', '--dest', dir], { timeoutMs: LONG_TIMEOUT_MS });
+    return rsmm<UpdateCliResult>(['update-cli', '--dest', dir], {
+      timeoutMs: LONG_TIMEOUT_MS,
+      onStderr: opts.onProgress
+        ? (line) => {
+            const p = parseProgressLine(line);
+            if (p) opts.onProgress?.(p);
+          }
+        : undefined,
+    });
   })();
   return lastCliUpdatePromise;
 }
@@ -1430,7 +1448,17 @@ export interface ActiveOverridesStatus {
 export const getActiveOverridesStatus = () =>
   rsmm<ActiveOverridesStatus>(['active-overrides'], { timeoutMs: LONG_TIMEOUT_MS });
 
+let preLaunchHook: (() => Promise<void>) | null = null;
+
+/** Work to finish before the game launches (the channel check, see
+ *  channel-triggers.ts). Registered from there because it imports this module. */
+export function setPreLaunchHook(fn: (() => Promise<void>) | null): void {
+  preLaunchHook = fn;
+}
+
 export async function runModded(): Promise<RunResult | null> {
+  // Never blocks the launch: the hook swallows its own failures.
+  await preLaunchHook?.().catch(() => {});
   const applyResult = await applyMods();
   if (applyResult && applyResult.ok === false) {
     throw new RsmmExitError(['apply'], applyResult.code, applyResult.stdout, applyResult.stderr);

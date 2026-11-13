@@ -1737,6 +1737,37 @@ def _progress_reporter(phase: str, min_interval: float = 0.1):
     return report
 
 
+def loader_install_state(game_dir: Path) -> dict[str, Any]:
+    """What loader the game dir actually holds, for the app's version display.
+
+    ``loaderState`` is ``none`` (no winhttp.dll), ``dev`` (the DLL's sha256
+    differs from the planted ``loader.manifest.json``'s winhttp.dll entry, or, with
+    no manifest, from the DLL this build carries) or ``release``.
+    ``plantedVersion`` is the manifest's ``loader_version`` (the bundled stamp when
+    there is no manifest and the DLL is the bundled one), else None.
+    """
+    from rsmm.engine import loader_update as lu
+    from rsmm.engine.hashing import sha256_file
+
+    dll = game_dir / "winhttp.dll"
+    if not dll.is_file():
+        return {"plantedVersion": None, "loaderState": "none"}
+    manifest = lu.planted_manifest(game_dir)
+    if manifest is None:
+        if lu.plant_matches_bundle(game_dir) is True:
+            return {"plantedVersion": lu.bundled_version(), "loaderState": "release"}
+        return {"plantedVersion": None, "loaderState": "dev"}
+    version = manifest.get("loader_version")
+    version = version if isinstance(version, int) else None
+    entry = next((f for f in manifest.get("files") or []
+                  if isinstance(f, dict) and f.get("path") == "winhttp.dll"), None)
+    try:
+        dev = bool(entry) and sha256_file(dll) != entry.get("sha256")
+    except OSError:
+        dev = False
+    return {"plantedVersion": version, "loaderState": "dev" if dev else "release"}
+
+
 def cmd_update_loader(check_only: bool) -> int:
     """
     Check for (and by default install) a newer loader DLL + Lua SDK from
@@ -1768,6 +1799,7 @@ def cmd_update_loader(check_only: bool) -> int:
             "notes": state.get("notes"),
             "planted": state.get("planted"),
             "error": state.get("error"),
+            **loader_install_state(game_dir),
         })
     except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
         return _emit({"ok": False, "status": "error", "error": str(e)})
