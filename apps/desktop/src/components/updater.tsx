@@ -3,6 +3,12 @@ import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../../package.json';
+import {
+  describeCliSource,
+  describeLoaderInstall,
+  trackCliUpdate,
+  trackLoaderUpdate,
+} from '../lib/channel-status';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
@@ -18,8 +24,6 @@ import {
   gameStatus,
   lastCliUpdate,
   restartGame,
-  updateCli,
-  updateLoader,
 } from '../lib/rsmm';
 import {
   type AvailableUpdate,
@@ -652,7 +656,7 @@ export function UpdaterBanner() {
 export function VersionFooter() {
   const t = useT();
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
-  const [loaderVersion, setLoaderVersion] = useState<number | null>(null);
+  const [loaderText, setLoaderText] = useState<string | null>(null);
   const [cli, setCli] = useState<CliChannel | null>(null);
 
   useEffect(() => {
@@ -665,7 +669,11 @@ export function VersionFooter() {
     });
     void loaderStatus()
       .then((r) => {
-        if (alive && r?.installedVersion != null) setLoaderVersion(r.installedVersion);
+        if (alive && r) {
+          setLoaderText(
+            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+          );
+        }
       })
       .catch(() => {
         /* offline, or no game directory — the loader half just stays quiet */
@@ -681,10 +689,8 @@ export function VersionFooter() {
     // underneath it.
     <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-xs leading-tight text-ash/60">
       <span>{t('launcher v{version}', { version: appVersion })}</span>
-      {loaderVersion != null ? (
-        <span> · {t('loader v{version}', { version: loaderVersion })}</span>
-      ) : null}
-      {cli?.dir ? <span> · {t('cli v{version}', { version: cli.version })}</span> : null}
+      {loaderText != null ? <span> · {t('loader {state}', { state: loaderText })}</span> : null}
+      {cli?.dir ? <span> · {t('cli {source}', { source: describeCliSource(cli) })}</span> : null}
     </div>
   );
 }
@@ -789,7 +795,7 @@ export function UpdaterSettings() {
   const runCliUpdate = useCallback(async (): Promise<void> => {
     const c = await cliChannel();
     if (!c.dir) return;
-    const r = await updateCli().catch(() => null);
+    const r = await trackCliUpdate().catch(() => null);
     noteCliResult(r, c.version);
     if (r?.status === 'staged') {
       toast.push(
@@ -830,7 +836,7 @@ export function UpdaterSettings() {
     setLoaderError(null);
     setLoaderProgress(null);
     try {
-      const r = await updateLoader({ onProgress: setLoaderProgress });
+      const r = await trackLoaderUpdate({ onProgress: setLoaderProgress });
       noteLoaderResult(r);
       setLoader(r);
       void appendLauncherLog('info', '[Updater] loader channel check', {
@@ -924,7 +930,11 @@ export function UpdaterSettings() {
 
   const busy = status.state === 'checking' || status.state === 'downloading' || loaderBusy;
   const loaderVersion =
-    loader?.installedVersion == null ? t('unknown') : `v${loader.installedVersion}`;
+    describeLoaderInstall(
+      loader?.loaderState,
+      loader?.plantedVersion ?? loader?.installedVersion,
+    ) ?? t('unknown');
+  const cliPending = cli?.staged ?? cliStaged;
   const loaderPending =
     loader?.status === 'update_available' && loader.remoteVersion != null
       ? `→ v${loader.remoteVersion}`
@@ -946,10 +956,10 @@ export function UpdaterSettings() {
         {cli?.dir ? (
           <VersionRow
             label={t('CLI')}
-            value={`v${cli.version}`}
+            value={describeCliSource(cli)}
             hint={
-              cliStaged != null
-                ? t('→ v{version} after restart', { version: cliStaged })
+              cliPending != null
+                ? t('→ v{version} after restart', { version: cliPending })
                 : undefined
             }
           />

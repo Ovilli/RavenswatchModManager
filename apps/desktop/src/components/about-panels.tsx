@@ -2,6 +2,7 @@ import { Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import pkg from '../../package.json';
 import { BUNDLED_CHANGELOG, type ChangelogEntry, loadChangelog } from '../lib/changelog';
+import { describeCliSource } from '../lib/channel-status';
 import { TParts, useT } from '../lib/i18n-react';
 import { type CliChannel, cliChannel } from '../lib/rsmm';
 import { ChangelogSection } from './changelog-dialog';
@@ -60,9 +61,7 @@ export function AboutPanels() {
             </p>
             {cli?.dir ? (
               <p className="font-data text-sm text-ash">
-                {cli.active
-                  ? t('CLI v{version} · update channel', { version: cli.version })
-                  : t('CLI v{version} · bundled', { version: cli.version })}
+                {t('CLI {source}', { source: describeCliSource(cli) })}
               </p>
             ) : null}
           </div>
