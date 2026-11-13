@@ -85,6 +85,21 @@ jobs:
               - 'apps/docs/src/content/**'
               - '.github/workflows/ci.yml'
 
+  # Informational: says in the run summary whether main has commits the
+  # published loader / CLI channels do not carry yet. Never fails the job.
+  channel-drift:
+    name: channels vs main (summary only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      # Full history: the last publish commit can be anywhere behind HEAD. A
+      # shallow checkout makes the report say "unknown (shallow clone)".
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Report drift in the job summary
+        run: python3 src/rsmm/dev/channel_drift.py --markdown >> "$GITHUB_STEP_SUMMARY" || true
+
   python:
     name: python ${{ matrix.os }}
     needs: changes
