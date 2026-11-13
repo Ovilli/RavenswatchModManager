@@ -1,6 +1,28 @@
 {
-  "generated": "2026-11-12",
+  "generated": "2026-11-13",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-13",
+      "summary": "Heroes written from scratch: buttons that stay on, move by root motion and chain combos; rig-lent sounds, move split and cloth physics; pets, edits and entities of their own. Mods that change the game are labelled Private games only when packed and published.",
+      "highlights": [
+        "Custom heroes: abilities now run (they used to end in the frame they started), dash and lunges move the hero, combos chain all their steps",
+        "Custom heroes: pets that follow and fight, the hero's own entities and edits, rig sounds, cloth and fur physics",
+        "rsmm pack / publish label mods that change the game \"Private games only\" automatically"
+      ],
+      "cli_version": 31
+    },
+    {
+      "version": "",
+      "date": "2026-11-13",
+      "summary": "Talent cards that never bound to a controller no longer crash the compendium or the starting pick (the call is skipped and logged); new R.debug.watch_components for watching a hero's parts live; talent-pool probe reports which pick pool is empty.",
+      "highlights": [
+        "Fixed a crash when opening the compendium or the starting talent pick for a hero whose talent cards did not load",
+        "New R.debug.watch_components(pattern, opts): log which of the hero's parts change when a button is pressed",
+        "The talent probe now reports per-pool counts and which pool the next pick deals from"
+      ],
+      "loader_version": 58
+    },
     {
       "version": "",
       "date": "2026-11-12",
@@ -501,25 +523,6 @@
         "New 'challenge' content kind (experimental) for editing the run challenges.",
         "Lint warns when a mod edits a hero part that Update 6 replaced, so the edit would do nothing.",
         "A small, dismissible Ko-fi note on the Library after a few modded launches."
-      ]
-    },
-    {
-      "version": "",
-      "loader_version": 45,
-      "date": "2026-10-16",
-      "summary": "Update 6 symbols, taken-hero pick, va-gate hash",
-      "highlights": [
-        "Update 6 symbols, taken-hero pick, va-gate hash"
-      ]
-    },
-    {
-      "version": "5.9.20",
-      "loader_version": 44,
-      "date": "2026-10-16",
-      "summary": "Finds the game when Steam is installed outside Program Files, and the Game folder setting now actually applies (#55).",
-      "highlights": [
-        "Game folder setting in Settings is now used by every command; before, it was saved but ignored (#55).",
-        "Steam installed anywhere (not just Program Files) is found automatically through the Windows registry."
       ]
     }
   ]
