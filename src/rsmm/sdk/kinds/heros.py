@@ -1260,7 +1260,7 @@ _SCRATCH_FIELDS = frozenset({"rig", "mesh", "material", "albedo", "slots", "abil
                              "ultimates", "weapon",
                              "talents", "sort", "portrait", "animations", "model",
                              "projectiles", "book", "new_hero", "skin_icon", "codex",
-                             "banner", "effects"})
+                             "banner", "effects", "sounds", "entities"})
 #: An effect layer's particle material, written as the hero's own: the
 #: engine's sprite shader (texture = the shape, its colours tinted by the
 #: layer's `colors`, as most shipped billboard particles are drawn), in the
@@ -1760,9 +1760,16 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             card["name_key"] = key(f"Ability_{word}_Name", raw.pop("name"))
         if "description" in raw:
             card["desc_key"] = key(f"Ability_{word}_Desc", raw.pop("description"))
+        # `icon_disabled`: the greyed picture, when it is not the icon's
+        # "_Disabled" twin by name (Scarlet's wolf: Ability_Wolf_Attack.png but
+        # Ability_WOLF_Attack_Disabled.png). It used to be read and dropped.
+        greyed = raw.pop("icon_disabled", None)
         if raw.get("icon"):
             card["icon"], card["icon_disabled"] = button_icons(
                 raw.pop("icon"), f"Ability_{word}", f"frame.abilities.{slot}.icon")
+            if greyed:
+                card["icon_disabled"] = ui_art(greyed, _DEFAULT_ICON, f"Ability_{word}_Disabled",
+                                               f"frame.abilities.{slot}.icon_disabled")
         elif (lent := rig_icon(str(slot))) is not None:
             # No picture given: the rig's own for that button, as the rig lends
             # its other art until the hero has its own (else the HUD is blank).
@@ -1788,11 +1795,35 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             slots.setdefault("Abilities Banner Picture", {"texture": ui_art(
                 frame["banner"], "Heroes\\Red\\HUD_Banner_RED.png", "HUD_Banner",
                 "frame.banner")})
+        # Its sounds: the rig lends its footsteps, hurt voice, death,
+        # deathdoor, spawn, teleport and book sounds (as it lends its clips);
+        # `frame.sounds` names another shipped sound per slot, or "none" to
+        # keep the shared base's generic one.
+        sounds = HF.rig_sounds(read, rig)
+        # Its bone layers (the move split, fur/cloth physics) are the rig's
+        # when its body has the rig's bones: the rig mesh, or a model of its
+        # own on that armature.
+        from ...engine import skeleton_codec as _SK
+        try:
+            body_geo = next((d.read_bytes() for d in written
+                             if d.name == f"{scope}_GEO.fbx.Geometry.gen"), None) \
+                or corpus.read(PC.art_cooked_path(mesh))
+            n_bones = len(_SK.decode(body_geo).bones) if body_geo else 0
+        except _SK.SkeletonError:
+            n_bones = 0
+        for slot, spec in _table(frame.get("sounds"), "frame.sounds", hid).items():
+            if spec == "none":
+                sounds.pop(str(slot), None)
+            elif isinstance(spec, str):
+                sounds[str(slot)] = spec
+            else:
+                raise ContentError(f"hero {hid}: frame.sounds.{slot} is \"<entity> | "
+                                   "<FMod event part>\" or \"none\"")
         main, fx, skin_values = HF.build_hero(
             read, scope=scope, fx_ref=fx_ref, common_alias=aliases["Hero_Common"].guid,
             mesh=mesh, material=body_mat, slots=slots, talents=talents,
             abilities=abilities, effects=effects, seed=f"{mod_id}:{hid}", indicators=False,
-            ultimates=ultimates, weapon=weapon)
+            ultimates=ultimates, weapon=weapon, sounds=sounds, rig=rig, bones=n_bones)
     except (HF.FrameError, HA.AbilityError) as e:
         raise ContentError(f"hero {hid}: {e}") from e
 
@@ -1832,8 +1863,18 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 repoint[mslots[slot]] = tref
                 art.append(f"3D|{tref}|oCTexture")
             mref = f"{here}\\Textures\\M_{tag}.mat.ot"
-            put(PC.art_cooked_path(mref),
-                PC.clone_material(corpus.read(PC.art_cooked_path(donor)), repoint))
+            donor_raw = corpus.read(PC.art_cooked_path(donor))
+            # A map the projectile does not bring stays the TEMPLATE's (the
+            # dagger's MRA and normal), painted for the dagger's UVs and listed
+            # by no preload cache of this hero: it would load as null. The
+            # engine's neutral maps instead, as the body and the hand weapon.
+            roots = {}
+            for r in PC._refs_doc("oCMaterial", donor_raw)[1]["asset_refs"]:
+                for suffix, (root, neutral) in _NEUTRAL_MAPS.items():
+                    if r.upper().endswith(suffix) and r not in repoint:
+                        repoint[r], roots[r] = neutral, root
+                        art.append(f"{root}|{neutral}|oCTexture")
+            put(PC.art_cooked_path(mref), PC.clone_material(donor_raw, repoint, roots))
             art.append(f"3D|{mref}|oCMaterial")
             return mref
 
@@ -1866,16 +1907,54 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 raise ContentError(f"hero {hid}: {e}") from e
             own_ref[str(pid)] = ref
 
+    # Entities of its own made from a shipped one (`frame.entities.<Id>`): a
+    # copy of `from` under the hero's name, with `edits` (the ability steps of
+    # engine/ability_edit.py: clone, set, link, add_subobject ...) applied and
+    # checked as any edit is. A bomb a summon bursts into, a zone, a thrown
+    # thing with its own rules: named "own:<Id>" by a step's `fire` or a
+    # summon's `burst`. Its identities are its own (restamped when written).
+    extra_targets: set[str] = set()
+    made_entities: list[bytes] = []
+    for eid, spec in sorted(_table(frame.get("entities"), "frame.entities", hid).items()):
+        from ...engine import ability_edit as AE
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", str(eid)) or not isinstance(spec, dict) \
+                or set(spec) - {"from", "edits"} or not isinstance(spec.get("from"), str) \
+                or not isinstance(spec.get("edits", []), list):
+            raise ContentError(f"hero {hid}: entities.{eid}: a letters-and-digits id with "
+                               "from = <a shipped entity>, edits = [ steps ]")
+        if str(eid) in own_ref:
+            raise ContentError(f"hero {hid}: entities.{eid}: a projectile has that id")
+        src_ref = AE.source_entity_ref(spec["from"])
+        src_raw = read(src_ref)
+        if src_raw is None:
+            raise ContentError(f"hero {hid}: entities.{eid}: the game has no {src_ref}")
+        src_stem = src_ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        try:
+            res = AE.apply({src_stem: src_raw}, [dict(st) for st in spec.get("edits") or []],
+                           main=src_stem, seed=f"{mod_id}:{hid}:entity:{eid}")
+        except AE.AbilityEditError as e:
+            raise ContentError(f"hero {hid}: entities.{eid}: {e}") from e
+        for w in res.warnings:
+            print(f"warning: hero {hid}: entities.{eid}: {w}", file=sys.stderr)
+        ref = f"{folder}\\{scope}_{eid}.entity.ot"
+        own_projectiles[ref] = res.files[src_stem]
+        own_ref[str(eid)] = ref
+        made_entities.append(res.files[src_stem])
+        # it preloads what its source does, and what its edits brought in
+        extra_targets |= {src_ref, *res.resources}
+
     def own_fire(steps):
-        """``fire = "own:<id>"`` -> that projectile's entity."""
+        """``fire = "own:<id>"`` / ``burst = "own:<id>"`` -> that entity of its own."""
         out = []
         for st in steps or []:
             st = dict(st)
-            if isinstance(st.get("fire"), str) and st["fire"].startswith("own:"):
-                pid = st["fire"][4:]
-                if pid not in own_ref:
-                    raise ContentError(f"hero {hid}: fire = {st['fire']!r}: no projectiles.{pid}")
-                st["fire"] = own_ref[pid]
+            for key in ("fire", "burst"):
+                if isinstance(st.get(key), str) and st[key].startswith("own:"):
+                    pid = st[key][4:]
+                    if pid not in own_ref:
+                        raise ContentError(f"hero {hid}: {key} = {st[key]!r}: no "
+                                           f"projectiles.{pid} or entities.{pid}")
+                    st[key] = own_ref[pid]
             if st.get("steps"):
                 st["steps"] = own_fire(st["steps"])
             out.append(st)
@@ -1924,12 +2003,66 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         put(H.entity_rel(ref), _EA.group_class_runs(
             PC.restamp_entity_guids(blob, H.entity_rel(ref))))
         art.append(f"EntitySettings|{ref}|oCEntitySettingsResource")
+    # A summon's look of its own (`look` on a summon step), as the clone path
+    # writes it: its maps into a copy of the enemy's material, its GLB cooked
+    # onto the enemy's body mesh, and only this hero's copy pointed at them.
+    # (Left out, the step's `look` was accepted and silently did nothing.)
+    _looks: dict[int, dict[str, str]] = {}
+    for c in kit_copies:
+        if not c.look or c.data is None:
+            continue
+        from ...engine import entity_strings as _ES
+        donor = next((k for k in sorted(kit_copies, key=lambda k: k.ref.endswith(
+                      "_Model.entity.ot")) if k.look is c.look and k.data is not None
+                      and _body_refs(k.data)[0]), None)
+        if donor is None:
+            raise ContentError(f"hero {hid}: look: {c.source} has no body mesh to replace")
+        l_fbx, l_mat = _body_refs(donor.data)
+        tag = donor.ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot").removeprefix("Hero_")
+        if id(c.look) not in _looks:
+            sw: dict[str, str] = {}
+            if c.look.get("model"):
+                geo_ref = f"{l_fbx.rsplit(chr(92), 1)[0]}\\{tag}_GEO.fbx"
+                put(PC.art_cooked_path(geo_ref), PC.cook_model(
+                    _mod_source(out_dir, c.look["model"], hid, "look.model").read_bytes(),
+                    corpus.read(PC.art_cooked_path(l_fbx)), transform=c.look.get("transform")))
+                art.append(f"3D|{geo_ref}|oCGeometry")
+                sw[l_fbx] = geo_ref
+            if any(c.look.get(k) for k in _TEXTURE_FIELDS):
+                if not l_mat or "\\Textures\\" not in l_mat:
+                    raise ContentError(f"hero {hid}: look: {c.source}'s material was not found")
+                l_dir = l_mat.rsplit("\\Textures\\", 1)[0]
+                l_slots, repoint = material_slots(l_mat), {}
+                for fld, slot in _TEXTURE_FIELDS.items():
+                    if not c.look.get(fld):
+                        continue
+                    if slot not in l_slots:
+                        raise ContentError(f"hero {hid}: look's material has no {slot} map")
+                    tref = f"{l_dir}\\Textures\\T_{tag}_{slot}.tga"
+                    put(PC.art_cooked_path(tref), PC.cook_texture(_mod_source(
+                        out_dir, c.look[fld], hid, f"look.{fld}").read_bytes()))
+                    repoint[l_slots[slot]] = tref
+                    art.append(f"3D|{tref}|oCTexture")
+                mref = f"{l_dir}\\Textures\\M_{tag}.mat.ot"
+                put(PC.art_cooked_path(mref), PC.clone_material(
+                    corpus.read(PC.art_cooked_path(l_mat)), repoint))
+                art.append(f"3D|{mref}|oCMaterial")
+                sw[l_mat] = mref
+            _looks[id(c.look)] = sw
+        c.data = _ES.replace_strings(c.data, _looks[id(c.look)], require_all=False)
     for c in kit_copies:
         if c.shipped:
             continue
+        # A copy of one of the hero's OWN entities (a fired `entities.<Id>`
+        # that reads its owner): built from those bytes, not the game's files.
+        src_own = own_projectiles.get(c.source) if c.data is None else None
         try:
-            blob = c.data if c.data is not None and not c.reads else \
-                HK.build_copy(c, main, main_ref)
+            if src_own is not None:
+                from dataclasses import replace as _replace
+                blob = HK.build_copy(_replace(c, data=src_own), main, main_ref)
+            else:
+                blob = c.data if c.data is not None and not c.reads else \
+                    HK.build_copy(c, main, main_ref)
         except HK.KitError as e:
             raise ContentError(f"hero {hid}: {e}") from e
         if c.data is None:
@@ -1941,6 +2074,12 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                                       seed=f"{mod_id}:{hid}:{ref}")
 
     # Its roster record, every value its own; the rig lends only UI art.
+    # Every shipped hero's record has 22 talents (+ 6 ultimate rows = 28) and
+    # 7 story pages; a shorter hero builds, but its book has gaps theirs lack.
+    n_talents, n_pages = len(frame.get("talents") or []), len(f.get("memoirs") or [])
+    if n_talents != 22 or n_pages != 7:
+        print(f"warning: hero {hid}: {n_talents} talent(s) and {n_pages} story page(s); "
+              "every shipped hero has 22 and 7", file=sys.stderr)
     rr = rig_rec.root
     pages = []
     rig_pages = [d for c, d in rig_rec.objects if c == HDF.STORY]
@@ -2012,14 +2151,18 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # its own projectiles preload the shared hero projectile they are written
     # on (and what it preloads) and their trail and impact effects
     from ...engine import projectile_frame as _PF
-    targets = {*(kit_resources - own), *(c.source for c in kit_copies if not c.shipped),
+    targets = {*(kit_resources - own),
+               *(c.source for c in kit_copies if not c.shipped and c.source not in own),
+               *(extra_targets - own),
                *([_PF.MODEL, _PF.BASE] if own_projectiles else []),
                *(str(sp.get(k) or "") for sp in projectiles.values() for k in ("trail", "impact")
                  if sp.get(k)),
                "Heroes\\Hero_Common\\Hero_Common.entity.ot",
                "Heroes\\Hero_Common\\Hero_Common_Update5.entity.ot",
                "Character_Common\\Character_Common.entity.ot"}
-    for blob in [*entities.values(), herodef]:
+    # (an entity made from a shipped one names shipped assets only, and its
+    # edits may bring in more: an effect copied from another hero's entity)
+    for blob in [*entities.values(), herodef, *made_entities]:
         for m in re.finditer(rb"[ -~]+?\.(?:fbx|png|mat\.ot|entity\.ot|vfx\.ot)", blob):
             t = m.group(0).decode()
             if t not in own and not t.startswith(("[", "Definitions")) and \
@@ -2029,6 +2172,16 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # its own effects are listed as art; the shipped materials they draw with
     # preload what the game's caches list for them
     targets = (targets - own_fx_assets) | shipped_fx
+    # A mesh cooked on a shipped template keeps the template's texture name
+    # inside it (the rig's albedo in the body, the dagger's in a projectile).
+    # Every shipped cache that lists a mesh lists the textures it names (68 of
+    # 68 across the hero caches), so these are listed too.
+    for dest in written:
+        if dest.name.endswith(PC.GEOMETRY_SUFFIX):
+            for m in re.finditer(rb"[A-Za-z0-9_ \\.\-]{4,}\.(?:tga|png)", dest.read_bytes()):
+                t = m.group(0).decode().strip()
+                if corpus.exists(PC.art_cooked_path(t)):
+                    art.append(f"3D|{t}|oCTexture")
     lines = set(_borrow_closure(sorted(targets), out_dir, hid)) | set(art)
     lines |= {f"EntitySettings|{r}|oCEntitySettingsResource" for r in own}
     lines.add(_self_line(hid))

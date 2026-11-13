@@ -1427,3 +1427,206 @@ def test_a_scratch_heros_side_offsets_go_through_values_too(tmp_path):
             v = ef.component(side.strip().rsplit("\\", 1)[-1])
             sides.append(next(x.text for x in EF.fields(v) if x.name == "value"))
     assert sorted(sides) == ["f32 -1", "f32 1"]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_projectiles_material_names_only_preloaded_maps(tmp_path):
+    """A projectile's material is cloned from the template dagger's. A map the
+    projectile does not bring must not stay the dagger's: no preload cache of
+    this hero lists it (it would load as null), and it was painted for another
+    mesh. It wears the engine's neutral maps, and every map it names is in the
+    hero's preload cache."""
+    from rsmm.engine import gltf
+    from rsmm.engine import prop_cook as PC
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "bean.png")
+    b = gltf.GlbBuilder()
+    pi = b.add_positions([(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 1, 0)])
+    ni = b.add_vec3([(0, 1, 0)] * 4)
+    ui = b.add_vec2([(0, 0)] * 4)
+    ii = b.add_indices([0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3])
+    m = b.add_mesh(gltf.Mesh(name="t", primitives=[gltf.Primitive(
+        attributes={"POSITION": pi, "NORMAL": ni, "TEXCOORD_0": ui}, indices=ii)]))
+    b.add_node(gltf.Node(name="t", mesh=m), is_root=True)
+    (mod / "art" / "bean.glb").write_bytes(b.build_glb())
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "projectiles": {"Bean": {"model": "art/bean.glb", "albedo": "art/bean.png"}},
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "steps": [{"fire": "own:Bean"}]}}}}), mod / "assets")
+    mat = next(p for p in files if p.name == "M_Solo_Bean.mat.ot.Material.gen").read_bytes()
+    refs = PC._refs_doc("oCMaterial", mat)[1]["asset_refs"]
+    assert not [r for r in refs if "Dagger" in r]
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot")
+    listed = {ln.split("|")[1] for ln in RC.parse(cache.read_bytes()) if ln.count("|") == 2}
+    assert not [r for r in refs if r not in listed]
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_on_a_two_form_rig_with_a_bleeding_combo_and_a_dressed_summon(tmp_path):
+    """Three things a second from-scratch hero (a wolf on Scarlet's rig) hit:
+    - a two-form rig fills slots of its own form base (`Alt Form Preview
+      Default Animatic`) that the shared bases lack: they are not lent;
+    - a combo step's hit takes a `status` (it is put on that step's own
+      damage record; it used to stop the build);
+    - a summon step's `look` is written (its own material + map, the copy
+      pointed at it), not accepted and dropped."""
+    from rsmm.engine.entity_graph_edit import EntityFile
+    mod = tmp_path / "mod"
+    _png(mod / "art" / "red.png")
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+            "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+            "abilities": {
+                "attack": {"combo": [
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", "duration": 0.55,
+                     "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]},
+                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", "duration": 0.7,
+                     "hit_at": 0.3, "hits": [{"radius": 3, "damage": 180, "status": "Bleed"}]}]},
+                "special": {
+                    "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
+                    "steps": [{"summon": "Enemies/Wolves/Standard_Wolf_Dire", "lifetime": 20,
+                               "look": {"albedo": "art/red.png"}}]}}}}), mod / "assets")
+    names = {p.name for p in files}
+    main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
+    ef = EntityFile(main.read_bytes(), "Hero_Solo")
+    parts = {c.name for c in ef.graph().components}
+    assert "Alt Form Preview Default Animatic" not in parts
+    damage = ef.component("Attack Ability Step 2 Hit 1 Damage")
+    assert any("Bleed" in r.path for r in damage.refs) or b"Bleed" in ef.objects[damage.index - 1] \
+        or any("Bleed" in n for n in parts)
+    assert "M_Solo_Summon1.mat.ot.Material.gen" in names
+    assert "T_Solo_Summon1_ALB.tga.Texture.dxt" in names
+    summon = b"".join(p.read_bytes() for p in files if "Solo_Summon1" in p.name
+                      and p.name.endswith(".EntitySettingsResource.gen"))
+    assert b"Textures\\M_Solo_Summon1.mat.ot" in summon
+    cache = next(p for p in files if p.name == "Solo.herodef.UsedRscCache.ot").read_text()
+    assert "3D|Characters\\Enemies\\Wolves\\Textures\\M_Solo_Summon1.mat.ot|oCMaterial" in cache
+
+
+@needs_corpus
+@needs_install
+def test_a_scratch_hero_takes_what_a_shipped_hero_has(tmp_path):
+    """The parts a from-scratch hero lacked next to a shipped one:
+    - the rig lends its hero sounds (footsteps, hurt, death ...) as overrides
+      of the shared sound slots, `sounds` renames or drops one;
+    - the rig lends its bone layers: the move split and the physics layer
+      with its physics part, on the hero's own skeleton;
+    - a combo runs three steps (a copy of the layout's last step + entry);
+    - a button lunges (`lunge`) and may be used on the move (`moving`);
+    - an entity of its own made from a shipped one (`entities`), named
+      "own:<Id>" by a summon's `burst`, preloaded with what its edits bring;
+    - a talent action fires on the trait button."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_frame as HF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    skills = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    step = {"duration": 0.5, "hit_at": 0.2, "hits": [{"radius": 2.8, "damage": 150}]}
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={
+        "frame": {
+            "rig": "Hero_Red", "mesh": "Characters\\Heroes\\RED\\RED_wolf_GEO.fbx",
+            "material": "Characters\\Heroes\\RED\\Textures\\M_RED_Wolf.mat.ot",
+            "sounds": {"Hurt Voice FMod Event": "none",
+                       "Footstep FMod Event Default":
+                           "Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot | "
+                           "Footstep FMod Event Default"},
+            "entities": {"Bomb": {"from": "Heroes/Hero_Red/Hero_Red_Bomb", "edits": [
+                {"set": "Explosion Timer.duration", "value": 0.1},
+                {"clone": ["Explosion FMod Event Active"],
+                 "from": "Heroes/Hero_Carmilla/Hero_Carmilla_Power_Orb",
+                 "rename": {"Explosion FMod Event Active": "Blood Burst FMod Event"}}]}},
+            "abilities": {
+                "attack": {"combo": [
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_1.fbx", **step},
+                    {"clip": skills + "RED_Wolf_BasicAttack_Claws_2.fbx", **step},
+                    {"clip": skills + "RED_Wolf_Skill_DoubleStrike.fbx", **step}]},
+                "trait": {"clip": skills + "RED_Wolf_Pimary_Bite_In.fbx", "duration": 0.6,
+                          "lunge": {"speed": 14, "at": 0.05, "duration": 0.25}},
+                "special": {
+                    "clip": skills + "RED_Wolf_Defensive_Howl.fbx", "duration": 0.6,
+                    "moving": True,
+                    "steps": [{"summon": "Enemies/Wolves/Standard_Wolf_Dire", "lifetime": 20,
+                               "burst": "own:Bomb", "burst_on_hit": True}]}},
+            "talents": [{"name": "Trait Tear", "title": "Tear", "description": "x",
+                         "actions": [{"on": "trait", "hits": [{"at": 0.5, "radius": 3}]}]}],
+        }}), tmp_path / "assets")
+    by_name = {p.name: p for p in files}
+    ef = EntityFile(by_name["Hero_Solo.entity.ot.EntitySettingsResource.gen"].read_bytes(),
+                    "Hero_Solo")
+    parts = {c.name: c for c in ef.graph().components}
+
+    # sounds: overrides of the shared slots; one dropped, one from another hero
+    lent = HF.rig_sounds(lambda r: corpus.read(
+        "EntitySettings/" + r.replace("\\", "/") + ".EntitySettingsResource.gen"), "Hero_Red")
+    assert len(lent) >= 15 and "Hurt Voice FMod Event" in lent
+    assert "Hurt Voice FMod Event" not in parts
+    steps = parts["Footstep FMod Event Default"]
+    assert steps.override is not None and "Character_Common" in steps.override.path
+    geppetto = EntityFile(corpus.read(
+        "EntitySettings/Heroes/Hero_Geppetto/Hero_Geppetto.entity.ot.EntitySettingsResource.gen"),
+        "Hero_Geppetto").component("Footstep FMod Event Default")
+    assert [f.text for f in EF.fields(steps) if f.name == "obj_2"] == \
+        [f.text for f in EF.fields(geppetto) if f.name == "obj_2"]
+    assert parts["Deathdooor FMod Event In"].override is not None
+
+    # bone layers on its own skeleton (the wolf's 98 bones)
+    assert HF.layer_bones(ef, "Move Split Layer") == 98
+    assert HF.layer_bones(ef, "Physic Layer") == 98
+    assert [r.path.rsplit("\\", 1)[-1] for r in parts["Physic Skeleton Anim"].refs] == \
+        ["Mesh Skeleton"]
+    assert any(r.path.endswith("Physic Skeleton Anim") for r in parts["Physic Layer"].refs)
+    assert not [r.path for n in ("Move Split Layer", "Physic Layer", "Physic Skeleton Anim")
+                for r in parts[n].refs if "Hero_Red" in r.path or "Alt_Form" in r.path]
+
+    # three combo steps, each with its own state, clip and entry
+    combo = next(f.text for f in EF.fields(parts["Attack Ability Combo"]) if f.name == "bytes_4")
+    assert combo.startswith("03 00 00 00")
+    assert [r.path.rsplit("\\", 1)[-1] for r in parts["Attack Ability Clip Step 3"].refs] == \
+        ["Attack Ability Anim Step 3", "State Attack Ability Step 3"]
+    assert "Event Attack Ability Step 3 Hit 1" in parts
+
+    # the lunge and the button used on the move
+    move = next(f.text for f in EF.fields(parts["Trait Ability Lunge Move"])
+                if f.name == "value_2")
+    assert move == "f32 14" and not parts["Trait Ability Lunge Move"].refs
+    assert any(r.path.endswith("State Anim Split Enable")
+               for r in parts["State Special Ability"].refs)
+    ctl = {f.name: f.text for f in EF.fields(parts["Secondary Ability Controller"])}
+    assert ctl["value_9"] == ctl["value_10"] == "bool False"
+
+    # its own bomb: written, burst into, and preloaded with what the edit brought
+    bomb = by_name["Hero_Solo_Bomb.entity.ot.EntitySettingsResource.gen"].read_bytes()
+    shipped = corpus.read(
+        "EntitySettings/Heroes/Hero_Red/Hero_Red_Bomb.entity.ot.EntitySettingsResource.gen")
+    assert b"Blood Burst FMod Event" in bomb
+    ours = {c.guid for c in EntityFile(bomb, "Hero_Solo_Bomb").graph().components}
+    theirs = {c.guid for c in EntityFile(shipped, "Hero_Red_Bomb").graph().components}
+    assert not ours & theirs                       # identities of its own
+    summon = b"".join(p.read_bytes() for p in files if "Solo_Summon1" in p.name)
+    assert b"Hero_Solo_Bomb.entity.ot" in summon
+    cache = by_name["Solo.herodef.UsedRscCache.ot"].read_text()
+    assert "Hero_Solo_Bomb.entity.ot|oCEntitySettingsResource" in cache
+
+    # a talent action on the trait button: its listener filters the Trait flag
+    listener = next(c for n, c in parts.items() if n.startswith("Trait Use Event Listener"))
+    assert next(f.text for f in EF.fields(listener) if f.name == "listener") == "'Trait'"
+
+
+def test_a_combo_is_two_to_four_steps_and_a_lunge_is_checked():
+    from rsmm.engine import hero_ability as HA
+    step = {"clip": "x.fbx", "hits": [{"radius": 2}]}
+    for n in (1, 5):
+        with pytest.raises(HA.AbilityError, match="2 to 4 steps"):
+            HA.Ability.parse("attack", {"combo": [step] * n})
+    assert len(HA.Ability.parse("attack", {"combo": [step] * 4}).combo) == 4
+    with pytest.raises(HA.AbilityError, match="lunge is"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 500, "duration": 1}})
+    with pytest.raises(HA.AbilityError, match="lunge is"):
+        HA.Ability.parse("power", {"clip": "x.fbx", "lunge": {"speed": 10}})

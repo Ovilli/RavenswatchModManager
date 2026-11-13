@@ -1321,6 +1321,75 @@ Any picture slot of the hero base takes one too:
 `[content.frame.slots."<slot>"] texture = "art/x.png"`. Unproven in game
 (2026-11-08).
 
+##### What the rig lends, and what you can change
+
+A hero written from scratch takes more than clips from its `rig`. Each is
+what every shipped hero fills in the shared hero base; all unproven in game
+(2026-11-13).
+
+- **Sounds.** Footsteps, the hurt voice, death, deathdoor, spawning,
+  teleporting and the book's sounds are the rig's (21 slots on Kintaro or
+  Scarlet). Name another shipped sound per slot, or `"none"` to keep the
+  shared base's generic one:
+
+  ```toml
+  [content.frame.sounds]
+  "Footstep FMod Event Default" = "Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot | Footstep FMod Event Default"
+  "Hurt Voice FMod Event"       = "none"
+  ```
+
+- **Bone layers.** The move split (upper body acts while the legs walk) and
+  the physics layer (fur, cloth, hair) are the rig's, when the hero's body has
+  the rig's bones: the rig mesh, or a `model` of your own on that armature.
+
+##### More a button can do
+
+```toml
+[content.frame.abilities.attack]
+combo = [                     # two to four steps
+  { clip = "anim:Claw1", hit_at = 0.2, hits = [ { radius = 2.8, damage = 150 } ] },
+  { clip = "anim:Claw2", hit_at = 0.2, hits = [ { radius = 2.8, damage = 150 } ] },
+  { clip = "anim:Finisher", hit_at = 0.3, hits = [ { radius = 3.2, damage = 180, status = "Bleed" } ] },
+]
+
+[content.frame.abilities.trait]
+clip  = "anim:Pounce"
+lunge = { speed = 14, at = 0.05, duration = 0.25 }   # carried forward 14 m/s for 0.25 s
+
+[content.frame.abilities.special]
+clip   = "anim:Howl"
+moving = true                 # may be used while walking
+icon          = "Heroes\\Red\\Ability_Wolf_Special.png"
+icon_disabled = "Heroes\\Red\\Ability_WOLF_Special_Disabled.png"   # when its name is not "<icon>_Disabled"
+```
+
+A talent's `actions` also fire on `attack` and `trait` now, beside `dash`,
+`power`, `special`, `defense` and `ultimate`.
+
+##### Entities of its own
+
+`[content.frame.entities.<Id>]` makes an entity of the hero's own from a
+shipped one: a copy of `from`, with `edits` (the same steps as a hero's
+`abilities`: `clone`, `set`, `link`, `add_link`, `remove_link`,
+`add_subobject`, `replace_subobject`, `switch_off` ...) applied and checked.
+Name it `"own:<Id>"` in a step's `fire` or a summon's `burst`:
+
+```toml
+[content.frame.entities.Bomb]
+from  = "Heroes/Hero_Red/Hero_Red_Bomb"
+edits = [
+  { set = "Explosion Timer.duration", value = 0.1 },
+  { remove_link = "State Exploding.activates", to = "Explosion Attack Heroes Tester" },
+]
+
+[content.frame.abilities.special]
+steps = [ { summon = "Enemies/Wolves/Standard_Wolf_Dire", lifetime = 20, burst = "own:Bomb", burst_on_hit = true } ]
+```
+
+It gets identities of its own and is preloaded with the hero, with whatever
+its edits brought in. A summon step's `look` (`{ albedo = "art/x.png" }`) is
+written for a from-scratch hero too.
+
 ---
 
 ## Where to go next

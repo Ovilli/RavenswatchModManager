@@ -552,7 +552,7 @@ def test_the_basic_attack_is_a_combo_of_the_heros_own():
                 t[key] = struct.unpack_from("<f", b, 4)[0]
     assert t == pytest.approx({b"Step 1 Hit 1": 0.3, b"COMBO_LINK": 0.4, b"ABILITY_EXIT": 0.5,
                                b"Attack Ability Sound Step 1": 0.0})
-    with pytest.raises(HA.AbilityError, match="2 steps"):
+    with pytest.raises(HA.AbilityError, match="2 to 4 steps"):
         HA.Ability.parse("attack", {"combo": [{"clip": clip, "hits": [{}]}]})
 
 

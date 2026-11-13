@@ -156,6 +156,151 @@ def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
     return slot
 
 
+_FMOD = "oCEntityCpntFModEventSettings"
+
+
+def fill_sound(ef: EntityFile, base: EntityFile, slot: str, donor: EntityFile,
+               part: str, *, seed: str = "") -> str:
+    """Override ``base``'s sound slot ``slot`` in ``ef`` with the shipped FMod
+    event part ``part`` of ``donor``: the footsteps, hurt voice, death,
+    deathdoor, spawn, teleport and book sounds every shipped hero overrides
+    (13 of 13 fill the same ~16 slots). The shared slot holds a generic event;
+    a hero's override is the same part with its own event and parameter. An
+    FMod part links nothing, so the copy stands alone. Returns ``slot``."""
+    try:
+        c = base.component(slot)
+        d = donor.component(part)
+    except EntityEditError as e:
+        raise FrameError(f"sound slot {slot!r}: {e}") from e
+    if c.cls != _FMOD or d.cls != _FMOD:
+        raise FrameError(f"sound slot {slot!r}: {slot!r} and {part!r} must both be FMod events")
+    if any(x.name == slot for x in ef.graph().components):
+        raise FrameError(f"slot {slot!r} is already filled")
+    try:
+        ef.clone([d.path], rename={part: slot}, group={d.group: c.group},
+                 seed=f"{seed}:sound:{slot}", source=donor)
+        target = c.override.guid if c.override is not None else c.guid
+        ef.set_override(slot, target, f"[{kind_label(c.cls)}] {base.name}\\{c.path}")
+    except EntityEditError as e:
+        raise FrameError(f"sound slot {slot!r}: {e}") from e
+    return slot
+
+
+def rig_sounds(read, rig: str) -> dict[str, str]:
+    """``{slot: "<entity ref> | <part>"}`` for every shared SOUND slot the rig
+    hero fills, as :func:`rig_slots` lends its clips: its alt-form twin first
+    (``Deathdooor FMod Event Alt In`` for ``Deathdooor FMod Event In``: the
+    wolf, the boy on foot), then its own override of the shared slot."""
+    import re
+
+    from . import corpus
+    from . import entity_graph as EG
+    shared = {c.name for base in BASES for c in common(read, base).graph().components
+              if c.cls == _FMOD}
+    picked: dict[str, tuple[int, str]] = {}
+    for rel in corpus.rels(f"EntitySettings/Heroes/{rig}/", ".EntitySettingsResource.gen"):
+        stem = rel.rsplit("/", 1)[-1].removesuffix(".entity.ot.EntitySettingsResource.gen")
+        if stem != rig:
+            continue
+        for c in EG.parse(corpus.read(rel)).components:
+            if c.cls != _FMOD or c.override is None:
+                continue
+            base = c.override.path.split("] ", 1)[-1]
+            scope, _, path = base.partition("\\")
+            if scope not in (*BASES, "Hero_Alt_Form_Common"):
+                continue
+            name = path.rsplit("\\", 1)[-1]
+            if c.name != name:                 # a skill's variant of the slot
+                continue
+            alt = scope == "Hero_Alt_Form_Common"
+            slot = re.sub(r" Alt\b", "", name) if alt else name
+            rank = 0 if alt else 1
+            if slot in shared and (slot not in picked or rank < picked[slot][0]):
+                picked[slot] = (rank, f"Heroes\\{rig}\\{rig}.entity.ot | {c.name}")
+    return {slot: spec for slot, (_r, spec) in picked.items()}
+
+
+_LAYER = "oCEntityCpntAnimLayerNodeSettings"
+#: The shared layers a hero fills with its skeleton's bones: slot -> (its
+#: base, its alt-form twin's name). ``bytes_7`` of a layer is its bone table
+#: (the split bone, a weight per bone, the bone names): the shared slot's is
+#: empty, every shipped hero's override carries its own skeleton's.
+_LAYERS = {"Move Split Layer": ("Hero_Common", "Move Split Alt Form Layer"),
+           "Physic Layer": ("Character_Common", "Physic Alt Form Layer")}
+_BONES = "bytes_7"
+
+
+def _field_span(ef: EntityFile, part: str, field: str) -> tuple[bytearray, int, int]:
+    from . import entity_fields as EF
+    c = ef.component(part)
+    f = next((x for x in EF.fields(c) if x.name == field), None)
+    if f is None:
+        raise FrameError(f"{part!r} has no field {field!r}")
+    p = ef.objects[c.index - 1]
+    a = len(p) - len(c.body) + f.offset
+    return p, a, a + f.size
+
+
+def layer_bones(ef: EntityFile, part: str) -> int:
+    """How many bones layer ``part``'s bone table covers (0: the empty slot)."""
+    import struct
+    p, a, b = _field_span(ef, part, _BONES)
+    raw = bytes(p[a:b])
+    if len(raw) < 9:
+        return 0
+    n = struct.unpack_from("<I", raw, 1)[0]
+    return struct.unpack_from("<I", raw, 5 + n)[0] if len(raw) >= 9 + n else 0
+
+
+def lend_layers(ef: EntityFile, read, rig: str, bones: int, *, seed: str = "") -> list[str]:
+    """Fill the shared bone layers from the rig hero's, for a hero on the rig's
+    skeleton (``bones``: its bone count): ``Move Split Layer`` (the upper/lower
+    body split that lets a hero act while it moves; each hero's names its
+    split bone and weights every bone at or below it 1) and ``Physic Layer``
+    with its physics part (fur, cloth, hair). Each is the SHARED slot filled
+    (its links stay the shared base's), with the rig's bone table and, for
+    physics, a copy of the rig's physics part on the hero's own skeleton.
+    The rig's alt-form layer wins (the wolf, the boy on foot). A layer whose
+    table is not for ``bones`` bones is left alone. Returns the slots filled."""
+    from . import corpus
+    raw = corpus.read(f"EntitySettings/Heroes/{rig}/{rig}.entity.ot.EntitySettingsResource.gen")
+    if raw is None:
+        return []
+    donor = EntityFile(raw, rig)
+    filled = []
+    for slot, (base_name, alt) in _LAYERS.items():
+        pick = None
+        for c in donor.graph().components:
+            if c.cls != _LAYER or c.override is None:
+                continue
+            target = c.override.path.rsplit("\\", 1)[-1]
+            if target == alt or (target == slot and pick is None):
+                pick = c
+                if target == alt:
+                    break
+        if pick is None or layer_bones(donor, pick.name) != bones:
+            continue
+        base = common(read, base_name)
+        if any(x.name == slot for x in ef.graph().components):
+            continue
+        fill_slot(ef, base, slot, seed=seed)
+        dp, da, db = _field_span(donor, pick.name, _BONES)
+        p, a, b = _field_span(ef, slot, _BONES)
+        p[a:b] = bytes(dp[da:db])
+        if slot == "Physic Layer":
+            phys = next((r.path.rsplit("\\", 1)[-1] for r in pick.refs
+                         if r.path.startswith("[Bullet physic skeleton anim]")), None)
+            if phys is not None:
+                name = "Physic Skeleton Anim"
+                ef.clone([donor.component(phys).path], rename={phys: name},
+                         group={donor.component(phys).group: base.component(slot).group},
+                         seed=f"{seed}:physic", source=donor)
+                ef.set_ref(name, "ref_5", "Mesh Skeleton")
+                ef.set_ref(slot, "ref_6", name)
+        filled.append(slot)
+    return filled
+
+
 def _set_clips(ef: EntityFile, slot: str, clips: list[str]) -> None:
     from . import entity_fields as EF
     c = ef.component(slot)
@@ -634,7 +779,8 @@ KIT_DONORS: list[dict] = [
 __all__ = ["BASES", "CHARACTER_COMMON", "HERO_COMMON", "HERO_CONTROLLER", "FrameError",
            "add_talent", "build_hero", "clip_length", "common", "fill_body", "fill_slot",
            "fx_frame", "guid", "KIT_DONORS", "main_frame", "relabel_base_links", "replace_in_slot",
-           "resource_value", "rig_slots", "skin_frame", "source_resource",
+           "resource_value", "rig_slots", "rig_sounds", "fill_sound", "lend_layers", "skin_frame",
+           "source_resource",
            "talent_effects"]
 
 
@@ -697,8 +843,14 @@ def rig_slots(read, rig: str) -> dict[str, dict]:
                     continue
             if slot not in picked or rank < picked[slot][0]:
                 picked[slot] = (rank, clips)
+    # Only slots the shared bases have. A two-form hero also fills parts of its
+    # own form base that no other hero has (Scarlet's ``Alt Form Preview
+    # Default Animatic``, the wolf in her book): nothing to lend them to.
+    shared = {c.name for base in BASES for c in common(read, base).graph().components}
     out = {}
     for slot, (_r, clips) in picked.items():
+        if slot not in shared:
+            continue
         spec = {"clip": clips[0] if len(clips) == 1 else clips}
         if len(clips) == 1 and (length := clip_length(clips[0])) is not None:
             spec["duration"] = length
@@ -711,7 +863,9 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
                seed: str, abilities: list | None = None,
                effects: dict[str, dict] | None = None,
                indicators: bool = True, ultimates: list[tuple[str, dict]] | None = None,
-               weapon: tuple | None = None) -> tuple[bytes, bytes, list[tuple]]:
+               weapon: tuple | None = None,
+               sounds: dict[str, str] | None = None,
+               rig: str | None = None, bones: int = 0) -> tuple[bytes, bytes, list[tuple]]:
     """A hero written from scratch: ``(main entity, FX entity, skin values)``.
 
     ``slots``: shared slot -> its fill (``fill_slot``'s ``clip``/``duration``/
@@ -731,6 +885,24 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
         if not any(c.name == slot for c in base.graph().components):
             raise FrameError(f"no shared slot {slot!r}")
         fill_slot(ef, base, slot, seed=seed, **fill)
+    if rig and bones:
+        lend_layers(ef, read, rig, bones, seed=seed)
+    # Sound slots (``fill_sound``): slot -> "<entity ref> | <FMod event part>".
+    donors: dict[str, EntityFile] = {}
+    for slot, spec in sorted((sounds or {}).items()):
+        base = hc if any(c.name == slot for c in hc.graph().components) else cc
+        if not any(c.name == slot for c in base.graph().components):
+            raise FrameError(f"no shared sound slot {slot!r}")
+        if spec.count("|") != 1:
+            raise FrameError(f"sound slot {slot!r}: \"<Folder\\Entity.entity.ot> | "
+                             "<its FMod event part>\"")
+        ref, part = (x.strip() for x in spec.split("|"))
+        if ref not in donors:
+            raw = read(ref)
+            if raw is None:
+                raise FrameError(f"sound slot {slot!r}: {ref} is not in the game files")
+            donors[ref] = EntityFile(raw, ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"))
+        fill_sound(ef, base, slot, donors[ref], part, seed=seed)
     from . import hero_ability as HA
     for ab in abilities or []:
         HA.build(ef, hc, ab, seed=seed, with_indicator=indicators)

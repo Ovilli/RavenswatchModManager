@@ -27,6 +27,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
+from . import entity_fields as EF
 from . import entity_parts as P
 from . import hero_frame as HF
 from . import talent_writer as TW
@@ -46,6 +47,16 @@ _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
 #: Hero_Common's tester every shipped ability state activates on entry (see
 #: ``build``): it takes the body off the move/idle animation for the ability.
 MOVE_INERTIA = "Move Inertia Activation Tester"
+#: A lunge's move part: a shipped ability move (speed along the hero's
+#: forward axis while its state is on), its speed made a plain number.
+LUNGE_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto",
+               "Ultimate Ability 2 Move")
+#: `moving`: Hero_Common's state that turns the upper/lower body split on
+#: (the hero's "Move Split Layer" blends the ability over its walk), and the
+#: controller's two switches that stop movement while the ability runs (off
+#: on Blood Wolf 0.1's special, which was cast on the move in game).
+SPLIT_ENABLE = "State Anim Split Enable"
+MOVING_SWITCHES = ("value_9", "value_10")
 #: TEMPORARY bisection variants (see Ability.variant).
 _VARIANTS = {"no_end_state", "no_inertia", "bare", "look_enter", "dash_state", "released"}
 #: How a button turns the hero: Hero_Common's own dash "Initial Look At To
@@ -154,6 +165,12 @@ class Ability:
     #: The basic attack as shipped heroes do it: a combo of steps, each its
     #: own clip whose TIMELINE lands the hit (see build_combo / COMBO_STEP_KEYS).
     combo: list = field(default_factory=list)
+    #: ``{speed, at, duration}``: the hero is carried forward at ``speed`` m/s
+    #: from ``at`` s for ``duration`` s (a lunge, a leap's travel).
+    lunge: dict | None = None
+    #: The hero may walk while the ability plays (the move split is on and
+    #: the button does not stop movement).
+    moving: bool = False
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -165,7 +182,7 @@ class Ability:
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
-                              "icon", "icon_disabled"}
+                              "icon", "icon_disabled", "lunge", "moving"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -189,9 +206,10 @@ class Ability:
         if combo:
             if slot != "attack":
                 raise AbilityError(f"ability {slot}: combo is for the basic attack")
-            if not isinstance(combo, list) or len(combo) != COMBO_STEPS \
+            if not isinstance(combo, list) or not COMBO_STEPS <= len(combo) <= COMBO_MAX \
                     or not all(isinstance(st, dict) for st in combo):
-                raise AbilityError(f"ability {slot}: combo is a list of {COMBO_STEPS} steps")
+                raise AbilityError(f"ability {slot}: combo is a list of {COMBO_STEPS} to "
+                                   f"{COMBO_MAX} steps")
             for n, st in enumerate(combo, 1):
                 if set(st) - COMBO_STEP_KEYS or not st.get("clip"):
                     raise AbilityError(f"ability {slot}: combo step {n} is {{ clip, "
@@ -205,11 +223,28 @@ class Ability:
                     and all(isinstance(x, str) for x in v)):
                 raise AbilityError(f"ability {slot}: {k} is (root, path) of a UI texture")
             icons.append((str(v[0]), str(v[1])))
+        lunge = raw.get("lunge")
+        if lunge is not None:
+            try:
+                ok = isinstance(lunge, dict) and not set(lunge) - {"speed", "at", "duration"} \
+                    and 0.5 <= float(lunge["speed"]) <= 60 \
+                    and 0 <= float(lunge.get("at", 0.0)) <= 30 \
+                    and 0.05 <= float(lunge["duration"]) <= 30
+            except (KeyError, TypeError, ValueError):
+                ok = False
+            if not ok:
+                raise AbilityError(f"ability {slot}: lunge is {{ speed (0.5..60 m/s), "
+                                   "at (s, default 0), duration (s) }")
+            if combo:
+                raise AbilityError(f"ability {slot}: a combo has no lunge")
+        if raw.get("moving") not in (None, True, False) or (raw.get("moving") and combo):
+            raise AbilityError(f"ability {slot}: moving is true or false (not on a combo)")
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
-                   str(raw.get("variant", "")), [dict(st) for st in combo])
+                   str(raw.get("variant", "")), [dict(st) for st in combo],
+                   dict(lunge) if lunge else None, bool(raw.get("moving")))
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -504,6 +539,14 @@ def _bisect_state(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, ctl: 
 #: next press chains) and ABILITY_EXIT (when he may move again).
 COMBO_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto", "Basic Ability")
 COMBO_STEPS = 2
+#: Longer combos: each further step is a copy of the layout's LAST step (its
+#: state, clip selector, clip and animatic) and of the combo's last entry,
+#: re-pointed at that copy. A combo's entries are a plain list (``bytes_4``:
+#: count + entry ids, each entry naming its step state), and a third entry
+#: added this way ran in game on a clone of Scarlet's wolf (Blood Wolf 0.1).
+COMBO_MAX = 4
+_COMBO_STEP_PARTS = ("State {p} Step {n}", "{p} Clip Selector Step {n}",
+                     "{p} Clip Step {n}", "{p} Anim Step {n}")
 _COMBO_PARTS = ("{p} Combo Selector", "{p} Combo", "State {p} Step {n}",
                 "{p} Clip Selector Step {n}",
                 "{p} Clip Step {n}", "{p} Anim Step {n}")
@@ -549,6 +592,21 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
              group={donor.component(parts[0]).group: group},
              seed=f"{seed}:{ab.slot}:combo", source=donor)
     combo = f"{tag} Combo"
+    # Steps past the layout's: copied from its last step BEFORE that step's
+    # timeline is rewritten below, so each copy is rewritten as its own.
+    last = COMBO_STEPS
+    for n in range(COMBO_STEPS + 1, len(ab.combo) + 1):
+        src = [p.format(p=tag, n=last) for p in _COMBO_STEP_PARTS]
+        ef.clone([ef.component(p).path for p in src],
+                 rename={p: p.replace(f"Step {last}", f"Step {n}") for p in src},
+                 seed=f"{seed}:{ab.slot}:combo-step{n}")
+        c = ef.component(combo)
+        f = next(x for x in EF.fields(c) if x.name == "bytes_4")
+        count = struct.unpack_from("<I", c.body, f.offset)[0]
+        entry = struct.unpack_from("<I", c.body, f.offset + 4 * count)[0]    # the last one
+        ef.add_subobject(combo, "bytes_4", ef, entry, refs={
+            ef.component(f"State {tag} Step {last}").guid: f"State {tag} Step {n}"})
+        parts += [p.format(p=pre, n=n) for p in _COMBO_STEP_PARTS]
     w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
     state = f"State {tag}"
     w.state(state)
@@ -578,7 +636,6 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
                         f"[{HF.kind_label(mi.cls)}] {hero_common.name}\\{mi.path}")
     ef.set_ref(ctl, "ref_2", sel)
     names = [x.name for x in ef.cf.classes]
-    all_hits = []
     for n, st in enumerate(ab.combo, 1):
         clip = str(st["clip"])
         length = float(st.get("duration") or HF.clip_length(clip) or 0)
@@ -592,7 +649,6 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
         HF.replace_in_slot(ef, anim, old.group(0).decode(), clip)
         HF._set_duration(ef, anim, length)
         step_hits = _step_hits(st, f"combo step {n}")
-        all_hits += step_hits
         hits(ef, hero_common, w, step_hits, tag=f"{tag} Step {n}", group=group,
              seed=f"{seed}:{ab.slot}:step{n}", kind=ab.slot)
         hit_event = f"Event {tag} Step {n} Hit 1"
@@ -626,7 +682,13 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
                 struct.pack_into("<f", ef.objects[i], 4, length + 60.0)
                 if donor.name.encode() in bloc:
                     _repoint_bloc(ef, i, state)             # nothing links into the donor
-    statuses(ef, all_hits, tag=f"{tag} Combo", switch=state, seed=f"{seed}:{ab.slot}")
+    # Per step: a step's hits are its own parts ("<tag> Step <n> Hit <i>"), so
+    # a status is put on that step's damage record. (One call over every hit
+    # looked for "<tag> Combo Hit <i>", which no step builds: a combo hit with
+    # a status stopped the build.)
+    for n, st in enumerate(ab.combo, 1):
+        statuses(ef, _step_hits(st, f"combo step {n}"), tag=f"{tag} Step {n}", switch=state,
+                 seed=f"{seed}:{ab.slot}:step{n}")
     left = [r.path for p in parts for r in ef.component(p.replace(pre, tag)).refs
             if r.path.split("] ", 1)[-1].startswith(donor.name + "\\")]
     if left:
@@ -758,6 +820,32 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         statuses(ef, ab.hits, tag=tag, switch=state, seed=f"{seed}:{ab.slot}")
         if with_indicator:
             add_indicator(ef, ab, seed=seed)
+        if ab.lunge:
+            # A forward move of its own, as shipped abilities carry the hero
+            # (Geppetto's "Ultimate Ability 2 Move", Kintaro's leap): a move
+            # part held by a state of its own, switched on `at` s in and off
+            # `duration` s later by two timers the button starts.
+            from . import corpus
+            ref, dname, dpart = LUNGE_DONOR
+            raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}"
+                              ".EntitySettingsResource.gen")
+            if raw is None:
+                raise AbilityError("lunge: the move layout's hero is not in the game files")
+            donor = EntityFile(raw, dname)
+            move = f"{tag} Lunge Move"
+            ef.clone([donor.component(dpart).path], rename={dpart: move},
+                     group={donor.component(dpart).group: group},
+                     seed=f"{seed}:{ab.slot}:lunge", source=donor)
+            ef.set_value(move, "value_2", float(ab.lunge["speed"]))
+            at = float(ab.lunge.get("at", 0.0))
+            go = w.state(f"State {tag} Lunge", while_active=[TW.link_to(ef, move)])
+            _timer(w, f"{tag} Lunge Start Timer", at, on_end=go)
+            _timer(w, f"{tag} Lunge End Timer", at + float(ab.lunge["duration"]), ends=go)
+            timers += [f"{tag} Lunge Start Timer", f"{tag} Lunge End Timer"]
+        if ab.moving:
+            split = hero_common.component(SPLIT_ENABLE)
+            ef.add_external_ref(state, "while_active", split.guid,
+                                f"[{HF.kind_label(split.cls)}] {hero_common.name}\\{split.path}")
         for t in [*timers, f"{tag} End Timer"]:
             ef.add_ref(state, "activates", t)
         # Hand the body to the ability: every shipped ability state (Geppetto's
@@ -778,6 +866,9 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         _bisect_state(ef, hero_common, ab, ctl=ctl, state=state, tag=tag, group=group,
                       timers=[*timers, f"{tag} End Timer"], seed=seed)
         _button(ef, ab, ctl)
+        if ab.moving:
+            for fld in MOVING_SWITCHES:
+                ef.set_value(ctl, fld, False)
     except (EntityEditError, HF.FrameError, P.PartError) as e:
         raise AbilityError(f"ability {ab.slot}: {e}") from e
     return state

@@ -119,6 +119,14 @@ TRIGGERS = {
                         _ABILITY_USED, ("Ultimate",)),
     "power": Trigger("Use Power Game Event Listener", "After using your power",
                      _ABILITY_USED, ("Power",), ("NotAAbility",)),
+    # The basic attack and the trait send the same event under their own flag,
+    # with no exclusion: Barks_Manager's "Practice Game Event Listener"
+    # (Attack) and "Trait Game Event Listener", Piper's "Bark Trait Game Event
+    # Listener". Not yet exercised in game.
+    "attack": Trigger("Attack Use Event Listener", "After attacking", _ABILITY_USED,
+                      ("Attack",), flags=0x101, group="Practice"),
+    "trait": Trigger("Trait Use Event Listener", "After using your trait", _ABILITY_USED,
+                     ("Trait",), flags=0x101, group="Trait"),
     "day_start": Trigger("Day Event Listener", "When day begins", 0x17d8d8fa, flags=0x1),
     "night_start": Trigger("Night Event Listener", "When night begins", 0x17d8d8fc, flags=0x1),
     "talent_picked": Trigger("Skill Selected Game Event Listener", "After picking a talent",
