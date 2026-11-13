@@ -58,7 +58,10 @@ def _pack(tmp_path, monkeypatch, manifest: str, files: dict[str, bytes]) -> str:
     from rsmm.cli import cmd_pack
     src = tmp_path / "mods" / "m"
     src.mkdir(parents=True)
-    (src / "manifest.toml").write_text(manifest, encoding="utf-8")
+    # newline="": on Windows write_text turns every \n into \r\n, and the
+    # packed text then differs from the string the test compares it with.
+    with (src / "manifest.toml").open("w", encoding="utf-8", newline="") as fh:
+        fh.write(manifest)
     for rel, data in files.items():
         f = src / rel
         f.parent.mkdir(parents=True, exist_ok=True)
