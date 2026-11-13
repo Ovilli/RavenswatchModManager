@@ -4,6 +4,16 @@
     {
       "version": "",
       "date": "2026-11-13",
+      "summary": "The game log now names the loader build, the SDK and every mod with its version",
+      "highlights": [
+        "The game log names the loader build and SDK, and says when it's a dev build",
+        "Every mod gets a log line with its version and whether it ran or was disabled"
+      ],
+      "loader_version": 59
+    },
+    {
+      "version": "",
+      "date": "2026-11-13",
       "summary": "Heroes written from scratch: buttons that stay on, move by root motion and chain combos; rig-lent sounds, move split and cloth physics; pets, edits and entities of their own. Mods that change the game are labelled Private games only when packed and published.",
       "highlights": [
         "Custom heroes: abilities now run (they used to end in the frame they started), dash and lunges move the hero, combos chain all their steps",
@@ -510,19 +520,6 @@
         "Mod authors: entity edits can take a value from the mod's config (`config`, `times`) and be switched on or off (`when`).",
         "Mod authors: [[patch]] stat values can come from config too, e.g. a camp size slider.",
         "Changing such a setting rebuilds the mod's files on the next launch."
-      ]
-    },
-    {
-      "version": "5.9.21",
-      "loader_version": 45,
-      "date": "2026-10-16",
-      "summary": "Mod pages in your language, Update 6 fixes for hero picks, and a new challenge content kind.",
-      "highlights": [
-        "Browse and mod pages show a mod's own translation (name, summary, description) when the app runs in that language.",
-        "Hero ids fixed for Update 6; picking a hero someone else took is handled more safely.",
-        "New 'challenge' content kind (experimental) for editing the run challenges.",
-        "Lint warns when a mod edits a hero part that Update 6 replaced, so the edit would do nothing.",
-        "A small, dismissible Ko-fi note on the Library after a few modded launches."
       ]
     }
   ]
