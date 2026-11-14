@@ -28,6 +28,8 @@ return {
   ["EnemyCampTierDef_PostLoad"] = { pattern = "EnemyCampTierDef_PostLoad", offset = 0x0, sig = "up" },
   ["EnemyController_Ctor"] = { pattern = "EnemyController_Ctor", offset = 0x0, sig = "pp" },
   ["EntityComponent_Activate"] = { pattern = "EntityComponent_Activate", offset = 0x0, sig = "vpp" },
+  ["EntityComponent_RunActivate"] = { pattern = "EntityComponent_RunActivate", offset = 0x0, sig = "vp" },
+  ["EntityComponent_RunDeactivate"] = { pattern = "EntityComponent_RunDeactivate", offset = 0x0, sig = "vp" },
   ["EntityEventTrigger_Fire"] = { pattern = "EntityEventTrigger_Fire", offset = 0x0, sig = "vp" },
   ["EntityStore_CreateEntity"] = { pattern = "EntityStore_CreateEntity", offset = 0x0, sig = "ppppp" },
   ["EntityValueEntry_Ctor"] = { pattern = "EntityValueEntry_Ctor", offset = 0x0, sig = "vpp" },
