@@ -1,6 +1,18 @@
 {
-  "generated": "2026-11-13",
+  "generated": "2026-11-14",
   "entries": [
+    {
+      "version": "5.9.32",
+      "date": "2026-11-14",
+      "summary": "Custom heroes can borrow any shipped hero's ability, and RSMM tells you which loader and CLI you're running.",
+      "highlights": [
+        "Heroes written from scratch can use any of the 121 shipped hero abilities as-is, e.g. Scarlet's wolf bite (template)",
+        "Custom hero combos now chain, and lunges stop at the first enemy in reach",
+        "The app shows its loader and CLI versions and warns when a mod needs a newer one",
+        "The game log names the loader build, the SDK and every mod that ran"
+      ],
+      "loader_version": 59
+    },
     {
       "version": "",
       "date": "2026-11-13",
@@ -508,18 +520,6 @@
       "summary": "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process",
       "highlights": [
         "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process"
-      ]
-    },
-    {
-      "version": "5.9.23",
-      "loader_version": 46,
-      "date": "2026-10-17",
-      "summary": "The damage meter now names your teammates exactly, by the hero each of them plays.",
-      "highlights": [
-        "Damage meter: teammates are matched to their row by the hero they picked in the lobby, so their names no longer carry a '?'.",
-        "Damage meter: crits and blocked damage are counted, and damage taken matches the game's own total.",
-        "Damage meter: the per-ability split works again after Update 6.",
-        "Overlays hide a column no row has data for, so mods can add optional columns behind a setting."
       ]
     }
   ]
