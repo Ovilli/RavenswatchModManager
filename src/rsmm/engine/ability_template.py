@@ -478,9 +478,13 @@ def _cut(ef: EntityFile, c: EG.Component, pk: _Pick, sink: str, bloc: bool) -> N
         for f in EF.fields(c):
             if f.kind != "ref[]":
                 continue
+            # item offsets are relative to the body, as remove_ref reads them
+            # (adding the field's offset too matched an entry of ANOTHER list:
+            # each cut deleted a wrong entry and re-cut until Scarlet's bite
+            # state had no `activates` left, its clip never played and the
+            # button never ended; Blood Wolf playtest 2026-11-14)
             for i, e in enumerate(f.items):
-                if f.offset + e.offset <= pk.a - at < f.offset + e.offset + e.size \
-                        or e.offset <= pk.a - at < e.offset + e.size:
+                if e.offset <= pk.a - at < e.offset + e.size:
                     ef.remove_ref(c.name, f.name, i)
                     return
     if bloc:

@@ -63,6 +63,30 @@ def test_scarlets_wolf_bite_is_lent_whole():
     out = ef.to_bytes()
     assert not re.findall(rb"\] Hero_Red(?:_FX)?\\", out)       # no donor labels
     assert AT.unresolved(ef, hc, _read, only={ef.component(n).guid for n in lent.parts}) == []
+    # Every list of every lent part is the donor's minus exactly what was cut:
+    # a wrong offset once deleted OTHER entries per cut, until the bite state
+    # had no `activates` left (clip never played, button never ended).
+    from rsmm.engine import entity_graph as EG
+    donor = {c.name: c for c in EG.parse(_read("Heroes\\Hero_Red\\Hero_Red.entity.ot"),
+                                         "Hero_Red").components}
+    cuts = [x.split(" -> ") for x in lent.cut]
+
+    def lists(c):
+        return {f.name: [t.rsplit("\\", 1)[-1] for t in f.text.split("  |  ")]
+                if f.text not in ("(empty)", "(none)") else []
+                for f in EF.fields(c) if f.kind == "ref[]"}
+    for name in lent.parts:
+        if name not in donor:
+            continue
+        mine, theirs = lists(ef.component(name)), lists(donor[name])
+        for fld, want in theirs.items():
+            gone = [t for t in want if t not in mine[fld]]
+            assert len(mine[fld]) == len(want) - len(gone), (name, fld)
+            for t in gone:
+                assert any(p == name and t in target for p, target in cuts), (name, fld, t)
+    st = {f.name: f.text for f in EF.fields(ef.component("State Wolf Primary Ability"))}
+    assert "Wolf Primary Ability Clip Rush" in st["activates"]
+    assert "Move Inertia Activation Tester" in st["activates"]
     # the alt-form anim player became the plain one
     anim = {f.name: f.text for f in EF.fields(ef.component("Wolf Primary Ability Anim Bite"))}
     assert any("Main Anim Player" in v for v in anim.values())
