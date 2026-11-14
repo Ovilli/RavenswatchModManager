@@ -1,5 +1,6 @@
 'use client';
 
+import { buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bell,
@@ -11,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   Upload,
-  User as UserIcon,
   X,
 } from 'lucide-react';
 import type { Route } from 'next';
@@ -39,9 +39,9 @@ function NotificationBell() {
     <Link
       href="/notifications"
       aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ''}`}
-      className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:border-crimson/60 hover:text-foreground"
+      className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-200 transition-colors hover:bg-white/10 hover:text-white"
     >
-      <Bell className="h-4 w-4" />
+      <Bell className="h-5 w-5" aria-hidden="true" />
       {unread > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-semibold text-white">
           {unread > 9 ? '9+' : unread}
@@ -60,7 +60,6 @@ const navLinks = [
   { href: '/' as const, label: 'Home' },
   { href: '/registry' as const, label: 'Registry' },
   { href: '/c' as const, label: 'Collections' },
-  { href: '/download' as const, label: 'Download' },
 ];
 
 const userMenuLinks = [
@@ -71,14 +70,9 @@ const userMenuLinks = [
   { href: '/account' as const, label: 'Account', icon: Settings },
 ];
 
-function initialsFor(name: string | null | undefined, email: string | null | undefined): string {
+function initialFor(name: string | null | undefined, email: string | null | undefined): string {
   const src = name?.trim() || email?.trim() || '?';
-  const parts = src.split(/\s+/).filter(Boolean);
-  const first = parts[0];
-  if (!first) return '?';
-  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
-  const second = parts[1];
-  return ((first[0] ?? '') + (second?.[0] ?? '')).toUpperCase();
+  return Array.from(src)[0] ?? '?';
 }
 
 function UserMenu() {
@@ -115,7 +109,7 @@ function UserMenu() {
   const user = session?.user;
   if (!user) return null;
 
-  const initials = initialsFor(user.name, user.email);
+  const initial = initialFor(user.name, user.email);
   const displayName = user.name?.trim() || user.email || 'Account';
 
   async function handleSignOut() {
@@ -126,20 +120,25 @@ function UserMenu() {
   }
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Open user menu"
-        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-muted text-xs font-semibold text-foreground transition hover:border-crimson/60 hover:bg-foreground/5"
+        aria-label={`Open user menu for ${displayName}`}
+        className="group flex h-10 max-w-full items-center gap-2.5 rounded-full text-zinc-200 transition-colors hover:text-white"
       >
-        {user.image ? (
-          <img src={user.image} alt={displayName} className="h-full w-full object-cover" />
-        ) : (
-          <span>{initials}</span>
-        )}
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-700 text-lg transition-colors group-hover:bg-zinc-600">
+          {user.image ? (
+            <img src={user.image} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </span>
+        <span className="hidden max-w-32 truncate text-base sm:block xl:max-w-40">
+          {displayName}
+        </span>
       </button>
 
       {open ? (
@@ -152,7 +151,7 @@ function UserMenu() {
               {user.image ? (
                 <img src={user.image} alt={displayName} className="h-full w-full object-cover" />
               ) : (
-                <span>{initials}</span>
+                <span>{initial}</span>
               )}
             </div>
             <div className="min-w-0">
@@ -215,10 +214,8 @@ function isActivePath(pathname: string, href: string): boolean {
 /**
  * The bar's links below `md`, where the inline row is hidden.
  *
- * Without this a phone got the logo and Sign In and nothing else: the
- * registry, collections and the download page were reachable only by
- * scrolling to the footer, and most visitors arrive on a phone from a link
- * shared in Discord or Reddit. Same links as the wide bar.
+ * Keeps the registry and collections within reach on phones. Download stays
+ * visible as a separate header action at every size.
  */
 function MobileMenu({ pathname }: { pathname: string }) {
   const [open, setOpen] = useState(false);
@@ -329,7 +326,7 @@ export function Nav() {
 
   return (
     <header ref={headerRef} className="site-header sticky top-0 z-50">
-      <div className="container mx-auto flex items-center justify-between px-6 py-3">
+      <div className="container mx-auto flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <img
             src="/logo.png"
@@ -358,23 +355,35 @@ export function Nav() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          <Link
+            href="/download"
+            aria-current={isActive('/download') ? 'page' : undefined}
+            className={buttonVariants({ className: 'shrink-0 sm:px-5 sm:text-base' })}
+          >
+            Download
+          </Link>
+
+          {!isPending && !session?.user ? (
+            <Link
+              href="/auth/signin"
+              className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#333333] px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-[#404040] sm:px-5 sm:text-base"
+            >
+              Sign in
+            </Link>
+          ) : null}
+
           {isPending ? (
-            <div className="h-9 w-9 animate-pulse rounded-full bg-muted" aria-hidden />
+            <div
+              className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-zinc-700"
+              aria-hidden
+            />
           ) : session?.user ? (
             <>
               <NotificationBell />
               <UserMenu />
             </>
-          ) : (
-            <Link
-              href="/auth/signin"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-crimson px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-crimson/90"
-            >
-              <UserIcon className="h-4 w-4" />
-              Sign In
-            </Link>
-          )}
+          ) : null}
 
           <MobileMenu pathname={pathname} />
         </div>
