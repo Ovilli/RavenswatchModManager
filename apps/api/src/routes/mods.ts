@@ -489,6 +489,7 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       takedownReason: mod.takedownReason,
       isFollowing,
       isAuthor,
+      canEdit: canManage,
       followerCount,
       coAuthors,
       dependencies:
@@ -817,8 +818,8 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Owner-scoped mod management routes. All require an authenticated
-// session and verify that `mod.ownerId === user.id` before mutating.
+// Authenticated mod management routes. Listing metadata and images also allow
+// RSMM admins; publishing, team membership, and deletion keep their own guards.
 // ─────────────────────────────────────────────────────────────────────
 
 const ownerLimiter = createRateLimiter({
@@ -959,7 +960,9 @@ modsRouter.patch(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
+    if (!isAdmin(user.id) && !(await canManageMod(existing, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     // Build an update object that only sets keys the caller sent. The
     // `?? undefined` dance is needed because zod returns `null` for
@@ -1020,7 +1023,9 @@ modsRouter.post(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
+    if (!isAdmin(user.id) && !(await canManageMod(existing, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     const signed = await presignModImage({
       slug,

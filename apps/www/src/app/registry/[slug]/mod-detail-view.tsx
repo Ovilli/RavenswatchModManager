@@ -1,14 +1,22 @@
 'use client';
 import { ApiError, type ModDetailResponse } from '@rsmm/api-client';
 import { type ModVersion, hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
-import { Spinner } from '@rsmm/ui';
+import { Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowLeft, ChevronDown, Download, ExternalLink } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowLeft,
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Pencil,
+} from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { Fragment } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
+import { useSession } from '../../../lib/auth-client';
 import {
   formatFileSize,
   formatModDate,
@@ -47,6 +55,7 @@ export function ModDetailView({
   descriptionHtml: string;
   managerDownloads: InstallerDownloads;
 }) {
+  const { data: session } = useSession();
   const detail = useQuery({
     queryKey: ['mods', 'detail', slug],
     queryFn: () => api.mods.get(slug),
@@ -55,7 +64,7 @@ export function ModDetailView({
     retry: (count, error) =>
       error instanceof ApiError && error.status === 404 ? false : count < 1,
   });
-  // Start with the same anonymous snapshot on both sides of hydration, even
+  // Start with the same server snapshot on both sides of hydration, even
   // when the browser already has this mod in its React Query cache.
   const hydrated = useHydrated();
   const data = hydrated ? (detail.data ?? initialData) : initialData;
@@ -226,6 +235,15 @@ export function ModDetailView({
               followerCount={mod.followerCount ?? 0}
             />
           </div>
+          {hydrated && session && (mod.canEdit ?? mod.isAuthor) ? (
+            <Link
+              href={`/my-mods/${slug}` as Route}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              <Pencil size={14} className="mr-2" aria-hidden />
+              Edit listing
+            </Link>
+          ) : null}
           <div className="mod-report">
             <ReportModal slug={slug} />
           </div>

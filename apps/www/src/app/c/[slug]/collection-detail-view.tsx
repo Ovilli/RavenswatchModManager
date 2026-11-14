@@ -92,6 +92,7 @@ export function CollectionDetailView({
     );
   }
   const isOwner = hydrated && session?.user?.id === collection.ownerId;
+  const canEdit = hydrated && !!session && (isOwner || collection.canEdit === true);
   const author = collection.ownerName || 'Unknown curator';
   const modCount = collection.mods.length;
 
@@ -164,7 +165,7 @@ export function CollectionDetailView({
               </dl>
             </div>
           </div>
-          {isOwner ? (
+          {canEdit ? (
             <div className="collection-owner-actions">
               <Button
                 type="button"
@@ -176,29 +177,31 @@ export function CollectionDetailView({
                 <Pencil size={14} aria-hidden />
                 Edit collection
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={remove.isPending || editing}
-                onClick={() => {
-                  if (confirm('Delete this collection?')) remove.mutate();
-                }}
-              >
-                <Trash2 size={14} aria-hidden />
-                {remove.isPending ? 'Deleting…' : 'Delete'}
-              </Button>
+              {isOwner ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={remove.isPending || editing}
+                  onClick={() => {
+                    if (confirm('Delete this collection?')) remove.mutate();
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden />
+                  {remove.isPending ? 'Deleting…' : 'Delete'}
+                </Button>
+              ) : null}
               {remove.isError ? <p role="alert">{describeCollectionError(remove.error)}</p> : null}
             </div>
           ) : null}
         </>
       }
     >
-      {editing && isOwner ? (
+      {editing && canEdit ? (
         <CollectionEditor collection={collection} onClose={() => setEditing(false)} />
       ) : null}
       <section id="included-mods" className="mod-section" aria-label="Included mods">
-        {isOwner ? (
+        {canEdit ? (
           <form
             className="collection-add-mod"
             onSubmit={(event) => {
@@ -232,7 +235,7 @@ export function CollectionDetailView({
         ) : null}
         {modCount === 0 ? (
           <p className="mod-description">
-            {isOwner
+            {canEdit
               ? 'Add your first mod using its registry slug above.'
               : 'The curator hasn’t added any mods yet.'}
           </p>
@@ -245,7 +248,7 @@ export function CollectionDetailView({
                   item={mod.nsfw ? { ...mod, imageUrl: null } : mod}
                   headingLevel={3}
                 />
-                {isOwner ? (
+                {canEdit ? (
                   <button
                     type="button"
                     className="collection-remove-mod"
