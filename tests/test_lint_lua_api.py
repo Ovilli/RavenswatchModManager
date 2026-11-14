@@ -145,3 +145,39 @@ def test_require_rsmm_after_first_use_reports_once(tmp_path, capsys):
     errs, _warns = lint._lint_lua_api("LuaMod", d)
     assert errs == 1
     assert "init.lua:1" in capsys.readouterr().out
+
+
+def test_global_require_rsmm_stays_clean(tmp_path):
+    """`R = require "rsmm"` without `local` binds R in the mod's own lua_State,
+    so its reads are not nil."""
+    d = _mod(
+        tmp_path,
+        'R = require "rsmm"\n'
+        'R.on("ready", function() end)\n',
+    )
+    assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_module_reading_global_r_from_init_stays_clean(tmp_path):
+    """A module init.lua requires sees the global R init.lua set."""
+    d = _mod(
+        tmp_path,
+        'R = require "rsmm"\n'
+        'require "helper"\n',
+    )
+    (d / "helper.lua").write_text('R.on("ready", function() end)\n')
+    assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_module_without_any_binding_is_an_error(tmp_path, capsys):
+    """init.lua's `local R` does not reach a module, and nothing in the mod
+    sets a global R, so the module's read is nil."""
+    d = _mod(
+        tmp_path,
+        'local R = require "rsmm"\n'
+        'require "helper"\n',
+    )
+    (d / "helper.lua").write_text('R.on("ready", function() end)\n')
+    errs, warns = lint._lint_lua_api("LuaMod", d)
+    assert (errs, warns) == (1, 0)
+    assert "helper.lua:1" in capsys.readouterr().out

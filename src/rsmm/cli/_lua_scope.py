@@ -141,6 +141,8 @@ class _Walk:
         self.pending: list[str] = []          # `for` vars, bound at its `do`
         self.globals: list[tuple[str, int]] = []   # (name, token index)
         self.top_level: dict[str, list[int]] = {}  # name -> decl token indexes
+        #: Names assigned as globals by a statement (`R = require "rsmm"`).
+        self.global_writes: set[str] = set()
         #: Token indexes read inside an open bracket of the current statement
         #: (call arguments, a table constructor, an index). A function body
         #: resets the stack, so its statements are not in here.
@@ -292,6 +294,8 @@ class _Walk:
                 and prev is not None and prev.kind == "op" and prev.text in "{,;"):
             return                                   # table key `{ name = ... }`
         if not self.brackets and self.assignment_target(k):
+            if not self.resolves(tok.text):
+                self.global_writes.add(tok.text)
             return                                   # `name = ...` writes, not reads
         if not self.resolves(tok.text):
             self.globals.append((tok.text, k))
@@ -328,14 +332,16 @@ def walk(text: str) -> _Walk:
     return w
 
 
-def late_locals(text: str) -> list[LateLocal]:
-    """Global reads in `text` whose name gets a top-level `local` further down.
+def late_locals(src: str | _Walk) -> list[LateLocal]:
+    """Global reads in `src` whose name gets a top-level `local` further down.
+
+    `src` is Lua text or a finished :func:`walk` of it, so a caller running
+    several checks walks the file once.
 
     Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
     """
-    toks = tokenize(text)
-    w = _Walk(toks)
-    w.run()
+    w = src if isinstance(src, _Walk) else walk(src)
+    toks = w.t
     out: list[LateLocal] = []
     for name, k in w.globals:
         if name in _BUILTINS:
@@ -346,21 +352,28 @@ def late_locals(text: str) -> list[LateLocal]:
     return out
 
 
-def missing_sdk_binding(text: str, alias: str = "R") -> int | None:
+def missing_sdk_binding(src: str | _Walk, alias: str = "R") -> int | None:
     """First line that reads `alias` as a global when the file never binds it.
 
-    A mod gets ``R`` only from ``local R = require "rsmm"``. Without that line
-    every ``R.`` / ``R:`` compiles to a global read, the loader raises
+    A mod gets ``R`` from ``require "rsmm"``: normally ``local R = require
+    "rsmm"``, or a global ``R = require "rsmm"``, which every later read in
+    the mod sees because each mod runs in its own ``lua_State``. Without
+    either, every ``R.`` / ``R:`` is a global read of nil, the loader raises
     ``attempt to index a nil value (global 'R')``, and no handler registers —
-    so lint must report it as an error, not a silent pass. A top-level local
-    declared *below* the read is the late-local case: :func:`late_locals`
-    already reports that one with the declaration line, so it is skipped here.
+    so lint must report it as an error, not a silent pass.
+
+    A file that assigns `alias` globally is skipped. A global set in another
+    file of the same mod is the caller's to rule out: this sees one file. A
+    top-level local declared *below* the read is the late-local case:
+    :func:`late_locals` already reports that one with the declaration line, so
+    it is skipped here.
 
     Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
     """
-    toks = tokenize(text)
-    w = _Walk(toks)
-    w.run()
+    w = src if isinstance(src, _Walk) else walk(src)
+    toks = w.t
+    if alias in w.global_writes:
+        return None
     first = next((k for name, k in w.globals if name == alias), None)
     if first is None:
         return None

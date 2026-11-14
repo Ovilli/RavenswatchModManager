@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding, walk
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -1010,6 +1010,7 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     events, callables = _engine_vocab()
     errs = 0
     warns = 0
+    files = []
     for f in sorted(entry.rglob("*.lua")):
         if not f.is_file():
             continue
@@ -1017,16 +1018,25 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        rel = f.relative_to(entry).as_posix()
         try:
-            late = late_locals(text)
-            unbound = missing_sdk_binding(text)
+            scope = walk(text)
         except LuaSyntaxError as e:
+            scope = e
+        files.append((f.relative_to(entry).as_posix(), text, scope))
+    # The mod's files share one lua_State, so a global `R = require "rsmm"` in
+    # any of them (init.lua, usually) binds R for the modules it loads too.
+    r_assigned = any(not isinstance(s, LuaSyntaxError) and "R" in s.global_writes
+                     for _, _, s in files)
+    for rel, text, scope in files:
+        if isinstance(scope, LuaSyntaxError):
             print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
-                  f"{_ST.dim(f'scope not checked: {e}')}")
+                  f"{_ST.dim(f'scope not checked: {scope}')}")
             warns += 1
             late = []
             unbound = None
+        else:
+            late = late_locals(scope)
+            unbound = None if r_assigned else missing_sdk_binding(scope)
         for h in late:
             hint = (f"— its `local` is on line {h.decl_line}, so here it compiles "
                     f"to a global read and is nil at run time; move the local "
