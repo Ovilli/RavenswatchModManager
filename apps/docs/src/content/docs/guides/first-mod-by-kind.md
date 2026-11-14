@@ -1228,6 +1228,31 @@ hits = [ { at = 0.9, radius = 5, damage = 300, status = "Rooted" } ]
 - `steps` is the kit's timeline above (`fire`, `hit`, `heal`, `summon`, `wait`,
   `repeat`), started by the button. The hero gets its own spawner and aim to
   build from, so projectiles work without a base.
+- `template = "<Hero>: <button>"` lends a shipped hero's button whole:
+  its states, timing, effects and hit logic, exactly as the game plays it.
+  The donor's talents, HUD and resource systems (combo points, charges) are
+  cut, and the button runs on this hero's slot. `rsmm templates` lists every
+  button (121 at Update 6). Tune it with `values = { "<part>" = <number> }`
+  (its damage multipliers, ranges and durations, by part name) and
+  `clips = { "<its clip>" = "<new clip>" }`; `frame.edits` can edit any of
+  its parts by name afterwards. `cooldown`, `name`, `description` and `icon`
+  still apply. `clip`, `hits` and the other keys below don't: a template's
+  behaviour is the donor's.
+
+  ```toml
+  [content.frame.abilities.power]
+  template = "Red: Wolf Primary"      # Scarlet's wolf bite
+  cooldown = 6
+  values   = { "Wolf Primary Ability Damage Multiplier Default" = 1.0 }
+  ```
+- `strike = { clip, duration, after }` makes the button a rush that ends in
+  a strike, like Scarlet's wolf bite. `clip` is the lunge. It stops at the
+  first enemy in reach, and the strike's own clip (hit plus recovery) plays
+  there. An enemy already in reach is struck `after` seconds in (default
+  0.25). A lunge that reaches no one ends with no strike. `hits` land on the
+  strike's clip.
+- `intangible = true` lets attacks pass through the hero while the button
+  runs, including its strike.
 - `icon` is the button's picture on the HUD: a PNG in the mod
   (`icon = "art/ui/timber.png"`) or a picture the game ships
   (`icon = "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png"`). The

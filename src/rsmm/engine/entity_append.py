@@ -409,8 +409,12 @@ class _Accessors:
         numeric = [(n, t) for t, n in seen.items() if t != 2]
         return max(numeric)[1] if numeric else (2 if seen else None)
 
-    def resolve(self, guid: bytes) -> tuple[bytes, int]:
-        """(accessor, type) to read ``guid`` with, or raise."""
+    def resolve(self, guid: bytes, prefer: int | None = None) -> tuple[bytes, int]:
+        """(accessor, type) to read ``guid`` with, or raise. ``prefer``: the
+        type the slot being pointed already holds; when this file reads the
+        class with that type too, that read wins (a count slot holding an int
+        stays an int read even once a lent button brings float reads of the
+        same class: Blood Wolf's pet spread, 2026-11-14)."""
         if guid in self.by_target:
             return self.by_target[guid].most_common(1)[0][0]
         cls = self.cls_of.get(guid)
@@ -419,7 +423,18 @@ class _Accessors:
             raise EntityAppendError(
                 f"no value picker in this file reads a {cls} — cannot choose "
                 f"an accessor for it")
+        if prefer is not None and prefer not in {t for _acc, t in pairs} \
+                and prefer == self.value_type(guid):
+            # this file never reads the class with the slot's (and the
+            # target's own) type; a shipped read of that type tells the accessor
+            shipped = {pt: n for pt, n in (_shipped_accessors().get(cls) or {}).items()
+                       if pt[1] == prefer}
+            if shipped:
+                return max(shipped.items(), key=lambda kv: kv[1])[0]
         types = {t for _acc, t in pairs}
+        if len(types) > 1 and prefer in types:
+            same = {pt: n for pt, n in pairs.items() if pt[1] == prefer}
+            return max(same.items(), key=lambda kv: kv[1])[0]
         if len(types) > 1:
             want = self.value_type(guid)
             pairs = {pt: n for pt, n in pairs.items() if pt[1] == want}
@@ -529,7 +544,7 @@ def fix_accessor(buf: bytes, label_end: int, old_target: bytes, new_target: byte
         new_type = acc.value_type(new_target)
         if new_type is None or new_type == acc.value_type(old_target):
             return buf
-    accessor, vtype = acc.resolve(new_target)
+    accessor, vtype = acc.resolve(new_target, prefer=cur_type)
     # union layout from `off`: accessor, BEGIN, class, type, sub-type, value
     if vtype != cur_type and buf[off + 20:off + 24] != bytes(4):
         # A sourced picker's inline number is dead, but refuse to reinterpret a

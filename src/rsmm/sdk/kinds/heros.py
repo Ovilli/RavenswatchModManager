@@ -1782,6 +1782,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 raw["combo"] = [own(st, f"frame.abilities.{slot}.combo[{n}]")
                                 if isinstance(st, dict) else st
                                 for n, st in enumerate(raw["combo"])]
+            if isinstance(raw.get("strike"), dict):
+                raw["strike"] = own(raw["strike"], f"frame.abilities.{slot}.strike")
+            if raw.get("template") is not None and isinstance(raw.get("clips"), dict):
+                raw["clips"] = {k: own({"clip": v}, f"frame.abilities.{slot}.clips")["clip"]
+                                for k, v in raw["clips"].items()}
             abilities.append(HA.Ability.parse(str(slot), {**raw, "bank": bank, **card}))
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e
@@ -1791,7 +1796,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         if str(slot) in button_steps:
             from ...engine import hero_kit as _HK
             ab = abilities[-1]
-            length = ab.duration if ab.duration is not None else HF.clip_length(ab.clip)
+            length = (None if ab.template is not None else
+                      ab.duration if ab.duration is not None else HF.clip_length(ab.clip))
             late = [t for t, _b in _HK.timeline(button_steps[str(slot)])] if length else []
             if late and max(late) > length:
                 raise ContentError(
@@ -2081,6 +2087,14 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e
         main = ief.to_bytes()
+    # Last: every link to one of its overrides of a shared part names the
+    # SHARED part's GUID, as shipped heroes write all 600+ such links (none
+    # by the override's own id; linked that way, Blood Wolf 0.2's combo never
+    # matched its button and Jack's talents never found their controller).
+    try:
+        main = HF.link_overrides_by_base(main, scope, read)
+    except HF.FrameError as e:
+        raise ContentError(f"hero {hid}: {e}") from e
     _no_effect([main, fx], put, art)
     from ...engine import vfx_writer as _VW
     own_fx_assets.add(_VW.NO_EFFECT)

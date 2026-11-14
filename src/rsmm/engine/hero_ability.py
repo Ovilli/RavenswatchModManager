@@ -51,6 +51,17 @@ MOVE_INERTIA = "Move Inertia Activation Tester"
 #: selector, 1 (the clip's full travel) until the target is in range.
 ROOT_MOTION_SELECTOR = "Ability In Range Root Motion Value Selector"
 OWN_ROOT_MOTION = "Ability Root Motion Selector"
+#: What that selector's "in range" reads: Hero_Common's detector, which only
+#: looks while a state holds it on. Every shipped attack state holds it
+#: (Geppetto's basic attack, Scarlet's wolf attack); a state that did not
+#: (Blood Wolf 0.2's power) never saw an enemy in range, and its lunge ran its
+#: whole length every time (playtest 2026-11-14).
+IN_RANGE_DETECTOR = "Ability In Range Default Detector"
+#: The detector's verdict as a tester: copied (as a trigger, not the base's
+#: read-only condition) to start a rush's strike.
+IN_RANGE_CONDITION = "Ability In Range Default Condition"
+#: Character_Common's state that lets attacks pass through (``intangible``).
+INTANGIBLE = "State Intangible"
 #: `moving`: Hero_Common's state that turns the upper/lower body split on
 #: (the hero's "Move Split Layer" blends the ability over its walk), and the
 #: controller's two switches that stop movement while the ability runs (off
@@ -172,18 +183,34 @@ class Ability:
     #: The hero may walk while the ability plays (the move split is on and
     #: the button does not stop movement).
     moving: bool = False
+    #: Attacks pass through the hero for the whole ability, its strike too
+    #: (Character_Common's "State Intangible", as Scarlet's wolf bite holds it).
+    intangible: bool = False
+    #: A rush that ends in a strike (Scarlet's wolf bite): ``clip`` is the
+    #: lunge, stopping at the first enemy in reach; as soon as one is in reach
+    #: the strike's own clip plays and ``hits`` land on ITS timeline. A rush
+    #: that reaches no one ends with no strike. Keys: STRIKE_KEYS.
+    strike: dict | None = None
+    #: A shipped hero's button lent whole (``ability_template``): its own
+    #: state machine, effects and timings; ``clip``, ``hits``, ``strike`` ...
+    #: are then not this button's to say (its clips and numbers are the
+    #: template's ``clips`` / ``values``).
+    template: object | None = None
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
         if slot not in CONTROLLERS:
             raise AbilityError(f"ability {slot!r}: one of {', '.join(CONTROLLERS)}")
+        if isinstance(raw, dict) and raw.get("template") is not None:
+            return cls._parse_template(slot, raw)
         if isinstance(raw, dict) and raw.get("combo") and not raw.get("clip"):
             raw = {**raw, "clip": (raw["combo"][0] or {}).get("clip", "")}
         if not isinstance(raw, dict) or not raw.get("clip"):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
-                              "icon", "icon_disabled", "root_motion", "moving"}
+                              "icon", "icon_disabled", "root_motion", "moving",
+                              "intangible", "strike"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -233,12 +260,73 @@ class Ability:
             raise AbilityError(f"ability {slot}: a combo's steps keep the layout's root motion")
         if raw.get("moving") not in (None, True, False) or (raw.get("moving") and combo):
             raise AbilityError(f"ability {slot}: moving is true or false (not on a combo)")
+        if raw.get("intangible") not in (None, True, False):
+            raise AbilityError(f"ability {slot}: intangible is true or false")
+        strike = raw.get("strike")
+        if strike is not None:
+            if combo or raw.get("moving"):
+                raise AbilityError(f"ability {slot}: a strike ends a rush (not a combo, "
+                                   "not moving)")
+            if not isinstance(strike, dict) or not strike.get("clip") \
+                    or set(strike) - STRIKE_KEYS:
+                raise AbilityError(f"ability {slot}: strike is {{ clip, "
+                                   f"{', '.join(sorted(STRIKE_KEYS - {'clip'}))} }}")
+            for k in ("duration", "after"):
+                v = strike.get(k)
+                if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))
+                                      or not 0 <= v <= 10):
+                    raise AbilityError(f"ability {slot}: strike {k} is 0..10 seconds")
+            if not hits:
+                raise AbilityError(f"ability {slot}: a strike needs hits (on its own clip)")
         return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
                    str(raw.get("variant", "")), [dict(st) for st in combo],
-                   float(rm) if rm is not None else None, bool(raw.get("moving")))
+                   float(rm) if rm is not None else None, bool(raw.get("moving")),
+                   bool(raw.get("intangible")), dict(strike) if strike else None)
+
+
+#: What a button lent from a shipped hero (``template``) may say besides its
+#: knobs: its card, icons and cooldown (default: the donor button's).
+TEMPLATE_KEYS = {"template", "clips", "values", "cooldown", "bank", "name_key", "desc_key",
+                 "icon", "icon_disabled"}
+
+
+def _parse_template(cls, slot: str, raw: dict) -> Ability:
+    from . import ability_template as AT
+    unknown = set(raw) - TEMPLATE_KEYS
+    if unknown:
+        raise AbilityError(f"ability {slot}: a template button takes "
+                           f"{', '.join(sorted(TEMPLATE_KEYS - {'bank', 'name_key', 'desc_key'}))}"
+                           f"; not {', '.join(sorted(unknown))} (tune it with values / clips, "
+                           "or frame.edits on its parts)")
+    try:
+        tpl = AT.Template.parse(raw["template"], raw)
+    except AT.TemplateError as e:
+        raise AbilityError(f"ability {slot}: {e}") from e
+    icons = []
+    for k in ("icon", "icon_disabled"):
+        v = raw.get(k) or ("", "")
+        if not (isinstance(v, (tuple, list)) and len(v) == 2):
+            raise AbilityError(f"ability {slot}: {k} is (root, path) of a UI texture")
+        icons.append((str(v[0]), str(v[1])))
+    cd = raw.get("cooldown")
+    if cd is not None and (isinstance(cd, bool) or not isinstance(cd, (int, float)) or cd < 0):
+        raise AbilityError(f"ability {slot}: cooldown is a number of seconds")
+    return cls(slot, "", float(cd) if cd is not None else -1.0, None, [], None,
+               str(raw.get("bank", "")), str(raw.get("name_key", "")),
+               str(raw.get("desc_key", "")), "", icons[0], icons[1], template=tpl)
+
+
+Ability._parse_template = classmethod(_parse_template)
+
+
+#: A strike: its clip (with the hit and the recovery), its length (default the
+#: clip's), and how long into the rush before it may start (``after``; Scarlet's
+#: bite window opens 0.25 s into her rush, 0 = an enemy already in reach is
+#: struck at once).
+STRIKE_KEYS = {"clip", "duration", "after"}
 
 
 def _timer(w: P.PartWriter, name: str, seconds: float, *, on_end: P.Link = _NONE,
@@ -562,6 +650,26 @@ def _step_hits(st: dict, what: str) -> list:
     return parse_hits(todo, what)
 
 
+def _combo_controller_by_base_guid(ef: EntityFile, hero_common: EntityFile, combo: str,
+                                   ctl: str) -> None:
+    """Point the combo's controller link at the SHARED BASE's slot GUID.
+
+    The hero's controller is an override of Hero_Common's slot, and at run
+    time the button is known by the base slot's GUID: 17 of 17 shipped combos
+    on a main slot (Geppetto's, Scarlet's wolf, Kintaro's ...) link that GUID
+    under their own file's label, never their override's own GUID. Linked by
+    the override's own GUID, the combo never matched its button: every press
+    started it again at step 1 (Blood Wolf 0.2 playtest 2026-11-14: "it just
+    repeats a single claw swipe")."""
+    own = ef.component(ctl).guid
+    base = hero_common.component(ctl).guid
+    label = next((r.path for r in ef.component(combo).refs if r.guid == own), None)
+    if label is None:
+        raise AbilityError(f"the combo does not link its controller {ctl!r}")
+    if not ef.retarget_external(combo, own, base, label):
+        raise AbilityError(f"the combo's link to {ctl!r} could not be re-pointed")
+
+
 def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                 tag: str, group: str) -> str:
     """The basic attack as a combo (see ``COMBO_DONOR``). Returns its state.
@@ -615,6 +723,7 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
         target = mine.get(r.path.rsplit("\\", 1)[-1])
         if target and r.path.split("] ", 1)[-1].startswith(donor.name + "\\"):
             ef.swap_refs(combo, r.guid, target)
+    _combo_controller_by_base_guid(ef, hero_common, combo, ctl)
     # The button and the state go through the combo SELECTOR, as the donor's
     # do: the combo switches its parent state on, so a state that started the
     # combo itself re-entered forever and hung the game on the first press
@@ -632,6 +741,9 @@ def build_combo(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: s
     mi = hero_common.component(MOVE_INERTIA)
     ef.add_external_ref(state, "activates", mi.guid,
                         f"[{HF.kind_label(mi.cls)}] {hero_common.name}\\{mi.path}")
+    # The steps' root motion reads the in-range selector: the detector it
+    # reads looks only while held (both shipped combo parents hold it).
+    _hold_in_range(ef, hero_common, state)
     ef.set_ref(ctl, "ref_2", sel)
     names = [x.name for x in ef.cf.classes]
     for n, st in enumerate(ab.combo, 1):
@@ -710,8 +822,9 @@ def _button(ef: EntityFile, ab: Ability, ctl: str) -> None:
     # its timeline (COMBO_LINK / ABILITY_EXIT); a single-state attack has no
     # other pacing, and at 0 it could be spammed every frame (playtest
     # 2026-11-08). Shipped basic attacks use 0 or 1.
-    ef.set_value(ctl, "value_4", float(ab.cooldown))
-    if ab.slot == "attack":
+    if ab.cooldown >= 0:                  # a template keeps its donor's (-1)
+        ef.set_value(ctl, "value_4", float(ab.cooldown))
+    if ab.slot == "attack" and ab.template is None:
         for fld, on in ATTACK_SWITCHES.items():
             ef.set_value(ctl, fld, on)
     if ab.desc_key:
@@ -785,12 +898,116 @@ def set_icon(ef: EntityFile, ctl: str, icon: tuple[str, str],
     return len(ids)
 
 
+def _hold_external(ef: EntityFile, base: EntityFile, state: str, part: str,
+                   field: str = "while_active") -> None:
+    """Link the base's part ``part`` (one the hero inherits) into ``state``."""
+    c = base.component(part)
+    ef.add_external_ref(state, field, c.guid, f"[{HF.kind_label(c.cls)}] {base.name}\\{c.path}")
+
+
+def _hold_in_range(ef: EntityFile, hero_common: EntityFile, state: str) -> None:
+    _hold_external(ef, hero_common, state, IN_RANGE_DETECTOR)
+
+
+def _hold_intangible(state: str, ef: EntityFile) -> None:
+    from .talent_add_stat import _common_state
+    link = _common_state(INTANGIBLE)
+    ef.add_external_ref(state, "while_active", link.guid, link.path)
+
+
+def _build_strike(ef: EntityFile, hero_common: EntityFile, w: TW.TalentWriter, ab: Ability, *,
+                  tag: str, group: str, state: str, hit_timers: list[str],
+                  seed: str) -> tuple[P.Link, str]:
+    """The strike that ends a rush (``Ability.strike``), as Scarlet's wolf bite:
+
+    * ``State <tag> Strike`` plays the strike's clip, aims, holds the in-range
+      detector (its root motion stops at the enemy too), lands the ability's
+      hits on its own timeline and ends itself after the clip;
+    * ``Event <tag> Strike`` switches the rush (``state``) off and the strike on;
+    * ``<tag> Strike Tester`` (a copy of Hero_Common's in-range condition, made a
+      trigger) fires that event while ``State <tag> Strike Window`` is on: the
+      window opens ``after`` seconds into the rush (Scarlet's: 0.25 s, from her
+      rush's timeline), so an enemy already in reach is struck at once;
+    * ``Event <tag> Rush End`` closes the rush and its window when the lunge
+      ran out with no one in reach: no strike (a window left on would strike
+      later, out of nowhere).
+
+    Returns the rush-end event (for the rush's end timer) and the window's
+    timer (for the rush state to start)."""
+    st = ab.strike or {}
+    stag = f"{tag} Strike"
+    clip = str(st["clip"])
+    length = float(st.get("duration") or HF.clip_length(clip) or 0)
+    if not length:
+        raise AbilityError(f"ability {ab.slot}: the game has no strike clip {clip!r}")
+    ef.clone([f"Ability Dash\\{n}" for n in _CLIP], seed=f"{seed}:{ab.slot}:strike-clip",
+             rename={n: n.replace("Dash Ability", stag) for n in _CLIP},
+             group={"Ability Dash": group}, source=hero_common)
+    HF._set_clips(ef, f"{stag} Anim", [clip])
+    HF._set_duration(ef, f"{stag} Anim", length)
+    ef.set_value(f"{stag} Anim", HF.ROOT_MOTION, 1.0)
+    ef.set_ref(f"{stag} Anim", HF.ROOT_MOTION, OWN_ROOT_MOTION)
+    own_timeline(ef, f"{stag} Anim", length)
+    strike = f"State {stag}"
+    strike_link = w.state(strike, while_active=[TW.link_to(ef, f"{stag} Clip Selector"),
+                                                TW.link_to(ef, f"{tag} Look At")],
+                          flags=TW.PERSISTENT)
+    _timer(w, f"{stag} End Timer", length, ends=strike_link)
+    for t in [*hit_timers, f"{stag} End Timer"]:
+        ef.add_ref(strike, "activates", t)
+    _hold_external(ef, hero_common, strike, MOVE_INERTIA, "activates")
+    _hold_in_range(ef, hero_common, strike)
+    if ab.intangible:
+        _hold_intangible(strike, ef)
+    ef.set_ref(f"{stag} Clip", "ref_11", strike)
+    window = f"State {stag} Window"
+    window_link = w.state(window, flags=TW.PERSISTENT)
+    w.state(f"Event {stag}", activates=[strike_link],
+            deactivates=[TW.link_to(ef, state), window_link], flags=TW.EVENT)
+    cond = hero_common.component(IN_RANGE_CONDITION)
+    tester = f"{stag} Tester"
+    ef.clone([cond.path], rename={IN_RANGE_CONDITION: tester}, group={cond.group: group},
+             seed=f"{seed}:{ab.slot}:strike-tester", source=hero_common)
+    ef.set_flags(tester, TW.PERSISTENT)        # a trigger, as Scarlet's bite tester
+    ef.set_ref(tester, "on_true", f"Event {stag}")
+    ef.add_ref(window, "while_active", tester)
+    _timer(w, f"{stag} Window Timer", float(st.get("after", 0.25)), on_end=window_link)
+    rush_end = w.state(f"Event {tag} Rush End",
+                       deactivates=[TW.link_to(ef, state), window_link], flags=TW.EVENT)
+    return rush_end, f"{stag} Window Timer"
+
+
+def _corpus_read(ref: str):
+    from . import corpus
+    return corpus.read("EntitySettings/" + ref.replace("\\", "/") + ".EntitySettingsResource.gen")
+
+
+def build_template(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
+                   read=None) -> str:
+    """``ab``'s button lent from a shipped hero (``ability_template.lend``):
+    the hero's controller slot filled and pointed at the copy's entry, with
+    the donor's switches, and the manifest's cooldown, card and icons."""
+    from . import ability_template as AT
+    ctl = CONTROLLERS[ab.slot]
+    try:
+        HF.fill_slot(ef, hero_common, ctl, seed=seed)
+        lent = AT.lend(ef, hero_common, read or _corpus_read, ab.template, slot_ctl=ctl,
+                       seed=seed, sink=HF.KIT_EVENT)
+        ef.set_ref(ctl, "ref_2", lent.entry)
+        _button(ef, ab, ctl)
+    except (AT.TemplateError, EntityEditError, HF.FrameError, P.PartError) as e:
+        raise AbilityError(f"ability {ab.slot}: {e}") from e
+    return lent.entry
+
+
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
-          with_indicator: bool = True) -> str:
+          with_indicator: bool = True, read=None) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
     word = ab.slot.title()
     group = f"Ability {word}"
     tag = f"{word} Ability"
+    if ab.template is not None:
+        return build_template(ef, hero_common, ab, seed=seed, read=read)
     if ab.combo:
         try:
             state = build_combo(ef, hero_common, ab, seed=seed, tag=tag, group=group)
@@ -839,9 +1056,22 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                              flags=TW.PERSISTENT)
         if ab.has("look_enter"):
             ef.add_ref(state, "on_enter?", f"{tag} Look At")
-        _timer(w, f"{tag} End Timer", length,
+        # The rush's root motion stops at an enemy only while the detector
+        # its selector reads is held on (see IN_RANGE_DETECTOR).
+        if ab.root_motion is None or ab.strike:
+            _hold_in_range(ef, hero_common, state)
+        if ab.intangible:
+            _hold_intangible(state, ef)
+        rush_end, window_timer = _NONE, ""
+        if ab.strike:
+            rush_end, window_timer = _build_strike(
+                ef, hero_common, w, ab, tag=tag, group=group, state=state,
+                hit_timers=timers, seed=seed)
+            timers = [window_timer]                 # the hits are the strike's
+        _timer(w, f"{tag} End Timer", length, on_end=rush_end,
                ends=_NONE if ab.has("no_end_state", "bare") else state_link)
-        statuses(ef, ab.hits, tag=tag, switch=state, seed=f"{seed}:{ab.slot}")
+        statuses(ef, ab.hits, tag=tag, switch=f"State {tag} Strike" if ab.strike else state,
+                 seed=f"{seed}:{ab.slot}")
         if with_indicator:
             add_indicator(ef, ab, seed=seed)
         if ab.moving:
