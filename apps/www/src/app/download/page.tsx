@@ -7,17 +7,9 @@ import {
   CardTitle,
   buttonVariants,
 } from '@rsmm/ui';
-import { Download } from 'lucide-react';
 import type { Metadata } from 'next';
-import {
-  LATEST_RELEASE_URL,
-  RELEASES_URL,
-  type ReleaseAsset,
-  formatBytes,
-  getLatestRelease,
-  pickAsset,
-} from '../../lib/releases';
-import { OsDownload } from '../os-download';
+import { RELEASES_URL, getLatestRelease } from '../../lib/releases';
+import { DownloadOptions } from './download-options';
 
 export const metadata: Metadata = {
   title: 'Download Ravenswatch Mod Manager — Windows & Linux',
@@ -30,67 +22,13 @@ export const revalidate = 3600;
 
 const releaseUrl = (tag: string) =>
   `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
-const latestUrl = LATEST_RELEASE_URL;
 const releasesUrl = RELEASES_URL;
-const installGuideUrl = 'https://docs.rsmm.me/getting-started/install/';
-
-interface Platform {
-  name: string;
-  details: string;
-  note: string;
-  /** Extensions to offer, in preference order; each becomes its own button. */
-  exts: string[];
-}
-
-const platforms: Platform[] = [
-  {
-    name: 'Windows',
-    details: 'A standard installer for 64-bit Windows 10 and 11.',
-    note: 'Once installed, the app checks for a new version each time it starts and updates in one click.',
-    exts: ['.msi', '.exe'],
-  },
-  {
-    name: 'Linux',
-    details: 'AppImage for portable use, or a Debian package for apt-based distros.',
-    note: 'AppImage needs the executable bit set (chmod +x). On Debian/Ubuntu, install the .deb with apt. WebKitGTK 4.1 must be present.',
-    exts: ['.AppImage', '.deb'],
-  },
-];
 
 const steps = [
   'Download the file for your system and install it.',
   'Open the app. It finds Ravenswatch in your Steam library, or you can choose the game folder yourself.',
   'Install mods from the Browse tab, press Apply, and start the game.',
 ];
-
-/** Button text for a release file: what it is, not just its extension. */
-function assetLabel(name: string): string {
-  if (name.endsWith('.exe')) return 'Windows installer';
-  if (name.endsWith('.msi')) return 'Windows installer (MSI)';
-  if (name.endsWith('.AppImage')) return 'AppImage';
-  if (name.endsWith('.deb')) return 'Debian package';
-  return name.slice(name.lastIndexOf('.'));
-}
-
-/**
- * Every asset for a platform, in preference order, deduplicated.
- *
- * `pickAsset` returns the first match; the cards want all of them, because a
- * Linux visitor should not have to guess whether the AppImage or the .deb is
- * the one on offer.
- */
-function assetsFor(all: ReleaseAsset[], exts: string[]): ReleaseAsset[] {
-  const seen = new Set<string>();
-  const out: ReleaseAsset[] = [];
-  for (const ext of exts) {
-    const hit = pickAsset(all, [ext]);
-    if (hit && !seen.has(hit.url)) {
-      seen.add(hit.url);
-      out.push(hit);
-    }
-  }
-  return out;
-}
 
 export default async function DownloadPage() {
   const release = await getLatestRelease();
@@ -109,86 +47,9 @@ export default async function DownloadPage() {
           <p className="mt-3 text-base text-parchment/55">
             Latest version: {currentVersion.replace(/^v/, '')}
           </p>
-
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            {/* Detects the OS and starts the installer download directly. It
-                used to link to the GitHub release page, which is why the button
-                on the DOWNLOAD page did not download anything. */}
-            <OsDownload release={release} fallbackHref={latestUrl} showVersion={false} />
-            <a
-              className={buttonVariants({ variant: 'outline', size: 'lg' })}
-              href={installGuideUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Installation guide
-            </a>
-          </div>
         </section>
 
-        <section className="mt-16 grid gap-6 lg:grid-cols-2">
-          {platforms.map((platform) => {
-            const assets = assetsFor(release.assets, platform.exts);
-            return (
-              <Card
-                key={platform.name}
-                id={platform.name.toLowerCase()}
-                className="grimoire-card scroll-mt-24"
-              >
-                <CardHeader>
-                  <CardTitle>{platform.name}</CardTitle>
-                  <CardDescription>{platform.details}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm text-muted-foreground">
-                  <p>{platform.note}</p>
-                  {/* The filenames were a hardcoded glob that had drifted from
-                      what the releases actually contain. They are read off the
-                      release now, so they cannot go stale again. */}
-                  {assets.length > 0 ? (
-                    <ul className="space-y-1 rounded-md border border-dashed border-border/70 bg-background/60 px-4 py-3 font-data leading-6">
-                      {assets.map((a) => (
-                        <li key={a.url} className="flex justify-between gap-3">
-                          <span className="truncate">{a.name}</span>
-                          {a.size > 0 ? (
-                            <span className="shrink-0 text-muted-foreground/70">
-                              {formatBytes(a.size)}
-                            </span>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </CardContent>
-                <CardFooter className="flex flex-wrap gap-2">
-                  {assets.length > 0 ? (
-                    assets.map((a, i) => (
-                      <a
-                        key={a.url}
-                        className={buttonVariants({ variant: i === 0 ? 'default' : 'outline' })}
-                        href={a.url}
-                        rel="noreferrer"
-                      >
-                        <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                        {assetLabel(a.name)}
-                      </a>
-                    ))
-                  ) : (
-                    // No matching asset in the latest release, or the lookup
-                    // failed — send them somewhere that definitely works.
-                    <a
-                      className={buttonVariants({ variant: 'outline' })}
-                      href={latestUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open release
-                    </a>
-                  )}
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </section>
+        <DownloadOptions release={release} />
 
         <section className="mt-16 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <Card className="grimoire-card">
