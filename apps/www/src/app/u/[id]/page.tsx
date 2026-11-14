@@ -2,12 +2,11 @@
 import { ApiError } from '@rsmm/api-client';
 import { Badge, Input, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Search, Star, Users } from 'lucide-react';
-import type { Route } from 'next';
+import { ArrowLeft, Search } from 'lucide-react';
 import Link from 'next/link';
 import { use, useState } from 'react';
 import { api } from '../../../lib/api';
-import { ModCover } from '../../components/mod-cover';
+import { ListingCard } from '../../components/listing-card';
 
 type Sort = 'recent' | 'popular' | 'rating' | 'name';
 const SORTS: { id: Sort; label: string }[] = [
@@ -258,67 +257,7 @@ export default function AuthorPage({ params }: { params: Promise<{ id: string }>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {shown.map((m) => (
-                <Link
-                  key={m.id}
-                  href={`/registry/${m.slug}` as Route}
-                  className="grimoire-card overflow-hidden hover:border-gilt/40 transition-colors"
-                >
-                  <div className="relative">
-                    {m.imageUrl ? (
-                      <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-                        <img
-                          src={m.imageUrl}
-                          alt={`${m.name} preview`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                    ) : (
-                      <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
-                    )}
-                    {m.featured ? (
-                      <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
-                        <Star className="mr-1 h-3 w-3" /> Featured
-                      </Badge>
-                    ) : null}
-                    {m.role === 'coauthor' ? (
-                      <Badge
-                        variant="outline"
-                        className="absolute right-2 top-2 bg-background/70 text-[0.65rem] backdrop-blur-sm"
-                      >
-                        <Users className="mr-1 h-3 w-3" /> Co-author
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="text-base font-semibold leading-tight text-foreground truncate">
-                          {m.name}
-                        </h3>
-                        {m.latestVersion ? (
-                          <p className="font-mono text-xs text-muted-foreground">
-                            v{m.latestVersion}
-                          </p>
-                        ) : null}
-                      </div>
-                      {m.category ? (
-                        <Badge variant="secondary" className="shrink-0 text-[0.6rem]">
-                          {m.category}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    {m.summary ? (
-                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                        {m.summary}
-                      </p>
-                    ) : null}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      {m.downloads != null ? <span>{m.downloads.toLocaleString()} dl</span> : null}
-                      {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
-                    </div>
-                  </div>
-                </Link>
+                <ListingCard key={m.id} kind="mod" item={m} headingLevel={3} />
               ))}
             </div>
           </section>

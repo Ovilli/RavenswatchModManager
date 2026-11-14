@@ -2,12 +2,11 @@
 
 import { Spinner } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Edit2, ExternalLink, Loader2, PlusCircle } from 'lucide-react';
-import type { Route } from 'next';
+import { Loader2, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
-import { ModCard } from '../components/mod-card';
+import { ListingCard } from '../components/listing-card';
 
 export default function MyModsPage() {
   const { data: session, isPending: sessionLoading } = useSession();
@@ -88,37 +87,8 @@ export default function MyModsPage() {
       ) : (
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {list.data?.items.map((m) => (
-            <li key={m.id} className="flex min-w-0">
-              <ModCard
-                mod={{ ...m, author: m.authorName }}
-                href={`/my-mods/${m.slug}` as Route}
-                footer={
-                  <>
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      {!m.latestVersion ? (
-                        <p className="text-amber-500">No version published yet</p>
-                      ) : null}
-                      <p>Updated {new Date(m.updatedAt).toLocaleDateString()}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/my-mods/${m.slug}` as Route}
-                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-secondary px-3 py-2 text-sm hover:bg-secondary/80"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" aria-hidden="true" /> Manage
-                      </Link>
-                      <Link
-                        href={`/registry/${m.slug}` as Route}
-                        className="inline-flex items-center justify-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
-                        title="View public page"
-                        aria-label={`View ${m.name} public page`}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                      </Link>
-                    </div>
-                  </>
-                }
-              />
+            <li key={m.id}>
+              <ListingCard kind="mod" item={{ ...m, author: m.authorName }} mode="manage" />
             </li>
           ))}
         </ul>

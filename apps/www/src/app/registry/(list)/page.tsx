@@ -26,7 +26,7 @@ import {
   registryFilterHref,
   registryHref,
 } from '../../../lib/registry-query';
-import { ModCard } from '../../components/mod-card';
+import { ListingCard } from '../../components/listing-card';
 import { ModCover } from '../../components/mod-cover';
 import { RegistrySearch, RegistrySearchFallback } from '../../components/registry-search';
 import { type RegistryFacet, RegistryFilterDialog } from './registry-filters';
@@ -233,7 +233,7 @@ function RegistryInner() {
           <div className={view === 'grid' ? 'registry-grid' : 'registry-list'}>
             {items.map((mod) =>
               view === 'grid' ? (
-                <ModCard key={mod.id} mod={mod} featured={mod.featured} />
+                <ListingCard key={mod.id} kind="mod" item={mod} />
               ) : (
                 <ModListRow
                   key={mod.id}

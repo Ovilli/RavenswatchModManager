@@ -11,7 +11,7 @@ This document describes the public `/registry/[slug]` page. It is a surface exte
 
 The Airbnb listing reference informs the page's composition: identity and proof, a wide media gallery, then a reading column beside an action card. The title area follows the user's Gymshark reference: tags above the name, a short description directly below the title, then download count on the left and a compact rating on the right. RSMM's palette, typefaces, and site shell remain its own. The page lets a player inspect the mod, understand its requirements, and download the current version without opening release history.
 
-This record was compared with `mod-detail-view.tsx`, `mod-detail.css`, `mod-gallery.tsx`, `mod-actions.tsx`, and `mod-reviews.tsx` in `src/app/registry/[slug]/`, plus `src/lib/mod-presentation.ts`, `src/app/nav.tsx`, and the global sources above. Product constraints are recorded in `PRODUCT.md`.
+The mod route adapter and actions live in `src/app/registry/[slug]/`. The shared detail composition, gallery, reviews, and stylesheet live in `src/app/components/listing-detail/`. Supporting sources include `src/lib/mod-presentation.ts`, `src/app/nav.tsx`, and the global sources above. Product constraints are recorded in `PRODUCT.md`.
 
 ## Colors
 
@@ -101,3 +101,11 @@ Local interactive controls use a visible 2px gilt focus outline with a 4px offse
 - **Don't** introduce cropped listing art, invented compatibility claims, or fabricated ratings and download counts.
 - **Don't** promote this page's listing composition, local muted color, or corner sizes into a site-wide redesign.
 - **Don't** use this record to extend the redesign into author upload flows.
+
+## Collection detail variant
+
+`/c/[slug]` uses the same `ListingDetailView`, `ListingGallery`, and `ListingReviews` as the mod route. Collection and mod adapters supply their own labels, statistics, section links, sidebar, and reading content; presentation and media behavior stay shared.
+
+Collections show their mod count and review average below the title, followed by the cover and screenshots in the shared gallery. The reading column shows included mods using the shared `ListingCard`, with three columns when space permits, followed by reviews. The collection summary appears only below the title; there is no separate About section or Collection label. Included mods and Reviews are left-aligned in the section navigation. The sidebar names the curator and shows the updated date and visibility. Collections have no download or manager actions and no release history. Owners retain collection editing, image uploads, visibility, membership management, deletion, and review replies. Review queries and mutations use the matching entity API and cache keys.
+
+The initial collection data, including the title, summary, and included mods, is server-rendered in the shared composition. Metadata and breadcrumb JSON-LD remain in the route layout; there is no separate server-prose header.

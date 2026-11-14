@@ -1,4 +1,5 @@
 'use client';
+import type { Review } from '@rsmm/schemas';
 import { Button, Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Star, Trash2 } from 'lucide-react';
@@ -7,22 +8,57 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
-import { ReviewReplyBlock } from '../../components/review-reply';
+import { ReviewReplyBlock } from '../review-reply';
 
-function useModReviews(slug: string) {
-  return useQuery({
+export type ReviewTarget = 'mod' | 'collection';
+
+type ListingReviewsResponse = {
+  items: Omit<Review, 'modId'>[];
+  total: number;
+  averageRating: number | null;
+};
+
+function reviewSource(target: ReviewTarget, slug: string) {
+  if (target === 'collection') {
+    return {
+      queryKey: ['collections', slug, 'reviews'],
+      detailKey: ['collections', slug],
+      list: () => api.collections.reviews.list(slug),
+      upsert: (input: { rating: number; title: string | null; body: string | null }) =>
+        api.collections.reviews.upsert(slug, input),
+      remove: () => api.collections.reviews.remove(slug),
+      reply: (id: string, body: string) => api.collections.reviews.reply(slug, id, body),
+      removeReply: (id: string) => api.collections.reviews.removeReply(slug, id),
+    };
+  }
+  return {
     queryKey: ['mods', slug, 'reviews'],
-    queryFn: () => api.mods.reviews(slug),
+    detailKey: ['mods', 'detail', slug],
+    list: () => api.mods.reviews(slug),
+    upsert: (input: { rating: number; title: string | null; body: string | null }) =>
+      api.mods.upsertReview(slug, input),
+    remove: () => api.mods.deleteReview(slug),
+    reply: (id: string, body: string) => api.mods.replyToReview(slug, id, body),
+    removeReply: (id: string) => api.mods.deleteReviewReply(slug, id),
+  };
+}
+
+function useListingReviews(target: ReviewTarget, slug: string) {
+  const source = reviewSource(target, slug);
+  return useQuery({
+    queryKey: source.queryKey,
+    queryFn: async (): Promise<ListingReviewsResponse> => source.list(),
   });
 }
 
-export function ModRatingSummary({
+export function ListingRatingSummary({
+  target,
   slug,
-  fallbackRating,
-}: { slug: string; fallbackRating: number | null }) {
+  fallbackRating = null,
+}: { target: ReviewTarget; slug: string; fallbackRating?: number | null }) {
   // Share the reviews section's query so the average and count stay in sync
   // after a review is added, updated, or removed.
-  const reviews = useModReviews(slug);
+  const reviews = useListingReviews(target, slug);
   const average = reviews.data ? reviews.data.averageRating : fallbackRating;
   const count = reviews.data?.total;
   if (average == null) {
@@ -83,10 +119,19 @@ function StarRating({
   );
 }
 
-export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boolean }) {
+export function ListingReviews({
+  target,
+  slug,
+  isAuthor,
+}: {
+  target: ReviewTarget;
+  slug: string;
+  isAuthor: boolean;
+}) {
+  const source = reviewSource(target, slug);
   const { data: session } = useSession();
   const qc = useQueryClient();
-  const reviews = useModReviews(slug);
+  const reviews = useListingReviews(target, slug);
   const myReview = useMemo(() => {
     if (!session?.user) return null;
     return reviews.data?.items.find((r) => r.userId === session.user.id) ?? null;
@@ -109,16 +154,16 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
   const upsert = useMutation({
     mutationFn: async () => {
       setErrorMsg(null);
-      await api.mods.upsertReview(slug, {
+      await source.upsert({
         rating,
         title: title.trim() || null,
         body: body.trim() || null,
       });
     },
     onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: source.queryKey });
       setEditing(false);
-      await qc.invalidateQueries({ queryKey: ['mods', slug, 'reviews'] });
-      await qc.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      await qc.invalidateQueries({ queryKey: source.detailKey });
     },
     onError: (err) => {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to save review');
@@ -127,15 +172,15 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
 
   const remove = useMutation({
     mutationFn: async () => {
-      await api.mods.deleteReview(slug);
+      await source.remove();
     },
     onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: source.queryKey });
       setRating(5);
       setTitle('');
       setBody('');
       setEditing(false);
-      await qc.invalidateQueries({ queryKey: ['mods', slug, 'reviews'] });
-      await qc.invalidateQueries({ queryKey: ['mods', 'detail', slug] });
+      await qc.invalidateQueries({ queryKey: source.detailKey });
     },
   });
 
@@ -166,6 +211,7 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
             <StarRating
               value={rating}
               onChange={(v) => {
+                setEditing(true);
                 upsert.reset();
                 setRating(v);
               }}
@@ -176,6 +222,7 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
             aria-label="Review title (optional)"
             value={title}
             onChange={(e) => {
+              setEditing(true);
               upsert.reset();
               setTitle(e.target.value);
             }}
@@ -186,6 +233,7 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
             aria-label="Your review"
             value={body}
             onChange={(e) => {
+              setEditing(true);
               upsert.reset();
               setBody(e.target.value);
             }}
@@ -194,7 +242,11 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
             rows={4}
             className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
-          {errorMsg ? <p className="text-xs text-destructive">{errorMsg}</p> : null}
+          {errorMsg || remove.isError ? (
+            <p role="alert" className="text-xs text-destructive">
+              {errorMsg || 'Your review couldn’t be deleted. Please try again.'}
+            </p>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             <p className="font-mono text-[10px] text-muted-foreground">
               {body.length}/4000
@@ -209,7 +261,7 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
                   onClick={() => {
                     if (confirm('Delete your review?')) remove.mutate();
                   }}
-                  disabled={remove.isPending}
+                  disabled={remove.isPending || upsert.isPending}
                 >
                   <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
                 </Button>
@@ -218,7 +270,7 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
                 type="button"
                 size="sm"
                 onClick={() => upsert.mutate()}
-                disabled={upsert.isPending}
+                disabled={upsert.isPending || remove.isPending}
               >
                 {upsert.isPending ? 'Saving…' : myReview ? 'Update review' : 'Post review'}
               </Button>
@@ -239,7 +291,9 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
 
       {isOwner ? (
         <p className="mb-6 text-xs text-muted-foreground">
-          You're an author of this mod, so you can't review it — but you can reply to reviews.
+          {target === 'collection'
+            ? 'You curate this collection. You can reply to reviews, but can’t review it yourself.'
+            : 'You’re an author of this mod. You can reply to reviews, but can’t review it yourself.'}
         </p>
       ) : null}
 
@@ -302,9 +356,9 @@ export function ReviewsSection({ slug, isAuthor }: { slug: string; isAuthor: boo
                   <ReviewReplyBlock
                     review={r}
                     canReply={!!isOwner}
-                    queryKey={['mods', slug, 'reviews']}
-                    onSave={(text) => api.mods.replyToReview(slug, r.id, text)}
-                    onDelete={() => api.mods.deleteReviewReply(slug, r.id)}
+                    queryKey={source.queryKey}
+                    onSave={(text) => source.reply(r.id, text)}
+                    onDelete={() => source.removeReply(r.id)}
                   />
                 </div>
               </div>

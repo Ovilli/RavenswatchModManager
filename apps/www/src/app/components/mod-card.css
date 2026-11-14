@@ -15,7 +15,7 @@
 .mod-card-footer {
   padding-top: 20px;
 }
-.mod-card-link:hover h3 {
+.mod-card-link:hover :is(h2, h3) {
   color: hsl(var(--gilt));
 }
 .mod-card-artwork {
@@ -60,7 +60,7 @@
 .mod-card-identity {
   min-width: 0;
 }
-.mod-card-identity h3 {
+.mod-card .mod-card-identity :is(h2, h3) {
   font-family: var(--font-display), Georgia, serif;
   font-size: 1.25rem;
   font-weight: 700;
@@ -163,7 +163,7 @@
   flex-shrink: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .mod-card-identity h3 {
+  .mod-card .mod-card-identity :is(h2, h3) {
     transition: none;
   }
 }
