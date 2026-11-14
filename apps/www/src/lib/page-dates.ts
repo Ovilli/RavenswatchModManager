@@ -11,7 +11,7 @@
  */
 export const PAGE_UPDATED: Record<string, { date: string; dir: string }> = {
   '': { date: '2026-11-13', dir: '.' },
-  '/download': { date: '2026-10-03', dir: 'download' },
+  '/download': { date: '2026-11-13', dir: 'download' },
   '/registry': { date: '2026-11-13', dir: 'registry/(list)' },
   '/c': { date: '2026-10-08', dir: 'c' },
   '/guides': { date: '2026-10-28', dir: 'guides' },
