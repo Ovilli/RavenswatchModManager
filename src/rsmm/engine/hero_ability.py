@@ -361,7 +361,7 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
         if kind in DAMAGE_TYPE:
             ef.set_value(f"{pre} Damage", _TYPE_FIELD, DAMAGE_TYPE[kind])
         if hit.fx:
-            set_fx(ef, f"{pre} Fx", hit.fx)
+            orient_fx(ef, f"{pre} Fx", f"{pre} Attack", hit.fx)
         if hit.shake != "medium":
             set_fx(ef, f"{pre} Fx", SHAKES[hit.shake], old=DONOR_SHAKE)
         for key, (fld, _lo, _hi) in HIT_FIELDS.items():
@@ -390,6 +390,73 @@ SHAKES = {"none": NO_FX,
 #: The donor explosion's own look (Hero_Common's critical-health explosion
 #: borrows Red's bomb): what `fx` replaces, in the hit's own copy only.
 DONOR_FX = "Settings\\Heroes\\Hero_Red_FX\\RED_Bomb_Explosion_5m.vfx.ot"
+
+
+#: The layout of an effect that plays WHERE AND HOW the attack faces: Scarlet's
+#: own wolf claw slash (Hero_Red_FX "Fx Wolf Basic Attack Active 01", its
+#: setup's position and rotation read from her "Human Basic Attack" zone, by
+#: two picker reads with two accessors). The donor explosion a hit is built on
+#: places its effect with a CONSTANT rotation (1.5708 rad), so every claw
+#: slash played at the same world angle whichever way the hero faced (Blood
+#: Wolf playtest 2026-11-14: "always plays in another direction").
+ORIENTED_FX_DONOR = ("Heroes\\Hero_Red\\Hero_Red_FX.entity.ot", "Hero_Red_FX",
+                     "Fx Wolf Basic Attack Active 01")
+ORIENTED_FX_ANCHOR = ("Heroes\\Hero_Red\\Hero_Red.entity.ot", "Hero_Red", "Human Basic Attack")
+ORIENTED_FX_VFX = "Settings\\Heroes\\Hero_Red_FX\\WOLF_Basic_Attack_Slash_01_R.vfx.ot"
+
+
+def orient_fx(ef: EntityFile, fx_part: str, attack_part: str, vfx: str) -> None:
+    """``fx_part``'s effect (entry 0 of its setups, the donor explosion's look)
+    becomes a copy of ORIENTED_FX_DONOR's setup playing ``vfx``, its position
+    and rotation read from ``attack_part`` (the hit's own zone attack, which
+    stands where the hero is and faces where it faces). The copy's scale read
+    of Scarlet's FX file goes back to its own number (1.0). The camera shake
+    and ground impact entries stay."""
+    from . import corpus
+    from .entity_graph_edit import _B
+
+    def load(ref: str, scope: str) -> EntityFile:
+        raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}"
+                          ".EntitySettingsResource.gen")
+        if raw is None:
+            raise AbilityError(f"the oriented-effect layout's {scope} is not in the game files")
+        return EntityFile(raw, scope)
+    donor = load(*ORIENTED_FX_DONOR[:2])
+    anchor = load(*ORIENTED_FX_ANCHOR[:2]).component(ORIENTED_FX_ANCHOR[2]).guid
+    d = donor.component(ORIENTED_FX_DONOR[2])
+    f = next(x for x in EF.fields(d) if x.name == "bytes_1")
+    setup = struct.unpack_from("<I", d.body, f.offset + 4)[0]
+    obj = ef.replace_subobject(fx_part, "bytes_1", 0, donor, setup,
+                               refs={anchor: attack_part})
+    head = _B + struct.pack("<I", ef._class_index("oCEntityCpntPicker"))
+    p = ef.objects[obj]
+    # both transform reads (position, rotation) name the anchor; the copy
+    # re-pointed only the first
+    new = ef._picker(attack_part)
+    i = bytes(p).find(head + anchor)
+    while i >= 0:
+        end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+        p[i:end] = new
+        i = bytes(p).find(head + anchor, i + len(new))
+    # the scale read of Scarlet's FX file: back to the slot's own number
+    i = bytes(p).find(head)
+    while i >= 0:
+        end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+        label = bytes(p[i + 28:end - 4])
+        if b"Hero_Red" in label and bytes(p[i - 2:i]) == b"\x01\x00":
+            p[i - 2:end + 4] = b"\x00"           # `01 00 <picker> <accessor>` -> `00`
+            i = bytes(p).find(head, i - 2)
+            continue
+        i = bytes(p).find(head, end)
+    # no LINK of the copy may still name Scarlet's parts (its vfx path may: an
+    # effect asset is shared, a part is not)
+    i = bytes(p).find(head)
+    while i >= 0:
+        end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+        if b"Hero_Red" in bytes(p[i + 28:end - 4]):
+            raise AbilityError(f"{fx_part}: the oriented effect still links Scarlet's parts")
+        i = bytes(p).find(head, end)
+    set_fx(ef, fx_part, vfx, old=ORIENTED_FX_VFX)
 
 
 def set_fx(ef: EntityFile, fx_part: str, vfx: str, *, old: str = "") -> None:
@@ -526,8 +593,10 @@ EXIT_SHARE = 0.75
 def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) -> str:
     """A shipped sound (``"<entity ref> | <FMod event part>"``, e.g. the Dark
     Hills Jack NPC's ``Beanstalk ShakeImpact FMod Event``) copied into the hero
-    as its own part ``name``: an FMod event part holds its bank and event id
-    and links nothing, so the copy stands alone. Returns ``name``."""
+    as its own part ``name``. An FMod event part holds its bank and event id;
+    some also feed an FMod PARAMETER from a part of their hero (Scarlet's wolf
+    slash reads her "Wide Attacks" talent), and such a read is put back to the
+    parameter's own number, so the copy stands alone. Returns ``name``."""
     from . import corpus
     ref, part = (x.strip() for x in spec.split("|"))
     raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
@@ -541,7 +610,33 @@ def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) ->
     if c.cls != "oCEntityCpntFModEventSettings":
         raise AbilityError(f"sound: {part!r} is a {c.cls}, not an FMod event")
     ef.clone([c.path], rename={part: name}, group={c.group: group}, seed=seed, source=donor)
+    _unlink_value_reads(ef, name)
     return name
+
+
+def _unlink_value_reads(ef: EntityFile, part: str) -> int:
+    """Every number slot of ``part`` (and its sub-objects) that READS another
+    part (``01 00 <picker> <accessor> <number>``) goes back to holding its own
+    number (``00 <number>``). How many."""
+    from . import cooked
+    from .entity_graph_edit import _B
+    c = ef.component(part)
+    head = _B + struct.pack("<I", ef._class_index("oCEntityCpntPicker"))
+    objs = [c.index - 1, *ef.subtree({c.index - 1})]
+    n = 0
+    for o in objs:
+        p = ef.objects[o]
+        i = bytes(p).find(head)
+        while i >= 0:
+            end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+            if (bytes(p[i - 2:i]) == b"\x01\x00"
+                    and bytes(p[end + 4:end + 8]) == cooked.MARK_BEGIN):
+                p[i - 2:end + 4] = b"\x00"
+                n += 1
+                i = bytes(p).find(head, i - 2)
+                continue
+            i = bytes(p).find(head, end)
+    return n
 
 
 def _repoint_bloc(ef: EntityFile, i: int, target: str) -> None:

@@ -660,3 +660,40 @@ def test_bisection_variants_combine():
     assert timer["state"] == "(none)"
     with pytest.raises(HA.AbilityError, match="variant"):
         HA.Ability.parse("power", {"clip": "x.fbx", "variant": "released+nonsense"})
+
+
+@needs_corpus
+@needs_install
+def test_a_hit_effect_faces_where_its_attack_faces():
+    """A hit with its own `fx` plays it through Scarlet's slash layout, its
+    position and rotation read from the hit's own zone attack. The donor
+    explosion's constant 90 degree rotation made every claw slash play at one
+    world angle (Blood Wolf playtest 2026-11-14)."""
+    from rsmm.engine import ability_template as AT
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    slash = "Settings\\Heroes\\Hero_Red_FX\\WOLF_Basic_Attack_Slash_01_L.vfx.ot"
+    ab = HA.Ability.parse("attack", {"combo": [
+        {"clip": clip, "hits": [{"radius": 2.5, "fx": slash}]},
+        {"clip": clip, "hits": [{"radius": 3}]}]})
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    kids = AT._children(ef)
+    fx = ef.component("Attack Ability Step 1 Hit 1 Fx")
+    links = {pk.path for pk in AT.deep_picks(ef, fx, kids) if pk.path}
+    assert "[Gpn Zone Attack] Hero_T\\Ability Attack\\Attack Ability Step 1 Hit 1 Attack" in links
+    assert not any("Hero_Red" in p for p in links)          # only the vfx asset is hers
+    first = kids[fx.index - 1][0]
+    assert slash.encode() in bytes(ef.objects[first])
+
+
+@needs_corpus
+def test_a_copied_sound_stands_alone():
+    """A sound whose FMod parameter reads a part of its hero (Scarlet's wolf
+    slash reads her Wide Attacks talent) keeps the parameter's own number."""
+    from rsmm.engine import ability_template as AT
+    from rsmm.engine import hero_ability as HA
+    ef = _hero("Hero_T")
+    HA.own_sound(ef, "Heroes\\Hero_Red\\Hero_Red.entity.ot | Wolf Basic Attack Active FMod Event",
+                 name="Slash", group="Ability Attack", seed="t")
+    assert not [pk.path for pk in AT.deep_picks(ef, ef.component("Slash")) if pk.path]
