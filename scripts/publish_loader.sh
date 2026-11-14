@@ -198,6 +198,23 @@ gh release upload "$TAG" \
 # before the build; a local run uses HEAD), so channel drift measures from there
 # and not from the stamp commit, which a rebase can move past later merges.
 BUILT_FROM="${BUILT_FROM:-$(git rev-parse HEAD)}"
+
+# The release body says what this publish changed: its section (version,
+# notes, the loader commits since the previous publish's built_from) on top of
+# the previous publishes'. A failure here leaves the old body; the bundle and
+# its stamp are what matter, so it does not stop the publish.
+PREV_BUILT="$(python3 -c 'import json;print(json.load(open("data/loader_version.json")).get("built_from") or "")')"
+OLD_BODY="$(mktemp)"; NEW_BODY="$(mktemp)"
+gh release view "$TAG" --json body --jq .body > "$OLD_BODY" 2>/dev/null || true
+if python3 scripts/release_notes.py channel loader --version "$NEXT" \
+        ${PREV_BUILT:+--since "$PREV_BUILT"} --until "$BUILT_FROM" --notes "$NOTES" \
+        --existing "$OLD_BODY" -o "$NEW_BODY"; then
+    gh release edit "$TAG" --notes-file "$NEW_BODY" || echo "warning: release body not updated" >&2
+else
+    echo "warning: could not write the release body" >&2
+fi
+rm -f "$OLD_BODY" "$NEW_BODY"
+
 python3 - "$NEXT" "$BUILT_FROM" <<'PYEOF'
 import json, sys
 from pathlib import Path

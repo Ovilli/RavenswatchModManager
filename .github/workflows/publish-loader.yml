@@ -48,8 +48,9 @@ jobs:
         with:
           # Need a real branch (not a detached HEAD) to push the version bump.
           ref: main
-          # And real history: the bump is rebased onto whatever landed on main
-          # while the DLL was building, which a depth-1 clone cannot do.
+          # Real history: the bump is rebased onto whatever landed on main
+          # while the DLL was building, which a depth-1 clone cannot do; the
+          # release body also lists the commits since the previous publish.
           fetch-depth: 0
 
       # The commit the DLL and SDK are built from. The stamp commit is rebased

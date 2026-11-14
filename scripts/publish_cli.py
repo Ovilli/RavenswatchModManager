@@ -149,10 +149,33 @@ def publish(archives: Path, notes: str, dry_run: bool) -> None:
     # commit, which a rebase can move past later merges.
     built_from = os.environ.get("BUILT_FROM") or subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=REPO).stdout.strip()
+    _update_body(nxt, stamp.get("built_from") or "", built_from, notes)
     if built_from:
         stamp["built_from"] = built_from
     STAMP.write_text(json.dumps(stamp, indent=1) + "\n", encoding="utf-8")
     print(f"published cli v{nxt}; COMMIT {STAMP.relative_to(REPO)}")
+
+
+def _update_body(version: int, since: str, until: str, notes: str) -> None:
+    """The release body says what this publish changed: its section (version,
+    notes, the CLI commits since the previous publish's built_from) on top of
+    the previous publishes' (scripts/release_notes.py channel cli). A failure
+    leaves the old body: the archives and the stamp are what matter."""
+    try:
+        old = subprocess.run(["gh", "release", "view", TAG, "--json", "body", "--jq", ".body"],
+                             capture_output=True, text=True).stdout
+        stage = Path(tempfile.mkdtemp(prefix="rsmm-cli-notes-"))
+        (stage / "old.md").write_text(old, encoding="utf-8")
+        cmd = [sys.executable, str(REPO / "scripts/release_notes.py"), "channel", "cli",
+               "--version", str(version), "--until", until or "HEAD", "--notes", notes,
+               "--existing", str(stage / "old.md"), "-o", str(stage / "new.md")]
+        if since:
+            cmd += ["--since", since]
+        subprocess.run(cmd, check=True, cwd=REPO)
+        subprocess.run(["gh", "release", "edit", TAG, "--notes-file", str(stage / "new.md")],
+                       check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"warning: release body not updated: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":
