@@ -130,7 +130,11 @@ export default async function DownloadPage() {
           {platforms.map((platform) => {
             const assets = assetsFor(release.assets, platform.exts);
             return (
-              <Card key={platform.name} className="grimoire-card">
+              <Card
+                key={platform.name}
+                id={platform.name.toLowerCase()}
+                className="grimoire-card scroll-mt-24"
+              >
                 <CardHeader>
                   <CardTitle>{platform.name}</CardTitle>
                   <CardDescription>{platform.details}</CardDescription>
