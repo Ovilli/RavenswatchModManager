@@ -195,7 +195,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         <Providers>
-          <Nav versionBadge={<VersionBadge />} />
+          <Nav />
           <div className="flex-1">{children}</div>
           <BanGate />
         </Providers>
@@ -206,16 +206,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 start — a visitor who scrolled the whole page without clicking
                 Download had, until now, nothing to click down here. */}
             <div className="space-y-3">
-              <Link href="/" className="flex items-center gap-2.5">
-                <img
-                  src="/logo.png"
-                  alt="Ravenswatch Mod Manager"
-                  className="h-8 w-8 rounded-md object-cover"
-                />
-                <span className="font-fraktur text-lg text-foreground">
-                  Ravenswatch Mod Manager
-                </span>
-              </Link>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <Link href="/" className="flex items-center gap-2.5">
+                  <img
+                    src="/logo.png"
+                    alt="Ravenswatch Mod Manager"
+                    className="h-8 w-8 rounded-md object-cover"
+                  />
+                  <span className="font-fraktur text-lg text-foreground">
+                    Ravenswatch Mod Manager
+                  </span>
+                </Link>
+                <VersionBadge />
+              </div>
               <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
                 A small, open-source app for installing and managing mods for Ravenswatch. Free,
                 reversible, and Windows/Linux only.

@@ -67,6 +67,32 @@ function client(
 }
 
 describe('request plumbing', () => {
+  it.each([undefined, 0, 15])(
+    'preserves rating counts, including older responses (%s)',
+    async (ratingCount) => {
+      const item = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        slug: 'test-mod',
+        name: 'Test Mod',
+        author: 'Author',
+        summary: null,
+        license: null,
+        latestVersion: null,
+        downloads: 100,
+        updatedAt: '2026-11-13T00:00:00.000Z',
+        category: 'gameplay',
+        imageUrl: null,
+        rating: ratingCount === 0 ? null : 5,
+        ratingCount,
+        tags: [],
+      };
+      const { api } = client([json({ items: [item], total: 1 })]);
+      const response = await api.mods.list();
+      expect(response.items[0]?.ratingCount).toBe(ratingCount);
+      expect(response.items[0]?.rating).toBe(item.rating);
+    },
+  );
+
   it('joins the base url without doubling the slash and sends JSON headers', async () => {
     const { api, script } = client([json(EMPTY_PAGE)], { getToken: () => 'tok-123' });
     await api.mods.list();
@@ -102,6 +128,17 @@ describe('request plumbing', () => {
     await api.mods.get('../admin').catch(() => {});
     expect(script.call(0).url).toBe('https://api.example.com/api/mods/..%2Fadmin');
   });
+
+  it.each([true, false, undefined])(
+    'only requests private-only exclusion when enabled (%s)',
+    async (hidePrivateOnly) => {
+      const { api, script } = client([json(EMPTY_PAGE)]);
+      await api.mods.list({ hidePrivateOnly, limit: 24, offset: 24 });
+      const qs = new URL(script.call(0).url).searchParams;
+      expect(qs.get('hidePrivateOnly')).toBe(hidePrivateOnly ? '1' : null);
+      expect(qs.get('offset')).toBe('24');
+    },
+  );
 });
 
 describe('error mapping', () => {

@@ -15,6 +15,7 @@ import {
   getDownloadVersion,
   getModMedia,
 } from '../../../lib/mod-presentation';
+import type { InstallerDownloads } from '../../../lib/releases';
 import { useHydrated } from '../../../lib/use-hydrated';
 import { FollowButton } from '../../components/follow-button';
 import { MDPreview } from '../../components/md-editor';
@@ -34,7 +35,13 @@ export function ModDetailView({
   slug,
   initialData,
   descriptionHtml,
-}: { slug: string; initialData?: ModDetailResponse; descriptionHtml: string }) {
+  managerDownloads,
+}: {
+  slug: string;
+  initialData?: ModDetailResponse;
+  descriptionHtml: string;
+  managerDownloads: InstallerDownloads;
+}) {
   const detail = useQuery({
     queryKey: ['mods', 'detail', slug],
     queryFn: () => api.mods.get(slug),
@@ -107,7 +114,7 @@ export function ModDetailView({
       <header className="mod-heading">
         {mod.tags.length > 0 || mod.nsfw ? (
           <div className="mod-labels">
-            {privateOnly ? <ModPrivateOnlyTag /> : null}
+            {privateOnly ? <ModPrivateOnlyTag slug={slug} /> : null}
             {tags.length > 0 ? (
               <ul className="mod-tags" aria-label="Mod tags">
                 {tags.map((tag) => (
@@ -154,7 +161,7 @@ export function ModDetailView({
           <aside className="mod-download-sidebar" aria-label="Download and mod details">
             <div className="mod-download-card">
               <h2>Get this mod</h2>
-              <ModActions slug={slug} version={latest} />
+              <ModActions slug={slug} version={latest} managerDownloads={managerDownloads} />
               <div className="mod-facts">
                 <dl>
                   <div>
@@ -210,7 +217,7 @@ export function ModDetailView({
             <div className="mod-report">
               <ReportModal slug={slug} />
             </div>
-            <ModPrivateOnlyControls slug={slug} privateOnly={privateOnly} />
+            {!privateOnly ? <ModPrivateOnlyControls slug={slug} privateOnly={false} /> : null}
           </aside>
           <div className="mod-reading">
             <section id="about" className="mod-section" aria-labelledby="mod-about-heading">

@@ -60,7 +60,7 @@ from .entity_append import (
     place_new_components,
     validate_layout,
 )
-from .entity_components import _remap_class_tags, class_closure, extend_class_table
+from .entity_components import _remap_class_tags, class_closure, extend_class_table, upgrade_for
 
 _B, _E = cooked.MARK_BEGIN, cooked.MARK_END
 _NS = uuid.UUID("5f0c6a2e-4a55-4f0e-9d0a-6c1b1f5e7a11")
@@ -258,6 +258,19 @@ class EntityFile:
             if len(near) == 1:
                 owned[x] = near[0]
                 del ambiguous[x]
+        # Looser still, among candidates whose owner class owns this class
+        # elsewhere: the one whose owner holds x-1 or x+1 ANYWHERE (sub-object
+        # ids are handed out in serialization order, so an owner's subs sit
+        # together; Merlin's #1280 is an Fx setup that two Fx parts spell, and
+        # only the one that owns #1279 holds it). Only when exactly one does.
+        for x, cands in list(ambiguous.items()):
+            fit = [p for p in cands if (self._owner_class(p.owner), self._class(x)) in pairs]
+            near = [p for p in fit
+                    if any((q := owned.get(y)) is not None and q.owner == p.owner
+                           for y in (x - 1, x + 1))]
+            if len(near) == 1:
+                owned[x] = near[0]
+                del ambiguous[x]
         return owned, ambiguous
 
     def _owner_class(self, obj: int) -> str:
@@ -267,7 +280,20 @@ class EntityFile:
         """Every sub-object ``objs`` own, transitively. Fails closed when one
         of them might own an ambiguous sub-object."""
         owned, ambiguous = self.pointers()
+        # Only a candidate whose owner's class owns this class of sub-object
+        # somewhere in the file can be the owner: the id also occurs as plain
+        # data (0x300, 0x500, 0x600 are common numbers), and a copied part
+        # holding it as data does not own it. Without such evidence every
+        # candidate still counts (fail closed).
+        pairs = {(self._owner_class(p.owner), self._class(x)) for x, p in owned.items()}
+        # And a candidate whose owner's class owns NO sub-object anywhere in the
+        # file is data too: a State is only link lists (no State owns a
+        # sub-object in any hero file), so Scarlet's "Event Wolf Secondary
+        # Ability Active" spelling #1536 inside a picker does not own it.
+        owners = {o for o, _ in pairs}
         for x, cands in ambiguous.items():
+            fit = [p for p in cands if (self._owner_class(p.owner), self._class(x)) in pairs]
+            cands = fit or [p for p in cands if self._owner_class(p.owner) in owners]
             if any(p.owner in objs for p in cands):
                 raise EntityEditError(
                     f"cannot tell whether sub-object #{x} ({self._class(x)}) belongs to "
@@ -342,8 +368,15 @@ class EntityFile:
                 p[:] = _rewrite_header(bytes(p), rename.get(c.name, c.name),
                                        group.get(c.group, c.group))
             if src is not self:
-                extend_class_table(self.cf, src.cf, class_closure(bytes(p), src.cf))
+                needed = class_closure(bytes(p), src.cf)
+                own_cls = src._class(old)
+                up = upgrade_for(self.cf, src.cf, own_cls) if old in by_name else None
+                if up is not None:
+                    needed = needed - {own_cls}
+                extend_class_table(self.cf, src.cf, needed)
                 p[:] = _remap_class_tags(bytes(p), src.cf, self.cf)
+                if up is not None:
+                    p[:] = up(bytes(p), self.cf)
         self.objects.extend(payloads)
         voff, ids = component_vector(bytes(self.trailer))
         ids = ids + [new_id[o] for o in comps]
@@ -531,6 +564,15 @@ class EntityFile:
             return
         conv = {"f32": float, "int": int, "bool": bool}[kind]
         struct.pack_into(fmt, p, at + f.offset + u.offset + 16, conv(value))
+
+    def set_flags(self, comp: str, flags: int) -> None:
+        """Set component ``comp``'s record header flags (``EG.Component.flags``:
+        on a state, bit ``EG.EVENT_FLAG`` makes it a one-frame event; 0x100 is
+        set on pure data parts: values, traversers, and a tester only ever READ
+        as a condition, never switched on to fire)."""
+        c = self.component(comp)
+        p = self.objects[c.index - 1]
+        struct.pack_into("<I", p, _header_at(bytes(p))[1], flags)
 
     def set_ref(self, comp: str, field: str, target: str | None) -> None:
         """Point a reference (``ref`` field, list element ``name[i]``, the
@@ -1361,8 +1403,9 @@ def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
     return bytes(out + p[last:])
 
 
-def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
-    """``p`` with the record header's name and group replaced."""
+def _header_at(p: bytes) -> tuple[int, int, int]:
+    """Where record ``p``'s header name starts, where its u32 flags sit (right
+    after the name, before the group) and where its body starts."""
     pk = EG._pickers(p, struct.unpack_from("<I", p, 8)[0])
     first = pk[0][1] if pk and pk[0][0] == 4 else None
     if first is None:
@@ -1371,8 +1414,12 @@ def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
     head = EG._header_strings(p, at)
     if head is None:
         raise EntityEditError("record header does not parse")
-    _old_name, _old_group, body = head
-    flags_at = at + 4 + struct.unpack_from("<I", p, at)[0]
+    return at, at + 4 + struct.unpack_from("<I", p, at)[0], head[2]
+
+
+def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
+    """``p`` with the record header's name and group replaced."""
+    at, flags_at, body = _header_at(p)
     return (p[:at] + _lstr(name) + p[flags_at:flags_at + 4] + _lstr(group) + p[body:])
 
 

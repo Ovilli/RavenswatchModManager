@@ -1,102 +1,40 @@
 'use client';
-import type { ModCategory, ModListItem } from '@rsmm/schemas';
-import {
-  Badge,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  Spinner,
-  buttonVariants,
-} from '@rsmm/ui';
+
+import type { ModListItem } from '@rsmm/schemas';
+import { Badge, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Download,
   ExternalLink,
-  EyeOff,
   LayoutGrid,
   Rows3,
-  Search,
   Star,
-  X,
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { getApiUrl } from '../../../lib/api-url';
+import {
+  type RegistryFilters,
+  readRegistryQuery,
+  registryFilterCount,
+  registryFilterHref,
+  registryHref,
+} from '../../../lib/registry-query';
+import { ModCard } from '../../components/mod-card';
 import { ModCover } from '../../components/mod-cover';
+import { RegistrySearch, RegistrySearchFallback } from '../../components/registry-search';
+import { type RegistryFacet, RegistryFilterDialog } from './registry-filters';
+import './registry.css';
 
-type Sort = 'popular' | 'recent' | 'rating';
 type View = 'grid' | 'list';
-
-/**
- * Categories the schema allows. Used only to validate a `?category=` off the
- * URL — what the panel OFFERS comes from the API's facet counts, so a category
- * nothing is published under is never presented as a filter that can only ever
- * return nothing.
- */
-const CATEGORY_IDS: ModCategory[] = [
-  'gameplay',
-  'balance',
-  'cosmetic',
-  'qol',
-  'audio',
-  'difficulty',
-  'speedrun',
-  'utility',
-];
-
-const RATINGS: { value: number; label: string }[] = [
-  { value: 0, label: 'Any rating' },
-  { value: 3, label: '★ 3+' },
-  { value: 4, label: '★ 4+' },
-  { value: 4.5, label: '★ 4.5+' },
-];
-
-/** Remembered per browser, the way the desktop client remembers it per profile. */
 const VIEW_KEY = 'rsmm:registry-view';
-
-function readStoredView(): View | null {
-  try {
-    const v = localStorage.getItem(VIEW_KEY);
-    return v === 'grid' || v === 'list' ? v : null;
-  } catch {
-    // Private windows and blocked site data throw on access, not on read.
-    return null;
-  }
-}
-
-/** One toggleable facet in the filter panel. */
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
-        active ? 'bg-crimson/20 text-foreground' : 'text-muted-foreground hover:text-foreground'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
+const PAGE_SIZE = 48;
 
 export default function RegistryPage() {
   return (
@@ -108,584 +46,242 @@ export default function RegistryPage() {
 
 function RegistryFallback() {
   return (
-    <main className="relative overflow-hidden animate-page-in">
-      <div className="container mx-auto flex items-center justify-center px-6 py-24">
+    <main className="registry-explore">
+      <div className="registry-browse-bar">
+        <h1>Explore mods</h1>
+        <RegistrySearchFallback />
+        <div className="registry-toolbar-controls-placeholder" aria-hidden />
+      </div>
+      <div className="registry-loading">
         <Spinner />
+        <span>Loading mods…</span>
       </div>
     </main>
   );
 }
 
-const PAGE_SIZE = 48;
-const SORTS: { id: Sort; label: string }[] = [
-  { id: 'popular', label: 'Popular' },
-  { id: 'recent', label: 'Recent' },
-  { id: 'rating', label: 'Top rated' },
-];
-
 function RegistryInner() {
   const router = useRouter();
   const search = useSearchParams();
-  // Seed all browse state from the URL so deep links (and Google's sitelinks
-  // search box via the WebSite SearchAction) land on pre-filled results.
-  const [q, setQ] = useState(() => search.get('q') ?? '');
-  const [debouncedQ, setDebouncedQ] = useState(q);
-  const [cat, setCat] = useState<ModCategory | 'all'>(() => {
-    const c = search.get('category');
-    return c && (CATEGORY_IDS as string[]).includes(c) ? (c as ModCategory) : 'all';
-  });
-  const [tags, setTags] = useState<string[]>(() => {
-    const t = search.get('tags');
-    return t
-      ? t
-          .split(',')
-          .map((x) => x.trim())
-          .filter(Boolean)
-      : [];
-  });
-  const [minRating, setMinRating] = useState(() => {
-    const r = Number(search.get('rating'));
-    return RATINGS.some((x) => x.value === r) ? r : 0;
-  });
-  const [filtersOpen, setFiltersOpen] = useState(true);
-  const filterBodyId = useId();
-  // Open beside the results on a wide screen, folded on a narrow one: there
-  // the panel sits ABOVE the results, and open it filled a phone's whole
-  // first screen, so the page looked like a form with no mods on it. Decided
-  // on mount for the same hydration reason as the layout below.
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 1023px)').matches) setFiltersOpen(false);
-  }, []);
-  const resultsRef = useRef<HTMLDivElement | null>(null);
-  // Starts at the server-rendered default and adopts the stored preference on
-  // mount — reading localStorage during render would desync hydration.
+  const { query, filters, sort, page } = readRegistryQuery(search.toString());
+  const { category, tags, minRating, featuredOnly, showNsfw, hidePrivateOnly } = filters;
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<View>('grid');
+  const resultsRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const stored = readStoredView();
-    if (stored) setView(stored);
-  }, []);
-  const chooseView = useCallback((v: View) => {
-    setView(v);
     try {
-      localStorage.setItem(VIEW_KEY, v);
+      const stored = localStorage.getItem(VIEW_KEY);
+      if (stored === 'grid' || stored === 'list') setView(stored);
     } catch {
-      // Not being able to remember the choice is not a reason to refuse it.
+      /* Storage can be disabled; the grid remains available. */
     }
   }, []);
-  const [sort, setSort] = useState<Sort>(() => {
-    const s = search.get('sort');
-    return s === 'recent' || s === 'rating' ? s : 'popular';
-  });
-  const [featuredOnly, setFeaturedOnly] = useState(() => search.get('featured') === '1');
-  const [showNsfw, setShowNsfw] = useState(() => search.get('nsfw') === '1');
-  const [page, setPage] = useState(() => Math.max(1, Number(search.get('page')) || 1));
 
-  // Debounce typing so each keystroke doesn't hit the API.
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 300);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  // Any filter change restarts at page 1 (skip the initial mount so a
-  // deep-linked ?page= survives).
-  const mounted = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the filter values are the trigger, not inputs — the effect intentionally runs on every filter change.
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
+  const chooseView = (next: View) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* Optional preference. */
     }
-    setPage(1);
-  }, [debouncedQ, cat, sort, featuredOnly, showNsfw, tags, minRating]);
+  };
+  const applyFilters = (next: RegistryFilters) => {
+    window.history.replaceState(null, '', registryFilterHref(window.location.search, next));
+    setFiltersOpen(false);
+  };
+  const resetSearch = () => window.history.replaceState(null, '', '/registry');
+  const goToPage = (next: number) => {
+    const params = new URLSearchParams(window.location.search);
+    if (next > 1) params.set('page', String(next));
+    else params.delete('page');
+    window.history.replaceState(null, '', registryHref(params));
+    resultsRef.current?.scrollIntoView({ block: 'start' });
+  };
 
-  // Mirror browse state into the URL (replace, not push — no history spam).
-  useEffect(() => {
-    const p = new URLSearchParams();
-    if (debouncedQ) p.set('q', debouncedQ);
-    if (cat !== 'all') p.set('category', cat);
-    if (tags.length) p.set('tags', tags.join(','));
-    if (minRating > 0) p.set('rating', String(minRating));
-    if (sort !== 'popular') p.set('sort', sort);
-    if (featuredOnly) p.set('featured', '1');
-    if (showNsfw) p.set('nsfw', '1');
-    if (page > 1) p.set('page', String(page));
-    const qs = p.toString();
-    window.history.replaceState(null, '', qs ? `/registry?${qs}` : '/registry');
-  }, [debouncedQ, cat, tags, minRating, sort, featuredOnly, showNsfw, page]);
-
-  // Filtering, sorting, and paging all happen server-side now — the old
-  // client-side pass only ever saw the first 48 mods.
   const list = useQuery({
-    queryKey: ['registry', debouncedQ, cat, tags, minRating, sort, featuredOnly, showNsfw, page],
+    queryKey: [
+      'registry',
+      query,
+      category,
+      tags,
+      minRating,
+      sort,
+      featuredOnly,
+      showNsfw,
+      hidePrivateOnly,
+      page,
+    ],
     queryFn: () =>
       api.mods.list({
-        q: debouncedQ || undefined,
-        category: cat === 'all' ? undefined : cat,
+        q: query || undefined,
+        category: category === 'all' ? undefined : category,
         tags: tags.length ? tags : undefined,
         minRating: minRating || undefined,
         sort,
         featured: featuredOnly || undefined,
         nsfw: showNsfw ? undefined : false,
-        // The panel's counts come from the server, over the search/featured/NSFW
-        // conditions but NOT the facet ones — see the list route.
+        hidePrivateOnly,
         facets: true,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       }),
-    placeholderData: (prev) => prev,
+    placeholderData: (previous) => previous,
   });
-
   const items = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  // Keep the last non-empty facets while a refetch is in flight, so the panel
-  // does not blink empty every time a chip is clicked.
-  const facetsRef = useRef<{
-    categories: { name: string; count: number }[];
-    tags: { name: string; count: number }[];
-  }>({ categories: [], tags: [] });
+  const facetsRef = useRef<{ categories: RegistryFacet[]; tags: RegistryFacet[] }>({
+    categories: [],
+    tags: [],
+  });
   if (list.data?.facets) facetsRef.current = list.data.facets;
   const facets = facetsRef.current;
-
-  // The API grew `facets` in the same push that added this panel, but www and
-  // the API are separate Vercel projects and do not go live in lockstep. Fall
-  // back to the schema's categories (countless, but pickable) so the panel is
-  // never an empty box against an API that has not rolled yet.
-  const categoryFacets = facets.categories.length
-    ? facets.categories
-    : CATEGORY_IDS.map((name) => ({ name, count: 0 }));
-
-  // Only the panel's own filters count here: it is the number that tells a
-  // genuinely short result list apart from a heavily filtered one.
-  const activeFilters = (cat === 'all' ? 0 : 1) + tags.length + (minRating > 0 ? 1 : 0);
-
-  const toggleTag = (t: string) =>
-    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
-
-  const clearFacets = () => {
-    setCat('all');
-    setTags([]);
-    setMinRating(0);
-  };
-
-  // The pager sits under the last result, so without this "Next" left you
-  // looking at the bottom of the new page rather than its first mod.
-  const goToPage = (n: number) => {
-    setPage(n);
-    const top = resultsRef.current;
-    if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
-  };
-
-  const clearFilters = () => {
-    setQ('');
-    clearFacets();
-    setSort('popular');
-    setFeaturedOnly(false);
-    setShowNsfw(false);
-    setPage(1);
-  };
+  const activeFilters = registryFilterCount(filters);
+  const heading =
+    list.isLoading || list.isError
+      ? 'Explore mods'
+      : list.isPlaceholderData
+        ? 'Finding mods…'
+        : query
+          ? `${total.toLocaleString()} ${total === 1 ? 'mod' : 'mods'} for “${query}”`
+          : `${total.toLocaleString()} ${total === 1 ? 'mod' : 'mods'} to explore`;
 
   return (
-    <main className="relative overflow-hidden animate-page-in">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--crimson)/0.08),transparent_50%)]" />
-      <div className="relative container mx-auto space-y-6 px-6 py-12">
-        <header className="space-y-2">
-          <h1 className="font-display text-5xl text-parchment sm:text-6xl">Mod registry</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Browse community-published mods for Ravenswatch — hero skins, balance tweaks, custom
-            magical objects, quality-of-life improvements, audio swaps, and more. Search or filter
-            by category below, then install in one click with the{' '}
-            <Link href="/download" className="underline hover:text-foreground">
-              Mod Manager
-            </Link>
-            . New to modding? Start with the{' '}
-            <Link href="/modding" className="underline hover:text-foreground">
-              Modding Guide
-            </Link>
-            .
-          </p>
-        </header>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[260px] flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              aria-label="Search mods"
-              placeholder="Search by name, author, or summary…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          {SORTS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSort(s.id)}
-              className={buttonVariants({
-                variant: sort === s.id ? 'default' : 'outline',
-                size: 'sm',
-              })}
+    <main className="registry-explore">
+      <header className="registry-browse-bar">
+        <h1 title={heading}>{heading}</h1>
+        <RegistrySearch
+          activeFilters={activeFilters}
+          filtersOpen={filtersOpen}
+          onOpenFilters={() => setFiltersOpen(true)}
+        />
+        <div className="registry-result-controls">
+          <label className="registry-sort">
+            <span>Sort by</span>
+            <select
+              aria-label="Sort mods"
+              value={sort}
+              onChange={(event) => {
+                const params = new URLSearchParams(window.location.search);
+                params.delete('page');
+                if (event.target.value === 'popular') params.delete('sort');
+                else params.set('sort', event.target.value);
+                window.history.replaceState(null, '', registryHref(params));
+              }}
             >
-              {s.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFeaturedOnly((v) => !v)}
-            className={buttonVariants({
-              variant: featuredOnly ? 'default' : 'outline',
-              size: 'sm',
-            })}
-            title="Show only featured mods"
-          >
-            <Star className="mr-1 h-3.5 w-3.5" />
-            Featured
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNsfw((v) => !v)}
-            className={buttonVariants({
-              variant: showNsfw ? 'default' : 'outline',
-              size: 'sm',
-            })}
-            title="Show NSFW/mature mods"
-          >
-            <EyeOff className="mr-1 h-3.5 w-3.5" />
-            NSFW
-          </button>
-          <fieldset className="ml-auto flex items-center gap-1">
+              <option value="popular">Popular</option>
+              <option value="recent">Recent</option>
+              <option value="rating">Top rated</option>
+            </select>
+            <ChevronDown size={14} aria-hidden />
+          </label>
+          <fieldset className="registry-view-switch">
             <legend className="sr-only">Layout</legend>
             <button
               type="button"
+              className="registry-icon-button"
+              aria-label="Cards"
               aria-pressed={view === 'grid'}
               onClick={() => chooseView('grid')}
-              className={buttonVariants({
-                variant: view === 'grid' ? 'default' : 'outline',
-                size: 'sm',
-              })}
-              title="Cards"
             >
-              <LayoutGrid className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-              Cards
+              <LayoutGrid size={18} aria-hidden />
             </button>
             <button
               type="button"
+              className="registry-icon-button"
+              aria-label="List"
               aria-pressed={view === 'list'}
               onClick={() => chooseView('list')}
-              className={buttonVariants({
-                variant: view === 'list' ? 'default' : 'outline',
-                size: 'sm',
-              })}
-              title="List"
             >
-              <Rows3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-              List
+              <Rows3 size={18} aria-hidden />
             </button>
           </fieldset>
         </div>
+      </header>
 
-        {/* Two columns: the panel reads as a column beside the results on a wide
-            screen and folds above them on a narrow one. */}
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-          {/* No card chrome on purpose. As a `grimoire-card` this read as a
-              second piece of content competing with the results rather than as
-              a control for them — it is a margin, so it is drawn like one:
-              no border, no background, small muted labels. */}
-          <aside
-            aria-label="Filters"
-            className="flex shrink-0 flex-col gap-2.5 border-b border-border/40 pb-4 lg:sticky lg:top-4 lg:w-44 lg:border-b-0 lg:pb-0"
-          >
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              aria-controls={filterBodyId}
-              className="flex items-center justify-between gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <span className="inline-flex items-center gap-1 font-mono text-[0.7rem] uppercase tracking-widest">
-                {filtersOpen ? (
-                  <ChevronDown className="h-3 w-3" aria-hidden="true" />
-                ) : (
-                  <ChevronUp className="h-3 w-3" aria-hidden="true" />
-                )}
-                Filters
-              </span>
-              {/* Collapsed, the count of ACTIVE filters is the load-bearing
-                  number: it is the only way to tell a short result list from a
-                  filtered one once the facets are hidden. */}
-              <span className="whitespace-nowrap font-mono text-[0.7rem]">
-                {filtersOpen
-                  ? total.toLocaleString()
-                  : activeFilters > 0
-                    ? `${activeFilters} on`
-                    : ''}
-              </span>
-            </button>
-
-            {filtersOpen ? (
-              <div id={filterBodyId} className="flex flex-col gap-3.5">
-                <div className="flex flex-col gap-1">
-                  <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
-                    category
-                  </span>
-                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                    <FilterChip active={cat === 'all'} onClick={() => setCat('all')}>
-                      any
-                    </FilterChip>
-                    {categoryFacets.map((c) => (
-                      <FilterChip
-                        key={c.name}
-                        active={cat === c.name}
-                        onClick={() => setCat(cat === c.name ? 'all' : (c.name as ModCategory))}
-                      >
-                        {c.name}
-                        {c.count > 0 ? (
-                          <span className="text-muted-foreground"> {c.count}</span>
-                        ) : null}
-                      </FilterChip>
-                    ))}
-                  </div>
-                </div>
-
-                {facets.tags.length > 0 ? (
-                  <div className="flex flex-col gap-1">
-                    <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
-                      tags
-                    </span>
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                      {facets.tags.map((t) => (
-                        <FilterChip
-                          key={t.name}
-                          active={tags.includes(t.name)}
-                          onClick={() => toggleTag(t.name)}
-                        >
-                          {t.name} <span className="text-muted-foreground">{t.count}</span>
-                        </FilterChip>
-                      ))}
-                    </div>
-                    {tags.length > 1 ? (
-                      <span className="text-[0.7rem] text-muted-foreground/70">
-                        matching all {tags.length}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground/60">
-                    rating
-                  </span>
-                  <select
-                    value={minRating}
-                    onChange={(e) => setMinRating(Number(e.target.value))}
-                    aria-label="Minimum rating"
-                    className="rounded border border-border/60 bg-transparent px-1.5 py-1 text-xs text-muted-foreground"
-                  >
-                    {RATINGS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {activeFilters > 0 ? (
-                  <button
-                    type="button"
-                    onClick={clearFacets}
-                    className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-                  >
-                    <X className="h-3 w-3" aria-hidden="true" /> clear {activeFilters}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </aside>
-
-          <div ref={resultsRef} className="min-w-0 flex-1 scroll-mt-24 space-y-6">
-            {list.isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Spinner />
-              </div>
-            ) : list.isError ? (
-              <div className="grimoire-card flex flex-col items-center gap-3 p-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  The registry could not be reached. Check your connection and try again.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => list.refetch()}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  Try again
-                </button>
-              </div>
-            ) : items.length === 0 ? (
-              <div className="grimoire-card flex flex-col items-center gap-3 p-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No mods match these filters{debouncedQ ? ` for “${debouncedQ}”` : ''}.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  Clear filters
-                </button>
-              </div>
-            ) : (
-              <div
-                className={
-                  view === 'list'
-                    ? 'flex flex-col gap-2'
-                    : 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'
-                }
-              >
-                {items.map((m) => {
-                  const open = () => router.push(`/registry/${m.slug}` as Route);
-                  return view === 'list' ? (
-                    <ModListRow key={m.id} m={m} onOpen={open} />
-                  ) : (
-                    <ModGridCard key={m.id} m={m} onOpen={open} />
-                  );
-                })}
-              </div>
-            )}
-
-            {!list.isError && totalPages > 1 ? (
-              <div className="flex items-center justify-center gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.max(1, page - 1))}
-                  disabled={page <= 1 || list.isFetching}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  <ChevronLeft className="h-4 w-4" /> Previous
-                </button>
-                <span className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages} · {total.toLocaleString()} mods
-                </span>
-                <button
-                  type="button"
-                  onClick={() => goToPage(Math.min(totalPages, page + 1))}
-                  disabled={page >= totalPages || list.isFetching}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  Next <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
+      <div ref={resultsRef} className="registry-results" aria-busy={list.isFetching}>
+        <output className="sr-only">
+          {list.isFetching
+            ? 'Updating mods…'
+            : list.isError
+              ? 'The registry could not be reached.'
+              : `${total} mods found.`}
+        </output>
+        {list.isLoading ? (
+          <div className="registry-loading">
+            <Spinner />
+            <span>Loading mods…</span>
           </div>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-/** Card layout — image, title, actions, summary, stats. */
-function ModGridCard({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
-  return (
-    <div
-      className="grimoire-card cursor-pointer overflow-hidden"
-      tabIndex={0}
-      // biome-ignore lint/a11y/useSemanticElements: card-as-link composite with nested interactive children; wrapping with <a> would invalidate the descendant <a>/<button> tags Next.js Link inserts.
-      role="link"
-      onClick={(e) => {
-        const el = e.target as HTMLElement;
-        if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
-        onOpen();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <div className="relative">
-        {m.imageUrl ? (
-          <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-            <img
-              src={m.imageUrl}
-              alt={`${m.name} preview`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
+        ) : list.isError ? (
+          <div className="registry-empty">
+            <h2>We couldn’t load the mods</h2>
+            <p>Check your connection and try again.</p>
+            <button type="button" className="registry-apply" onClick={() => list.refetch()}>
+              Try again
+            </button>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="registry-empty">
+            <h2>No mods found</h2>
+            <p>Try a different search or remove a filter to see more mods.</p>
+            <button type="button" className="registry-apply" onClick={resetSearch}>
+              Reset search and filters
+            </button>
           </div>
         ) : (
-          <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
+          <div className={view === 'grid' ? 'registry-grid' : 'registry-list'}>
+            {items.map((mod) =>
+              view === 'grid' ? (
+                <ModCard key={mod.id} mod={mod} featured={mod.featured} />
+              ) : (
+                <ModListRow
+                  key={mod.id}
+                  m={mod}
+                  onOpen={() => router.push(`/registry/${mod.slug}` as Route)}
+                />
+              ),
+            )}
+          </div>
         )}
-        {m.featured ? (
-          <Badge className="absolute left-2 top-2 bg-gilt/15 text-[0.65rem] text-gilt border-gilt/40 backdrop-blur-sm">
-            <Star className="mr-1 h-3 w-3" /> Featured
-          </Badge>
-        ) : null}
-        {m.nsfw ? (
-          <Badge className="absolute right-2 top-2 bg-crimson/15 text-[0.65rem] text-crimson border-crimson/40 backdrop-blur-sm">
-            <EyeOff className="mr-1 h-3 w-3" /> NSFW
-          </Badge>
-        ) : null}
-      </div>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <Link
-              href={`/registry/${m.slug}` as Route}
-              onClick={(e) => e.stopPropagation()}
-              className="hover:text-gilt transition-colors"
-            >
-              <CardTitle className="text-lg">{m.name}</CardTitle>
-            </Link>
-            <CardDescription className="mt-0.5">
-              {m.author ?? 'unknown'}
-              {m.latestVersion ? (
-                <Badge variant="outline" className="ml-2 text-[0.6rem]">
-                  v{m.latestVersion}
-                </Badge>
-              ) : null}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {m.latestVersion ? (
-              <a
-                href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
-                className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                title="Download mod archive"
-                aria-label={`Download ${m.name} archive`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
-            ) : null}
-            <a
-              href={`rsmm://mods/${m.slug}`}
+        {!list.isError && totalPages > 1 ? (
+          <nav className="registry-pagination" aria-label="Result pages">
+            <button
+              type="button"
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1 || list.isFetching}
               className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              title="Open in RSMM desktop app"
-              aria-label={`Open ${m.name} in the RSMM desktop app`}
-              onClick={(e) => e.stopPropagation()}
             >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            </a>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {m.summary ? (
-          <p className="text-sm text-muted-foreground line-clamp-2">{m.summary}</p>
+              <ChevronLeft size={16} aria-hidden /> Previous
+            </button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= totalPages || list.isFetching}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Next <ChevronRight size={16} aria-hidden />
+            </button>
+          </nav>
         ) : null}
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            {m.category ? <Badge variant="secondary">{m.category}</Badge> : null}
-            {m.downloads != null ? <span>{m.downloads.toLocaleString()} dl</span> : null}
-          </div>
-          <div className="flex items-center gap-1">
-            {m.rating != null ? <span>★ {m.rating.toFixed(1)}</span> : null}
-          </div>
-        </div>
-      </CardContent>
-    </div>
+        <p className="registry-help">
+          New to modding? <Link href="/download">Get the Mod Manager</Link> or read the{' '}
+          <Link href="/modding">Modding Guide</Link>.
+        </p>
+      </div>
+      {filtersOpen ? (
+        <RegistryFilterDialog
+          filters={filters}
+          categories={facets.categories}
+          tags={facets.tags}
+          onApply={applyFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      ) : null}
+    </main>
   );
 }
 

@@ -30,7 +30,6 @@ export function ModPrivateOnlyControls({
   if (!session || !whoami.data?.isAdmin) return null;
   return (
     <div className="mod-private-only-controls">
-      <p>RSMM admin</p>
       <Button
         variant="outline"
         size="sm"

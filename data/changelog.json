@@ -1,6 +1,39 @@
 {
-  "generated": "2026-11-13",
+  "generated": "2026-11-14",
   "entries": [
+    {
+      "version": "5.9.32",
+      "date": "2026-11-14",
+      "summary": "Custom heroes can borrow any shipped hero's ability, and RSMM tells you which loader and CLI you're running.",
+      "highlights": [
+        "Heroes written from scratch can use any of the 121 shipped hero abilities as-is, e.g. Scarlet's wolf bite (template)",
+        "Custom hero combos now chain, and lunges stop at the first enemy in reach",
+        "The app shows its loader and CLI versions and warns when a mod needs a newer one",
+        "The game log names the loader build, the SDK and every mod that ran"
+      ],
+      "loader_version": 59
+    },
+    {
+      "version": "",
+      "date": "2026-11-13",
+      "summary": "Mods can say which CLI and loader they need, and RSMM tells you when you need an update",
+      "highlights": [
+        "Mods can declare [requires] cli and loader - a mod that needs a newer RSMM or loader is skipped with a message saying which",
+        "Content errors name the running CLI version",
+        "rsmm doctor says when a source checkout is ahead of the published loader or CLI"
+      ],
+      "cli_version": 32
+    },
+    {
+      "version": "",
+      "date": "2026-11-13",
+      "summary": "The game log now names the loader build, the SDK and every mod with its version",
+      "highlights": [
+        "The game log names the loader build and SDK, and says when it's a dev build",
+        "Every mod gets a log line with its version and whether it ran or was disabled"
+      ],
+      "loader_version": 59
+    },
     {
       "version": "",
       "date": "2026-11-13",
@@ -487,42 +520,6 @@
       "summary": "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process",
       "highlights": [
         "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process"
-      ]
-    },
-    {
-      "version": "5.9.23",
-      "loader_version": 46,
-      "date": "2026-10-17",
-      "summary": "The damage meter now names your teammates exactly, by the hero each of them plays.",
-      "highlights": [
-        "Damage meter: teammates are matched to their row by the hero they picked in the lobby, so their names no longer carry a '?'.",
-        "Damage meter: crits and blocked damage are counted, and damage taken matches the game's own total.",
-        "Damage meter: the per-ability split works again after Update 6.",
-        "Overlays hide a column no row has data for, so mods can add optional columns behind a setting."
-      ]
-    },
-    {
-      "version": "5.9.22",
-      "loader_version": 45,
-      "date": "2026-10-16",
-      "summary": "Mods can offer settings for their game-data edits: sliders and switches in a mod's config now drive its numbers.",
-      "highlights": [
-        "Mod authors: entity edits can take a value from the mod's config (`config`, `times`) and be switched on or off (`when`).",
-        "Mod authors: [[patch]] stat values can come from config too, e.g. a camp size slider.",
-        "Changing such a setting rebuilds the mod's files on the next launch."
-      ]
-    },
-    {
-      "version": "5.9.21",
-      "loader_version": 45,
-      "date": "2026-10-16",
-      "summary": "Mod pages in your language, Update 6 fixes for hero picks, and a new challenge content kind.",
-      "highlights": [
-        "Browse and mod pages show a mod's own translation (name, summary, description) when the app runs in that language.",
-        "Hero ids fixed for Update 6; picking a hero someone else took is handled more safely.",
-        "New 'challenge' content kind (experimental) for editing the run challenges.",
-        "Lint warns when a mod edits a hero part that Update 6 replaced, so the edit would do nothing.",
-        "A small, dismissible Ko-fi note on the Library after a few modded launches."
       ]
     }
   ]

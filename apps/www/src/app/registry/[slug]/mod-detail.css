@@ -178,7 +178,7 @@ body:has(.mod-detail) > .site-header {
   line-height: 1.5;
   color: hsl(var(--foreground));
 }
-.mod-private-only-warning > span {
+.mod-private-only-warning-content {
   display: block;
   padding: 14px 16px;
   border: 0;
@@ -192,6 +192,13 @@ body:has(.mod-detail) > .site-header {
   margin-top: 16px;
   font-size: 13px;
   color: var(--mod-muted);
+}
+.mod-private-only-warning .mod-private-only-controls {
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--border));
+}
+.mod-private-only-warning .mod-private-only-controls > button {
+  border-color: hsl(var(--crimson));
 }
 .mod-social-proof {
   display: flex;
@@ -283,26 +290,29 @@ body:has(.mod-detail) > .site-header {
   transition: background-color 140ms ease-out;
 }
 .mod-download {
-  flex-direction: column;
-  gap: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content);
   padding-block: 6px;
   background: hsl(var(--crimson));
   color: hsl(var(--parchment));
 }
+.mod-download-copy {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+}
 .mod-download-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  font-size: 1rem;
 }
 .mod-download:hover {
   background: hsl(var(--oxblood));
 }
 .mod-download-meta {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 400;
   color: inherit;
   font-variant-numeric: tabular-nums;
@@ -318,16 +328,120 @@ body:has(.mod-detail) > .site-header {
 .mod-open-app:hover {
   background: var(--mod-panel);
 }
-.mod-install-help {
-  font-size: 13px;
-  text-align: center;
-  margin-top: 12px;
+.mod-open-app[aria-disabled="true"] {
+  cursor: progress;
+}
+.mod-manager-dialog {
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--mod-rule);
+  border-radius: 14px;
+  background: var(--mod-panel);
+  color: hsl(var(--foreground));
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--char)) transparent;
+}
+.mod-manager-dialog::backdrop {
+  background: hsl(var(--pitch) / 0.8);
+}
+.mod-manager-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mod-manager-dialog .mod-manager-heading h2 {
+  margin: 0;
+  padding-top: 6px;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.mod-manager-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border-radius: 6px;
   color: var(--mod-muted);
 }
-.mod-install-help a {
+.mod-manager-close:hover {
+  background: hsl(var(--surface-2));
   color: hsl(var(--foreground));
+}
+.mod-manager-description {
+  margin-top: 8px;
+  color: var(--mod-muted);
+  font-size: 16px;
+  line-height: 1.5;
+}
+.mod-manager-downloads {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+.mod-manager-platform {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid hsl(var(--char));
+  border-radius: 8px;
+}
+.mod-manager-platform:hover {
+  background: hsl(var(--surface-2));
+  border-color: hsl(var(--gilt));
+}
+.mod-manager-platform > svg {
+  flex-shrink: 0;
+  color: hsl(var(--gilt));
+}
+.mod-manager-platform > span {
+  display: grid;
+  gap: 4px;
+}
+.mod-manager-platform strong {
+  font-size: 17px;
+  line-height: 1.25;
+}
+.mod-manager-platform span span {
+  color: var(--mod-muted);
+  font-size: 14px;
+}
+.mod-manager-next-step {
+  margin-top: 16px;
+  color: var(--mod-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mod-manager-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: 16px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mod-rule);
+  font-size: 14px;
+}
+.mod-manager-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.mod-manager-footer a:hover {
+  color: hsl(var(--gilt));
 }
 .mod-facts {
   margin-top: 24px;

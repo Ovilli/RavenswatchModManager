@@ -721,6 +721,23 @@
         ]
       }
     },
+    "requires": {
+      "type": "object",
+      "description": "Oldest RSMM CLI / loader version this mod runs on.",
+      "properties": {
+        "cli": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Oldest CLI version (cli_version)."
+        },
+        "loader": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Oldest loader version."
+        }
+      },
+      "additionalProperties": false
+    },
     "patch": {
       "type": "array",
       "items": {

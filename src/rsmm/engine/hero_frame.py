@@ -355,6 +355,66 @@ def relabel_base_links(ef: EntityFile, filled: dict[bytes, tuple[str, str]], sco
     return n
 
 
+def override_links(raw: bytes, scope: str, read) -> list[tuple[str, str]]:
+    """``(part, override it names)`` for every link in ``raw`` that names one of
+    its overrides of a shared part (Hero_Common / Character_Common) by the
+    override's OWN GUID. Shipped heroes never do (600+ such links, all by the
+    shared part's GUID). Linked by the override's own id, a combo never
+    matched its button (Blood Wolf 0.2) and a talent never found its hero
+    controller (Jack)."""
+    from . import ability_template as AT
+    ef = EntityFile(raw, scope)
+    base = _base_guids(read)
+    g = ef.graph()
+    own = {c.guid: c for c in g.components if c.override and c.override.guid in base}
+    if not own:
+        return []
+    at = {c.index - 1: c for c in g.components}
+    head = AT._picker_head(ef)
+    out = []
+    for obj in range(len(ef.objects)):
+        c = at.get(obj)
+        for pk in AT._scan(ef, obj, head, AT._body_at(ef, c) if c else 0):
+            if pk.guid in own:
+                out.append((c.name if c else f"#{obj}", own[pk.guid].name))
+    return out
+
+
+def link_overrides_by_base(raw: bytes, scope: str, read) -> bytes:
+    """``raw`` with every link ``override_links`` finds pointed at the shared
+    part's GUID instead (the label, which names the hero's own part, stays:
+    that is how shipped heroes write them)."""
+    from . import ability_template as AT
+    ef = EntityFile(raw, scope)
+    base = _base_guids(read)
+    g = ef.graph()
+    own = {c.guid: c for c in g.components if c.override and c.override.guid in base}
+    if not own:
+        return raw
+    at = {c.index - 1: c for c in g.components}
+    head = AT._picker_head(ef)
+    for obj in range(len(ef.objects)):
+        c = at.get(obj)
+        for pk in AT._scan(ef, obj, head, AT._body_at(ef, c) if c else 0):
+            if pk.guid in own:
+                ef.objects[obj][pk.a + 8:pk.a + 24] = own[pk.guid].override.guid
+    out = ef.to_bytes()
+    left = override_links(out, scope, read)
+    if left:
+        raise FrameError(f"links still name an override by its own id: {left[:3]}")
+    return out
+
+
+def _base_guids(read) -> set[bytes]:
+    out: set[bytes] = set()
+    for scope in BASES:
+        raw = read(BASES[scope])
+        if raw is None:
+            raise FrameError(f"{scope} is not readable (no install or mirror)")
+        out |= {c.guid for c in EntityFile(raw, scope).graph().components}
+    return out
+
+
 #: How a Value is read as a resource through a link (Geppetto's mesh reading
 #: its material value part).
 _RESOURCE_ACCESSOR = 0x0FD2C96D
@@ -920,7 +980,7 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
         fill_sound(ef, base, slot, donors[ref], part, seed=seed)
     from . import hero_ability as HA
     for ab in abilities or []:
-        HA.build(ef, hc, ab, seed=seed, with_indicator=indicators)
+        HA.build(ef, hc, ab, seed=seed, with_indicator=indicators, read=read)
     for name, row, card in talents:
         ctl = add_talent(ef, hc, name, seed=seed, **card)
         c = ef.component(ctl)

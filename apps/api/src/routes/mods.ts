@@ -1,6 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import {
+  PRIVATE_ONLY_TAG_ALIASES,
   hasPrivateOnlyTag,
   modCategorySchema,
   modImagePresignSchema,
@@ -108,6 +109,10 @@ const listQuerySchema = z.object({
     .optional()
     .transform((v) => (v === 'true' || v === '1' ? true : v === undefined ? undefined : false)),
   owner: z.string().optional(),
+  hidePrivateOnly: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   sort: z.enum(['recent', 'popular', 'featured', 'rating']).default('recent'),
   // Time window for the 'popular' sort: rank by downloads within the last N
   // days instead of all time (a trending list). Ignored for other sorts.
@@ -147,6 +152,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
     category,
     featured,
     nsfw,
+    hidePrivateOnly,
     owner,
     sort,
     window,
@@ -181,6 +187,15 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       : undefined,
     featured === true ? eq(schema.mods.featured, true) : undefined,
     nsfw === false ? eq(schema.mods.nsfw, false) : undefined,
+    hidePrivateOnly
+      ? sql`not exists (
+          select 1 from unnest(${schema.mods.tags}) as private_tag(name)
+          where lower(btrim(private_tag.name)) in (${sql.join(
+            PRIVATE_ONLY_TAG_ALIASES.map((tag) => sql`${tag}`),
+            sql`, `,
+          )})
+        )`
+      : undefined,
     owner ? eq(schema.mods.ownerId, owner) : undefined,
   ].filter(Boolean);
 
@@ -223,6 +238,11 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       screenshots: schema.mods.screenshots,
       videos: schema.mods.videos,
       rating: schema.mods.rating,
+      ratingCount: sql<number>`(
+        select count(*)::int
+        from ${schema.modReviews}
+        where ${schema.modReviews.modId} = ${outerModId}
+      )`,
       tags: schema.mods.tags,
       featured: schema.mods.featured,
       nsfw: schema.mods.nsfw,
@@ -337,6 +357,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       screenshots: r.screenshots ?? [],
       videos: r.videos ?? [],
       rating: r.rating != null ? Number(r.rating) : null,
+      ratingCount: r.ratingCount,
       tags: r.tags ?? [],
       featured: r.featured,
       nsfw: r.nsfw,

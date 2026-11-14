@@ -512,6 +512,20 @@ jobs:
       actions: write   # dispatch publish-cli.yml
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history and tags: the release body lists every PR and commit
+          # since the previous release tag (scripts/release_notes.py).
+          fetch-depth: 0
+
+      - name: Write the release body
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet
+          python3 scripts/release_notes.py "$TAG" --repo "$GH_REPO" -o release-notes.md
+          cat release-notes.md
 
       - name: Publish the draft release
         env:
@@ -540,9 +554,11 @@ jobs:
             exit 1
           fi
           # Idempotent: a PATCH with draft=false on an already-published
-          # release is a no-op, so re-running the job is safe.
+          # release is a no-op, so re-running the job is safe. The body is the
+          # notes written above (the release note + every PR and commit since
+          # the previous tag), replacing the draft's placeholder.
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false \
-            --jq '"published " + .html_url'
+            -F body=@release-notes.md --jq '"published " + .html_url'
 
       # Clients read release notes from the rolling `changelog` release, which
       # nothing here updated: 5.9.24 went out with its note unseen until it was

@@ -1,12 +1,25 @@
 import { ProgressBar } from '@rsmm/ui';
 import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
+import {
+  describeCliSource,
+  describeLoaderInstall,
+  getLaunchActive,
+  subscribeChannelPhases,
+  trackCliUpdate,
+  trackLoaderUpdate,
+} from '../lib/channel-status';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { appendLauncherLog } from '../lib/launcher-log';
-import { loaderStatus, noteLoaderResult } from '../lib/loader-status';
+import {
+  getNotedLoaderResult,
+  loaderStatus,
+  noteLoaderResult,
+  subscribeLoaderResult,
+} from '../lib/loader-status';
 import { quitApp } from '../lib/quit';
 import {
   type CliChannel,
@@ -18,8 +31,6 @@ import {
   gameStatus,
   lastCliUpdate,
   restartGame,
-  updateCli,
-  updateLoader,
 } from '../lib/rsmm';
 import {
   type AvailableUpdate,
@@ -652,7 +663,7 @@ export function UpdaterBanner() {
 export function VersionFooter() {
   const t = useT();
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
-  const [loaderVersion, setLoaderVersion] = useState<number | null>(null);
+  const [loaderText, setLoaderText] = useState<string | null>(null);
   const [cli, setCli] = useState<CliChannel | null>(null);
 
   useEffect(() => {
@@ -665,7 +676,11 @@ export function VersionFooter() {
     });
     void loaderStatus()
       .then((r) => {
-        if (alive && r?.installedVersion != null) setLoaderVersion(r.installedVersion);
+        if (alive && r) {
+          setLoaderText(
+            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+          );
+        }
       })
       .catch(() => {
         /* offline, or no game directory — the loader half just stays quiet */
@@ -675,16 +690,29 @@ export function VersionFooter() {
     };
   }, []);
 
+  // A loader installed later (start/focus check, a launch, Settings) refreshes
+  // the footer instead of leaving the version read at mount.
+  useEffect(
+    () =>
+      subscribeLoaderResult(() => {
+        const r = getNotedLoaderResult();
+        if (r) {
+          setLoaderText(
+            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+          );
+        }
+      }),
+    [],
+  );
+
   return (
     // `pointer-events-none`: this is a caption, not a control, and it sits over
     // the scrolling content — it must never eat a click meant for what is
     // underneath it.
     <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-xs leading-tight text-ash/60">
       <span>{t('launcher v{version}', { version: appVersion })}</span>
-      {loaderVersion != null ? (
-        <span> · {t('loader v{version}', { version: loaderVersion })}</span>
-      ) : null}
-      {cli?.dir ? <span> · {t('cli v{version}', { version: cli.version })}</span> : null}
+      {loaderText != null ? <span> · {t('loader {state}', { state: loaderText })}</span> : null}
+      {cli?.dir ? <span> · {t('cli {source}', { source: describeCliSource(cli) })}</span> : null}
     </div>
   );
 }
@@ -750,6 +778,7 @@ export function UpdaterSettings() {
   const [appVersion, setAppVersion] = useState<string>(pkg.version ?? '0.0.0');
   const [loader, setLoader] = useState<UpdateLoaderResult | null>(null);
   const [loaderBusy, setLoaderBusy] = useState(false);
+  const launchActive = useSyncExternalStore(subscribeChannelPhases, getLaunchActive);
   const [loaderError, setLoaderError] = useState<string | null>(null);
   // Download progress for the loader bundle, mirroring what the launcher's own
   // updater shows. A few MB over an unknown link is long enough that a bare
@@ -789,7 +818,7 @@ export function UpdaterSettings() {
   const runCliUpdate = useCallback(async (): Promise<void> => {
     const c = await cliChannel();
     if (!c.dir) return;
-    const r = await updateCli().catch(() => null);
+    const r = await trackCliUpdate().catch(() => null);
     noteCliResult(r, c.version);
     if (r?.status === 'staged') {
       toast.push(
@@ -824,13 +853,23 @@ export function UpdaterSettings() {
     };
   }, []);
 
+  // Same refresh as the footer: a background loader install updates this row.
+  useEffect(
+    () =>
+      subscribeLoaderResult(() => {
+        const r = getNotedLoaderResult();
+        if (r) setLoader(r);
+      }),
+    [],
+  );
+
   /** Pull the signed loader DLL + Lua SDK bundle, if the channel is ahead. */
   const runLoaderUpdate = useCallback(async (): Promise<void> => {
     setLoaderBusy(true);
     setLoaderError(null);
     setLoaderProgress(null);
     try {
-      const r = await updateLoader({ onProgress: setLoaderProgress });
+      const r = await trackLoaderUpdate({ onProgress: setLoaderProgress });
       noteLoaderResult(r);
       setLoader(r);
       void appendLauncherLog('info', '[Updater] loader channel check', {
@@ -924,7 +963,11 @@ export function UpdaterSettings() {
 
   const busy = status.state === 'checking' || status.state === 'downloading' || loaderBusy;
   const loaderVersion =
-    loader?.installedVersion == null ? t('unknown') : `v${loader.installedVersion}`;
+    describeLoaderInstall(
+      loader?.loaderState,
+      loader?.plantedVersion ?? loader?.installedVersion,
+    ) ?? t('unknown');
+  const cliPending = cli?.staged ?? cliStaged;
   const loaderPending =
     loader?.status === 'update_available' && loader.remoteVersion != null
       ? `→ v${loader.remoteVersion}`
@@ -946,10 +989,10 @@ export function UpdaterSettings() {
         {cli?.dir ? (
           <VersionRow
             label={t('CLI')}
-            value={`v${cli.version}`}
+            value={describeCliSource(cli)}
             hint={
-              cliStaged != null
-                ? t('→ v{version} after restart', { version: cliStaged })
+              cliPending != null
+                ? t('→ v{version} after restart', { version: cliPending })
                 : undefined
             }
           />
@@ -957,7 +1000,14 @@ export function UpdaterSettings() {
       </Panel>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" size="sm" variant="primary" onClick={onCheck} disabled={busy}>
+        <Button
+          type="button"
+          size="sm"
+          variant="primary"
+          onClick={onCheck}
+          disabled={busy || launchActive}
+          title={launchActive ? t('Not while the game is launching') : undefined}
+        >
           <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
           {busy ? t('Checking…') : t('Check for updates')}
         </Button>
@@ -986,6 +1036,11 @@ export function UpdaterSettings() {
           >
             <Download className="h-3.5 w-3.5" /> {t('Open downloads page')}
           </Button>
+        ) : null}
+        {launchActive ? (
+          <span className="font-serif-italic text-ash text-sm">
+            {t('Not while the game is launching')}
+          </span>
         ) : null}
       </div>
 

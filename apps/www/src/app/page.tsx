@@ -269,7 +269,7 @@ export default async function Home() {
           </Link>
         </div>
         {popular.length > 0 ? (
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-8 grid gap-x-7 gap-y-[52px] sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-10 lg:gap-y-[60px]">
             {popular.map((mod) => (
               <ModCard key={mod.id} mod={mod} />
             ))}

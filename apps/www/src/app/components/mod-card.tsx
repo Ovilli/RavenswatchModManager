@@ -1,66 +1,105 @@
-import type { ModListItem } from '@rsmm/schemas';
-import { Badge } from '@rsmm/ui';
+import { type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
+import { Download, TriangleAlert } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { REGISTRY_CATEGORIES } from '../../lib/registry-query';
 import { ModCover } from './mod-cover';
+import './mod-card.css';
 
 interface ModCardProps {
-  mod: ModListItem;
-  /** Featured styling: gilt ring + "★ Featured" badge instead of category/version. */
+  mod: Pick<
+    ModListItem,
+    'slug' | 'name' | 'author' | 'summary' | 'imageUrl' | 'downloads' | 'latestVersion' | 'nsfw'
+  > & {
+    category: string | null;
+    rating?: number | null;
+    ratingCount?: number;
+    tags?: string[];
+  };
+  /** Mark featured artwork without replacing its category or private-game label. */
   featured?: boolean;
+  href?: Route;
+  /** Optional actions outside the card link, so links and buttons never nest. */
+  footer?: ReactNode;
 }
 
-export function ModCard({ mod, featured = false }: ModCardProps) {
+export function ModCard({ mod, featured = false, href, footer }: ModCardProps) {
+  const privateOnly = hasPrivateOnlyTag(mod.tags);
+  const category = REGISTRY_CATEGORIES.find(({ id }) => id === mod.category)?.label ?? mod.category;
+  const hasRating = mod.rating != null && mod.ratingCount !== 0;
+
   return (
-    <Link
-      href={`/registry/${mod.slug}` as Route}
-      className={`grimoire-card overflow-hidden group cursor-pointer transition-colors ${
-        featured ? 'ring-1 ring-gilt/30 hover:border-gilt/60' : 'hover:border-gilt/40'
-      }`}
-    >
-      {mod.imageUrl ? (
-        <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-          <img
-            src={mod.imageUrl}
-            alt={`${mod.name} preview`}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
+    <div className="mod-card">
+      <Link href={href ?? (`/registry/${mod.slug}` as Route)} className="mod-card-link">
+        <div className="mod-card-artwork">
+          {mod.imageUrl ? (
+            <img src={mod.imageUrl} alt={`${mod.name} preview`} loading="lazy" />
+          ) : (
+            <ModCover seed={mod.slug} name={mod.name} className="h-full w-full" />
+          )}
+          {featured || mod.nsfw ? (
+            <div className="mod-card-status">
+              {featured ? <span>★ Featured</span> : null}
+              {mod.nsfw ? <span className="mod-card-mature">Mature</span> : null}
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <ModCover seed={mod.slug} name={mod.name} className="aspect-[4/3] w-full" />
-      )}
-      <div className="space-y-2 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="font-display truncate text-xl leading-tight text-foreground group-hover:text-gilt">
-              {mod.name}
-            </h3>
-            <p className="text-sm text-muted-foreground">by {mod.author ?? 'unknown'}</p>
+        <div className="mod-card-body">
+          {privateOnly || category ? (
+            <div className="mod-card-tags">
+              {privateOnly ? (
+                <span className="mod-card-tag mod-card-private-tag">
+                  <TriangleAlert size={14} aria-hidden />
+                  Private games only
+                </span>
+              ) : null}
+              {category ? <span className="mod-card-tag">{category}</span> : null}
+            </div>
+          ) : null}
+          <div className="mod-card-identity">
+            <h3>{mod.name}</h3>
           </div>
-          {featured ? (
-            <Badge className="shrink-0 bg-gilt/15 text-xs text-gilt border-gilt/30">
-              ★ Featured
-            </Badge>
-          ) : mod.category ? (
-            <Badge variant="outline" className="shrink-0 text-xs">
-              {mod.category}
-            </Badge>
+          {mod.summary ? <p className="mod-card-summary">{mod.summary}</p> : null}
+          <p className="mod-card-author">by {mod.author ?? 'unknown'}</p>
+          {mod.downloads != null || hasRating ? (
+            <div className="mod-card-stats">
+              {mod.downloads != null ? (
+                <span className="mod-card-downloads">
+                  <Download size={16} aria-hidden />
+                  {mod.downloads.toLocaleString('en-US')}{' '}
+                  <span className="sr-only">{mod.downloads === 1 ? 'download' : 'downloads'}</span>
+                </span>
+              ) : null}
+              {hasRating && mod.rating != null ? (
+                <span className="mod-card-rating-group">
+                  {mod.downloads != null ? (
+                    <span className="mod-card-stat-dot" aria-hidden>
+                      ·
+                    </span>
+                  ) : null}
+                  <span
+                    className="mod-card-rating"
+                    role="img"
+                    aria-label={`${mod.rating.toFixed(1)} out of 5 stars${mod.ratingCount != null ? ` from ${mod.ratingCount} ${mod.ratingCount === 1 ? 'rating' : 'ratings'}` : ''}`}
+                  >
+                    <span className="mod-card-star" aria-hidden>
+                      ★
+                    </span>
+                    <span aria-hidden>
+                      <strong>{mod.rating.toFixed(1)}</strong>
+                      {mod.ratingCount != null
+                        ? ` (${mod.ratingCount.toLocaleString('en-US')})`
+                        : ''}
+                    </span>
+                  </span>
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
-        {mod.summary ? (
-          <p className="line-clamp-2 text-base leading-relaxed text-muted-foreground">
-            {mod.summary}
-          </p>
-        ) : null}
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          {mod.downloads != null ? <span>{mod.downloads.toLocaleString()} downloads</span> : null}
-          {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
-          {!featured && mod.latestVersion ? (
-            <span className="ml-auto font-data text-xs">v{mod.latestVersion}</span>
-          ) : null}
-        </div>
-      </div>
-    </Link>
+      </Link>
+      {footer ? <div className="mod-card-footer space-y-3">{footer}</div> : null}
+    </div>
   );
 }

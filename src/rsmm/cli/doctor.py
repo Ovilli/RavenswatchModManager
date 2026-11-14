@@ -1045,6 +1045,47 @@ def check_compat_graph() -> list[Result]:
     return out
 
 
+def check_channel_drift() -> list[Result]:
+    """Is this git checkout's loader / CLI code newer than the last publish?
+
+    Silent for a frozen build, a download without `.git`, or no git on PATH:
+    those run what was published, so there is nothing to compare."""
+    import shutil
+
+    from rsmm.engine.paths import REPO_ROOT
+
+    if getattr(sys, "frozen", False) or not (REPO_ROOT / ".git").exists():
+        return []
+    if shutil.which("git") is None:
+        return []
+    from rsmm.dev.channel_drift import drift
+
+    out: list[Result] = []
+    for c in drift(REPO_ROOT):
+        if c["status"] == "unknown":
+            continue
+        v = f" v{c['version']}" if c["version"] is not None else ""
+        code = f"channel-drift.{c['channel']}"
+        if c["status"] == "current":
+            out.append(Result("OK", f"{c['label']} code matches the published "
+                              f"channel{v}", code=code))
+        elif c["channel"] == "loader":
+            out.append(Result(
+                "WARN",
+                f"This checkout has loader changes newer than published "
+                f"loader{v}",
+                "Build it yourself (src/loader/build.sh + rsmm install-loader) "
+                "or wait for the next publish", code=code))
+        else:
+            out.append(Result(
+                "WARN",
+                f"This checkout has CLI changes newer than published CLI{v}",
+                "Run it from this checkout (./rsmm) or wait for the next "
+                "publish; the desktop app's bundled CLI does not have them",
+                code=code))
+    return out
+
+
 #: The report, in order. Each entry is one section; `main` walks this list
 #: instead of hand-sequencing calls, so adding a check is one line here and
 #: `--only` / `--json` / `--fix` pick it up for free.
@@ -1067,6 +1108,8 @@ def _checks() -> list[Check]:
         Check("usedrsclist", "resource manifest (UsedRscList.ot)", check_usedrsclist),
         Check("crash-dumps", "crash dumps", check_crash_dumps),
         Check("mod-health", "mod crash history", check_mod_health),
+        Check("channel-drift", "build vs published channels",
+              lambda _g: check_channel_drift(), needs_game=False),
     ]
 
 
