@@ -120,7 +120,7 @@ describe('app launch fallback', () => {
     expect(secondFallback).toHaveBeenCalledOnce();
   });
 
-  it('cleans up when the component unmounts or downloads are opened directly', () => {
+  it('cleans up when the component unmounts', () => {
     const fallback = vi.fn();
     const settled = vi.fn();
     stop = watchAppLaunch(fallback, settled);

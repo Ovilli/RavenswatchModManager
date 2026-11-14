@@ -331,17 +331,6 @@ body:has(.mod-detail) > .site-header {
 .mod-open-app[aria-disabled="true"] {
   cursor: progress;
 }
-.mod-install-help {
-  font-size: 13px;
-  text-align: center;
-  margin-top: 12px;
-  color: var(--mod-muted);
-}
-.mod-install-help a {
-  color: hsl(var(--foreground));
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 .mod-manager-dialog {
   width: min(480px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);

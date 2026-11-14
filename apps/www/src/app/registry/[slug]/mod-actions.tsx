@@ -17,7 +17,7 @@ export function ModActions({
   version,
   managerDownloads,
 }: { slug: string; version?: ModVersion; managerDownloads: InstallerDownloads }) {
-  const [dialogMode, setDialogMode] = useState<'download' | 'fallback' | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [opening, setOpening] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLAnchorElement>(null);
@@ -30,7 +30,7 @@ export function ModActions({
 
   useEffect(() => {
     const node = dialog.current;
-    if (!dialogMode || !node) return;
+    if (!dialogOpen || !node) return;
     node.showModal();
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -38,7 +38,7 @@ export function ModActions({
       node.close();
       document.body.style.overflow = overflow;
     };
-  }, [dialogMode]);
+  }, [dialogOpen]);
 
   function openManager(event: MouseEvent<HTMLAnchorElement>) {
     if (!isPlainClick(event)) return;
@@ -48,11 +48,11 @@ export function ModActions({
     }
     if (!event.currentTarget.closest('dialog')) returnFocus.current = event.currentTarget;
     dialog.current?.close();
-    setDialogMode(null);
+    setDialogOpen(false);
     stopLaunch.current?.();
     setOpening(true);
     stopLaunch.current = watchAppLaunch(
-      () => setDialogMode('fallback'),
+      () => setDialogOpen(true),
       () => setOpening(false),
     );
     // Keep the native link navigation in this click so the browser can ask
@@ -61,7 +61,7 @@ export function ModActions({
 
   function closeDialog() {
     dialog.current?.close();
-    setDialogMode(null);
+    setDialogOpen(false);
     returnFocus.current?.focus({ preventScroll: true });
   }
 
@@ -91,22 +91,6 @@ export function ModActions({
             )}
             <output>{opening ? 'Opening RSMM…' : 'Open in mod manager'}</output>
           </a>
-          <p className="mod-install-help">
-            New to RSMM?{' '}
-            <Link
-              href="/download"
-              onClick={(event) => {
-                if (!isPlainClick(event)) return;
-                event.preventDefault();
-                returnFocus.current = event.currentTarget;
-                stopLaunch.current?.();
-                setOpening(false);
-                setDialogMode('download');
-              }}
-            >
-              Get the mod manager
-            </Link>
-          </p>
         </>
       ) : (
         <div className="mod-no-download">
@@ -114,7 +98,7 @@ export function ModActions({
           <p>The author hasn’t published a downloadable version.</p>
         </div>
       )}
-      {dialogMode ? (
+      {dialogOpen ? (
         <dialog
           ref={dialog}
           className="mod-manager-dialog"
@@ -126,9 +110,7 @@ export function ModActions({
           }}
         >
           <div className="mod-manager-heading">
-            <h2 id={titleId}>
-              {dialogMode === 'fallback' ? 'Didn’t open?' : 'Get the mod manager'}
-            </h2>
+            <h2 id={titleId}>Didn’t open?</h2>
             <button
               type="button"
               className="mod-manager-close"
@@ -139,9 +121,7 @@ export function ModActions({
             </button>
           </div>
           <p id={descriptionId} className="mod-manager-description">
-            {dialogMode === 'fallback'
-              ? 'If RSMM isn’t installed yet, choose your system to download it.'
-              : 'Download RSMM for your system to install and manage Ravenswatch mods.'}
+            If RSMM isn’t installed yet, choose your system to download it.
           </p>
           <div className="mod-manager-downloads">
             <a
@@ -172,9 +152,7 @@ export function ModActions({
           <div className="mod-manager-footer">
             <a href={appUrl} onClick={openManager}>
               <ExternalLink size={16} aria-hidden />
-              {dialogMode === 'fallback'
-                ? 'Already installed? Try again'
-                : 'Already installed? Open RSMM'}
+              Already installed? Try again
             </a>
             <Link href="/download">Installation help</Link>
           </div>
