@@ -15,6 +15,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useNavigationGuard } from 'nextjs-nav-guard';
@@ -61,12 +62,14 @@ function SectionNav({
   onSelect,
   versionCount,
   hasInReview,
+  listingOnly,
 }: {
   active: SectionId;
   navRef: React.RefObject<HTMLElement | null>;
   onSelect: (id: SectionId) => void;
   versionCount: number;
   hasInReview: boolean;
+  listingOnly: boolean;
 }) {
   return (
     <nav
@@ -74,7 +77,7 @@ function SectionNav({
       aria-label="Mod sections"
       className="sticky top-[var(--site-header-height,61px)] z-30 flex h-16 gap-1 overflow-x-auto bg-background p-2 md:top-[calc(var(--site-header-height,61px)+24px)] md:h-auto md:flex-col md:self-start md:bg-transparent"
     >
-      {SECTIONS.map((s) => {
+      {SECTIONS.filter((s) => !listingOnly || s.id === 'listing').map((s) => {
         const isActive = active === s.id;
         const Icon = s.icon;
         const tone =
@@ -284,6 +287,11 @@ function ManageModEditor({ slug }: { slug: string }) {
     enabled: !!slug,
   });
 
+  const isAuthor =
+    !!session &&
+    (detail.data?.mod.isAuthor === true || detail.data?.mod.ownerId === session.user.id);
+  const canEdit = !!session && (detail.data?.mod.canEdit ?? isAuthor);
+
   // Form state for metadata edit
   const [name, setName] = useState('');
   const [author, setAuthor] = useState('');
@@ -309,7 +317,7 @@ function ManageModEditor({ slug }: { slug: string }) {
   const sectionContent = useRef<HTMLDivElement>(null);
   const requestedSection = useRef<SectionId | null>(null);
   const editorReady =
-    !!session && !!detail.data && !sessionLoading && !detail.isLoading && !detail.isError;
+    canEdit && !!detail.data && !sessionLoading && !detail.isLoading && !detail.isError;
 
   const selectSection = useCallback((id: SectionId) => {
     const target = document.getElementById(id);
@@ -671,6 +679,17 @@ function ManageModEditor({ slug }: { slug: string }) {
     );
   }
 
+  if (!canEdit) {
+    return (
+      <main className="container mx-auto px-6 py-16">
+        <h1 className="text-2xl font-semibold">You can’t edit this listing</h1>
+        <Link href={`/registry/${slug}` as Route} className="mt-4 inline-block underline">
+          View mod
+        </Link>
+      </main>
+    );
+  }
+
   const mod = detail.data.mod;
   const versions = detail.data.versions;
 
@@ -688,6 +707,7 @@ function ManageModEditor({ slug }: { slug: string }) {
           onSelect={selectSection}
           versionCount={versions.length}
           hasInReview={hasInReview}
+          listingOnly={!isAuthor}
         />
         <div ref={sectionContent} className="mod-editor-sections mt-6 min-w-0 space-y-8 md:mt-0">
           <section
@@ -696,6 +716,9 @@ function ManageModEditor({ slug }: { slug: string }) {
             tabIndex={-1}
             className="scroll-mt-[var(--editor-scroll-offset)] space-y-8 focus:outline-none"
           >
+            {!isAuthor ? (
+              <p className="text-sm text-muted-foreground">Editing as an RSMM admin</p>
+            ) : null}
             <header className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
               <div className="flex min-w-0 items-start gap-4">
                 {coverUrl ? (
@@ -909,208 +932,217 @@ function ManageModEditor({ slug }: { slug: string }) {
             </section>
           </section>
 
-          <section
-            id="versions"
-            aria-labelledby="versions-heading"
-            tabIndex={-1}
-            className="scroll-mt-[var(--editor-scroll-offset)] space-y-4 focus:outline-none"
-          >
-            <h2 id="versions-heading" className="text-lg font-semibold">
-              Versions
-            </h2>
-            {removeVersion.isError ? (
-              <p className="text-sm text-destructive">
-                Could not delete that version
-                {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}.
-                Only the mod&apos;s owner can delete versions.
-              </p>
-            ) : null}
-            {versions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No versions published yet.</p>
-            ) : (
-              <ul className="space-y-3">
-                {versions
-                  .slice()
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((v) => {
-                    // changelog isn't on the published ModVersion schema yet
-                    // because the public detail endpoint hasn't been
-                    // extended — read it from manifestJson as a fallback.
-                    const cl =
-                      typeof v.manifestJson === 'object'
-                        ? (v.manifestJson as { changelog?: string })?.changelog
-                        : undefined;
-                    return (
-                      <li key={v.id} className="grimoire-card p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="font-semibold">v{v.version}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {fmtBytes(v.sizeBytes)} · {new Date(v.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ScanBadge versionId={v.id} />
-                            <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              disabled={removeVersion.isPending}
-                              aria-label={`Delete version ${v.version}`}
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
-                                  )
-                                ) {
-                                  removeVersion.mutate(v.id);
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                            </Button>
-                          </div>
-                        </div>
-                        {v.scanStatus && v.scanStatus !== 'clean' && v.scanStatus !== 'skipped' ? (
-                          <p
-                            className={`mt-2 text-xs ${
-                              v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
-                            }`}
-                          >
-                            {v.scanStatus === 'flagged'
-                              ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
-                              : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
-                          </p>
-                        ) : null}
-                        {cl ? (
-                          <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
-                            {cl}
-                          </pre>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-              </ul>
-            )}
+          {isAuthor ? (
+            <>
+              <section
+                id="versions"
+                aria-labelledby="versions-heading"
+                tabIndex={-1}
+                className="scroll-mt-[var(--editor-scroll-offset)] space-y-4 focus:outline-none"
+              >
+                <h2 id="versions-heading" className="text-lg font-semibold">
+                  Versions
+                </h2>
+                {removeVersion.isError ? (
+                  <p className="text-sm text-destructive">
+                    Could not delete that version
+                    {removeVersion.error instanceof Error ? `: ${removeVersion.error.message}` : ''}
+                    . Only the mod&apos;s owner can delete versions.
+                  </p>
+                ) : null}
+                {versions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No versions published yet.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {versions
+                      .slice()
+                      .sort(
+                        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                      )
+                      .map((v) => {
+                        // changelog isn't on the published ModVersion schema yet
+                        // because the public detail endpoint hasn't been
+                        // extended — read it from manifestJson as a fallback.
+                        const cl =
+                          typeof v.manifestJson === 'object'
+                            ? (v.manifestJson as { changelog?: string })?.changelog
+                            : undefined;
+                        return (
+                          <li key={v.id} className="grimoire-card p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="font-semibold">v{v.version}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {fmtBytes(v.sizeBytes)} ·{' '}
+                                  {new Date(v.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <ScanBadge versionId={v.id} />
+                                <Badge variant="outline">{v.sha256.slice(0, 12)}</Badge>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  disabled={removeVersion.isPending}
+                                  aria-label={`Delete version ${v.version}`}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Delete v${v.version} of "${mod.name}"? Its file is removed and nobody can download it any more. This cannot be undone.`,
+                                      )
+                                    ) {
+                                      removeVersion.mutate(v.id);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                </Button>
+                              </div>
+                            </div>
+                            {v.scanStatus &&
+                            v.scanStatus !== 'clean' &&
+                            v.scanStatus !== 'skipped' ? (
+                              <p
+                                className={`mt-2 text-xs ${
+                                  v.scanStatus === 'flagged' ? 'text-destructive' : 'text-amber-500'
+                                }`}
+                              >
+                                {v.scanStatus === 'flagged'
+                                  ? 'Flagged by malware scanning — the file was removed and this version cannot be downloaded.'
+                                  : 'In review — only you can see this version until the malware scan clears (usually a few minutes).'}
+                              </p>
+                            ) : null}
+                            {cl ? (
+                              <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                                {cl}
+                              </pre>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                  </ul>
+                )}
 
-            <div className="border-t border-border/40 pt-4">
-              <h3 className="text-sm font-semibold">Ship a new version</h3>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="newver">Version</Label>
-                  <Input
-                    id="newver"
-                    value={newVersion}
-                    onChange={(e) => setNewVersion(e.target.value)}
-                    placeholder="0.2.0"
-                    aria-invalid={
-                      newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
-                    }
-                  />
-                  {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
-                    <p className="text-xs text-destructive">
-                      Must be semver, e.g. 0.2.0 (three numbers separated by dots).
-                    </p>
+                <div className="border-t border-border/40 pt-4">
+                  <h3 className="text-sm font-semibold">Ship a new version</h3>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="newver">Version</Label>
+                      <Input
+                        id="newver"
+                        value={newVersion}
+                        onChange={(e) => setNewVersion(e.target.value)}
+                        placeholder="0.2.0"
+                        aria-invalid={
+                          newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? true : undefined
+                        }
+                      />
+                      {newVersion.length > 0 && !SEMVER_RE.test(newVersion) ? (
+                        <p className="text-xs text-destructive">
+                          Must be semver, e.g. 0.2.0 (three numbers separated by dots).
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="newzip">New archive</Label>
+                      <FileDrop
+                        id="newzip"
+                        accept=".zip,application/zip"
+                        label="Mod archive (.zip)"
+                        hint="up to 500 MB"
+                        file={newZip}
+                        onFile={setNewZip}
+                        disabled={newVersionMut.isPending}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Changelog (Markdown)</Label>
+                      <div data-color-mode="dark" className="md-editor-themed min-h-[200px]">
+                        <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                      </div>
+                    </div>
+                  </div>
+                  {zipProgress ? (
+                    <ProgressBar
+                      className="mt-4"
+                      value={zipProgress.loaded}
+                      max={zipProgress.total}
+                      label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
+                    />
                   ) : null}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newzip">New archive</Label>
-                  <FileDrop
-                    id="newzip"
-                    accept=".zip,application/zip"
-                    label="Mod archive (.zip)"
-                    hint="up to 500 MB"
-                    file={newZip}
-                    onFile={setNewZip}
-                    disabled={newVersionMut.isPending}
-                  />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Changelog (Markdown)</Label>
-                  <div data-color-mode="dark" className="md-editor-themed min-h-[200px]">
-                    <MDEditor value={changelog} onChange={setChangelog} height={200} />
+                  <div className="mt-4 flex items-center justify-end gap-3">
+                    {newVersionMut.isError ? (
+                      <span className="text-xs text-destructive">
+                        {describeApiError(newVersionMut.error)}
+                      </span>
+                    ) : null}
+                    <Button
+                      onClick={() => newVersionMut.mutate()}
+                      disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
+                    >
+                      {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />}{' '}
+                      Publish version
+                    </Button>
                   </div>
                 </div>
-              </div>
-              {zipProgress ? (
-                <ProgressBar
-                  className="mt-4"
-                  value={zipProgress.loaded}
-                  max={zipProgress.total}
-                  label={`Uploading ${fmtBytes(zipProgress.loaded)} of ${fmtBytes(zipProgress.total)}`}
-                />
-              ) : null}
-              <div className="mt-4 flex items-center justify-end gap-3">
-                {newVersionMut.isError ? (
-                  <span className="text-xs text-destructive">
-                    {describeApiError(newVersionMut.error)}
-                  </span>
-                ) : null}
+              </section>
+
+              <section
+                id="analytics"
+                aria-label="Analytics"
+                tabIndex={-1}
+                className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+              >
+                <ModStats slug={slug} />
+              </section>
+              <section
+                id="team"
+                aria-label="Team"
+                tabIndex={-1}
+                className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
+              >
+                <ModTeam slug={slug} />
+              </section>
+
+              <section
+                id="danger"
+                aria-labelledby="danger-heading"
+                tabIndex={-1}
+                className="scroll-mt-[var(--editor-scroll-offset)] space-y-3 focus:outline-none"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  <h2 id="danger-heading" className="text-lg font-semibold">
+                    Danger zone
+                  </h2>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Deleting removes the mod row and every published version. The slug becomes
+                  available for someone else to claim. This cannot be undone.
+                </p>
                 <Button
-                  onClick={() => newVersionMut.mutate()}
-                  disabled={!newZip || !SEMVER_RE.test(newVersion) || newVersionMut.isPending}
+                  variant="destructive"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete "${mod.name}" and all its versions? This cannot be undone.`,
+                      )
+                    ) {
+                      remove.mutate();
+                    }
+                  }}
+                  disabled={remove.isPending}
                 >
-                  {newVersionMut.isPending ? <Spinner /> : <Upload className="h-4 w-4" />} Publish
-                  version
+                  {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
                 </Button>
-              </div>
-            </div>
-          </section>
-
-          <section
-            id="analytics"
-            aria-label="Analytics"
-            tabIndex={-1}
-            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
-          >
-            <ModStats slug={slug} />
-          </section>
-          <section
-            id="team"
-            aria-label="Team"
-            tabIndex={-1}
-            className="scroll-mt-[var(--editor-scroll-offset)] focus:outline-none"
-          >
-            <ModTeam slug={slug} />
-          </section>
-
-          <section
-            id="danger"
-            aria-labelledby="danger-heading"
-            tabIndex={-1}
-            className="scroll-mt-[var(--editor-scroll-offset)] space-y-3 focus:outline-none"
-          >
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
-              <h2 id="danger-heading" className="text-lg font-semibold">
-                Danger zone
-              </h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Deleting removes the mod row and every published version. The slug becomes available
-              for someone else to claim. This cannot be undone.
-            </p>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Delete "${mod.name}" and all its versions? This cannot be undone.`,
-                  )
-                ) {
-                  remove.mutate();
-                }
-              }}
-              disabled={remove.isPending}
-            >
-              {remove.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />} Delete mod
-            </Button>
-            {remove.isError ? (
-              <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
-            ) : null}
-          </section>
+                {remove.isError ? (
+                  <p className="text-xs text-destructive">{describeApiError(remove.error)}</p>
+                ) : null}
+              </section>
+            </>
+          ) : null}
         </div>
       </div>
     </main>

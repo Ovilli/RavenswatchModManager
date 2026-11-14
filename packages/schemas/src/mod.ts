@@ -203,7 +203,7 @@ export type ModUploadRequest = z.infer<typeof modUploadRequestSchema>;
 // One cover plus the 12 gallery images supported by the original editor.
 export const MAX_MOD_PHOTOS = 13;
 
-/** Owner-only patch: edit mutable metadata. All fields optional. */
+/** Listing metadata patch for authors or RSMM admins. All fields optional. */
 export const modPatchSchema = z.object({
   author: z.string().trim().min(1).max(128).nullable().optional(),
   name: z.string().min(1).max(128).optional(),

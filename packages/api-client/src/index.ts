@@ -42,6 +42,8 @@ export const modDetailResponseSchema = z.object({
       isFollowing: z.boolean().optional(),
       // Viewer is the owner or a co-author.
       isAuthor: z.boolean().optional(),
+      // Listing metadata and photos may also be edited by RSMM admins.
+      canEdit: z.boolean().optional(),
       followerCount: z.number().int().optional(),
       // Credited beside "Created by"; older servers omit it.
       coAuthors: z
