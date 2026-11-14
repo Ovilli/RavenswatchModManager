@@ -145,3 +145,32 @@ def test_require_rsmm_after_first_use_reports_once(tmp_path, capsys):
     errs, _warns = lint._lint_lua_api("LuaMod", d)
     assert errs == 1
     assert "init.lua:1" in capsys.readouterr().out
+
+
+def test_global_require_rsmm_binding_stays_clean(tmp_path):
+    """`R = require "rsmm"` binds the SDK for the whole lua_State, so the rest
+    of the file reads R as a global and that is not a nil read."""
+    d = _mod(
+        tmp_path,
+        'R = require "rsmm"\n'
+        'R.on("ready", function() end)\n',
+    )
+    assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_global_binding_in_init_covers_a_helper(tmp_path):
+    """Helpers run in the same lua_State init.lua bound R in, so flagging their
+    global reads would fail a mod that works in game."""
+    d = _mod(tmp_path, 'R = require "rsmm"\n')
+    (d / "helper.lua").write_text('R.on("tick", function() end)\n')
+    assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_a_helper_still_errors_when_nothing_binds_r(tmp_path, capsys):
+    """The mod-wide suppression must not swallow the real case: no file binds
+    R, so the helper's R.on is still the nil global error."""
+    d = _mod(tmp_path, 'print("no binding here")\n')
+    (d / "helper.lua").write_text('R.on("tick", function() end)\n')
+    errs, _warns = lint._lint_lua_api("LuaMod", d)
+    assert errs == 1
+    assert "helper.lua:1" in capsys.readouterr().out

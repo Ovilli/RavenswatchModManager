@@ -140,6 +140,11 @@ class _Walk:
         self.brackets: list[str] = []
         self.pending: list[str] = []          # `for` vars, bound at its `do`
         self.globals: list[tuple[str, int]] = []   # (name, token index)
+        #: (name, token index) of statement-level assignments to a name that is
+        #: not a local, i.e. writes to a global. `R = require "rsmm"` is one:
+        #: it binds the SDK for the whole lua_State, so a later global read of
+        #: `R` is not necessarily nil.
+        self.global_writes: list[tuple[str, int]] = []
         self.top_level: dict[str, list[int]] = {}  # name -> decl token indexes
         #: Token indexes read inside an open bracket of the current statement
         #: (call arguments, a table constructor, an index). A function body
@@ -292,6 +297,8 @@ class _Walk:
                 and prev is not None and prev.kind == "op" and prev.text in "{,;"):
             return                                   # table key `{ name = ... }`
         if not self.brackets and self.assignment_target(k):
+            if not self.resolves(tok.text):
+                self.global_writes.append((tok.text, k))
             return                                   # `name = ...` writes, not reads
         if not self.resolves(tok.text):
             self.globals.append((tok.text, k))
@@ -328,42 +335,77 @@ def walk(text: str) -> _Walk:
     return w
 
 
-def late_locals(text: str) -> list[LateLocal]:
-    """Global reads in `text` whose name gets a top-level `local` further down.
+@dataclass(frozen=True)
+class ScopeReport:
+    """What one tokenize + walk of a file says about its globals.
+
+    ``late`` is the late-local list; ``alias_line`` is the first read of the
+    SDK alias that no top-level local covers (the missing-require error), or
+    ``None``; ``alias_assigned`` says whether the file assigns the alias as a
+    global somewhere, which binds the SDK for the whole mod.
+    """
+
+    late: list[LateLocal]
+    alias_line: int | None
+    alias_assigned: bool
+
+
+def scan(text: str, alias: str = "R") -> ScopeReport:
+    """Tokenize and walk `text` ONCE, reporting late locals and the alias state.
+
+    `rsmm lint` needs both answers for every file; tokenizing and walking twice
+    (once per question) made it do the same work twice on every `.lua` a mod
+    ships. :func:`late_locals` and :func:`missing_sdk_binding` stay as thin
+    wrappers for callers that only want one answer.
 
     Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
     """
     toks = tokenize(text)
     w = _Walk(toks)
     w.run()
-    out: list[LateLocal] = []
+    late: list[LateLocal] = []
     for name, k in w.globals:
         if name in _BUILTINS:
             continue
         later = [d for d in w.top_level.get(name, ()) if d > k]
         if later:
-            out.append(LateLocal(name, toks[k].line, toks[later[0]].line))
-    return out
+            late.append(LateLocal(name, toks[k].line, toks[later[0]].line))
+    first = next((k for name, k in w.globals if name == alias), None)
+    alias_line = None
+    if first is not None and not any(d > first for d in w.top_level.get(alias, ())):
+        alias_line = toks[first].line
+    return ScopeReport(
+        late=late,
+        alias_line=alias_line,
+        alias_assigned=any(name == alias for name, _ in w.global_writes),
+    )
+
+
+def late_locals(text: str) -> list[LateLocal]:
+    """Global reads in `text` whose name gets a top-level `local` further down.
+
+    Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
+    """
+    return scan(text).late
 
 
 def missing_sdk_binding(text: str, alias: str = "R") -> int | None:
     """First line that reads `alias` as a global when the file never binds it.
 
-    A mod gets ``R`` only from ``local R = require "rsmm"``. Without that line
-    every ``R.`` / ``R:`` compiles to a global read, the loader raises
-    ``attempt to index a nil value (global 'R')``, and no handler registers —
-    so lint must report it as an error, not a silent pass. A top-level local
-    declared *below* the read is the late-local case: :func:`late_locals`
-    already reports that one with the declaration line, so it is skipped here.
+    A mod gets ``R`` only from ``local R = require "rsmm"`` — or from a global
+    ``R = require "rsmm"``, which :class:`ScopeReport` reports separately as
+    ``alias_assigned``: each mod runs in its own ``lua_State``, so a global
+    bound once is live for the rest of the file and for every helper module it
+    requires, and ``rsmm lint`` must not call that a nil global.
+
+    Without either binding every ``R.`` / ``R:`` compiles to a global read, the
+    loader raises ``attempt to index a nil value (global 'R')``, and no handler
+    registers — so lint must report it as an error, not a silent pass. A
+    top-level local declared *below* the read is the late-local case:
+    :func:`late_locals` already reports that one with the declaration line, so
+    it is skipped here.
 
     Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
     """
-    toks = tokenize(text)
-    w = _Walk(toks)
-    w.run()
-    first = next((k for name, k in w.globals if name == alias), None)
-    if first is None:
-        return None
-    if any(d > first for d in w.top_level.get(alias, ())):
-        return None
-    return toks[first].line
+    return scan(text, alias).alias_line
+

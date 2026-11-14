@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding
+from rsmm.cli._lua_scope import LuaSyntaxError, ScopeReport, scan
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -1010,6 +1010,14 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     events, callables = _engine_vocab()
     errs = 0
     warns = 0
+    # Read each file once and walk it once: both scope questions (late locals,
+    # and the missing `require "rsmm"`) come from the same pass. Whether ANY
+    # file in the mod binds R globally has to be known before any of them is
+    # reported — each mod runs in its own `lua_State` (`script_lua.cpp:2329`),
+    # so `R = require "rsmm"` in init.lua is live for the rest of that file and
+    # for every helper module it requires, and those helpers read R as a global
+    # without ever being nil.
+    sources: list[tuple[str, str, ScopeReport | None, str]] = []
     for f in sorted(entry.rglob("*.lua")):
         if not f.is_file():
             continue
@@ -1019,25 +1027,28 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             continue
         rel = f.relative_to(entry).as_posix()
         try:
-            late = late_locals(text)
-            unbound = missing_sdk_binding(text)
+            sources.append((rel, text, scan(text), ""))
         except LuaSyntaxError as e:
+            sources.append((rel, text, None, str(e)))
+    alias_bound = any(r is not None and r.alias_assigned
+                      for _rel, _text, r, _err in sources)
+
+    for rel, text, report, scope_err in sources:
+        if report is None:
             print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
-                  f"{_ST.dim(f'scope not checked: {e}')}")
+                  f"{_ST.dim(f'scope not checked: {scope_err}')}")
             warns += 1
-            late = []
-            unbound = None
-        for h in late:
+        for h in (report.late if report is not None else ()):
             hint = (f"— its `local` is on line {h.decl_line}, so here it compiles "
                     f"to a global read and is nil at run time; move the local "
                     f"above its first use")
             print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{h.line}')}: "
                   f"{_ST.accent(h.name)} read before its local {_ST.dim(hint)}")
             errs += 1
-        if unbound is not None:
+        if report is not None and report.alias_line is not None and not alias_bound:
             hint = ('— R is a global here and nil when the mod loads; add '
                     '`local R = require "rsmm"` above its first use')
-            print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{unbound}')}: "
+            print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{report.alias_line}')}: "
                   f"{_ST.accent('R')} read without its require {_ST.dim(hint)}")
             errs += 1
         for ln, line in enumerate(text.splitlines(), 1):

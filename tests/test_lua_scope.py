@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, scan
 
 
 def _names(src: str) -> list[tuple[str, int, int]]:
@@ -96,3 +96,44 @@ def test_call_arguments_with_a_function_body():
 def test_unwalkable_source_raises(src):
     with pytest.raises(LuaSyntaxError):
         late_locals(src)
+
+
+def test_a_global_write_is_recorded_next_to_the_reads():
+    """`R = require "rsmm"` binds R for the whole lua_State; the walk has to
+    know it wrote a global, not merely that the line was not a read."""
+    report = scan('R = require "rsmm"\n')
+    assert report.alias_assigned is True
+    assert report.alias_line is None
+
+
+def test_a_field_write_is_still_a_read_of_the_global():
+    """`R.on = f` writes a field, so it READS R — nothing bound it."""
+    report = scan("R.on = function() end\n")
+    assert report.alias_assigned is False
+    assert report.alias_line == 1
+
+
+def test_a_local_assignment_is_not_a_global_write():
+    """Rebinding a local R (`local R = require "rsmm"` then `R = nil`) writes
+    the local, so it must not look like the mod bound a global."""
+    report = scan('local R = require "rsmm"\nR = nil\nR.on("ready", function() end)\n')
+    assert report.alias_assigned is False
+    assert report.alias_line is None
+
+
+def test_one_walk_answers_both_questions(monkeypatch):
+    """Lint asks for late locals and the alias for every file it reads; doing
+    that with two calls tokenized and walked each file twice."""
+    import rsmm.cli._lua_scope as scope
+
+    calls: list[str] = []
+    real = scope.tokenize
+
+    def counting(text: str):
+        calls.append(text)
+        return real(text)
+
+    monkeypatch.setattr(scope, "tokenize", counting)
+    report = scope.scan('R.on("ready", function() end)\nlocal F = 1\n')
+    assert len(calls) == 1
+    assert report.alias_line == 1
