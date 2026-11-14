@@ -1014,6 +1014,65 @@
    }
   },
   {
+   "name": "EntityComponent_RunActivate",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_140711630",
+   "status": "ok",
+   "signature": "void(oIEntityCpnt* cpnt)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "The component ACTIVATE runner every component goes through: EntityComponent_Activate tail-calls it when no activation is pending. Sets flags byte cpnt+0x64 |= 0x0A (bit 0x08 = active, 0x02 = activating), fires the activate listeners, calls the component's vftable slot 28 (+0xe0: UiController_OnShow on every UI controller), then clears 0x02. If a deactivate was queued meanwhile (u16 cpnt+0x60) it calls EntityComponent_RunDeactivate itself, and that one calls back here: the two runners recurse through each other, so one show can be activate -> deactivate -> activate.\n\nHOT PATH: every entity component in the game (states, timers, effects) activates through here, from ~73 call sites. A detour must reject non-UI components in native code by vftable before doing anything else. R.ui's detour (hook_ui_state.cpp) reads the active bit (+0x64 & 8) AFTER the original returns and compares it with its own record, so the mutual recursion cannot produce unmatched open/close events. Static RE on b9c3642884a8 (2026-11-14, PR #110 review); runtime thread and nesting still to be confirmed in game.",
+   "locator": {
+    "calls": [
+     "EntityComponent_RunDeactivate"
+    ],
+    "called_by": [
+     "EntityComponent_Activate"
+    ],
+    "offsets": [
+     "0x8",
+     "0x5e",
+     "0x60",
+     "0x64",
+     "0xe0",
+     "0xe8"
+    ]
+   }
+  },
+  {
+   "name": "EntityComponent_RunDeactivate",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_140711790",
+   "status": "ok",
+   "signature": "void(oIEntityCpnt* cpnt)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "The component DEACTIVATE runner, the mirror of EntityComponent_RunActivate: flags byte cpnt+0x64 = (flags & ~0x08) | 0x04 (active bit cleared, deactivating set), fires the deactivate listeners, calls vftable slot 29 (+0xe8: UiController_OnHide on every UI controller), clears 0x04, then runs a queued activation (u16 cpnt+0x5e) by calling EntityComponent_RunActivate. ~44 call sites; same hot-path rule as the activate runner. Static RE on b9c3642884a8 (2026-11-14).",
+   "locator": {
+    "calls": [
+     "EntityComponent_RunActivate"
+    ],
+    "offsets": [
+     "0x8",
+     "0x5e",
+     "0x60",
+     "0x64",
+     "0xe0",
+     "0xe8"
+    ]
+   }
+  },
+  {
    "name": "EntityEventTrigger_Fire",
    "kind": "function",
    "category": "skill",

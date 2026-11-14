@@ -1812,6 +1812,35 @@ Pair it with `R.input.on_wheel` for wheel zoom, and clamp against
 `R.camera.get("distance")` to keep the result in a range you choose.
 camera-control does exactly this.
 
+### What the UI is showing (`R.ui`)
+
+```lua
+R.ui.is_open("menu")     --> true | false | nil, reason   (kinds: menu, book, modal, loading, page)
+R.ui.page()              --> the book page shown: "HeroSelectPage", "TutorialPage", ... or nil
+R.ui.any()               --> is a menu, the book or a modal open?
+R.ui.count("menu")       --> how many menus are open (nested ones count)
+R.ui.open()              --> { {kind, class, ptr}, ... }, oldest first
+R.on("ui:open",  function(e) R.log(e.kind .. " " .. e.class) end)
+R.on("ui:close", function(e) ... end)
+```
+
+The loader tracks the game's own UI controllers rather than scene flags, so a
+sub-panel closing does not report the pause menu as closed. The kinds:
+
+| kind | controllers |
+|---|---|
+| `menu` | pause menu, main menu, hero selection, Sandman's shop, inventory, magic mirror, social options |
+| `book` | the 3D book |
+| `modal` | modal dialogs (including the EULA, multiplayer and MyNacon ones) |
+| `loading` | the loading screen |
+| `page` | a page of the book: play, hero selection, hero page and story, Merlin's abilities, the compendium and its heroes / items / memories / tutorial tabs, challenges, social, options, the end-of-run recap, stats and score |
+
+It arms the first time a mod calls `R.ui` or subscribes to `ui:open` /
+`ui:close`, so it costs nothing in a session that never asks. When it cannot
+arm (a game patch, or `RSMM_DISABLE_UI_STATE=1`), `is_open` returns `nil` and a
+reason: unknown is never reported as closed. `ui:open` / `ui:close` fire after
+the game has finished showing or hiding the controller.
+
 ### Overlays (`R.overlay`)
 
 The game gives a mod nowhere to draw a HUD, so a mod can publish one to the

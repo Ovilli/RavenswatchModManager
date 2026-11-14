@@ -217,6 +217,8 @@ end
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
     assert(type(cb) == "function",  "R.on: cb must be function")
+    -- R.ui's events come from detours armed on first use: subscribing is use.
+    if (event == "ui:open" or event == "ui:close") and R.ui then R.ui.arm() end
     return _add_sub{ event = event, cb = cb }
 end
 
@@ -3092,6 +3094,19 @@ end
 do
     local ok, x = _submodule_fn("watch", { R = R, I = I })
     if ok and type(x) == "table" then R.watch = x end
+end
+
+-- what the UI is showing ----------------------------------------------------
+--
+-- Lives in rsmm/ui.lua. Tracks the game's UI controllers (menus, the book,
+-- modals, the loading screen) from the engine's component runners; armed on
+-- first use.
+--
+--   R.ui.is_open("menu") / .count(kind) / .open() / .any()
+--   R.on("ui:open" | "ui:close", function(e) e.kind, e.class, e.ptr end)
+do
+    local ok, x = _submodule_fn("ui", { R = R, I = I })
+    if ok and type(x) == "table" then R.ui = x end
 end
 
 -- chapter timer -----------------------------------------------------------

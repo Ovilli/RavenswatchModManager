@@ -32,6 +32,7 @@ extern "C" {
 #include "hook_camera.h"
 #include "hook_input.h"
 #include "hook_keybinds.h"
+#include "hook_ui_state.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -1859,6 +1860,44 @@ int lua_watch_status(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.ui_state_arm() -> armed, why
+//   Installs R.ui's component-runner detours on first use (hook_ui_state.h).
+int lua_ui_state_arm(lua_State* L) {
+    std::string why;
+    const bool ok = ui_state_arm(&why);
+    lua_pushboolean(L, ok);
+    if (ok) lua_pushnil(L); else lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+// rsmm._internal.ui_state_count(kind) -> open count, or nil when not armed
+//   kind: "menu" | "book" | "modal" | "loading" | "page"
+int lua_ui_state_count(lua_State* L) {
+    UiKind kind;
+    if (!ui_kind_from_name(luaL_checkstring(L, 1), &kind))
+        return luaL_argerror(L, 1, "kind is menu, book, modal, loading or page");
+    const int n = ui_state_count(kind);
+    if (n < 0) lua_pushnil(L); else lua_pushinteger(L, n);
+    return 1;
+}
+
+// rsmm._internal.ui_state_open() -> { {kind, class, ptr}, ... } oldest first
+int lua_ui_state_open(lua_State* L) {
+    const auto open = ui_state_open();
+    lua_createtable(L, static_cast<int>(open.size()), 0);
+    for (std::size_t i = 0; i < open.size(); ++i) {
+        lua_createtable(L, 0, 3);
+        lua_pushstring(L, ui_kind_name(open[i].kind));
+        lua_setfield(L, -2, "kind");
+        lua_pushstring(L, open[i].label);
+        lua_setfield(L, -2, "class");
+        lua_pushinteger(L, static_cast<lua_Integer>(open[i].ptr));
+        lua_setfield(L, -2, "ptr");
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    return 1;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -2192,6 +2231,9 @@ void register_api(lua_State* L) {
         { "watch_rearm",             lua_watch_rearm },
         { "watch_drain",             lua_watch_drain },
         { "watch_status",            lua_watch_status },
+        { "ui_state_arm",            lua_ui_state_arm },
+        { "ui_state_count",          lua_ui_state_count },
+        { "ui_state_open",           lua_ui_state_open },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },

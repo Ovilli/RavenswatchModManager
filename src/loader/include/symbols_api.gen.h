@@ -166,6 +166,20 @@ inline EntityComponent_Activate_fn EntityComponent_Activate() {
     return reinterpret_cast<EntityComponent_Activate_fn>(rsmm::fn_resolve(Sym::EntityComponent_Activate_Pattern));
 }
 
+// EntityComponent_RunActivate  (EntityComponent_RunActivate)
+//   void(oIEntityCpnt* cpnt)
+using EntityComponent_RunActivate_fn = void(*)(void*);
+inline EntityComponent_RunActivate_fn EntityComponent_RunActivate() {
+    return reinterpret_cast<EntityComponent_RunActivate_fn>(rsmm::fn_resolve(Sym::EntityComponent_RunActivate_Pattern));
+}
+
+// EntityComponent_RunDeactivate  (EntityComponent_RunDeactivate)
+//   void(oIEntityCpnt* cpnt)
+using EntityComponent_RunDeactivate_fn = void(*)(void*);
+inline EntityComponent_RunDeactivate_fn EntityComponent_RunDeactivate() {
+    return reinterpret_cast<EntityComponent_RunDeactivate_fn>(rsmm::fn_resolve(Sym::EntityComponent_RunDeactivate_Pattern));
+}
+
 // EntityEventTrigger_Fire  (EntityEventTrigger_Fire)
 //   void(EventTrigger* trig)
 using EntityEventTrigger_Fire_fn = void(*)(void*);
