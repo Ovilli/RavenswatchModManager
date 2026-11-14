@@ -414,6 +414,21 @@ has not yet been shown to change what generates.
 The server answers only loopback hosts, and every write needs a token that
 exists only in the pages it served.
 
+### `rsmm templates`
+
+Every shipped hero button a hero written from scratch can lend whole with
+`template = "<Hero>: <button>"` (see
+[Buttons of a hero written from scratch](/guides/first-mod-by-kind/#buttons-of-a-hero-written-from-scratch)).
+
+```sh
+./rsmm templates                          # every hero's buttons
+./rsmm templates Red                      # Scarlet's
+./rsmm templates Red --button "Wolf Primary"   # its clips and numbers
+```
+
+A button's clips are what `clips` swaps and its numbers are what `values`
+sets.
+
 ### Numeric values and texture swaps
 
 There is no dedicated command for these. A mod declares them as `[[patch]]`

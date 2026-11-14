@@ -224,6 +224,52 @@ def test_an_ability_is_written_from_data():
 
 
 @needs_corpus
+@needs_install
+def test_a_rush_ends_in_a_strike_like_scarlets_wolf_bite():
+    """``strike``: the lunge holds the in-range detector (its root motion stops
+    at the enemy) and, once an enemy is in reach, an event switches the rush off
+    and the strike on; the hits are the strike's. ``intangible`` holds
+    Character_Common's State Intangible through both."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    red = "Characters\\Heroes\\RED\\Animations\\Skills\\"
+    ab = HA.Ability.parse("power", {
+        "clip": red + "RED_Wolf_Pimary_Bite_In.fbx", "intangible": True,
+        "strike": {"clip": red + "RED_Wolf_Pimary_Bite_Out.fbx", "after": 0.25},
+        "hits": [{"at": 0.23, "radius": 3}]})
+    ef = _hero("Hero_T")
+    assert HA.build(ef, HF.common(_read), ab, seed="t") == "State Power Ability"
+    out = ef.to_bytes()
+    g = {c.name: c for c in EG.parse(out, "Hero_T").components}
+
+    def f(name):
+        return {x.name: x.text for x in EF.fields(g[name])}
+    rush, strike = f("State Power Ability"), f("State Power Ability Strike")
+    for st in (rush, strike):
+        assert HA.IN_RANGE_DETECTOR in st["while_active"]
+        assert "Character_Common\\Base\\State Intangible" in st["while_active"]
+    assert "Power Ability Hit 1 Timer" in strike["activates"]
+    assert "Power Ability Hit 1 Timer" not in rush["activates"]
+    assert "Power Ability Strike Window Timer" in rush["activates"]
+    ev = f("Event Power Ability Strike")
+    assert g["Event Power Ability Strike"].is_event
+    assert "State Power Ability Strike" in ev["activates"]
+    assert "State Power Ability\"" in ev["deactivates?"] or \
+        ev["deactivates?"].count("State Power Ability") >= 2
+    tester = g["Power Ability Strike Tester"]
+    assert tester.flags == 0x1                              # a trigger, not a read
+    assert f("Power Ability Strike Tester")["on_true"].endswith("\\Event Power Ability Strike")
+    assert "Power Ability Strike Tester" in f("State Power Ability Strike Window")["while_active"]
+    # a lunge that reaches no one ends the rush AND closes the window
+    assert f("Power Ability End Timer")["on_end"].endswith("\\Event Power Ability Rush End")
+    assert "Strike Window" in f("Event Power Ability Rush End")["deactivates?"]
+    with pytest.raises(HA.AbilityError, match="strike"):
+        HA.Ability.parse("power", {"clip": red + "RED_Wolf_Pimary_Bite_In.fbx",
+                                   "strike": {"clip": red + "x.fbx"}})   # no hits
+
+
+@needs_corpus
 def test_a_hit_can_stun_knock_back_stagger_and_apply_a_status():
     """A hit's extras land in its damage record: stun / knockback / stagger
     fields (``HIT_FIELDS``) and, for ``status``, a copied shipped debuff whose
@@ -530,6 +576,15 @@ def test_the_basic_attack_is_a_combo_of_the_heros_own():
     combo = [r.path for r in e2.component("Attack Ability Combo").refs]
     assert combo == ["[State] Hero_T\\Ability Attack\\State Attack Ability",
                      "[Dt Ability Controller] Hero_T\\Hero Controller\\Basic Attack Controller"]
+    # ... by the SHARED BASE's slot GUID, as all 17 shipped main-slot combos:
+    # by the override's own GUID the combo never matched its button and every
+    # press restarted it at step 1 (Blood Wolf 0.2, playtest 2026-11-14).
+    ctl_ref = e2.component("Attack Ability Combo").refs[1]
+    assert ctl_ref.guid == HF.common(_read).component("Basic Attack Controller").guid
+    assert ctl_ref.guid != e2.component("Basic Attack Controller").guid
+    # the steps' in-range root motion reads a detector the parent must hold on
+    st_refs = [r.path for r in e2.component("State Attack Ability").refs]
+    assert any(p.endswith("\\" + HA.IN_RANGE_DETECTOR) for p in st_refs)
     # the button and the state reach the combo through its selector only: a
     # state that started the combo itself re-entered forever (game hung)
     from rsmm.engine import entity_fields as EF
