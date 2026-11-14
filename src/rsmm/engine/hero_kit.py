@@ -732,6 +732,12 @@ def _replace(trigger: str, g: EG.EntityGraph) -> list[dict]:
 
 
 def _entity_ref(path) -> str:
+    if str(path).startswith("own:"):
+        # "own:<Id>" names an entity of the hero's own, resolved by the hero
+        # kind before the kit runs; one that arrives here was missed, and
+        # turning it into "<Id>.entity.ot" spawned nothing, silently.
+        raise KitError(f"{path!r}: an own: entity that was never resolved to its "
+                       "file (the hero kind resolves own: refs it knows about)")
     ent = str(path).replace("/", "\\").strip("\\").removeprefix("EntitySettings\\")
     return ent if ent.endswith(".entity.ot") else ent.removesuffix(".entity") + ".entity.ot"
 

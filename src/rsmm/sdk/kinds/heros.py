@@ -2003,6 +2003,12 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         if not isinstance(pets, dict):
             raise ContentError(f"hero {hid}: frame.pets is a table (the kit's pets block)")
         pets = own_fire([dict(pets)])[0]
+        # The talent-switched variant names its own entities the same way
+        # (`upgrade = { burst = "own:Bomb" }`). Left unresolved it reached the
+        # kit as a path "Bomb.entity.ot" that exists nowhere, and the Rabid
+        # wolf bit without ever exploding (Blood Wolf 0.3.0, 2026-11-14).
+        if isinstance(pets.get("upgrade"), dict):
+            pets["upgrade"] = own_fire([dict(pets["upgrade"])])[0]
         button = str(pets.get("button", "trait"))
         pets.setdefault("when", f"State {button.title()} Ability")
 
