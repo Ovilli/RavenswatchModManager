@@ -20,6 +20,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth-client';
+import './nav.css';
 
 /** Bell in the header linking to /notifications, with an unread-count badge.
  *  Polls every five minutes (and on window focus) so a new notification
@@ -305,8 +306,8 @@ export function Nav() {
   useEffect(() => {
     const header = headerRef.current;
     if (!header) return;
-    // Secondary sticky navigation must meet the header's border box, including
-    // height changes from the mobile menu controls or authentication state.
+    // Scroll targets must clear the header, including height changes from
+    // mobile controls or authentication state. The visual fade adds no height.
     const updateHeight = () => {
       document.documentElement.style.setProperty(
         '--site-header-height',
@@ -327,10 +328,7 @@ export function Nav() {
   const isActive = (href: string) => isActivePath(pathname, href);
 
   return (
-    <header
-      ref={headerRef}
-      className="site-header sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl"
-    >
+    <header ref={headerRef} className="site-header sticky top-0 z-50">
       <div className="container mx-auto flex items-center justify-between px-6 py-3">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
           <img

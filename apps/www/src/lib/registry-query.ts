@@ -1,4 +1,4 @@
-import type { ModCategory } from '@rsmm/schemas';
+import { type ModCategory, isPrivateOnlyTag } from '@rsmm/schemas';
 import type { Route } from 'next';
 
 export const REGISTRY_CATEGORIES: { id: ModCategory; label: string }[] = [
@@ -20,6 +20,7 @@ export type RegistryFilters = {
   minRating: number;
   featuredOnly: boolean;
   showNsfw: boolean;
+  hidePrivateOnly: boolean;
 };
 
 export const EMPTY_REGISTRY_FILTERS: RegistryFilters = {
@@ -28,6 +29,7 @@ export const EMPTY_REGISTRY_FILTERS: RegistryFilters = {
   minRating: 0,
   featuredOnly: false,
   showNsfw: false,
+  hidePrivateOnly: false,
 };
 
 export function readRegistryQuery(query: string) {
@@ -43,12 +45,13 @@ export function readRegistryQuery(query: string) {
         (params.get('tags') ?? '')
           .split(',')
           .map((tag) => tag.trim())
-          .filter(Boolean),
+          .filter((tag) => tag && !isPrivateOnlyTag(tag)),
       ),
     ],
     minRating: REGISTRY_RATINGS.includes(rating) ? rating : 0,
     featuredOnly: params.get('featured') === '1',
     showNsfw: params.get('nsfw') === '1',
+    hidePrivateOnly: params.get('hidePrivateOnly') === '1',
   };
   return {
     query: params.get('q') ?? '',
@@ -65,12 +68,15 @@ export function registryHref(params: URLSearchParams): Route {
 
 export function registryFilterHref(query: string, filters: RegistryFilters): Route {
   const params = new URLSearchParams(query);
-  for (const key of ['category', 'tags', 'rating', 'featured', 'nsfw', 'page']) params.delete(key);
+  for (const key of ['category', 'tags', 'rating', 'featured', 'nsfw', 'hidePrivateOnly', 'page'])
+    params.delete(key);
   if (filters.category !== 'all') params.set('category', filters.category);
-  if (filters.tags.length) params.set('tags', filters.tags.join(','));
+  const tags = filters.tags.filter((tag) => !isPrivateOnlyTag(tag));
+  if (tags.length) params.set('tags', tags.join(','));
   if (filters.minRating > 0) params.set('rating', String(filters.minRating));
   if (filters.featuredOnly) params.set('featured', '1');
   if (filters.showNsfw) params.set('nsfw', '1');
+  if (filters.hidePrivateOnly) params.set('hidePrivateOnly', '1');
   return registryHref(params);
 }
 
@@ -88,6 +94,7 @@ export function registryFilterCount(filters: RegistryFilters): number {
     filters.tags.length +
     Number(filters.minRating > 0) +
     Number(filters.featuredOnly) +
-    Number(filters.showNsfw)
+    Number(filters.showNsfw) +
+    Number(filters.hidePrivateOnly)
   );
 }

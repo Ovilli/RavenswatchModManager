@@ -540,6 +540,8 @@ export function createApiClient(options: ApiClientOptions) {
           featured?: boolean;
           /** false = exclude NSFW mods; absent/true = include (server default). */
           nsfw?: boolean;
+          /** Exclude mods labelled for private games only, including legacy tags. */
+          hidePrivateOnly?: boolean;
           owner?: string;
           sort?: 'recent' | 'popular' | 'featured' | 'rating';
           /** Trending window for sort=popular (downloads within last N days). */
@@ -557,6 +559,7 @@ export function createApiClient(options: ApiClientOptions) {
         if (params.offset) qs.set('offset', String(params.offset));
         if (params.featured) qs.set('featured', 'true');
         if (params.nsfw === false) qs.set('nsfw', 'false');
+        if (params.hidePrivateOnly) qs.set('hidePrivateOnly', '1');
         if (params.owner) qs.set('owner', params.owner);
         if (params.sort) qs.set('sort', params.sort);
         if (params.window) qs.set('window', params.window);

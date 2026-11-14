@@ -1,5 +1,6 @@
 'use client';
 
+import { isPrivateOnlyTag } from '@rsmm/schemas';
 import { Check, Star, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -26,7 +27,9 @@ export function RegistryFilterDialog({
 }) {
   const [draft, setDraft] = useState(filters);
   const dialog = useRef<HTMLDialogElement>(null);
-  const tagOptions = [...new Set([...tags.map((tag) => tag.name), ...draft.tags])];
+  const tagOptions = [...new Set([...tags.map((tag) => tag.name), ...draft.tags])].filter(
+    (tag) => !isPrivateOnlyTag(tag),
+  );
   const close = () => {
     dialog.current?.close();
     onClose();
@@ -85,7 +88,6 @@ export function RegistryFilterDialog({
         <div className="registry-filter-body">
           <fieldset>
             <legend>Category</legend>
-            <p>What would you like to change?</p>
             <div className="registry-filter-options">
               <button
                 type="button"
@@ -121,11 +123,6 @@ export function RegistryFilterDialog({
           {tagOptions.length ? (
             <fieldset>
               <legend>Tags</legend>
-              <p>
-                {draft.tags.length > 1
-                  ? `Mods must match all ${draft.tags.length} selected tags.`
-                  : 'Narrow it down by what a mod does.'}
-              </p>
               <div className="registry-filter-options">
                 {tagOptions.map((tag) => {
                   const selected = draft.tags.includes(tag);
@@ -155,8 +152,7 @@ export function RegistryFilterDialog({
             </fieldset>
           ) : null}
           <fieldset>
-            <legend>Player rating</legend>
-            <p>Choose a minimum rating from the community.</p>
+            <legend>Rating</legend>
             <div className="registry-filter-options">
               {REGISTRY_RATINGS.map((rating) => (
                 <button
@@ -176,8 +172,17 @@ export function RegistryFilterDialog({
             <legend>Preferences</legend>
             <label className="registry-filter-toggle">
               <span>
+                <strong>Hide private only mods</strong>
+              </span>
+              <input
+                type="checkbox"
+                checked={draft.hidePrivateOnly}
+                onChange={(event) => setDraft({ ...draft, hidePrivateOnly: event.target.checked })}
+              />
+            </label>
+            <label className="registry-filter-toggle">
+              <span>
                 <strong>Featured mods only</strong>
-                <span>Explore the highlighted community picks.</span>
               </span>
               <input
                 type="checkbox"
@@ -188,7 +193,6 @@ export function RegistryFilterDialog({
             <label className="registry-filter-toggle">
               <span>
                 <strong>Include mature content</strong>
-                <span>Show mods marked as NSFW alongside other results.</span>
               </span>
               <input
                 type="checkbox"

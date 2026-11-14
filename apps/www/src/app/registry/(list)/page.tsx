@@ -47,12 +47,10 @@ export default function RegistryPage() {
 function RegistryFallback() {
   return (
     <main className="registry-explore">
-      <div className="registry-browse-space">
-        <div className="registry-browse-bar">
-          <h1>Explore mods</h1>
-          <RegistrySearchFallback />
-          <div className="registry-toolbar-controls-placeholder" aria-hidden />
-        </div>
+      <div className="registry-browse-bar">
+        <h1>Explore mods</h1>
+        <RegistrySearchFallback />
+        <div className="registry-toolbar-controls-placeholder" aria-hidden />
       </div>
       <div className="registry-loading">
         <Spinner />
@@ -66,7 +64,7 @@ function RegistryInner() {
   const router = useRouter();
   const search = useSearchParams();
   const { query, filters, sort, page } = readRegistryQuery(search.toString());
-  const { category, tags, minRating, featuredOnly, showNsfw } = filters;
+  const { category, tags, minRating, featuredOnly, showNsfw, hidePrivateOnly } = filters;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<View>('grid');
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -102,7 +100,18 @@ function RegistryInner() {
   };
 
   const list = useQuery({
-    queryKey: ['registry', query, category, tags, minRating, sort, featuredOnly, showNsfw, page],
+    queryKey: [
+      'registry',
+      query,
+      category,
+      tags,
+      minRating,
+      sort,
+      featuredOnly,
+      showNsfw,
+      hidePrivateOnly,
+      page,
+    ],
     queryFn: () =>
       api.mods.list({
         q: query || undefined,
@@ -112,6 +121,7 @@ function RegistryInner() {
         sort,
         featured: featuredOnly || undefined,
         nsfw: showNsfw ? undefined : false,
+        hidePrivateOnly,
         facets: true,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
@@ -139,58 +149,56 @@ function RegistryInner() {
 
   return (
     <main className="registry-explore">
-      <div className="registry-browse-space">
-        <header className="registry-browse-bar">
-          <h1 title={heading}>{heading}</h1>
-          <RegistrySearch
-            activeFilters={activeFilters}
-            filtersOpen={filtersOpen}
-            onOpenFilters={() => setFiltersOpen(true)}
-          />
-          <div className="registry-result-controls">
-            <label className="registry-sort">
-              <span>Sort by</span>
-              <select
-                aria-label="Sort mods"
-                value={sort}
-                onChange={(event) => {
-                  const params = new URLSearchParams(window.location.search);
-                  params.delete('page');
-                  if (event.target.value === 'popular') params.delete('sort');
-                  else params.set('sort', event.target.value);
-                  window.history.replaceState(null, '', registryHref(params));
-                }}
-              >
-                <option value="popular">Popular</option>
-                <option value="recent">Recent</option>
-                <option value="rating">Top rated</option>
-              </select>
-              <ChevronDown size={14} aria-hidden />
-            </label>
-            <fieldset className="registry-view-switch">
-              <legend className="sr-only">Layout</legend>
-              <button
-                type="button"
-                className="registry-icon-button"
-                aria-label="Cards"
-                aria-pressed={view === 'grid'}
-                onClick={() => chooseView('grid')}
-              >
-                <LayoutGrid size={18} aria-hidden />
-              </button>
-              <button
-                type="button"
-                className="registry-icon-button"
-                aria-label="List"
-                aria-pressed={view === 'list'}
-                onClick={() => chooseView('list')}
-              >
-                <Rows3 size={18} aria-hidden />
-              </button>
-            </fieldset>
-          </div>
-        </header>
-      </div>
+      <header className="registry-browse-bar">
+        <h1 title={heading}>{heading}</h1>
+        <RegistrySearch
+          activeFilters={activeFilters}
+          filtersOpen={filtersOpen}
+          onOpenFilters={() => setFiltersOpen(true)}
+        />
+        <div className="registry-result-controls">
+          <label className="registry-sort">
+            <span>Sort by</span>
+            <select
+              aria-label="Sort mods"
+              value={sort}
+              onChange={(event) => {
+                const params = new URLSearchParams(window.location.search);
+                params.delete('page');
+                if (event.target.value === 'popular') params.delete('sort');
+                else params.set('sort', event.target.value);
+                window.history.replaceState(null, '', registryHref(params));
+              }}
+            >
+              <option value="popular">Popular</option>
+              <option value="recent">Recent</option>
+              <option value="rating">Top rated</option>
+            </select>
+            <ChevronDown size={14} aria-hidden />
+          </label>
+          <fieldset className="registry-view-switch">
+            <legend className="sr-only">Layout</legend>
+            <button
+              type="button"
+              className="registry-icon-button"
+              aria-label="Cards"
+              aria-pressed={view === 'grid'}
+              onClick={() => chooseView('grid')}
+            >
+              <LayoutGrid size={18} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="registry-icon-button"
+              aria-label="List"
+              aria-pressed={view === 'list'}
+              onClick={() => chooseView('list')}
+            >
+              <Rows3 size={18} aria-hidden />
+            </button>
+          </fieldset>
+        </div>
+      </header>
 
       <div ref={resultsRef} className="registry-results" aria-busy={list.isFetching}>
         <output className="sr-only">
