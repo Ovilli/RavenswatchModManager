@@ -11,7 +11,7 @@ Every `rsmm` subcommand, auto-generated from the dispatch table (`rsmm.cli._disp
 Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcommand. For task-oriented prose, see the [CLI guide](/reference/cli/).
 :::
 
-**64 commands.**
+**65 commands.**
 
 | Command | Module | Summary |
 |---|---|---|
@@ -70,6 +70,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm symbols` | `rsmm.cli.cmd_symbols` | ``rsmm symbols`` — the engine symbol map (Minecraft-style mappings). |
 | `rsmm talent-editor` | `rsmm.cli.cmd_editor` | `rsmm editor` — items, talents, abilities and maps in one local page. |
 | `rsmm talents` | `rsmm.cli.cmd_talents` | `rsmm talents` — discover + edit hero talent ("Skill") values. |
+| `rsmm templates` | `rsmm.cli.cmd_templates` | `rsmm templates` — every shipped button a hero written from scratch can lend. |
 | `rsmm test` | `rsmm.cli.test` | rsmm test — diff a mod's patch plan against a checked-in fixture. |
 | `rsmm uncook` | `rsmm.cli.uncook` | rsmm uncook — extract a cooked asset to an editable source-format file. |
 | `rsmm unify` | `rsmm.cli.unify` | rsmm unify — assemble one Blender-loadable GLB per hero. |
