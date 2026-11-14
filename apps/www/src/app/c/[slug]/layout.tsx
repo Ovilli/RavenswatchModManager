@@ -2,7 +2,6 @@ import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { type Entity, fetchEntity } from '../../../lib/entity';
-import { ServerProse } from '../../components/server-prose';
 
 const SITE = 'Ravenswatch Mod Manager';
 
@@ -84,14 +83,6 @@ export async function generateMetadata({
   };
 }
 
-// The star average deliberately stays out of this byline: it comes from a
-// separate client query and is already rendered by the reviews section.
-function collectionByline(c: Collection): string {
-  const parts = [`by ${c.ownerName ?? 'unknown'}`];
-  if (c.updatedAt) parts.push(`updated ${new Date(c.updatedAt).toLocaleDateString('en-US')}`);
-  return parts.join(' · ');
-}
-
 export default async function Layout({
   children,
   params,
@@ -120,21 +111,6 @@ export default async function Layout({
               ],
             }),
           }}
-        />
-      ) : null}
-      {/* Server-rendered name, byline, summary and description. The client page
-          below keeps the cover image, the owner controls and the mod list. */}
-      {res.state === 'ok' ? (
-        <ServerProse
-          backHref="/c"
-          backLabel="Back to Collections"
-          title={res.data.name ?? slug}
-          byline={collectionByline(res.data)}
-          summary={res.data.summary}
-          image={{ url: res.data.imageUrl, alt: `${res.data.name ?? slug} cover` }}
-          body={res.data.description}
-          bodyHeading="About"
-          card
         />
       ) : null}
       {children}

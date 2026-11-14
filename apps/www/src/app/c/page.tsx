@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { api } from '../../lib/api';
-import { ModCover } from '../components/mod-cover';
+import { ListingCard } from '../components/listing-card';
 
 export default function CollectionsIndexPage() {
   const { data, isLoading, isError, refetch } = useQuery({
@@ -63,33 +63,7 @@ export default function CollectionsIndexPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {data.items.map((c) => (
-            <Link
-              key={c.id}
-              href={`/c/${c.slug}` as Route}
-              className="group block overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50"
-            >
-              {c.imageUrl ? (
-                <div className="aspect-[21/9] w-full overflow-hidden bg-muted">
-                  <img
-                    src={c.imageUrl}
-                    alt={`${c.name} cover`}
-                    className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
-                    loading="lazy"
-                  />
-                </div>
-              ) : (
-                <ModCover seed={c.slug} name={c.name} className="aspect-[21/9] w-full" />
-              )}
-              <div className="p-4">
-                <h2 className="text-base font-semibold leading-tight">{c.name}</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {c.ownerName ?? 'unknown'} · {c.modCount} mod{c.modCount === 1 ? '' : 's'}
-                </p>
-                {c.summary ? (
-                  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.summary}</p>
-                ) : null}
-              </div>
-            </Link>
+            <ListingCard key={c.id} kind="collection" item={c} />
           ))}
         </div>
       )}

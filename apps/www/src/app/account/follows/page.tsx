@@ -6,7 +6,7 @@ import { HeartOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { useSession } from '../../../lib/auth-client';
-import { ModCard } from '../../components/mod-card';
+import { ListingCard } from '../../components/listing-card';
 
 export default function FollowedModsPage() {
   const { data: session, isPending: sessionLoading } = useSession();
@@ -98,14 +98,16 @@ export default function FollowedModsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {items.map((f) => (
               <div key={f.slug} className="space-y-2">
-                <ModCard
-                  mod={{
+                <ListingCard
+                  kind="mod"
+                  item={{
                     slug: f.slug,
                     name: f.name,
                     author: f.authorName ?? null,
                     summary: f.summary ?? null,
                     latestVersion: f.latestVersion ?? null,
-                    downloads: f.downloads ?? 0,
+                    downloads: f.downloads ?? null,
+                    updatedAt: f.updatedAt ?? f.followedAt,
                     category: f.category ?? null,
                     imageUrl: f.imageUrl,
                     rating: f.rating ?? null,

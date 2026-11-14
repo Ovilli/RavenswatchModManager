@@ -24,7 +24,7 @@ function GalleryImage({ item, priority = false }: { item: ModMedia; priority?: b
   );
 }
 
-export function ModGallery({
+export function ListingGallery({
   media,
   name,
   nsfw = false,
