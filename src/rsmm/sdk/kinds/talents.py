@@ -726,9 +726,79 @@ def _coerce_union_patches(raw) -> list[tuple[str, int, float, float]]:
     return out
 
 
+#: The config field a talent-ban mod's picker saves to (its `multiselect` with
+#: `source = "talent-catalog"`).
+BAN_CONFIG_FIELD = "banned"
+_BAN_FIELDS = ("mode", "talents")
+
+
+def _ban_selection(mod_root: Path) -> list[str] | None:
+    """The mod's talent-ban picker value, or None when it declares no picker
+    (so "no picker" and "picker with nothing picked" stay distinguishable)."""
+    from rsmm.sdk.config import ConfigError, ConfigStore
+    if not (mod_root / "config_schema.toml").is_file():
+        return None
+    try:
+        store = ConfigStore(mod_root)
+    except (OSError, ConfigError, ValueError):
+        return None
+    field = store.schema.fields.get(BAN_CONFIG_FIELD)
+    if field is None or field.type != "multiselect":
+        return None
+    value = store.get(BAN_CONFIG_FIELD) or []
+    return sorted({str(x) for x in value}) if isinstance(value, list) else []
+
+
+def _emit_ban(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
+    """``mode = "ban"``: keep talents out of every offer (``engine.talent_bans``).
+
+    Fields:
+        ``talents`` (list[str])  ``"<Hero>/<controller>"`` ids, e.g.
+                                 ``"Red/Basic Cleave"`` (Scarlet's Cleave). A
+                                 mod with a ``multiselect`` picker on the config
+                                 field ``banned`` (``source = "talent-catalog"``)
+                                 is edited through it, and the picker's saved
+                                 selection wins over this list.
+
+    Writes each touched hero's main entity file, built on what an earlier block
+    of this mod wrote there. Refuses to leave a hero's starting pick empty or its
+    level-up pool under three cards."""
+    from ...engine import talent_bans as TB
+    unknown = sorted(set(defn.fields) - set(_BAN_FIELDS))
+    if unknown:
+        raise ContentError(f"talent {defn.id}: unknown field(s) for mode='ban': "
+                           f"{', '.join(unknown)}; expected {', '.join(_BAN_FIELDS)}")
+    picked = _ban_selection(out_dir.parent)
+    raw = picked if picked is not None else defn.fields.get("talents", [])
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple)) or not all(isinstance(x, str) for x in raw):
+        raise ContentError(f"talent {defn.id}: talents is a list of \"<Hero>/<controller>\" ids")
+    if not raw:
+        return []
+
+    def read(rel: str) -> bytes | None:
+        earlier = out_dir / Path(*rel.split("/"))
+        return earlier.read_bytes() if earlier.is_file() else corpus.read(rel)
+    try:
+        files = TB.ban(list(raw), read=read)
+    except TB.TalentBanError as e:
+        raise ContentError(f"talent {defn.id}: {e}") from e
+    written = []
+    for rel, blob in sorted(files.items()):
+        dest = out_dir / Path(*rel.split("/"))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
+        written.append(dest)
+    _log.info("talent %s: banned %d talent(s) in %d hero file(s)", defn.id, len(raw), len(files))
+    return written
+
+
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize one talent def into the mod's ``assets/`` tree."""
     C.validate_id("talent", defn.id)
+    if defn.fields.get("mode") == "ban":
+        return _emit_ban(mod_id, defn, out_dir)
     hero = defn.fields.get("hero")
     if not hero or not isinstance(hero, str):
         raise SchemaNotMined(

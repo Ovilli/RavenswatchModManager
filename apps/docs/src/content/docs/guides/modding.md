@@ -876,6 +876,43 @@ available, and reported as a `[warn]` against the install's own manifest at
 apply time. Banning a name nothing matches is otherwise a perfectly well-formed
 no-op that only surfaces as "the banned item still dropped" a playtest later.
 
+### Ban talents (`kind="talent"`, `mode="ban"`)
+
+```toml
+[[content]]
+kind    = "talent"
+mode    = "ban"
+id      = "my_talent_bans"
+talents = ["Red/Basic Cleave", "Merlin/Special Block"]
+```
+
+A banned talent is never dealt, at the starting pick or on level-up, for any
+hero. Its card still shows in the compendium. Ids are `"<Hero>/<controller>"`,
+the hero's folder name and the talent's controller without the
+`Skill Controller` prefix: `Red/Basic Cleave` is Scarlet's Cleave.
+
+The `banned-talents` mod does this with a picker: its config declares a
+`multiselect` field with `source = "talent-catalog"`, so the desktop app lists
+every bannable talent with its name and card text, grouped by hero. As with
+item bans, the picker's selection wins over the manifest's `talents` list.
+
+How it works: a talent card is dealt only after its controller activates,
+which registers it in the hero's offer pool. The ban makes the controller start
+inactive, the state the game ships its ultimate upgrades in until their
+ultimate is owned. Every player running the mod builds the same pools, so the
+talent draw stays in step in co-op.
+
+Two limits:
+
+- Only the starting pick and level-up talents can be banned: not ultimates,
+  their upgrades, or talents the game already cut.
+- A ban that would leave a hero's starting pick empty, or fewer than three
+  level-up talents, is refused. An empty pick closes at once and blocks every
+  later pick in the run.
+
+The ban rewrites each touched hero's main entity file, so it overlaps with
+another mod that edits the same hero's talents. Not yet confirmed in game.
+
 ### Edit the Sandman shop (`kind="shop"`)
 
 The Sandman is the game's vendor. A `shop` def changes what it costs and what it

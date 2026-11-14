@@ -64,6 +64,8 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "hero", "file", "value_patches", "int_patches", "union_patches",
         "rewires", "clone_nodes", "stats", "add_stats", "rebuild", "include", "scale",
         "on_hit",
+        # mode = "ban": keep `talents` out of every offer (engine.talent_bans)
+        "mode", "talents",
     }),
     "skill": frozenset({
         "mode", "hero", "source", "controller", "name", "display_name",
