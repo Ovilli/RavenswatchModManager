@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -1020,17 +1020,25 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
         rel = f.relative_to(entry).as_posix()
         try:
             late = late_locals(text)
+            unbound = missing_sdk_binding(text)
         except LuaSyntaxError as e:
             print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
                   f"{_ST.dim(f'scope not checked: {e}')}")
             warns += 1
             late = []
+            unbound = None
         for h in late:
             hint = (f"— its `local` is on line {h.decl_line}, so here it compiles "
                     f"to a global read and is nil at run time; move the local "
                     f"above its first use")
             print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{h.line}')}: "
                   f"{_ST.accent(h.name)} read before its local {_ST.dim(hint)}")
+            errs += 1
+        if unbound is not None:
+            hint = ('— R is a global here and nil when the mod loads; add '
+                    '`local R = require "rsmm"` above its first use')
+            print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{unbound}')}: "
+                  f"{_ST.accent('R')} read without its require {_ST.dim(hint)}")
             errs += 1
         for ln, line in enumerate(text.splitlines(), 1):
             code = line.split("--", 1)[0]  # ignore comments

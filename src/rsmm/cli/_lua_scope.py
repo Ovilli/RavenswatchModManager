@@ -344,3 +344,26 @@ def late_locals(text: str) -> list[LateLocal]:
         if later:
             out.append(LateLocal(name, toks[k].line, toks[later[0]].line))
     return out
+
+
+def missing_sdk_binding(text: str, alias: str = "R") -> int | None:
+    """First line that reads `alias` as a global when the file never binds it.
+
+    A mod gets ``R`` only from ``local R = require "rsmm"``. Without that line
+    every ``R.`` / ``R:`` compiles to a global read, the loader raises
+    ``attempt to index a nil value (global 'R')``, and no handler registers —
+    so lint must report it as an error, not a silent pass. A top-level local
+    declared *below* the read is the late-local case: :func:`late_locals`
+    already reports that one with the declaration line, so it is skipped here.
+
+    Raises :class:`LuaSyntaxError` when the source is not walkable Lua.
+    """
+    toks = tokenize(text)
+    w = _Walk(toks)
+    w.run()
+    first = next((k for name, k in w.globals if name == alias), None)
+    if first is None:
+        return None
+    if any(d > first for d in w.top_level.get(alias, ())):
+        return None
+    return toks[first].line
