@@ -31,6 +31,7 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
+#include "hook_ui_state.h"
 #include "hook_settings_menu.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
@@ -170,6 +171,7 @@ static void loader_thread_cxx() {
         install_guarded("skins",   rsmm::install_skin_hooks);
         install_guarded("skills",  rsmm::install_skill_hooks);
         install_guarded("ui",      rsmm::install_ui_hooks);
+        install_guarded("ui-state", rsmm::install_ui_state_hooks);
         install_guarded("native-menu", rsmm::install_settings_menu_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);

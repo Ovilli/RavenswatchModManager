@@ -1835,8 +1835,9 @@ sub-panel closing does not report the pause menu as closed. The kinds:
 | `loading` | the loading screen |
 | `page` | a page of the book: play, hero selection, hero page and story, Merlin's abilities, the compendium and its heroes / items / memories / tutorial tabs, challenges, social, options, the end-of-run recap, stats and score |
 
-It arms the first time a mod calls `R.ui` or subscribes to `ui:open` /
-`ui:close`, so it costs nothing in a session that never asks. When it cannot
+It arms when the loader starts, so controllers already open when a mod first
+asks are counted and their close still fires. The cost is one vftable compare
+per component the engine shows or hides. When it cannot
 arm (a game patch, or `RSMM_DISABLE_UI_STATE=1`), `is_open` returns `nil` and a
 reason: unknown is never reported as closed. `ui:open` / `ui:close` fire after
 the game has finished showing or hiding the controller.

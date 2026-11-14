@@ -32,9 +32,10 @@
 -- EVENTS: `ui:open` / `ui:close` with { kind, class, ptr }. They fire after the
 -- engine has finished the show or hide, never in the middle of it.
 --
--- ARMED ON FIRST USE. The detours install the first time a mod calls any R.ui
--- function or subscribes to ui:open / ui:close, so a session where no mod asks
--- costs nothing. RSMM_DISABLE_UI_STATE=1 turns it off. When it cannot arm,
+-- ARMED AT STARTUP. The loader installs the detours at init, so controllers
+-- opened before any mod asks are tracked; the per-component cost is one vftable
+-- compare against ~31 entries. M.arm() is kept as a harmless no-op that reports
+-- the result. RSMM_DISABLE_UI_STATE=1 turns it off. When it cannot arm,
 -- is_open() returns nil (not false): "unknown" is not "closed".
 --
 -- ⚠ UNPROVEN IN GAME (PR #110, 2026-11-14). The static RE is done on build

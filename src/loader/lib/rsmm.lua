@@ -217,7 +217,8 @@ end
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
     assert(type(cb) == "function",  "R.on: cb must be function")
-    -- R.ui's events come from detours armed on first use: subscribing is use.
+    -- R.ui's detours are armed at loader startup; this is a harmless no-op
+    -- that only reports a failed arm to the log.
     if (event == "ui:open" or event == "ui:close") and R.ui then R.ui.arm() end
     return _add_sub{ event = event, cb = cb }
 end

@@ -208,10 +208,19 @@ inline bool is_active(std::uintptr_t ptr) {
     return (*reinterpret_cast<const std::uint8_t*>(ptr + kFlagsOff) & kActiveBit) != 0;
 }
 
+// is_active() for a component that may be gone: the memory must still be
+// readable and still carry the class's vftable, else it counts as not active.
+inline bool is_active_checked(std::uintptr_t ptr, const UiClass* cls) {
+    return mem_readable(reinterpret_cast<const void*>(ptr), kFlagsOff + 1) &&
+           *reinterpret_cast<const std::uintptr_t*>(ptr) == cls->vft &&
+           is_active(ptr);
+}
+
 // After a runner returns: compare the component's active bit with our record.
 void record(void* cpnt, const UiClass* cls) {
     const auto ptr = reinterpret_cast<std::uintptr_t>(cpnt);
-    const bool active = is_active(ptr);
+    // The original has returned; the component may have been freed meanwhile.
+    const bool active = is_active_checked(ptr, cls);
     std::lock_guard<std::mutex> lk(g_mu);
     std::size_t i = 0;
     while (i < g_open.size() && g_open[i].ptr != ptr) ++i;
@@ -271,15 +280,16 @@ void hook_deactivate(void* cpnt) {
 }
 
 // Drop tracked controllers that are gone or no longer active (destroyed
-// without a deactivate, or a missed transition).
+// without a deactivate, or a missed transition). Each one queues its ui:close,
+// emitted by the next outermost runner: prune runs inside Lua calls that hold
+// the script lock, so it must not flush here.
 void prune_locked() {
     for (std::size_t i = 0; i < g_open.size();) {
-        const auto& t = g_open[i];
-        const bool alive = mem_readable(reinterpret_cast<const void*>(t.ptr), kFlagsOff + 1) &&
-                           *reinterpret_cast<const std::uintptr_t*>(t.ptr) == t.cls->vft &&
-                           is_active(t.ptr);
-        if (alive) ++i;
-        else g_open.erase(g_open.begin() + static_cast<std::ptrdiff_t>(i));
+        const Tracked t = g_open[i];
+        if (is_active_checked(t.ptr, t.cls)) { ++i; continue; }
+        g_open.erase(g_open.begin() + static_cast<std::ptrdiff_t>(i));
+        g_pending.push_back({false, t.ptr, t.cls});
+        g_dirty.store(true, std::memory_order_release);
     }
 }
 
@@ -365,6 +375,13 @@ bool ui_state_arm(std::string* why) {
     Loader::get().log("[ui-state] armed: " + std::to_string(g_vft_count) + " UI classes (" +
                       found + ") -> R.ui, R.on('ui:open'/'ui:close')");
     return true;
+}
+
+bool install_ui_state_hooks() {
+    // Armed at loader startup so controllers opened later are all seen and a
+    // mod's first R.ui call already knows what is open. A refusal (disabled,
+    // game patched) is logged by ui_state_arm and costs only this capability.
+    return ui_state_arm();
 }
 
 int ui_state_count(UiKind kind) {

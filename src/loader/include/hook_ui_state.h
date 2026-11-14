@@ -24,9 +24,9 @@ namespace rsmm {
 // vtables does not need a new symbol. A class whose RTTI is missing is skipped
 // and logged; none found = not armed.
 //
-// Armed lazily: the first R.ui call or R.on("ui:open"/"ui:close") from Lua
-// installs the hooks, so a session where no mod asks pays nothing.
-// RSMM_DISABLE_UI_STATE=1 refuses to arm.
+// Armed at loader startup (install_ui_state_hooks), so controllers that open
+// before any mod asks are still tracked. The per-component cost is one vftable
+// compare against ~31 entries. RSMM_DISABLE_UI_STATE=1 refuses to arm.
 
 // Page = a page of the 3D book (hero selection, hero page, compendium tabs,
 // tutorial, challenges, options, ...): one controller per page, so which one is
@@ -35,6 +35,8 @@ enum class UiKind : int { Menu = 0, Book = 1, Modal = 2, Loading = 3, Page = 4, 
 
 // Install the runner detours (idempotent). False + why when not armed.
 bool ui_state_arm(std::string* why = nullptr);
+// Loader-init entry point (dllmain's install_guarded list): ui_state_arm().
+bool install_ui_state_hooks();
 bool ui_state_armed();
 
 // How many controllers of `kind` are open now; -1 when not armed. Prunes any
