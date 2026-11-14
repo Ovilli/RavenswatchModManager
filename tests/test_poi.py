@@ -1067,6 +1067,8 @@ def test_poi_schema_matches_what_discover_accepts(tmp_path):
         "material_base": '"m"', "material": '"m"', "allow_shared_art": "false",
         "interactive": "true", "components": "[]", "transform": '{ fit = "rig" }',
         "slots": '{ albedo = "a" }', "marker": '{ reveal_radius = 1.0 }',
+        "collision": '[{ size = [1.0, 1.0, 1.0], at = [0.0, 0.0, 0.0] }]', "clear": "false",
+        "parts": "{}",
     }.items())
     assert set(tomllib.loads(toml)) == set(props), "test table is missing a schema key"
     _poi_folder(tmp_path, cfg=toml)

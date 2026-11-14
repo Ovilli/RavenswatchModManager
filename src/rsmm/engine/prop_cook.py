@@ -477,6 +477,11 @@ def override_tile_level(donor_cooked: bytes, object_swaps: dict[str, str]) -> by
     return _emit(handler, doc)
 
 
+def _loose(ref: str) -> str:
+    """A level name compared without case or underscores."""
+    return ref.lower().replace("_", "")
+
+
 def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
                      object_swaps: dict[str, str]) -> bytes:
     """Clone a tile level: rename it, and swap object references inside it.
@@ -497,6 +502,13 @@ def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
     """
     handler, doc = _refs_doc("oCGameStream", donor_cooked)
     refs = list(doc.get("asset_refs") or [])
+    if self_ref not in refs and refs and refs[0].lower().endswith(".level.ot") \
+            and _loose(refs[0]) == _loose(self_ref):
+        # A shipped level may name itself differently from the path it is filed
+        # under: `64x64_High_Fisherman_Platform_Ghouls_Camp.level.ot` calls
+        # itself `64x64_HighFishermanPlatform_Ghouls_Camp`. Rename what the
+        # level calls itself.
+        self_ref = refs[0]
     bare, new_bare = self_ref.removesuffix(".level.ot"), new_self_ref.removesuffix(".level.ot")
 
     if self_ref not in refs:

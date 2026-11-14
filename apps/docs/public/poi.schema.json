@@ -55,6 +55,31 @@
     "own_level": {
       "type": "boolean"
     },
+    "clear": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "keep": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
     "swaps": {
       "type": "object",
       "minProperties": 1,
@@ -76,7 +101,8 @@
           "entity": {
             "anyOf": [
               {
-                "const": "@prop"
+                "type": "string",
+                "pattern": "^@[A-Za-z0-9_]+$"
               },
               {
                 "type": "string",
@@ -123,6 +149,64 @@
     },
     "interactive": {
       "type": "boolean"
+    },
+    "parts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "collision": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "collision": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "size",
+          "at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "ground",
+              "wall"
+            ]
+          },
+          "size": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "at": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "rot": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        }
+      }
     },
     "components": {
       "type": "array",

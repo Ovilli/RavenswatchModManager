@@ -78,7 +78,7 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "melody": frozenset({"base", "effect", "exclude"}),
     "poi": frozenset({
         "base", "chapters", "copies", "icon", "icon_source", "kinds",
-        "own_level", "places", "prop", "replace_base", "swaps", "weight",
+        "own_level", "places", "prop", "replace_base", "swaps", "weight", "clear",
     }),
     "mesh": frozenset({"target", "model", "transform"}),
     "animation": frozenset({"target", "source", "clip", "strict"}),
