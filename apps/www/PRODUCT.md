@@ -31,4 +31,4 @@ Existing public mod records and author-supplied artwork. Do not invent screensho
 - Show complete images on mod detail pages rather than cropping away information. Registry cards share the homepage card component and image treatment.
 - Group metadata with the decision it informs.
 - Keep release history accessible without making it the default experience.
-- On the registry, retain global navigation above a compact, pinned toolbar with the result count, centered search, and sort/view controls. Put Filters inside the search field and all filter options in its modal. Use a full-width card grid capped at four columns.
+- On the registry, retain sticky global navigation above a compact toolbar that scrolls with the page, with the result count, centered search, and sort/view controls. Fade the toolbar background into the page without a bottom border. Put Filters inside the search field and all filter options in its modal. Use a full-width card grid capped at four columns.

@@ -129,6 +129,8 @@ export const modListItemSchema = z.object({
   category: modCategorySchema.nullable(),
   imageUrl: sanitizedHttpUrlSchema,
   rating: z.number().min(0).max(5).nullable(),
+  // Absent on older API responses; never substitute 0 for an unknown count.
+  ratingCount: z.number().int().nonnegative().optional(),
   tags: z.array(z.string()),
   // Sanitizing, not rejecting — see sanitizedHttpUrlSchema. A screenshot whose
   // stored URL is not http(s) is dropped from the list rather than failing the
