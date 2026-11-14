@@ -37,7 +37,7 @@ importers:
         version: 1.9.4
       next:
         specifier: 15.5.28
-        version: 15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        version: 15.5.28(@babel/core@7.29.7)(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       turbo:
         specifier: 2.9.14
         version: 2.9.14
@@ -54,8 +54,8 @@ importers:
         specifier: 3.1051.0
         version: 3.1051.0
       '@hono/node-server':
-        specifier: 2.1.3
-        version: 2.1.3(hono@4.13.12)
+        specifier: 2.1.6
+        version: 2.1.6(hono@4.13.12)
       '@hono/zod-validator':
         specifier: 0.4.2
         version: 0.4.2(hono@4.13.12)(zod@4.6.7)
@@ -1436,11 +1436,11 @@ packages:
   '@fontsource/alegreya-sans@5.3.0':
     resolution: {integrity: sha512-Uf0RbuwzhSS3NQrBFcRzEUm7TxDQW3qdAbQ6JIOhsIW6V+YN2dqlR99lhfEE38R3GHgMCMJBzqSp7aJxhNXSOw==}
 
-  '@hono/node-server@2.1.3':
-    resolution: {integrity: sha512-TA//nWMqPhbfdfneACk6t5a9eqbS9lABEPyKn0/xZTah3H3U2XaVg85rJFl0/Fyit0I552YDHgXGVSf3GwqbUw==}
+  '@hono/node-server@2.1.6':
+    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: ^4
+      hono: ^4 || ^5.0.0-0
 
   '@hono/zod-validator@0.4.2':
     resolution: {integrity: sha512-1rrlBg+EpDPhzOV4hT9pxr5+xDVmKuz6YJl+la7VCwK6ass5ldyKm5fD+umJdV2zhHD6jROoCCv8NbTwyfhT0g==}
@@ -2008,6 +2008,9 @@ packages:
   '@smithy/core@3.24.3':
     resolution: {integrity: sha512-Ep/7tPamGY8mgESE3LyLKtxJyy6U52WWAqr/3wial47Sj4u3PiIF73AOGI27UyLy9duTkhZbgzodOfLV4TduZg==}
     engines: {node: '>=18.0.0'}
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.3.3':
     resolution: {integrity: sha512-I2Bti0DKFo2IJyN28ijCsx51BAumEYR4/1yZ1FXyBygy9MqbnMqCev4JPth/MbpRfBSRAX35hITSnAdJRo1u5w==}
@@ -4569,6 +4572,10 @@ packages:
     resolution: {integrity: sha512-tSRMcPkD/bu1rmY0/XfFP2zLPD8jXVuzHli6Y2UFi9AiG/d0kOd8LAc/G6NolpW8MA1PtgDUhywKCmerS4E3tg==}
     engines: {node: '>=20'}
 
+  seroval@1.8.1:
+    resolution: {integrity: sha512-7z9x1flFYfZBz+LfDkXNfm5UIhZJ/97ASaV8Q1wctoVkeqVfv+tLPsWebeMXBNw6XprvwxDE5wC5Ylqmr+iSrA==}
+    engines: {node: '>=20'}
+
   set-cookie-parser@3.1.2:
     resolution: {integrity: sha512-5/r/lTwbJ3zQ+qwdUFZYeRNqda7P5HD8zQKqlSjdGt1/S0cjLAphHusj4Y58ahDtWn/g32xrIS58/ikOvwl0Lw==}
 
@@ -6333,7 +6340,7 @@ snapshots:
 
   '@fontsource/alegreya-sans@5.3.0': {}
 
-  '@hono/node-server@2.1.3(hono@4.13.12)':
+  '@hono/node-server@2.1.6(hono@4.13.12)':
     dependencies:
       hono: 4.13.12
 
@@ -7272,7 +7279,7 @@ snapshots:
 
   '@vercel/analytics@2.0.1(next@15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
     optionalDependencies:
-      next: 15.5.28(@babel/core@7.29.7)(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
 
   '@vercel/speed-insights@2.0.0(next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
@@ -9160,7 +9167,6 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
-    optional: true
 
   next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
@@ -9185,6 +9191,31 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
+
+  next@15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      '@next/env': 15.5.28
+      '@swc/helpers': 0.5.15
+      caniuse-lite: 1.0.30001815
+      postcss: 8.5.29
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.0.0)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.5.28
+      '@next/swc-darwin-x64': 15.5.28
+      '@next/swc-linux-arm64-gnu': 15.5.28
+      '@next/swc-linux-arm64-musl': 15.5.28
+      '@next/swc-linux-x64-gnu': 15.5.28
+      '@next/swc-linux-x64-musl': 15.5.28
+      '@next/swc-win32-arm64-msvc': 15.5.28
+      '@next/swc-win32-x64-msvc': 15.5.28
+      sharp: 0.35.5(@types/node@24.12.4)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@types/node'
+      - babel-plugin-macros
+    optional: true
 
   nextjs-nav-guard@1.1.3(next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0):
     dependencies:
@@ -9780,9 +9811,9 @@ snapshots:
 
   semver@7.8.5: {}
 
-  seroval-plugins@1.5.6(seroval@1.7.1):
+  seroval-plugins@1.5.6(seroval@1.8.1):
     dependencies:
-      seroval: 1.7.1
+      seroval: 1.8.1
     optional: true
 
   seroval-plugins@1.8.0(seroval@1.7.1):
@@ -9790,6 +9821,9 @@ snapshots:
       seroval: 1.7.1
 
   seroval@1.7.1: {}
+
+  seroval@1.8.1:
+    optional: true
 
   set-cookie-parser@3.1.2: {}
 
@@ -9888,8 +9922,8 @@ snapshots:
   solid-js@1.9.13:
     dependencies:
       csstype: 3.2.3
-      seroval: 1.7.1
-      seroval-plugins: 1.5.6(seroval@1.7.1)
+      seroval: 1.8.1
+      seroval-plugins: 1.5.6(seroval@1.8.1)
     optional: true
 
   source-map-js@1.2.2: {}
