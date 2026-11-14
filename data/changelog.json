@@ -2,6 +2,16 @@
   "generated": "2026-11-14",
   "entries": [
     {
+      "version": "",
+      "date": "2026-11-14",
+      "summary": "Ban talents from every offer (Banned Talents mod), and a fix for talent-switched pets that never exploded",
+      "highlights": [
+        "New Banned Talents mod: pick talents in its config panel and they are never offered, for any hero",
+        "Custom heroes: a talent-switched pet now uses its own explosion (Blood Wolf's Rabid wolf exploded on nothing)"
+      ],
+      "cli_version": 34
+    },
+    {
       "version": "5.9.32",
       "date": "2026-11-14",
       "summary": "Custom heroes can borrow any shipped hero's ability, and RSMM tells you which loader and CLI you're running.",
@@ -511,15 +521,6 @@
         "Linux AppImage: built on a newer base, so it no longer runs sluggishly. It needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 or newer); older systems should use the .deb.",
         "CLI fixes can now arrive between app releases; Settings, About shows which CLI build is running.",
         "Release notes for loader updates show a proper heading."
-      ]
-    },
-    {
-      "version": "",
-      "cli_version": 1,
-      "date": "2026-10-17",
-      "summary": "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process",
-      "highlights": [
-        "First CLI channel build: Python fixes now reach the app without an app release; read-only commands answer from one warm process"
       ]
     }
   ]
