@@ -17,7 +17,6 @@ import {
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { signOut, useSession } from '../lib/auth-client';
@@ -207,8 +206,6 @@ function UserMenu() {
   );
 }
 
-const REPO = 'https://github.com/Ovilli/RavenswatchModManager';
-
 function isActivePath(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
   return pathname.startsWith(href);
@@ -220,8 +217,7 @@ function isActivePath(pathname: string, href: string): boolean {
  * Without this a phone got the logo and Sign In and nothing else: the
  * registry, collections and the download page were reachable only by
  * scrolling to the footer, and most visitors arrive on a phone from a link
- * shared in Discord or Reddit. Same links as the wide bar, plus View Source,
- * which the bar also drops below `sm`.
+ * shared in Discord or Reddit. Same links as the wide bar.
  */
 function MobileMenu({ pathname }: { pathname: string }) {
   const [open, setOpen] = useState(false);
@@ -294,16 +290,6 @@ function MobileMenu({ pathname }: { pathname: string }) {
                 </li>
               );
             })}
-            <li className="mt-1 border-t border-border/40 pt-2">
-              <a
-                href={REPO}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block rounded-lg px-3 py-2.5 text-base text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-              >
-                View Source
-              </a>
-            </li>
           </ul>
         </nav>
       ) : null}
@@ -311,7 +297,7 @@ function MobileMenu({ pathname }: { pathname: string }) {
   );
 }
 
-export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
+export function Nav() {
   const pathname = usePathname();
   const { data: session, isPending } = useSession();
   const headerRef = useRef<HTMLElement>(null);
@@ -375,17 +361,6 @@ export function Nav({ versionBadge }: { versionBadge?: ReactNode }) {
         </nav>
 
         <div className="flex items-center gap-3">
-          <a
-            href={REPO}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline sm:inline"
-          >
-            View Source
-          </a>
-
-          {versionBadge}
-
           {isPending ? (
             <div className="h-9 w-9 animate-pulse rounded-full bg-muted" aria-hidden />
           ) : session?.user ? (

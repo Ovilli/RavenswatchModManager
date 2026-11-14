@@ -14,7 +14,7 @@ async function getLatestVersion(): Promise<string> {
 export async function VersionBadge() {
   const version = await getLatestVersion();
   return (
-    <span className="hidden rounded-md border border-border/60 px-2 py-0.5 font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground sm:inline">
+    <span className="inline-flex shrink-0 rounded-md border border-border/60 px-2 py-0.5 font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground">
       {version}
     </span>
   );
