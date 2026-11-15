@@ -2182,11 +2182,11 @@
      "LevelLoad_Orchestrator"
     ],
     "offsets": [
-     "0x8a0",
-     "0x8b0",
-     "0x8c0",
-     "0x8c8",
-     "0x8d0"
+     "0x8d8",
+     "0x8e8",
+     "0x8f8",
+     "0x900",
+     "0x908"
     ],
     "lines_max": 200
    }
@@ -2207,7 +2207,11 @@
      "LevelLoad_Orchestrator"
     ],
     "offsets": [
-     "0x120"
+     "0x120",
+     "0x1c0",
+     "0x1d0",
+     "0x1e0",
+     "0x1e8"
     ],
     "lines_min": 130,
     "lines_max": 155
@@ -2615,7 +2619,7 @@
      "slot": 18
     }
    },
-   "note": "Ingredient def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code.",
+   "note": "Ingredient def. Post-deserialize callback: vftable slot 18 on every oCDtDefinition subclass. Each one resolves its typed resource refs and then registers the instance in the class registry, which is what makes a def reachable from Registry_EnumInstances \u2014 so this is the hook point for observing or amending a definition as it loads. Found by tools/mine_vtable_interfaces.py: slot 18 has 13 distinct implementations across the Definition family, which is what identifies it as an interface method rather than per-class incidental code. [2026-11-15 RE, data-verified] INGREDIENT ID = NamedEvent_Id_FromCrc(0, crc32(name)) of the def's name string (+0x298), the u32 at def+0x290: Straw 0xe9f9a52e, Stone 0x51f94a7c, Wood 0x48b35820, Key 0xc4cb986e, Bean 0xf0d7307d all reproduce exactly; nothing references an .ingredientdef by path (only its own UsedRscCache), so a NEW ingredient registers by existing in UsedRscList (InitialLoading_LoadAllDefinitions scans Definitions/). Consumers store the id as bytes_1 of oCDtEntityCpntIngredientGainSettings (pickups: value_2 = count) and oCDtEntityCpntDeliveryPointSettings (hand-ins: value_2 = required count, ref_3 = Event On Delivery Complete; id 0 = dream shards, the Wishing Well). Mod 'Fish' = 0x4f5637c0.",
    "refs": [
     "docs/_re"
    ]
@@ -3095,17 +3099,17 @@
      "uint32_t"
     ]
    },
-   "note": "Adds a magical-object instance to the HERO'S OWNED SET (dedups by def identity first). The owned-instance list lives on the HeroController: base ptr @hero+0xd70, count (u32) @hero+0xd78, capacity @hero+0xd7c \u2014 each entry is a pointer to an owned instance; instance+0xf0 -> def holder, def identity at *(*(inst+0xf0)+8)+0x28. A secondary collection sits at hero+0xd80/+0xd88. THIS is the correct enumeration source for R.give.owned() (hero-owned), NOT g_MagicalObjectPool (which is the global definition pool). Rarity read from instance+0x1b0/+0x1b8 (an oCEntityValueUnion). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_1403abb90 2026-08-09, hand-confirmed: Matches all 9 offsets in the note: hero-owned set +0xd70/+0xd78/+0xd7c, secondary collection +0xd80/+0xd88, def holder +0xf0 with identity at +0x28, rarity +0x1b0/+0x1b8. The one-arg neighbour matches 3.] [RELOCATED to FUN_1403abb90 2026-08-09, hand-confirmed: Matches all 9 offsets in the note: hero-owned set +0xd70/+0xd78/+0xd7c, secondary collection +0xd80/+0xd88, def holder +0xf0 with identity at +0x28, rarity +0x1b0/+0x1b8. The one-arg neighbour matches 3.]",
+   "note": "Adds a magical-object instance to the HERO'S OWNED SET (dedups by def identity first). The owned-instance list lives on the HeroController: base ptr @hero+0xd70, count (u32) @hero+0xd78, capacity @hero+0xd7c \u2014 each entry is a pointer to an owned instance; instance+0xf0 -> def holder, def identity at *(*(inst+0xf0)+8)+0x28. A secondary collection sits at hero+0xd80/+0xd88. THIS is the correct enumeration source for R.give.owned() (hero-owned), NOT g_MagicalObjectPool (which is the global definition pool). Rarity read from instance+0x1b0/+0x1b8 (an oCEntityValueUnion). [2026-07-09 patch: prologue changed, not re-confirmed; needs manual RE.] [RELOCATED to FUN_1403abb90 2026-08-09, hand-confirmed: Matches all 9 offsets in the note: hero-owned set +0xd70/+0xd78/+0xd7c, secondary collection +0xd80/+0xd88, def holder +0xf0 with identity at +0x28, rarity +0x1b0/+0x1b8. The one-arg neighbour matches 3.] [RELOCATED to FUN_1403abb90 2026-08-09, hand-confirmed: Matches all 9 offsets in the note: hero-owned set +0xd70/+0xd78/+0xd7c, secondary collection +0xd80/+0xd88, def holder +0xf0 with identity at +0x28, rarity +0x1b0/+0x1b8. The one-arg neighbour matches 3.] [2026-11-15 b9c3642884a8: LAYOUT MOVED (Update 6), re-read in Ghidra: owned list (dedup by def identity) = base hero+0xd88, count +0xd90, capacity +0xd94; +0xd70 is a source pointer checked before the add; the Vector_InsertRange collection is +0xd78 (count +0xd80); a third list +0xd98/+0xda0 is walked to name 'object.{}' entries; hero->controller at +0x2f8. instance+0xf0 / def identity +0x28 / rarity +0x1b0/+0x1b8 unchanged. The old +0xd70/+0xd78/+0xd7c figures above are pre-Update-6. Locator updated to the new offsets (the old one no longer resolved). Nothing in the loader/SDK reads these hero offsets.]",
    "refs": [
     "docs/_re/kinds/items.md"
    ],
    "locator": {
     "offsets": [
-     "0xd70",
-     "0xd78",
-     "0xd7c",
-     "0xd80",
      "0xd88",
+     "0xd90",
+     "0xd94",
+     "0xd98",
+     "0xda0",
      "0xf0",
      "0x1b0",
      "0x1b8"
@@ -3674,19 +3678,25 @@
    "kind": "function",
    "category": "netcode",
    "raw": "FUN_140720350",
-   "status": "unverified",
-   "signature": "void(void* replContext)",
+   "status": "ok",
+   "signature": "void(oCEntityCpntNetwork* self)",
    "cabi": {
     "ret": "void",
     "params": [
      "void*"
     ]
    },
-   "note": "Per-entity replication setup; reads the authority role = *(netmgr+0xf8) where netmgr = *(replContext+0x10), with 1 = client/non-master. The host-migration research lever: hook to observe role on host vs client, optionally overwrite it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See apps/docs/src/content/docs/reverse-engineering/multiplayer.md and [[multiplayer-netcode]]. [2026-07-10: DOWNGRADED \u2014 July-9 remap address resolves mid-instruction; no confident anchor. Pattern stripped -> loader fails closed. Needs manual RE.] [2026-10-25 b9c3642884a8 CLI: Slot 28 of oCEntityCpntNetwork primary vftable 0x140f773f8 (slot address 0x140f774d8). One-context setup function reads manager=*(ctx+0x10), checks manager+0xf8 against 1, and diagnoses a peer-spawned object that is not master, naming Host/HostUnique network component settings. This establishes the static role branch; host/client behavior was not observed. Kept unverified: static identity does not validate a resolver pattern or ABI. Evidence: docs/_re/symbols-b9c3642.md.]",
+   "note": "Per-entity network component setup: slot 28 of the oCEntityCpntNetwork vftable (0x140f773f8 on b9c3642884a8), one argument = the COMPONENT itself (this), not a separate context. Reads the manager = *(this+0x10) and its role = *(manager+0xf8): when the entity is not master and role != 1 it logs 'Peer spawned {} (owned by {}) but is not master. Please set mastership to Host or HostUnique in the network component settings.'; else when role != 2 it takes the replicate-out path (FUN_140723180). Which machine holds 1 vs 2 is NOT proven (docs say 1 = client/non-master; the writer of +0xf8 is unfound) - R.net.on_repl_setup's read-only Phase 1 is how to settle it. Exposed via R.net.on_repl_setup (offsets SDK-internal). See apps/docs/src/content/docs/reverse-engineering/multiplayer.md and [[multiplayer-netcode]]. [2026-07-10: downgraded, July-9 remap resolved mid-instruction.] [2026-11-15: PROMOTED ok on b9c3642884a8 - vftable slot 28 -> 0x140720350 (= raw), Ghidra decompile confirms one pointer arg and the +0x10/+0xf8 reads, the FUN_ pattern resolves to this function start (verify_symbol_resolve). Static only; no live hook run yet.]",
    "refs": [
     "src/loader/lib/rsmm.lua",
     "apps/docs/src/content/docs/reverse-engineering/multiplayer.md"
-   ]
+   ],
+   "locator": {
+    "vftable": {
+     "class": "oCEntityCpntNetwork",
+     "slot": 28
+    }
+   }
   },
   {
    "name": "Netcode_PeerCount",
@@ -3900,6 +3910,12 @@
    "locator": {
     "called_by": [
      "MapCtx_DistributeEnemyCampTiers"
+    ],
+    "offsets": [
+     "0xa0",
+     "0xa8",
+     "0x140",
+     "0x148"
     ],
     "lines_min": 100,
     "lines_max": 140

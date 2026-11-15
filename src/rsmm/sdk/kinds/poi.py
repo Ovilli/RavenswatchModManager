@@ -123,6 +123,110 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     the hero comes near, a progress ring, and the success FX. Mods react to it
     from Lua through ``R.interact.on("success", cb)``.
 
+``collision`` (list of tables, optional, the mod's OWN prop only)
+    Make the prop solid: ``{ kind = "ground" | "wall", size = [x, y, z],
+    at = [x, y, z], rot = [x, y, z] }`` boxes in the prop's own space (full
+    sizes, degrees). ``ground`` is walkable, so a raised deck plus a tilted
+    ramp box is a platform a hero can climb onto; ``wall`` blocks. This is how
+    the shipped docks are built (``Platform_Floor_*`` = one ground box each),
+    see :mod:`rsmm.engine.collision_volumes`. The boxes do not follow
+    ``transform``, so keep ``scale = 1`` and no ``rotate_deg`` when using it.
+    Refused on ``replace_base``, where it would make every placement of a
+    shipped prop solid. Proven in game 2026-11-14 (deck + ramp walkable, wall
+    blocks).
+
+``needs`` (list of tables, optional) — an ENTRANCE pulling in its ROOM
+    ``[{ flags = ["My_Room"], count = 1, underground = true }]``: when the tile
+    is placed, the generator also places ``count`` tiles carrying every flag.
+    ``underground`` (default) puts them in the map's off-map room slots, the
+    way the Ghoul den entrance pulls in its den and a Thieves' stash entrance
+    its room; ``false`` places them on the map ``min``..``max`` metres away.
+    Replaces the base tile's own constraints. Dark Hills has 5 room slots and
+    its own rooms use up to 4, so cap the entrance at one per map (``flags``
+    plus a tilegen ``add_quotas``).
+
+``subtile`` (true or ``"surface"``, optional) — ``"surface"``: a map tile
+    whose ``kinds`` the shipped recipe does not know, so they are not checked
+    against its slot kinds: the flag another tile's on-map ``needs`` asks for
+    (``underground = false``, like the straw house's material crates), or a
+    kind this mod's tilegen ``add_kinds`` adds (own slots via ``add_slots``,
+    so the tiles replace nothing). ``true``: this tile is a ROOM: never chosen for a map
+    slot, only pulled in by another tile's ``needs``. Its ``kinds`` are then
+    the flag(s) that ``needs`` asks for, and are not checked against the
+    chapter's slot kinds.
+
+``flags`` (list of str, optional) — extra tags on the tile that are not slot
+    kinds: what a tilegen quota counts (``add_quotas``) or a ``needs`` asks for.
+
+``teleporters`` (list of tables, optional, ``own_level`` only) — a sub-tile
+    teleporter pair: ``{ side = "out", id = "My_Pair", pos = [x, y, z], yaw }``
+    on the entrance, ``side = "in"`` with the same ``id`` in the room. Each is
+    a clone of the shipped Thieves' stash teleporter
+    (``Thieves_Underground_Teleporter_<Side>``) with its pair renamed to
+    ``<id>_In`` / ``<id>_Out`` and its stash event renamed. A shipped room already
+    stands its own teleporter (not a plain placement, so ``clear`` keeps it):
+    ``{ side = "in", id = ..., replace = "<that entity>" }`` takes it over
+    instead, so it stops answering its shipped pair. A room may stand several
+    ``in`` teleporters of one ``id`` (more than one way out): all of them lead
+    back to the ``out`` one, and they share one cloned entity.
+
+``model_2.glb``, ``model_3.glb``, ... (files, optional)
+    More meshes for the same prop, beside ``model.glb``. The cooker caps one
+    mesh at 65535 vertices; each extra file is cooked on its own and drawn by
+    an entity of its own (the donor prop cloned with only the mesh swapped,
+    same material and textures), stood wherever ``places`` stands the prop.
+    Needs ``places`` with ``entity = "@prop"``. A big structure (a whole dock)
+    is split this way.
+
+``clear`` (bool or table, optional, needs ``own_level``)
+    Empty the def's OWN copy of the base tile before anything is added:
+    every plain placement is sunk 1000 m under the map (its transform
+    rewritten in place, the chapter editor's ``remove``), so a big structure
+    gets the tile to itself. ``clear = true`` keeps :data:`CLEAR_KEEP` (enemy
+    spawners, the camp reward, terrain shapes); ``clear = { keep = [...] }``
+    names other entity-path substrings to keep; ``clear = { remove = [...] }``
+    sinks ONLY the named entities (file name or full reference) and keeps the
+    rest, e.g. taking a shipped hut out to stand the mod's own in its place.
+    A ``remove`` entry ``{ entity = ..., at = [x, y, z] }`` sinks only the one
+    placement standing there (what the 3D tile editor writes).
+    The tile's terrain and its invisible walls (``oCStaticWallGo``) are not
+    placements and stay — unless ``walls = true`` (every wall) or
+    ``walls = ["<name>", ...]`` is added to the table, which sinks them too.
+
+``terrain`` (list of tables, optional, needs ``own_level``)
+    Brush strokes on the def's OWN copy of the tile's terrain, the chapter
+    editor's brush: ``{ op, x, z, radius, amount, falloff, layer }``. A tile's
+    height layer is ``"Terrain Height"`` (``amount`` in metres for ``set`` /
+    ``flatten``). A room's flat water level is the constant layer
+    ``"Water Height"``: ``{ op = "set", layer = "Water Height", amount = <y>,
+    x = 0, z = 0, radius = 1 }`` (no brush, the one value is replaced).
+
+``terrain_size`` (``[x, z]`` metres, optional, needs ``own_level``)
+    Stretch the tile's own terrain box about its centre — e.g. a sub-tile
+    room whose terrain (the Gold Room's: 80 x 100 m) is smaller than the
+    structure stood in it; ``[128, 128]`` fills its whole off-map slot. Every
+    painted layer stretches with it, so follow with ``terrain`` strokes to
+    shape the new ground. Proven in game 2026-11-15 (fishermans-camp room).
+
+``level_values`` (table, optional, needs ``own_level``)
+    Float values the tile's level overrides on the entities it places, by the
+    override's name: ``{ "Render Settings Zone Scale Value" = 88.0 }``. A sub-tile
+    room's look (ambient light, fog, colour) is a render zone of a set size
+    (the Gold Room's: 34 m, vertical 16 m); a structure bigger than that
+    leaves the zone and the look snaps back to the outdoor one.
+
+``render_ambient`` (``[r, g, b]``, optional, needs ``own_level``)
+    The ambient light colour of the tile's render zone (0..4 per channel).
+    The Gold Room's is ``[0.17, 0.16, 0.18]``, a dark cave.
+
+``parts/<name>/model.glb`` (folders, optional) + ``[parts.<name>]``
+    A KIT: entities of the mod's own, one mesh each (the donor prop cloned
+    with the part's mesh, same material and textures as the prop), stood by
+    ``places`` as ``entity = "@<name>"`` as many times as wanted. This is how
+    the shipped docks are built (``64x64_HighFishermanPlatform``: ~100 small
+    entities placed ~470 times). ``[parts.<name>] collision = [...]`` gives a
+    part its own boxes, in its own space.
+
 ``[marker]`` (table, optional, ``replace_base`` only)
     Put the POI on the minimap and the map screen.
 
@@ -170,9 +274,9 @@ What is NOT proven is the *additive* half — but the REASON changed on
 2026-09-11. The old reason, "a level provably cannot reference an entity
 resource the mod introduced", was disproved: every asset in the additive chain,
 the mod's own entity included, is both requested and resolved. What remains
-unproven is VISIBILITY — no additive POI has yet been SEEN in-game, and the run
-that got this far was not checked for the prop mesh. Resolution is settled;
-placement and rendering are not.
+unproven was VISIBILITY. ★ Settled 2026-11-15: fishermans-camp's additive
+tiles (own_level clones, the mod's own prop, kit parts, a sub-tile room) were
+all seen and walked in game.
 See ``docs/_re/kinds/pois.md``.
 """
 
@@ -180,6 +284,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import struct
 from collections.abc import Iterable
 
@@ -200,6 +305,7 @@ from ...engine.paths import DATA_DIR
 from ...engine.prop_cook import entity_cooked_path
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
+from . import ingredients as ING
 
 _log = logging.getLogger(__name__)
 
@@ -633,7 +739,9 @@ def discover(mod_root: Path) -> list[dict]:
         # tier, which is what cloning a tile is supposed to mean.
         no_inherit = ("kinds", "weight") if overriding else ("weight",)
         for key in ("base", "kinds", "weight", "copies", "replace_base",
-                    "own_level", "swaps", "places"):
+                    "own_level", "swaps", "places", "clear", "terrain", "terrain_size",
+                    "level_values", "render_ambient", "move",
+                    "needs", "subtile", "teleporters", "flags"):
             if key in cfg:
                 block[key] = cfg.pop(key)
             elif key in preset and key not in no_inherit:
@@ -701,6 +809,23 @@ def discover(mod_root: Path) -> list[dict]:
                 block["prop"]["transform"] = cfg.pop("transform")
             if "allow_shared_art" in cfg:
                 block["prop"]["allow_shared_art"] = cfg.pop("allow_shared_art")
+            if "collision" in cfg:
+                block["prop"]["collision"] = cfg.pop("collision")
+            # More meshes than one model can hold (the cooker caps a mesh at
+            # 65535 vertices): `model_2.glb`, `model_3.glb`, ... beside
+            # `model.glb`, each drawn by its own graphic component.
+            extra = sorted((m for m in d.glob("model_*.glb")
+                            if m.stem.split("_", 1)[1].isdigit()),
+                           key=lambda m: int(m.stem.split("_", 1)[1]))
+            if extra:
+                if not model:
+                    raise ContentError(
+                        f"poi {d.name}: {extra[0].name} without model.glb; "
+                        f"the extra meshes go beside the main one")
+                block["prop"]["extra_models"] = [f"{rel}/{m.name}" for m in extra]
+            parts = _discover_parts(d, rel, cfg.pop("parts", None))
+            if parts:
+                block["prop"]["parts"] = parts
             if "marker" in cfg:
                 mk = cfg.pop("marker")
                 if not isinstance(mk, dict):
@@ -794,6 +919,10 @@ def poi_json_schema() -> dict:
     here as they are there. `rsmm docs-gen` writes it to the docs site."""
     s, b, num = {"type": "string"}, {"type": "boolean"}, {"type": "number"}
     entity = {"type": "string", "pattern": r"(?i)\.entity\.ot$"}
+    xyz = {"type": "array", "items": num, "minItems": 3, "maxItems": 3}
+    # one placement of an entity: the one standing at `at` (clear.remove, move)
+    anchored = {"type": "object", "required": ["entity", "at"], "additionalProperties": False,
+                "properties": {"entity": s, "at": xyz}}
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "$id": POI_SCHEMA_URL,
@@ -812,13 +941,39 @@ def poi_json_schema() -> dict:
             "copies": {"type": "integer", "minimum": 0, "maximum": 16},
             "replace_base": b,
             "own_level": b,
-            "swaps": {"type": "object", "minProperties": 1,
+            "clear": {"anyOf": [b, {
+                "type": "object", "additionalProperties": False,
+                "properties": {"keep": {"type": "array", "items": s},
+                               "remove": {"type": "array", "items": {"anyOf": [s, anchored]}},
+                               "walls": {"anyOf": [b, {"type": "array", "items": s}]}}}]},
+            "terrain": {"type": "array", "items": {"type": "object"}},
+            "terrain_size": {"type": "array", "items": num, "minItems": 2, "maxItems": 2},
+            "level_values": {"type": "object", "additionalProperties": num},
+            "render_ambient": {"type": "array", "items": num, "minItems": 3, "maxItems": 3},
+            "subtile": {"anyOf": [b, {"enum": ["surface"]}]},
+            "flags": {"type": "array", "items": s},
+            "needs": {"type": "array", "items": {
+                "type": "object", "required": ["flags"], "additionalProperties": False,
+                "properties": {"flags": {"type": "array", "items": s, "minItems": 1},
+                               "exclude": {"type": "array", "items": s},
+                               "count": {"type": "integer", "minimum": 1, "maximum": 16},
+                               "underground": b, "min": num, "max": num}}},
+            "teleporters": {"type": "array", "minItems": 1, "items": {
+                "type": "object", "required": ["side", "id"], "additionalProperties": False,
+                "properties": {"side": {"enum": ["out", "in"]}, "id": s, "replace": entity,
+                               "pos": {"type": "array", "items": num, "minItems": 3, "maxItems": 3},
+                               "yaw": num}}},
+            "move": {"type": "array", "items": {
+                "type": "object", "required": ["entity", "pos"], "additionalProperties": False,
+                "properties": {"entity": s, "at": xyz, "pos": xyz}}},
+            "swaps":{"type": "object", "minProperties": 1,
                       "additionalProperties": entity},
             "places": {"type": "array", "minItems": 1, "items": {
                 "type": "object", "required": ["entity"],
                 "additionalProperties": False,
                 "properties": {
-                    "entity": {"anyOf": [{"const": PLACES_OWN_PROP}, entity]},
+                    "entity": {"anyOf": [{"type": "string", "pattern": "^@[A-Za-z0-9_]+$"},
+                                         entity]},
                     "pos": {"type": "array", "items": num,
                             "minItems": 3, "maxItems": 3},
                     "scale": num, "yaw": num}}},
@@ -829,6 +984,17 @@ def poi_json_schema() -> dict:
             "material": s,
             "allow_shared_art": b,
             "interactive": b,
+            "parts": {"type": "object", "additionalProperties": {
+                "type": "object", "additionalProperties": False,
+                "properties": {"collision": {"type": "array", "items": {"type": "object"}}}}},
+            "collision": {"type": "array", "items": {
+                "type": "object", "required": ["size", "at"],
+                "additionalProperties": False,
+                "properties": {
+                    "kind": {"enum": ["ground", "wall"]},
+                    "size": {"type": "array", "items": num, "minItems": 3, "maxItems": 3},
+                    "at": {"type": "array", "items": num, "minItems": 3, "maxItems": 3},
+                    "rot": {"type": "array", "items": num, "minItems": 3, "maxItems": 3}}}},
             "components": {"type": "array", "items": s},
             "transform": {"type": "object", "additionalProperties": False,
                           "properties": {
@@ -934,6 +1100,9 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
             )
         td.band_lo = float(w)
 
+    if "needs" in f:
+        td.children = [TC.build_constraint(c).hex() for c in _validated_needs(defn)]
+
     if "kinds" in f:
         kinds = f["kinds"]
         if not isinstance(kinds, (list, tuple)) or not kinds:
@@ -943,9 +1112,26 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
         for k in kinds:
             if not isinstance(k, str) or not k:
                 raise ContentError(f"poi {defn.id}: kind entries must be strings, got {k!r}")
+        if f.get("subtile"):
+            # A sub-tile is never chosen for a slot: an entrance's `needs`
+            # pulls it in by flag. Its kinds are that flag, which by design no
+            # slot names, so the slot checks below would refuse exactly the
+            # tiles this exists for.
+            td.kinds = list(kinds)
+            kinds = ()
+            # The underground byte (`icon[0]`, live +0x2f0): an underground
+            # `needs` only ever picks a tile that has it set. A "surface"
+            # sub-tile is pulled onto the MAP by an on-map need (the way the
+            # straw house pulls in its 15 `3Pigs_Material` crate/cart tiles
+            # within 130 m), so the byte stays 0.
+            sub = f["subtile"]
+            if sub not in (True, "surface"):
+                raise ContentError(f"poi {defn.id}: subtile is true (an underground room) "
+                                   f"or \"surface\" (pulled onto the map by an on-map need)")
+            td.icon = (0 if sub == "surface" else 1, td.icon[1], td.icon[2])
         # A kind no target chapter can supply means the tile is dead weight —
         # it would be registered, loaded, and never placed. Catch it here.
-        for ch in chapters:
+        for ch in chapters if kinds else ():
             vocab = chapter_kinds(ch)
             if not vocab:
                 continue  # corpus absent; can't validate, don't block
@@ -969,7 +1155,18 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
                     f"but this one is {td.width}x{td.height} — it could never "
                     f"fill a {k} slot."
                 )
-        td.kinds = list(kinds)
+        if not f.get("subtile"):
+            td.kinds = list(kinds)
+
+    if "flags" in f:
+        # Tags that are not slot kinds: what a flag quota counts (a tilegen
+        # `add_quotas` cap) or what another tile's `needs` asks for. The
+        # Ghoul den entrance carries `Ghoul_Boss_Den_Entrance` this way, capped
+        # at 1 by the recipe. Never checked against the slot vocabulary.
+        extra = f["flags"]
+        if not isinstance(extra, list) or not all(isinstance(x, str) and x for x in extra):
+            raise ContentError(f"poi {defn.id}: 'flags' must be a list of strings")
+        td.kinds = [*td.kinds, *(x for x in extra if x not in td.kinds)]
 
     if "icon" in f:
         icon = f["icon"]
@@ -1094,9 +1291,15 @@ def _report_share(mod_id: str, defn: ContentDef, td: TC.TileDef,
     pool. Emitting that number is the difference between "it doesn't work" and
     "it works and is meant to be rare".
     """
+    if defn.fields.get("subtile"):
+        _log.info("poi %s/%s: sub-tile %s — placed only by an entrance's `needs`",
+                  mod_id, defn.id, td.kinds)
+        return
+    # `flags` are tags (quota / needs targets), not slot kinds: no share.
+    tags = set(defn.fields.get("flags") or ())
     for ch in chapters:
         counts = kind_pool_counts(ch)
-        for kind in td.kinds:
+        for kind in (k for k in td.kinds if k not in tags):
             vanilla = counts.get(kind, 0)
             share = copies / (copies + vanilla) if copies + vanilla else 0.0
             msg = ("poi %s/%s: %s slots in %s — %d vanilla + %d copies "
@@ -1305,6 +1508,50 @@ def _assert_swap_target_is_not_sunk(defn_id: str, src: str, dst: str,
     )
 
 
+PART_NAME = re.compile(r"^[A-Za-z0-9_]{1,40}$")
+
+
+def _discover_parts(d: Path, rel: str, cfg) -> dict:
+    """``parts/<name>/model.glb`` beside the poi, with ``[parts.<name>]``
+    settings (``collision``) from poi.toml: each is an entity of the mod's own,
+    stood by ``places`` as ``entity = "@<name>"``."""
+    pdir = d / "parts"
+    out: dict[str, dict] = {}
+    if pdir.is_dir():
+        for pd in sorted(pdir.iterdir()):
+            if (pd / "model.glb").is_file():
+                if not PART_NAME.match(pd.name) or pd.name == "prop":
+                    raise ContentError(
+                        f"poi {d.name}: part folder {pd.name!r} must be letters, "
+                        f"digits or _ (and not 'prop')")
+                out[pd.name] = {"model": f"{rel}/parts/{pd.name}/model.glb"}
+    if cfg is None:
+        return out
+    if not isinstance(cfg, dict):
+        raise ContentError(f"poi {d.name}: `parts` must be a table of [parts.<name>]")
+    for name, pc in cfg.items():
+        if name not in out:
+            raise ContentError(
+                f"poi {d.name}: [parts.{name}] has no parts/{name}/model.glb")
+        if not isinstance(pc, dict) or set(pc) - {"collision"}:
+            raise ContentError(f"poi {d.name}: [parts.{name}] takes only `collision`")
+        out[name].update(pc)
+    return out
+
+
+def _part_name(ent: str) -> str | None:
+    """``"@hut"`` -> ``"hut"``; None for ``@prop`` and shipped references."""
+    if isinstance(ent, str) and ent.startswith("@") and ent != PLACES_OWN_PROP:
+        return ent[1:]
+    return None
+
+
+def _part_entity_ref(mod_id: str, defn: ContentDef, name: str) -> str:
+    spec = defn.fields.get("prop") or {}
+    return (f"{_asset_dir(spec['entity_base'])}/{tag_of(mod_id, defn)}_{name}.entity.ot"
+            .replace("/", "\\"))
+
+
 def _places_own_prop(defn: ContentDef) -> bool:
     """Does this def stand its OWN prop, rather than a shipped entity?
 
@@ -1313,7 +1560,398 @@ def _places_own_prop(defn: ContentDef) -> bool:
     """
     raw = defn.fields.get("places")
     return isinstance(raw, list) and any(
-        isinstance(i, dict) and i.get("entity") == PLACES_OWN_PROP for i in raw)
+        isinstance(i, dict) and isinstance(i.get("entity"), str)
+        and i["entity"].startswith("@") for i in raw)
+
+
+#: What `clear` leaves standing unless `keep` says otherwise: what makes a camp
+#: tile a camp (its enemy spawners and the reward they guard) and the terrain
+#: shapes that stamp the ground's height and water into the tile.
+CLEAR_KEEP = ("Enemy_Spawner", "Enemy_Camp_Reward", "LD_Terrain_Shapes",
+              "LD_Reward_Pedestal")
+
+
+def _is_placement(pl, entity: str, at=None) -> bool:
+    """Does `pl` place `entity` (file name or full reference) — and, given
+    `at`, is it the one standing there? The tolerance is the chapter editor's
+    (:data:`rsmm.engine.scenery_edit.ANCHOR_TOL`), so one anchor means the same
+    thing in both editors."""
+    from ...engine.scenery_edit import ANCHOR_TOL
+    want = str(entity).lower()
+    if want not in (pl.ref.lower(), pl.ref.rsplit("\\", 1)[-1].lower()):
+        return False
+    return at is None or math.dist(pl.pos, at) <= ANCHOR_TOL
+
+
+def _anchor(defn: ContentDef, where: str, item, *, need_at: bool) -> tuple[str, list | None]:
+    """``(entity, at)`` from a ``clear.remove`` / ``move`` entry, checked."""
+    if isinstance(item, str) and not need_at:
+        return item, None
+    if not isinstance(item, dict) or not isinstance(item.get("entity"), str):
+        raise ContentError(f"poi {defn.id}: {where} needs an `entity` reference")
+    at = item.get("at")
+    if at is None and not need_at:
+        return item["entity"], None
+    if not (isinstance(at, list) and len(at) == 3 and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in at)):
+        raise ContentError(f"poi {defn.id}: {where}.at needs three numbers")
+    return item["entity"], [float(v) for v in at]
+
+
+def _one_placement(defn: ContentDef, where: str, objs, entity: str, at) -> list:
+    """Placements an entry names; an `at` anchor must name exactly one."""
+    hits = [(oid, pl) for oid, pl in objs if _is_placement(pl, entity, at)]
+    if at is not None and len(hits) != 1:
+        raise ContentError(
+            f"poi {defn.id}: {where}: " + (f"no {entity!r} stands at {at}" if not hits else
+            f"{len(hits)} placements of {entity!r} stand at {at}; the anchor must name one"))
+    return hits
+
+
+def _clear_level(level: bytes, defn: ContentDef) -> bytes:
+    """Sink every plain placement of the def's OWN level except `keep`.
+
+    ``clear = true`` (default keep list :data:`CLEAR_KEEP`) or
+    ``clear = { keep = ["Enemy_Spawner", ...] }`` (substrings of the entity
+    path). A cleared object is moved :data:`scenery_edit.SINK` metres under the
+    map with its transform rewritten in place, the same edit the chapter
+    editor's ``remove`` makes: nothing in the stream is renumbered, the object
+    stops showing and its collision sinks with it. Objects that own children
+    (spawners keep their settings as nested blocks) are not plain placements
+    and are never moved.
+    """
+    from ...engine.scenery_edit import SINK
+    if not defn.fields.get("own_level"):
+        raise ContentError(
+            f"poi {defn.id}: `clear` needs own_level = true. Without it the "
+            f"def edits the SHIPPED tile, and every run that rolls that tile "
+            f"would lose its scenery.")
+    spec = defn.fields["clear"]
+    keep = tuple(spec.get("keep", CLEAR_KEEP)) if isinstance(spec, dict) else CLEAR_KEEP
+    remove = tuple(spec.get("remove") or ()) if isinstance(spec, dict) else ()
+    if isinstance(spec, dict) and "keep" in spec and remove:
+        raise ContentError(f"poi {defn.id}: `clear` takes `keep` OR `remove`, not both")
+    changes, kept = {}, 0
+    objs = LP.objects(level)
+    anchored = set()                  # object ids named by an `at` anchor
+    named = []                        # plain names
+    for i, r in enumerate(remove):
+        ent, at = _anchor(defn, f"clear.remove[{i}]", r, need_at=False)
+        if at is None:
+            named.append(ent)
+        else:
+            anchored |= {oid for oid, _ in _one_placement(defn, f"clear.remove[{i}]",
+                                                          objs, ent, at)}
+    for oid, pl in objs:
+        if remove:
+            hit = oid in anchored or any(_is_placement(pl, n) for n in named)
+        else:
+            hit = not any(k.lower() in pl.ref.lower() for k in keep)
+        if not hit:
+            kept += 1
+            continue
+        x, y, z = pl.pos
+        changes[oid] = ((x, y - SINK, z), pl.quat, pl.scale)
+    walls = spec.get("walls") if isinstance(spec, dict) else None
+    if not changes and not walls:
+        raise ContentError(f"poi {defn.id}: `clear` found nothing to clear")
+    _log.info("poi %s: cleared %d object(s), kept %d", defn.id, len(changes), kept)
+    out = LP.set_transforms(level, changes) if changes else level
+    if walls:
+        try:
+            out, sunk = LP.sink_walls(out, None if walls is True else list(walls))
+        except LP.LevelPlacementError as e:
+            raise ContentError(f"poi {defn.id}: clear.walls: {e}") from e
+        _log.info("poi %s: sank %d invisible wall(s)", defn.id, len(sunk))
+    return out
+
+
+def _move_objects(level: bytes, defn: ContentDef, before=None) -> bytes:
+    """``move = [{ entity = "X.entity.ot", pos = [x, y, z] }]``: every plain
+    placement of that entity (file name or full reference) in the def's OWN
+    level stands at ``pos`` instead, keeping its rotation and scale — e.g. a
+    camp's reward lifted onto a deck the def built over its old spot. With
+    ``at = [x, y, z]`` only the placement standing there moves.
+
+    Targets are picked from `before` (the level as it was before ``clear``),
+    so an anchor still names what the author saw; a placement ``clear`` sank
+    is refused rather than silently lifted back up."""
+    out_changes = {}
+    objs = before if before is not None else LP.objects(level)
+    now = dict(LP.objects(level))
+    for i, mv in enumerate(defn.fields["move"]):
+        ent, at = _anchor(defn, f"move[{i}]", mv, need_at=False)
+        hits = _one_placement(defn, f"move[{i}]", objs, ent, at)
+        if not hits:
+            raise ContentError(f"poi {defn.id}: move[{i}]: the level places no {ent!r}")
+        if any(oid in now and now[oid].pos != pl.pos for oid, pl in hits):
+            raise ContentError(f"poi {defn.id}: move[{i}]: {ent!r} is also cleared; "
+                               f"an object is either moved or removed")
+        raw = mv.get("pos")
+        if not (isinstance(raw, list) and len(raw) == 3 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+            raise ContentError(f"poi {defn.id}: move[{i}].pos needs three numbers")
+        pos = tuple(float(v) for v in raw)
+        for oid, _pl in hits:
+            out_changes[oid] = (pos, now[oid].quat, now[oid].scale)
+    return LP.set_transforms(level, out_changes)
+
+
+def _set_level_values(level: bytes, defn: ContentDef) -> bytes:
+    """``level_values = { "<value name>" = number }``: the level's own value
+    overrides (:func:`rsmm.engine.level_placements.set_values`) in the def's
+    OWN copy of the tile's level."""
+    raw = defn.fields["level_values"]
+    if not (isinstance(raw, dict) and raw and all(
+            isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool)
+            for k, v in raw.items())):
+        raise ContentError(f"poi {defn.id}: level_values is a table of name = number")
+    try:
+        out = LP.set_values(level, {k: float(v) for k, v in raw.items()})
+    except LP.LevelPlacementError as e:
+        raise ContentError(f"poi {defn.id}: level_values: {e}") from e
+    _log.info("poi %s: level values %s", defn.id, raw)
+    return out
+
+
+def _resize_terrain(level: bytes, defn: ContentDef) -> bytes:
+    """``terrain_size = [x, z]``: stretch the def's OWN copy of the tile's
+    terrain to that many metres about its centre (:func:`rsmm.engine.terrain.resize`)."""
+    from ...engine import terrain as TT
+    raw = defn.fields["terrain_size"]
+    if not (isinstance(raw, list) and len(raw) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+        raise ContentError(f"poi {defn.id}: terrain_size is [x, z] in metres")
+    try:
+        out = TT.resize(level, float(raw[0]), float(raw[1]))
+    except TT.TerrainError as e:
+        raise ContentError(f"poi {defn.id}: terrain_size: {e}") from e
+    _log.info("poi %s: terrain box -> %g x %g m", defn.id, raw[0], raw[1])
+    return out
+
+
+def _paint_terrain(level: bytes, defn: ContentDef) -> bytes:
+    """``terrain = [strokes]``: the chapter editor's terrain brush
+    (:func:`rsmm.engine.terrain.apply_strokes`) on the def's OWN copy of the
+    tile's painted layers — e.g. flooding a tile into shallow water. The terrain
+    mesh and its collision are rebuilt from these layers at level load."""
+    from ...engine import terrain as TT
+    try:
+        t = TT.read(level)
+        notes = TT.apply_strokes(t, defn.fields["terrain"])
+        out = TT.write(level, t)
+    except TT.TerrainError as e:
+        raise ContentError(f"poi {defn.id}: terrain: {e}") from e
+    _log.info("poi %s: terrain: %s", defn.id, "; ".join(notes))
+    return out
+
+
+def _validated_needs(defn: ContentDef) -> list[TC.Constraint]:
+    """``needs = [{ flags = [...], count = 1, underground = true }]`` — the
+    tile constraints this tile places when it is placed (see
+    :class:`rsmm.engine.tile_cook.Constraint`). REPLACES the base tile's own
+    constraints.
+
+    An ``underground`` need (the default) is how an entrance pulls in its
+    room: the tile carrying every flag lands in one of the map's off-map
+    ``whole_map`` slots, the way the Ghoul den entrance pulls in
+    ``Boss_Ghoul_Underground``. With ``underground = false`` the tile is placed
+    on the map between ``min`` and ``max`` metres away (-1 = no limit).
+    """
+    raw = defn.fields.get("needs")
+    if not isinstance(raw, list):
+        raise ContentError(f"poi {defn.id}: 'needs' must be a list of tables")
+    out = []
+    for i, n in enumerate(raw):
+        what = f"poi {defn.id}: needs[{i}]"
+        if not isinstance(n, dict) or set(n) - {"flags", "exclude", "count", "underground",
+                                                "min", "max"}:
+            raise ContentError(f"{what} takes flags, exclude, count, underground, min, max")
+        flags, excl = n.get("flags"), n.get("exclude", [])
+        if (not isinstance(flags, list) or not flags
+                or not all(isinstance(x, str) and x for x in [*flags, *excl])):
+            raise ContentError(f"{what}.flags must be a non-empty list of strings")
+        count = n.get("count", 1)
+        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= 16:
+            raise ContentError(f"{what}.count must be 1..16")
+        under = n.get("underground", True)
+        if not isinstance(under, bool):
+            raise ContentError(f"{what}.underground must be true or false")
+        out.append(TC.Constraint(list(flags), list(excl), count,
+                                 min_dist=float(n.get("min", -1.0)),
+                                 max_dist=float(n.get("max", -1.0)),
+                                 flag=1 if under else 0))
+    return out
+
+
+#: The shipped sub-tile teleporters a `teleporters` entry clones, by side:
+#: the Thieves' stash pair. Their Dt Teleporter names itself and its partner
+#: with two strings (`Thieves_Underground_Entrance_In` / `_Out`); the clone
+#: renames both, so a pair is found by THIS mod's id alone. `out` stands in the
+#: entrance tile and takes the hero underground; `in` stands in the room and
+#: brings them back. Both are placed by shipped tiles, so the preload closure
+#: is borrowed from those (`_placed_for_cache`).
+#:
+#: ⚠ NOT the generic `Teleporter_SubTile_Entrance_Out_Model`: it has no
+#: `Child Event Teleport Hero` state, so the interaction completes and nothing
+#: teleports (measured in game 2026-11-15: validate -> success on every press,
+#: no HERO_TELEPORTED). The Thieves Out entity adds that state.
+TELEPORTER_DONORS = {
+    "out": "Objects_Common\\Thieves_Underground_Teleporter_Out.entity.ot",
+    "in": "Objects_Common\\Thieves_Underground_Teleporter_In.entity.ot",
+}
+
+#: Events a donor teleporter sends that belong to ITS feature, renamed in the
+#: clone so using the mod's door does not count as entering a Thieves' stash.
+#: An event name no listener knows is inert.
+TELEPORTER_EVENTS = {"HERO_ENTER_THIEVES_STASH": "HERO_ENTER_{ID}"}
+
+
+def _validated_teleporters(defn: ContentDef) -> list[dict]:
+    """``teleporters = [{ side = "out"|"in", id = "...", pos = [x, y, z], yaw }]``.
+
+    A pair shares one ``id``: the ``out`` teleporter (on the entrance tile)
+    sends the hero to the ``in`` one (in the room the entrance ``needs``) and
+    back. Needs ``own_level``: the teleporter is added to the def's own level.
+
+    ``replace = "<entity>"`` instead TAKES OVER a teleporter the base level
+    already stands (no ``pos``): a shipped room keeps its own teleporter as an
+    object with level-side overrides, which ``clear`` cannot sink. Left alone
+    it would still answer its shipped pair — two ``Thieves_Underground_Entrance_In``
+    in one world, and a real stash entrance could send a player here. Taking it
+    over clones that entity with its pair renamed to ``id`` and repoints the
+    level (the reference and its ``[...] <Entity>\\...`` override labels).
+    """
+    raw = defn.fields.get("teleporters")
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        raise ContentError(f"poi {defn.id}: 'teleporters' must be a non-empty list")
+    if not defn.fields.get("own_level"):
+        raise ContentError(f"poi {defn.id}: 'teleporters' needs own_level = true")
+    out = []
+    for i, t in enumerate(raw):
+        what = f"poi {defn.id}: teleporters[{i}]"
+        if not isinstance(t, dict) or set(t) - {"side", "id", "pos", "yaw", "replace"}:
+            raise ContentError(f"{what} takes side, id, pos, yaw, replace")
+        rep = t.get("replace")
+        if rep is not None and (not isinstance(rep, str) or not rep.endswith(".entity.ot")
+                                or "pos" in t):
+            raise ContentError(f"{what}.replace names the base level's teleporter "
+                               f"(…\\X.entity.ot) and takes no pos")
+        if t.get("side") not in TELEPORTER_DONORS:
+            raise ContentError(f"{what}.side must be \"out\" or \"in\"")
+        tid = t.get("id")
+        if not isinstance(tid, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{2,40}", tid):
+            raise ContentError(f"{what}.id must be a name like \"Fishermans_Platform\"")
+        pos = t.get("pos") or [0.0, 0.0, 0.0]
+        if not isinstance(pos, list) or len(pos) != 3:
+            raise ContentError(f"{what}.pos needs 3 numbers")
+        out.append({"side": t["side"], "id": tid, "pos": tuple(float(v) for v in pos),
+                    "yaw": float(t.get("yaw", 0.0)), "replace": rep})
+    return out
+
+
+def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,
+                     written: list[Path]) -> str:
+    """Clone the side's shipped teleporter under this mod's name with the
+    pair renamed to ``tp["id"]``; return the new entity reference."""
+    from ...engine import entity_strings as ES
+    donor_ref = _teleporter_donor(tp)
+    tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    ref = f"Objects_Common\\{tag}_Teleporter_{tp['side'].capitalize()}.entity.ot"
+    raw = _corpus(PC.entity_cooked_path(donor_ref), defn.id, f"teleporter donor {donor_ref}")
+    # The pair is the two `<name>_In` / `<name>_Out` strings the donor's Dt
+    # Teleporter carries (`Cave_Entrance_*`, `Thieves_Underground_Entrance_*`).
+    pair = {s for _sec, _off, s in ES.list_strings(raw)
+            if re.fullmatch(r"[A-Za-z0-9_]+_(In|Out)", s) and "Entrance" in s}
+    ins = [s for s in pair if s.endswith("_In")]
+    outs = [s for s in pair if s.endswith("_Out")]
+    if len(ins) != 1 or len(outs) != 1:
+        raise ContentError(f"poi {defn.id}: teleporter donor {donor_ref} does not carry "
+                           f"one In/Out pair name (found {sorted(pair)})")
+    present = {s for _sec, _off, s in ES.list_strings(raw)}
+    stem, new_stem = (r.rsplit("\\", 1)[-1].removesuffix(".entity.ot") for r in (donor_ref, ref))
+    out = ES.replace_strings(raw, {
+        ins[0]: f"{tp['id']}_In", outs[0]: f"{tp['id']}_Out",
+        **{k: v.format(ID=tp["id"].upper()) for k, v in TELEPORTER_EVENTS.items()
+           if k in present},
+        # its own override labels (`[Entity 3d Node] <Stem>\\...`) follow the
+        # clone's name, as the level-side labels do in a takeover
+        **{x: x.replace(f"] {stem}\\", f"] {new_stem}\\", 1) for x in present
+           if x.startswith("[") and f"] {stem}\\" in x}})
+    _write(out_dir, PC.entity_cooked_path(ref), PC.restamp_entity_guids(out, ref), written)
+    return ref
+
+
+def _teleporter_donor(tp: dict) -> str:
+    return tp.get("replace") or TELEPORTER_DONORS[tp["side"]]
+
+
+def _teleporter_takeovers(mod_id: str, defn: ContentDef, level_ref: str,
+                          out_dir: Path, written: list[Path]) -> dict[str, str]:
+    """Level swaps for every ``teleporters`` entry with ``replace``: the
+    entity reference and each ``[...] <Stem>\\...`` override label move to
+    the clone (see :func:`_validated_teleporters`)."""
+    swaps: dict[str, str] = {}
+    tps = [t for t in _validated_teleporters(defn) if t.get("replace")]
+    if not tps:
+        return swaps
+    _h, doc = PC._refs_doc("oCGameStream", _corpus(PC.level_cooked_path(level_ref), defn.id,
+                                                   "the tile's level"))
+    refs = list(doc.get("asset_refs") or [])
+    for tp in tps:
+        if tp["replace"] not in refs:
+            raise ContentError(f"poi {defn.id}: teleporters.replace {tp['replace']!r} is not "
+                               f"placed by the base level")
+        new = _emit_teleporter(mod_id, defn, out_dir, tp, written)
+        stem, new_stem = (r.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+                          for r in (tp["replace"], new))
+        swaps[tp["replace"]] = new
+        for r in refs:
+            if r.startswith("[") and f"] {stem}\\" in r:
+                swaps[r] = r.replace(f"] {stem}\\", f"] {new_stem}\\", 1)
+        _log.info("poi %s: took over %s as %r (%d override label(s))", defn.id,
+                  stem, tp["id"], len(swaps) - 1)
+    return swaps
+
+
+#: A teleporter pair name as the game writes one (`Cave_Entrance_In`,
+#: `Thieves_Underground_Entrance_Gold_Room_Out`).
+_PAIR_NAME = re.compile(rb"[A-Za-z0-9_]*Entrance[A-Za-z0-9_]*_(?:In|Out)")
+
+
+def _rename_level_pair(level: bytes, defn: ContentDef) -> bytes:
+    """A taken-over teleporter's pair names as its LEVEL sets them.
+
+    ⚠ The level overrides them: the Thieves Gold Room's own level renames its
+    teleporter to `Thieves_Underground_Entrance_Gold_Room_In` / `_Out`, which
+    beats the names in the entity. Renaming only the entity left the room's
+    teleporter answering the Gold Room's pair, so the entrance's door found no
+    partner and an interaction teleported nowhere (decompiled 2026-11-15:
+    MapCtx_LinkPairedSpawners pairs A.target hash == B.name hash, map-wide,
+    once at level start). The names are renamed to the def's pair id here.
+    """
+    tps = [t for t in _validated_teleporters(defn) if t.get("replace")]
+    if not tps:
+        return level
+    _cf, _sec, inner = LP._inner(level)
+    found = set()
+    for m in _PAIR_NAME.finditer(inner):
+        text = m.group(0)
+        at = m.start()
+        if at >= 4 and struct.unpack_from("<I", inner, at - 4)[0] == len(text):
+            found.add(text.decode("ascii"))
+    ins = [n for n in found if n.endswith("_In")]
+    outs = [n for n in found if n.endswith("_Out")]
+    if not found:
+        return level
+    if len(tps) != 1 or len(ins) != 1 or len(outs) != 1:
+        raise ContentError(f"poi {defn.id}: the base level names teleporter pair(s) "
+                           f"{sorted(found)}; cannot tell which one to take over")
+    tid = tps[0]["id"]
+    _log.info("poi %s: level pair %s/%s -> %s_In/_Out", defn.id, ins[0], outs[0], tid)
+    return LP.replace_strings(level, {ins[0]: f"{tid}_In", outs[0]: f"{tid}_Out"})
 
 
 def _validated_places(defn: ContentDef) -> list[dict]:
@@ -1366,7 +2004,26 @@ def _validated_places(defn: ContentDef) -> list[dict]:
             raise ContentError(
                 f"poi {defn.id}: places[{i}] needs an `entity` reference")
         ent = item["entity"]
-        if ent == PLACES_OWN_PROP:
+        # An ingredient PICKUP this mod declares (kind "ingredient"): a clone of
+        # the game's key pickup, so the key pickup is what has to be placeable.
+        pickup = ING.parse_place(ent) if isinstance(ent, str) else None
+        if pickup is not None:
+            if ING.PICKUP_BASE not in _placeable_entities():
+                raise ContentError(f"poi {defn.id}: places[{i}]: the key pickup the "
+                                   f"ingredient pickups clone is no longer placed by any level")
+            pos = item.get("pos") or [0.0, 0.0, 0.0]
+            if len(pos) != 3:
+                raise ContentError(f"poi {defn.id}: places[{i}].pos needs 3 numbers")
+            out.append({"entity": pickup, "pos": tuple(float(v) for v in pos),
+                        "scale": float(item.get("scale", 1.0)),
+                        "yaw": float(item.get("yaw", 0.0))})
+            continue
+        part = _part_name(ent)
+        if part is not None and part not in ((defn.fields.get("prop") or {}).get("parts") or {}):
+            raise ContentError(
+                f"poi {defn.id}: places[{i}] is {ent!r} but there is no "
+                f"parts/{part}/model.glb beside this poi")
+        if ent.startswith("@"):
             # The guard below asks "has anything ever stood this entity at a
             # transform of its own", which a name that did not exist until this
             # emit obviously fails. Ask it of the DONOR instead: the clone is
@@ -1842,9 +2499,44 @@ def _placed_for_cache(defn: ContentDef) -> list[str]:
     """
     prop = defn.fields.get("prop")
     own_donor = prop.get("entity_base") if isinstance(prop, dict) else None
-    placed = [own_donor if i["entity"] == PLACES_OWN_PROP else i["entity"]
+    # Parts ("@<name>") are clones of the same donor, so they borrow as it does.
+    placed = [own_donor if i["entity"].startswith("@") else i["entity"]
               for i in _validated_places(defn)]
-    return [e for e in placed if e]
+    # A teleporter clone borrows against its shipped donor, like a part.
+    placed += [_teleporter_donor(t) for t in _validated_teleporters(defn)]
+    # An ingredient pickup borrows its two shipped donors (the key pickup and
+    # the scenery it looks like): only shipped tiles can prove a closure.
+    out = []
+    for e in placed:
+        if e and e.startswith(_PICKUP_REF_PREFIX):
+            out += _pickup_record(defn, e)["borrow"]
+        elif e:
+            out.append(e)
+    return out
+
+
+#: Entity refs of ingredient pickups (`rsmm.sdk.kinds.ingredients.pickup_ref`).
+_PICKUP_REF_PREFIX = "Objects_Common\\Ingredient_"
+
+
+def _pickup_record(defn: ContentDef, ref: str) -> dict:
+    rec = ING.EMITTED.get(ref)
+    if rec is None:
+        raise ContentError(
+            f"poi {defn.id}: places {ref!r}, an ingredient pickup no `ingredient` "
+            f"block emitted — declare the ingredient (with this pickup) in the "
+            f"manifest's [[content]], which is emitted before the pois folder")
+    return rec
+
+
+def _pickup_assets(defn: ContentDef) -> list[str]:
+    """The files the ingredient kind emitted for the pickups `places` stands:
+    the clone entity and its icon reach the tile cache like the mod's own art."""
+    out: list[str] = []
+    for i in _validated_places(defn):
+        if i["entity"].startswith(_PICKUP_REF_PREFIX):
+            out += [a for a in _pickup_record(defn, i["entity"])["assets"] if a not in out]
+    return out
 
 
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
@@ -2052,6 +2744,17 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
                PC.cook_model(model_src.read_bytes(),
                              _donor_geometry(donor_meshes[0], defn.id),
                              transform=spec.get("transform")), written)
+    extra_refs: list[str] = []
+    for k, rel in enumerate(spec.get("extra_models") or [], start=2):
+        if model_ref is None:
+            raise ContentError(f"poi {defn.id}: prop.extra_models needs prop.model")
+        src = _mod_source(out_dir, rel, defn.id, f"prop.extra_models[{k - 2}]")
+        ref = f"{_asset_dir(donor_meshes[0])}/{tag}_{k}.fbx".replace("/", "\\")
+        _write(out_dir, PC.art_cooked_path(ref),
+               PC.cook_model(src.read_bytes(),
+                             _donor_geometry(donor_meshes[0], defn.id),
+                             transform=spec.get("transform")), written)
+        extra_refs.append(ref)
 
     # 2. Textures. Source PNGs in, cooked oCTexture out, named after the mod.
     tex_refs: dict[str, str] = {}
@@ -2090,6 +2793,57 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     entity = PC.clone_prop_entity(donor_ent, swaps,
                                   ent_ref if RESTAMP_ENTITY_GUIDS else None)
 
+    # 4a. Extra meshes: each is drawn by an entity of its own, the same donor
+    #     cloned with only the mesh swapped, and stood wherever the main prop
+    #     stands (`_extra_entity_refs`). A cloned graphic COMPONENT on one entity
+    #     was tried first and did not draw in game (2026-11-14): one mesh per
+    #     entity is the route proven on the hut.
+    for mesh_ref, xref in zip(extra_refs, _extra_entity_refs(mod_id, defn), strict=True):
+        xswaps = dict.fromkeys(donor_meshes, mesh_ref)
+        if spec["material_base"] in swaps:
+            xswaps[spec["material_base"]] = swaps[spec["material_base"]]
+        _write(out_dir, PC.entity_cooked_path(xref),
+               PC.clone_prop_entity(donor_ent, xswaps,
+                                    xref if RESTAMP_ENTITY_GUIDS else None), written)
+
+    # 4a'. Parts: entities of the mod's own, each its own mesh (same material),
+    #      stood by `places` as "@<name>" — a kit, the way the shipped docks are
+    #      built (one deck/post/hut mesh per entity, placed many times).
+    for pname, pspec in sorted((spec.get("parts") or {}).items()):
+        psrc = _mod_source(out_dir, pspec["model"], defn.id, f"parts.{pname}")
+        mesh_ref = f"{_asset_dir(donor_meshes[0])}/{tag}_{pname}.fbx".replace("/", "\\")
+        _write(out_dir, PC.art_cooked_path(mesh_ref),
+               PC.cook_model(psrc.read_bytes(), _donor_geometry(donor_meshes[0], defn.id),
+                             transform={"fit": "rig"}), written)
+        pswaps = dict.fromkeys(donor_meshes, mesh_ref)
+        if spec["material_base"] in swaps:
+            pswaps[spec["material_base"]] = swaps[spec["material_base"]]
+        pref = _part_entity_ref(mod_id, defn, pname)
+        pent = PC.clone_prop_entity(donor_ent, pswaps, pref if RESTAMP_ENTITY_GUIDS else None)
+        if pspec.get("collision"):
+            from ...engine import collision_volumes as CV
+            try:
+                pent = CV.add_volumes(pent, CV.parse(pspec["collision"],
+                                                     f"poi {defn.id}: parts.{pname}.collision"),
+                                      name=pref, seed=f"{tag}/{pname}")
+            except CV.CollisionError as e:
+                raise ContentError(str(e)) from e
+        _write(out_dir, PC.entity_cooked_path(pref), pent, written)
+        _log.info("poi %s: part %s", defn.id, pname)
+
+    # 4b. Collision: walkable ground and blocking walls, as boxes on the prop
+    #     entity (see `rsmm.engine.collision_volumes`). In the prop's own
+    #     space: the mesh transform (`transform.scale`, `rotate_deg`) is baked
+    #     into the geometry and does NOT move these.
+    if spec.get("collision"):
+        from ...engine import collision_volumes as CV
+        try:
+            vols = CV.parse(spec["collision"], f"poi {defn.id}: collision")
+            entity = CV.add_volumes(entity, vols, name=f"{tag}_Prop", seed=tag)
+        except CV.CollisionError as e:
+            raise ContentError(str(e)) from e
+        _log.info("poi %s/%s: %d collision volume(s)", mod_id, defn.id, len(vols))
+
     # 5. Marker and interaction, ON THIS MOD'S OWN ENTITY.
     #
     # This is the additive half of the icon. `_decorate_host` is the same code
@@ -2108,6 +2862,19 @@ def _emit_prop_art(mod_id: str, defn: ContentDef, out_dir: Path,
     _log.info("poi %s/%s: prop from %s (+%d texture(s))", mod_id, defn.id,
               spec.get("model") or f"{spec['entity_base']} unchanged", len(tex_refs))
     return ent_ref, extra_deps, borrow
+
+
+def _extra_entity_refs(mod_id: str, defn: ContentDef) -> list[str]:
+    """The entities drawing the prop's extra meshes (``model_2.glb``, ...),
+    in order: ``<tag>_Prop_2.entity.ot``, ``<tag>_Prop_3.entity.ot``, ..."""
+    spec = defn.fields.get("prop") or {}
+    n = len(spec.get("extra_models") or [])
+    if not n:
+        return []
+    ent_dir = _asset_dir(spec["entity_base"])
+    tag = tag_of(mod_id, defn)
+    return [f"{ent_dir}/{tag}_Prop_{k}.entity.ot".replace("/", "\\")
+            for k in range(2, n + 2)]
 
 
 def _shipped_path(ref: str, defn_id: str) -> str:
@@ -2439,6 +3206,11 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
         raise ContentError(
             f"poi {defn.id}: an in-place prop needs `replaces` — the shipped "
             f"entity whose art this def overwrites.")
+    if spec.get("collision"):
+        raise ContentError(
+            f"poi {defn.id}: `collision` needs the mod's own prop entity; an "
+            f"in-place prop (replace_base) edits a shipped entity, and adding "
+            f"collision there would make every placement of it solid.")
     ent = _corpus(PC.entity_cooked_path(ref), defn.id, "prop.replaces")
     strings = [s for _sec, _off, s in ES.list_strings(ent)]
     meshes = sorted({s for s in strings if s.lower().endswith(".fbx")})
@@ -2789,7 +3561,28 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
     new_level_ref = level_ref.rsplit("\\", 1)[0] + f"\\{tag}.level.ot"
     level = PC.clone_tile_level(
         _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
-        level_ref, new_level_ref, swaps)
+        level_ref, new_level_ref,
+        {**swaps, **_teleporter_takeovers(mod_id, defn, level_ref, out_dir, written)})
+    before = LP.objects(level)
+    if defn.fields.get("clear"):
+        level = _clear_level(level, defn)
+    if defn.fields.get("move"):
+        level = _move_objects(level, defn, before)
+    if defn.fields.get("level_values"):
+        level = _set_level_values(level, defn)
+    if defn.fields.get("render_ambient"):
+        raw = defn.fields["render_ambient"]
+        if not (isinstance(raw, list) and len(raw) == 3 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+            raise ContentError(f"poi {defn.id}: render_ambient is [r, g, b]")
+        try:
+            level = LP.set_ambient(level, tuple(float(v) for v in raw))
+        except LP.LevelPlacementError as e:
+            raise ContentError(f"poi {defn.id}: render_ambient: {e}") from e
+    if defn.fields.get("terrain_size"):
+        level = _resize_terrain(level, defn)
+    if defn.fields.get("terrain"):
+        level = _paint_terrain(level, defn)
     places = _validated_places(defn)
     # The mod's OWN entity, emitted once however many times it is placed. This
     # is the additive route: a name this mod introduces, standing in a level
@@ -2800,7 +3593,7 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
     own_prop = None
     prop_deps: list[str] = []
     prop_borrow: list[str] = []
-    if any(i["entity"] == PLACES_OWN_PROP for i in places):
+    if any(i["entity"].startswith("@") for i in places):
         own_prop, prop_deps, prop_borrow = _emit_prop_art(
             mod_id, defn, out_dir, written)
         _log.info("poi %s/%s: mod-owned prop entity %s", mod_id, defn.id, own_prop)
@@ -2808,13 +3601,47 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
         # yaw only: a POI stands upright by definition, and a full quaternion
         # in a toml file is a footgun no author asked for.
         half = math.radians(item["yaw"]) / 2.0
-        entity = own_prop if item["entity"] == PLACES_OWN_PROP else item["entity"]
-        level = LP.add_placement(
-            level, entity, pos=item["pos"],
-            quat=(0.0, math.sin(half), 0.0, math.cos(half)),
-            scale=(item["scale"],) * 3)
-        _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
-                  entity.split("\\")[-1], item["pos"], item["scale"])
+        own = item["entity"] == PLACES_OWN_PROP
+        part = _part_name(item["entity"])
+        entity = (own_prop if own else _part_entity_ref(mod_id, defn, part) if part
+                  else item["entity"])
+        for ent in [entity, *(_extra_entity_refs(mod_id, defn) if own else [])]:
+            level = LP.add_placement(
+                level, ent, pos=item["pos"],
+                quat=(0.0, math.sin(half), 0.0, math.cos(half)),
+                scale=(item["scale"],) * 3)
+            _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
+                      ent.split("\\")[-1], item["pos"], item["scale"])
+    level = _rename_level_pair(level, defn)
+    # Several teleporters of one side and id (a room with more than one way
+    # out) share one cloned entity: emit it once, place it each time.
+    emitted: dict[tuple[str, str], str] = {}
+    for tp in _validated_teleporters(defn):
+        if tp.get("replace"):
+            # The takeover's clone carries the same name a new teleporter of
+            # this side would get: reuse it only if it is the same donor.
+            if tp["replace"] == TELEPORTER_DONORS[tp["side"]]:
+                tag = f"{mod_id}_{defn.id}".replace("-", "_")
+                emitted[(tp["side"], tp["id"])] = (
+                    f"Objects_Common\\{tag}_Teleporter_{tp['side'].capitalize()}.entity.ot")
+            else:
+                emitted[(tp["side"], tp["id"])] = ""
+    for tp in _validated_teleporters(defn):
+        if tp.get("replace"):
+            continue                      # taken over in the clone above
+        if emitted.get((tp["side"], tp["id"])) == "":
+            raise ContentError(
+                f"poi {defn.id}: a {tp['side']!r} teleporter {tp['id']!r} beside a takeover "
+                f"of a different entity would share its clone's name")
+        key = (tp["side"], tp["id"])
+        if key not in emitted:
+            emitted[key] = _emit_teleporter(mod_id, defn, out_dir, tp, written)
+        ent = emitted[key]
+        half = math.radians(tp["yaw"]) / 2.0
+        level = LP.add_placement(level, ent, pos=tp["pos"],
+                                 quat=(0.0, math.sin(half), 0.0, math.cos(half)),
+                                 scale=(1.0, 1.0, 1.0))
+        _log.info("poi %s: %s teleporter %r at %s", defn.id, tp["side"], tp["id"], tp["pos"])
     _write(out_dir, PC.level_cooked_path(new_level_ref), level, written)
 
     new_prefab_ref = donor_prefab_dec.rsplit("\\", 1)[0] + f"\\{tag}.entity.ot"
@@ -2847,6 +3674,12 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
     place it. Returns the new prefab reference for the cloned tiledef."""
     spec = defn.fields["prop"]
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
+    if (defn.fields.get("prop") or {}).get("extra_models"):
+        raise ContentError(
+            f"poi {defn.id}: model_2.glb and up need `places` with "
+            f"entity = \"@prop\" (and own_level): each extra mesh is an entity "
+            f"of its own, stood where the prop stands, and taking over one "
+            f"shipped object (`replaces`) leaves nowhere to stand the rest.")
     ent_ref, _deps, _borrow = _emit_prop_art(mod_id, defn, out_dir, written)
 
     # Tile level: the base tile's dressing, its centrepiece swapped for ours.
@@ -2942,17 +3775,24 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
             level = PC.override_tile_level(level, swaps)
         for item in places:
             entity = item["entity"]
-            if entity == PLACES_OWN_PROP:
+            extras: list[str] = []
+            if _part_name(entity):
+                if own_prop is None:
+                    own_prop = _emit_prop_art(mod_id, defn, out_dir, written)[0]
+                entity = _part_entity_ref(mod_id, defn, _part_name(entity))
+            elif entity == PLACES_OWN_PROP:
                 if own_prop is None:
                     own_prop = _emit_prop_art(mod_id, defn, out_dir, written)[0]
                 entity = own_prop
+                extras = _extra_entity_refs(mod_id, defn)
             half = math.radians(item["yaw"]) / 2.0
-            level = LP.add_placement(
-                level, entity, pos=item["pos"],
-                quat=(0.0, math.sin(half), 0.0, math.cos(half)),
-                scale=(item["scale"],) * 3)
-            _log.info("poi %s: added %s to the shipped level at %s scale %.2f",
-                      defn.id, entity.split("\\")[-1], item["pos"], item["scale"])
+            for ent in [entity, *extras]:
+                level = LP.add_placement(
+                    level, ent, pos=item["pos"],
+                    quat=(0.0, math.sin(half), 0.0, math.cos(half)),
+                    scale=(item["scale"],) * 3)
+                _log.info("poi %s: added %s to the shipped level at %s scale %.2f",
+                          defn.id, ent.split("\\")[-1], item["pos"], item["scale"])
         _write(out_dir, PC.level_cooked_path(level_ref), level, written)
 
     # Cosmetic edits (icon / kinds / weight) go onto the base tiledef itself.
@@ -2969,7 +3809,7 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # in the preload cache exactly like the mod's own art. `RC.extend` dedupes,
     # so this is a no-op on a tile that already places something carrying the
     # same parent — and load-bearing on one that does not.
-    assets = _emitted_assets(out_dir, written) + extra_deps
+    assets = _emitted_assets(out_dir, written) + extra_deps + _pickup_assets(defn)
     # `places` entities belong here for the same reason swap targets do — see
     # `_placed_for_cache`. Without them a def that stands a shipped entity the
     # donor never placed writes it into the level and into nothing else.
@@ -2992,12 +3832,23 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize the cloned tiledef + one patched mapdef per target chapter."""
     base, chapters = _validate(defn)
+    # Ingredient pickups / hand-ins this def places, even when the manifest's
+    # `ingredient` block has not emitted in this run (out_dir is <mod>/assets).
+    ING.describe_mod(out_dir.parent)
 
     td = TC.read(_tile_path(base).read_bytes())
     _apply_edits(td, defn, chapters)
     # Validated here as well as in the override path, so an author who writes
     # `swaps` without `replace_base` is told rather than silently ignored.
     _validated_swaps(defn, base, out_dir)
+    if any(defn.fields.get(k) for k in ("clear", "terrain", "terrain_size", "level_values",
+                                        "render_ambient", "move")) and (
+            defn.fields.get("replace_base") or not defn.fields.get("own_level")):
+        raise ContentError(
+            f"poi {defn.id}: `clear`/`terrain`/`terrain_size`/`move` need own_level = true "
+            f"and no replace_base: "
+            f"it empties the def's OWN copy of the tile's level, never the "
+            f"shipped one.")
 
     # `replace_base` mode: rewrite the BASE tile in place instead of adding a
     # new one to the pool. The tile keeps its own id, path, prefab reference and
@@ -3112,7 +3963,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
-    assets = _emitted_assets(out_dir, written)
+    assets = _emitted_assets(out_dir, written) + _pickup_assets(defn)
     # `places` entities count exactly like swap targets here — see
     # `_placed_for_cache` for why, and for what it cost both times it was missed.
     placed = _placed_for_cache(defn)

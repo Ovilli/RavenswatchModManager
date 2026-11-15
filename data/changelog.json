@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-14",
+  "generated": "2026-11-15",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-15",
+      "summary": "Loader va-gate checks the exe build its own addresses were made for (no stale globals after a game patch); R.net.on_repl_setup resolves again on the current build.",
+      "highlights": [
+        "Loader va-gate checks the exe build its own addresses were made for (no stale globals after a game patch); R.net.on_repl_setup resolves again on the current build."
+      ],
+      "loader_version": 60
+    },
     {
       "version": "",
       "date": "2026-11-14",
@@ -509,19 +518,6 @@
         "Fixed: the Update 5 backport's hero table was undone on the next apply, so the old values never reached the game."
       ],
       "cli_version": 2
-    },
-    {
-      "version": "5.9.24",
-      "loader_version": 46,
-      "date": "2026-10-17",
-      "summary": "The app opens links, feels faster, and can get CLI fixes without a new release.",
-      "highlights": [
-        "Links in the app (Discord, Ko-fi, GitHub, docs) open in your browser again.",
-        "Screens load much faster: the CLI stays warm between calls instead of restarting each time.",
-        "Linux AppImage: built on a newer base, so it no longer runs sluggishly. It needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 or newer); older systems should use the .deb.",
-        "CLI fixes can now arrive between app releases; Settings, About shows which CLI build is running.",
-        "Release notes for loader updates show a proper heading."
-      ]
     }
   ]
 }

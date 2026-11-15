@@ -67,6 +67,7 @@ INTANGIBLE = "State Intangible"
 #: controller's two switches that stop movement while the ability runs (off
 #: on Blood Wolf 0.1's special, which was cast on the move in game).
 SPLIT_ENABLE = "State Anim Split Enable"
+TOP_MOVE_PLAYER = "Top Move Anim Player"
 MOVING_SWITCHES = ("value_9", "value_10")
 #: TEMPORARY bisection variants (see Ability.variant).
 _VARIANTS = {"no_end_state", "no_inertia", "bare", "look_enter", "dash_state", "released"}
@@ -183,9 +184,9 @@ class Ability:
     #: The hero may walk while the ability plays (the move split is on and
     #: the button does not stop movement).
     moving: bool = False
-    #: Attacks pass through the hero for the whole ability, its strike too
-    #: (Character_Common's "State Intangible", as Scarlet's wolf bite holds it).
-    intangible: bool = False
+    #: Attacks pass through the hero for the whole ability (true) or the first
+    #: N seconds (float), its strike too (Character_Common's "State Intangible").
+    intangible: bool | float = False
     #: A rush that ends in a strike (Scarlet's wolf bite): ``clip`` is the
     #: lunge, stopping at the first enemy in reach; as soon as one is in reach
     #: the strike's own clip plays and ``hits`` land on ITS timeline. A rush
@@ -196,6 +197,11 @@ class Ability:
     #: are then not this button's to say (its clips and numbers are the
     #: template's ``clips`` / ``values``).
     template: object | None = None
+    #: A passive slot (e.g. a passive trait): sets card text, icon and 0 s
+    #: cooldown, and creates a persistent state activated on hero init.
+    passive: bool = False
+    #: Loop ``clip`` in the animatic's loop slot (``ref_4``) for ``duration``.
+    loop: bool = False
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -205,12 +211,15 @@ class Ability:
             return cls._parse_template(slot, raw)
         if isinstance(raw, dict) and raw.get("combo") and not raw.get("clip"):
             raw = {**raw, "clip": (raw["combo"][0] or {}).get("clip", "")}
-        if not isinstance(raw, dict) or not raw.get("clip"):
+        passive = bool(raw.get("passive")) if isinstance(raw, dict) else False
+        if isinstance(raw, dict) and raw.get("passive") not in (None, True, False):
+            raise AbilityError(f"ability {slot}: passive is true or false")
+        if not isinstance(raw, dict) or (not passive and not raw.get("clip")):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
                               "icon", "icon_disabled", "root_motion", "moving",
-                              "intangible", "strike"}
+                              "intangible", "strike", "passive", "loop"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -260,8 +269,12 @@ class Ability:
             raise AbilityError(f"ability {slot}: a combo's steps keep the layout's root motion")
         if raw.get("moving") not in (None, True, False) or (raw.get("moving") and combo):
             raise AbilityError(f"ability {slot}: moving is true or false (not on a combo)")
-        if raw.get("intangible") not in (None, True, False):
-            raise AbilityError(f"ability {slot}: intangible is true or false")
+        intang = raw.get("intangible")
+        if intang is not None and not isinstance(intang, bool) and (
+                not isinstance(intang, (int, float)) or not 0 < intang <= 60):
+            raise AbilityError(f"ability {slot}: intangible is true, false, or 0..60 seconds")
+        if raw.get("loop") not in (None, True, False) or (raw.get("loop") and (combo or passive)):
+            raise AbilityError(f"ability {slot}: loop is true or false (not on a combo or passive)")
         strike = raw.get("strike")
         if strike is not None:
             if combo or raw.get("moving"):
@@ -278,13 +291,17 @@ class Ability:
                     raise AbilityError(f"ability {slot}: strike {k} is 0..10 seconds")
             if not hits:
                 raise AbilityError(f"ability {slot}: a strike needs hits (on its own clip)")
-        return cls(slot, str(raw["clip"]), float(raw.get("cooldown", 1.0)),
+        return cls(slot, str(raw.get("clip", "")),
+                   float(raw.get("cooldown", 0.0 if passive else 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
                    str(raw.get("variant", "")), [dict(st) for st in combo],
                    float(rm) if rm is not None else None, bool(raw.get("moving")),
-                   bool(raw.get("intangible")), dict(strike) if strike else None)
+                   (bool(intang) if isinstance(intang, bool) or intang is None
+                    else float(intang)),
+                   dict(strike) if strike else None,
+                   passive=passive, loop=bool(raw.get("loop")))
 
 
 #: What a button lent from a shipped hero (``template``) may say besides its
@@ -1004,10 +1021,20 @@ def _hold_in_range(ef: EntityFile, hero_common: EntityFile, state: str) -> None:
     _hold_external(ef, hero_common, state, IN_RANGE_DETECTOR)
 
 
-def _hold_intangible(state: str, ef: EntityFile) -> None:
+def _hold_intangible(state: str, ef: EntityFile, w: TW.TalentWriter, tag: str,
+                     duration: bool | float) -> None:
     from .talent_add_stat import _common_state
     link = _common_state(INTANGIBLE)
-    ef.add_external_ref(state, "while_active", link.guid, link.path)
+    if isinstance(duration, bool):
+        ef.add_external_ref(state, "while_active", link.guid, link.path)
+        return
+    sub = f"State {tag} Intangible"
+    timer = f"{tag} Intangible Timer"
+    sub_link = w.state(sub, flags=TW.PERSISTENT)
+    ef.add_external_ref(sub, "while_active", link.guid, link.path)
+    _timer(w, timer, duration, ends=sub_link)
+    ef.add_ref(sub, "while_active", timer)
+    ef.add_ref(state, "while_active", sub)
 
 
 def _build_strike(ef: EntityFile, hero_common: EntityFile, w: TW.TalentWriter, ab: Ability, *,
@@ -1053,7 +1080,7 @@ def _build_strike(ef: EntityFile, hero_common: EntityFile, w: TW.TalentWriter, a
     _hold_external(ef, hero_common, strike, MOVE_INERTIA, "activates")
     _hold_in_range(ef, hero_common, strike)
     if ab.intangible:
-        _hold_intangible(strike, ef)
+        _hold_intangible(strike, ef, w, stag, ab.intangible)
     ef.set_ref(f"{stag} Clip", "ref_11", strike)
     window = f"State {stag} Window"
     window_link = w.state(window, flags=TW.PERSISTENT)
@@ -1095,6 +1122,22 @@ def build_template(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed
     return lent.entry
 
 
+def _build_passive(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
+                   tag: str, group: str) -> str:
+    """Write a persistent state activated on hero init for a passive ability slot."""
+    state = f"State {tag} Passive"
+    w = TW.TalentWriter(ef, f"{seed}:{ab.slot}:passive", group)
+    w.state(state, flags=TW.PERSISTENT)
+    init_name = "Child Event Initialize Hero Common"
+    if not any(c.name == init_name for c in ef.graph().components):
+        anc = hero_common.component(init_name)
+        ef.clone([anc.path], rename={anc.name: anc.name}, seed=f"{seed}:init-hc",
+                 source=hero_common)
+        ef.set_override(anc.name, anc.guid, f"[{HF.kind_label(anc.cls)}] Hero_Common\\{anc.path}")
+    ef.add_ref(init_name, "activates", state)
+    return state
+
+
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
           with_indicator: bool = True, read=None) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
@@ -1103,6 +1146,12 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
     tag = f"{word} Ability"
     if ab.template is not None:
         return build_template(ef, hero_common, ab, seed=seed, read=read)
+    if ab.passive:
+        state = _build_passive(ef, hero_common, ab, seed=seed, tag=tag, group=group)
+        ctl = CONTROLLERS[ab.slot]
+        HF.fill_slot(ef, hero_common, ctl, seed=seed)
+        _button(ef, ab, ctl)
+        return state
     if ab.combo:
         try:
             state = build_combo(ef, hero_common, ab, seed=seed, tag=tag, group=group)
@@ -1110,9 +1159,11 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         except (EntityEditError, HF.FrameError, P.PartError) as e:
             raise AbilityError(f"ability {ab.slot}: {e}") from e
         return state
-    length = ab.duration if ab.duration is not None else HF.clip_length(ab.clip)
+    clip_len = HF.clip_length(ab.clip)
+    length = ab.duration if ab.duration is not None else clip_len
     if not length:
         raise AbilityError(f"ability {ab.slot}: the game has no clip {ab.clip!r}")
+    anim_len = clip_len if (ab.loop and clip_len) else length
     try:
         # The clip and the aim, laid out as the base's own dash.
         ef.clone([f"Ability Dash\\{n}" for n in _CLIP], seed=f"{seed}:{ab.slot}:clip",
@@ -1122,7 +1173,17 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         ef.clone([look], seed=f"{seed}:{ab.slot}:look", rename={look: f"{tag} Look At"},
                  group={hero_common.component(look).group: group}, source=hero_common)
         HF._set_clips(ef, f"{tag} Anim", [ab.clip])
-        HF._set_duration(ef, f"{tag} Anim", length)
+        HF._set_duration(ef, f"{tag} Anim", anim_len)
+        if ab.loop:
+            ac = ef.component(f"{tag} Anim")
+            b6 = next((x for x in EF.fields(ac) if x.name == "bytes_6"), None)
+            if b6 is not None:
+                ap = ef.objects[ac.index - 1]
+                ap[len(ap) - len(ac.body) + b6.offset] = 1
+            ef.set_ref(f"{tag} Clip", "ref_3", None)
+            ef.set_ref(f"{tag} Clip", "ref_4", f"{tag} Anim")
+            ef.set_value(f"{tag} Clip", "value_6", float(length))
+            ef.set_value(f"{tag} Clip", "value_9", 1.0)
         # Its root motion: copied from the base's empty dash slot it is 0, and
         # a clip that travels (a lunge, a leap) played in place.
         if ab.root_motion is not None:
@@ -1140,7 +1201,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             ef.set_ref(f"{tag} Anim", HF.ROOT_MOTION, OWN_ROOT_MOTION)
         snd = (own_sound(ef, ab.sound, name=f"{tag} Sound", group=group,
                          seed=f"{seed}:{ab.slot}:sound") if ab.sound else "")
-        own_timeline(ef, f"{tag} Anim", length, sound=snd)
+        own_timeline(ef, f"{tag} Anim", anim_len + 60.0 if ab.loop else length,
+                     sound="" if (ab.moving or ab.loop) else snd)
         w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
         state = f"State {tag}"
         timers = hits(ef, hero_common, w, ab.hits, tag=tag, group=group,
@@ -1156,7 +1218,7 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         if ab.root_motion is None or ab.strike:
             _hold_in_range(ef, hero_common, state)
         if ab.intangible:
-            _hold_intangible(state, ef)
+            _hold_intangible(state, ef, w, tag, ab.intangible)
         rush_end, window_timer = _NONE, ""
         if ab.strike:
             rush_end, window_timer = _build_strike(
@@ -1173,6 +1235,13 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             split = hero_common.component(SPLIT_ENABLE)
             ef.add_external_ref(state, "while_active", split.guid,
                                 f"[{HF.kind_label(split.cls)}] {hero_common.name}\\{split.path}")
+            top = hero_common.component(TOP_MOVE_PLAYER)
+            ef.set_external_ref(f"{tag} Anim", "ref_2", top.guid,
+                                f"[{HF.kind_label(top.cls)}] {hero_common.name}\\{top.path}")
+            if snd:
+                ef.add_ref(state, "activates", snd)
+        elif ab.loop and snd:
+            ef.add_ref(state, "activates", snd)
         for t in [*timers, f"{tag} End Timer"]:
             ef.add_ref(state, "activates", t)
         # Hand the body to the ability: every shipped ability state (Geppetto's

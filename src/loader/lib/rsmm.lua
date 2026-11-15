@@ -479,7 +479,9 @@ end
 function R.engine.names()
     local out = {}
     for k in pairs(engine_map()) do
-        if k ~= "_va" then out[#out + 1] = k end
+        -- `_va` / `_va_build` are the data-address table and its build stamp,
+        -- not callables; no symbol name starts with an underscore.
+        if k:sub(1, 1) ~= "_" then out[#out + 1] = k end
     end
     table.sort(out)
     return out
@@ -526,16 +528,31 @@ R.give = {}
 -- game build no longer matches the symbol map (loader va-gate). Reads then
 -- return nil instead of garbage; see loader.h va_globals_trusted().
 local _va_warned = false
-local function _va_ok(feature)
-    if not I.va_trusted then return true end   -- older loader: no gate
-    local ok, trusted = pcall(I.va_trusted)
-    if not ok or trusted ~= false then return true end
+local function _va_warn(feature)
     if not _va_warned then
         _va_warned = true
         R.log("[rsmm] game build != symbol-map build — " .. feature ..
               " (and other va-global features) disabled until data is updated")
     end
     return false
+end
+local function _va_ok(feature)
+    -- Two artifacts carry absolute addresses and they ship apart: this SDK's
+    -- VA table (engine_gen.lua) and the DLL's compiled Sym:: constants. A va
+    -- feature may touch either, so BOTH must agree with the running exe. The
+    -- SDK stamp is checked here (a new DLL beside a stale SDK used to pass);
+    -- the DLL gate below speaks for the DLL's addresses.
+    local build = engine_map()._va_build
+    if build and build ~= "" and I.exe_sha256 then
+        local ok, sha = pcall(I.exe_sha256)
+        if ok and type(sha) == "string" and sha ~= "" and sha ~= build then
+            return _va_warn(feature)
+        end
+    end
+    if not I.va_trusted then return true end   -- older loader: no gate
+    local ok, trusted = pcall(I.va_trusted)
+    if not ok or trusted ~= false then return true end
+    return _va_warn(feature)
 end
 
 -- A heap pointer read out of a baked va slot is only build-trustworthy after
@@ -2712,14 +2729,17 @@ end
 -- netcode (advanced / experimental) -------------------------------------
 --
 -- Replication-authority observation, for host-migration research. The
--- per-entity replication setup (Netcode_EntityReplSetup) decides master vs
--- client; the role lives behind the net manager. Offsets are SDK-internal — a
--- mod only sees (netmgr, role) and may return a number to overwrite role
--- (DANGEROUS: a live netcode write, can crash). See https://docs.rsmm.me/reverse-engineering/multiplayer/.
+-- per-entity network component setup (Netcode_EntityReplSetup, slot 28 of
+-- oCEntityCpntNetwork) decides master vs replica; the role lives behind the
+-- net manager. Offsets are SDK-internal — a mod only sees (netmgr, role, cpnt)
+-- and may return a number to overwrite role (DANGEROUS: a live netcode write,
+-- can crash). The engine branches on role 1 and role 2; which machine holds
+-- which is NOT proven yet — logging it on host and client is the point of
+-- Phase 1. See https://docs.rsmm.me/reverse-engineering/multiplayer/.
 --
---   R.net.on_repl_setup(function(netmgr, role, ctx)
---       R.log("role", role)        -- 1 = client/non-master
---       -- return 0 to force the master path (Phase 2; can crash)
+--   R.net.on_repl_setup(function(netmgr, role, cpnt)
+--       R.log("role", role)        -- log on host AND client, compare
+--       -- returning a number overwrites role (Phase 2; can crash)
 --   end)
 
 R.net = {}
