@@ -255,6 +255,29 @@ its fields. For kills, use the
 gameplay bus (`R.on("gameplay:ENEMY_KILLED", …)`): `enemy_killed` is only a
 field of `chapter_end` (the chapter's kill count), not an event of its own.
 
+## Book menu pages — `R.ui.menus`
+
+These work in the menus, not in a run, and they are not gameplay calls: they
+send no event to the hero. Register pages and entries from `init.lua`. Every call
+returns `nil` and a reason when it cannot work here. The guide has the full
+description and an example:
+[Book menu pages](/guides/modding/#book-menu-pages-ruimenus).
+
+| Call | Does |
+|---|---|
+| `R.ui.menus.available()` | `true`, or `false` and a reason |
+| `R.ui.menus.page(id, def)` | register a page of categories and rows; returns a handle |
+| `R.ui.menus.entry{ id, title, page, after }` | add an entry that opens `page`, in the Settings tab column (`after = "settings"`, the default) or in another page's column (`after = "<page id>"`) |
+| `R.ui.menus.open(page_id, ctx)` | open a page from the current leaf page |
+| `R.ui.menus.back()` | pop one level, like the Back button |
+| `R.ui.menus.current()` | `{ page, ctx, depth }` while one of your pages is the leaf, else `nil` |
+| `R.ui.menus.off(handle)` | remove a page or entry for the next open |
+
+Events: `ui:menus_open` and `ui:menus_close` `{ page, ctx, depth }`,
+`ui:menus_select` `{ page, category }`, `ui:menus_change`
+`{ page, category, row, index }` and `ui:menus_reset` `{ page, category }`.
+Indices are 1-based.
+
 ## When a call returns `false`
 
 The log line says why. The common ones:

@@ -58,6 +58,7 @@ set(LOADER_SRC
     src/hook_ui.cpp
     src/hook_ui_state.cpp
     src/hook_settings_menu.cpp
+    src/hook_book_pages.cpp
     src/hook_items.cpp
     src/hook_rewards.cpp
     src/hook_resource.cpp

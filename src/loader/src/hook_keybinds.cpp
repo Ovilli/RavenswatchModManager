@@ -30,6 +30,7 @@
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 
+#include "hook_book_pages.h"
 #include "hook_keybinds.h"
 #include "hook_input.h"
 #include "hook_util.h"
@@ -480,12 +481,14 @@ std::uint32_t tab_count(void* ctrl) {
 }
 
 void hook_build_kb(void* ctrl, void* page, void* parent) {
+    if (book_pages_building(ctrl)) return;
     const std::uint32_t index = tab_count(ctrl);   // the tab the builder is about to add
     g_real_build_kb(ctrl, page, parent);
     if (index != UINT32_MAX) add_rows(ctrl, index, kTabKeyboard);
 }
 
 void hook_build_pad(void* ctrl, void* page, void* parent) {
+    if (book_pages_building(ctrl)) return;
     const std::uint32_t index = tab_count(ctrl);
     g_real_build_pad(ctrl, page, parent);
     if (index != UINT32_MAX) add_rows(ctrl, index, kTabPad);

@@ -6002,6 +6002,64 @@
    ]
   },
   {
+   "name": "OptionsMenu_BuildGraphics",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f2440",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Graphics tab builder, called by the Settings page build (slot 7, FUN_1403f0620). static RE 2026-11-12 (Settings build slot 7, FUN_1403f0620); R.ui.menus detours it to skip the tab on its own page; unproven until the phase-4 in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_BuildAudio",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f38a0",
+   "signature": "void(void* optionsCtrl, void* page, void* parent)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Audio tab builder, called by the Settings page build (slot 7, FUN_1403f0620). static RE 2026-11-12 (Settings build slot 7, FUN_1403f0620); R.ui.menus detours it to skip the tab on its own page; unproven until the phase-4 in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_Teardown",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f0ff0",
+   "signature": "void(void* ctrl)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "BookOptions controller teardown (vftable 0x140f32268 slot +0x40). It dereferences ctrl+0x268 (the Graphics tab's Apply element) without a null check to unregister the listeners at ctrl+0x1f8 / ctrl+0x200; a page whose Graphics builder was skipped crashes on close. R.ui.menus detours it to point +0x268 at a zeroed placeholder for its own pages. static RE 2026-11-15; unproven until the next in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
    "name": "OptionsMenu_BuildKeyboardControls",
    "kind": "function",
    "category": "ui",
@@ -6292,6 +6350,123 @@
    "note": "SELECT A SETTINGS TAB: sets the controller's current tab (this+0x218) to the button's index (button+0x238, which OptionsMenu_AddCategory stamps), shows that tab's panel and hides the others (FUN_140550d40), and moves the focus to it (this+0x220). The button is the tab entry's +0x10 in the vector at this+0x208 (stride 0x48). Found 2026-10-24 on b9c3 for the pause menu's Mods button (rsmm.engine.escape_menu + hook_settings_menu.cpp); static until its first launch.",
    "refs": [
     "docs/_re/IN_GAME_UI.md"
+   ]
+  },
+  {
+   "name": "BookPage_OpenChild",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403dc650",
+   "signature": "void(void* parentPage, void* desc)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Found by static RE 2026-11-12 on b9c3. Phase 1 proved it in game (dynamic proof 2026-11-14, evidence/2026-11-14-r-ui-probe). Open a child page over a book page: spawns the child from the descriptor into parent+0xd8/+0xe0, fires BM+0x2b0, deactivates the parent GameUi, activates the child. The spawn is synchronous: the child's build runs inside the call. Reached from OptionsMenu_SelectCategory for type-10 entries (Credits). Detoured. R.ui.menus uses it (src/loader/src/hook_book_pages.cpp).",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
+   ]
+  },
+  {
+   "name": "BookPage_CloseChild",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403dc580",
+   "signature": "bool(void* page)",
+   "cabi": {
+    "ret": "bool",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Found by static RE 2026-11-12 on b9c3. Phase 1 proved it in game (dynamic proof 2026-11-14, evidence/2026-11-14-r-ui-probe). Close the leaf child of a book page chain (Back): fires BM+0x2b0 backward, releases the child handle, re-activates the parent. Returns false when it popped a level. Detoured and called. R.ui.menus uses it (src/loader/src/hook_book_pages.cpp).",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
+   ]
+  },
+  {
+   "name": "BookMenu_OnBackPressed",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403dbcd0",
+   "signature": "void(void* bookMenu)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Found by static RE 2026-11-12 on b9c3. Phase 1 proved it in game (dynamic proof 2026-11-14, evidence/2026-11-14-r-ui-probe). The book's one Back path (Back_Button press callback): in-game Settings mode leaves the book, otherwise calls BookPage_CloseChild and fires BM+0x2f8. Detoured. R.ui.menus uses it (src/loader/src/hook_book_pages.cpp).",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_ResetPressed",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f6910",
+   "signature": "void(void* optionsCtrl)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Found by static RE 2026-11-12 on b9c3. Phase 1 proved it in game (dynamic proof 2026-11-14, evidence/2026-11-14-r-ui-probe). Reset button handler of the Options page: resets the game settings of the current category type (ctrl+0x208 + ctrl+0x218*0x48 + 0x18) through the settings manager, except type 0x0d. Detoured. R.ui.menus uses it (src/loader/src/hook_book_pages.cpp).",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
+   ]
+  },
+  {
+   "name": "OptionsMenu_Update",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f1830",
+   "signature": "void(void* optionsCtrl)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "BookOptions page update (vftable 0x140f32268, data ref 0x140f32380): reads input, enables rows of types 0/8 via row+0x90, toggles arrows row+0x50/+0x58, can call OptionsMenu_ResetPressed. Static RE 2026-11-12 on b9c3. R.ui.menus detours it to run queued open/back requests on the game thread (src/loader/src/hook_book_pages.cpp). Whether it runs every frame is a phase-4 proof item.",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
+   ]
+  },
+  {
+   "name": "GameUi_SetVisible",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140550d40",
+   "signature": "void(void* window, u8 show, u8 instant)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "bool",
+     "bool"
+    ]
+   },
+   "note": "GameUi window show/hide (visible bit window+0x234 & 0x10, fade length window+0x244), used by the Settings build and OptionsMenu_SelectCategory. Static RE 2026-11-12 on b9c3. Called only, by R.ui.menus (src/loader/src/hook_book_pages.cpp) to hide vanilla tab buttons and read-only row arrows.",
+   "refs": [
+    "docs/2026-11-12-r-ui.md",
+    "docs/2026-11-12-r-ui-menus.md"
    ]
   },
   {

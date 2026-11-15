@@ -75,11 +75,32 @@ inline BookMenu_GetMode_fn BookMenu_GetMode() {
     return reinterpret_cast<BookMenu_GetMode_fn>(rsmm::fn_resolve(Sym::BookMenu_GetMode_Pattern));
 }
 
+// BookMenu_OnBackPressed  (BookMenu_OnBackPressed)
+//   void(void* bookMenu)
+using BookMenu_OnBackPressed_fn = void(*)(void*);
+inline BookMenu_OnBackPressed_fn BookMenu_OnBackPressed() {
+    return reinterpret_cast<BookMenu_OnBackPressed_fn>(rsmm::fn_resolve(Sym::BookMenu_OnBackPressed_Pattern));
+}
+
 // BookMenu_SetModeState  (BookMenu_SetModeState)
 //   void(StateMachine* sm, State* new_state, void*, void*)
 using BookMenu_SetModeState_fn = void(*)(void*, void*, void*, void*);
 inline BookMenu_SetModeState_fn BookMenu_SetModeState() {
     return reinterpret_cast<BookMenu_SetModeState_fn>(rsmm::fn_resolve(Sym::BookMenu_SetModeState_Pattern));
+}
+
+// BookPage_CloseChild  (BookPage_CloseChild)
+//   bool(void* page)
+using BookPage_CloseChild_fn = bool(*)(void*);
+inline BookPage_CloseChild_fn BookPage_CloseChild() {
+    return reinterpret_cast<BookPage_CloseChild_fn>(rsmm::fn_resolve(Sym::BookPage_CloseChild_Pattern));
+}
+
+// BookPage_OpenChild  (BookPage_OpenChild)
+//   void(void* parentPage, void* desc)
+using BookPage_OpenChild_fn = void(*)(void*, void*);
+inline BookPage_OpenChild_fn BookPage_OpenChild() {
+    return reinterpret_cast<BookPage_OpenChild_fn>(rsmm::fn_resolve(Sym::BookPage_OpenChild_Pattern));
 }
 
 // CameraModifier_AddChild  (CameraModifier_AddChild)
@@ -399,6 +420,13 @@ inline GameOptionsManager_Register_fn GameOptionsManager_Register() {
 using GameOptionsManager_RequestLoad_fn = void(*)(void*, void*);
 inline GameOptionsManager_RequestLoad_fn GameOptionsManager_RequestLoad() {
     return reinterpret_cast<GameOptionsManager_RequestLoad_fn>(rsmm::fn_resolve(Sym::GameOptionsManager_RequestLoad_Pattern));
+}
+
+// GameUi_SetVisible  (GameUi_SetVisible)
+//   void(void* window, u8 show, u8 instant)
+using GameUi_SetVisible_fn = void(*)(void*, bool, bool);
+inline GameUi_SetVisible_fn GameUi_SetVisible() {
+    return reinterpret_cast<GameUi_SetVisible_fn>(rsmm::fn_resolve(Sym::GameUi_SetVisible_Pattern));
 }
 
 // GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
@@ -763,11 +791,25 @@ inline OptionsMenu_AppendRow_fn OptionsMenu_AppendRow() {
     return reinterpret_cast<OptionsMenu_AppendRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AppendRow_Pattern));
 }
 
+// OptionsMenu_BuildAudio  (OptionsMenu_BuildAudio)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildAudio_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildAudio_fn OptionsMenu_BuildAudio() {
+    return reinterpret_cast<OptionsMenu_BuildAudio_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildAudio_Pattern));
+}
+
 // OptionsMenu_BuildGamepadControls  (OptionsMenu_BuildGamepadControls)
 //   void(void* optionsCtrl, void* page, void* parent)
 using OptionsMenu_BuildGamepadControls_fn = void(*)(void*, void*, void*);
 inline OptionsMenu_BuildGamepadControls_fn OptionsMenu_BuildGamepadControls() {
     return reinterpret_cast<OptionsMenu_BuildGamepadControls_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildGamepadControls_Pattern));
+}
+
+// OptionsMenu_BuildGraphics  (OptionsMenu_BuildGraphics)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildGraphics_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildGraphics_fn OptionsMenu_BuildGraphics() {
+    return reinterpret_cast<OptionsMenu_BuildGraphics_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildGraphics_Pattern));
 }
 
 // OptionsMenu_BuildKeyboardControls  (OptionsMenu_BuildKeyboardControls)
@@ -791,6 +833,13 @@ inline OptionsMenu_ClearDuplicateKey_fn OptionsMenu_ClearDuplicateKey() {
     return reinterpret_cast<OptionsMenu_ClearDuplicateKey_fn>(rsmm::fn_resolve(Sym::OptionsMenu_ClearDuplicateKey_Pattern));
 }
 
+// OptionsMenu_ResetPressed  (OptionsMenu_ResetPressed)
+//   void(void* optionsCtrl)
+using OptionsMenu_ResetPressed_fn = void(*)(void*);
+inline OptionsMenu_ResetPressed_fn OptionsMenu_ResetPressed() {
+    return reinterpret_cast<OptionsMenu_ResetPressed_fn>(rsmm::fn_resolve(Sym::OptionsMenu_ResetPressed_Pattern));
+}
+
 // OptionsMenu_SelectCategory  (OptionsMenu_SelectCategory)
 //   void(void* optionsCtrl, void* tabButtonGameUi)
 using OptionsMenu_SelectCategory_fn = void(*)(void*, void*);
@@ -810,6 +859,20 @@ inline OptionsMenu_SpawnExploKeyRow_fn OptionsMenu_SpawnExploKeyRow() {
 using OptionsMenu_SpawnMultiChoice_fn = void*(*)(void*, void*, void*);
 inline OptionsMenu_SpawnMultiChoice_fn OptionsMenu_SpawnMultiChoice() {
     return reinterpret_cast<OptionsMenu_SpawnMultiChoice_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnMultiChoice_Pattern));
+}
+
+// OptionsMenu_Teardown  (OptionsMenu_Teardown)
+//   void(void* ctrl)
+using OptionsMenu_Teardown_fn = void(*)(void*);
+inline OptionsMenu_Teardown_fn OptionsMenu_Teardown() {
+    return reinterpret_cast<OptionsMenu_Teardown_fn>(rsmm::fn_resolve(Sym::OptionsMenu_Teardown_Pattern));
+}
+
+// OptionsMenu_Update  (OptionsMenu_Update)
+//   void(void* optionsCtrl)
+using OptionsMenu_Update_fn = void(*)(void*);
+inline OptionsMenu_Update_fn OptionsMenu_Update() {
+    return reinterpret_cast<OptionsMenu_Update_fn>(rsmm::fn_resolve(Sym::OptionsMenu_Update_Pattern));
 }
 
 // PauseMenu_GetActionCallback  (PauseMenu_GetActionCallback)

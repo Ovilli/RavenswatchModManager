@@ -12173,5 +12173,130 @@ do
     I.ui_state_book, I.ui_state_page = nil, nil
 end
 
+-- R.ui.menus: Lua side of the book menu pages. The loader owns the page build; this
+-- checks what Lua pushes (normalized snapshot JSON) and how it answers the
+-- loader's synchronous internal events.
+do
+    check(type(R.ui) == "table" and type(R.ui.menus) == "table", "R.ui.menus is loaded")
+    local M = R.ui.menus
+    local J = M._json
+    -- soft failure: no I.ui_menus_* (old loader)
+    local av, avwhy = M.available()
+    check(av == false and avwhy == "loader too old for R.ui.menus", "no native: available() is false + why")
+    local pg, pwhy = M.page("t.p", { categories = function() return {} end })
+    check(pg == nil and pwhy == "loader too old for R.ui.menus", "no native: page() is nil + why")
+    local en, ewhy = M.entry{ id = "e", title = "E", page = "t.p" }
+    check(en == nil and ewhy == "loader too old for R.ui.menus", "no native: entry() is nil + why")
+    local op, owhy = M.open("t.p")
+    check(op == nil and owhy == "loader too old for R.ui.menus", "no native: open() is nil + why")
+    local bk, bwhy = M.back()
+    check(bk == nil and bwhy == "loader too old for R.ui.menus", "no native: back() is nil + why")
+    check(M.current() == nil, "no native: current() is nil")
+
+    local pages, entries, removed, opened, vetoes = {}, {}, {}, {}, 0
+    local cur
+    local logged = {}
+    local log_saved = R.log
+    R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.ui_menus_available = function() return true end
+    I.ui_menus_set_page = function(id, json) pages[id] = json; return true end
+    I.ui_menus_remove_page = function(id) removed[#removed + 1] = "page:" .. id end
+    I.ui_menus_set_entry = function(id, title, page, after)
+        entries[id] = { title = title, page = page, after = after }
+        return true
+    end
+    I.ui_menus_remove_entry = function(id) removed[#removed + 1] = "entry:" .. id end
+    I.ui_menus_open = function(id, ctx_json) opened[#opened + 1] = { id, ctx_json }; return true end
+    I.ui_menus_back = function() return true end
+    I.ui_menus_current = function() return cur end
+    I.ui_menus_veto_back = function() vetoes = vetoes + 1 end
+    check(M.available() == true, "native present: available()")
+
+    -- registration pushes a normalized snapshot
+    local seen_ctx = "unset"
+    local explode = false
+    local h = M.page("t.main", {
+        title = "T", kind = "categories",
+        categories = function(ctx)
+            seen_ctx = ctx
+            if explode then error("boom") end
+            return { { id = "a", label = "Alpha",
+                       header = { title = "Head", subtitle = "Sub", text = "l1\nl2" },
+                       rows = {
+                           { id = "speed", label = "Speed", choices = { "S", "N", "F" },
+                             value = 9, default = 2 },
+                           { id = "lock", label = "Locked", readonly = true,
+                             readonly_text = "Edit in the app" },
+                       } } }
+        end,
+        on_back = function(ctx) return ctx and ctx.allow == true end,
+    })
+    check(h and h.id == "t.main", "page() returns a handle")
+    check(seen_ctx == nil, "categories(nil) is evaluated at registration")
+    local snap = J.decode(pages["t.main"])
+    check(snap.title == "T" and #snap.categories == 1, "snapshot carries title and categories")
+    local cat = snap.categories[1]
+    check(cat.header.title == "Head" and cat.header.subtitle == "Sub" and cat.header.text == "l1\nl2",
+          "snapshot carries the header")
+    check(cat.rows[1].value == 3 and cat.rows[1].default == 2, "value is clamped to 1..#choices")
+    check(cat.rows[2].readonly == true and cat.rows[2].readonly_text == "Edit in the app"
+          and #cat.rows[2].choices == 0, "read-only row carries readonly_text and no choices")
+    check(not pcall(M.page, "t.bad", { categories = function() return {} end, kind = "grid" }),
+          "kind other than categories is an error")
+
+    -- refresh re-evaluates with ctx
+    local before = pages["t.main"]
+    fire("ui:_menus_refresh", { page = "t.main", ctx = { from = "x" } })
+    check(type(seen_ctx) == "table" and seen_ctx.from == "x", "refresh re-runs categories(ctx)")
+    -- a throw keeps the last good snapshot
+    explode = true
+    fire("ui:_menus_refresh", { page = "t.main", ctx = nil })
+    check(pages["t.main"] == before, "categories() throw keeps the last snapshot")
+    local said = false
+    for _, l in ipairs(logged) do if l:find("boom", 1, true) then said = true end end
+    check(said, "the throw is logged")
+    explode = false
+    fire("ui:_menus_refresh", { page = "not.ours", ctx = nil })
+    check(pages["not.ours"] == nil, "refresh for a page this state never registered is ignored")
+
+    -- on_back veto
+    fire("ui:_menus_back", { page = "t.main", ctx = { allow = true }, depth = 1 })
+    check(vetoes == 0, "on_back true does not veto")
+    fire("ui:_menus_back", { page = "t.main", ctx = { allow = false }, depth = 1 })
+    check(vetoes == 1, "on_back false calls I.ui_menus_veto_back")
+    fire("ui:_menus_back", { page = "other", ctx = nil, depth = 1 })
+    check(vetoes == 1, "back for another page is ignored")
+
+    -- entries
+    local eh = M.entry{ id = "uimt", title = "Menus Test", page = "t.main" }
+    check(eh and entries.uimt.after == "settings", "entry after defaults to settings")
+    M.entry{ id = "uimt.sub", title = "Sub", page = "t.main", after = "t.main" }
+    check(entries["uimt.sub"].after == "t.main", "entry after can name a page")
+
+    -- open encodes ctx; current decodes it
+    check(M.open("t.main", { from = "deeper", n = 2, ok = true }) == true, "open returns true")
+    check(opened[1][1] == "t.main" and opened[1][2] == '{"from":"deeper","n":2,"ok":true}',
+          "open JSON-encodes ctx")
+    M.open("t.main")
+    check(opened[2][2] == nil, "open without ctx passes nil")
+    check(M.current() == nil, "current() is nil when none of ours is the leaf")
+    cur = { page = "t.main", ctx_json = '{"from":"deeper","list":[1,2]}', depth = 2 }
+    local c = M.current()
+    check(c.page == "t.main" and c.depth == 2 and c.ctx.from == "deeper" and c.ctx.list[2] == 2,
+          "current() decodes ctx")
+    cur = nil
+
+    -- off removes
+    check(M.off(h) == true and M.off(eh) == true, "off() succeeds for page and entry")
+    check(removed[1] == "page:t.main" and removed[2] == "entry:uimt", "off removes through remove_*")
+    fire("ui:_menus_refresh", { page = "t.main", ctx = nil })
+    check(pages["t.main"] == before, "a removed page is no longer refreshed")
+
+    R.log = log_saved
+    I.ui_menus_available, I.ui_menus_set_page, I.ui_menus_remove_page = nil, nil, nil
+    I.ui_menus_set_entry, I.ui_menus_remove_entry, I.ui_menus_open = nil, nil, nil
+    I.ui_menus_back, I.ui_menus_current, I.ui_menus_veto_back = nil, nil, nil
+end
+
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

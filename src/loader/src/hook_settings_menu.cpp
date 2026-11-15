@@ -46,6 +46,7 @@
 #include "symbols.gen.h"
 #include "symbols_api.gen.h"
 #include "hook_settings_menu.h"
+#include "hook_book_pages.h"
 
 namespace rsmm {
 namespace {
@@ -472,7 +473,12 @@ void add_mods_tab(void* ctrl, void* page, void* parent) {
 
 void hook_build(void* ctrl, void* page, void* parent) {
     g_real_build(ctrl, page, parent);
+    if (book_pages_building(ctrl)) {   // our page: no Mods tab, g_ctrl untouched
+        book_pages_build(ctrl, page, parent);
+        return;
+    }
     add_mods_tab(ctrl, page, parent);
+    book_pages_add_entries(ctrl, page, parent);
 }
 
 // --- the pause menu's Mods button ----------------------------------------------
