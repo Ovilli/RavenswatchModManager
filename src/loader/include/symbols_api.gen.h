@@ -68,6 +68,20 @@ inline BookMenuUiController_OnShow_fn BookMenuUiController_OnShow() {
     return reinterpret_cast<BookMenuUiController_OnShow_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnShow_Pattern));
 }
 
+// BookMenu_GetMode  (BookMenu_GetMode)
+//   int(BookMenu* bm)
+using BookMenu_GetMode_fn = int(*)(void*);
+inline BookMenu_GetMode_fn BookMenu_GetMode() {
+    return reinterpret_cast<BookMenu_GetMode_fn>(rsmm::fn_resolve(Sym::BookMenu_GetMode_Pattern));
+}
+
+// BookMenu_SetModeState  (BookMenu_SetModeState)
+//   void(StateMachine* sm, State* new_state, void*, void*)
+using BookMenu_SetModeState_fn = void(*)(void*, void*, void*, void*);
+inline BookMenu_SetModeState_fn BookMenu_SetModeState() {
+    return reinterpret_cast<BookMenu_SetModeState_fn>(rsmm::fn_resolve(Sym::BookMenu_SetModeState_Pattern));
+}
+
 // CameraModifier_AddChild  (CameraModifier_AddChild)
 //   void(void* modifier, void* parent, bool instant)
 using CameraModifier_AddChild_fn = void(*)(void*, void*, bool);

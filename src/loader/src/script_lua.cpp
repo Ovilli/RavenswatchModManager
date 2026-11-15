@@ -1870,15 +1870,21 @@ int lua_ui_state_arm(lua_State* L) {
     return 2;
 }
 
-// rsmm._internal.ui_state_count(kind) -> open count, or nil when not armed
-//   kind: "menu" | "book" | "modal" | "loading" | "page"
+// rsmm._internal.ui_state_count(kind) -> open count, or nil + why ("not armed",
+//   or "unknown book mode" when the book's visibility cannot be read)
+//   kind: "menu" | "book" | "modal" | "loading" | "page" | "root"
 int lua_ui_state_count(lua_State* L) {
     UiKind kind;
     if (!ui_kind_from_name(luaL_checkstring(L, 1), &kind))
-        return luaL_argerror(L, 1, "kind is menu, book, modal, loading or page");
+        return luaL_argerror(L, 1, "kind is menu, book, modal, loading, page or root");
     const int n = ui_state_count(kind);
-    if (n < 0) lua_pushnil(L); else lua_pushinteger(L, n);
-    return 1;
+    if (n >= 0) {
+        lua_pushinteger(L, n);
+        return 1;
+    }
+    lua_pushnil(L);
+    lua_pushstring(L, n == kUiCountUnknown ? "unknown book mode" : "not armed");
+    return 2;
 }
 
 // rsmm._internal.ui_state_open() -> { {kind, class, ptr}, ... } oldest first
@@ -1895,6 +1901,32 @@ int lua_ui_state_open(lua_State* L) {
         lua_setfield(L, -2, "ptr");
         lua_rawseti(L, -2, static_cast<int>(i) + 1);
     }
+    return 1;
+}
+
+// rsmm._internal.ui_state_book() -> "main"|"settings"|"score"|"credits", or nil
+//   (book closed), or nil + why (not armed / unknown mode)
+int lua_ui_state_book(lua_State* L) {
+    const int mode = ui_state_book_mode();
+    if (mode < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, "not armed");
+        return 2;
+    }
+    if (mode == 5) {
+        lua_pushnil(L);
+        lua_pushstring(L, "unknown book mode");
+        return 2;
+    }
+    const char* name = ui_book_mode_name(mode);   // nullptr when closed (4)
+    if (name) lua_pushstring(L, name); else lua_pushnil(L);
+    return 1;
+}
+
+// rsmm._internal.ui_state_page() -> page label ("PlayPage", "CreditsPage", ...), or nil
+int lua_ui_state_page(lua_State* L) {
+    const char* label = ui_state_page();
+    if (label) lua_pushstring(L, label); else lua_pushnil(L);
     return 1;
 }
 
@@ -2234,6 +2266,8 @@ void register_api(lua_State* L) {
         { "ui_state_arm",            lua_ui_state_arm },
         { "ui_state_count",          lua_ui_state_count },
         { "ui_state_open",           lua_ui_state_open },
+        { "ui_state_book",           lua_ui_state_book },
+        { "ui_state_page",           lua_ui_state_page },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },

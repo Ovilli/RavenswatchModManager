@@ -1852,13 +1852,14 @@ camera-control does exactly this.
 ### What the UI is showing (`R.ui`)
 
 ```lua
-R.ui.is_open("menu")     --> true | false | nil, reason   (kinds: menu, book, modal, loading, page)
-R.ui.page()              --> the book page shown: "HeroSelectPage", "TutorialPage", ... or nil
+R.ui.is_open("menu")     --> true | false | nil, reason   (kinds: menu, book, modal, loading, page, root)
+R.ui.book()              --> which book is shown: "main", "settings", "score", "credits", or nil
+R.ui.page()              --> the book page shown: "PlayPage", "OptionsPage", "CreditsPage", ... or nil
 R.ui.any()               --> is a menu, the book or a modal open?
 R.ui.count("menu")       --> how many menus are open (nested ones count)
 R.ui.open()              --> { {kind, class, ptr}, ... }, oldest first
 R.on("ui:open",  function(e) R.log(e.kind .. " " .. e.class) end)
-R.on("ui:close", function(e) ... end)
+R.on("ui:close", function(e) ... end)   -- book events also carry e.which
 ```
 
 The loader tracks the game's own UI controllers rather than scene flags, so a
@@ -1866,10 +1867,11 @@ sub-panel closing does not report the pause menu as closed. The kinds:
 
 | kind | controllers |
 |---|---|
-| `menu` | pause menu, main menu, hero selection, Sandman's shop, inventory, magic mirror, social options |
-| `book` | the 3D book |
+| `menu` | pause menu, hero selection, Sandman's shop, inventory, magic mirror, social options |
+| `book` | the 3D book is shown (main menu, Settings from pause, score, credits) |
 | `modal` | modal dialogs (including the EULA, multiplayer and MyNacon ones) |
 | `loading` | the loading screen |
+| `root` | MainMenu and BookMenu, the session-long controllers. They are active from boot to shutdown, so this is not a visibility signal |
 | `page` | a page of the book: play, hero selection, hero page and story, Merlin's abilities, the compendium and its heroes / items / memories / tutorial tabs, challenges, social, options, the end-of-run recap, stats and score |
 
 It arms when the loader starts, so controllers already open when a mod first
@@ -1878,6 +1880,17 @@ per component the engine shows or hides. When it cannot
 arm (a game patch, or `RSMM_DISABLE_UI_STATE=1`), `is_open` returns `nil` and a
 reason: unknown is never reported as closed. `ui:open` / `ui:close` fire after
 the game has finished showing or hiding the controller.
+
+`book` reads the book's own mode, so it is true only while a book is on screen,
+and `R.ui.book()` says which one. A book `ui:open` / `ui:close` carries
+`e.which` (`"main"`, `"settings"`, `"score"` or `"credits"`); going from one book
+to another is a close and an open.
+
+`R.ui.page()` follows the book's current page and its open child pages, so tab
+switches are seen, and Credits reads `"CreditsPage"` even though it shares a
+class with the tutorial tab. The `page` kind's `count` and events still follow
+controller activation: the main-menu book activates all five tab pages at once,
+so use `page()` to ask which page is shown.
 
 ### Overlays (`R.overlay`)
 

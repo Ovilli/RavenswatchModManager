@@ -1,6 +1,6 @@
 -- R.ui — what the game's UI is showing.
 --
---     if R.ui.is_open("menu") then return end           -- pause menu, main menu, ...
+--     if R.ui.is_open("menu") then return end           -- pause menu, Sandman, inventory, ...
 --     R.on("ui:open",  function(e) R.log(e.kind .. " " .. e.class) end)
 --     R.on("ui:close", function(e) ... end)
 --
@@ -17,9 +17,13 @@
 -- src/loader/include/hook_ui_state.h.
 --
 -- KINDS:
---   menu     pause (EscapeGameMenu), MainMenu, SelectionMenu, SandmanMenu,
+--   menu     pause (EscapeGameMenu), SelectionMenu, SandmanMenu,
 --            InventoryMenu, MagicMirrorMenu, SocialOptionsMenu
---   book     the 3D book (BookMenu)
+--   root     MainMenu and BookMenu, the session-long controllers: active from
+--            boot to shutdown, so NOT a visibility signal.
+--   book     the 3D book is shown: BookMenu's mode is main-menu book, Settings
+--            from pause, score or credits (not closed). Read from the mode, not
+--            from the controller. R.ui.book() names which.
 --   modal    Modal, EULAModal, MultiplayerModal, MyNaconModal
 --   loading  LoadingScreen
 --   page     a page of the book: PlayPage, HeroSelectPage, HeroPage,
@@ -30,7 +34,11 @@
 --            ResultStatsPage, ScorePage. R.ui.page() names the one shown.
 --
 -- EVENTS: `ui:open` / `ui:close` with { kind, class, ptr }. They fire after the
--- engine has finished the show or hide, never in the middle of it.
+-- engine has finished the show or hide, never in the middle of it. Book events
+-- (kind "book", class "BookMenu") also carry `which`: "main", "settings",
+-- "score" or "credits". They come from a detour on the book's mode setter, so a
+-- change of book (e.g. score to main menu) is a close of one and an open of the
+-- other.
 --
 -- ARMED AT STARTUP. The loader installs the detours at init, so controllers
 -- opened before any mod asks are tracked; the per-component cost is one vftable
@@ -38,16 +46,20 @@
 -- the result. RSMM_DISABLE_UI_STATE=1 turns it off. When it cannot arm,
 -- is_open() returns nil (not false): "unknown" is not "closed".
 --
--- ⚠ UNPROVEN IN GAME (PR #110, 2026-11-14). The static RE is done on build
--- b9c3642884a8; still to confirm in a playtest: which thread the runners run
--- on, how menus nest, and whether the book controller stays active in normal
--- play.
+-- PHASE 1 PROBE (2026-11-14). Tracked controllers run on the engine main thread,
+-- except MainMenu at boot. MainMenu and BookMenu are activated once near boot and
+-- deactivated only at game shutdown, so activation cannot say whether the book is
+-- showing: that is what the `book` kind and R.ui.book() read from BookMenu's mode
+-- instead. The `page` kind's count and events still follow controller activation:
+-- the main-menu book activates all five tab pages at once, so page() is the
+-- reliable answer to "which page".
 
 local M = {}
 
 local R, I
 
-local KINDS = { menu = true, book = true, modal = true, loading = true, page = true }
+local KINDS = { menu = true, book = true, modal = true, loading = true, page = true,
+                 root = true }
 
 local _armed, _why = false, nil
 
@@ -61,21 +73,23 @@ function M.arm()
     return _armed, why
 end
 
---- Is a `kind` ("menu", "book", "modal", "loading", "page") open now? true/false, or
---- nil + why when R.ui cannot tell (not armed).
+--- Is a `kind` ("menu", "book", "modal", "loading", "page", "root") open now?
+--- true/false, or nil + why when R.ui cannot tell (not armed; for "book", an
+--- unknown book mode). "book" is true while any book is shown; "root" counts
+--- the session-long controllers.
 function M.is_open(kind)
-    assert(KINDS[kind], "R.ui.is_open: kind is menu, book, modal, loading or page")
+    assert(KINDS[kind], "R.ui.is_open: kind is menu, book, modal, loading, page or root")
     local ok, why = M.arm()
     if not ok then return nil, why end
-    local n = I.ui_state_count(kind)
-    if n == nil then return nil, "not armed" end
+    local n, nwhy = I.ui_state_count(kind)
+    if n == nil then return nil, nwhy or "not armed" end
     return n > 0
 end
 
---- How many controllers of `kind` are open (nested menus count once each), or
---- nil + why when not armed.
+--- How many controllers of `kind` are open (nested menus count once each; book
+--- is 1 or 0), or nil + why when not armed or the book mode is unknown.
 function M.count(kind)
-    assert(KINDS[kind], "R.ui.count: kind is menu, book, modal, loading or page")
+    assert(KINDS[kind], "R.ui.count: kind is menu, book, modal, loading, page or root")
     local ok, why = M.arm()
     if not ok then return nil, why end
     return I.ui_state_count(kind)
@@ -90,28 +104,42 @@ function M.open()
 end
 
 --- Is any of the kinds open? With no argument: menu, book or modal (a loading
---- screen is not "a UI the player is in"). nil + why when not armed.
+--- screen is not "a UI the player is in"). true as soon as one kind is open,
+--- even when another is unknown; nil + why only when none is open and at least
+--- one could not be read (not armed, unknown book mode).
 function M.any(...)
     local kinds = { ... }
     if #kinds == 0 then kinds = { "menu", "book", "modal" } end
+    local unknown
     for _, k in ipairs(kinds) do
         local open, why = M.is_open(k)
-        if open == nil then return nil, why end
         if open then return true end
+        if open == nil and unknown == nil then unknown = why or "unknown" end
     end
+    if unknown then return nil, unknown end
     return false
 end
 
---- The book page being shown ("HeroSelectPage", "TutorialPage", ...): the most
---- recently opened page controller still open. nil when no page is open; nil +
---- why when not armed.
+--- Which book is shown: "main" (the main-menu book), "settings" (Settings opened
+--- from the pause menu), "score" or "credits"; nil when no book is shown; nil +
+--- why when R.ui cannot tell (not armed, unknown mode).
+function M.book()
+    local ok, why = M.arm()
+    if not ok then return nil, why end
+    if not I.ui_state_book then return nil, "loader too old for R.ui.book" end
+    return I.ui_state_book()
+end
+
+--- The book page being shown ("PlayPage", "OptionsPage", "CreditsPage", ...), or
+--- nil when no book is shown; nil + why when not armed. It follows the book's
+--- current page and its open child pages, so main-menu tab switches are seen
+--- and Credits (a child of the Settings page that shares the Tuto page's class)
+--- reads "CreditsPage", not "TutorialPage".
 function M.page()
-    local list, why = M.open()
-    if not list then return nil, why end
-    for i = #list, 1, -1 do
-        if list[i].kind == "page" then return list[i].class end
-    end
-    return nil
+    local ok, why = M.arm()
+    if not ok then return nil, why end
+    if not I.ui_state_page then return nil, "loader too old for R.ui.page" end
+    return I.ui_state_page()
 end
 
 --- Armed state: true, or false + why.
