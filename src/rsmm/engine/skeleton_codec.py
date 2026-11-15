@@ -13,7 +13,9 @@ parent`` (-1 = root) + ``u8 flag`` + ``END``:
 
 A hero's main body header lists no bones of its own (Kintaro: 0), so the rest
 pose lives here only. Changing it moves every bone's rest; the mesh's
-vertices and the clips' translation keys must agree (``rescale``).
+vertices and the clips' translation keys must agree: a clip keys every bone's
+translation at the rig's lengths, so the hero kind re-proportions each rig clip
+it plays (:func:`rsmm.engine.anim_cook.retarget`, unproven in game).
 """
 
 from __future__ import annotations
@@ -178,6 +180,12 @@ def scale_lengths(skel: Skeleton, factors: dict[str, float]) -> dict[str, Mat]:
         m[12], m[13], m[14] = m[12] * f, m[13] * f, m[14] * f
         out[b.name] = tuple(m)
     return out
+
+
+def rest_translations(skel: Skeleton) -> dict[str, tuple[float, float, float]]:
+    """Each bone's local rest translation (relative to its parent), by name:
+    the space a clip keys translations in (:func:`anim_cook.retarget`)."""
+    return {b.name: tuple(b.local[12:15]) for b in skel.bones}
 
 
 def locals_from_glb(glb: bytes) -> dict[str, Mat]:
