@@ -12069,19 +12069,27 @@ end
 do
     check(type(R.ui) == "table", "R.ui is loaded")
     local arm_calls, armed = 0, false
-    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0 }
+    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0, root = 0 }
+    local book_name, book_why, page_label = nil, nil, nil
     I.ui_state_arm = function()
         arm_calls = arm_calls + 1
         if armed then return true, nil end
         return false, "no UI controller vftable found by RTTI (game patched?)"
     end
     I.ui_state_count = function(kind) return counts[kind] end
+    I.ui_state_book = function() return book_name, book_why end
+    I.ui_state_page = function() return page_label end
     I.ui_state_open = function()
         return { { kind = "menu", class = "EscapeGameMenu", ptr = 0x1000 } }
     end
+    -- not armed: everything is nil + why, never false
     local open, why = R.ui.is_open("menu")
     check(open == nil and why:find("RTTI"), "cannot arm: is_open is nil + why, not false")
     check(R.ui.any() == nil, "cannot arm: any() is nil")
+    local b, bwhy0 = R.ui.book()
+    check(b == nil and bwhy0 and bwhy0:find("RTTI"), "cannot arm: book() is nil + why")
+    local pg, pwhy0 = R.ui.page()
+    check(pg == nil and pwhy0 and pwhy0:find("RTTI"), "cannot arm: page() is nil + why")
     armed = true
     -- a failed arm is retried by the SDK only while not armed; the native side
     -- caches the reason, so re-asking is cheap
@@ -12091,25 +12099,58 @@ do
     check(R.ui.any() == true and R.ui.any("book", "modal") == false, "any() over the given kinds")
     counts.menu, counts.loading = 0, 1
     check(R.ui.any() == false, "a loading screen alone is not 'in a UI'")
+    check(R.ui.any("modal", "loading") == true, "explicit kinds: loading counts when asked for")
+    -- book: true/false from the native count, nil when the native cannot tell
+    check(R.ui.is_open("book") == false and R.ui.count("book") == 0, "book closed: false / 0")
+    counts.book = 1
+    check(R.ui.is_open("book") == true and R.ui.count("book") == 1, "book shown: true / 1")
+    check(R.ui.any() == true, "a shown book is 'in a UI'")
+    counts.book = nil
+    local bo, bwhy = R.ui.is_open("book")
+    check(bo == nil and bwhy, "book unknown: is_open is nil + why, not false")
+    check(R.ui.any() == nil, "book unknown: any() is nil")
+    counts.book = 0
+    -- which book
+    check(R.ui.book() == nil, "book closed: book() is nil")
+    book_name = "settings"
+    check(R.ui.book() == "settings", "book() names the shown book")
+    book_name, book_why = nil, "unknown book mode"
+    local ub, uwhy = R.ui.book()
+    check(ub == nil and uwhy == "unknown book mode", "book() passes a nil + why through")
+    book_why = nil
+    counts.root = 2
+    check(R.ui.is_open("root") == true and R.ui.count("root") == 2, "root is a valid kind")
+    counts.root = 0
     check(R.ui.open()[1].class == "EscapeGameMenu", "open() lists the controllers")
-    check(R.ui.page() == nil, "no page open: page() is nil")
+    -- page(): the native's answer, not a scan of open()
+    check(R.ui.page() == nil, "no book / page: page() is nil")
     I.ui_state_open = function()
-        return { { kind = "book", class = "BookMenu", ptr = 0x10 },
+        return { { kind = "root", class = "BookMenu", ptr = 0x10 },
                  { kind = "page", class = "PlayPage", ptr = 0x20 },
-                 { kind = "page", class = "TutorialPage", ptr = 0x30 } }
+                 { kind = "page", class = "SocialPage", ptr = 0x30 } }
     end
-    check(R.ui.page() == "TutorialPage", "page() is the newest open page")
+    page_label = "TutorialPage"
+    check(R.ui.page() == "TutorialPage", "page() is the native's current page, not the last activated")
+    page_label = "CreditsPage"
+    check(R.ui.page() == "CreditsPage", "page() reports CreditsPage")
+    page_label = nil
     check(R.ui.count("page") ~= nil, "page is a kind")
     local calls_before = arm_calls
-    check(R.ui.is_open("book") == false and arm_calls == calls_before,
+    check(R.ui.is_open("modal") == false and arm_calls == calls_before,
           "once armed, the SDK stops asking the loader to arm")
     check(not pcall(R.ui.is_open, "inventory"), "unknown kind is an error, not a silent false")
+    check(not pcall(R.ui.is_open, "main"), "main is not a kind")
+    check(not pcall(R.ui.count, "main"), "main is not a kind (count)")
     local got
     local id = R.on("ui:open", function(e) got = e end)
     fire("ui:open", { kind = "modal", class = "Modal", ptr = 0x2000 })
     check(got and got.kind == "modal" and got.class == "Modal", "ui:open reaches R.on handlers")
+    got = nil
+    fire("ui:open", { kind = "book", class = "BookMenu", ptr = 0x10, which = "settings" })
+    check(got and got.kind == "book" and got.which == "settings", "a book ui:open carries which")
     R.off(id)
     I.ui_state_arm, I.ui_state_count, I.ui_state_open = nil, nil, nil
+    I.ui_state_book, I.ui_state_page = nil, nil
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
