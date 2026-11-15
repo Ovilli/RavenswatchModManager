@@ -10,7 +10,7 @@
 namespace engine {
 
 // Omitted as not status=ok (calling an unverified address is how a
-// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified), Netcode_EntityReplSetup (unverified)
+// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified)
 
 // AchievementDef_PostLoad  (AchievementDef_PostLoad)
 //   bool(void* definition)
@@ -705,6 +705,13 @@ inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
 using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
 inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
     return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
+}
+
+// Netcode_EntityReplSetup  (Netcode_EntityReplSetup)
+//   void(oCEntityCpntNetwork* self)
+using Netcode_EntityReplSetup_fn = void(*)(void*);
+inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
+    return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
 // Object_CloneViaSerialize  (Object_CloneViaSerialize)
