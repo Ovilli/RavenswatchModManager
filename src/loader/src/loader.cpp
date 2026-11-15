@@ -16,6 +16,7 @@
 #include <unordered_set>
 
 #include "fs_iter.h"
+#include "symbols.gen.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -324,14 +325,37 @@ void Loader::init(const fs::path& game_dir) {
     // R.options value nil) and at worst crashes (deferred_inject_poll AV,
     // 2026-07-10). Size mismatch = different build = fail those features
     // closed until `rsmm update-data` plants a matching DB.
+    //
+    // The addresses this gate protects are COMPILED INTO THIS DLL, so the
+    // authoritative check is against the exe sha baked in beside them
+    // (Sym::kSymbolMapExeSha256). The planted pattern-DB meta describes the
+    // pattern DB, which ships separately: after a game patch `rsmm update-data`
+    // makes the meta match the new exe while this DLL still carries the old
+    // build's VAs -- comparing against the meta re-trusted them. The meta is
+    // only the fallback for a DLL built without a stamp.
     {
+        const fs::path game_exe = game_dir_ / "Ravenswatch.exe";
+        try { exe_sha_ = sha256_file_hex(game_exe); } catch (...) { exe_sha_.clear(); }
+        const std::string built = Sym::kSymbolMapExeSha256;
+        if (!built.empty() && !exe_sha_.empty()) {
+            if (built != exe_sha_) {
+                va_trusted_ = false;
+                log("[va-gate] game exe sha " + exe_sha_.substr(0, 12)
+                    + " != this loader's symbol-map build " + built.substr(0, 12)
+                    + " — the game updated; absolute data addresses are DISABLED "
+                      "until a loader built for this game version is installed "
+                      "(`rsmm update-loader`). Pattern-resolved features still work.");
+            } else {
+                log("[va-gate] game exe matches this loader's symbol-map build "
+                    + built.substr(0, 12));
+            }
+        } else {
+        // Fallback for a DLL built without a stamp: the planted pattern-DB meta.
+        // (`game_exe` above is named so, not `exe`: the enclosing scope already
+        // has an `exe` -- the HOST process path, which for a helper inject is
+        // not Ravenswatch at all.)
         const fs::path meta = game_dir_ / "rsmm" / "data"
                               / "function_patterns.meta.json";
-        // Named `game_exe`, not `exe`: the enclosing scope already has an
-        // `exe` (the char[MAX_PATH] holding the HOST process path, which for a
-        // helper inject is not Ravenswatch at all). Shadowing the two made the
-        // gate read as if it were fingerprinting the running process.
-        const fs::path game_exe = game_dir_ / "Ravenswatch.exe";
         std::error_code mec;
         const auto exe_size = fs::file_size(game_exe, mec);
         if (mec || !fs::exists(meta)) {
@@ -354,7 +378,7 @@ void Loader::init(const fs::path& game_dir) {
                     // Same size is not same build: a hotfix can keep the size
                     // and move every global. The sha is the real fingerprint.
                     const auto want_sha = mj.value("game_exe_sha256", std::string{});
-                    const auto have_sha = sha256_file_hex(game_exe);
+                    const auto& have_sha = exe_sha_;
                     if (!want_sha.empty() && !have_sha.empty()
                         && want_sha != have_sha) {
                         va_trusted_ = false;
@@ -372,6 +396,7 @@ void Loader::init(const fs::path& game_dir) {
             } catch (const std::exception& e) {
                 log(std::string("[va-gate] meta parse error: ") + e.what());
             }
+        }
         }
     }
 }

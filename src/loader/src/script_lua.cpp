@@ -1362,6 +1362,15 @@ int lua_va_trusted(lua_State* L) {
     return 1;
 }
 
+// rsmm.exe_sha256() -> string ('' if the exe could not be hashed). The SDK
+// judges its own VA table (engine_gen.lua, which ships apart from this DLL)
+// against the running exe with it.
+int lua_exe_sha256(lua_State* L) {
+    const std::string& sha = Loader::get().game_exe_sha256();
+    lua_pushlstring(L, sha.data(), sha.size());
+    return 1;
+}
+
 int lua_call_native(lua_State* L) {
     // Arg 1: VA (integer) or name (string).
     std::uintptr_t va = 0;
@@ -2214,6 +2223,7 @@ void register_api(lua_State* L) {
         { "resolve",                 lua_resolve },
         { "call",                    lua_call_native },
         { "va_trusted",              lua_va_trusted },
+        { "exe_sha256",              lua_exe_sha256 },
         { "module_base",             lua_module_base },
         { "self_id",                 lua_self_id },
         { "now",                     lua_now },

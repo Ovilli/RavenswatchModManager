@@ -702,6 +702,22 @@ do
     va_trusted_val = false
     I.write_u64(root + 0x20, obj)
     check(R.stat.cached("attack_power") == nil, "an untrusted build refuses the va read")
+    -- The SDK's VA table ships apart from the DLL, so BOTH stamps must agree
+    -- with the running exe: engine_gen._va_build (checked in Lua) and the DLL
+    -- gate (va_trusted).
+    local va_build = require("engine_gen")._va_build or ""
+    if va_build ~= "" then
+        I.exe_sha256 = function() return va_build end
+        check(R.stat.cached("attack_power") == nil,
+              "a matching SDK stamp does not override an untrusting DLL gate")
+        va_trusted_val = true
+        check(R.stat.cached("attack_power") ~= nil,
+              "SDK stamp matches AND the DLL trusts: the va read goes through")
+        I.exe_sha256 = function() return string.rep("0", 64) end
+        check(R.stat.cached("attack_power") == nil,
+              "an exe that is not engine_gen's build refuses even when the DLL trusts")
+        I.exe_sha256 = nil
+    end
     va_trusted_val = true
     I.write_u64(ROOT_SLOT, 0)
 end
@@ -12171,6 +12187,15 @@ do
     R.off(id)
     I.ui_state_arm, I.ui_state_count, I.ui_state_open = nil, nil, nil
     I.ui_state_book, I.ui_state_page = nil, nil
+end
+
+-- R.engine.names() lists callables only: never the VA table or its build stamp.
+do
+    local internal = {}
+    for _, n in ipairs(R.engine.names()) do
+        if n:sub(1, 1) == "_" then internal[#internal + 1] = n end
+    end
+    check(#internal == 0, "R.engine.names() leaks internal keys: " .. table.concat(internal, ", "))
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

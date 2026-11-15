@@ -43,10 +43,56 @@ def test_clean_places_refuses_bad_input(bad, msg):
         TE.clean_places(bad)
 
 
+@pytest.mark.parametrize("bad, msg", [
+    ({"remove": [{"entity": PROP, "at": [0, 0, 0]}]}, "needs an own copy"),
+    ({"own": True}, "nothing to save"),
+    ({"own": True, "remove": [{"entity": PROP, "at": [0, 0]}]}, "three numbers"),
+    ({"own": True, "move": [{"entity": PROP, "at": [0, 0, 0]}]}, "pos: needs three"),
+    ({"own": True, "clear": True, "copies": 99}, "outside"),
+])
+def test_clean_edit_refuses_bad_input(bad, msg):
+    with pytest.raises(TE.TileEditError, match=msg):
+        TE.clean_edit(bad)
+
+
+def test_clean_edit_clear_all_drops_single_removes():
+    e = TE.clean_edit({"own": True, "clear": True, "remove": [{"entity": PROP, "at": [0, 0, 0]}]})
+    assert e["clear"] is True and e["remove"] == []
+
+
+@needs_game
+def test_own_copy_removes_and_moves_one_game_object():
+    tile = "Tiles\\Dark_Hills\\6x6_3Pigs_Material_Crates.tiledef.ot"
+    objs = TE.objects_json(tile)["objects"]
+    # two placements of ONE entity: removing the first must leave the second
+    # standing for the move to find, so this proves `at` picks one placement
+    a, b = objs[0], objs[3]
+    assert a["entity"] == b["entity"]
+    edit = {"own": True, "copies": 2,
+            "remove": [{"entity": a["entity"], "at": a["pos"]}],
+            "move": [{"entity": b["entity"], "at": b["pos"],
+                      "pos": [b["pos"][0] + 1, b["pos"][1], b["pos"][2]]}]}
+    files = TE.check(tile, edit)
+    assert any(f.endswith(".level.ot.GameStream.gen") for f in files)
+    text = TE.poi_toml(tile, edit)
+    assert "own_level = true" in text and "replace_base" not in text
+    assert TE.read_edit(text) == (tile, TE.clean_edit(edit))
+    # an anchor that names no placement fails the emit instead of doing nothing
+    with pytest.raises(TE.TileEditError, match="stands at"):
+        TE.check(tile, {"own": True, "remove": [{"entity": a["entity"], "at": [99, 99, 99]}]})
+    # one object is either moved or removed, never both
+    both = {"own": True, "remove": [{"entity": a["entity"], "at": a["pos"]}],
+            "move": [{"entity": a["entity"], "at": a["pos"], "pos": [0, 0, 0]}]}
+    with pytest.raises(TE.TileEditError, match="also cleared"):
+        TE.check(tile, both)
+    assert TE.objects_json(tile)["at_tolerance"] > 0
+
+
 @needs_game
 def test_poi_toml_round_trips():
     places = [{"entity": PROP, "pos": [1.5, 0, -2], "yaw": 45, "scale": 1.2}]
-    assert TE.read_places(TE.poi_toml(TILE, places)) == (TILE, TE.clean_places(places))
+    assert TE.read_edit(TE.poi_toml(TILE, {"places": places})) == (
+        TILE, TE.clean_edit({"places": places}))
 
 
 @needs_game
@@ -54,7 +100,7 @@ def test_objects_and_check_use_the_real_poi_emit():
     data = TE.objects_json(TILE)
     assert data["chapters"] == ["Dark_Hills"] and data["objects"]
     assert all(len(o["pos"]) == 3 and len(o["quat"]) == 4 for o in data["objects"])
-    files = TE.check(TILE, [{"entity": PROP, "pos": [2, 0, 1], "yaw": 30, "scale": 1}])
+    files = TE.check(TILE, {"places": [{"entity": PROP, "pos": [2, 0, 1], "yaw": 30, "scale": 1}]})
     assert any(f.endswith(".level.ot.GameStream.gen") for f in files)
     assert any(f.endswith(".tiledef.UsedRscCache.ot") for f in files)
 
@@ -79,7 +125,7 @@ def test_save_list_reopen_and_lint(tmp_path):
     st, _h, out = b.request("GET", "/map/api/t3/mods")
     assert json.loads(out)["mods"] == [{"id": "my-tile", "tiles": [TILE]}]
     st, _h, out = b.request("GET", "/map/api/t3/mod?id=my-tile")
-    assert json.loads(out)["tiles"] == {TILE: TE.clean_places(places)}
+    assert json.loads(out)["tiles"] == {TILE: TE.clean_edit({"places": places})}
 
     errors, _warnings = lint_one(mod)
     assert errors == 0

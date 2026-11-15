@@ -541,9 +541,16 @@ class EntityFile:
         Every literal's data starts 16 bytes into its token, as in a value
         field: a scalar there, a vecN's floats packed from there (read off
         ``position``'s ``vec3 0 0 1``: its 1.0 sits at +24)."""
+        p = self.objects[c.index - 1]
+        at = len(p) - len(c.body) + f.offset
         sub = EG.Component(0, c.cls, "", "", b"", None,
                            body=c.body[f.offset:f.offset + f.size], classes=c.classes)
         lits = [t for t in EG.tokens(sub) if t.kind == "value"]
+        if not lits:
+            p = self.objects[self._pointee(c, f, len(p) - len(c.body))]
+            at = 0
+            sub = EG.Component(0, c.cls, "", "", b"", None, body=bytes(p), classes=c.classes)
+            lits = [t for t in EG.tokens(sub) if t.kind == "value"]
         if not 0 <= n < len(lits):
             raise EntityEditError(f"{label!r}: {f.name} holds {len(lits)} literals, "
                                   f"no index {n}")
@@ -554,16 +561,14 @@ class EntityFile:
         if fmt is None:
             raise EntityEditError(f"{label!r} is a {kind} inside an object; only "
                                   f"f32/int/bool/vecN literals there can be set")
-        p = self.objects[c.index - 1]
-        at = len(p) - len(c.body)
         if kind.startswith("vec"):
             vals = list(value) if isinstance(value, (list, tuple)) else []
             if len(vals) != int(kind[3]):
                 raise EntityEditError(f"{label!r} is a {kind}; give {kind[3]} numbers")
-            struct.pack_into(fmt, p, at + f.offset + u.offset + 16, *map(float, vals))
+            struct.pack_into(fmt, p, at + u.offset + 16, *map(float, vals))
             return
         conv = {"f32": float, "int": int, "bool": bool}[kind]
-        struct.pack_into(fmt, p, at + f.offset + u.offset + 16, conv(value))
+        struct.pack_into(fmt, p, at + u.offset + 16, conv(value))
 
     def set_flags(self, comp: str, flags: int) -> None:
         """Set component ``comp``'s record header flags (``EG.Component.flags``:
@@ -685,6 +690,56 @@ class EntityFile:
         if not 0 <= i < count:
             raise EntityEditError(f"{c.name!r} has {count} cine blocs, no {i}")
         return c, struct.unpack_from("<I", p, pos + 12 + 4 * i)[0]
+
+    def add_cinebloc(self, comp: str, target: str, start: float) -> int:
+        """Append a new ``oCActivateEntityCpntCineBloc`` (cloned from ``cinebloc[0]``)
+        to animatic ``comp``'s ``oCCinematic`` timeline, at ``start`` seconds,
+        pointing at ``target``."""
+        c, donor_sub = self._cinebloc(comp, 0)
+        names = [x.name for x in self.cf.classes]
+        p = self.objects[c.index - 1]
+        pos = p.find(_B + struct.pack("<I", names.index("oCCinematic")))
+        count = struct.unpack_from("<I", p, pos + 8)[0]
+        subs = self.subtree({donor_sub})
+        owned, _ = self.pointers()
+        base = len(self.objects)
+        new_id = {old: base + i for i, old in enumerate([donor_sub, *subs])}
+        for old in [donor_sub, *subs]:
+            obj = bytearray(self.objects[old])
+            for x, ptr in owned.items():
+                if ptr.owner == old and x in new_id:
+                    struct.pack_into("<I", obj, ptr.offset, new_id[x])
+            self.objects.append(obj)
+        new_sub = new_id[donor_sub]
+        struct.pack_into("<f", self.objects[new_sub], 4, float(start))
+        self._repoint(new_sub, *self._only_picker(new_sub, f"{c.name}.cinebloc[{count}]"),
+                      target, f"{c.name}.cinebloc[{count}]")
+        ins = pos + 12 + 4 * count
+        p[ins:ins] = struct.pack("<I", new_sub)
+        struct.pack_into("<I", p, pos + 8, count + 1)
+        return count
+
+    def set_animatic_speed(self, comp: str, speed: float) -> None:
+        """Set animatic ``comp``'s play rate (first f32 of ``bytes_8``) and scale
+        its ``oCCinematic`` duration by ``old_rate / speed``."""
+        if speed <= 0:
+            raise EntityEditError(f"{comp!r}: speed must be > 0")
+        c, f, at = self._field(comp, "bytes_8")
+        if f.size < 4:
+            raise EntityEditError(f"{comp!r}: bytes_8 too short for play rate")
+        p = self.objects[c.index - 1]
+        old_rate = struct.unpack_from("<f", p, at + f.offset)[0]
+        if old_rate <= 0:
+            old_rate = 1.0
+        struct.pack_into("<f", p, at + f.offset, float(speed))
+        names = [x.name for x in self.cf.classes]
+        pos = (p.find(_B + struct.pack("<I", names.index("oCCinematic")))
+               if "oCCinematic" in names else -1)
+        if pos >= 0:
+            count = struct.unpack_from("<I", p, pos + 8)[0]
+            dur_at = pos + 12 + 4 * count
+            dur = struct.unpack_from("<f", p, dur_at)[0]
+            struct.pack_into("<f", p, dur_at, dur * (old_rate / float(speed)))
 
     def _pointee(self, c: EG.Component, f: EF.Field, at: int) -> int:
         """The sub-object ``c``'s object field ``f`` points at."""
@@ -851,14 +906,15 @@ class EntityFile:
         f = next((x for x in EF.fields(c) if x.name == list_field), None)
         if f is None:
             raise EntityEditError(f"{owner!r} has no field {list_field!r}")
-        n = struct.unpack_from("<I", c.body, f.offset)[0]
-        if f.size != 4 + 4 * n:
+        pad = id_list_pad(c.cls, list_field)
+        n = struct.unpack_from("<I", c.body, f.offset + pad)[0]
+        if f.size != pad + 4 + 4 * n:
             raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
         payload = self._copy_subobject(donor, obj, refs, switch)
         new_id = len(self.objects)
         self.objects.append(payload)
         p = self.objects[c.index - 1]
-        at = len(p) - len(c.body) + f.offset
+        at = len(p) - len(c.body) + f.offset + pad
         p[at + 4 + 4 * n:at + 4 + 4 * n] = struct.pack("<I", new_id)
         struct.pack_into("<I", p, at, n + 1)
         return new_id                   # checked when written (to_bytes)
@@ -874,12 +930,13 @@ class EntityFile:
         f = next((x for x in EF.fields(c) if x.name == list_field), None)
         if f is None:
             raise EntityEditError(f"{owner!r} has no field {list_field!r}")
-        n = struct.unpack_from("<I", c.body, f.offset)[0]
-        if f.size != 4 + 4 * n:
+        pad = id_list_pad(c.cls, list_field)
+        n = struct.unpack_from("<I", c.body, f.offset + pad)[0]
+        if f.size != pad + 4 + 4 * n:
             raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
         if not 0 <= index < n:
             raise EntityEditError(f"{owner}.{list_field} has entries 0..{n - 1}")
-        old = struct.unpack_from("<I", c.body, f.offset + 4 + 4 * index)[0]
+        old = struct.unpack_from("<I", c.body, f.offset + pad + 4 + 4 * index)[0]
         if self.subtree({old}):
             raise EntityEditError(f"{owner}.{list_field}[{index}] owns sub-objects of its "
                                   "own; not replaced")
@@ -961,7 +1018,8 @@ class EntityFile:
             payload[a + 8:u] = b"\x01\x00" + self._picker(switch) + struct.pack("<I", acc)
         return payload
 
-    def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str) -> int:
+    def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str,
+                          *, cross_kind: bool = False) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
         entity (``guid``, ``label`` = ``[Kind] Scope\\Group\\Name``) of the same
         kind, keeping the accessor after it: a get-value node reading its owner."""
@@ -975,7 +1033,7 @@ class EntityFile:
         while i >= 0:
             n = struct.unpack_from("<I", p, i + 24)[0]
             end = i + 28 + n + 4
-            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(label):
+            if not cross_kind and _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(label):
                 raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
                                       f"the same kind of node as {label!r}")
             p[i:end] = new
@@ -1031,6 +1089,13 @@ class EntityFile:
         head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
         p[end:end] = head + guid + _lstr(label) + _E
         struct.pack_into("<I", p, at + f.offset, n + 1)
+
+    def set_external_ref(self, comp: str, field: str, guid: bytes, label: str) -> None:
+        """Point a single ``ref`` field at a component of ANOTHER entity."""
+        c, f, at = self._field(comp, field)
+        a, b = self._picker_span(c, f)
+        head = _B + struct.pack("<I", self._class_index("oCEntityCpntPicker"))
+        self.objects[c.index - 1][at + a:at + b] = head + guid + _lstr(label) + _E
 
     def insert_ref(self, comp: str, field: str, index: int, target: str) -> None:
         """Put ``target`` into the reference list ``field`` at ``index`` (the
@@ -1424,6 +1489,12 @@ def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
 
 
 @cache
+def id_list_pad(cls: str, field: str) -> int:
+    """Bytes before the ``u32 count`` of id list ``field``: a Gpn traverser's
+    ``bytes_3`` holds 4 of its own ahead of the list (the PR #149 kit edits)."""
+    return 4 if cls == "oCEntityCpntGpnTraverserSettings" and field == "bytes_3" else 0
+
+
 def kind_label(cls: str) -> str:
     """The ``[Kind]`` label references to a ``cls`` component carry: the most
     common among the first references to one found in the corpus. Stops early

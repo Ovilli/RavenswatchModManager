@@ -590,6 +590,7 @@ PATTERN: dict[str, str] = {
     "Netcode_ConnectionFactory": "Netcode_ConnectionFactory",
     "Netcode_ConnectionRegistry_Emplace": "Netcode_ConnectionRegistry_Emplace",
     "Netcode_DropPeer": "Netcode_DropPeer",
+    "Netcode_EntityReplSetup": "Netcode_EntityReplSetup",
     "Netcode_PeerStateTick": "Netcode_PeerStateTick",
     "Netcode_ReconnectMaxRead": "Netcode_ReconnectMaxRead.parent",
     "Netcode_SessionCtx_LocalGuid": "Netcode_SessionCtx_LocalGuid",

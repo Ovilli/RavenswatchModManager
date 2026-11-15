@@ -27,14 +27,22 @@ def _mod(tmp_path, lua: str) -> Path:
 
 
 def test_lint_accepts_ui_press_subscription(tmp_path):
-    entry = _mod(tmp_path, 'R.on("ui:press", function(ev) end)\n')
+    entry = _mod(
+        tmp_path,
+        'local R = require "rsmm"\n'
+        'R.on("ui:press", function(ev) end)\n',
+    )
     errs, warns = _lint_lua_api("m", entry)
     assert errs == 0
     assert warns == 0
 
 
 def test_lint_still_warns_on_bogus_event(tmp_path):
-    entry = _mod(tmp_path, 'R.on("uii:press", function(ev) end)\n')
+    entry = _mod(
+        tmp_path,
+        'local R = require "rsmm"\n'
+        'R.on("uii:press", function(ev) end)\n',
+    )
     _errs, warns = _lint_lua_api("m", entry)
     assert warns >= 1        # a near-miss must not be silently swallowed
 

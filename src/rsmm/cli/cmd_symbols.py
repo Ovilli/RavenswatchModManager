@@ -40,6 +40,30 @@ LUA_ENGINE = REPO_ROOT / "src" / "loader" / "lib" / "engine_gen.lua"
 # functions by tools/mine_stat_keys.py. Unlike the files above it is generated
 # from data/stat_keys.json, not data/symbols.json.
 STAT_KEYS = REPO_ROOT / "data" / "stat_keys.json"
+# Which game exe the map's addresses were derived for: the pattern-DB meta that
+# sync_symbol_patterns.py restamps from the exe in the same remap.
+PATTERN_META = REPO_ROOT / "data" / "function_patterns.meta.json"
+
+
+def _map_build_sha() -> str:
+    """The game exe sha256 the symbol map's addresses belong to ('' if unknown).
+
+    Baked into BOTH generated artifacts that carry absolute addresses (the
+    DLL's symbols.gen.h and the SDK's engine_gen.lua), because they ship
+    separately from each other and from the pattern DB: each one has to be
+    judged against the build IT was made for, not against whichever pattern DB
+    happens to be planted (that mismatch let `rsmm update-data` re-trust a
+    stale DLL's va globals after a patch).
+
+    The stamp is only as good as the remap order: sync_symbol_patterns.py
+    restamps the meta from the local exe, so on patch day the `va` globals
+    must be recovered (tools/va_locators.py recover --apply) BEFORE this runs,
+    or a build in between carries the new stamp beside old addresses."""
+    try:
+        sha = json.loads(PATTERN_META.read_text(encoding="utf-8")).get("game_exe_sha256", "")
+    except (OSError, ValueError):
+        return ""
+    return sha if isinstance(sha, str) and len(sha) == 64 else ""
 LUA_STATS = REPO_ROOT / "src" / "loader" / "lib" / "stats_gen.lua"
 # The same catalog for Python: the item kind names the stat a modifier changes.
 # A module, not the JSON, so the frozen CLI and the web editor bundle carry it.
@@ -410,6 +434,9 @@ def _gen_header(smap: SymbolMap) -> str:
         "",
         "namespace Sym {",
         f"constexpr std::uintptr_t kPreferredBase = 0x{smap.preferred_base:x}ull;",
+        "// sha256 of the game exe these addresses were derived for ('' = unknown);",
+        "// the loader's va-gate trusts absolute data addresses only on that exe.",
+        f'constexpr const char* kSymbolMapExeSha256 = "{_map_build_sha()}";',
         "",
     ]
     for cat in smap.categories:
@@ -809,6 +836,9 @@ def _gen_lua(smap: SymbolMap) -> str:
     # Data globals and vftables, at the preferred base. The SDK used to copy
     # these into Lua literals by hand, and a game patch left every copy stale
     # while symbols.json was remapped (Update 6, 2026-10-12).
+    # The exe those addresses belong to: R.engine.va's gate compares it with
+    # the running exe, since this file ships apart from the DLL.
+    lines.append(f'  _va_build = "{_map_build_sha()}",')
     lines.append("  _va = {")
     for s in sorted(smap.by_kind("data"), key=lambda x: x.name):
         if s.va:

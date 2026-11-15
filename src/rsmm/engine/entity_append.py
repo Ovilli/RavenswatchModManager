@@ -542,7 +542,8 @@ def fix_accessor(buf: bytes, label_end: int, old_target: bytes, new_target: byte
                      and _label_kind(old_label) == _label_kind(new_label))
     if same_kind:
         new_type = acc.value_type(new_target)
-        if new_type is None or new_type == acc.value_type(old_target):
+        old_type = acc.value_type(old_target)
+        if new_type is None or old_type is None or new_type == old_type:
             return buf
     accessor, vtype = acc.resolve(new_target, prefer=cur_type)
     # union layout from `off`: accessor, BEGIN, class, type, sub-type, value

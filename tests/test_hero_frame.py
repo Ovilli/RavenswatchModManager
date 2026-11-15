@@ -697,3 +697,44 @@ def test_a_copied_sound_stands_alone():
     HA.own_sound(ef, "Heroes\\Hero_Red\\Hero_Red.entity.ot | Wolf Basic Attack Active FMod Event",
                  name="Slash", group="Ability Attack", seed="t")
     assert not [pk.path for pk in AT.deep_picks(ef, ef.component("Slash")) if pk.path]
+
+
+@needs_corpus
+def test_timed_intangible_loop_and_passive_buttons():
+    """PR #149: ``intangible = <s>`` holds State Intangible through a sub-state
+    a timer ends; ``loop`` puts the clip in the animatic's loop slot for the
+    whole duration; ``passive`` is a state switched on at hero init."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\RED\\Animations\\Skills\\RED_Wolf_Defensive_Howl.fbx"
+    ab = HA.Ability.parse("ultimate2", {"clip": clip, "duration": 6.0, "loop": True,
+                                        "intangible": 2.0, "hits": [{"at": 0.5, "radius": 3}]})
+    assert ab.intangible == 2.0 and ab.loop
+    psv = HA.Ability.parse("trait", {"passive": True})
+    assert psv.passive and psv.cooldown == 0.0 and psv.clip == ""
+    ef = _hero("Hero_T")
+    hc = HF.common(_read)
+    state = HA.build(ef, hc, ab, seed="t")
+    assert HA.build(ef, hc, psv, seed="t") == "State Trait Ability Passive"
+    g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
+
+    def f(name):
+        return {x.name: x.text for x in EF.fields(g[name])}
+    tag = state.removeprefix("State ")
+    sub = f"State {tag} Intangible"
+    assert sub in f(state)["while_active"]
+    assert "Character_Common\\Base\\State Intangible" not in f(state)["while_active"]
+    assert "Character_Common\\Base\\State Intangible" in f(sub)["while_active"]
+    timer = f(f"{tag} Intangible Timer")
+    assert timer["duration"].startswith("f32 2") and timer["state"].endswith(sub)
+    clip_part = f(f"{tag} Clip")
+    assert clip_part["ref_4"].endswith(f"{tag} Anim")
+    assert clip_part["value_6"].startswith("f32 6")
+    assert "State Trait Ability Passive" in f("Child Event Initialize Hero Common")["activates"]
+    for bad in ({"clip": clip, "intangible": 0}, {"clip": clip, "intangible": 61},
+                {"clip": clip, "intangible": "x"}, {"passive": "yes"},
+                {"clip": clip, "loop": True, "combo": [{"clip": clip}]},
+                {"loop": True, "passive": True}):
+        with pytest.raises(HA.AbilityError):
+            HA.Ability.parse("power", bad)

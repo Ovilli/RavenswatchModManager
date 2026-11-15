@@ -1067,6 +1067,14 @@ def test_poi_schema_matches_what_discover_accepts(tmp_path):
         "material_base": '"m"', "material": '"m"', "allow_shared_art": "false",
         "interactive": "true", "components": "[]", "transform": '{ fit = "rig" }',
         "slots": '{ albedo = "a" }', "marker": '{ reveal_radius = 1.0 }',
+        "collision": '[{ size = [1.0, 1.0, 1.0], at = [0.0, 0.0, 0.0] }]', "clear": "false",
+        "parts": "{}",
+        "terrain": "[]", "terrain_size": "[128.0, 128.0]",
+        "level_values": "{ A = 1.0 }", "render_ambient": "[0.4, 0.4, 0.4]",
+        "move": '[{ entity = "A.entity.ot", pos = [0.0, 0.0, 0.0] }]',
+        "subtile": "false", "flags": '["Mod_Flag"]',
+        "needs": '[{ flags = ["Mod_Room"] }]',
+        "teleporters": '[{ side = "out", id = "Mod_Pair" }]',
     }.items())
     assert set(tomllib.loads(toml)) == set(props), "test table is missing a schema key"
     _poi_folder(tmp_path, cfg=toml)
@@ -1967,3 +1975,183 @@ def test_clone_material_moves_a_texture_to_another_root():
     assert out[i + 1:i + 3] == ["3D", "Characters\\T_X_MRA.tga"]
     assert len(cooked.parse(there).sections) == len(cooked.parse(raw).sections)
     assert grey.index("u_MRA") == i
+
+
+# --------------------------------------------------------------------------- #
+# sub-tiles: an entrance `needs` a room, a teleporter pair links them
+# --------------------------------------------------------------------------- #
+
+@needs_corpus
+def test_every_shipped_tile_constraint_round_trips_byte_exact():
+    seen = 0
+    for p in _tiles:
+        for c in TC.read(open(p, "rb").read()).children:
+            raw = bytes.fromhex(c)
+            assert TC.build_constraint(TC.parse_constraint(raw)) == raw, p
+            seen += 1
+    assert seen >= 40
+
+
+@needs_corpus
+def test_ghoul_den_entrance_needs_its_underground_room():
+    td = TC.read((TILES_DIR / "Dark_Hills" /
+                  f"40x40_Boss_Ghoul_Den_Entrance_LiveOps{TC.GEN_SUFFIX}").read_bytes())
+    (c,) = [TC.parse_constraint(bytes.fromhex(x)) for x in td.children]
+    assert (c.required, c.excluded, c.count, c.min_dist, c.max_dist, c.flag) == \
+        (["Boss_Ghoul_Underground"], [], 1, -1.0, -1.0, 1)
+
+
+_ROOM_BASE = "Dark_Hills/DarkHill_Thieves_Stashes_Gold_Room_Underground_01"
+_ENTRANCE_BASE = "Dark_Hills/6x6_Crystal_01"
+
+
+def _strings(path: Path) -> list[str]:
+    return [s for _sec, _off, s in entity_strings.list_strings(path.read_bytes())]
+
+
+@needs_corpus
+def test_entrance_needs_room_and_teleporters_pair_by_mod_id(tmp_path):
+    from rsmm.engine import level_placements as LP
+    from rsmm.engine import rsc_cache as RC
+    entrance = ContentDef(kind="poi", id="door", fields={
+        "base": _ENTRANCE_BASE, "chapters": ["Dark_Hills"], "own_level": True,
+        "needs": [{"flags": ["Mod_Room"]}],
+        "teleporters": [{"side": "out", "id": "Mod_Pair", "pos": [0.0, 0.0, 1.0]}]})
+    room = ContentDef(kind="poi", id="room", fields={
+        "base": _ROOM_BASE, "chapters": ["Dark_Hills"], "own_level": True,
+        "subtile": True, "kinds": ["Mod_Room"],
+        "teleporters": [{"side": "in", "id": "Mod_Pair", "pos": [0.0, 0.0, 0.0]}]})
+    files = poi.emit("m", entrance, tmp_path) + poi.emit("m", room, tmp_path)
+    rel = {f.relative_to(tmp_path).as_posix(): f for f in files}
+
+    door = TC.read(rel[f"Definitions/Tiles/Dark_Hills/m_door{TC.GEN_SUFFIX}"].read_bytes())
+    (c,) = [TC.parse_constraint(bytes.fromhex(x)) for x in door.children]
+    assert (c.required, c.flag) == (["Mod_Room"], 1)
+    assert TC.read(rel[f"Definitions/Tiles/Dark_Hills/m_room{TC.GEN_SUFFIX}"]
+                   .read_bytes()).kinds == ["Mod_Room"]
+
+    out = rel["EntitySettings/Objects_Common/m_door_Teleporter_Out.entity.ot"
+              ".EntitySettingsResource.gen"]
+    inn = rel["EntitySettings/Objects_Common/m_room_Teleporter_In.entity.ot"
+              ".EntitySettingsResource.gen"]
+    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(out))
+    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(inn))
+    assert not any(s.startswith(("Cave_Entrance", "Thieves_Underground_Entrance"))
+                   for s in _strings(out) + _strings(inn))
+    # the state that actually teleports (missing from the generic Out model),
+    # and the stash event renamed so the door does not count as a stash
+    assert "Child Event Teleport Hero" in _strings(out)
+    assert "HERO_ENTER_MOD_PAIR" in _strings(out)
+    assert "HERO_ENTER_THIEVES_STASH" not in _strings(out)
+
+    level = next(f for r, f in rel.items() if r.endswith("m_room.level.ot.GameStream.gen"))
+    assert any(pl.ref.endswith("m_room_Teleporter_In.entity.ot")
+               for _oid, pl in LP.objects(level.read_bytes()))
+    # The clone's closure is the donor's: the parent model must be preloaded.
+    cache = rel["Definitions/Tiles/Dark_Hills/m_room.tiledef.UsedRscCache.ot"]
+    lines = "\n".join(RC.parse(cache.read_bytes()))
+    assert "Teleporter_SubTile_Entrance_Model.entity.ot" in lines
+    assert "m_room_Teleporter_In.entity.ot" in lines
+
+
+@needs_corpus
+@pytest.mark.parametrize("fields, needle", [
+    ({"needs": [{"flags": []}]}, "flags"),
+    ({"needs": [{"flags": ["X"], "count": 0}]}, "count"),
+    ({"own_level": True, "teleporters": [{"side": "up", "id": "Abc"}]}, "side"),
+    ({"teleporters": [{"side": "out", "id": "Abc"}]}, "own_level"),
+])
+def test_needs_and_teleporters_reject_bad_input(tmp_path, fields, needle):
+    with pytest.raises(ContentError, match=needle):
+        poi.emit("m", ContentDef(kind="poi", id="X", fields={
+            "base": _ENTRANCE_BASE, "chapters": ["Dark_Hills"], **fields}), tmp_path)
+
+
+@needs_corpus
+def test_room_takes_over_its_shipped_teleporter(tmp_path):
+    """A stash room's own teleporter is not a plain placement, so `clear` keeps
+    it; left alone it would still answer `Thieves_Underground_Entrance_Out`.
+    `replace` clones it under the mod's pair and repoints every label."""
+    room = ContentDef(kind="poi", id="room", fields={
+        "base": _ROOM_BASE, "chapters": ["Dark_Hills"], "own_level": True,
+        "subtile": True, "kinds": ["Mod_Room"],
+        "teleporters": [{
+            "side": "in", "id": "Mod_Pair",
+            "replace": "Objects_Common\\Thieves_Underground_Teleporter_In.entity.ot"}]})
+    files = poi.emit("m", room, tmp_path)
+    level = next(f for f in files if f.name.endswith("m_room.level.ot.GameStream.gen")).read_bytes()
+    assert b"Thieves_Underground_Teleporter_In" not in level
+    assert level.count(b"m_room_Teleporter_In") == 3      # the ref + two override labels
+    # the LEVEL sets the pair names too, and those win over the entity's
+    assert b"Gold_Room_In" not in level and b"Gold_Room_Out" not in level
+    assert b"Mod_Pair_In" in level and b"Mod_Pair_Out" in level
+    ent = next(f for f in files if "m_room_Teleporter_In.entity.ot" in f.name)
+    names = set(_strings(ent))
+    assert {"Mod_Pair_In", "Mod_Pair_Out"} <= names
+    assert not any(n.startswith("Thieves_Underground_Entrance") for n in names)
+
+
+@needs_corpus
+def test_clone_renames_a_level_whose_two_self_names_disagree():
+    """`40x40_Old_Shipyard_Hill_Crystal_Field` keeps the right bare id but a
+    stale path form (`40x40_Old_Farm_Crystal_Field.level.ot`); both must move,
+    or the clone collides with the shipped level in the registry."""
+    src = "DarkHills\\Tiles\\40x40_Old_Shipyard_Hill_Crystal_Field.level.ot"
+    raw = (DATA_DIR / "uncooked" / PC.level_cooked_path(src)).read_bytes()
+    out = PC.clone_tile_level(raw, src, "DarkHills\\Tiles\\m_x.level.ot", {})
+    _h, doc = PC._refs_doc("oCGameStream", out)
+    refs = doc["asset_refs"]
+    assert refs[0] == "DarkHills\\Tiles\\m_x.level.ot"
+    assert "DarkHills\\Tiles\\m_x" in refs
+    assert not any("Old_Farm_Crystal_Field" in r or "Old_Shipyard_Hill_Crystal_Field" in r
+                   for r in refs)
+
+
+@needs_corpus
+def test_a_constraint_on_a_tile_without_one_declares_its_classes():
+    """A constraint block names oCLinkedTile / oCCustomFlagFilter by index into
+    the file's own class table; a tile that ships without constraints has no
+    such rows. Written without them, the tiledef failed to load and the tile
+    was silently never placed (2026-11-15)."""
+    from rsmm.engine import cooked
+    td = TC.read((TILES_DIR / "Dark_Hills" /
+                  f"40x40_Old_Shipyard_CrystalField{TC.GEN_SUFFIX}").read_bytes())
+    assert len(cooked.parse(TC.write(td)).classes) == 5
+    td.children = [TC.build_constraint(TC.Constraint(["Mod_Room"])).hex()]
+    out = TC.write(td)
+    names = [c.name for c in cooked.parse(out).classes]
+    assert names[5:] == ["oCLinkedTile", "oCCustomFlagFilter"]
+    back = TC.read(out)
+    c = TC.parse_constraint(bytes.fromhex(back.children[0]))
+    assert (c.required, c.ci) == (["Mod_Room"], (5, 6, 4))
+    # byte-identical to the shipped den entrance's block shape
+    den = TC.read((TILES_DIR / "Dark_Hills" /
+                   f"40x40_Boss_Ghoul_Den_Entrance_LiveOps{TC.GEN_SUFFIX}").read_bytes())
+    assert [x.name for x in cooked.parse(out).classes] == \
+        [x.name for x in cooked.parse(TC.write(den)).classes]
+
+
+def test_is_placement_matches_by_name_and_optional_anchor():
+    from rsmm.engine.level_placements import Placement
+    pl = Placement("Objects_Common\\Rock_A.entity.ot", (1.0, 2.0, 3.0), (0, 0, 0, 1), (1, 1, 1))
+    assert poi._is_placement(pl, "rock_a.entity.ot")
+    assert poi._is_placement(pl, "Objects_Common\\Rock_A.entity.ot", [1.02, 2.0, 2.99])
+    assert not poi._is_placement(pl, "Rock_A.entity.ot", [1.2, 2.0, 3.0])
+    assert not poi._is_placement(pl, "Rock_B.entity.ot")
+
+
+def test_an_anchor_must_name_exactly_one_placement():
+    from rsmm.engine.level_placements import Placement
+    rock = "Objects_Common\\Rock_A.entity.ot"
+    pl = Placement(rock, (1.0, 2.0, 3.0), (0, 0, 0, 1), (1, 1, 1))
+    defn = ContentDef(kind="poi", id="t", fields={})
+    hits = poi._one_placement(defn, "move[0]", [(4, pl)], "Rock_A.entity.ot", [1, 2, 3])
+    assert hits == [(4, pl)]
+    with pytest.raises(ContentError, match="2 placements"):
+        poi._one_placement(defn, "move[0]", [(4, pl), (5, pl)], "Rock_A.entity.ot", [1, 2, 3])
+    with pytest.raises(ContentError, match="no 'Rock_A.entity.ot' stands"):
+        poi._one_placement(defn, "move[0]", [(4, pl)], "Rock_A.entity.ot", [9, 9, 9])
+    with pytest.raises(ContentError, match="at needs three numbers"):
+        poi._anchor(defn, "move[0]", {"entity": rock, "at": [1, 2]}, need_at=False)
+    with pytest.raises(ContentError, match="needs an `entity`"):
+        poi._anchor(defn, "clear.remove[0]", {"at": [1, 2, 3]}, need_at=False)
