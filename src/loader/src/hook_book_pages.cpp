@@ -98,6 +98,7 @@ struct RowSnap {
     std::vector<std::string> choices;
     std::uint32_t value = 0, def = 0;     // 0-based here, 1-based in the JSON
     bool readonly = false;
+    bool reset = true;                    // false: "Reset to default" leaves this row alone
 };
 struct CatSnap {
     std::string id, label, h_title, h_sub, h_text;
@@ -119,6 +120,7 @@ struct LiveRow {
     std::vector<OcStr> labels;
     std::uint32_t value = 0, seen = 0, def = 0;   // the game writes `value`
     bool editable = false;
+    bool resettable = true;                       // false: hook_reset skips it
     void* row = nullptr;                          // the game's row object
 };
 
@@ -781,6 +783,7 @@ void hook_reset(void* ctrl) {
     if (load_at(ctrl, kCtrlSelected, &sel)) {
         if (const auto* c = rec.cat_at(sel)) {
             for (LiveRow* r : c->rows) {
+                if (!r->resettable) continue;
                 r->value = r->def;
                 r->seen = r->def;
                 if (r->row) { OcStr t = lit(r->title); g_menu.set_title(r->row, &t); }
@@ -924,6 +927,8 @@ bool parse_snapshot(const std::string& text, PageSnap* out, std::string* why) {
                         const std::int64_t d = std::clamp<std::int64_t>(rj.value("default", 1), 1, n);
                         r.value = std::uint32_t(v - 1);
                         r.def = std::uint32_t(d - 1);
+                        auto rv = rj.find("reset");
+                        r.reset = !(rv != rj.end() && rv->is_boolean() && !rv->get<bool>());
                     }
                     c.rows.push_back(std::move(r));
                 }
@@ -1027,6 +1032,7 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
             r->editable = !rs.readonly;
             r->value = r->seen = rs.value;
             r->def = rs.def;
+            r->resettable = rs.reset;
             if (!spawn_row(ctrl, settings, factory, cat, row_parent, *r)) { ok = false; break; }
             if (r->editable) rc.rows.push_back(r);
         }
@@ -1103,7 +1109,8 @@ void book_pages_remove_entry(const std::string& id) {
     g_entries.erase(id);
 }
 
-bool book_pages_open(const std::string& page_id, const std::string* ctx_json, std::string* why) {
+bool book_pages_open(const std::string& page_id, const std::string* ctx_json, std::string* why,
+                     bool need_open_leaf) {
     std::string w;
     if (!book_pages_available(&w)) { if (why) *why = w; return false; }
     Request rq;
@@ -1114,11 +1121,11 @@ bool book_pages_open(const std::string& page_id, const std::string* ctx_json, st
         rq.ctx = dumps(j);
     }
     rq.at = GetTickCount64();
-    if (!g_last_leaf.load() || rq.at - g_last_tick.load() > kLeafFreshMs) {
+    if (need_open_leaf && (!g_last_leaf.load() || rq.at - g_last_tick.load() > kLeafFreshMs)) {
         if (why) *why = "no Settings or R.ui.menus page is open";
         return false;
     }
-    {
+    if (need_open_leaf) {
         // Loader-side depth only: the current leaf's record, else the Settings page (0).
         const int d = depth_no_prune(g_last_leaf.load());
         if (d + 1 > kMaxDepth) {

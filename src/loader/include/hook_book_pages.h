@@ -33,8 +33,11 @@ bool book_pages_set_entry(const std::string& id, const std::string& title,
                           std::string* why);
 void book_pages_remove_entry(const std::string& id);
 // ctx_json: nullptr = no context. Queued; runs on the game thread.
+// need_open_leaf = false: for loader callers that open the page together with
+// Settings (the pause-menu Mods button): skips the "a page is open" check and
+// depth is the Settings page's (0); the request waits for the next host Update.
 bool book_pages_open(const std::string& page_id, const std::string* ctx_json,
-                     std::string* why);
+                     std::string* why, bool need_open_leaf = true);
 bool book_pages_back(std::string* why);
 bool book_pages_current(std::string* page, std::string* ctx_json, int* depth);
 void book_pages_veto_back();

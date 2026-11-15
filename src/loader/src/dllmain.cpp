@@ -138,6 +138,7 @@ static void loader_thread_cxx() {
             }
         }
 
+        rsmm::script_run_builtin_init();
         for (const auto& m : L.mods()) {
             // One line per mod, written after load_state() so it reports what
             // actually happens (saved in-game toggles included), not manifest

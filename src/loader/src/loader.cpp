@@ -549,6 +549,7 @@ void Loader::scan_mods(const fs::path& mods_dir) {
             m.name       = tbl["mod"]["name"].value_or(m.id);
             m.version    = tbl["mod"]["version"].value_or("0.0.0");
             m.author     = tbl["mod"]["author"].value_or("");
+            m.description = tbl["mod"]["description"].value_or("");
             m.enabled    = tbl["mod"]["enabled"].value_or(true);
             m.load_order = tbl["mod"]["load_order"].value_or(0);
         } catch (const std::exception& e) {
