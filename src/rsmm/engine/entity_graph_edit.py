@@ -906,7 +906,7 @@ class EntityFile:
         f = next((x for x in EF.fields(c) if x.name == list_field), None)
         if f is None:
             raise EntityEditError(f"{owner!r} has no field {list_field!r}")
-        pad = 4 if c.cls == "oCEntityCpntGpnTraverserSettings" and list_field == "bytes_3" else 0
+        pad = id_list_pad(c.cls, list_field)
         n = struct.unpack_from("<I", c.body, f.offset + pad)[0]
         if f.size != pad + 4 + 4 * n:
             raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
@@ -930,7 +930,7 @@ class EntityFile:
         f = next((x for x in EF.fields(c) if x.name == list_field), None)
         if f is None:
             raise EntityEditError(f"{owner!r} has no field {list_field!r}")
-        pad = 4 if c.cls == "oCEntityCpntGpnTraverserSettings" and list_field == "bytes_3" else 0
+        pad = id_list_pad(c.cls, list_field)
         n = struct.unpack_from("<I", c.body, f.offset + pad)[0]
         if f.size != pad + 4 + 4 * n:
             raise EntityEditError(f"{owner!r}.{list_field} is not an id list")
@@ -1489,6 +1489,12 @@ def _rewrite_header(p: bytes, name: str, group: str) -> bytes:
 
 
 @cache
+def id_list_pad(cls: str, field: str) -> int:
+    """Bytes before the ``u32 count`` of id list ``field``: a Gpn traverser's
+    ``bytes_3`` holds 4 of its own ahead of the list (the PR #149 kit edits)."""
+    return 4 if cls == "oCEntityCpntGpnTraverserSettings" and field == "bytes_3" else 0
+
+
 def kind_label(cls: str) -> str:
     """The ``[Kind]`` label references to a ``cls`` component carry: the most
     common among the first references to one found in the corpus. Stops early

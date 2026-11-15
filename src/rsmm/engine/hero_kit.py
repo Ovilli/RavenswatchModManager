@@ -1636,7 +1636,9 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         if not n_comp:
             raise KitError(f"kit {slot}: attack_targets: {attack} picks its targets with no "
                            "target computer of its own")
-    def _set_selector(sel, val: float, *, clamp: bool = False, seen: set[str] | None = None) -> None:
+
+    def _set_selector(sel, val: float, *, clamp: bool = False,
+                      seen: set[str] | None = None) -> None:
         seen = seen or set()
         if sel.name in seen:
             return

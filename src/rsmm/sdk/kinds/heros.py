@@ -1635,7 +1635,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             head = len(tcf.sections[0].payload)
             tcf.sections[0] = cooked.Section(payload=payload[:head])
             tcf.sections[1] = cooked.Section(payload=payload[head:])
-            ref = f"{rig_dir}\\{scope}_{name}.fbx"
+            # Beside its template: a template in a sub-folder of the rig's
+            # clips (`Communs\RED_Wolf_Spawning`) puts the clip there too.
+            ref = f"{tpl_ref.rsplit(chr(92), 1)[0]}\\{scope}_{name}.fbx"
             put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(tcf))
             art.append(f"3D|{ref}|oCAnimation")
             from ...engine.cooked_schemas import animation as A
