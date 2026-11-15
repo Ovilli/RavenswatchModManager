@@ -12190,12 +12190,12 @@ do
 end
 
 -- R.ui.menus: Lua side of the book menu pages. The loader owns the page build; this
--- checks what Lua pushes (normalized snapshot JSON) and how it answers the
--- loader's synchronous internal events.
+-- checks what Lua pushes (a normalized snapshot table; the loader converts it to
+-- JSON, and an empty `categories` arrives there as {} and still means no categories)
+-- and how it answers the loader's synchronous internal events.
 do
     check(type(R.ui) == "table" and type(R.ui.menus) == "table", "R.ui.menus is loaded")
     local M = R.ui.menus
-    local J = M._json
     -- soft failure: no I.ui_menus_* (old loader)
     local av, avwhy = M.available()
     check(av == false and avwhy == "loader too old for R.ui.menus", "no native: available() is false + why")
@@ -12215,14 +12215,14 @@ do
     local log_saved = R.log
     R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
     I.ui_menus_available = function() return true end
-    I.ui_menus_set_page = function(id, json) pages[id] = json; return true end
+    I.ui_menus_set_page = function(id, snap) pages[id] = snap; return true end
     I.ui_menus_remove_page = function(id) removed[#removed + 1] = "page:" .. id end
     I.ui_menus_set_entry = function(id, title, page, after)
         entries[id] = { title = title, page = page, after = after }
         return true
     end
     I.ui_menus_remove_entry = function(id) removed[#removed + 1] = "entry:" .. id end
-    I.ui_menus_open = function(id, ctx_json) opened[#opened + 1] = { id, ctx_json }; return true end
+    I.ui_menus_open = function(id, ctx) opened[#opened + 1] = { id, ctx }; return true end
     I.ui_menus_back = function() return true end
     I.ui_menus_current = function() return cur end
     I.ui_menus_veto_back = function() vetoes = vetoes + 1 end
@@ -12249,14 +12249,30 @@ do
     })
     check(h and h.id == "t.main", "page() returns a handle")
     check(seen_ctx == nil, "categories(nil) is evaluated at registration")
-    local snap = J.decode(pages["t.main"])
+    local snap = pages["t.main"]
     check(snap.title == "T" and #snap.categories == 1, "snapshot carries title and categories")
     local cat = snap.categories[1]
     check(cat.header.title == "Head" and cat.header.subtitle == "Sub" and cat.header.text == "l1\nl2",
           "snapshot carries the header")
     check(cat.rows[1].value == 3 and cat.rows[1].default == 2, "value is clamped to 1..#choices")
+    check(math.type(cat.rows[1].value) == "integer" and math.type(cat.rows[1].default) == "integer",
+          "value and default stay integers")
+    check(type(cat.rows[1].choices) == "table" and #cat.rows[1].choices == 3, "choices is a list")
     check(cat.rows[2].readonly == true and cat.rows[2].readonly_text == "Edit in the app"
           and #cat.rows[2].choices == 0, "read-only row carries readonly_text and no choices")
+    -- an empty page pushes an empty categories table (the loader reads {} as no categories)
+    M.page("t.empty", { categories = function() return {} end })
+    check(type(pages["t.empty"].categories) == "table" and #pages["t.empty"].categories == 0
+          and pages["t.empty"].title == "", "an empty page pushes an empty categories table")
+    local ec = M.page("t.empty2", { title = "E", categories = function()
+        return { { id = "c", label = "C", header = {}, rows = {} } } end })
+    check(ec and type(pages["t.empty2"].categories[1].header) == "table"
+          and #pages["t.empty2"].categories[1].rows == 0, "empty header and rows are tables")
+    explode = true
+    M.page("t.first_throw", { title = "FT", categories = function() error("first") end })
+    explode = false
+    check(pages["t.first_throw"] and pages["t.first_throw"].title == "FT"
+          and #pages["t.first_throw"].categories == 0, "a first-evaluation throw registers the page empty")
     check(not pcall(M.page, "t.bad", { categories = function() return {} end, kind = "grid" }),
           "kind other than categories is an error")
 
@@ -12264,6 +12280,7 @@ do
     local before = pages["t.main"]
     fire("ui:_menus_refresh", { page = "t.main", ctx = { from = "x" } })
     check(type(seen_ctx) == "table" and seen_ctx.from == "x", "refresh re-runs categories(ctx)")
+    before = pages["t.main"]
     -- a throw keeps the last good snapshot
     explode = true
     fire("ui:_menus_refresh", { page = "t.main", ctx = nil })
@@ -12289,10 +12306,13 @@ do
     M.entry{ id = "uimt.sub", title = "Sub", page = "t.main", after = "t.main" }
     check(entries["uimt.sub"].after == "t.main", "entry after can name a page")
 
-    -- open encodes ctx; current decodes it
-    check(M.open("t.main", { from = "deeper", n = 2, ok = true }) == true, "open returns true")
-    check(opened[1][1] == "t.main" and opened[1][2] == '{"from":"deeper","n":2,"ok":true}',
-          "open JSON-encodes ctx")
+    -- open passes ctx through as a table; current returns it as a table
+    local octx = { from = "deeper", n = 2, ok = true }
+    check(M.open("t.main", octx) == true, "open returns true")
+    check(opened[1][1] == "t.main" and opened[1][2] == octx, "open passes ctx through")
+    M.open("t.main", {})
+    check(type(opened[2][2]) == "table" and next(opened[2][2]) == nil, "open passes an empty ctx table")
+    opened[2] = nil
     M.open("t.main")
     check(opened[2][2] == nil, "open without ctx passes nil")
     local open_saved = I.ui_menus_open
@@ -12301,10 +12321,12 @@ do
     check(dok == false and dwhy == "too deep (max 8)", "open passes the loader's refusal reason through")
     I.ui_menus_open = open_saved
     check(M.current() == nil, "current() is nil when none of ours is the leaf")
-    cur = { page = "t.main", ctx_json = '{"from":"deeper","list":[1,2]}', depth = 2 }
+    cur = { page = "t.main", ctx = { from = "deeper", list = { 1, 2 } }, depth = 2 }
     local c = M.current()
     check(c.page == "t.main" and c.depth == 2 and c.ctx.from == "deeper" and c.ctx.list[2] == 2,
-          "current() decodes ctx")
+          "current() returns the ctx table")
+    cur = { page = "t.main", depth = 1 }
+    check(M.current().ctx == nil, "current() has no ctx when none was passed")
     cur = nil
 
     -- off removes

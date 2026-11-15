@@ -37,133 +37,11 @@ local R, I
 
 local TOO_OLD = "loader too old for R.ui.menus"
 
-local _pages = {}     -- id -> { def = def, json = last pushed snapshot }
+local _pages = {}     -- id -> { def = def, snapshot = last pushed snapshot }
 
 local function log(s) R.log("[R.ui.menus] " .. s) end
 
--- ── minimal JSON ────────────────────────────────────────────────────────────
--- The SDK's own encoder (rsmm.lua) handles flat rows only and nothing decodes.
-
-local OBJ = setmetatable({}, { __mode = "k" })   -- tables to encode as JSON objects even when empty
-
-local ESC = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r',
-              ['\t'] = '\\t', ['\b'] = '\\b', ['\f'] = '\\f' }
-
-local function enc_str(s)
-    local body = s:gsub('[%c"\\]', function(c)
-        return ESC[c] or string.format("\\u%04x", c:byte())
-    end)
-    return '"' .. body .. '"'
-end
-
-local function encode(v)
-    local t = type(v)
-    if t == "nil" then return "null" end
-    if t == "boolean" then return tostring(v) end
-    if t == "number" then
-        if v ~= v or v == math.huge or v == -math.huge then return "null" end
-        if math.type(v) == "integer" then return tostring(v) end
-        return string.format("%.14g", v)
-    end
-    if t == "string" then return enc_str(v) end
-    if t ~= "table" then error("cannot encode " .. t .. " as JSON", 0) end
-    local n, count = #v, 0
-    for _ in pairs(v) do count = count + 1 end
-    local out = {}
-    if not OBJ[v] and count == n then
-        for i = 1, n do out[i] = encode(v[i]) end
-        return "[" .. table.concat(out, ",") .. "]"
-    end
-    local keys = {}
-    for k in pairs(v) do
-        if type(k) ~= "string" and type(k) ~= "number" then
-            error("cannot encode a table key of type " .. type(k) .. " as JSON", 0)
-        end
-        keys[#keys + 1] = k
-    end
-    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
-    for i, k in ipairs(keys) do out[i] = enc_str(tostring(k)) .. ":" .. encode(v[k]) end
-    return "{" .. table.concat(out, ",") .. "}"
-end
-
--- BMP code point to UTF-8 (4-hex escapes only; surrogate pairs are not recombined).
-local function utf8_char(cp)
-    if cp < 0x80 then return string.char(cp) end
-    if cp < 0x800 then return string.char(0xC0 | (cp >> 6), 0x80 | (cp & 0x3F)) end
-    return string.char(0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F))
-end
-
-local function decode(s)
-    local pos = 1
-    local function ws() pos = s:find("%S", pos) or #s + 1 end
-    local value
-    local function str()
-        local out, i = {}, pos + 1
-        while true do
-            local j = s:find('["\\]', i)
-            if not j then error("unterminated string", 0) end
-            out[#out + 1] = s:sub(i, j - 1)
-            if s:sub(j, j) == '"' then pos = j + 1; return table.concat(out) end
-            local e = s:sub(j + 1, j + 1)
-            if e == "u" then
-                out[#out + 1] = utf8_char(tonumber(s:sub(j + 2, j + 5), 16) or 63)
-                i = j + 6
-            else
-                out[#out + 1] = ({ n = "\n", r = "\r", t = "\t", b = "\b", f = "\f" })[e] or e
-                i = j + 2
-            end
-        end
-    end
-    function value()
-        ws()
-        local c = s:sub(pos, pos)
-        if c == "{" then
-            local t = {}
-            pos = pos + 1; ws()
-            if s:sub(pos, pos) == "}" then pos = pos + 1; return t end
-            while true do
-                ws()
-                if s:sub(pos, pos) ~= '"' then error("expected a string key", 0) end
-                local k = str(); ws()
-                if s:sub(pos, pos) ~= ":" then error("expected ':'", 0) end
-                pos = pos + 1
-                t[k] = value(); ws()
-                local d = s:sub(pos, pos); pos = pos + 1
-                if d == "}" then return t end
-                if d ~= "," then error("expected ',' or '}'", 0) end
-            end
-        elseif c == "[" then
-            local t = {}
-            pos = pos + 1; ws()
-            if s:sub(pos, pos) == "]" then pos = pos + 1; return t end
-            while true do
-                t[#t + 1] = value(); ws()
-                local d = s:sub(pos, pos); pos = pos + 1
-                if d == "]" then return t end
-                if d ~= "," then error("expected ',' or ']'", 0) end
-            end
-        elseif c == '"' then
-            return str()
-        end
-        if s:sub(pos, pos + 3) == "true" then pos = pos + 4; return true end
-        if s:sub(pos, pos + 4) == "false" then pos = pos + 5; return false end
-        if s:sub(pos, pos + 3) == "null" then pos = pos + 4; return nil end
-        local num = s:match("^-?%d+%.?%d*[eE]?[+-]?%d*", pos)
-        if not num or num == "" then error("unexpected character at " .. pos, 0) end
-        pos = pos + #num
-        return tonumber(num)
-    end
-    local v = value()
-    ws()
-    if pos <= #s then error("trailing characters at " .. pos, 0) end
-    return v
-end
-
-M._json = { encode = encode, decode = decode }
-
 -- ── snapshot ────────────────────────────────────────────────────────────────
-
-local function obj(t) OBJ[t] = true; return t end
 
 local function clamp_index(v, n, fallback)
     if type(v) ~= "number" or v ~= v then v = fallback end
@@ -190,7 +68,7 @@ local function norm_row(row, where)
             req_str(row, "readonly_text", where)
             out.readonly_text = row.readonly_text
         end
-        return obj(out)
+        return out
     end
     local ch = row.choices
     assert(type(ch) == "table" and #ch > 0,
@@ -203,7 +81,7 @@ local function norm_row(row, where)
     local n = #out.choices
     out.default = clamp_index(row.default, n, 1)
     out.value = clamp_index(row.value, n, out.default)
-    return obj(out)
+    return out
 end
 
 local function norm_category(cat, i)
@@ -225,29 +103,29 @@ local function norm_category(cat, i)
     end
     local rows = {}
     for j, row in ipairs(cat.rows or {}) do rows[j] = norm_row(row, where) end
-    return obj({ id = cat.id, label = cat.label, header = obj(header), rows = rows })
+    return { id = cat.id, label = cat.label, header = header, rows = rows }
 end
 
--- Evaluate def.categories(ctx) and build the snapshot JSON. Throws on bad data.
+-- Evaluate def.categories(ctx) and build the snapshot table. Throws on bad data.
 local function build(def, ctx)
     local cats = def.categories(ctx)
     assert(type(cats) == "table", "categories() must return a list")
     local out = {}
     for i, cat in ipairs(cats) do out[i] = norm_category(cat, i) end
-    return encode(obj({ title = def.title or "", categories = out }))
+    return { title = def.title or "", categories = out }
 end
 
 -- Re-evaluate and push. false = categories() threw (last snapshot kept).
 local function push(id, ctx)
     local pg = _pages[id]
-    local ok, json = pcall(build, pg.def, ctx)
+    local ok, snap = pcall(build, pg.def, ctx)
     if not ok then
-        log("page " .. id .. ": categories() failed, keeping last snapshot: " .. tostring(json))
+        log("page " .. id .. ": categories() failed, keeping last snapshot: " .. tostring(snap))
         return false
     end
-    local pushed, why = I.ui_menus_set_page(id, json)
+    local pushed, why = I.ui_menus_set_page(id, snap)
     if not pushed then return nil, why end
-    pg.json = json
+    pg.snapshot = snap
     return true
 end
 
@@ -277,9 +155,9 @@ function M.page(id, def)
     local pushed, pwhy = push(id, nil)
     if pushed == false then
         -- the first evaluation threw: register the page empty so entries still resolve
-        local empty = encode(obj({ title = def.title or "", categories = {} }))
+        local empty = { title = def.title or "", categories = {} }
         pushed, pwhy = I.ui_menus_set_page(id, empty)
-        if pushed then _pages[id].json = empty end
+        if pushed then _pages[id].snapshot = empty end
     end
     if not pushed then _pages[id] = nil; return nil, pwhy end
     return { kind = "page", id = id }
@@ -308,13 +186,7 @@ function M.open(page_id, ctx)
     assert(type(page_id) == "string", "R.ui.menus.open: page_id must be a string")
     local ok, why = usable("ui_menus_open")
     if not ok then return nil, why end
-    local json
-    if ctx ~= nil then
-        local eok, e = pcall(encode, ctx)
-        if not eok then return nil, "ctx is not JSON-encodable: " .. tostring(e) end
-        json = e
-    end
-    return I.ui_menus_open(page_id, json)
+    return I.ui_menus_open(page_id, ctx)
 end
 
 --- Pop one level, like the Back button. true, or nil + why.
@@ -329,12 +201,7 @@ function M.current()
     if not usable("ui_menus_current") then return nil end
     local c = I.ui_menus_current()
     if type(c) ~= "table" then return nil end
-    local ctx
-    if c.ctx_json ~= nil and c.ctx_json ~= "" then
-        local ok, v = pcall(decode, c.ctx_json)
-        if ok then ctx = v else log("current(): bad ctx json: " .. tostring(v)) end
-    end
-    return { page = c.page, ctx = ctx, depth = c.depth }
+    return { page = c.page, ctx = c.ctx, depth = c.depth }
 end
 
 --- Remove a page or entry by handle (takes effect for the next open).

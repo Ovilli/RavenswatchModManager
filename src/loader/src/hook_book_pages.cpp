@@ -205,9 +205,6 @@ constexpr const char* kNotInstalled = "not installed";
 std::string g_why = kNotInstalled;
 
 thread_local int t_depth = 0;
-// A Lua open request being executed (consumed by hook_open_child).
-thread_local bool t_req_active = false;
-thread_local std::string t_req_page, t_req_ctx;
 // OUR page's controller being built inside OpenChild.
 thread_local bool t_building = false;
 thread_local void* t_build_ctrl = nullptr;
@@ -614,30 +611,10 @@ void set_page_title(void* ctrl, const std::string& title) {
     g_ours[ctrl].title = {label, orig_keep};
 }
 
-void hook_open_child(void* parent, void* desc) {
+// Open our page `page` under `parent` at `depth`: refresh, build via the real OpenChild,
+// then show and select. Shared by hook_open_child (a click) and run_request (Lua).
+void open_ours(void* parent, const std::string& page, const std::string& ctx, int depth) {
     auto& L = Loader::get();
-    std::string page, ctx;
-    int depth = 1;
-    bool ours = false;
-    if (t_req_active) {
-        t_req_active = false;
-        ours = true;
-        page = std::move(t_req_page);
-        ctx = std::move(t_req_ctx);
-        depth = depth_of(parent) + 1;
-    } else {
-        if (!is_tracked(parent)) { g_real_open(parent, desc); return; }
-        std::uint32_t idx = 0;
-        if (parent && load_at(parent, kCtrlSelected, &idx)) {
-            const Target t = entry_target(parent, idx, &page, &depth);
-            if (t == Target::Gone) {
-                L.log_warn("[ui-menus] the selected entry was removed; nothing opened");
-                return;
-            }
-            ours = t == Target::Ours;
-        }
-    }
-    if (!ours) { g_real_open(parent, desc); return; }
     // hook_back walks at most kMaxDepth child links, so a deeper page would make
     // Back consult the wrong record.
     if (depth > kMaxDepth) {
@@ -723,6 +700,25 @@ void hook_open_child(void* parent, void* desc) {
         queue("ui:menus_open", page_payload(rec.page_id, rec.ctx, rec.depth));
     }
     flush_if_outermost();
+}
+
+void hook_open_child(void* parent, void* desc) {
+    auto& L = Loader::get();
+    std::string page;
+    int depth = 1;
+    bool ours = false;
+    if (!is_tracked(parent)) { g_real_open(parent, desc); return; }
+    std::uint32_t idx = 0;
+    if (parent && load_at(parent, kCtrlSelected, &idx)) {
+        const Target t = entry_target(parent, idx, &page, &depth);
+        if (t == Target::Gone) {
+            L.log_warn("[ui-menus] the selected entry was removed; nothing opened");
+            return;
+        }
+        ours = t == Target::Ours;
+    }
+    if (!ours) { g_real_open(parent, desc); return; }
+    open_ours(parent, page, std::string(), depth);
 }
 
 // Our page skips the vanilla tab builders; anyone else's build runs untouched.
@@ -882,11 +878,7 @@ void run_request(void* ctrl) {
                                   + "': settings object unreadable");
             return;
         }
-        t_req_active = true;
-        t_req_page = rq.page;
-        t_req_ctx = rq.ctx;
-        hook_open_child(ctrl, reinterpret_cast<void*>(settings + kSetCreditsDesc));
-        t_req_active = false;
+        open_ours(ctrl, rq.page, rq.ctx, depth_of(ctrl) + 1);
     } else {
         Record rec;
         if (!record_of(ctrl, &rec)) return;
@@ -937,9 +929,14 @@ bool parse_snapshot(const std::string& text, PageSnap* out, std::string* why) {
         json j = json::parse(text, nullptr, false);
         if (j.is_discarded() || !j.is_object()) { *why = "snapshot is not a JSON object"; return false; }
         out->title = str_of(j, "title");
+        // A missing or empty-object `categories` is an empty page: a Lua table with no
+        // entries crosses the boundary as {}, not [].
         auto cats = j.find("categories");
-        if (cats == j.end() || !cats->is_array()) { *why = "snapshot has no categories array"; return false; }
-        for (const auto& cj : *cats) {
+        if (cats != j.end() && !cats->is_array() && !(cats->is_object() && cats->empty())) {
+            *why = "snapshot has no categories array";
+            return false;
+        }
+        for (const auto& cj : (cats != j.end() && cats->is_array() ? *cats : json::array())) {
             CatSnap c;
             c.id = str_of(cj, "id");
             c.label = str_of(cj, "label");
