@@ -2712,14 +2712,17 @@ end
 -- netcode (advanced / experimental) -------------------------------------
 --
 -- Replication-authority observation, for host-migration research. The
--- per-entity replication setup (Netcode_EntityReplSetup) decides master vs
--- client; the role lives behind the net manager. Offsets are SDK-internal — a
--- mod only sees (netmgr, role) and may return a number to overwrite role
--- (DANGEROUS: a live netcode write, can crash). See https://docs.rsmm.me/reverse-engineering/multiplayer/.
+-- per-entity network component setup (Netcode_EntityReplSetup, slot 28 of
+-- oCEntityCpntNetwork) decides master vs replica; the role lives behind the
+-- net manager. Offsets are SDK-internal — a mod only sees (netmgr, role, cpnt)
+-- and may return a number to overwrite role (DANGEROUS: a live netcode write,
+-- can crash). The engine branches on role 1 and role 2; which machine holds
+-- which is NOT proven yet — logging it on host and client is the point of
+-- Phase 1. See https://docs.rsmm.me/reverse-engineering/multiplayer/.
 --
---   R.net.on_repl_setup(function(netmgr, role, ctx)
---       R.log("role", role)        -- 1 = client/non-master
---       -- return 0 to force the master path (Phase 2; can crash)
+--   R.net.on_repl_setup(function(netmgr, role, cpnt)
+--       R.log("role", role)        -- log on host AND client, compare
+--       -- returning a number overwrites role (Phase 2; can crash)
 --   end)
 
 R.net = {}

@@ -336,7 +336,7 @@ Total: **383** symbols across 29 categories.
 | `Netcode_ConnectionFactory` | `0x140b274f0` | ✅ ok |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
 | `Netcode_ConnectionRegistry_Emplace` | `0x140b2ea80` | ✅ ok |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
 | `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
-| `Netcode_EntityReplSetup` | `0x140720350` | ❓ unverified | ✔ | void(void* replContext) |
+| `Netcode_EntityReplSetup` | `0x140720350` | ✅ ok | ✔ | void(oCEntityCpntNetwork* self) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 | `Netcode_ReconnectMaxRead` | `0x1402ab327` | ✅ ok |  | (code location, not callable) |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
