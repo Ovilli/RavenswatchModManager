@@ -20,7 +20,7 @@ from .api import sdk_export
 
 KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "modifier",
          "game_mode", "reward", "melody", "poi", "mesh", "tilegen", "shop", "animation",
-         "entity", "challenge", "scenery", "skin")
+         "entity", "challenge", "scenery", "skin", "nameplate_crown")
 
 #: Per-kind honesty rating — how much we trust the bytes this kind emits.
 #:

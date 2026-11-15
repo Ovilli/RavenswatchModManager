@@ -1,9 +1,14 @@
 import { ApiError } from '@rsmm/api-client';
 import { hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
-import { cn } from '@rsmm/ui';
+import {
+  RegistryDetailContentLayout,
+  RegistryListingGallery,
+  RegistryModDetailHeader,
+  getRegistryMedia,
+} from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useCanGoBack, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
-import { ArrowLeft, ExternalLink, Globe, Play, Plus, Trash2 } from 'lucide-react';
+import { Link, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
+import { ArrowLeft, ExternalLink, Globe, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
@@ -16,25 +21,20 @@ import {
   listLocalMods,
   uninstallLocalMod,
 } from '../lib/rsmm';
-import { toEmbedUrl } from '../lib/video-embed';
 import { activeProfile, isEnabledIn, useApp } from '../store';
 import {
   Button,
   CopyButton,
-  Cover,
-  CoverPlaceholder,
   Fleuron,
   InkSwitch,
   Markdown,
   MonoTag,
   Panel,
-  SectionHeader,
   StatPill,
 } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
 import { OverlayButton } from './overlay-button';
 import { PrivateGamesOnlyBadge } from './private-games-only-badge';
-import { ScreenshotLightbox } from './screenshot-lightbox';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
 
@@ -83,7 +83,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const profile = useApp(activeProfile);
   const installMod = useApp((s) => s.installMod);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
-  const showNsfw = useApp((s) => s.settings.showNsfw);
   const [versionBusy, setVersionBusy] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
   const { toggle } = useModToggle();
@@ -246,6 +245,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const homepageUrl = apiMod?.homepageUrl ?? null;
   const screenshots = apiMod?.screenshots ?? [];
   const videos = apiMod?.videos ?? [];
+  const media = getRegistryMedia({ name, imageUrl, screenshots, videos });
   const dependencies = apiMod?.dependencies ?? {};
 
   const markdown =
@@ -280,35 +280,24 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       {/* A 21:9 hero is most of the panel's height when this is a column
           rather than a page, and it pushes the name and the install button
           below the fold — which is the one thing the panel exists to show. */}
-      {imageUrl ? (
-        <Cover
-          src={imageUrl}
-          alt={t('{name} cover art', { name })}
-          caption={`${slug}-hero.png`}
-          className={embedded ? 'aspect-[21/6]' : 'aspect-[21/9]'}
-          nsfw={!showNsfw && nsfw}
-        />
-      ) : embedded ? null : (
-        <CoverPlaceholder caption={`${slug}-hero.png`} className="aspect-[21/9]" />
-      )}
-
-      {privateOnly ? <PrivateGamesOnlyBadge /> : null}
-      <SectionHeader
-        compact={embedded}
-        title={name}
-        subtitle={`${author}${localVersion ? ` · v${localVersion}` : ''}${
-          outdated && apiLatest
-            ? ` → ${apiLatest}`
-            : apiLatest && !localVersion
-              ? ` · v${apiLatest}`
-              : ''
-        }`}
-        right={
+      <RegistryModDetailHeader
+        name={name}
+        summary={summary}
+        labels={privateOnly ? <PrivateGamesOnlyBadge /> : null}
+        stats={
+          <span>
+            {author}
+            {localVersion ? ` · v${localVersion}` : ''}
+            {outdated && apiLatest
+              ? ` → ${apiLatest}`
+              : apiLatest && !localVersion
+                ? ` · v${apiLatest}`
+                : ''}
+          </span>
+        }
+        action={
           installedHere && liveBySlug ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {/* The page used to show only the tag, so enabling a mod meant
-                  navigating back to the Library. Same hook as the Library, so
-                  the dependency prompts are identical here. */}
               <InkSwitch
                 on={enabled}
                 onClick={() => toggle(liveBySlug.id)}
@@ -335,8 +324,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
               disabled={versionBusy !== null}
               onClick={() => {
                 const ver = apiLatest ?? latestVersion?.version;
-                // On Default the add lands in a NEW profile, whose folder does
-                // not have the copy Default's folder holds: download it there.
                 if ((!liveBySlug || profile.id === 'default') && ver && inTauri()) {
                   void installVersion(ver, true);
                   return;
@@ -350,40 +337,117 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         }
       />
 
+      <RegistryListingGallery media={media} name={name} nsfw={nsfw} />
+
       {/* Embedded, this renders in Browse's detail panel — a column of roughly
           370px once the index takes its fixed 22rem. `md:` fires on the
           VIEWPORT, so a three-column split was being applied inside it, and a
           `col-span-2` child in a collapsed grid spills into an implicit
           column rather than fitting. Both halves have to move together. */}
-      <div
-        className={embedded ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 gap-6 lg:grid-cols-3'}
+      <RegistryDetailContentLayout
+        className={embedded ? 'registry-detail-embedded' : ''}
+        sidebarLabel={t('Mod actions and details')}
+        sidebar={
+          <div className="space-y-4">
+            <Panel>
+              <h4 className="font-mono text-ash mb-3">{t('Facts')}</h4>
+              <dl className="space-y-2 text-sm">
+                {category ? <Row k={t('Category')} v={category} /> : null}
+                {rating != null ? <Row k={t('Rating')} v={`${rating.toFixed(1)} ★`} /> : null}
+                <Row k={t('Downloads')} v={downloads.toLocaleString(t.tag)} />
+                {sizeBytes != null ? (
+                  <Row k={t('Size')} v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
+                ) : null}
+                {apiLatest ? <Row k={t('Latest')} v={`v${apiLatest}`} /> : null}
+                {license ? <Row k={t('License')} v={license} /> : null}
+              </dl>
+            </Panel>
+
+            {repoUrl || homepageUrl ? (
+              <Panel>
+                <h4 className="font-mono text-ash mb-3">{t('Links')}</h4>
+                <ul className="space-y-2 text-sm">
+                  {homepageUrl ? (
+                    <li>
+                      <a
+                        href={homepageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
+                      >
+                        <Globe className="h-3.5 w-3.5" /> {t('Homepage')}
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </a>
+                    </li>
+                  ) : null}
+                  {repoUrl ? (
+                    <li>
+                      <a
+                        href={repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> {t('Repository')}
+                      </a>
+                    </li>
+                  ) : null}
+                </ul>
+              </Panel>
+            ) : null}
+
+            {ordinaryTags.length > 0 ? (
+              <Panel>
+                <h4 className="font-mono text-ash mb-3">{t('Tags')}</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {ordinaryTags.map((t) => (
+                    <MonoTag key={t}>{t}</MonoTag>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+
+            {Object.keys(dependencies).length > 0 ? (
+              <Panel>
+                <h4 className="font-mono text-ash mb-3">{t('Requires')}</h4>
+                <ul className="space-y-1.5 text-sm">
+                  {Object.entries(dependencies).map(([depSlug, range]) => {
+                    const depInstalled = Object.values(useApp.getState().localMods).some(
+                      (m) => m.slug === depSlug,
+                    );
+                    return (
+                      <li key={depSlug} className="flex items-baseline justify-between gap-2">
+                        <Link
+                          to="/mod/$slug"
+                          params={{ slug: depSlug }}
+                          className="text-parchment hover:text-gilt hover:underline"
+                        >
+                          {depSlug}
+                        </Link>
+                        <span className="flex items-center gap-1.5">
+                          <code className="font-data text-xs text-ash">{range}</code>
+                          {depInstalled ? (
+                            <MonoTag tone="gilt">{t('ok')}</MonoTag>
+                          ) : (
+                            <MonoTag tone="crimson">{t('missing')}</MonoTag>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Panel>
+            ) : null}
+          </div>
+        }
       >
-        <div className={embedded ? 'space-y-4' : 'space-y-4 lg:col-span-2'}>
+        <div className="space-y-4">
+          {' '}
           <Panel>
             <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
             <Fleuron />
             <Markdown source={markdown} className="mt-4" />
           </Panel>
-
-          {videos.length > 0 || screenshots.length > 0 ? (
-            <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Gallery')}</h3>
-              <Fleuron />
-              <div className="mt-4 space-y-4">
-                {videos.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {videos.map((url) => (
-                      <GalleryVideo key={url} url={url} modName={name} />
-                    ))}
-                  </div>
-                ) : null}
-                {screenshots.length > 0 ? (
-                  <ScreenshotGallery shots={screenshots} modName={name} nsfw={!showNsfw && nsfw} />
-                ) : null}
-              </div>
-            </Panel>
-          ) : null}
-
           {liveBySlug?.changelog ? (
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Changelog')}</h3>
@@ -393,7 +457,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
               </pre>
             </Panel>
           ) : null}
-
           {data?.versions && data.versions.length > 0 ? (
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Versions')}</h3>
@@ -441,99 +504,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
             </Panel>
           ) : null}
         </div>
-
-        <aside className="space-y-4">
-          <Panel>
-            <h4 className="font-mono text-ash mb-3">{t('Facts')}</h4>
-            <dl className="space-y-2 text-sm">
-              {category ? <Row k={t('Category')} v={category} /> : null}
-              {rating != null ? <Row k={t('Rating')} v={`${rating.toFixed(1)} ★`} /> : null}
-              <Row k={t('Downloads')} v={downloads.toLocaleString(t.tag)} />
-              {sizeBytes != null ? (
-                <Row k={t('Size')} v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
-              ) : null}
-              {apiLatest ? <Row k={t('Latest')} v={`v${apiLatest}`} /> : null}
-              {license ? <Row k={t('License')} v={license} /> : null}
-            </dl>
-          </Panel>
-
-          {repoUrl || homepageUrl ? (
-            <Panel>
-              <h4 className="font-mono text-ash mb-3">{t('Links')}</h4>
-              <ul className="space-y-2 text-sm">
-                {homepageUrl ? (
-                  <li>
-                    <a
-                      href={homepageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
-                    >
-                      <Globe className="h-3.5 w-3.5" /> {t('Homepage')}
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </a>
-                  </li>
-                ) : null}
-                {repoUrl ? (
-                  <li>
-                    <a
-                      href={repoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> {t('Repository')}
-                    </a>
-                  </li>
-                ) : null}
-              </ul>
-            </Panel>
-          ) : null}
-
-          {ordinaryTags.length > 0 ? (
-            <Panel>
-              <h4 className="font-mono text-ash mb-3">{t('Tags')}</h4>
-              <div className="flex flex-wrap gap-1.5">
-                {ordinaryTags.map((t) => (
-                  <MonoTag key={t}>{t}</MonoTag>
-                ))}
-              </div>
-            </Panel>
-          ) : null}
-
-          {Object.keys(dependencies).length > 0 ? (
-            <Panel>
-              <h4 className="font-mono text-ash mb-3">{t('Requires')}</h4>
-              <ul className="space-y-1.5 text-sm">
-                {Object.entries(dependencies).map(([depSlug, range]) => {
-                  const depInstalled = Object.values(useApp.getState().localMods).some(
-                    (m) => m.slug === depSlug,
-                  );
-                  return (
-                    <li key={depSlug} className="flex items-baseline justify-between gap-2">
-                      <Link
-                        to="/mod/$slug"
-                        params={{ slug: depSlug }}
-                        className="text-parchment hover:text-gilt hover:underline"
-                      >
-                        {depSlug}
-                      </Link>
-                      <span className="flex items-center gap-1.5">
-                        <code className="font-data text-xs text-ash">{range}</code>
-                        {depInstalled ? (
-                          <MonoTag tone="gilt">{t('ok')}</MonoTag>
-                        ) : (
-                          <MonoTag tone="crimson">{t('missing')}</MonoTag>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Panel>
-          ) : null}
-        </aside>
-      </div>
+      </RegistryDetailContentLayout>
     </div>
   );
 }
@@ -546,131 +517,5 @@ function Row({ k, v }: { k: string; v: string }) {
         <StatPill value={v} className="tracking-normal" />
       </dd>
     </div>
-  );
-}
-
-interface Screenshot {
-  url: string;
-  caption?: string;
-}
-
-/**
- * A gallery video: poster first, player only once the user asks for it.
- *
- * Opening a mod page used to mount a YouTube/Vimeo iframe straight away — a
- * full third-party video pipeline, started by merely looking at a page. That
- * is the heaviest GPU work this app does, and on 2026-08-15 a user's machine
- * blue-screened here with VIDEO_SCHEDULER_INTERNAL_ERROR (a display-driver
- * fault, not ours — but we were the one submitting the work). Click-to-play
- * removes the whole pipeline from the common path; it is also faster, quieter
- * and loads no third-party script until it is actually wanted.
- */
-function GalleryVideo({ url, modName }: { url: string; modName: string }) {
-  const t = useT();
-  const [playing, setPlaying] = useState(false);
-  const embed = toEmbedUrl(url);
-
-  if (!embed) {
-    return (
-      <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-full w-full items-center justify-center break-all px-3 text-sm text-parchment underline"
-        >
-          {url}
-        </a>
-      </div>
-    );
-  }
-
-  if (playing) {
-    return (
-      <div className="aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch">
-        <iframe
-          src={`${embed}?autoplay=1`}
-          title={t('{name} video', { name: modName })}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="h-full w-full"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => setPlaying(true)}
-      title={url}
-      className="group flex aspect-video w-full items-center justify-center gap-2 overflow-hidden rounded border border-oxblood/30 bg-pitch text-ash transition-colors hover:border-crimson hover:text-parchment"
-    >
-      <Play className="h-6 w-6" />
-      <span className="font-mono text-xs">{t('Play video')}</span>
-    </button>
-  );
-}
-
-function ScreenshotGallery({
-  shots,
-  modName,
-  nsfw,
-}: { shots: Screenshot[]; modName: string; nsfw?: boolean }) {
-  const t = useT();
-  const [idx, setIdx] = useState<number | null>(null);
-  const close = useCallback(() => setIdx(null), []);
-  const prev = useCallback(() => {
-    setIdx((i) => (i == null ? i : (i - 1 + shots.length) % shots.length));
-  }, [shots.length]);
-  const next = useCallback(() => {
-    setIdx((i) => (i == null ? i : (i + 1) % shots.length));
-  }, [shots.length]);
-
-  return (
-    <>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {shots.map((shot, i) => (
-          <li key={shot.url}>
-            <button
-              type="button"
-              onClick={() => setIdx(i)}
-              className="group block w-full text-left"
-            >
-              <div
-                className={cn(
-                  'aspect-video overflow-hidden rounded border border-oxblood/30 bg-pitch',
-                  nsfw && 'group',
-                )}
-              >
-                <img
-                  src={shot.url}
-                  alt={shot.caption || t('{name} screenshot {n}', { name: modName, n: i + 1 })}
-                  loading="lazy"
-                  className={cn(
-                    'h-full w-full object-cover transition-opacity group-hover:opacity-90',
-                    nsfw &&
-                      'blur-xl saturate-0 transition-all duration-300 group-hover:blur-none group-hover:saturate-100',
-                  )}
-                />
-              </div>
-              {shot.caption ? (
-                <p className="mt-1 truncate text-xs text-ash">{shot.caption}</p>
-              ) : null}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {idx != null ? (
-        <ScreenshotLightbox
-          shots={shots}
-          idx={idx}
-          name={modName}
-          onClose={close}
-          onPrev={prev}
-          onNext={next}
-        />
-      ) : null}
-    </>
   );
 }

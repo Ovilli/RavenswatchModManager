@@ -9,6 +9,8 @@ import '@fontsource/alegreya-sans/latin-400-italic.css';
 import '@fontsource/alegreya-sans/latin-500.css';
 import '@fontsource/alegreya-sans/latin-700.css';
 import '@rsmm/ui/styles.css';
+import '@rsmm/ui/registry.css';
+import '@rsmm/ui/registry-detail.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { isTauri } from '@tauri-apps/api/core';

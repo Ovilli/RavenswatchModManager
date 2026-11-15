@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Badge } from './badge';
+import { Download, TriangleAlert, Users } from 'lucide-react';
 import { RegistryModCover } from './registry-mod-cover';
 
 export interface RegistryModCardData {
@@ -12,124 +12,228 @@ export interface RegistryModCardData {
   category?: string | null;
   downloads?: number | null;
   rating?: number | null;
+  ratingCount?: number;
   featured?: boolean;
   nsfw?: boolean;
+  tags?: string[];
+  role?: 'owner' | 'coauthor';
 }
 
-/**
- * The website registry's shared card for both the grid and scan-friendly row.
- * Apps provide navigation and install controls; the structure and styling
- * remain owned here so the web registry and desktop browse page cannot drift.
- */
+/** Registry presentation shared by the website and the desktop client. */
 export function RegistryModCard({
   mod,
-  view = 'grid',
+  privateOnly = false,
+  href,
   onOpen,
   actions,
   active = false,
-  compact = false,
+  headingLevel = 2,
+  view = 'grid',
   labels = {},
 }: {
   mod: RegistryModCardData;
-  view?: 'grid' | 'list';
-  onOpen: () => void;
+  privateOnly?: boolean;
+  href?: string;
+  onOpen?: () => void;
   actions?: ReactNode;
   active?: boolean;
-  compact?: boolean;
-  labels?: { author?: string; featured?: string; nsfw?: string };
+  headingLevel?: 2 | 3;
+  view?: 'grid' | 'list';
+  labels?: { author?: string; featured?: string; nsfw?: string; privateOnly?: string };
 }) {
-  const author = mod.author || labels.author || 'unknown';
-  const open = () => onOpen();
-  const onCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('a, button, input, textarea, select, [role="switch"]')) return;
-    open();
-  };
-  const onCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      open();
-    }
-  };
-
+  const Heading = headingLevel === 3 ? 'h3' : 'h2';
+  const hasRating = mod.rating != null && mod.ratingCount !== 0;
   if (view === 'list') {
+    const row = (
+      <>
+        <div className="mod-card-list-art">
+          {mod.imageUrl ? (
+            <img src={mod.imageUrl} alt="" loading="lazy" />
+          ) : (
+            <RegistryModCover seed={mod.slug} name={mod.name} size="sm" />
+          )}
+        </div>
+        <div className="mod-card-list-identity">
+          <div className="mod-card-list-name">
+            <Heading>{mod.name}</Heading>
+            {mod.featured ? <span aria-label={labels.featured ?? 'Featured'}>★</span> : null}
+            {mod.nsfw ? <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span> : null}
+            {privateOnly ? (
+              <span className="mod-card-private-tag inline-flex items-center gap-1">
+                <TriangleAlert size={12} aria-hidden />
+                {labels.privateOnly ?? 'Private games only'}
+              </span>
+            ) : null}
+          </div>
+          <p>
+            {mod.author || labels.author || 'unknown'}
+            {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
+            {mod.summary ? ` — ${mod.summary}` : ''}
+          </p>
+        </div>
+        {mod.category ? <span className="mod-card-list-category">{mod.category}</span> : null}
+        {hasRating && mod.rating != null ? (
+          <span className="mod-card-list-rating">★ {mod.rating.toFixed(1)}</span>
+        ) : null}
+        {mod.downloads != null ? (
+          <span className="mod-card-list-downloads">
+            {mod.downloads.toLocaleString('en-US')} dl
+          </span>
+        ) : null}
+        {actions ? (
+          <div className="mod-card-list-actions" onClick={(event) => event.stopPropagation()}>
+            {actions}
+          </div>
+        ) : null}
+      </>
+    );
+    if (href)
+      return (
+        <article className="mod-card mod-card-list">
+          <a className="mod-card-list-link" href={href}>
+            {row}
+          </a>
+        </article>
+      );
     return (
-      <div
+      <article
+        className={`mod-card mod-card-list mod-card-interactive${active ? ' is-active' : ''}`}
         tabIndex={0}
         role="link"
         aria-label={`${mod.name}${mod.author ? ` by ${mod.author}` : ''}`}
         aria-current={active ? 'true' : undefined}
-        onClick={onCardClick}
-        onKeyDown={onCardKeyDown}
-        className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${active ? 'border-gilt/70 bg-gilt/5' : ''}`}
+        onClick={(event) => {
+          if (
+            (event.target as HTMLElement).closest(
+              'a, button, input, textarea, select, [role="switch"], [role="tooltip"]',
+            )
+          )
+            return;
+          onOpen?.();
+        }}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen?.();
+          }
+        }}
       >
-        <div className="hidden h-10 w-16 shrink-0 overflow-hidden rounded sm:block">
-          {mod.imageUrl ? (
-            <img src={mod.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-          ) : (
-            <RegistryModCover seed={mod.slug} name={mod.name} size="sm" className="h-full w-full" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <button type="button" onClick={open} className="truncate text-left text-base leading-tight transition-colors hover:text-gilt">
-              {mod.name}
-            </button>
-            {mod.featured ? <span className="shrink-0 text-xs text-gilt">★</span> : null}
-            {mod.nsfw ? <span className="shrink-0 rounded border border-crimson/40 bg-crimson/10 px-1 font-mono text-[10px] uppercase tracking-widest text-crimson">{labels.nsfw ?? 'NSFW'}</span> : null}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {author}{mod.latestVersion ? ` · v${mod.latestVersion}` : ''}{mod.summary ? ` — ${mod.summary}` : ''}
-          </p>
-        </div>
-        {!compact ? (
-          <>
-            <div className="hidden w-24 shrink-0 md:block">{mod.category ? <Badge variant="secondary" className="text-[0.65rem]">{mod.category}</Badge> : null}</div>
-            <div className="hidden w-14 shrink-0 text-right font-mono text-xs text-gilt lg:block">{mod.rating != null ? `★ ${mod.rating.toFixed(1)}` : '—'}</div>
-            <div className="hidden w-20 shrink-0 text-right font-mono text-xs text-muted-foreground lg:block">{mod.downloads != null ? `${mod.downloads.toLocaleString()} dl` : ''}</div>
-          </>
-        ) : null}
-        {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
-      </div>
+        {row}
+      </article>
     );
   }
+  const contents = (
+    <>
+      <div className="mod-card-artwork">
+        {mod.imageUrl ? (
+          <img src={mod.imageUrl} alt={`${mod.name} preview`} loading="lazy" />
+        ) : (
+          <RegistryModCover seed={mod.slug} name={mod.name} className="h-full w-full" />
+        )}
+        {mod.featured || mod.nsfw || mod.role === 'coauthor' ? (
+          <div className="mod-card-status">
+            {mod.featured ? <span>★ {labels.featured ?? 'Featured'}</span> : null}
+            {mod.nsfw ? <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span> : null}
+            {mod.role === 'coauthor' ? (
+              <span className="inline-flex items-center gap-1">
+                <Users size={13} aria-hidden />
+                Co-author
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <div className="mod-card-body">
+        {privateOnly || mod.category ? (
+          <div className="mod-card-tags">
+            {privateOnly ? (
+              <span className="mod-card-tag mod-card-private-tag">
+                <TriangleAlert size={14} aria-hidden />
+                {labels.privateOnly ?? 'Private games only'}
+              </span>
+            ) : null}
+            {mod.category ? <span className="mod-card-tag">{mod.category}</span> : null}
+          </div>
+        ) : null}
+        <div className="mod-card-identity">
+          <Heading>{mod.name}</Heading>
+        </div>
+        {mod.summary ? <p className="mod-card-summary">{mod.summary}</p> : null}
+        <p className="mod-card-author">by {mod.author || labels.author || 'unknown'}</p>
+        {actions ? (
+          <div className="mod-card-actions" onClick={(event) => event.stopPropagation()}>
+            {actions}
+          </div>
+        ) : null}
+        {mod.downloads != null || hasRating ? (
+          <div className="mod-card-stats">
+            {mod.downloads != null ? (
+              <span className="mod-card-downloads">
+                <Download size={16} aria-hidden />
+                {mod.downloads.toLocaleString('en-US')}{' '}
+                <span className="sr-only">{mod.downloads === 1 ? 'download' : 'downloads'}</span>
+              </span>
+            ) : null}
+            {hasRating && mod.rating != null ? (
+              <span className="mod-card-rating-group">
+                {mod.downloads != null ? (
+                  <span className="mod-card-stat-dot" aria-hidden>
+                    ·
+                  </span>
+                ) : null}
+                <span
+                  className="mod-card-rating"
+                  role="img"
+                  aria-label={`${mod.rating.toFixed(1)} out of 5 stars`}
+                >
+                  <span className="mod-card-star" aria-hidden>
+                    ★
+                  </span>
+                  <strong>{mod.rating.toFixed(1)}</strong>
+                  {mod.ratingCount ? ` (${mod.ratingCount.toLocaleString('en-US')})` : ''}
+                </span>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
 
+  if (href)
+    return (
+      <article className="mod-card">
+        <a className="mod-card-link" href={href}>
+          {contents}
+        </a>
+      </article>
+    );
   return (
-    <div
+    <article
+      className={`mod-card mod-card-interactive${active ? ' is-active' : ''}`}
       tabIndex={0}
       role="link"
       aria-label={`${mod.name}${mod.author ? ` by ${mod.author}` : ''}`}
       aria-current={active ? 'true' : undefined}
-      onClick={onCardClick}
-      onKeyDown={onCardKeyDown}
-      className={`grimoire-card cursor-pointer overflow-hidden transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${active ? 'border-gilt/70 bg-gilt/5' : ''}`}
+      onClick={(event) => {
+        if (
+          (event.target as HTMLElement).closest(
+            'a, button, input, textarea, select, [role="switch"], [role="tooltip"]',
+          )
+        )
+          return;
+        onOpen?.();
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen?.();
+        }
+      }}
     >
-      <div className="relative">
-        {mod.imageUrl ? (
-          <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-            <img src={mod.imageUrl} alt={`${mod.name} preview`} className="h-full w-full object-cover" loading="lazy" />
-          </div>
-        ) : (
-          <RegistryModCover seed={mod.slug} name={mod.name} className="aspect-[16/9] w-full" />
-        )}
-        {mod.featured ? <Badge className="absolute left-2 top-2 border-gilt/40 bg-gilt/15 text-[0.65rem] text-gilt">★ {labels.featured ?? 'Featured'}</Badge> : null}
-        {mod.nsfw ? <Badge className="absolute right-2 top-2 border-crimson/40 bg-crimson/15 text-[0.65rem] text-crimson">{labels.nsfw ?? 'NSFW'}</Badge> : null}
-      </div>
-      <div className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <button type="button" onClick={open} className="block max-w-full truncate text-left font-display text-lg leading-tight transition-colors hover:text-gilt">{mod.name}</button>
-            <p className="mt-0.5 text-sm text-muted-foreground">{author}{mod.latestVersion ? <Badge variant="outline" className="ml-2 text-[0.6rem]">v{mod.latestVersion}</Badge> : null}</p>
-          </div>
-          {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
-        </div>
-        {mod.summary ? <p className="line-clamp-2 text-sm text-muted-foreground">{mod.summary}</p> : null}
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">{mod.category ? <Badge variant="secondary">{mod.category}</Badge> : null}{mod.downloads != null ? <span>{mod.downloads.toLocaleString()} dl</span> : null}</div>
-          {mod.rating != null ? <span>★ {mod.rating.toFixed(1)}</span> : null}
-        </div>
-      </div>
-    </div>
+      {contents}
+    </article>
   );
 }

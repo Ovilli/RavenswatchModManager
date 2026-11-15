@@ -18,6 +18,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         data = nameplate_crown.add_crown(target, source, **defn.fields)
     except (ValueError, UnicodeError) as error:
         raise ContentError(f"nameplate_crown: {error}") from error
+    if data == target:
+        return []
     dest = out_dir / nameplate_crown.TARGET
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)

@@ -76,12 +76,14 @@ def add_crown(target: bytes, source: bytes, *, preview: bool = False,
               width: float = 0.20, y: float = -0.12) -> bytes:
     """Append the game's crown to the overhead name frame.
 
-    Default hidden. `preview=True` displays it on EVERY applicable nameplate
+    Default is a no-op. `preview=True` displays it on EVERY applicable nameplate
     for a solo geometry test. It must never be described as host detection.
     All pre-existing object ids and component links stay unchanged.
     """
     if type(preview) is not bool:
         raise ValueError("preview must be boolean")
+    if not preview:
+        return target
     if not all(type(v) in (int, float) and math.isfinite(v) for v in (width, y)):
         raise ValueError("geometry must be finite numbers")
     if not 0.05 <= width <= 0.5 or not -1 <= y <= 0:
@@ -110,7 +112,8 @@ def add_crown(target: bytes, source: bytes, *, preview: bool = False,
     # from width and the texture ratio. Center/bottom pivot puts it above name.
     struct.pack_into("<ff", clone, 17, width, 0.0)
     struct.pack_into("<ff", clone, 27, 0.5, 1.0)
-    clone[35] = int(preview)
+    # Preserve all stock visibility/aspect/style flags. Host-controlled
+    # visibility is a separate capability, not a guessed descriptor bit.
     frame = dst.sections[frame_index].payload
     child_count = _header(frame)[0]
     child_end = 49 + 4 * child_count

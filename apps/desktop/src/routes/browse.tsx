@@ -5,6 +5,7 @@ import {
   isPrivateOnlyTag,
 } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { RegistryModCard } from '@rsmm/ui';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   ChevronDown,
@@ -622,7 +623,6 @@ function BrowsePage() {
                         key={m.id}
                         m={m}
                         active={selected === m.slug}
-                        compact={selected !== null}
                         onOpen={() => setSelected(m.slug)}
                         install={
                           <InstallButton
@@ -635,110 +635,30 @@ function BrowsePage() {
                         }
                       />
                     ))
-                  : list.map((m) => {
-                      return (
-                        <div
-                          key={m.id}
-                          tabIndex={0}
-                          // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
-                          role="link"
-                          aria-label={
-                            m.author
-                              ? t('{name} by {author}', { name: m.name, author: m.author })
-                              : m.name
-                          }
-                          onClick={(e) => {
-                            const el = e.target as HTMLElement;
-                            if (
-                              el.closest(
-                                'button, a, input, textarea, select, [role="switch"], [role="tooltip"]',
-                              )
-                            )
-                              return;
-                            navigate({ to: '/mod/$slug', params: { slug: m.slug } });
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.target !== e.currentTarget) return;
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              navigate({ to: '/mod/$slug', params: { slug: m.slug } });
-                            }
-                          }}
-                          aria-current={selected === m.slug ? 'true' : undefined}
-                          className={`grimoire-card flex cursor-pointer flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
-                            selected === m.slug ? 'border-gilt/70 bg-gilt/5' : ''
-                          }`}
-                        >
-                          {m.imageUrl ? (
-                            <Cover
-                              src={m.imageUrl}
-                              alt={t('{name} cover', { name: m.name })}
-                              caption={`${m.slug}.png`}
-                              nsfw={m.nsfw}
-                            />
-                          ) : null}
-                          <header className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <Link
-                                to="/mod/$slug"
-                                params={{ slug: m.slug }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="font-serif-italic break-words text-xl leading-tight text-parchment hover:text-gilt"
-                              >
-                                {m.name}
-                              </Link>
-                              {/* `truncate`: an author handle is a single
-                                  unbreakable token, so it overflowed the name
-                                  column instead of wrapping. */}
-                              <p className="font-mono mt-1 truncate text-ash">
-                                {m.author ?? t('unknown')}
-                                {m.latestVersion ? ` · v${m.latestVersion}` : ''}
-                              </p>
-                            </div>
-                            <InstallButton
-                              m={m}
-                              installed={installed}
-                              profile={profile}
-                              installing={installing}
-                              onPick={openPicker}
-                            />
-                          </header>
-                          {m.summary ? (
-                            <p className="font-serif-italic text-sm leading-snug text-smoke">
-                              {m.summary}
-                            </p>
-                          ) : null}
-                          {/* Wraps as a whole: the tag group and the rating
-                              pill share one line only while both fit. Pinned
-                              opposite a `shrink-0` pill, a single tag like
-                              "multiplayer" was wider than the space left for
-                              it and spilled out of the card. */}
-                          <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex min-w-0 flex-wrap gap-1">
-                              {hasPrivateOnlyTag(m.tags) ? <PrivateGamesOnlyBadge /> : null}
-                              {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
-                              {m.tags
-                                .filter((tag) => !isPrivateOnlyTag(tag))
-                                .slice(0, 2)
-                                .map((t) => (
-                                  <MonoTag key={t} tone="default">
-                                    {t}
-                                  </MonoTag>
-                                ))}
-                            </div>
-                            <StatPill
-                              className="shrink-0"
-                              value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-                              label={
-                                m.downloads != null
-                                  ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) })
-                                  : ''
-                              }
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                  : list.map((m) => (
+                      <RegistryModCard
+                        key={m.id}
+                        mod={m}
+                        privateOnly={hasPrivateOnlyTag(m.tags)}
+                        active={selected === m.slug}
+                        onOpen={() => navigate({ to: '/mod/$slug', params: { slug: m.slug } })}
+                        actions={
+                          <InstallButton
+                            m={m}
+                            installed={installed}
+                            profile={profile}
+                            installing={installing}
+                            onPick={openPicker}
+                          />
+                        }
+                        labels={{
+                          author: t('unknown'),
+                          nsfw: t('nsfw'),
+                          featured: t('Featured'),
+                          privateOnly: t('Private games only'),
+                        }}
+                      />
+                    ))}
               </div>
               {!isLoading && !error && list.length === 0 ? (
                 <p className="font-serif-italic py-10 text-center text-ash">
@@ -855,91 +775,28 @@ function ModRow({
   install,
   onOpen,
   active,
-  compact = false,
 }: {
   m: ModListItem;
   install: React.ReactNode;
   onOpen: () => void;
   active: boolean;
-  compact?: boolean;
 }) {
   const t = useT();
-  const open = onOpen;
   return (
-    <div
-      tabIndex={0}
-      // biome-ignore lint/a11y/useSemanticElements: row link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
-      role="link"
-      aria-label={m.author ? t('{name} by {author}', { name: m.name, author: m.author }) : m.name}
-      onClick={(e) => {
-        const el = e.target as HTMLElement;
-        if (el.closest('button, a, input, textarea, select, [role="switch"], [role="tooltip"]'))
-          return;
-        open();
+    <RegistryModCard
+      view="list"
+      mod={m}
+      privateOnly={hasPrivateOnlyTag(m.tags)}
+      active={active}
+      onOpen={onOpen}
+      actions={install}
+      labels={{
+        author: t('unknown'),
+        nsfw: t('nsfw'),
+        featured: t('Featured'),
+        privateOnly: t('Private games only'),
       }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open();
-        }
-      }}
-      aria-current={active ? 'true' : undefined}
-      className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
-        active ? 'border-gilt/70 bg-gilt/5' : ''
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          {/* Plain text, NOT a link to the full page.
-              The row selects; the name is the most obvious thing to aim at, and
-              having it navigate away instead meant a slightly-off click threw
-              you out of the list you were working through. The detail panel
-              carries an explicit "open full page" for when that IS the intent. */}
-          <span className="font-serif-italic truncate text-base leading-tight text-parchment">
-            {m.name}
-          </span>
-          {m.nsfw ? (
-            <MonoTag tone="crimson" className="shrink-0 uppercase">
-              {t('nsfw')}
-            </MonoTag>
-          ) : null}
-        </div>
-        <p className="font-mono truncate text-xs text-ash">
-          {m.author ?? t('unknown')}
-          {m.latestVersion ? ` · v${m.latestVersion}` : ''}
-          {m.summary ? ` — ${m.summary}` : ''}
-        </p>
-        {hasPrivateOnlyTag(m.tags) ? (
-          <div className="mt-1">
-            <PrivateGamesOnlyBadge />
-          </div>
-        ) : null}
-      </div>
-
-      {/* Category and rating are the two columns worth scanning down, so they
-          get fixed slots rather than flowing with the title's length. Hidden on
-          a narrow window instead of crushing the name. */}
-      {/* One breakpoint later than feels natural, because these appear exactly
-          when the row gets NARROWER, not wider: at `lg` the filter panel takes
-          its own 16rem column out of a content area the sidebar has already
-          shortened by 18rem, so 240px of fixed columns plus the install button
-          no longer fit and the row overflowed its card. */}
-      {compact ? null : (
-        <>
-          <div className="hidden w-24 shrink-0 lg:block">
-            {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
-          </div>
-          <div className="font-mono hidden w-16 shrink-0 text-right text-xs text-gilt xl:block">
-            {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
-          </div>
-          <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash xl:block">
-            {m.downloads != null ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) }) : ''}
-          </div>
-        </>
-      )}
-      <div className="shrink-0">{install}</div>
-    </div>
+    />
   );
 }
 
