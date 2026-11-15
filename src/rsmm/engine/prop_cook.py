@@ -502,14 +502,21 @@ def clone_tile_level(donor_cooked: bytes, self_ref: str, new_self_ref: str,
     """
     handler, doc = _refs_doc("oCGameStream", donor_cooked)
     refs = list(doc.get("asset_refs") or [])
-    if self_ref not in refs and refs and refs[0].lower().endswith(".level.ot") \
-            and _loose(refs[0]) == _loose(self_ref):
-        # A shipped level may name itself differently from the path it is filed
-        # under: `64x64_High_Fisherman_Platform_Ghouls_Camp.level.ot` calls
-        # itself `64x64_HighFishermanPlatform_Ghouls_Camp`. Rename what the
-        # level calls itself.
-        self_ref = refs[0]
     bare, new_bare = self_ref.removesuffix(".level.ot"), new_self_ref.removesuffix(".level.ot")
+    if self_ref not in refs and refs and refs[0].lower().endswith(".level.ot"):
+        if _loose(refs[0]) == _loose(self_ref):
+            # A shipped level may name itself differently from the path it is
+            # filed under: `64x64_High_Fisherman_Platform_Ghouls_Camp.level.ot`
+            # calls itself `64x64_HighFishermanPlatform_Ghouls_Camp`. Rename
+            # what the level calls itself.
+            self_ref = refs[0]
+            bare = self_ref.removesuffix(".level.ot")
+        elif bare in refs:
+            # Or its two self-forms disagree: `40x40_Old_Shipyard_Hill_Crystal_Field`
+            # keeps the right bare id but a stale path form
+            # (`40x40_Old_Farm_Crystal_Field.level.ot`). refs[0] is still the
+            # path form; rename both, each from what the level actually says.
+            self_ref = refs[0]
 
     if self_ref not in refs:
         raise PropCookError(

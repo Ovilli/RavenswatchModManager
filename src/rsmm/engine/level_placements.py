@@ -244,6 +244,20 @@ def _inner(level_bytes: bytes) -> tuple[cooked.CookedFile, bytes, bytes]:
 # One placement inside its block
 # --------------------------------------------------------------------------
 
+def _names(p: bytes) -> tuple[str, str]:
+    """A placement block's (instance name, group name), ``("", "")`` if unreadable."""
+    out, o = [], 4
+    for _ in range(2):
+        if o + 4 > len(p):
+            return "", ""
+        (ln,) = struct.unpack_from("<I", p, o)
+        if o + 4 + ln > len(p):
+            return "", ""
+        out.append(p[o + 4:o + 4 + ln].decode("utf-8", errors="replace"))
+        o += 4 + ln
+    return out[0], out[1]
+
+
 def _transform_off(p: bytes) -> int | None:
     """Where the transform starts: past two length-prefixed names, plus 0x26."""
     o = 4                                   # uClassInfoIndex
@@ -414,6 +428,32 @@ def nearest(level_bytes: bytes, to: Placement,
 # Adding one
 # --------------------------------------------------------------------------
 
+def replace_strings(level_bytes: bytes, mapping: dict[str, str]) -> bytes:
+    """Return `level_bytes` with each length-prefixed string in `mapping`
+    replaced (exact whole-string matches, each must occur exactly once).
+
+    Object blocks are delimited by markers, not lengths (:func:`_frame`), so a
+    string of a different length only moves the bytes after it; the section's
+    self-size is the one length to keep honest (a stale one silently drops
+    objects). The graph is re-walked afterwards and must hold the same objects.
+    """
+    cf, sec, inner = _inner(level_bytes)
+    before = _graph(inner).count
+    out = inner
+    for old, new in mapping.items():
+        a, b = old.encode("utf-8"), new.encode("utf-8")
+        lo, ln = struct.pack("<I", len(a)) + a, struct.pack("<I", len(b)) + b
+        if out.count(lo) != 1:
+            raise LevelPlacementError(f"level holds {old!r} {out.count(lo)} times, expected 1")
+        out = out.replace(lo, ln)
+    if _graph(out).count != before:
+        raise LevelPlacementError("string replacement changed the level's object count")
+    new_sec = bytearray(sec[:_INNER_OFF]) + out
+    struct.pack_into("<II", new_sec, _SELF_SIZE_OFF, len(out), len(out))
+    cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
+    return cooked.emit(cf)
+
+
 def _frame(payload: bytes) -> bytes:
     return cooked.MARK_BEGIN + payload + cooked.MARK_END
 
@@ -473,6 +513,17 @@ def add_placement(level_bytes: bytes, ref: str,
             "placement block from scratch")
     if after is not None:
         cands = [c for c in cands if c[2][0] == after] or cands
+    else:
+        # Never copy a NAMED or gameplay object. The copy keeps the template's
+        # instance name and group, and the engine treats some of those by name:
+        # on the High Fisherman camp the last block of the modal class is the
+        # camp's "Reward Pedestal" (group "Gameplay"), which stays hidden until
+        # the camp is cleared — every object added from it drew nothing while
+        # its collision worked (fishermans-camp v0.5.0, 2026-11-14). Plain
+        # scenery placements carry an empty name and a "Scenery/..." group.
+        plain = [c for c in cands if _names(c[1])[0] == ""
+                 and _names(c[1])[1].lower().startswith("scenery")]
+        cands = plain or [c for c in cands if _names(c[1])[0] == ""] or cands
     # The modal class, so an oddball one-off is never the template.
     seen = Counter(g.class_idx[i] for i, _p, _got in cands)
     modal = max(seen, key=lambda c: (seen[c], c))
@@ -560,3 +611,79 @@ def _append(cf, sec: bytes, inner: bytes, g: _Graph, block: bytes, cls: int) -> 
     struct.pack_into("<II", new_sec, _SELF_SIZE_OFF, len(new_inner), len(new_inner))
     cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
     return cooked.emit(cf)
+
+
+# --------------------------------------------------------------------------
+# Static walls (oCStaticWallGo): invisible collision polylines
+# --------------------------------------------------------------------------
+
+#: Class of a level's invisible walls: a named polyline of (x, y, z) points
+#: with a height, read off 923 of 923 shipped walls: after the two names, the
+#: object's position at +38 and the point count at +83, then 12 bytes a point.
+WALL_CLASS = "oCStaticWallGo"
+_WALL_POS = 38
+_WALL_COUNT = 83
+
+
+def _class_names(g: _Graph) -> list[str]:
+    ct = g.blocks[g.ot - 1][2]
+    (n,) = struct.unpack_from("<I", ct, 0)
+    o, out = 4, []
+    for _ in range(n):
+        (ln,) = struct.unpack_from("<I", ct, o)
+        out.append(ct[o + 4:o + 4 + ln].decode("utf-8", errors="replace"))
+        o += 4 + ln + 16
+    return out
+
+
+def walls(level_bytes: bytes) -> list[tuple[int, str, list[tuple[float, float, float]]]]:
+    """``(object id, name, points)`` for every static wall in a level."""
+    _cf, _sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    names = _class_names(g)
+    out = []
+    for oid, (_b, _e, p) in enumerate(g.objects):
+        if names[g.class_idx[oid]] != WALL_CLASS:
+            continue
+        nm, gp = _names(p)
+        end = 8 + len(nm.encode()) + 4 + len(gp.encode())
+        (n,) = struct.unpack_from("<I", p, end + _WALL_COUNT)
+        if not 1 <= n <= 10_000 or end + _WALL_COUNT + 4 + 12 * n > len(p):
+            raise LevelPlacementError(f"wall {nm!r}: unexpected layout ({n} points)")
+        pts = [struct.unpack_from("<3f", p, end + _WALL_COUNT + 4 + 12 * j) for j in range(n)]
+        out.append((oid, nm, pts))
+    return out
+
+
+def sink_walls(level_bytes: bytes, names: list[str] | None = None,
+               depth: float = 1000.0) -> tuple[bytes, list[str]]:
+    """Move static walls ``depth`` metres under the map, in place (every point
+    and the object's own position): the wall stops blocking and nothing in the
+    stream is renumbered. ``names`` limits it to those walls (all when None).
+    Returns ``(bytes, names sunk)``."""
+    cf, sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    found = {oid: nm for oid, nm, _pts in walls(level_bytes)}
+    out = bytearray(inner)
+    sunk = []
+    for oid, nm in found.items():
+        if names is not None and nm not in names:
+            continue
+        begin, _end, p = g.objects[oid]
+        wn, gp = _names(p)
+        end = 8 + len(wn.encode()) + 4 + len(gp.encode())
+        at = begin + 4                                    # MARK_BEGIN
+        y = struct.unpack_from("<f", p, end + _WALL_POS + 4)[0]
+        struct.pack_into("<f", out, at + end + _WALL_POS + 4, y - depth)
+        (n,) = struct.unpack_from("<I", p, end + _WALL_COUNT)
+        for j in range(n):
+            o = end + _WALL_COUNT + 4 + 12 * j + 4
+            struct.pack_into("<f", out, at + o, struct.unpack_from("<f", p, o)[0] - depth)
+        sunk.append(nm)
+    if names is not None:
+        missing = sorted(set(names) - set(sunk))
+        if missing:
+            raise LevelPlacementError(f"level has no wall(s) {missing}")
+    new_sec = bytes(sec[:_INNER_OFF]) + bytes(out)
+    cf.sections[-1] = cooked.Section(payload=new_sec)
+    return cooked.emit(cf), sunk

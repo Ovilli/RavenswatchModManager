@@ -474,7 +474,7 @@ def _as_bool(v, what: str) -> bool:
 
 
 #: Every section an edit document may carry, in the order they apply.
-EDIT_SECTIONS = ("kinds", "quotas", "slots", "fill", "remove_slots", "add_slots")
+EDIT_SECTIONS = ("kinds", "quotas", "add_quotas", "slots", "fill", "remove_slots", "add_slots")
 
 
 def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
@@ -537,6 +537,23 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
         if v != q.limit:
             plan.append((lambda q=q, v=v: setattr(q, "limit", v),
                          f"quota {key}: {q.limit} -> {v}"))
+
+    # NEW caps, e.g. a mod's entrance flag capped at 1 so it cannot be placed
+    # twice and ask for two rooms. A quota is an inline record in the spawner
+    # (`tilegen.FlagQuota`), so appending one renumbers nothing; it borrows
+    # the class indexes of the recipe's existing quotas.
+    for key, limit in (edits.get("add_quotas") or {}).items():
+        if key in by_quota:
+            raise MapEditError(f"add_quotas: {key!r} already exists; edit it under quotas")
+        flags = [f for f in str(key).split("+") if f]
+        if not flags or not tg.spawner.quotas:
+            raise MapEditError(f"add_quotas: cannot add {key!r} (no flags, or a recipe "
+                               f"with no quota to copy the record shape from)")
+        v = _as_int(limit, f"add_quotas.{key}", 0, MAX_QUOTA)
+        tmpl = tg.spawner.quotas[0]
+        plan.append((lambda flags=flags, v=v, t=tmpl: tg.spawner.quotas.append(
+                         TG.FlagQuota(flags=flags, limit=v, _ci=t._ci, _list_ci=t._list_ci)),
+                     f"new quota {key}: {v}"))
 
     for sid_raw, se in (edits.get("slots") or {}).items():
         try:
@@ -753,6 +770,9 @@ def _edit_lines(table: str, edits: dict) -> list[str]:
     if edits.get("quotas"):
         lines += ["", f"[{table}.quotas]"]
         lines += [f"{_q(k)} = {_val(v)}" for k, v in sorted(edits["quotas"].items())]
+    if edits.get("add_quotas"):
+        lines += ["", f"[{table}.add_quotas]"]
+        lines += [f"{_q(k)} = {_val(v)}" for k, v in sorted(edits["add_quotas"].items())]
     if edits.get("fill"):
         lines += ["", f"[{table}.fill]"]
         lines += [f"{_q(g)} = [{', '.join(_q(f) for f in v)}]"

@@ -200,7 +200,11 @@ def resample(layer: Layer, n: int) -> list[float]:
 # --------------------------------------------------------------------------
 
 #: Layers whose cells are a normalised height: a stroke's amounts are metres.
-METRE_LAYERS = {HEIGHT, "Base Water Height", "Base Water Ocean Height", "Base Flying Height"}
+METRE_LAYERS = {HEIGHT, "Base Water Height", "Base Water Ocean Height", "Base Flying Height",
+                # A TILE's own height layers (tile levels name them differently
+                # from a chapter's terrain level, e.g. 40x40_Small_PoolPlatform:
+                # "Height", -50..50 like the chapter's).
+                "Height", "Terrain Height", "Tile Terrain Height"}
 #: Ops on a float layer; ``tint`` is the one op on an RGBA layer.
 OPS = ("raise", "lower", "set", "flatten", "smooth", "tint")
 FALLOFFS = ("smooth", "linear", "constant")

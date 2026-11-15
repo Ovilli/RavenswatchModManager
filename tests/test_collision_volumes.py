@@ -145,3 +145,27 @@ def test_clear_remove_sinks_only_the_named_entities():
         "own_level": True, "clear": {"remove": ["Tree_Small_A.entity.ot"]}}))
     sunk = [p.ref for p in dict(LP.objects(out)).values() if p.pos[1] < -SINK / 2]
     assert sunk and all(r.endswith("\\Tree_Small_A.entity.ot") for r in sunk)
+
+
+FISHER = "Ot/DarkHills/Tiles/64x64_High_Fisherman_Platform_Ghouls_Camp.level.ot.GameStream.gen"
+
+
+def _fisher() -> bytes | None:
+    try:
+        from rsmm.engine import corpus
+        return corpus.read(FISHER)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@pytest.mark.skipif(_fisher() is None, reason="no tile corpus")
+def test_an_added_placement_never_copies_a_named_gameplay_object():
+    """The camp's last modal block is its "Reward Pedestal" (group Gameplay),
+    hidden until the camp is cleared; objects copied from it drew nothing."""
+    from rsmm.engine import level_placements as LP
+    out = LP.add_placement(_fisher(), "A\\B.entity.ot", pos=(1.0, 2.0, 3.0))
+    _cf, _sec, inner = LP._inner(out)
+    g = LP._graph(inner)
+    name, group = LP._names(g.objects[-1][2])
+    assert name == "" and group.lower().startswith("scenery")
+    assert LP.objects(out)[-1][1].ref == "A\\B.entity.ot"

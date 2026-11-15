@@ -520,17 +520,23 @@
                 "chapters": {},
                 "clear": {},
                 "copies": {},
+                "flags": {},
                 "icon": {},
                 "icon_source": {},
                 "id": {},
                 "kind": {},
                 "kinds": {},
+                "move": {},
+                "needs": {},
                 "own_level": {},
                 "places": {},
                 "prop": {},
                 "replace_base": {},
                 "schema_version": {},
+                "subtile": {},
                 "swaps": {},
+                "teleporters": {},
+                "terrain": {},
                 "weight": {}
               },
               "additionalProperties": false
@@ -707,6 +713,7 @@
             },
             "then": {
               "properties": {
+                "add_quotas": {},
                 "add_slots": {},
                 "chapter": {},
                 "fill": {},

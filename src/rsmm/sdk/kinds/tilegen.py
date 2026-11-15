@@ -17,6 +17,9 @@ Fields:
     ``kinds``   (table)          ``{ "<Kind>" = { count, min_distance,
                                  footprints = { "<WxH>" = bool } } }``
     ``quotas``  (table)          ``{ "<Flag>[+<Flag>]" = limit }``
+    ``add_quotas`` (table)       same shape, for a flag the recipe does not cap
+                                 yet (e.g. an entrance that must appear at most
+                                 once because each copy needs an off-map room).
     ``slots``   (table)          ``{ "<object id>" = { pos = [x, y, z],
                                  allow = { "<Kind>" = bool } } }`` — ``pos`` is
                                  checked against the recipe so an edit made
@@ -56,7 +59,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"tilegen {defn.id}: needs a 'chapter' (one of "
             + ", ".join(c.key for c in ME.chapters()) + ")")
     # Named here, not via ME.EDIT_SECTIONS, so the manifest-spec check sees each field read.
-    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "slots", "fill",
+    edits = {k: defn.fields[k] for k in ("kinds", "quotas", "add_quotas", "slots", "fill",
                                          "remove_slots", "add_slots") if k in defn.fields}
     if not edits:
         raise ContentError(f"tilegen {defn.id}: nothing to change (one of "

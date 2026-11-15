@@ -79,11 +79,12 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
     "poi": frozenset({
         "base", "chapters", "copies", "icon", "icon_source", "kinds",
         "own_level", "places", "prop", "replace_base", "swaps", "weight", "clear",
+        "terrain", "move", "needs", "subtile", "teleporters", "flags",
     }),
     "mesh": frozenset({"target", "model", "transform"}),
     "animation": frozenset({"target", "source", "clip", "strict"}),
     "tilegen": frozenset({"chapter", "kinds", "quotas", "slots", "fill",
-                          "remove_slots", "add_slots"}),
+                          "remove_slots", "add_slots", "add_quotas"}),
     "shop": frozenset({"prices", "price_scale", "offers", "slots", "config"}),
     "scenery": frozenset({"chapter", "level", "moves", "removes", "adds"}),
     "skin": frozenset({"hero", "skins"}),
