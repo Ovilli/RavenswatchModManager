@@ -66,12 +66,13 @@ from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
-        "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event")
+        "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
+        "add_cinebloc", "animatic_speed", "scale_with_level")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "donor", "replace_ref", "node"}
+         "donor_index", "donor", "replace_ref", "node", "from_kind"}
 
 
 class AbilityEditError(ValueError):
@@ -152,6 +153,19 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 _override(ef, step, f"{seed}:{n}", read, aliases)
             elif op == "retarget":
                 _retarget(ef, step, read)
+            elif op == "add_cinebloc":
+                if not step.get("to") or "value" not in step:
+                    raise AbilityEditError("add_cinebloc needs to = <part> and value = <start>")
+                ef.add_cinebloc(str(step["add_cinebloc"]), str(step["to"]), float(step["value"]))
+            elif op == "animatic_speed":
+                if "value" not in step:
+                    raise AbilityEditError("animatic_speed needs value = <rate>")
+                ef.set_animatic_speed(str(step["animatic_speed"]), float(step["value"]))
+            elif op == "scale_with_level":
+                if "value" not in step:
+                    raise AbilityEditError("scale_with_level needs value = <ratio>")
+                _scale_with_level(ef, str(step["scale_with_level"]), float(step["value"]),
+                                  f"{seed}:{n}")
             elif op == "retarget_targets":
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part or not step.get("to"):
@@ -286,6 +300,39 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
              source=None if src is ef else src)
 
 
+def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> None:
+    """Make ``target``'s amount/value equal ``ratio * owner's Level Damage``."""
+    from . import entity_parts as P
+    from . import talent_add_stat as TA
+    from . import talent_range as TR
+    from . import talent_writer as TW
+
+    c = ef.component(target)
+    slot = 1 if c.cls == "oCEntityCpntModifierSettings" else 0
+    reader_name = "Owner Level Damage"
+    level_dmg = P.Link(bytes.fromhex("351a83c831da0b4ebd0716d89160d84d"),
+                       r"[Value] Character_Common\Base\Level Damage")
+    if not any(x.name == reader_name for x in ef.graph().components):
+        TW.TalentWriter(ef, f"{seed}:level-dmg", "").reader(
+            reader_name, r"Heroes\Hero_Common\Hero_Common.entity.ot",
+            level_dmg, owners=(0,), walk_owners=True)
+        startup = TA._startup_state(ef)
+        if startup is not None:
+            ef.insert_ref(startup, "activates", 0, reader_name)
+    w = TW.TalentWriter(ef, f"{seed}:level:{target}", c.group)
+    ratio_link = w.add(TW._VALUE, f"{target} Level Ratio",
+                       {"value": P.Num.f32(ratio), "flag": 0}, flags=0x101)
+    scaled_name = f"{target} Level Scaled"
+    w.multiply(scaled_name, TW.link_to(ef, reader_name),
+               ef.F32_ACCESSOR["oCEntityCpntGetValueSettings"],
+               ratio_link, TW.READ_VALUE, group=c.group)
+    ef.source_value(target, slot, scaled_name)
+    if TR._activate_before(ef, target, [scaled_name]) == 0:
+        startup = TA._startup_state(ef)
+        if startup is not None:
+            ef.add_ref(startup, "activates", scaled_name)
+
+
 def _source(ef: EntityFile, step: dict, read) -> EntityFile:
     """The entity a step copies from: ``from`` (a hero or an entity path), or
     the one it edits."""
@@ -318,10 +365,11 @@ def _list_ids(ef: EntityFile, part: str, fld: str) -> list[int]:
     f = next((x for x in EF.fields(c) if x.name == fld), None)
     if f is None:
         raise AbilityEditError(f"{part!r} has no field {fld!r}")
-    n = int.from_bytes(c.body[f.offset:f.offset + 4], "little")
-    if f.size != 4 + 4 * n:
+    pad = 4 if c.cls == "oCEntityCpntGpnTraverserSettings" and fld == "bytes_3" else 0
+    n = int.from_bytes(c.body[f.offset + pad:f.offset + pad + 4], "little")
+    if f.size != pad + 4 + 4 * n:
         raise AbilityEditError(f"{part}.{fld} is not an id list")
-    return [int.from_bytes(c.body[f.offset + 4 + 4 * i:f.offset + 8 + 4 * i], "little")
+    return [int.from_bytes(c.body[f.offset + pad + 4 + 4 * i:f.offset + pad + 8 + 4 * i], "little")
             for i in range(n)]
 
 
@@ -402,10 +450,11 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
     from . import entity_graph as EG
     from .entity_graph_edit import kind_label
     ref, _, name = str(step.get("node") or "").partition("|")
-    raw = read(ref) if ref and name else None
+    ref_path = source_entity_ref(ref) if ref and name else ""
+    raw = read(ref_path) if ref_path else None
     if raw is None:
         raise AbilityEditError(f"retarget: no entity {ref!r} (node is '<entity>|<part>')")
-    stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+    stem = ref_path.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
     hits = [c for c in EG.parse(raw, stem).components if c.name == name]
     if len(hits) != 1:
         raise AbilityEditError(f"retarget: {stem} has {len(hits)} parts named {name!r}")
@@ -414,7 +463,8 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
     label = f"[{kind}] {stem}\\" + (f"{node.group}\\" if node.group else "") + node.name
     # `Part.field` names the link (a spawner value's `target_value`): whatever
     # it holds now, inside this file or out, moves. Plain `Part`: its links of
-    # that kind leading outside this file.
+    # that kind (or `from_kind` when moving between compatible 3d node types)
+    # leading outside this file.
     pname, _, fld = str(step["retarget"]).partition(".")
     part = ef.component(pname)
     if fld:
@@ -422,9 +472,10 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
         from .hero_kit import point
         point(ef, pname, fld, node.guid, label)
         return
+    src_kind = str(step.get("from_kind") or kind)
     mine = {c.guid for c in ef.graph().components}
-    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(f"[{kind}] ")]
+    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(f"[{src_kind}] ")]
     if not old:
-        raise AbilityEditError(f"retarget: {part.name!r} has no outside {kind} link to move")
+        raise AbilityEditError(f"retarget: {part.name!r} has no outside {src_kind} link to move")
     for g in dict.fromkeys(old):
-        ef.retarget_external(part.name, g, node.guid, label)
+        ef.retarget_external(part.name, g, node.guid, label, cross_kind=src_kind != kind)

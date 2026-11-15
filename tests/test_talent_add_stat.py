@@ -744,3 +744,99 @@ def test_the_talent_kind_includes_from_another_hero(tmp_path, piper):
     [path] = talents.emit("test-mod", defn, tmp_path)
     assert "Skill Power Hold From SunWukong" in _refs(path.read_bytes(),
                                                       "Skill Attack Move Speed", "while_active")
+
+
+def test_more_bleed_damage_stacks_additively_and_scales_bleeds(wukong):
+    from rsmm.engine import entity_graph_edit as GE
+    from rsmm.engine import talent_writer as TW
+
+    out, a1 = TA.add_stat(wukong, talent="Trait Fire", stat="more bleed damage",
+                          values=[0.50, 0.60, 0.70, 0.80])
+    out, a2 = TA.add_stat(out, talent="Power Hold", stat="More Bleed Damage",
+                          values=[0.50, 0.60, 0.70, 0.80], during="DEFENSE")
+    assert a1.modifier == ""
+    assert a2.modifier == ""
+
+    mult = comp(out, "Bleed Damage Multiplier Operation", "ValueOperationsSettings")
+    assert not TA._is_multiply_op(mult)
+    assert len(mult.refs) == 2
+    assert {r.path.rsplit("\\", 1)[-1] for r in mult.refs} == {
+        "Skill Trait Fire Added More Bleed Damage Bonus",
+        "Skill Power Hold Added More Bleed Damage During DEFENSE Bonus",
+    }
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+    # Add a Bleed modifier to the hero and an owned entity, then run scale_hero_bleeds.
+    hef = GE.EntityFile(out, "Hero_SunWukong")
+    hw = TW.TalentWriter(hef, "test:bleed", "Base")
+    hval = hw.add(TW._VALUE, "Test Hero Bleed Value",
+                  {"value": TW.P.Num.f32(50.0), "flag": 0}, flags=0x101)
+    hw.modifier("Test Hero Bleed Modifier", TA._BLEED_STAT, hval)
+
+    pef = GE.EntityFile(wukong, "Hero_SunWukong_Bomb")
+    pw = TW.TalentWriter(pef, "test:bomb-bleed", "Base")
+    pval = pw.add(TW._VALUE, "Test Bomb Bleed Value",
+                  {"value": TW.P.Num.f32(100.0), "flag": 0}, flags=0x101)
+    pw.modifier("Test Bomb Bleed Modifier", TA._BLEED_STAT, pval)
+    pef.add_ref("Child Event Initialize", "activates", "Test Bomb Bleed Modifier")
+
+    scaled_hero, scaled_proj = TA.scale_hero_bleeds(
+        hef.to_bytes(),
+        {"Heroes/Hero_Common/Hero_SunWukong_Bomb.entity.ot": pef.to_bytes()},
+        "Heroes\\Hero_SunWukong\\Hero_SunWukong.entity.ot",
+        scope="Hero_SunWukong",
+        seed="test",
+    )
+
+    hmod = comp(scaled_hero, "Test Hero Bleed Modifier")
+    assert [r.path.rsplit("\\", 1)[-1] for r in hmod.refs] == [
+        "Test Hero Bleed Modifier Bleed Scaled",
+    ]
+    hop = comp(scaled_hero, "Test Hero Bleed Modifier Bleed Scaled")
+    assert TA._is_multiply_op(hop)
+    assert {r.path.rsplit("\\", 1)[-1] for r in hop.refs} == {
+        "Test Hero Bleed Value", "Bleed Damage Multiplier Operation",
+    }
+
+    bomb = scaled_proj["Heroes/Hero_Common/Hero_SunWukong_Bomb.entity.ot"]
+    bef = GE.EntityFile(bomb)
+    reader = comp(bomb, "Hero Bleed Damage Multiplier Reader", "GetValueSettings")
+    owned, _ = bef.pointers()
+    collectors = [k for k, ptr in owned.items()
+                  if ptr.owner == reader.index - 1
+                  and bef._class(k) == "oCOwnerEntityCollectorSettings"]
+    assert len(collectors) == 1
+    assert b"Hero_SunWukong.entity.ot" in bytes(bef.objects[collectors[0]])
+    bop = comp(bomb, "Test Bomb Bleed Modifier Bleed Scaled")
+    assert {r.path.rsplit("\\", 1)[-1] for r in bop.refs} == {
+        "Test Bomb Bleed Value", "Hero Bleed Damage Multiplier Reader",
+    }
+    init_refs = _refs(bomb, "Child Event Initialize", "activates")
+    mod_idx = init_refs.index("Test Bomb Bleed Modifier")
+    assert init_refs.index("Hero Bleed Damage Multiplier Reader") < mod_idx
+    assert init_refs.index("Test Bomb Bleed Modifier Bleed Scaled") < mod_idx
+
+
+def test_convert_crit_into_damage_stat(wukong):
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="Convert crit into damage",
+                             values=1.0)
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+
+    raw_crit = comp(out, "Raw Crit Chance")
+    assert raw_crit.override is not None
+    assert raw_crit.override.guid == TA._RAW_CRIT_GUID
+    assert [r.path.rsplit("\\", 1)[-1] for r in raw_crit.refs] == [
+        "Skill Trait Fire Added Crit To Damage Raw Crit Selector",
+    ]
+
+    mod = comp(out, added.modifier)
+    assert EA.modifier_stat(out, added.modifier) == TA.stat_key_bytes("Attack power")
+    state = comp(out, "Skill Trait Fire", "StateSettings")
+    assert any(r.guid == mod.guid for r in state.refs)
+
+    cc_ap = comp(out, "Skill Trait Fire Added Crit To Damage Crit Chance To AP Op")
+    assert any(r.guid == TA._CRIT_CHANCE_VAL.guid for r in cc_ap.refs)
+    sum_op = comp(out, "Skill Trait Fire Added Crit To Damage Crit To AP Sum Op")
+    assert any(r.guid == TA._CRIT_DMG_VAL.guid for r in sum_op.refs)
+    assert comp(out, "Crit Chance Display Ratio Operation").override is not None
+    assert comp(out, "Crit Damage Raw Ratio Operation").override is not None

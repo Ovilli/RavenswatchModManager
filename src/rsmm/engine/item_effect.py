@@ -996,7 +996,8 @@ def _add_timed(w: P.PartWriter, effect: Effect, sfx: str, equipped: str, read,
 
 
 def add_listener(w: P.PartWriter, on: str, sfx: str, fires: P.Link, *, read=None,
-                 alive: bool = True, group: str | None = None) -> str:
+                 alive: bool = True, group: str | None = None,
+                 start_active: bool = True) -> str:
     """Write the listener for trigger ``on`` (``TRIGGERS``), firing ``fires``;
     its name. It listens only while a state holding it in ``while_active`` is on
     (the item's equipped state, a talent's owned state). ``alive`` keeps
@@ -1009,9 +1010,10 @@ def add_listener(w: P.PartWriter, on: str, sfx: str, fires: P.Link, *, read=None
     settings = w.obj("oCGameEventListenerSettings", struct.pack("<I", trig.event)
                      + w.obj("oCCustomFlagFilter", w.flags(list(trig.include))
                              + w.flags(list(trig.exclude))) + trig.tail)
+    flags = trig.flags if start_active else (trig.flags & ~0x100)
     w.add(_LISTENER, listener, {"listener": settings, **{
         s: (fires if s in trig.slots else _NONE) for s in ("ref_3", "ref_4", "ref_5")}},
-        flags=trig.flags, group=trig.group if group is None else group)
+        flags=flags, group=trig.group if group is None else group)
     return listener
 
 
