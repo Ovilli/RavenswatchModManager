@@ -383,6 +383,113 @@ is interactable, and a mod can confirm its own placements from Lua
 raising it to make a POI commoner moves it up a tier instead. Use `copies`, which buys pool entries one for one.
 Browse bases with `./rsmm poi list`.
 
+### A tile of your own: `own_level`
+
+`own_level = true` gives the clone its own copy of the base tile's level, so
+you can rebuild it without touching the shipped tile. Everything below needs
+it.
+
+```toml
+own_level = true
+clear     = true        # sink the base tile's placements (spawners, reward and
+                        # terrain shapes stay)
+places = [
+  { entity = "@prop", pos = [0.0, 0.0, 0.0] },                     # your model
+  { entity = "Objects_Common\\Point_Light_Opti_Model.entity.ot", pos = [2.0, 3.0, 0.0] },  # shipped
+]
+move = [{ entity = "Enemy_Camp_Reward.entity.ot", pos = [0.0, 0.5, 0.0] }]
+```
+
+- **`clear`** sinks every plain placement 1000 m under the map. `true` keeps
+  enemy spawners, the camp reward and terrain shapes. `{ keep = [...] }` keeps
+  other entities by path substring. `{ remove = [...] }` sinks only the named
+  ones. Add `walls = true` to also sink the tile's invisible walls.
+- **`places`** adds objects: `"@prop"` is your model, `"@<part>"` a kit part
+  (below), `"ingredient:<Name>/<id>"` an ingredient pickup or hand-in, anything
+  else a shipped `.entity.ot`. Each takes `pos`, `yaw` and `scale`.
+- **`move`** stands every placement of an entity at a new `pos`, keeping its
+  rotation and scale.
+- **`terrain`** paints the tile's own ground with the chapter editor's brush:
+  `{ op, layer, x, z, radius, amount, falloff }`, with `op` = `set` / `flatten`
+  / `tint` (`color = "#rrggbb"`). `"Terrain Height"` is in metres. The water
+  level is the constant layer `"Water Height"` (one value, no brush).
+- **`terrain_size = [x, z]`** stretches the tile's terrain box about its
+  centre. All painted layers stretch with it.
+
+### Solid ground and big structures: `collision`, kits, extra meshes
+
+```toml
+collision = [
+  { kind = "ground", size = [4.9, 1.0, 4.15], at = [0.0, 0.0, -0.775] },          # deck
+  { kind = "ground", size = [1.6, 0.5, 1.6], at = [0.0, 0.0, 2.0], rot = [18.0, 0.0, 0.0] }, # ramp
+  { kind = "wall",   size = [4.0, 2.5, 3.0], at = [0.0, 1.75, -0.9] },             # blocks
+]
+```
+
+Boxes are full sizes in the prop's own space, rotations in degrees. `ground` is
+walkable, `wall` blocks. They do **not** follow `transform`, so keep
+`scale = 1.0` and no `rotate_deg`. Only allowed on your own prop.
+
+One mesh is capped at 65535 vertices. Split a big structure two ways:
+
+- **`model_2.glb`, `model_3.glb`, …** beside `model.glb`: extra meshes for the
+  same prop, each drawn by its own entity wherever `places` stands `"@prop"`.
+- **A kit**: `parts/<name>/model.glb` folders, each a reusable entity placed
+  with `entity = "@<name>"` as often as you like. `[parts.<name>]` takes its own
+  `collision = [...]`. This is how the game builds its docks (about 100 parts
+  placed about 470 times).
+
+### Entrances and rooms: `needs`, `subtile`, `teleporters`
+
+A poi can be an **entrance** that pulls in its own off-map **room**, like the
+Ghoul den or a Thieves' stash. You need two pois and one tilegen block:
+
+```toml
+# pois/hut/poi.toml — the entrance, a normal map tile
+flags       = ["My_Entrance"]
+needs       = [{ flags = ["My_Room"] }]            # place one tile with this flag
+teleporters = [{ side = "out", id = "My_Pair", pos = [0.0, 0.5, 0.7] }]
+```
+
+```toml
+# pois/room/poi.toml — never picked for a map slot, only pulled in
+base        = "Dark_Hills/DarkHill_Thieves_Stashes_Gold_Room_Underground_01"
+subtile     = true
+kinds       = ["My_Room"]
+teleporters = [
+  { side = "in", id = "My_Pair", replace = "Objects_Common\\Thieves_Underground_Teleporter_In.entity.ot" },
+]
+```
+
+```toml
+# manifest.toml — at most one entrance per map
+[[content]]
+kind       = "tilegen"
+id         = "one_entrance"
+chapter    = "DarkHills"
+add_quotas = { "My_Entrance" = 1 }
+```
+
+- **`needs`**: each entry places `count` (default 1) tiles carrying every
+  flag. `underground = true` (default) uses an off-map room slot;
+  `underground = false` places it on the map `min`..`max` metres away.
+- **`subtile = true`** makes the tile a room. **`subtile = "surface"`** keeps
+  it a map tile but skips the slot-kind check, for a kind your own tilegen
+  `add_kinds` adds.
+- **`teleporters`**: `out` on the entrance, `in` in the room, joined by `id`.
+  `replace` takes over the room's shipped teleporter instead of adding one. A
+  room can have several `in` teleporters, and all of them lead back.
+- **`flags`**: extra tags that a quota counts or a `needs` asks for.
+
+A room's look (ambient light, fog, colour) is a render zone of fixed size: 34 m
+across in the Gold Room. Walk out of it and the look snaps back to outdoors.
+Grow it with
+`level_values = { "Render Settings Zone Scale Value" = 88.0 }` and set its
+light with `render_ambient = [r, g, b]` (0..4 per channel).
+
+**Trap.** Dark Hills has 5 room slots and its own rooms use up to 4. Without
+the `add_quotas` cap, a second entrance asks for a room that has nowhere to go.
+
 ---
 
 ## `enemy` — change what a camp spawns
@@ -513,6 +620,23 @@ in more tiles:
    The recipe doesn't control these.
 
 Flag `quotas` are **caps** (at most N), so raising one never adds tiles.
+`add_quotas` caps a flag the recipe does not know yet, such as a poi's own
+`flags`.
+
+**Adding tiles without replacing any.** `add_kinds` declares a new kind and
+`add_slots` gives it places of its own, so its tiles land on new ground and
+take no shipped slot:
+
+```toml
+add_kinds = { "My_Crates" = { count = 12, footprints = { "6x6" = true } } }
+add_slots = [
+  { group = "6x6", pos = [30.0, 0.0, -6.0], allow = { "My_Crates" = true } },
+  # … one per spot
+]
+```
+
+The poi that fills them uses `kinds = ["My_Crates"]` and `subtile = "surface"`,
+because the shipped recipe does not know that kind.
 
 **Prove it.** Start a run in that chapter and count what generated.
 `R.poi.on_generated` + `R.poi.placed` hand you every placed tile by name, so the
@@ -728,7 +852,6 @@ name         = "Fish Quest"
 version      = "0.1.0"
 author       = "you"
 description  = "Bring fish to the hand-in for a reward."
-experimental = true
 
 [[content]]
 kind     = "ingredient"

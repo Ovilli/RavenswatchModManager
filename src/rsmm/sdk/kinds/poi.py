@@ -187,8 +187,11 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     names other entity-path substrings to keep; ``clear = { remove = [...] }``
     sinks ONLY the named entities (file name or full reference) and keeps the
     rest, e.g. taking a shipped hut out to stand the mod's own in its place.
+    A ``remove`` entry ``{ entity = ..., at = [x, y, z] }`` sinks only the one
+    placement standing there (what the 3D tile editor writes).
     The tile's terrain and its invisible walls (``oCStaticWallGo``) are not
-    placements and stay.
+    placements and stay — unless ``walls = true`` (every wall) or
+    ``walls = ["<name>", ...]`` is added to the table, which sinks them too.
 
 ``terrain`` (list of tables, optional, needs ``own_level``)
     Brush strokes on the def's OWN copy of the tile's terrain, the chapter
@@ -203,7 +206,7 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     room whose terrain (the Gold Room's: 80 x 100 m) is smaller than the
     structure stood in it; ``[128, 128]`` fills its whole off-map slot. Every
     painted layer stretches with it, so follow with ``terrain`` strokes to
-    shape the new ground. Unproven in game.
+    shape the new ground. Proven in game 2026-11-15 (fishermans-camp room).
 
 ``level_values`` (table, optional, needs ``own_level``)
     Float values the tile's level overrides on the entities it places, by the
@@ -271,9 +274,9 @@ What is NOT proven is the *additive* half — but the REASON changed on
 2026-09-11. The old reason, "a level provably cannot reference an entity
 resource the mod introduced", was disproved: every asset in the additive chain,
 the mod's own entity included, is both requested and resolved. What remains
-unproven is VISIBILITY — no additive POI has yet been SEEN in-game, and the run
-that got this far was not checked for the prop mesh. Resolution is settled;
-placement and rendering are not.
+unproven was VISIBILITY. ★ Settled 2026-11-15: fishermans-camp's additive
+tiles (own_level clones, the mod's own prop, kit parts, a sub-tile room) were
+all seen and walked in game.
 See ``docs/_re/kinds/pois.md``.
 """
 
@@ -916,6 +919,10 @@ def poi_json_schema() -> dict:
     here as they are there. `rsmm docs-gen` writes it to the docs site."""
     s, b, num = {"type": "string"}, {"type": "boolean"}, {"type": "number"}
     entity = {"type": "string", "pattern": r"(?i)\.entity\.ot$"}
+    xyz = {"type": "array", "items": num, "minItems": 3, "maxItems": 3}
+    # one placement of an entity: the one standing at `at` (clear.remove, move)
+    anchored = {"type": "object", "required": ["entity", "at"], "additionalProperties": False,
+                "properties": {"entity": s, "at": xyz}}
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "$id": POI_SCHEMA_URL,
@@ -937,7 +944,7 @@ def poi_json_schema() -> dict:
             "clear": {"anyOf": [b, {
                 "type": "object", "additionalProperties": False,
                 "properties": {"keep": {"type": "array", "items": s},
-                               "remove": {"type": "array", "items": s},
+                               "remove": {"type": "array", "items": {"anyOf": [s, anchored]}},
                                "walls": {"anyOf": [b, {"type": "array", "items": s}]}}}]},
             "terrain": {"type": "array", "items": {"type": "object"}},
             "terrain_size": {"type": "array", "items": num, "minItems": 2, "maxItems": 2},
@@ -958,8 +965,7 @@ def poi_json_schema() -> dict:
                                "yaw": num}}},
             "move": {"type": "array", "items": {
                 "type": "object", "required": ["entity", "pos"], "additionalProperties": False,
-                "properties": {"entity": s, "pos": {"type": "array", "items": num,
-                                                    "minItems": 3, "maxItems": 3}}}},
+                "properties": {"entity": s, "at": xyz, "pos": xyz}}},
             "swaps":{"type": "object", "minProperties": 1,
                       "additionalProperties": entity},
             "places": {"type": "array", "minItems": 1, "items": {
@@ -1565,6 +1571,22 @@ CLEAR_KEEP = ("Enemy_Spawner", "Enemy_Camp_Reward", "LD_Terrain_Shapes",
               "LD_Reward_Pedestal")
 
 
+#: How far (metres, per axis) an `at` anchor may sit from the placement it
+#: names: the editor writes positions read from the level, so they match to
+#: float precision; this only absorbs rounding.
+AT_TOLERANCE = 0.05
+
+
+def _is_placement(pl, entity: str, at=None) -> bool:
+    """Does `pl` place `entity` (file name or full reference) — and, given
+    `at`, is it the one standing there?"""
+    want = str(entity).lower()
+    if want not in (pl.ref.lower(), pl.ref.rsplit("\\", 1)[-1].lower()):
+        return False
+    return at is None or all(abs(a - float(b)) <= AT_TOLERANCE
+                             for a, b in zip(pl.pos, at, strict=True))
+
+
 def _clear_level(level: bytes, defn: ContentDef) -> bytes:
     """Sink every plain placement of the def's OWN level except `keep`.
 
@@ -1589,10 +1611,16 @@ def _clear_level(level: bytes, defn: ContentDef) -> bytes:
     if isinstance(spec, dict) and "keep" in spec and remove:
         raise ContentError(f"poi {defn.id}: `clear` takes `keep` OR `remove`, not both")
     changes, kept = {}, 0
-    for oid, pl in LP.objects(level):
-        name = pl.ref.rsplit("\\", 1)[-1].lower()
+    objs = LP.objects(level)
+    for r in remove:
+        if isinstance(r, dict) and not any(_is_placement(pl, r["entity"], r["at"])
+                                           for _, pl in objs):
+            raise ContentError(f"poi {defn.id}: clear.remove: no {r['entity']!r} "
+                               f"stands at {r['at']}")
+    for oid, pl in objs:
         if remove:
-            hit = any(r.lower() == name or r.lower() == pl.ref.lower() for r in remove)
+            hit = any(_is_placement(pl, r["entity"], r["at"]) if isinstance(r, dict)
+                      else _is_placement(pl, r) for r in remove)
         else:
             hit = not any(k.lower() in pl.ref.lower() for k in keep)
         if not hit:
@@ -1618,15 +1646,17 @@ def _move_objects(level: bytes, defn: ContentDef) -> bytes:
     """``move = [{ entity = "X.entity.ot", pos = [x, y, z] }]``: every plain
     placement of that entity (file name or full reference) in the def's OWN
     level stands at ``pos`` instead, keeping its rotation and scale — e.g. a
-    camp's reward lifted onto a deck the def built over its old spot."""
+    camp's reward lifted onto a deck the def built over its old spot. With
+    ``at = [x, y, z]`` only the placement standing there moves."""
     out_changes = {}
+    objs = LP.objects(level)
     for i, mv in enumerate(defn.fields["move"]):
-        want = str(mv.get("entity", "")).lower()
-        hits = [(oid, pl) for oid, pl in LP.objects(level)
-                if want in (pl.ref.lower(), pl.ref.rsplit("\\", 1)[-1].lower())]
+        hits = [(oid, pl) for oid, pl in objs
+                if _is_placement(pl, mv.get("entity", ""), mv.get("at"))]
         if not hits:
+            where = f" at {mv['at']}" if mv.get("at") else ""
             raise ContentError(
-                f"poi {defn.id}: move[{i}]: the level places no {mv.get('entity')!r}")
+                f"poi {defn.id}: move[{i}]: the level places no {mv.get('entity')!r}{where}")
         pos = tuple(float(v) for v in mv["pos"])
         for oid, pl in hits:
             out_changes[oid] = (pos, pl.quat, pl.scale)

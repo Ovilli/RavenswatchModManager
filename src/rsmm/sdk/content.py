@@ -137,9 +137,10 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # four), and this works on a `SceneryObjects_*` host, so the
                               # "scenery is never interactive" corpus rule describes shipped
                               # content rather than an engine gate.
-    "ingredient": "experimental",  # 2026-11-15: def + id scheme verified against every
-                                   # shipped ingredient (rsmm.engine.named_id); a NEW one is
-                                   # unproven in game.
+    "ingredient": "confirmed",  # PROVEN IN GAME 2026-11-15 (fishermans-camp v0.9): a new
+                                # "Fish" ingredient on the HUD, pickups add to it, and the
+                                # hand-in counts and spawns its rewards. Id = hash of the
+                                # NAME (rsmm.engine.named_id).
     "tilegen": "confirmed",   # PROVEN IN GAME 2026-09-24: Camp count 2 + no 40x40/64x64 fill
                               # gave exactly 2 recipe camps (was 8-9) and left the spare slots
                               # empty. Camps have THREE sources (TileSpawn_PlaceTiles): the kind

@@ -2129,3 +2129,12 @@ def test_a_constraint_on_a_tile_without_one_declares_its_classes():
                    f"40x40_Boss_Ghoul_Den_Entrance_LiveOps{TC.GEN_SUFFIX}").read_bytes())
     assert [x.name for x in cooked.parse(out).classes] == \
         [x.name for x in cooked.parse(TC.write(den)).classes]
+
+
+def test_is_placement_matches_by_name_and_optional_anchor():
+    from rsmm.engine.level_placements import Placement
+    pl = Placement("Objects_Common\\Rock_A.entity.ot", (1.0, 2.0, 3.0), (0, 0, 0, 1), (1, 1, 1))
+    assert poi._is_placement(pl, "rock_a.entity.ot")
+    assert poi._is_placement(pl, "Objects_Common\\Rock_A.entity.ot", [1.02, 2.0, 2.99])
+    assert not poi._is_placement(pl, "Rock_A.entity.ot", [1.2, 2.0, 3.0])
+    assert not poi._is_placement(pl, "Rock_B.entity.ot")

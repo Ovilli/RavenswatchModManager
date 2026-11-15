@@ -73,7 +73,32 @@
             "remove": {
               "type": "array",
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "entity",
+                      "at"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "entity": {
+                        "type": "string"
+                      },
+                      "at": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3
+                      }
+                    }
+                  }
+                ]
               }
             },
             "walls": {
@@ -228,6 +253,14 @@
         "properties": {
           "entity": {
             "type": "string"
+          },
+          "at": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
           },
           "pos": {
             "type": "array",

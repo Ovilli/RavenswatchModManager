@@ -45,7 +45,7 @@ in `LevelLoad_Orchestrator` marks every tile of every navmesh dirty over the
 navmesh's own full bounds (0x14086b310) and rebuilds them (0x14086b750) with
 `oCDtDetourMeshTileTriangleBuilder` (slot 1, 0x1402a3f00), which rasterizes
 the scene's live physics world. So height, collision and walkability all
-follow the painted height. Unproven in game until a playtest says so.
+follow the painted height. Proven in game 2026-11-15 (fishermans-camp room).
 """
 
 from __future__ import annotations
@@ -450,7 +450,7 @@ def resize(level_bytes: bytes, size_x: float, size_z: float) -> bytes:
     own box inside the terrain's), so all of them are scaled together. The
     painted layers are grids over the box, so they stretch with it. Payload
     sizes never change. For a sub-tile ROOM whose own terrain is smaller than
-    the 128 x 128 slot it lands in (UNPROVEN in game as of 2026-11-15).
+    the 128 x 128 slot it lands in (proven in game 2026-11-15).
     """
     if not (16.0 <= size_x <= 1024.0 and 16.0 <= size_z <= 1024.0):
         raise TerrainError("terrain size must be 16..1024 m on each axis")
