@@ -1526,69 +1526,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     else:
         body_mat = material
 
-    # Its own animations (step E): each a Blender clip on the rig's skeleton,
-    # cooked by anim_cook onto a rig clip as template (bone order, tail
-    # fields) into a NEW clip file of its own beside the rig's; the rig's
-    # clips are untouched. `clip = "anim:<name>"` then names it.
-    own_clips: dict[str, tuple[str, float]] = {}
-    anims = frame.get("animations") or {}
-    if anims:
-        from ...engine import anim_cook as AC
-        rig_dir = mesh.rsplit("\\", 1)[0] + "\\Animations"
-        for name, spec in sorted(anims.items()):
-            spec = spec if isinstance(spec, dict) else {"source": spec}
-            if not spec.get("source") or not spec.get("template"):
-                raise ContentError(f"hero {hid}: animations.{name} needs source (a .glb) "
-                                   "and template (a rig clip, e.g. Kintaro_FightingIdle_Loop)")
-            tpl_ref = f"{rig_dir}\\{spec['template']}.fbx"
-            tpl_raw = corpus.read(f"3D/{tpl_ref.replace(chr(92), '/')}.Animation.gen")
-            if tpl_raw is None:
-                raise ContentError(f"hero {hid}: animations.{name}: the rig has no clip "
-                                   f"{spec['template']!r}")
-            tcf = cooked.parse(tpl_raw)
-            glb = _mod_source(out_dir, spec["source"], hid, f"animations.{name}").read_bytes()
-            try:
-                payload, _notes = AC.cook(glb, b"".join(x.payload for x in tcf.sections),
-                                          name=spec.get("clip"), strict=bool(spec.get("strict")))
-            except AC.AnimCookError as e:
-                raise ContentError(f"hero {hid}: animation {name}: {e}") from e
-            head = len(tcf.sections[0].payload)
-            tcf.sections[0] = cooked.Section(payload=payload[:head])
-            tcf.sections[1] = cooked.Section(payload=payload[head:])
-            ref = f"{rig_dir}\\{scope}_{name}.fbx"
-            put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(tcf))
-            art.append(f"3D|{ref}|oCAnimation")
-            from ...engine.cooked_schemas import animation as A
-            own_clips[str(name)] = (ref, A.parse_payload(payload).duration)
-
-    def own(fill: dict, what: str) -> dict:
-        """``anim:<name>`` resolved to the hero's own clip (and its length)."""
-        fill = dict(fill)
-        clip = fill.get("clip")
-        clips = clip if isinstance(clip, list) else [clip]
-        out = []
-        for c in clips:
-            if isinstance(c, str) and c.startswith(_OWN_CLIP):
-                n = c[len(_OWN_CLIP):]
-                if n not in own_clips:
-                    raise ContentError(f"hero {hid}: {what}: no animations.{n}")
-                out.append(own_clips[n][0])
-                if not isinstance(clip, list) and "duration" not in fill:
-                    fill["duration"] = own_clips[n][1]
-            else:
-                out.append(c)
-        if clip is not None:
-            fill["clip"] = out if isinstance(clip, list) else out[0]
-        if isinstance(fill.get("texture"), str):
-            # A picture slot: a PNG in the mod, or a shipped UI path.
-            fill["texture"] = ui_art(fill["texture"], _DEFAULT_ICON,
-                                     what.rsplit(".", 1)[-1], f"{what}.texture")
-        return fill
-
     # Its own body (step D): a glb with the rig's bones at proportions of its
     # own, cooked onto the rig's mesh as template, then its SKELETON rewritten
     # with the glb armature's rest pose (engine/skeleton_codec.py), so mesh,
     # skeleton and the clips retargeted onto that armature agree.
+    retarget_rest = None
     if frame.get("model"):
         from ...engine import skeleton_codec as SK
         glb = _mod_source(out_dir, frame["model"], hid, "frame.model").read_bytes()
@@ -1620,13 +1562,108 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if missing:
                 raise ContentError(f"hero {hid}: frame.model has no bone(s) "
                                    f"{', '.join(missing[:6])} of the rig")
-            geo = SK.encode(geo, SK.with_rest(skel, rest))
+            own_skel = SK.with_rest(skel, rest)
+            geo = SK.encode(geo, own_skel)
+            # The rig's clips key bone translations at the RIG's lengths; every
+            # rig clip the hero plays is re-proportioned for this body (fit()).
+            retarget_rest = (SK.rest_translations(skel), SK.rest_translations(own_skel))
         except SK.SkeletonError as e:
             raise ContentError(f"hero {hid}: frame.model: {e}") from e
         own_mesh = f"{mesh.rsplit(chr(92), 1)[0]}\\{scope}_GEO.fbx"
         put(PC.art_cooked_path(own_mesh), geo)
         art.append(f"3D|{own_mesh}|oCGeometry")
         mesh = own_mesh
+
+    rig_dir = mesh.rsplit("\\", 1)[0] + "\\Animations"
+    retargeted: dict[str, str] = {}
+
+    def fit(clip):
+        """A clip of the rig's own, re-proportioned for the hero's own body
+        (anim_cook.retarget) into a clip file of the hero's; anything else,
+        or every clip when the hero has no body of its own, as it is."""
+        if not (retarget_rest and isinstance(clip, str)
+                and clip.lower().startswith(rig_dir.lower() + "\\")):
+            return clip
+        if clip not in retargeted:
+            from ...engine import anim_cook as AC
+            raw = corpus.read(f"3D/{clip.replace(chr(92), '/')}.Animation.gen")
+            if raw is None:
+                return clip
+            cf = cooked.parse(raw)
+            payload = b"".join(x.payload for x in cf.sections)
+            new = AC.retarget(payload, *retarget_rest)
+            if new is payload:
+                retargeted[clip] = clip
+            else:
+                head = len(cf.sections[0].payload)
+                cf.sections[0] = cooked.Section(payload=new[:head])
+                cf.sections[1] = cooked.Section(payload=new[head:])
+                ref = f"{rig_dir}\\{scope}_{clip.rsplit(chr(92), 1)[-1]}"
+                put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(cf))
+                art.append(f"3D|{ref}|oCAnimation")
+                retargeted[clip] = ref
+        return retargeted[clip]
+
+    # Its own animations (step E): each a Blender clip on the rig's skeleton,
+    # cooked by anim_cook onto a rig clip as template (bone order, tail
+    # fields) into a NEW clip file of its own beside the rig's; the rig's
+    # clips are untouched. `clip = "anim:<name>"` then names it.
+    own_clips: dict[str, tuple[str, float]] = {}
+    anims = frame.get("animations") or {}
+    if anims:
+        from ...engine import anim_cook as AC
+        for name, spec in sorted(anims.items()):
+            spec = spec if isinstance(spec, dict) else {"source": spec}
+            if not spec.get("source") or not spec.get("template"):
+                raise ContentError(f"hero {hid}: animations.{name} needs source (a .glb) "
+                                   "and template (a rig clip, e.g. Kintaro_FightingIdle_Loop)")
+            tpl_ref = f"{rig_dir}\\{spec['template']}.fbx"
+            tpl_raw = corpus.read(f"3D/{tpl_ref.replace(chr(92), '/')}.Animation.gen")
+            if tpl_raw is None:
+                raise ContentError(f"hero {hid}: animations.{name}: the rig has no clip "
+                                   f"{spec['template']!r}")
+            tcf = cooked.parse(tpl_raw)
+            glb = _mod_source(out_dir, spec["source"], hid, f"animations.{name}").read_bytes()
+            tpl_payload = b"".join(x.payload for x in tcf.sections)
+            if retarget_rest:   # bones the glb leaves alone keep the template's keys
+                tpl_payload = AC.retarget(tpl_payload, *retarget_rest)
+            try:
+                payload, _notes = AC.cook(glb, tpl_payload,
+                                          name=spec.get("clip"), strict=bool(spec.get("strict")))
+            except AC.AnimCookError as e:
+                raise ContentError(f"hero {hid}: animation {name}: {e}") from e
+            head = len(tcf.sections[0].payload)
+            tcf.sections[0] = cooked.Section(payload=payload[:head])
+            tcf.sections[1] = cooked.Section(payload=payload[head:])
+            ref = f"{rig_dir}\\{scope}_{name}.fbx"
+            put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(tcf))
+            art.append(f"3D|{ref}|oCAnimation")
+            from ...engine.cooked_schemas import animation as A
+            own_clips[str(name)] = (ref, A.parse_payload(payload).duration)
+
+    def own(fill: dict, what: str) -> dict:
+        """``anim:<name>`` resolved to the hero's own clip (and its length)."""
+        fill = dict(fill)
+        clip = fill.get("clip")
+        clips = clip if isinstance(clip, list) else [clip]
+        out = []
+        for c in clips:
+            if isinstance(c, str) and c.startswith(_OWN_CLIP):
+                n = c[len(_OWN_CLIP):]
+                if n not in own_clips:
+                    raise ContentError(f"hero {hid}: {what}: no animations.{n}")
+                out.append(own_clips[n][0])
+                if not isinstance(clip, list) and "duration" not in fill:
+                    fill["duration"] = own_clips[n][1]
+            else:
+                out.append(fit(c))
+        if clip is not None:
+            fill["clip"] = out if isinstance(clip, list) else out[0]
+        if isinstance(fill.get("texture"), str):
+            # A picture slot: a PNG in the mod, or a shipped UI path.
+            fill["texture"] = ui_art(fill["texture"], _DEFAULT_ICON,
+                                     what.rsplit(".", 1)[-1], f"{what}.texture")
+        return fill
 
     # Its talents: its own controllers (rows of its own herodef), and the 6
     # ultimate rows on Hero_Common's own controllers, as every hero's are.
@@ -1808,6 +1845,11 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     try:
         slots = HF.rig_slots(read, rig)
+        for fill in slots.values():
+            if isinstance(fill.get("clip"), list):
+                fill["clip"] = [fit(c) for c in fill["clip"]]
+            elif "clip" in fill:
+                fill["clip"] = fit(fill["clip"])
         for slot, fill in (frame.get("slots") or {}).items():
             slots[str(slot)] = own(dict(fill), f"frame.slots.{slot}")
         # The HUD's portrait and ability banner: Hero_Common leaves the

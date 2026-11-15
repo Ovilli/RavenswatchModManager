@@ -217,6 +217,47 @@ def cook(glb: bytes, template_payload: bytes, *, name: str | None = None,
     return A.emit_payload(out), notes
 
 
+#: A bone whose rest translation is shorter than this (metres) has no length to
+#: scale: the root motion bone (rest 0) and helpers sitting on their parent.
+#: Their keys are left alone, so root motion and lunge distances never change.
+RETARGET_MIN_LENGTH = 0.01
+
+
+def retarget(payload: bytes, rig_rest: dict[str, tuple], own_rest: dict[str, tuple]) -> bytes:
+    """A rig's clip re-proportioned for a body with its own bone lengths.
+
+    Measured on the corpus (Kintaro's 57 on-foot clips, 2026-11-15): a clip
+    keys every bone's TRANSLATION in parent-local space (145 bones move during
+    a clip: the rig stretches), at the rig's own lengths -- so played on a
+    skeleton of other proportions it would pull every bone back to the rig's
+    length and stretch the mesh. Rotation keys are absolute parent-local too,
+    and are kept: a body built on the rig's armature points its bones the same
+    way (Jack against Kintaro: rest swing median 4.6 deg, twist under 5 deg),
+    so it takes the rig's poses as they are.
+
+    Each translation key is scaled by ``|own rest| / |rig rest|`` for its
+    bone, keeping the key's direction: rest maps to rest and a stretch stays
+    proportional. Bones missing from either rest, or shorter than
+    :data:`RETARGET_MIN_LENGTH`, and bones whose length did not change keep
+    their bytes, so the same skeleton in gives the same clip out. Unproven in
+    game."""
+    anim = A.parse_payload(payload)
+    changed = False
+    for t in anim.tracks:
+        a, b = rig_rest.get(t.name), own_rest.get(t.name)
+        if a is None or b is None or not t.t_values:
+            continue
+        la = sum(c * c for c in a) ** 0.5
+        if la < RETARGET_MIN_LENGTH:
+            continue
+        s = sum(c * c for c in b) ** 0.5 / la
+        if abs(s - 1.0) < 1e-4:
+            continue
+        t.t_values = [quant_ts([c * s for c in A._decode_trans_scale(v)]) for v in t.t_values]
+        changed = True
+    return A.emit_payload(anim) if changed else payload
+
+
 def declared_duration(glb: bytes, name: str | None = None) -> float | None:
     """The clip length our exporters recorded, if any: per-animation
     ``extras.rsmm.duration`` (character export) or the file-level
