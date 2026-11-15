@@ -768,7 +768,8 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
             _register_bleed_bonus(ef, bonus_name, seed=seed)
             new_mod = ""
         elif crit_to_damage:
-            _build_crit_to_damage(w, ef, state.name, tag, talent, amount, new_mod)
+            _build_crit_to_damage(w, ef, state.name, tag, talent, amount, new_mod,
+                                  cond_state)
         elif trait_charge:
             # Not a modifier: +1 on the counter as the talent's state comes on,
             # -1 as it goes off. The number above is only the card's.
@@ -907,37 +908,44 @@ def _register_bleed_bonus(ef: GE.EntityFile, bonus_name: str, *, seed: str = "")
 
 def _build_crit_to_damage(
     w: TW.TalentWriter, ef: GE.EntityFile, state_name: str,
-    tag: str, talent: str, amount: P.Link, new_mod: str,
+    tag: str, talent: str, amount: P.Link, new_mod: str, cond: P.Link | None = None,
 ) -> None:
-    """Convert bonus Crit chance * 2 + bonus Crit damage to Attack power; zero HUD crit stats."""
+    """Convert bonus Crit chance * 2 + bonus Crit damage to Attack power; zero
+    the hero's crit (and its HUD numbers) while the conversion applies: the
+    talent is owned and, with ``during``/``after``/``on``, ``cond`` is on."""
     prefix = f"Skill {talent} Added {tag}"
-    if not any(c.name == "Raw Crit Chance" for c in ef.graph().components):
-        neg_val = w.add(TW._VALUE, f"{prefix} Zero Crit Value",
-                        {"value": P.Num.f32(-10.0), "flag": 0}, flags=0x101)
-        raw_sel = w.when(f"{prefix} Raw Crit Selector",
-                         TW.link_to(ef, state_name), neg_val, 0.05)
-        w.add(TW._VALUE, "Raw Crit Chance",
-              {"value": w._read(raw_sel, TW.READ_VALUE, P.Num.f32(0.05)), "flag": 0},
-              flags=0x101, group="Attributes")
-        ef.set_override("Raw Crit Chance", _RAW_CRIT_GUID, _RAW_CRIT_LABEL)
-    disp_overrides = (
-        ("Crit Chance Display Ratio Operation", 0x1B8DE056, "3e16c36a8cd0094893903739387f4987"),
-        ("Crit Damage Raw Ratio Operation", 0x1B8DE1C7, "735fac713b1e31499915dc8c037e964e"),
-    )
-    existing = {c.name for c in ef.graph().components}
-    if any(name not in existing for name, _, _ in disp_overrides):
-        zero_disp = w.add(TW._VALUE, f"{prefix} Zero Display Value",
-                          {"value": P.Num.f32(0.0), "flag": 0}, flags=0x101)
-        disp_mult = w.when(f"{prefix} Display Mult Selector",
-                           TW.link_to(ef, state_name), zero_disp, 100.0)
-        ctl_link = P.Link(bytes.fromhex("5402e485d75499418aba0352c30052f2"),
-                          "[Dt Character Controller] Character_Common\\Base\\Character Controller")
-        for name, key, guid_hex in disp_overrides:
-            if name in existing:
-                continue
-            w.multiply(name, ctl_link, key, disp_mult, TW.READ_VALUE, group="UI Bonus")
-            ef.set_override(name, bytes.fromhex(guid_hex),
-                            f"[Multi values operations] Hero_Common\\UI Bonus\\{name}")
+    # The overrides below are the hero's ONE Raw Crit Chance and HUD ratios;
+    # a second converter would have to share them, so it is refused.
+    if any(c.name == "Raw Crit Chance" for c in ef.graph().components):
+        raise AddStatError(f"talent {talent!r}: only one talent per hero can "
+                           "convert crit into damage")
+    owned = TW.link_to(ef, state_name)
+
+    def gate(name: str, then: P.Link, otherwise: float) -> P.Link:
+        if cond is None:
+            return w.when(name, owned, then, otherwise)
+        return w.when_all(name, owned, cond, then, otherwise)
+
+    neg_val = w.add(TW._VALUE, f"{prefix} Zero Crit Value",
+                    {"value": P.Num.f32(-10.0), "flag": 0}, flags=0x101)
+    raw_sel = gate(f"{prefix} Raw Crit Selector", neg_val, 0.05)
+    w.add(TW._VALUE, "Raw Crit Chance",
+          {"value": w._read(raw_sel, TW.READ_VALUE, P.Num.f32(0.05)), "flag": 0},
+          flags=0x101, group="Attributes")
+    ef.set_override("Raw Crit Chance", _RAW_CRIT_GUID, _RAW_CRIT_LABEL)
+    zero_disp = w.add(TW._VALUE, f"{prefix} Zero Display Value",
+                      {"value": P.Num.f32(0.0), "flag": 0}, flags=0x101)
+    disp_mult = gate(f"{prefix} Display Mult Selector", zero_disp, 100.0)
+    ctl_link = P.Link(bytes.fromhex("5402e485d75499418aba0352c30052f2"),
+                      "[Dt Character Controller] Character_Common\\Base\\Character Controller")
+    for name, key, guid_hex in (
+            ("Crit Chance Display Ratio Operation", 0x1B8DE056,
+             "3e16c36a8cd0094893903739387f4987"),
+            ("Crit Damage Raw Ratio Operation", 0x1B8DE1C7,
+             "735fac713b1e31499915dc8c037e964e")):
+        w.multiply(name, ctl_link, key, disp_mult, TW.READ_VALUE, group="UI Bonus")
+        ef.set_override(name, bytes.fromhex(guid_hex),
+                        f"[Multi values operations] Hero_Common\\UI Bonus\\{name}")
     ops_acc = ef.F32_ACCESSOR["oCEntityCpntValueOperationsSettings"]
     cc_ratio = w.add(TW._VALUE, f"{prefix} Crit Chance Ratio",
                      {"value": P.Num.f32(2.0), "flag": 0}, flags=0x101)

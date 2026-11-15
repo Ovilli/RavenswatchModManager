@@ -1645,13 +1645,19 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         seen.add(sel.name)
         entries = next(f for f in EF.fields(sel) if f.name == "entries")
         for i, item in enumerate(entries.items):
-            cur = float(item.text.split()[3]) if clamp else val
-            v = min(cur, val) if clamp else val
+            v = val
+            if clamp:
+                # `bool <cond>  f32 <n>  [<- link]`: lower n, never raise it
+                t = item.text.split()
+                if len(t) < 4 or t[2] != "f32":
+                    raise KitError(f"kit {slot}: {sel.name} entry {i} is not a number "
+                                   f"of seconds ({item.text!r})")
+                v = min(float(t[3]), val)
             ef.set_value(sel.name, f"entries[{i}][1]", v)
-            for r in sel.refs:
-                sub = by.get(r.path.rsplit("\\", 1)[-1].strip())
-                if sub is not None and sub.cls == "oCEntityCpntValueSelectorSettings":
-                    _set_selector(sub, val, clamp=clamp, seen=seen)
+        for r in sel.refs:                      # an entry read from another selector
+            sub = by.get(r.path.rsplit("\\", 1)[-1].strip())
+            if sub is not None and sub.cls == "oCEntityCpntValueSelectorSettings":
+                _set_selector(sub, val, clamp=clamp, seen=seen)
 
     if cooldown is not None:
         tm = by.get(f"Attack {attack} Cooldown")

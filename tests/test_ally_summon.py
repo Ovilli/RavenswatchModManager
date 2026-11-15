@@ -452,3 +452,38 @@ def test_an_unresolved_own_entity_is_refused_not_guessed():
         HK._entity_ref("own:Bomb")
     assert HK._entity_ref("Heroes/Hero_Common/Hero_X_Bomb") == \
         "Heroes\\Hero_Common\\Hero_X_Bomb.entity.ot"
+
+
+@needs_corpus
+def test_a_summons_attack_can_drop_its_combo_set_its_damage_and_never_wait(tmp_path):
+    """PR #149 (Blood Wolf's dire wolf): ``attack_combo = false`` cuts the combo
+    link, ``attack_damage`` is the level-1 damage (value_28 = damage / 10),
+    ``attack_cooldown = 0`` zeroes the start-of-fight wait too; and
+    ``keep_ability`` leaves the button's state alone (no pet order timer)."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine.entity_graph_edit import EntityFile
+    from rsmm.engine.hero_kit import KitError, _attack_tuning_of
+    from rsmm.sdk.content import ContentDef
+    from rsmm.sdk.kinds import heros
+    files = heros.emit("m", ContentDef(kind="hero", id="Biter", fields={"base": "Red", "kit": {
+        "pets": {"entity": "Enemies/Wolves/Standard_Wolf_Dire", "attack": "Double Slash",
+                 "attack_combo": False, "attack_damage": 15, "attack_cooldown": 0}}}),
+        tmp_path)
+    by = {p.name: p for p in files}
+    ef = EntityFile(by["Hero_Biter_Summon1_Model.entity.ot.EntitySettingsResource.gen"]
+                    .read_bytes(), "m")
+
+    def val(part, fld):
+        return next(f.text for f in EF.fields(ef.component(part)) if f.name == fld)
+    comps = ef.graph().components
+    links = [c for c in comps if c.cls == "oCEntityCpntTesterSettings"
+             and c.name.endswith("Combo Link Tester") and "Double Slash" in c.name]
+    assert links and all(val(c.name, "on_true") == "(none)" for c in links)
+    dmg = [c for c in comps if c.cls == "oCDtEntityCpntDamageSettings"
+           and c.name.startswith("Attack Double Slash")]
+    assert dmg and all(val(c.name, "value_28").startswith("f32 1.5") for c in dmg)
+    assert val("Attack Double Slash Cooldown", "duration").startswith("f32 0")
+    assert val("Fighting Start Attack Cooldown", "duration").startswith("f32 0")
+    for bad in ({"attack_combo": "no"}, {"attack_damage": 0}, {"attack_cooldown": -1}):
+        with pytest.raises(KitError):
+            _attack_tuning_of(bad, "pets")

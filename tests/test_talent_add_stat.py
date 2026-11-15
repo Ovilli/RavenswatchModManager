@@ -840,3 +840,20 @@ def test_convert_crit_into_damage_stat(wukong):
     assert any(r.guid == TA._CRIT_DMG_VAL.guid for r in sum_op.refs)
     assert comp(out, "Crit Chance Display Ratio Operation").override is not None
     assert comp(out, "Crit Damage Raw Ratio Operation").override is not None
+
+
+def test_convert_crit_zeroes_crit_only_while_its_condition_holds(wukong):
+    """``during``: the crit is zeroed (and the HUD numbers with it) only while
+    the conversion applies, not whenever the talent is owned; and a hero has
+    ONE Raw Crit Chance, so a second converter is refused, not silently tied
+    to the first one's state."""
+    out, _ = TA.add_stat(wukong, talent="Trait Fire", stat="Convert crit into damage",
+                         during="DEFENSE")
+    assert EC.check(out, wukong, name="Hero_SunWukong") == []
+    prefix = "Skill Trait Fire Added Crit To Damage During DEFENSE"
+    for sel in (f"{prefix} Raw Crit Selector", f"{prefix} Display Mult Selector"):
+        refs = {r.path.rsplit("\\", 1)[-1] for r in comp(out, sel).refs}
+        assert "Skill Trait Fire" in refs
+        assert any("DEFENSE" in r for r in refs), refs
+    with pytest.raises(TA.AddStatError, match="only one talent"):
+        TA.add_stat(out, talent="Power Hold", stat="Convert crit into damage")
