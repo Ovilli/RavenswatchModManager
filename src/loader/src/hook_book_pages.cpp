@@ -103,6 +103,19 @@ std::string clip(std::string s) {
 
 inline std::uintptr_t A(const void* p) { return reinterpret_cast<std::uintptr_t>(p); }
 
+// Guarded load / store at base + off (base is a pointer or an address).
+template <class T>
+bool load_at(const void* base, std::uintptr_t off, T* out) { return mem_load(A(base) + off, out); }
+template <class T>
+bool load_at(std::uintptr_t base, std::uintptr_t off, T* out) { return mem_load(base + off, out); }
+
+bool store_ptr(void* base, std::uintptr_t off, void* v) {
+    void* at = reinterpret_cast<std::uint8_t*>(base) + off;
+    if (!mem_writable(at, sizeof(void*))) return false;
+    *static_cast<void**>(at) = v;
+    return true;
+}
+
 // --- snapshots (what Lua set) ----------------------------------------------------
 
 struct RowSnap {
@@ -126,7 +139,7 @@ struct EntrySnap {
 // --- live state ----------------------------------------------------------------
 
 struct LiveRow {
-    std::string page, cat, id, title;
+    std::string id, title;
     std::vector<std::string> texts;
     std::vector<OcStr> labels;
     std::uint32_t value = 0, seen = 0, def = 0;   // the game writes `value`
@@ -147,11 +160,11 @@ struct Record {
     };
     std::vector<Cat> cats;
     std::map<std::uint32_t, std::string> nested;  // entry index -> entry id
-    bool ours_index(std::uint32_t i) const {
-        if (nested.count(i)) return true;
-        for (const auto& c : cats) if (c.entry_index == i) return true;
-        return false;
+    const Cat* cat_at(std::uint32_t i) const {
+        for (const auto& c : cats) if (c.entry_index == i) return &c;
+        return nullptr;
     }
+    bool ours_index(std::uint32_t i) const { return nested.count(i) || cat_at(i); }
 };
 
 struct Event { std::string name, payload; };
@@ -164,13 +177,15 @@ struct Request {
 std::mutex g_mu;   // guards everything down to g_armed
 std::map<std::string, PageSnap> g_pages;
 std::map<std::string, EntrySnap> g_entries;
-std::set<void*> g_our_ctrls;                     // controllers our build produced
-// Child windows we hid, per controller. Pooled entities keep a child window's
-// visible bit across release and reuse (activation re-shows only the root), so
-// teardown shows them again before the entity goes back to its pool.
-std::map<void*, std::vector<void*>> g_hidden;
 struct SavedTitle { std::uintptr_t label; const std::string* orig; };
-std::map<void*, SavedTitle> g_title_saved;       // ctrl -> heading label + its original text
+struct OurPage {
+    // Child windows we hid. Pooled entities keep a child window's visible bit across
+    // release and reuse (activation re-shows only the root), so teardown shows them
+    // again before the entity goes back to its pool.
+    std::vector<void*> hidden;
+    SavedTitle title{};                          // heading label + its original text
+};
+std::map<void*, OurPage> g_ours;                 // controllers our build produced
 std::list<Record> g_records;                     // open order: parents before children
 std::deque<LiveRow> g_live_rows;                 // never freed: the game holds &value
 std::deque<std::string> g_strs;                  // never freed: literal strings
@@ -297,7 +312,7 @@ void prune_locked() {
     for (auto it = g_records.begin(); it != g_records.end(); ++it) {
         if (it->building) continue;
         std::uintptr_t child = 0;
-        const bool open = mem_load(A(it->parent) + kPageChild, &child) && child == A(it->ctrl);
+        const bool open = load_at(it->parent, kPageChild, &child) && child == A(it->ctrl);
         if (!open || dead_ctrls.count(it->parent)) {
             dead.push_back(it);
             dead_ctrls.insert(it->ctrl);
@@ -320,42 +335,43 @@ void prune_locked() {
     }
 }
 
-// Loader-side scan only: no prune, no game-memory read. Safe from any thread (the
-// Lua-facing functions use this; pruning stays on the game-thread paths).
+// Lookups are loader-side state only. find_record, depth_no_prune and is_tracked
+// never prune or read game memory, so the Lua-facing functions and the detour
+// gates can call them from any thread; record_of, depth_of and is_host prune and
+// stay on the game-thread paths.
+const Record* find_locked(void* ctrl) {   // g_mu held
+    for (const auto& r : g_records) if (r.ctrl == ctrl) return &r;
+    return nullptr;
+}
+
 bool find_record(void* ctrl, Record* out) {
     if (!ctrl) return false;
     std::lock_guard<std::mutex> lk(g_mu);
-    for (const auto& r : g_records) {
-        if (r.ctrl == ctrl) { if (out) *out = r; return true; }
-    }
-    return false;
+    const Record* r = find_locked(ctrl);
+    if (r && out) *out = *r;
+    return r != nullptr;
+}
+
+int depth_no_prune(void* ctrl) {
+    if (!ctrl) return 0;
+    std::lock_guard<std::mutex> lk(g_mu);
+    const Record* r = find_locked(ctrl);
+    return r ? r->depth : 0;
 }
 
 bool record_of(void* ctrl, Record* out) {
     if (!ctrl) return false;
     std::lock_guard<std::mutex> lk(g_mu);
     prune_locked();
-    for (const auto& r : g_records) {
-        if (r.ctrl == ctrl) { if (out) *out = r; return true; }
-    }
-    return false;
-}
-
-// Loader-side state only: no game-memory reads, no prune. Gates every detour so
-// a vanilla call costs nothing.
-bool is_record_ctrl(void* ctrl) {
-    if (!ctrl) return false;
-    std::lock_guard<std::mutex> lk(g_mu);
-    for (const auto& r : g_records) if (r.ctrl == ctrl) return true;
-    return false;
+    const Record* r = find_locked(ctrl);
+    if (r && out) *out = *r;
+    return r != nullptr;
 }
 
 bool is_tracked(void* ctrl) {   // the vanilla Settings ctrl or one of our records
     if (!ctrl) return false;
     std::lock_guard<std::mutex> lk(g_mu);
-    if (ctrl == g_settings_ctrl) return true;
-    for (const auto& r : g_records) if (r.ctrl == ctrl) return true;
-    return false;
+    return ctrl == g_settings_ctrl || find_locked(ctrl) != nullptr;
 }
 
 bool any_records() {
@@ -382,7 +398,7 @@ int depth_of(void* ctrl) {
 void hide_window(void* ctrl, void* w) {
     g_set_visible(w, false, false);
     std::lock_guard<std::mutex> lk(g_mu);
-    g_hidden[ctrl].push_back(w);
+    g_ours[ctrl].hidden.push_back(w);
 }
 
 bool spawn_row(void* ctrl, void* settings, void* factory, void* cat, void* row_parent,
@@ -408,19 +424,35 @@ bool spawn_row(void* ctrl, void* settings, void* factory, void* cat, void* row_p
     // A pooled row may carry hidden arrows from an earlier page: set both explicitly.
     for (std::uintptr_t off : {kRowArrowL, kRowArrowR}) {
         void* arrow = nullptr;
-        if (!mem_load(A(p) + off, &arrow) || !arrow) continue;
+        if (!load_at(p, off, &arrow) || !arrow) continue;
         if (r.editable) g_set_visible(arrow, true, true);
         else hide_window(ctrl, arrow);   // a single choice: hide both arrows
     }
     return true;
 }
 
-LiveRow* new_row(const std::string& page, const std::string& cat, const std::string& id,
-                 const std::string& title) {
+// The game keeps pointers to the strings we hand it, so they live in g_strs for good.
+const std::string* keep_str(const std::string& s) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_strs.push_back(s);
+    return &g_strs.back();
+}
+
+// Adds a tab to a controller; *index is its entry index. nullptr when the tab count
+// is unreadable (*unreadable set) or the game refuses.
+void* add_tab(void* ctrl, void* page, void* parent, const std::string& label,
+              std::uint32_t type, std::uint32_t* index, bool* unreadable = nullptr) {
+    if (!load_at(ctrl, kCtrlTabCount, index)) {
+        if (unreadable) *unreadable = true;
+        return nullptr;
+    }
+    OcStr t = lit(*keep_str(clip(label)));
+    return g_add_category(ctrl, page, parent, &t, type);
+}
+
+LiveRow* new_row(const std::string& id, const std::string& title) {
     g_live_rows.emplace_back();
     LiveRow* r = &g_live_rows.back();
-    r->page = page;
-    r->cat = cat;
     r->id = id;
     r->title = clip(title);
     return r;
@@ -462,30 +494,32 @@ Target entry_target(void* parent, std::uint32_t idx, std::string* page, int* dep
     return Target::Ours;
 }
 
-// Hides every entry that is not ours: with the vanilla tab builders skipped on
-// our page that is only the trailing Credits/EULA/Privacy.
-void hide_foreign_tabs(void* child, const Record& rec) {
-    std::uintptr_t tabs = 0;
-    std::uint32_t count = 0;
-    if (!mem_load(A(child) + kCtrlTabs, &tabs) || !tabs
-        || !mem_load(A(child) + kCtrlTabCount, &count)) return;
-    if (count > kMaxTabs) count = kMaxTabs;
-    for (std::uint32_t i = 0; i < count; ++i) {
-        if (rec.ours_index(i)) continue;
-        void* btn = nullptr;
-        if (mem_load(tabs + i * kTabStride + kTabButton, &btn) && btn)
-            hide_window(child, btn);
-    }
-}
-
 void* tab_button(void* ctrl, std::uint32_t idx) {
     std::uintptr_t tabs = 0;
     std::uint32_t count = 0;
     void* btn = nullptr;
-    if (!mem_load(A(ctrl) + kCtrlTabs, &tabs) || !tabs
-        || !mem_load(A(ctrl) + kCtrlTabCount, &count) || idx >= count
-        || !mem_load(tabs + idx * kTabStride + kTabButton, &btn)) return nullptr;
+    if (!load_at(ctrl, kCtrlTabs, &tabs) || !tabs
+        || !load_at(ctrl, kCtrlTabCount, &count) || idx >= count
+        || !load_at(tabs, idx * kTabStride + kTabButton, &btn)) return nullptr;
     return btn;
+}
+
+// Tab count of a controller, clamped to kMaxTabs; 0 when the tab vector is unreadable.
+std::uint32_t tab_count(void* ctrl) {
+    std::uintptr_t tabs = 0;
+    std::uint32_t count = 0;
+    if (!load_at(ctrl, kCtrlTabs, &tabs) || !tabs || !load_at(ctrl, kCtrlTabCount, &count)) return 0;
+    return std::min(count, kMaxTabs);
+}
+
+// Hides every entry that is not ours: with the vanilla tab builders skipped on
+// our page that is only the trailing Credits/EULA/Privacy.
+void hide_foreign_tabs(void* child, const Record& rec) {
+    const std::uint32_t count = tab_count(child);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        if (rec.ours_index(i)) continue;
+        if (void* btn = tab_button(child, i)) hide_window(child, btn);
+    }
 }
 
 // Pooled tab buttons keep a hidden child window from an earlier page.
@@ -502,7 +536,7 @@ bool image_range(std::uintptr_t* base, std::uintptr_t* size) {
     if (!b) {
         const std::uintptr_t m = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
         std::uint32_t pe = 0, img = 0;
-        if (m && mem_load(m + 0x3c, &pe) && mem_load(m + pe + 24 + 56, &img)) { b = m; sz = img; }
+        if (m && load_at(m, 0x3c, &pe) && load_at(m, pe + 24 + 56, &img)) { b = m; sz = img; }
     }
     *base = b;
     *size = sz;
@@ -515,11 +549,11 @@ std::string rtti_name(std::uintptr_t w) {
     std::uint32_t tdrva = 0;
     if (!image_range(&base, &size) || !mem_load(w, &vt) || vt < base + 8 || vt >= base + size
         || !mem_load(vt - 8, &col) || col < base || col >= base + size
-        || !mem_load(col + 12, &tdrva) || tdrva >= size) return "?";
+        || !load_at(col, 12, &tdrva) || tdrva >= size) return "?";
     std::string out;
     for (int k = 0; k < 120; ++k) {
         std::uint8_t ch = 0;
-        if (!mem_load(base + tdrva + 16 + k, &ch) || !ch) break;
+        if (!load_at(base, tdrva + 16 + k, &ch) || !ch) break;
         out += (ch >= 0x20 && ch < 0x7f) ? char(ch) : '.';
     }
     return out.empty() ? "?" : out;
@@ -528,17 +562,21 @@ std::string rtti_name(std::uintptr_t w) {
 // The page heading is the only oCUILabel that is a direct child of the page's root
 // window. Its displayed text is the oCString at +0x1e8; vtable slot +0x60 is
 // SetText(label, const oCString*).
+constexpr std::uintptr_t kCtrlBmx = 0x68;          // controller -> its BookMenu-side object
+constexpr std::uintptr_t kBmxRoot = 0x88;          // ... -> the page's root window
+constexpr std::uintptr_t kRootChildren = 0x2a8;    // root window -> first child
+constexpr std::uintptr_t kWindowNext = 0x08;       // window -> next sibling
 constexpr std::uintptr_t kLabelText = 0x1e8;
 constexpr std::uintptr_t kLabelSetTextSlot = 0x60;
 using SetTextFn = void (*)(void*, const OcStr*);
 
 std::uintptr_t find_heading_label(void* ctrl) {
     std::uintptr_t bmx = 0, root = 0, c = 0;
-    if (!mem_load(A(ctrl) + 0x68, &bmx) || !bmx || !mem_load(bmx + 0x88, &root) || !root
-        || !mem_load(root + 0x2a8, &c)) return 0;
+    if (!load_at(ctrl, kCtrlBmx, &bmx) || !bmx || !load_at(bmx, kBmxRoot, &root) || !root
+        || !load_at(root, kRootChildren, &c)) return 0;
     for (int n = 0; c && c != ~std::uintptr_t(0) && n < 400; ++n) {
         if (rtti_name(c) == ".?AVoCUILabel@@") return c;
-        if (!mem_load(c + 0x08, &c)) break;
+        if (!load_at(c, kWindowNext, &c)) break;
     }
     return 0;
 }
@@ -546,7 +584,7 @@ std::uintptr_t find_heading_label(void* ctrl) {
 bool label_set_text(std::uintptr_t label, const OcStr* text) {
     std::uintptr_t base = 0, size = 0, vt = 0, fn = 0;
     if (!image_range(&base, &size) || !mem_load(label, &vt) || vt < base || vt >= base + size
-        || !mem_load(vt + kLabelSetTextSlot, &fn) || fn < base || fn >= base + size) return false;
+        || !load_at(vt, kLabelSetTextSlot, &fn) || fn < base || fn >= base + size) return false;
     reinterpret_cast<SetTextFn>(fn)(reinterpret_cast<void*>(label), text);
     return true;
 }
@@ -558,8 +596,8 @@ void set_page_title(void* ctrl, const std::string& title) {
     const std::uintptr_t label = find_heading_label(ctrl);
     std::uintptr_t optr = 0;
     std::uint32_t olen = 0;
-    if (!label || !mem_load(label + kLabelText, &optr)
-        || !mem_load(label + kLabelText + 8, &olen)) {
+    if (!label || !load_at(label, kLabelText, &optr)
+        || !load_at(label, kLabelText + 8, &olen)) {
         if (!warned) { warned = true; Loader::get().log_warn("[ui-menus] page heading label not found; title unchanged"); }
         return;
     }
@@ -569,18 +607,11 @@ void set_page_title(void* ctrl, const std::string& title) {
         if (olen > 256 || !mem_readable(reinterpret_cast<void*>(optr), olen)) return;
         orig.assign(reinterpret_cast<const char*>(optr), olen);
     }
-    const std::string *orig_keep, *title_keep;
-    {
-        std::lock_guard<std::mutex> lk(g_mu);
-        g_strs.push_back(orig);
-        orig_keep = &g_strs.back();
-        g_strs.push_back(clip(title));
-        title_keep = &g_strs.back();
-    }
-    OcStr t = lit(*title_keep);
+    const std::string* orig_keep = keep_str(orig);
+    OcStr t = lit(*keep_str(clip(title)));
     if (!label_set_text(label, &t)) return;
     std::lock_guard<std::mutex> lk(g_mu);
-    g_title_saved[ctrl] = {label, orig_keep};
+    g_ours[ctrl].title = {label, orig_keep};
 }
 
 void hook_open_child(void* parent, void* desc) {
@@ -597,7 +628,7 @@ void hook_open_child(void* parent, void* desc) {
     } else {
         if (!is_tracked(parent)) { g_real_open(parent, desc); return; }
         std::uint32_t idx = 0;
-        if (parent && mem_load(A(parent) + kCtrlSelected, &idx)) {
+        if (parent && load_at(parent, kCtrlSelected, &idx)) {
             const Target t = entry_target(parent, idx, &page, &depth);
             if (t == Target::Gone) {
                 L.log_warn("[ui-menus] the selected entry was removed; nothing opened");
@@ -624,8 +655,8 @@ void hook_open_child(void* parent, void* desc) {
         }
     }
     std::uintptr_t bm = 0, bms = 0;
-    if (!mem_load(A(parent) + kPageBm, &bm) || !bm
-        || !mem_load(bm + kBmSettings, &bms) || !bms
+    if (!load_at(parent, kPageBm, &bm) || !bm
+        || !load_at(bm, kBmSettings, &bms) || !bms
         || !mem_readable(reinterpret_cast<void*>(bms + kBmDescBase + kDescSystem * kDescSize),
                          kDescSize)) {
         L.log_err("[ui-menus] BookMenu layout not as expected; page '" + page + "' not opened");
@@ -650,14 +681,15 @@ void hook_open_child(void* parent, void* desc) {
     t_build_ctrl = nullptr;
 
     std::uintptr_t child = 0;
-    mem_load(A(parent) + kPageChild, &child);
+    load_at(parent, kPageChild, &child);
+    void* const child_ctrl = reinterpret_cast<void*>(child);
     Record rec;
     bool have = false;
     {
         std::lock_guard<std::mutex> lk(g_mu);
         for (auto it = g_records.begin(); it != g_records.end();) {
             if (!it->building) { ++it; continue; }
-            if (child != 0 && it->ctrl == reinterpret_cast<void*>(child)) {
+            if (child != 0 && it->ctrl == child_ctrl) {
                 it->building = false;
                 rec = *it;
                 have = true;
@@ -673,20 +705,20 @@ void hook_open_child(void* parent, void* desc) {
         L.log_err("[ui-menus] page '" + page + "' opened but its build did not reach us "
                   "(built ctrl " + std::string(built ? "seen" : "missing") + ")");
     } else {
-        show_our_tabs(reinterpret_cast<void*>(child), rec);
+        show_our_tabs(child_ctrl, rec);
         std::string title;
         {
             std::lock_guard<std::mutex> lk(g_mu);
             auto pit = g_pages.find(rec.page_id);
             if (pit != g_pages.end()) title = pit->second.title;
         }
-        if (!title.empty()) set_page_title(reinterpret_cast<void*>(child), title);
-        g_last_leaf.store(reinterpret_cast<void*>(child));   // current() inside the open handler
+        if (!title.empty()) set_page_title(child_ctrl, title);
+        g_last_leaf.store(child_ctrl);   // current() inside the open handler
         g_last_tick.store(GetTickCount64());
-        hide_foreign_tabs(reinterpret_cast<void*>(child), rec);
+        hide_foreign_tabs(child_ctrl, rec);
         if (!rec.cats.empty()) {
-            if (void* btn = tab_button(reinterpret_cast<void*>(child), rec.cats[0].entry_index))
-                g_real_select(reinterpret_cast<void*>(child), btn);
+            if (void* btn = tab_button(child_ctrl, rec.cats[0].entry_index))
+                g_real_select(child_ctrl, btn);
         }
         queue("ui:menus_open", page_payload(rec.page_id, rec.ctx, rec.depth));
     }
@@ -709,43 +741,34 @@ void hook_build_audio(void* ctrl, void* page, void* parent) {
 alignas(16) std::uint8_t g_apply_placeholder[0x110] = {};
 
 void hook_teardown(void* ctrl) {
-    bool ours = false;
+    OurPage ours;
+    bool is_ours = false;
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        ours = g_our_ctrls.count(ctrl) != 0;
+        auto it = g_ours.find(ctrl);
+        if (it != g_ours.end()) {
+            is_ours = true;
+            ours.hidden = std::move(it->second.hidden);
+            ours.title = it->second.title;
+        }
     }
-    if (!ours) { g_real_teardown(ctrl); return; }
-    std::vector<void*> hidden;
-    {
-        std::lock_guard<std::mutex> lk(g_mu);
-        auto it = g_hidden.find(ctrl);
-        if (it != g_hidden.end()) { hidden = std::move(it->second); g_hidden.erase(it); }
-    }
-    SavedTitle saved{};
-    {
-        std::lock_guard<std::mutex> lk(g_mu);
-        auto it = g_title_saved.find(ctrl);
-        if (it != g_title_saved.end()) { saved = it->second; g_title_saved.erase(it); }
-    }
-    if (saved.label) {   // the pooled page entity must not keep our heading
-        OcStr o = lit(*saved.orig);
-        label_set_text(saved.label, &o);
+    if (!is_ours) { g_real_teardown(ctrl); return; }
+    if (ours.title.label) {   // the pooled page entity must not keep our heading
+        OcStr o = lit(*ours.title.orig);
+        label_set_text(ours.title.label, &o);
     }
     // Pooled entities keep child-window visibility; re-show before they return to the pool.
-    for (void* w : hidden)
+    for (void* w : ours.hidden)
         if (mem_readable(w, 0x238)) g_set_visible(w, true, true);
     std::uintptr_t cur = 0;
-    if (mem_load(A(ctrl) + kCtrlApply, &cur) && cur == 0
-        && mem_writable(reinterpret_cast<void*>(A(ctrl) + kCtrlApply), 8))
-        *reinterpret_cast<void**>(A(ctrl) + kCtrlApply) = g_apply_placeholder;
-    g_real_teardown(ctrl);
+    if (load_at(ctrl, kCtrlApply, &cur) && cur == 0) store_ptr(ctrl, kCtrlApply, g_apply_placeholder);
+    g_real_teardown(ctrl);   // still in g_ours: the ctrl counts as ours until it returns
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        g_our_ctrls.erase(ctrl);
+        g_ours.erase(ctrl);
     }
-    if (mem_load(A(ctrl) + kCtrlApply, &cur) && cur == A(g_apply_placeholder)
-        && mem_writable(reinterpret_cast<void*>(A(ctrl) + kCtrlApply), 8))
-        *reinterpret_cast<void**>(A(ctrl) + kCtrlApply) = nullptr;
+    if (load_at(ctrl, kCtrlApply, &cur) && cur == A(g_apply_placeholder))
+        store_ptr(ctrl, kCtrlApply, nullptr);
 }
 
 bool close_and_prune(void* page) {
@@ -776,17 +799,17 @@ bool allow_back(const Record& rec) {
 void hook_back(void* bm) {
     if (!any_records()) { g_real_back(bm); return; }
     std::uintptr_t leaf = 0;
-    if (bm && mem_readable(bm, kBmReadSize) && mem_load(A(bm) + kBmPage, &leaf) && leaf) {
+    if (bm && mem_readable(bm, kBmReadSize) && load_at(bm, kBmPage, &leaf) && leaf) {
         for (int i = 0; i < kMaxDepth; ++i) {
             std::uintptr_t next = 0;
-            if (!mem_load(leaf + kPageChild, &next) || next == 0) break;
+            if (!load_at(leaf, kPageChild, &next) || next == 0) break;
             leaf = next;
         }
         Record rec;
         if (record_of(reinterpret_cast<void*>(leaf), &rec)) {
             if (!allow_back(rec)) { flush_if_outermost(); return; }
             std::uintptr_t cur = 0;
-            if (mem_load(A(bm) + kBmPage, &cur) && cur && g_get_mode(bm) == 1) {
+            if (load_at(bm, kBmPage, &cur) && cur && g_get_mode(bm) == 1) {
                 // Settings opened from pause: the vanilla Back would leave the book.
                 close_and_prune(reinterpret_cast<void*>(cur));
                 flush_if_outermost();
@@ -802,42 +825,37 @@ void hook_back(void* bm) {
 }
 
 void hook_reset(void* ctrl) {
-    if (!is_record_ctrl(ctrl)) { g_real_reset(ctrl); return; }
+    if (!find_record(ctrl, nullptr)) { g_real_reset(ctrl); return; }
     Record rec;
     if (!record_of(ctrl, &rec)) { g_real_reset(ctrl); return; }
     std::uint32_t sel = 0;
-    if (mem_load(A(ctrl) + kCtrlSelected, &sel)) {
-        for (const auto& c : rec.cats) {
-            if (c.entry_index != sel) continue;
-            for (LiveRow* r : c.rows) {
+    if (load_at(ctrl, kCtrlSelected, &sel)) {
+        if (const auto* c = rec.cat_at(sel)) {
+            for (LiveRow* r : c->rows) {
                 r->value = r->def;
                 r->seen = r->def;
                 if (r->row) { OcStr t = lit(r->title); g_set_title(r->row, &t); }
             }
-            queue("ui:menus_reset", dumps(json{{"page", rec.page_id}, {"category", c.id}}));
-            break;
+            queue("ui:menus_reset", dumps(json{{"page", rec.page_id}, {"category", c->id}}));
         }
     }
     flush_if_outermost();
 }
 
 void hook_select(void* ctrl, void* button) {
-    if (!is_record_ctrl(ctrl)) { g_real_select(ctrl, button); return; }
+    if (!find_record(ctrl, nullptr)) { g_real_select(ctrl, button); return; }
     Record rec;
     if (!record_of(ctrl, &rec)) { g_real_select(ctrl, button); return; }
     std::uint64_t idx = 0;
-    if (!button || !mem_load(A(button) + kButtonIndex, &idx) || !rec.ours_index(std::uint32_t(idx)))
+    if (!button || !load_at(button, kButtonIndex, &idx) || !rec.ours_index(std::uint32_t(idx)))
         return;   // a hidden foreign entry (Credits/EULA/Privacy)
     {
         DepthGuard g;
         g_real_select(ctrl, button);
     }
-    for (const auto& c : rec.cats) {
-        if (c.entry_index == idx) {
-            queue("ui:menus_select", dumps(json{{"page", rec.page_id}, {"category", c.id}}));
-            break;
-        }
-    }
+    const auto* c = rec.cat_at(std::uint32_t(idx));
+    if (c && c->entry_index == idx)
+        queue("ui:menus_select", dumps(json{{"page", rec.page_id}, {"category", c->id}}));
     flush_if_outermost();
 }
 
@@ -858,7 +876,7 @@ void run_request(void* ctrl) {
             return;
         }
         std::uintptr_t settings = 0;
-        if (!mem_load(A(ctrl) + kCtrlSettings, &settings) || !settings
+        if (!load_at(ctrl, kCtrlSettings, &settings) || !settings
             || !mem_readable(reinterpret_cast<void*>(settings + kSetCreditsDesc), 8)) {
             Loader::get().log_err("[ui-menus] cannot open '" + rq.page
                                   + "': settings object unreadable");
@@ -884,7 +902,7 @@ void hook_update(void* ctrl) {
         g_real_update(ctrl);
     }
     std::uintptr_t child = 1;
-    if (mem_load(A(ctrl) + kPageChild, &child) && child == 0 && is_host(ctrl)) {
+    if (load_at(ctrl, kPageChild, &child) && child == 0 && is_host(ctrl)) {
         g_last_leaf.store(ctrl);
         g_last_tick.store(GetTickCount64());
         run_request(ctrl);
@@ -969,10 +987,8 @@ bool parse_snapshot(const std::string& text, PageSnap* out, std::string* why) {
     }
 }
 
-template <typename F>
-bool need(const char* what, const char* pattern, F* out) {
-    return resolve_checked("ui-menus", what, pattern, reinterpret_cast<void**>(out));
-}
+struct CallSpec { const char* what; const char* pattern; void** slot; };
+struct HookSpec { const char* name; const char* pattern; void* detour; void** tramp; };
 
 } // anonymous namespace
 
@@ -1016,7 +1032,7 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
     const auto c = A(ctrl);
     void* settings = nullptr;
     void* factory = nullptr;
-    if (!mem_load(c + kCtrlSettings, &settings) || !mem_load(c + kCtrlFactory, &factory)
+    if (!load_at(c, kCtrlSettings, &settings) || !load_at(c, kCtrlFactory, &factory)
         || !settings || !factory
         || !mem_readable(reinterpret_cast<std::uint8_t*>(settings) + kSetStringItem, 8)) {
         L.log_err("[ui-menus] controller layout not as expected; page '" + t_build_page + "' empty");
@@ -1029,30 +1045,18 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
     rec.ctx = t_build_ctx;
     rec.depth = t_build_depth;
 
-    auto add_cat = [&](const std::string& label, std::uint32_t type, std::uint32_t* index) -> void* {
-        if (!mem_load(c + kCtrlTabCount, index)) return nullptr;
-        const std::string* keep;
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            g_strs.push_back(clip(label));
-            keep = &g_strs.back();
-        }
-        OcStr t = lit(*keep);
-        return g_add_category(ctrl, page, parent, &t, type);
-    };
-
     for (const auto& cs : snap.cats) {
         Record::Cat rc;
         rc.id = cs.id;
-        void* cat = add_cat(cs.label, kCatType, &rc.entry_index);
+        void* cat = add_tab(ctrl, page, parent, cs.label, kCatType, &rc.entry_index);
         void* row_parent = nullptr;
-        if (!cat || !mem_load(A(cat) + kCatRowParent, &row_parent) || !row_parent) {
+        if (!cat || !load_at(cat, kCatRowParent, &row_parent) || !row_parent) {
             L.log_err("[ui-menus] add category '" + cs.id + "' returned nothing");
             continue;
         }
         auto readonly_row = [&](const std::string& id, const std::string& label,
                                 const std::string& text) {
-            LiveRow* r = new_row(rec.page_id, cs.id, id, label);
+            LiveRow* r = new_row(id, label);
             r->texts = {text};
             return spawn_row(ctrl, settings, factory, cat, row_parent, *r);
         };
@@ -1068,7 +1072,7 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
         }
         for (const auto& rs : cs.rows) {
             if (!ok) break;
-            LiveRow* r = new_row(rec.page_id, cs.id, rs.id, rs.label);
+            LiveRow* r = new_row(rs.id, rs.label);
             r->texts = rs.choices;
             r->editable = !rs.readonly;
             r->value = r->seen = rs.value;
@@ -1080,11 +1084,11 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
     }
     for (const auto& e : nested) {
         std::uint32_t index = 0;
-        if (add_cat(e.title, kEntryType, &index)) rec.nested[index] = e.id;
+        if (add_tab(ctrl, page, parent, e.title, kEntryType, &index)) rec.nested[index] = e.id;
         else L.log_err("[ui-menus] nested entry '" + e.id + "' not added");
     }
     std::lock_guard<std::mutex> lk(g_mu);
-    g_our_ctrls.insert(ctrl);
+    g_ours.try_emplace(ctrl);
     g_records.push_back(std::move(rec));
 }
 
@@ -1102,15 +1106,9 @@ void book_pages_add_entries(void* ctrl, void* page, void* parent) {
     }
     for (const auto& e : entries) {
         std::uint32_t index = 0;
-        if (!mem_load(A(ctrl) + kCtrlTabCount, &index)) return;
-        const std::string* keep;
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            g_strs.push_back(clip(e.title));
-            keep = &g_strs.back();
-        }
-        OcStr t = lit(*keep);
-        if (!g_add_category(ctrl, page, parent, &t, kEntryType)) {
+        bool unreadable = false;
+        if (!add_tab(ctrl, page, parent, e.title, kEntryType, &index, &unreadable)) {
+            if (unreadable) return;
             L.log_err("[ui-menus] Settings entry '" + e.id + "' not added");
             continue;
         }
@@ -1172,8 +1170,7 @@ bool book_pages_open(const std::string& page_id, const std::string* ctx_json, st
     }
     {
         // Loader-side depth only: the current leaf's record, else the Settings page (0).
-        Record cur;
-        const int d = find_record(g_last_leaf.load(), &cur) ? cur.depth : 0;
+        const int d = depth_no_prune(g_last_leaf.load());
         if (d + 1 > kMaxDepth) {
             if (why) *why = "too deep (max " + std::to_string(kMaxDepth) + ")";
             return false;
@@ -1232,47 +1229,48 @@ bool install_book_page_hooks() {
     if (!settings_build_hooked())
         return fail("needs the Settings build hook (native-menu is off or failed to install)");
     if (!fn_resolver_init()) return fail("fn_resolver_init failed");
-    if (!need("set visible", Sym::GameUi_SetVisible_Pattern, &g_set_visible)
-        || !need("book mode", Sym::BookMenu_GetMode_Pattern, &g_get_mode)
-        || !need("add category", Sym::OptionsMenu_AddCategory_Pattern, &g_add_category)
-        || !need("spawn row", Sym::OptionsMenu_SpawnMultiChoice_Pattern, &g_spawn_row)
-        || !need("append row", Sym::OptionsMenu_AppendRow_Pattern, &g_append_row)
-        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
-        || !need("set labels", Sym::StringVector_AssignFromArray_Pattern, &g_set_labels))
-        return fail("a call target did not resolve");
-
-    std::uintptr_t vas[9] = {};
-    int n = 0;
-    auto hook = [&](const char* what, const char* pattern, void* detour, void** tramp) {
-        std::uintptr_t va = 0;
-        if (!hook_install("ui-menus", what, pattern, detour, tramp, &va)) return false;
-        vas[n++] = va;
-        return true;
+    const CallSpec calls[] = {
+        {"set visible", Sym::GameUi_SetVisible_Pattern, reinterpret_cast<void**>(&g_set_visible)},
+        {"book mode", Sym::BookMenu_GetMode_Pattern, reinterpret_cast<void**>(&g_get_mode)},
+        {"add category", Sym::OptionsMenu_AddCategory_Pattern, reinterpret_cast<void**>(&g_add_category)},
+        {"spawn row", Sym::OptionsMenu_SpawnMultiChoice_Pattern, reinterpret_cast<void**>(&g_spawn_row)},
+        {"append row", Sym::OptionsMenu_AppendRow_Pattern, reinterpret_cast<void**>(&g_append_row)},
+        {"set title", Sym::OptionsMenuElement_SetTitle_Pattern, reinterpret_cast<void**>(&g_set_title)},
+        {"set labels", Sym::StringVector_AssignFromArray_Pattern, reinterpret_cast<void**>(&g_set_labels)},
     };
-    const bool ok =
-        hook("BookPage_OpenChild", Sym::BookPage_OpenChild_Pattern,
-             reinterpret_cast<void*>(&hook_open_child), reinterpret_cast<void**>(&g_real_open))
-        && hook("BookPage_CloseChild", Sym::BookPage_CloseChild_Pattern,
-                reinterpret_cast<void*>(&hook_close_child), reinterpret_cast<void**>(&g_real_close))
-        && hook("BookMenu_OnBackPressed", Sym::BookMenu_OnBackPressed_Pattern,
-                reinterpret_cast<void*>(&hook_back), reinterpret_cast<void**>(&g_real_back))
-        && hook("OptionsMenu_ResetPressed", Sym::OptionsMenu_ResetPressed_Pattern,
-                reinterpret_cast<void*>(&hook_reset), reinterpret_cast<void**>(&g_real_reset))
-        && hook("OptionsMenu_SelectCategory", Sym::OptionsMenu_SelectCategory_Pattern,
-                reinterpret_cast<void*>(&hook_select), reinterpret_cast<void**>(&g_real_select))
-        && hook("OptionsMenu_Update", Sym::OptionsMenu_Update_Pattern,
-                reinterpret_cast<void*>(&hook_update), reinterpret_cast<void**>(&g_real_update))
-        && hook("OptionsMenu_BuildGraphics", Sym::OptionsMenu_BuildGraphics_Pattern,
-                reinterpret_cast<void*>(&hook_build_graphics),
-                reinterpret_cast<void**>(&g_real_build_gfx))
-        && hook("OptionsMenu_BuildAudio", Sym::OptionsMenu_BuildAudio_Pattern,
-                reinterpret_cast<void*>(&hook_build_audio),
-                reinterpret_cast<void**>(&g_real_build_audio))
-        && hook("OptionsMenu_Teardown", Sym::OptionsMenu_Teardown_Pattern,
-                reinterpret_cast<void*>(&hook_teardown),
-                reinterpret_cast<void**>(&g_real_teardown));
+    for (const auto& c : calls)
+        if (!resolve_checked("ui-menus", c.what, c.pattern, c.slot))
+            return fail("a call target did not resolve");
+
+    const HookSpec hooks[] = {
+        {"BookPage_OpenChild", Sym::BookPage_OpenChild_Pattern,
+         reinterpret_cast<void*>(&hook_open_child), reinterpret_cast<void**>(&g_real_open)},
+        {"BookPage_CloseChild", Sym::BookPage_CloseChild_Pattern,
+         reinterpret_cast<void*>(&hook_close_child), reinterpret_cast<void**>(&g_real_close)},
+        {"BookMenu_OnBackPressed", Sym::BookMenu_OnBackPressed_Pattern,
+         reinterpret_cast<void*>(&hook_back), reinterpret_cast<void**>(&g_real_back)},
+        {"OptionsMenu_ResetPressed", Sym::OptionsMenu_ResetPressed_Pattern,
+         reinterpret_cast<void*>(&hook_reset), reinterpret_cast<void**>(&g_real_reset)},
+        {"OptionsMenu_SelectCategory", Sym::OptionsMenu_SelectCategory_Pattern,
+         reinterpret_cast<void*>(&hook_select), reinterpret_cast<void**>(&g_real_select)},
+        {"OptionsMenu_Update", Sym::OptionsMenu_Update_Pattern,
+         reinterpret_cast<void*>(&hook_update), reinterpret_cast<void**>(&g_real_update)},
+        {"OptionsMenu_BuildGraphics", Sym::OptionsMenu_BuildGraphics_Pattern,
+         reinterpret_cast<void*>(&hook_build_graphics), reinterpret_cast<void**>(&g_real_build_gfx)},
+        {"OptionsMenu_BuildAudio", Sym::OptionsMenu_BuildAudio_Pattern,
+         reinterpret_cast<void*>(&hook_build_audio), reinterpret_cast<void**>(&g_real_build_audio)},
+        {"OptionsMenu_Teardown", Sym::OptionsMenu_Teardown_Pattern,
+         reinterpret_cast<void*>(&hook_teardown), reinterpret_cast<void**>(&g_real_teardown)},
+    };
+    std::vector<std::uintptr_t> vas;   // installed prefix, for the rollback
+    bool ok = true;
+    for (const auto& h : hooks) {
+        std::uintptr_t va = 0;
+        if (!hook_install("ui-menus", h.name, h.pattern, h.detour, h.tramp, &va)) { ok = false; break; }
+        vas.push_back(va);
+    }
     if (!ok) {
-        for (int i = 0; i < n; ++i) hook_remove(vas[i]);
+        for (std::uintptr_t va : vas) hook_remove(va);
         return fail("could not install every detour; R.ui.menus is off");
     }
     if (HANDLE t = CreateThread(nullptr, 0, watch_rows, nullptr, 0, nullptr)) CloseHandle(t);

@@ -24,8 +24,8 @@
 
 #include <windows.h>
 
-#include <atomic>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -521,9 +521,10 @@ bool need(const char* what, const char* pattern, F* out) {
     return resolve_checked("native-menu", what, pattern, reinterpret_cast<void**>(out));
 }
 
+std::atomic<bool> g_build_hooked{false};
+
 } // anonymous namespace
 
-static std::atomic<bool> g_build_hooked{false};
 bool settings_build_hooked() { return g_build_hooked.load(std::memory_order_acquire); }
 
 bool install_settings_menu_hooks() {

@@ -38,7 +38,6 @@ local R, I
 local TOO_OLD = "loader too old for R.ui.menus"
 
 local _pages = {}     -- id -> { def = def, json = last pushed snapshot }
-local _entries = {}   -- id -> true
 
 local function log(s) R.log("[R.ui.menus] " .. s) end
 
@@ -174,16 +173,21 @@ local function clamp_index(v, n, fallback)
     return v
 end
 
+-- Asserts t[k] is a string; `name` is how the message calls it (default k).
+local function req_str(t, k, where, name)
+    assert(type(t[k]) == "string", where .. ": " .. (name or k) .. " must be a string")
+end
+
 local function norm_row(row, where)
     assert(type(row) == "table", where .. ": row must be a table")
-    assert(type(row.id) == "string", where .. ": row.id must be a string")
-    assert(type(row.label) == "string", where .. ": row.label must be a string")
+    req_str(row, "id", where, "row.id")
+    req_str(row, "label", where, "row.label")
     local out = { id = row.id, label = row.label, readonly = row.readonly == true }
     if out.readonly then
         out.choices = {}
         out.value, out.default = 1, 1
         if row.readonly_text ~= nil then
-            assert(type(row.readonly_text) == "string", where .. ": readonly_text must be a string")
+            req_str(row, "readonly_text", where)
             out.readonly_text = row.readonly_text
         end
         return obj(out)
@@ -205,8 +209,8 @@ end
 local function norm_category(cat, i)
     local where = "category " .. i
     assert(type(cat) == "table", where .. " must be a table")
-    assert(type(cat.id) == "string", where .. ": id must be a string")
-    assert(type(cat.label) == "string", where .. ": label must be a string")
+    req_str(cat, "id", where)
+    req_str(cat, "label", where)
     where = "category " .. cat.id
     local header = {}
     if cat.header ~= nil then
@@ -286,8 +290,8 @@ end
 function M.entry(spec)
     assert(type(spec) == "table", "R.ui.menus.entry: spec must be a table")
     assert(type(spec.id) == "string" and spec.id ~= "", "R.ui.menus.entry: id must be a non-empty string")
-    assert(type(spec.title) == "string", "R.ui.menus.entry: title must be a string")
-    assert(type(spec.page) == "string", "R.ui.menus.entry: page must be a string")
+    req_str(spec, "title", "R.ui.menus.entry")
+    req_str(spec, "page", "R.ui.menus.entry")
     local after = spec.after
     if after == nil then after = "settings" end
     assert(type(after) == "string", "R.ui.menus.entry: after must be a string")
@@ -295,7 +299,6 @@ function M.entry(spec)
     if not ok then return nil, why end
     local set, swhy = I.ui_menus_set_entry(spec.id, spec.title, spec.page, after)
     if not set then return nil, swhy end
-    _entries[spec.id] = true
     return { kind = "entry", id = spec.id }
 end
 
@@ -348,7 +351,6 @@ function M.off(handle)
     elseif handle.kind == "entry" then
         local ok, why = usable("ui_menus_remove_entry")
         if not ok then return nil, why end
-        _entries[handle.id] = nil
         I.ui_menus_remove_entry(handle.id)
         return true
     end
@@ -381,7 +383,7 @@ end
 return function(env)
     if R then for _, h in ipairs(_handles) do R.off(h) end end   -- re-run: drop the old state's
     _handles = {}
-    _pages, _entries = {}, {}
+    _pages = {}
     R, I = env.R, env.I
     install_events()
     return M
