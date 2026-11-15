@@ -310,7 +310,7 @@ def terrain_layers_json(chapter: Chapter) -> dict:
     t = _terrain_all(chapter)
     return {"layers": [{"name": n, "kind": lay.kind, "size": lay.size,
                         "metres": n in TR.METRE_LAYERS}
-                       for n, lay in t.layers.items()]}
+                       for n, lay in t.layers.items() if lay.kind != "const"]}
 
 
 @functools.lru_cache(maxsize=16)
@@ -320,7 +320,7 @@ def terrain_layer_json(chapter: Chapter, name: str, n: int = 512) -> dict:
     if n not in TERRAIN_GRIDS:
         raise MapEditError(f"grid must be one of {TERRAIN_GRIDS}")
     layer = _terrain_all(chapter).layers.get(name)
-    if layer is None:
+    if layer is None or layer.kind == "const":
         raise MapEditError(f"{chapter.key}: no painted layer {name!r}")
     if layer.kind == "float":
         return {"grid": n, "kind": "float", "u8": _b64(TR.resample(layer, n), 0.0, 1.0, 8)}
@@ -474,7 +474,8 @@ def _as_bool(v, what: str) -> bool:
 
 
 #: Every section an edit document may carry, in the order they apply.
-EDIT_SECTIONS = ("kinds", "quotas", "add_quotas", "slots", "fill", "remove_slots", "add_slots")
+EDIT_SECTIONS = ("kinds", "quotas", "add_quotas", "slots", "fill", "remove_slots",
+                 "add_kinds", "add_slots")
 
 
 def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
@@ -624,6 +625,28 @@ def apply_edits(tg: TG.TileGen, edits: dict) -> list[str]:
         if not tg.slots[sid].kinds:
             raise MapEditError(f"remove_slots.{sid}: whole-map slots are not removable")
         plan.append((lambda sid=sid: TG.remove_slot(tg, sid), f"slot {sid}: removed"))
+
+    # NEW kinds: a kind places `count` tiles carrying its flag, and starts OFF
+    # on every shipped slot — so with `add_slots` allowing only it, its tiles
+    # land in new places of their own and take no shipped tile's spot.
+    new_kinds = edits.get("add_kinds") or {}
+    if not isinstance(new_kinds, dict):
+        raise MapEditError("add_kinds: expected a table of <Flag> = { count, ... }")
+    for flag, ke in new_kinds.items():
+        what = f"add_kinds.{flag}"
+        if not isinstance(flag, str) or not flag or flag in kind_names:
+            raise MapEditError(f"{what}: a new kind needs a flag the recipe has no kind for")
+        if not isinstance(ke, dict) or set(ke) - {"count", "min_distance", "footprints"}:
+            raise MapEditError(f"{what}: expected {{count, min_distance, footprints}}")
+        cnt = _as_int(ke.get("count", 1), f"{what}.count", 0, MAX_COUNT)
+        dist = _as_float(ke.get("min_distance", 0.0), f"{what}.min_distance", 0.0, MAX_DISTANCE)
+        fps = ke.get("footprints") or {}
+        if not isinstance(fps, dict) or set(fps) - set(group_names):
+            raise MapEditError(f"{what}.footprints: groups are {group_names}")
+        fps = {g: _as_bool(on, f"{what}.footprints.{g}") for g, on in fps.items()}
+        plan.append((lambda f=flag, c=cnt, d=dist, fp=fps: TG.add_kind(tg, f, c, d, fp),
+                     f"kind added: {flag} x{cnt} ({', '.join(g for g, on in fps.items() if on)})"))
+    kind_names = [*kind_names, *new_kinds]
 
     added = edits.get("add_slots") or []
     if not isinstance(added, list) or len(added) > MAX_NEW_SLOTS:

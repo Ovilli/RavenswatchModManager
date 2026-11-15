@@ -48,6 +48,7 @@ block, not to the one the reference came out of.
 from __future__ import annotations
 
 import math
+import re
 import struct
 from collections import Counter
 from dataclasses import dataclass
@@ -450,6 +451,82 @@ def replace_strings(level_bytes: bytes, mapping: dict[str, str]) -> bytes:
         raise LevelPlacementError("string replacement changed the level's object count")
     new_sec = bytearray(sec[:_INNER_OFF]) + out
     struct.pack_into("<II", new_sec, _SELF_SIZE_OFF, len(out), len(out))
+    cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
+    return cooked.emit(cf)
+
+
+#: Tail of a level-side `oCEntityCpntValueSettings` override holding one float:
+#: ``f32 value, 22 22 bb aa, 22 22 bb aa, 00`` (every Render Settings Zone value
+#: in the shipped rooms).
+_VALUE_TAIL = b"\x22\x22\xbb\xaa\x22\x22\xbb\xaa\x00"
+
+
+def set_values(level_bytes: bytes, values: dict[str, float]) -> bytes:
+    """Set float VALUE overrides the level carries for a placed entity, by name.
+
+    A level overrides values of the entities it places as
+    ``oCEntityCpntValueSettings`` objects labelled
+    ``[Value] <Model>\\<Component>\\<Name>`` — e.g. the size of a room's render
+    zone (``Render Settings Zone Scale Value``, the Thieves' Gold Room: 34 m).
+    Each key in `values` is a label's LAST segment (or the whole label) and
+    must match at least one override whose payload ends in a single float
+    (:data:`_VALUE_TAIL`); every match is set. Sizes never change.
+    """
+    cf, sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    classes = _class_names(g)
+    out = bytearray(inner)
+    hits = dict.fromkeys(values, 0)
+    for b, _e, p in g.objects:
+        (ci,) = struct.unpack_from("<I", p, 0)
+        if ci >= len(classes) or classes[ci] != "oCEntityCpntValueSettings":
+            continue
+        m = re.search(rb"\[Value\] [^\x00\"]+", p)
+        if not m:
+            continue
+        label = m.group(0).decode("utf-8", errors="replace")
+        for key in values:
+            if label != key and not label.endswith("\\" + key):
+                continue
+            if not p.endswith(_VALUE_TAIL):
+                raise LevelPlacementError(f"value override {label!r} does not end in one float")
+            at = b + 4 + len(p) - len(_VALUE_TAIL) - 4
+            if bytes(out[b + 4:b + 4 + len(p)]) != p:
+                raise LevelPlacementError(f"value override {label!r}: payload not where expected")
+            struct.pack_into("<f", out, at, float(values[key]))
+            hits[key] += 1
+    missing = [k for k, n in hits.items() if not n]
+    if missing:
+        raise LevelPlacementError(f"the level overrides no value named {missing}")
+    new_sec = bytearray(sec[:_INNER_OFF]) + bytes(out)
+    cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
+    return cooked.emit(cf)
+
+
+def set_ambient(level_bytes: bytes, rgb: tuple[float, float, float]) -> bytes:
+    """Set the ambient light colour of the level's render zone.
+
+    `oCDtAmbientLightingSettings` (one per render zone) holds RGBA colours
+    after a 1-byte flag: ``(0,0,0,1)``, the AMBIENT colour, ``(0,0,0,1)``,
+    then ``(1,1,1)``. The Thieves' Gold Room's ambient is ``(0.17, 0.16,
+    0.18)``: a dark cave. Only the second colour's RGB is written; refuses a
+    level without exactly one such object or with another layout.
+    """
+    if not (len(rgb) == 3 and all(0.0 <= float(v) <= 4.0 for v in rgb)):
+        raise LevelPlacementError("ambient is three numbers 0..4")
+    cf, sec, inner = _inner(level_bytes)
+    g = _graph(inner)
+    classes = _class_names(g)
+    hits = [(b, p) for b, _e, p in g.objects
+            if classes[struct.unpack_from("<I", p, 0)[0]] == "oCDtAmbientLightingSettings"]
+    if len(hits) != 1:
+        raise LevelPlacementError(f"{len(hits)} ambient lighting settings in the level, expected 1")
+    b, p = hits[0]
+    if len(p) != 61 or struct.unpack_from("<4f", p, 5) != (0.0, 0.0, 0.0, 1.0):
+        raise LevelPlacementError("ambient lighting settings have an unexpected layout")
+    out = bytearray(inner)
+    struct.pack_into("<3f", out, b + 4 + 21, *(float(v) for v in rgb))
+    new_sec = bytearray(sec[:_INNER_OFF]) + bytes(out)
     cf.sections[-1] = cooked.Section(payload=bytes(new_sec))
     return cooked.emit(cf)
 

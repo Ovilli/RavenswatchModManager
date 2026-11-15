@@ -34,6 +34,13 @@ Fields:
     ``slots.<id>.move`` ([x, y, z])  move a slot; ``pos`` still anchors it.
     ``remove_slots`` (table)     ``{ "<object id>" = [x, y, z] }`` — the
                                  position anchors the removal like ``pos``.
+    ``add_kinds`` (table)        ``{ "<Flag>" = { count, min_distance,
+                                 footprints = { "<WxH>" = true } } }`` — a NEW
+                                 kind placing ``count`` tiles carrying the
+                                 flag. It starts off on every shipped slot, so
+                                 pair it with ``add_slots`` allowing it: its
+                                 tiles then fill new places of their own and
+                                 replace nothing.
     ``add_slots`` (array)        ``[{ group = "<WxH>", pos = [x, y, z],
                                  allow = { "<Kind>" = true } }]``. Removing or
                                  adding slots changes the recipe's object
@@ -60,7 +67,8 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             + ", ".join(c.key for c in ME.chapters()) + ")")
     # Named here, not via ME.EDIT_SECTIONS, so the manifest-spec check sees each field read.
     edits = {k: defn.fields[k] for k in ("kinds", "quotas", "add_quotas", "slots", "fill",
-                                         "remove_slots", "add_slots") if k in defn.fields}
+                                         "remove_slots", "add_kinds", "add_slots")
+             if k in defn.fields}
     if not edits:
         raise ContentError(f"tilegen {defn.id}: nothing to change (one of "
                            f"{', '.join(ME.EDIT_SECTIONS)})")

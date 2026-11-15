@@ -61,6 +61,10 @@ from . import level_placements as LP
 TERRAIN_GO = "oCTerrainGo"
 FLOAT_LAYER = "oCTerrainPaintedFloatInputLayer"
 COLOR_LAYER = "oCTerrainPaintedColorInputLayer"
+#: One float for the whole terrain, e.g. a tile's flat `Water Height`.
+CONST_LAYER = "oCTerrainConstantFloatInputLayer"
+#: Objects holding a world box inside the terrain's: rewritten by `resize`.
+TILE_CLASSES = ("oCTerrainMeshTile", "oCPhysicTerrainTile", "oCTerrainEntitySpawnerTile")
 HEIGHT = "Base Height"
 _MAX_GRID = 4096
 _BOX_LIMIT = 1.0e5
@@ -131,20 +135,43 @@ def _grid_offset(p: bytes, start: int) -> int:
     return hits[0]
 
 
-def _box(p: bytes) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """The world box: six floats, min < max on every axis, square in X/Z."""
-    hits = []
+def _box_at(p: bytes) -> tuple[int, tuple[float, float, float], tuple[float, float, float]]:
+    """The world box and its offset: six floats, min < max on every axis.
+
+    A chapter's box is square in X/Z and that is what disambiguates it; a
+    TILE's own terrain need not be (the Thieves' Gold Room: 80 x 100 m), so a
+    single non-square candidate is accepted when no square one exists.
+    """
+    square, any_ = [], []
     for off in range(len(p) - 23):
         v = struct.unpack_from("<6f", p, off)
         if not all(math.isfinite(x) and abs(x) <= _BOX_LIMIT for x in v):
             continue
         lo, hi = v[:3], v[3:]
         if all(a < b for a, b in zip(lo, hi, strict=True)) and hi[0] - lo[0] >= 16 \
-                and abs((hi[0] - lo[0]) - (hi[2] - lo[2])) < 1e-3:
-            hits.append((lo, hi))
+                and hi[2] - lo[2] >= 16:
+            any_.append((off, lo, hi))
+            if abs((hi[0] - lo[0]) - (hi[2] - lo[2])) < 1e-3:
+                square.append((off, lo, hi))
+    hits = square if square else any_
     if len(hits) != 1:
         raise TerrainError(f"{TERRAIN_GO}: world box is ambiguous ({len(hits)} candidates)")
     return hits[0]
+
+
+def _box(p: bytes) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    return _box_at(p)[1:]
+
+
+#: `oCTerrainConstantFloatInputLayer` payload tail: a marker, a u32, the value.
+_CONST_MARK = b"\x22\x22\xbb\xaa"
+
+
+def _const_value_off(p: bytes, name: str) -> int:
+    """Offset of a constant layer's one float (the payload's last 4 bytes)."""
+    if len(p) < 16 or p[-12:-8] != _CONST_MARK:
+        raise TerrainError(f"constant layer {name!r}: unexpected payload layout")
+    return len(p) - 4
 
 
 def read(level_bytes: bytes, names: set[str] | None = None) -> Terrain:
@@ -161,6 +188,13 @@ def read(level_bytes: bytes, names: set[str] | None = None) -> Terrain:
             if box is not None:
                 raise TerrainError(f"more than one {TERRAIN_GO}")
             box = _box(p)
+        elif cn == CONST_LAYER:
+            (ln,) = struct.unpack_from("<I", p, 4)
+            name = p[8:8 + ln].decode("latin-1")
+            if names is not None and name not in names:
+                continue
+            cells = array.array("f", [struct.unpack_from("<f", p, _const_value_off(p, name))[0]])
+            layers[name] = Layer(name, 1, "const", cells)
         elif cn in (FLOAT_LAYER, COLOR_LAYER):
             (ln,) = struct.unpack_from("<I", p, 4)
             name = p[8:8 + ln].decode("latin-1")
@@ -204,7 +238,9 @@ METRE_LAYERS = {HEIGHT, "Base Water Height", "Base Water Ocean Height", "Base Fl
                 # A TILE's own height layers (tile levels name them differently
                 # from a chapter's terrain level, e.g. 40x40_Small_PoolPlatform:
                 # "Height", -50..50 like the chapter's).
-                "Height", "Terrain Height", "Tile Terrain Height"}
+                "Height", "Terrain Height", "Tile Terrain Height",
+                # a tile's flat water level (a constant layer: `set` only)
+                "Water Height"}
 #: Ops on a float layer; ``tint`` is the one op on an RGBA layer.
 OPS = ("raise", "lower", "set", "flatten", "smooth", "tint")
 FALLOFFS = ("smooth", "linear", "constant")
@@ -248,6 +284,17 @@ def apply_strokes(t: Terrain, strokes: list[dict]) -> list[str]:
             raise TerrainError(f"{what}: op is one of {OPS}, falloff one of {FALLOFFS}")
         layer = t.layers.get(name)
         want = "rgba" if op == "tint" else "float"
+        if layer is not None and layer.kind == "const":
+            # One value for the whole terrain: no brush, only `set`.
+            if op != "set" or st.get("amount") is None:
+                raise TerrainError(f"{what}: {name} is one constant value; only op = "
+                                   f"\"set\" with an amount applies")
+            span = t.box_max[1] - t.box_min[1]
+            amount = float(st["amount"])
+            v = (amount - t.box_min[1]) / span if name in METRE_LAYERS else amount
+            layer.cells[0] = min(1.0, max(0.0, v))
+            out.append(f"terrain: set {name} to {amount:g}")
+            continue
         if layer is None or layer.kind != want:
             raise TerrainError(f"{what}: no painted {want} layer {name!r}; have "
                                f"{sorted(k for k, v in t.layers.items() if v.kind == want)}")
@@ -340,12 +387,19 @@ def write(level_bytes: bytes, t: Terrain) -> bytes:
     for b, _e, p in g.objects:
         (ci,) = struct.unpack_from("<I", p, 0)
         cn = classes[ci] if ci < len(classes) else ""
-        if cn not in (FLOAT_LAYER, COLOR_LAYER):
+        if cn not in (FLOAT_LAYER, COLOR_LAYER, CONST_LAYER):
             continue
         (ln,) = struct.unpack_from("<I", p, 4)
         name = p[8:8 + ln].decode("latin-1")
         layer = t.layers.get(name)
         if layer is None:
+            continue
+        if cn == CONST_LAYER:
+            if layer.kind != "const":
+                raise TerrainError(f"{name}: a constant layer in the level, {layer.kind} here")
+            at = b + 4 + _const_value_off(p, name)
+            out[at:at + 4] = struct.pack("<f", layer.cells[0])
+            done.add(name)
             continue
         off = _grid_offset(p, 8 + ln)
         size, _h, nb = struct.unpack_from("<III", p, off)
@@ -366,6 +420,65 @@ def write(level_bytes: bytes, t: Terrain) -> bytes:
     missing = set(t.layers) - done
     if missing:
         raise TerrainError(f"layers not found in this level: {sorted(missing)}")
+    return _emit(cf, sec, bytes(out))
+
+
+def _sub_box_at(p: bytes, lo, hi, what: str) -> int:
+    """Offset of the one world box in a terrain tile object, lying inside the
+    terrain's box `lo..hi` (a mesh tile covers it whole, a physics tile a
+    quadrant)."""
+    eps = 1e-3
+    hits = []
+    for off in range(len(p) - 23):
+        v = struct.unpack_from("<6f", p, off)
+        if not all(math.isfinite(x) for x in v):
+            continue
+        a, b = v[:3], v[3:]
+        if all(lo[k] - eps <= a[k] < b[k] <= hi[k] + eps for k in range(3)):
+            hits.append(off)
+    if len(hits) != 1:
+        raise TerrainError(f"{what}: {len(hits)} world-box candidates, expected 1")
+    return hits[0]
+
+
+def resize(level_bytes: bytes, size_x: float, size_z: float) -> bytes:
+    """Stretch a terrain's world box to ``size_x`` x ``size_z`` metres about its
+    centre (height range unchanged).
+
+    The box lives in the `oCTerrainGo` AND, explicitly, in every terrain tile
+    (`TILE_CLASSES`: the render-mesh tiles and the physics tiles, each with its
+    own box inside the terrain's), so all of them are scaled together. The
+    painted layers are grids over the box, so they stretch with it. Payload
+    sizes never change. For a sub-tile ROOM whose own terrain is smaller than
+    the 128 x 128 slot it lands in (UNPROVEN in game as of 2026-11-15).
+    """
+    if not (16.0 <= size_x <= 1024.0 and 16.0 <= size_z <= 1024.0):
+        raise TerrainError("terrain size must be 16..1024 m on each axis")
+    cf, sec, inner = LP._inner(level_bytes)
+    g = LP._graph(inner)
+    classes = _class_names(g)
+    out = bytearray(inner)
+    go = [(b, p) for b, _e, p in g.objects
+          if classes[struct.unpack_from("<I", p, 0)[0]] == TERRAIN_GO]
+    if len(go) != 1:
+        raise TerrainError(f"{len(go)} {TERRAIN_GO} in this level, expected 1")
+    gb, gp = go[0]
+    goff, lo, hi = _box_at(gp)
+    cx, cz = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
+    sx, sz = size_x / (hi[0] - lo[0]), size_z / (hi[2] - lo[2])
+    edits = [(gb, goff)]
+    for b, _e, p in g.objects:
+        cn = classes[struct.unpack_from("<I", p, 0)[0]]
+        if cn in TILE_CLASSES:
+            edits.append((b, _sub_box_at(p, lo, hi, cn)))
+    for b, off in edits:
+        at = b + 4 + off
+        v = list(struct.unpack_from("<6f", out, at))
+        for k in (0, 3):
+            v[k] = cx + (v[k] - cx) * sx
+        for k in (2, 5):
+            v[k] = cz + (v[k] - cz) * sz
+        struct.pack_into("<6f", out, at, *v)
     return _emit(cf, sec, bytes(out))
 
 

@@ -119,6 +119,7 @@
               "entity",
               "game_mode",
               "hero",
+              "ingredient",
               "item",
               "map",
               "melody",
@@ -373,6 +374,31 @@
             "if": {
               "properties": {
                 "kind": {
+                  "const": "ingredient"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "base": {},
+                "delivery": {},
+                "icon": {},
+                "id": {},
+                "kind": {},
+                "name": {},
+                "pickups": {},
+                "schema_version": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
                   "const": "item"
                 }
               },
@@ -526,17 +552,20 @@
                 "id": {},
                 "kind": {},
                 "kinds": {},
+                "level_values": {},
                 "move": {},
                 "needs": {},
                 "own_level": {},
                 "places": {},
                 "prop": {},
+                "render_ambient": {},
                 "replace_base": {},
                 "schema_version": {},
                 "subtile": {},
                 "swaps": {},
                 "teleporters": {},
                 "terrain": {},
+                "terrain_size": {},
                 "weight": {}
               },
               "additionalProperties": false
@@ -713,6 +742,7 @@
             },
             "then": {
               "properties": {
+                "add_kinds": {},
                 "add_quotas": {},
                 "add_slots": {},
                 "chapter": {},

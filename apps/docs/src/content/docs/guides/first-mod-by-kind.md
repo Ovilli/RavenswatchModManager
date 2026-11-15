@@ -715,6 +715,45 @@ reuses an existing behaviour; new behaviour is layered in Lua via `R.modifier`.
 
 ---
 
+## `ingredient` — a new resource to collect and hand in
+
+**What the player sees.** A new carried resource like the 3 Pigs' straw:
+pickups on the map that add to a counter on the HUD, and a hand-in point with
+a "{0}/{1}" counter that spawns a reward once enough is delivered.
+
+```toml
+[mod]
+id           = "FishQuest"
+name         = "Fish Quest"
+version      = "0.1.0"
+author       = "you"
+description  = "Bring fish to the hand-in for a reward."
+experimental = true
+
+[[content]]
+kind     = "ingredient"
+id       = "fish"
+name     = "Fish"
+icon     = "icons/fish.png"
+pickups  = [
+  { id = "pile", count = 4, look = "DarkHills\\SceneryObjects_DarkHills\\Fishes_Ground_A.entity.ot" },
+]
+delivery = { id = "catch", prices = [8, 12, 20] }
+```
+
+Stand them with a poi: `places = [{ entity = "ingredient:Fish/pile", pos = [0.0, 0.0, 0.0] }]`.
+
+**Prove it.** `R.ingredient.add("Fish", 3)` in Lua shows three fish on the HUD
+if the definition loaded; then walk to a pickup and to the hand-in.
+
+**Trap.** The engine knows an ingredient only by the hash of its NAME
+(`rsmm.engine.named_id`), never a path: two mods adding `"Fish"` are the same
+ingredient. A pickup is a clone of the key pickup and a hand-in a clone of the
+wishing well (invisible, so it stands inside your own art) — so it behaves like
+them, including the well's rising price.
+
+---
+
 ## `challenge` — a new entry on the challenge screen
 
 **What the player sees.** A new challenge beside DodgeIt and Rush Hour: a title

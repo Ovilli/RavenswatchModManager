@@ -145,7 +145,12 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     its own rooms use up to 4, so cap the entrance at one per map (``flags``
     plus a tilegen ``add_quotas``).
 
-``subtile`` (bool, optional) — this tile is a ROOM: never chosen for a map
+``subtile`` (true or ``"surface"``, optional) — ``"surface"``: a map tile
+    whose ``kinds`` the shipped recipe does not know, so they are not checked
+    against its slot kinds: the flag another tile's on-map ``needs`` asks for
+    (``underground = false``, like the straw house's material crates), or a
+    kind this mod's tilegen ``add_kinds`` adds (own slots via ``add_slots``,
+    so the tiles replace nothing). ``true``: this tile is a ROOM: never chosen for a map
     slot, only pulled in by another tile's ``needs``. Its ``kinds`` are then
     the flag(s) that ``needs`` asks for, and are not checked against the
     chapter's slot kinds.
@@ -161,7 +166,9 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     ``<id>_In`` / ``<id>_Out`` and its stash event renamed. A shipped room already
     stands its own teleporter (not a plain placement, so ``clear`` keeps it):
     ``{ side = "in", id = ..., replace = "<that entity>" }`` takes it over
-    instead, so it stops answering its shipped pair.
+    instead, so it stops answering its shipped pair. A room may stand several
+    ``in`` teleporters of one ``id`` (more than one way out): all of them lead
+    back to the ``out`` one, and they share one cloned entity.
 
 ``model_2.glb``, ``model_3.glb``, ... (files, optional)
     More meshes for the same prop, beside ``model.glb``. The cooker caps one
@@ -182,6 +189,32 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     rest, e.g. taking a shipped hut out to stand the mod's own in its place.
     The tile's terrain and its invisible walls (``oCStaticWallGo``) are not
     placements and stay.
+
+``terrain`` (list of tables, optional, needs ``own_level``)
+    Brush strokes on the def's OWN copy of the tile's terrain, the chapter
+    editor's brush: ``{ op, x, z, radius, amount, falloff, layer }``. A tile's
+    height layer is ``"Terrain Height"`` (``amount`` in metres for ``set`` /
+    ``flatten``). A room's flat water level is the constant layer
+    ``"Water Height"``: ``{ op = "set", layer = "Water Height", amount = <y>,
+    x = 0, z = 0, radius = 1 }`` (no brush, the one value is replaced).
+
+``terrain_size`` (``[x, z]`` metres, optional, needs ``own_level``)
+    Stretch the tile's own terrain box about its centre — e.g. a sub-tile
+    room whose terrain (the Gold Room's: 80 x 100 m) is smaller than the
+    structure stood in it; ``[128, 128]`` fills its whole off-map slot. Every
+    painted layer stretches with it, so follow with ``terrain`` strokes to
+    shape the new ground. Unproven in game.
+
+``level_values`` (table, optional, needs ``own_level``)
+    Float values the tile's level overrides on the entities it places, by the
+    override's name: ``{ "Render Settings Zone Scale Value" = 88.0 }``. A sub-tile
+    room's look (ambient light, fog, colour) is a render zone of a set size
+    (the Gold Room's: 34 m, vertical 16 m); a structure bigger than that
+    leaves the zone and the look snaps back to the outdoor one.
+
+``render_ambient`` (``[r, g, b]``, optional, needs ``own_level``)
+    The ambient light colour of the tile's render zone (0..4 per channel).
+    The Gold Room's is ``[0.17, 0.16, 0.18]``, a dark cave.
 
 ``parts/<name>/model.glb`` (folders, optional) + ``[parts.<name>]``
     A KIT: entities of the mod's own, one mesh each (the donor prop cloned
@@ -269,6 +302,7 @@ from ...engine.paths import DATA_DIR
 from ...engine.prop_cook import entity_cooked_path
 from ..content import ContentDef, ContentError, SchemaNotMined
 from . import _common as C
+from . import ingredients as ING
 
 _log = logging.getLogger(__name__)
 
@@ -702,7 +736,8 @@ def discover(mod_root: Path) -> list[dict]:
         # tier, which is what cloning a tile is supposed to mean.
         no_inherit = ("kinds", "weight") if overriding else ("weight",)
         for key in ("base", "kinds", "weight", "copies", "replace_base",
-                    "own_level", "swaps", "places", "clear", "terrain", "move",
+                    "own_level", "swaps", "places", "clear", "terrain", "terrain_size",
+                    "level_values", "render_ambient", "move",
                     "needs", "subtile", "teleporters", "flags"):
             if key in cfg:
                 block[key] = cfg.pop(key)
@@ -905,7 +940,10 @@ def poi_json_schema() -> dict:
                                "remove": {"type": "array", "items": s},
                                "walls": {"anyOf": [b, {"type": "array", "items": s}]}}}]},
             "terrain": {"type": "array", "items": {"type": "object"}},
-            "subtile": b,
+            "terrain_size": {"type": "array", "items": num, "minItems": 2, "maxItems": 2},
+            "level_values": {"type": "object", "additionalProperties": num},
+            "render_ambient": {"type": "array", "items": num, "minItems": 3, "maxItems": 3},
+            "subtile": {"anyOf": [b, {"enum": ["surface"]}]},
             "flags": {"type": "array", "items": s},
             "needs": {"type": "array", "items": {
                 "type": "object", "required": ["flags"], "additionalProperties": False,
@@ -1076,8 +1114,15 @@ def _apply_edits(td: TC.TileDef, defn: ContentDef, chapters: list[str]) -> None:
             td.kinds = list(kinds)
             kinds = ()
             # The underground byte (`icon[0]`, live +0x2f0): an underground
-            # `needs` only ever picks a tile that has it set.
-            td.icon = (1, td.icon[1], td.icon[2])
+            # `needs` only ever picks a tile that has it set. A "surface"
+            # sub-tile is pulled onto the MAP by an on-map need (the way the
+            # straw house pulls in its 15 `3Pigs_Material` crate/cart tiles
+            # within 130 m), so the byte stays 0.
+            sub = f["subtile"]
+            if sub not in (True, "surface"):
+                raise ContentError(f"poi {defn.id}: subtile is true (an underground room) "
+                                   f"or \"surface\" (pulled onto the map by an on-map need)")
+            td.icon = (0 if sub == "surface" else 1, td.icon[1], td.icon[2])
         # A kind no target chapter can supply means the tile is dead weight —
         # it would be registered, loaded, and never placed. Catch it here.
         for ch in chapters if kinds else ():
@@ -1588,6 +1633,39 @@ def _move_objects(level: bytes, defn: ContentDef) -> bytes:
     return LP.set_transforms(level, out_changes)
 
 
+def _set_level_values(level: bytes, defn: ContentDef) -> bytes:
+    """``level_values = { "<value name>" = number }``: the level's own value
+    overrides (:func:`rsmm.engine.level_placements.set_values`) in the def's
+    OWN copy of the tile's level."""
+    raw = defn.fields["level_values"]
+    if not (isinstance(raw, dict) and raw and all(
+            isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool)
+            for k, v in raw.items())):
+        raise ContentError(f"poi {defn.id}: level_values is a table of name = number")
+    try:
+        out = LP.set_values(level, {k: float(v) for k, v in raw.items()})
+    except LP.LevelPlacementError as e:
+        raise ContentError(f"poi {defn.id}: level_values: {e}") from e
+    _log.info("poi %s: level values %s", defn.id, raw)
+    return out
+
+
+def _resize_terrain(level: bytes, defn: ContentDef) -> bytes:
+    """``terrain_size = [x, z]``: stretch the def's OWN copy of the tile's
+    terrain to that many metres about its centre (:func:`rsmm.engine.terrain.resize`)."""
+    from ...engine import terrain as TT
+    raw = defn.fields["terrain_size"]
+    if not (isinstance(raw, list) and len(raw) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+        raise ContentError(f"poi {defn.id}: terrain_size is [x, z] in metres")
+    try:
+        out = TT.resize(level, float(raw[0]), float(raw[1]))
+    except TT.TerrainError as e:
+        raise ContentError(f"poi {defn.id}: terrain_size: {e}") from e
+    _log.info("poi %s: terrain box -> %g x %g m", defn.id, raw[0], raw[1])
+    return out
+
+
 def _paint_terrain(level: bytes, defn: ContentDef) -> bytes:
     """``terrain = [strokes]``: the chapter editor's terrain brush
     (:func:`rsmm.engine.terrain.apply_strokes`) on the def's OWN copy of the
@@ -1862,6 +1940,20 @@ def _validated_places(defn: ContentDef) -> list[dict]:
             raise ContentError(
                 f"poi {defn.id}: places[{i}] needs an `entity` reference")
         ent = item["entity"]
+        # An ingredient PICKUP this mod declares (kind "ingredient"): a clone of
+        # the game's key pickup, so the key pickup is what has to be placeable.
+        pickup = ING.parse_place(ent) if isinstance(ent, str) else None
+        if pickup is not None:
+            if ING.PICKUP_BASE not in _placeable_entities():
+                raise ContentError(f"poi {defn.id}: places[{i}]: the key pickup the "
+                                   f"ingredient pickups clone is no longer placed by any level")
+            pos = item.get("pos") or [0.0, 0.0, 0.0]
+            if len(pos) != 3:
+                raise ContentError(f"poi {defn.id}: places[{i}].pos needs 3 numbers")
+            out.append({"entity": pickup, "pos": tuple(float(v) for v in pos),
+                        "scale": float(item.get("scale", 1.0)),
+                        "yaw": float(item.get("yaw", 0.0))})
+            continue
         part = _part_name(ent)
         if part is not None and part not in ((defn.fields.get("prop") or {}).get("parts") or {}):
             raise ContentError(
@@ -2348,7 +2440,39 @@ def _placed_for_cache(defn: ContentDef) -> list[str]:
               for i in _validated_places(defn)]
     # A teleporter clone borrows against its shipped donor, like a part.
     placed += [_teleporter_donor(t) for t in _validated_teleporters(defn)]
-    return [e for e in placed if e]
+    # An ingredient pickup borrows its two shipped donors (the key pickup and
+    # the scenery it looks like): only shipped tiles can prove a closure.
+    out = []
+    for e in placed:
+        if e and e.startswith(_PICKUP_REF_PREFIX):
+            out += _pickup_record(defn, e)["borrow"]
+        elif e:
+            out.append(e)
+    return out
+
+
+#: Entity refs of ingredient pickups (`rsmm.sdk.kinds.ingredients.pickup_ref`).
+_PICKUP_REF_PREFIX = "Objects_Common\\Ingredient_"
+
+
+def _pickup_record(defn: ContentDef, ref: str) -> dict:
+    rec = ING.EMITTED.get(ref)
+    if rec is None:
+        raise ContentError(
+            f"poi {defn.id}: places {ref!r}, an ingredient pickup no `ingredient` "
+            f"block emitted — declare the ingredient (with this pickup) in the "
+            f"manifest's [[content]], which is emitted before the pois folder")
+    return rec
+
+
+def _pickup_assets(defn: ContentDef) -> list[str]:
+    """The files the ingredient kind emitted for the pickups `places` stands:
+    the clone entity and its icon reach the tile cache like the mod's own art."""
+    out: list[str] = []
+    for i in _validated_places(defn):
+        if i["entity"].startswith(_PICKUP_REF_PREFIX):
+            out += [a for a in _pickup_record(defn, i["entity"])["assets"] if a not in out]
+    return out
 
 
 def _emit_tile_caches(out_dir: Path, base: str, defn_id: str, assets: list[str],
@@ -3379,6 +3503,19 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
         level = _clear_level(level, defn)
     if defn.fields.get("move"):
         level = _move_objects(level, defn)
+    if defn.fields.get("level_values"):
+        level = _set_level_values(level, defn)
+    if defn.fields.get("render_ambient"):
+        raw = defn.fields["render_ambient"]
+        if not (isinstance(raw, list) and len(raw) == 3 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+            raise ContentError(f"poi {defn.id}: render_ambient is [r, g, b]")
+        try:
+            level = LP.set_ambient(level, tuple(float(v) for v in raw))
+        except LP.LevelPlacementError as e:
+            raise ContentError(f"poi {defn.id}: render_ambient: {e}") from e
+    if defn.fields.get("terrain_size"):
+        level = _resize_terrain(level, defn)
     if defn.fields.get("terrain"):
         level = _paint_terrain(level, defn)
     places = _validated_places(defn)
@@ -3411,10 +3548,30 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
             _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
                       ent.split("\\")[-1], item["pos"], item["scale"])
     level = _rename_level_pair(level, defn)
+    # Several teleporters of one side and id (a room with more than one way
+    # out) share one cloned entity: emit it once, place it each time.
+    emitted: dict[tuple[str, str], str] = {}
+    for tp in _validated_teleporters(defn):
+        if tp.get("replace"):
+            # The takeover's clone carries the same name a new teleporter of
+            # this side would get: reuse it only if it is the same donor.
+            if tp["replace"] == TELEPORTER_DONORS[tp["side"]]:
+                tag = f"{mod_id}_{defn.id}".replace("-", "_")
+                emitted[(tp["side"], tp["id"])] = (
+                    f"Objects_Common\\{tag}_Teleporter_{tp['side'].capitalize()}.entity.ot")
+            else:
+                emitted[(tp["side"], tp["id"])] = ""
     for tp in _validated_teleporters(defn):
         if tp.get("replace"):
             continue                      # taken over in the clone above
-        ent = _emit_teleporter(mod_id, defn, out_dir, tp, written)
+        if emitted.get((tp["side"], tp["id"])) == "":
+            raise ContentError(
+                f"poi {defn.id}: a {tp['side']!r} teleporter {tp['id']!r} beside a takeover "
+                f"of a different entity would share its clone's name")
+        key = (tp["side"], tp["id"])
+        if key not in emitted:
+            emitted[key] = _emit_teleporter(mod_id, defn, out_dir, tp, written)
+        ent = emitted[key]
         half = math.radians(tp["yaw"]) / 2.0
         level = LP.add_placement(level, ent, pos=tp["pos"],
                                  quat=(0.0, math.sin(half), 0.0, math.cos(half)),
@@ -3587,7 +3744,7 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
     # in the preload cache exactly like the mod's own art. `RC.extend` dedupes,
     # so this is a no-op on a tile that already places something carrying the
     # same parent — and load-bearing on one that does not.
-    assets = _emitted_assets(out_dir, written) + extra_deps
+    assets = _emitted_assets(out_dir, written) + extra_deps + _pickup_assets(defn)
     # `places` entities belong here for the same reason swap targets do — see
     # `_placed_for_cache`. Without them a def that stands a shipped entity the
     # donor never placed writes it into the level and into nothing else.
@@ -3610,16 +3767,21 @@ def _emit_replacing_base(mod_id: str, defn: ContentDef, out_dir: Path,
 def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     """Materialize the cloned tiledef + one patched mapdef per target chapter."""
     base, chapters = _validate(defn)
+    # Ingredient pickups / hand-ins this def places, even when the manifest's
+    # `ingredient` block has not emitted in this run (out_dir is <mod>/assets).
+    ING.describe_mod(out_dir.parent)
 
     td = TC.read(_tile_path(base).read_bytes())
     _apply_edits(td, defn, chapters)
     # Validated here as well as in the override path, so an author who writes
     # `swaps` without `replace_base` is told rather than silently ignored.
     _validated_swaps(defn, base, out_dir)
-    if any(defn.fields.get(k) for k in ("clear", "terrain", "move")) and (
+    if any(defn.fields.get(k) for k in ("clear", "terrain", "terrain_size", "level_values",
+                                        "render_ambient", "move")) and (
             defn.fields.get("replace_base") or not defn.fields.get("own_level")):
         raise ContentError(
-            f"poi {defn.id}: `clear`/`terrain`/`move` need own_level = true and no replace_base: "
+            f"poi {defn.id}: `clear`/`terrain`/`terrain_size`/`move` need own_level = true "
+            f"and no replace_base: "
             f"it empties the def's OWN copy of the tile's level, never the "
             f"shipped one.")
 
@@ -3736,7 +3898,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # Every copy is a separate tiledef asset, so every copy needs its own
     # cache — a tiledef the engine cannot preload is never placed.
-    assets = _emitted_assets(out_dir, written)
+    assets = _emitted_assets(out_dir, written) + _pickup_assets(defn)
     # `places` entities count exactly like swap targets here — see
     # `_placed_for_cache` for why, and for what it cost both times it was missed.
     placed = _placed_for_cache(defn)
