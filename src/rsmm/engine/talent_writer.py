@@ -48,6 +48,7 @@ READ_VALUE = 0x0FD2C964
 #: The controller's tier bools, in the order shipped selectors test them.
 _TIER_ORDER = ("Legendary", "Epic", "Rare")
 _TIER_KEY = {name: key for key, name in TV.TIER_KEYS.items()}
+_ADD = 0x17AF9527
 _MULTIPLY = 0x17B29BE2
 #: The unit modifier amounts are marked with (``entity_parts.Num.unit``).
 _RATIO = 2
@@ -115,6 +116,15 @@ class TalentWriter(P.PartWriter):
                         self._read(then, READ_VALUE, P.Num.f32(0))),
             self._entry(self._bool(True), P.Num.f32(otherwise))])
 
+    def when_all(self, name: str, owned: P.Link, cond: P.Link, then: P.Link,
+                 otherwise: float = 0.0) -> P.Link:
+        """``then`` while both ``owned`` and ``cond`` are active, else ``otherwise``."""
+        return self._selector(name, [
+            self._entry(self._read(owned, STATE_OFF, self._bool(False)), P.Num.f32(otherwise)),
+            self._entry(self._read(cond, STATE_ON, self._bool(False)),
+                        self._read(then, READ_VALUE, P.Num.f32(0))),
+            self._entry(self._bool(True), P.Num.f32(otherwise))])
+
     def value_of(self, name: str, source: P.Link, *, flag: bool = False) -> P.Link:
         """A Value holding ``source``: its number, or (``flag``) whether that
         state is active."""
@@ -130,6 +140,17 @@ class TalentWriter(P.PartWriter):
                 self._read(link, key, P.Num.f32(0)), self.ci)
         node = self.obj("oCEntityCpntNodeSettings", struct.pack("<II", _MULTIPLY, 2)
                         + operand(a, a_key) + operand(b, b_key))
+        return self._add(_OPS, name, {"operations": node}, flags=0x101, group=group)
+
+    def sum_op(self, name: str, base: float, terms: list[tuple[P.Link, int]] = (), *,
+               group: str) -> P.Link:
+        """``base + sum(terms)``, as a value operation."""
+        ops = [struct.pack("<Ii", 0, -1) + P.num_bytes(P.Num.f32(base), self.ci)]
+        for link, key in terms:
+            ops.append(struct.pack("<Ii", 0, -1) + P.num_bytes(
+                self._read(link, key, P.Num.f32(0)), self.ci))
+        node = self.obj("oCEntityCpntNodeSettings",
+                        struct.pack("<II", _ADD, len(ops)) + b"".join(ops))
         return self._add(_OPS, name, {"operations": node}, flags=0x101, group=group)
 
     # -- behaviour --
@@ -190,16 +211,23 @@ class TalentWriter(P.PartWriter):
             "on_true": _NONE, "ref_2": _NONE, "on_false": _NONE, "ref_4": _NONE,
             "test": combiner, "ref_6": holds, "ref_7": _NONE}, flags=0x1)
 
-    def reader(self, name: str, owner_resource: str, value: P.Link) -> P.Link:
+    def reader(self, name: str, owner_resource: str, value: P.Link, *,
+               owners: tuple[int, ...] = (0,), walk_owners: bool = False) -> P.Link:
         """In an entity the hero spawns: ``value`` read from the hero
-        (``owner_resource``, ``Heroes\\Hero_X\\Hero_X.entity.ot``)."""
+        (``owner_resource``, ``Heroes\\Hero_X\\Hero_X.entity.ot``).
+        With ``walk_owners=True``, each collector filters by ``owner_resource``
+        so 2-hop spawns (summons, child bombs) walk up the owner chain."""
         on = self.obj(P.VALUE_PICKER, b"\x00" + self.obj(
             P.UNION, struct.pack("<II", P.BOOL, 0) + b"\x01"))
-        owner = self.sub("oCOwnerEntityCollectorSettings",
-                         on + b"\x00" + self.obj("oCResourceWeakRef", bytes(8)) + b"\x00")
+        ref_payload = (P._lstr("EntitySettings") + P._lstr(owner_resource)
+                       if walk_owners else bytes(8))
+        flag = b"\x01" if walk_owners else b"\x00"
+        collectors = [self.sub("oCOwnerEntityCollectorSettings",
+                               on + flag + self.obj("oCResourceWeakRef", ref_payload)
+                               + bytes([last])) for last in owners]
         template = self.obj("oCResourceWeakRef", P._lstr("EntitySettings")
                             + P._lstr(owner_resource))
         method = self.obj("EntityCpntMethodPicker", P.link_bytes(_NONE, self.ci) + b"\xff" * 4)
-        return self._add(_GET, name, {"source": self.ids(_COLLECTORS, [owner]),
+        return self._add(_GET, name, {"source": self.ids(_COLLECTORS, collectors),
                                       "template": template, "value": value,
                                       "method": method}, flags=0x1, group="")

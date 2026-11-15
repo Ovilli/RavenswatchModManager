@@ -329,7 +329,7 @@ INT_SV_DONOR = ("Juliet", "Common Ability Modifier Type Spawner Value")
 
 #: A summon's attack, untuned: (area, speed, debuffs, cooldown, reach, range,
 #: targets); see _tune_attack.
-_NO_TUNING = (None, None, True, None, None, None, None)
+_NO_TUNING = (None, None, True, None, None, None, None, True, None)
 
 STEP_KEYS = {"fire": {"fire", "angles", "offsets", "speed", "ricochet", "ricochet_damage", "reads",
                       "forward", *PROJ_VALUES, *PROJ_STATUS},
@@ -948,8 +948,9 @@ _PIPER_HUD = {"HUD Trait Rats Amount": "Kit Pet HUD",
 
 _PET_KEYS = {"entity", "count", "button", "talent", "when", "counter", "appear",
              "spawn", "burst", "aggro", "lifetime", "burst_on_hit", "attack",
-             "hold", "attack_area", "attack_speed", "attack_debuffs",
+             "hold", "keep_ability", "attack_area", "attack_speed", "attack_debuffs",
              "attack_cooldown", "attack_reach", "attack_range", "attack_targets",
+             "attack_combo", "attack_damage",
              "count_talents", "count_card", "look", "name", "upgrade"}
 
 
@@ -996,8 +997,8 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
             raise KitError("kit pets: upgrade needs a talent to switch on "
                            "(e.g. talent = \"Skill Secondary Can Hold\")")
         bad = set(upgrade) - (_PET_KEYS - {"count", "button", "talent", "when", "counter",
-                                           "spawn", "hold", "count_talents", "count_card",
-                                           "upgrade"})
+                                           "spawn", "hold", "keep_ability", "count_talents",
+                                           "count_card", "upgrade"})
         if bad:
             raise KitError(f"kit pets upgrade has no {', '.join(sorted(bad))}")
     if spawn == "button" and spec.get("talent") and not upgrade:
@@ -1023,7 +1024,12 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
                           tuning=_attack_tuning_of(spec, "pets"), look=spec.get("look"),
                           name=spec.get("name"))
         if upgrade:
-            up_spec = {**spec, **upgrade}
+            base_spec = (
+                {k: v for k, v in spec.items() if not k.startswith("attack_")}
+                if upgrade.get("attack") and upgrade.get("attack") != spec.get("attack")
+                else spec
+            )
+            up_spec = {**base_spec, **upgrade}
             pet_up = _summon_for(up_spec["entity"], ctx, "pets", base=AS.PET_MODEL,
                                  appear=up_spec.get("appear"), burst=up_spec.get("burst"),
                                  lifetime=up_spec.get("lifetime"),
@@ -1119,6 +1125,10 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
         # to no pet, which does nothing.
         built = [s["to"] for s in earlier if s.get("add_link") == f"{trigger}.activates"]
         steps += [{"add_link": f"{talent}.disables_while_active?", "to": b} for b in built]
+    elif spec.get("keep_ability"):
+        # Caller keeps the button's authored ability (clip, end timer, moving
+        # split) instead of stripping it for a bare Kit Pet Order Timer.
+        pass
     else:
         # `hold`: how long the button's state lasts (what it holds while
         # active runs that long: a howl's upper/lower body split).
@@ -1494,8 +1504,8 @@ def _attack_tuning_of(block: dict, slot: str) -> tuple:
         raise KitError(f"kit {slot}: attack_debuffs is true or false, got {d!r}")
     cd = block.get("attack_cooldown")
     if cd is not None and (isinstance(cd, bool) or not isinstance(cd, (int, float))
-                           or not 0 < cd <= 60):
-        raise KitError(f"kit {slot}: attack_cooldown is seconds above 0, up to 60; got {cd!r}")
+                           or not 0 <= cd <= 60):
+        raise KitError(f"kit {slot}: attack_cooldown is seconds 0 to 60; got {cd!r}")
     reach = block.get("attack_reach")
     if reach is not None and (isinstance(reach, bool) or not isinstance(reach, (int, float))
                               or not 0 < reach <= 10):
@@ -1507,8 +1517,15 @@ def _attack_tuning_of(block: dict, slot: str) -> tuple:
     tg = block.get("attack_targets")
     if tg is not None and (isinstance(tg, bool) or not isinstance(tg, int) or not 0 <= tg <= 20):
         raise KitError(f"kit {slot}: attack_targets is how many it hits, 0 = all; got {tg!r}")
+    combo = block.get("attack_combo", True)
+    if not isinstance(combo, bool):
+        raise KitError(f"kit {slot}: attack_combo is true or false, got {combo!r}")
+    dmg = block.get("attack_damage")
+    if dmg is not None and (isinstance(dmg, bool) or not isinstance(dmg, (int, float))
+                            or not 0 < dmg <= 10000):
+        raise KitError(f"kit {slot}: attack_damage is level-1 damage above 0; got {dmg!r}")
     return (*out, d, None if cd is None else float(cd), None if reach is None else float(reach),
-            None if rng is None else float(rng), tg)
+            None if rng is None else float(rng), tg, combo, None if dmg is None else float(dmg))
 
 
 def _cone_angle(p: bytearray, names: list[str]) -> int:
@@ -1553,7 +1570,7 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
       selector it reads), and the wait between ANY two attacks is no longer.
       A bite at something that cannot be hit yet (a treant rising from the
       ground) lands nothing; it tries again soon instead (Pam)."""
-    area, speed, debuffs, cooldown, reach, _range, targets = tuning
+    area, speed, debuffs, cooldown, reach, _range, targets, combo, damage = tuning
     if tuning == _NO_TUNING:
         return out
     from .entity_graph_edit import EntityEditError, EntityFile
@@ -1619,6 +1636,23 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         if not n_comp:
             raise KitError(f"kit {slot}: attack_targets: {attack} picks its targets with no "
                            "target computer of its own")
+
+    def _set_selector(sel, val: float, *, clamp: bool = False,
+                      seen: set[str] | None = None) -> None:
+        seen = seen or set()
+        if sel.name in seen:
+            return
+        seen.add(sel.name)
+        entries = next(f for f in EF.fields(sel) if f.name == "entries")
+        for i, item in enumerate(entries.items):
+            cur = float(item.text.split()[3]) if clamp else val
+            v = min(cur, val) if clamp else val
+            ef.set_value(sel.name, f"entries[{i}][1]", v)
+            for r in sel.refs:
+                sub = by.get(r.path.rsplit("\\", 1)[-1].strip())
+                if sub is not None and sub.cls == "oCEntityCpntValueSelectorSettings":
+                    _set_selector(sub, val, clamp=clamp, seen=seen)
+
     if cooldown is not None:
         tm = by.get(f"Attack {attack} Cooldown")
         if tm is None or tm.cls != "oCEntityCpntTimerSettings":
@@ -1626,17 +1660,46 @@ def _tune_attack(out: dict[str, bytes], model_ref: str, attack: str, tuning: tup
         d = next(f for f in EF.fields(tm) if f.name == "duration")
         sel = by.get(ref_name(tm, "duration") or "") if "<-" in d.text else None
         if sel is not None and sel.cls == "oCEntityCpntValueSelectorSettings":
-            entries = next(f for f in EF.fields(sel) if f.name == "entries")
-            for i in range(len(entries.items)):
-                ef.set_value(sel.name, f"entries[{i}][1]", cooldown)
+            _set_selector(sel, cooldown)
         elif "<-" in d.text:
             raise KitError(f"kit {slot}: attack_cooldown: its timer reads {d.text!r}")
         ef.set_value(tm.name, "duration", cooldown)
         for c in ef.graph().components:
             if c.cls == "oCEntityCpntTimerSettings" and c.group == "Bhv Fighting" \
                     and c.name.endswith("All Attack Cooldown"):
-                now = float(next(f for f in EF.fields(c) if f.name == "duration").text.split()[1])
+                cd_f = next(f for f in EF.fields(c) if f.name == "duration")
+                all_sel = by.get(ref_name(c, "duration") or "") if "<-" in cd_f.text else None
+                if all_sel is not None and all_sel.cls == "oCEntityCpntValueSelectorSettings":
+                    _set_selector(all_sel, cooldown, clamp=True)
+                now = float(cd_f.text.split()[1])
                 ef.set_value(c.name, "duration", min(now, cooldown))
+        if cooldown == 0:
+            start_tm = by.get("Fighting Start Attack Cooldown")
+            if start_tm is not None and start_tm.cls == "oCEntityCpntTimerSettings":
+                ef.set_value(start_tm.name, "duration", 0.0)
+    if not combo:
+        n_combo = 0
+        for c in comps:
+            if c.cls == "oCEntityCpntTesterSettings" and c.name.endswith("Combo Link Tester"):
+                ef.set_ref(c.name, "on_true", None)
+                n_combo += 1
+        if not n_combo:
+            raise KitError(f"kit {slot}: attack_combo: {attack} has no combo link tester")
+    if damage is not None:
+        mult = damage / 10.0
+        n_dmg = 0
+        for c in comps:
+            if c.cls != "oCDtEntityCpntDamageSettings":
+                continue
+            v28 = next((x for x in EF.fields(c) if x.name == "value_28"), None)
+            if v28 is not None and "<-" in v28.text:
+                dsel = by.get(ref_name(c, "value_28") or "")
+                if dsel is not None and dsel.cls == "oCEntityCpntValueSelectorSettings":
+                    _set_selector(dsel, mult)
+            ef.set_value(c.name, "value_28", mult)
+            n_dmg += 1
+        if not n_dmg:
+            raise KitError(f"kit {slot}: attack_damage: {attack} has no damage component")
     if speed is not None:
         anims = 0
         for c in comps:

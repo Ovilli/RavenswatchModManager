@@ -223,7 +223,7 @@ def rig_sounds(read, rig: str) -> dict[str, str]:
             if c.name != name:                 # a skill's variant of the slot
                 continue
             alt = scope == "Hero_Alt_Form_Common"
-            slot = re.sub(r" Alt\b", "", name) if alt else name
+            slot = re.sub(r" Alt(?: Form)?\b", "", name) if alt else name
             rank = 0 if alt else 1
             if slot in shared and (slot not in picked or rank < picked[slot][0]):
                 picked[slot] = (rank, f"Heroes\\{rig}\\{rig}.entity.ot | {c.name}")
@@ -773,7 +773,8 @@ def talent_effects(raw: bytes, hero_common: EntityFile, effects: dict[str, dict]
                     raw, talent=talent, stat=e["stat"], values=e.get("values"),
                     percent=e.get("percent", True), seed=f"{seed}:{talent}",
                     during=e.get("during"), after=e.get("after"), seconds=e.get("seconds"),
-                    cooldown=e.get("cooldown"), next_ability=e.get("next"), on=e.get("on"))
+                    cooldown=e.get("cooldown"), next_ability=e.get("next"), on=e.get("on"),
+                    state_name=spec.get("state"))
             for n, a in enumerate(spec.get("actions") or [], 1):
                 raw, state = TA.add_action_trigger(raw, talent=talent, on=str(a["on"]), n=n,
                                                    seed=f"{seed}:{talent}")

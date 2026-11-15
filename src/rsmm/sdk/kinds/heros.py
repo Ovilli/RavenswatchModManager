@@ -1635,7 +1635,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             head = len(tcf.sections[0].payload)
             tcf.sections[0] = cooked.Section(payload=payload[:head])
             tcf.sections[1] = cooked.Section(payload=payload[head:])
-            ref = f"{rig_dir}\\{scope}_{name}.fbx"
+            # Beside its template: a template in a sub-folder of the rig's
+            # clips (`Communs\RED_Wolf_Spawning`) puts the clip there too.
+            ref = f"{tpl_ref.rsplit(chr(92), 1)[0]}\\{scope}_{name}.fbx"
             put(f"3D/{ref.replace(chr(92), '/')}.Animation.gen", cooked.emit(tcf))
             art.append(f"3D|{ref}|oCAnimation")
             from ...engine.cooked_schemas import animation as A
@@ -1794,6 +1796,16 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             hooks.append({"when": f"State {word} Ability", "steps": raw["steps"]})
             button_steps[str(slot)] = raw["steps"]
         raw.pop("steps", None)
+        if raw.get("add_stats"):
+            if not raw.get("passive"):
+                raise ContentError(
+                    f"hero {hid}: abilities.{slot}: add_stats requires passive = true")
+            effects[f"{word} Passive"] = {
+                "add_stats": raw.pop("add_stats"),
+                "state": f"State {word} Ability Passive",
+            }
+        else:
+            raw.pop("add_stats", None)
         card = {}
         if "name" in raw:
             card["name_key"] = key(f"Ability_{word}_Name", raw.pop("name"))
@@ -2135,6 +2147,10 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         except HA.AbilityError as e:
             raise ContentError(f"hero {hid}: {e}") from e
         main = ief.to_bytes()
+    from ...engine import talent_add_stat as _TA
+    main, own_projectiles = _TA.scale_hero_bleeds(
+        main, own_projectiles, main_ref.replace("/", "\\"),
+        scope=scope, seed=f"{mod_id}:{hid}")
     # Last: every link to one of its overrides of a shared part names the
     # SHARED part's GUID, as shipped heroes write all 600+ such links (none
     # by the override's own id; linked that way, Blood Wolf 0.2's combo never

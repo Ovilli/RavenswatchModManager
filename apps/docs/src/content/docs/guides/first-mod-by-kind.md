@@ -1414,7 +1414,13 @@ hits = [ { at = 0.9, radius = 5, damage = 300, status = "Rooted" } ]
   0.25). A lunge that reaches no one ends with no strike. `hits` land on the
   strike's clip.
 - `intangible = true` lets attacks pass through the hero while the button
-  runs, including its strike.
+  runs, including its strike. A number (`intangible = 2.0`, up to 60) holds
+  it only for the first that many seconds.
+- `loop = true` loops `clip` for the button's whole `duration` instead of
+  playing it once (not on a combo).
+- `passive = true` makes the slot a passive trait: no clip, no cooldown, a
+  state that is on from the moment the hero spawns. Its `add_stats` (the same
+  list a talent takes) hang off that state, so they always apply.
 - `icon` is the button's picture on the HUD: a PNG in the mod
   (`icon = "art/ui/timber.png"`) or a picture the game ships
   (`icon = "Heroes\\Kintaro\\Ability_Kintaro_Dismounted_Power.png"`). The
