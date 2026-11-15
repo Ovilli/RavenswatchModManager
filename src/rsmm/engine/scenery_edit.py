@@ -36,7 +36,7 @@ from . import corpus
 from . import level_placements as LP
 
 SINK = 1000.0          # how far a removed object goes under the map
-_ANCHOR_TOL = 0.05     # metres: an anchor within this of the shipped position matches
+ANCHOR_TOL = 0.05      # metres: an anchor within this of the shipped position matches
 
 
 #: Folders whose entities are set dressing, by the second path component
@@ -194,7 +194,7 @@ def apply(chapter, level: str, edits: dict) -> tuple[bytes, list[str]]:
                 f"not {str((spec or {}).get('entity', '?')).rsplit(chr(92), 1)[-1]} "
                 "(the game changed this level since the edit was made)")
         at = _vec(spec.get("at"), 3, f"{what} {oid} at")
-        if math.dist(at, pl.pos) > _ANCHOR_TOL:
+        if math.dist(at, pl.pos) > ANCHOR_TOL:
             raise SceneryEditError(f"{what} {oid}: the object is no longer where the edit "
                                    "found it (the game changed this level)")
         return oid, pl

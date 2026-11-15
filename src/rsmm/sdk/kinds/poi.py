@@ -1571,20 +1571,41 @@ CLEAR_KEEP = ("Enemy_Spawner", "Enemy_Camp_Reward", "LD_Terrain_Shapes",
               "LD_Reward_Pedestal")
 
 
-#: How far (metres, per axis) an `at` anchor may sit from the placement it
-#: names: the editor writes positions read from the level, so they match to
-#: float precision; this only absorbs rounding.
-AT_TOLERANCE = 0.05
-
-
 def _is_placement(pl, entity: str, at=None) -> bool:
     """Does `pl` place `entity` (file name or full reference) — and, given
-    `at`, is it the one standing there?"""
+    `at`, is it the one standing there? The tolerance is the chapter editor's
+    (:data:`rsmm.engine.scenery_edit.ANCHOR_TOL`), so one anchor means the same
+    thing in both editors."""
+    from ...engine.scenery_edit import ANCHOR_TOL
     want = str(entity).lower()
     if want not in (pl.ref.lower(), pl.ref.rsplit("\\", 1)[-1].lower()):
         return False
-    return at is None or all(abs(a - float(b)) <= AT_TOLERANCE
-                             for a, b in zip(pl.pos, at, strict=True))
+    return at is None or math.dist(pl.pos, at) <= ANCHOR_TOL
+
+
+def _anchor(defn: ContentDef, where: str, item, *, need_at: bool) -> tuple[str, list | None]:
+    """``(entity, at)`` from a ``clear.remove`` / ``move`` entry, checked."""
+    if isinstance(item, str) and not need_at:
+        return item, None
+    if not isinstance(item, dict) or not isinstance(item.get("entity"), str):
+        raise ContentError(f"poi {defn.id}: {where} needs an `entity` reference")
+    at = item.get("at")
+    if at is None and not need_at:
+        return item["entity"], None
+    if not (isinstance(at, list) and len(at) == 3 and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) for v in at)):
+        raise ContentError(f"poi {defn.id}: {where}.at needs three numbers")
+    return item["entity"], [float(v) for v in at]
+
+
+def _one_placement(defn: ContentDef, where: str, objs, entity: str, at) -> list:
+    """Placements an entry names; an `at` anchor must name exactly one."""
+    hits = [(oid, pl) for oid, pl in objs if _is_placement(pl, entity, at)]
+    if at is not None and len(hits) != 1:
+        raise ContentError(
+            f"poi {defn.id}: {where}: " + (f"no {entity!r} stands at {at}" if not hits else
+            f"{len(hits)} placements of {entity!r} stand at {at}; the anchor must name one"))
+    return hits
 
 
 def _clear_level(level: bytes, defn: ContentDef) -> bytes:
@@ -1612,15 +1633,18 @@ def _clear_level(level: bytes, defn: ContentDef) -> bytes:
         raise ContentError(f"poi {defn.id}: `clear` takes `keep` OR `remove`, not both")
     changes, kept = {}, 0
     objs = LP.objects(level)
-    for r in remove:
-        if isinstance(r, dict) and not any(_is_placement(pl, r["entity"], r["at"])
-                                           for _, pl in objs):
-            raise ContentError(f"poi {defn.id}: clear.remove: no {r['entity']!r} "
-                               f"stands at {r['at']}")
+    anchored = set()                  # object ids named by an `at` anchor
+    named = []                        # plain names
+    for i, r in enumerate(remove):
+        ent, at = _anchor(defn, f"clear.remove[{i}]", r, need_at=False)
+        if at is None:
+            named.append(ent)
+        else:
+            anchored |= {oid for oid, _ in _one_placement(defn, f"clear.remove[{i}]",
+                                                          objs, ent, at)}
     for oid, pl in objs:
         if remove:
-            hit = any(_is_placement(pl, r["entity"], r["at"]) if isinstance(r, dict)
-                      else _is_placement(pl, r) for r in remove)
+            hit = oid in anchored or any(_is_placement(pl, n) for n in named)
         else:
             hit = not any(k.lower() in pl.ref.lower() for k in keep)
         if not hit:
@@ -1642,24 +1666,34 @@ def _clear_level(level: bytes, defn: ContentDef) -> bytes:
     return out
 
 
-def _move_objects(level: bytes, defn: ContentDef) -> bytes:
+def _move_objects(level: bytes, defn: ContentDef, before=None) -> bytes:
     """``move = [{ entity = "X.entity.ot", pos = [x, y, z] }]``: every plain
     placement of that entity (file name or full reference) in the def's OWN
     level stands at ``pos`` instead, keeping its rotation and scale — e.g. a
     camp's reward lifted onto a deck the def built over its old spot. With
-    ``at = [x, y, z]`` only the placement standing there moves."""
+    ``at = [x, y, z]`` only the placement standing there moves.
+
+    Targets are picked from `before` (the level as it was before ``clear``),
+    so an anchor still names what the author saw; a placement ``clear`` sank
+    is refused rather than silently lifted back up."""
     out_changes = {}
-    objs = LP.objects(level)
+    objs = before if before is not None else LP.objects(level)
+    now = dict(LP.objects(level))
     for i, mv in enumerate(defn.fields["move"]):
-        hits = [(oid, pl) for oid, pl in objs
-                if _is_placement(pl, mv.get("entity", ""), mv.get("at"))]
+        ent, at = _anchor(defn, f"move[{i}]", mv, need_at=False)
+        hits = _one_placement(defn, f"move[{i}]", objs, ent, at)
         if not hits:
-            where = f" at {mv['at']}" if mv.get("at") else ""
-            raise ContentError(
-                f"poi {defn.id}: move[{i}]: the level places no {mv.get('entity')!r}{where}")
-        pos = tuple(float(v) for v in mv["pos"])
-        for oid, pl in hits:
-            out_changes[oid] = (pos, pl.quat, pl.scale)
+            raise ContentError(f"poi {defn.id}: move[{i}]: the level places no {ent!r}")
+        if any(oid in now and now[oid].pos != pl.pos for oid, pl in hits):
+            raise ContentError(f"poi {defn.id}: move[{i}]: {ent!r} is also cleared; "
+                               f"an object is either moved or removed")
+        raw = mv.get("pos")
+        if not (isinstance(raw, list) and len(raw) == 3 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in raw)):
+            raise ContentError(f"poi {defn.id}: move[{i}].pos needs three numbers")
+        pos = tuple(float(v) for v in raw)
+        for oid, _pl in hits:
+            out_changes[oid] = (pos, now[oid].quat, now[oid].scale)
     return LP.set_transforms(level, out_changes)
 
 
@@ -3529,10 +3563,11 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
         _corpus(PC.level_cooked_path(level_ref), defn.id, "the tile's level"),
         level_ref, new_level_ref,
         {**swaps, **_teleporter_takeovers(mod_id, defn, level_ref, out_dir, written)})
+    before = LP.objects(level)
     if defn.fields.get("clear"):
         level = _clear_level(level, defn)
     if defn.fields.get("move"):
-        level = _move_objects(level, defn)
+        level = _move_objects(level, defn, before)
     if defn.fields.get("level_values"):
         level = _set_level_values(level, defn)
     if defn.fields.get("render_ambient"):

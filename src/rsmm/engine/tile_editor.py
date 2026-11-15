@@ -87,6 +87,11 @@ def _level(tile: str) -> tuple[str, bytes]:
     return ref, raw
 
 
+def _anchor_tol() -> float:
+    from .scenery_edit import ANCHOR_TOL
+    return ANCHOR_TOL
+
+
 def _name(ref: str) -> str:
     return ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
 
@@ -102,6 +107,7 @@ def objects_json(tile: str) -> dict:
     return {
         "tile": tile, "base": base_of(tile), "level": ref, "chapters": chapters_of(tile),
         "clear_keep": list(_poi().CLEAR_KEEP),
+        "at_tolerance": _anchor_tol(),
         "objects": [{"entity": p.ref, "name": _name(p.ref), "pos": list(p.pos),
                      "quat": list(p.quat), "scale": list(p.scale)} for p in placements],
     }
