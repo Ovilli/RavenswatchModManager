@@ -28,6 +28,8 @@ return {
   ["EnemyCampTierDef_PostLoad"] = { pattern = "EnemyCampTierDef_PostLoad", offset = 0x0, sig = "up" },
   ["EnemyController_Ctor"] = { pattern = "EnemyController_Ctor", offset = 0x0, sig = "pp" },
   ["EntityComponent_Activate"] = { pattern = "EntityComponent_Activate", offset = 0x0, sig = "vpp" },
+  ["EntityComponent_RunActivate"] = { pattern = "EntityComponent_RunActivate", offset = 0x0, sig = "vp" },
+  ["EntityComponent_RunDeactivate"] = { pattern = "EntityComponent_RunDeactivate", offset = 0x0, sig = "vp" },
   ["EntityEventTrigger_Fire"] = { pattern = "EntityEventTrigger_Fire", offset = 0x0, sig = "vp" },
   ["EntityStore_CreateEntity"] = { pattern = "EntityStore_CreateEntity", offset = 0x0, sig = "ppppp" },
   ["EntityValueEntry_Ctor"] = { pattern = "EntityValueEntry_Ctor", offset = 0x0, sig = "vpp" },
@@ -154,6 +156,7 @@ return {
   ["XpComponent_SetLevel"] = { pattern = "XpComponent_SetLevel", offset = 0x0, sig = "vpu" },
   ["XpComponent_SetXp"] = { pattern = "XpComponent_SetXp", offset = 0x0, sig = "vpu" },
   ["XpComponent_XpForLevel"] = { pattern = "XpComponent_XpForLevel", offset = 0x0, sig = "upu" },
+  _va_build = "b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904",
   _va = {
     ["AppSettings_SectionList"] = 0x1412efd60,
     ["ClassRegistry_Global"] = 0x141436b90,

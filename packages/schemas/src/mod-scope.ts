@@ -30,6 +30,7 @@ export const CLIENT_NAMESPACES: ReadonlySet<string> = new Set([
   'camera',
   'audio',
   'input',
+  'ui',
 ]);
 
 /** Single client-only functions inside gameplay namespaces (engine: CLIENT_CALLS). */

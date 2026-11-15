@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding, walk
 
 
 def _names(src: str) -> list[tuple[str, int, int]]:
@@ -96,3 +96,21 @@ def test_call_arguments_with_a_function_body():
 def test_unwalkable_source_raises(src):
     with pytest.raises(LuaSyntaxError):
         late_locals(src)
+
+
+def test_statement_assignment_is_a_global_write_not_a_read():
+    w = walk('R = require "rsmm"\nR.on("x", function() end)\nlocal L = 1\nL = 2\n')
+    assert w.global_writes == {"R"}          # `L = 2` assigns the local
+    assert [name for name, _ in w.globals] == ["require", "R"]
+
+
+def test_global_assignment_binds_the_sdk():
+    assert missing_sdk_binding('R = require "rsmm"\nR.on("x", function() end)\n') is None
+    assert missing_sdk_binding('R.on("x", function() end)\n') == 1
+
+
+def test_checks_accept_a_finished_walk():
+    src = "R.on('x', function()\n  return F\nend)\nlocal F = 1\n"
+    w = walk(src)
+    assert late_locals(w) == late_locals(src)
+    assert missing_sdk_binding(w) == missing_sdk_binding(src) == 1

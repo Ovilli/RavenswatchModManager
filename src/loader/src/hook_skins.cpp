@@ -226,9 +226,10 @@ void append_custom_packs() {
     // Everything below models the roster as a LINKED LIST hanging off a global
     // oCAdditionalContentManager: it allocates a 0xA0 entry and splices it in
     // via next/back/owner at +0x08/+0x10/+0x18. That is not how the shipped
-    // build works. SkinRoster_Build (FUN_1401dd2c0, recovered 2026-08-09)
+    // build works. SkinRoster_Build (0x1401d6d40 on b9c3642884a8; recovered 2026-08-09)
     // keeps the roster as a CONTIGUOUS ARRAY on the screen ctx —
-    // {data @ +0x13c8, count @ +0x13d0, cap @ +0x13d4} — and allocates it as
+    // {data @ +0x13d0, count @ +0x13d8, cap @ +0x13dc} (+8 since Update 6;
+    // +0x13c8/+0x13d0/+0x13d4 before) — and allocates it as
     // one malloc(0x5a0) = 9 * 0xA0.
     //
     // Two consequences, both fatal to this code path:
@@ -245,7 +246,7 @@ void append_custom_packs() {
     // not that this particular address was ever re-derived for it.
     //
     // The correct strategy for the array model is to post-detour the builder
-    // and grow ctx+0x13c8 to 9+N, constructing the extra entries with
+    // and grow ctx+0x13d0 to 9+N, constructing the extra entries with
     // Entry_Ctor — which is why the four recovered symbols stay wired up here.
     // Doing that blind, without being able to playtest it, is how you corrupt
     // somebody's save, so the path refuses instead.
@@ -486,7 +487,7 @@ bool install_skin_hooks() {
         // Nothing this hook could do is correct on this build, so do not
         // detour at all rather than installing a no-op passthrough.
         Loader::get().log_warn("[skin-hook] disabled: the roster is a contiguous "
-                          "array on the screen ctx (+0x13c8/+0x13d0/+0x13d4, 9 "
+                          "array on the screen ctx (+0x13d0/+0x13d8/+0x13dc, 9 "
                           "entries) truncated to 9 on every rebuild, not the "
                           "linked list this code appends to. Symbols are "
                           "recovered and correct; the append path needs a "

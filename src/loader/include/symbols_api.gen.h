@@ -10,7 +10,7 @@
 namespace engine {
 
 // Omitted as not status=ok (calling an unverified address is how a
-// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified), Netcode_EntityReplSetup (unverified)
+// detour lands mid-function): Entity_AllocInstance (unverified), Entity_FindMagicalObjectComponent (unverified), MagicalObjectPool_Grow (unverified), MagicalObjectPool_SourceLookup (unverified), MetaClass_DestructInPlace (unverified)
 
 // AchievementDef_PostLoad  (AchievementDef_PostLoad)
 //   bool(void* definition)
@@ -164,6 +164,20 @@ inline EnemyController_Ctor_fn EnemyController_Ctor() {
 using EntityComponent_Activate_fn = void(*)(void*, void*);
 inline EntityComponent_Activate_fn EntityComponent_Activate() {
     return reinterpret_cast<EntityComponent_Activate_fn>(rsmm::fn_resolve(Sym::EntityComponent_Activate_Pattern));
+}
+
+// EntityComponent_RunActivate  (EntityComponent_RunActivate)
+//   void(oIEntityCpnt* cpnt)
+using EntityComponent_RunActivate_fn = void(*)(void*);
+inline EntityComponent_RunActivate_fn EntityComponent_RunActivate() {
+    return reinterpret_cast<EntityComponent_RunActivate_fn>(rsmm::fn_resolve(Sym::EntityComponent_RunActivate_Pattern));
+}
+
+// EntityComponent_RunDeactivate  (EntityComponent_RunDeactivate)
+//   void(oIEntityCpnt* cpnt)
+using EntityComponent_RunDeactivate_fn = void(*)(void*);
+inline EntityComponent_RunDeactivate_fn EntityComponent_RunDeactivate() {
+    return reinterpret_cast<EntityComponent_RunDeactivate_fn>(rsmm::fn_resolve(Sym::EntityComponent_RunDeactivate_Pattern));
 }
 
 // EntityEventTrigger_Fire  (EntityEventTrigger_Fire)
@@ -691,6 +705,13 @@ inline Netcode_Channel_LookupById_fn Netcode_Channel_LookupById() {
 using Netcode_Channel_Unsubscribe_fn = void(*)(void*, void*);
 inline Netcode_Channel_Unsubscribe_fn Netcode_Channel_Unsubscribe() {
     return reinterpret_cast<Netcode_Channel_Unsubscribe_fn>(rsmm::fn_resolve(Sym::Netcode_Channel_Unsubscribe_Pattern));
+}
+
+// Netcode_EntityReplSetup  (Netcode_EntityReplSetup)
+//   void(oCEntityCpntNetwork* self)
+using Netcode_EntityReplSetup_fn = void(*)(void*);
+inline Netcode_EntityReplSetup_fn Netcode_EntityReplSetup() {
+    return reinterpret_cast<Netcode_EntityReplSetup_fn>(rsmm::fn_resolve(Sym::Netcode_EntityReplSetup_Pattern));
 }
 
 // Object_CloneViaSerialize  (Object_CloneViaSerialize)

@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **381** symbols across 29 categories.
+Total: **383** symbols across 29 categories.
 
 ## analytics
 
@@ -336,7 +336,7 @@ Total: **381** symbols across 29 categories.
 | `Netcode_ConnectionFactory` | `0x140b274f0` | ✅ ok |  | Builds a Stormancer::RakNetConnection for an incoming RakNetGUID and files it in the co… |
 | `Netcode_ConnectionRegistry_Emplace` | `0x140b2ea80` | ✅ ok |  | MSVC std::unordered_map<uint64,...>::try_emplace for the netcode's CONNECTION REGISTRY.… |
 | `Netcode_DropPeer` | `0x1402ae3e0` | ✅ ok |  | Drops a peer after the reconnect window (default 60s) elapses. Pattern-verified 2026-07… |
-| `Netcode_EntityReplSetup` | `0x140720350` | ❓ unverified | ✔ | void(void* replContext) |
+| `Netcode_EntityReplSetup` | `0x140720350` | ✅ ok | ✔ | void(oCEntityCpntNetwork* self) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 | `Netcode_ReconnectMaxRead` | `0x1402ab327` | ✅ ok |  | (code location, not callable) |
 | `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
@@ -486,6 +486,8 @@ Total: **381** symbols across 29 categories.
 | `BookController_ResolveTabs` | `0x140303790` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookMenuUiController_OnHide` | `0x1403da3d0` | ✅ ok | ✔ | void(void* uiController) |
 | `BookMenuUiController_OnShow` | `0x1403d9da0` | ✅ ok | ✔ | void(void* uiController) |
+| `EntityComponent_RunActivate` | `0x140711630` | ✅ ok | ✔ | void(oIEntityCpnt* cpnt) |
+| `EntityComponent_RunDeactivate` | `0x140711790` | ✅ ok | ✔ | void(oIEntityCpnt* cpnt) |
 | `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok | ✔ | int(void* screen) |
 | `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok | ✔ | void(void* screen) |
 | `HeroSelect_PortraitPicked` | `0x1403e61d0` | ✅ ok | ✔ | THE 'hero already selected' lock (Ghidra, b9c3642884a8, 2026-10-15). Called when a hero… |

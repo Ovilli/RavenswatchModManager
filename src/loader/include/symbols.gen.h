@@ -6,6 +6,9 @@
 
 namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
+// sha256 of the game exe these addresses were derived for ('' = unknown);
+// the loader's va-gate trusts absolute data addresses only on that exe.
+constexpr const char* kSymbolMapExeSha256 = "b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904";
 
 // --- analytics ---
 constexpr std::uintptr_t AnalyticsBag_SetInt = 0x1402047c0ull;
@@ -470,7 +473,7 @@ constexpr const char* Netcode_ConnectionRegistry_Emplace_Pattern = "Netcode_Conn
 constexpr std::uintptr_t Netcode_DropPeer = 0x1402ae3e0ull;
 constexpr const char* Netcode_DropPeer_Pattern = "Netcode_DropPeer";
 constexpr std::uintptr_t Netcode_EntityReplSetup = 0x140720350ull;
-// Netcode_EntityReplSetup_Pattern omitted: status=unverified
+constexpr const char* Netcode_EntityReplSetup_Pattern = "Netcode_EntityReplSetup";
 constexpr std::uintptr_t Netcode_PeerStateTick = 0x1402aaf80ull;
 constexpr const char* Netcode_PeerStateTick_Pattern = "Netcode_PeerStateTick";
 constexpr std::uintptr_t Netcode_ReconnectMaxRead = 0x1402ab327ull;
@@ -667,6 +670,10 @@ constexpr std::uintptr_t BookMenuUiController_OnHide = 0x1403da3d0ull;
 constexpr const char* BookMenuUiController_OnHide_Pattern = "BookMenuUiController_OnHide";
 constexpr std::uintptr_t BookMenuUiController_OnShow = 0x1403d9da0ull;
 constexpr const char* BookMenuUiController_OnShow_Pattern = "BookMenuUiController_OnShow";
+constexpr std::uintptr_t EntityComponent_RunActivate = 0x140711630ull;
+constexpr const char* EntityComponent_RunActivate_Pattern = "EntityComponent_RunActivate";
+constexpr std::uintptr_t EntityComponent_RunDeactivate = 0x140711790ull;
+constexpr const char* EntityComponent_RunDeactivate_Pattern = "EntityComponent_RunDeactivate";
 constexpr std::uintptr_t HeroSelect_ConfirmBlockReason = 0x140268570ull;
 constexpr const char* HeroSelect_ConfirmBlockReason_Pattern = "HeroSelect_ConfirmBlockReason";
 constexpr std::uintptr_t HeroSelect_ConfirmPressed = 0x1403e17f0ull;

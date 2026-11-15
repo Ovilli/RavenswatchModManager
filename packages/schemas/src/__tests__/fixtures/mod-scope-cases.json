@@ -229,7 +229,8 @@
     "on_match",
     "once",
     "overlay",
-    "schedule"
+    "schedule",
+    "ui"
   ],
   "client_calls": [
     "debug.components",

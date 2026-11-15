@@ -40,12 +40,13 @@ from pathlib import Path
 #: SDK namespaces whose every member is client-only: logging, timers, the mod's
 #: own config / storage / experiments, the HUD overlay, the read-only damage
 #: meter, the boot canary, local translation lookup, the camera, the
-#: master audio mute (FMOD mixes on each machine; nothing is sent), and local
-#: mouse-wheel input plus a read of the player's own key bindings.
+#: master audio mute (FMOD mixes on each machine; nothing is sent), local
+#: mouse-wheel input plus a read of the player's own key bindings, and R.ui
+#: (reads which of this machine's menus are open; it never shows or hides one).
 CLIENT_NAMESPACES: frozenset[str] = frozenset({
     "log", "on", "off", "once", "on_match",
     "overlay", "exp", "kv", "config", "schedule", "health", "i18n",
-    "damage", "camera", "audio", "input",
+    "damage", "camera", "audio", "input", "ui",
 })
 
 #: Single client-only functions inside otherwise-gameplay namespaces: reads.

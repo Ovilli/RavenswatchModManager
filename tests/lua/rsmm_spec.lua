@@ -702,6 +702,22 @@ do
     va_trusted_val = false
     I.write_u64(root + 0x20, obj)
     check(R.stat.cached("attack_power") == nil, "an untrusted build refuses the va read")
+    -- The SDK's VA table ships apart from the DLL, so BOTH stamps must agree
+    -- with the running exe: engine_gen._va_build (checked in Lua) and the DLL
+    -- gate (va_trusted).
+    local va_build = require("engine_gen")._va_build or ""
+    if va_build ~= "" then
+        I.exe_sha256 = function() return va_build end
+        check(R.stat.cached("attack_power") == nil,
+              "a matching SDK stamp does not override an untrusting DLL gate")
+        va_trusted_val = true
+        check(R.stat.cached("attack_power") ~= nil,
+              "SDK stamp matches AND the DLL trusts: the va read goes through")
+        I.exe_sha256 = function() return string.rep("0", 64) end
+        check(R.stat.cached("attack_power") == nil,
+              "an exe that is not engine_gen's build refuses even when the DLL trusts")
+        I.exe_sha256 = nil
+    end
     va_trusted_val = true
     I.write_u64(ROOT_SLOT, 0)
 end
@@ -12062,6 +12078,63 @@ do
     check(about(target, 0.81) and about(current, 0.9), "zoom_factor returns target then current")
     check(R.camera.zoom_reset({ duration = 0.5 }) == true and resets[1] == 0.5, "reset passes its duration")
     I.camera_zoom_armed, I.camera_zoom, I.camera_zoom_reset, I.camera_zoom_factor = nil, nil, nil, nil
+end
+
+-- R.ui (PR #110): what the UI is showing, from the loader's component-runner
+-- detours. Armed on first use; "unknown" (nil) is never reported as "closed".
+do
+    check(type(R.ui) == "table", "R.ui is loaded")
+    local arm_calls, armed = 0, false
+    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0 }
+    I.ui_state_arm = function()
+        arm_calls = arm_calls + 1
+        if armed then return true, nil end
+        return false, "no UI controller vftable found by RTTI (game patched?)"
+    end
+    I.ui_state_count = function(kind) return counts[kind] end
+    I.ui_state_open = function()
+        return { { kind = "menu", class = "EscapeGameMenu", ptr = 0x1000 } }
+    end
+    local open, why = R.ui.is_open("menu")
+    check(open == nil and why:find("RTTI"), "cannot arm: is_open is nil + why, not false")
+    check(R.ui.any() == nil, "cannot arm: any() is nil")
+    armed = true
+    -- a failed arm is retried by the SDK only while not armed; the native side
+    -- caches the reason, so re-asking is cheap
+    check(R.ui.is_open("menu") == false, "armed, nothing open: false")
+    counts.menu = 1
+    check(R.ui.is_open("menu") == true and R.ui.count("menu") == 1, "an open menu counts")
+    check(R.ui.any() == true and R.ui.any("book", "modal") == false, "any() over the given kinds")
+    counts.menu, counts.loading = 0, 1
+    check(R.ui.any() == false, "a loading screen alone is not 'in a UI'")
+    check(R.ui.open()[1].class == "EscapeGameMenu", "open() lists the controllers")
+    check(R.ui.page() == nil, "no page open: page() is nil")
+    I.ui_state_open = function()
+        return { { kind = "book", class = "BookMenu", ptr = 0x10 },
+                 { kind = "page", class = "PlayPage", ptr = 0x20 },
+                 { kind = "page", class = "TutorialPage", ptr = 0x30 } }
+    end
+    check(R.ui.page() == "TutorialPage", "page() is the newest open page")
+    check(R.ui.count("page") ~= nil, "page is a kind")
+    local calls_before = arm_calls
+    check(R.ui.is_open("book") == false and arm_calls == calls_before,
+          "once armed, the SDK stops asking the loader to arm")
+    check(not pcall(R.ui.is_open, "inventory"), "unknown kind is an error, not a silent false")
+    local got
+    local id = R.on("ui:open", function(e) got = e end)
+    fire("ui:open", { kind = "modal", class = "Modal", ptr = 0x2000 })
+    check(got and got.kind == "modal" and got.class == "Modal", "ui:open reaches R.on handlers")
+    R.off(id)
+    I.ui_state_arm, I.ui_state_count, I.ui_state_open = nil, nil, nil
+end
+
+-- R.engine.names() lists callables only: never the VA table or its build stamp.
+do
+    local internal = {}
+    for _, n in ipairs(R.engine.names()) do
+        if n:sub(1, 1) == "_" then internal[#internal + 1] = n end
+    end
+    check(#internal == 0, "R.engine.names() leaks internal keys: " .. table.concat(internal, ", "))
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

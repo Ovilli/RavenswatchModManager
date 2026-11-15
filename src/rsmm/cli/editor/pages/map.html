@@ -28,7 +28,9 @@
 #t3 .tree li:hover { background: var(--chip); }
 #t3 .tree li.sel { background: var(--accentbg); outline: 1px solid var(--gilt); }
 #t3 .tree li.added::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
-#t3 .tree li.game::before { content: "🔒"; font-size: 10px; flex: none; opacity: .6; }
+#t3 .tree li.locked::before { content: "🔒"; font-size: 10px; flex: none; opacity: .6; }
+#t3 .tree li.gone span { text-decoration: line-through; opacity: .55; }
+#t3 .tree li.moved::before { content: "↔"; font-size: 11px; flex: none; color: var(--gilt); }
 #t3 .tree li span { overflow: hidden; text-overflow: ellipsis; }
 #t3 .view3 { position: relative; min-width: 0; min-height: 0; }
 #t3-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
@@ -210,6 +212,8 @@ html.embedded #bar h1 { display: none; }
     <button class="btn" id="t3-back" title="Back to the chapter (Esc)">← Back to the chapter</button>
     <h1 id="t3-title">Tile</h1>
     <span class="grow"></span>
+    <label class="hint" title="An own_level clone: the game's tile stays as it is, and its objects can be removed and moved in your copy"><input type="checkbox" id="t3-own"> Own copy</label>
+    <input id="t3-copies" type="number" min="1" max="16" value="1" style="width:4em" title="Pool entries your copy gets (copies)" aria-label="Copies" disabled>
     <select id="t3-modpick" aria-label="Open a saved tile mod"><option value="">New mod</option></select>
     <input id="t3-modid" placeholder="mod id" size="16" aria-label="Mod id">
     <input id="t3-modname" placeholder="name (optional)" size="18" aria-label="Mod name">
@@ -222,7 +226,8 @@ html.embedded #bar h1 { display: none; }
       <h2>Added by you <span class="n" id="t3-addedn"></span></h2>
       <ul class="tree" id="t3-added"></ul>
       <h2>In the game's tile <span class="n" id="t3-gamen"></span>
-        <label class="hint" style="margin-left:auto"><input type="checkbox" id="t3-showgame" checked> show</label></h2>
+        <label class="hint" style="margin-left:auto" title="Own copy: remove every game object except spawners, the reward and terrain shapes"><input type="checkbox" id="t3-clear" disabled> clear all</label>
+        <label class="hint"><input type="checkbox" id="t3-showgame" checked> show</label></h2>
       <ul class="tree" id="t3-game"></ul>
     </aside>
     <div class="view3">
@@ -237,7 +242,7 @@ html.embedded #bar h1 { display: none; }
         <h2>Add an object</h2>
         <input id="t3-propq" placeholder="Search props… (e.g. tree, banner, crate)" aria-label="Search props">
         <ul id="t3-props"></ul>
-        <p class="hint">Click a prop to place it where the view is pointing. Anything added here stands in every spawn of this tile.</p>
+        <p class="hint" id="t3-addhint">Click a prop to place it where the view is pointing. Anything added here stands in every spawn of this tile.</p>
       </section>
     </aside>
   </div>

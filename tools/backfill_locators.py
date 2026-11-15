@@ -76,7 +76,8 @@ LOCATORS: dict[str, dict] = {
     },
     "HeroDef_LoadBaseEntity": {
         "called_by": ["LevelLoad_Orchestrator"],
-        "offsets": ["0x8a0", "0x8b0", "0x8c0", "0x8c8", "0x8d0"],
+        # +0x38 since Update 6 (b9c3642884a8); was 0x8a0/0x8b0/0x8c0/0x8c8/0x8d0.
+        "offsets": ["0x8d8", "0x8e8", "0x8f8", "0x900", "0x908"],
         "lines_max": 200,
     },
     # The skin-spec offsets do not appear literally: Ghidra scales pointer
@@ -84,7 +85,9 @@ LOCATORS: dict[str, dict] = {
     # on a longlong*. Anchor on the call site and size instead.
     "HeroDef_LoadSkinEntity": {
         "called_by": ["LevelLoad_Orchestrator"],
-        "offsets": ["0x120"],   # the SCALED form of herodef+0x900
+        # 0x120 = the SCALED form of herodef+0x900; the rest only this one of
+        # the four same-size neighbours reads (b9c3642884a8).
+        "offsets": ["0x120", "0x1c0", "0x1d0", "0x1e0", "0x1e8"],
         "lines_min": 130, "lines_max": 155,
     },
     "MapCtx_DistributeEnemyCampTiers": {
@@ -107,6 +110,7 @@ LOCATORS: dict[str, dict] = {
     },
     "Property_EvaluateByGuid": {
         "called_by": ["MapCtx_DistributeEnemyCampTiers"],
+        "offsets": ["0xa0", "0xa8", "0x140", "0x148"],   # only this callee reads all four
         "lines_min": 100, "lines_max": 140,
     },
     "Netcode_Channel_LookupById": {
@@ -180,9 +184,14 @@ LOCATORS: dict[str, dict] = {
         "lines_min": 68, "lines_max": 73,
     },
     "MagicalObject_RegisterInstance": {
-        "offsets": ["0xd70", "0xd78", "0xd7c", "0xd80", "0xd88", "0xf0",
+        # Update 6 (b9c3642884a8) moved the hero's owned list from +0xd70 to
+        # +0xd88 (count +0xd90, capacity +0xd94); the old set stopped resolving.
+        "offsets": ["0xd88", "0xd90", "0xd94", "0xd98", "0xda0", "0xf0",
                     "0x1b0", "0x1b8"],
         "lines_min": 120, "lines_max": 200,
+    },
+    "Netcode_EntityReplSetup": {
+        "vftable": {"class": "oCEntityCpntNetwork", "slot": 28},
     },
     # --- skins ------------------------------------------------------------
     "Entry_Ctor": {
@@ -296,7 +305,7 @@ def main() -> int:
     print(f"  do not resolve at all                 : {unresolved:3}")
 
     if args.apply:
-        SYM.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
+        SYM.write_text(json.dumps(doc, indent=1) + "\n")   # ASCII escapes, as the file is kept
         print(f"wrote {len(LOCATORS)} locator(s) to {SYM}")
     if args.check and (wrong or unresolved):
         print("\nFAIL: a locator that does not resolve today would not have "

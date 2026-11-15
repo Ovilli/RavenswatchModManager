@@ -7,8 +7,13 @@ objects (entity + transform each), so the page can draw, select and outline
 them, and writes what the author adds as a ``poi`` def in ``replace_base``
 mode with ``places``: the path proven in game, which edits the shipped level
 in place and extends the tile's and chapters' resource caches for whatever it
-stands there. Objects the game ships are shown, not edited (moving or removing
-them is not built yet).
+stands there.
+
+In OWN-COPY mode the def is an ``own_level`` clone instead: a second tile in
+the chapters' pools (``copies`` entries) with a level of its own, so the
+game's objects in it can be removed (``clear``) and moved (``move``) without
+touching the shipped tile. One placement is named by entity + ``at`` (where
+it stands), since an entity is often placed many times.
 
 Every save is proven by running the real ``poi`` emit before anything is
 written, so the editor can only produce a mod ``rsmm apply`` will accept.
@@ -82,6 +87,11 @@ def _level(tile: str) -> tuple[str, bytes]:
     return ref, raw
 
 
+def _anchor_tol() -> float:
+    from .scenery_edit import ANCHOR_TOL
+    return ANCHOR_TOL
+
+
 def _name(ref: str) -> str:
     return ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
 
@@ -96,6 +106,8 @@ def objects_json(tile: str) -> dict:
         raise TileEditError(f"{tile}: its level cannot be read object by object ({e})") from e
     return {
         "tile": tile, "base": base_of(tile), "level": ref, "chapters": chapters_of(tile),
+        "clear_keep": list(_poi().CLEAR_KEEP),
+        "at_tolerance": _anchor_tol(),
         "objects": [{"entity": p.ref, "name": _name(p.ref), "pos": list(p.pos),
                      "quat": list(p.quat), "scale": list(p.scale)} for p in placements],
     }
@@ -156,21 +168,82 @@ def clean_places(places) -> list[dict]:
     return out
 
 
-def _fields(tile: str, places: list[dict]) -> dict:
+def _xyz(v, what: str) -> list[float]:
+    if not isinstance(v, list) or len(v) != 3:
+        raise TileEditError(f"{what}: needs three numbers")
+    return [round(_num(x, what, -_POS_LIMIT, _POS_LIMIT), 4) for x in v]
+
+
+def _anchor(item, what: str) -> dict:
+    """``{entity, at}``: one placement of a game object, by where it stands."""
+    if not isinstance(item, dict):
+        raise TileEditError(f"{what}: expected an object")
+    ent = item.get("entity")
+    if not isinstance(ent, str) or not _ENTITY_RE.match(ent):
+        raise TileEditError(f"{what}: not an entity reference")
+    return {"entity": ent, "at": _xyz(item.get("at"), f"{what} at")}
+
+
+def clean_edit(edit) -> dict:
+    """Check a whole tile edit: ``{places, own, copies, clear, remove, move}``.
+
+    ``remove`` is ``[{entity, at}]`` and ``move`` ``[{entity, at, pos}]``;
+    both, and ``clear`` (sink everything but :data:`poi.CLEAR_KEEP`), need
+    ``own`` — they would otherwise edit every spawn of the shipped tile.
+    """
+    if not isinstance(edit, dict):
+        raise TileEditError("expected an edit")
+    raw = edit.get("places") or []
+    places = clean_places(raw) if raw else []
+    out = {"own": bool(edit.get("own")), "places": places}
+    if not out["own"]:
+        if edit.get("clear") or edit.get("remove") or edit.get("move"):
+            raise TileEditError("removing or moving the game's objects needs an own copy "
+                                "of the tile")
+        if not places:
+            raise TileEditError("add at least one object")
+        return out
+    out["copies"] = int(_num(edit.get("copies", 1), "copies", 1, 16))
+    out["clear"] = bool(edit.get("clear"))
+    out["remove"] = [] if out["clear"] else [
+        _anchor(r, f"removed object {i + 1}") for i, r in enumerate(edit.get("remove") or [])]
+    out["move"] = [{**_anchor(m, f"moved object {i + 1}"),
+                    "pos": _xyz(m.get("pos") if isinstance(m, dict) else None,
+                                f"moved object {i + 1} pos")}
+                   for i, m in enumerate(edit.get("move") or [])]
+    if len(out["remove"]) + len(out["move"]) > 512:
+        raise TileEditError("at most 512 removed or moved objects per tile")
+    if not (places or out["clear"] or out["remove"] or out["move"]):
+        raise TileEditError("nothing to save: add, remove or move an object")
+    return out
+
+
+def _fields(tile: str, edit: dict) -> dict:
     chapters = chapters_of(tile)
     if not chapters:
         raise TileEditError(f"{tile} is not drawn by any chapter this editor can extend "
                             f"({', '.join(sorted(_poi().CHAPTERS))})")
-    return {"base": base_of(tile), "chapters": chapters, "replace_base": True,
-            "places": places}
+    f = {"base": base_of(tile), "chapters": chapters}
+    if edit["own"]:
+        f.update(own_level=True, copies=edit["copies"])
+        if edit["clear"]:
+            f["clear"] = True
+        elif edit["remove"]:
+            f["clear"] = {"remove": edit["remove"]}
+        if edit["move"]:
+            f["move"] = edit["move"]
+    else:
+        f["replace_base"] = True
+    if edit["places"]:
+        f["places"] = edit["places"]
+    return f
 
 
-def check(tile: str, places) -> list[str]:
-    """Run the real poi emit on these places; the files it would write."""
+def check(tile: str, edit) -> list[str]:
+    """Run the real poi emit on this edit; the files it would write."""
     from ..sdk.content import ContentDef, ContentError
 
-    places = clean_places(places)
-    fields = _fields(tile, places)
+    fields = _fields(tile, clean_edit(edit))
     with tempfile.TemporaryDirectory() as tmp:
         try:
             files = _poi().emit("editor", ContentDef(kind="poi", id=poi_id(tile),
@@ -189,21 +262,45 @@ def _q(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def poi_toml(tile: str, places) -> str:
-    places = clean_places(places)
-    f = _fields(tile, places)
-    lines = [
-        "# Objects added to a shipped tile by the rsmm 3D tile editor.",
-        "# replace_base edits the tile in place: what is added here stands in",
-        "# EVERY spawn of this tile. `rsmm restore` puts the tile back.",
-        f"base         = {_q(f['base'])}",
-        "chapters     = [" + ", ".join(_q(c) for c in f["chapters"]) + "]",
-        "replace_base = true",
-        "",
-    ]
-    for p in places:
+def _v(xyz) -> str:
+    return "[" + ", ".join(f"{v:g}" for v in xyz) + "]"
+
+
+def poi_toml(tile: str, edit) -> str:
+    edit = clean_edit(edit)
+    f = _fields(tile, edit)
+    if edit["own"]:
+        head = [
+            "# The rsmm 3D tile editor's OWN COPY of a shipped tile: a second tile in",
+            "# the chapters' pools with a level of its own. The shipped tile is untouched",
+            "# and still spawns; `copies` is how many pool entries the copy gets.",
+            f"base      = {_q(f['base'])}",
+            "chapters  = [" + ", ".join(_q(c) for c in f["chapters"]) + "]",
+            "own_level = true",
+            f"copies    = {edit['copies']}",
+        ]
+        if edit["clear"]:
+            head.append("clear     = true   # every game object but spawners, reward, terrain")
+    else:
+        head = [
+            "# Objects added to a shipped tile by the rsmm 3D tile editor.",
+            "# replace_base edits the tile in place: what is added here stands in",
+            "# EVERY spawn of this tile. `rsmm restore` puts the tile back.",
+            f"base         = {_q(f['base'])}",
+            "chapters     = [" + ", ".join(_q(c) for c in f["chapters"]) + "]",
+            "replace_base = true",
+        ]
+    lines = [*head, ""]
+    if edit.get("remove"):
+        lines += ["[clear]", "remove = ["] + [
+            f"  {{ entity = {_q(r['entity'])}, at = {_v(r['at'])} }}," for r in edit["remove"]
+        ] + ["]", ""]
+    for m in edit.get("move") or []:
+        lines += ["[[move]]", f"entity = {_q(m['entity'])}", f"at     = {_v(m['at'])}",
+                  f"pos    = {_v(m['pos'])}", ""]
+    for p in edit["places"]:
         lines += ["[[places]]", f"entity = {_q(p['entity'])}",
-                  "pos    = [" + ", ".join(f"{v:g}" for v in p["pos"]) + "]",
+                  f"pos    = {_v(p['pos'])}",
                   f"yaw    = {p['yaw']:g}", f"scale  = {p['scale']:g}", ""]
     return "\n".join(lines)
 
@@ -228,12 +325,18 @@ def manifest_toml(mod_id: str, name: str, tiles: list[str]) -> str:
     ])
 
 
-def read_places(text: str) -> tuple[str, list[dict]]:
-    """``(tile, places)`` back from a poi.toml this editor wrote."""
+def read_edit(text: str) -> tuple[str, dict]:
+    """``(tile, edit)`` back from a poi.toml this editor wrote."""
     data = tomllib.loads(text)
     base = data.get("base", "")
-    if "/" not in base or not data.get("replace_base"):
+    own = bool(data.get("own_level"))
+    if "/" not in base or not (own or data.get("replace_base")):
         raise TileEditError("not a tile-editor poi.toml")
     biome, stem = base.split("/", 1)
     tile = f"Tiles\\{biome}\\{stem}.tiledef.ot"
-    return tile, clean_places(data.get("places") or [])
+    clear = data.get("clear")
+    return tile, clean_edit({
+        "own": own, "places": data.get("places") or [], "copies": data.get("copies", 1),
+        "clear": clear is True,
+        "remove": clear.get("remove", []) if isinstance(clear, dict) else [],
+        "move": data.get("move") or []})
