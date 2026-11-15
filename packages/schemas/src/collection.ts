@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { httpUrlSchema, safeHttpUrl, sanitizedHttpUrlSchema } from './url';
 import { modListItemSchema, modSlugSchema } from './mod';
+import { httpUrlSchema, safeHttpUrl, sanitizedHttpUrlSchema } from './url';
 
 export const collectionSlugSchema = z
   .string()
@@ -46,6 +46,8 @@ export const collectionSchema = z.object({
 export type Collection = z.infer<typeof collectionSchema>;
 
 export const collectionDetailSchema = collectionSchema.extend({
+  // Viewer may edit listing metadata, images, and membership.
+  canEdit: z.boolean().optional(),
   mods: z.array(modListItemSchema),
 });
 

@@ -132,14 +132,14 @@ need a regenerated entry. The pipeline is one command:
 python3 scripts/gen_function_patterns.py
 ```
 
-## Anti-tamper caveat
+## Hook stability
 
 `rsmm.call` invokes game functions via a normal indirect call, which is
 safe. Hooks work too: `rsmm.hook(...)` and the loader's own detours install
 through MinHook once the loader has settled. The earlier crashes came from two
-specific targets (a `CreateFileW` prologue rewrite under Wine and a D3D
-`Present` hook on a Vulkan game), not from an integrity check; see
-[Anti-tamper protector](/reverse-engineering/protector/).
+specific targets (a `CreateFileW` prologue rewrite under Wine and a `Present`
+hook aimed at the wrong graphics API), not from an integrity check; see
+[Loader compatibility](/reverse-engineering/loader-compatibility/).
 
 A hook target must be a real function entry (the loader checks `.pdata`).
 Mod-supplied addresses get a warning rather than a refusal, and the mod author
@@ -168,7 +168,7 @@ authoritative reference for what each address means.
 | what a function does | `docs/_re/out/decompiled_all/.../<name>.c` |
 | every string the game uses | `docs/_re/out/strings.json` |
 | what calls a given address | `docs/_re/out/xrefs.json` |
-| how seed plumbing works | `docs/_re/SEED_MAPGEN.md` |
+| how seed plumbing works | [Seed + mapgen](/reverse-engineering/seed-mapgen/) |
 
 ## Status
 

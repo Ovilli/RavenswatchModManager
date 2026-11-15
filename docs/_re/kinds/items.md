@@ -10,7 +10,7 @@
 > emission; everything else is read from the binary.
 
 This page is the per-kind companion to
-[`../MOD_HOOKS.md`](../MOD_HOOKS.md). It focuses on **one** content
+[`../MOD_HOOKS.md`](https://docs.rsmm.me/reverse-engineering/mod-hooks/). It focuses on **one** content
 kind: an in-run magical object (item) that can drop, be picked up, and
 trigger a `oCDtRewardDefinition`-shaped reward.
 
@@ -42,7 +42,7 @@ the instance the engine spawns for one pickup.
 
 The four addresses listed in the task brief are **schema-declarer
 callbacks**, *not* deserialization factories — per
-[`MOD_HOOKS.md#schema-declarer-pattern-confirmed`](../MOD_HOOKS.md#schema-declarer-pattern-confirmed),
+[`MOD_HOOKS.md#schema-declarer-pattern-confirmed`](https://docs.rsmm.me/reverse-engineering/mod-hooks/#schema-declarer-pattern-confirmed),
 each one calls `MetaClass::SetDisplayName(name)`, writes flags into
 `meta->declarer_state[0]`, then registers the field groups. The
 *constructor* / *destructor* / size info lives in a separate registrar
@@ -173,7 +173,7 @@ So a selector pins to:
 ## Insertion recipe
 
 Following the
-[`oIResourceManager` slot-3 lookup](../MOD_HOOKS.md#slot-3--the-by-name-lookup-findname)
+[`oIResourceManager` slot-3 lookup](https://docs.rsmm.me/reverse-engineering/mod-hooks/#slot-3--the-by-name-lookup-findname)
 ABI:
 
 1. **Register UID** — the `oCMetaClass` for `oCDtRewardDefinition` is
@@ -307,8 +307,8 @@ trigger for this (it never fired in 18 hits); `damage_taken` covers it.
 
 ## See also
 
-- [`../MOD_HOOKS.md`](../MOD_HOOKS.md) for the registry / library
+- [`../MOD_HOOKS.md`](https://docs.rsmm.me/reverse-engineering/mod-hooks/) for the registry / library
   vftable ABI shared by every kind.
-- [`../GHIDRA_MCP.md`](../GHIDRA_MCP.md) for the live RE harness.
+- [`../GHIDRA_MCP.md`](https://docs.rsmm.me/reverse-engineering/ghidra-mcp/) for the live RE harness.
 - `docs/_re/out/class_registry.json` — table of every registered class.
 - `docs/_re/out/libraries.json` — table of every library singleton.

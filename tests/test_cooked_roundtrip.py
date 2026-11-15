@@ -21,6 +21,11 @@ _COOKING = Path.home() / (
     "steamapps/common/Ravenswatch/DarkTalesResources/_Cooking"
 )
 _EXTS = (".yqz", ".tpi", ".zux")
+#: Text banks (`*.LocalText.gen`, ciphered `GrbglQqpi.yqz`) also end in `.yqz`
+#: but are not cooked containers: they start with their string table, no
+#: "Cooked" tag (text_patches reads them). Sampling one failed the test on a
+#: healthy install (Hero_SunWukong_Common~GAM.xls.LocalText.gen).
+_NOT_COOKED = ("GrbglQqpi.yqz",)
 _SAMPLES_PER_EXT = int(os.environ.get("RSMM_ROUNDTRIP_SAMPLES", "150"))
 
 
@@ -30,7 +35,7 @@ def _gather() -> list[Path]:
     rng = random.Random(0xC00CED)
     sampled: list[Path] = []
     for ext in _EXTS:
-        files = list(_COOKING.rglob(f"*{ext}"))
+        files = [p for p in _COOKING.rglob(f"*{ext}") if not p.name.endswith(_NOT_COOKED)]
         rng.shuffle(files)
         sampled.extend(files[:_SAMPLES_PER_EXT])
     return sampled

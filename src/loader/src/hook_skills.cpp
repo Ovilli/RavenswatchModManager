@@ -288,15 +288,127 @@ void inspect_and_maybe_inject(void* herodef) {
                       + " seq=" + std::to_string(seq));
 }
 
+// Every herodef the game loads, for the talent guard's dump (they live for
+// the whole session; a fixed table, never freed).
+constexpr int kMaxHerodefs = 48;
+void* g_herodefs[kMaxHerodefs] = {};
+int g_n_herodefs = 0;
+
 char hook_herodef_deserialize(void* herodef, void* stream) {
     char ok = g_real_deserialize ? g_real_deserialize(herodef, stream) : 0;
-    if (ok == 1 && herodef) inspect_and_maybe_inject(herodef);
+    if (ok == 1 && herodef) {
+        if (g_n_herodefs < kMaxHerodefs) g_herodefs[g_n_herodefs++] = herodef;
+        inspect_and_maybe_inject(herodef);
+    }
     return ok;
+}
+
+// Every captured herodef's talent rows: each row's identity / controller GUID
+// heads and the pointer slots a resolved row carries. A hero whose rows show
+// null where the others hold pointers is the one whose talents never resolved.
+void dump_talent_rows(const char* why) {
+    Loader::get().log(std::string("[talent-guard] ") + why + ": "
+                      + std::to_string(g_n_herodefs) + " herodef(s) captured");
+    for (int h = 0; h < g_n_herodefs; ++h) {
+        auto* b = reinterpret_cast<std::uint8_t*>(g_herodefs[h]);
+        if (!readable(b, kTalentVecOff + 0x10)) continue;
+        void* data = *reinterpret_cast<void**>(b + kTalentVecOff);
+        std::uint32_t n = *reinterpret_cast<std::uint32_t*>(b + kTalentVecOff + kVecCountOff);
+        if (!data || n == 0 || n > 64 || !readable(data, (std::size_t)n * kPtrStride)) continue;
+        auto* rows = reinterpret_cast<std::uint8_t**>(data);
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::uint8_t* r = rows[i];
+            if (!readable(r, kSpdsSize)) continue;
+            std::string line = "[talent-guard] hd" + std::to_string(h) + " t" + std::to_string(i)
+                + " id=" + hex_of(*reinterpret_cast<std::uint32_t*>(r + kGuidOff))
+                + " ctl=" + hex_of(*reinterpret_cast<std::uint32_t*>(r + 0x40));
+            for (std::size_t off = 0x50; off < kSpdsSize; off += 8)
+                line += " +" + hex_of(off) + "=" + hex_of(*reinterpret_cast<std::uintptr_t*>(r + off));
+            Loader::get().log(line);
+        }
+    }
+}
+
+// Guard: SkillController_SetTier dereferences its controller at once; the
+// compendium / starting pick call it with an unresolved (null) controller for a
+// hero whose talent cards did not bind (playtest 2026-11-07, two dumps: rcx = 0
+// at SetTier+6, caller 0x1404146f9). Skip the call, log who made it, and dump
+// the card's talent object: the caller keeps the card in RSI (callee-saved)
+// and the object at card+0x238 (the null came from object+0x88). The stub
+// below records RSI on entry; once a null was seen, working calls from that
+// same site are dumped too (first few: click the broken hero's card first,
+// then a working hero's), so the two card objects can be compared.
+using SetTier_t = void (*)(void*, std::int32_t);
+SetTier_t g_real_set_tier = nullptr;
+int g_null_tiers = 0, g_ok_tiers = 0;
+std::uintptr_t g_null_from = 0;   // the caller that passed a null controller
+
+std::uintptr_t game_va(std::uintptr_t p) {
+    auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
+    return p - base + 0x140000000ull;
+}
+
+void dump_card(const char* tag, std::uintptr_t card) {
+    std::uint8_t* c = reinterpret_cast<std::uint8_t*>(card);
+    if (!readable(c, 0x240)) { Loader::get().log(std::string("[talent-guard] ") + tag + " card unreadable"); return; }
+    std::uintptr_t obj = *reinterpret_cast<std::uintptr_t*>(c + 0x238);
+    std::uint8_t* o = reinterpret_cast<std::uint8_t*>(obj);
+    if (!readable(o, 0xd8)) { Loader::get().log(std::string("[talent-guard] ") + tag + " obj unreadable " + hex_of(obj)); return; }
+    std::uintptr_t vt = *reinterpret_cast<std::uintptr_t*>(o);
+    std::string line = std::string("[talent-guard] ") + tag + " card=" + hex_of(card) + " obj="
+        + hex_of(obj) + " vt=" + hex_of(game_va(vt));
+    for (std::size_t off = 0x08; off < 0xd8; off += 8)
+        line += " +" + hex_of(off) + "=" + hex_of(*reinterpret_cast<std::uintptr_t*>(o + off));
+    Loader::get().log(line);
 }
 
 } // anonymous namespace
 
+extern "C" {
+volatile std::uintptr_t rsmm_tier_rsi = 0;
+void rsmm_set_tier_stub(void* ctrl, std::int32_t tier);
+void rsmm_set_tier_body(void* ctrl, std::int32_t tier) {
+    using namespace rsmm;
+    std::uintptr_t card = rsmm_tier_rsi;
+    std::uintptr_t from = reinterpret_cast<std::uintptr_t>(__builtin_return_address(0));
+    if (ctrl == nullptr) {
+        g_null_from = from;
+        if (g_null_tiers++ < 4) {
+            Loader::get().log("[talent-guard] SetTier(null, " + std::to_string(tier) + ") from "
+                              + hex_of(game_va(from)) + " -- skipped (would crash)");
+            dump_card("NULL", card);
+            if (g_null_tiers == 1) dump_talent_rows("null controller");
+        }
+        return;
+    }
+    // The same call site with a bound controller (another hero's card, clicked
+    // after the null one): its card object, for comparison.
+    if (g_null_from && from == g_null_from && g_ok_tiers++ < 3) dump_card("OK", card);
+    g_real_set_tier(ctrl, tier);
+}
+}
+asm(R"(
+    .text
+    .globl rsmm_set_tier_stub
+rsmm_set_tier_stub:
+    movq %rsi, rsmm_tier_rsi(%rip)
+    jmp rsmm_set_tier_body
+)");
+
+namespace {
+} // anonymous namespace
+
+bool install_talent_guard() {
+    // Always on: it only ever changes what happens when the game is about to
+    // dereference a null talent controller, which crashes anyway.
+    return hook_install("talent-guard", "SkillController_SetTier",
+                        Sym::SkillController_SetTier_Pattern,
+                        reinterpret_cast<void*>(&rsmm_set_tier_stub),
+                        reinterpret_cast<void**>(&g_real_set_tier));
+}
+
 bool install_skill_hooks() {
+    install_talent_guard();
     // OPT-IN: detouring the herodef deserialiser is experimental and, in a
     // Proton/Wine env where MinHook detours can resolve to bad addresses (the
     // item hook already logs MH_CreateHook rc=7), arming it can crash the game at

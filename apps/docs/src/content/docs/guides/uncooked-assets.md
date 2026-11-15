@@ -86,7 +86,7 @@ Z = sqrt(1 − X² − Y²) so the saved PNG looks like a real normal map.
 ### Structural sidecars
 
 `decode_gen_sidecars.py` invokes the existing `rsmm.engine.ot_decoder`
-(see `docs/INTERNALS.md` — same module that powers `./rsmm decode`).
+(see [Internals](/architecture/internals/) — same module that powers `./rsmm decode`).
 For each `.gen` it writes a `.gen.txt` containing:
 
 - header (`//OPROJECT oCTextSaver`, flags, hdr_size)
@@ -95,7 +95,7 @@ For each `.gen` it writes a `.gen.txt` containing:
 - every embedded string inside each section
 
 Per-class property bodies stay opaque — the schemas live inside
-`Ravenswatch.exe` (`docs/INTERNALS.md` §schema). The sidecars are still
+`Ravenswatch.exe` ([Internals](/architecture/internals/) §schema). The sidecars are still
 enough to identify *what* each cooked file references (which texture,
 which material, which shader, which donor file).
 
@@ -136,6 +136,6 @@ Override with `--allow-vanilla` for personal backups only.
    the asset references.
 3. **Author the override** in `mods/<id>/assets/<same/decoded/path>`,
    using either a raw byte replacement or a `[[patch]]` block in
-   `manifest.toml` (see `docs/MODDING.md`).
+   `manifest.toml` (see [Modding guide](/guides/modding/)).
 4. **Verify** — `./rsmm apply` swaps the cooked file in place;
    `./rsmm pack <id>` ships only changed bytes.

@@ -176,7 +176,7 @@ export default async function Layout({
           summary={res.data.summary}
           image={{ url: res.data.imageUrl, alt: `${res.data.title ?? slug} cover` }}
           body={res.data.body}
-          containerClassName="container mx-auto max-w-3xl space-y-6 px-6 pt-12"
+          containerClassName="container mx-auto space-y-6 px-6 pt-12"
         />
       ) : null}
       {children}

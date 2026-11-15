@@ -55,8 +55,8 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "base", "name", "description", "model", "transform", "albedo", "mra",
         "normal", "portrait", "own_entity", "weapons", "animations", "outfits",
         "values", "references", "abilities", "skills",
-        "placeholder", "memoirs", "effects", "hide", "attacks", "dlc_owner", "kit",
-        "borrow",
+        "placeholder", "memoirs", "effects", "hide", "attacks", "kit",
+        "borrow", "materials", "talents", "frame",
     }),
     "ability": frozenset({"hero", "abilities"}),
     "entity": frozenset({"entity", "steps"}),
@@ -64,6 +64,8 @@ CONTENT_FIELDS: dict[str, frozenset[str]] = {
         "hero", "file", "value_patches", "int_patches", "union_patches",
         "rewires", "clone_nodes", "stats", "add_stats", "rebuild", "include", "scale",
         "on_hit",
+        # mode = "ban": keep `talents` out of every offer (engine.talent_bans)
+        "mode", "talents",
     }),
     "skill": frozenset({
         "mode", "hero", "source", "controller", "name", "display_name",
@@ -134,6 +136,7 @@ MOD_FIELDS: dict[str, str] = {
 #: Top-level tables a manifest may contain.
 TOP_LEVEL: frozenset[str] = frozenset({
     "mod", "content", "patch", "overlay", "experiment", "config", "provides",
+    "requires",
 })
 
 
@@ -235,6 +238,17 @@ def json_schema() -> dict:
                     "required": ["kind", "id"],
                     "allOf": content_branches,
                 },
+            },
+            "requires": {
+                "type": "object",
+                "description": "Oldest RSMM CLI / loader version this mod runs on.",
+                "properties": {
+                    "cli": {"type": "integer", "minimum": 1,
+                            "description": "Oldest CLI version (cli_version)."},
+                    "loader": {"type": "integer", "minimum": 1,
+                               "description": "Oldest loader version."},
+                },
+                "additionalProperties": False,
             },
             "patch": {
                 "type": "array",

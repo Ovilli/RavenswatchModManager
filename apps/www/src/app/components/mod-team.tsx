@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@rsmm/api-client';
 import { Button, Input, Spinner } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Users, X } from 'lucide-react';
@@ -35,7 +36,7 @@ export function ModTeam({ slug }: { slug: string }) {
   const isOwner = !!session && team.data?.ownerId === session.user.id;
 
   return (
-    <section className="grimoire-card space-y-4 p-5">
+    <section className="space-y-4">
       <div className="flex items-center gap-2">
         <Users className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-semibold">Team</h2>
@@ -81,7 +82,7 @@ export function ModTeam({ slug }: { slug: string }) {
               }}
             >
               <Input
-                placeholder="Add co-author by handle"
+                placeholder="Add co-author by name, @handle or user ID"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
               />
@@ -90,11 +91,18 @@ export function ModTeam({ slug }: { slug: string }) {
               </Button>
             </form>
           )}
-          {add.isError && (
-            <p className="text-xs text-destructive">Could not add that user (check the handle).</p>
-          )}
+          {add.isError && <p className="text-xs text-destructive">{addError(add.error)}</p>}
         </>
       )}
     </section>
   );
+}
+
+/** The server's reason (no such user, two users with that name ...), else a generic line. */
+function addError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const body = err.body as { error?: unknown } | null;
+    if (body && typeof body.error === 'string') return `Could not add: ${body.error}.`;
+  }
+  return 'Could not add that user.';
 }

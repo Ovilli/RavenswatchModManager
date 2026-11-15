@@ -149,11 +149,7 @@ export default function GuidePage({ params }: { params: Promise<{ slug: string }
   };
 
   return (
-    <main
-      className={`container mx-auto max-w-3xl space-y-6 px-6 pb-12 ${
-        renderHere ? 'pt-12' : 'pt-6'
-      }`}
-    >
+    <main className={`container mx-auto space-y-6 px-6 pb-12 ${renderHere ? 'pt-12' : 'pt-6'}`}>
       <div className="flex items-center justify-between">
         {/* An approved guide gets its back link from the server-rendered block
             in `[slug]/layout.tsx`; a draft has no such block, so it needs one

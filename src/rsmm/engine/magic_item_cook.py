@@ -84,7 +84,14 @@ def rename_id(data: bytes, base_id: str, new_id: str) -> bytes:
     """
     ob, nb = base_id.encode("utf-8"), new_id.encode("utf-8")
     if ob not in data:
-        raise ValueError(f"item id {base_id!r} not found in cooked bytes")
+        # 32 shipped items (every Power_Up_*_Low/Medium/High, the Astral
+        # reroll) name no part after themselves: the file only inherits from a
+        # *_Model parent, so there is no id inside it to rename.
+        raise ValueError(
+            f"item id {base_id!r} not found in cooked bytes, so it cannot be copied "
+            f"under a new id: an item whose file names no part after itself only "
+            f"inherits from its parent entity. Change it in "
+            f'place instead (mode = "replace"), or copy the parent it inherits from.')
     if len(ob) == len(nb):
         return data.replace(ob, nb)
     from . import cooked
@@ -196,11 +203,32 @@ def _node_value(data: bytes, label: str) -> tuple[int, float] | None:
     range, or the field is an int32 count rather than an f32 magnitude) — the
     caller then falls back to the label-anchored scan.
     """
+    tv = _typed_node(data, label)
+    if tv is None or tv.is_int:
+        return None
+    return tv.offset, tv.value
+
+
+def _typed_node(data: bytes, label: str):
+    """The value node ``label`` names, with its declared type, or ``None``."""
     from .talent_values import list_talent_values
     for tv in list_talent_values(data, include_spawner=True):
         if tv.label == label:
-            return (None if tv.is_int else (tv.offset, tv.value))
+            return tv
     return None
+
+
+def _pack_typed(label: str, type_code: int, new_value: float) -> bytes:
+    """``new_value`` in the node's own width. A bool node is ONE byte and an
+    int node is an int32: writing an f32 over a bool overruns into the node's
+    closing marker (the entity no longer parses), and an f32 in an int slot
+    reads back as its bit pattern (5 becomes 1084227584)."""
+    from .talent_values import TYPE_BOOL, TYPE_INT32, _pack_value
+    if type_code == TYPE_BOOL and new_value not in (0, 1):
+        raise ValueError(f"{label!r} is an on/off value: use 0 or 1, not {new_value!r}")
+    if type_code == TYPE_INT32 and new_value != int(new_value):
+        raise ValueError(f"{label!r} is a whole number: {new_value!r} is not")
+    return _pack_value(type_code, new_value)
 
 
 def _scan_after_label(data: bytes, label: str, old_value: float,
@@ -413,7 +441,8 @@ def apply_value_patch(data: bytes, label: str, old_value: float, new_value: floa
 
 def set_value_after_label(data: bytes, label: str, old_value: float,
                           new_value: float, *, within: int = 64) -> bytes:
-    """Patch a value node's f32, anchored on its label + expected current value.
+    """Patch a value node, anchored on its label + expected current value. The
+    write is in the node's declared type (f32, int32 or a one-byte bool).
 
     The magnitude lives at the **end of the node body, just before its closing
     ``END`` marker** — :func:`_node_value` reads it there. The older locator
@@ -434,9 +463,9 @@ def set_value_after_label(data: bytes, label: str, old_value: float,
                  + label.encode("utf-8")) < 0:
         raise ValueError(f"value label {label!r} not found")
 
-    node = _node_value(data, label)
-    if node is not None:
-        abs_off, cur = node
+    tv = _typed_node(data, label)
+    if tv is not None:
+        abs_off, cur = tv.offset, tv.value
         if struct.pack("<f", cur) != struct.pack("<f", old_value):
             stale = _scan_after_label(data, label, old_value, within)
             extra = ""
@@ -448,7 +477,8 @@ def set_value_after_label(data: bytes, label: str, old_value: float,
                 f"{label!r}: expected value {old_value!r} but the node holds "
                 f"{cur!r}{extra}. Use the value `rsmm items show` reports."
             )
-        return data[:abs_off] + struct.pack("<f", new_value) + data[abs_off + 4:]
+        packed = _pack_typed(label, tv.type_code, new_value)
+        return data[:abs_off] + packed + data[abs_off + len(packed):]
 
     abs_off = _scan_after_label(data, label, old_value, within)
     if abs_off is None:

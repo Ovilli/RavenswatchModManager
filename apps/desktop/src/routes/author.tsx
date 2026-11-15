@@ -26,7 +26,7 @@ function AuthorPage() {
       <SectionHeader
         title={t('Author')}
         subtitle={t(
-          'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md.',
+          'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see https://docs.rsmm.me/reverse-engineering/notes/.',
         )}
       />
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import struct
 import zlib
+from functools import lru_cache
 from typing import Final
 
 __all__ = ["decode_to_rgba", "rgba_to_png", "resize_to_max", "texture_to_png"]
@@ -90,26 +91,56 @@ def _decode_bc1(px: bytes, width: int, height: int) -> bytearray:
     return out
 
 
+@lru_cache(maxsize=4096)
+def _bc3_color_rgb(c0: int, c1: int) -> tuple[bytes, bytes, bytes, bytes]:
+    return tuple(bytes(t[:3]) for t in _color_table(c0, c1, punchthrough=False))
+
+
+@lru_cache(maxsize=4096)
+def _bc3_alpha(a0: int, a1: int) -> bytes:
+    return bytes(_alpha_table(a0, a1))
+
+
 def _decode_bc3(px: bytes, width: int, height: int) -> bytearray:
     out = bytearray(width * height * 4)
-    for bi, ox, oy in _blocks(width, height):
-        o = bi * 16
-        a0, a1 = px[o], px[o + 1]
-        # The 16 three-bit alpha indices are a little-endian 48-bit field.
-        abits = int.from_bytes(px[o + 2:o + 8], "little")
-        atable = _alpha_table(a0, a1)
-        c0, c1, cbits = struct.unpack_from("<HHI", px, o + 8)
-        # BC3's colour half is always 4-colour: alpha is carried separately, so
-        # the c0 <= c1 punchthrough encoding does not apply.
-        ctable = _color_table(c0, c1, punchthrough=False)
-        for i in range(16):
-            x, y = ox + (i & 3), oy + (i >> 2)
-            if x >= width or y >= height:
+    bw = (width + 3) // 4
+    bh = (height + 3) // 4
+    unpack = struct.unpack_from
+    from_bytes = int.from_bytes
+    for by in range(bh):
+        oy = by * 4
+        for bx in range(bw):
+            ox = bx * 4
+            o = (by * bw + bx) * 16
+            a0, a1 = px[o], px[o + 1]
+            # The 16 three-bit alpha indices are a little-endian 48-bit field.
+            abits = from_bytes(px[o + 2:o + 8], "little")
+            atable = _bc3_alpha(a0, a1)
+            c0, c1, cbits = unpack("<HHI", px, o + 8)
+            # BC3's colour half is always 4-colour: alpha is carried separately,
+            # so the c0 <= c1 punchthrough encoding does not apply.
+            ctable = _bc3_color_rgb(c0, c1)
+            if ox + 4 <= width and oy + 4 <= height:
+                for row in range(4):
+                    i = row * 4
+                    out[((oy + row) * width + ox) * 4:
+                        ((oy + row) * width + ox) * 4 + 16] = (
+                        ctable[(cbits >> (2 * i)) & 3]
+                        + atable[(abits >> (3 * i)) & 7:((abits >> (3 * i)) & 7) + 1]
+                        + ctable[(cbits >> (2 * i + 2)) & 3]
+                        + atable[(abits >> (3 * i + 3)) & 7:((abits >> (3 * i + 3)) & 7) + 1]
+                        + ctable[(cbits >> (2 * i + 4)) & 3]
+                        + atable[(abits >> (3 * i + 6)) & 7:((abits >> (3 * i + 6)) & 7) + 1]
+                        + ctable[(cbits >> (2 * i + 6)) & 3]
+                        + atable[(abits >> (3 * i + 9)) & 7:((abits >> (3 * i + 9)) & 7) + 1])
                 continue
-            r, g, b, _ = ctable[(cbits >> (2 * i)) & 3]
-            a = atable[(abits >> (3 * i)) & 7]
-            d = (y * width + x) * 4
-            out[d:d + 4] = bytes((r, g, b, a))
+            for i in range(16):
+                x, y = ox + (i & 3), oy + (i >> 2)
+                if x >= width or y >= height:
+                    continue
+                d = (y * width + x) * 4
+                ai = (abits >> (3 * i)) & 7
+                out[d:d + 4] = ctable[(cbits >> (2 * i)) & 3] + atable[ai:ai + 1]
     return out
 
 

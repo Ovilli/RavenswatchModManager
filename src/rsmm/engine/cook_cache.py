@@ -19,7 +19,7 @@ on every apply. Cache lifetime is per-repo; safe to delete.
 
 Encoders are not yet implemented for most classes — calling `maybe_cook`
 on a source-format file with an unreversed schema raises NotReversedError
-with a pointer to docs/RE_NOTES.md.
+with a pointer to https://docs.rsmm.me/reverse-engineering/notes/.
 """
 
 from __future__ import annotations

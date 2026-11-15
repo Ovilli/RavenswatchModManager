@@ -17,7 +17,7 @@ export function ModStats({ slug }: { slug: string }) {
   const max = Math.max(1, ...(stats.data?.series.map((s) => s.count) ?? [0]));
 
   return (
-    <section className="grimoire-card space-y-4 p-5">
+    <section className="space-y-4">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-lg font-semibold">Analytics</h2>

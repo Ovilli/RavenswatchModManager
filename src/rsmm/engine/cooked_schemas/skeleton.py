@@ -1,6 +1,6 @@
 """oCSkeleton schema (decode-side metadata).
 
-Findings (see docs/RE_NOTES.md "Stage 5e"):
+Findings (see https://docs.rsmm.me/reverse-engineering/notes/ "Stage 5e"):
   - Class UID: 0x1617, current saved version 1.1
   - oCSkeleton::Serialize @ 0x1405b4c40 reads a bone vector at this+0x98
     via FUN_1405cb350.

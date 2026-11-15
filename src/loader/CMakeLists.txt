@@ -56,6 +56,7 @@ set(LOADER_SRC
     src/hook_skins.cpp
     src/hook_skills.cpp
     src/hook_ui.cpp
+    src/hook_ui_state.cpp
     src/hook_settings_menu.cpp
     src/hook_items.cpp
     src/hook_rewards.cpp
@@ -64,7 +65,11 @@ set(LOADER_SRC
     src/hook_levelbuild.cpp
     src/hook_events.cpp
     src/hook_gamevalues.cpp
+    src/hook_input.cpp
+    src/hook_keybinds.cpp
+    src/hook_camera.cpp
     src/hook_netcode.cpp
+    src/hook_online_gate.cpp
     src/hook_backend.cpp
     src/hook_audio.cpp
     src/hook_lua.cpp

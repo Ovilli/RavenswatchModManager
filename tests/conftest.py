@@ -43,6 +43,14 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.slow)
 
 
+@pytest.fixture(autouse=True)
+def _no_editor_warmup(monkeypatch):
+    """EditorServer starts an unjoined daemon thread that reads the real install
+    (sets paths._install_hit, fills asset_map's cache). On a shared xdist worker
+    it leaks into later tests, so stub it out."""
+    monkeypatch.setattr("rsmm.cli.editor.server._warm", lambda ctx: None)
+
+
 @pytest.fixture(scope="session")
 def _tracked_data_files() -> list[Path]:
     """Git-tracked files under `data/`. Empty if git is unavailable."""

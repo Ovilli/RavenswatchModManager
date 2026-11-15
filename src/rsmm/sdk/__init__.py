@@ -24,7 +24,7 @@ Usage:
         print(m.summary())         # preview everything staged, no disk write
 
 Everything below is a thin facade over the submodules so the mental
-model is one import. See `docs/SDK_V3.md` for the full design.
+model is one import. See `https://docs.rsmm.me/guides/sdk/` for the full design.
 """
 
 from __future__ import annotations

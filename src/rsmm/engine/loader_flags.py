@@ -61,6 +61,14 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "safe": True,
     },
     {
+        "name": "RSMM_DISABLE_UI_STATE",
+        "label": "Disable UI state tracking",
+        "description": "Turn off R.ui's UI state tracking. Mods that ask what "
+                       "the game is showing (menus, the book, modals) get "
+                       "\"unknown\", and ui:open / ui:close events stop firing.",
+        "safe": True,
+    },
+    {
         "name": "RSMM_DISABLE_NATIVE_MENU",
         "label": "Disable the in-game Mods menu",
         "description": "Remove the Mods tab from the game's Settings page and "

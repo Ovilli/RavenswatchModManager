@@ -114,7 +114,7 @@ export default function NewCollectionPage() {
   }
 
   return (
-    <main className="container mx-auto max-w-2xl space-y-6 px-6 py-12">
+    <main className="container mx-auto space-y-6 px-6 py-12">
       <Link href={'/c' as Route} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to Collections
       </Link>

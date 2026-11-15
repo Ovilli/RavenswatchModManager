@@ -72,14 +72,18 @@ def _corpus_reader(ref: str) -> bytes | None:
 
 def check(edited: bytes, original: bytes | None, *, name: str = "",
           read: Reader | None = None, cache_text: bytes | None = None,
-          cache_ref: str | None = None) -> list[Issue]:
+          cache_ref: str | None = None,
+          aliases: dict[bytes, str] | None = None) -> list[Issue]:
     """Issues the edit from ``original`` to ``edited`` introduced.
 
     ``read`` resolves an entity reference to bytes (default: the shipped
     corpus); pass one that also knows a mod's own entities. ``cache_text`` is
     the entity's preload cache; when omitted it is read beside ``cache_ref``
     (the entity's own reference) from the corpus, and when there is none the
-    resource check is skipped."""
+    resource check is skipped. ``aliases`` maps an alias GUID to the entity it
+    names (ApplicationSettings.ot's AliasDesc table, plus a mod's own): an
+    entity written from scratch inherits Hero_Common through an AliasPicker,
+    not a parent path, and has no original whose links vouch for it."""
     read = read or _corpus_reader
     issues: list[Issue] = []
     try:
@@ -91,7 +95,7 @@ def check(edited: bytes, original: bytes | None, *, name: str = "",
     g = ef.graph()
     before = EG.parse(original) if original else EG.EntityGraph(name, [])
     issues += _ownership(ef, EntityFile(original, name) if original else None)
-    issues += _references(ef, g, before, read)
+    issues += _references(ef, g, before, read, aliases or {})
     issues += _resources(edited, original, read, cache_text, cache_ref)
     return issues
 
@@ -129,12 +133,32 @@ def _ownership(ef: EntityFile, before: EntityFile | None) -> list[Issue]:
 
 # ---- references ---------------------------------------------------------------
 
-def _ancestors(data: bytes, read: Reader) -> dict[bytes, str]:
-    """GUID -> entity stem, for every component this entity inherits."""
+#: A link with no target: the shipped files leave thousands (a picker kept
+#: for its label, a voice part's override of nothing); the engine skips them.
+_UNBOUND = bytes(16)
+
+
+def _alias_parents(data: bytes, aliases: dict[bytes, str]) -> list[str]:
+    """The entities ``data`` inherits through an AliasPicker (an FX or skin file)."""
+    if not aliases:
+        return []
+    from .hero_cook import _alias_guid_of
+    try:
+        g = _alias_guid_of(data)
+    except ValueError:
+        return []
+    return [aliases[g]] if g in aliases else []
+
+
+def _ancestors(data: bytes, read: Reader,
+               aliases: dict[bytes, str] | None = None) -> dict[bytes, str]:
+    """GUID -> entity stem, for every component this entity inherits, through
+    parent paths and (given ``aliases``) alias parents."""
     from .entity_components import parents
+    aliases = aliases or {}
     out: dict[bytes, str] = {}
     seen: set[str] = set()
-    todo = list(parents(data))
+    todo = list(parents(data)) + _alias_parents(data, aliases)
     while todo:
         ref = todo.pop()
         if ref in seen:
@@ -146,12 +170,12 @@ def _ancestors(data: bytes, read: Reader) -> dict[bytes, str]:
         stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
         for c in EG.parse(raw).components:
             out.setdefault(c.guid, stem)
-        todo += parents(raw)
+        todo += parents(raw) + _alias_parents(raw, aliases)
     return out
 
 
 def _references(ef: EntityFile, g: EG.EntityGraph, before: EG.EntityGraph,
-                read: Reader) -> list[Issue]:
+                read: Reader, aliases: dict[bytes, str]) -> list[Issue]:
     old = {(c.guid, r.guid) for c in before.components for r in c.refs}
     old |= {(c.guid, c.override.guid) for c in before.components if c.override}
     own = g.by_guid()
@@ -173,14 +197,16 @@ def _references(ef: EntityFile, g: EG.EntityGraph, before: EG.EntityGraph,
             tmpl = next((x for x in c.literals if x.endswith(".entity.ot")), None)
             if tmpl not in templates:          # a kit has dozens, on a few templates
                 raw = read(tmpl) if tmpl else None
-                templates[tmpl] = (set(_ancestors(raw, read))
+                templates[tmpl] = (set(_ancestors(raw, read, aliases))
                                    | {x.guid for x in EG.parse(raw).components}) if raw else set()
             spawned = templates[tmpl]
         for r in links:
+            if r.guid == _UNBOUND:
+                continue        # an empty link, as the game leaves 2481 of them
             if (c.guid, r.guid) in old or r.guid in own or r.guid in spawned:
                 continue
             if inherited is None:
-                inherited = _ancestors(ef.to_bytes(), read)
+                inherited = _ancestors(ef.to_bytes(), read, aliases)
                 # Entities the original already binds into are available to it,
                 # whatever the mechanism: a hero reaches Hero_Common and
                 # Character_Common without naming them as parents.

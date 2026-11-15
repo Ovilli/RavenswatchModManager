@@ -793,6 +793,8 @@ constexpr std::uint64_t kPermitUnknown = 0, kPermitYes = 1, kPermitNo = 2;
 constexpr std::uintptr_t kHeroHpOff = 0x15d0;     // 0x15c8 before Update 6
 constexpr std::uintptr_t kHeroMaxHpOff = 0x15d4;  // 0x15cc before Update 6
 constexpr std::uintptr_t kHeroHudMirrorOff = 0x1da8; // ptr to the HUD HP mirror (0x1d80 before Update 6)
+constexpr std::uintptr_t kHeroIsLocalOff = 0x1db0;   // u8, 1 = this machine's player (0x1d88 before Update 6)
+constexpr int kCaptureLogCapKeep = 4;                 // "kept local hero" lines per session
 
 using SubscribeAll_t    = void (*)(void*);
 using GiveHandler_t     = void (*)(void*, void*, void*);
@@ -841,6 +843,51 @@ bool hero_plausible(void* p1) {
     // can't pass on readability alone.
     float mv = *reinterpret_cast<float*>(mirror);
     return mv >= 0.0f && mv < 1.0e6f;
+}
+
+// The engine's is-local byte on a hero controller: 1 = this machine's player,
+// 0 = not (a remote ally, or a hero still mid-load), -1 = unreadable. The same
+// byte the SDK reads (rsmm.lua ENTITY_ISLOCAL_OFF) and the engine branches on
+// for hero vs ally kill streaks.
+int hero_local_byte(std::uint64_t p) {
+    if (p == 0 || (p & 7)) return -1;
+    const auto addr = static_cast<std::uintptr_t>(p);
+    if (!committed_readable(addr + kHeroIsLocalOff, 1)) return -1;
+    return *reinterpret_cast<const std::uint8_t*>(addr + kHeroIsLocalOff);
+}
+
+// May `cand` replace the hero published in slot 0?
+//
+// No, when slot 0 holds a hero that still validates and reads local while the
+// candidate does not. All three publish paths fire for allies too: spawn-init
+// runs once per HERO (2026-08-18 four-player session), and give / gain carry no
+// locality test of their own. hero_plausible's HUD-mirror gate was meant to be
+// the local-only filter, but a live probe found an ally with a non-null mirror
+// (rsmm.lua, _dispatcher_is_local), so without this the last ally to spawn or
+// act took slot 0 from the local hero. Anything else may replace it as before:
+// an empty slot, an incumbent that no longer validates (a freed chapter's hero
+// must not block the next one), or one that does not read local itself, which
+// keeps capture working if a patch moves the byte. The SDK applies the same
+// ranking to every candidate it sees (R.entity._local_candidate).
+std::atomic<int> g_keep_logged{0};
+
+bool may_replace_hero(void* cand, const char* via) {
+    const auto v = reinterpret_cast<std::uint64_t>(cand);
+    const auto cur = shared_get(kHeroSlot);
+    if (cur == 0 || cur == v) return true;
+    if (hero_local_byte(v) == 1) return true;
+    if (hero_local_byte(cur) != 1) return true;
+    if (!hero_plausible(reinterpret_cast<void*>(cur))) return true;
+    if (g_keep_logged.fetch_add(1) < kCaptureLogCapKeep) {
+        char line[192];
+        std::snprintf(line, sizeof(line),
+                      "[hero-capture] %s: kept local hero @0x%llx over @%p "
+                      "(is-local byte %d)",
+                      via, static_cast<unsigned long long>(cur), cand,
+                      hero_local_byte(v));
+        Loader::get().log(line);
+    }
+    return false;
 }
 
 // The moment hero capture armed, so every capture line can report how long the
@@ -903,11 +950,12 @@ void detour_subscribe_all(void* p1) {
     // session disproved it: three stashes inside 5 ms, then four more at the
     // next chapter — one per HERO, remote allies included. Nothing here can
     // tell them apart (the fields that would are the ones not live yet), so
-    // every candidate is stashed and the LUA side picks: hero_plausible's
-    // HUD-mirror requirement is local-only by RE, and R.entity.hero()
-    // additionally prefers the candidate whose +0x1d88 byte says it is this
-    // machine's player. Publishing an ally here would point R.combat/R.stat at
-    // somebody else's character.
+    // every candidate is stashed and the LUA side picks: R.entity.hero() ranks
+    // every candidate by the +0x1db0 is-local byte. hero_plausible's HUD-mirror
+    // gate is NOT local-only (a live probe found an ally with a mirror), so the
+    // publish below also refuses to displace a slot-0 hero that reads local
+    // with one that does not (may_replace_hero). Publishing an ally here would
+    // point R.combat/R.stat at somebody else's character.
     hook_note_fire(g_subscribe_va);
     g_subscribe_real(p1);
     shared_set(kHeroPendingSlot, reinterpret_cast<std::uint64_t>(p1));
@@ -924,7 +972,7 @@ void detour_subscribe_all(void* p1) {
                        "(fields not live yet; promoted on first valid read)",
                   p1, seconds_since_armed());
     Loader::get().log(line);
-    if (ok) {
+    if (ok && may_replace_hero(p1, "spawn-init")) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
         shared_set(kHeroAuthSlot, 1);
         report_capture("spawn-init", p1);
@@ -965,7 +1013,7 @@ void detour_give(void* p1, void* p2, void* p3) {
                       p1, (int)ok1, p2, (int)ok2);
         Loader::get().log(line);
     }
-    if (ok2) {
+    if (ok2 && may_replace_hero(p2, "give")) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p2));
         shared_set(kHeroAuthSlot, 1);
         report_capture("give-handler", p2);
@@ -1077,7 +1125,7 @@ void detour_gain_health(void* p1, void* p2, void* p3) {
                       p1, (int)ok1, p2, (int)hero_plausible(p2));
         Loader::get().log(line);
     }
-    if (shared_get(kHeroAuthSlot) == 0 && ok1) {
+    if (shared_get(kHeroAuthSlot) == 0 && ok1 && may_replace_hero(p1, "gain")) {
         shared_set(kHeroSlot, reinterpret_cast<std::uint64_t>(p1));
         report_capture("gain-health", p1);
     }

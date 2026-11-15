@@ -936,7 +936,7 @@ function itemView() {
   }
 
   // One number row; the same edit state whichever section shows it.
-  const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" ? "int" : "float", r.shadowed, E.values[r.label],
+  const numRow = (r, label, after) => valueRow(label || r.label, r.value, r.type === "int" || r.type === "bool" ? r.type : "float", r.shadowed, E.values[r.label],
     nv => { if (nv === undefined) delete E.values[r.label]; else E.values[r.label] = nv; refresh(); if (after) after(); });
   const byLabel = new Map(it.values.map(r => [r.label, r]));
 

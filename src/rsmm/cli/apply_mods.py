@@ -55,6 +55,7 @@ from pathlib import Path
 
 from rsmm.cli import _dispatch, _term
 from rsmm.engine import cipher, cook_cache, cooked_schemas, rsc_cache
+from rsmm.engine import mod_requires as _req
 from rsmm.engine.compendium_layout import PAGE_DECODED, sync_compendium_columns
 
 # Moved to the engine (2026-09-26); re-exported for existing callers and tests.
@@ -72,6 +73,7 @@ from rsmm.engine.content_merge import (
 )
 from rsmm.engine.game_proc import is_game_running
 from rsmm.engine.hashing import sha256_file as sha256
+from rsmm.engine.mod_requires import parse_requires
 from rsmm.engine.paths import (
     ASSET_MAP_JSON,
     BACKUP_SUFFIX,
@@ -79,6 +81,7 @@ from rsmm.engine.paths import (
     MODS_DIR,
     USEDRSCLIST_REL,
     _game_dir_candidates,
+    find_install_dir,
     game_fingerprint,
     load_stored_fingerprint,
     save_fingerprint,
@@ -154,10 +157,7 @@ def find_game_dir() -> Path | None:
     if override:
         path = Path(os.path.expandvars(override)).expanduser()
         return path if (path / COOKING_REL).is_dir() else None
-    for c in _game_dir_candidates():
-        if (c / COOKING_REL).is_dir():
-            return c
-    return None
+    return find_install_dir()
 
 
 class Journal:
@@ -404,6 +404,8 @@ class Mod:
         if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
             raise ValueError("mod.loader_flags must be a list of flag names")
         self.loader_flags: list[str] = list(flags)
+        # `[requires]`: oldest CLI / loader this mod runs on (engine.mod_requires).
+        self.requires: dict[str, int] = parse_requires(tbl.get("requires"))
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
@@ -639,7 +641,8 @@ def _shipped_cache_paths() -> frozenset[str]:
     return frozenset(out)
 
 
-def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
+def resolve_special(decoded: str, dec2enc: dict[str, str], *,
+                    index: PrefixIndex | None = None) -> str | None:
     """Resolve decoded paths that aren't directly in asset_map.
 
     Handled cases:
@@ -666,7 +669,7 @@ def resolve_special(decoded: str, dec2enc: dict[str, str]) -> str | None:
     if decoded.startswith("_root/"):
         return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
     if decoded.endswith(rsc_cache.CACHE_SUFFIX):
-        return synthesize_encoded(decoded, dec2enc)
+        return synthesize_encoded(decoded, dec2enc, index=index)
     bank = resolve_audio_bank(decoded)
     if bank:
         return bank
@@ -760,7 +763,8 @@ ROOT_PREFIX = "_root\\"
 _CACHE_ENC_TOKEN = cipher.encode("UsedRscCache")
 
 
-def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
+def synthesize_encoded(decoded: str, dec2enc: dict[str, str], *,
+                       index: PrefixIndex | None = None) -> str | None:
     """Derive the `_Cooking` encoded path for a *new* decoded asset that
     isn't in `asset_map` yet.
 
@@ -773,25 +777,110 @@ def synthesize_encoded(decoded: str, dec2enc: dict[str, str]) -> str | None:
     filename component. Returns None when no sibling exists to anchor the
     prefix (a genuinely new top-level directory), in which case the
     caller should fall back to warn-and-skip.
+
+    ``index`` is a `PrefixIndex` the caller built over ``dec2enc``; it is
+    trusted as-is, so the caller must not change the map while using it (or
+    must call ``index.refresh()``). Without one, the shared loaded map uses
+    a memoised index and any other dict is scanned fresh.
     """
     decoded = decoded.replace("\\", "/")
     if "/" not in decoded:
         # Top-level resource (e.g. `samples`): no collapse, encode whole.
         return cipher.encode(decoded)
     parent, _, fname = decoded.rpartition("/")
+    # The prefix index is only trusted for the shared loaded map, which is
+    # rebuilt as a new dict when it changes. Any other dict can be mutated in
+    # place (same identity, same len, different value), so it is scanned fresh.
+    if index is not None:
+        prefix = index.get(parent)
+    elif dec2enc is _shared_map():
+        prefix = _parent_prefixes(dec2enc).get(parent)
+    else:
+        prefix = _scan_prefix(parent, dec2enc)
+    if prefix is None:
+        return None
+    return prefix + cipher.encode(fname)
+
+
+# Single-slot memo: (the dict it was built from, its len then, the index).
+# Scanning the ~80k-entry map on every call made bulk callers take minutes.
+_PREFIX_MEMO: tuple[dict[str, str], int, dict[str, str]] | None = None
+
+
+def _shared_map() -> dict[str, str] | None:
+    """The loaded shared map, or None when it isn't loaded yet. Never loads
+    it: a dict can only be the shared map once something has loaded it."""
+    from rsmm.engine.asset_map import decoded_to_encoded
+    info = getattr(decoded_to_encoded, "cache_info", None)
+    if info is None or not info().currsize:
+        return None
+    try:
+        return decoded_to_encoded()
+    except (OSError, ValueError):
+        return None
+
+
+def _scan_prefix(parent: str, dec2enc: dict[str, str]) -> str | None:
+    """The linear scan `_parent_prefixes` indexes: the encoded prefix of the
+    first sibling of ``parent`` (in dict order) that has one."""
+    for dec, enc in dec2enc.items():
+        dec = dec.replace("\\", "/")
+        if "/" not in dec or dec.rsplit("/", 1)[0] != parent:
+            continue
+        cut = max(enc.rfind("\\"), enc.rfind("!"))
+        if cut == -1:
+            continue
+        return enc[: cut + 1]
+    return None
+
+
+def _parent_prefixes(dec2enc: dict[str, str]) -> dict[str, str]:
+    """Map each decoded parent dir to the encoded prefix of the first
+    sibling (in dict order) that has one."""
+    global _PREFIX_MEMO
+    memo = _PREFIX_MEMO
+    if memo is not None and memo[0] is dec2enc and memo[1] == len(dec2enc):
+        return memo[2]
+    index = _build_prefixes(dec2enc)
+    _PREFIX_MEMO = (dec2enc, len(dec2enc), index)
+    return index
+
+
+class PrefixIndex:
+    """The parent-dir -> encoded-prefix index of one command's own map, built
+    lazily on first use and reused for the whole batch. Pass it as ``index=``
+    to `resolve_special` / `synthesize_encoded`. It is a snapshot: call
+    `refresh` after adding or changing entries of the map."""
+
+    def __init__(self, dec2enc: dict[str, str]) -> None:
+        self._map = dec2enc
+        self._index: dict[str, str] | None = None
+
+    def get(self, parent: str) -> str | None:
+        if self._index is None:
+            self._index = _build_prefixes(self._map)
+        return self._index.get(parent)
+
+    def refresh(self) -> None:
+        self._index = None
+
+
+def _build_prefixes(dec2enc: dict[str, str]) -> dict[str, str]:
+    index: dict[str, str] = {}
     for dec, enc in dec2enc.items():
         dec = dec.replace("\\", "/")
         if "/" not in dec:
             continue
-        if dec.rsplit("/", 1)[0] != parent:
+        p = dec.rsplit("/", 1)[0]
+        if p in index:
             continue
         # The sibling's final component begins after its last separator,
         # which may be a real `\` directory join or a collapsed `!`.
         cut = max(enc.rfind("\\"), enc.rfind("!"))
         if cut == -1:
             continue
-        return enc[: cut + 1] + cipher.encode(fname)
-    return None
+        index[p] = enc[: cut + 1]
+    return index
 
 
 def encoded_to_dest(encoded: str, cooking: Path, game_dir: Path) -> Path:
@@ -1148,7 +1237,9 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
                   file=sys.stderr)
             _drop_emitted(m)
         except (OSError, ValueError) as e:
-            print(f"  [content] {m.id}: emit failed: {e}", file=sys.stderr)
+            print(f"  [content] {m.id}: emit failed: {e} (RSMM CLI "
+                  f"v{_req.running_cli_version()} - a field this CLI doesn't know "
+                  "may need a newer RSMM)", file=sys.stderr)
             _drop_emitted(m)
         finally:
             logging.getLogger("rsmm").removeHandler(cap)
@@ -1178,6 +1269,42 @@ def apply_health_quarantine(mods: list[Mod], cooking: Path) -> list[Mod]:
             m.enabled = False
         out.append(m)
     return out
+
+
+def requires_gate(mods: list[Mod], game_dir: Path) -> list[dict]:
+    """Skip enabled mods whose `[requires]` is above this CLI / the loader that
+    will run. In-memory only, like the health quarantine; the others still apply.
+    Returns the skipped mods as ``{"id", "reason", "needs": {"cli"?, "loader"?}}``."""
+    skipped: list[dict] = []
+    for m in mods:
+        if not m.enabled or not m.requires:
+            continue
+        res = _req.check(m.requires, game_dir)
+        if res["warning"]:
+            print(f"  [content] {m.id}: {res['warning']}", file=sys.stderr)
+        if res["reason"]:
+            print(f"  [content] {m.id}: {res['reason']}", file=sys.stderr)
+            m.enabled = False
+            skipped.append({"id": m.id, "reason": res["reason"],
+                            "needs": dict(res["needs"])})
+    return skipped
+
+
+def apply_requires_gate(mods: list[Mod], game_dir: Path) -> list[Mod]:
+    requires_gate(mods, game_dir)
+    return mods
+
+
+def _write_skipped(skipped: list[dict]) -> None:
+    """Hand the skipped list to the JSON bridge, which runs this apply as a
+    child process and names the file in ``RSMM_SKIPPED_FILE``."""
+    path = os.environ.get("RSMM_SKIPPED_FILE")
+    if not path:
+        return
+    try:
+        Path(path).write_text(json.dumps(skipped), encoding="utf-8")
+    except OSError as e:
+        print(f"  [content] could not record skipped mods: {e}", file=sys.stderr)
 
 
 def _installed_aliases(additions, game_dir: Path) -> list:
@@ -1224,17 +1351,18 @@ def plan_apply(mods: list[Mod],
     collected: dict[str, list[tuple[Path, str, str]]] = {}  # enc -> [(src, mod, decoded)]
     registrations: dict[str, str] = {}        # encoded -> decoded
     synthesized: set[str] = set()             # encoded paths the game does not ship
+    index = PrefixIndex(dec2enc)              # dec2enc is not edited in here
     for m in mods:
         _CURRENT_MOD[0] = m.id
         if not m.enabled:
             continue
         for src, decoded in m.files():
-            enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+            enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc, index=index)
             if not enc:
                 # Not a known vanilla asset — treat as a brand-new resource.
                 # Synthesize its encoded path and flag it for UsedRscList
                 # registration so the engine will actually load it.
-                enc = synthesize_encoded(decoded, dec2enc)
+                enc = synthesize_encoded(decoded, dec2enc, index=index)
                 if not enc:
                     print(f"  [warn] {m.id}: no asset_map entry for '{decoded}' "
                           f"and no sibling to anchor a new path; skipping",
@@ -1322,7 +1450,7 @@ def plan_apply(mods: list[Mod],
     dec_of = {enc: writers[0][2] for enc, writers in collected.items()}
 
     def _read_final(decoded: str) -> bytes | None:
-        enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+        enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc, index=index)
         if not enc:
             return None
         if enc in wanted:
@@ -2437,6 +2565,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     dec2enc = load_asset_map(repo)
     mods = discover_mods(repo)
     mods = apply_health_quarantine(mods, cooking)
+    _write_skipped(requires_gate(mods, game_dir))
     # Materialize [[content]] declarations before computing the asset
     # plan so the emitted files are picked up like any other asset.
     emit_content_blocks(mods, game_dir)
@@ -2714,10 +2843,11 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # hash-matching cooked files to current mod source files and drop them.
     try:
         dec2enc = load_asset_map(repo)
+        index = PrefixIndex(dec2enc)
         mods = discover_mods(repo)
         for mod in mods:
             for src, decoded in mod.files():
-                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc, index=index)
                 if not enc:
                     continue
                 dest = encoded_to_dest(enc, cooking, game_dir)
@@ -2767,7 +2897,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
             seen: set[tuple[str, str]] = set()
             for mod in mods:
                 for src, decoded in mod.files():
-                    enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                    enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc, index=index)
                     key = (enc or "", str(src))
                     if not enc or key in seen:
                         continue
@@ -2808,7 +2938,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         residual_matches: set[str] = set()
         for mod in mods:
             for src, decoded in mod.files():
-                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc)
+                enc = dec2enc.get(decoded) or resolve_special(decoded, dec2enc, index=index)
                 if not enc:
                     continue
                 dest = encoded_to_dest(enc, cooking, game_dir)
@@ -2898,6 +3028,7 @@ def cmd_list(args, repo: Path, cooking: Path) -> int:
 
     state = State(cooking)
     dec2enc = load_asset_map(repo)
+    index = PrefixIndex(dec2enc)
 
     total_files = unresolved_total = active_total = 0
     id_w = min(max((len(m.id) for m in shown), default=8), 34)
@@ -2905,7 +3036,8 @@ def cmd_list(args, repo: Path, cooking: Path) -> int:
     for m in shown:
         files = m.files()
         resolved = [
-            (decoded, dec2enc.get(decoded) or resolve_special(decoded, dec2enc))
+            (decoded, dec2enc.get(decoded)
+             or resolve_special(decoded, dec2enc, index=index))
             for _src, decoded in files
         ]
         unresolved = [d for d, enc in resolved if not enc]
@@ -3102,7 +3234,24 @@ def main() -> int:
             print(f"{_ST.err('[FAIL]')} {e}", file=sys.stderr)
             return 1
         _protect_save_items(game_dir, args.dry_run)
+        if not args.dry_run:
+            _write_online_gate(game_dir)
         return rc
+
+
+def _write_online_gate(game_dir: Path) -> None:
+    """Tell the loader whether gameplay mods run, so it can refuse public
+    matchmaking (`hook_online_gate.cpp`). Never fails the apply."""
+    from rsmm.engine.modpack import write_online_gate
+    try:
+        pack = write_online_gate(game_dir)
+    except OSError as e:
+        print(f"  [warn] could not write the online gate: {e}", file=sys.stderr)
+        return
+    if pack.gameplay:
+        names = ", ".join(n for n, _ in pack.gameplay)
+        print(f"  [online] gameplay mods active ({names}): "
+              "public matchmaking is blocked; party-code games still work")
 
 
 if __name__ == "__main__":

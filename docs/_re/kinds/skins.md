@@ -170,93 +170,34 @@ The manager class hierarchy has three instantiable variants (the base
 `oIAdditionalContentManager` is abstract). Their vtables were recovered
 via `scripts/ghidra_scripts/ExportVftables.java` → `data/vftables.jsonl`:
 
-```
-oIAdditionalContentManager::vftable        @ 0x140f3e288   (base — slot[1] is stub)
-oCNullAdditionalContentManager::vftable     @ 0x140f3e1e0   (null — slot[1] is also stub)
-oCLocalAdditionalContentManager::vftable    @ 0x140f3e578   (local — slot[1] checks file existence)
-oCSteamAdditionalContentManager::vftable    @ 0x140f8db00   (steam — slot[1] checks Steam ownership)
-```
+Three instantiable manager variants: a stub that always rejects, a local
+variant that shows a pack when its entitlement file exists, and a Steam variant
+that shows a pack when the account owns it. Vtable slot[1] is the grid-populate
+filter; it returns 3 for "show as a button". The ownership functions'
+addresses and bodies are intentionally not recorded here.
 
-All four share a common "base dtor" (`FUN_1406472e0`) which nulls the global
-`DAT_141436590`. Each ctor sets its own vtable pointer, then calls
-`FUN_1406472e0` as the base initializer. The runtime instance stored at
-`DAT_141436590` is whichever the game's init path constructs — most likely
-`oCSteamAdditionalContentManager` for the Steam build, or
-`oCLocalAdditionalContentManager` for a DRM-free/local build.
-
-Vtable slot[1] (the grid-populate filter, called as
-`(**(code**)(*mgr + 8))(mgr, node)` by `FUN_1401f0f10`):
-
-| Class | Slot[1] address | Behavior |
-|-------|----------------|----------|
-| `oIAdditionalContentManager` | `0x1400c07a0` | `return 0;` — stub, always reject |
-| `oCNullAdditionalContentManager` | `0x1400c07a0` | same stub (inherited) |
-| `oCLocalAdditionalContentManager` | `FUN_140647440` | reads `char**` at `node+0x80`, calls `FUN_1405225f0(&path)` which prepends `\\?\` and calls `GetFileAttributesW` — if the file exists → return 3 |
-| `oCSteamAdditionalContentManager` | `FUN_140a2c600` | reads `uint32` key at `node+0x3c`, calls `ISteamApps::BIsDLCEnabled` (vtable[0x38]) on the Steam context — if owned → return 3 |
-
-**Local filter** (`FUN_140647440`):
-```c
-undefined8 FUN_140647440(undefined8 mgr, longlong node) {
-    char** path_ptr = *(char***)(node + 0x80);
-    if (**path_ptr != '\0') {
-        if (FUN_1405225f0(path_ptr))  // file-existence check (GetFileAttributesW)
-            return 3;
-    }
-    return 0;
-}
-```
-
-**Steam filter** (`FUN_140a2c600`):
-```c
-undefined8 FUN_140a2c600(undefined8 mgr, longlong node) {
-    uint key = *(uint*)(node + 0x3c);
-    if (DAT_1412ce535 != 0) {  // Steam initialised
-        void* steam_ctx = SteamInternal_ContextInit(&PTR_FUN_1412d22d0);
-        if ((**(code**)(*(longlong*)*steam_ctx + 0x38))(steam_ctx, key))
-            return 3;
-    }
-    return 0;
-}
-```
-
-**A2 verdict**: A brand-new key fails both filters:
-- The Steam filter rejects it because `ISteamApps::BIsDLCEnabled(new_key)` is false (Steam doesn't know the key).
-- The local filter rejects it because `node+0x80` is NULL (zero-initialised by the entry ctor) — the null dereference would crash, but the Steam filter is active on the Steam build, so the local path is unused.
-
-**Verified at runtime** (Linux, GE-Proton10-34, Steam build): the active filter
-is `oCSteamAdditionalContentManager::vftable[1]` (`FUN_140a2c600`). Our custom
-node (key `0xa00001`) logged `filter=0` — the Steam DLC check rejected it.
-The force-show hook (`RSMM_SKIN_FORCE_SHOW=1`) pushes it into the grid anyway.
-
-To retire force-show the Steam filter must be hooked: intercept
-`FUN_140a2c600` (the actual vtable slot), check if the key matches one of
-our packs, and return `3` for our keys while forwarding all others to the
-original. The `node+0x80` path is irrelevant for the Steam build — the
-local filter's file-existence path is never evaluated.
+**A2 verdict**: a brand-new key fails both real filters, so a custom pack is on
+the roster but invisible until the loader's own filter detour lets it through.
+Verified at runtime (Linux, GE-Proton10-34, Steam build): a custom node logged
+`filter=0`.
 
 ### A2 — IMPLEMENTED (filter hook, default-on)
 
 `hook_skins.cpp` now MinHook-detours the grid filter so our packs pass the
 gate as proper buttons — **no** `RSMM_SKIN_FORCE_SHOW`. The single detour
-`hook_filter(mgr, node)` returns `3` when the node's key (`+0x3c`) is one of
-our registered packs and forwards every other node to the original
-(`g_real_filter`), so vanilla DLC/skin slots keep their real Steam-ownership
-/ file-existence checks. `FUN_1401f0f10` then pushes our nodes through the
+`hook_filter(mgr, node)` returns `3` only for a node the loader allocated
+itself (pointer match, never pack key, so a mod can't claim a paid pack's key)
+and forwards every other node to the original (`g_real_filter`), so vanilla
+DLC/skin slots keep their real ownership checks. `FUN_1401f0f10` then pushes our nodes through the
 normal path. `RSMM_SKIN_FORCE_SHOW` is retained only as a fallback diagnostic.
 
 **Filter address is read from the live vtable, not pattern-resolved.**
 `install_filter_hook(mgr)` (called from `append_custom_packs`, once the
 manager exists) reads `*(*(void**)mgr + 8)` — the actual `vtable[1]` slot the
 engine calls — and hooks that. This is correct for whichever manager class
-the build constructs (Steam `FUN_140a2c600` or local `FUN_140647440`) and
-needs no per-function signature.
+the build constructs and needs no per-function signature.
 
-> ⚠️ The `function_patterns.json` entries for `FUN_140a2c600` and
-> `FUN_140647440` are **stale**: each resolves to a single *wrong* address
-> (`0x140a4b040` / `0x14065efe0`; the recorded VA isn't among the matches) —
-> `scripts/test_pattern_resolve.py` does not print `OK` for either. Do **not**
-> `fn_resolve` these two until the patterns are regenerated; the vtable read
-> sidesteps them entirely.
+
 
 ## A3 — asset naming is solved (from `data/asset_map.json`)
 

@@ -11,13 +11,19 @@
 set -eu
 cd "$(dirname "$0")/../.."
 
-GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$HOME/Documents/Programming/ghidra_12.2_PUBLIC}"
+# Default: the newest Ghidra 12 install beside the repo's parent directory. A
+# pinned version here broke the script the day the pin named a release that
+# was not installed (12.2 while only 12.1.4 was on disk).
+if [ -z "${GHIDRA_INSTALL_DIR:-}" ]; then
+  GHIDRA_INSTALL_DIR="$(ls -d "$HOME"/Documents/Programming/ghidra_12*_PUBLIC 2>/dev/null \
+    | sort -V | tail -n 1)"
+fi
 PORT="${RSMM_GHIDRA_MCP_PORT:-8765}"
 export GHIDRA_INSTALL_DIR
 PATH="$HOME/.local/bin:$PATH"
 
 if [ ! -x "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" ]; then
-  echo "no Ghidra at $GHIDRA_INSTALL_DIR — set GHIDRA_INSTALL_DIR to a Ghidra 12 install" >&2
+  echo "no Ghidra at ${GHIDRA_INSTALL_DIR:-~/Documents/Programming/ghidra_12*_PUBLIC} — set GHIDRA_INSTALL_DIR to a Ghidra 12 install" >&2
   exit 1
 fi
 

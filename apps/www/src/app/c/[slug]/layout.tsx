@@ -1,20 +1,13 @@
 import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { type Entity, fetchEntity } from '../../../lib/entity';
-import { ServerProse } from '../../components/server-prose';
+import type { Entity } from '../../../lib/entity';
+import { fetchViewerEntity } from '../../../lib/viewer-entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 
-// ISR, not per-request SSR. Everything rendered here comes from an anonymous
-// server-side fetch (viewer-specific UI is client-side), so one cached render
-// serves every visitor and crawler. The empty list prerenders nothing at build
-// time; each path renders on first request and is cached, regenerated at most
-// once per `revalidate` window. Without generateStaticParams the route was
-// dynamic (ƒ) and re-rendered on every hit — the main Fluid CPU cost. Five
-// minutes: the live parts (versions, reviews, counts) load client-side, so
-// only the title/description/SEO block can lag an edit by that much.
-// Keep in step with fetchEntity's revalidate (the shortest one wins).
+// Public listings use ISR and anonymous data. Private/delisted listings retry
+// with the viewer's session without caching; the API enforces access.
 export const revalidate = 300;
 export function generateStaticParams(): { slug: string }[] {
   return [];
@@ -22,6 +15,7 @@ export function generateStaticParams(): { slug: string }[] {
 const ORIGIN = 'https://rsmm.me';
 
 interface Collection {
+  isPublic?: boolean;
   name?: string;
   summary?: string | null;
   description?: string | null;
@@ -35,7 +29,7 @@ interface Collection {
 // deduped by Next within a request); they used to hand-roll the same request
 // twice and disagree about what "not found" meant.
 async function getCollection(slug: string): Promise<Entity<Collection>> {
-  const res = await fetchEntity<Collection>(`/api/collections/${slug}`);
+  const res = await fetchViewerEntity<Collection>(`/api/collections/${slug}`);
   if (res.state !== 'ok') return res;
   return res.data?.name ? res : { state: 'error' };
 }
@@ -57,6 +51,7 @@ export async function generateMetadata({
   const res = await getCollection(slug);
   if (res.state !== 'ok') return fallbackMetadata(slug);
   const collection = res.data;
+  if (collection.isPublic === false) return fallbackMetadata(slug);
 
   const title = `${collection.name} · Collection · ${SITE}`;
   const description =
@@ -82,14 +77,6 @@ export async function generateMetadata({
       images: image ? [image] : undefined,
     },
   };
-}
-
-// The star average deliberately stays out of this byline: it comes from a
-// separate client query and is already rendered by the reviews section.
-function collectionByline(c: Collection): string {
-  const parts = [`by ${c.ownerName ?? 'unknown'}`];
-  if (c.updatedAt) parts.push(`updated ${new Date(c.updatedAt).toLocaleDateString('en-US')}`);
-  return parts.join(' · ');
 }
 
 export default async function Layout({
@@ -120,21 +107,6 @@ export default async function Layout({
               ],
             }),
           }}
-        />
-      ) : null}
-      {/* Server-rendered name, byline, summary and description. The client page
-          below keeps the cover image, the owner controls and the mod list. */}
-      {res.state === 'ok' ? (
-        <ServerProse
-          backHref="/c"
-          backLabel="Back to Collections"
-          title={res.data.name ?? slug}
-          byline={collectionByline(res.data)}
-          summary={res.data.summary}
-          image={{ url: res.data.imageUrl, alt: `${res.data.name ?? slug} cover` }}
-          body={res.data.description}
-          bodyHeading="About"
-          card
         />
       ) : null}
       {children}

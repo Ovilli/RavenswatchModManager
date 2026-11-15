@@ -96,7 +96,7 @@ export default function NewGuidePage() {
   }
 
   return (
-    <main className="container mx-auto max-w-2xl space-y-6 px-6 py-12">
+    <main className="container mx-auto space-y-6 px-6 py-12">
       <Link
         href={'/guides' as Route}
         className={buttonVariants({ variant: 'outline', size: 'sm' })}

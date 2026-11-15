@@ -42,7 +42,19 @@ export const modDetailResponseSchema = z.object({
       isFollowing: z.boolean().optional(),
       // Viewer is the owner or a co-author.
       isAuthor: z.boolean().optional(),
+      // Listing metadata and photos may also be edited by RSMM admins.
+      canEdit: z.boolean().optional(),
       followerCount: z.number().int().optional(),
+      // Credited beside "Created by"; older servers omit it.
+      coAuthors: z
+        .array(
+          z.object({
+            userId: z.string(),
+            name: z.string().nullable(),
+            handle: z.string().nullable(),
+          }),
+        )
+        .optional(),
       // Present for the owner/admin viewing a delisted mod; public callers
       // never receive a non-active mod so these default to active.
       takedownStatus: z.enum(['active', 'hidden', 'removed']).optional(),
@@ -354,8 +366,12 @@ export function createApiClient(options: ApiClientOptions) {
       // single author page — the profile route has never returned the field.
       joinedAt: z.string().optional(),
     }),
-    mods: z.array(modListItemSchema),
-    // null when the author has turned off public download counts.
+    // `role`: the user owns the mod or co-authors it (older servers omit it).
+    mods: z.array(
+      modListItemSchema.and(z.object({ role: z.enum(['owner', 'coauthor']).optional() })),
+    ),
+    // null when the author has turned off public download counts; counts only
+    // the mods the user owns.
     totalDownloads: z.number().int().nonnegative().nullable(),
   });
 
@@ -526,6 +542,8 @@ export function createApiClient(options: ApiClientOptions) {
           featured?: boolean;
           /** false = exclude NSFW mods; absent/true = include (server default). */
           nsfw?: boolean;
+          /** Exclude mods labelled for private games only, including legacy tags. */
+          hidePrivateOnly?: boolean;
           owner?: string;
           sort?: 'recent' | 'popular' | 'featured' | 'rating';
           /** Trending window for sort=popular (downloads within last N days). */
@@ -543,6 +561,7 @@ export function createApiClient(options: ApiClientOptions) {
         if (params.offset) qs.set('offset', String(params.offset));
         if (params.featured) qs.set('featured', 'true');
         if (params.nsfw === false) qs.set('nsfw', 'false');
+        if (params.hidePrivateOnly) qs.set('hidePrivateOnly', '1');
         if (params.owner) qs.set('owner', params.owner);
         if (params.sort) qs.set('sort', params.sort);
         if (params.window) qs.set('window', params.window);
@@ -677,6 +696,35 @@ export function createApiClient(options: ApiClientOptions) {
       },
     },
     moderation: {
+      setPrivateOnly: (slug: string, privateOnly: boolean) =>
+        request(
+          `/api/moderation/mods/${encodeURIComponent(slug)}/private-only`,
+          { method: 'PATCH', body: JSON.stringify({ privateOnly }) },
+          z.object({ ok: z.literal(true), tags: z.array(z.string()) }),
+        ),
+      /**
+       * One batch of the store's own "Private games only" check over published
+       * mods (newest servable version each). Call again with `next` until it
+       * is null. Only ever adds the label.
+       */
+      privateOnlyBackfill: (offset = 0, limit = 10) =>
+        request(
+          '/api/moderation/mods/private-only/backfill',
+          { method: 'POST', body: JSON.stringify({ offset, limit }) },
+          z.object({
+            ok: z.literal(true),
+            checked: z.number(),
+            results: z.array(
+              z.object({
+                slug: z.string(),
+                labelled: z.boolean(),
+                reasons: z.array(z.string()),
+                error: z.string().optional(),
+              }),
+            ),
+            next: z.number().nullable(),
+          }),
+        ),
       /** Admin-only business overview powering the console's Overview tab. */
       stats: (days = 30) =>
         request(`/api/moderation/stats?days=${days}`, { method: 'GET' }, adminStatsResponseSchema),

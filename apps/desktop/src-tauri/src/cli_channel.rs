@@ -77,6 +77,14 @@ pub fn active_exe(app: &tauri::AppHandle) -> Option<PathBuf> {
     (stamp.abi == own.abi && stamp.cli_version > own.cli_version && exe.is_file()).then_some(exe)
 }
 
+/// `cli_version` of a fully staged build waiting to be promoted at the next
+/// start (what `promote_staged` would accept), if there is one.
+fn staged_version(root: &Path) -> Option<u64> {
+    let staged = root.join("staged");
+    let stamp = read_stamp(&staged)?;
+    staged.join(exe_name()).is_file().then_some(stamp.cli_version)
+}
+
 #[derive(Serialize)]
 pub struct CliChannel {
     /// Where `update-cli --dest` stages builds.
@@ -85,6 +93,10 @@ pub struct CliChannel {
     pub active: bool,
     /// `cli_version` of the CLI the app runs (channel or bundled).
     pub version: u64,
+    /// `cli_version` of the CLI embedded in this app build.
+    pub bundled: u64,
+    /// A downloaded build that becomes the running CLI at the next start.
+    pub staged: Option<u64>,
 }
 
 #[tauri::command]
@@ -96,9 +108,40 @@ pub fn cli_channel(app: tauri::AppHandle) -> CliChannel {
         .filter(|_| active)
         .and_then(|d| read_stamp(&d.join("current")))
         .map_or(bundled().cli_version, |s| s.cli_version);
+    let staged = dir.as_deref().and_then(staged_version);
     CliChannel {
         dir: dir.map(|d| d.to_string_lossy().into_owned()),
         active,
         version,
+        bundled: bundled().cli_version,
+        staged,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rsmm-cli-channel-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("staged")).unwrap();
+        d
+    }
+
+    #[test]
+    fn staged_needs_stamp_and_exe() {
+        let root = scratch("staged");
+        assert_eq!(staged_version(&root), None);
+        std::fs::write(
+            root.join("staged").join("channel.json"),
+            r#"{"cli_version": 9, "abi": 1}"#,
+        )
+        .unwrap();
+        // A stamp without the executable is a half-written download.
+        assert_eq!(staged_version(&root), None);
+        std::fs::write(root.join("staged").join(exe_name()), b"x").unwrap();
+        assert_eq!(staged_version(&root), Some(9));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

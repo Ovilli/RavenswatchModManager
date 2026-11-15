@@ -50,7 +50,7 @@ def mine(cls: str, *, kind: str | None = None) -> MiningResult:
     # Placeholder schema body. Real mining requires calling into
     # `rsmm.dev.class_diff` which depends on the Ghidra-dumped corpus
     # under `docs/_re/out/decompiled_all/`. That corpus is gitignored
-    # for size reasons. See `docs/SDK_V3.md` → Open work.
+    # for size reasons. See `https://docs.rsmm.me/guides/sdk/` → Open work.
     body = {
         "class": cls,
         "kind": kind,

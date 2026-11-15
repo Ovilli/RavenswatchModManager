@@ -12,6 +12,7 @@ import {
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { isAdmin } from '../admin.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured } from '../env.js';
 import { notifyReview, notifyReviewReply } from '../notify.js';
@@ -55,7 +56,14 @@ const writeLimiter = createRateLimiter({
 type CollectionVisibility = Pick<typeof schema.collections.$inferSelect, 'isPublic' | 'ownerId'>;
 
 function canViewCollection(collection: CollectionVisibility, userId?: string | null): boolean {
-  return collection.isPublic || collection.ownerId === userId;
+  return collection.isPublic || canEditCollection(collection, userId);
+}
+
+function canEditCollection(
+  collection: Pick<CollectionVisibility, 'ownerId'>,
+  userId?: string | null,
+): boolean {
+  return !!userId && (collection.ownerId === userId || isAdmin(userId));
 }
 
 collectionsRouter.get('/', async (c) => {
@@ -209,7 +217,7 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
 
   const head = row[0];
   if (!head) return c.json({ error: 'not found' }, 404);
-  if (!head.isPublic && head.ownerId !== user?.id) {
+  if (!canViewCollection(head, user?.id)) {
     return c.json({ error: 'not found' }, 404);
   }
 
@@ -247,7 +255,12 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
     .innerJoin(schema.mods, eq(schema.mods.id, schema.collectionMods.modId))
     // Admin takedown gate, same as the public mod list: a delisted mod drops out
     // of every collection rather than staying discoverable through one.
-    .where(and(eq(schema.collectionMods.collectionId, head.id), eq(schema.mods.takedownStatus, 'active')))
+    .where(
+      and(
+        eq(schema.collectionMods.collectionId, head.id),
+        eq(schema.mods.takedownStatus, 'active'),
+      ),
+    )
     .orderBy(asc(schema.collectionMods.position), asc(schema.collectionMods.addedAt));
 
   return c.json({
@@ -262,6 +275,7 @@ collectionsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) 
     imageUrl: head.imageUrl,
     screenshots: head.screenshots ?? [],
     isPublic: head.isPublic,
+    canEdit: canEditCollection(head, user?.id),
     modCount: mods.length,
     createdAt: head.createdAt.toISOString(),
     updatedAt: head.updatedAt.toISOString(),
@@ -301,7 +315,7 @@ collectionsRouter.patch(
       where: eq(schema.collections.slug, slug),
     });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!canEditCollection(existing, user.id)) return c.json({ error: 'forbidden' }, 403);
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name !== undefined) updates.name = body.name;
@@ -351,7 +365,7 @@ collectionsRouter.post(
       where: eq(schema.collections.slug, slug),
     });
     if (!collection) return c.json({ error: 'not found' }, 404);
-    if (collection.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!canEditCollection(collection, user.id)) return c.json({ error: 'forbidden' }, 403);
 
     const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, modSlug) });
     if (!mod) return c.json({ error: 'mod not found' }, 404);
@@ -388,7 +402,7 @@ collectionsRouter.delete(
       where: eq(schema.collections.slug, slug),
     });
     if (!collection) return c.json({ error: 'not found' }, 404);
-    if (collection.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!canEditCollection(collection, user.id)) return c.json({ error: 'forbidden' }, 403);
 
     const mod = await db.query.mods.findFirst({ where: eq(schema.mods.slug, modSlug) });
     if (!mod) return c.json({ error: 'mod not found' }, 404);
@@ -426,7 +440,7 @@ collectionsRouter.post(
       where: eq(schema.collections.slug, slug),
     });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (existing.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
+    if (!canEditCollection(existing, user.id)) return c.json({ error: 'forbidden' }, 403);
 
     const signed = await presignCollectionImage({
       slug,

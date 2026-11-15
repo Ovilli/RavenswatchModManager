@@ -58,7 +58,7 @@ export default function NotificationsPage() {
   const unread = q.data?.pages[0]?.unread ?? 0;
 
   return (
-    <main className="container mx-auto max-w-2xl space-y-6 px-6 py-10">
+    <main className="container mx-auto space-y-6 px-6 py-10">
       <div className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <Bell className="h-6 w-6" /> Notifications

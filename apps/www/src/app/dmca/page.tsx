@@ -38,6 +38,10 @@ export default function DmcaPage() {
                 Ravenswatch or any other game — redistributed on their own or in bulk.
               </li>
               <li>Pirated, cracked, or otherwise unlawfully obtained material.</li>
+              <li>
+                Anything that unlocks paid content (DLC heroes, outfits or other bought content)
+                for players who do not own it.
+              </li>
               <li>Malware, miners, or code intended to harm or deceive other users.</li>
               <li>Counterfeit goods, or content that infringes a third party&apos;s trademark.</li>
               <li>Illegal content, or content that violates the rights of others.</li>

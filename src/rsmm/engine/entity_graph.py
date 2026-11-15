@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 import struct
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from . import cooked
 from . import entity_strings as ES
@@ -48,6 +49,11 @@ class Ref:
         return m["scope"] if m else ""
 
 
+#: A state's header bit that makes it a one-frame EVENT (1370 of 1373 shipped
+#: "Event ..." states; no "State ..." state has it).
+EVENT_FLAG = 0x10000
+
+
 @dataclass
 class Component:
     index: int                  # section index in the file
@@ -60,10 +66,17 @@ class Component:
     literals: list[str] = field(default_factory=list)   # other strings: events, resources
     body: bytes = b""           # class-specific bytes after the group name
     classes: list[str] = field(default_factory=list, repr=False)
+    #: the record's header flags (u32 before the group). On a state, bit
+    #: EVENT_FLAG makes it a one-frame event.
+    flags: int = 0
 
     @property
     def path(self) -> str:
         return f"{self.group}\\{self.name}"
+
+    @property
+    def is_event(self) -> bool:
+        return bool(self.flags & EVENT_FLAG)
 
 
 @dataclass
@@ -127,14 +140,43 @@ def _header_strings(p: bytes, at: int) -> tuple[str, str, int] | None:
     return out[0], out[1], at
 
 
-def parse(raw: bytes, name: str = "") -> EntityGraph:
-    """Components of a cooked entity-settings file, with their edges."""
+def _parse_uncached(raw: bytes, name: str = "") -> EntityGraph:
     cf = cooked.parse(raw)
     classes = [c.name for c in cf.classes]
     picker_cls = classes.index("oCEntityCpntPicker") if "oCEntityCpntPicker" in classes else -1
     comps = [c for si, sec in enumerate(cf.sections[1:-1], 1)
              if (c := component_at(sec.payload, si, classes, picker_cls)) is not None]
     return EntityGraph(name, comps)
+
+
+@lru_cache(maxsize=256)
+def _parse_cached(raw: bytes) -> EntityGraph:
+    return _parse_uncached(raw)
+
+
+def _copy_graph(g: EntityGraph, name: str) -> EntityGraph:
+    # One `classes` list per graph, shared by its components as a fresh parse does.
+    classes = list(g.components[0].classes) if g.components else []
+    comps = [
+        Component(
+            c.index, c.cls, c.name, c.group, c.guid,
+            Ref(c.override.guid, c.override.path) if c.override is not None else None,
+            [Ref(r.guid, r.path) for r in c.refs],
+            list(c.literals), c.body, classes, c.flags,
+        )
+        for c in g.components
+    ]
+    return EntityGraph(name, comps)
+
+
+def parse(raw: bytes, name: str = "") -> EntityGraph:
+    """Components of a cooked entity-settings file, with their edges.
+
+    Repeat parses of the same bytes reuse one decode; each call returns a fresh,
+    independently mutable graph. Only exact `bytes` are cached."""
+    if type(raw) is not bytes:
+        return _parse_uncached(raw, name)
+    return _copy_graph(_parse_cached(raw), name)
 
 
 def component_at(p: bytes, si: int, classes: list[str], picker_cls: int) -> Component | None:
@@ -164,7 +206,10 @@ def component_at(p: bytes, si: int, classes: list[str], picker_cls: int) -> Comp
     literals = [s for o, s in ES._scan_payload(p) if o >= body_from and s not in ref_paths]
     override = first if first.path else None
     body = p[body_from:]
-    return Component(si, classes[ci], cname, group, own, override, refs, literals, body, classes)
+    at = body_from - 4 - len(group.encode("latin-1")) - 4
+    flags = struct.unpack_from("<I", p, at)[0] if at >= 0 else 0
+    return Component(si, classes[ci], cname, group, own, override, refs, literals, body, classes,
+                     flags)
 
 
 # --------------------------------------------------------------------------

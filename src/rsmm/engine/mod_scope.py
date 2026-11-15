@@ -21,6 +21,9 @@ What counts as client-only:
   namespaces) and :data:`CLIENT_CALLS` (single functions). Any other ``R.*``
   path, dynamic access (``R[...]``), passing the SDK table around, the native
   ``rsmm.*`` bindings, or requiring an SDK internal (``rsmm.*``) is gameplay.
+  So is any way of obtaining the SDK that the scan cannot follow by name: a
+  ``require`` whose argument is not one plain string, the SDK bound anywhere
+  but ``local NAME = require "rsmm"``, and ``_G`` / ``_ENV`` / ``package``.
 
 Camera changes are client-only by decision (2026-10-05): the camera is local
 and nothing about it reaches another player. Map reveal is not — it is a
@@ -36,12 +39,14 @@ from pathlib import Path
 
 #: SDK namespaces whose every member is client-only: logging, timers, the mod's
 #: own config / storage / experiments, the HUD overlay, the read-only damage
-#: meter, the boot canary, local translation lookup, the camera, and the
-#: master audio mute (FMOD mixes on each machine; nothing is sent).
+#: meter, the boot canary, local translation lookup, the camera, the
+#: master audio mute (FMOD mixes on each machine; nothing is sent), local
+#: mouse-wheel input plus a read of the player's own key bindings, and R.ui
+#: (reads which of this machine's menus are open; it never shows or hides one).
 CLIENT_NAMESPACES: frozenset[str] = frozenset({
     "log", "on", "off", "once", "on_match",
     "overlay", "exp", "kv", "config", "schedule", "health", "i18n",
-    "damage", "camera", "audio",
+    "damage", "camera", "audio", "input", "ui",
 })
 
 #: Single client-only functions inside otherwise-gameplay namespaces: reads.
@@ -58,13 +63,30 @@ CLIENT_CALLS: frozenset[str] = frozenset({
     # Logs the hero's live component list; reads only (R.debug.observe hooks,
     # so the namespace as a whole is not client-only).
     "debug.components",
+    # Reads of the global entity-value context ("Is menu open", "Current
+    # chapter"); R.game has no public setter.
+    "game.get", "game.flag", "game.cached", "game.ready", "game.describe",
 })
 
 
 _IDENT = r"[A-Za-z_]\w*"
-_REQUIRE_RE = re.compile(
-    rf"(?:local\s+)?({_IDENT})\s*=\s*require\s*\(?\s*(['\"])([\w.]+)\2\s*\)?")
-_ANY_REQUIRE_RE = re.compile(r"require\s*\(?\s*(['\"])([\w.]+)\1")
+
+#: A module name `require` can be checked against: plain characters only, so
+#: an escape (`"\114smm"`) is not read as some other name.
+_MODULE_NAME_RE = re.compile(r"[\w.\-]+")
+#: Globals that reach the SDK without naming it: the global table, the
+#: environment, and the module cache that holds every loaded module. Only
+#: GLOBAL reads count: a field (`label.package`), a table key
+#: (`{ package = "HUD" }`) or a local of the same name is not these.
+_ENV_GLOBALS: dict[str, str] = {
+    "_G": "the global table (_G)",
+    "_ENV": "the environment table (_ENV)",
+    "package": "the module cache (package)",
+}
+#: Keywords a statement can directly follow (they end one, or open a block).
+_BEFORE_STATEMENT_KW = frozenset({
+    "do", "then", "else", "repeat", "end", "break", "true", "false", "nil",
+})
 
 
 @dataclass
@@ -129,21 +151,118 @@ def _blank_strings(src: str) -> str:
     return re.sub(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"", '""', src)
 
 
+def _can_start_statement(toks: list, k: int) -> bool:
+    """Whether a statement can begin at token `k`: the token before it ends a
+    statement (or opens a block) rather than continuing an expression or a
+    target list (`t.S`, `a, S`)."""
+    if k == 0:
+        return True
+    prev = toks[k - 1]
+    if prev.kind == "op":
+        return prev.text in (";", ")", "]", "}")
+    if prev.kind == "kw":
+        return prev.text in _BEFORE_STATEMENT_KW
+    return True  # a name, string or number ends the previous statement
+
+
+def _ends_statement(toks: list, k: int) -> bool:
+    """Whether the expression before token `k` is complete there, so nothing
+    (`.stat`, `or {}`, a call) carries the value further. Lua ignores line
+    breaks, so this looks at the next token, not the next line."""
+    if k >= len(toks):
+        return True
+    tok = toks[k]
+    if tok.kind == "op":
+        return tok.text == ";"
+    if tok.kind == "kw":
+        return tok.text not in ("and", "or")
+    return tok.kind == "name"
+
+
+def _sdk_access_reasons(src: str, aliases: set[str]) -> list[str]:
+    """Check how `src` reaches the SDK; add each binding that can be followed
+    to `aliases`, and return a reason for every other way in.
+
+    The scan in :func:`lua_reasons` follows the SDK by NAME, so it only works
+    while every way of obtaining the SDK is one it recognizes. Each check here
+    closes a way of getting the SDK under a name the scan never learns, which
+    would otherwise let a mod calling gameplay functions be classified
+    client-only. It works on Lua tokens and the walk's scopes, not on lines:
+    Lua ignores line breaks, and a field, table key or local named like a
+    global is not that global.
+    """
+    from rsmm.cli._lua_scope import LuaSyntaxError, walk
+
+    try:
+        w = walk(src)
+    except LuaSyntaxError as e:
+        return [f"its Lua cannot be parsed ({e}), so its use of the SDK "
+                "cannot be checked"]
+    toks = w.t
+    reasons: list[str] = []
+    unfollowed = ("stores the SDK somewhere other than a plain local "
+                  "(`local R = require \"rsmm\"`), so its use cannot be checked")
+    globals_read = {name for name, _ in w.globals}
+
+    for name, k in w.globals:
+        if name != "require":
+            continue
+        nxt = toks[k + 1] if k + 1 < len(toks) else None
+        if nxt is not None and nxt.kind == "str":
+            arg, end = nxt.text, k + 2
+        elif (nxt is not None and nxt.kind == "op" and nxt.text == "("
+              and k + 3 < len(toks) and toks[k + 2].kind == "str"
+              and toks[k + 3].kind == "op" and toks[k + 3].text == ")"):
+            arg, end = toks[k + 2].text, k + 4
+        else:
+            reasons.append("uses require with something other than a plain "
+                           "string, so what it loads cannot be checked")
+            continue
+        if not _MODULE_NAME_RE.fullmatch(arg):
+            reasons.append("uses require with something other than a plain "
+                           "string, so what it loads cannot be checked")
+            continue
+        if arg.startswith("rsmm."):
+            reasons.append(f"requires the SDK internal \"{arg}\"")
+            continue
+        if arg != "rsmm":
+            continue
+        if k in w.nested or not _ends_statement(toks, end):
+            reasons.append(unfollowed)
+            continue
+        if _can_start_statement(toks, k):
+            continue  # a bare `require "rsmm"` statement binds nothing
+        # `[local] NAME = require "rsmm"`, the one binding that can be followed.
+        eq, target = toks[k - 1], toks[k - 2] if k >= 2 else None
+        if not (eq.kind == "op" and eq.text == "=" and target is not None
+                and target.kind == "name"):
+            reasons.append(unfollowed)
+            continue
+        declared = k >= 3 and toks[k - 3].kind == "kw" and toks[k - 3].text == "local"
+        if not declared and not _can_start_statement(toks, k - 2):
+            reasons.append(unfollowed)
+            continue
+        if target.text == "_ENV":
+            # Every free name in the file would then be an SDK field.
+            reasons.append("makes the SDK its environment (_ENV), so its use "
+                           "cannot be checked")
+            continue
+        aliases.add(target.text)
+
+    for name, what in _ENV_GLOBALS.items():
+        if name in globals_read:
+            reasons.append(f"reaches {what}, which holds the SDK under a "
+                           "name that cannot be checked")
+    if "rsmm" in globals_read and "rsmm" not in aliases:
+        reasons.append("uses the native loader bindings (rsmm.*)")
+    return reasons
+
+
 def lua_reasons(src: str) -> list[str]:
     """Why this Lua source is gameplay; empty when it is client-only."""
-    code = _strip_comments(src)
-    reasons: list[str] = []
     aliases = {"R"}
-    for m in _REQUIRE_RE.finditer(code):
-        if m.group(3) == "rsmm":
-            aliases.add(m.group(1))
-    for m in _ANY_REQUIRE_RE.finditer(code):
-        if m.group(2).startswith("rsmm."):
-            reasons.append(f"requires the SDK internal \"{m.group(2)}\"")
-
-    code = _blank_strings(code)
-    if "rsmm" not in aliases and re.search(r"(?<![\w.])rsmm\s*[.\[:]", code):
-        reasons.append("uses the native loader bindings (rsmm.*)")
+    reasons = _sdk_access_reasons(src, aliases)
+    code = _blank_strings(_strip_comments(src))
 
     for alias in sorted(aliases):
         ref = re.compile(rf"(?<![\w.]){re.escape(alias)}\b((?:\s*\.\s*{_IDENT})*)(\s*[\[:]?)")
@@ -243,3 +362,78 @@ def classify_runtime(game_mod_dir: Path, decoded_assets: list[str]) -> ScopeVerd
             verdict.reasons.append(f"overrides game data ({dec})")
     verdict.reasons = sorted(set(verdict.reasons))
     return verdict
+
+
+# ---- the "Private games only" label -------------------------------------------
+
+#: The registry's label for a mod that changes the game the party plays
+#: (packages/schemas/src/private-only.ts). The site shows it, keeps the mod out
+#: of public lobbies' expectations, and only an admin can remove it.
+PRIVATE_ONLY_TAG = "private-only"
+#: Spellings the registry reads as the same label (keep in step with
+#: PRIVATE_ONLY_TAG_ALIASES in packages/schemas/src/private-only.ts).
+PRIVATE_ONLY_TAG_ALIASES = frozenset({
+    "private-only", "private only", "private-games-only", "private games only",
+    "cheat", "cheats",
+})
+
+_MOD_HEADER_RE = re.compile(r"^\[mod\][^\S\r\n]*(?:#[^\r\n]*)?\r?\n?", re.MULTILINE)
+_NEXT_TABLE_RE = re.compile(r"^\[", re.MULTILINE)
+_TAGS_RE = re.compile(r"^(?P<lhs>tags[^\S\r\n]*=[^\S\r\n]*)\[", re.MULTILINE)
+
+
+def has_private_only_tag(tags) -> bool:
+    return any(isinstance(t, str) and t.strip().lower() in PRIVATE_ONLY_TAG_ALIASES
+               for t in tags or ())
+
+
+def private_only_tags(tags, verdict: ScopeVerdict) -> list[str]:
+    """``tags`` with the "Private games only" label added when ``verdict`` says
+    the mod changes the game. The engine decides, not the author: a gameplay
+    mod is labelled whatever its manifest says, and a client-only mod keeps an
+    author's own label (it is theirs to ask for)."""
+    out = [str(t) for t in tags or () if isinstance(t, str)]
+    if not verdict.client_only and not has_private_only_tag(out):
+        out.append(PRIVATE_ONLY_TAG)
+    return out
+
+
+def stamp_private_only(text: str) -> str | None:
+    """``text`` (a manifest.toml) with the label added to ``[mod].tags``, or
+    None when it already has it or cannot be stamped safely. Only the
+    ``[mod]`` table is touched, the rest of the file keeps its bytes, and the
+    result must parse to the same manifest plus the label (else None)."""
+    try:
+        before = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return None
+    mod = before.get("mod")
+    if not isinstance(mod, dict) or has_private_only_tag(mod.get("tags")):
+        return None
+    head = _MOD_HEADER_RE.search(text)
+    if head is None:
+        return None
+    rest = text[head.end():]
+    nxt = _NEXT_TABLE_RE.search(rest)
+    body = rest[:nxt.start()] if nxt else rest
+    tags = _TAGS_RE.search(body)
+    if tags is None:
+        nl = "\r\n" if "\r\n" in text else "\n"
+        body = f'tags = ["{PRIVATE_ONLY_TAG}"]{nl}' + body
+    else:
+        close = body.find("]", tags.end())
+        if close < 0:
+            return None
+        inner = body[tags.end():close]
+        sep = "" if not inner.strip() else ("" if inner.rstrip().endswith(",") else ",")
+        lead = "" if not inner.strip() else " "
+        body = (body[:close].rstrip(" \t") + f'{sep}{lead}"{PRIVATE_ONLY_TAG}"'
+                + (" " if inner.endswith(" ") and inner.strip() else "") + body[close:])
+    out = text[:head.end()] + body + (rest[nxt.start():] if nxt else "")
+    try:
+        after = tomllib.loads(out)
+    except tomllib.TOMLDecodeError:
+        return None
+    want = dict(before)
+    want["mod"] = {**mod, "tags": [*(mod.get("tags") or []), PRIVATE_ONLY_TAG]}
+    return out if after == want else None

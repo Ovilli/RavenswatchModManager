@@ -96,6 +96,48 @@ def extend_class_table(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile,
         add(name)
 
 
+def _upgrade_timer_1_8(record: bytes, host_cf: cooked.CookedFile) -> bytes:
+    """A 1.8 timer record as 1.9: Update 6's Serialize (0x140728540) reads one
+    more picker after the record's last field (the bool), gated on version
+    1.9 (entity_fields: ``ref_tail?``). Every shipped 1.9 timer leaves it
+    empty, so the upgrade is an empty picker appended."""
+    pick = _class_index_of(host_cf, "oCEntityCpntPicker")
+    if pick is None:
+        raise EntityComponentError("cannot upgrade a timer: the entity has no picker class")
+    return record + cooked.MARK_BEGIN + struct.pack("<I", pick) + bytes(16) \
+        + struct.pack("<I", 0) + cooked.MARK_END
+
+
+def _downgrade_timer_1_9(record: bytes, host_cf: cooked.CookedFile) -> bytes:
+    """A 1.9 timer record as 1.8: the version-gated tail picker dropped. Only
+    when it is empty (every shipped 1.9 timer's is): a set one would be lost."""
+    pick = _class_index_of(host_cf, "oCEntityCpntPicker")
+    tail = cooked.MARK_BEGIN + struct.pack("<I", pick) + bytes(16) + struct.pack("<I", 0) \
+        + cooked.MARK_END
+    if pick is None or not record.endswith(tail):
+        raise EntityComponentError("cannot copy a 1.9 timer into a 1.8 entity: its "
+                                   "Update 6 tail link is set, and 1.8 has no room for it")
+    return record[:-len(tail)]
+
+
+#: Record conversions a copy may take between class versions: (class, from,
+#: to) -> converter(record, host class table). Only layouts proven by the
+#: serializer; any other version gap still refuses the copy.
+UPGRADES = {("oCEntityCpntTimerSettings", (1, 8), (1, 9)): _upgrade_timer_1_8,
+            ("oCEntityCpntTimerSettings", (1, 9), (1, 8)): _downgrade_timer_1_9}
+
+
+def upgrade_for(host_cf: cooked.CookedFile, donor_cf: cooked.CookedFile, name: str):
+    """The upgrader turning ``donor_cf``'s ``name`` records into ``host_cf``'s
+    version, None when both use the same version or no upgrade is known."""
+    hi, di = _class_index_of(host_cf, name), _class_index_of(donor_cf, name)
+    if hi is None or di is None:
+        return None
+    h, d = host_cf.classes[hi], donor_cf.classes[di]
+    return UPGRADES.get((name, (d.version_major, d.version_minor),
+                         (h.version_major, h.version_minor)))
+
+
 def _remap_class_tags(record: bytes, donor_cf: cooked.CookedFile,
                       host_cf: cooked.CookedFile) -> bytes:
     """Rewrite a cloned record's class-table indices from donor to host.

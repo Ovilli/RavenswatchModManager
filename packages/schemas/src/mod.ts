@@ -129,6 +129,8 @@ export const modListItemSchema = z.object({
   category: modCategorySchema.nullable(),
   imageUrl: sanitizedHttpUrlSchema,
   rating: z.number().min(0).max(5).nullable(),
+  // Absent on older API responses; never substitute 0 for an unknown count.
+  ratingCount: z.number().int().nonnegative().optional(),
   tags: z.array(z.string()),
   // Sanitizing, not rejecting — see sanitizedHttpUrlSchema. A screenshot whose
   // stored URL is not http(s) is dropped from the list rather than failing the
@@ -198,8 +200,12 @@ export const modUploadRequestSchema = z
 
 export type ModUploadRequest = z.infer<typeof modUploadRequestSchema>;
 
-/** Owner-only patch: edit mutable metadata. All fields optional. */
+// One cover plus the 12 gallery images supported by the original editor.
+export const MAX_MOD_PHOTOS = 13;
+
+/** Listing metadata patch for authors or RSMM admins. All fields optional. */
 export const modPatchSchema = z.object({
+  author: z.string().trim().min(1).max(128).nullable().optional(),
   name: z.string().min(1).max(128).optional(),
   summary: z.string().max(512).nullable().optional(),
   description: z.string().max(32_000).nullable().optional(),
@@ -211,7 +217,7 @@ export const modPatchSchema = z.object({
   imageUrl: httpUrlSchema.nullable().optional(),
   screenshots: z
     .array(z.object({ url: httpUrlSchema, caption: z.string().max(200).optional() }))
-    .max(12)
+    .max(MAX_MOD_PHOTOS)
     .optional(),
   videos: z.array(httpUrlSchema).max(8).optional(),
   nsfw: z.boolean().optional(),

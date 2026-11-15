@@ -2,7 +2,7 @@
 
 Full schema reversed from `oCAnimation::Serialize` (VA 0x1405b35a0) and
 `oCAnimationTrack::Serialize` (VA 0x140639d30). See "oCAnimation (final
-schema)" in `docs/RE_NOTES.md` for the field-by-field layout.
+schema)" in `https://docs.rsmm.me/reverse-engineering/notes/` for the field-by-field layout.
 
 Round trip
 ----------

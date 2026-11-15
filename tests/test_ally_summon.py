@@ -438,3 +438,17 @@ def test_a_summons_look_replaces_the_body_its_variant_draws():
         _summon_for("Enemies/Wolves/Standard_Wolf_Dire", ctx, "pets", look={"colour": "red"})
     _summon_for("Enemies/Wolves/Standard_Wolf_Dire", ctx, "pets", look={"model": "a.glb"})
     assert all(c.look == {"model": "a.glb"} for c in ctx.copies)
+
+
+def test_an_unresolved_own_entity_is_refused_not_guessed():
+    """``burst = "own:Bomb"`` must be resolved to the hero's own file before the
+    kit runs. Blood Wolf 0.3.0's talent-switched pet (`upgrade`) carried it
+    through unresolved, the kit turned it into a "Bomb.entity.ot" that exists
+    nowhere, and the Rabid wolf bit without exploding."""
+    import pytest
+
+    from rsmm.engine import hero_kit as HK
+    with pytest.raises(HK.KitError, match="never resolved"):
+        HK._entity_ref("own:Bomb")
+    assert HK._entity_ref("Heroes/Hero_Common/Hero_X_Bomb") == \
+        "Heroes\\Hero_Common\\Hero_X_Bomb.entity.ot"

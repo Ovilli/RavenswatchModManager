@@ -476,7 +476,7 @@ Implications:
 - Mods at this layer are *file-replacement packages*. A mod just
   ships cooked `.gen` / `.tpi` files; loader symlinks or copies them
   onto the encoded paths under `_Cooking/`.
-- No need to defeat anti-tamper for asset overrides — the engine itself
+- Asset overrides need nothing at runtime — the engine itself
   loads them through the normal cooked-asset pipeline.
 - We do *not* need the full text->binary re-encoder to ship a v1 mod
   manager. v1 = asset overrides. v2 = entity-level menu mods requiring
@@ -493,7 +493,7 @@ set. Lesson: hero-select tiles live under `BookMenu`, not `Heroes`.
 
 Because cooked overrides are accepted by the engine without any runtime
 hook (see above), the v1 mod manager doesn't need the DLL, the IO hook,
-or the Vulkan layer. It is a single Python script:
+or an overlay. It is a single Python script:
 
   tools/apply_mods.py              # apply current mods/ state
   tools/apply_mods.py --restore-all

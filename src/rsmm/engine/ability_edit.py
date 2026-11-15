@@ -66,7 +66,7 @@ from . import entity_check as CK
 from .entity_graph_edit import EntityEditError, EntityFile
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
-        "replace_subobject", "switch_off", "override", "retarget", "retarget_targets")
+        "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
@@ -101,8 +101,11 @@ def hero_entity_ref(name: str) -> str:
 
 
 def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
-          read=None) -> Result:
-    """Apply ``steps`` to ``files`` (entity stem -> bytes, the base family)."""
+          read=None, aliases: dict[bytes, str] | None = None) -> Result:
+    """Apply ``steps`` to ``files`` (entity stem -> bytes, the base family).
+    ``aliases`` (alias GUID -> entity ref) lets an override reach an ancestor
+    the entity inherits by alias (a hero written from scratch reaches
+    Hero_Common and Character_Common only that way)."""
     read = read or CK._corpus_reader
     edits: dict[str, EntityFile] = {}
 
@@ -139,8 +142,14 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 if i is None:
                     raise AbilityEditError("switch_off names one entry: 'Part.field[i]'")
                 ef.switch_off_subobject(part, fld, i)
+            elif op == "event":
+                # A new empty one-frame event state (a trigger), for a file
+                # that has none of its own to clone.
+                from . import talent_writer as TW
+                TW.TalentWriter(ef, f"{seed}:{n}", "Kit").state(str(step["event"]),
+                                                                 flags=TW.EVENT)
             elif op == "override":
-                _override(ef, step, f"{seed}:{n}", read)
+                _override(ef, step, f"{seed}:{n}", read, aliases)
             elif op == "retarget":
                 _retarget(ef, step, read)
             elif op == "retarget_targets":
@@ -358,7 +367,8 @@ def _replace_subobject(ef: EntityFile, step: dict, read) -> None:
     ef.replace_subobject(part, fld, i, src, obj, refs=refs)
 
 
-def _override(ef: EntityFile, step: dict, seed: str, read) -> None:
+def _override(ef: EntityFile, step: dict, seed: str, read,
+              aliases: dict[bytes, str] | None = None) -> None:
     """Give this entity its own version of an ANCESTOR's part: a copy marked as
     that part's override, so the engine builds it INSTEAD of the ancestor's
     (a plain clone would be a second part built next to it). ``from`` is the
@@ -373,7 +383,7 @@ def _override(ef: EntityFile, step: dict, seed: str, read) -> None:
     if len(hits) != 1:
         raise AbilityEditError(f"override: {src.name} has {len(hits)} parts named {name!r}")
     anc = hits[0]
-    if _ancestors(ef.to_bytes(), read).get(anc.guid) != src.name:
+    if _ancestors(ef.to_bytes(), read, aliases).get(anc.guid) != src.name:
         raise AbilityEditError(f"override: {src.name} is not an ancestor of {ef.name}; "
                                "an override of it would never apply")
     if any(c.name == name or (c.override and c.override.guid == anc.guid)

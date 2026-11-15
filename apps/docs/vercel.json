@@ -4,5 +4,8 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter docs build",
   "ignoreCommand": "sh ../../scripts/vercel-ignore-build.sh docs",
+  "git": {
+    "deploymentEnabled": false
+  },
   "outputDirectory": "dist"
 }

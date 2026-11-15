@@ -220,3 +220,35 @@ def test_dispatch_reaches_the_command(mods, capsys):
     _mod(mods, "b", assets=["x/y.gen"])
     json_bridge.main(["conflicts"])
     assert [c["type"] for c in _out(capsys)] == ["file"]
+
+
+# --- loader install state (update-loader's loaderState) --------------------
+
+def _planted(game, dll: bytes, manifest_dll: bytes | None, version=7):
+    import hashlib
+    (game / "rsmm").mkdir(parents=True, exist_ok=True)
+    if dll is not None:
+        (game / "winhttp.dll").write_bytes(dll)
+    if manifest_dll is not None:
+        (game / "rsmm" / "loader.manifest.json").write_text(json.dumps({
+            "loader_version": version,
+            "files": [{"path": "winhttp.dll",
+                       "sha256": hashlib.sha256(manifest_dll).hexdigest()}],
+        }))
+
+
+def test_loader_state_none_without_dll(tmp_path):
+    assert json_bridge.loader_install_state(tmp_path) == {
+        "plantedVersion": None, "loaderState": "none"}
+
+
+def test_loader_state_release_when_dll_matches_manifest(tmp_path):
+    _planted(tmp_path, b"dll", b"dll", version=9)
+    assert json_bridge.loader_install_state(tmp_path) == {
+        "plantedVersion": 9, "loaderState": "release"}
+
+
+def test_loader_state_dev_when_dll_differs_from_manifest(tmp_path):
+    _planted(tmp_path, b"hand built", b"dll", version=9)
+    assert json_bridge.loader_install_state(tmp_path) == {
+        "plantedVersion": 9, "loaderState": "dev"}

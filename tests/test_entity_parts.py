@@ -66,6 +66,11 @@ _SHIPPED = {
     "sandman_purchase": "Common/Reduce_Dream_Shard_Price",
     "reroll": "Common/Reroll_To_Dream_Shards",
 }
+#: Triggers no shipped ITEM listens for: the shipped listener they were read
+#: from (the barks manager reacts to the basic attack and the trait).
+_BARKS = "EntitySettings/Common_Settings/Barks_Manager.entity.ot.EntitySettingsResource.gen"
+_SHIPPED_ELSEWHERE = {"attack": (_BARKS, "Practice Game Event Listener"),
+                      "trait": (_BARKS, "Trait Game Event Listener")}
 
 
 def _shield() -> bytes:
@@ -103,10 +108,17 @@ def _listener(raw: bytes, name: str):
 @pytest.mark.parametrize("on", sorted(IE.TRIGGERS))
 def test_each_trigger_listener_is_the_shipped_one(on):
     t = IE.TRIGGERS[on]
+    built = _build([{"stat": "Crit chance", "amount": 0.3, "seconds": 5, "on": on}])
+    if on in _SHIPPED_ELSEWHERE:
+        rel, name = _SHIPPED_ELSEWHERE[on]
+        shipped = corpus.read(rel)
+        if shipped is None:
+            pytest.skip("shipped entities not available")
+        assert _listener(built, t.listener + IE.SUFFIX) == _listener(shipped, name)
+        return
     shipped = corpus.read(f"{_MO}{_SHIPPED[on]}.entity.ot.EntitySettingsResource.gen")
     if shipped is None:
         pytest.skip("shipped items not available")
-    built = _build([{"stat": "Crit chance", "amount": 0.3, "seconds": 5, "on": on}])
     assert _listener(built, t.listener + IE.SUFFIX) == _listener(shipped, t.listener)
 
 

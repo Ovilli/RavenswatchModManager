@@ -44,7 +44,7 @@ detours (damage meter, lobby parser, event bus, skins, talents) go through
 `hook_util.h`, which checks every target is a real function entry before it
 installs. The earlier belief that an anti-tamper integrity check crashed every
 hookpoint was wrong: the two hooks that failed had unrelated causes. See
-[Anti-tamper protector](/reverse-engineering/protector/).
+[Loader compatibility](/reverse-engineering/loader-compatibility/).
 
 Hooks are observation-first and gated by symbol status in `data/symbols.json`; a
 hook on an address that is not a function entry is refused or warned, not

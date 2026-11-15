@@ -2522,6 +2522,84 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- 24c. The is-local byte outranks every other signal, on every path
+--
+-- 24b only covered the ring pass, and that pass ran only when slot 0 was empty
+-- or dead. Every other path published without asking: native spawn-init / give /
+-- gain wrote slot 0 for whichever hero fired them (allies included), the
+-- pending "hero switch" promoted the last hero to spawn, and a live slot 0 was
+-- kept forever. A Kintaro + Beowulf co-op run (2026-11-08) captured the Beowulf
+-- ally's controller that way while Kintaro's sat in the ring.
+-- ---------------------------------------------------------------------------
+do
+    shared[0], shared[2], shared[3] = 0, 0, 0
+    for i = 8, 15 do shared[i] = nil end
+    package.loaded["rsmm"] = nil
+    local Rr = require "rsmm"
+
+    local ALLY, MINE, MINE2 = 0x11600000, 0x11700000, 0x11800000
+    for _, p in ipairs({ ALLY, MINE, MINE2 }) do
+        I.write_f32(p + MAXHP_OFF, 100.0)
+        I.write_f32(p + HP_OFF, 100.0)
+        I.write_u64(p + HUDMIRROR_OFF, MIRROR)
+    end
+    I.write_f32(MIRROR, 100.0)
+    I.write_u8(ALLY + 0x1db0, 0)
+    I.write_u8(MINE + 0x1db0, 1)
+    I.write_u8(MINE2 + 0x1db0, 0)
+
+    -- An ally already published (native spawn-init / give / gain) and live.
+    shared[0] = ALLY
+    shared[8] = ALLY
+    shared[9] = MINE
+    check(Rr.entity.hero() == MINE,
+          "an ally in slot 0 is replaced by a ring candidate that reads local")
+    check(shared[0] == MINE and shared[1] == 1,
+          "and the local hero is published for the other mod states")
+    check(Rr.entity.hero({ local_only = true }) == MINE,
+          "local_only returns the hero when its byte reads 1")
+
+    -- The pending "hero switch" used to promote any live candidate that
+    -- differed from slot 0: the last hero to spawn won, ally or not.
+    shared[3] = ALLY
+    check(Rr.entity.hero() == MINE and shared[0] == MINE,
+          "the hero switch refuses a byte-0 pending candidate over a byte-1 hero")
+    -- A real switch still works: the new local hero spawns into the pending
+    -- slot while the freed previous one keeps reading plausible and local.
+    I.write_u8(MINE2 + 0x1db0, 1)
+    shared[3] = MINE2
+    check(Rr.entity.hero() == MINE2 and shared[0] == MINE2 and shared[3] == 0,
+          "a pending candidate that reads local still wins the hero switch")
+
+    -- Nothing reads 1 (a hero mid-load, or a patch that moved the byte).
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[0], shared[3] = 0, 0
+    I.write_u8(MINE + 0x1db0, 0)
+    I.write_f32(ALLY + MAXHP_OFF, 102.0)      -- fresh objects, not the retired fingerprints
+    I.write_f32(MINE + MAXHP_OFF, 102.0)
+    shared[8] = ALLY
+    shared[9] = MINE
+    check(Rr.entity.hero({ local_only = true }) == nil,
+          "local_only returns nil while no candidate reads 1")
+    check(Rr.entity.hero() == ALLY,
+          "the default falls back to a byte-0 candidate, so capture survives a moved byte")
+    -- The local hero finishes loading: its byte goes to 1.
+    I.write_u8(MINE + 0x1db0, 1)
+    check(Rr.entity.hero() == MINE and shared[0] == MINE,
+          "a published byte-0 hero is replaced as soon as a candidate reads 1")
+    check(Rr.entity.hero({ local_only = true }) == MINE,
+          "and local_only now returns it")
+
+    Rr.entity.invalidate_capture("spec")
+    for i = 8, 15 do shared[i] = nil end
+    shared[0], shared[1], shared[2], shared[3] = 0, 0, 0, 0
+    package.loaded["rsmm"] = nil
+    R = require "rsmm"
+    shared[0] = HERO                       -- restore for later sections
+end
+
+-- ---------------------------------------------------------------------------
 -- 25. RSMM_ENABLE_HERO_CAPTURE off must mean off EVERYWHERE
 --
 -- The flag stopped the native hooks and nothing else: this Lua fallback then
@@ -9646,7 +9724,6 @@ do
         "HeroRankLock_IsUnlocked",
         "HeroStoryUnlock_IsUnlocked",
         "ChallengeUnlock_IsUnlocked",
-        "AdditionalContentGate_IsUnlocked",
     }
     local vas = {}
     for i, name in ipairs(gates) do vas[i] = I.resolve(name) end
@@ -9659,11 +9736,10 @@ do
         check(hooks[vas[i]].cb(0x1000) == 1, name .. " answers true")
     end
 
-    -- Ownership is opened too (a deliberate choice, 2026-10-13): every
-    -- ownership-gated hero, paid DLC included, is selectable for anyone on the mod.
-    local owner_va = I.resolve("AdditionalContentGate_IsUnlocked")
-    check(hooks[owner_va] ~= nil and hooks[owner_va].cb(0x1000) == 1,
-          "the ownership condition is hooked and answers true")
+    -- The ownership (paid DLC) gate is never hooked. (The real map carries no
+    -- symbol for it; this mock resolves any name, so check the hook table.)
+    check(hooks[I.resolve("AdditionalContentGate_IsUnlocked")] == nil,
+          "the ownership condition is never hooked")
 
     check(R.hero.unlock_progression() == 0,
           "a second call reports 0 rather than re-installing")
@@ -10681,7 +10757,9 @@ do
         rec(SET[i], 0x3f8, math.rad(45))                -- yaw
         rec(SET[i], 0x2f8, i == 1 and 33 or 9.05)       -- distance
         rec(SET[i], 0x278, math.rad(i == 1 and 54 or 50)) -- pitch
-        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look height
+        rec(SET[i], 0x478, i == 1 and 1 or 0.5)         -- look offset
+        rec(SET[i], 0x4f8, i == 1 and 1 or 0.3)         -- near plane
+        rec(SET[i], 0x578, i == 1 and 500 or 300)       -- far plane
         rec(SET[i], 0x378, 31, { linked = i == 1 })     -- fov: linked on default
         rec(SET[i], 0xf8, i == 1 and 1 or 0, { type = 2 })  -- the default flag
     end
@@ -10714,8 +10792,15 @@ do
           "measured from the originals, not from the last write")
     check(R.camera.set("pitch", 60) == 2 and about(I.read_f32(SET[2] + 0x278 + 0x70), math.rad(56)),
           "pitch moves every camera by the same angle")
-    check(R.camera.set("height", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
-          "look height moves every camera by the same amount")
+    check(R.camera.set("look_offset", 1.5) == 2 and about(I.read_f32(SET[2] + 0x478 + 0x70), 1.0),
+          "look offset moves every camera by the same amount")
+    check(R.camera.set("height", 2) == 2 and about(R.camera.get("look_offset"), 2)
+          and about(R.camera.get("height"), 2), "height is still a name for look_offset")
+    local listed = {}
+    for name in pairs(R.camera.FIELDS) do listed[name] = true end
+    check(listed.look_offset and not listed.height, "pairs(FIELDS) lists look_offset once")
+    check(R.camera.set("far", 800) == 1 and about(I.read_f32(SET[2] + 0x578 + 0x70), 300),
+          "the far plane is written on the default camera only")
     check(R.camera.set("distance", 20, { all = false }) == 1 and about(I.read_f32(ZD), 9.05 * 2),
           "all = false: default camera only")
     check(R.camera.set("distance", 20, { all = true }) == 2 and about(I.read_f32(ZD), 20),
@@ -10971,7 +11056,9 @@ do
     local real_iho, saved_ring = R.entity._is_hero_object, shared[8]
     R.entity._is_hero_object = function(p) return p == CTL_A or p == CTL_B end
     shared[8] = CTL_A
-    R.entity.hero = function() return CTL_B end
+    -- Nothing reads local here (the byte moved, or the hero is mid-load), so
+    -- the old sweep of every hero controller is the fallback.
+    R.entity.hero = function(o) if o and o.local_only then return nil end return CTL_B end
     R.camera.SEARCH_SLICE = 0
     clock3 = clock3 + 2
     local b1, s1 = I.reads.block, I.reads.single
@@ -10987,6 +11074,28 @@ do
     local again = R.camera.cameras()
     check(again and #again == 3 and I.reads.single - s2 < first_reads / 10,
           "a re-check reads only the slots that held cameras")
+    -- With a hero that reads local, only that hero's components are read: the
+    -- ally's are never touched, even though it is published and in the ring.
+    shared[9] = CTL_B
+    R.entity.hero = function(o) if o and o.local_only then return CTL_A end return CTL_B end
+    clock3 = clock3 + 2
+    -- (a function, not a block: the spec's main chunk is at Lua's 200-local cap)
+    ;(function()
+    local own = R.camera.cameras()
+    local own_c, ally_c = {}, false
+    for _, cam in ipairs(own or {}) do
+        own_c[cam.component] = true
+        if cam.component == DB_C or cam.component == ZB_C then ally_c = true end
+    end
+    check(own and #own == 3 and own_c[SH_C] and own_c[DEF_C] and own_c[ZA_C] and not ally_c,
+          "R.camera reads only the local hero's cameras once a hero reads local")
+    R.entity.hero = function(o) if o and o.local_only then return nil end return CTL_B end
+    clock3 = clock3 + 0.1
+    local back_sweep = R.camera.cameras()
+    check(back_sweep and #back_sweep == 3,
+          "losing the local hero is a new list at once, not the cached local one")
+    end)()
+    shared[9] = nil
     R.entity._is_hero_object, shared[8] = real_iho, saved_ring
     R.rtti.name = rtti_s
     I.now = real_now2
@@ -11068,6 +11177,41 @@ do
           "a clamping watcher settles instead of recursing")
     R.config.set("speed", 10)
     check(calls == 2, "setting the value it already has fires nothing")
+    I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
+end
+
+-- R.config.set and an unpolled outside edit. The native config_set writes its
+-- whole cached table to config.toml and stamps the new mtime, so an edit made
+-- outside the game since the last tick used to be overwritten with the cached
+-- value and never reach on_change (Distance 33 -> 60 in the pause menu, then
+-- the mod saves Rotation, and Distance is back to 33).
+do
+    local saved = { I.config_get, I.config_set, I.config_all, I.config_reload }
+    local function copy(t) local o = {}; for k, v in pairs(t) do o[k] = v end; return o end
+    local cache = { distance = 33, yaw = 45 }
+    local file, dirty = copy(cache), false
+    I.config_get = function(k) return cache[k] end
+    I.config_set = function(k, v)
+        cache[k] = v; file = copy(cache); dirty = false; return true
+    end
+    I.config_all = function() return copy(cache) end
+    I.config_reload = function()
+        if not dirty then return false end
+        dirty = false; cache = copy(file); return true
+    end
+
+    dirty = true
+    fire("tick")                                          -- the poll's snapshot is this file now
+    local seen = {}
+    R.config.on_change("distance", function(new, old) seen[#seen + 1] = { new, old } end)
+    file.distance, dirty = 60, true                       -- edited outside, not polled yet
+    R.config.set("yaw", 90)
+    check(file.distance == 60 and file.yaw == 90,
+          "set keeps an unpolled outside edit in the file it writes")
+    check(#seen == 1 and seen[1][1] == 60 and seen[1][2] == 33,
+          "the outside edit fires its watcher before the write")
+    fire("tick")
+    check(#seen == 1, "the edit is not fired again on the next tick")
     I.config_get, I.config_set, I.config_all, I.config_reload = saved[1], saved[2], saved[3], saved[4]
 end
 
@@ -11426,6 +11570,546 @@ do
     ran = false
     hooks[va].cb(GRID, MINI, function() ran = true end)
     check(ran and I.read_u8(COMP + 0x64) == 0x04, "free portrait passes through unchanged")
+end
+
+-- R.input: wheel notches from the loader's input-poll hook, and the player's
+-- key bindings read out of the g_GameOptions registry to tell whether the wheel
+-- does anything in a run. Bindings: 0x30-byte slots, name ptr +0x10, name
+-- length +0x18 (high bit set), current key id +0x28; Menu:: at +0x340 (21) and
+-- +0x730 (21), Explo:: at +0xb20 (10) and +0xd00 (10). Wheel up 92, down 93.
+do
+    check(R.input ~= nil, "R.input loaded")
+    local ok, why = R.input.available()
+    check(ok == false and why:find("too old"), "no wheel binding: unavailable, says why")
+    I.input_armed = function() return true end
+    I.input_wheel_totals = function() return 7, 4 end
+    check(R.input.available() == true, "armed hook: available")
+    local up, down = R.input.wheel_totals()
+    check(up == 7 and down == 4, "totals pass through")
+
+    local got = {}
+    local h = R.input.on_wheel(function(steps, ev) got[#got + 1] = { steps, ev } end)
+    fire("input:wheel", { steps = -2, up = 7, down = 4, blocked = false })
+    check(#got == 1 and got[1][1] == -2 and got[1][2].down == 4,
+          "on_wheel gets the net steps first and the payload second")
+    R.input.off(h)
+    fire("input:wheel", { steps = 1 })
+    check(#got == 1, "off stops delivery")
+
+    local function options(obj, opts)
+        opts = opts or {}
+        I.write_u64(0x140000000 + (VA["g_GameOptions"] - 0x140000000), obj)
+        I.write_u8(obj + 0x0030 + 0x28, 1)     -- "Dev"  reads as a real bool
+        I.write_u8(obj + 0x0060 + 0x28, 0)     -- "Test" reads as a real bool
+        local strings = obj + 0x100000
+        local function slot(base, i, name, key)
+            local sl = obj + base + i * 0x30
+            if name then
+                wbytes(strings, name .. "\0")
+                I.write_u64(sl + 0x10, strings)
+                I.write_u32(sl + 0x18, 0x80000000 | #name)
+                strings = strings + 0x40
+            end
+            I.write_u32(sl + 0x28, key or 0)
+        end
+        for i = 0, 20 do
+            local name = (i == 18 and "Menu::AlternativePageNext")
+                      or (i == 19 and "Menu::AlternativePagePrev")
+                      or ("Menu::Action" .. i)
+            if opts.moved and i == 5 then name = "Video::Something" end
+            slot(0x340, i, name, (i == 18 and 92) or (i == 19 and 93) or (30 + i))
+            slot(0x730, i, nil, 0)
+        end
+        for i = 0, 9 do
+            slot(0xb20, i, "Explo::Action" .. i, 40 + i)
+            slot(0xd00, i, nil, 0)
+        end
+    end
+    local OBJ = 0x61000000
+    options(OBJ)
+    local list = R.input.wheel_bindings()
+    check(list and #list == 2, "shipped layout: two wheel bindings")
+    check(R.input.wheel_free() == true, "only the menu page alternates: the wheel is free")
+
+    I.write_u32(OBJ + 0xd00 + 3 * 0x30 + 0x28, 93)            -- Explo pad slot 3 -> wheel down
+    local free, holder = R.input.wheel_free()
+    check(free == false and holder == "Explo::Action3", "a rebound in-run action holds the wheel")
+    list = R.input.wheel_bindings()
+    local hit
+    for _, b in ipairs(list) do if b.action == "Explo::Action3" then hit = b end end
+    check(hit and hit.key == "down" and hit.slot == "pad", "binding names action, key and slot")
+    I.write_u32(OBJ + 0xd00 + 3 * 0x30 + 0x28, 0)
+
+    I.write_u32(OBJ + 0x340 + 18 * 0x30 + 0x28, 93)           -- page next swapped to wheel down
+    free, holder = R.input.wheel_free()
+    check(free == false and holder == "Menu::AlternativePageNext",
+          "a shipped action on the other wheel direction is not the shipped binding")
+    I.write_u32(OBJ + 0x340 + 18 * 0x30 + 0x28, 92)
+
+    I.write_u32(OBJ + 0x730 + 4 * 0x30 + 0x28, 114)           -- live pad id above the old 0x6d cap
+    check(R.input.wheel_free() == true, "pad key ids up to 117 are real keys (live, 2026-11-09)")
+    I.write_u32(OBJ + 0x340 + 2 * 0x30 + 0x28, 0x200)         -- not a key id
+    local none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2 == "key options moved", "an out-of-range key id fails the read")
+    free, why2 = R.input.wheel_free()
+    check(free == nil and why2 == "key options moved", "wheel_free says it cannot tell")
+
+    options(0x62000000, { moved = true })
+    none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2 == "key options moved", "a slot name outside Menu:: means the layout moved")
+
+    I.write_u8(0x62000000 + 0x0030 + 0x28, 7)                  -- options object fails validation
+    none, why2 = R.input.wheel_bindings()
+    check(none == nil and why2:find("not readable"), "an invalid options object is refused")
+
+    -- Middle-button bindings (key id 89): nothing ships on it.
+    options(0x63000000)
+    local mid = R.input.middle_bindings()
+    check(mid and #mid == 0, "shipped layout: nothing on the middle button")
+    check(R.input.middle_free() == true, "shipped layout: the middle button is free")
+    I.write_u32(0x63000000 + 0xb20 + 6 * 0x30 + 0x28, 89)     -- Explo slot 6 -> middle
+    free, holder = R.input.middle_free()
+    check(free == false and holder == "Explo::Action6", "a bound in-run action holds the middle button")
+    mid = R.input.middle_bindings()
+    check(#mid == 1 and mid[1].key == "middle" and mid[1].slot == "primary",
+          "middle binding names action, key and slot")
+    check(R.input.wheel_free() == true, "a middle binding is not a wheel binding")
+    I.write_u32(0x63000000 + 0xb20 + 6 * 0x30 + 0x28, 46)
+    options(0x64000000, { moved = true })
+    none, why2 = R.input.middle_free()
+    check(none == nil and why2 == "key options moved", "middle_free says it cannot tell when the layout moved")
+
+    I.input_armed, I.input_wheel_totals = nil, nil
+end
+
+-- R.input drag: the middle-button drag from the same hook, "input:drag"
+-- {phase, dx, dy, x, y, w, h, blocked, button}; state from I.input_drag_state().
+do
+    local ok, why = R.input.drag_available()
+    check(ok == false and why:find("too old"), "no drag binding: unavailable, says why")
+    local st, why0 = R.input.drag_state()
+    check(st == nil and why0:find("too old"), "no drag binding: no state")
+
+    I.input_armed = function() return true end
+    I.input_drag_state = function() end                        -- hook live, drag not armed
+    ok, why = R.input.drag_available()
+    check(ok == false and why:find("not readable"), "drag not armed: says the records did not read")
+    I.input_armed = function() return false end
+    va_trusted_val = false
+    ok, why = R.input.drag_available()
+    check(ok == false and why:find("not trusted"), "untrusted build: the poll hook's reason")
+    va_trusted_val = true
+
+    I.input_armed = function() return true end
+    I.input_drag_state = function() return true, 640.5, 360, 1920, 1080, 3, -12.5, 4 end
+    check(R.input.drag_available() == true, "armed drag: available")
+    st = R.input.drag_state()
+    check(st and st.held == true and st.x == 640.5 and st.y == 360 and st.w == 1920
+          and st.h == 1080 and st.drags == 3 and st.dx == -12.5 and st.dy == 4,
+          "drag_state passes every field through")
+
+    local got = {}
+    local h = R.input.on_drag(function(phase, dx, dy, ev) got[#got + 1] = { phase, dx, dy, ev } end)
+    fire("input:drag", { phase = "start", button = "middle", dx = 0, dy = 0, x = 10, y = 20,
+                         w = 1920, h = 1080, blocked = false })
+    fire("input:drag", { phase = "move", button = "middle", dx = 5.5, dy = -2, x = 15.5, y = 18,
+                         w = 1920, h = 1080, blocked = false })
+    fire("input:drag", { phase = "end", button = "middle", dx = 0, dy = 0, x = 15.5, y = 18,
+                         w = 1920, h = 1080, blocked = true })
+    check(#got == 3 and got[1][1] == "start" and got[2][1] == "move" and got[3][1] == "end",
+          "on_drag gets start, move, end in order")
+    check(got[2][2] == 5.5 and got[2][3] == -2 and got[2][4].x == 15.5,
+          "on_drag gets phase, dx, dy first and the payload last")
+    check(got[3][4].blocked == true and got[3][4].button == "middle", "payload carries blocked and button")
+    fire("input:drag", { phase = "move" })
+    check(got[4][2] == 0 and got[4][3] == 0, "a payload without dx/dy reads as no movement")
+    R.input.off(h)
+    fire("input:drag", { phase = "start" })
+    check(#got == 4, "off stops drag delivery")
+
+    I.input_armed, I.input_drag_state = nil, nil
+end
+
+-- R.input mouse-look: the game's cursor lock, requested natively (I.input_look_*),
+-- plus "input:mouse_move" {dx, dy, x, y, w, h, locked, blocked}.
+do
+    local ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("too old"), "no mouse-look binding: unavailable, says why")
+    local r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("too old"), "mouse_look on an old loader: nil, reason")
+    local st, why1 = R.input.mouse_look_state()
+    check(st == nil and why1:find("too old"), "no binding: no state")
+
+    local armed, sets, refreshes, ids, next_id = false, {}, {}, {}, 0
+    I.input_look_state = function()
+        if not armed then return end
+        return true, true, false, true
+    end
+    I.input_look_set = function(on, hide) sets[#sets + 1] = { on, hide }; next_id = next_id + 1; return next_id end
+    I.input_look_refresh = function(menu, id) refreshes[#refreshes + 1] = menu; ids[#ids + 1] = id end
+    I.input_armed = function() return true end
+
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not accessible"), "binding present, not armed: says the records did not read")
+    r, why0 = R.input.mouse_look(true)
+    check(r == nil and why0:find("not accessible"), "mouse_look without the symbols: nil, reason")
+    check(#sets == 0, "nothing requested when unavailable")
+    I.input_armed = function() return false end
+    va_trusted_val = false
+    ok, why = R.input.mouse_look_available()
+    check(ok == false and why:find("not trusted"), "untrusted build: the poll hook's reason")
+    va_trusted_val = true
+    I.input_armed = function() return true end
+
+    armed = true
+    check(R.input.mouse_look_available() == true, "armed: available")
+    check(R.input.mouse_look("yes") == nil, "on must be a boolean")
+    check(R.input.mouse_look(true, 5) == nil, "opts must be a table")
+    check(R.input.mouse_look(true) == true, "mouse_look(true) succeeds")
+    check(sets[1][1] == true and sets[1][2] == false, "hide defaults to false")
+    check(R.input.mouse_look(true, { hide = true }) == true and sets[2][2] == true, "opts.hide reaches the loader")
+    check(#refreshes >= 1 and refreshes[#refreshes] == false, "the menu state is pushed on request (no menu)")
+
+    check(ids[#ids] == 2, "refreshes carry this state's request id")
+    check(R.input.mouse_look(true) == true and next_id == 3, "each request gets a new id")
+
+    -- The tick runs on a loader thread: it must never call R.game.flag (an
+    -- engine call into the scene map); it reads R.game.cached. The mouse-move
+    -- event runs on the game thread and may read live.
+    local flag, cached = R.game.flag, R.game.cached
+    local flag_calls, menu = 0, false
+    R.game.flag = function(n)
+        -- count only calls made from input.lua (other tick handlers read flags too)
+        if debug.traceback():find("input.lua", 1, true) then flag_calls = flag_calls + 1 end
+        return menu and n == "is_menu_open"
+    end
+    R.game.cached = function(n) if menu and n == "is_menu_open" then return 1 end return 0 end
+    local before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before + 1 and refreshes[#refreshes] == false, "tick: no menu in the cache")
+    menu = true
+    fire("tick", {})
+    check(refreshes[#refreshes] == true, "tick pushes a menu-open state from the cache")
+    check(flag_calls == 0, "tick never calls R.game.flag (no engine call off the game thread)")
+    check(ids[#ids] == 3, "the tick refresh carries the current request id")
+    fire("input:mouse_move", { dx = 1, dy = 2 })
+    check(#refreshes == before + 3 and refreshes[#refreshes] == true, "every mouse move pushes it too")
+    check(flag_calls > 0, "the mouse-move path reads live on the game thread")
+    R.game.cached = function() return nil end
+    fire("tick", {})
+    check(refreshes[#refreshes] == false, "an empty cache reads as no menu (never raises)")
+    R.game.flag, R.game.cached = flag, cached
+
+    -- An older loader returns true from input_look_set: refreshes go without an id.
+    local old_set = I.input_look_set
+    I.input_look_set = function() return true end
+    check(R.input.mouse_look(true) == true, "an old loader's true is accepted")
+    local n_ids = #refreshes
+    fire("tick", {})
+    check(#refreshes == n_ids + 1 and ids[n_ids + 1] == nil, "no request id to send to an old loader")
+    I.input_look_set = old_set
+
+    st = R.input.mouse_look_state()
+    check(st and st.requested == true and st.active == true and st.paused == false and st.hidden == true,
+          "mouse_look_state passes every field through")
+
+    check(R.input.mouse_look(false) == true and sets[#sets][1] == false, "mouse_look(false) releases")
+    before = #refreshes
+    fire("tick", {})
+    check(#refreshes == before, "no refresh once the request is off")
+
+    local got = {}
+    local h = R.input.on_mouse_move(function(dx, dy, ev) got[#got + 1] = { dx, dy, ev } end)
+    fire("input:mouse_move", { dx = 3.5, dy = -2, x = 10, y = 20, w = 1920, h = 1080, locked = true, blocked = false })
+    check(#got == 1 and got[1][1] == 3.5 and got[1][2] == -2 and got[1][3].locked == true and got[1][3].w == 1920,
+          "on_mouse_move gets dx, dy first and the payload last")
+    fire("input:mouse_move", {})
+    check(got[2][1] == 0 and got[2][2] == 0, "a payload without dx/dy reads as no movement")
+    R.input.off(h)
+    fire("input:mouse_move", { dx = 1, dy = 1 })
+    check(#got == 2, "off stops mouse-move delivery")
+
+    I.input_look_state, I.input_look_set, I.input_look_refresh, I.input_armed = nil, nil, nil, nil
+end
+
+-- R.input.keybinds: a mod's own keybinds as native Controls rows (hook_keybinds.cpp).
+-- The loader side is mocked the way script_lua.cpp exposes it: keybind_add
+-- returns a 0-based index (the same one for a repeated mod + id) or nil, err;
+-- keybind_keys(index) the current keyboard and pad keys; keybinds_state()
+-- armed, registered. Presses arrive as "input:keybind" {mod, id, presses, ...}.
+do
+    local K = R.input and R.input.keybinds
+    check(K ~= nil, "R.input.keybinds loaded")
+    local ok, why = K.available()
+    check(ok == false and why:find("too old"), "no keybind binding: unavailable, says why")
+    local h0, w0 = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+    check(h0 == nil and w0:find("too old"), "add on an old loader: refused with a reason")
+
+    local declared, keys, closed = {}, {}, false
+    I.keybinds_state = function() return true, false end
+    I.keybind_add = function(id, label, kb, pad)
+        for i, d in ipairs(declared) do
+            if d.id == id then return i - 1 end
+        end
+        if closed then return nil, "keybinds can only be added from init.lua" end
+        declared[#declared + 1] = { id = id, label = label, kb = kb, pad = pad }
+        keys[#declared - 1] = { kb, pad }
+        return #declared - 1
+    end
+    I.keybind_keys = function(index)
+        local k = keys[index]
+        if not k then return nil end
+        return k[1], k[2]
+    end
+    check(K.available() == true, "armed hooks: available")
+
+    local zin = K.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+    local zout = K.add{ id = "ZoomOut", label = "Zoom out", key = 93, pad = 101 }
+    check(zin and zin.index == 0 and zout and zout.index == 1, "add returns handles in order")
+    check(declared[2].kb == 93 and declared[2].pad == 101, "keys reach the loader")
+    check(declared[1].pad == 0, "pad defaults to unbound")
+    check(K.add{ id = "ZoomIn", label = "Zoom in", key = 92 } == zin, "re-adding an id returns its handle")
+
+    local bad = {
+        { {}, "id" }, { { id = "Zoom In", label = "x" }, "id" },
+        { { id = string.rep("a", 33), label = "x" }, "id" },
+        { { id = "A", label = "" }, "label" }, { { id = "A", label = string.rep("x", 33) }, "label" },
+        { { id = "A", label = "x", key = 256 }, "key" }, { { id = "A", label = "x", key = 1.5 }, "key" },
+        { { id = "A", label = "x", pad = -1 }, "pad" },
+        { { id = "A", label = "x", key = 94 }, "key" },     -- a gamepad id as the keyboard default
+        { { id = "A", label = "x", pad = 92 }, "pad" },     -- the wheel as the pad default
+    }
+    for _, case in ipairs(bad) do
+        local hb, wb = K.add(case[1])
+        check(hb == nil and wb:find(case[2]), "bad " .. case[2] .. " refused: " .. tostring(wb))
+    end
+    local h0k = K.add{ id = "Unbound", label = "Unbound", key = 0, pad = 0 }
+    check(h0k and declared[#declared].kb == 0 and declared[#declared].pad == 0, "0 is valid for both devices")
+    local hn, wn = K.add("ZoomIn")
+    check(hn == nil and wn:find("table"), "add needs a table")
+    closed = true
+    local hl, wl = K.add{ id = "Late", label = "Late" }
+    check(hl == nil and wl:find("init.lua"), "a keybind added after registration is refused")
+
+    local kb, pad = K.keys(zout)
+    check(kb == 93 and pad == 101, "keys read the loader")
+    keys[1] = { 44, 0 }                                       -- the player rebinds it
+    check(zout:keys() == 44, "keys follow a rebind")
+    check(K.keys("ZoomIn") == 92, "keys by id")
+    local list = K.list()
+    check(#list == 3 and list[2].id == "ZoomOut" and list[2].key == 44 and list[2].label == "Zoom out",
+          "list names every keybind with its current keys")
+
+    local got = {}
+    local hp = K.on_press(zin, function(n, ev) got[#got + 1] = { n, ev } end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 2, key = 92, blocked = false })
+    check(#got == 1 and got[1][1] == 2 and got[1][2].key == 92, "on_press gets the presses and the payload")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomOut", presses = 1 })
+    check(#got == 1, "another keybind's press is not delivered")
+    fire("input:keybind", { mod = "other_mod", id = "ZoomIn", presses = 1 })
+    check(#got == 1, "another mod's keybind with the same id is not delivered")
+    K.off(hp)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1 })
+    check(#got == 1, "off stops delivery")
+    local hm = zout:on_press(function(n) got[#got + 1] = { n } end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomOut", presses = 1 })
+    check(#got == 2 and got[2][1] == 1, "the handle's on_press method works")
+    K.off(hm)
+    local hu, wu = K.on_press({ id = "ZoomIn" }, function() end)
+    check(hu == nil and wu:find("not a keybind"), "on_press refuses a table that is not a handle")
+    local hf, wf = K.on_press(zin, 5)
+    check(hf == nil and wf:find("function"), "on_press needs a function")
+
+    -- Presses in menus and blocked presses are dropped unless menus = true.
+    local real_flag = R.game.flag
+    local menu_open = false
+    R.game.flag = function(name)
+        if name == "is_menu_open" then return menu_open end
+        return false
+    end
+    local seen = {}
+    local hq = K.on_press(zin, function(n) seen[#seen + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = true })
+    check(#seen == 0, "a blocked press is dropped")
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen == 0, "a press in a menu is dropped")
+    menu_open = false
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 3, blocked = false })
+    check(#seen == 1 and seen[1] == 3, "a press in play is delivered")
+    local menu_flag = R.game.flag
+    R.game.flag = function(name) return name == "is_skill_menu_open" end
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen == 1, "a press on the talent choice is dropped (mouse-look's screen list)")
+    R.game.flag = menu_flag
+    K.off(hq)
+    closed = false
+    local hmenu = K.add{ id = "Menu", label = "Menu key", key = 5, menus = true }
+    check(hmenu and hmenu.menus == true, "menus = true is kept on the handle")
+    local seen_m = {}
+    local hq2 = K.on_press(hmenu, function(n, ev) seen_m[#seen_m + 1] = ev.blocked end)
+    menu_open = true
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked = true })
+    check(#seen_m == 1 and seen_m[1] == true, "a menus keybind gets every press, blocked marked")
+    K.off(hq2)
+    menu_open = false
+    -- Presses sorted by the loader when they were made.
+    local seen_p, seen_pm = {}, {}
+    local hp1 = K.on_press(zin, function(n) seen_p[#seen_p + 1] = n end)
+    local hp2 = K.on_press(hmenu, function(n) seen_pm[#seen_pm + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 2,
+                            late_presses = 0, blocked = true })
+    check(#seen_p == 0, "only blocked presses: nothing for an in-play keybind")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_p == 1 and seen_p[1] == 1, "an in-play keybind gets this frame's unblocked presses only")
+    fire("input:keybind", { mod = "spec_mod", id = "Menu", presses = 1, blocked_presses = 1,
+                            late_presses = 3, blocked = true })
+    check(#seen_pm == 1 and seen_pm[1] == 5, "a menus keybind gets every press")
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 0, blocked_presses = 0,
+                            late_presses = 4, blocked = false })
+    check(#seen_p == 1, "late presses are not delivered to an in-play keybind")
+    K.off(hp1); K.off(hp2)
+    local hbm, wbm = K.add{ id = "Bad", label = "Bad", menus = "yes" }
+    check(hbm == nil and wbm:find("menus"), "menus must be a boolean")
+    R.game.flag = function() error("game values not ready") end
+    local seen_e = {}
+    local hq3 = K.on_press(zin, function(n) seen_e[#seen_e + 1] = n end)
+    fire("input:keybind", { mod = "spec_mod", id = "ZoomIn", presses = 1, blocked = false })
+    check(#seen_e == 1, "a menu check that raises does not drop the press")
+    K.off(hq3)
+    R.game.flag = real_flag
+
+    -- During init.lua the hooks are not installed yet: available, and add works.
+    local real_va = I.va_trusted
+    I.keybinds_state = function() return false, false, false, true end
+    I.va_trusted = function() return true end
+    check(K.available() == true, "declarations open on a trusted build: available")
+    check(K.add{ id = "Early", label = "Early" } ~= nil, "add during init.lua works before the hooks arm")
+    I.va_trusted = function() return false end
+    ok, why = K.available()
+    check(ok == false and why:find("not trusted"), "declarations open on an untrusted build: unavailable")
+    local hu2, wu2 = K.add{ id = "Untrusted", label = "Untrusted" }
+    check(hu2 == nil and wu2:find("not trusted"), "add on an untrusted build: refused with the reason")
+    -- on_ready: pending during init.lua, settled by the loader's announcement.
+    I.va_trusted = function() return true end
+    local r1 = {}
+    check(K.on_ready(function(ok, w) r1[#r1 + 1] = { ok, w } end) == true, "on_ready accepts a function")
+    check(#r1 == 0, "on_ready waits while the outcome is pending")
+    fire("input:keybinds_ready", { ok = false, reason = "keybind hooks failed to install" })
+    check(#r1 == 1 and r1[1][1] == false and r1[1][2]:find("failed to install"),
+          "on_ready reports a failure with its reason")
+    fire("input:keybinds_ready", { ok = true })
+    check(#r1 == 1, "on_ready fires once")
+    local r2 = {}
+    K.on_ready(function(ok) r2[#r2 + 1] = ok end)
+    fire("input:keybinds_ready", { ok = true })
+    check(#r2 == 1 and r2[1] == true, "on_ready reports keybinds that went live")
+    I.keybinds_state = function() return true, true, false, false end
+    local r3 = {}
+    K.on_ready(function(ok) r3[#r3 + 1] = ok end)
+    check(#r3 == 1 and r3[1] == true, "on_ready after registration: called right away")
+    I.keybinds_state = function() return true, false, true, false end
+    local r4 = {}
+    K.on_ready(function(ok, w) r4[#r4 + 1] = { ok, w } end)
+    check(#r4 == 1 and r4[1][1] == false and r4[1][2]:find("registration"),
+          "on_ready after a failed registration: called right away with the reason")
+    check(K.on_ready(5) == nil, "on_ready needs a function")
+    I.va_trusted = real_va
+    I.keybinds_state = function() return false, false, false, false end
+    local hx, wx = K.add{ id = "AfterFail", label = "After fail" }
+    check(hx == nil and (wx:find("failed to install") or wx:find("not live")) ~= nil,
+          "add after the hooks failed to install: refused with the reason")
+    closed = true
+
+    I.keybinds_state = function() return true, false, true end
+    ok, why = K.available()
+    check(ok == false and why:find("registration"), "a failed registration: unavailable, says why")
+
+    local real_va_trusted = I.va_trusted
+    I.keybinds_state = function() return false, false end
+    I.va_trusted = function() return false end
+    ok, why = K.available()
+    check(ok == false and why:find("not trusted"), "unarmed on an unknown build: says so")
+    I.keybinds_state, I.keybind_add, I.keybind_keys = nil, nil, nil
+    I.va_trusted = real_va_trusted
+end
+
+-- R.camera.zoom: queues a blended zoom with the loader (hook_camera.cpp).
+do
+    local okz, whyz = R.camera.zoom(0.9)
+    check(okz == nil and whyz:find("too old"), "no zoom binding: refused with a reason")
+    local armed, calls, resets = false, {}, {}
+    I.camera_zoom_armed = function() return armed end
+    I.camera_zoom = function(step, secs)
+        calls[#calls + 1] = { step, secs }
+        return step >= 0.05 and step <= 20
+    end
+    I.camera_zoom_reset = function(secs) resets[#resets + 1] = secs; return true end
+    I.camera_zoom_factor = function() return 0.81, 0.9 end
+    okz, whyz = R.camera.zoom(0.9)
+    check(okz == nil and whyz:find("not armed"), "unarmed hook: refused with a reason")
+    armed = true
+    check(R.camera.zoom(0.9) == true and calls[1][1] == 0.9 and about(calls[1][2], 0.25),
+          "default duration is 0.25 s")
+    check(R.camera.zoom(1.1, { duration = 0 }) == true and calls[2][2] == 0, "duration 0 is instant")
+    check(R.camera.zoom(1.1, { duration = -3 }) == true and calls[3][2] == 0, "negative duration clamps to 0")
+    okz, whyz = R.camera.zoom(100)
+    check(okz == nil and whyz:find("range"), "out-of-range step refused")
+    okz, whyz = R.camera.zoom("closer")
+    check(okz == nil and whyz:find("number"), "non-number step refused")
+    local target, current = R.camera.zoom_factor()
+    check(about(target, 0.81) and about(current, 0.9), "zoom_factor returns target then current")
+    check(R.camera.zoom_reset({ duration = 0.5 }) == true and resets[1] == 0.5, "reset passes its duration")
+    I.camera_zoom_armed, I.camera_zoom, I.camera_zoom_reset, I.camera_zoom_factor = nil, nil, nil, nil
+end
+
+-- R.ui (PR #110): what the UI is showing, from the loader's component-runner
+-- detours. Armed on first use; "unknown" (nil) is never reported as "closed".
+do
+    check(type(R.ui) == "table", "R.ui is loaded")
+    local arm_calls, armed = 0, false
+    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0 }
+    I.ui_state_arm = function()
+        arm_calls = arm_calls + 1
+        if armed then return true, nil end
+        return false, "no UI controller vftable found by RTTI (game patched?)"
+    end
+    I.ui_state_count = function(kind) return counts[kind] end
+    I.ui_state_open = function()
+        return { { kind = "menu", class = "EscapeGameMenu", ptr = 0x1000 } }
+    end
+    local open, why = R.ui.is_open("menu")
+    check(open == nil and why:find("RTTI"), "cannot arm: is_open is nil + why, not false")
+    check(R.ui.any() == nil, "cannot arm: any() is nil")
+    armed = true
+    -- a failed arm is retried by the SDK only while not armed; the native side
+    -- caches the reason, so re-asking is cheap
+    check(R.ui.is_open("menu") == false, "armed, nothing open: false")
+    counts.menu = 1
+    check(R.ui.is_open("menu") == true and R.ui.count("menu") == 1, "an open menu counts")
+    check(R.ui.any() == true and R.ui.any("book", "modal") == false, "any() over the given kinds")
+    counts.menu, counts.loading = 0, 1
+    check(R.ui.any() == false, "a loading screen alone is not 'in a UI'")
+    check(R.ui.open()[1].class == "EscapeGameMenu", "open() lists the controllers")
+    check(R.ui.page() == nil, "no page open: page() is nil")
+    I.ui_state_open = function()
+        return { { kind = "book", class = "BookMenu", ptr = 0x10 },
+                 { kind = "page", class = "PlayPage", ptr = 0x20 },
+                 { kind = "page", class = "TutorialPage", ptr = 0x30 } }
+    end
+    check(R.ui.page() == "TutorialPage", "page() is the newest open page")
+    check(R.ui.count("page") ~= nil, "page is a kind")
+    local calls_before = arm_calls
+    check(R.ui.is_open("book") == false and arm_calls == calls_before,
+          "once armed, the SDK stops asking the loader to arm")
+    check(not pcall(R.ui.is_open, "inventory"), "unknown kind is an error, not a silent false")
+    local got
+    local id = R.on("ui:open", function(e) got = e end)
+    fire("ui:open", { kind = "modal", class = "Modal", ptr = 0x2000 })
+    check(got and got.kind == "modal" and got.class == "Modal", "ui:open reaches R.on handlers")
+    R.off(id)
+    I.ui_state_arm, I.ui_state_count, I.ui_state_open = nil, nil, nil
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

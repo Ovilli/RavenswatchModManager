@@ -1,6 +1,6 @@
 """Parent-class section codecs.
 
-Stage 5d finding (docs/RE_NOTES.md): `oIResource::Serialize` at
+Stage 5d finding (https://docs.rsmm.me/reverse-engineering/notes/): `oIResource::Serialize` at
 `0x1400c2240` is a no-op stub returning 1; it writes zero bytes. The
 leading section's small u32 triple is emitted by `oCBinarySaver`'s
 container pre-pass, not by this class. Round-trip is already byte-stable

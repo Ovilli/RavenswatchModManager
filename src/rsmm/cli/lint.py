@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals
+from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding, walk
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -124,6 +124,12 @@ def lint_one(entry: Path) -> tuple[int, int]:
     warns += _lint_store_metadata(mod_s, m)
     warns += _report_unknown(mod_s, "[mod]", m, MS.MOD_FIELDS, warn=True)
     warns += _report_unknown(mod_s, "top level", t, MS.TOP_LEVEL, warn=True)
+    from rsmm.engine.mod_requires import parse_requires
+    try:
+        parse_requires(t.get("requires"))
+    except ValueError as e:
+        print(f"  {_T_FAIL} {mod_s}: {e}")
+        errs += 1
     scope = m.get("multiplayer_scope")
     if scope is not None and scope not in {"cosmetic", "deterministic-shared",
                                            "host-authoritative", "local-only"}:
@@ -1004,6 +1010,7 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     events, callables = _engine_vocab()
     errs = 0
     warns = 0
+    files = []
     for f in sorted(entry.rglob("*.lua")):
         if not f.is_file():
             continue
@@ -1011,20 +1018,37 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        rel = f.relative_to(entry).as_posix()
         try:
-            late = late_locals(text)
+            scope = walk(text)
         except LuaSyntaxError as e:
+            scope = e
+        files.append((f.relative_to(entry).as_posix(), text, scope))
+    # The mod's files share one lua_State, so a global `R = require "rsmm"` in
+    # any of them (init.lua, usually) binds R for the modules it loads too.
+    r_assigned = any(not isinstance(s, LuaSyntaxError) and "R" in s.global_writes
+                     for _, _, s in files)
+    for rel, text, scope in files:
+        if isinstance(scope, LuaSyntaxError):
             print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
-                  f"{_ST.dim(f'scope not checked: {e}')}")
+                  f"{_ST.dim(f'scope not checked: {scope}')}")
             warns += 1
             late = []
+            unbound = None
+        else:
+            late = late_locals(scope)
+            unbound = None if r_assigned else missing_sdk_binding(scope)
         for h in late:
             hint = (f"— its `local` is on line {h.decl_line}, so here it compiles "
                     f"to a global read and is nil at run time; move the local "
                     f"above its first use")
             print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{h.line}')}: "
                   f"{_ST.accent(h.name)} read before its local {_ST.dim(hint)}")
+            errs += 1
+        if unbound is not None:
+            hint = ('— R is a global here and nil when the mod loads; add '
+                    '`local R = require "rsmm"` above its first use')
+            print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{unbound}')}: "
+                  f"{_ST.accent('R')} read without its require {_ST.dim(hint)}")
             errs += 1
         for ln, line in enumerate(text.splitlines(), 1):
             code = line.split("--", 1)[0]  # ignore comments

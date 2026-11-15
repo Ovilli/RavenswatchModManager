@@ -328,8 +328,9 @@ def test_a_held_state_is_held_only_while_the_talent_is_owned(wukong, stat, kw):
         f"[State] Character_Common\\Base\\{state}"]
     owned = comp(out, "Skill Trait Fire")
     assert any(r.guid == holder.guid for r in owned.refs)
+    shipped = {x.name for x in EG.parse(wukong).components}
     for c in EG.parse(out).components:
-        if c.guid != holder.guid and c.name not in {x.name for x in EG.parse(wukong).components}:
+        if c.guid != holder.guid and c.name not in shipped:
             assert not any(state in r.path for r in c.refs), c.name
     from rsmm.engine import entity_check as EC
     assert EC.check(out, wukong, name="Hero_SunWukong") == []

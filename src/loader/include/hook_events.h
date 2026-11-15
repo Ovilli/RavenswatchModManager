@@ -4,7 +4,7 @@ namespace rsmm {
 // Bridges in-game gameplay events to the Lua event bus (rsmm.on_event).
 //
 // Each entry post-detours a verified per-event emitter function (located by
-// string-xref against the shipped Ravenswatch.exe — see docs/_re/HOOKPOINTS.md
+// string-xref against the shipped Ravenswatch.exe — see https://docs.rsmm.me/reverse-engineering/hookpoints/
 // and docs/_re/kinds/events.md) and, after the original runs, fires the
 // matching Lua event via script_emit_event_json. Payloads are intentionally
 // minimal/empty for now: emitting an event after the original returns is

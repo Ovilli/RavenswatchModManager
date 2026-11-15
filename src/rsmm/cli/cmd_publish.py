@@ -219,6 +219,11 @@ def publish(mod_id: str, *, wait: bool = True, timeout: float = 900,
             sys.stderr.write(str(pack["stderr"]))
         raise PublishError(str(pack.get("error") or "pack failed"))
     out(f"  {pack['slug']} {pack['version']} — {pack['sizeBytes']:,} bytes")
+    if pack.get("privateOnly"):
+        reasons = pack.get("privateOnlyReasons") or []
+        out("  labelled \"Private games only\": it changes the game the party plays"
+            + (f" ({'; '.join(reasons[:3])}{' …' if len(reasons) > 3 else ''})"
+               if reasons else ""))
 
     status, up = _request("POST", "/api/mods/upload", token, {
         "slug": pack["slug"], "version": pack["version"], "manifest": pack["manifest"],

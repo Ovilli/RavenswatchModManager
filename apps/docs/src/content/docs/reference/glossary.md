@@ -100,4 +100,4 @@ Covered end to end in [Anatomy of an entity](/reverse-engineering/entity-anatomy
 - **Symbol map** — `data/symbols.json`: the canonical name → address map for engine functions/globals/events. See [Engine symbols](/reference/symbols/).
 - **Pattern resolver** — byte-signature database (`function_patterns.json`) that re-finds a function across game updates so mods can call it by name (`rsmm.call`).
 - **Loader DLL** — `winhttp.dll` proxy + MinHook + Lua VM injected into the game for Lua-scripted mods (Windows). Texture/asset mods work without it.
-- **Anti-tamper / protector** — the protector in `Ravenswatch.exe`. It does not block hooks at function entries; asset mods avoid the runtime path entirely and the loader hooks carefully.  See [Anti-tamper protector](/reverse-engineering/protector/).
+- **Loader compatibility** — why the loader's in-memory hooks are stable and which targets it avoids. `Ravenswatch.exe` is never modified on disk; asset mods don't use the loader at all. See [Loader compatibility](/reverse-engineering/loader-compatibility/).

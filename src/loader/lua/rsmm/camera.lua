@@ -19,8 +19,24 @@
 -- +0x60: inline sentinel +0x68 (== 4), value +0x70, type byte +0x78 (0 = f32).
 -- The manifest's value_N fields map to records in file order, so value_7 is
 -- +0x3f8. ★ yaw (value_7) is PROVEN IN GAME (2026-10-02, data edit 45°→135°
--- rotated the view). The other names are read off comparing the three shipped
--- cameras and are NOT yet proven — `R.camera.FIELDS` marks which is which.
+-- rotated the view). ★ distance (+0x2f8) is PROVEN IN GAME (2026-11-09, a
+-- write moved the eye in and out; camera-control's wheel zoom clamps on it).
+-- ★ look_offset (+0x478) is PROVEN IN GAME (2026-11-12, a write slid the view
+-- along the ground). The other names come from the function that turns the records into the view
+-- (0x1407e6f10, run on activate and every frame) and are NOT yet proven in
+-- game — `R.camera.FIELDS` marks which is which.
+--
+-- WHAT THE VIEW IS. With P the followed hero's position, yaw Y and pitch X
+-- (both radians in the file; pitch is clamped to [0.01, 1.5] before use),
+-- look offset H and distance D:
+--   look-at = P + H * (sin Y, 0, cos Y)
+--   eye     = look-at + D * (cos X * sin Y, sin X, cos X * cos Y)
+--   up      = (0, 1, 0)
+-- So +0x478 is NOT a look height: it slides the look-at point along the
+-- ground in the yaw direction, toward the camera when positive, and the eye
+-- slides with it. Nothing in this function lifts the look-at off P's height.
+-- FOV (+0x378) is clamped to [1, 179] and corrected for aspect; near (+0x4f8)
+-- and far (+0x578) go to the camera's near/far modifier.
 --
 -- Components are found by RTTI class name through R.entity.components, never
 -- by a vftable address, so a game patch that moves the vtable does not matter.
@@ -54,19 +70,25 @@ local REC_LINK       = 0x58      -- u32 picker index; 0xffffffff = literal
 -- finds them (the Kintaro clip kept its yaw across the switch). The boss camera
 -- belongs to a map object, which this module does not reach yet.
 -- Copying one number to every camera would erase what makes them differ (the
--- ultimate camera's look height is 0.5, the boss camera's distance 36), so:
+-- ultimate camera's look offset is 0.5, the boss camera's distance 36), so:
 --   "abs"  every camera gets the same value;
 --   "add"  every camera moves by the default camera's change from its original;
 --   "mul"  every camera scales by the default camera's ratio to its original.
 -- nil leaves the other cameras alone: the ultimate cameras zoom by FOV (27.5
--- against the default's 31), so a shared FOV would cancel the zoom.
+-- against the default's 31), so a shared FOV would cancel the zoom. The clip
+-- planes are left alone too.
 M.FIELDS = {
-    yaw      = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
-    pitch    = { off = 0x278, unit = "deg", proven = false, spread = "add" },
-    distance = { off = 0x2f8, unit = "raw", proven = false, spread = "mul" },
-    fov      = { off = 0x378, unit = "raw", proven = false },
-    height   = { off = 0x478, unit = "raw", proven = false, spread = "add" },
+    yaw         = { off = 0x3f8, unit = "deg", proven = true,  spread = "abs" },
+    pitch       = { off = 0x278, unit = "deg", proven = false, spread = "add" },
+    distance    = { off = 0x2f8, unit = "raw", proven = true,  spread = "mul" },
+    fov         = { off = 0x378, unit = "raw", proven = false },
+    look_offset = { off = 0x478, unit = "raw", proven = true,  spread = "add" },
+    near        = { off = 0x4f8, unit = "raw", proven = false },
+    far         = { off = 0x578, unit = "raw", proven = false },
 }
+-- `height` was this module's first name for look_offset. It still works for
+-- get/set, but pairs(FIELDS) does not list it twice.
+setmetatable(M.FIELDS, { __index = { height = M.FIELDS.look_offset } })
 local DEFAULT_FLAG = 0xf8        -- value_16: true on "Default Camera" only
 
 -- settings ptr .. ":" .. off -> { at, v = original, w = what we last wrote }.
@@ -294,7 +316,7 @@ local function _log_miss(hero, owners, hits, visited)
     end
 end
 
-local _cams_for, _cams = nil, nil
+local _cams_for, _cams, _cams_swept = nil, nil, nil
 
 local function _default_flag(s)
     local flag = s + DEFAULT_FLAG + UNION
@@ -392,13 +414,21 @@ end
 -- refuses any array over 256 ("a real entity has tens"), so every pass above
 -- saw nothing and the slow search was the only way in: the 8-minute wait.
 --
--- Every hero in the match is read, not only the captured one: in that session
--- capture had taken the ally's controller, and Kintaro's own cameras were on
--- the other entity. The candidate ring (shared slots 8..15) holds one
--- controller per hero. A camera's settings object is shared by every hero that
--- uses it ("Default Camera" was one object behind both heroes' components),
--- and a camera only drives the screen of the machine it runs on, so writing an
--- ally's is harmless.
+-- Whose cameras: the LOCAL hero's. In that session capture had taken the
+-- ally's controller, and Kintaro's own cameras were on the other entity.
+-- R.entity.hero now ranks every capture candidate by the engine's is-local
+-- byte, and `{ local_only = true }` returns a hero only when that byte reads 1,
+-- so that is the one read.
+--
+-- Only when no candidate reads 1 (a hero mid-load, or a patch that moved the
+-- byte) does this fall back to the old sweep: the captured hero plus every
+-- controller in the candidate ring (shared slots 8..15, one per hero). That is
+-- what the 2026-11-08 run that held the view all the way through Baba Yaga
+-- used, so a build where the byte stops working keeps the camera rather than
+-- losing it. Writing an ally's cameras there is harmless: a camera's settings
+-- object is shared by every hero that uses it ("Default Camera" was one object
+-- behind both heroes' components), and a camera only drives the screen of the
+-- machine it runs on.
 local ENT_CPNTS, ENT_COUNT, ENT_MAX = 0x190, 0x198, 16384
 local HERO_RING_FIRST, HERO_RING_COUNT = 8, 8
 local _ent_cache = {}            -- entity -> { arr, n, idx = { camera slots } }
@@ -408,14 +438,15 @@ local function _is_camera_cpnt(cp)
     return c and c:sub(-#CAMERA_CLASS) == CAMERA_CLASS or false
 end
 
--- Hero controllers worth reading: the captured one and every live ring entry.
-local function _hero_controllers(hero)
+-- Hero controllers worth reading: the local hero alone, or (`sweep`, nothing
+-- reads local) the captured one and every live ring entry.
+local function _hero_controllers(hero, sweep)
     local out, seen = {}, {}
     local function add(h)
         if _plausible(h) and not seen[h] then seen[h] = true; out[#out + 1] = h end
     end
     add(hero)
-    if I.shared_get then
+    if sweep and I.shared_get then
         for i = 0, HERO_RING_COUNT - 1 do
             local ok, h = pcall(I.shared_get, HERO_RING_FIRST + i)
             if ok and type(h) == "number" and h ~= 0
@@ -466,10 +497,13 @@ end
 
 function M.cameras()
     if not (I and I.read_u64 and I.read_u32 and I.read_u8) then return nil, "loader too old" end
-    local hero = R.entity and R.entity.hero and R.entity.hero()
+    if not (R.entity and R.entity.hero) then return nil, "hero not captured (start a run)" end
+    local hero = R.entity.hero({ local_only = true })
+    local sweep = not hero
+    if sweep then hero = R.entity.hero() end
     if not hero then return nil, "hero not captured (start a run)" end
     local now = _now()
-    if hero == _cams_for and not _job_done and _scan_at and now - _scan_at < RESCAN then
+    if hero == _cams_for and sweep == _cams_swept and not _job_done and _scan_at and now - _scan_at < RESCAN then
         if _none then return nil, _none end
         if _cams and _still_valid(_cams) then return _cams end
     end
@@ -502,7 +536,7 @@ function M.cameras()
     -- First and normally only pass: every hero entity's full component array
     -- (see _entity_cameras). The controller itself is read too, since a test
     -- double or a future build may hand back the entity directly.
-    for _, h in ipairs(_hero_controllers(hero)) do
+    for _, h in ipairs(_hero_controllers(hero, sweep)) do
         for _, e in ipairs({ I.read_u64(h + 0x08), h }) do
             for _, cp in ipairs(_entity_cameras(e)) do add_component(cp) end
         end
@@ -584,7 +618,7 @@ function M.cameras()
         end
     end
 
-    _cams_for, _scan_at = hero, now
+    _cams_for, _cams_swept, _scan_at = hero, sweep, now
     if #out == 0 then
         _cams = nil
         _none = _job and "looking for the camera (search under way)" or "no top-down camera on the hero"
@@ -736,7 +770,7 @@ function M.explore(tag, opts)
     opts = opts or {}
     tag = tostring(tag or "manual")
     if not (I and I.read_u64 and R.entity and R.entity.hero) then return end
-    local hero = R.entity.hero()
+    local hero = R.entity.hero({ local_only = true }) or R.entity.hero()
     if not hero then R.log("[rsmm.camera] explore " .. tag .. ": no hero captured"); return end
     local t0 = _now()
     _owners_for, _owners = nil, nil
@@ -766,7 +800,7 @@ function M.explore(tag, opts)
         end
         local vals = {}
         if _plausible(s) and _is(s, SETTINGS_CLASS) then
-            for _, name in ipairs({ "distance", "pitch", "yaw", "height", "fov" }) do
+            for _, name in ipairs({ "distance", "pitch", "yaw", "look_offset", "fov", "near", "far" }) do
                 local f = M.FIELDS[name]
                 local at, err = _record(s, f.off)
                 local v = at and _from_file(f, I.read_f32(at))
@@ -782,6 +816,68 @@ function M.explore(tag, opts)
             table.concat(vals, " ")))
     end
     return job.hits
+end
+
+-- Native blended zoom ------------------------------------------------------
+--
+-- A distance written with M.set lands on the camera's next update: a snap. The
+-- game's own smooth camera changes go through its camera MODIFIER tree, where
+-- each modifier eases its weight in or out over its own duration. The loader
+-- (hook_camera.cpp) adds the engine's own oCZoomCameraModifier to that tree, so
+-- a zoom eases in with the game's cosine curve. The factor scales the eye's
+-- distance to the look-at point on top of whatever camera is active (Kintaro on
+-- foot, Melusine's Wisp, boss cameras), so it needs none of M.set's spread
+-- rules. Below 1 moves the camera in. Cutscenes are not zoomed.
+--
+--   R.camera.zoom(0.9)                      -- 10% closer, eased over 0.25 s
+--   R.camera.zoom(1.25, { duration = 0 })   -- instant
+--   R.camera.zoom_factor()                  -- target factor (1 = the camera's own)
+--   R.camera.zoom_reset({ duration = 0.5 })
+--
+-- The factor survives a chapter change; zoom_reset returns to 1.
+
+local ZOOM_DURATION = 0.25
+
+local function _zoom_ready()
+    if not (I and I.camera_zoom and I.camera_zoom_armed) then
+        return false, "loader too old (no camera zoom)"
+    end
+    if not I.camera_zoom_armed() then
+        return false, "camera zoom not armed (see the loader log)"
+    end
+    return true
+end
+
+local function _duration(opts)
+    local d = type(opts) == "table" and tonumber(opts.duration) or nil
+    if d == nil then return ZOOM_DURATION end
+    return math.max(0, d)
+end
+
+--- Multiply the camera's zoom factor by `step`, eased over opts.duration
+--- seconds (default 0.25; 0 is instant). true, or nil + reason.
+function M.zoom(step, opts)
+    local ok, why = _zoom_ready()
+    if not ok then return nil, why end
+    step = tonumber(step)
+    if not step or step ~= step then return nil, "step must be a number" end
+    if I.camera_zoom(step, _duration(opts)) then return true end
+    return nil, "step out of range (0.05 to 20)"
+end
+
+--- The factor once every queued step has eased in (1 = the camera's own
+--- distance), then the factor on the last rendered frame.
+function M.zoom_factor()
+    if not (I and I.camera_zoom_factor) then return 1, 1 end
+    return I.camera_zoom_factor()
+end
+
+--- Ease back to factor 1. true, or nil + reason.
+function M.zoom_reset(opts)
+    local ok, why = _zoom_ready()
+    if not ok then return nil, why end
+    if I.camera_zoom_reset(_duration(opts)) then return true end
+    return nil, "zoom reset refused"
 end
 
 return function(env)

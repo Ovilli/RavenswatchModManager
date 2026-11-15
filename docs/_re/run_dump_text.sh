@@ -6,12 +6,13 @@
 # Fast (~1 min). Output: $RSMM_OUT/text_section.{bin,json}.
 set -e
 
-GHIDRA=~/Documents/Programming/ghidra_11.3_PUBLIC
-RE=~/Documents/Programming/RavenswatchModManager/docs/_re
+GHIDRA=${GHIDRA_HOME:?set GHIDRA_HOME to your Ghidra install}
+RE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$RE/project"
-PROJECT_NAME=${1:-RSMM}   # pass a project name to target a specific build
 SCRIPT_DIR="$RE/scripts"
 export RSMM_OUT="$RE/out"
+
+PROJECT_NAME=${1:-RSMM}   # pass a project name to target a specific build
 
 "$GHIDRA/support/analyzeHeadless" "$PROJECT_DIR" "$PROJECT_NAME" \
     -process "Ravenswatch.exe" \

@@ -17,7 +17,7 @@
 Heroes are the **hardest** of the four playable kinds because
 `oCDtHeroDefinition` has **no registered class UID** — it lives as a
 nested definition inside a parent `SkillProfileDataSettings` record
-(see [`../MOD_HOOKS.md` "Hero library — still partially unknown"](../MOD_HOOKS.md#hero-library--still-partially-unknown)).
+(see [`../MOD_HOOKS.md` "Hero library — still partially unknown"](https://docs.rsmm.me/reverse-engineering/mod-hooks/#hero-library--still-partially-unknown)).
 The hero is therefore created/destroyed by the *parent's* deserializer,
 not by a top-level factory lookup.
 
@@ -217,7 +217,7 @@ references are the **field-type-name pointer** for one (or two)
 nested-record fields in the schema.
 
 This is consistent with the registrar pattern documented in
-[`../MOD_HOOKS.md` "Schema-declarer pattern"](../MOD_HOOKS.md#schema-declarer-pattern-confirmed):
+[`../MOD_HOOKS.md` "Schema-declarer pattern"](https://docs.rsmm.me/reverse-engineering/mod-hooks/#schema-declarer-pattern-confirmed):
 `SkillProfileDataSettings` declares a typed field "hero_definition"
 of type `oCDtHeroDefinition*` (or `oCDtHeroDefinition[]`) in its
 schema. The deserializer for `SkillProfileDataSettings` therefore:
@@ -251,7 +251,7 @@ piece of metadata we still need. Search criteria:
   is **not** named.
 - Hint: every other `oCTLibrary` singleton uses the form
   `oCTLibrary_<T>__static_init` at a fixed `FUN_14004????` or
-  `FUN_140048???` address (see [`../MOD_HOOKS.md` "MCP-confirmed engine internals"](../MOD_HOOKS.md#mcp-confirmed-engine-internals-live-re)).
+  `FUN_140048???` address (see [`../MOD_HOOKS.md` "MCP-confirmed engine internals"](https://docs.rsmm.me/reverse-engineering/mod-hooks/#mcp-confirmed-engine-internals-live-re)).
   A grep for `atexit(&LAB_140e<???>)` callbacks adjacent to other
   library inits should turn up the hero one.
 
@@ -288,7 +288,7 @@ normal level-load deserializer build the hero for us.
 4. **Text bank.** Emit one i18n entry per ability description key
    (4 entries minimum) plus one for the hero's display name. Use the
    `RSMM_<modid>_<heroid>_<slot>` key convention from
-   [`../../SDK_V3.md` i18n](../../SDK_V3.md#i18n).
+   [SDK guide, i18n](https://docs.rsmm.me/guides/sdk/#i18n).
 5. **Patch the hero pool.** The level-load orchestrator
    `LevelGs_StateLoadingResource_Load` reads
    `Map+0x720..0x728` (random hero pool) and `Map+0x738..0x748`
@@ -316,10 +316,10 @@ def's bytes verbatim and patch only the offsets above.
 
 ## See also
 
-- [`../MOD_HOOKS.md`](../MOD_HOOKS.md) — registry / library vftable
+- [`../MOD_HOOKS.md`](https://docs.rsmm.me/reverse-engineering/mod-hooks/) — registry / library vftable
   ABI shared by every kind, hero notes in "Heroes" section, and
   status note in "Hero library — still partially unknown".
-- [`../GHIDRA_MCP.md`](../GHIDRA_MCP.md) — live RE harness.
+- [`../GHIDRA_MCP.md`](https://docs.rsmm.me/reverse-engineering/ghidra-mcp/) — live RE harness.
 - [`items.md`](items.md) — sister doc for the magical-object kind;
   follow the same `clone-and-patch → schema mining` progression.
 - `docs/_re/out/decompiled_all/0314/FUN_1403143b0__0x1403143b0.c` —

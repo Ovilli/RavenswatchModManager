@@ -215,6 +215,16 @@ Package a mod for distribution. Verifies no vanilla (unmodified game) bytes are 
 ./rsmm pack MyMod --allow-vanilla  # Skip vanilla-byte check (personal backups only)
 ```
 
+A mod that changes the game the party plays is packed with the store's
+**Private games only** label (the `private-only` tag in `[mod].tags` of the
+packed manifest; your own file is not touched). The engine decides this from
+what the mod contains, the same check that keeps public matchmaking closed
+while such a mod is applied: `[[content]]` or `[[patch]]` blocks, game data
+overrides other than textures, sound banks and text, and Lua that uses the
+SDK beyond the client-only calls (logging, overlay, damage meter, camera,
+reads). Pack prints why. Once a mod carries the label, only a store admin can
+remove it.
+
 ### `rsmm publish <id>`
 
 Upload a mod to the store in one command: lint, pack (with the vanilla-byte
@@ -319,7 +329,7 @@ Structural dump of a cooked file (class table, sections, embedded strings).
 ### `rsmm uncook <file>`
 
 Extract a cooked asset to an editable source-format file. Per-class schemas
-are reversed-engineered incrementally (see `docs/RE_NOTES.md`); when the
+are reversed-engineered incrementally (see [RE notes](/reverse-engineering/notes/)); when the
 schema isn't ready yet, `--raw` extracts section bytes directly so byte-level
 mods are unblocked.
 
@@ -403,6 +413,21 @@ has not yet been shown to change what generates.
 
 The server answers only loopback hosts, and every write needs a token that
 exists only in the pages it served.
+
+### `rsmm templates`
+
+Every shipped hero button a hero written from scratch can lend whole with
+`template = "<Hero>: <button>"` (see
+[Buttons of a hero written from scratch](/guides/first-mod-by-kind/#buttons-of-a-hero-written-from-scratch)).
+
+```sh
+./rsmm templates                          # every hero's buttons
+./rsmm templates Red                      # Scarlet's
+./rsmm templates Red --button "Wolf Primary"   # its clips and numbers
+```
+
+A button's clips are what `clips` swaps and its numbers are what `values`
+sets.
 
 ### Numeric values and texture swaps
 

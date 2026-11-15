@@ -22,6 +22,8 @@ export interface LatestRelease {
   assets: ReleaseAsset[];
 }
 
+export type InstallerDownloads = Pick<LatestRelease, 'windows' | 'linux'>;
+
 interface GhAsset {
   name: string;
   browser_download_url: string;

@@ -125,7 +125,7 @@ def item_detail(item_id: str) -> dict:
         return _blank_detail(item_id)
     from rsmm.cli.cmd_items import _find_item
     from rsmm.engine import magic_item_cook as cook
-    from rsmm.engine.talent_values import list_talent_values
+    from rsmm.engine.talent_values import TYPE_BOOL, list_talent_values
 
     found = _find_item(item_id)
     if found is None:
@@ -134,14 +134,24 @@ def item_detail(item_id: str) -> dict:
     data = p.read_bytes()
     from rsmm.engine import item_modifier as IM
 
-    shadowed = {tv.label for tv in list_talent_values(data) if tv.is_overridden}
+    typed = list_talent_values(data)
+    shadowed = {tv.label for tv in typed if tv.is_overridden}
+    # On/off values (Unique, Sell By Sandman) are one byte in the file: say so,
+    # so the page shows a checkbox instead of a number it could set to 3.
+    switches = {tv.label for tv in typed if tv.type_code == TYPE_BOOL}
     meta = next((i for i in items() if i["id"] == _id), {})
     super_key = IM.super_text_key(data)
-    values = [{"label": label, "value": value, "shadowed": label in shadowed}
+    values = [{"label": label, "value": bool(value), "type": "bool",
+               "shadowed": label in shadowed} if label in switches
+              else {"label": label, "value": value, "shadowed": label in shadowed}
               for label, value in cook.list_value_fields(data)]
     parts, amounts = cook.item_numbers(data)
     have = {v["label"] for v in values}
-    values += [v for v in parts if v["label"] not in have]
+    # A number read by part carries no override flag of its own; the label
+    # scanner knows it (Gain_Passive_Heal's Passive Heal Ratio), and without it
+    # the page offers an edit the builder then refuses as shadowed.
+    values += [{**v, "shadowed": v.get("shadowed", False) or v["label"] in shadowed}
+               for v in parts if v["label"] not in have]
     # A card number worked out by a math part reads the same number its
     # effect does: say so, so the preview can show it (Dreamcatcher's 10%).
     via = {src["via"]: src["label"] for src in amounts.values()
@@ -1112,7 +1122,10 @@ def _item_edits(req: dict, icon_name: str, fields: dict) -> None:
     patches = []
     for row in req.get("values") or []:
         label = str(row.get("label") or "")
-        old, new = _num(row.get("old"), label), _num(row.get("new"), label)
+        old, new = row.get("old"), row.get("new")
+        if isinstance(old, bool) and isinstance(new, bool):
+            old, new = float(old), float(new)      # an on/off value: 1 or 0
+        old, new = _num(old, label), _num(new, label)
         if not label or old == new:
             continue
         patches.append([label, float(old), float(new), *([True] if row.get("shadowed")

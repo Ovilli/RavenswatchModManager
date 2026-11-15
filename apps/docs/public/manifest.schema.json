@@ -342,12 +342,13 @@
                 "base": {},
                 "borrow": {},
                 "description": {},
-                "dlc_owner": {},
                 "effects": {},
+                "frame": {},
                 "hide": {},
                 "id": {},
                 "kind": {},
                 "kit": {},
+                "materials": {},
                 "memoirs": {},
                 "model": {},
                 "mra": {},
@@ -360,6 +361,7 @@
                 "references": {},
                 "schema_version": {},
                 "skills": {},
+                "talents": {},
                 "transform": {},
                 "values": {},
                 "weapons": {}
@@ -677,12 +679,14 @@
                 "include": {},
                 "int_patches": {},
                 "kind": {},
+                "mode": {},
                 "on_hit": {},
                 "rebuild": {},
                 "rewires": {},
                 "scale": {},
                 "schema_version": {},
                 "stats": {},
+                "talents": {},
                 "union_patches": {},
                 "value_patches": {}
               },
@@ -718,6 +722,23 @@
           }
         ]
       }
+    },
+    "requires": {
+      "type": "object",
+      "description": "Oldest RSMM CLI / loader version this mod runs on.",
+      "properties": {
+        "cli": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Oldest CLI version (cli_version)."
+        },
+        "loader": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Oldest loader version."
+        }
+      },
+      "additionalProperties": false
     },
     "patch": {
       "type": "array",

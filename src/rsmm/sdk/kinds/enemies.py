@@ -120,7 +120,7 @@ def _tribe_of_ref(ref_path: str) -> str | None:
 
 # --------------------------------------------------------------------------- #
 # Class registry constants — confirmed via FUN_140229990 and the live Ghidra
-# session. Mirror the table in docs/_re/MOD_HOOKS.md.
+# session. Mirror the table in https://docs.rsmm.me/reverse-engineering/mod-hooks/.
 # --------------------------------------------------------------------------- #
 
 ENEMY_DEF_UID: Final[int] = 0x176DEBB7

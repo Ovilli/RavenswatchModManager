@@ -273,10 +273,10 @@ deliverable today.
 
 **Documentation tiers** (in place, refine):
 - **README.md** — landing, quickstart only.
-- **docs/MODDING.md** — recipe book, one section per content kind.
+- [Modding guide](/guides/modding/) — recipe book, one section per content kind.
 - **docs/SDK.md** — API reference, auto-generated.
-- **docs/INTERNALS.md** — engine RE notes, quarantined for the curious.
-- **docs/ROADMAP.md** — open work + version targets.
+- [Internals](/architecture/internals/) — engine RE notes, quarantined for the curious.
+- [Roadmap](/project/roadmap/) — open work + version targets.
 
 Modder reads README → succeeds with template → opens MODDING →
 graduates to SDK reference. Never forced to read INTERNALS.

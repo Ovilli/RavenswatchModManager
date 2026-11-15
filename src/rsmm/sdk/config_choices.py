@@ -69,6 +69,37 @@ def _item_catalog() -> list[dict[str, Any]]:
     return out
 
 
+def _talent_catalog() -> list[dict[str, Any]]:
+    """Every talent a talent ban can keep out of the offers, grouped by hero.
+
+    The bannable set (``engine.talent_bans.catalog``): shipped talents in the
+    starting pick and the level-up pool, named, and dealt today. Not ultimates,
+    their upgrades or the talents the game cut, so the picker cannot offer a
+    choice the ban would refuse. Ids are ``"<Hero>/<controller>"``, the ban's
+    own spelling.
+    """
+    from rsmm.engine import talent_bans
+
+    out: list[dict[str, Any]] = []
+    for t in talent_bans.catalog()[:MAX_OPTIONS]:
+        where = "starting pick" if t.pool == 0 else "level-up"
+        out.append({
+            "id": t.id,
+            "label": t.name,
+            "group": t.hero,
+            "icon": "",
+            "description": f"{_plain(t.description)} ({where})".strip(),
+            "attrs": {"hero": t.hero, "pool": where},
+        })
+    return out
+
+
+#: The game's card markup: #...@ highlights, &...~ scaling values, {N} slots.
+def _plain(text: str) -> str:
+    import re
+    return re.sub(r"\s+", " ", re.sub(r"[#@&~]", "", text or "")).strip()
+
+
 def _enemy_roster() -> list[dict[str, Any]]:
     """Every creature a camp selector can roll, grouped by the chapter it
     ships in.
@@ -243,6 +274,7 @@ def _fmod_folder(all_paths: list[str], root: str) -> list[dict[str, Any]]:
 #: name; `rsmm.sdk.config` validates against these keys.
 PROVIDERS: dict[str, Callable[..., list[dict[str, Any]]]] = {
     "item-catalog": _item_catalog,
+    "talent-catalog": _talent_catalog,
     "enemy-roster": _enemy_roster,
     "shop-items": _shop_items,
     "fmod-sounds": _fmod_sounds,

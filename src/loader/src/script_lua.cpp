@@ -29,6 +29,10 @@ extern "C" {
 #include "hook_items.h"
 #include "watchpoint.h"
 #include "hook_audio.h"
+#include "hook_camera.h"
+#include "hook_input.h"
+#include "hook_keybinds.h"
+#include "hook_ui_state.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -202,6 +206,159 @@ int lua_audio_targets(lua_State* L) {
     }
     audio_set_targets(paths);
     return 0;
+}
+
+// rsmm._internal.input_armed() -> bool
+//   True once the Input_Poll detour is live (hook_input.cpp).
+int lua_input_armed(lua_State* L) {
+    lua_pushboolean(L, input_armed());
+    return 1;
+}
+
+// rsmm._internal.input_wheel_totals() -> up, down
+//   Wheel notches counted since launch.
+int lua_input_wheel_totals(lua_State* L) {
+    std::uint64_t up = 0, down = 0;
+    input_wheel_totals(&up, &down);
+    lua_pushinteger(L, static_cast<lua_Integer>(up));
+    lua_pushinteger(L, static_cast<lua_Integer>(down));
+    return 2;
+}
+
+// rsmm._internal.input_drag_state() -> held, x, y, w, h, drags, dx, dy | nothing
+//   The middle drag (hook_input.cpp): button held, the game's cursor and client
+//   size, drags started since launch, total movement while held since launch.
+//   Returns nothing when the drag is not armed.
+int lua_input_drag_state(lua_State* L) {
+    InputDragState s{};
+    if (!input_drag_state(&s)) return 0;
+    lua_pushboolean(L, s.held);
+    lua_pushnumber(L, s.x);
+    lua_pushnumber(L, s.y);
+    lua_pushnumber(L, s.w);
+    lua_pushnumber(L, s.h);
+    lua_pushinteger(L, static_cast<lua_Integer>(s.drags));
+    lua_pushnumber(L, s.dx);
+    lua_pushnumber(L, s.dy);
+    return 8;
+}
+
+// rsmm._internal.input_look_set(on, hide) -> true | false
+//   Request mouse-look (hook_input.cpp): the game's cursor lock with the
+//   window centre written for it. The game thread applies it on its next poll.
+//   Returns the request id (integer), or false when it is not armed.
+int lua_input_look_set(lua_State* L) {
+    const bool on = lua_toboolean(L, 1) != 0;
+    const bool hide = lua_toboolean(L, 2) != 0;
+    const std::uint64_t id = input_look_request(on, hide);
+    if (id == 0) lua_pushboolean(L, 0);
+    else lua_pushinteger(L, static_cast<lua_Integer>(id));
+    return 1;
+}
+
+// rsmm._internal.input_look_refresh(menu_open, request_id)
+//   Keeps a mouse-look request alive and says whether a game menu is open
+//   (the lock pauses while it is). Ignored unless request_id is the current
+//   request (nil = no id, always applies).
+int lua_input_look_refresh(lua_State* L) {
+    const std::uint64_t id = lua_isinteger(L, 2) ? static_cast<std::uint64_t>(lua_tointeger(L, 2)) : 0;
+    input_look_refresh(lua_toboolean(L, 1) != 0, id);
+    return 0;
+}
+
+// rsmm._internal.input_look_state() -> requested, active, paused, hidden | nothing
+//   Nothing when mouse-look is not armed.
+int lua_input_look_state(lua_State* L) {
+    InputLookState s{};
+    if (!input_look_state(&s)) return 0;
+    lua_pushboolean(L, s.requested);
+    lua_pushboolean(L, s.active);
+    lua_pushboolean(L, s.paused);
+    lua_pushboolean(L, s.hidden);
+    return 4;
+}
+
+// rsmm._internal.keybind_add(id, label, kb, pad) -> index | nil, err
+//   Declares a key binding for the calling mod (hook_keybinds.cpp). index is
+//   0-based and stable for the session; re-declaring the same id returns it.
+int lua_keybind_add(lua_State* L) {
+    const char* id = luaL_checkstring(L, 1);
+    const char* label = luaL_checkstring(L, 2);
+    const lua_Integer kb = luaL_optinteger(L, 3, 0);
+    const lua_Integer pad = luaL_optinteger(L, 4, 0);
+    auto* m = current_from_state(L);
+    if (!m) {
+        lua_pushnil(L);
+        lua_pushstring(L, "no calling mod");
+        return 2;
+    }
+    if (kb < 0 || pad < 0 || kb > 0xff || pad > 0xff) {
+        lua_pushnil(L);
+        lua_pushstring(L, "key ids run 0-255");
+        return 2;
+    }
+    std::string err;
+    const int index = keybind_add(m->id, id, label, static_cast<std::uint32_t>(kb),
+                                  static_cast<std::uint32_t>(pad), &err);
+    if (index < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, err.c_str());
+        return 2;
+    }
+    lua_pushinteger(L, index);
+    return 1;
+}
+
+// rsmm._internal.keybind_keys(index) -> kb, pad | nil
+int lua_keybind_keys(lua_State* L) {
+    std::uint32_t kb = 0, pad = 0;
+    if (!keybind_keys(static_cast<int>(luaL_checkinteger(L, 1)), &kb, &pad)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, kb);
+    lua_pushinteger(L, pad);
+    return 2;
+}
+
+// rsmm._internal.keybinds_state() -> armed, registered, failed, open (declarations still taken)
+int lua_keybinds_state(lua_State* L) {
+    lua_pushboolean(L, keybinds_armed());
+    lua_pushboolean(L, keybinds_registered());
+    lua_pushboolean(L, keybinds_failed());
+    lua_pushboolean(L, keybinds_open());
+    return 4;
+}
+
+// rsmm._internal.camera_zoom_armed() -> bool
+int lua_camera_zoom_armed(lua_State* L) {
+    lua_pushboolean(L, camera_zoom_armed());
+    return 1;
+}
+
+// rsmm._internal.camera_zoom(step, seconds) -> bool
+//   Queue a blended zoom by `step` (eye-distance multiplier; < 1 moves in).
+int lua_camera_zoom(lua_State* L) {
+    const float step = static_cast<float>(luaL_checknumber(L, 1));
+    const float secs = static_cast<float>(luaL_optnumber(L, 2, 0.2));
+    lua_pushboolean(L, camera_zoom_by(step, secs));
+    return 1;
+}
+
+// rsmm._internal.camera_zoom_reset(seconds) -> bool
+int lua_camera_zoom_reset(lua_State* L) {
+    const float secs = static_cast<float>(luaL_optnumber(L, 1, 0.2));
+    lua_pushboolean(L, camera_zoom_reset(secs));
+    return 1;
+}
+
+// rsmm._internal.camera_zoom_factor() -> target, current
+int lua_camera_zoom_factor(lua_State* L) {
+    float target = 1.0f, current = 1.0f;
+    camera_zoom_factor(&target, &current);
+    lua_pushnumber(L, target);
+    lua_pushnumber(L, current);
+    return 2;
 }
 
 int lua_audio_status(lua_State* L) {
@@ -1703,6 +1860,44 @@ int lua_watch_status(lua_State* L) {
     return 1;
 }
 
+// rsmm._internal.ui_state_arm() -> armed, why
+//   Installs R.ui's component-runner detours on first use (hook_ui_state.h).
+int lua_ui_state_arm(lua_State* L) {
+    std::string why;
+    const bool ok = ui_state_arm(&why);
+    lua_pushboolean(L, ok);
+    if (ok) lua_pushnil(L); else lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+// rsmm._internal.ui_state_count(kind) -> open count, or nil when not armed
+//   kind: "menu" | "book" | "modal" | "loading" | "page"
+int lua_ui_state_count(lua_State* L) {
+    UiKind kind;
+    if (!ui_kind_from_name(luaL_checkstring(L, 1), &kind))
+        return luaL_argerror(L, 1, "kind is menu, book, modal, loading or page");
+    const int n = ui_state_count(kind);
+    if (n < 0) lua_pushnil(L); else lua_pushinteger(L, n);
+    return 1;
+}
+
+// rsmm._internal.ui_state_open() -> { {kind, class, ptr}, ... } oldest first
+int lua_ui_state_open(lua_State* L) {
+    const auto open = ui_state_open();
+    lua_createtable(L, static_cast<int>(open.size()), 0);
+    for (std::size_t i = 0; i < open.size(); ++i) {
+        lua_createtable(L, 0, 3);
+        lua_pushstring(L, ui_kind_name(open[i].kind));
+        lua_setfield(L, -2, "kind");
+        lua_pushstring(L, open[i].label);
+        lua_setfield(L, -2, "class");
+        lua_pushinteger(L, static_cast<lua_Integer>(open[i].ptr));
+        lua_setfield(L, -2, "ptr");
+        lua_rawseti(L, -2, static_cast<int>(i) + 1);
+    }
+    return 1;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -1764,7 +1959,7 @@ int lua_read_cstr(lua_State* L) {
 
 // rsmm.peek(addr [, size=8]) -> integer | nil   (size in {1,2,4,8})
 // Guarded raw read; nil on an unreadable address. Use to walk struct offsets
-// and pointer chains (e.g. the netcode role field) — see docs/_re/MULTIPLAYER.md.
+// and pointer chains (e.g. the netcode role field) — see https://docs.rsmm.me/reverse-engineering/multiplayer/.
 int lua_peek(lua_State* L) {
     auto addr = static_cast<std::uintptr_t>(luaL_checkinteger(L, 1));
     auto size = static_cast<int>(luaL_optinteger(L, 2, 8));
@@ -1993,6 +2188,19 @@ void register_api(lua_State* L) {
         { "audio_mute",              lua_audio_mute },
         { "audio_status",            lua_audio_status },
         { "audio_targets",           lua_audio_targets },
+        { "input_armed",             lua_input_armed },
+        { "input_wheel_totals",      lua_input_wheel_totals },
+        { "input_drag_state",        lua_input_drag_state },
+        { "input_look_set",          lua_input_look_set },
+        { "input_look_refresh",      lua_input_look_refresh },
+        { "input_look_state",        lua_input_look_state },
+        { "keybind_add",             lua_keybind_add },
+        { "keybind_keys",            lua_keybind_keys },
+        { "keybinds_state",          lua_keybinds_state },
+        { "camera_zoom_armed",       lua_camera_zoom_armed },
+        { "camera_zoom",             lua_camera_zoom },
+        { "camera_zoom_reset",       lua_camera_zoom_reset },
+        { "camera_zoom_factor",      lua_camera_zoom_factor },
         { "health_count",            lua_health_count },
         { "health_last_error",       lua_health_last_error },
         { "health_disable",          lua_health_disable },
@@ -2023,6 +2231,9 @@ void register_api(lua_State* L) {
         { "watch_rearm",             lua_watch_rearm },
         { "watch_drain",             lua_watch_drain },
         { "watch_status",            lua_watch_status },
+        { "ui_state_arm",            lua_ui_state_arm },
+        { "ui_state_count",          lua_ui_state_count },
+        { "ui_state_open",           lua_ui_state_open },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
@@ -2281,6 +2492,15 @@ void emit_locked(const std::string& name, PushPayload push_payload) {
 
 void script_emit_event(const std::string& name) {
     emit_locked(name, [](lua_State* L) { lua_newtable(L); });
+}
+
+bool script_try_emit_event_json(const std::string& name, const std::string& payload_json) {
+    // Recursive mutex: try_lock also succeeds when this thread already holds it,
+    // which is the same re-entry emit_locked allows.
+    std::unique_lock<std::recursive_mutex> g(g_mu, std::try_to_lock);
+    if (!g.owns_lock()) return false;
+    script_emit_event_json(name, payload_json);
+    return true;
 }
 
 void script_emit_event_json(const std::string& name, const std::string& payload_json) {

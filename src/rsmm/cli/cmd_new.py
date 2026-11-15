@@ -112,7 +112,7 @@ _USAGE = (
     "Pass --desc, --tags and --license and the new mod lints with no warnings.\n"
 )
 
-#: Where the SDK reference lives; the old `docs/MODDING.md` is a stub now.
+#: Where the SDK reference lives.
 _GUIDE_URL = "https://docs.rsmm.me/guides/modding/"
 
 #: Cap on how many search hits the interactive base picker prints at once.

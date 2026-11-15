@@ -31,7 +31,7 @@ write the value.
 The game's option system reads its initial values from
 `DarkTalesResources/ApplicationSettings.ot`, which is plain
 oCTextSaver text and already accepted by the `_root/` override
-mechanism (`docs/MODDING.md`).
+mechanism ([Modding guide](/guides/modding/)).
 
 1. Open the game's own `DarkTalesResources/ApplicationSettings.ot` (it ships
    uncooked beside the executable — plain text, no cipher).

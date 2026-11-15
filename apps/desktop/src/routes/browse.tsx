@@ -1,4 +1,9 @@
-import type { Collection, ModListItem } from '@rsmm/schemas';
+import {
+  type Collection,
+  type ModListItem,
+  hasPrivateOnlyTag,
+  isPrivateOnlyTag,
+} from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
@@ -28,6 +33,7 @@ import {
 } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { ModDetail } from '../components/mod-detail';
+import { PrivateGamesOnlyBadge } from '../components/private-games-only-badge';
 import { useToast } from '../components/toast';
 import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
 import {
@@ -311,7 +317,8 @@ function BrowsePage() {
                       active={tags.includes(name)}
                       onClick={() => toggleTag(name)}
                     >
-                      {name} <span className="text-ash">{count}</span>
+                      {isPrivateOnlyTag(name) ? t('Private games only') : name}{' '}
+                      <span className="text-ash">{count}</span>
                     </FilterChip>
                   ))}
                 </div>
@@ -642,11 +649,16 @@ function BrowsePage() {
                           }
                           onClick={(e) => {
                             const el = e.target as HTMLElement;
-                            if (el.closest('button, a, input, textarea, select, [role="switch"]'))
+                            if (
+                              el.closest(
+                                'button, a, input, textarea, select, [role="switch"], [role="tooltip"]',
+                              )
+                            )
                               return;
                             navigate({ to: '/mod/$slug', params: { slug: m.slug } });
                           }}
                           onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               navigate({ to: '/mod/$slug', params: { slug: m.slug } });
@@ -703,12 +715,16 @@ function BrowsePage() {
                               it and spilled out of the card. */}
                           <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
                             <div className="flex min-w-0 flex-wrap gap-1">
+                              {hasPrivateOnlyTag(m.tags) ? <PrivateGamesOnlyBadge /> : null}
                               {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
-                              {m.tags.slice(0, 2).map((t) => (
-                                <MonoTag key={t} tone="default">
-                                  {t}
-                                </MonoTag>
-                              ))}
+                              {m.tags
+                                .filter((tag) => !isPrivateOnlyTag(tag))
+                                .slice(0, 2)
+                                .map((t) => (
+                                  <MonoTag key={t} tone="default">
+                                    {t}
+                                  </MonoTag>
+                                ))}
                             </div>
                             <StatPill
                               className="shrink-0"
@@ -857,10 +873,12 @@ function ModRow({
       aria-label={m.author ? t('{name} by {author}', { name: m.name, author: m.author }) : m.name}
       onClick={(e) => {
         const el = e.target as HTMLElement;
-        if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
+        if (el.closest('button, a, input, textarea, select, [role="switch"], [role="tooltip"]'))
+          return;
         open();
       }}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           open();
@@ -892,6 +910,11 @@ function ModRow({
           {m.latestVersion ? ` · v${m.latestVersion}` : ''}
           {m.summary ? ` — ${m.summary}` : ''}
         </p>
+        {hasPrivateOnlyTag(m.tags) ? (
+          <div className="mt-1">
+            <PrivateGamesOnlyBadge />
+          </div>
+        ) : null}
       </div>
 
       {/* Category and rating are the two columns worth scanning down, so they

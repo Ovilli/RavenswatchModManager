@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <main className="relative flex min-h-[70vh] items-center justify-center overflow-hidden px-6">
+    <main className="container relative flex min-h-[70vh] items-center justify-center overflow-hidden px-6">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,hsl(var(--crimson)/0.12),transparent_50%)]" />
       <div className="relative mx-auto max-w-md text-center">
         <p className="font-mono text-7xl font-black tracking-tight text-gilt">404</p>

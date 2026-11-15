@@ -20,8 +20,30 @@ function isLocalhostUrl(url: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
 }
 
+/**
+ * `NEXT_PUBLIC_API_URL` as a usable URL, or undefined. A value set through the
+ * CLI can carry a trailing newline or quotes, and one that is not an http(s)
+ * URL at all made Better Auth throw "Invalid base URL" while prerendering,
+ * failing the whole production build (deploy, 2026-11-13). Such a value is
+ * treated as unset, so the fallbacks below apply.
+ */
+export function cleanApiUrl(raw: string | undefined): string | undefined {
+  const v = raw
+    ?.trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+  if (!v) return undefined;
+  try {
+    const u = new URL(v);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return undefined;
+    return v.replace(/\/+$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 export function getApiUrl(): string {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  const envUrl = cleanApiUrl(process.env.NEXT_PUBLIC_API_URL);
   // Browser context: ignore a localhost env override when the page
   // itself isn't loaded from localhost. The Vercel deploy historically
   // shipped with NEXT_PUBLIC_API_URL=http://localhost:3001 baked into

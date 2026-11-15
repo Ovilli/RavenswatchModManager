@@ -41,7 +41,7 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-xml-parser": ">=5.3.5",
+      "fast-xml-parser": ">=5.12.0",
       "smol-toml": "^1.9.0",
       "baseline-browser-mapping": ">=2.11.0",
       "sharp": "^0.35.5",
@@ -58,7 +58,7 @@
       "@babel/core@7": "^7.29.6",
       "postcss-selector-parser@6": "^7.1.6",
       "http-cache-semantics@4": "^4.3.0",
-      "seroval@1": "^1.6.3",
+      "seroval@1": "^1.6.11",
       "source-map-js@1": "^1.2.2",
       "katex": "^0.18.2",
       "undici@8": "^8.12.2",

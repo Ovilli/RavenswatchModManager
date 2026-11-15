@@ -1,13 +1,12 @@
 'use client';
 
-import { Badge, Spinner } from '@rsmm/ui';
+import { Spinner } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Edit2, ExternalLink, Loader2, PlusCircle } from 'lucide-react';
-import type { Route } from 'next';
+import { Loader2, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '../../lib/api';
 import { useSession } from '../../lib/auth-client';
-import { ModCover } from '../components/mod-cover';
+import { ListingCard } from '../components/listing-card';
 
 export default function MyModsPage() {
   const { data: session, isPending: sessionLoading } = useSession();
@@ -50,7 +49,7 @@ export default function MyModsPage() {
   }
 
   return (
-    <main className="container mx-auto max-w-5xl px-6 py-12">
+    <main className="container mx-auto px-6 py-12">
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-5xl text-parchment">My mods</h1>
@@ -86,62 +85,10 @@ export default function MyModsPage() {
           </Link>
         </div>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {list.data?.items.map((m) => (
             <li key={m.id}>
-              <div className="grimoire-card overflow-hidden">
-                {m.imageUrl ? (
-                  <div className="aspect-[16/9] w-full overflow-hidden bg-muted">
-                    <img
-                      src={m.imageUrl}
-                      alt={`${m.name} cover`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ) : (
-                  <ModCover seed={m.slug} name={m.name} className="aspect-[16/9] w-full" />
-                )}
-                <div className="space-y-3 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-lg font-semibold">{m.name}</h2>
-                      <p className="font-data text-xs text-muted-foreground">{m.slug}</p>
-                    </div>
-                    {m.category ? <Badge variant="outline">{m.category}</Badge> : null}
-                  </div>
-                  {m.summary ? (
-                    <p className="line-clamp-2 text-sm text-muted-foreground">{m.summary}</p>
-                  ) : null}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    {m.latestVersion ? (
-                      <span className="font-data">v{m.latestVersion}</span>
-                    ) : (
-                      <span className="text-amber-500">No version published yet</span>
-                    )}
-                    <span>
-                      {m.downloads.toLocaleString()} download{m.downloads === 1 ? '' : 's'}
-                    </span>
-                    <span>Updated {new Date(m.updatedAt).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Link
-                      href={`/my-mods/${m.slug}` as Route}
-                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-md bg-secondary px-3 py-2 text-sm hover:bg-secondary/80"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" /> Manage
-                    </Link>
-                    <Link
-                      href={`/registry/${m.slug}` as Route}
-                      className="inline-flex items-center justify-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
-                      title="View public page"
-                      aria-label={`View ${m.name} public page`}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              <ListingCard kind="mod" item={{ ...m, author: m.authorName }} mode="manage" />
             </li>
           ))}
         </ul>

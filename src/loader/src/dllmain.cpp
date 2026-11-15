@@ -31,6 +31,7 @@
 #include "hook_skins.h"
 #include "hook_skills.h"
 #include "hook_ui.h"
+#include "hook_ui_state.h"
 #include "hook_settings_menu.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
@@ -38,8 +39,12 @@
 #include "hook_levelload.h"
 #include "hook_levelbuild.h"
 #include "hook_gamevalues.h"
+#include "hook_input.h"
+#include "hook_keybinds.h"
+#include "hook_camera.h"
 #include "hook_events.h"
 #include "hook_netcode.h"
+#include "hook_online_gate.h"
 #include "hook_backend.h"
 #include "hook_audio.h"
 #include "script_lua.h"
@@ -133,13 +138,14 @@ static void loader_thread_cxx() {
         }
 
         for (const auto& m : L.mods()) {
-            if (!m.enabled) {
-                // Plain log, not a warning: disabling a mod is the user's choice.
-                // It used to be silent, which made "disabled" and "init.lua never
-                // ran" indistinguishable in the log.
-                L.log("[lua] " + m.id + " skipped (disabled in its manifest)");
-                continue;
-            }
+            // One line per mod, written after load_state() so it reports what
+            // actually happens (saved in-game toggles included), not manifest
+            // defaults. Plain log, not a warning: disabling is the user's
+            // choice. It used to be silent, which made "disabled" and
+            // "init.lua never ran" indistinguishable in the log.
+            L.log("mod " + m.id + " v" + m.version + " (" + m.root.filename().string() + ") " +
+                  (m.enabled ? "init" : "disabled"));
+            if (!m.enabled) continue;
             rsmm::script_run_mod_init(m.id, m.root);
         }
         // Lifecycle: "setup" fires after every mod's init.lua has run (so
@@ -165,6 +171,7 @@ static void loader_thread_cxx() {
         install_guarded("skins",   rsmm::install_skin_hooks);
         install_guarded("skills",  rsmm::install_skill_hooks);
         install_guarded("ui",      rsmm::install_ui_hooks);
+        install_guarded("ui-state", rsmm::install_ui_state_hooks);
         install_guarded("native-menu", rsmm::install_settings_menu_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
@@ -179,7 +186,11 @@ static void loader_thread_cxx() {
         // legacy per-state path until this arms; harmless.
         install_guarded("hero_capture", rsmm::install_hero_capture);
         install_guarded("game-values",  rsmm::install_gamevalue_capture);
+        install_guarded("input",        rsmm::install_input_hooks);
+        install_guarded("keybinds",     rsmm::install_keybind_hooks);   // after input
+        install_guarded("camera",       rsmm::install_camera_hooks);
         install_guarded("netcode",      rsmm::install_netcode_patches);
+        install_guarded("online-gate",  rsmm::install_online_gate);
         install_guarded("backend",      rsmm::install_backend_redirect);
         install_guarded("audio",        rsmm::install_audio_hooks);
 
@@ -333,6 +344,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
         }
         rsmm::script_emit_event("exit");
         rsmm::script_shutdown_all();
+        rsmm::input_look_shutdown();   // lock byte 0 before the detour is unmapped
         // Every detour lives in this DLL's .text, which is about to be
         // unmapped — retire them all, not just the two that used to be here.
         rsmm::remove_event_hooks();

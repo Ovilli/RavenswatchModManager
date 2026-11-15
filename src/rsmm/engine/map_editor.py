@@ -389,7 +389,8 @@ def _tile_entry(tile: str) -> dict | None:
         return None
     biome, name = tile.split("\\")[1], tile.rsplit("\\", 1)[-1].removesuffix(".tiledef.ot")
     return {"path": tile, "name": name, "biome": biome, "flags": list(td.kinds),
-            "width": td.width, "height": td.height, "weight": td.weight}
+            "width": td.width, "height": td.height,
+            "band": [td.band_lo, td.band_hi], "pick_weight": td.pick_weight}
 
 
 @functools.lru_cache(maxsize=4)

@@ -32,7 +32,7 @@ flowchart LR
 :::note[Why this is safe]
 The engine accepts any byte-compatible file at the encoded path — no
 checksum, signature, or embedded path. RSMM never patches `Ravenswatch.exe`
-and loads no DLL for asset mods, so no anti-tamper code path runs. Full
+and loads no DLL for asset mods. Full
 threat model: [Architecture overview](/architecture/overview/).
 :::
 

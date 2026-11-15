@@ -25,9 +25,9 @@ them like any other download.
 
 ### Can I get banned for using mods?
 
-RSMM doesn't change `Ravenswatch.exe` and doesn't try to get around anything that
-protects the game. Most mods only swap data files on your own computer, like
-pictures, numbers and text. Online, be considerate: don't bring mods that change
+RSMM never changes `Ravenswatch.exe` and doesn't unlock paid content. Most mods
+only swap data files on your own computer, like pictures, numbers and text. Lua
+mods also use the optional loader, which runs next to the game while you play. Online, be considerate: don't bring mods that change
 gameplay into strangers' games.
 
 ### Can I play co-op with mods?

@@ -162,17 +162,14 @@ def test_a_custom_hero_block_is_a_separate_extra_hero(tmp_path):
     assert got["block"] == "BeowulfEdit"
     text = (tmp_path / "copy" / "manifest.toml").read_text(encoding="utf-8")
     assert [b["id"] for b in modio.hero_blocks(text)] == ["BeowulfEdit"]
-    # A paid hero's copy says the author owns the DLC; a free one's does not, and an
-    # in-place edit needs neither.
-    paid = AE._save(_req(tmp_path, create=True, mod="m", meta={}, hero="Merlin", kind="hero",
-                         mode="custom", steps=[]))
-    free = AE._save(_req(tmp_path, create=True, mod="c", meta={}, hero="Carmilla", kind="hero",
-                         mode="custom", steps=[]))
-    inplace = AE._save(_req(tmp_path, create=True, mod="e", meta={}, hero="Merlin", kind="ability",
-                            steps=[]))
-    read = lambda g: (tmp_path / g["mod"] / "manifest.toml").read_text(encoding="utf-8")  # noqa: E731
-    assert "dlc_owner = true" in read(paid)
-    assert "dlc_owner" not in read(free) and "dlc_owner" not in read(inplace)
+    # A paid hero can't be copied, only edited in place; a free one copies normally.
+    with pytest.raises(ValueError, match="paid DLC hero"):
+        AE._save(_req(tmp_path, create=True, mod="m", meta={}, hero="Merlin", kind="hero",
+                      mode="custom", steps=[]))
+    AE._save(_req(tmp_path, create=True, mod="c", meta={}, hero="Carmilla", kind="hero",
+                  mode="custom", steps=[]))
+    AE._save(_req(tmp_path, create=True, mod="e", meta={}, hero="Merlin", kind="ability",
+                  steps=[]))
 
 
 @needs

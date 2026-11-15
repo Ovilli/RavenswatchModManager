@@ -7,7 +7,7 @@ import { Tabs, TabItem, Steps, Aside, LinkCard, CardGrid } from '@astrojs/starli
 
 Every example below is a complete mod. Copy the files into `mods/<id>/`, set
 `enabled = true`, and run `./rsmm apply`. Source lives in
-[`docs/ExampleMods/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/docs/ExampleMods).
+[`examples/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/examples).
 
 <Aside type="note">
 Examples ship `enabled = false` so they don't apply by accident. Flip it to
@@ -229,9 +229,9 @@ local exp = R.exp or { case = function() end, observe = function() end,
 
 - `ExampleEvents` — subscribe to in-game events (`enemy_killed`, `unlock_hero`, …) and count them.
 - `ExampleEngineCall` — call named engine functions via `R.engine.fn` / `R.engine.call`.
-- `ExampleSeedPin` — pin the run RNG seed via the `R._internal` escape-hatch + per-mod config (`R.config.get`).
+- `ExampleSeedPin` — pin the run RNG seed with `R.options` + per-mod config (`R.config.get`).
 - `ExampleSdkAll` — exercises the full SDK surface.
 - `ExampleCustomSkill` — relabels one of Aladdin's skills into a custom talent (visible on his level-up cards & Skill Menu). See [Custom skills](/guides/custom-skills/).
 - `HyperAggro` — a gameplay tweak mod.
 
-Browse them all in [`docs/ExampleMods/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/docs/ExampleMods).
+Browse them all in [`examples/`](https://github.com/Ovilli/RavenswatchModManager/tree/main/examples).

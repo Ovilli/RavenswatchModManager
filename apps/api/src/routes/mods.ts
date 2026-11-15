@@ -1,6 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
 import { getDb, schema } from '@rsmm/db';
 import {
+  PRIVATE_ONLY_TAG_ALIASES,
+  hasPrivateOnlyTag,
   modCategorySchema,
   modImagePresignSchema,
   modPatchSchema,
@@ -9,34 +11,40 @@ import {
   reportCreateSchema,
   reviewReplySchema,
   reviewUpsertSchema,
+  setPrivateOnlyTag,
 } from '@rsmm/schemas';
 import { and, asc, desc, eq, gte, ilike, notInArray, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
+import { coAuthorQuery, likeExact, pickCoAuthor } from '../co-author.js';
 import { isPgErrorCode } from '../db-errors.js';
 import { s3Configured, virusTotalConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import { canManageMod } from '../mod-access.js';
 import { notify, notifyReview, notifyReviewReply } from '../notify.js';
+import { preservePrivateOnlyTags, setStoredPrivateOnlyTag } from '../private-only.js';
 import { createRateLimiter } from '../rate-limit.js';
 import {
   RESET_SCAN_FIELDS,
   SERVABLE_STATUSES,
   enqueueScan,
   isServable,
+  labelIfGameplay,
   queueInfo,
   releaseVersion,
 } from '../scan-service.js';
 import { kickScanWorker } from '../scan-worker.js';
 import {
   deleteObject,
+  fetchPublicObject,
   modUploadKey,
   presignModImage,
   presignModUpload,
   remoteObjectExists,
 } from '../storage.js';
 import type { AppEnv } from '../types.js';
+import { MAX_VT_LARGE_BYTES } from '../virus-total.js';
 
 export const modsRouter = new Hono<AppEnv>();
 
@@ -101,6 +109,10 @@ const listQuerySchema = z.object({
     .optional()
     .transform((v) => (v === 'true' || v === '1' ? true : v === undefined ? undefined : false)),
   owner: z.string().optional(),
+  hidePrivateOnly: z
+    .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   sort: z.enum(['recent', 'popular', 'featured', 'rating']).default('recent'),
   // Time window for the 'popular' sort: rank by downloads within the last N
   // days instead of all time (a trending list). Ignored for other sorts.
@@ -140,6 +152,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
     category,
     featured,
     nsfw,
+    hidePrivateOnly,
     owner,
     sort,
     window,
@@ -174,6 +187,15 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       : undefined,
     featured === true ? eq(schema.mods.featured, true) : undefined,
     nsfw === false ? eq(schema.mods.nsfw, false) : undefined,
+    hidePrivateOnly
+      ? sql`not exists (
+          select 1 from unnest(${schema.mods.tags}) as private_tag(name)
+          where lower(btrim(private_tag.name)) in (${sql.join(
+            PRIVATE_ONLY_TAG_ALIASES.map((tag) => sql`${tag}`),
+            sql`, `,
+          )})
+        )`
+      : undefined,
     owner ? eq(schema.mods.ownerId, owner) : undefined,
   ].filter(Boolean);
 
@@ -216,6 +238,11 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       screenshots: schema.mods.screenshots,
       videos: schema.mods.videos,
       rating: schema.mods.rating,
+      ratingCount: sql<number>`(
+        select count(*)::int
+        from ${schema.modReviews}
+        where ${schema.modReviews.modId} = ${outerModId}
+      )`,
       tags: schema.mods.tags,
       featured: schema.mods.featured,
       nsfw: schema.mods.nsfw,
@@ -330,6 +357,7 @@ modsRouter.get('/', zValidator('query', listQuerySchema), async (c) => {
       screenshots: r.screenshots ?? [],
       videos: r.videos ?? [],
       rating: r.rating != null ? Number(r.rating) : null,
+      ratingCount: r.ratingCount,
       tags: r.tags ?? [],
       featured: r.featured,
       nsfw: r.nsfw,
@@ -422,6 +450,18 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
   const followerCount = followerRows.length;
   const isFollowing = viewer ? followerRows.some((f) => f.userId === viewer.id) : false;
 
+  // Co-authors, credited publicly beside "Created by" (name and handle are
+  // already public on each profile). Banned accounts are left out.
+  const coAuthors = await db
+    .select({
+      userId: schema.modAuthors.userId,
+      name: schema.users.name,
+      handle: schema.users.handle,
+    })
+    .from(schema.modAuthors)
+    .innerJoin(schema.users, eq(schema.users.id, schema.modAuthors.userId))
+    .where(and(eq(schema.modAuthors.modId, mod.id), eq(schema.users.banned, false)));
+
   return c.json({
     mod: {
       id: mod.id,
@@ -449,7 +489,9 @@ modsRouter.get('/:slug', zValidator('param', slugParamSchema), async (c) => {
       takedownReason: mod.takedownReason,
       isFollowing,
       isAuthor,
+      canEdit: canManage,
       followerCount,
+      coAuthors,
       dependencies:
         (servableVersions[0]?.manifestJson as { dependencies?: Record<string, string> } | undefined)
           ?.dependencies ?? undefined,
@@ -642,11 +684,17 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
         .where(eq(schema.mods.slug, body.slug))
         .for('update');
       const existing = lockedExisting[0];
-      // Any pre-existing row that isn't owned by the caller is off-limits —
-      // including rows with a null owner (seed/legacy data). Previously
-      // null-owner rows could be claimed and overwritten by any authenticated
-      // user. New slugs (existing === undefined) fall through and are created.
-      if (existing && existing.ownerId !== user.id) {
+      // A pre-existing row is open to its owner and its co-authors (the same
+      // rule as POST /:slug/versions: co-authors publish, so `rsmm publish`,
+      // the desktop app and /publish must let them too). A row with a null
+      // owner (seed/legacy data) stays off-limits: previously any
+      // authenticated user could claim and overwrite it. New slugs
+      // (existing === undefined) fall through and are created.
+      if (
+        existing &&
+        (existing.ownerId === null ||
+          (existing.ownerId !== user.id && !(await canManageMod(existing, user.id))))
+      ) {
         ownerConflict = true;
         // Throwing aborts the transaction; the catch below converts
         // this signal into a clean 403 instead of a 500.
@@ -663,7 +711,7 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
           license: body.manifest.license,
           repoUrl: body.manifest.repo_url,
           homepageUrl: body.manifest.homepage_url,
-          tags: body.manifest.tags,
+          tags: setPrivateOnlyTag(body.manifest.tags ?? [], hasPrivateOnlyTag(body.manifest.tags)),
           authorName: body.manifest.author,
           ownerId: user.id,
         })
@@ -676,15 +724,27 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
             license: body.manifest.license,
             repoUrl: body.manifest.repo_url,
             homepageUrl: body.manifest.homepage_url,
-            tags: body.manifest.tags,
+            // Publishing may add the protected label, never clear it. Evaluate
+            // the stored row inside the upsert to cover concurrent first uploads.
+            ...(body.manifest.tags !== undefined
+              ? { tags: preservePrivateOnlyTags(body.manifest.tags) }
+              : {}),
             authorName: body.manifest.author,
-            ownerId: user.id,
+            // No ownerId: an upload never changes who owns the mod. It used to
+            // set the uploader, which would hand the mod to a co-author.
             updatedAt: new Date(),
           },
+          // A slug that did not exist when locked but was created since (two
+          // first uploads racing) is only updated by its owner; otherwise no
+          // row comes back and the caller gets the owner conflict below.
+          ...(existing ? {} : { setWhere: eq(schema.mods.ownerId, user.id) }),
         })
         .returning();
       const mod = modRows[0];
-      if (!mod) throw new Error('failed to upsert mod');
+      if (!mod) {
+        ownerConflict = true;
+        throw new Error('owner conflict');
+      }
 
       // Idempotent: re-presigning the same (mod_id, version) tuple
       // refreshes the row instead of dying on the unique-key. Without
@@ -737,7 +797,10 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
     // belongs to a different user. Surface that as a 403 instead of
     // a 500 — `ownerConflict` is set inside the transaction body.
     if (ownerConflict) {
-      return c.json({ error: 'slug owned by another user' }, 403);
+      return c.json(
+        { error: 'slug owned by another user (ask its owner to add you as a co-author)' },
+        403,
+      );
     }
     if (versionPublished) {
       return c.json({ error: VERSION_PUBLISHED_ERROR }, 409);
@@ -755,8 +818,8 @@ modsRouter.post('/upload', zValidator('json', modUploadRequestSchema), async (c)
 });
 
 // ─────────────────────────────────────────────────────────────────────
-// Owner-scoped mod management routes. All require an authenticated
-// session and verify that `mod.ownerId === user.id` before mutating.
+// Authenticated mod management routes. Listing metadata and images also allow
+// RSMM admins; publishing, team membership, and deletion keep their own guards.
 // ─────────────────────────────────────────────────────────────────────
 
 const ownerLimiter = createRateLimiter({
@@ -796,6 +859,7 @@ modsRouter.post(
         sha256: schema.modVersions.sha256,
         modId: schema.mods.id,
         ownerId: schema.mods.ownerId,
+        slug: schema.mods.slug,
       })
       .from(schema.modVersions)
       .innerJoin(schema.mods, eq(schema.modVersions.modId, schema.mods.id))
@@ -817,6 +881,9 @@ modsRouter.post(
     // the version skipped so the client can proceed. Guarded by the sha we just
     // checked, so a re-presign in between can't inherit the verdict.
     if (!virusTotalConfigured()) {
+      // No malware scan, but the store still checks what the mod changes.
+      const bytes = await fetchPublicObject(row.assetUrl, MAX_VT_LARGE_BYTES);
+      await labelIfGameplay(row.slug, bytes?.bytes ?? null);
       await releaseVersion(versionId, row.sha256, 'skipped');
       return c.json({ ok: true, status: 'skipped', flagged: false, position: null });
     }
@@ -893,7 +960,9 @@ modsRouter.patch(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
+    if (!isAdmin(user.id) && !(await canManageMod(existing, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     // Build an update object that only sets keys the caller sent. The
     // `?? undefined` dance is needed because zod returns `null` for
@@ -901,22 +970,38 @@ modsRouter.patch(
     // persist to the DB.
     const updates: Partial<typeof schema.mods.$inferInsert> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
+    if (patch.author !== undefined) updates.authorName = patch.author;
     if (patch.summary !== undefined) updates.summary = patch.summary;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.license !== undefined) updates.license = patch.license;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.homepageUrl !== undefined) updates.homepageUrl = patch.homepageUrl;
     if (patch.category !== undefined) updates.category = patch.category;
-    if (patch.tags !== undefined) updates.tags = patch.tags;
+    if (
+      patch.tags !== undefined &&
+      hasPrivateOnlyTag(existing.tags) &&
+      !hasPrivateOnlyTag(patch.tags) &&
+      !isAdmin(user.id)
+    ) {
+      return c.json({ error: 'Only RSMM admins can remove the Private games only label.' }, 403);
+    }
     if (patch.imageUrl !== undefined) updates.imageUrl = patch.imageUrl;
     if (patch.screenshots !== undefined) updates.screenshots = patch.screenshots;
     if (patch.videos !== undefined) updates.videos = patch.videos;
     if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
-    if (patch.nsfw !== undefined) updates.nsfw = patch.nsfw;
 
     const rows = await db
       .update(schema.mods)
-      .set(updates)
+      .set({
+        ...updates,
+        ...(patch.tags !== undefined
+          ? {
+              tags: isAdmin(user.id)
+                ? setPrivateOnlyTag(patch.tags, hasPrivateOnlyTag(patch.tags))
+                : preservePrivateOnlyTags(patch.tags),
+            }
+          : {}),
+      })
       .where(eq(schema.mods.id, existing.id))
       .returning();
     return c.json({ mod: rows[0] });
@@ -938,7 +1023,9 @@ modsRouter.post(
 
     const existing = await db.query.mods.findFirst({ where: eq(schema.mods.slug, slug) });
     if (!existing) return c.json({ error: 'not found' }, 404);
-    if (!(await canManageMod(existing, user.id))) return c.json({ error: 'forbidden' }, 403);
+    if (!isAdmin(user.id) && !(await canManageMod(existing, user.id))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     const signed = await presignModImage({
       slug,
@@ -1012,7 +1099,12 @@ modsRouter.post(
 
       await db
         .update(schema.mods)
-        .set({ updatedAt: new Date() })
+        .set({
+          updatedAt: new Date(),
+          // A new release can declare the restriction without replacing the
+          // listing's ordinary tags or removing a previous restriction.
+          ...(hasPrivateOnlyTag(body.manifest.tags) ? { tags: setStoredPrivateOnlyTag(true) } : {}),
+        })
         .where(eq(schema.mods.id, existing.id));
 
       // Followers hear about it once it is downloadable: releaseVersion in
@@ -1140,8 +1232,31 @@ modsRouter.post(
     // Owner-only: co-authors can't grow the team.
     if (mod.ownerId !== user.id) return c.json({ error: 'forbidden' }, 403);
 
-    const target = await db.query.users.findFirst({ where: eq(schema.users.handle, handle) });
-    if (!target) return c.json({ error: 'no user with that handle' }, 404);
+    // A user id, a handle or a display name (see co-author.ts): many accounts have no
+    // handle, so a handle-only lookup could never add them.
+    const q = coAuthorQuery(handle);
+    const candidates = q
+      ? await db
+          .select({ id: schema.users.id, name: schema.users.name, handle: schema.users.handle })
+          .from(schema.users)
+          .where(
+            or(
+              eq(schema.users.id, q),
+              ilike(schema.users.handle, likeExact(q)),
+              ilike(schema.users.name, likeExact(q)),
+            ),
+          )
+          .limit(10)
+      : [];
+    const pick = pickCoAuthor(q, candidates);
+    if (pick.kind === 'ambiguous') {
+      return c.json(
+        { error: `${pick.count} users are called "${q}"; add them by their @handle instead` },
+        409,
+      );
+    }
+    if (pick.kind === 'none') return c.json({ error: `no user called "${q}"` }, 404);
+    const target = pick.user;
     if (target.id === mod.ownerId) return c.json({ error: 'owner is already an author' }, 400);
 
     await db

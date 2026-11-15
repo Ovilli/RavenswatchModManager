@@ -134,12 +134,11 @@ the 3rd integer arg (R8)**; RDX is dead at the call sites.
 Three instantiable manager variants exist (the base is abstract), vtables
 recovered via `ExportVftables.java` → `data/vftables.jsonl`:
 
-| Class | Slot[1] | Behavior |
-|-------|---------|----------|
-| `oIAdditionalContentManager` `0x140f3e288` | `0x1400c07a0` | `return 0;` — stub, always reject |
-| `oCNullAdditionalContentManager` `0x140f3e1e0` | `0x1400c07a0` | same stub (inherited) |
-| `oCLocalAdditionalContentManager` `0x140f3e578` | `FUN_140647440` | reads `char**` at `node+0x80`, prepends `\\?\`, `GetFileAttributesW` — file exists → 3 |
-| `oCSteamAdditionalContentManager` `0x140f8db00` | `FUN_140a2c600` | reads the u32 key at `node+0x3c`, `ISteamApps::BIsDLCEnabled` — owned → 3 |
+| Class | Behavior |
+|-------|----------|
+| `oIAdditionalContentManager` / `oCNullAdditionalContentManager` | stub, always reject |
+| `oCLocalAdditionalContentManager` | shows the pack when its entitlement file exists |
+| `oCSteamAdditionalContentManager` | shows the pack when the account owns it |
 
 A brand-new key fails both: Steam doesn't know the key, and `node+0x80` is NULL on
 the local path. **Verified at runtime** (Linux, GE-Proton10-34, Steam build): the
@@ -148,22 +147,16 @@ active filter is the Steam one, and a custom node logged `filter=0`.
 ### The filter detour (default-on)
 
 `hook_skins.cpp` MinHook-detours the grid filter so custom packs pass the gate as
-proper buttons. `hook_filter(mgr, node)` returns `3` when the node's key matches a
-registered pack and forwards every other node to the original, so vanilla DLC and
-skin slots keep their real ownership / file-existence checks.
+proper buttons. `hook_filter(mgr, node)` returns `3` only for a node the loader
+allocated itself (matched by pointer, never by pack key, so a mod can't claim a
+paid pack's key) and forwards every other node to the original, so vanilla DLC
+and skin slots keep their real ownership checks.
 `RSMM_SKIN_FORCE_SHOW` is retained only as a fallback diagnostic.
 
 **The filter address is read from the live vtable, not pattern-resolved.**
 `install_filter_hook(mgr)` reads `*(*(void**)mgr + 8)` — the actual slot the engine
 calls — and hooks that. Correct for whichever manager class the build constructs,
 and it needs no per-function signature.
-
-:::caution
-The `function_patterns.json` entries for `FUN_140a2c600` and `FUN_140647440` are
-**stale** — each resolves to a single *wrong* address and the recorded VA isn't
-among the matches. Do not `fn_resolve` these two until the patterns are
-regenerated; the vtable read sidesteps them entirely.
-:::
 
 ## Asset naming
 

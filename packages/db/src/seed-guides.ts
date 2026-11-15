@@ -177,8 +177,8 @@ async function main() {
 
   // Owner: the first configured admin, else the oldest user in the DB.
   const adminIds = (process.env.ADMIN_USER_IDS || '')
-    .split(',')
-    .map((s) => s.trim())
+    .split(/[\s,;]+/)
+    .map((s) => s.replace(/^["'`]+|["'`]+$/g, ''))
     .filter(Boolean);
   let ownerId = adminIds[0];
   if (!ownerId) {

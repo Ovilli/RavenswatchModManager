@@ -36,20 +36,10 @@ The first four are grind gates. They read counters the player earns and that
 live in `_Save/Profile_*.ob`. Opening them locally changes only which portraits
 your own client offers.
 
-The fifth is not a gate on progress, it is a gate on purchase. It resolves
-through the content manager's vftable slot 1:
-
-```text
-oIAdditionalContentManager::vftable     @ 0x140f3e288   slot[1] = stub, always reject
-oCNullAdditionalContentManager::vftable @ 0x140f3e1e0   same stub
-oCLocalAdditionalContentManager::vftable@ 0x140f3e578   FUN_140647440 — GetFileAttributesW
-oCSteamAdditionalContentManager::vftable@ 0x140f8db00   FUN_140a2c600 — ISteamApps::BIsDLCEnabled
-```
-
-On a Steam build `FUN_140a2c600` reads the u32 pack key at `node+0x3c` and asks
-`ISteamApps::BIsDLCEnabled` whether the account owns it. That symbol is left
-unnamed in `data/symbols.json` on purpose, so nothing in the SDK can resolve it
-by semantic name.
+The fifth is not a gate on progress, it is a gate on purchase: it asks the
+platform whether the account owns the pack. RSMM does not name it, hook it or
+document where it lives, and `tests/test_symbols.py` fails if a symbol for it
+is ever added.
 
 Heroes sold as content packs — Merlin (Merlin HeroPack), the Romeo & Juliet
 HeroPack roster — sit behind that fifth gate. Buy the pack and every mod here

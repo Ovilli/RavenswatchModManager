@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { checkChannels } from '../lib/channel-triggers';
 import { doctorStatus } from '../lib/doctor-status';
 import { TParts, useT } from '../lib/i18n-react';
-import { noteLoaderResult } from '../lib/loader-status';
 import { inTauri } from '../lib/platform';
 import {
   type DoctorCheck,
@@ -11,8 +11,6 @@ import {
   type UpdateLoaderResult,
   applyMods,
   doctor,
-  updateCli,
-  updateLoader,
   updatePatternDb,
 } from '../lib/rsmm';
 import { oncePerLaunch } from '../lib/session-cache';
@@ -107,19 +105,11 @@ export function SetupBanner() {
       // Refresh the loader's function-pattern DB first (rolling pattern-db
       // release) so doctor grades the freshly-planted copy, not a stale one.
       // Offline / fetch failures are non-fatal — doctor still runs.
-      const updates = await oncePerLaunch(
-        'setup-updates',
-        async () => {
-          await updatePatternDb().catch(() => null);
-          // Not awaited: a CLI download must not hold up doctor; it takes
-          // effect on the next launch anyway.
-          void updateCli().catch(() => null);
-          const planted = await updateLoader().catch(() => null);
-          noteLoaderResult(planted);
-          return planted;
-        },
-        force,
-      );
+      await oncePerLaunch('setup-updates', () => updatePatternDb().catch(() => null), force);
+      // The loader and CLI channels are checked by channel-triggers (at start, on
+      // focus, before a launch), not here, so doctor never waits on a download.
+      // This only picks up the result for the banner below.
+      void checkChannels(force ? 'manual' : 'start').then((r) => setLoaderUpdate(r.loader));
       // Then the loader DLL + Lua SDK (rolling `loader` release). Both are
       // plain files in the game directory, so a loader or SDK fix reaches
       // users here rather than through a desktop release + reinstall. The
@@ -129,7 +119,6 @@ export function SetupBanner() {
       // Keep the result: a landed update needs a game restart to take
       // effect, and a blocked one needs the game closed. Still non-fatal —
       // a transport failure must not stop doctor from running.
-      setLoaderUpdate(updates);
       setResult(await doctorStatus(force));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from functools import cache
 
 from . import cooked
 
@@ -138,6 +139,48 @@ def place_new_components(raw: bytes, first_new: int,
         return raw
     cf.sections[-1].payload = _render_vector(off, trailer, out)
     return cooked.emit(cf)
+
+
+def group_class_runs(raw: bytes) -> bytes:
+    """``raw`` with its WHOLE component vector in the shipped layout: one
+    contiguous run per class, runs in class-table order, names in order within
+    a run (every one of the 4,769 shipped entities).
+
+    For a file written from nothing (a hero from scratch), where
+    :func:`place_new_components` cannot help: it keeps every id before
+    ``first_new`` where it is, and such a file is built over many writes, so
+    its ids were placed against a layout that was itself still growing. Jack's
+    main entity came out with 23 of its 25 classes split, its 66 ability and
+    talent states in 66 separate runs. Order inside the vector decides only
+    instantiation order (references are by GUID; the override merge skips by
+    GUID), so regrouping a file's own components changes nothing else."""
+    from . import entity_graph as EG
+    cf = cooked.parse(raw)
+    trailer = cf.sections[-1].payload
+    off, ids = component_vector(trailer)
+    _count, directory = _directory(cf)
+    names = {c.index - 1: c.name for c in EG.parse(raw).components}
+    out = sorted(ids, key=lambda i: (directory[i], names.get(i, "")))
+    if out == ids:
+        return raw
+    cf.sections[-1].payload = _render_vector(off, trailer, out)
+    return cooked.emit(cf)
+
+
+def class_runs_split(raw: bytes) -> list[str]:
+    """Class names whose components sit in more than one run of the vector."""
+    cf = cooked.parse(raw)
+    _off, ids = component_vector(cf.sections[-1].payload)
+    _count, directory = _directory(cf)
+    seen, split, prev = set(), set(), None
+    for i in ids:
+        c = directory[i]
+        if c != prev:
+            if c in seen:
+                split.add(c)
+            seen.add(c)
+        prev = c
+    return sorted(cf.classes[c].name for c in split)
 
 
 def validate_layout(cf: cooked.CookedFile) -> int:
@@ -366,17 +409,32 @@ class _Accessors:
         numeric = [(n, t) for t, n in seen.items() if t != 2]
         return max(numeric)[1] if numeric else (2 if seen else None)
 
-    def resolve(self, guid: bytes) -> tuple[bytes, int]:
-        """(accessor, type) to read ``guid`` with, or raise."""
+    def resolve(self, guid: bytes, prefer: int | None = None) -> tuple[bytes, int]:
+        """(accessor, type) to read ``guid`` with, or raise. ``prefer``: the
+        type the slot being pointed already holds; when this file reads the
+        class with that type too, that read wins (a count slot holding an int
+        stays an int read even once a lent button brings float reads of the
+        same class: Blood Wolf's pet spread, 2026-11-14)."""
         if guid in self.by_target:
             return self.by_target[guid].most_common(1)[0][0]
         cls = self.cls_of.get(guid)
-        pairs = self.by_class.get(cls)
+        pairs = self.by_class.get(cls) or _shipped_accessors().get(cls)
         if not pairs:
             raise EntityAppendError(
                 f"no value picker in this file reads a {cls} — cannot choose "
                 f"an accessor for it")
+        if prefer is not None and prefer not in {t for _acc, t in pairs} \
+                and prefer == self.value_type(guid):
+            # this file never reads the class with the slot's (and the
+            # target's own) type; a shipped read of that type tells the accessor
+            shipped = {pt: n for pt, n in (_shipped_accessors().get(cls) or {}).items()
+                       if pt[1] == prefer}
+            if shipped:
+                return max(shipped.items(), key=lambda kv: kv[1])[0]
         types = {t for _acc, t in pairs}
+        if len(types) > 1 and prefer in types:
+            same = {pt: n for pt, n in pairs.items() if pt[1] == prefer}
+            return max(same.items(), key=lambda kv: kv[1])[0]
         if len(types) > 1:
             want = self.value_type(guid)
             pairs = {pt: n for pt, n in pairs.items() if pt[1] == want}
@@ -385,6 +443,29 @@ class _Accessors:
                     f"no value picker in this file reads a {cls} of type {want}")
             return max(pairs.items(), key=lambda kv: kv[1])[0]
         return pairs.most_common(1)[0][0]
+
+
+#: Files whose value reads teach the accessor of a class a file has never read
+#: (a hero written from scratch starts with no value operation): the shared
+#: bases and the heroes the kit takes its layouts from. An accessor is fixed
+#: per class and value type, so any shipped read of the class tells it.
+_ACCESSOR_SOURCES = ("Character_Common/Character_Common", "Heroes/Hero_Common/Hero_Common",
+                     "Heroes/Hero_SunWukong/Hero_SunWukong", "Heroes/Hero_Piper/Hero_Piper")
+
+
+@cache
+def _shipped_accessors() -> dict:
+    from collections import Counter
+
+    from . import corpus
+    out: dict[str, Counter] = {}
+    for ref in _ACCESSOR_SOURCES:
+        raw = corpus.read(f"EntitySettings/{ref}.entity.ot.EntitySettingsResource.gen")
+        if raw is None:
+            continue
+        for cls, c in _Accessors(cooked.parse(raw)).by_class.items():
+            out.setdefault(cls, Counter()).update(c)
+    return out
 
 
 def format_slot_at(buf: bytes, picker_begin: int, acc: _Accessors) -> int | None:
@@ -463,7 +544,7 @@ def fix_accessor(buf: bytes, label_end: int, old_target: bytes, new_target: byte
         new_type = acc.value_type(new_target)
         if new_type is None or new_type == acc.value_type(old_target):
             return buf
-    accessor, vtype = acc.resolve(new_target)
+    accessor, vtype = acc.resolve(new_target, prefer=cur_type)
     # union layout from `off`: accessor, BEGIN, class, type, sub-type, value
     if vtype != cur_type and buf[off + 20:off + 24] != bytes(4):
         # A sourced picker's inline number is dead, but refuse to reinterpret a

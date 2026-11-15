@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How RSMM applies mods without fighting anti-tamper — the threat model and design.
+description: How RSMM applies mods without modifying the game executable — the threat model and design.
 ---
 
 :::note
@@ -16,11 +16,11 @@ Two goals, in priority order:
 
 1. **Don't break the game.** Mod application must be deterministic and
    fully reversible.
-2. **Don't fight anti-tamper.** Ravenswatch.exe has a protector. Asset mods
-   never touch the running game: they replace files at install time, so no
-   anti-tamper code path runs. Only Lua mods need the optional loader, which
-   hooks the game at function entries (see
-   [Anti-tamper protector](/reverse-engineering/protector/)).
+2. **Stay out of the game's way.** `Ravenswatch.exe` is never modified. Asset
+   mods never touch the running game: they replace data files at install time.
+   Only Lua mods need the optional loader, which hooks a small set of game
+   functions in memory (see
+   [Loader compatibility](/reverse-engineering/loader-compatibility/)).
 3. **Treat a downloaded mod as hostile input.** A mod archive comes from
    a third party over the network. It must not be able to write outside
    `mods/`, delete anything, ship an executable, or exhaust the disk.
@@ -79,8 +79,8 @@ flowchart LR
     G["./rsmm restore --all"] -->|"restore from .bak"| E
 ```
 
-No DLL is loaded into the game process. No engine API is hooked. No
-anti-tamper code path runs. Removing the manager is `--restore-all`.
+No DLL is loaded into the game process and no engine function is hooked.
+Removing the manager is `--restore-all`.
 
 ## Mod format
 
@@ -165,7 +165,7 @@ a native-styled mod list. Path forward:
    `oCDtEntityCpnt3DBookControllerSettings` and 74 other classes.
 4. Inject a "Mods" tab entry; route the click event back into either an
    external manager or (further out) a DLL we re-introduce once we have
-   a viable injection path that survives anti-tamper.
+   a stable way to run code in the game.
 
 See `FINDINGS.md` for the full reverse-engineering record.
 
@@ -174,8 +174,3 @@ See `FINDINGS.md` for the full reverse-engineering record.
 - `src/loader/` — winhttp.dll proxy + MinHook + Lua 5.4. This is the runtime for
   Lua-scripted mods, installed with `rsmm install-loader` and updated with
   `rsmm update-loader`. Asset-only mods do not need it.
-- `layer/` — Vulkan implicit layer that surfaces an ImGui overlay
-  without in-process hooks. Parked: it builds, but pressure-vessel strips
-  `VK_LAYER_PATH` so the user must drop the manifest into
-  `~/.local/share/vulkan/implicit_layer.d/`. Gated by `RSMM_OVERLAY=1`
-  via `enable_environment` in the layer manifest.

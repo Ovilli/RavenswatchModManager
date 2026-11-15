@@ -217,6 +217,9 @@ end
 function R.on(event, cb)
     assert(type(event) == "string", "R.on: event must be string")
     assert(type(cb) == "function",  "R.on: cb must be function")
+    -- R.ui's detours are armed at loader startup; this is a harmless no-op
+    -- that only reports a failed arm to the log.
+    if (event == "ui:open" or event == "ui:close") and R.ui then R.ui.arm() end
     return _add_sub{ event = event, cb = cb }
 end
 
@@ -2018,12 +2021,10 @@ R.hero = {}
 -- save — Profile_*.ob is checksummed and Steam Cloud would fight an edit
 -- anyway, so a runtime hook is the durable answer.
 --
--- OWNERSHIP GATES ARE OPENED TOO (a choice, 2026-10-13). The
--- oe::AdditionalContentGameUnlockConditionData::vftable[14] body is
--- `return *(int*)(this+0x28) == 3` (AdditionalContentGate_IsUnlocked). It is
--- hooked with the progression gates, so EVERY ownership-gated hero opens for
--- anyone running this mod, paid DLC included (Merlin). Nothing is written to the
--- save. The mod's README warns about it.
+-- OWNERSHIP GATES ARE NEVER OPENED. The same vftable slot on
+-- oe::AdditionalContentGameUnlockConditionData is the paid-content (DLC)
+-- check; it has no symbol in data/symbols.json on purpose, and
+-- tests/test_symbols.py keeps it that way. Paid heroes stay paid.
 --
 -- Returns the number of gates opened (0 if the symbols are unavailable on this
 -- build, which fails closed rather than guessing at an address).
@@ -2032,7 +2033,6 @@ local PROGRESSION_GATES = {
     "HeroRankLock_IsUnlocked",
     "HeroStoryUnlock_IsUnlocked",
     "ChallengeUnlock_IsUnlocked",
-    "AdditionalContentGate_IsUnlocked",
 }
 local _gates_hooked = false
 
@@ -2052,8 +2052,8 @@ function R.hero.unlock_progression()
             if ok and (slot ~= nil or why == "already-hooked") then n = n + 1 end
         end
     end
-    R.log(("[rsmm.hero] progression gates opened: %d/%d "
-           .. "(ownership gates included)"):format(n, #PROGRESSION_GATES))
+    R.log(("[rsmm.hero] progression gates opened: %d/%d"):format(
+        n, #PROGRESSION_GATES))
     return n
 end
 
@@ -2715,7 +2715,7 @@ end
 -- per-entity replication setup (Netcode_EntityReplSetup) decides master vs
 -- client; the role lives behind the net manager. Offsets are SDK-internal — a
 -- mod only sees (netmgr, role) and may return a number to overwrite role
--- (DANGEROUS: a live netcode write, can crash). See docs/_re/MULTIPLAYER.md.
+-- (DANGEROUS: a live netcode write, can crash). See https://docs.rsmm.me/reverse-engineering/multiplayer/.
 --
 --   R.net.on_repl_setup(function(netmgr, role, ctx)
 --       R.log("role", role)        -- 1 = client/non-master
@@ -2822,12 +2822,12 @@ local function _options_obj_valid(obj)
 end
 
 local _opt_bad_warned = false
-local function _opt_value_addr(name)
-    local o = _OPT[name]
-    if not o then return nil, nil end
-    if not _va_ok("R.options") then return nil, nil end
+-- The validated GameOptions object, or nil. Shared with R.input, which reads
+-- the key-binding slots of the same registry.
+local function _options_obj()
+    if not _va_ok("R.options") then return nil end
     local base = I.module_base()
-    if not base or base == 0 then return nil, nil end
+    if not base or base == 0 then return nil end
     local obj = I.read_u64(base + (OPT_GAMEOPTIONS_VA - OPT_IMG_BASE))
     if not _ptr_plausible(obj) or not _options_obj_valid(obj) then
         if not _opt_bad_warned then
@@ -2835,8 +2835,16 @@ local function _opt_value_addr(name)
             R.log("[rsmm.options] g_GameOptions pointer failed validation — "
                 .. "refusing reads/writes this run (regenerate the symbol map)")
         end
-        return nil, nil
+        return nil
     end
+    return obj
+end
+
+local function _opt_value_addr(name)
+    local o = _OPT[name]
+    if not o then return nil, nil end
+    local obj = _options_obj()
+    if not obj then return nil, nil end
     return obj + o.off + OPT_VALUE_OFF, o.type
 end
 
@@ -3089,6 +3097,19 @@ do
     if ok and type(x) == "table" then R.watch = x end
 end
 
+-- what the UI is showing ----------------------------------------------------
+--
+-- Lives in rsmm/ui.lua. Tracks the game's UI controllers (menus, the book,
+-- modals, the loading screen) from the engine's component runners; armed on
+-- first use.
+--
+--   R.ui.is_open("menu") / .count(kind) / .open() / .any()
+--   R.on("ui:open" | "ui:close", function(e) e.kind, e.class, e.ptr end)
+do
+    local ok, x = _submodule_fn("ui", { R = R, I = I })
+    if ok and type(x) == "table" then R.ui = x end
+end
+
 -- chapter timer -----------------------------------------------------------
 --
 -- Lives in rsmm/daynight.lua. Reads and sets the day/night cycle every
@@ -3193,6 +3214,38 @@ end
 do
     local ok, x = _submodule_fn("camera", { R = R, I = I })
     if ok and type(x) == "table" then R.camera = x end
+end
+
+-- mouse wheel and middle drag ------------------------------------------
+--
+-- Lives in rsmm/input.lua. Wheel notches counted on the frame they happen by
+-- the loader's input-poll hook, delivered as the "input:wheel" event; the
+-- middle-button drag from the same hook as "input:drag" (start / move / end);
+-- plus a read of the player's key bindings to tell whether the wheel or the
+-- middle button is free in a run.
+--
+--   R.input.on_wheel(function(steps, ev) ... end)   -- steps > 0 = wheel up
+--   R.input.wheel_free()                            -- false, action when rebound
+--   R.input.on_drag(function(phase, dx, dy, ev) ... end)
+--   R.input.middle_free()                           -- false, action when bound
+--   R.input.mouse_look(true, { hide = true })       -- the game's cursor lock, window centre set
+--   R.input.on_mouse_move(function(dx, dy, ev) ... end)
+do
+    local ok, x = _submodule_fn("input", { R = R, I = I, options_obj = _options_obj })
+    if ok and type(x) == "table" then R.input = x end
+end
+
+-- keybinds ----------------------------------------------------------------
+--
+-- Lives in rsmm/keybinds.lua. A mod's own key bindings as rows in the game's
+-- Settings > Controls tabs, saved in GameSettings.ini, with the game's
+-- duplicate-key rule; presses come from the loader's input-poll hook.
+--
+--   local zin = R.input.keybinds.add{ id = "ZoomIn", label = "Zoom in", key = 92 }
+--   R.input.keybinds.on_press(zin, function(n, ev) ... end)
+do
+    local ok, x = _submodule_fn("keybinds", { R = R, I = I })
+    if ok and type(x) == "table" and R.input then R.input.keybinds = x end
 end
 
 -- player identity -------------------------------------------------------
@@ -3504,7 +3557,7 @@ local function _warn_unimpl(api)
     if _warned[api] then return end
     _warned[api] = true
     R.log("[rsmm." .. api .. "] NOT IMPLEMENTED yet — calls are recorded but "
-        .. "have no in-game effect. Track: docs/_re/HOOKPOINTS.md")
+        .. "have no in-game effect. Track: https://docs.rsmm.me/reverse-engineering/hookpoints/")
 end
 
 -- scaling: R.scaling.set("enemy_damage", function(act) return ({1,1.5,2})[act] end)
@@ -4002,6 +4055,76 @@ function R.debug.components(entity, label)
             tostring(idx), tostring(cls), tostring(nm)))
     end
     return out
+end
+
+-- Watch the hero's live components whose settings name matches `pattern`
+-- (a Lua pattern; e.g. "Ability" or "Attack Ability") and log every byte of
+-- their instance bytes [opts.from (0), +opts.len (0x60)) that changes, polled on
+-- the main thread every `opts.every` s (default 0.05). Which parts wake up
+-- when a button is pressed (state, clip selector, animatic, timers) shows in
+-- the log as their bytes flip (`opts.baseline` = N also logs each one's first
+-- N bytes at the start). Read-only, page-guarded: never writes, never
+-- calls the engine. Written for the from-scratch hero whose buttons froze
+-- (2026-11-08). Returns a stop() function; `opts.seconds` stops it itself.
+function R.debug.watch_components(pattern, opts)
+    opts = opts or {}
+    local len, every = opts.len or 0x60, opts.every or 0.05
+    local from = opts.from or 0                 -- watch [from, from+len)
+    local label = opts.label or ("watch " .. tostring(pattern))
+    local ctrl = R.entity and R.entity.hero and R.entity.hero()
+    local entity = (type(ctrl) == "number" and ctrl ~= 0) and I.read_u64(ctrl + 0x08) or nil
+    if not _ptr_plausible(entity) or R.rtti.name(entity) ~= "oCEntity" then
+        R.log(string.format("[rsmm.debug] %s: no hero entity yet", label))
+        return nil
+    end
+    local arr, n = I.read_u64(entity + 0x190), I.read_u32(entity + 0x198)
+    if not _ptr_plausible(arr) or type(n) ~= "number" or n == 0 or n > 8192 then
+        R.log(string.format("[rsmm.debug] %s: no component array", label))
+        return nil
+    end
+    local watched = {}
+    for pos = 0, n - 1 do
+        local inst = I.read_u64(arr + pos * 8)
+        local settings = _ptr_plausible(inst) and I.read_u64(inst + 0x10) or nil
+        local sp = _ptr_plausible(settings) and I.read_u64(settings + 0xe8) or nil
+        local nm = _ptr_plausible(sp) and I.read_cstr and I.read_cstr(sp, 160) or nil
+        if nm and nm:find(pattern) then
+            local snap = {}
+            for o = from, from + len - 1 do snap[o] = I.read_u8(inst + o) end
+            watched[#watched + 1] = { inst = inst, name = nm, cls = R.rtti.name(settings) or "?", snap = snap }
+        end
+    end
+    R.log(string.format("[rsmm.debug] %s: %d of %d components match", label, #watched, n))
+    for _, w in ipairs(watched) do
+        local base = ""
+        if opts.baseline then
+            local hex = {}
+            for o = from, from + math.min(len, opts.baseline) - 1 do hex[#hex + 1] = string.format("%02x", w.snap[o] or 0) end
+            base = " | " .. table.concat(hex)
+        end
+        R.log(string.format("[rsmm.debug] %s   0x%x %s | %s%s", label, w.inst, w.cls, w.name, base))
+    end
+    local t0, handle = os.clock(), nil
+    handle = R.schedule.every_main(every, function()
+        for _, w in ipairs(watched) do
+            local diffs = {}
+            for o = from, from + len - 1 do
+                local b = I.read_u8(w.inst + o)
+                if b ~= nil and b ~= w.snap[o] then
+                    diffs[#diffs + 1] = string.format("+%02x:%02x>%02x", o, w.snap[o] or 0, b)
+                    w.snap[o] = b
+                end
+            end
+            if #diffs > 0 then
+                R.log(string.format("[rsmm.debug] %s t=%.2f %s: %s", label, os.clock() - t0,
+                    w.name, table.concat(diffs, " ", 1, math.min(#diffs, 24))))
+            end
+        end
+        if opts.seconds and os.clock() - t0 > opts.seconds and handle then
+            R.schedule.cancel(handle)
+        end
+    end)
+    return function() if handle then R.schedule.cancel(handle) end end
 end
 
 -- Scan every pointer field of `obj` (0..max_off) for objects that hold a

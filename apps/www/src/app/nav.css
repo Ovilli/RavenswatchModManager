@@ -1,0 +1,17 @@
+.site-header {
+  isolation: isolate;
+}
+
+/* Fade only the backdrop layer; navigation and open menus stay crisp. */
+.site-header::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 -28px;
+  pointer-events: none;
+  background: hsl(var(--background) / 0.88);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent 100%);
+}

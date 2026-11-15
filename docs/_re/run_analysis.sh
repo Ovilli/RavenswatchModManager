@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Run Ghidra headless analyzer on Ravenswatch.exe, then dump xrefs.
-# Output: re/out/xrefs.json
+# Output: $RSMM_OUT/xrefs.json
 set -e
 
-GHIDRA=~/Documents/Programming/ghidra_11.3_PUBLIC
-PROJECT_DIR=~/Documents/Programming/RavenswatchModManager/re/project
+GHIDRA=${GHIDRA_HOME:?set GHIDRA_HOME to your Ghidra install}
+RE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$RE/project"
+SCRIPT_DIR="$RE/scripts"
+export RSMM_OUT="$RE/out"
+
 PROJECT_NAME=RSMM
-EXE=/home/ovilli/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ravenswatch/Ravenswatch.exe
-SCRIPT_DIR=~/Documents/Programming/RavenswatchModManager/re/scripts
-export RSMM_OUT=~/Documents/Programming/RavenswatchModManager/re/out
+EXE=${RAVENSWATCH_EXE:?set RAVENSWATCH_EXE to the path of Ravenswatch.exe}
 
 mkdir -p "$PROJECT_DIR" "$RSMM_OUT"
 

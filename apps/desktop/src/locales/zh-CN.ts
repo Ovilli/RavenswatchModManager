@@ -48,6 +48,9 @@ export const zhCN: Record<string, string> = {
   Activate: '设为当前',
   Add: '添加',
   'Add mod': '添加模组',
+  'Private games only': '仅限私人游戏',
+  'This mod can only be used in solo and private multiplayer games because it may give an unfair advantage.':
+    '此模组仅可用于单人和私人多人游戏，因为它可能带来不公平的优势。',
   'Add to profile': '添加到方案',
   'Add {n} from disk': '从磁盘添加 {n} 个',
   'Added 1 mod from disk to this profile': '已从磁盘添加 1 个模组到此方案',
@@ -328,8 +331,8 @@ export const zhCN: Record<string, string> = {
     '无法连接索引——仅显示本地已安装的数据。',
   Info: '信息',
   Inspect: '检查',
-  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see docs/RE_NOTES.md.':
-    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 docs/RE_NOTES.md。',
+  'Inspect cooked Ravenswatch assets. Per-class schema reversal in progress — see https://docs.rsmm.me/reverse-engineering/notes/.':
+    '检查已烘焙的 Ravenswatch 资源。各类结构的逆向仍在进行中——参见 https://docs.rsmm.me/reverse-engineering/notes/。',
   'Inspect cooked file': '检查烘焙文件',
   Inspecting: '正在检查',
   Install: '安装',
@@ -386,8 +389,29 @@ export const zhCN: Record<string, string> = {
   'CLI v{version} downloaded — restart the app to use it.':
     'CLI v{version} 已下载 — 重启应用后生效。',
   'CLI v{n}': 'CLI v{n}',
-  'CLI v{version} · update channel': 'CLI v{version} · 更新通道',
-  'CLI v{version} · bundled': 'CLI v{version} · 内置',
+  'CLI {source}': 'CLI {source}',
+  'v{version} - update channel': 'v{version} - 更新通道',
+  'v{version} - embedded': 'v{version} - 内置',
+  'Game loader': '游戏加载器',
+  'Checking for a new {what}…': '正在检查新的{what}…',
+  'Downloading {what} - {size}': '正在下载{what} - {size}',
+  'CLI{version} downloaded - restart the app to use it.': 'CLI{version} 已下载 - 重启应用后生效。',
+  'Game loader{version} installed - restart Ravenswatch to pick it up.':
+    '游戏加载器{version} 已安装 - 重启 Ravenswatch 后生效。',
+  '{what} update failed: {reason}': '{what}更新失败：{reason}',
+  'no answer from the CLI': 'CLI 没有响应',
+  'unknown error': '未知错误',
+  none: '无',
+  'Restart now': '立即重启',
+  'Not while the game is launching': '游戏启动期间不可用',
+  'Waiting for the game loader update to finish before launching vanilla…':
+    '正在等待游戏加载器更新完成，然后启动原版…',
+  'Skipped at launch - the game started without these mods:':
+    '启动时已跳过 - 游戏启动时未加载这些模组：',
+  '{id} was skipped: {reason}': '{id} 已被跳过：{reason}',
+  'no answer after {seconds} s - launching with the current build':
+    '{seconds} 秒内无响应 - 使用当前版本启动',
+  dev: '开发版',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
   'Loader updated to v{version} — restart Ravenswatch to pick it up.':
@@ -851,8 +875,8 @@ export const zhCN: Record<string, string> = {
   list: '列表',
   live: '实时',
   load: '加载序号',
-  'loader v{version}': '加载器 v{version}',
-  'cli v{version}': 'cli v{version}',
+  'loader {state}': '加载器 {state}',
+  'cli {source}': 'cli {source}',
   locked: '已锁定',
   'max {value}': '最大 {value}',
   'min {value}': '最小 {value}',

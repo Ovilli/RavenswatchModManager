@@ -79,11 +79,14 @@ def test_a_talent_that_already_runs_modifiers_keeps_them(beowulf):
 
 
 def test_ultimates_are_refused_with_a_reason(wukong):
+    """An ultimate card has no rarity: a number that differs by rarity is
+    refused (only the Common one would ever show); one flat number is not."""
     graph = EG.parse(wukong)
     ultimate = next(c.name[len("Skill Controller "):] for c in graph.components
                     if c.name.startswith("Skill Controller Ultimate"))
     with pytest.raises(TA.AddStatError, match="no state|no per-rarity"):
-        TA.add_stat(wukong, talent=ultimate, stat="CD reduce trait", values=0.1)
+        TA.add_stat(wukong, talent=ultimate, stat="CD reduce trait",
+                    values=[0.1, 0.2, 0.3, 0.4])
 
 
 def test_unknown_talent_and_stat_are_refused(wukong):

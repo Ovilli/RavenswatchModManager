@@ -232,7 +232,8 @@ def _emit(handler, doc: dict) -> bytes:
     return handler.encode_container(json.dumps(doc).encode("utf-8"))
 
 
-def clone_material(donor_cooked: bytes, textures: dict[str, str]) -> bytes:
+def clone_material(donor_cooked: bytes, textures: dict[str, str],
+                   scopes: dict[str, str] | None = None) -> bytes:
     """Clone a material, repointing texture references.
 
     ``textures`` maps an existing reference in the donor to its replacement,
@@ -240,15 +241,38 @@ def clone_material(donor_cooked: bytes, textures: dict[str, str]) -> bytes:
     silently doing nothing — a typo'd texture slot otherwise ships a material
     still pointing at the donor's art, which looks like the custom texture
     "not applying" and is miserable to diagnose in-game.
+
+    ``scopes`` maps an OLD reference to the cooked root its replacement lives
+    under ("3D", "samples", "FX" ...). Each texture param stores that root as
+    a length-prefixed string just before the reference (the tail of the
+    preceding literal); a hero texture is "3D", the engine's shared
+    ``Textures\\NoNormal.png`` is "samples" (Character_Grey.mat.ot uses it).
     """
     handler, doc = _refs_doc("oCMaterial", donor_cooked)
     have = set(doc.get("asset_refs") or [])
-    missing = [k for k in textures if k not in have]
+    missing = [k for k in [*textures, *(scopes or {})] if k not in have]
     if missing:
         raise PropCookError(
             f"material donor has no reference {missing!r}; it uses: "
             f"{sorted(have)}"
         )
+    for i, ref in enumerate(doc["asset_refs"]):
+        if not scopes or ref not in scopes:
+            continue
+        lit = bytes.fromhex(doc["_literals"][i])
+        for n in range(1, 32):
+            if len(lit) >= 4 + n and int.from_bytes(lit[-4 - n:-n], "little") == n \
+                    and lit[-n:].isascii() and lit[-n:].decode().isalnum():
+                break
+        else:
+            raise PropCookError(f"material: no root string before {ref!r}")
+        new = scopes[ref].encode()
+        doc["_literals"][i] = (lit[:-4 - n] + len(new).to_bytes(4, "little") + new).hex()
+        # The root sits in the same section as the reference after it, and the
+        # encoder sizes sections from each reference's length change only:
+        # count the root's change as the reference's, or the section is cut
+        # short by exactly that much (measured: "3D" -> "samples" lost 5 bytes).
+        doc["_container"]["ref_orig_lens"][i] -= len(new) - n
     doc["asset_refs"] = [textures.get(r, r) for r in doc["asset_refs"]]
     return _emit(handler, doc)
 

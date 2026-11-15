@@ -704,7 +704,8 @@ def _item(mod_root: Path, f: dict) -> tuple[str, dict, dict]:
         new = vp.get("new") if isinstance(vp, dict) else vp[2]
         if label not in values:
             raise EditorError(f"{base} has no value {label!r} any more")
-        E["values"][label] = new
+        # An on/off value is a checkbox on the page: hand it back as one.
+        E["values"][label] = bool(new) if values[label].get("type") == "bool" else new
     for modifier, stat in (f.get("stats") or {}).items():
         if modifier not in mods:
             raise EditorError(f"{base} has no effect {modifier!r}")

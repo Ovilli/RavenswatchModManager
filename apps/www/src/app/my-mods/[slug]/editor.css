@@ -1,0 +1,101 @@
+/* Let sticky navigation follow the full editor instead of the viewport-height
+   body established by the global reset. */
+body:has(.mod-editor) {
+  height: auto;
+}
+
+body:has(.mod-editor) > .site-header {
+  background: hsl(var(--background));
+  backdrop-filter: none;
+}
+
+/* Match the public mod detail page's Alegreya headings and reading scale. */
+.mod-editor {
+  --editor-muted: hsl(32 17% 68%);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.mod-editor h1 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(30px, 3vw, 40px);
+  font-weight: 700;
+  line-height: 1.08;
+}
+
+.mod-editor .mod-name-input {
+  height: auto;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.mod-editor h2 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.mod-editor h3 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.mod-editor p:not(.font-data) {
+  max-width: 72ch;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.mod-editor p.text-xs {
+  font-size: 14px;
+}
+
+.mod-editor :is(input, select, label),
+.mod-editor nav[aria-label="Mod sections"] a {
+  font-size: 16px;
+}
+
+.mod-editor .text-muted-foreground {
+  color: var(--editor-muted);
+}
+
+.mod-editor-sections > section + section,
+.mod-editor #listing > section + section {
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 32px;
+}
+
+body:has(.listing-save-bar) {
+  padding-bottom: calc(var(--listing-save-bar-height, 96px) + 24px);
+}
+
+.listing-save-bar {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 45;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-1));
+  padding-block: 16px max(16px, env(safe-area-inset-bottom));
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.listing-save-bar-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+}
+
+@media (min-width: 768px) {
+  .listing-save-bar-content {
+    margin-left: 232px;
+  }
+}

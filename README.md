@@ -136,7 +136,7 @@ appears on the site.
 <td><b><a href="https://docs.rsmm.me/getting-started/first-mod/">Your first mod</a></b><br>A step-by-step walkthrough</td>
 <td><b><a href="https://docs.rsmm.me/guides/modding/">Modding guide</a></b><br>Every manifest field</td>
 <td><b><a href="https://docs.rsmm.me/guides/sdk/">Lua SDK</a></b><br>Scripting gameplay</td>
-<td><b><a href="docs/ExampleMods">Example mods</a></b><br>Working mods to copy</td>
+<td><b><a href="examples">Example mods</a></b><br>Working mods to copy</td>
 </tr>
 </table>
 
@@ -193,11 +193,36 @@ src/rsmm/     CLI and modding SDK (Python)
 src/loader/   Lua loader DLL (C++)
 apps/         desktop app (Tauri), website (Next.js), API (Hono), docs (Starlight)
 packages/     shared TypeScript packages
-docs/         example mods
+examples/     example mods
+docs/         generated API reference and raw reverse-engineering notes
 data/         engine symbol map and generated asset data
 ```
 
 </details>
+
+## For the Ravenswatch developers
+
+RSMM is a fan project and we want it to be a good neighbour to the game. Here is
+exactly what it touches:
+
+- **Data files.** Mods replace cooked asset files in the game folder. Each original
+  is backed up first, and **Launch Modded** puts every original back when the game
+  closes. `rsmm restore --all` or Steam's *Verify integrity of game files* returns a
+  clean install at any time.
+- **The optional Lua loader.** A `winhttp.dll` placed next to the game that hooks
+  game functions in memory so Lua mods can react to gameplay. It never writes to
+  `Ravenswatch.exe` on disk, and it is only installed when a player asks for it.
+- **Nothing that is paid for.** Paid content stays behind its ownership check:
+  RSMM does not unlock DLC heroes or outfits, and won't accept mods that do.
+- **Online.** Our docs ask players to use gameplay-changing mods only with people
+  who have agreed to them, and `rsmm modpack` tells a group which of their mods
+  everyone needs and which only change what one player sees.
+
+If anything here causes you a problem, or you'd rather we did something
+differently, email [contact@rsmm.me](mailto:contact@rsmm.me) or
+[open an issue](https://github.com/Ovilli/RavenswatchModManager/issues). We will
+follow any modding guidelines you publish, and takedown requests are handled as
+described on [rsmm.me/dmca](https://rsmm.me/dmca).
 
 ## Support
 
@@ -209,9 +234,10 @@ RSMM is free and open source. If you'd like to support it:
 
 <sub>MIT licensed, see [LICENSE](LICENSE). The loader includes MinHook, Lua 5.4, nlohmann/json and
 toml++, and the app bundles open-source fonts and frameworks; their licenses are in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). RSMM does not modify
-`Ravenswatch.exe` or bypass anti-cheat, contains no game assets, and requires a legitimate copy
-of the game. Not affiliated with Passtech Games or Nacon. Logo by Arch.</sub>
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). RSMM never writes to `Ravenswatch.exe`,
+contains no game assets, and requires a legitimate copy of the game. The optional Lua loader
+hooks game functions in memory while the game runs. Not affiliated with Passtech Games or Nacon.
+Logo by Arch.</sub>
 
 ## Contributors
 

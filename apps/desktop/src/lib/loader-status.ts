@@ -21,5 +21,25 @@ export function loaderStatus(fresh = false): Promise<UpdateLoaderResult | null> 
 
 /** Record the outcome of a real update so the next reader needs no check. */
 export function noteLoaderResult(result: UpdateLoaderResult | null): void {
-  if (result) prime(KEY, result);
+  if (!result) return;
+  prime(KEY, result);
+  latest = result;
+  for (const fn of listeners) fn();
+}
+
+let latest: UpdateLoaderResult | null = null;
+const listeners = new Set<() => void>();
+
+/** The newest result noted this session, or null before any real update ran. */
+export function getNotedLoaderResult(): UpdateLoaderResult | null {
+  return latest;
+}
+
+/** Notified whenever a loader update or check lands, so a screen that read the
+ *  status at mount (the footer, Settings) can show the new version. */
+export function subscribeLoaderResult(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
