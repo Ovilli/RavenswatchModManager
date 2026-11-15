@@ -1073,6 +1073,39 @@
    }
   },
   {
+   "name": "BookMenu_SetModeState",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1403f9580",
+   "status": "ok",
+   "signature": "void(StateMachine* sm, State* new_state, void*, void*)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*",
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "Static RE 2026-11-14 on b9c3642884a8 (R.ui RE pass, Q1); proven in game 2026-11-14 (title screen = mode 4, main-menu book, tab switches, Settings > Credits, run start, pause Settings, score book, quit; each transition fired one ui:open/ui:close). BookMenu (BM, vftable 0x140f35588) runs a mode state machine at BM+0x68 = {thunk, handler qword at BM+0x70, int data at BM+0x78}. Modes: 0 main-menu book (handler FUN_1403dae70), 1 Settings opened from pause (FUN_1403db370), 2 Score (FUN_1403db490), 3 end Credits (FUN_1403db520), 4 closed/empty (LAB_1403db5b0), 5 unknown handler. Book showing = mode 0..3. Every BookMenu mode change goes through this setter (10 callers, all BookMenu: RootGs main-menu enter, LobbyGs enter/slot 22, InGameMenuGs_OnLeave, the pause Settings, score and credits openers, Back). `sm` is BM+0x68, so BM = sm - 0x68. It calls the old handler with phase 1 and the new one with phase 0. R.ui detours it, reads BookMenu_GetMode before and after the original, and emits ui:close/ui:open kind=book with `which` on a change. The only start that bypasses it is BookMenuUiController_OnShow (FUN_1403d9da0), which starts the machine in mode 4 at boot."
+  },
+  {
+   "name": "BookMenu_GetMode",
+   "kind": "function",
+   "category": "ui",
+   "raw": "FUN_1403da8d0",
+   "status": "ok",
+   "signature": "int(BookMenu* bm)",
+   "cabi": {
+    "ret": "int",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "Static RE 2026-11-14 on b9c3642884a8 (R.ui RE pass, Q1); proven in game 2026-11-14 (title screen = mode 4, main-menu book, tab switches, Settings > Credits, run start, pause Settings, score book, quit; each transition fired one ui:open/ui:close). BookMenu (BM, vftable 0x140f35588) runs a mode state machine at BM+0x68 = {thunk, handler qword at BM+0x70, int data at BM+0x78}. Modes: 0 main-menu book (handler FUN_1403dae70), 1 Settings opened from pause (FUN_1403db370), 2 Score (FUN_1403db490), 3 end Credits (FUN_1403db520), 4 closed/empty (LAB_1403db5b0), 5 unknown handler. Book showing = mode 0..3. Pure: reads bm+0x70 (handler) and bm+0x78 (data) and returns the index above (5 = unknown handler). Only call it on a pointer verified as a BookMenu (vftable check + readable), since the engine owns the deref."
+  },
+  {
    "name": "EntityEventTrigger_Fire",
    "kind": "function",
    "category": "skill",

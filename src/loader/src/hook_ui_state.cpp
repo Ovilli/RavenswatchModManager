@@ -21,6 +21,7 @@
 #include "mem_safe.h"
 #include "script_lua.h"
 #include "symbols.gen.h"
+#include "symbols_api.gen.h"   // GENERATED: engine:: typed accessors
 
 namespace rsmm {
 namespace {
@@ -42,13 +43,13 @@ struct UiClass {
 // skipped, not fatal.
 UiClass g_classes[] = {
     {"oCDtEntityCpntEscapeGameMenuUiController",     "EscapeGameMenu",    UiKind::Menu, 0},
-    {"oCDtEntityCpntMainMenuUiController",           "MainMenu",          UiKind::Menu, 0},
+    {"oCDtEntityCpntMainMenuUiController",           "MainMenu",          UiKind::Root, 0},
     {"oCDtEntityCpntSelectionMenuUiController",      "SelectionMenu",     UiKind::Menu, 0},
     {"oCDtEntityCpntSandmanMenuUiController",        "SandmanMenu",       UiKind::Menu, 0},
     {"oe::dt::InventoryMenuUiControllerEntityCpnt",  "InventoryMenu",     UiKind::Menu, 0},
     {"oe::dt::MagicMirrorMenuUiControllerEntityCpnt", "MagicMirrorMenu",  UiKind::Menu, 0},
     {"oe::dt::SocialOptionsMenuUiControllerEntityCpnt", "SocialOptionsMenu", UiKind::Menu, 0},
-    {"oCDtEntityCpntBookMenuUiController",           "BookMenu",          UiKind::Book, 0},
+    {"oCDtEntityCpntBookMenuUiController",           "BookMenu",          UiKind::Root, 0},
     {"oCEntityCpntModalUiController",                "Modal",             UiKind::Modal, 0},
     {"oe::dt::EULAModalUiControllerEntityCpnt",      "EULAModal",         UiKind::Modal, 0},
     {"oe::dt::MultiplayerModalUiControllerEntityCpnt", "MultiplayerModal", UiKind::Modal, 0},
@@ -86,6 +87,18 @@ std::size_t g_vft_count = 0;
 using Run_t = void (*)(void*);
 Run_t g_real_activate = nullptr;
 Run_t g_real_deactivate = nullptr;
+
+using SetModeState_t = void (*)(void*, void*, void*, void*);
+SetModeState_t g_real_set_mode = nullptr;
+
+// BookMenu's mode state machine sits at BM+0x68; the page fields are b9c3
+// offsets (static RE 2026-11-14): current page BM+0x1e0, and a page's open
+// child (Credits under Settings) at page+0xd8.
+constexpr std::uintptr_t kBmStateOff = 0x68;
+constexpr std::size_t kBmReadSize = 0x80;      // covers the state machine
+constexpr std::uintptr_t kBmPageOff = 0x1e0;
+constexpr std::uintptr_t kPageChildOff = 0xd8;
+constexpr int kMaxChildDepth = 8;
 
 std::mutex g_arm_mu;
 std::atomic<bool> g_armed{false};
@@ -183,6 +196,7 @@ struct Pending {
     bool open;
     std::uintptr_t ptr;
     const UiClass* cls;
+    const char* which = nullptr;   // book events only: "main", "settings", ...
 };
 
 std::mutex g_mu;                  // guards g_open, g_pending
@@ -192,6 +206,9 @@ std::vector<Pending> g_pending;   // events waiting for the outermost runner
 // component, because a UI controller is often activated inside a non-UI
 // component's activation (a state's listeners), whose runner does not match.
 std::atomic<bool> g_dirty{false};
+
+// The BookMenu class entry (kind Root), set at arm time; null until then.
+const UiClass* g_book_cls = nullptr;
 
 thread_local int t_depth = 0;     // runner nesting on this thread
 
@@ -237,7 +254,13 @@ void record(void* cpnt, const UiClass* cls) {
 }
 
 std::string payload(const Pending& e) {
-    char buf[224];
+    char buf[256];
+    if (e.which) {   // a book event: the controller is BookMenu, the kind is "book"
+        std::snprintf(buf, sizeof(buf),
+                      "{\"kind\":\"book\",\"class\":\"%s\",\"ptr\":%llu,\"which\":\"%s\"}",
+                      e.cls->label, static_cast<unsigned long long>(e.ptr), e.which);
+        return buf;
+    }
     std::snprintf(buf, sizeof(buf),
                   "{\"kind\":\"%s\",\"class\":\"%s\",\"ptr\":%llu}",
                   ui_kind_name(e.cls->kind), e.cls->label,
@@ -279,6 +302,62 @@ void hook_deactivate(void* cpnt) {
     if (t_depth == 0 && g_dirty.load(std::memory_order_acquire)) flush();
 }
 
+// ---- the book's mode ---------------------------------------------------------
+
+// A BookMenu the engine can be asked about: readable and carrying BookMenu's
+// vftable. Checked before every GetMode call, which derefs the pointer itself.
+bool bm_valid(std::uintptr_t bm) {
+    if (!g_book_cls || !g_book_cls->vft || bm == 0) return false;
+    std::uintptr_t vft = 0;
+    return mem_readable(reinterpret_cast<const void*>(bm), kBmReadSize) &&
+           mem_load(bm, &vft) && vft == g_book_cls->vft;
+}
+
+// 0..5 via BookMenu_GetMode (5 = unknown handler); -1 when bm is not a valid
+// BookMenu or the symbol did not resolve.
+int bm_mode(std::uintptr_t bm) {
+    if (!bm_valid(bm)) return -1;
+    auto fn = engine::BookMenu_GetMode();
+    if (!fn) return -1;
+    const int m = fn(reinterpret_cast<void*>(bm));
+    return (m < 0 || m > 5) ? 5 : m;
+}
+
+// The tracked BookMenu, or 0. g_mu is held only for the copy.
+std::uintptr_t tracked_bm() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    for (const auto& t : g_open)
+        if (t.cls == g_book_cls) return t.ptr;
+    return 0;
+}
+
+// Detour on BookMenu_SetModeState(sm, new_state, a, b): sm = BM+0x68. Every
+// book mode change comes through here; the mode is read before and after the
+// original and a change queues ui:close (old book) / ui:open (new book).
+void hook_set_mode(void* sm, void* st, void* a, void* b) {
+    const std::uintptr_t bm = sm ? reinterpret_cast<std::uintptr_t>(sm) - kBmStateOff : 0;
+    const bool ours = bm_valid(bm);
+    const int before = ours ? bm_mode(bm) : -1;
+    ++t_depth;
+    g_real_set_mode(sm, st, a, b);
+    --t_depth;
+    if (ours) {
+        const int after = bm_mode(bm);
+        if (before != after) {
+            std::lock_guard<std::mutex> lk(g_mu);
+            if (const char* w = ui_book_mode_name(before)) {
+                g_pending.push_back({false, bm, g_book_cls, w});
+                g_dirty.store(true, std::memory_order_release);
+            }
+            if (const char* w = ui_book_mode_name(after)) {
+                g_pending.push_back({true, bm, g_book_cls, w});
+                g_dirty.store(true, std::memory_order_release);
+            }
+        }
+    }
+    if (t_depth == 0 && g_dirty.load(std::memory_order_acquire)) flush();
+}
+
 // Drop tracked controllers that are gone or no longer active (destroyed
 // without a deactivate, or a missed transition). Each one queues its ui:close,
 // emitted by the next outermost runner: prune runs inside Lua calls that hold
@@ -302,7 +381,18 @@ const char* ui_kind_name(UiKind kind) {
         case UiKind::Modal: return "modal";
         case UiKind::Loading: return "loading";
         case UiKind::Page: return "page";
+        case UiKind::Root: return "root";
         default: return nullptr;
+    }
+}
+
+const char* ui_book_mode_name(int mode) {
+    switch (mode) {
+        case 0: return "main";
+        case 1: return "settings";
+        case 2: return "score";
+        case 3: return "credits";
+        default: return nullptr;   // 4 closed, 5 unknown
     }
 }
 
@@ -371,6 +461,17 @@ bool ui_state_arm(std::string* why) {
         hook_remove(act_va);
         return fail("could not hook EntityComponent_RunDeactivate", true);
     }
+    for (auto& c : g_classes)
+        if (c.vft && std::strcmp(c.label, "BookMenu") == 0) g_book_cls = &c;
+    if (!g_book_cls) {
+        Loader::get().log_warn("[ui-state] BookMenu class not found: book events unavailable");
+    } else if (!hook_install("ui-state", "BookMenu_SetModeState",
+                             Sym::BookMenu_SetModeState_Pattern,
+                             reinterpret_cast<void*>(&hook_set_mode),
+                             reinterpret_cast<void**>(&g_real_set_mode))) {
+        Loader::get().log_warn("[ui-state] could not hook BookMenu_SetModeState: "
+                               "book ui:open/ui:close unavailable");
+    }
     g_armed.store(true, std::memory_order_release);
     Loader::get().log("[ui-state] armed: " + std::to_string(g_vft_count) + " UI classes (" +
                       found + ") -> R.ui, R.on('ui:open'/'ui:close')");
@@ -384,8 +485,51 @@ bool install_ui_state_hooks() {
     return ui_state_arm();
 }
 
+int ui_state_book_mode() {
+    if (!ui_state_armed()) return -1;
+    return bm_mode(tracked_bm());
+}
+
+const char* ui_state_page() {
+    if (!ui_state_armed()) return nullptr;
+    const std::uintptr_t bm = tracked_bm();
+    const int mode = bm_mode(bm);
+    if (mode < 0 || mode > 3) return nullptr;
+    std::uintptr_t cur = 0;
+    if (!mem_load(bm + kBmPageOff, &cur) || cur == 0) return nullptr;
+    int depth = 0;
+    for (; depth < kMaxChildDepth; ++depth) {
+        std::uintptr_t next = 0;
+        if (!mem_load(cur + kPageChildOff, &next) || next == 0) break;
+        cur = next;
+    }
+    std::uintptr_t vft = 0;
+    if (!mem_load(cur, &vft)) return nullptr;
+    const UiClass* cls = nullptr;
+    for (std::size_t i = 0; i < g_vft_count; ++i)
+        if (g_vfts[i] == vft && g_vft_class[i]->kind == UiKind::Page) cls = g_vft_class[i];
+    if (!cls) return nullptr;
+    // Credits is the credits book itself (mode 3), or a TutoCompendium page
+    // opened as a child of another page (under Settings); the Tuto TAB is a
+    // top-level page (depth 0) of the same class.
+    if (mode == 3) return "CreditsPage";
+    if (depth >= 1 && std::strcmp(cls->rtti, "oe::dt::TutoCompendiumPageEntityCpnt") == 0)
+        return "CreditsPage";
+    return cls->label;
+}
+
 int ui_state_count(UiKind kind) {
     if (!ui_state_armed()) return -1;
+    if (kind == UiKind::Book) {
+        // No BookMenu yet (early boot, before it activates): no book is shown.
+        const std::uintptr_t bm = tracked_bm();
+        if (bm == 0) return 0;
+        const int m = bm_mode(bm);
+        // Unreadable mode (GetMode unresolved) or an unknown handler (5): the
+        // book's visibility is unknown, which is not "closed". Only 4 is.
+        if (m < 0 || m == 5) return kUiCountUnknown;
+        return (m == 4) ? 0 : 1;
+    }
     std::lock_guard<std::mutex> lk(g_mu);
     prune_locked();
     int n = 0;

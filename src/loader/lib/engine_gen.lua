@@ -14,6 +14,8 @@ return {
   ["BookController_ResolveTabs"] = { pattern = "BookController_ResolveTabs", offset = 0x0, sig = "vp" },
   ["BookMenuUiController_OnHide"] = { pattern = "BookMenuUiController_OnHide", offset = 0x0, sig = "vp" },
   ["BookMenuUiController_OnShow"] = { pattern = "BookMenuUiController_OnShow", offset = 0x0, sig = "vp" },
+  ["BookMenu_GetMode"] = { pattern = "BookMenu_GetMode", offset = 0x0, sig = "ip" },
+  ["BookMenu_SetModeState"] = { pattern = "BookMenu_SetModeState", offset = 0x0, sig = "vpppp" },
   ["CameraModifier_AddChild"] = { pattern = "CameraModifier_AddChild", offset = 0x0, sig = "vppi" },
   ["CameraModifier_RemoveChild"] = { pattern = "CameraModifier_RemoveChild", offset = 0x0, sig = "vpp" },
   ["ChallengeDef_PostLoad"] = { pattern = "ChallengeDef_PostLoad", offset = 0x0, sig = "up" },
