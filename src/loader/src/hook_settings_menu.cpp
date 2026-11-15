@@ -25,6 +25,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -46,6 +47,7 @@
 #include "symbols.gen.h"
 #include "symbols_api.gen.h"
 #include "hook_settings_menu.h"
+#include "hook_book_pages.h"
 
 namespace rsmm {
 namespace {
@@ -472,7 +474,12 @@ void add_mods_tab(void* ctrl, void* page, void* parent) {
 
 void hook_build(void* ctrl, void* page, void* parent) {
     g_real_build(ctrl, page, parent);
+    if (book_pages_building(ctrl)) {   // our page: no Mods tab, g_ctrl untouched
+        book_pages_build(ctrl, page, parent);
+        return;
+    }
     add_mods_tab(ctrl, page, parent);
+    book_pages_add_entries(ctrl, page, parent);
 }
 
 // --- the pause menu's Mods button ----------------------------------------------
@@ -514,7 +521,11 @@ bool need(const char* what, const char* pattern, F* out) {
     return resolve_checked("native-menu", what, pattern, reinterpret_cast<void**>(out));
 }
 
+std::atomic<bool> g_build_hooked{false};
+
 } // anonymous namespace
+
+bool settings_build_hooked() { return g_build_hooked.load(std::memory_order_acquire); }
 
 bool install_settings_menu_hooks() {
     if (flag_enabled("RSMM_DISABLE_NATIVE_MENU")) {
@@ -538,6 +549,7 @@ bool install_settings_menu_hooks() {
                       reinterpret_cast<void**>(&g_real_build))) {
         return false;
     }
+    g_build_hooked.store(true, std::memory_order_release);
     // The pause menu button is extra: without it the tab still works.
     if (need("select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
         && hook_install("native-menu", "pause menu action lookup",

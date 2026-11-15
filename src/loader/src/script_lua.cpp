@@ -33,6 +33,7 @@ extern "C" {
 #include "hook_input.h"
 #include "hook_keybinds.h"
 #include "hook_ui_state.h"
+#include "hook_book_pages.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -665,14 +666,14 @@ bool push_config_table(lua_State* L, const std::filesystem::path& root) {
             // A multiselect field: an array of primitives becomes a Lua
             // sequence. Nested tables/arrays are skipped, never guessed at.
             lua_createtable(L, static_cast<int>(a->size()), 0);
-            lua_Integer i = 0;
+            lua_Integer seq = 0;
             for (auto&& el : *a) {
                 if (auto eb = el.as_boolean())             lua_pushboolean(L, **eb ? 1 : 0);
                 else if (auto ei = el.as_integer())        lua_pushinteger(L, (lua_Integer)**ei);
                 else if (auto ef = el.as_floating_point()) lua_pushnumber(L, **ef);
                 else if (auto es = el.as_string())         lua_pushstring(L, (**es).c_str());
                 else continue;
-                lua_rawseti(L, -2, ++i);
+                lua_rawseti(L, -2, ++seq);
             }
         }
         else continue;
@@ -1939,6 +1940,104 @@ int lua_ui_state_page(lua_State* L) {
     return 1;
 }
 
+// --- R.ui.menus (hook_book_pages.h) ---------------------------------------------
+
+// rsmm._internal.ui_menus_available() -> true | false, why
+int lua_ui_menus_available(lua_State* L) {
+    std::string why;
+    const bool ok = book_pages_available(&why);
+    lua_pushboolean(L, ok);
+    if (ok) return 1;
+    lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+int push_menus_result(lua_State* L, bool ok, const std::string& why) {
+    if (ok) { lua_pushboolean(L, 1); return 1; }
+    lua_pushnil(L);
+    lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+// ui_menus_set_page(id, snapshot_table) -> true | nil, why
+int lua_ui_menus_set_page(lua_State* L) {
+    const std::string id = luaL_checkstring(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    nlohmann::json snap;
+    if (!lua_to_json(L, 2, snap)) return push_menus_result(L, false, "snapshot is not JSON-encodable");
+    std::string why;
+    const bool ok = book_pages_set_page(
+        id, snap.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_remove_page(id)
+int lua_ui_menus_remove_page(lua_State* L) {
+    book_pages_remove_page(luaL_checkstring(L, 1));
+    return 0;
+}
+
+// ui_menus_set_entry(id, title, page_id, after) -> true | nil, why
+int lua_ui_menus_set_entry(lua_State* L) {
+    const std::string id = luaL_checkstring(L, 1);
+    const std::string title = luaL_checkstring(L, 2);
+    const std::string page = luaL_checkstring(L, 3);
+    const std::string after = luaL_checkstring(L, 4);
+    std::string why;
+    const bool ok = book_pages_set_entry(id, title, page, after, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_remove_entry(id)
+int lua_ui_menus_remove_entry(lua_State* L) {
+    book_pages_remove_entry(luaL_checkstring(L, 1));
+    return 0;
+}
+
+// ui_menus_open(page_id, ctx_or_nil) -> true | nil, why   (queued)
+int lua_ui_menus_open(lua_State* L) {
+    const std::string page = luaL_checkstring(L, 1);
+    std::string ctx;
+    const bool has_ctx = !lua_isnoneornil(L, 2);
+    if (has_ctx) {
+        nlohmann::json c;
+        if (!lua_to_json(L, 2, c)) return push_menus_result(L, false, "ctx is not JSON-encodable");
+        ctx = c.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+    std::string why;
+    const bool ok = book_pages_open(page, has_ctx ? &ctx : nullptr, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_back() -> true | nil, why   (queued)
+int lua_ui_menus_back(lua_State* L) {
+    std::string why;
+    const bool ok = book_pages_back(&why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_current() -> {page=, ctx=, depth=} or nil
+int lua_ui_menus_current(lua_State* L) {
+    std::string page, ctx;
+    int depth = 0;
+    if (!book_pages_current(&page, &ctx, &depth)) { lua_pushnil(L); return 1; }
+    lua_createtable(L, 0, 3);
+    lua_pushstring(L, page.c_str());
+    lua_setfield(L, -2, "page");
+    const nlohmann::json cj = ctx.empty() ? nlohmann::json() : nlohmann::json::parse(ctx, nullptr, false);
+    if (cj.is_discarded()) lua_pushnil(L); else json_to_lua(L, cj);
+    lua_setfield(L, -2, "ctx");
+    lua_pushinteger(L, depth);
+    lua_setfield(L, -2, "depth");
+    return 1;
+}
+
+// ui_menus_veto_back(): called from a ui:menus_back handler to keep the page open
+int lua_ui_menus_veto_back(lua_State*) {
+    book_pages_veto_back();
+    return 0;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -2278,6 +2377,15 @@ void register_api(lua_State* L) {
         { "ui_state_open",           lua_ui_state_open },
         { "ui_state_book",           lua_ui_state_book },
         { "ui_state_page",           lua_ui_state_page },
+        { "ui_menus_available",      lua_ui_menus_available },
+        { "ui_menus_set_page",       lua_ui_menus_set_page },
+        { "ui_menus_remove_page",    lua_ui_menus_remove_page },
+        { "ui_menus_set_entry",      lua_ui_menus_set_entry },
+        { "ui_menus_remove_entry",   lua_ui_menus_remove_entry },
+        { "ui_menus_open",           lua_ui_menus_open },
+        { "ui_menus_back",           lua_ui_menus_back },
+        { "ui_menus_current",        lua_ui_menus_current },
+        { "ui_menus_veto_back",      lua_ui_menus_veto_back },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },

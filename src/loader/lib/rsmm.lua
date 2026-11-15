@@ -3130,6 +3130,17 @@ do
     if ok and type(x) == "table" then R.ui = x end
 end
 
+-- Lives in rsmm/ui_menus.lua. The game's book menu pages: a Settings entry that
+-- opens a page of categories and rows built from Lua data. Soft-fails to
+-- available() == false on a loader without I.ui_menus_*.
+--
+--   R.ui.menus.page(id, def) / .entry{...} / .open(id, ctx) / .back() / .current()
+--   R.on("ui:menus_change" | "ui:menus_select" | "ui:menus_reset" | ...)
+if R.ui then
+    local ok, x = _submodule_fn("ui_menus", { R = R, I = I })
+    if ok and type(x) == "table" then R.ui.menus = x end
+end
+
 -- chapter timer -----------------------------------------------------------
 --
 -- Lives in rsmm/daynight.lua. Reads and sets the day/night cycle every
