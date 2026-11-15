@@ -74,19 +74,20 @@ function M.arm()
 end
 
 --- Is a `kind` ("menu", "book", "modal", "loading", "page", "root") open now?
---- true/false, or nil + why when R.ui cannot tell (not armed). "book" is true
---- while any book is shown; "root" counts the session-long controllers.
+--- true/false, or nil + why when R.ui cannot tell (not armed; for "book", an
+--- unknown book mode). "book" is true while any book is shown; "root" counts
+--- the session-long controllers.
 function M.is_open(kind)
     assert(KINDS[kind], "R.ui.is_open: kind is menu, book, modal, loading, page or root")
     local ok, why = M.arm()
     if not ok then return nil, why end
-    local n = I.ui_state_count(kind)
-    if n == nil then return nil, "not armed" end
+    local n, nwhy = I.ui_state_count(kind)
+    if n == nil then return nil, nwhy or "not armed" end
     return n > 0
 end
 
 --- How many controllers of `kind` are open (nested menus count once each; book
---- is 1 or 0), or nil + why when not armed.
+--- is 1 or 0), or nil + why when not armed or the book mode is unknown.
 function M.count(kind)
     assert(KINDS[kind], "R.ui.count: kind is menu, book, modal, loading, page or root")
     local ok, why = M.arm()
@@ -103,15 +104,19 @@ function M.open()
 end
 
 --- Is any of the kinds open? With no argument: menu, book or modal (a loading
---- screen is not "a UI the player is in"). nil + why when not armed.
+--- screen is not "a UI the player is in"). true as soon as one kind is open,
+--- even when another is unknown; nil + why only when none is open and at least
+--- one could not be read (not armed, unknown book mode).
 function M.any(...)
     local kinds = { ... }
     if #kinds == 0 then kinds = { "menu", "book", "modal" } end
+    local unknown
     for _, k in ipairs(kinds) do
         local open, why = M.is_open(k)
-        if open == nil then return nil, why end
         if open then return true end
+        if open == nil and unknown == nil then unknown = why or "unknown" end
     end
+    if unknown then return nil, unknown end
     return false
 end
 

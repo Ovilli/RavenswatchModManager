@@ -12076,7 +12076,12 @@ do
         if armed then return true, nil end
         return false, "no UI controller vftable found by RTTI (game patched?)"
     end
-    I.ui_state_count = function(kind) return counts[kind] end
+    local count_why = {}
+    I.ui_state_count = function(kind)
+        local n = counts[kind]
+        if n == nil then return nil, count_why[kind] end
+        return n
+    end
     I.ui_state_book = function() return book_name, book_why end
     I.ui_state_page = function() return page_label end
     I.ui_state_open = function()
@@ -12109,6 +12114,21 @@ do
     local bo, bwhy = R.ui.is_open("book")
     check(bo == nil and bwhy, "book unknown: is_open is nil + why, not false")
     check(R.ui.any() == nil, "book unknown: any() is nil")
+    -- unknown book mode (unknown handler, or BookMenu_GetMode unresolved on an
+    -- old pattern DB): the native's reason comes through, never false / 0
+    count_why.book = "unknown book mode"
+    local uo, uowhy = R.ui.is_open("book")
+    check(uo == nil and uowhy == "unknown book mode", "unknown book mode: is_open is nil + that reason")
+    local uc, ucwhy = R.ui.count("book")
+    check(uc == nil and ucwhy == "unknown book mode", "unknown book mode: count is nil + that reason")
+    local ua, uawhy = R.ui.any()
+    check(ua == nil and uawhy == "unknown book mode", "nothing open, book unknown: any() is nil + why")
+    counts.modal = 1
+    check(R.ui.any() == true, "an open modal wins over an unknown book: any() is true")
+    check(R.ui.any("book", "modal") == true, "explicit kinds: unknown book first, open modal still true")
+    counts.modal = 0
+    check(R.ui.any("menu", "modal") == false, "no unknown kind asked for: any() stays false")
+    count_why.book = nil
     counts.book = 0
     -- which book
     check(R.ui.book() == nil, "book closed: book() is nil")

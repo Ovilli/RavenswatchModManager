@@ -525,8 +525,10 @@ int ui_state_count(UiKind kind) {
         const std::uintptr_t bm = tracked_bm();
         if (bm == 0) return 0;
         const int m = bm_mode(bm);
-        if (m < 0) return -1;
-        return (m <= 3) ? 1 : 0;
+        // Unreadable mode (GetMode unresolved) or an unknown handler (5): the
+        // book's visibility is unknown, which is not "closed". Only 4 is.
+        if (m < 0 || m == 5) return kUiCountUnknown;
+        return (m == 4) ? 0 : 1;
     }
     std::lock_guard<std::mutex> lk(g_mu);
     prune_locked();

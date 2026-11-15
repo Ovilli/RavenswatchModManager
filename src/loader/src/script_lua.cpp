@@ -1870,15 +1870,21 @@ int lua_ui_state_arm(lua_State* L) {
     return 2;
 }
 
-// rsmm._internal.ui_state_count(kind) -> open count, or nil when not armed
+// rsmm._internal.ui_state_count(kind) -> open count, or nil + why ("not armed",
+//   or "unknown book mode" when the book's visibility cannot be read)
 //   kind: "menu" | "book" | "modal" | "loading" | "page" | "root"
 int lua_ui_state_count(lua_State* L) {
     UiKind kind;
     if (!ui_kind_from_name(luaL_checkstring(L, 1), &kind))
         return luaL_argerror(L, 1, "kind is menu, book, modal, loading, page or root");
     const int n = ui_state_count(kind);
-    if (n < 0) lua_pushnil(L); else lua_pushinteger(L, n);
-    return 1;
+    if (n >= 0) {
+        lua_pushinteger(L, n);
+        return 1;
+    }
+    lua_pushnil(L);
+    lua_pushstring(L, n == kUiCountUnknown ? "unknown book mode" : "not armed");
+    return 2;
 }
 
 // rsmm._internal.ui_state_open() -> { {kind, class, ptr}, ... } oldest first

@@ -47,9 +47,13 @@ bool install_ui_state_hooks();
 bool ui_state_armed();
 
 // How many controllers of `kind` are open now; -1 when not armed. Book is 1
-// when the book's mode is 0..3, else 0 (it has no controller class of its own). Prunes any
+// when the book's mode is 0..3 and 0 only for mode 4 (closed) or no BookMenu
+// yet; it is -2 (kUiCountUnknown) when the mode cannot be read
+// (BookMenu_GetMode unresolved) or the handler is unknown (mode 5), so an
+// unknown book is never reported as closed. Prunes any
 // tracked controller whose memory is gone or that is no longer active, so a
 // controller destroyed without a deactivate cannot leave a kind stuck open.
+constexpr int kUiCountUnknown = -2;
 int ui_state_count(UiKind kind);
 
 struct UiOpen {
