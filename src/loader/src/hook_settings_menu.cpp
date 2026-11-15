@@ -48,31 +48,17 @@
 #include "symbols_api.gen.h"
 #include "hook_settings_menu.h"
 #include "hook_book_pages.h"
+#include "hook_menu_common.h"
 
 namespace rsmm {
+using namespace menu;   // hook_menu_common.h: OcStr, lit, clip, offsets, row spawn
+
 namespace {
 
 namespace fs = std::filesystem;
 
-struct OcStr {           // oCString: {char*, u32 len | 0x80000000 literal, u32 cap}
-    const char* p;
-    std::uint32_t len;
-    std::uint32_t cap;
-};
-constexpr std::uint32_t kLiteral = 0x80000000u;
-OcStr lit(const std::string& s) { return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0}; }
-
-// Offsets read from the Settings build (b9c3), see the symbol notes.
-constexpr std::uintptr_t kCtrlSettings   = 0x10;   // controller -> settings object
-constexpr std::uintptr_t kCtrlFactory    = 0x228;  // controller -> element factory
-constexpr std::uintptr_t kSetStringItem  = 0x3a8;  // settings: Option_StringItem template
-constexpr std::uintptr_t kCatRowParent   = 0x08;
-constexpr std::uintptr_t kRowValue       = 0x98;
-constexpr std::uintptr_t kRowLabels      = 0xa0;
-constexpr std::uintptr_t kRowLocked      = 0xb0;
-constexpr std::uint32_t  kCategoryType   = 5;      // what the plain multi-choice tab uses
-constexpr std::size_t    kMaxTitle       = 32;     // longer runs into the row's arrows
-constexpr int            kSteps          = 20;     // number fields: steps between min and max
+constexpr const char* kTag = "native-menu";
+constexpr int         kSteps = 20;     // number fields: steps between min and max
 
 const char* kMenuRequests = "_menu_requests.json";  // read by rsmm.cli.cmd_mods
 
@@ -125,11 +111,6 @@ Value from_node(const toml::node& n) {
     else if (auto f = n.as_floating_point()) { v.kind = Value::Float; v.f = **f; }
     else if (auto s = n.as_string()) { v.kind = Value::Str; v.s = **s; }
     return v;
-}
-
-std::string clip(std::string s) {
-    if (s.size() > kMaxTitle) s = s.substr(0, kMaxTitle - 2) + "..";
-    return s;
 }
 
 void load_values(ModInfo& m) {
@@ -202,11 +183,6 @@ std::string label_of(const Value& v) {
     return "?";
 }
 
-void finish_labels(Row& r) {
-    r.labels.clear();
-    for (const auto& s : r.texts) r.labels.push_back(lit(s));
-}
-
 void add_setting_rows(std::size_t mi) {
     ModInfo& m = g_mods[mi];
     const fs::path p = m.root / "config_schema.toml";
@@ -253,7 +229,7 @@ void add_setting_rows(std::size_t mi) {
         r.title = clip("- " + t["label"].value_or(key));
         r.options = std::move(opts);
         for (const auto& o : r.options) r.texts.push_back(label_of(o));
-        finish_labels(r);
+        build_labels(r.texts, r.labels);
         r.value = r.seen = idx;
     }
 }
@@ -294,7 +270,7 @@ void build_model() {
         // The state that is NOT running now says so, so On/Off never claims a
         // change took effect before the restart that applies it.
         r.texts[g_mods[i].enabled ? 0 : 1] += " (next launch)";
-        finish_labels(r);
+        build_labels(r.texts, r.labels);
         r.value = r.seen = g_mods[i].wanted ? 1 : 0;
         add_setting_rows(i);   // a disabled mod's config still applies once it is on
     }
@@ -393,31 +369,18 @@ DWORD WINAPI watch_rows(LPVOID) {
 using build_fn = void (*)(void*, void*, void*);
 build_fn g_real_build = nullptr;
 
-engine::OptionsMenu_AddCategory_fn      g_add_category = nullptr;
-engine::OptionsMenu_SpawnMultiChoice_fn g_spawn_row    = nullptr;
-engine::OptionsMenu_AppendRow_fn        g_append_row   = nullptr;
-engine::OptionsMenuElement_SetTitle_fn  g_set_title    = nullptr;
-engine::StringVector_AssignFromArray_fn g_set_labels   = nullptr;
-engine::OptionsMenu_SelectCategory_fn   g_select_tab   = nullptr;
+MenuFns g_menu;
+engine::OptionsMenu_SelectCategory_fn g_select_tab = nullptr;
 
 // Where our tab lives, for the pause menu's Mods button. An index, not the
 // entry: the build adds more tabs after ours, which can move the vector.
-constexpr std::uintptr_t kCtrlTabs     = 0x208;   // tab entries, stride 0x48
-constexpr std::uintptr_t kCtrlTabCount = 0x210;
-constexpr std::uintptr_t kTabStride    = 0x48;
-constexpr std::uintptr_t kTabButton    = 0x10;
 void* g_ctrl = nullptr;
 std::uint32_t g_tab_index = UINT32_MAX;
 
 void select_mods_tab() {
     auto& L = Loader::get();
-    const auto c = reinterpret_cast<std::uintptr_t>(g_ctrl);
-    std::uintptr_t tabs = 0;
-    std::uint32_t count = 0;
-    void* button = nullptr;
-    if (!g_ctrl || !g_select_tab || !mem_load(c + kCtrlTabs, &tabs)
-        || !mem_load(c + kCtrlTabCount, &count) || g_tab_index >= count
-        || !mem_load(tabs + g_tab_index * kTabStride + kTabButton, &button) || !button) {
+    void* button = g_ctrl ? tab_button(g_ctrl, g_tab_index) : nullptr;
+    if (!g_select_tab || !button) {
         L.log_warn("[native-menu] Mods tab not found; Settings opened on its first tab");
         return;
     }
@@ -441,33 +404,25 @@ void add_mods_tab(void* ctrl, void* page, void* parent) {
     });
     if (g_rows.empty()) return;
     std::uint32_t index = 0;
-    if (mem_load(c + kCtrlTabCount, &index)) {
+    if (read_tab_count(ctrl, &index)) {
         g_ctrl = ctrl;
         g_tab_index = index;    // AddCategory stamps this on the tab's button
     }
     OcStr tab = lit(kTabTitle);
-    void* cat = g_add_category(ctrl, page, parent, &tab, kCategoryType);
+    void* cat = g_menu.add_category(ctrl, page, parent, &tab, kCatType);
     void* row_parent = nullptr;
     if (!cat || !mem_load(reinterpret_cast<std::uintptr_t>(cat) + kCatRowParent, &row_parent)
         || !row_parent) {
         L.log_err("[native-menu] add category returned nothing; no rows");
         return;
     }
-    void* ctx = ctrl;
     for (Row& r : g_rows) {
-        void* row = g_spawn_row(factory, reinterpret_cast<std::uint8_t*>(settings) + kSetStringItem,
-                                row_parent);
-        if (!row || !mem_writable(reinterpret_cast<std::uint8_t*>(row) + kRowValue, 0x20)) {
+        // The row aliases r.value / r.labels / r.title, which g_rows keeps alive.
+        if (!spawn_menu_row(g_menu, ctrl, settings, factory, cat, row_parent, &r.value,
+                            r.labels, r.title)) {
             L.log_err("[native-menu] row spawn failed at '" + r.title + "'");
             return;
         }
-        g_append_row(&ctx, cat, row);
-        auto* p = reinterpret_cast<std::uint8_t*>(row);
-        *reinterpret_cast<std::uint32_t**>(p + kRowValue) = &r.value;
-        g_set_labels(p + kRowLabels, r.labels.data(), std::uint32_t(r.labels.size()));
-        *reinterpret_cast<void**>(p + kRowLocked) = nullptr;
-        OcStr title = lit(r.title);   // the label aliases r.title, which g_rows keeps alive
-        g_set_title(row, &title);
     }
     L.log("[native-menu] Mods tab built with " + std::to_string(g_rows.size()) + " row(s)");
 }
@@ -516,11 +471,6 @@ void* hook_get_callback(void* self, void** out, std::uint64_t key, void* extra) 
     return r;
 }
 
-template <typename F>
-bool need(const char* what, const char* pattern, F* out) {
-    return resolve_checked("native-menu", what, pattern, reinterpret_cast<void**>(out));
-}
-
 std::atomic<bool> g_build_hooked{false};
 
 } // anonymous namespace
@@ -536,13 +486,7 @@ bool install_settings_menu_hooks() {
         Loader::get().log_err("[native-menu] fn_resolver_init failed");
         return false;
     }
-    if (!need("add category", Sym::OptionsMenu_AddCategory_Pattern, &g_add_category)
-        || !need("spawn row", Sym::OptionsMenu_SpawnMultiChoice_Pattern, &g_spawn_row)
-        || !need("append row", Sym::OptionsMenu_AppendRow_Pattern, &g_append_row)
-        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
-        || !need("set labels", Sym::StringVector_AssignFromArray_Pattern, &g_set_labels)) {
-        return false;
-    }
+    if (!resolve_menu_fns(kTag, g_menu)) return false;
     if (!hook_install("native-menu", "last Settings tab builder",
                       Sym::OptionsMenu_BuildLastCategory_Pattern,
                       reinterpret_cast<void*>(&hook_build),
@@ -551,7 +495,7 @@ bool install_settings_menu_hooks() {
     }
     g_build_hooked.store(true, std::memory_order_release);
     // The pause menu button is extra: without it the tab still works.
-    if (need("select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
+    if (resolve_checked(kTag, "select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
         && hook_install("native-menu", "pause menu action lookup",
                         Sym::PauseMenu_GetActionCallback_Pattern,
                         reinterpret_cast<void*>(&hook_get_callback),

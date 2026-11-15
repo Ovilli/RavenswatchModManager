@@ -90,6 +90,14 @@ bool hook_install_at(std::string_view tag, std::string_view what,
 bool resolve_checked(std::string_view tag, std::string_view what,
                      std::string_view pattern_name, void** out);
 
+// The same, for a typed function-pointer slot: no reinterpret_cast at the call
+// site (`resolve_checked("tag", "spawn row", Sym::X_Pattern, &g_spawn_row)`).
+template <typename F>
+bool resolve_checked(std::string_view tag, std::string_view what,
+                     std::string_view pattern_name, F* out) {
+    return resolve_checked(tag, what, pattern_name, reinterpret_cast<void**>(out));
+}
+
 // Disable + remove a hook installed above. Safe on 0.
 void hook_remove(std::uintptr_t va);
 

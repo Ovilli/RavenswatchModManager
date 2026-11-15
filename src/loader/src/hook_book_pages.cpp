@@ -37,6 +37,7 @@
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 
 #include "fn_resolver.h"
+#include "hook_menu_common.h"
 #include "hook_util.h"
 #include "loader.h"
 #include "mem_safe.h"
@@ -45,39 +46,20 @@
 #include "symbols_api.gen.h"
 
 namespace rsmm {
+using namespace menu;   // hook_menu_common.h: OcStr, lit, clip, offsets, row spawn
+
 namespace {
 
 using json = nlohmann::json;
 
-struct OcStr {           // oCString: {char*, u32 len | 0x80000000 literal, u32 cap}
-    const char* p;
-    std::uint32_t len;
-    std::uint32_t cap;
-};
-constexpr std::uint32_t kLiteral = 0x80000000u;
-OcStr lit(const std::string& s) { return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0}; }
-
 // Page controller
 constexpr std::uintptr_t kPageBm        = 0xd0;
 constexpr std::uintptr_t kPageChild     = 0xd8;
-// BookOptions controller
-constexpr std::uintptr_t kCtrlSettings  = 0x10;
-constexpr std::uintptr_t kCtrlTabs      = 0x208;   // POINTER to the tab-entry vector
-constexpr std::uintptr_t kCtrlTabCount  = 0x210;
+// BookOptions controller (the shared offsets are in hook_menu_common.h)
 constexpr std::uintptr_t kCtrlSelected  = 0x218;
-constexpr std::uintptr_t kCtrlFactory   = 0x228;
 constexpr std::uintptr_t kCtrlApply     = 0x268;   // the Graphics tab's Apply element
-constexpr std::uintptr_t kTabStride     = 0x48;
-constexpr std::uintptr_t kTabButton     = 0x10;
 constexpr std::uintptr_t kButtonIndex   = 0x238;   // u64 index AddCategory stamps
-constexpr std::uintptr_t kSetStringItem = 0x3a8;
 constexpr std::uintptr_t kSetCreditsDesc = 0x740;  // settings: the Credits child descriptor
-constexpr std::uintptr_t kCatRowParent  = 0x08;
-constexpr std::uintptr_t kRowArrowL     = 0x50;
-constexpr std::uintptr_t kRowArrowR     = 0x58;
-constexpr std::uintptr_t kRowValue      = 0x98;
-constexpr std::uintptr_t kRowLabels     = 0xa0;
-constexpr std::uintptr_t kRowLocked     = 0xb0;
 // BookMenu
 constexpr std::uintptr_t kBmSettings    = 0x10;
 constexpr std::uintptr_t kBmPage        = 0x1e0;
@@ -88,18 +70,11 @@ constexpr std::size_t    kDescClearFrom = 0x70;    // +0x70 arg, +0x78 manager, 
 constexpr std::size_t    kDescClearLen  = 0x18;
 constexpr std::size_t    kBmReadSize    = 0x80;
 
-constexpr std::uint32_t kCatType        = 5;       // plain multi-choice tab
 constexpr std::uint32_t kEntryType      = 10;      // "open child page" (Credits)
-constexpr std::size_t   kMaxTitle       = 32;
 constexpr int           kMaxDepth       = 8;
 constexpr std::uint32_t kMaxTabs        = 64;
 constexpr ULONGLONG     kLeafFreshMs    = 1000;
 constexpr ULONGLONG     kRequestTtlMs   = 5000;
-
-std::string clip(std::string s) {
-    if (s.size() > kMaxTitle) s = s.substr(0, kMaxTitle - 2) + "..";
-    return s;
-}
 
 inline std::uintptr_t A(const void* p) { return reinterpret_cast<std::uintptr_t>(p); }
 
@@ -214,11 +189,7 @@ thread_local std::string t_build_page, t_build_ctx;
 
 // --- engine side -----------------------------------------------------------------
 
-engine::OptionsMenu_AddCategory_fn      g_add_category = nullptr;
-engine::OptionsMenu_SpawnMultiChoice_fn g_spawn_row    = nullptr;
-engine::OptionsMenu_AppendRow_fn        g_append_row   = nullptr;
-engine::OptionsMenuElement_SetTitle_fn  g_set_title    = nullptr;
-engine::StringVector_AssignFromArray_fn g_set_labels   = nullptr;
+MenuFns g_menu;
 engine::GameUi_SetVisible_fn            g_set_visible  = nullptr;
 engine::BookMenu_GetMode_fn             g_get_mode     = nullptr;
 
@@ -401,22 +372,14 @@ void hide_window(void* ctrl, void* w) {
 bool spawn_row(void* ctrl, void* settings, void* factory, void* cat, void* row_parent,
                LiveRow& r) {
     auto& L = Loader::get();
-    void* row = g_spawn_row(factory, reinterpret_cast<std::uint8_t*>(settings) + kSetStringItem,
-                            row_parent);
-    if (!row || !mem_writable(reinterpret_cast<std::uint8_t*>(row) + kRowValue, 0x20)) {
+    build_labels(r.texts, r.labels);
+    void* row = spawn_menu_row(g_menu, ctrl, settings, factory, cat, row_parent, &r.value,
+                               r.labels, r.title);
+    if (!row) {
         L.log_err("[ui-menus] row spawn failed at '" + r.title + "'");
         return false;
     }
-    void* c = ctrl;
-    g_append_row(&c, cat, row);
     auto* p = reinterpret_cast<std::uint8_t*>(row);
-    *reinterpret_cast<std::uint32_t**>(p + kRowValue) = &r.value;
-    r.labels.clear();
-    for (const auto& s : r.texts) r.labels.push_back(lit(s));
-    g_set_labels(p + kRowLabels, r.labels.data(), std::uint32_t(r.labels.size()));
-    *reinterpret_cast<void**>(p + kRowLocked) = nullptr;
-    OcStr title = lit(r.title);
-    g_set_title(row, &title);
     r.row = row;
     // A pooled row may carry hidden arrows from an earlier page: set both explicitly.
     for (std::uintptr_t off : {kRowArrowL, kRowArrowR}) {
@@ -444,7 +407,7 @@ void* add_tab(void* ctrl, void* page, void* parent, const std::string& label,
         return nullptr;
     }
     OcStr t = lit(*keep_str(clip(label)));
-    return g_add_category(ctrl, page, parent, &t, type);
+    return g_menu.add_category(ctrl, page, parent, &t, type);
 }
 
 LiveRow* new_row(const std::string& id, const std::string& title) {
@@ -489,16 +452,6 @@ Target entry_target(void* parent, std::uint32_t idx, std::string* page, int* dep
     *page = e->second.page;
     *depth = d + 1;
     return Target::Ours;
-}
-
-void* tab_button(void* ctrl, std::uint32_t idx) {
-    std::uintptr_t tabs = 0;
-    std::uint32_t count = 0;
-    void* btn = nullptr;
-    if (!load_at(ctrl, kCtrlTabs, &tabs) || !tabs
-        || !load_at(ctrl, kCtrlTabCount, &count) || idx >= count
-        || !load_at(tabs, idx * kTabStride + kTabButton, &btn)) return nullptr;
-    return btn;
 }
 
 // Tab count of a controller, clamped to kMaxTabs; 0 when the tab vector is unreadable.
@@ -830,7 +783,7 @@ void hook_reset(void* ctrl) {
             for (LiveRow* r : c->rows) {
                 r->value = r->def;
                 r->seen = r->def;
-                if (r->row) { OcStr t = lit(r->title); g_set_title(r->row, &t); }
+                if (r->row) { OcStr t = lit(r->title); g_menu.set_title(r->row, &t); }
             }
             queue("ui:menus_reset", dumps(json{{"page", rec.page_id}, {"category", c->id}}));
         }
@@ -1229,15 +1182,11 @@ bool install_book_page_hooks() {
     const CallSpec calls[] = {
         {"set visible", Sym::GameUi_SetVisible_Pattern, reinterpret_cast<void**>(&g_set_visible)},
         {"book mode", Sym::BookMenu_GetMode_Pattern, reinterpret_cast<void**>(&g_get_mode)},
-        {"add category", Sym::OptionsMenu_AddCategory_Pattern, reinterpret_cast<void**>(&g_add_category)},
-        {"spawn row", Sym::OptionsMenu_SpawnMultiChoice_Pattern, reinterpret_cast<void**>(&g_spawn_row)},
-        {"append row", Sym::OptionsMenu_AppendRow_Pattern, reinterpret_cast<void**>(&g_append_row)},
-        {"set title", Sym::OptionsMenuElement_SetTitle_Pattern, reinterpret_cast<void**>(&g_set_title)},
-        {"set labels", Sym::StringVector_AssignFromArray_Pattern, reinterpret_cast<void**>(&g_set_labels)},
     };
     for (const auto& c : calls)
         if (!resolve_checked("ui-menus", c.what, c.pattern, c.slot))
             return fail("a call target did not resolve");
+    if (!resolve_menu_fns("ui-menus", g_menu)) return fail("a call target did not resolve");
 
     const HookSpec hooks[] = {
         {"BookPage_OpenChild", Sym::BookPage_OpenChild_Pattern,
