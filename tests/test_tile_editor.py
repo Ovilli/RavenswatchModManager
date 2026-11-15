@@ -80,6 +80,12 @@ def test_own_copy_removes_and_moves_one_game_object():
     # an anchor that names no placement fails the emit instead of doing nothing
     with pytest.raises(TE.TileEditError, match="stands at"):
         TE.check(tile, {"own": True, "remove": [{"entity": a["entity"], "at": [99, 99, 99]}]})
+    # one object is either moved or removed, never both
+    both = {"own": True, "remove": [{"entity": a["entity"], "at": a["pos"]}],
+            "move": [{"entity": a["entity"], "at": a["pos"], "pos": [0, 0, 0]}]}
+    with pytest.raises(TE.TileEditError, match="also cleared"):
+        TE.check(tile, both)
+    assert TE.objects_json(tile)["at_tolerance"] > 0
 
 
 @needs_game

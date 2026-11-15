@@ -119,7 +119,9 @@ const TileMode = (() => {
   const kept = (o) => (S.data?.clear_keep || []).some((k) => o.entity.toLowerCase().includes(k.toLowerCase()));
   const gone = (o) => o.kind === "game" && S.own && (o.removed || (S.clear && !kept(o)));
   const editable = (o) => o.kind === "added" || (S.own && o.kind === "game" && !gone(o));
-  const posOf = (o) => (o.kind === "game" ? (o.to || o.pos) : o.pos);
+  const posOf = (o) => (o.kind === "game" ? ((S.own && o.to) || o.pos) : o.pos);
+  // `clear all` keeps these and the saved def has no way to drop one of them too.
+  const removable = (o) => editable(o) && !(o.kind === "game" && S.clear && kept(o));
   const yawQuat = (deg) => { const h = deg * Math.PI / 360; return new THREE.Quaternion(0, Math.sin(h), 0, Math.cos(h)); };
   function placeMatrix(o) {
     return o.kind === "game"
@@ -175,15 +177,16 @@ const TileMode = (() => {
       if (e.button === 2 || e.button === 1) { looking = true; return; }
       downAt = { x: e.clientX, y: e.clientY };
       const o = pick(e);
-      if (o && editable(o) && o === S.sel) {
-        if (o.kind === "game" && !o.to) o.to = o.pos.slice();       // move the copy, keep the anchor
-        drag = { o, p: posOf(o), start: posOf(o).slice(), sy: e.clientY };
-      }
+      if (o && editable(o) && o === S.sel) drag = { o, p: null, sy: e.clientY };
     });
     cv.addEventListener("pointermove", (e) => {
       const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (looking) { G.cam.yaw -= dx * 0.004; G.cam.pitch = Math.max(-1.5, Math.min(1.5, G.cam.pitch - dy * 0.004)); G.dirty = true; return; }
       if (!drag) return;
+      if (!drag.p) {                                      // the first real move
+        if (drag.o.kind === "game" && !drag.o.to) drag.o.to = drag.o.pos.slice();   // keep the anchor
+        drag.p = posOf(drag.o); drag.start = drag.p.slice();
+      }
       const dp = drag.p;
       if (e.altKey) {                                     // Alt: up and down
         dp[1] = +(drag.start[1] + (drag.sy - e.clientY) * 0.03).toFixed(3);
@@ -196,7 +199,7 @@ const TileMode = (() => {
     });
     cv.addEventListener("pointerup", (e) => {
       if (looking) { looking = false; return; }
-      if (drag) { drag = null; changed(); inspector(); return; }
+      if (drag) { const moved = !!drag.p; drag = null; if (moved) { changed(); inspector(); return; } }
       if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5) select(pick(e));
       downAt = null;
     });
@@ -260,6 +263,7 @@ const TileMode = (() => {
   }
   // Remove (or bring back) one of the game's objects in the own copy.
   function removeGame(o, on) {
+    if (on && !removable(o)) { status("Clear all keeps this one; untick clear all to remove it.", "st-bad"); return; }
     o.removed = on; if (on) o.to = null;
     syncNode(o); changed(); if (on) select(null); else inspector();
   }
@@ -330,7 +334,7 @@ const TileMode = (() => {
       const btns = [el("button", { className: "btn", textContent: "Focus (F)", onclick: () => focus(o) })];
       if (S.own && o.removed) btns.push(el("button", { className: "btn", textContent: "Bring back", onclick: () => removeGame(o, false) }));
       else if (canEdit) {
-        btns.push(el("button", { className: "btn", textContent: "Remove", onclick: () => removeGame(o, true) }));
+        if (removable(o)) btns.push(el("button", { className: "btn", textContent: "Remove", onclick: () => removeGame(o, true) }));
         if (o.to) btns.push(el("button", { className: "btn", textContent: "Reset position", onclick: () => { o.to = null; syncNode(o); changed(); inspector(); } }));
       }
       kids.push(el("div", { className: "row" }, ...btns));
@@ -361,7 +365,8 @@ const TileMode = (() => {
     let draft = saved || store.get(DRAFT + path) || {};
     if (Array.isArray(draft)) draft = { places: draft };            // drafts from before own copies
     S.own = !!draft.own; S.copies = draft.copies || 1; S.clear = !!draft.clear;
-    const near = (a, b) => a.every((v, k) => Math.abs(v - b[k]) <= 0.05);
+    const tol = S.data.at_tolerance ?? 0.05;
+    const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= tol;
     const find = (r) => S.data.objects.find((o) => o.entity.toLowerCase() === r.entity.toLowerCase() && near(o.pos, r.at));
     for (const r of draft.remove || []) { const o = find(r); if (o) o.removed = true; }
     for (const m of draft.move || []) { const o = find(m); if (o) o.to = m.pos.slice(); }
@@ -403,7 +408,11 @@ const TileMode = (() => {
     $("t3-propq").oninput = renderProps;
     $("t3-own").onchange = () => { S.own = $("t3-own").checked; modeUi(); syncGame(); changed(); inspector(); };
     $("t3-copies").onchange = () => { S.copies = Math.max(1, Math.min(16, Math.round(+$("t3-copies").value) || 1)); modeUi(); changed(); };
-    $("t3-clear").onchange = () => { S.clear = $("t3-clear").checked; syncGame(); changed(); inspector(); };
+    $("t3-clear").onchange = () => {
+      S.clear = $("t3-clear").checked;
+      if (S.clear) for (const o of S.data?.objects || []) if (kept(o)) o.removed = false;   // clear keeps these
+      syncGame(); changed(); inspector();
+    };
     $("t3-modpick").onchange = async () => {
       const id = $("t3-modpick").value; if (!id) { $("t3-modid").value = ""; $("t3-modname").value = ""; return; }
       try {

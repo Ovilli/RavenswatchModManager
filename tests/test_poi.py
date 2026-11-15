@@ -2138,3 +2138,20 @@ def test_is_placement_matches_by_name_and_optional_anchor():
     assert poi._is_placement(pl, "Objects_Common\\Rock_A.entity.ot", [1.02, 2.0, 2.99])
     assert not poi._is_placement(pl, "Rock_A.entity.ot", [1.2, 2.0, 3.0])
     assert not poi._is_placement(pl, "Rock_B.entity.ot")
+
+
+def test_an_anchor_must_name_exactly_one_placement():
+    from rsmm.engine.level_placements import Placement
+    rock = "Objects_Common\\Rock_A.entity.ot"
+    pl = Placement(rock, (1.0, 2.0, 3.0), (0, 0, 0, 1), (1, 1, 1))
+    defn = ContentDef(kind="poi", id="t", fields={})
+    hits = poi._one_placement(defn, "move[0]", [(4, pl)], "Rock_A.entity.ot", [1, 2, 3])
+    assert hits == [(4, pl)]
+    with pytest.raises(ContentError, match="2 placements"):
+        poi._one_placement(defn, "move[0]", [(4, pl), (5, pl)], "Rock_A.entity.ot", [1, 2, 3])
+    with pytest.raises(ContentError, match="no 'Rock_A.entity.ot' stands"):
+        poi._one_placement(defn, "move[0]", [(4, pl)], "Rock_A.entity.ot", [9, 9, 9])
+    with pytest.raises(ContentError, match="at needs three numbers"):
+        poi._anchor(defn, "move[0]", {"entity": rock, "at": [1, 2]}, need_at=False)
+    with pytest.raises(ContentError, match="needs an `entity`"):
+        poi._anchor(defn, "clear.remove[0]", {"at": [1, 2, 3]}, need_at=False)
