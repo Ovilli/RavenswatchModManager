@@ -14,7 +14,8 @@
 -- REMOVE_ALL_<R>_OBJECT, DUPLICATE_RANDOM_<R>_OBJECT; "any" = MAGICAL). Their
 -- hero handlers (0x1403a8a50.., 0x1403a8c70.., 0x1403a80c0..) read NO payload:
 -- they pass a rarity code (0 common, 1 rare, 2 epic, 3 legendary, 4 cursed,
--- 6 any) to a picker that walks the hero's owned items (hero+0xd80) and
+-- 6 any) to a picker that walks the hero's owned items (hero+0xd98 since
+-- Update 6; +0xd80 before) and
 -- returns a random one's GUID, then remove it — or, for duplicate, grant it
 -- again through Hero_GrantMagicalObject tagged "Duplicate". So the event is
 -- sent in the same with-data shape the ability events use, carrying a bool.

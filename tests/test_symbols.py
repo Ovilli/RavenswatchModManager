@@ -540,3 +540,19 @@ def test_codegen_is_fail_closed_on_non_ok_status():
     event_leaks = [s.name for s in smap.events
                    if s.status != "ok" and f'"{s.pattern_name}"' in events]
     assert not event_leaks, f"non-ok events would still be hooked: {event_leaks}"
+
+
+def test_va_artifacts_carry_the_exe_build_they_were_made_for(tmp_path, monkeypatch):
+    """symbols.gen.h and engine_gen.lua both bake the exe sha256 their absolute
+    addresses belong to: they ship separately from each other and from the
+    pattern DB, and each gate has to judge ITS addresses (an `update-data`
+    once made the planted meta match a new exe and re-trusted a stale DLL)."""
+    smap = S.load_symbol_map()
+    sha = "ab" * 32
+    meta = tmp_path / "function_patterns.meta.json"
+    meta.write_text(json.dumps({"game_exe_sha256": sha}))
+    monkeypatch.setattr(cmd_symbols, "PATTERN_META", meta)
+    assert f'kSymbolMapExeSha256 = "{sha}";' in cmd_symbols._gen_header(smap)
+    assert f'_va_build = "{sha}",' in cmd_symbols._gen_lua(smap)
+    meta.write_text("{}")                 # no stamp known: empty, never a guess
+    assert 'kSymbolMapExeSha256 = "";' in cmd_symbols._gen_header(smap)
