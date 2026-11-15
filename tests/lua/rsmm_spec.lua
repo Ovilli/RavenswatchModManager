@@ -12279,6 +12279,11 @@ do
           "open JSON-encodes ctx")
     M.open("t.main")
     check(opened[2][2] == nil, "open without ctx passes nil")
+    local open_saved = I.ui_menus_open
+    I.ui_menus_open = function() return false, "too deep (max 8)" end
+    local dok, dwhy = M.open("t.main")
+    check(dok == false and dwhy == "too deep (max 8)", "open passes the loader's refusal reason through")
+    I.ui_menus_open = open_saved
     check(M.current() == nil, "current() is nil when none of ours is the leaf")
     cur = { page = "t.main", ctx_json = '{"from":"deeper","list":[1,2]}', depth = 2 }
     local c = M.current()

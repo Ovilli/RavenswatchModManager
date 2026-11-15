@@ -24,6 +24,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -522,6 +523,9 @@ bool need(const char* what, const char* pattern, F* out) {
 
 } // anonymous namespace
 
+static std::atomic<bool> g_build_hooked{false};
+bool settings_build_hooked() { return g_build_hooked.load(std::memory_order_acquire); }
+
 bool install_settings_menu_hooks() {
     if (flag_enabled("RSMM_DISABLE_NATIVE_MENU")) {
         Loader::get().log("[native-menu] off (RSMM_DISABLE_NATIVE_MENU is set)");
@@ -544,6 +548,7 @@ bool install_settings_menu_hooks() {
                       reinterpret_cast<void**>(&g_real_build))) {
         return false;
     }
+    g_build_hooked.store(true, std::memory_order_release);
     // The pause menu button is extra: without it the tab still works.
     if (need("select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
         && hook_install("native-menu", "pause menu action lookup",

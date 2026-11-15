@@ -276,7 +276,10 @@ description and an example:
 Events: `ui:menus_open` and `ui:menus_close` `{ page, ctx, depth }`,
 `ui:menus_select` `{ page, category }`, `ui:menus_change`
 `{ page, category, row, index }` and `ui:menus_reset` `{ page, category }`.
-Indices are 1-based.
+Indices are 1-based. A page that closes first reports its pending `ui:menus_change`
+events, then `ui:menus_close`. Nesting is limited to 8 pages: `open` returns
+`false` and "too deep (max 8)" beyond that. `R.ui.menus` needs the native menu
+(the Settings build hook); with it off or failed, `available()` is `false`.
 
 ## When a call returns `false`
 

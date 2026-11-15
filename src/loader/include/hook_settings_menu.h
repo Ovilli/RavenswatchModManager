@@ -20,4 +20,7 @@ namespace rsmm {
 // (rsmm.engine.escape_menu).
 bool install_settings_menu_hooks();
 
+// True once the Settings build detour is installed (R.ui.menus needs it).
+bool settings_build_hooked();
+
 } // namespace rsmm

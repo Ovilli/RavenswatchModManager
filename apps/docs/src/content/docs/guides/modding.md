@@ -1942,8 +1942,12 @@ JSON-encodable value and reaches `categories(ctx)` and `on_back(ctx)`.
 `R.ui.menus.current()` returns `{ page, ctx, depth }` while one of your pages is
 the leaf, else `nil`. `R.ui.menus.off(handle)` removes a page or an entry for the
 next open. `R.ui.menus.available()` is `true`, or `false` and a reason (a loader
-without it, a symbol that did not resolve, or `RSMM_DISABLE_UI_MENUS=1`); with
-that, every other call returns `nil` and the reason.
+without it, a symbol that did not resolve, `RSMM_DISABLE_UI_MENUS=1`, or the native
+menu being off or failed to install, `RSMM_DISABLE_NATIVE_MENU=1`: "needs the
+Settings build hook"); with that, every other call returns `nil` and the reason.
+Pages nest at most 8 deep: beyond that `open` returns `false` and "too deep (max
+8)", and an entry on the deepest page does not open. The page heading shows
+`def.title` instead of "Settings".
 
 Events, all with 1-based indices:
 
@@ -1953,6 +1957,9 @@ Events, all with 1-based indices:
 | `ui:menus_select` | `{ page, category }`, a category was picked (no page turn) |
 | `ui:menus_change` | `{ page, category, row, index }` |
 | `ui:menus_reset` | `{ page, category }`, the rows are already back at `default` |
+
+When a page closes, its pending `ui:menus_change` events fire before its
+`ui:menus_close`.
 
 `R.ui.menus` holds no values, so a row shows its `value` again each time the page
 opens; the consumer rebuilds the snapshot in `categories(ctx)`. A consumer writes the result to `R.config` or

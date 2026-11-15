@@ -17,6 +17,7 @@
 // before the engine continues).
 
 #include "hook_book_pages.h"
+#include "hook_settings_menu.h"
 
 #include <windows.h>
 
@@ -167,6 +168,8 @@ std::set<void*> g_our_ctrls;                     // controllers our build produc
 // visible bit across release and reuse (activation re-shows only the root), so
 // teardown shows them again before the entity goes back to its pool.
 std::map<void*, std::vector<void*>> g_hidden;
+struct SavedTitle { std::uintptr_t label; const std::string* orig; };
+std::map<void*, SavedTitle> g_title_saved;       // ctrl -> heading label + its original text
 std::list<Record> g_records;                     // open order: parents before children
 std::deque<LiveRow> g_live_rows;                 // never freed: the game holds &value
 std::deque<std::string> g_strs;                  // never freed: literal strings
@@ -268,8 +271,25 @@ struct DepthGuard {
 
 // --- records ---------------------------------------------------------------------
 
+// Queues ui:menus_change for every editable row whose value moved since the last
+// look. Loader-owned values only. g_mu held.
+void emit_row_changes_locked(Record& rec) {
+    for (auto& c : rec.cats) {
+        for (LiveRow* r : c.rows) {
+            const std::uint32_t now = *static_cast<volatile std::uint32_t*>(&r->value);
+            if (now == r->seen) continue;
+            r->seen = now;
+            queue_locked("ui:menus_change",
+                         dumps(json{{"page", rec.page_id}, {"category", c.id},
+                                    {"row", r->id}, {"index", now + 1}}));
+        }
+    }
+}
+
 // Drop records whose page is no longer the child of its parent (and their
-// children), queueing ui:menus_close, deepest first. g_mu held.
+// children), queueing ui:menus_close, deepest first. A row change not yet seen by
+// the watcher is emitted first. The parent of the shallowest dead record becomes
+// the current leaf before any close event flushes. g_mu held.
 void prune_locked() {
     std::vector<std::list<Record>::iterator> dead;
     std::set<void*> dead_ctrls;
@@ -282,9 +302,20 @@ void prune_locked() {
             dead_ctrls.insert(it->ctrl);
         }
     }
+    void* new_leaf = nullptr;
+    int new_leaf_depth = 0;
     for (auto d = dead.rbegin(); d != dead.rend(); ++d) {
+        if (!new_leaf || (*d)->depth < new_leaf_depth) {
+            new_leaf = (*d)->parent;
+            new_leaf_depth = (*d)->depth;
+        }
+        emit_row_changes_locked(**d);
         queue_locked("ui:menus_close", page_payload((*d)->page_id, (*d)->ctx, (*d)->depth));
         g_records.erase(*d);
+    }
+    if (new_leaf) {
+        g_last_leaf.store(new_leaf);
+        g_last_tick.store(GetTickCount64());
     }
 }
 
@@ -469,6 +500,93 @@ void show_our_tabs(void* child, const Record& rec) {
         if (void* btn = tab_button(child, n.first)) g_set_visible(btn, true, true);
 }
 
+// Ravenswatch.exe's image range, for validating vtable and RTTI pointers.
+bool image_range(std::uintptr_t* base, std::uintptr_t* size) {
+    static std::uintptr_t b = 0, sz = 0;
+    if (!b) {
+        const std::uintptr_t m = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        std::uint32_t pe = 0, img = 0;
+        if (m && mem_load(m + 0x3c, &pe) && mem_load(m + pe + 24 + 56, &img)) { b = m; sz = img; }
+    }
+    *base = b;
+    *size = sz;
+    return b && sz;
+}
+
+// MSVC RTTI class name (".?AV...@@") of a window, "?" when anything is off.
+std::string rtti_name(std::uintptr_t w) {
+    std::uintptr_t base = 0, size = 0, vt = 0, col = 0;
+    std::uint32_t tdrva = 0;
+    if (!image_range(&base, &size) || !mem_load(w, &vt) || vt < base + 8 || vt >= base + size
+        || !mem_load(vt - 8, &col) || col < base || col >= base + size
+        || !mem_load(col + 12, &tdrva) || tdrva >= size) return "?";
+    std::string out;
+    for (int k = 0; k < 120; ++k) {
+        std::uint8_t ch = 0;
+        if (!mem_load(base + tdrva + 16 + k, &ch) || !ch) break;
+        out += (ch >= 0x20 && ch < 0x7f) ? char(ch) : '.';
+    }
+    return out.empty() ? "?" : out;
+}
+
+// The page heading is the only oCUILabel that is a direct child of the page's root
+// window. Its displayed text is the oCString at +0x1e8; vtable slot +0x60 is
+// SetText(label, const oCString*).
+constexpr std::uintptr_t kLabelText = 0x1e8;
+constexpr std::uintptr_t kLabelSetTextSlot = 0x60;
+using SetTextFn = void (*)(void*, const OcStr*);
+
+std::uintptr_t find_heading_label(void* ctrl) {
+    std::uintptr_t bmx = 0, root = 0, c = 0;
+    if (!mem_load(A(ctrl) + 0x68, &bmx) || !bmx || !mem_load(bmx + 0x88, &root) || !root
+        || !mem_load(root + 0x2a8, &c)) return 0;
+    for (int n = 0; c && c != ~std::uintptr_t(0) && n < 400; ++n) {
+        if (rtti_name(c) == ".?AVoCUILabel@@") return c;
+        if (!mem_load(c + 0x08, &c)) break;
+    }
+    return 0;
+}
+
+bool label_set_text(std::uintptr_t label, const OcStr* text) {
+    std::uintptr_t base = 0, size = 0, vt = 0, fn = 0;
+    if (!image_range(&base, &size) || !mem_load(label, &vt) || vt < base || vt >= base + size
+        || !mem_load(vt + kLabelSetTextSlot, &fn) || fn < base || fn >= base + size) return false;
+    reinterpret_cast<SetTextFn>(fn)(reinterpret_cast<void*>(label), text);
+    return true;
+}
+
+// Retitle our page's heading, remembering the original text: the page entity is
+// pooled per template, so vanilla Settings pages reuse it (restored in hook_teardown).
+void set_page_title(void* ctrl, const std::string& title) {
+    static bool warned = false;
+    const std::uintptr_t label = find_heading_label(ctrl);
+    std::uintptr_t optr = 0;
+    std::uint32_t olen = 0;
+    if (!label || !mem_load(label + kLabelText, &optr)
+        || !mem_load(label + kLabelText + 8, &olen)) {
+        if (!warned) { warned = true; Loader::get().log_warn("[ui-menus] page heading label not found; title unchanged"); }
+        return;
+    }
+    olen &= 0x7fffffff;
+    std::string orig;
+    if (olen > 0) {
+        if (olen > 256 || !mem_readable(reinterpret_cast<void*>(optr), olen)) return;
+        orig.assign(reinterpret_cast<const char*>(optr), olen);
+    }
+    const std::string *orig_keep, *title_keep;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_strs.push_back(orig);
+        orig_keep = &g_strs.back();
+        g_strs.push_back(clip(title));
+        title_keep = &g_strs.back();
+    }
+    OcStr t = lit(*title_keep);
+    if (!label_set_text(label, &t)) return;
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_title_saved[ctrl] = {label, orig_keep};
+}
+
 void hook_open_child(void* parent, void* desc) {
     auto& L = Loader::get();
     std::string page, ctx;
@@ -493,6 +611,13 @@ void hook_open_child(void* parent, void* desc) {
         }
     }
     if (!ours) { g_real_open(parent, desc); return; }
+    // hook_back walks at most kMaxDepth child links, so a deeper page would make
+    // Back consult the wrong record.
+    if (depth > kMaxDepth) {
+        L.log_warn("[ui-menus] page '" + page + "' not opened: too deep (max "
+                   + std::to_string(kMaxDepth) + ")");
+        return;
+    }
 
     emit_sync("ui:_menus_refresh", dumps(json{{"page", page}, {"ctx", ctx_value(ctx)}}));
     {
@@ -553,6 +678,15 @@ void hook_open_child(void* parent, void* desc) {
                   "(built ctrl " + std::string(built ? "seen" : "missing") + ")");
     } else {
         show_our_tabs(reinterpret_cast<void*>(child), rec);
+        std::string title;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            auto pit = g_pages.find(rec.page_id);
+            if (pit != g_pages.end()) title = pit->second.title;
+        }
+        if (!title.empty()) set_page_title(reinterpret_cast<void*>(child), title);
+        g_last_leaf.store(reinterpret_cast<void*>(child));   // current() inside the open handler
+        g_last_tick.store(GetTickCount64());
         hide_foreign_tabs(reinterpret_cast<void*>(child), rec);
         if (!rec.cats.empty()) {
             if (void* btn = tab_button(reinterpret_cast<void*>(child), rec.cats[0].entry_index))
@@ -592,6 +726,16 @@ void hook_teardown(void* ctrl) {
         std::lock_guard<std::mutex> lk(g_mu);
         auto it = g_hidden.find(ctrl);
         if (it != g_hidden.end()) { hidden = std::move(it->second); g_hidden.erase(it); }
+    }
+    SavedTitle saved{};
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        auto it = g_title_saved.find(ctrl);
+        if (it != g_title_saved.end()) { saved = it->second; g_title_saved.erase(it); }
+    }
+    if (saved.label) {   // the pooled page entity must not keep our heading
+        OcStr o = lit(*saved.orig);
+        label_set_text(saved.label, &o);
     }
     // Pooled entities keep child-window visibility; re-show before they return to the pool.
     for (void* w : hidden)
@@ -714,6 +858,11 @@ void run_request(void* ctrl) {
         g_reqs.pop_front();
     }
     if (rq.open) {
+        if (depth_of(ctrl) + 1 > kMaxDepth) {
+            Loader::get().log_warn("[ui-menus] cannot open '" + rq.page + "': too deep (max "
+                                   + std::to_string(kMaxDepth) + ")");
+            return;
+        }
         std::uintptr_t settings = 0;
         if (!mem_load(A(ctrl) + kCtrlSettings, &settings) || !settings
             || !mem_readable(reinterpret_cast<void*>(settings + kSetCreditsDesc), 8)) {
@@ -758,18 +907,7 @@ DWORD WINAPI watch_rows(LPVOID) {
             // Loader-owned values only: no game-memory read here. Pruning stays
             // in the game-thread detours.
             std::lock_guard<std::mutex> lk(g_mu);
-            for (auto& rec : g_records) {
-                for (auto& c : rec.cats) {
-                    for (LiveRow* r : c.rows) {
-                        const std::uint32_t now = *static_cast<volatile std::uint32_t*>(&r->value);
-                        if (now == r->seen) continue;
-                        r->seen = now;
-                        queue_locked("ui:menus_change",
-                                     dumps(json{{"page", rec.page_id}, {"category", c.id},
-                                                {"row", r->id}, {"index", now + 1}}));
-                    }
-                }
-            }
+            for (auto& rec : g_records) emit_row_changes_locked(rec);
         }
         if (g_dirty.load(std::memory_order_acquire)) flush();
     }
@@ -1038,6 +1176,15 @@ bool book_pages_open(const std::string& page_id, const std::string* ctx_json, st
         if (why) *why = "no Settings or R.ui.menus page is open";
         return false;
     }
+    {
+        // Loader-side depth only: the current leaf's record, else the Settings page (0).
+        Record cur;
+        const int d = find_record(g_last_leaf.load(), &cur) ? cur.depth : 0;
+        if (d + 1 > kMaxDepth) {
+            if (why) *why = "too deep (max " + std::to_string(kMaxDepth) + ")";
+            return false;
+        }
+    }
     std::lock_guard<std::mutex> lk(g_mu);
     if (!g_pages.count(page_id)) { if (why) *why = "unknown page"; return false; }
     g_reqs.push_back(std::move(rq));
@@ -1087,6 +1234,9 @@ bool install_book_page_hooks() {
         L.log("[ui-menus] off (RSMM_DISABLE_UI_MENUS is set)");
         return false;
     }
+    // Our pages are built from the Settings build hook (dllmain installs native-menu first).
+    if (!settings_build_hooked())
+        return fail("needs the Settings build hook (native-menu is off or failed to install)");
     if (!fn_resolver_init()) return fail("fn_resolver_init failed");
     if (!need("set visible", Sym::GameUi_SetVisible_Pattern, &g_set_visible)
         || !need("book mode", Sym::BookMenu_GetMode_Pattern, &g_get_mode)
