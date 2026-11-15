@@ -536,3 +536,23 @@ def test_full_precision_floats_read_back():
                            "amount": 3, "falloff": "smooth"}]}
     got = ME.read_manifest(ME.manifest_toml("prec", "", _DH, edits, as_map))
     assert got["edits"] == edits and got["map"] == as_map
+
+
+@needs_corpus
+def test_a_new_kind_lands_only_in_its_own_new_slots():
+    # Own tiles that replace nothing: a NEW kind starts off on every shipped
+    # slot, so only the slots added for it can host it.
+    ch = ME.find_chapter("DarkHills")
+    before = TG.read(ME.vanilla_level(ch))
+    edits = {"add_kinds": {"Mod_Own_Tiles": {"count": 2, "footprints": {"6x6": True}}},
+             "add_slots": [{"group": "6x6", "pos": [p, 0.0, p],
+                            "allow": {"Mod_Own_Tiles": True}} for p in (10.0, 50.0)]}
+    level, changes = ME.build_level(ch, edits)
+    tg = TG.read(level)
+    assert tg.kind_names[-1] == "Mod_Own_Tiles"
+    assert len(tg.slots_for("Mod_Own_Tiles")) == 2
+    for k in before.kind_names:              # every shipped kind keeps its slots
+        assert len(tg.slots_for(k)) == len(before.slots_for(k))
+    assert any("kind added: Mod_Own_Tiles" in c for c in changes)
+    with pytest.raises(ME.MapEditError, match="no kind for"):
+        ME.build_level(ch, {"add_kinds": {"Crystal": {"count": 1}}})

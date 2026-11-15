@@ -43,7 +43,7 @@ def _tile_mods(root: Path) -> list[dict]:
         tiles = []
         for poi in sorted((man.parent / "pois").glob("*/poi.toml")):
             try:
-                tiles.append(TE.read_places(poi.read_text(encoding="utf-8"))[0])
+                tiles.append(TE.read_edit(poi.read_text(encoding="utf-8"))[0])
             except (OSError, ValueError):
                 continue
         out.append({"id": man.parent.name, "tiles": tiles})
@@ -62,13 +62,14 @@ def _mod(req: Request) -> dict:
     name = tomllib.loads(man.read_text(encoding="utf-8")).get("mod", {}).get("name", "")
     tiles = {}
     for poi in sorted((folder / "pois").glob("*/poi.toml")):
-        tile, places = TE.read_places(poi.read_text(encoding="utf-8"))
-        tiles[tile] = places
+        tile, edit = TE.read_edit(poi.read_text(encoding="utf-8"))
+        tiles[tile] = edit
     return {"id": mod_id, "name": name, "tiles": tiles}
 
 
 def _check(req: Request) -> dict:
-    return {"files": TE.check(str(req.body.get("tile", "")), req.body.get("places"))}
+    # The body is the edit itself (places, own, copies, clear, remove, move).
+    return {"files": TE.check(str(req.body.get("tile", "")), req.body)}
 
 
 def _atomic(path: Path, text: str) -> None:
@@ -81,7 +82,8 @@ def _atomic(path: Path, text: str) -> None:
 def _save(req: Request) -> dict:
     body = req.body
     tile = str(body.get("tile", ""))
-    places = body.get("places") or []
+    # nothing added, removed or moved: the tile's poi comes back out
+    empty = not any(body.get(k) for k in ("places", "clear", "remove", "move"))
     mod_id = str(body.get("mod_id", "")).strip().lower()
     if not ME.valid_mod_id(mod_id):
         raise Fail(400, "mod id: use 2-64 lower-case letters, digits, '-' or '_'")
@@ -91,13 +93,13 @@ def _save(req: Request) -> dict:
         raise Fail(409, f"mods/{mod_id} already exists and was not made by the tile "
                         f"editor; pick another id")
     poi_dir = folder / "pois" / TE.poi_id(tile)
-    if places:
-        TE.check(tile, places)                     # prove it cooks before writing
-        _atomic(poi_dir / "poi.toml", TE.poi_toml(tile, places))
+    if not empty:
+        TE.check(tile, body)                       # prove it cooks before writing
+        _atomic(poi_dir / "poi.toml", TE.poi_toml(tile, body))
     elif poi_dir.is_dir():
-        shutil.rmtree(poi_dir)                     # every added object removed
+        shutil.rmtree(poi_dir)                     # every change taken back
     tiles = [t["tiles"] for t in _tile_mods(req.ctx.mods_dir) if t["id"] == mod_id]
-    edited = (tiles[0] if tiles else []) or ([tile] if places else [])
+    edited = (tiles[0] if tiles else []) or ([] if empty else [tile])
     name = str(body.get("name", "")).strip()[:80]
     _atomic(man, TE.manifest_toml(mod_id, name, edited or [tile]))
     # The web editor zips and downloads a saved mod when the path names its
