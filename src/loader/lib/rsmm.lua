@@ -479,7 +479,9 @@ end
 function R.engine.names()
     local out = {}
     for k in pairs(engine_map()) do
-        if k ~= "_va" then out[#out + 1] = k end
+        -- `_va` / `_va_build` are the data-address table and its build stamp,
+        -- not callables; no symbol name starts with an underscore.
+        if k:sub(1, 1) ~= "_" then out[#out + 1] = k end
     end
     table.sort(out)
     return out
@@ -526,16 +528,31 @@ R.give = {}
 -- game build no longer matches the symbol map (loader va-gate). Reads then
 -- return nil instead of garbage; see loader.h va_globals_trusted().
 local _va_warned = false
-local function _va_ok(feature)
-    if not I.va_trusted then return true end   -- older loader: no gate
-    local ok, trusted = pcall(I.va_trusted)
-    if not ok or trusted ~= false then return true end
+local function _va_warn(feature)
     if not _va_warned then
         _va_warned = true
         R.log("[rsmm] game build != symbol-map build — " .. feature ..
               " (and other va-global features) disabled until data is updated")
     end
     return false
+end
+local function _va_ok(feature)
+    -- Two artifacts carry absolute addresses and they ship apart: this SDK's
+    -- VA table (engine_gen.lua) and the DLL's compiled Sym:: constants. A va
+    -- feature may touch either, so BOTH must agree with the running exe. The
+    -- SDK stamp is checked here (a new DLL beside a stale SDK used to pass);
+    -- the DLL gate below speaks for the DLL's addresses.
+    local build = engine_map()._va_build
+    if build and build ~= "" and I.exe_sha256 then
+        local ok, sha = pcall(I.exe_sha256)
+        if ok and type(sha) == "string" and sha ~= "" and sha ~= build then
+            return _va_warn(feature)
+        end
+    end
+    if not I.va_trusted then return true end   -- older loader: no gate
+    local ok, trusted = pcall(I.va_trusted)
+    if not ok or trusted ~= false then return true end
+    return _va_warn(feature)
 end
 
 -- A heap pointer read out of a baked va slot is only build-trustworthy after

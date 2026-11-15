@@ -6,6 +6,9 @@
 
 namespace Sym {
 constexpr std::uintptr_t kPreferredBase = 0x140000000ull;
+// sha256 of the game exe these addresses were derived for ('' = unknown);
+// the loader's va-gate trusts absolute data addresses only on that exe.
+constexpr const char* kSymbolMapExeSha256 = "b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904";
 
 // --- analytics ---
 constexpr std::uintptr_t AnalyticsBag_SetInt = 0x1402047c0ull;
