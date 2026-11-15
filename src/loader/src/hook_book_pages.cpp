@@ -2,13 +2,14 @@
 //
 // A mod page is a real BookOptions page, opened with the game's own
 // BookPage_OpenChild(parent, desc) (what the Credits row on Settings does).
-// The page's slot-7 build runs INSIDE that call. The Graphics/Audio/Keyboard/
-// Controller tab builders are detoured to do nothing on our controller;
+// The page's slot-7 build runs INSIDE that call. The Graphics/Audio
+// tab builders are detoured here to do nothing on our controller (Keyboard/
+// Controller are gated in hook_keybinds.cpp);
 // hook_settings_menu.cpp's hook_build (the Miscellaneous builder) hands OUR
 // controller to book_pages_build, which adds our categories and rows the same
 // way add_mods_tab does. When OpenChild returns we hide the trailing
-// Credits/EULA/Privacy entries and select our first category. Offsets are b9c3 (RE notes on each symbol in
-// data/symbols.json, category "ui"; phase 1 proof in evidence/2026-11-14-r-ui-probe).
+// Credits/EULA/Privacy entries and select our first category. Offsets are for
+// build b9c3 (see data/symbols.json, category "ui").
 //
 // Event flow mirrors hook_ui_state.cpp: events are queued and emitted by the
 // outermost detour on the thread, so a mod handler never runs inside the
@@ -56,7 +57,7 @@ struct OcStr {           // oCString: {char*, u32 len | 0x80000000 literal, u32 
 constexpr std::uint32_t kLiteral = 0x80000000u;
 OcStr lit(const std::string& s) { return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0}; }
 
-// Page controller (b9c3)
+// Page controller
 constexpr std::uintptr_t kPageBm        = 0xd0;
 constexpr std::uintptr_t kPageChild     = 0xd8;
 // BookOptions controller
@@ -428,13 +429,10 @@ LiveRow* new_row(const std::string& page, const std::string& cat, const std::str
 // ---- hooks ------------------------------------------------------------------------
 
 // The BM System-page descriptor copy handed to the original OpenChild. Loader
-// owned. OpenChild (FUN_1403dc650) writes the parent and its callback into
-// desc+0x70..+0x80 and clears the callback before it returns; the spawner
-// (FUN_1406eb300) sets desc+0xd0 and zeroes it after the synchronous spawn; the
-// spawn callbacks (FUN_1406f8c60, FUN_1403dc7c0) read the descriptor only during
-// the spawn and keep no pointer to it. One copy is therefore safe to reuse across
-// opens, nested ones included: opens never overlap (Lua opens are queued and run
-// from hook_update).
+// owned. BookPage_OpenChild and its spawner only write into the descriptor for the
+// duration of the synchronous spawn and keep no pointer to it, and opens never
+// overlap (Lua opens are queued and run from hook_update), so one copy is safe to
+// reuse across opens, nested ones included.
 std::uint8_t g_desc[kDescSize];
 
 enum class Target { NotOurs, Ours, Gone };
@@ -480,9 +478,6 @@ void hide_foreign_tabs(void* child, const Record& rec) {
     }
 }
 
-// Pooled tab buttons keep a hidden child window from an earlier page.
-void show_our_tabs(void* child, const Record& rec);
-
 void* tab_button(void* ctrl, std::uint32_t idx) {
     std::uintptr_t tabs = 0;
     std::uint32_t count = 0;
@@ -493,6 +488,7 @@ void* tab_button(void* ctrl, std::uint32_t idx) {
     return btn;
 }
 
+// Pooled tab buttons keep a hidden child window from an earlier page.
 void show_our_tabs(void* child, const Record& rec) {
     for (const auto& c : rec.cats)
         if (void* btn = tab_button(child, c.entry_index)) g_set_visible(btn, true, true);
@@ -708,10 +704,8 @@ void hook_build_audio(void* ctrl, void* page, void* parent) {
     g_real_build_audio(ctrl, page, parent);
 }
 
-// Graphics builder skipped on our page -> no Apply element at ctrl+0x268, yet the
-// teardown reads +0x268 unchecked (it unregisters the listeners at +0x1f8/+0x200
-// from the element's lists at +0xf0/+0xd8). A zeroed block makes those lists empty,
-// so the teardown only clears +0x1f8/+0x200. Never written after init.
+// The skipped Graphics builder leaves no Apply element, yet teardown reads it
+// unchecked; a zeroed block stands in so its listener lists read as empty.
 alignas(16) std::uint8_t g_apply_placeholder[0x110] = {};
 
 void hook_teardown(void* ctrl) {
