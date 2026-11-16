@@ -883,7 +883,7 @@ export const zhCN: Record<string, string> = {
   'min {value}': '最小 {value}',
   missing: '缺失',
   'missing deps': '缺少依赖',
-  'missing — launch Modded to set': '未设置——启动模组版即可设置',
+  'missing — launch Modded for the fix': '未设置——启动模组版查看修复方法',
   'mod image': '模组图片',
   name: '名称',
   'new profile': '新建方案',
@@ -1052,4 +1052,16 @@ export const zhCN: Record<string, string> = {
   'Open the folder that holds every archived run': '打开存放所有已归档运行日志的文件夹',
   'Delete the archived runs and the last run’s log': '删除已归档的运行日志和最近一次运行的日志',
   'Delete logs': '删除日志',
+  'Steam launch options needed': '需要设置 Steam 启动选项',
+  "On Linux, Proton ignores the mod loader unless Ravenswatch's launch options tell it to load it. Without them, script mods do nothing.":
+    '在 Linux 上，除非 Ravenswatch 的启动选项要求加载，否则 Proton 会忽略模组加载器。没有该选项，脚本模组不会生效。',
+  'In Steam: right-click Ravenswatch → Properties → General → Launch Options, and paste:':
+    '在 Steam 中：右键 Ravenswatch → 属性 → 通用 → 启动选项，然后粘贴：',
+  'Steam is running. Quit Steam completely, then try again — or paste the line yourself.':
+    'Steam 正在运行。请完全退出 Steam 后重试——或自行粘贴这一行。',
+  'Could not write the launch options. Paste the line into Steam yourself.':
+    '无法写入启动选项。请自行将这一行粘贴到 Steam 中。',
+  'Writing…': '正在写入…',
+  'Set it for me (Steam closed)': '帮我设置（需关闭 Steam）',
+  "I've added it — launch": '我已添加——启动',
 };

@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from rsmm.cli.apply_mods import find_game_dir
@@ -52,6 +53,99 @@ def _vdf_read(path: Path) -> str:
 
 def _vdf_write(path: Path, text: str) -> None:
     path.write_bytes(text.encode("utf-8", "surrogateescape"))
+
+
+# --------------------------------------------------------------------------- #
+# Proton prefix DLL override (#148)
+#
+# Wine reads DLL overrides from the prefix registry as well as from the
+# WINEDLLOVERRIDES env var (Proton's env list doesn't name winhttp, so the
+# registry entry is what applies). Unlike localconfig.vdf, Steam doesn't own
+# the prefix's user.reg, so this works while Steam is running — the Steam Deck
+# case, where Steam never closes and launch options can't be written.
+
+PREFIX_OVERRIDE_LINE = '"winhttp"="native,builtin"'
+_DLLOVERRIDES_HDR = re.compile(r"^\[Software\\\\Wine\\\\DllOverrides\][^\n]*\n", re.M)
+_WINHTTP_NATIVE = re.compile(r'^"winhttp"="n(ative)?(,\s*b(uiltin)?)?"\s*$', re.M | re.I)
+
+
+def prefix_user_reg(game_dir: Path, app_id: str = RAVENSWATCH_APP_ID) -> Path:
+    """<lib>/steamapps/common/<game> → <lib>/steamapps/compatdata/<id>/pfx/user.reg"""
+    return game_dir.parents[1] / "compatdata" / app_id / "pfx" / "user.reg"
+
+
+def _dlloverrides_section(text: str) -> tuple[int, int] | None:
+    """(start, end) of the DllOverrides section body, or None."""
+    m = _DLLOVERRIDES_HDR.search(text)
+    if m is None:
+        return None
+    end = text.find("\n[", m.end())
+    return m.end(), (len(text) if end == -1 else end + 1)
+
+
+def prefix_override_present(reg: Path) -> bool:
+    try:
+        text = _vdf_read(reg)
+    except OSError:
+        return False
+    span = _dlloverrides_section(text)
+    return span is not None and _WINHTTP_NATIVE.search(text, *span) is not None
+
+
+def _prefix_in_use(pfx: Path) -> bool:
+    """A live wineserver for this prefix rewrites user.reg from memory on exit,
+    which would drop our line — so don't write while one runs."""
+    want = str(pfx).rstrip("/")
+    for environ in Path("/proc").glob("[0-9]*/environ"):
+        try:
+            data = environ.read_bytes()
+        except OSError:
+            continue
+        for var in data.split(b"\0"):
+            if var.startswith(b"WINEPREFIX=") and \
+                    var[11:].decode(errors="replace").rstrip("/") == want:
+                return True
+    return False
+
+
+def ensure_prefix_override(game_dir: Path) -> bool:
+    """Make the game's Proton prefix load winhttp.dll native-first.
+
+    True when the override is (now) in place. False when there is no prefix
+    yet (game never run under Proton), the prefix is in use, or the write
+    failed — the caller falls back to Steam launch options.
+    """
+    reg = prefix_user_reg(game_dir)
+    if prefix_override_present(reg):
+        return True
+    if not reg.is_file() or _prefix_in_use(reg.parent):
+        return False
+    try:
+        text = _vdf_read(reg)
+        span = _dlloverrides_section(text)
+        if span is None:
+            text = (text.rstrip("\n") + "\n\n"
+                    f"[Software\\\\Wine\\\\DllOverrides] {int(time.time())}\n"
+                    f"{PREFIX_OVERRIDE_LINE}\n")
+        else:
+            # Values go after the header's "#time="/"#class=" comment lines;
+            # drop any non-native winhttp entry the user had.
+            start, end = span
+            lines = text[start:end].splitlines(keepends=True)
+            lines = [ln for ln in lines if not ln.lower().startswith('"winhttp"=')]
+            at = next((i for i, ln in enumerate(lines) if not ln.startswith("#")), len(lines))
+            lines.insert(at, PREFIX_OVERRIDE_LINE + "\n")
+            text = text[:start] + "".join(lines) + text[end:]
+        bak = reg.with_name(reg.name + BACKUP_SUFFIX)
+        if not bak.exists():
+            shutil.copy2(reg, bak)
+        tmp = reg.with_name(reg.name + ".rsmm.tmp")
+        _vdf_write(tmp, text)
+        os.replace(tmp, reg)
+    except OSError as e:
+        print(f"could not write the Proton prefix override: {e}", file=sys.stderr)
+        return False
+    return prefix_override_present(reg)
 
 
 def _steam_root() -> Path | None:
@@ -481,7 +575,10 @@ def main() -> int:
         if not _rsmm_subcommand(["restore"]):
             print("Failed to restore original files; aborting launch.", file=sys.stderr)
             return 1
-    else:
+    elif not args.no_launch:
+        # --no-launch is the repair-only path (doctor --fix, the desktop's
+        # "set it for me"): applying mods there would leave the install
+        # modded with no game running and nothing to restore it.
         game_dir = find_game_dir()
         if game_dir is not None:
             built_dll = DIST_DIR / "winhttp.dll"
@@ -512,6 +609,15 @@ def main() -> int:
     # by default, so no WINEDLLOVERRIDES is needed. Just launch.
     if sys.platform == "win32":
         return _open_steam_url(url)
+
+    # Proton: put the override in the game's prefix registry. It needs no Steam
+    # restart, so it works on a Steam Deck where Steam is always running. The
+    # explicit launch-option flags keep their old meaning.
+    if not (args.vanilla or args.set_launch_options or args.clear_launch_options):
+        game_dir = find_game_dir()
+        if game_dir is not None and ensure_prefix_override(game_dir):
+            print("loader override set in the Proton prefix")
+            return _open_steam_url(url)
 
     steam_root = _steam_root()
     if steam_root is None:
