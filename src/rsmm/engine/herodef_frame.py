@@ -346,7 +346,11 @@ _CLASSES = ("oCDtHeroDefinition", "oCDtDefinition", "oIResource", "oISerializabl
 #: value where heroes differ (flags whose meaning is not known yet).
 _HEAD = bytes.fromhex("000000000101")
 _FLAGS5, _FLAGS_G, _FLAGS_T = bytes(5), bytes.fromhex("0101000000"), bytes.fromhex("0100")
+#: A talent row's tail: 01 at byte 5 on "Ultimate 2 Upgrade 2" (12 of 13
+#: shipped heroes) and on each hero's own quest talent; 00 on every other row,
+#: the other ultimate rows included.
 _ULTIMATE_TAIL = bytes.fromhex("000000000001000000")
+_TAIL_ROW = "Ultimate 2 Upgrade 2"
 _COMMON = "Common~GAM.xls"
 
 
@@ -391,10 +395,12 @@ class Record:
     pages: list[Page]
     skins: list[Skin]
     lowres: str
-    locked_text: Text = field(default_factory=lambda: Text.of(
-        _COMMON, "Book_Page_Hero_Locked_Condition"))
-    unlock_message: Text = field(default_factory=lambda: Text.of(
-        _COMMON, "Message_Hero_Unlocked_Title", 0xA5))
+    # A hero written here has no lock, so like the 4 always-unlocked shipped
+    # heroes (Beowulf, Piper, Red, Snow Queen) it has no locked-condition text
+    # and no unlock message: all empty. (A text naming a key with row -1, as
+    # this once wrote, is a cached-row read the game is not built for.)
+    locked_text: Text = field(default_factory=Text)
+    unlock_message: Text = field(default_factory=Text)
     story_entity: str = "GameUis\\All_Book_Pages\\Hero_Single_Story_Text.entity.ot"
 
 
@@ -421,7 +427,7 @@ def build(rec: Record, class_source: bytes) -> bytes:
             "cls": names.index(SKILL), "z": 0, "name": t.controller,
             "controller": t.controller_guid, "lock": Lock(),
             "guid": _guid(rec.hid, f"row:{t.controller}"),
-            "tail": _ULTIMATE_TAIL if t.ultimate else bytes(9)}))
+            "tail": _ULTIMATE_TAIL if t.controller.endswith(_TAIL_ROW) else bytes(9)}))
     rows = list(range(len(objects)))
     for i, p in enumerate(rec.pages):
         objects.append((STORY, {

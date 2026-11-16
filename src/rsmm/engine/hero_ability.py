@@ -130,6 +130,7 @@ class Hit:
     status: str = ""          # talent_status.STATUSES: Chilled, Ignite, Bleed, ...
     fx: str = ""              # the burst's look: any shipped .vfx.ot (default Red's bomb)
     shake: str = "none"       # camera shake: none, light, medium, heavy
+    sound: str = ""           # "<entity ref> | <FMod event part>" played on the hit
 
 
 #: A range indicator: Kintaro's ultimate target ring (a ground decal, the
@@ -373,6 +374,13 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
         ef.clone([f"MO Critical Health Explosion\\{n}" for n in _HIT],
                  seed=f"{seed}:hit{i}", rename=names,
                  group={"MO Critical Health Explosion": group}, source=hero_common)
+        # the donor's own explosion sound, played by every hit of every
+        # button (audit 2026-11-16): unhooked; a hit sounds only when asked
+        _drop_ref(ef, f"Event {pre}", "activates", "Critical Health Explosion FMod Event")
+        if hit.sound:
+            ef.add_ref(f"Event {pre}", "activates",
+                       own_sound(ef, hit.sound, name=f"{pre} Sound", group=group,
+                                 seed=f"{seed}:hit{i}:sound"))
         ef.set_value(f"{pre} Radius", "value", hit.radius)
         ef.set_value(f"{pre} Damage", "value_28", hit.damage / 100.0)
         if kind in DAMAGE_TYPE:
@@ -389,7 +397,7 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
     return timers
 
 
-_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", *HIT_FIELDS}
+_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", *HIT_FIELDS}
 
 #: The donor explosion shakes the camera (Common_FX's medium explosion shake)
 #: on EVERY hit; a hit shakes only when asked. "none" points the shake's setup
@@ -523,9 +531,13 @@ def parse_hits(raw, what: str) -> list[Hit]:
         shake = str(h.get("shake", "none"))
         if shake not in SHAKES:
             raise AbilityError(f"{what}: hits[{n}].shake = {shake!r}: one of {', '.join(SHAKES)}")
+        sound = str(h.get("sound", ""))
+        if sound and "|" not in sound:
+            raise AbilityError(f"{what}: hits[{n}].sound = {sound!r}: \"<entity ref> | "
+                               "<FMod event part>\"")
         out.append(Hit(float(h["at"]), float(h.get("radius", 3.0)),
                        float(h.get("damage", 100.0)), status=status, fx=fx, shake=shake,
-                       **extra))
+                       sound=sound, **extra))
     return out
 
 
@@ -627,8 +639,26 @@ def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) ->
     if c.cls != "oCEntityCpntFModEventSettings":
         raise AbilityError(f"sound: {part!r} is a {c.cls}, not an FMod event")
     ef.clone([c.path], rename={part: name}, group={c.group: group}, seed=seed, source=donor)
+    if c.override is not None:
+        # A donor event can itself OVERRIDE a base part (Jack NPC's voice
+        # "walla" events override Character_Common's footstep); the copy kept
+        # that header and replaced the hero's footsteps with it (audit
+        # 2026-11-16). The hero's own sound is an ordinary part.
+        empty = P.Link()
+        ef.set_override(name, empty.guid, empty.path)
     _unlink_value_reads(ef, name)
     return name
+
+
+def _drop_ref(ef: EntityFile, comp: str, field: str, target: str) -> None:
+    """Remove ``comp``'s ``field`` entry linking a part named ``target``."""
+    c = ef.component(comp)
+    f = next(x for x in EF.fields(c) if x.name == field)
+    for i, item in enumerate(f.text.split("  |  ")):
+        if item.rstrip().endswith("\\" + target):
+            ef.remove_ref(comp, field, i)
+            return
+    raise AbilityError(f"{comp}.{field}: no link to {target!r}")
 
 
 def _unlink_value_reads(ef: EntityFile, part: str) -> int:
@@ -670,7 +700,8 @@ def _repoint_bloc(ef: EntityFile, i: int, target: str) -> None:
     b[at:end] = ef._picker(target)
 
 
-def own_timeline(ef: EntityFile, anim: str, length: float, *, sound: str = "") -> None:
+def own_timeline(ef: EntityFile, anim: str, length: float, *, sound: str = "",
+                 not_before: float = 0.0) -> None:
     """``anim``'s timeline (``oCCinematic``: bloc count, bloc object ids,
     length), copied from the dash, made the ability's own: ``ABILITY_EXIT``
     moves to ``EXIT_SHARE`` of ``length``, and each dash-only bloc starts after
@@ -693,7 +724,11 @@ def own_timeline(ef: EntityFile, anim: str, length: float, *, sound: str = "") -
         elif any(m in bytes(bloc) for m in _DASH_ONLY_BLOCS):
             struct.pack_into("<f", bloc, 4, length + 60.0)
         elif b"ABILITY_EXIT" in bytes(bloc):
-            struct.pack_into("<f", bloc, 4, max(0.2, EXIT_SHARE * length))
+            # never before the button's last hit (``not_before``): moving after
+            # the exit ends the state, and a hit still to come never landed
+            # (Jack's ultimate: exit 0.825 s, its 2000% hit at 0.9 s)
+            struct.pack_into("<f", bloc, 4, min(length, max(0.2, EXIT_SHARE * length,
+                                                            not_before)))
 
 
 def _bisect_state(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, ctl: str,
@@ -1202,15 +1237,23 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
         snd = (own_sound(ef, ab.sound, name=f"{tag} Sound", group=group,
                          seed=f"{seed}:{ab.slot}:sound") if ab.sound else "")
         own_timeline(ef, f"{tag} Anim", anim_len + 60.0 if ab.loop else length,
-                     sound="" if (ab.moving or ab.loop) else snd)
+                     sound="" if (ab.moving or ab.loop) else snd,
+                     not_before=max((h.at for h in ab.hits), default=0.0) + 0.05)
         w = TW.TalentWriter(ef, f"{seed}:{ab.slot}", group)
         state = f"State {tag}"
         timers = hits(ef, hero_common, w, ab.hits, tag=tag, group=group,
                       seed=f"{seed}:{ab.slot}", kind=ab.slot)
         aim = TW.link_to(ef, f"{tag} Look At")
+        # Aim ONCE, on press: shipped snapping look-ats sit in a state's
+        # `activates` (Carmilla's recover snap, Kintaro's secondary snap, Snow
+        # Queen's release snap). Held in while_active it re-snapped to the
+        # cursor every frame, so Jack whipped round mid-swing and his hits and
+        # shots followed the mouse (audit 2026-11-16). A button that moves or
+        # loops keeps tracking: steering through it is the point.
+        track = ab.moving or ab.loop
         state_link = w.state(state, while_active=[TW.link_to(ef, f"{tag} Clip Selector"),
-                                                  *([] if ab.has("look_enter") else [aim])],
-                             flags=TW.PERSISTENT)
+                                                  *([aim] if track else [])],
+                             activates=[] if track else [aim], flags=TW.PERSISTENT)
         if ab.has("look_enter"):
             ef.add_ref(state, "on_enter?", f"{tag} Look At")
         # The rush's root motion stops at an enemy only while the detector

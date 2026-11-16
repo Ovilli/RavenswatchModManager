@@ -1270,6 +1270,12 @@ _FX_MATERIAL = {False: ("Materials\\Dot_Blurred_Square_01.mat.ot",
                         "Textures\\Shapes\\Dot_Blurred_Square_Alpha.png"),
                 True: ("Materials\\Dot_Blurred_Square_01_SOFT.mat.ot",
                        "Textures\\Shapes\\Dot_Blurred_Square_Alpha.png")}
+#: A mesh layer's material: the slash-rim shader shipped fans and flat rings
+#: draw with (one texture, tinted by u_color), or for ``mesh = "decal"`` the
+#: ground-impact decal's (projected onto the ground).
+_FX_MESH_MATERIAL = ("Materials\\Slash_Rim_01.mat.ot", "Textures\\Slashes\\Slash_Rim_01.png")
+_FX_DECAL_MATERIAL = ("Materials\\Explosion_Ground_Impact_01.mat.ot",
+                      "Textures\\Impacts\\Impact_Ground_Explosion_01.png")
 #: Where a hero's own effects are written: a shipped effects folder.
 _FX_FOLDER = "Settings\\FX\\Common_FX"
 _FX_PREFIX = "fx:"
@@ -1453,7 +1459,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                 tex = layer.pop("texture", None)
                 soft = bool(layer.pop("soft", False))
                 if tex:
-                    donor_mat, donor_tex = _FX_MATERIAL[soft]
+                    fx_mesh = layer.get("mesh")   # not `mesh`: that is the hero's body
+                    donor_mat, donor_tex = (_FX_DECAL_MATERIAL if fx_mesh == "decal" else
+                                            _FX_MESH_MATERIAL if fx_mesh else _FX_MATERIAL[soft])
                     tag = f"{scope}_{ename}_{n}"
                     tref = f"Textures\\Shapes\\{tag}.png"
                     put(_fx_cooked(tref, PC.TEXTURE_SUFFIX), PC.cook_texture(_mod_source(
@@ -1463,12 +1471,28 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                         corpus.read(_fx_cooked(donor_mat, ".Material.gen")), {donor_tex: tref}))
                     art += [f"FX|{tref}|oCTexture", f"FX|{mref}|oCMaterial"]
                     own_fx_assets.update((tref, mref))
+                    if fx_mesh:                   # whatever its shader reaches, as shipped
+                        shipped_fx.add(donor_mat)
                     layer["material"] = mref
                 elif not layer.get("material"):
-                    raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}] needs a "
-                                       "texture (a .png in the mod) or a shipped material")
+                    if not layer.get("light"):
+                        raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}] needs a "
+                                           "texture (a .png in the mod), a shipped material "
+                                           "or a light")
                 else:
                     shipped_fx.add(str(layer["material"]))
+                if layer.get("light"):            # the point lights' shipped material
+                    shipped_fx.add(VW.LIGHT["material"])
+                if layer.get("mesh"):             # the shipped shape it draws
+                    try:
+                        mroot, mpath = VW.mesh_ref(str(layer["mesh"]))
+                    except VW.EffectError as e:
+                        raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}]: {e}") from e
+                    if not corpus.exists(f"{mroot}/{mpath.replace(chr(92), '/')}"
+                                         f"{PC.GEOMETRY_SUFFIX}"):
+                        raise ContentError(f"hero {hid}: effects.{ename}.layers[{n}]: no "
+                                           f"shipped mesh {layer['mesh']!r} (FX\\Meshes)")
+                    shipped_fx.add(mpath)
                 layer.setdefault("name", f"{ename} {n}")
                 layers.append(layer)
             ref = f"{_FX_FOLDER}\\{scope}_{ename}.vfx.ot"
@@ -1611,7 +1635,16 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     own_clips: dict[str, tuple[str, float]] = {}
     anims = frame.get("animations") or {}
     if anims:
+        import json as _json
+
         from ...engine import anim_cook as AC
+        # A clip cooked and preloaded that no slot or button names is dead
+        # weight, and usually a slot left to the rig (Jack's spawn, teleport-in
+        # and revive-out clips sat unused while those slots stayed empty).
+        named = set(re.findall(r'"anim:([A-Za-z0-9_]+)"', _json.dumps(frame)))
+        for unused in sorted(set(map(str, anims)) - named):
+            print(f"warning: hero {hid}: animations.{unused} is cooked but no slot or "
+                  f"ability uses it (clip = \"anim:{unused}\")", file=sys.stderr)
         for name, spec in sorted(anims.items()):
             spec = spec if isinstance(spec, dict) else {"source": spec}
             if not spec.get("source") or not spec.get("template"):
@@ -2283,7 +2316,10 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         name=HDF.Text.of(bank, key("Name", f.get("name") or hid)),
         desc=HDF.Text.of(bank, key("Desc", f.get("description") or "")),
         portrait=portrait, book=book,
-        new_hero=own_art(frame.get("new_hero"), rr["new_hero"], "NewHero", "frame.new_hero"),
+        # an unlocked hero shows no "new hero" picture (empty on the 4 always-
+        # unlocked shipped heroes); only one the mod gives its own
+        new_hero=(ui_art(frame.get("new_hero"), rr["new_hero"][1], "NewHero", "frame.new_hero")
+                  if frame.get("new_hero") else ("", "")),
         codex=codex, talents=rows, pages=pages,
         skins=[HDF.Skin(skin_ref, own_art(frame.get("skin_icon"),
                                           rig_skin["icon"] if rig_skin else ("", ""),
@@ -2506,8 +2542,17 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
                            f"{', '.join(map(repr, missing))}, so it cannot be referenced "
                            f"safely (a resource the caches miss is a crash at load)")
     seen, extra = _reachable(targets, lines, out_dir)
-    return sorted({ln for ln in lines if ln.count("|") == 2 and ln.split("|")[1] in seen}
-                  | set(extra))
+    kept = {ln for ln in lines if ln.count("|") == 2 and ln.split("|")[1] in seen}
+    # A shader is listed twice in every shipped cache (``X.graph.osl|oCShader2``
+    # beside ``X.px.ot|oCShader``); nothing NAMES the .graph.osl, so the reach
+    # walk kept only half of each pair (audit 2026-11-16).
+    shaders = {ln.split("|")[1].removesuffix(".px.ot") for ln in kept
+               if ln.endswith("|oCShader")}
+    kept |= {ln for ln in lines if ln.endswith("|oCShader2")
+             and ln.split("|")[1].removesuffix(".graph.osl") in shaders}
+    # ``extra`` is cooked paths: each as its cache line, as poi does (59 raw
+    # paths per hero cache were written as lines no shipped cache has)
+    return sorted(kept | {RC.entry_for(c) for c in extra})
 
 
 def _table(v, what: str, hid: str) -> dict:
