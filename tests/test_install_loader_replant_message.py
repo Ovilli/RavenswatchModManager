@@ -28,6 +28,16 @@ def test_replant_over_a_dev_build_warns(monkeypatch, tmp_path, capsys):
     assert "—" not in out.err
 
 
+def test_replant_at_the_same_version_stays_neutral(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(lu, "replant_cached",
+                        lambda g: {"loader_version": 61, "planted": ["a", "b"],
+                                   "same_version": True})
+    il._replant_newer_loader(tmp_path)
+    out = capsys.readouterr()
+    assert "warning" not in (out.out + out.err)
+    assert "planted the update channel's build of loader v61 (2 files)" in out.out
+
+
 def test_replant_over_an_older_channel_build_stays_neutral(monkeypatch, tmp_path, capsys):
     out = _run(monkeypatch, tmp_path, capsys, 57)
     assert "warning" not in (out.out + out.err)

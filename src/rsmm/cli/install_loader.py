@@ -228,7 +228,10 @@ def _replant_newer_loader(game_dir: Path) -> None:
         print(f"install-loader: cached loader update not replanted: {exc}",
               file=sys.stderr)
         return
-    if result:
+    if result and result.get("same_version"):
+        print(f"install-loader: planted the update channel's build of loader "
+              f"v{result['loader_version']} ({len(result['planted'])} files)")
+    elif result:
         new = result["loader_version"]
         # The platform script just planted this build's own DLL, which is what
         # the replant overwrote. A prebuilt stamp means a channel build; no
