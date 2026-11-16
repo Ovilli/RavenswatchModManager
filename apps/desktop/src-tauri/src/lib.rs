@@ -52,6 +52,10 @@ pub fn run() {
                         let _ = other.close();
                     }
                 }
+                // "Update on close": quitApp has stopped the sidecars before
+                // destroying this window, so the staged CLI can be installed.
+                // If a process still holds a file open, startup retries it.
+                cli_channel::promote_staged(&app);
             }
         })
         .invoke_handler(tauri::generate_handler![

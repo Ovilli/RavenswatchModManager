@@ -1,12 +1,9 @@
-import { Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import pkg from '../../package.json';
 import { BUNDLED_CHANGELOG, type ChangelogEntry, loadChangelog } from '../lib/changelog';
-import { describeCliSource } from '../lib/channel-status';
-import { TParts, useT } from '../lib/i18n-react';
-import { type CliChannel, cliChannel } from '../lib/rsmm';
+import { useT } from '../lib/i18n-react';
 import { ChangelogSection } from './changelog-dialog';
-import { Crest, Fleuron, MonoTag, Panel } from './chrome';
+import { MonoTag, Panel } from './chrome';
 
 /** Releases shown before the panel asks you to expand it. */
 const NOTES_COLLAPSED = 1;
@@ -26,11 +23,6 @@ export function AboutPanels() {
   // in the published feed — which can carry notes for loader updates that never
   // had an app release to be compiled into.
   const [entries, setEntries] = useState<ChangelogEntry[]>(BUNDLED_CHANGELOG);
-  const [cli, setCli] = useState<CliChannel | null>(null);
-
-  useEffect(() => {
-    void cliChannel().then(setCli);
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -47,91 +39,6 @@ export function AboutPanels() {
 
   return (
     <div className="space-y-6">
-      <Panel className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <Crest size="lg" iconSrc="/logo.png" iconAlt="Ravenswatch Mod Manager Tauri icon" />
-          <div>
-            {/* The product name is a proper noun and stays as-is. */}
-            <h2 className="font-fraktur text-2xl text-parchment">Ravenswatch Mod Manager</h2>
-            <p className="font-serif-italic text-ash">
-              <TParts
-                text={t('Version {version}')}
-                parts={{ version: <span className="font-data">{version}</span> }}
-              />
-            </p>
-            {cli?.dir ? (
-              <p className="font-data text-sm text-ash">
-                {t('CLI {source}', { source: describeCliSource(cli) })}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        <p className="font-serif-italic leading-relaxed text-parchment/90">
-          {t(
-            "RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and Lua-scripted mods without requiring manual edits to the game's install directory. Profiles let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.",
-          )}
-        </p>
-
-        <Fleuron className="my-2" />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Key features')}</h3>
-            <ul className="font-serif-italic space-y-2 text-smoke">
-              <li>· {t('Browse community mods and install in one click')}</li>
-              <li>· {t('Toggle individual mods on or off per profile')}</li>
-              <li>· {t('Export and share profiles as short codes')}</li>
-              <li>· {t('Detect file-level conflicts before launching')}</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Get involved')}</h3>
-            <p className="font-serif-italic text-smoke leading-relaxed mb-3">
-              {t(
-                'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.',
-              )}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href="https://github.com/Ovilli/RavenswatchModManager"
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonClass}
-              >
-                {t('View repository')}
-              </a>
-              <a
-                href="https://discord.gg/dZbsKBWjSF"
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonClass}
-              >
-                {t('Discord')}
-              </a>
-              <a
-                href="https://docs.rsmm.me/getting-started/install/"
-                target="_blank"
-                rel="noreferrer noopener"
-                className={`${buttonClass} btn-grim-primary`}
-                data-variant="primary"
-              >
-                {t('Read docs')}
-              </a>
-              <a
-                href="https://ko-fi.com/W7W41FW3YE"
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonClass}
-              >
-                {t('Support on Ko-fi')}
-              </a>
-            </div>
-          </div>
-        </div>
-      </Panel>
-
       <Panel className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
           <div>

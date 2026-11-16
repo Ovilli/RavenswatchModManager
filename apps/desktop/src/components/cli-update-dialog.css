@@ -1,0 +1,63 @@
+/* The update prompt carries the reference's grain, grid and horizontal fade.
+   Keep the treatment local: other Grimoire dialogs retain their flat surface. */
+.cli-update-dialog {
+  isolation: isolate;
+  background-image: linear-gradient(
+    100deg,
+    hsl(var(--crimson)) 0%,
+    hsl(var(--oxblood)) 48%,
+    hsl(var(--pitch)) 100%
+  );
+}
+
+/* Liquid Glass's layered inset lighting, softened and tinted for crimson.
+   A narrow reflection fades inward; the opposite edge supplies depth.
+   Hovering never changes the light or elevation. */
+.cli-update-dialog.grimoire-card,
+.cli-update-dialog.grimoire-card:hover {
+  border: 0;
+  box-shadow:
+    inset 1px 1px 1px hsl(var(--parchment) / 0.18),
+    inset 2px 2px 4px hsl(var(--crimson-text) / 0.08),
+    inset -1px -1px 1px hsl(0 0% 0% / 0.18),
+    inset -2px -2px 4px hsl(0 0% 0% / 0.08),
+    0 20px 44px -10px hsl(0 0% 0% / 0.5),
+    0 4px 12px hsl(0 0% 0% / 0.25);
+}
+
+.cli-update-dialog::before,
+.cli-update-dialog::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.cli-update-dialog::before {
+  z-index: -2;
+  background-image: linear-gradient(hsl(var(--parchment) / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--parchment) / 0.12) 1px, transparent 1px);
+  background-size: 36px 36px;
+  background-position: center;
+  mask-image: linear-gradient(90deg, transparent, #000 45%, #000 80%, transparent);
+}
+
+.cli-update-dialog::after {
+  z-index: -1;
+  /* Small, locally generated raster tile: no animated filter or network fetch. */
+  background-image: url("../assets/update-grain.png");
+  background-size: 128px 128px;
+  mix-blend-mode: soft-light;
+  opacity: 0.18;
+}
+
+.cli-update-dialog .cli-update-dialog__defer {
+  background-color: hsl(var(--pitch) / 0.4);
+  border-color: hsl(var(--parchment) / 0.22);
+}
+
+.cli-update-dialog .cli-update-dialog__defer:hover {
+  background-color: hsl(var(--pitch) / 0.65);
+  border-color: hsl(var(--parchment) / 0.4);
+}

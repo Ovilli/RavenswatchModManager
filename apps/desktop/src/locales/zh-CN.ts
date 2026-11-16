@@ -125,7 +125,6 @@ export const zhCN: Record<string, string> = {
     'Alegreya 标题与正文，小字号下依然清晰——默认外观。',
   'Broken dependency chain': '依赖链断裂',
   Browse: '浏览',
-  'Browse community mods and install in one click': '浏览社区模组并一键安装',
   'Browse mods': '浏览模组',
   Build: '构建',
   'Bulk actions apply to the active profile.': '批量操作只作用于当前方案。',
@@ -147,6 +146,12 @@ export const zhCN: Record<string, string> = {
   'Click-through on — press Ctrl+Alt+O (or use Settings) to undo':
     '已开启点击穿透——按 Ctrl+Alt+O（或在设置中）撤销',
   Close: '关闭',
+  'Update available': '有可用更新',
+  'A new update is ready. Restart now to use it, or we’ll install it when you close the app.':
+    '新更新已准备就绪。立即重启即可使用，或在关闭应用时自动安装。',
+  'Could not restart the app: {error}': '无法重启应用：{error}',
+  'Update on close': '关闭时更新',
+  'Update now': '立即更新',
   'Close Ravenswatch and start it again?': '关闭 Ravenswatch 并重新启动？',
   'Close config': '关闭配置',
   'Close overlay': '关闭悬浮窗',
@@ -178,8 +183,6 @@ export const zhCN: Record<string, string> = {
   'Continue with Google': '使用 Google 继续',
   'Continue with Discord': '使用 Discord 继续',
   'Continue?': '继续吗？',
-  'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.':
-    '参与贡献、报告问题、加入社区 Discord，或在仓库中阅读开发者笔记。RSMM 完全免费——如果它为你省下了一个晚上，欢迎在 Ko-fi 上请作者喝杯咖啡。',
   Copied: '已复制',
   'Copied the profile, but not its mod files: {error}': '已复制方案，但未复制其模组文件：{error}',
   Copy: '复制',
@@ -228,7 +231,6 @@ export const zhCN: Record<string, string> = {
   'Delete profile': '删除方案',
   'Delete profile "{name}"? This cannot be undone.': '删除方案“{name}”？此操作无法撤销。',
   Density: '界面密度',
-  'Detect file-level conflicts before launching': '在启动前检测文件级冲突',
   Diagnostics: '诊断',
   'Different loadouts for different runs. Share one as a code.':
     '为不同的玩法准备不同的模组组合，还能用代码分享。',
@@ -243,7 +245,6 @@ export const zhCN: Record<string, string> = {
   'Disabling these mods will leave others missing dependencies:':
     '禁用这些模组会使其他模组缺少依赖：',
   Discard: '放弃更改',
-  Discord: 'Discord',
   Dismiss: '忽略',
   Doctor: '体检',
   'Doctor + repair': '体检并修复',
@@ -280,7 +281,6 @@ export const zhCN: Record<string, string> = {
     '全部使用 JetBrains Mono，适合终端爱好者。',
   'Expand the sidebar': '展开侧边栏',
   Export: '导出',
-  'Export and share profiles as short codes': '把方案导出为短代码来分享',
   'Export backup': '导出备份',
   "Extract a section's bytes with the CLI: {command}": '用命令行提取某个区段的字节：{command}',
   Facts: '概要',
@@ -315,7 +315,6 @@ export const zhCN: Record<string, string> = {
   General: '常规',
   'Generate assets and apply the current mod set in one pass.':
     '一次性生成资源并应用当前模组集合。',
-  'Get involved': '参与进来',
   Graphics: '图形',
   Grimoire: '魔典',
   'Hide exactly what is uploaded': '隐藏上传内容预览',
@@ -355,7 +354,6 @@ export const zhCN: Record<string, string> = {
     '加入 rsmm 索引，管理你的模组库并同步方案。',
   'Keep editing': '继续编辑',
   'Keep this one': '保留这一个',
-  'Key features': '主要功能',
   Language: '语言',
   'Language, typeface, density, motion, content': '语言、字体、界面密度、动效、内容',
   Later: '稍后',
@@ -390,7 +388,6 @@ export const zhCN: Record<string, string> = {
   'CLI v{version} downloaded — restart the app to use it.':
     'CLI v{version} 已下载 — 重启应用后生效。',
   'CLI v{n}': 'CLI v{n}',
-  'CLI {source}': 'CLI {source}',
   'v{version} - update channel': 'v{version} - 更新通道',
   'v{version} - embedded': 'v{version} - 内置',
   'Game loader': '游戏加载器',
@@ -403,7 +400,6 @@ export const zhCN: Record<string, string> = {
   'no answer from the CLI': 'CLI 没有响应',
   'unknown error': '未知错误',
   none: '无',
-  'Restart now': '立即重启',
   'Not while the game is launching': '游戏启动期间不可用',
   'Waiting for the game loader update to finish before launching vanilla…':
     '正在等待游戏加载器更新完成，然后启动原版…',
@@ -415,8 +411,6 @@ export const zhCN: Record<string, string> = {
   dev: '开发版',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
-  'Loader updated to v{version} — restart Ravenswatch to pick it up.':
-    '加载器已更新到 v{version}——重启 Ravenswatch 后生效。',
   'Loading…': '加载中…',
   Log: '日志',
   'Log uploaded — link copied below.': '日志已上传——链接见下方。',
@@ -549,8 +543,6 @@ export const zhCN: Record<string, string> = {
     'RSMM 会自动检查新版本。手动检查会涵盖启动器本身、它的 CLI，以及植入 Ravenswatch 文件夹里的游戏加载器与 Lua SDK。',
   'RSMM draws through your GPU like any browser window. If your machine crashes, freezes or blue-screens while RSMM is open — especially with a display-driver bug check such as {code} — switch this on to render in software instead. Update your GPU driver as well; that is the real fix.':
     'RSMM 和普通浏览器窗口一样通过 GPU 绘制。如果在 RSMM 打开时你的电脑崩溃、卡死或蓝屏——尤其是出现 {code} 这类显示驱动错误检查时——请开启此项改用软件渲染。同时也请更新显卡驱动，那才是根本解决办法。',
-  "RSMM is a community mod manager for Ravenswatch. It applies cooked-asset overrides and Lua-scripted mods without requiring manual edits to the game's install directory. Profiles let you keep a vanilla loadout for daily runs and a curated mod set for other playstyles.":
-    'RSMM 是 Ravenswatch 的社区模组管理器。它能应用烘焙资源覆盖和 Lua 脚本模组，无需你手动改动游戏安装目录。借助方案，你可以一边保留一套原版组合用于日常游玩，一边准备另一套精选模组用于其他玩法。',
   'RSMM updated to {version}.': 'RSMM 已更新到 {version}。',
   'Rate limited — try again in {seconds}s': '请求过于频繁——请在 {seconds} 秒后重试',
   Rating: '评分',
@@ -567,7 +559,6 @@ export const zhCN: Record<string, string> = {
   'Raw output': '原始输出',
   'Re-check': '重新检查',
   'Re-check the registry for newer versions': '重新检查索引中是否有更新版本',
-  'Read docs': '阅读文档',
   'Reading config… a mod that lists game content decodes its art from the install, so the first open can take a few seconds.':
     '正在读取配置…会列出游戏内容的模组需要从安装目录里解码素材，因此第一次打开可能要等几秒。',
   'Reading the loader log…': '正在读取加载器日志…',
@@ -742,7 +733,6 @@ export const zhCN: Record<string, string> = {
   "This mod's overlay declaration is broken: {error}": '此模组的悬浮窗声明有误：{error}',
   'This page hit a snag': '此页面出了点问题',
   'Tighter panels; more fits on screen.': '面板更紧凑，一屏能放下更多内容。',
-  'Toggle individual mods on or off per profile': '按方案逐个开关模组',
   'Toggle {name} overlay': '开关 {name} 悬浮窗',
   'Reset {name} overlay size and position': '重置 {name} 悬浮窗的大小和位置',
   'Too many attempts. Wait a minute and try again.': '尝试次数过多，请稍等一分钟后重试。',
@@ -792,12 +782,10 @@ export const zhCN: Record<string, string> = {
   Utility: '实用工具',
   'Vanilla launch failed (exit {code})': '原版启动失败（退出码 {code}）',
   Version: '版本',
-  'Version {version}': '版本 {version}',
   'Version {version} is ready to install': '版本 {version} 已可安装',
   'Version, release notes, credits': '版本、发行说明、致谢',
   Versions: '版本',
   'View license': '查看许可证',
-  'View repository': '查看代码仓库',
   'View the source': '查看源码',
   Warnings: '警告',
   'Watch the log file for new lines': '监视日志文件的新增行',

@@ -1,0 +1,11 @@
+:root {
+  --text-title: 0 0% 100%;
+}
+
+/* Desktop titles share one color, including headings in shared components.
+   The legacy display-text selector covers empty-state and profile titles that
+   use a paragraph or span. Mod-authored item colors remain explicitly themed. */
+:root :is(h1, h2, h3, h4, h5, h6, [role="heading"]),
+:root .font-fraktur.text-parchment {
+  color: hsl(var(--text-title));
+}

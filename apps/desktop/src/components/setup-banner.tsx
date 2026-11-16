@@ -116,9 +116,7 @@ export function SetupBanner() {
       // bundle is signature- and version-gated, and planting fails cleanly
       // while the game holds winhttp.dll open — so failures are non-fatal
       // and doctor still runs.
-      // Keep the result: a landed update needs a game restart to take
-      // effect, and a blocked one needs the game closed. Still non-fatal —
-      // a transport failure must not stop doctor from running.
+      // Still non-fatal — a transport failure must not stop doctor from running.
       setResult(await doctorStatus(force));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -221,42 +219,27 @@ export function SetupBanner() {
       </section>
     ) : null;
 
-  // The loader is read by the game at process start, so an update that
-  // lands while Ravenswatch is open does nothing until it restarts — and a
-  // silent channel meant the user could never know that. Only the two
-  // actionable outcomes get a banner; up-to-date, nothing-published,
-  // offline and every other status stay quiet.
+  // Only blocked updates need a Library banner. Successful updates and
+  // their release notes remain available in Settings.
   const loaderBanner = (() => {
     if (!loaderUpdate || loaderDismissed) return null;
 
-    const updated = loaderUpdate.status === 'updated';
     const needsApp = loaderUpdate.status === 'needs_app_update';
     const blocked = loaderUpdate.ok === false && /in use/i.test(loaderUpdate.error ?? '');
-    if (!updated && !blocked && !needsApp) return null;
+    if (!blocked && !needsApp) return null;
 
-    const message = updated
-      ? t('Loader updated to v{version} — restart Ravenswatch to pick it up.', {
-          version: loaderUpdate.installedVersion ?? '',
-        })
-      : blocked
-        ? t('A loader update is waiting — close Ravenswatch, then re-check.')
-        : t('A newer loader is available, but it needs a newer version of this app.');
+    const message = blocked
+      ? t('A loader update is waiting — close Ravenswatch, then re-check.')
+      : t('A newer loader is available, but it needs a newer version of this app.');
 
     return (
       <section
         aria-label={t('Loader update')}
         className="ember-banner flex w-full items-start gap-3 px-4 py-3"
       >
-        {updated ? (
-          <CheckCircle2 className="h-4 w-4 text-gilt shrink-0 mt-1" aria-hidden />
-        ) : (
-          <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
-        )}
+        <AlertTriangle className="h-4 w-4 text-crimson shrink-0 mt-1" aria-hidden />
         <div className="flex-1 space-y-1">
           <p className="font-serif-italic text-base">{message}</p>
-          {updated && loaderUpdate.notes ? (
-            <p className="text-sm text-ash">{loaderUpdate.notes}</p>
-          ) : null}
         </div>
         {blocked ? (
           <Button
