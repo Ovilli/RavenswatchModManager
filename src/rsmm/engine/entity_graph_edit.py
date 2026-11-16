@@ -93,7 +93,6 @@ class EntityFile:
         self._first_new = len(self.objects)
         self._parts: dict[int, tuple[bytes, EG.Component | None]] = {}
         self._pointers_key: bytes | None = None
-        self._span_cache: dict = {}
         self._pointers: tuple = ({}, {})
         self._parts_classes: list[str] = []
 
@@ -170,17 +169,11 @@ class EntityFile:
         owned, ambiguous = self._pointers
         return dict(owned), {k: list(v) for k, v in ambiguous.items()}
 
-    def _spans(self, o: int, special: set[int]) -> list[tuple[int, int]]:
+    def _spans(self, o: int, special: set[int]) -> tuple[tuple[int, int], ...]:
         """``_raw_spans`` of object ``o`` (the trailer when ``o`` is past the
-        objects), kept until its bytes change: a pointer scan reads every
-        object and an edit changes a few."""
+        objects)."""
         p = self.objects[o] if o < len(self.objects) else self.trailer
-        key = (o, frozenset(special))
-        hit = self._span_cache.get(key)
-        if hit is None or hit[0] != p:
-            hit = (bytes(p), _raw_spans(bytes(p), special))
-            self._span_cache[key] = hit
-        return hit[1]
+        return _raw_spans(bytes(p), frozenset(special))
 
     def _scan_pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
         n = len(self.objects)
@@ -1409,7 +1402,10 @@ def _as(kind: str, value):
     return {"bool": bool, "u32": int, "f32": float}[kind](value)
 
 
-def _raw_spans(p: bytes, special: set[int]) -> list[tuple[int, int]]:
+# ponytail: keyed on content, not object index: a hero build scans ~176k
+# objects of which ~21k (11 MB) are distinct, across clones and index shifts.
+@lru_cache(maxsize=1 << 15)
+def _raw_spans(p: bytes, special: frozenset[int]) -> tuple[tuple[int, int], ...]:
     """Spans of ``p`` outside markers, lstrings, pickers and value unions —
     where a poly-pointer id can sit."""
     spans: list[tuple[int, int]] = []
@@ -1439,7 +1435,7 @@ def _raw_spans(p: bytes, special: set[int]) -> list[tuple[int, int]]:
         i += 1
     if start < n:
         spans.append((start, n))
-    return spans
+    return tuple(spans)
 
 
 def _rewrite_ref_paths(p: bytes, cf: cooked.CookedFile, paths: dict[str, str],
@@ -1495,15 +1491,16 @@ def id_list_pad(cls: str, field: str) -> int:
     return 4 if cls == "oCEntityCpntGpnTraverserSettings" and field == "bytes_3" else 0
 
 
+@cache
 def kind_label(cls: str) -> str:
     """The ``[Kind]`` label references to a ``cls`` component carry: the most
     common among the first references to one found in the corpus. Stops early
-    (a whole-corpus vote per run cost ~10 s of every `rsmm apply`)."""
+    (a whole-corpus vote per run cost ~10 s of every `rsmm apply`), and is
+    cached per class: vanilla bytes never change within a run, and one hero
+    build asks ~300 times for a handful of classes (~55 s uncached)."""
     from . import corpus
     votes: dict[str, int] = defaultdict(int)
-    for rel in corpus.rels("EntitySettings/"):
-        if not rel.endswith(".EntitySettingsResource.gen"):
-            continue
+    for rel in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen"):
         raw = corpus.read(rel)
         if raw is None or cls.encode() not in raw:
             continue

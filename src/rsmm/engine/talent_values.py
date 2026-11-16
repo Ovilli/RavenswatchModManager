@@ -63,6 +63,7 @@ re-cook).
 
 from __future__ import annotations
 
+import re
 import struct
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -215,18 +216,26 @@ def _pack_value(type_code: int, value: float) -> bytes:
     return struct.pack("<f", value)
 
 
+_RUN = re.compile(rb"[\x20-\x7e]{4,}")
+
+
 def _iter_lstrings(data: bytes):
-    """Yield ``(offset, text)`` for every length-prefixed printable ASCII run."""
-    i, n = 0, len(data)
-    while i + 4 <= n:
-        ln = struct.unpack_from("<I", data, i)[0]
-        if 4 <= ln <= 80 and i + 4 + ln <= n:
-            chunk = data[i + 4: i + 4 + ln]
-            if all(0x20 <= b < 0x7f for b in chunk):
-                yield i, chunk.decode("ascii")
-                i += 4 + ln
-                continue
-        i += 1
+    """Yield ``(offset, text)`` for every length-prefixed printable ASCII run.
+
+    Walks printable runs in C instead of every offset in Python (31M
+    `unpack_from` calls per `rsmm lint`): a length 4..80 has three zero top
+    bytes, so its text always starts a run. Same accepted set as trying every
+    offset — `entity_strings._scan_payload` uses the same argument."""
+    pos = 0                                  # earliest offset still open
+    for m in _RUN.finditer(data):
+        s = m.start()
+        i = s - 4
+        if i < pos or data[s - 1] or data[s - 2] or data[s - 3]:
+            continue
+        ln = data[i]
+        if 4 <= ln <= 80 and ln <= m.end() - s:
+            yield i, data[s:s + ln].decode("ascii")
+            pos = s + ln
 
 
 def _iter_value_nodes(data: bytes, names: list[str],
