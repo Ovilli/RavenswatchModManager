@@ -6076,6 +6076,286 @@
    ]
   },
   {
+   "name": "UiWindow_AddChild",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140551950",
+   "signature": "void(void* parent, void* child)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "oCUIWindow: appends child at the end of parent's child list (+0x2a0 count, +0x2a8 first, +0x2b0 last; child +0x08 next, +0x10 prev), sets child+0x298 = parent and its root, then notifies both (child slots +0xd0/+0x38, parent slot +0x40). OptionsMenu_AddCategory builds every right-pane scroll panel with it. R.ui.menus reparents the category column into a scroll panel with it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_RemoveChild",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140551cf0",
+   "signature": "void(void* parent, void* child)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "oCUIWindow: unlinks child from parent's list, zeroes its next/prev, decrements the count, clears its root (+0x290) and calls slots +0x48/+0x50. R.ui.menus moves the category column in and out of its scroll panel with it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_Destroy",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_14054f870",
+   "signature": "void(void* w)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "oCUIWindow: marks the window dead, clears the UI manager's focus/hover pointers to it, destroys its children and removes it from its parent. UiWindow_DestroyChildren (FUN_140551ed0) calls it then releases (vtable +0x08, +0x10(1)). R.ui.menus destroys its column scroll panel with it on teardown. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_SetSize",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140551580",
+   "signature": "void(void* w, int width, int height)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "int",
+     "int"
+    ]
+   },
+   "note": "oCUIWindow: writes +0x2d0/+0x2d4; on a change clears +0x234 bits 0/1 and calls slot +0xb0 (OnResized). static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_SetFont",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140550050",
+   "signature": "void(void* w, const void* font_ref)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "const void*"
+    ]
+   },
+   "note": "oCUIWindow: ref-counted assign of the font ref at +0x1f8 (release old, addref new), refresh, children re-measure. Sc_SetFont and the label-desc builder FUN_1405754e0 call it; copying the pointer without it breaks the ref count. R.ui.menus gives header labels the row label's font with it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_FitParentWidth",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140552720",
+   "signature": "void(void* w)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "oCUIWindow: sets the width to the parent's inner width and ORs +0x200 with 0xc. OptionsMenu_AddCategory calls it on a scroll panel's content layer (+0x340) and on the row zone. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiWindow_MeasureChildren",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_14054feb0",
+   "signature": "int* (void* w, int out[2])",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "oCUIWindow: bounds of the window's children, written to out as {w, h} ints; returns out. The Settings build (slot 7) and the re-measure FUN_1403f6600 size a scroll panel's content layer from it (after content+0x234 |= 2). static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiLabel_New",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_14056dbd0",
+   "signature": "oCUILabel* ()",
+   "cabi": {
+    "ret": "void*",
+    "params": []
+   },
+   "note": "oCUILabel new helper: alloc 0x338, ctor FUN_140563d70, vtable +0x08. Sc_AddLabel (FUN_14054fb40) and the checkbox ctor create labels in code with it. Label fields: +0x1d8 colour (4 floats), +0x1e8 text oCString, +0x1f8 font ref, +0x310 scale, +0x314 skip wrap, +0x315 wrap (default 1), +0x316 fixed size, +0x318 uppercase. R.ui.menus draws category headers with it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiLabel_MeasureWrapped",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1405640d0",
+   "signature": "float* (void* label, float out[2])",
+   "cabi": {
+    "ret": "void*",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "oCUILabel: wraps the label's own text at its current width (minus padding) when +0x314 is 0 and +0x315 is set, and measures it: out = {w, h} in pixels as floats. R.ui.menus sizes header labels from it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiScrollPanel_New",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140401eb0",
+   "signature": "oCUIScrollPanel* ()",
+   "cabi": {
+    "ret": "void*",
+    "params": []
+   },
+   "note": "oCUIScrollPanel new helper: alloc 0x378, ctor FUN_1405532f0, vtable +0x08. OptionsMenu_AddCategory builds each right pane with it. Panel: +0x318 scrollbar width, +0x31c wheel step, +0x330 scrollbar, +0x338 mask, +0x340 content layer. R.ui.menus wraps an overflowing category column in one. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiScrollPanel_Init",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1405536b0",
+   "signature": "void(void* panel, uint32_t vertical, uint32_t a, uint8_t b, uint8_t c)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "uint32_t",
+     "uint32_t",
+     "bool",
+     "bool"
+    ]
+   },
+   "note": "oCUIScrollPanel: builds the scrollbar, mask and content layer. OptionsMenu_AddCategory calls (p, 1, 0, 0, 0). static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiScrollPanel_Layout",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140553860",
+   "signature": "void(void* panel)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "oCUIScrollPanel vertical layout: scrollbar at x = w - scrollbar width, mask and content sized (w - scrollbar width, h) at 0,0. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiScrollPanel_UpdateBar",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140553960",
+   "signature": "void(void* panel)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*"
+    ]
+   },
+   "note": "oCUIScrollPanel: recomputes the scrollbar ratio from the content and viewport heights. Run after the content layer is resized. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "UiScrollPanel_EnsureVisible",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_140553b60",
+   "signature": "void(void* panel, int top, int bottom)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "int",
+     "int"
+    ]
+   },
+   "note": "oCUIScrollPanel: clamps the content y so [top, bottom] (content coordinates) sits in the viewport; applies at once when panel+0x370 is 0, else sets a smooth-scroll target at +0x368. The Settings row focus-follow (FUN_1403f6200, call at 0x1403f631c) calls it unless a wheel notch is held (g_InputMouseWheelUp/Down & 4). R.ui.menus keeps the focused category in view with it. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
+   "name": "OptionsMenu_RestackZone",
+   "kind": "function",
+   "category": "ui",
+   "status": "ok",
+   "raw": "FUN_1403f64c0",
+   "signature": "void(void* ctrl, void* zone)",
+   "cabi": {
+    "ret": "void",
+    "params": [
+     "void*",
+     "void*"
+    ]
+   },
+   "note": "BookOptions: restacks a zone: calls vt+0x50(..., 1) on the controller's factory elements (ctrl+0x228) whose window's parent is the zone, then sets each child's y (+0x2cc and +0x2bc) to the running sum of heights in sibling order (visibility ignored) and the zone's height to the total. The re-measure FUN_1403f6600 runs it per row zone and on the category column. R.ui.menus restacks a row zone after adding header labels. static RE 2026-11-15 (R.ui.menus phase 4c); unproven until the 4c in-game test",
+   "refs": [
+    "src/loader/src/hook_book_pages.cpp"
+   ]
+  },
+  {
    "name": "OptionsMenu_BuildKeyboardControls",
    "kind": "function",
    "category": "ui",
