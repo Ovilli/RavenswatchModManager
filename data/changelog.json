@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-16",
+      "summary": "The loader version stamp reads v<N> after a restore instead of dev or unstamped.",
+      "highlights": [
+        "The loader version stamp reads v<N> after a restore instead of dev or unstamped."
+      ],
+      "cli_version": 36
+    },
+    {
+      "version": "",
+      "date": "2026-11-16",
       "summary": "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)",
       "highlights": [
         "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)"
@@ -502,18 +511,6 @@
         "Fixed link labels written into entities whose shipped references are stale"
       ],
       "cli_version": 4
-    },
-    {
-      "version": "",
-      "date": "2026-10-18",
-      "summary": "Item copies can change rarity, the book fits added items, and the map editor edits scenery.",
-      "highlights": [
-        "A copied item now really takes the rarity you pick in the editor or manifest; before, it kept its base item's tier in game.",
-        "The book's Objects tab widens each tier's grid when mods add items, so new items no longer spill over the next row.",
-        "Map editor: move, remove and add a chapter's own scenery objects, plus a 3D tile mode.",
-        "The editors answer faster: newest request first, and game data is kept between visits."
-      ],
-      "cli_version": 3
     }
   ]
 }
