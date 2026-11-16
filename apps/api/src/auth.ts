@@ -1,5 +1,12 @@
 import { getDb, schema } from '@rsmm/db';
-import { env, githubConfigured, googleConfigured, isProduction, smtpConfigured } from './env.js';
+import {
+  discordConfigured,
+  env,
+  githubConfigured,
+  googleConfigured,
+  isProduction,
+  smtpConfigured,
+} from './env.js';
 import { errString, log } from './logger.js';
 import {
   changeEmailTemplate,
@@ -11,12 +18,19 @@ import {
 
 const socialProviders: {
   google?: { clientId: string; clientSecret: string };
+  discord?: { clientId: string; clientSecret: string };
   github?: { clientId: string; clientSecret: string };
 } = {};
 if (googleConfigured()) {
   socialProviders.google = {
     clientId: env.google.clientId,
     clientSecret: env.google.clientSecret,
+  };
+}
+if (discordConfigured()) {
+  socialProviders.discord = {
+    clientId: env.discord.clientId,
+    clientSecret: env.discord.clientSecret,
   };
 }
 if (githubConfigured()) {

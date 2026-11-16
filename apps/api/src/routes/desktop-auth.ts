@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getAuth } from '../auth.js';
-import { githubConfigured, googleConfigured } from '../env.js';
+import { discordConfigured, githubConfigured, googleConfigured } from '../env.js';
 import { errString } from '../logger.js';
 import type { AppEnv } from '../types.js';
 
@@ -34,8 +34,9 @@ export const desktopAuthRouter = new Hono<AppEnv>();
 
 const DEEP_LINK_SCHEME = 'rsmm';
 
-function providerEnabled(provider: string): provider is 'google' | 'github' {
+function providerEnabled(provider: string): provider is 'google' | 'discord' | 'github' {
   if (provider === 'google') return googleConfigured();
+  if (provider === 'discord') return discordConfigured();
   if (provider === 'github') return githubConfigured();
   return false;
 }

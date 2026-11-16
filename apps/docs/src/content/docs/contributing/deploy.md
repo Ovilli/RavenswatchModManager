@@ -200,9 +200,9 @@ deployment — redeploy after every env edit.
 
 ---
 
-## Step 5b: Social sign-in (optional — Google / GitHub)
+## Step 5b: Social sign-in (optional — Google / Discord / GitHub)
 
-The "Continue with Google" / "Continue with GitHub" buttons are **already
+The "Continue with Google" / "Continue with Discord" / "Continue with GitHub" buttons are **already
 built** into the sign-in and sign-up pages. They stay hidden until the
 matching OAuth credentials exist in the API env — `/api/auth-config`
 reports which providers are configured and the UI renders only those. No
@@ -241,7 +241,12 @@ To turn on **Google**:
 `https://api.rsmm.me/api/auth/callback/github`, then set
 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` the same way and redeploy.
 
-Both providers are off by default and safe to skip — email/password
+**Discord** too: *Discord Developer Portal* → *Applications* → *New
+Application* → *OAuth2*. Copy the client ID + secret, add the redirect
+`https://api.rsmm.me/api/auth/callback/discord`, then set
+`DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` and redeploy.
+
+All providers are off by default and safe to skip — email/password
 sign-in works without them.
 
 ---
