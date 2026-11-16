@@ -23,6 +23,7 @@ export function CliUpdateDialog({
 
   return (
     <CliUpdateCard
+      version={pending?.version ?? (preview ? 12 : null)}
       onLater={() => setDismissed(true)}
       onUpdate={preview ? async () => setDismissed(true) : relaunchApp}
     />
@@ -30,9 +31,10 @@ export function CliUpdateDialog({
 }
 
 export function CliUpdateCard({
+  version,
   onLater,
   onUpdate,
-}: { onLater: () => void; onUpdate: () => Promise<void> }) {
+}: { version: number | null; onLater: () => void; onUpdate: () => Promise<void> }) {
   const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
@@ -71,6 +73,7 @@ export function CliUpdateCard({
       ref={dialogRef}
       tabIndex={-1}
       aria-labelledby="cli-update-title"
+      aria-describedby={version != null ? 'cli-update-version' : undefined}
       aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
@@ -112,6 +115,14 @@ export function CliUpdateCard({
           <X className="h-5 w-5" aria-hidden />
         </button>
       </header>
+      {version != null ? (
+        <p
+          id="cli-update-version"
+          className="mt-3 max-w-md font-serif-italic text-base leading-relaxed text-parchment"
+        >
+          {t('v{version} is available now', { version })}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-4 break-words text-sm text-parchment">
           {t('Could not restart the app: {error}', { error })}
