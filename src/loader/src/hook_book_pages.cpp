@@ -467,7 +467,7 @@ LiveRow* new_row(const std::string& id, const std::string& title) {
     g_live_rows.emplace_back();
     LiveRow* r = &g_live_rows.back();
     r->id = id;
-    r->title = clip(title);
+    r->title = title;   // not clip()ed: the row's title label wraps and grows (proven 2026-11-15, 70 chars)
     return r;
 }
 

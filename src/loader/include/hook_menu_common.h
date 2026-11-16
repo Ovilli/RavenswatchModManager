@@ -34,7 +34,8 @@ inline OcStr lit(const std::string& s) {
     return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0};
 }
 
-// Longer titles run into the row's arrows.
+// For single-line labels: category buttons and the page heading. Row titles are not
+// clipped; the row's title label wraps and grows.
 constexpr std::size_t kMaxTitle = 32;
 inline std::string clip(std::string s) {
     if (s.size() > kMaxTitle) s = s.substr(0, kMaxTitle - 2) + "..";
