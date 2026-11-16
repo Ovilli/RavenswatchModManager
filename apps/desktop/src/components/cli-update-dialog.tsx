@@ -71,7 +71,6 @@ export function CliUpdateCard({
       ref={dialogRef}
       tabIndex={-1}
       aria-labelledby="cli-update-title"
-      aria-describedby="cli-update-description"
       aria-busy={busy}
       onCancel={(event) => {
         event.preventDefault();
@@ -113,14 +112,6 @@ export function CliUpdateCard({
           <X className="h-5 w-5" aria-hidden />
         </button>
       </header>
-      <p
-        id="cli-update-description"
-        className="mt-3 max-w-md font-serif-italic text-base leading-relaxed text-parchment"
-      >
-        {t(
-          'A new update is ready. Restart now to use it, or we’ll install it when you close the app.',
-        )}
-      </p>
       {error ? (
         <p role="alert" className="mt-4 break-words text-sm text-parchment">
           {t('Could not restart the app: {error}', { error })}

@@ -147,8 +147,6 @@ export const zhCN: Record<string, string> = {
     '已开启点击穿透——按 Ctrl+Alt+O（或在设置中）撤销',
   Close: '关闭',
   'Update available': '有可用更新',
-  'A new update is ready. Restart now to use it, or we’ll install it when you close the app.':
-    '新更新已准备就绪。立即重启即可使用，或在关闭应用时自动安装。',
   'Could not restart the app: {error}': '无法重启应用：{error}',
   'Update on close': '关闭时更新',
   'Update now': '立即更新',
