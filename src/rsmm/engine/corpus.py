@@ -207,10 +207,14 @@ def rels(prefix: str = "", suffix: str = "") -> list[str]:
     base = UNCOOKED / Path(*prefix.split("/")) if prefix else UNCOOKED
     out: set[str] = set()
     if base.is_dir():
-        out.update(
-            p.relative_to(UNCOOKED).as_posix()
-            for p in base.rglob(f"*{suffix}") if p.is_file()
-        )
+        # os.walk + string slicing, not rglob + Path.relative_to: callers ask
+        # ~80 times per hero build and relative_to alone cost ~30 s of it.
+        cut = len(str(UNCOOKED)) + 1
+        want = os.path.normcase(suffix)  # rglob matched case-insensitively on Windows
+        for d, _, files in os.walk(base):
+            for f in files:
+                if os.path.normcase(f).endswith(want):
+                    out.add(os.path.join(d, f)[cut:].replace(os.sep, "/"))
         if UNCOOKED != DATA_DIR / "uncooked":
             return sorted(out)
     if cooking_dir() is not None:
