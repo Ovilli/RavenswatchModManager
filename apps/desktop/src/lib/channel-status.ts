@@ -35,11 +35,18 @@ export const INSTALLED_VISIBLE_MS = 8000;
 
 const IDLE: ChannelPhase = { kind: 'idle' };
 let phases: Record<ChannelName, ChannelPhase> = { cli: IDLE, loader: IDLE };
+// A downloaded CLI stays ready even when another background check starts.
+// Keep the restart offer separate from the transient progress rows.
+let pendingCliUpdate: Extract<ChannelPhase, { kind: 'installed' }> | null = null;
 const timers: Partial<Record<ChannelName, ReturnType<typeof setTimeout>>> = {};
 const listeners = new Set<() => void>();
 
 export function getChannelPhases(): Record<ChannelName, ChannelPhase> {
   return phases;
+}
+
+export function getPendingCliUpdate() {
+  return pendingCliUpdate;
 }
 
 export function subscribeChannelPhases(fn: () => void): () => void {
@@ -52,7 +59,8 @@ export function subscribeChannelPhases(fn: () => void): () => void {
 export function setChannelPhase(name: ChannelName, phase: ChannelPhase): void {
   clearTimeout(timers[name]);
   phases = { ...phases, [name]: phase };
-  // A staged CLI waits for a restart, so its row stays until dismissed or acted on.
+  if (name === 'cli' && phase.kind === 'installed') pendingCliUpdate = phase;
+  // Only loader progress confirmations expire; the CLI waits for an app restart.
   if (phase.kind === 'installed' && name === 'loader') {
     timers[name] = setTimeout(() => setChannelPhase(name, IDLE), INSTALLED_VISIBLE_MS);
   }
@@ -91,6 +99,7 @@ export function resetChannelPhases(): void {
   clearTimeout(timers.cli);
   clearTimeout(timers.loader);
   phases = { cli: IDLE, loader: IDLE };
+  pendingCliUpdate = null;
   launchHold = null;
 }
 

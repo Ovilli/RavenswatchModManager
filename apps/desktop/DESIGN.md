@@ -5,6 +5,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 - `packages/ui/src/styles.css` holds the tokens and component classes. Its comments record why each earlier treatment was removed. Read them before changing a rule.
 - `packages/ui/tailwind.preset.cjs` turns the tokens into Tailwind utilities.
 - `apps/desktop/src/components/chrome.tsx` holds the React helpers (`Button`, `Panel`, `MonoTag`, …).
+- `apps/desktop/src/desktop.css` gives desktop titles their white `--text-title` color, including headings in shared components.
 - `apps/desktop/src/lib/appearance.ts` holds the font, scale, density and motion settings. It is the only code that writes the font and scale variables.
 
 ## Principles
@@ -27,6 +28,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 | `ash` | Tertiary text: subtitles, hints, metadata, placeholders | — |
 | `smoke` | Secondary text | — |
 | `parchment` | Primary text | — |
+| `text-title` | White titles and headings, scoped to the desktop app | Body copy and controls |
 | `gilt` | Focus ring, selection, the `gilt` tone of buttons, tags and pills | Large fills |
 | `moss`, `frost` | Telling groups apart in a list (chapter, rarity) | State. State colour is gilt or crimson |
 
@@ -49,10 +51,11 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 - **Modal backdrop:** `bg-pitch/80` on an `absolute inset-0` layer behind a raised card, opened with `animate-fade-in`. The full-screen image viewer uses `bg-pitch/95`, because it replaces the screen rather than sitting over it.
 - No `backdrop-blur` on surfaces. They are opaque, and the blur forced compositing layers that hid a WebKitGTK scroll artifact (see the `body` comment in `styles.css`).
 - **Exception: the in-game overlay HUD** (`components/overlay-hud.tsx`). Its card is `bg-pitch/85` with `backdrop-blur-sm`, because it sits in its own window over the running game, which should stay faintly visible through it. Nothing in the main window follows it.
+- **Exception: the startup update prompt** (`components/cli-update-dialog.css`). Its raised surface fades from crimson on the left through oxblood to pitch on the right, with a fine raster grain and a faded square grid. Layered inset lighting gives the top left a narrow parchment reflection at 18% opacity and a softer crimson glow at 8%, with faint bottom-right shading and a soft black drop shadow. There is no solid frame, and the lighting stays constant on hover. This treatment is local to the update prompt. Copy uses parchment for contrast against the colored surface; the close button uses a parchment circle with an oxblood icon.
 
 ## Text
 
-**Roles.** Primary is `parchment`, secondary `smoke`, tertiary `ash`. The aliases `text-text-primary/-secondary/-tertiary` say the same thing by role.
+**Roles.** Titles and headings are white (`--text-title`). Primary body text is `parchment`, secondary `smoke`, tertiary `ash`. The aliases `text-text-primary/-secondary/-tertiary` say the same thing by role. Desktop title colors are applied centrally, including legacy display titles still carrying `text-parchment`; mod-authored item colors keep their explicit theme.
 
 **Faces.** Every face goes through four CSS variables, so the Appearance presets restyle the whole app.
 

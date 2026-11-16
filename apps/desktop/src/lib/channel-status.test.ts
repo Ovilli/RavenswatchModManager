@@ -7,6 +7,7 @@ import {
   describePhase,
   failureReason,
   getChannelPhases,
+  getPendingCliUpdate,
   resetChannelPhases,
   setChannelPhase,
   subscribeChannelPhases,
@@ -104,10 +105,28 @@ describe('phase store', () => {
     off();
   });
 
-  it('keeps a staged CLI row until it is dismissed or acted on', () => {
+  it('keeps a staged CLI ready for an app restart', () => {
     setChannelPhase('cli', { kind: 'installed', version: 8 });
     vi.advanceTimersByTime(INSTALLED_VISIBLE_MS * 10);
     expect(getChannelPhases().cli).toEqual({ kind: 'installed', version: 8 });
+    expect(getPendingCliUpdate()).toEqual({ kind: 'installed', version: 8 });
+  });
+
+  it('preserves the restart offer while a later background check runs or fails', () => {
+    setChannelPhase('cli', { kind: 'installed', version: 8 });
+    setChannelPhase('cli', { kind: 'checking' });
+    setChannelPhase('cli', { kind: 'failed', reason: 'offline' });
+    setChannelPhase('cli', { kind: 'idle' });
+    expect(getPendingCliUpdate()).toEqual({ kind: 'installed', version: 8 });
+  });
+
+  it('only offers a CLI update after one is staged and resets on a new session', () => {
+    setChannelPhase('loader', { kind: 'installed', version: 61 });
+    setChannelPhase('cli', { kind: 'failed', reason: 'offline' });
+    expect(getPendingCliUpdate()).toBeNull();
+    setChannelPhase('cli', { kind: 'installed', version: 8 });
+    resetChannelPhases();
+    expect(getPendingCliUpdate()).toBeNull();
   });
 
   it('keeps a failure until dismissed and tracks channels independently', () => {
