@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-16",
+      "summary": "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)",
+      "highlights": [
+        "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)"
+      ],
+      "cli_version": 35
+    },
+    {
+      "version": "",
+      "date": "2026-11-16",
       "summary": "Settings > Mods is a page in the book now, one category per mod. Mods can see which book and page is open (R.ui) and add their own pages to the Settings book (R.ui.menus).",
       "highlights": [
         "Settings > Mods is a page in the book now, one category per mod. Mods can see which book and page is open (R.ui) and add their own pages to the Settings book (R.ui.menus)."
@@ -505,18 +514,6 @@
         "The editors answer faster: newest request first, and game data is kept between visits."
       ],
       "cli_version": 3
-    },
-    {
-      "version": "5.9.25",
-      "date": "2026-10-18",
-      "summary": "Chapter editor, CLI updates without an app release, and a restore fix that protects game files",
-      "highlights": [
-        "The map editor is now a chapter editor: add, move and remove spots, pin tiles, and paint terrain shape, surface and tint",
-        "The CLI now updates on its own between app releases; Settings > Updates and the version footer show which CLI build is running",
-        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select",
-        "Fixed: the Update 5 backport's hero table was undone on the next apply"
-      ],
-      "loader_version": 46
     }
   ]
 }
