@@ -6,39 +6,12 @@
 -- files (hook_settings_menu.cpp). The page id must match kModsPageId there.
 
 local PAGE = "rsmm.mods"
-local WRAP = 32          -- the book's header text is narrow
 local EDIT_IN_APP = "Edit in the desktop app"
 
 local R, I
 local _handles = {}      -- our R.on subscriptions, dropped if the factory runs again
 
 local function log(s) R.log("[mods-menu] " .. s) end
-
--- Word-wrap to lines of at most `width` chars; a word longer than that is split.
-local function wrap(text, width)
-    local lines, line = {}, ""
-    local function flush()
-        if line ~= "" then lines[#lines + 1] = line; line = "" end
-    end
-    for w in tostring(text):gmatch("%S+") do
-        local word = w   -- a for-loop variable is read-only in the loader's Lua 5.5
-        while #word > width do
-            flush()
-            lines[#lines + 1] = word:sub(1, width)
-            word = word:sub(width + 1)
-        end
-        if line == "" then
-            line = word
-        elseif #line + 1 + #word <= width then
-            line = line .. " " .. word
-        else
-            flush()
-            line = word
-        end
-    end
-    flush()
-    return table.concat(lines, "\n")
-end
 
 local function nonempty(s) return type(s) == "string" and s ~= "" end
 
@@ -57,7 +30,7 @@ local function header_of(m)
     end
     parts[#parts + 1] = state
     local h = { title = m.name, subtitle = table.concat(parts, " - ") }
-    if nonempty(m.description) then h.text = wrap(m.description, WRAP) end
+    if nonempty(m.description) then h.text = m.description end   -- the header label wraps natively (4c)
     return h
 end
 

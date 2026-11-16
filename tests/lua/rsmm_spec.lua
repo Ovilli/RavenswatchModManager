@@ -12441,14 +12441,8 @@ do
           "mods menu: header subtitle has version, author and state")
     check(cats[2].header.subtitle == "Disabled (next launch)" and cats[2].header.text == nil,
           "mods menu: empty version/author/description are dropped")
-    local longest, lines = 0, 0
-    for line in cats[1].header.text:gmatch("[^\n]+") do
-        lines = lines + 1
-        if #line > longest then longest = #line end
-    end
-    check(lines > 2 and longest <= 32, "mods menu: description wraps to lines of at most 32 chars")
-    check(cats[1].header.text:gsub("[\n ]", ""):sub(-40) == string.rep("x", 40),
-          "mods menu: a word longer than the width is split, not dropped")
+    check(not cats[1].header.text:find("\n") and cats[1].header.text:sub(-40) == string.rep("x", 40),
+          "mods menu: the description passes through unwrapped (the header label wraps it)")
     check(cats[1].rows[3].readonly == true and cats[1].rows[3].readonly_text == "Edit in the desktop app",
           "mods menu: an uneditable field is a readonly row")
     check(cats[1].rows[1].id == "@enabled" and cats[1].rows[1].reset == false
