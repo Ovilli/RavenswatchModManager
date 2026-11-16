@@ -1,6 +1,6 @@
 {
- "loader_version": 60,
+ "loader_version": 61,
  "abi": 1,
  "note": "Monotonic stamp for the loader/SDK payload bundled into this rsmm build. `rsmm update-loader` only plants a remote bundle whose loader_version is HIGHER than this, so a restore + install-loader cycle can never downgrade a user. scripts/publish_loader.sh bumps it; commit the bump with the change.",
- "built_from": "7cd2c6b8ca6674768185b44c17b7701431a4f275"
+ "built_from": "8d4e860d2e284e5c577c362d1fade6b34d02bd18"
 }
