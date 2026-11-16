@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **394** symbols across 29 categories.
+Total: **409** symbols across 29 categories.
 
 ## analytics
 
@@ -515,6 +515,7 @@ Total: **394** symbols across 29 categories.
 | `OptionsMenu_BuildLastCategory` | `0x1403f4e30` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_ClearDuplicateKey` | `0x1403f6b90` | ✅ ok | ✔ | void(void* optionsCtrl, void* unused, u32 key) |
 | `OptionsMenu_ResetPressed` | `0x1403f6910` | ✅ ok | ✔ | void(void* optionsCtrl) |
+| `OptionsMenu_RestackZone` | `0x1403f64c0` | ✅ ok | ✔ | void(void* ctrl, void* zone) |
 | `OptionsMenu_SelectCategory` | `0x1403f6010` | ✅ ok | ✔ | void(void* optionsCtrl, void* tabButtonGameUi) |
 | `OptionsMenu_SpawnExploKeyRow` | `0x1403f5b70` | ✅ ok | ✔ | void(void* optionsCtrl, i32 exploIndex, void* tabEntry) |
 | `OptionsMenu_SpawnMultiChoice` | `0x1403fc7e0` | ✅ ok | ✔ | void*(void* elementFactory, void* templateRef, void* rowParent) |
@@ -531,6 +532,20 @@ Total: **394** symbols across 29 categories.
 | `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
 | `UiController_UnbindComponent` | `0x1403469e0` | ❓ unverified |  | void(void* uiController) |
+| `UiLabel_MeasureWrapped` | `0x1405640d0` | ✅ ok | ✔ | float* (void* label, float out[2]) |
+| `UiLabel_New` | `0x14056dbd0` | ✅ ok | ✔ | oCUILabel* () |
+| `UiScrollPanel_EnsureVisible` | `0x140553b60` | ✅ ok | ✔ | void(void* panel, int top, int bottom) |
+| `UiScrollPanel_Init` | `0x1405536b0` | ✅ ok | ✔ | void(void* panel, uint32_t vertical, uint32_t a, uint8_t b, uint8_t c) |
+| `UiScrollPanel_Layout` | `0x140553860` | ✅ ok | ✔ | void(void* panel) |
+| `UiScrollPanel_New` | `0x140401eb0` | ✅ ok | ✔ | oCUIScrollPanel* () |
+| `UiScrollPanel_UpdateBar` | `0x140553960` | ✅ ok | ✔ | void(void* panel) |
+| `UiWindow_AddChild` | `0x140551950` | ✅ ok | ✔ | void(void* parent, void* child) |
+| `UiWindow_Destroy` | `0x14054f870` | ✅ ok | ✔ | void(void* w) |
+| `UiWindow_FitParentWidth` | `0x140552720` | ✅ ok | ✔ | void(void* w) |
+| `UiWindow_MeasureChildren` | `0x14054feb0` | ✅ ok | ✔ | int* (void* w, int out[2]) |
+| `UiWindow_RemoveChild` | `0x140551cf0` | ✅ ok | ✔ | void(void* parent, void* child) |
+| `UiWindow_SetFont` | `0x140550050` | ✅ ok | ✔ | void(void* w, const void* font_ref) |
+| `UiWindow_SetSize` | `0x140551580` | ✅ ok | ✔ | void(void* w, int width, int height) |
 
 ## world
 

@@ -11,6 +11,16 @@
 // Credits/EULA/Privacy entries and select our first category. Offsets are for
 // build b9c3 (see data/symbols.json, category "ui").
 //
+// Layout (phase 4c). A category's header is game labels (oCUILabel) added to the
+// row zone ahead of the rows, then styled, wrapped to the page width and the zone
+// re-measured once OpenChild has sized the page (lay_out_headers). A column with
+// more category buttons than fit is moved into one of the game's own scroll
+// panels, built the way AddCategory builds the right page's (wrap_column); the
+// wheel and the bar are then the game's, focus changes scroll the selected button
+// into view (follow_column_focus), and teardown puts the column back before the
+// controller is freed (unwrap_column). Without those calls resolved, headers fall
+// back to read-only rows and the column stays as it is.
+//
 // Event flow mirrors hook_ui_state.cpp: events are queued and emitted by the
 // outermost detour on the thread, so a mod handler never runs inside the
 // engine's call. The two exceptions are ui:_menus_refresh and ui:_menus_back,
@@ -130,10 +140,18 @@ struct Record {
     std::string page_id, ctx;                     // ctx: raw JSON text or ""
     int depth = 1;
     bool building = true;
+    struct HeaderLabel {
+        std::uintptr_t label = 0;                 // a game oCUILabel in the row zone
+        const std::string* text = nullptr;        // in g_strs: the label aliases it
+        bool title = false;
+    };
     struct Cat {
         std::uint32_t entry_index = 0;
         std::string id;
         std::vector<LiveRow*> rows;               // editable rows only
+        std::uintptr_t panel = 0, zone = 0;       // the category's scroll panel and row zone
+        std::uintptr_t first_row = 0;             // any row, for the header's style
+        std::vector<HeaderLabel> header;
     };
     std::vector<Cat> cats;
     std::map<std::uint32_t, std::string> nested;  // entry index -> entry id
@@ -155,12 +173,19 @@ std::mutex g_mu;   // guards everything down to g_armed
 std::map<std::string, PageSnap> g_pages;
 std::map<std::string, EntrySnap> g_entries;
 struct SavedTitle { std::uintptr_t label; const std::string* orig; };
+// The category column moved into a scroll panel of ours, and where it came from.
+struct ColWrap {
+    std::uintptr_t panel = 0, column = 0, parent = 0;
+    std::int32_t x = 0, y = 0, bx = 0, by = 0, w = 0, h = 0;
+    std::uintptr_t focus = 0;                    // the column's focused child, last seen
+};
 struct OurPage {
     // Child windows we hid. Pooled entities keep a child window's visible bit across
     // release and reuse (activation re-shows only the root), so teardown shows them
     // again before the entity goes back to its pool.
     std::vector<void*> hidden;
     SavedTitle title{};                          // heading label + its original text
+    ColWrap wrap{};                              // panel == 0: the column was left alone
 };
 std::map<void*, OurPage> g_ours;                 // controllers our build produced
 std::list<Record> g_records;                     // open order: parents before children
@@ -204,6 +229,32 @@ engine::OptionsMenu_Update_fn           g_real_update  = nullptr;
 engine::OptionsMenu_BuildGraphics_fn    g_real_build_gfx   = nullptr;
 engine::OptionsMenu_BuildAudio_fn       g_real_build_audio = nullptr;
 engine::OptionsMenu_Teardown_fn         g_real_teardown    = nullptr;
+
+// Window calls behind the scrolling column and the header labels (phase 4c). When
+// one does not resolve, both features are off and the rest of R.ui.menus works:
+// headers fall back to read-only rows and the column is left as the game built it.
+struct LayoutFns {
+    engine::UiWindow_AddChild_fn           add_child     = nullptr;
+    engine::UiWindow_RemoveChild_fn        remove_child  = nullptr;
+    engine::UiWindow_Destroy_fn            destroy       = nullptr;
+    engine::UiWindow_SetSize_fn            set_size      = nullptr;
+    engine::UiWindow_SetFont_fn            set_font      = nullptr;
+    engine::UiWindow_FitParentWidth_fn     fit_width     = nullptr;
+    engine::UiWindow_MeasureChildren_fn    measure_kids  = nullptr;
+    engine::UiLabel_New_fn                 label_new     = nullptr;
+    engine::UiLabel_MeasureWrapped_fn      measure_label = nullptr;
+    engine::UiScrollPanel_New_fn           panel_new     = nullptr;
+    engine::UiScrollPanel_Init_fn          panel_init    = nullptr;
+    engine::UiScrollPanel_Layout_fn        panel_layout  = nullptr;
+    engine::UiScrollPanel_UpdateBar_fn     panel_bar     = nullptr;
+    engine::UiScrollPanel_EnsureVisible_fn panel_show    = nullptr;
+    engine::OptionsMenu_RestackZone_fn     restack       = nullptr;
+};
+LayoutFns g_lay;
+bool g_lay_ok = false;
+// The wheel's virtual-button records: the game's row focus-follow skips its scroll
+// while a notch is held (bit 0x04). 0 when VA globals are untrusted: no follow then.
+std::uintptr_t g_wheel_up = 0, g_wheel_down = 0;
 
 // --- events ----------------------------------------------------------------------
 
@@ -541,6 +592,443 @@ bool label_set_text(std::uintptr_t label, const OcStr* text) {
     return true;
 }
 
+// --- layout: the scrolling column and the header labels (phase 4c) ----------------
+// RE: evidence 2026-11-15-r-ui-menus-4c and -scroll; symbols UiWindow_*, UiLabel_*,
+// UiScrollPanel_*, OptionsMenu_RestackZone.
+
+using W = std::uintptr_t;
+constexpr W kNone = ~W(0);                          // end of a child list
+// oCUIWindow
+constexpr W kWinPrev    = 0x10;                     // previous sibling (0 at the start)
+constexpr W kWinColor   = 0x1d8;                    // 4 floats
+constexpr W kWinFont    = 0x1f8;                    // ref-counted font ref, 0 = inherit
+constexpr W kWinLayout  = 0x200;                    // layout-mode flags
+constexpr W kWinPadL = 0x214, kWinPadT = 0x218, kWinPadR = 0x21c, kWinPadB = 0x220;
+constexpr W kWinFlags   = 0x234;                    // 0x01/0x02 width/height valid
+constexpr W kWinParent  = 0x298;
+constexpr W kWinLast    = 0x2b0;
+constexpr W kWinBaseX = 0x2b8, kWinBaseY = 0x2bc;   // written alongside x/y
+constexpr W kWinX = 0x2c8, kWinY = 0x2cc, kWinW = 0x2d0, kWinH = 0x2d4;
+constexpr W kNavFocus   = 0x310;                    // NavZone: focused child
+// oCUILabel
+constexpr W kLabelScale = 0x310;
+constexpr W kLabelFixed = 0x316;                    // nonzero: no auto-size to the text
+// oCUIScrollPanel and its scrollbar
+constexpr W kPanelBarW = 0x318, kPanelWheel = 0x31c, kPanel320 = 0x320, kPanel324 = 0x324;
+constexpr W kPanelBar = 0x330, kPanelMask = 0x338, kPanelContent = 0x340;
+constexpr W kBar314 = 0x314, kBarArt = 0x338, kBarRect = 0x350;
+// settings object: the scrollbar art AddCategory copies into each panel
+constexpr W kSetBarArt = 0x228, kSetBarArtStride = 0x38, kSetBarRect = 0x2a0;
+// controller and row
+constexpr W kCtrlColumn = 0x180;                    // the category column (Categ NavZone)
+constexpr W kRowWindow  = 0x20;                     // row element -> its window
+
+template <class T>
+T rd(W base, W off, T dflt = T{}) {
+    T v{};
+    return load_at(base, off, &v) ? v : dflt;
+}
+
+template <class T>
+bool st(W base, W off, T v) {
+    void* at = reinterpret_cast<void*>(base + off);
+    if (!mem_writable(at, sizeof(T))) return false;
+    std::memcpy(at, &v, sizeof(T));
+    return true;
+}
+
+void* vp(W w) { return reinterpret_cast<void*>(w); }
+
+void set_pos(W w, std::int32_t x, std::int32_t y, std::int32_t bx, std::int32_t by) {
+    st(w, kWinX, x); st(w, kWinY, y); st(w, kWinBaseX, bx); st(w, kWinBaseY, by);
+}
+
+// The ancestor of `w` (or `w` itself) whose parent is `top`; 0 when `w` is not under it.
+W child_under(W top, W w) {
+    for (int n = 0; w && w != kNone && n < 16; ++n) {
+        const W p = rd<W>(w, kWinParent);
+        if (p == top) return w;
+        w = p;
+    }
+    return 0;
+}
+
+// Moves `w`, the last child of `parent`, to just before `before`, so a window added
+// with AddChild (which appends) takes another one's place in the draw and hit order.
+// Touches nothing and returns false when the list is not as expected.
+bool move_before(W parent, W w, W before) {
+    if (!before || before == kNone || before == w) return true;
+    W wprev = 0, wnext = 0, bprev = 0;
+    if (rd<W>(parent, kWinLast) != w || !load_at(w, kWinPrev, &wprev) || !wprev
+        || !load_at(w, kWindowNext, &wnext) || wnext != kNone
+        || rd<W>(before, kWinParent) != parent || !load_at(before, kWinPrev, &bprev))
+        return false;
+    if (!mem_writable(vp(wprev + kWindowNext), 8) || !mem_writable(vp(parent + kRootChildren), 16)
+        || !mem_writable(vp(w + kWindowNext), 16) || !mem_writable(vp(before + kWinPrev), 8)
+        || (bprev && !mem_writable(vp(bprev + kWindowNext), 8)))
+        return false;
+    st(wprev, kWindowNext, kNone);                  // unlink w from the tail
+    st(parent, kWinLast, wprev);
+    st(w, kWindowNext, before);                     // and link it in before `before`
+    st(w, kWinPrev, bprev);
+    if (bprev) st(bprev, kWindowNext, w);
+    else st(parent, kRootChildren, w);
+    st(before, kWinPrev, w);
+    return true;
+}
+
+// Mirrors the engine's generic release (FUN_14011ff10, which UiWindow_DestroyChildren
+// runs after Destroy): vtable +0x08, then +0x10(obj, 1).
+void release_obj(W o) {
+    std::uintptr_t base = 0, size = 0, vt = 0, f8 = 0, f10 = 0;
+    if (!image_range(&base, &size) || !mem_load(o, &vt) || vt < base || vt >= base + size
+        || !load_at(vt, 0x08, &f8) || !load_at(vt, 0x10, &f10)
+        || f8 < base || f8 >= base + size || f10 < base || f10 >= base + size) return;
+    reinterpret_cast<void (*)(void*)>(f8)(vp(o));
+    reinterpret_cast<void (*)(void*, int)>(f10)(vp(o), 1);
+}
+
+// The scrollbar art OptionsMenu_AddCategory gives every panel: three ref-counted
+// pieces (release old, addref new) and their rects, from the settings object.
+void copy_bar_art(W settings, W bar) {
+    if (!mem_readable(vp(settings + kSetBarArt), 3 * kSetBarArtStride)
+        || !mem_readable(vp(settings + kSetBarRect), 0x30)
+        || !mem_writable(vp(bar + kBarArt), 0x18) || !mem_writable(vp(bar + kBarRect), 0x30))
+        return;
+    for (W i = 0; i < 3; ++i) {
+        const W nref = rd<W>(settings, kSetBarArt + i * kSetBarArtStride);
+        const W old = rd<W>(bar, kBarArt + i * 8);
+        if (nref != old) {
+            if (old && mem_writable(vp(old + 8), 8)
+                && InterlockedDecrement64(reinterpret_cast<volatile LONG64*>(old + 8)) == 0) {
+                if (const W obj = rd<W>(old, 0x10)) {
+                    std::uintptr_t base = 0, size = 0, vt = 0, fn = 0;
+                    if (image_range(&base, &size) && mem_load(obj, &vt) && vt >= base
+                        && vt < base + size && load_at(vt, 0x08, &fn) && fn >= base && fn < base + size)
+                        reinterpret_cast<void (*)(void*)>(fn)(vp(obj));
+                }
+            }
+            st(bar, kBarArt + i * 8, nref);
+            if (nref && mem_writable(vp(nref + 8), 8))
+                InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(nref + 8));
+        }
+        std::memcpy(vp(bar + kBarRect + i * 0x10), vp(settings + kSetBarRect + i * 0x10), 0x10);
+    }
+}
+
+std::string hex(std::uint64_t v) {
+    char b[24];
+    std::snprintf(b, sizeof b, "0x%llx", static_cast<unsigned long long>(v));
+    return b;
+}
+
+std::string win_rect(W w) {
+    return std::to_string(rd<std::int32_t>(w, kWinX)) + "," + std::to_string(rd<std::int32_t>(w, kWinY))
+         + " " + std::to_string(rd<std::int32_t>(w, kWinW)) + "x"
+         + std::to_string(rd<std::int32_t>(w, kWinH));
+}
+
+// `w` and its parents up to `stop`, class and rect per level: what the log needs
+// when the column is not where it was expected.
+std::string win_chain(W w, W stop) {
+    std::string s;
+    for (int n = 0; w && w != kNone && n < 12; ++n) {
+        s += (n ? " < " : "") + rtti_name(w) + " " + win_rect(w);
+        if (w == stop) return s + " [column]";
+        w = rd<W>(w, kWinParent);
+    }
+    return s + " [column not reached]";
+}
+
+// y of `w` in the root's space: its y plus every parent's, as the layout places them.
+std::int32_t abs_y(W w) {
+    std::int32_t y = 0;
+    for (int n = 0; w && w != kNone && n < 32; ++n) {
+        y += rd<std::int32_t>(w, kWinY);
+        w = rd<W>(w, kWinParent);
+    }
+    return y;
+}
+
+// The column holds about nine and a half buttons and does not scroll. When our
+// entries run past its bottom, it goes into a scroll panel built the way
+// OptionsMenu_AddCategory builds the right pane's, in the column's place; the
+// panel's own wheel and scrollbar then work, and hook_update keeps the focused
+// entry in view. hook_teardown puts the column back: the page entity is pooled,
+// and vanilla Settings reuses it.
+void wrap_column(void* ctrl, const Record& rec) {
+    if (!g_lay_ok) return;
+    auto& L = Loader::get();
+    const W c = A(ctrl);
+    const W column = rd<W>(c, kCtrlColumn), settings = rd<W>(c, kCtrlSettings);
+    auto skip = [&](const std::string& why) {
+        L.log_warn("[ui-menus] column left as is: " + why + "; column " + hex(column) + " "
+                   + (column ? rtti_name(column) + " " + win_rect(column) : std::string("-")));
+    };
+    if (!column || !settings || !mem_readable(vp(column), kWinH + 4)) return skip("no column or settings");
+    const W parent = rd<W>(column, kWinParent);
+    const W next = rd<W>(column, kWindowNext);
+    if (!parent) return skip("column has no parent");
+    ColWrap wr;
+    wr.column = column;
+    wr.parent = parent;
+    wr.x = rd<std::int32_t>(column, kWinX);
+    wr.y = rd<std::int32_t>(column, kWinY);
+    wr.bx = rd<std::int32_t>(column, kWinBaseX);
+    wr.by = rd<std::int32_t>(column, kWinBaseY);
+    wr.w = rd<std::int32_t>(column, kWinW);
+    wr.h = rd<std::int32_t>(column, kWinH);
+    // The bottom of our last entry. The hidden ones (the Miscellaneous slot at the
+    // top, Credits/EULA/Privacy at the end) still take their place in the stack.
+    std::int32_t bottom = 0;
+    int found = 0, missed = 0;
+    W first_miss = 0;
+    auto take = [&](std::uint32_t idx) {
+        const W btn = A(tab_button(ctrl, idx));
+        const W b = child_under(column, btn);
+        if (b) {
+            ++found;
+            bottom = std::max(bottom, rd<std::int32_t>(b, kWinY) + rd<std::int32_t>(b, kWinH));
+        } else {
+            ++missed;
+            if (!first_miss) first_miss = btn;
+        }
+    };
+    for (const auto& cat : rec.cats) take(cat.entry_index);
+    for (const auto& n : rec.nested) take(n.first);
+    if (missed)
+        L.log_warn("[ui-menus] " + std::to_string(missed) + " column button(s) not under the column; first: "
+                   + win_chain(first_miss, column));
+    if (wr.w <= 0 || wr.h <= 0) return skip("column has no size");
+    // What shows of the column. Its own height is no bound: the Content Frame resize
+    // listener (FUN_1403f6600) grows it to all its buttons, hidden ones included, and
+    // nothing clips it, the book page just ends. The right page's scroll panel is the
+    // game's own visible area at the same depth of the book: the column stops where
+    // that panel stops.
+    W rpanel = 0;
+    for (const auto& cat : rec.cats)
+        if (cat.panel) { rpanel = cat.panel; break; }
+    const std::int32_t rp_h = rpanel ? rd<std::int32_t>(rpanel, kWinH) : 0;
+    // Never more than the column itself: below its rect the mouse cannot reach.
+    const std::int32_t view = std::min(rp_h > 0 ? abs_y(rpanel) + rp_h - abs_y(column) : 0, wr.h);
+    const std::int32_t btn_h = found ? bottom / std::max(found + 1, 1) : 0;   // + the hidden Misc slot
+    if (view < 3 * std::max(btn_h, 1))
+        return skip("no usable view height (right panel " + (rpanel ? win_rect(rpanel) : std::string("-"))
+                    + " at " + std::to_string(rpanel ? abs_y(rpanel) : 0) + ", column at "
+                    + std::to_string(abs_y(column)) + ", view " + std::to_string(view) + ")");
+    if (bottom <= view) return;   // it fits: leave it alone
+
+    const std::string before = win_rect(column);
+    const std::uint32_t layout = rd<std::uint32_t>(column, kWinLayout);
+    const W p = A(g_lay.panel_new());
+    if (!p) { L.log_err("[ui-menus] column scroll panel not created"); return; }
+    g_lay.add_child(vp(parent), vp(p));
+    set_pos(p, wr.x, wr.y, wr.bx, wr.by);
+    g_lay.set_size(vp(p), wr.w, view);
+    st(p, kWinFlags, std::uint8_t(rd<std::uint8_t>(p, kWinFlags) & 0xfc));
+    st(p, kWinLayout, layout);
+    g_lay.panel_init(vp(p), 1, 0, false, false);
+    const W bar = rd<W>(p, kPanelBar), mask = rd<W>(p, kPanelMask), content = rd<W>(p, kPanelContent);
+    if (!bar || !mask || !content || !mem_readable(vp(content), kWinH + 4)) {
+        L.log_err("[ui-menus] column scroll panel incomplete; column left as is");
+        g_lay.destroy(vp(p));
+        release_obj(p);
+        return;
+    }
+    // The bar sits inside the panel's right edge: widen the panel by it so the
+    // buttons keep their width.
+    const std::int32_t barw = rd<std::int32_t>(p, kPanelBarW);
+    if (barw > 0 && barw < wr.w) g_lay.set_size(vp(p), wr.w + barw, view);
+    const std::int32_t pw = rd<std::int32_t>(p, kWinW), ph = rd<std::int32_t>(p, kWinH);
+    set_pos(mask, 0, 0, 0, 0);
+    g_lay.set_size(vp(mask), pw - rd<std::int32_t>(p, kWinPadR) - rd<std::int32_t>(p, kWinPadL),
+                   ph - rd<std::int32_t>(p, kWinPadB) - rd<std::int32_t>(p, kWinPadT));
+    st(mask, kWinFlags, std::uint8_t(rd<std::uint8_t>(mask, kWinFlags) & 0xfc));
+    st(mask, kWinLayout, std::uint32_t(0xf));
+    g_lay.fit_width(vp(content));
+    copy_bar_art(settings, bar);
+    st(p, kPanel320, std::uint16_t(0x100));
+    st(p, kPanel324, 10.0f);
+    st(bar, kBar314, std::uint8_t(0));
+    st(p, kPanelWheel, std::int32_t(100));
+
+    g_lay.remove_child(vp(parent), vp(column));
+    const bool placed = move_before(parent, p, next);
+    g_lay.add_child(vp(content), vp(column));
+    set_pos(column, 0, 0, 0, 0);
+    g_lay.set_size(vp(column), wr.w, bottom);   // the mouse reaches only inside its rect
+    g_lay.panel_layout(vp(p));
+    g_lay.set_size(vp(content), rd<std::int32_t>(content, kWinW), bottom);
+    g_lay.panel_bar(vp(p));
+    // The move re-lays the column out and puts every button at y 0. Restack it with
+    // the game's own call, the one its resize listener makes, last of all.
+    g_lay.restack(ctrl, vp(column));
+    wr.panel = p;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_ours[ctrl].wrap = wr;
+    }
+    L.log("[ui-menus] column scrolls: entries end at " + std::to_string(bottom) + ", view "
+          + std::to_string(view) + ", column "
+          + before + " layout " + hex(layout) + ", panel " + win_rect(p) + " bar "
+          + std::to_string(barw) + ", mask " + win_rect(mask) + ", content " + win_rect(content)
+          + ", column now "
+          + win_rect(column) + (placed ? "" : ", panel drawn last") + ", focus "
+          + hex(rd<W>(column, kNavFocus)));
+}
+
+// Keeps the column's focused entry in view, as the game does for rows: not while a
+// wheel notch is held, so the wheel and a hover under the cursor do not fight.
+void follow_column_focus(void* ctrl) {
+    if (!g_lay_ok || !g_wheel_up) return;
+    ColWrap wr;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        auto it = g_ours.find(ctrl);
+        if (it == g_ours.end() || !it->second.wrap.panel) return;
+        wr = it->second.wrap;
+    }
+    const W f = rd<W>(wr.column, kNavFocus);
+    if (f == wr.focus) return;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        auto it = g_ours.find(ctrl);
+        if (it != g_ours.end()) it->second.wrap.focus = f;
+    }
+    std::uint8_t up = 0, down = 0;
+    if (!f || !mem_load(g_wheel_up, &up) || !mem_load(g_wheel_down, &down) || ((up | down) & 4)) return;
+    const W b = child_under(wr.column, f);
+    if (!b) return;
+    const std::int32_t y = rd<std::int32_t>(b, kWinY);
+    g_lay.panel_show(vp(wr.panel), y, y + rd<std::int32_t>(b, kWinH));
+}
+
+// Teardown: the column back to its parent, its place and its size; our panel gone.
+void unwrap_column(void* ctrl, const ColWrap& wr) {
+    auto& L = Loader::get();
+    const W content = rd<W>(wr.panel, kPanelContent);
+    if (!content || rd<W>(wr.column, kWinParent) != content) {
+        // Destroy would take the column with it. Leave the panel, hidden.
+        L.log_err("[ui-menus] column not under its scroll panel at close; panel left hidden");
+        g_set_visible(vp(wr.panel), false, false);
+        return;
+    }
+    g_lay.remove_child(vp(content), vp(wr.column));
+    g_lay.add_child(vp(wr.parent), vp(wr.column));
+    if (!move_before(wr.parent, wr.column, wr.panel))
+        L.log_warn("[ui-menus] column back in Settings but its draw order moved");
+    set_pos(wr.column, wr.x, wr.y, wr.bx, wr.by);
+    g_lay.set_size(vp(wr.column), wr.w, wr.h);
+    g_lay.restack(ctrl, vp(wr.column));   // the move flattened the buttons again
+    g_lay.destroy(vp(wr.panel));
+    release_obj(wr.panel);
+}
+
+// The first oCUILabel under `root`, breadth first (sibling order kept).
+W find_label_under(W root) {
+    std::deque<W> q{root};
+    for (int n = 0; !q.empty() && n < 200; ++n) {
+        const W w = q.front();
+        q.pop_front();
+        if (w != root && rtti_name(w) == ".?AVoCUILabel@@") return w;
+        W c = 0;
+        if (!load_at(w, kRootChildren, &c)) continue;
+        for (int k = 0; c && c != kNone && k < 64; ++k) {
+            q.push_back(c);
+            if (!load_at(c, kWindowNext, &c)) break;
+        }
+    }
+    return 0;
+}
+
+std::string label_dump(W l) {
+    if (!l) return "none";
+    char b[320];
+    std::snprintf(b, sizeof b,
+                  "font 0x%llx rgba %.2f,%.2f,%.2f,%.2f scale %.2f flags %u/%u/%u/%u/%u "
+                  "align %d/%d fit %d rect %s",
+                  (unsigned long long)rd<W>(l, kWinFont), rd<float>(l, kWinColor),
+                  rd<float>(l, kWinColor + 4), rd<float>(l, kWinColor + 8),
+                  rd<float>(l, kWinColor + 12), rd<float>(l, kLabelScale),
+                  rd<std::uint8_t>(l, 0x314), rd<std::uint8_t>(l, 0x315), rd<std::uint8_t>(l, 0x316),
+                  rd<std::uint8_t>(l, 0x317), rd<std::uint8_t>(l, 0x318), rd<std::int32_t>(l, 0x31c),
+                  rd<std::int32_t>(l, 0x320), rd<std::int32_t>(l, 0x324), win_rect(l).c_str());
+    return b;
+}
+
+void style_label(W l, W src) {
+    if (!src) return;
+    if (rd<W>(src, kWinFont)) g_lay.set_font(vp(l), vp(src + kWinFont));
+    float rgba[4];
+    if (mem_readable(vp(src + kWinColor), sizeof rgba) && mem_writable(vp(l + kWinColor), sizeof rgba)) {
+        std::memcpy(rgba, vp(src + kWinColor), sizeof rgba);
+        std::memcpy(vp(l + kWinColor), rgba, sizeof rgba);
+    }
+    const float scale = rd<float>(src, kLabelScale, 1.0f);
+    if (scale > 0.1f && scale < 10.0f) st(l, kLabelScale, scale);
+}
+
+// Header labels were added to each row zone ahead of the rows by book_pages_build.
+// Here, once the page is built and laid out: style them like the page's own text,
+// give them the rows' width, wrap and measure them, then re-measure the category
+// the way the game's FUN_1403f6600 does (layout, restack, content size, bar).
+void lay_out_headers(void* ctrl, const Record& rec) {
+    if (!g_lay_ok) return;
+    bool any = false;
+    W row_win = 0, row_label = 0;
+    for (const auto& c : rec.cats) {
+        any = any || !c.header.empty();
+        if (!row_label && c.first_row) {
+            row_win = rd<W>(c.first_row, kRowWindow);
+            if (row_win) row_label = find_label_under(row_win);
+        }
+    }
+    if (!any) return;
+    const W head = find_heading_label(ctrl);
+    static bool dumped = false;
+    if (!dumped) {
+        dumped = true;
+        Loader::get().log("[ui-menus] header style: row label " + label_dump(row_label)
+                          + "; heading " + label_dump(head) + "; row " + win_rect(row_win));
+    }
+    // The row title's offset inside its row is the header's margin, on both sides.
+    std::int32_t indent = 0;
+    for (W w = row_label; w && w != row_win && rd<W>(w, kWinParent); w = rd<W>(w, kWinParent))
+        indent += rd<std::int32_t>(w, kWinX);
+    for (const auto& c : rec.cats) {
+        if (c.header.empty() || !c.panel || !c.zone) continue;
+        std::int32_t base = rd<std::int32_t>(c.zone, kWinW);
+        const std::int32_t roww = row_win ? rd<std::int32_t>(row_win, kWinW) : 0;
+        if (roww > 0 && (base <= 0 || roww < base)) base = roww;
+        if (base <= 0) continue;
+        std::int32_t in = (indent > 0 && indent * 3 < base) ? indent : 0;
+        const std::int32_t w = base - 2 * in;
+        const std::int32_t line = std::max(rd<std::int32_t>(row_label, kWinH), 24);
+        for (const auto& hl : c.header) {
+            style_label(hl.label, hl.title && head ? head : row_label);
+            set_pos(hl.label, in, 0, in, 0);
+            g_lay.set_size(vp(hl.label), w, line);
+            OcStr t = lit(*hl.text);
+            label_set_text(hl.label, &t);
+            float m[2] = {0, 0};
+            const auto* mr = static_cast<const float*>(g_lay.measure_label(vp(hl.label), m));
+            const float mh = (mr && mem_readable(mr, sizeof m)) ? mr[1] : m[1];
+            const std::int32_t h = (mh > 0.0f && mh < 4000.0f) ? std::int32_t(mh + 0.999f) : line;
+            g_lay.set_size(vp(hl.label), w, h);
+        }
+        g_lay.panel_layout(vp(c.panel));
+        g_lay.restack(ctrl, vp(c.zone));
+        const W content = rd<W>(c.panel, kPanelContent);
+        if (!content) continue;
+        st(content, kWinFlags, std::uint8_t(rd<std::uint8_t>(content, kWinFlags) | 2));
+        std::int32_t sz[2] = {0, 0};
+        const auto* kr = static_cast<const std::int32_t*>(g_lay.measure_kids(vp(content), sz));
+        if (kr && mem_readable(kr, sizeof sz)) std::memcpy(sz, kr, sizeof sz);
+        if (sz[0] > 0 && sz[1] > 0) g_lay.set_size(vp(content), sz[0], sz[1]);
+        g_lay.panel_bar(vp(c.panel));
+    }
+}
+
 // Retitle our page's heading, remembering the original text: the page entity is
 // pooled per template, so vanilla Settings pages reuse it (restored in hook_teardown).
 void set_page_title(void* ctrl, const std::string& title) {
@@ -648,6 +1136,8 @@ void open_ours(void* parent, const std::string& page, const std::string& ctx, in
         g_last_leaf.store(child_ctrl);   // current() inside the open handler
         g_last_tick.store(GetTickCount64());
         hide_foreign_tabs(child_ctrl, rec);
+        lay_out_headers(child_ctrl, rec);
+        wrap_column(child_ctrl, rec);
         if (!rec.cats.empty()) {
             if (void* btn = tab_button(child_ctrl, rec.cats[0].entry_index))
                 g_real_select(child_ctrl, btn);
@@ -701,9 +1191,12 @@ void hook_teardown(void* ctrl) {
             is_ours = true;
             ours.hidden = std::move(it->second.hidden);
             ours.title = it->second.title;
+            ours.wrap = it->second.wrap;
+            it->second.wrap = {};
         }
     }
     if (!is_ours) { g_real_teardown(ctrl); return; }
+    if (ours.wrap.panel) unwrap_column(ctrl, ours.wrap);   // before anything reads the column
     if (ours.title.label) {   // the pooled page entity must not keep our heading
         OcStr o = lit(*ours.title.orig);
         label_set_text(ours.title.label, &o);
@@ -849,6 +1342,7 @@ void hook_update(void* ctrl) {
         DepthGuard g;
         g_real_update(ctrl);
     }
+    follow_column_focus(ctrl);
     std::uintptr_t child = 1;
     if (load_at(ctrl, kPageChild, &child) && child == 0 && is_host(ctrl)) {
         g_last_leaf.store(ctrl);
@@ -1009,22 +1503,36 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
             L.log_err("[ui-menus] add category '" + cs.id + "' returned nothing");
             continue;
         }
-        auto readonly_row = [&](const std::string& id, const std::string& label,
-                                const std::string& text) {
-            LiveRow* r = new_row(id, label);
-            r->texts = {text};
+        // `cat` points into the tab vector, which the next add_tab may move: read it now.
+        load_at(cat, 0, &rc.panel);
+        rc.zone = A(row_parent);
+        // The header. With the layout calls: game labels at the top of the row zone,
+        // styled and sized in open_ours once the page has its width, one label per
+        // paragraph of `text`. Without them: read-only rows, clipped like any row label.
+        auto add_line = [&](const std::string& text, bool title) {
+            if (g_lay_ok) {
+                const W l = A(g_lay.label_new());
+                if (!l) return false;
+                st(l, kLabelFixed, std::uint8_t(1));   // before any text: no auto-size to one line
+                g_lay.add_child(row_parent, vp(l));
+                rc.header.push_back({l, keep_str(text.empty() ? " " : text), title});
+                return true;
+            }
+            LiveRow* r = new_row("", text);
+            r->texts = {""};
             return spawn_row(ctrl, settings, factory, cat, row_parent, *r);
         };
         bool ok = true;
-        if (!cs.h_title.empty()) ok = readonly_row("", cs.h_title, "");
-        if (ok && !cs.h_sub.empty()) ok = readonly_row("", cs.h_sub, "");
+        if (!cs.h_title.empty()) ok = add_line(cs.h_title, true);
+        if (ok && !cs.h_sub.empty()) ok = add_line(cs.h_sub, false);
         for (std::size_t at = 0; ok && !cs.h_text.empty() && at <= cs.h_text.size();) {
             const std::size_t nl = cs.h_text.find('\n', at);
-            const std::string line = cs.h_text.substr(at, nl == std::string::npos ? nl : nl - at);
-            ok = readonly_row("", line, "");
+            ok = add_line(cs.h_text.substr(at, nl == std::string::npos ? nl : nl - at), false);
             if (nl == std::string::npos) break;
             at = nl + 1;
         }
+        if (!ok) L.log_err("[ui-menus] header of '" + cs.id + "' not built; rows follow without it");
+        ok = true;   // the header is decoration: its rows still build
         for (const auto& rs : cs.rows) {
             if (!ok) break;
             LiveRow* r = new_row(rs.id, rs.label);
@@ -1034,6 +1542,7 @@ void book_pages_build(void* ctrl, void* page, void* parent) {
             r->def = rs.def;
             r->resettable = rs.reset;
             if (!spawn_row(ctrl, settings, factory, cat, row_parent, *r)) { ok = false; break; }
+            if (!rc.first_row) rc.first_row = A(r->row);
             if (r->editable) rc.rows.push_back(r);
         }
         rec.cats.push_back(std::move(rc));
@@ -1194,6 +1703,36 @@ bool install_book_page_hooks() {
         if (!resolve_checked("ui-menus", c.what, c.pattern, c.slot))
             return fail("a call target did not resolve");
     if (!resolve_menu_fns("ui-menus", g_menu)) return fail("a call target did not resolve");
+    {
+        auto r = [&](const char* what, const char* pattern, auto* slot) {
+            return resolve_checked("ui-menus", what, pattern, slot);
+        };
+        auto& f = g_lay;
+        g_lay_ok = r("add child", Sym::UiWindow_AddChild_Pattern, &f.add_child)
+            && r("remove child", Sym::UiWindow_RemoveChild_Pattern, &f.remove_child)
+            && r("destroy", Sym::UiWindow_Destroy_Pattern, &f.destroy)
+            && r("set size", Sym::UiWindow_SetSize_Pattern, &f.set_size)
+            && r("set font", Sym::UiWindow_SetFont_Pattern, &f.set_font)
+            && r("fit width", Sym::UiWindow_FitParentWidth_Pattern, &f.fit_width)
+            && r("measure children", Sym::UiWindow_MeasureChildren_Pattern, &f.measure_kids)
+            && r("label new", Sym::UiLabel_New_Pattern, &f.label_new)
+            && r("measure label", Sym::UiLabel_MeasureWrapped_Pattern, &f.measure_label)
+            && r("panel new", Sym::UiScrollPanel_New_Pattern, &f.panel_new)
+            && r("panel init", Sym::UiScrollPanel_Init_Pattern, &f.panel_init)
+            && r("panel layout", Sym::UiScrollPanel_Layout_Pattern, &f.panel_layout)
+            && r("panel bar", Sym::UiScrollPanel_UpdateBar_Pattern, &f.panel_bar)
+            && r("ensure visible", Sym::UiScrollPanel_EnsureVisible_Pattern, &f.panel_show)
+            && r("restack", Sym::OptionsMenu_RestackZone_Pattern, &f.restack);
+        if (!g_lay_ok)
+            L.log_warn("[ui-menus] layout calls missing: no column scroll, headers drawn as rows");
+        if (L.va_globals_trusted()) {
+            const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+            g_wheel_up = Sym::g_InputMouseWheelUp - Sym::kPreferredBase + base;
+            g_wheel_down = Sym::g_InputMouseWheelDown - Sym::kPreferredBase + base;
+        } else {
+            L.log("[ui-menus] VA globals untrusted: the scrolling column does not follow focus");
+        }
+    }
 
     const HookSpec hooks[] = {
         {"BookPage_OpenChild", Sym::BookPage_OpenChild_Pattern,
