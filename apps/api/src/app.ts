@@ -7,7 +7,7 @@ import { logger } from 'hono/logger';
 import { resolveTokenUser } from './api-token-auth.js';
 import { bearerToken, isTokenRoute } from './api-tokens.js';
 import { getAuth } from './auth.js';
-import { env, githubConfigured, googleConfigured, isProduction } from './env.js';
+import { discordConfigured, env, githubConfigured, googleConfigured, isProduction } from './env.js';
 import { errString, log, requestId } from './logger.js';
 import { verifyUnsubscribeToken } from './notify.js';
 import { createRateLimiter } from './rate-limit.js';
@@ -261,6 +261,7 @@ app.get('/api/auth-config', (c) =>
   c.json({
     providers: {
       google: googleConfigured(),
+      discord: discordConfigured(),
       github: githubConfigured(),
     },
   }),

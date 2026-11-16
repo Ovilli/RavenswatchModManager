@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { signIn, signUp } from '../../../lib/auth-client';
-import { GoogleIcon, authConfigQueryKey, fetchAuthConfig } from '../../../lib/auth-ui';
+import { DiscordIcon, GoogleIcon, authConfigQueryKey, fetchAuthConfig } from '../../../lib/auth-ui';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -42,7 +42,7 @@ export default function SignUpPage() {
     router.push('/');
   }
 
-  async function social(provider: 'google' | 'github') {
+  async function social(provider: 'google' | 'discord' | 'github') {
     setError(null);
     setBusy(true);
     const res = await signIn.social({ provider, callbackURL: `${window.location.origin}/` });
@@ -80,7 +80,11 @@ export default function SignUpPage() {
     );
   }
 
-  const hasSocial = !!(config.data?.providers.google || config.data?.providers.github);
+  const hasSocial = !!(
+    config.data?.providers.google ||
+    config.data?.providers.discord ||
+    config.data?.providers.github
+  );
 
   return (
     <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6 animate-page-in">
@@ -101,6 +105,17 @@ export default function SignUpPage() {
                   onClick={() => social('google')}
                 >
                   <GoogleIcon /> Continue with Google
+                </Button>
+              ) : null}
+              {config.data?.providers.discord ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => social('discord')}
+                >
+                  <DiscordIcon /> Continue with Discord
                 </Button>
               ) : null}
               {config.data?.providers.github ? (

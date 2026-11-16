@@ -207,7 +207,9 @@ export default function PrivacyPage() {
               <li>Neon — PostgreSQL database hosting</li>
               <li>Cloudflare R2 / S3-compatible storage — mod files, images and avatars</li>
               <li>Vercel — hosting for the website and the API</li>
-              <li>GitHub and Google — optional sign-in providers, and release file downloads</li>
+              <li>
+                GitHub, Google and Discord — optional sign-in providers, and release file downloads
+              </li>
               <li>
                 VirusTotal — every uploaded mod file is submitted for malware scanning before it
                 becomes downloadable. Files submitted to VirusTotal are shared with its security

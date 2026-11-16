@@ -176,6 +176,7 @@ export const zhCN: Record<string, string> = {
   Continue: '继续',
   'Continue with GitHub': '使用 GitHub 继续',
   'Continue with Google': '使用 Google 继续',
+  'Continue with Discord': '使用 Discord 继续',
   'Continue?': '继续吗？',
   'Contribute, report issues, join the community Discord, or read developer notes in the repository. RSMM is free — if it saved you an evening, Ko-fi keeps the coffee coming.':
     '参与贡献、报告问题、加入社区 Discord，或在仓库中阅读开发者笔记。RSMM 完全免费——如果它为你省下了一个晚上，欢迎在 Ko-fi 上请作者喝杯咖啡。',
