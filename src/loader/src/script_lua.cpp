@@ -34,6 +34,7 @@ extern "C" {
 #include "hook_keybinds.h"
 #include "hook_ui_state.h"
 #include "hook_book_pages.h"
+#include "hook_settings_menu.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -111,7 +112,12 @@ struct ModScript {
     // How many rsmm.on_event handlers this state registered, so closing it
     // can take them back out of the process-wide count.
     int handlers = 0;
+    // The loader-owned state (script_run_builtin_init): no mod root, no
+    // config, no hot reload.
+    bool builtin = false;
 };
+
+constexpr const char* kBuiltinId = "_rsmm";
 
 std::recursive_mutex g_mu;
 std::unordered_map<std::string, ModScript> g_scripts;
@@ -2038,6 +2044,49 @@ int lua_ui_menus_veto_back(lua_State*) {
     return 0;
 }
 
+// --- the Mods page's model (hook_settings_menu.h; rsmm/mods_menu.lua) ------------
+
+// mods_menu_owner() -> true only in the loader-owned state
+int lua_mods_menu_owner(lua_State* L) {
+    const ModScript* m = current_from_state(L);
+    lua_pushboolean(L, m && m->builtin);
+    return 1;
+}
+
+// mods_model() -> table | nil, why
+int lua_mods_model(lua_State* L) {
+    std::string json, why;
+    if (!mods_menu_model_json(&json, &why)) {
+        lua_pushnil(L);
+        lua_pushstring(L, why.c_str());
+        return 2;
+    }
+    const nlohmann::json j = nlohmann::json::parse(json, nullptr, false);
+    if (j.is_discarded()) {
+        lua_pushnil(L);
+        lua_pushstring(L, "model is not valid JSON");
+        return 2;
+    }
+    json_to_lua(L, j);
+    return 1;
+}
+
+// mods_menu_set(mod_id, row_id, index) -> true | nil, why
+int lua_mods_menu_set(lua_State* L) {
+    const std::string mod = luaL_checkstring(L, 1);
+    const std::string row = luaL_checkstring(L, 2);
+    const int index = static_cast<int>(luaL_checkinteger(L, 3));
+    std::string why;
+    const bool ok = mods_menu_set(mod, row, index, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// mods_menu_refresh()
+int lua_mods_menu_refresh(lua_State*) {
+    mods_menu_refresh();
+    return 0;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -2386,6 +2435,10 @@ void register_api(lua_State* L) {
         { "ui_menus_back",           lua_ui_menus_back },
         { "ui_menus_current",        lua_ui_menus_current },
         { "ui_menus_veto_back",      lua_ui_menus_veto_back },
+        { "mods_menu_owner",         lua_mods_menu_owner },
+        { "mods_model",              lua_mods_model },
+        { "mods_menu_set",           lua_mods_menu_set },
+        { "mods_menu_refresh",       lua_mods_menu_refresh },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
@@ -2461,6 +2514,26 @@ std::string first_line(const std::string& msg) {
     if (out.size() > kMax) out = out.substr(0, kMax) + "...";
     return out;
 }
+// Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"` (and
+// friends) resolve to the SDK module that ships next to the loader. Without
+// this Lua's default search path would only find mods/<id>/init.lua. The
+// native `rsmm` global stays available as a fallback for low-level scripts
+// that don't want the wrapper.
+void prepend_sdk_path(lua_State* L) {
+    const auto sdk_lib_dir = Loader::get().game_dir() / "rsmm" / "lib";
+    const std::string entry =
+        sdk_lib_dir.string() + "/?.lua;" +
+        sdk_lib_dir.string() + "/?/init.lua;";
+    lua_getglobal(L, "package");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "path");
+        const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+        lua_pop(L, 1);
+        lua_pushstring(L, (entry + cur).c_str());
+        lua_setfield(L, -2, "path");
+    }
+    lua_pop(L, 1);
+}
 }  // namespace
 
 bool script_run_mod_init(const std::string& mod_id,
@@ -2489,27 +2562,7 @@ bool script_run_mod_init(const std::string& mod_id,
     load_mod_config(L, mod_root);
     register_api(L);
 
-    // Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"`
-    // (and friends) resolve to the SDK module that ships next to the
-    // loader. Without this Lua's default search path would only find
-    // mods/<id>/init.lua. The native `rsmm` global stays available as a
-    // fallback for low-level scripts that don't want the wrapper.
-    {
-        const auto sdk_lib_dir =
-            Loader::get().game_dir() / "rsmm" / "lib";
-        const std::string entry =
-            sdk_lib_dir.string() + "/?.lua;" +
-            sdk_lib_dir.string() + "/?/init.lua;";
-        lua_getglobal(L, "package");
-        if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "path");
-            const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
-            lua_pop(L, 1);
-            lua_pushstring(L, (entry + cur).c_str());
-            lua_setfield(L, -2, "path");
-        }
-        lua_pop(L, 1);
-    }
+    prepend_sdk_path(L);
 
     ModScript& s = g_scripts[mod_id];
     s.L    = L;
@@ -2558,6 +2611,45 @@ bool script_run_mod_init(const std::string& mod_id,
     }
     Loader::get().log("[lua] " + mod_id + " init OK");
     health::checkpoint("post_init:" + mod_id);
+    return true;
+}
+
+bool script_run_builtin_init() {
+    std::lock_guard<std::recursive_mutex> g(g_mu);
+    const std::string id = kBuiltinId;
+    lua_State* L = luaL_newstate();
+    if (!L) return false;
+    luaL_openlibs(L);
+    apply_sandbox(L);
+    lua_pushstring(L, id.c_str());
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
+    register_api(L);
+    prepend_sdk_path(L);
+
+    ModScript& s = g_scripts[id];
+    s.L       = L;
+    s.id      = id;
+    s.builtin = true;
+
+    // `require "rsmm"` mounts the core features (rsmm/mods_menu.lua among them).
+    lua_getglobal(L, "require");
+    lua_pushstring(L, "rsmm");
+    if (lua_pcall_traced(L, 1, 0) != LUA_OK) {
+        Loader::get().log_err("[lua] built-in state failed: " + lua_err_str(L));
+        // Same teardown as a failed mod init, minus the health record.
+        hook_lua_unregister_mod(id);
+        for (auto it = g_apis.begin(); it != g_apis.end(); ) {
+            it = (it->second.mod_id == id) ? g_apis.erase(it) : std::next(it);
+        }
+        if (const auto it = g_scripts.find(id); it != g_scripts.end()) {
+            g_handler_count.fetch_sub(it->second.handlers, std::memory_order_relaxed);
+        }
+        clear_mod_handler_errors(id);
+        lua_close(L);
+        g_scripts.erase(id);
+        return false;
+    }
+    Loader::get().log("[lua] built-in state up");
     return true;
 }
 
@@ -2678,6 +2770,7 @@ void script_reload_changed() {
     {
         std::lock_guard<std::recursive_mutex> g(g_mu);
         for (auto& [id, s] : g_scripts) {
+            if (s.builtin) continue;   // no mod root, nothing on disk to watch
             const auto mt = newest_lua_mtime(s.root);
             if (mt == std::filesystem::file_time_type{}) continue;
             if (mt != s.init_mtime) {

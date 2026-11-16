@@ -12289,6 +12289,31 @@ do
     check(not pcall(M.page, "t.bad", { categories = function() return {} end, kind = "grid" }),
           "kind other than categories is an error")
 
+    -- per-row reset opt-out
+    M.page("t.reset", { title = "R", categories = function()
+        return { { id = "c", label = "C", rows = {
+            { id = "a", label = "A", choices = { "x", "y" } },
+            { id = "b", label = "B", choices = { "x", "y" }, reset = false },
+            { id = "c", label = "C", readonly = true, readonly_text = "ro" },
+        } } }
+    end })
+    local rr = pages["t.reset"].categories[1].rows
+    check(rr[1].reset == true, "a row without reset comes out reset == true")
+    check(rr[2].reset == false, "reset = false comes out false")
+    check(rr[3].reset == nil, "a read-only row has no reset")
+    local log_n = #logged
+    local bad_ok = pcall(M.page, "t.reset_bad", { categories = function()
+        return { { id = "c", label = "C", rows = {
+            { id = "a", label = "A", choices = { "x" }, reset = "no" } } } }
+    end })
+    check(bad_ok and pages["t.reset_bad"] ~= nil and #pages["t.reset_bad"].categories == 0,
+          "reset = \"no\" is rejected (page registers with zero categories)")
+    local reset_logged = false
+    for i = log_n + 1, #logged do
+        if logged[i]:find("row.reset must be a boolean", 1, true) then reset_logged = true end
+    end
+    check(reset_logged, "reset = \"no\" logs 'row.reset must be a boolean'")
+
     -- refresh re-evaluates with ctx
     local before = pages["t.main"]
     fire("ui:_menus_refresh", { page = "t.main", ctx = { from = "x" } })
@@ -12361,6 +12386,106 @@ do
         if n:sub(1, 1) == "_" then internal[#internal + 1] = n end
     end
     check(#internal == 0, "R.engine.names() leaks internal keys: " .. table.concat(internal, ", "))
+end
+
+-- Settings > Mods page (rsmm/mods_menu.lua): a factory over R.ui.menus and the
+-- I.mods_* natives. R here is a proxy whose ui.menus is a recorder, so the RAW
+-- categories() result is checked (not a normalized snapshot).
+do
+    local factory = require "rsmm.mods_menu"
+    local pages, entries, sets = {}, {}, {}
+    local menus = {
+        page = function(id, def) pages[#pages + 1] = { id = id, def = def }; return { kind = "page", id = id } end,
+        entry = function(spec) entries[#entries + 1] = spec; return { kind = "entry", id = spec.id } end,
+    }
+    local env_R = setmetatable({ ui = { menus = menus } }, { __index = R })
+    local logged = {}
+    env_R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local owner = false
+    local model = {
+        mods = {
+            { id = "alpha", name = "Alpha", version = "1.2.0", author = "Ann", wanted = true, enabled = true,
+              description = "one two three four five six seven eight nine ten eleven twelve " .. string.rep("x", 40),
+              rows = {
+                  { id = "@enabled", label = "Enabled", choices = { "Off", "On" }, value = 2, default = 2 },
+                  { id = "speed", label = "Speed", choices = { "Slow", "Fast" }, value = 1, default = 2 },
+                  { id = "name", label = "Name", readonly = true },
+              } },
+            { id = "beta", name = "Beta", version = "", author = "", wanted = false, enabled = true, description = "",
+              rows = {
+                  { id = "@enabled", label = "Enabled", choices = { "Off (next launch)", "On" }, value = 1, default = 1 },
+                  { id = "mode", label = "Mode", choices = { "A", "B", "C" }, value = 2, default = 3 },
+                  { id = "gain", label = "Gain", choices = { "1", "2" }, value = 1, default = 2 },
+              } },
+        },
+    }
+    local I_saved = { I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh }
+    local refreshes = 0
+    I.mods_menu_refresh = function() refreshes = refreshes + 1 end
+    I.mods_menu_owner = function() return owner end
+    I.mods_model = function() return model end
+    I.mods_menu_set = function(m, r, i) sets[#sets + 1] = { m, r, i }; return true end
+
+    factory({ R = env_R, I = I })
+    check(#pages == 0 and #entries == 0, "mods menu: a non-owner state registers nothing")
+
+    owner = true
+    factory({ R = env_R, I = I })
+    check(#entries == 1 and entries[1].id == "rsmm.mods" and entries[1].title == "Mods"
+          and entries[1].page == "rsmm.mods", "mods menu: owner registers the entry once")
+    check(#pages == 1 and pages[1].id == "rsmm.mods" and pages[1].def.kind == "categories"
+          and pages[1].def.title == "Mods", "mods menu: owner registers the page once")
+
+    local cats = pages[1].def.categories({})
+    check(refreshes == 1, "mods menu: building the page's categories refreshes the model once")
+    check(#cats == 2 and cats[1].id == "alpha" and cats[2].id == "beta" and cats[1].label == "Alpha",
+          "mods menu: one category per mod in model order")
+    check(cats[1].header.title == "Alpha" and cats[1].header.subtitle == "v1.2.0 - by Ann - Enabled",
+          "mods menu: header subtitle has version, author and state")
+    check(cats[2].header.subtitle == "Disabled (next launch)" and cats[2].header.text == nil,
+          "mods menu: empty version/author/description are dropped")
+    check(not cats[1].header.text:find("\n") and cats[1].header.text:sub(-40) == string.rep("x", 40),
+          "mods menu: the description passes through unwrapped (the header label wraps it)")
+    check(cats[1].rows[3].readonly == true and cats[1].rows[3].readonly_text == "Edit in the desktop app",
+          "mods menu: an uneditable field is a readonly row")
+    check(cats[1].rows[1].id == "@enabled" and cats[1].rows[1].reset == false
+          and cats[1].rows[2].reset == nil, "mods menu: only the @enabled row opts out of Reset")
+    check(cats[1].rows[2].value == 1 and cats[1].rows[2].default == 2 and #cats[1].rows[2].choices == 2,
+          "mods menu: editable rows carry choices, value and default")
+
+    model.mods[2].wanted, model.mods[2].enabled = true, false
+    check(pages[1].def.categories({})[2].header.subtitle == "Enabled (next launch)",
+          "mods menu: a pending change says '(next launch)' and the model is re-read")
+    model.mods[2].wanted, model.mods[2].enabled = false, true
+
+    fire("ui:menus_change", { page = "rsmm.mods", category = "alpha", row = "speed", index = 2 })
+    check(#sets == 1 and sets[1][1] == "alpha" and sets[1][2] == "speed" and sets[1][3] == 2,
+          "mods menu: ui:menus_change calls mods_menu_set(mod, row, index)")
+    fire("ui:menus_change", { page = "other.page", category = "alpha", row = "speed", index = 1 })
+    fire("ui:menus_reset", { page = "other.page", category = "beta" })
+    check(#sets == 1, "mods menu: events for another page are ignored")
+
+    sets = {}
+    fire("ui:menus_reset", { page = "rsmm.mods", category = "beta" })
+    check(#sets == 2 and sets[1][1] == "beta" and sets[1][2] == "mode" and sets[1][3] == 3
+          and sets[2][2] == "gain" and sets[2][3] == 2,
+          "mods menu: reset sets that mod's defaults, skipping @enabled")
+
+    factory({ R = env_R, I = I })
+    sets = {}
+    fire("ui:menus_change", { page = "rsmm.mods", category = "beta", row = "mode", index = 1 })
+    check(#sets == 1, "mods menu: re-running the factory does not double-subscribe")
+
+    -- no model, or no mods: nothing registered, the reason is logged
+    local npages = #pages
+    I.mods_model = function() return nil, "native menu is off" end
+    factory({ R = env_R, I = I })
+    I.mods_model = function() return { mods = {} } end
+    factory({ R = env_R, I = I })
+    check(#pages == npages and #logged >= 2, "mods menu: no model / no mods registers nothing and logs why")
+
+    factory({ R = env_R, I = { mods_menu_owner = function() return false end } })   -- drop our handlers
+    I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh = I_saved[1], I_saved[2], I_saved[3], I_saved[4]
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

@@ -8,7 +8,9 @@
 --                        header = { title = "Alpha", text = "line one\nline two" },
 --                        rows = { { id = "speed", label = "Speed",
 --                                   choices = { "Slow", "Normal", "Fast" },
---                                   value = 2, default = 2 } } } }
+--                                   value = 2, default = 2 },
+--                                 { id = "mode", label = "Mode", choices = { "A", "B" },
+--                                   reset = false } } } }   -- Reset leaves this row alone
 --         end,
 --         on_back = function(ctx) return true end,     -- false vetoes the pop
 --     })
@@ -81,6 +83,10 @@ local function norm_row(row, where)
     local n = #out.choices
     out.default = clamp_index(row.default, n, 1)
     out.value = clamp_index(row.value, n, out.default)
+    if row.reset ~= nil then
+        assert(type(row.reset) == "boolean", where .. ": row.reset must be a boolean")
+    end
+    out.reset = (row.reset ~= false)
     return out
 end
 

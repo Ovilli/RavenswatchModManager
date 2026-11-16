@@ -396,6 +396,12 @@ m.i18n("FR", {"FrostBlade_desc": "Gèle à l'impact."})
 print(m.summary())                            # dict of everything staged, no disk write
 ```
 
+The same config is editable in the game: **Settings > Mods** opens a page that
+lists every installed mod, each with its Off/On row (applied on the next launch)
+and one row per `config_schema.toml` field, in file order. `bool`, `enum`, `int`
+and `float` fields are choices you change in place; fields the page cannot edit
+(`string`, `multiselect`, `item-grid`) are listed with "Edit in the desktop app".
+
 #### Config with icons (`multiselect`)
 
 A config field is normally `bool`/`int`/`float`/`string`/`enum`. A
@@ -1914,8 +1920,7 @@ A page is a second copy of the game's own Settings page: a column of categories
 on the left, the selected category's rows on the right, and the game's Reset
 button. An entry adds a button to the Settings tab column that opens it, with
 the book's own page turn and its own Back. The vanilla tabs (Graphics, Audio,
-Controls and the rest, plus Credits, EULA and Privacy) and the Mods tab do not
-appear on your page, and the Settings page is unchanged after it closes.
+Controls and the rest, plus Credits, EULA and Privacy) do not appear on your page, and the Settings page is unchanged after it closes.
 
 `R.ui.menus.page(id, def)` registers a page and returns a handle, or `nil` and a
 reason. `def.title` is the column heading and `def.kind` is `"categories"`, the
@@ -1930,7 +1935,7 @@ and clamped to `1..#choices`.
 
 `R.ui.menus.entry{ id, title, page, after }` returns a handle, or `nil` and a
 reason. `after = "settings"` (the default) puts the entry in the Settings tab
-column after the Mods tab. `after = "<page id>"` puts it in that page's column
+column after the Mods entry. `after = "<page id>"` puts it in that page's column
 instead, so a page can lead to a nested page. The game builds the Settings page
 once, at boot, so register entries in `init.lua`: an entry registered later
 shows up on the next launch.
