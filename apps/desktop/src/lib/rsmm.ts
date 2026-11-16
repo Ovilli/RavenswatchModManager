@@ -1339,10 +1339,24 @@ export interface LoaderFlagsState {
   // Linux/Proton: whether Steam launch options carry the winhttp override.
   // null on native Windows (override not needed there). Only present on `get`.
   launchOptionsPresent?: boolean | null;
+  // Linux/Proton: the prefix registry carries the override, or exists so that
+  // `rsmm run` adds it at launch — launch options are then not needed.
+  prefixOverride?: boolean | null;
   error?: string;
 }
 
 export const getLoaderFlags = () => rsmm<LoaderFlagsState>(['loader-flags', 'get']);
+
+/** What Proton needs in Steam's launch options to load the loader DLL
+ *  (mirrors `RECOMMENDED_LAUNCH_OPTIONS` in src/rsmm/cli/run.py). */
+export const LOADER_LAUNCH_OPTIONS = 'WINEDLLOVERRIDES="winhttp=n,b" %command%';
+
+/** Write the override into Steam's localconfig.vdf without launching. The CLI
+ *  refuses while Steam runs (Steam rewrites the file on exit). */
+export const setLaunchOptions = () =>
+  rsmm<RunResult>(['run', '--set-launch-options', '--no-launch'], {
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  });
 
 // Writes the full enabled-flag set (the bridge ignores anything not marked
 // safe, so a stale UI can never arm a crashing flag).

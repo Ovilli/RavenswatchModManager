@@ -626,12 +626,19 @@ def _loader_status(game_dir: Path) -> dict[str, Any]:
         _override_present,
         _read_launch_options,
         _steam_root,
+        prefix_override_present,
+        prefix_user_reg,
     )
 
     loader_installed = (game_dir / "winhttp.dll").exists()
 
     launch_present: bool | None = None
+    # True when the Proton prefix carries the override, or exists so that
+    # `rsmm run` will add it at launch — then launch options aren't needed.
+    prefix_override: bool | None = None
     if sys.platform != "win32":
+        reg = prefix_user_reg(game_dir)
+        prefix_override = reg.is_file() or prefix_override_present(reg)
         launch_present = False
         steam_root = _steam_root()
         if steam_root is not None:
@@ -644,6 +651,7 @@ def _loader_status(game_dir: Path) -> dict[str, Any]:
     return {
         "loaderInstalled": loader_installed,
         "launchOptionsPresent": launch_present,
+        "prefixOverride": prefix_override,
     }
 
 

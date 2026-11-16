@@ -1100,7 +1100,8 @@ function LoaderFlagsPanel() {
           setEnabled(new Set(res.enabled ?? []));
           setUnavailable(!res.gameDir);
           setLoaderInstalled(res.loaderInstalled ?? null);
-          setLaunchOptionsPresent(res.launchOptionsPresent);
+          // The Proton prefix override does the same job and needs no Steam edit.
+          setLaunchOptionsPresent(res.prefixOverride ? true : res.launchOptionsPresent);
         }
         setLoading(false);
       },
@@ -1160,7 +1161,7 @@ function LoaderFlagsPanel() {
               label={t('Launch options')}
               state={launchOptionsPresent ? 'ok' : 'missing'}
               okText={t('winhttp override set')}
-              missingText={t('missing — launch Modded to set')}
+              missingText={t('missing — launch Modded for the fix')}
             />
           ) : null}
         </div>

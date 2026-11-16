@@ -440,7 +440,11 @@ def check_launch_options(game_dir: Path) -> list[Result]:
         _override_present,
         _read_launch_options,
         _steam_root,
+        prefix_override_present,
+        prefix_user_reg,
     )
+    if prefix_override_present(prefix_user_reg(game_dir)):
+        return [Result("OK", "Proton prefix carries the winhttp override")]
     # --no-launch matters: without it the repair starts the game, and Steam
     # then owns localconfig.vdf and rewrites it on exit.
     fix = Fix("rsmm run --set-launch-options --no-launch",

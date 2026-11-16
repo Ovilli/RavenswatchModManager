@@ -11,7 +11,8 @@ import {
 import { t } from '../lib/i18n';
 import { appendLauncherLog, clearLauncherLog } from '../lib/launcher-log';
 import { getPlatform } from '../lib/platform';
-import { restoreAll, runModded, runVanilla } from '../lib/rsmm';
+import { getLoaderFlags, restoreAll, runModded, runVanilla } from '../lib/rsmm';
+import { LaunchOptionsDialog } from './launch-options-dialog';
 import { noteModdedLaunch } from './support-nudge';
 
 /**
@@ -91,6 +92,10 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
   // Bumped on every launch so a watcher from a previous session can tell it
   // has been superseded and stop touching state.
   const launchSeq = useRef(0);
+  // Linux: a modded launch without the winhttp override in Steam's launch
+  // options runs with no loader, so script mods silently do nothing (#148).
+  const [optionsPrompt, setOptionsPrompt] = useState(false);
+  const skipOptionsCheck = useRef(false);
 
   const trackGameLifecycle = useCallback((mode: LaunchMode, seq: number) => {
     void (async () => {
@@ -154,6 +159,16 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
       setLaunching(mode);
       setLaunchError(null);
       try {
+        if (mode === 'modded' && getPlatform() !== 'windows' && !skipOptionsCheck.current) {
+          const flags = await getLoaderFlags().catch(() => null);
+          // `rsmm run` sets the override in the Proton prefix itself; only a
+          // prefix that doesn't exist yet (never run under Proton) needs Steam.
+          if (flags?.launchOptionsPresent === false && !flags.prefixOverride) {
+            setOptionsPrompt(true);
+            return null;
+          }
+        }
+        skipOptionsCheck.current = false;
         await clearLauncherLog();
         await appendLauncherLog('info', `Launch requested: ${mode}`);
         const fn = mode === 'vanilla' ? runVanilla : runModded;
@@ -224,5 +239,20 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
     [launching, running, launchError, launch],
   );
 
-  return <LaunchContext.Provider value={value}>{children}</LaunchContext.Provider>;
+  return (
+    <LaunchContext.Provider value={value}>
+      {children}
+      {optionsPrompt ? (
+        <LaunchOptionsDialog
+          onCancel={() => setOptionsPrompt(false)}
+          onLaunch={() => {
+            setOptionsPrompt(false);
+            skipOptionsCheck.current = true;
+            // A failure is already in launchError; nothing else to report.
+            launch('modded').catch(() => {});
+          }}
+        />
+      ) : null}
+    </LaunchContext.Provider>
+  );
 }
