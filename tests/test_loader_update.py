@@ -327,6 +327,41 @@ def test_replant_cached_survives_a_restore(tmp_path, channel):
     assert lu.planted_version(game) == 2
 
 
+def _restore_to_bundled_v2(game, monkeypatch):
+    """Channel v2 applied, then restore + install-loader planted the bundled
+    v2: same version, a different compile, no manifest."""
+    monkeypatch.setattr(lu, "bundled_version", lambda: 2)
+    (game / "winhttp.dll").write_bytes(b"MZ bundled build of v2")
+    lu.planted_manifest_path(game).unlink()
+
+
+def test_replant_cached_at_the_same_version_in_a_release_build(tmp_path, channel, monkeypatch):
+    """A release build's bundled DLL never matches the channel manifest's sha,
+    so the loader logs dev/unstamped unless the channel copy is replanted."""
+    game, use = channel
+    use(_publish(tmp_path))
+    lu.apply_update(game)
+    _restore_to_bundled_v2(game, monkeypatch)
+    monkeypatch.setattr(lu, "_release_build", lambda: True)
+
+    result = lu.replant_cached(game)
+    assert result and result["loader_version"] == 2 and result["same_version"]
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]
+    assert lu.planted_manifest_version(game) == 2
+
+
+def test_replant_cached_at_the_same_version_keeps_a_checkout_dll(tmp_path, channel, monkeypatch):
+    """A source checkout's DLL may carry local edits at the same stamp."""
+    game, use = channel
+    use(_publish(tmp_path))
+    lu.apply_update(game)
+    _restore_to_bundled_v2(game, monkeypatch)
+    monkeypatch.setattr(lu, "_release_build", lambda: False)
+
+    assert lu.replant_cached(game) is None
+    assert (game / "winhttp.dll").read_bytes() == b"MZ bundled build of v2"
+
+
 def test_replant_cached_is_a_no_op_without_a_cache(tmp_path, channel):
     game, _ = channel
     assert lu.replant_cached(game) is None
