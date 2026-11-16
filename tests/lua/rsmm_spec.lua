@@ -12268,6 +12268,19 @@ do
         return { { id = "c", label = "C", header = {}, rows = {} } } end })
     check(ec and type(pages["t.empty2"].categories[1].header) == "table"
           and #pages["t.empty2"].categories[1].rows == 0, "empty header and rows are tables")
+    -- the header is not clipped Lua-side: the loader wraps it to the page width (phase 4c)
+    local long = string.rep("word ", 80) .. "\n" .. string.rep("x", 200)
+    M.page("t.long", { title = "L", categories = function()
+        return { { id = "c", label = "C",
+                   header = { title = string.rep("T", 60), subtitle = string.rep("S", 90), text = long },
+                   rows = {} } } end })
+    local lh = pages["t.long"].categories[1].header
+    check(lh.text == long and #lh.title == 60 and #lh.subtitle == 90,
+          "a long header reaches the loader whole, newlines kept")
+    local many = {}
+    for i = 1, 16 do many[i] = { id = "c" .. i, label = "Category " .. i, rows = {} } end
+    M.page("t.many", { title = "M", categories = function() return many end })
+    check(#pages["t.many"].categories == 16, "a page keeps more categories than the column shows")
     explode = true
     M.page("t.first_throw", { title = "FT", categories = function() error("first") end })
     explode = false
